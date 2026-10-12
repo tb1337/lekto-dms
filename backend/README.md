@@ -158,7 +158,8 @@ classify → extract fields → apply rules → file; filing waits for the pages
 need each other run as soon as their needs are met, so two workers may process one document at
 once. `processing.nodes` of a document holds the state of every node of the current run
 (`waiting`, `running`, `done` with its outcome, `skipped`) with start and end; the events
-`document.node_started` and `document.node_completed` follow it. A node that fails stops the
+`document.node_started`, `document.node_deferred` (an attempt raised; the node waits for the
+next one) and `document.node_completed` follow it. A node that fails stops the
 document (red): nodes still running finish, nothing new starts. A retry repeats the failed
 nodes, a reprocessing from node X repeats X and every node after it; both start a new run, so
 jobs of the old run are recognised as stale.
@@ -174,7 +175,8 @@ jobs of the old run are recognised as stale.
 | File (`FileNode`) | the drawer | - | uncertain if the owner may no longer file into the drawer (field `drawer`) |
 
 - A node that raises is retried (`PAPIQ_NODE_MAX_ATTEMPTS`, delay `PAPIQ_NODE_RETRY_DELAY`,
-  doubling); after the last attempt the document goes red. A damaged or encrypted file
+  doubling); it waits meanwhile (`document.node_deferred`); after the last attempt the
+  document goes red. A damaged or encrypted file
   (`UnprocessableDocumentError`) fails at once. The processing log records input, output,
   engine version, reason and duration of every run.
 - OCRmyPDF (`adapters/outbound/ocrmypdf`) and Docling (`adapters/outbound/docling`) run as
@@ -556,7 +558,7 @@ admin reads includes the target URL (which may be a capability URL) and, in the 
 IDs and event types of that user's deliveries.
 At most `PAPIQ_WEBHOOKS_PER_USER` (20) per user.
 
-**Events.** `document.received`, `document.node_started`, `document.node_completed`, `document.lane_changed`,
+**Events.** `document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`,
 `document.filed`, `document.updated`, `document.deleted`, or `*` for all, also future ones. A
 webhook only hears of documents its owner may read, as with the event stream: the right is
 checked when the event is queued and again before every attempt, and a user who lost access in

@@ -289,6 +289,7 @@
 	"oidc_error_provider": "The identity provider cannot be reached right now.",
 	"event_received": "Received",
 	"event_node_started": "Step started",
+	"event_node_deferred": "Step deferred",
 	"event_node_completed": "Step completed",
 	"event_lane_changed": "Lane changed",
 	"event_filed": "Filed",

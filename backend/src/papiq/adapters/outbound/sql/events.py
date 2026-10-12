@@ -12,6 +12,7 @@ from papiq.core.domain.events import (
     DomainEvent,
     LaneChanged,
     NodeCompleted,
+    NodeDeferred,
     NodeStarted,
 )
 from papiq.core.domain.ids import DocumentId, DrawerId, EventId, UserId
@@ -34,6 +35,13 @@ def encode(event: DomainEvent) -> JsonObject:
                 "document_id": str(event.document_id),
                 "node": event.node.value,
                 "run": event.run,
+            }
+        case NodeDeferred():
+            return {
+                "document_id": str(event.document_id),
+                "node": event.node.value,
+                "run": event.run,
+                "retry_at": event.retry_at.isoformat(),
             }
         case NodeCompleted():
             return {
@@ -69,6 +77,13 @@ def decode(type: str, id: UUID, occurred_at: datetime, payload: dict[str, Any]) 
             return DocumentDeleted(**common, readers=readers)
         case NodeStarted.type:
             return NodeStarted(**common, node=Node(payload["node"]), run=payload["run"])
+        case NodeDeferred.type:
+            return NodeDeferred(
+                **common,
+                node=Node(payload["node"]),
+                run=payload["run"],
+                retry_at=datetime.fromisoformat(payload["retry_at"]),
+            )
         case NodeCompleted.type:
             return NodeCompleted(
                 **common,

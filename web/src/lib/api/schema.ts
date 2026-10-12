@@ -1218,7 +1218,7 @@ export interface paths {
 		};
 		/**
 		 * Progress of documents (server-sent events)
-		 * @description A stream of document events (`document.received`, `document.node_started`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream checks every 30 seconds that its session or token is still valid and ends otherwise.
+		 * @description A stream of document events (`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream checks every 30 seconds that its session or token is still valid and ends otherwise.
 		 */
 		get: operations['events_api_v1_events_get'];
 		put?: never;
@@ -3635,7 +3635,7 @@ export interface components {
 			url: string;
 			/**
 			 * Event Types
-			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones.
+			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones.
 			 */
 			event_types: string[];
 			/**
@@ -3756,7 +3756,7 @@ export interface components {
 			url?: string | null;
 			/**
 			 * Event Types
-			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones.
+			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones.
 			 */
 			event_types?: string[] | null;
 			/**

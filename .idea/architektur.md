@@ -290,7 +290,7 @@ Kein API-Aufruf wartet auf OCR, Parsing oder LLM: Die API nimmt an, quittiert so
 
 **Ereignisse (erster Wurf)**
 
-`document.received`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`. Weitere Typen kommen bei Bedarf hinzu; Empfänger ignorieren unbekannte Typen.
+`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`. Weitere Typen kommen bei Bedarf hinzu; Empfänger ignorieren unbekannte Typen.
 
 **Webhooks (Egress)**
 

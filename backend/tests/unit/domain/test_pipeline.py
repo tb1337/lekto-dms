@@ -4,7 +4,13 @@ import pytest
 
 from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import InvalidTransitionError, ValidationError
-from papiq.core.domain.events import DocumentFiled, LaneChanged, NodeCompleted, NodeStarted
+from papiq.core.domain.events import (
+    DocumentFiled,
+    LaneChanged,
+    NodeCompleted,
+    NodeDeferred,
+    NodeStarted,
+)
 from papiq.core.domain.ids import new_id
 from papiq.core.domain.pipeline import (
     GRAPH,
@@ -304,21 +310,6 @@ def test_confirming_a_red_document_takes_over_the_failed_and_unrun_nodes() -> No
     assert document.processing.outcome(Node.PAGES) is Outcome.OK
 
 
-def test_confirming_repeats_a_node_still_running() -> None:
-    document = received()
-    document.start_node(Node.PAGES, 1, NOW)
-    builders.run_pipeline(document, {Node.OCR: FAILED})
-    assert status(document) is ProcessingStatus.FAILED
-    assert document.confirm(Node.APPLY_RULES, NOW) == (
-        Node.OCR,
-        Node.PARSE,
-        Node.CLASSIFY,
-        Node.EXTRACT_FIELDS,
-    )
-    assert document.processing.nodes[Node.PAGES] == NodeState()
-    assert document.processing.due() == (Node.PAGES, Node.APPLY_RULES)
-
-
 def test_fields_are_only_extracted_again_from_a_parsed_text() -> None:
     document = builders.run_pipeline(received(), {Node.PARSE: FAILED})
     with pytest.raises(InvalidTransitionError, match="no text"):
@@ -484,7 +475,7 @@ def test_the_page_count_is_set_by_the_pages_node() -> None:
 def test_a_skipped_node_is_caught_up_on_without_touching_status_or_lane() -> None:
     document = received()
     document.processing.nodes[Node.PAGES] = NodeState(status=NodeStatus.SKIPPED)
-    assert not document.is_skipped(Node.PAGES, 1)  # not while processing
+    assert document.is_skipped(Node.PAGES, 1)  # also while the other nodes are processed
     builders.run_pipeline(document, {Node.CLASSIFY: UNCERTAIN})
     document.pull_events()
     assert document.is_skipped(Node.PAGES, 1)
@@ -497,15 +488,61 @@ def test_a_skipped_node_is_caught_up_on_without_touching_status_or_lane() -> Non
     assert (status(document), document.lane) == (ProcessingStatus.REVIEW, Lane.YELLOW)
     (event,) = document.pull_events()
     assert isinstance(event, NodeCompleted) and event.node is Node.PAGES
-    with pytest.raises(InvalidTransitionError, match="was not skipped"):
+    with pytest.raises(InvalidTransitionError, match="is not skipped"):
         document.catch_up(Node.PAGES, 1, OK, NOW, LATER)
 
-    # A failure stays in the node; the document is not red for it.
+    # A failure is recorded, but the node stays skipped: nothing is blocked by it, the next
+    # catch-up tries again, and the document is not red for it.
     green = builders.run_pipeline(received())
     green.processing.nodes[Node.PAGES] = NodeState(status=NodeStatus.SKIPPED)
+    green.pull_events()
     green.catch_up(Node.PAGES, 1, FAILED, NOW, LATER)
-    assert green.processing.outcome(Node.PAGES) is Outcome.FAILED
+    assert green.processing.nodes[Node.PAGES] == NodeState(status=NodeStatus.SKIPPED)
     assert (status(green), green.lane) == (ProcessingStatus.COMPLETED, Lane.GREEN)
+    (event,) = green.pull_events()
+    assert isinstance(event, NodeCompleted) and event.outcome is Outcome.FAILED
+    assert green.is_skipped(Node.PAGES, 1)
+    assert green.reprocess_from(Node.CLASSIFY, LATER) == (Node.CLASSIFY,)
+
+
+def test_confirming_waits_for_a_node_still_running() -> None:
+    document = received()
+    document.start_node(Node.OCR, 1, NOW)
+    document.record_result(Node.PAGES, 1, FAILED, NOW)
+    assert status(document) is ProcessingStatus.FAILED
+    with pytest.raises(InvalidTransitionError, match="ocr is still running"):
+        document.confirm(Node.APPLY_RULES, NOW)
+    document.record_result(Node.OCR, 1, OK, NOW)
+    assert document.confirm(Node.APPLY_RULES, NOW) == (
+        Node.PAGES,
+        Node.PARSE,
+        Node.CLASSIFY,
+        Node.EXTRACT_FIELDS,
+    )
+
+
+def test_a_node_whose_attempt_failed_waits_for_the_next() -> None:
+    document = received()
+    document.start_node(Node.OCR, 1, NOW)
+    document.pull_events()
+    retry_at = NOW + timedelta(seconds=30)
+    document.defer_node(Node.OCR, 1, retry_at, LATER)
+    assert document.processing.nodes[Node.OCR] == NodeState()
+    assert document.is_awaiting(Node.OCR, 1)  # the job runs again
+    (event,) = document.pull_events()
+    assert isinstance(event, NodeDeferred)
+    assert (event.node, event.run, event.retry_at) == (Node.OCR, 1, retry_at)
+    with pytest.raises(InvalidTransitionError, match="not running"):
+        document.defer_node(Node.OCR, 1, retry_at, LATER)
+    document.start_node(Node.OCR, 1, LATER)
+    assert document.processing.nodes[Node.OCR].started_at == LATER
+
+
+def test_the_nodes_are_in_graph_order_whatever_order_the_store_gives() -> None:
+    fresh = Processing.new()
+    shuffled = dict(reversed(list(fresh.nodes.items())))
+    assert list(shuffled) != list(NODES)
+    assert list(Processing(status=fresh.status, run=1, nodes=shuffled).nodes) == list(NODES)
 
 
 def test_a_skipped_node_counts_as_done_for_the_nodes_after_it() -> None:

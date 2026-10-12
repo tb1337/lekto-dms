@@ -236,6 +236,8 @@ class Processing:
         missing = [node.value for node in NODES if node not in self.nodes]
         if missing:
             raise ValidationError(f"processing state without nodes: {', '.join(missing)}")
+        # In graph order, whatever order the store returned them in (JSONB sorts keys).
+        self.nodes = {node: self.nodes[node] for node in NODES}
         if self.run < 1:
             raise ValidationError("run starts at 1")
         if (self.status is ProcessingStatus.COMPLETED) == self.is_open():

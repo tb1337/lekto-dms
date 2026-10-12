@@ -209,6 +209,9 @@ async def test_exceptions_are_retried_with_backoff(world: World) -> None:
     owner, document = await receive(world, pipeline)
     assert await world.drain(pipeline) == 2  # the pages, and attempt 1 fails
     assert not await pipeline.run_next_job()  # waits 30 s
+    waiting = await world.documents.get(owner.id, document.id)
+    assert waiting.processing.nodes[Node.OCR] == NodeState()  # not shown as running meanwhile
+    assert "document.node_deferred" in world.event_types()
     world.clock.advance(timedelta(seconds=30))
     assert await pipeline.run_next_job()  # attempt 2 fails
     world.clock.advance(timedelta(seconds=59))
@@ -266,10 +269,13 @@ async def test_skipped_pages_are_caught_up_on_without_a_new_run(world: World) ->
 
     pages = Returns(builders.OK)
     pipeline = world.pipeline({Node.PAGES: pages})
-    assert await pipeline.catch_up(Node.PAGES) == 2  # not the one being processed
+    assert await pipeline.catch_up(Node.PAGES) == 3  # also the one being processed
     assert await pipeline.catch_up(Node.PAGES) == 0  # queued already
-    assert await world.drain(pipeline) == 2 + 7  # and the processing one (its pages job is stale)
-    assert pages.calls == 2
+    assert await world.drain(pipeline) == 3 + 7  # and the processing one (its pages job is stale)
+    assert pages.calls == 3
+    caught_up = await world.documents.get(owner.id, processing.id)
+    assert caught_up.lane is Lane.GREEN
+    assert caught_up.processing.nodes[Node.PAGES].status is NodeStatus.DONE
     for id, lane, status in ((document.id, Lane.GREEN, "completed"), (red.id, Lane.RED, "failed")):
         stored = await world.documents.get(owner.id, id)
         assert (stored.lane, stored.processing.status.value, stored.processing.run) == (
@@ -281,12 +287,34 @@ async def test_skipped_pages_are_caught_up_on_without_a_new_run(world: World) ->
         log = await world.documents.processing_log(owner.id, id)
         assert log[-1].node is Node.PAGES and log[-1].run == 1
     kinds = [job.kind for job in world.database.jobs.values() if job.status is JobStatus.DONE]
-    assert kinds.count(CATCH_UP_JOB) == 2
+    assert kinds.count(CATCH_UP_JOB) == 3
     assert "document.lane_changed" not in [
         event.type
         for event in world.events()
         if isinstance(event, DocumentEvent) and event.document_id in (document.id, red.id)
     ]
+
+
+async def test_a_failed_catch_up_keeps_the_node_skipped_and_blocks_nothing(world: World) -> None:
+    owner, document = await receive(world)
+    await world.drain()
+    async with world.uow() as uow:
+        stored = await uow.documents.get(document.id)
+        stored.processing.nodes[Node.PAGES] = NodeState(status=NodeStatus.SKIPPED)
+        await uow.documents.update(stored)
+        await uow.commit()
+    pipeline = world.pipeline({Node.PAGES: Returns(FAILED)})
+    assert await pipeline.catch_up(Node.PAGES) == 1
+    await world.drain(pipeline)
+    stored = await world.documents.get(owner.id, document.id)
+    assert stored.processing.nodes[Node.PAGES] == NodeState(status=NodeStatus.SKIPPED)
+    assert (stored.lane, stored.processing.status) == (Lane.GREEN, ProcessingStatus.COMPLETED)
+    log = await world.documents.processing_log(owner.id, document.id)
+    assert (log[-1].node, log[-1].result.outcome) == (Node.PAGES, Outcome.FAILED)
+    (job,) = [job for job in world.database.jobs.values() if job.kind == CATCH_UP_JOB]
+    assert job.status is JobStatus.FAILED
+    assert await pipeline.catch_up(Node.PAGES) == 1  # tried again next time
+    await pipeline.reprocess_from(owner.id, document.id, Node.CLASSIFY)  # not blocked
 
 
 async def test_a_catch_up_job_is_stale_once_the_document_runs_again(world: World) -> None:

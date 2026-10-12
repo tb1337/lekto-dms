@@ -38,6 +38,7 @@
 	const labels: Record<EventType, () => string> = {
 		'document.received': m.event_received,
 		'document.node_started': m.event_node_started,
+		'document.node_deferred': m.event_node_deferred,
 		'document.node_completed': m.event_node_completed,
 		'document.lane_changed': m.event_lane_changed,
 		'document.filed': m.event_filed,

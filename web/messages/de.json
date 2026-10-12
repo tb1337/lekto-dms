@@ -289,6 +289,7 @@
 	"oidc_error_provider": "Der Identitätsanbieter ist gerade nicht erreichbar.",
 	"event_received": "Eingegangen",
 	"event_node_started": "Schritt gestartet",
+	"event_node_deferred": "Schritt zurückgestellt",
 	"event_node_completed": "Schritt abgeschlossen",
 	"event_lane_changed": "Spur gewechselt",
 	"event_filed": "Abgelegt",

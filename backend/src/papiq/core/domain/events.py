@@ -40,6 +40,21 @@ class NodeStarted(DocumentEvent):
 
 
 @dataclass(frozen=True, kw_only=True)
+class NodeDeferred(DocumentEvent):
+    """An attempt of the node failed with an error; the node waits and runs again at
+    `retry_at`."""
+
+    type: ClassVar[str] = "document.node_deferred"
+    node: Node
+    run: int
+    retry_at: datetime
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        object.__setattr__(self, "retry_at", require_utc(self.retry_at, "retry_at"))
+
+
+@dataclass(frozen=True, kw_only=True)
 class NodeCompleted(DocumentEvent):
     type: ClassVar[str] = "document.node_completed"
     node: Node
@@ -83,6 +98,7 @@ EVENT_TYPES: dict[str, type[DomainEvent]] = {
     for kind in (
         DocumentReceived,
         NodeStarted,
+        NodeDeferred,
         NodeCompleted,
         LaneChanged,
         DocumentFiled,

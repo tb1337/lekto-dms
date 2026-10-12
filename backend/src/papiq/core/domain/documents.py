@@ -18,6 +18,7 @@ from papiq.core.domain.events import (
     DocumentUpdated,
     LaneChanged,
     NodeCompleted,
+    NodeDeferred,
     NodeStarted,
 )
 from papiq.core.domain.fields import FieldDefinition, FieldValue
@@ -187,10 +188,24 @@ class Document:
         return processing.status is ProcessingStatus.PROCESSING and node in processing.due()
 
     def start_node(self, node: Node, run: int, now: datetime) -> None:
-        """A worker takes the due node up (again, after a lost lease)."""
+        """A worker takes the due node up (again, after a lost lease or a deferral)."""
         self._require_awaiting(node, run)
         self.processing.nodes[node] = NodeState(status=NodeStatus.RUNNING, started_at=now)
         self._record(NodeStarted(document_id=self.id, occurred_at=now, node=node, run=run))
+        self._touch(now)
+
+    def defer_node(self, node: Node, run: int, retry_at: datetime, now: datetime) -> None:
+        """An attempt of the running node failed with an error: it waits until `retry_at`,
+        when a worker takes it up again (`start_node`)."""
+        self._require_awaiting(node, run)
+        if self.processing.nodes[node].status is not NodeStatus.RUNNING:
+            raise InvalidTransitionError(f"document {self.id}: node {node} is not running")
+        self.processing.nodes[node] = NodeState()
+        self._record(
+            NodeDeferred(
+                document_id=self.id, occurred_at=now, node=node, run=run, retry_at=retry_at
+            )
+        )
         self._touch(now)
 
     def record_result(
@@ -271,8 +286,8 @@ class Document:
         Nodes that never ran and are not needed to resume (the pages after a failed OCR) run
         now. Returns the nodes whose results the owner overruled.
 
-        Only for documents in the inbox (yellow or red, not being processed). Extracting
-        fields needs a parsed text."""
+        Only for documents in the inbox (yellow or red, not being processed, no node still
+        running after a failure). Extracting fields needs a parsed text."""
         processing = self.processing
         if self.lane not in (Lane.YELLOW, Lane.RED) or processing.status not in (
             ProcessingStatus.REVIEW,
@@ -280,6 +295,11 @@ class Document:
             ProcessingStatus.COMPLETED,
         ):
             raise InvalidTransitionError(f"document {self.id} is not waiting for confirmation")
+        if running := processing.running():
+            # Its result would overwrite what the owner decided; it ends soon.
+            raise InvalidTransitionError(
+                f"document {self.id}: {', '.join(running)} is still running; confirm afterwards"
+            )
         if resume_at not in (Node.EXTRACT_FIELDS, Node.APPLY_RULES):
             raise InvalidTransitionError(
                 f"processing resumes with {Node.EXTRACT_FIELDS} or {Node.APPLY_RULES}, "
@@ -315,30 +335,30 @@ class Document:
         self._touch(now)
 
     def is_skipped(self, node: Node, run: int) -> bool:
-        """True if `node` was skipped in run `run` and processing is not running: a catch-up
-        may record its result (`catch_up`)."""
+        """True if `node` is skipped in run `run`: a catch-up may record its result
+        (`catch_up`), also while other nodes of the run are processed."""
         processing = self.processing
-        return (
-            run == processing.run
-            and processing.status is not ProcessingStatus.PROCESSING
-            and processing.nodes[node].status is NodeStatus.SKIPPED
-        )
+        return run == processing.run and processing.nodes[node].status is NodeStatus.SKIPPED
 
     def catch_up(
         self, node: Node, run: int, result: NodeResult, started: datetime, now: datetime
     ) -> None:
-        """Record the result of a node that was skipped in the current run, outside
-        processing (the command `render-pages` catching up on page images). Status and lane
-        stay as they are: a failure shows in the node's state and the log only."""
+        """Record the result of a node that is skipped in the current run, beside processing
+        (the command `render-pages` catching up on page images). Status and lane stay as they
+        are. A failure is recorded in the event and the log only: the node stays skipped, so
+        nothing waits on it, nothing is blocked by it, and the next catch-up tries again."""
         if not self.is_skipped(node, run):
             raise InvalidTransitionError(
-                f"document {self.id}: node {node} of run {run} was not skipped "
-                f"({self.processing.status}, {self.processing.nodes[node].status}, "
-                f"run {self.processing.run})"
+                f"document {self.id}: node {node} of run {run} is not skipped "
+                f"({self.processing.nodes[node].status}, run {self.processing.run})"
             )
-        self.processing.nodes[node] = NodeState(
-            status=NodeStatus.DONE, outcome=result.outcome, started_at=started, finished_at=now
-        )
+        if result.outcome is not Outcome.FAILED:
+            self.processing.nodes[node] = NodeState(
+                status=NodeStatus.DONE,
+                outcome=result.outcome,
+                started_at=started,
+                finished_at=now,
+            )
         self._record(
             NodeCompleted(
                 document_id=self.id, occurred_at=now, node=node, run=run, outcome=result.outcome

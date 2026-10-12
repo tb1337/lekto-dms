@@ -28,7 +28,15 @@ from papiq.core.domain.imports import IMPORTED, ImportedMetadata
 from papiq.core.domain.jobs import Job, JobStatus
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.permissions import can_control_document, can_file_into
-from papiq.core.domain.pipeline import CHOSEN_DRAWER, NODES, Node, NodeResult, NodeRun, Outcome
+from papiq.core.domain.pipeline import (
+    CHOSEN_DRAWER,
+    NODES,
+    Node,
+    NodeResult,
+    NodeRun,
+    NodeStatus,
+    Outcome,
+)
 from papiq.core.domain.rule_engine import DRAWER, changed_fields
 from papiq.core.domain.users import User
 from papiq.core.ports import Clock, ObjectStore, UnitOfWork, UnitOfWorkFactory
@@ -445,10 +453,11 @@ class PipelineService:
         await uow.commit()
 
     async def catch_up(self, node: Node) -> int:
-        """Queue a job for every document whose `node` was skipped in its current run and that
-        is not being processed (the command `render-pages`: page images of documents from
-        before the node existed). Returns how many were queued; a document with such a job
-        already is not queued again."""
+        """Queue a job for every document whose `node` is skipped in its current run (the
+        command `render-pages`: page images of documents from before the node existed).
+        Returns how many were queued; a document with such a job already is not queued
+        again. A document that starts a new run meanwhile keeps the node skipped; its job is
+        stale then, and the next call queues it again."""
         now = self._clock.now()
         queued = 0
         async with self._uow() as uow:
@@ -487,6 +496,7 @@ class PipelineService:
         at once to run again, instead of waiting for its lease to expire; the interrupted claim
         does not count as an attempt.
 
+        A node whose attempt raised waits (`document.node_deferred`) until the job runs again.
         A catch-up job (`catch_up`) runs the same way, except that its node is not marked as
         running and its result changes neither the status nor the lane.
         """
@@ -541,15 +551,44 @@ class PipelineService:
             if retry_at is None:
                 await self._record(job, document_id, node, run, _failed(reason), started)
                 return
-            try:
-                async with self._uow() as uow:
-                    await uow.jobs.reschedule(job, run_at=retry_at, error=reason)
-                    await uow.commit()
-            except ConcurrencyError:
-                log.warning("lost the claim of a node job", extra={"job_id": str(job.id)})
+            await self._defer(job, document_id, node, run, retry_at, reason)
             return
 
         await self._record(job, document_id, node, run, outcome, started)
+
+    async def _defer(
+        self,
+        job: Job,
+        document_id: DocumentId,
+        node: Node,
+        run: int,
+        retry_at: datetime,
+        reason: str,
+    ) -> None:
+        """Let the job run again at `retry_at` and show the node as waiting meanwhile (a
+        catch-up job has nothing to show). Nothing changes if the job's claim was lost."""
+        for attempt in range(1, _RECORD_ATTEMPTS + 1):
+            try:
+                async with self._uow() as uow:
+                    await uow.jobs.reschedule(job, run_at=retry_at, error=reason)
+                    document = await uow.documents.find(document_id)
+                    if (
+                        job.kind != CATCH_UP_JOB
+                        and document is not None
+                        and document.is_awaiting(node, run)
+                        and document.processing.nodes[node].status is NodeStatus.RUNNING
+                    ):
+                        document.defer_node(node, run, retry_at, self._clock.now())
+                        await uow.documents.update(document)
+                        await uow.outbox.add(document.pull_events())
+                    await uow.commit()
+                return
+            except ConcurrencyError:
+                if not await self._still_claimed(job):
+                    log.warning("lost the claim of a node job", extra={"job_id": str(job.id)})
+                    return
+                if attempt == _RECORD_ATTEMPTS:
+                    raise
 
     async def _skipped(self, document_id: DocumentId, node: Node, run: int) -> Document | None:
         """The document, if its `node` is still to catch up on; None if the job is stale."""

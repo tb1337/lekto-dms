@@ -8,6 +8,7 @@ import { BASE_API } from '#lib/api/base.ts';
 export const EVENT_TYPES = [
 	'document.received',
 	'document.node_started',
+	'document.node_deferred',
 	'document.node_completed',
 	'document.lane_changed',
 	'document.filed',
@@ -21,6 +22,7 @@ export type EventType = (typeof EVENT_TYPES)[number];
 export const NODE_EVENTS: ReadonlySet<EventType> = new Set<EventType>([
 	'document.received',
 	'document.node_started',
+	'document.node_deferred',
 	'document.node_completed'
 ]);
 

@@ -8,7 +8,7 @@ from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import OpenFieldsError
 from papiq.core.domain.fields import FieldType
-from papiq.core.domain.pipeline import Lane, Outcome, ProcessingStatus, Step
+from papiq.core.domain.pipeline import PERSON, RULES, Lane, Outcome, ProcessingStatus, Step
 from papiq.core.domain.rules import (
     ForceReview,
     SetContact,
@@ -17,7 +17,6 @@ from papiq.core.domain.rules import (
     SetTitle,
     Trigger,
 )
-from papiq.core.services.inbox import PERSON, RULES
 from papiq.core.services.rules.running import PatternBudget, prepare
 from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (

@@ -20,9 +20,9 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.ids import ContactId, DrawerId, UserId
 from papiq.core.domain.master_data import Contact
-from papiq.core.domain.pipeline import Lane, Outcome, ProcessingStatus, Step, StepResult
+from papiq.core.domain.pipeline import PERSON, Lane, Outcome, ProcessingStatus, Step, StepResult
 from papiq.core.domain.users import User
-from papiq.core.services.inbox import PERSON, OpenStep, decide, field_checks
+from papiq.core.services.inbox import OpenStep, decide, field_checks
 from papiq.core.services.pipeline import PipelineService
 from tests.builders import FAILED, NOW, document, incoming
 from tests.unit.services.conftest import Returns, World

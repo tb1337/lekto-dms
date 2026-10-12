@@ -28,7 +28,7 @@ from papiq.core.domain.imports import IMPORTED, ImportedMetadata
 from papiq.core.domain.jobs import Job, JobStatus
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.permissions import can_control_document, can_file_into
-from papiq.core.domain.pipeline import PIPELINE, Outcome, Step, StepResult, StepRun
+from papiq.core.domain.pipeline import CHOSEN_DRAWER, PIPELINE, Outcome, Step, StepResult, StepRun
 from papiq.core.domain.rule_engine import DRAWER, changed_fields
 from papiq.core.domain.users import User
 from papiq.core.ports import Clock, ObjectStore, UnitOfWork, UnitOfWorkFactory
@@ -40,7 +40,6 @@ from papiq.core.services._access import (
     visible_drawer,
 )
 from papiq.core.services.inbox import (
-    CHOSEN_DRAWER,
     LEARNED_ALIAS,
     alias_to_learn,
     confirmation,

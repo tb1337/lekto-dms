@@ -31,7 +31,7 @@ from papiq.core.domain.ids import DocumentId, RuleApplicationId, RuleId, UserId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.permissions import can_write_document
-from papiq.core.domain.pipeline import Lane, Outcome, Step, StepResult, StepRun
+from papiq.core.domain.pipeline import RULES_APPLY, Lane, Outcome, Step, StepResult, StepRun
 from papiq.core.domain.rule_engine import Effect, Mode, Note
 from papiq.core.domain.rules import Rule, RuleApplication, RuleScope
 from papiq.core.domain.users import User
@@ -44,7 +44,6 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
 )
 from papiq.core.services._access import load_actor
-from papiq.core.services.inbox import RULES_APPLY
 from papiq.core.services.rules.management import visible_rule
 from papiq.core.services.rules.running import (
     PatternBudget,

@@ -22,12 +22,18 @@ from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.ids import FieldId
 from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.pipeline import Outcome, ProcessingStatus, Step, StepResult, StepRun
+from papiq.core.domain.pipeline import (
+    RULES_CHANGE,
+    Outcome,
+    ProcessingStatus,
+    Step,
+    StepResult,
+    StepRun,
+)
 from papiq.core.domain.rule_engine import Mode, changed_fields
 from papiq.core.domain.rules import Rule, Trigger
 from papiq.core.domain.users import User
 from papiq.core.ports import ObjectStore, PatternMatcher, UnitOfWork
-from papiq.core.services.inbox import RULES_CHANGE
 from papiq.core.services.rules.running import (
     Prepared,
     RuleRun,

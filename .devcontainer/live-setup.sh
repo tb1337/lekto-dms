@@ -15,7 +15,7 @@ else
   key=$(openssl rand -base64 32)
   sed "s|^PAPIQ_SECRET_KEY=$|PAPIQ_SECRET_KEY=$key|" "$here/live.env.example" >"$env_file"
   chmod 600 "$env_file"
-  echo "live.env written with a new PAPIQ_SECRET_KEY; fill in PAPIQ_ADMIN_USERNAME, PAPIQ_ADMIN_PASSWORD and the Ollama address"
+  echo "live.env written with a new PAPIQ_SECRET_KEY; fill in PAPIQ_ADMIN_USERNAME, PAPIQ_ADMIN_PASSWORD the Open WebUI address and its API keys"
 fi
 
 set -a

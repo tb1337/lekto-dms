@@ -12,6 +12,7 @@ from papiq.core.domain.events import (
     DomainEvent,
     LaneChanged,
     NodeCompleted,
+    NodeStarted,
 )
 from papiq.core.domain.ids import DocumentId, DrawerId, EventId, UserId
 from papiq.core.domain.json_value import JsonObject
@@ -27,6 +28,12 @@ def encode(event: DomainEvent) -> JsonObject:
             return {
                 "document_id": str(event.document_id),
                 "readers": [str(reader) for reader in event.readers],
+            }
+        case NodeStarted():
+            return {
+                "document_id": str(event.document_id),
+                "node": event.node.value,
+                "run": event.run,
             }
         case NodeCompleted():
             return {
@@ -60,6 +67,8 @@ def decode(type: str, id: UUID, occurred_at: datetime, payload: dict[str, Any]) 
         case DocumentDeleted.type:
             readers = tuple(UserId(UUID(reader)) for reader in payload.get("readers", ()))
             return DocumentDeleted(**common, readers=readers)
+        case NodeStarted.type:
+            return NodeStarted(**common, node=Node(payload["node"]), run=payload["run"])
         case NodeCompleted.type:
             return NodeCompleted(
                 **common,

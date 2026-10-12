@@ -3,7 +3,7 @@
 import asyncio
 import hashlib
 import logging
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -28,7 +28,7 @@ from papiq.core.domain.imports import IMPORTED, ImportedMetadata
 from papiq.core.domain.jobs import Job, JobStatus
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.permissions import can_control_document, can_file_into
-from papiq.core.domain.pipeline import CHOSEN_DRAWER, PIPELINE, Node, NodeResult, NodeRun, Outcome
+from papiq.core.domain.pipeline import CHOSEN_DRAWER, NODES, Node, NodeResult, NodeRun, Outcome
 from papiq.core.domain.rule_engine import DRAWER, changed_fields
 from papiq.core.domain.users import User
 from papiq.core.ports import Clock, ObjectStore, UnitOfWork, UnitOfWorkFactory
@@ -159,7 +159,7 @@ class PipelineService:
         retry: RetryPolicy = DEFAULT_RETRY,
         lease: timedelta = timedelta(minutes=10),
     ) -> None:
-        missing = set(PIPELINE[1:]) - set(executors)
+        missing = set(NODES) - {Node.RECEIVE} - set(executors)
         if missing:
             raise ValueError(f"no executor for nodes: {', '.join(sorted(missing))}")
         self._uow = uow
@@ -183,8 +183,8 @@ class PipelineService:
         owner: UserId | None = None,
         imported: ImportedMetadata | None = None,
     ) -> Document:
-        """Store the original, then create the document, its first events and the OCR job in
-        one transaction.
+        """Store the original, then create the document, its first events and the jobs of the
+        nodes after receiving in one transaction.
 
         The media type is recognised from the content; an unsupported type raises
         UnsupportedMediaTypeError and nothing is stored. Without `drawer` the document goes to
@@ -293,7 +293,7 @@ class PipelineService:
                         now=now,
                     )
                 )
-            await _enqueue_node(uow, document, now)
+            await _enqueue(uow, document, document.processing.due(), now)
             await uow.outbox.add(document.pull_events())
             await uow.commit()
         return document
@@ -340,7 +340,7 @@ class PipelineService:
     # --- retry and reprocess --------------------------------------------------------------------
 
     async def retry(self, actor: UserId, id: DocumentId) -> Document:
-        """Owner or admin: repeat the failed node and continue from there."""
+        """Owner or admin: repeat the failed nodes and continue from there."""
         async with self._uow() as uow:
             document = await _owned_document(uow, await load_actor(uow, actor), id)
             document.retry(self._clock.now())
@@ -348,7 +348,8 @@ class PipelineService:
         return document
 
     async def reprocess_from(self, actor: UserId, id: DocumentId, node: Node) -> Document:
-        """Owner or admin: discard the results from `node` on and process again from there."""
+        """Owner or admin: discard the results of `node` and the nodes after it and process
+        them again."""
         async with self._uow() as uow:
             document = await _owned_document(uow, await load_actor(uow, actor), id)
             document.reprocess_from(node, self._clock.now())
@@ -382,10 +383,11 @@ class PipelineService:
             document = await _owned_document(uow, user, id)
             log = await uow.processing_log.list_for(id)
             outcomes = dict(document.processing.outcomes)
+            again = {resume_at, *resume_at.descendants}
             open = [
                 item
                 for item in open_nodes(document, log)
-                if item.node.position < resume_at.position
+                if item.node not in again
                 or (item.node is Node.APPLY_RULES and resume_at is Node.APPLY_RULES)
             ]
             target = None if drawer is None else await visible_drawer(uow, user, drawer)
@@ -435,7 +437,7 @@ class PipelineService:
 
     async def _restart(self, uow: UnitOfWork, document: Document) -> None:
         await uow.documents.update(document)
-        await _enqueue_node(uow, document, self._clock.now())
+        await _enqueue(uow, document, document.processing.due(), self._clock.now())
         await uow.outbox.add(document.pull_events())
         await uow.commit()
 
@@ -444,11 +446,12 @@ class PipelineService:
     async def run_next_job(self) -> bool:
         """Claim the next due node job and run it. Returns False if no job was due.
 
-        The node's work runs outside any transaction; its result, the processing log entry,
-        the events and the next node's job are stored in one transaction with the job's
-        completion. A job whose node is no longer due (stale) is just completed. A job that
-        was claimed more often than the retry policy allows (the worker died or overran its
-        lease each time) fails without running again.
+        The node is marked as running first (its own transaction, with the event), so the
+        state shows where work happens. The node's work runs outside any transaction; its
+        result, the processing log entry, the events and the jobs of the nodes due next are
+        stored in one transaction with the job's completion. A job whose node is no longer due
+        (stale) is just completed. A job that was claimed more often than the retry policy
+        allows (the worker died or overran its lease each time) fails without running again.
 
         If the caller is cancelled after the claim (the worker shuts down), the job is released
         at once to run again, instead of waiting for its lease to expire; the interrupted claim
@@ -473,13 +476,11 @@ class PipelineService:
             log.error("invalid node job", extra={"job_id": str(job.id), "error": str(error)})
             await self._finish(job, error=f"invalid payload: {error}")
             return
-        async with self._uow() as uow:
-            document = await uow.documents.find(document_id)
-        if document is None or not document.is_awaiting(node, run):
+        started = self._clock.now()
+        document = await self._start(document_id, node, run, started)
+        if document is None:
             await self._finish(job)
             return
-
-        started = self._clock.now()
         if job.tries > self._retry.max_attempts:
             reason = (
                 f"node did not finish in {self._retry.max_attempts} attempts "
@@ -511,6 +512,27 @@ class PipelineService:
             return
 
         await self._record(job, document_id, node, run, outcome, started)
+
+    async def _start(
+        self, document_id: DocumentId, node: Node, run: int, now: datetime
+    ) -> Document | None:
+        """Mark the node as running and return the document; None if the job is stale. A
+        concurrent change of the document (another node of it finishing) is retried."""
+        for attempt in range(1, _RECORD_ATTEMPTS + 1):
+            try:
+                async with self._uow() as uow:
+                    document = await uow.documents.find(document_id)
+                    if document is None or not document.is_awaiting(node, run):
+                        return None
+                    document.start_node(node, run, now)
+                    await uow.documents.update(document)
+                    await uow.outbox.add(document.pull_events())
+                    await uow.commit()
+                return document
+            except ConcurrencyError:
+                if attempt == _RECORD_ATTEMPTS:
+                    raise
+        raise AssertionError("unreachable")
 
     async def _record(
         self,
@@ -555,11 +577,10 @@ class PipelineService:
                 result = outcome
             else:
                 result = await outcome.apply(uow, document, now)
-            next_step = document.record_result(node, run, result, now)
+            due = document.record_result(node, run, result, now)
             await uow.documents.update(document)
             await self._log(uow, document.id, node, run, result, started, now)
-            if next_step is not None:
-                await _enqueue_node(uow, document, now)
+            await _enqueue(uow, document, due, now)
             if result.outcome is Outcome.FAILED:
                 await uow.jobs.fail(job, error=result.reason or "failed")
             else:
@@ -633,14 +654,20 @@ async def _owned_document(uow: UnitOfWork, user: User, id: DocumentId) -> Docume
     return document
 
 
-async def _enqueue_node(uow: UnitOfWork, document: Document, now: datetime) -> JobId | None:
-    node = document.processing.current_node
-    assert node is not None  # called while processing
+async def _enqueue(
+    uow: UnitOfWork, document: Document, nodes: Iterable[Node], now: datetime
+) -> list[JobId]:
+    """One job per node, due now, in the document's current run."""
     run = document.processing.run
-    payload: JsonObject = {"document_id": str(document.id), "node": node.value, "run": run}
-    return await uow.jobs.enqueue(
-        NODE_JOB, payload, run_at=now, dedup_key=f"{document.id}:{run}:{node.value}"
-    )
+    jobs = []
+    for node in nodes:
+        payload: JsonObject = {"document_id": str(document.id), "node": node.value, "run": run}
+        job = await uow.jobs.enqueue(
+            NODE_JOB, payload, run_at=now, dedup_key=f"{document.id}:{run}:{node.value}"
+        )
+        if job is not None:
+            jobs.append(job)
+    return jobs
 
 
 async def _check_imported(

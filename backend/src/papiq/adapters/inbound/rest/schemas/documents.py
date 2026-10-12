@@ -12,11 +12,19 @@ from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
 from papiq.core.domain.documents import Channel, Document
 from papiq.core.domain.drawers import Drawer, ShareLevel
 from papiq.core.domain.permissions import can_manage_drawer
-from papiq.core.domain.pipeline import PIPELINE, Lane, Node, NodeRun, Outcome, ProcessingStatus
+from papiq.core.domain.pipeline import (
+    Lane,
+    Node,
+    NodeRun,
+    NodeState,
+    NodeStatus,
+    Outcome,
+    ProcessingStatus,
+)
 from papiq.core.domain.users import User
 
 ReprocessNode = StrEnum(  # type: ignore[misc]
-    "ReprocessNode", {node.name: node.value for node in PIPELINE[1:]}
+    "ReprocessNode", {node.name: node.value for node in Node if node is not Node.RECEIVE}
 )
 """Nodes processing can restart from; receiving cannot be repeated."""
 
@@ -26,16 +34,44 @@ class DocumentAccepted(BaseModel):
     status_url: str = Field(description="Where to follow the processing.")
 
 
+class NodeStateOut(BaseModel):
+    node: Node
+    status: NodeStatus = Field(
+        description=(
+            "`waiting`: not run yet (it runs once the nodes it needs are done); `running`: a "
+            "worker is at it; `done`: has an outcome; `skipped`: left out in this run."
+        )
+    )
+    outcome: Outcome | None = Field(description="Set once the node is done.")
+    started_at: datetime | None
+    finished_at: datetime | None
+
+    @classmethod
+    def of(cls, node: Node, state: NodeState) -> "NodeStateOut":
+        return cls(
+            node=node,
+            status=state.status,
+            outcome=state.outcome,
+            started_at=state.started_at,
+            finished_at=state.finished_at,
+        )
+
+
 class Processing(BaseModel):
     status: ProcessingStatus = Field(
         description=(
-            "`processing`: `current_node` is due; `review`: stopped before `current_node` until "
-            "the uncertain fields are confirmed; `completed`; `failed` at `current_node`."
+            "`processing`: nodes are due or running; `review`: stopped before filing until the "
+            "uncertain fields are confirmed; `completed`; `failed`: a node failed (nodes still "
+            "running finish, nothing new starts)."
         )
     )
-    current_node: Node | None
     run: int = Field(description="Grows with every retry or reprocessing.")
-    outcomes: dict[Node, Outcome] = Field(description="Results of the current run.")
+    nodes: list[NodeStateOut] = Field(
+        description=(
+            "The state of every node of the graph in the current run, in graph order: every "
+            "node after the nodes it needs."
+        )
+    )
 
 
 class DocumentDetails(BaseModel):
@@ -67,9 +103,23 @@ class DocumentDetails(BaseModel):
                     "lane": "green",
                     "processing": {
                         "status": "completed",
-                        "current_node": None,
                         "run": 1,
-                        "outcomes": {"ocr": "ok", "classify": "ok"},
+                        "nodes": [
+                            {
+                                "node": "receive",
+                                "status": "done",
+                                "outcome": "ok",
+                                "started_at": "2026-04-02T08:15:00Z",
+                                "finished_at": "2026-04-02T08:15:00Z",
+                            },
+                            {
+                                "node": "ocr",
+                                "status": "done",
+                                "outcome": "ok",
+                                "started_at": "2026-04-02T08:15:01Z",
+                                "finished_at": "2026-04-02T08:15:40Z",
+                            },
+                        ],
                     },
                     "created_at": "2026-04-02T08:15:00Z",
                     "updated_at": "2026-04-02T08:16:10Z",
@@ -123,9 +173,8 @@ class DocumentDetails(BaseModel):
             lane=document.lane,
             processing=Processing(
                 status=state.status,
-                current_node=state.current_node,
                 run=state.run,
-                outcomes=dict(state.outcomes),
+                nodes=[NodeStateOut.of(node, item) for node, item in state.nodes.items()],
             ),
             created_at=document.created_at,
             updated_at=document.updated_at,

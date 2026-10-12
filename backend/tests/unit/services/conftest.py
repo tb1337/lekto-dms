@@ -18,7 +18,7 @@ from papiq.core.domain.documents import Document
 from papiq.core.domain.drawers import Drawer
 from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.identity import Credential, check_new_password
-from papiq.core.domain.pipeline import PIPELINE, Node, NodeResult
+from papiq.core.domain.pipeline import NODES, Node, NodeResult
 from papiq.core.domain.users import Role, User
 from papiq.core.services.auth import AuthService
 from papiq.core.services.documents import DocumentService
@@ -65,7 +65,9 @@ class World:
     database: MemoryDatabase = field(default_factory=MemoryDatabase)
     object_store: MemoryObjectStore = field(default_factory=MemoryObjectStore)
     executors: dict[Node, NodeExecutor] = field(
-        default_factory=lambda: {node: PlaceholderNode() for node in PIPELINE[1:]}
+        default_factory=lambda: {
+            node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE
+        }
     )
     hasher: FakePasswordHasher = field(default_factory=FakePasswordHasher)
     cipher: FakeCipher = field(default_factory=FakeCipher)

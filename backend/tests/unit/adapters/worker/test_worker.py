@@ -162,7 +162,9 @@ async def test_stop_lets_running_jobs_finish() -> None:
     async with running(worker(container, services)):
         await node.started.wait()
     log = await services.documents.processing_log(user.id, document.id)
-    assert [entry.node for entry in log] == [Node.RECEIVE, Node.OCR]  # nothing new after stop
+    nodes = [entry.node for entry in log]
+    assert Node.OCR in nodes and Node.PARSE not in nodes  # nothing new after stop
+    assert set(nodes) <= {Node.RECEIVE, Node.OCR, Node.PAGES}
 
 
 async def test_jobs_still_running_after_the_timeout_are_released() -> None:

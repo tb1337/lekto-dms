@@ -48,7 +48,7 @@ from papiq.adapters.outbound.webhooks import HttpWebhookSender
 from papiq.composition.database import open_database
 from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
-from papiq.core.domain.pipeline import PIPELINE, Node
+from papiq.core.domain.pipeline import NODES, Node
 from papiq.core.ports import (
     Clock,
     DeliveryRetry,
@@ -445,7 +445,9 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
     settings = settings or Settings.model_construct()
     uow, clock, store = container.unit_of_work, container.clock, container.object_store
     index, embeddings = container.search_index, container.embeddings
-    executors: dict[Node, NodeExecutor] = {node: PlaceholderNode() for node in PIPELINE[1:]}
+    executors: dict[Node, NodeExecutor] = {
+        node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE
+    }
     executors[Node.OCR] = OcrNode(store, container.ocr, container.previews)
     executors[Node.PARSE] = ParseNode(store, container.parser)
     policy = policy_of(settings)

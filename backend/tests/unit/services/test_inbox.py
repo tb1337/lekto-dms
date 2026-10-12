@@ -154,7 +154,7 @@ async def test_a_confirmed_document_is_filed(world: World) -> None:
         accept_suggestions=True,
     )
     assert confirmed.processing.status is ProcessingStatus.PROCESSING
-    assert confirmed.processing.current_node is Node.APPLY_RULES
+    assert confirmed.processing.due() == (Node.APPLY_RULES,)
     assert confirmed.lane is None
     await world.drain(s.pipeline)
 

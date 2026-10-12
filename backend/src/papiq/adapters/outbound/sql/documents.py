@@ -1,6 +1,7 @@
 """Documents with their field values, and the processing log."""
 
 from collections.abc import Collection, Sequence
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -26,6 +27,8 @@ from papiq.core.domain.pipeline import (
     Node,
     NodeResult,
     NodeRun,
+    NodeState,
+    NodeStatus,
     Outcome,
     Processing,
     ProcessingStatus,
@@ -183,11 +186,10 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
                 lane=None if row.lane is None else Lane(row.lane),
                 processing=Processing(
                     status=ProcessingStatus(row.processing_status),
-                    current_node=None if row.processing_node is None else Node(row.processing_node),
                     run=row.processing_run,
-                    outcomes={
-                        Node(node): Outcome(outcome)
-                        for node, outcome in row.processing_outcomes.items()
+                    nodes={
+                        Node(node): _node_state(state)
+                        for node, state in row.processing_nodes.items()
                     },
                 ),
                 created_at=row.created_at,
@@ -213,12 +215,9 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             "channel": entity.channel.value,
             "lane": None if entity.lane is None else entity.lane.value,
             "processing_status": processing.status.value,
-            "processing_node": (
-                None if processing.current_node is None else processing.current_node.value
-            ),
             "processing_run": processing.run,
-            "processing_outcomes": {
-                node.value: outcome.value for node, outcome in processing.outcomes.items()
+            "processing_nodes": {
+                node.value: _node_json(state) for node, state in processing.nodes.items()
             },
             "created_at": entity.created_at,
             "updated_at": entity.updated_at,
@@ -335,3 +334,30 @@ def _node_run(row: Row[Any]) -> NodeRun:
         started_at=row.started_at,
         duration=row.duration_us * MICROSECOND,
     )
+
+
+def _node_json(state: NodeState) -> dict[str, Any]:
+    return {
+        "status": state.status.value,
+        "outcome": None if state.outcome is None else state.outcome.value,
+        "started_at": _iso(state.started_at),
+        "finished_at": _iso(state.finished_at),
+    }
+
+
+def _node_state(data: dict[str, Any]) -> NodeState:
+    outcome = data.get("outcome")
+    return NodeState(
+        status=NodeStatus(data["status"]),
+        outcome=None if outcome is None else Outcome(outcome),
+        started_at=_from_iso(data.get("started_at")),
+        finished_at=_from_iso(data.get("finished_at")),
+    )
+
+
+def _iso(value: datetime | None) -> str | None:
+    return None if value is None else value.isoformat()
+
+
+def _from_iso(value: str | None) -> datetime | None:
+    return None if value is None else datetime.fromisoformat(value)

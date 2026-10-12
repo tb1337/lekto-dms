@@ -7,6 +7,7 @@ import { BASE_API } from '#lib/api/base.ts';
 
 export const EVENT_TYPES = [
 	'document.received',
+	'document.node_started',
 	'document.node_completed',
 	'document.lane_changed',
 	'document.filed',
@@ -14,6 +15,14 @@ export const EVENT_TYPES = [
 	'document.deleted'
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
+
+/** Events about a node of the graph; the inbox does not change with them. */
+// eslint-disable-next-line svelte/prefer-svelte-reactivity -- never changes
+export const NODE_EVENTS: ReadonlySet<EventType> = new Set<EventType>([
+	'document.received',
+	'document.node_started',
+	'document.node_completed'
+]);
 
 export interface DocumentEvent {
 	type: EventType;

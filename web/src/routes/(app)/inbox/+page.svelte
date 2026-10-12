@@ -7,7 +7,7 @@
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
-	import { events } from '#lib/events.svelte.ts';
+	import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { PagedList } from '#lib/paging.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -47,7 +47,7 @@
 		);
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const stop = events.subscribe((event) => {
-			if (event.type === 'document.received' || event.type === 'document.node_completed') return;
+			if (NODE_EVENTS.has(event.type)) return;
 			clearTimeout(timer);
 			timer = setTimeout(() => void list.refresh(), 400);
 		});

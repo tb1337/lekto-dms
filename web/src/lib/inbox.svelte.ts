@@ -1,6 +1,6 @@
 /** How many documents wait in the inbox (the counter in the navigation). */
 import { api } from '#lib/api/client.ts';
-import { events } from '#lib/events.svelte.ts';
+import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
 
 const LIMIT = 100;
 
@@ -23,7 +23,7 @@ class InboxCount {
 		if (this.#stop) return;
 		void this.refresh();
 		const stopEvents = events.subscribe((event) => {
-			if (event.type === 'document.received' || event.type === 'document.node_completed') return;
+			if (NODE_EVENTS.has(event.type)) return;
 			clearTimeout(this.#timer);
 			this.#timer = setTimeout(() => void this.refresh(), 500);
 		});

@@ -336,7 +336,8 @@ async def test_memory_container_runs_the_core() -> None:
     stored = await services.documents.get(user.id, document.id)
     assert stored.lane is Lane.YELLOW
     log = await services.documents.processing_log(user.id, document.id)
-    assert "no language model" in (log[3].result.reason or "")
+    classify = next(entry for entry in log if entry.node is Node.CLASSIFY)
+    assert "no language model" in (classify.result.reason or "")
     await built.event_bus.dispatch()
     assert received[0].type == "document.received"
     assert received[-1].type == "document.lane_changed"

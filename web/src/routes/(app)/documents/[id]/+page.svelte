@@ -29,6 +29,7 @@
 	import { drawerLabel, loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { canEdit, canManage, canMove, writableDrawers } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { reprocessable, type GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -38,6 +39,7 @@
 	const id = $derived(page.params.id ?? '');
 	let document = $state<Document | null>(null);
 	let lookup = $state<Lookup | null>(null);
+	let graph = $state<GraphNode[]>([]);
 	let problem = $state<unknown>(null);
 	let loadedSource = $state<string | null>(null);
 	let confirmDelete = $state(false);
@@ -67,31 +69,23 @@
 		lookup?.drawers.find((drawer) => drawer.id === document?.drawer_id)?.name ?? null
 	);
 
-	// Nodes a reprocessing may start from: not past a failed node, not `file` while fields wait.
-	const NODES: ReprocessNode[] = [
-		'ocr',
-		'parse',
-		'classify',
-		'extract_fields',
-		'apply_rules',
-		'file'
-	];
 	const nodeLabel: Record<ReprocessNode, () => string> = {
 		ocr: m.node_ocr,
+		pages: m.node_pages,
 		parse: m.node_parse,
 		classify: m.node_classify,
 		extract_fields: m.node_extract_fields,
 		apply_rules: m.node_apply_rules,
 		file: m.node_file
 	};
-	const nodes = $derived.by(() => {
-		const failedAt =
-			document?.processing.status === 'failed' ? document.processing.current_node : null;
-		return NODES.filter((node) => {
-			if (document?.processing.status === 'review' && node === 'file') return false;
-			return failedAt === null || NODES.indexOf(node) <= NODES.indexOf(failedAt as ReprocessNode);
-		}).map((node) => ({ value: node, label: nodeLabel[node]() }));
-	});
+	// Nodes a reprocessing may start from: the graph decides (never past a failed node).
+	const nodes = $derived(
+		document
+			? reprocessable(graph, document.processing)
+					.filter((node): node is ReprocessNode => node !== 'receive')
+					.map((node) => ({ value: node, label: nodeLabel[node]() }))
+			: []
+	);
 
 	// An answer for a document the page has left behind must not replace the current one.
 	async function load() {
@@ -124,6 +118,7 @@
 
 	onMount(() => {
 		loadLookup().then((value) => (lookup = value), reportError);
+		unwrap(api.GET('/api/v1/pipeline')).then((value) => (graph = value.nodes), reportError);
 		return events.subscribe((event) => {
 			if (event.document_id !== id) return;
 			if (event.type === 'document.deleted') void goto(`${BASE}/documents`);

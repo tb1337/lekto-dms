@@ -18,7 +18,7 @@
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { fieldLabel } from '#lib/describe.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
-	import { events } from '#lib/events.svelte.ts';
+	import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
 	import { drawerLabel, loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { writableDrawers } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -106,7 +106,7 @@
 		return events.subscribe((event) => {
 			if (event.document_id !== id) return;
 			if (event.type === 'document.deleted') void goto(`${BASE}/inbox`);
-			else if (event.type !== 'document.node_completed') void load();
+			else if (!NODE_EVENTS.has(event.type)) void load();
 		});
 	});
 

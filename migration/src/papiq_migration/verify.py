@@ -294,7 +294,7 @@ def _compare(
     """Compare a document with what it should be; False if its pipeline stopped before the
     metadata was applied (then there is nothing to compare: the document is a finding)."""
     id, meta = item.id, item.metadata
-    outcomes = (actual.get("processing") or {}).get("outcomes") or {}
+    outcomes = _outcomes(actual)
     classified, extracted = "classify" in outcomes, "extract_fields" in outcomes
     if classified:
         if actual["title"] != meta["title"]:
@@ -407,3 +407,13 @@ def _show(value: Any) -> str | None:
         return None
     text = value if isinstance(value, str) else repr(value)
     return text if len(text) <= 200 else text[:197] + "..."
+
+
+def _outcomes(document: dict[str, Any]) -> dict[str, str]:
+    """The outcome of each done node of the document's current processing run, by node."""
+    nodes = (document.get("processing") or {}).get("nodes") or []
+    return {
+        node["node"]: node["outcome"]
+        for node in nodes
+        if isinstance(node, dict) and node.get("outcome") is not None
+    }

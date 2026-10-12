@@ -28,9 +28,9 @@ from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.pipeline import (
+    NODES,
     OUTSIDE_PIPELINE,
     PERSON,
-    PIPELINE,
     Node,
     NodeResult,
     NodeRun,
@@ -116,11 +116,11 @@ def field_checks(log: Sequence[NodeRun]) -> dict[str, FieldCheck]:
 
 
 def open_nodes(document: Document, log: Sequence[NodeRun]) -> tuple[OpenNode, ...]:
-    """The uncertain and failed nodes of the document's current state, in pipeline order."""
+    """The uncertain and failed nodes of the document's current state, in graph order."""
     latest = latest_entries(log)
     result = []
-    for node in PIPELINE:
-        outcome = document.processing.outcomes.get(node)
+    for node in NODES:
+        outcome = document.processing.outcome(node)
         if outcome not in (Outcome.UNCERTAIN, Outcome.FAILED):
             continue
         entry = latest.get(node)

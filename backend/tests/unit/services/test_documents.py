@@ -227,7 +227,7 @@ async def test_a_deactivated_user_and_a_document_in_the_inbox_have_fewer_readers
 async def test_only_the_owner_reads_the_processing_log(world: World, scene: Scene) -> None:
     entries = await world.documents.processing_log(scene.owner.id, scene.document.id)
     nodes = [entry.node for entry in entries if entry.result.model_version != PERSON_DRAWER]
-    assert nodes == list(Node)
+    assert sorted(nodes, key=list(Node).index) == list(Node)  # ocr and pages in either order
     for user in (scene.reader, scene.writer):
         with pytest.raises(PermissionDeniedError, match="only the owner"):
             await world.documents.processing_log(user.id, scene.document.id)

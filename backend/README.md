@@ -152,27 +152,35 @@ small objects; files of any size go through `upload`/`download`, which work on l
 
 ## Processing
 
-Receive → OCR → parse → classify → extract fields → apply rules → file run as jobs
-(`pipeline.step`).
+A document goes through a graph of nodes (`core/domain/pipeline.py`, `GRAPH`; `GET /pipeline`
+lists it), each node a job (`pipeline.node`): receive → OCR and pages side by side; OCR → parse →
+classify → extract fields → apply rules → file; filing waits for the pages too. Nodes that do not
+need each other run as soon as their needs are met, so two workers may process one document at
+once. `processing.nodes` of a document holds the state of every node of the current run
+(`waiting`, `running`, `done` with its outcome, `skipped`) with start and end; the events
+`document.node_started` and `document.node_completed` follow it. A node that fails stops the
+document (red): nodes still running finish, nothing new starts. A retry repeats the failed
+nodes, a reprocessing from node X repeats X and every node after it; both start a new run, so
+jobs of the old run are recognised as stale.
 
-| Step | Input | Derivatives (object store) | Outcome |
+| Node | Input | Derivatives (object store) | Outcome |
 | --- | --- | --- | --- |
-| OCR (`OcrStep`) | `originals/<sha256>` | `documents/<id>/archive.pdf` (PDF/A with text layer), `documents/<id>/preview.webp` (first page, 400 px wide) | uncertain if the archive is not PDF/A, with the reason; OK with a note if the original's digital signature is not in the archive |
-| Parse (`ParseStep`) | the archive PDF | `documents/<id>/content.md`, `documents/<id>/content.json` (Docling) | failed if no text was recognised; uncertain if the text is the plain text layer because the layout analysis found none |
-| Classify (`ClassifyStep`) | `content.md`, master data | contact, document type, tags, document date (applied if checked) | see below |
-| Extract fields (`ExtractFieldsStep`) | `content.md`, the fields of the type | field values (applied if checked) | see below |
-| Apply rules (`ApplyRulesStep`) | `content.md` (only if a rule looks at the text), the rules | drawer, contact, type, title, tags, fields | uncertain on conflicts, refused actions and forced reviews; see Rules |
-| File (`FileStep`) | the drawer | - | uncertain if the owner may no longer file into the drawer (field `drawer`) |
+| OCR (`OcrNode`) | `originals/<sha256>` | `documents/<id>/archive.pdf` (PDF/A with text layer), `documents/<id>/preview.webp` (first page, 400 px wide) | uncertain if the archive is not PDF/A, with the reason; OK with a note if the original's digital signature is not in the archive |
+| Parse (`ParseNode`) | the archive PDF | `documents/<id>/content.md`, `documents/<id>/content.json` (Docling) | failed if no text was recognised; uncertain if the text is the plain text layer because the layout analysis found none |
+| Classify (`ClassifyNode`) | `content.md`, master data | contact, document type, tags, document date (applied if checked) | see below |
+| Extract fields (`ExtractFieldsNode`) | `content.md`, the fields of the type | field values (applied if checked) | see below |
+| Apply rules (`ApplyRulesNode`) | `content.md` (only if a rule looks at the text), the rules | drawer, contact, type, title, tags, fields | uncertain on conflicts, refused actions and forced reviews; see Rules |
+| File (`FileNode`) | the drawer | - | uncertain if the owner may no longer file into the drawer (field `drawer`) |
 
-- A step that raises is retried (`PAPIQ_NODE_MAX_ATTEMPTS`, delay `PAPIQ_NODE_RETRY_DELAY`,
+- A node that raises is retried (`PAPIQ_NODE_MAX_ATTEMPTS`, delay `PAPIQ_NODE_RETRY_DELAY`,
   doubling); after the last attempt the document goes red. A damaged or encrypted file
   (`UnprocessableDocumentError`) fails at once. The processing log records input, output,
   engine version, reason and duration of every run.
 - OCRmyPDF (`adapters/outbound/ocrmypdf`) and Docling (`adapters/outbound/docling`) run as
   child processes per document with a time limit (`PAPIQ_OCR_TIMEOUT`, `PAPIQ_PARSE_TIMEOUT`);
   on timeout or cancellation the process group is killed. The job lease is the longer limit
-  plus two minutes, so a step normally keeps its claim; if it overruns (e.g. a slow S3
-  transfer), another worker takes the job over and the late result is discarded. A step
+  plus two minutes, so a node normally keeps its claim; if it overruns (e.g. a slow S3
+  transfer), another worker takes the job over and the late result is discarded. A node
   interrupted by a stopping worker is released at once (`JobQueue.release`); that does not
   count against `PAPIQ_NODE_MAX_ATTEMPTS`.
 - OCRmyPDF: `--skip-text` (pages with text are not recognised again), `--output-type pdfa`,
@@ -184,7 +192,7 @@ Receive → OCR → parse → classify → extract fields → apply rules → fi
   `--invalidate-digital-signatures`: the original keeps its signature (originals never change),
   the archive has none, and the OCR entry of the log says so (outcome OK, `note`). A file whose
   PDF/A conversion fails outright (OCRmyPDF exit code 1, for example an unusual colour space) is
-  written as a plain PDF (`--output-type pdf`); the step is uncertain with the reason. When
+  written as a plain PDF (`--output-type pdf`); the node is uncertain with the reason. When
   Ghostscript itself refuses a construct of the file (overprint mode, a font with CID 0; exit
   code 10), the archive is a plain PDF as well and the reason comes from Ghostscript's
   messages. Such a document is yellow until its owner confirms it; the file cannot be made
@@ -193,7 +201,7 @@ Receive → OCR → parse → classify → extract fields → apply rules → fi
   models in `PAPIQ_DOCLING_MODELS_PATH`; it never downloads models (`HF_HUB_OFFLINE=1`). The
   layout model sometimes takes a whole scanned page for a picture (a payslip in the M12 run)
   and returns no text although OCR recognised some: then the plain text layer of the archive
-  becomes the Markdown, one block per page, the structure stays Docling's, and the step is
+  becomes the Markdown, one block per page, the structure stays Docling's, and the node is
   uncertain with that note, so the owner sees the document before it is filed. The
   image stage `docling-models` downloads the models of the locked Docling version to
   `/opt/docling-models`; the devcontainer has them. Elsewhere:
@@ -290,7 +298,7 @@ version; deleting is a soft delete.
   only with `add_tags`, `remove_tags`, `set_field` and `force_review`: nothing that changes
   who sees a document. Everyone reads the global rules; user rules are read by their owner and
   admins (`all_users=true`).
-- **Triggers.** `ingest`: the pipeline step `apply_rules`, when a document arrives. `change`:
+- **Triggers.** `ingest`: the pipeline node `apply_rules`, when a document arrives. `change`:
   a person changed the metadata of a document whose processing is complete.
 - **Conditions.** Groups `all` or `any`, each may be negated with `"not": true`; at most 5 deep
   and 50 conditions. Fields and operators:
@@ -345,8 +353,8 @@ version; deleting is a soft delete.
   drawers must be writable for the owner (`403`). Deleting one of them, or removing a choice a
   rule uses, disables the rules that use it with a reason; enabling checks again. Deleting a user
   removes their rules.
-- **Log.** Every run is a processing log entry of step `apply_rules` with the rules and versions
-  checked, matches, effects and notes. `model_version`: `rules` (the pipeline step),
+- **Log.** Every run is a processing log entry of node `apply_rules` with the rules and versions
+  checked, matches, effects and notes. `model_version`: `rules` (the pipeline node),
   `rules:change` (after a change; it also records what the person changed), `rules:apply`
   (retroactive), `person` (a confirmation), `person:drawer` (a drawer chosen on upload or by
   moving). Later runs read from the log which values a person
@@ -450,9 +458,10 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /documents/{id}/move` | Into another drawer (owner, or an admin without read access) |
 | `GET /documents/{id}/original`, `/archive`, `/preview` | Files (read access) |
 | `GET /documents/{id}/log` | Processing log (owner or admin) |
-| `POST /documents/{id}/retry` | Repeat the failed step (owner or admin) |
-| `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a step (owner or admin) |
-| `GET /inbox` | The caller's yellow and red documents, newest first, with their open steps and fields; `limit`, `cursor` |
+| `POST /documents/{id}/retry` | Repeat the failed nodes (owner or admin) |
+| `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (owner or admin) |
+| `GET /pipeline` | The graph: every node and what it needs, in graph order |
+| `GET /inbox` | The caller's yellow and red documents, newest first, with their open nodes and fields; `limit`, `cursor` |
 | `GET /documents/{id}/review` | What the model proposed and how each field was checked (owner or admin) |
 | `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `drawer_id`), then continue from `resume_at` (`apply_rules`, or `extract_fields` after a type change) up to filing (owner or admin); undecided fields: `422` with `open_fields` |
 | `GET/POST /rules`, `GET/PUT/PATCH/DELETE /rules/{id}`, `GET /rules/{id}/versions`, `/versions/{number}` | Rules: list (`scope`, `include_disabled`, `all_users` for admins), create, change (new version), enable or disable, delete; see Rules |
@@ -523,7 +532,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   (`PAPIQ_WEBHOOK_SECRET_GRACE`) is over. The same loop runs the removal of a deleted
   document's files.
 - Rule applications (`rules.apply`) run 25 documents per job, then queue the next job, so
-  pipeline steps do not wait behind them.
+  pipeline nodes do not wait behind them.
 - `PAPIQ_WEBHOOK_CONCURRENCY` further loops deliver webhooks (see Webhooks); a receiver that
   does not answer holds up deliveries, never the pipeline.
 - SIGTERM or SIGINT: no new jobs; running jobs may finish within
@@ -545,7 +554,7 @@ admin reads includes the target URL (which may be a capability URL) and, in the 
 IDs and event types of that user's deliveries.
 At most `PAPIQ_WEBHOOKS_PER_USER` (20) per user.
 
-**Events.** `document.received`, `document.node_completed`, `document.lane_changed`,
+**Events.** `document.received`, `document.node_started`, `document.node_completed`, `document.lane_changed`,
 `document.filed`, `document.updated`, `document.deleted`, or `*` for all, also future ones. A
 webhook only hears of documents its owner may read, as with the event stream: the right is
 checked when the event is queued and again before every attempt, and a user who lost access in
@@ -742,7 +751,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_WORKER_CONCURRENCY` | Worker | `2` | Jobs at the same time; about 2 GB of RAM each (Docling), see Worker |
 | `PAPIQ_WORKER_POLL_INTERVAL` | Worker | `1` | Seconds between looks for due jobs |
 | `PAPIQ_WORKER_SHUTDOWN_TIMEOUT` | Worker | `30` | Seconds running jobs get to finish on SIGTERM |
-| `PAPIQ_NODE_MAX_ATTEMPTS` | Worker | `3` | Attempts of a pipeline step that raises |
+| `PAPIQ_NODE_MAX_ATTEMPTS` | Worker | `3` | Attempts of a pipeline node that raises |
 | `PAPIQ_NODE_RETRY_DELAY` | Worker | `30` | Seconds before the second attempt, doubling after |
 | `PAPIQ_EVENTS_POLL_INTERVAL` | Worker | `1` | Seconds between outbox dispatches |
 | `PAPIQ_EVENTS_MAX_ATTEMPTS` | Worker | `10` | Delivery attempts of an event per subscriber |

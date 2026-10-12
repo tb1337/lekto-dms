@@ -83,7 +83,8 @@ async def test_confirm_from_the_inbox(api: Api) -> None:
         headers=auth(owner),
     )
     assert confirmed.status_code == 202, confirmed.text
-    assert confirmed.json()["processing"]["current_node"] == "apply_rules"
+    nodes = {node["node"]: node["status"] for node in confirmed.json()["processing"]["nodes"]}
+    assert (nodes["extract_fields"], nodes["apply_rules"]) == ("done", "waiting")
     await api.drain()
     document = (await api.client.get(url, headers=auth(owner))).json()
     assert document["lane"] == "green"

@@ -21,6 +21,7 @@
 	const nodeLabel: Record<Node, () => string> = {
 		receive: m.node_receive,
 		ocr: m.node_ocr,
+		pages: m.node_pages,
 		parse: m.node_parse,
 		classify: m.node_classify,
 		extract_fields: m.node_extract_fields,

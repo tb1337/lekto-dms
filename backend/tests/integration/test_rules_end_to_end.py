@@ -171,9 +171,9 @@ async def test_a_user_rule_files_and_tags_arriving_documents(system: System) -> 
     filed = await system.settled(owner, bill)
     assert filed["lane"] == "green", filed
     assert filed["processing"]["status"] == "completed"
-    assert filed["processing"]["current_node"] is None
-    assert filed["processing"]["outcomes"]["apply_rules"] == "ok"
-    assert filed["processing"]["outcomes"]["file"] == "ok"
+    outcomes = {n["node"]: n["outcome"] for n in filed["processing"]["nodes"]}
+    assert outcomes["apply_rules"] == "ok"
+    assert outcomes["file"] == "ok"
     assert filed["drawer_id"] == drawer["id"]
     assert filed["tag_ids"] == [energy["id"]]
     entry = await system.rules_entry(owner, bill)

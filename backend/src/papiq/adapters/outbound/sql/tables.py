@@ -165,10 +165,10 @@ documents = Table(
     Column("channel", Text, nullable=False, server_default="api"),
     Column("lane", Text, nullable=True),
     Column("processing_status", Text, nullable=False),
-    Column("processing_node", Text, nullable=True),
     Column("processing_run", Integer, nullable=False),
-    # Outcomes of the current run: {node: outcome}.
-    Column("processing_outcomes", json_type(), nullable=False),
+    # State of every node in the current run: {node: {status, outcome, started_at, finished_at}}.
+    # The default is for the column's addition (revision 0010); every row is written in full.
+    Column("processing_nodes", json_type(), nullable=False, server_default="{}"),
     Column("created_at", UtcDateTime, nullable=False),
     Column("updated_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),

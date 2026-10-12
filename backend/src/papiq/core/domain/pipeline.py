@@ -1,6 +1,6 @@
-"""Ingest pipeline: nodes, node results, processing state and lanes."""
+"""Ingest graph: nodes and their dependencies, node results, the state of each node, lanes."""
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -13,10 +13,12 @@ from papiq.core.domain.validation import require_utc
 
 
 class Node(StrEnum):
-    """Pipeline nodes in their fixed order."""
+    """The nodes of the ingest graph, in a topological order: every node comes after the nodes
+    it needs (`GRAPH`). Nodes that do not need each other run side by side."""
 
     RECEIVE = "receive"
     OCR = "ocr"
+    PAGES = "pages"
     PARSE = "parse"
     CLASSIFY = "classify"
     EXTRACT_FIELDS = "extract_fields"
@@ -24,16 +26,52 @@ class Node(StrEnum):
     FILE = "file"
 
     @property
-    def position(self) -> int:
-        return PIPELINE.index(self)
+    def requires(self) -> frozenset["Node"]:
+        """The nodes whose results this node needs."""
+        return GRAPH[self]
 
     @property
-    def next(self) -> "Node | None":
-        position = self.position + 1
-        return PIPELINE[position] if position < len(PIPELINE) else None
+    def successors(self) -> frozenset["Node"]:
+        """The nodes that need this node's result."""
+        return frozenset(node for node, needed in GRAPH.items() if self in needed)
+
+    @property
+    def ancestors(self) -> frozenset["Node"]:
+        """Every node this node depends on, directly or through others."""
+        return _closure(self, lambda node: node.requires)
+
+    @property
+    def descendants(self) -> frozenset["Node"]:
+        """Every node that depends on this node, directly or through others."""
+        return _closure(self, lambda node: node.successors)
 
 
-PIPELINE: tuple[Node, ...] = tuple(Node)
+GRAPH: Mapping[Node, frozenset[Node]] = {
+    Node.RECEIVE: frozenset(),
+    Node.OCR: frozenset({Node.RECEIVE}),
+    Node.PAGES: frozenset({Node.RECEIVE}),
+    Node.PARSE: frozenset({Node.OCR}),
+    Node.CLASSIFY: frozenset({Node.PARSE}),
+    Node.EXTRACT_FIELDS: frozenset({Node.CLASSIFY}),
+    Node.APPLY_RULES: frozenset({Node.EXTRACT_FIELDS}),
+    Node.FILE: frozenset({Node.APPLY_RULES, Node.PAGES}),
+}
+"""What each node needs. `receive` is the source, `file` the only sink: every other node is
+one of its ancestors, so filing is the last thing that happens to a document."""
+
+NODES: tuple[Node, ...] = tuple(Node)
+"""All nodes in topological order (the order of the enum)."""
+
+
+def _closure(start: Node, step: Callable[[Node], Iterable[Node]]) -> frozenset[Node]:
+    found: set[Node] = set()
+    pending = list(step(start))
+    while pending:
+        node = pending.pop()
+        if node not in found:
+            found.add(node)
+            pending.extend(step(node))
+    return frozenset(found)
 
 
 class Outcome(StrEnum):
@@ -133,26 +171,116 @@ def drawer_chooser(log: Sequence[NodeRun], drawer: UUID) -> UUID | None:
     return None
 
 
+class NodeStatus(StrEnum):
+    WAITING = "waiting"  # not run yet in this processing run
+    RUNNING = "running"  # a worker is at it
+    DONE = "done"  # has an outcome
+    SKIPPED = "skipped"  # left out in this processing run; counts as done for the nodes after it
+
+
+@dataclass(kw_only=True)
+class NodeState:
+    """The state of one node in the current processing run."""
+
+    status: NodeStatus = NodeStatus.WAITING
+    outcome: Outcome | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if self.started_at is not None:
+            self.started_at = require_utc(self.started_at, "started_at")
+        if self.finished_at is not None:
+            self.finished_at = require_utc(self.finished_at, "finished_at")
+        if (self.status is NodeStatus.DONE) != (self.outcome is not None):
+            raise ValidationError("exactly the done nodes have an outcome")
+        if self.status is NodeStatus.RUNNING and self.started_at is None:
+            raise ValidationError("a running node has a start")
+        if self.status is NodeStatus.DONE and self.finished_at is None:
+            raise ValidationError("a done node has an end")
+
+    @property
+    def satisfied(self) -> bool:
+        """True if the nodes after this one may run: it is done without failing, or skipped."""
+        if self.status is NodeStatus.SKIPPED:
+            return True
+        return self.status is NodeStatus.DONE and self.outcome is not Outcome.FAILED
+
+    @property
+    def open(self) -> bool:
+        """True while the node is still to run or running."""
+        return self.status in (NodeStatus.WAITING, NodeStatus.RUNNING)
+
+
 class ProcessingStatus(StrEnum):
-    PROCESSING = "processing"  # `current_node` is due
-    COMPLETED = "completed"  # all nodes done
-    FAILED = "failed"  # stopped at `current_node`
-    REVIEW = "review"  # uncertain results; waits before `current_node` (filing) for the owner
+    PROCESSING = "processing"  # nodes are due or running
+    COMPLETED = "completed"  # every node done or skipped
+    FAILED = "failed"  # a node failed; running nodes finish, nothing new starts
+    REVIEW = "review"  # uncertain results; filing waits for the owner
 
 
 @dataclass(kw_only=True)
 class Processing:
-    """Processing state of a document.
+    """Processing state of a document: the state of every node of the graph.
 
     `run` counts processing runs; it grows with every retry or reprocessing, so jobs of an
-    earlier run are recognised as stale. `outcomes` holds the results of the current run.
+    earlier run are recognised as stale. `nodes` holds the state of every node in the current
+    run.
     """
 
     status: ProcessingStatus
-    current_node: Node | None
     run: int
-    outcomes: dict[Node, Outcome] = field(default_factory=dict)
+    nodes: dict[Node, NodeState]
 
     def __post_init__(self) -> None:
-        if (self.status is ProcessingStatus.COMPLETED) != (self.current_node is None):
-            raise ValidationError("only completed processing has no current node")
+        missing = [node.value for node in NODES if node not in self.nodes]
+        if missing:
+            raise ValidationError(f"processing state without nodes: {', '.join(missing)}")
+        if self.run < 1:
+            raise ValidationError("run starts at 1")
+        if (self.status is ProcessingStatus.COMPLETED) == self.is_open():
+            raise ValidationError("exactly the completed processing has no open node")
+        if self.status is ProcessingStatus.FAILED and not self.failed():
+            raise ValidationError("failed processing names a failed node")
+        if self.status is ProcessingStatus.REVIEW and not self.nodes[Node.FILE].open:
+            raise ValidationError("processing in review has filing open")
+
+    @classmethod
+    def new(cls) -> "Processing":
+        """The state of a document that just arrived: every node waiting."""
+        return cls(
+            status=ProcessingStatus.PROCESSING, run=1, nodes={node: NodeState() for node in NODES}
+        )
+
+    def outcome(self, node: Node) -> Outcome | None:
+        return self.nodes[node].outcome
+
+    @property
+    def outcomes(self) -> dict[Node, Outcome]:
+        """The outcomes of the done nodes, in graph order."""
+        return {
+            node: state.outcome for node, state in self.nodes.items() if state.outcome is not None
+        }
+
+    def due(self) -> tuple[Node, ...]:
+        """The waiting nodes whose needs are all met, in graph order. Whether they may start
+        depends on the status (`Document.is_awaiting`)."""
+        return tuple(
+            node
+            for node, state in self.nodes.items()
+            if state.status is NodeStatus.WAITING
+            and all(self.nodes[needed].satisfied for needed in node.requires)
+        )
+
+    def running(self) -> tuple[Node, ...]:
+        return self._with(lambda state: state.status is NodeStatus.RUNNING)
+
+    def failed(self) -> tuple[Node, ...]:
+        return self._with(lambda state: state.outcome is Outcome.FAILED)
+
+    def _with(self, condition: Callable[[NodeState], bool]) -> tuple[Node, ...]:
+        return tuple(node for node, state in self.nodes.items() if condition(state))
+
+    def is_open(self) -> bool:
+        """True while any node is still to run or running."""
+        return any(state.open for state in self.nodes.values())

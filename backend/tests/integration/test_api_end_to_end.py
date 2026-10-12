@@ -186,7 +186,8 @@ async def test_documents_go_through_the_api(system: System, object_store: Object
     born_digital = await system.upload(owner, "text.pdf")
     url, id = born_digital.json()["status_url"], born_digital.json()["id"]
     failed = await system.settled(owner, id)
-    assert (failed["lane"], failed["processing"]["current_node"]) == ("red", "ocr")
+    outcomes = {n["node"]: n["outcome"] for n in failed["processing"]["nodes"]}
+    assert (failed["lane"], outcomes["ocr"]) == ("red", "failed")
     system.ocr.broken = False
     retried = await system.client.post(f"{url}/retry", headers=auth(owner))
     assert retried.status_code == 202

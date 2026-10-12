@@ -1149,6 +1149,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/pipeline': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The processing graph
+		 * @description The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Papiq; `processing.nodes` of a document names the state of each node.
+		 */
+		get: operations['pipeline_api_v1_pipeline_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/events': {
 		parameters: {
 			query?: never;
@@ -1158,7 +1178,7 @@ export interface paths {
 		};
 		/**
 		 * Progress of documents (server-sent events)
-		 * @description A stream of document events (`document.received`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream checks every 30 seconds that its session or token is still valid and ends otherwise.
+		 * @description A stream of document events (`document.received`, `document.node_started`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream checks every 30 seconds that its session or token is still valid and ends otherwise.
 		 */
 		get: operations['events_api_v1_events_get'];
 		put?: never;
@@ -1751,10 +1771,22 @@ export interface components {
 		 *       "original_filename": "scan_0042.pdf",
 		 *       "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "processing": {
-		 *         "outcomes": {
-		 *           "classify": "ok",
-		 *           "ocr": "ok"
-		 *         },
+		 *         "nodes": [
+		 *           {
+		 *             "finished_at": "2026-04-02T08:15:00Z",
+		 *             "node": "receive",
+		 *             "outcome": "ok",
+		 *             "started_at": "2026-04-02T08:15:00Z",
+		 *             "status": "done"
+		 *           },
+		 *           {
+		 *             "finished_at": "2026-04-02T08:15:40Z",
+		 *             "node": "ocr",
+		 *             "outcome": "ok",
+		 *             "started_at": "2026-04-02T08:15:01Z",
+		 *             "status": "done"
+		 *           }
+		 *         ],
 		 *         "run": 1,
 		 *         "status": "completed"
 		 *       },
@@ -1855,10 +1887,22 @@ export interface components {
 		 *       "original_filename": "scan_0042.pdf",
 		 *       "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "processing": {
-		 *         "outcomes": {
-		 *           "classify": "ok",
-		 *           "ocr": "ok"
-		 *         },
+		 *         "nodes": [
+		 *           {
+		 *             "finished_at": "2026-04-02T08:15:00Z",
+		 *             "node": "receive",
+		 *             "outcome": "ok",
+		 *             "started_at": "2026-04-02T08:15:00Z",
+		 *             "status": "done"
+		 *           },
+		 *           {
+		 *             "finished_at": "2026-04-02T08:15:40Z",
+		 *             "node": "ocr",
+		 *             "outcome": "ok",
+		 *             "started_at": "2026-04-02T08:15:01Z",
+		 *             "status": "done"
+		 *           }
+		 *         ],
 		 *         "run": 1,
 		 *         "status": "completed"
 		 *       },
@@ -2275,6 +2319,15 @@ export interface components {
 			 */
 			reason: string;
 		};
+		/** GraphNodeOut */
+		GraphNodeOut: {
+			node: components['schemas']['Node'];
+			/**
+			 * Requires
+			 * @description The nodes whose results this node needs.
+			 */
+			requires: components['schemas']['Node'][];
+		};
 		/** Health */
 		Health: {
 			/**
@@ -2511,10 +2564,19 @@ export interface components {
 		};
 		/**
 		 * Node
-		 * @description Pipeline nodes in their fixed order.
+		 * @description The nodes of the ingest graph, in a topological order: every node comes after the nodes
+		 *     it needs (`GRAPH`). Nodes that do not need each other run side by side.
 		 * @enum {string}
 		 */
-		Node: 'receive' | 'ocr' | 'parse' | 'classify' | 'extract_fields' | 'apply_rules' | 'file';
+		Node:
+			| 'receive'
+			| 'ocr'
+			| 'pages'
+			| 'parse'
+			| 'classify'
+			| 'extract_fields'
+			| 'apply_rules'
+			| 'file';
 		/**
 		 * NodeReviewOut
 		 * @description The latest run of classification or field extraction by the model.
@@ -2539,6 +2601,23 @@ export interface components {
 			/** Fields */
 			fields: components['schemas']['FieldCheckOut'][];
 		};
+		/** NodeStateOut */
+		NodeStateOut: {
+			node: components['schemas']['Node'];
+			/** @description `waiting`: not run yet (it runs once the nodes it needs are done); `running`: a worker is at it; `done`: has an outcome; `skipped`: left out in this run. */
+			status: components['schemas']['NodeStatus'];
+			/** @description Set once the node is done. */
+			outcome: components['schemas']['Outcome'] | null;
+			/** Started At */
+			started_at: string | null;
+			/** Finished At */
+			finished_at: string | null;
+		};
+		/**
+		 * NodeStatus
+		 * @enum {string}
+		 */
+		NodeStatus: 'waiting' | 'running' | 'done' | 'skipped';
 		/** OidcInfo */
 		OidcInfo: {
 			/** Enabled */
@@ -2620,23 +2699,63 @@ export interface components {
 			 */
 			revoke_tokens: boolean;
 		};
+		/**
+		 * PipelineOut
+		 * @example {
+		 *       "nodes": [
+		 *         {
+		 *           "node": "receive",
+		 *           "requires": []
+		 *         },
+		 *         {
+		 *           "node": "ocr",
+		 *           "requires": [
+		 *             "receive"
+		 *           ]
+		 *         },
+		 *         {
+		 *           "node": "pages",
+		 *           "requires": [
+		 *             "receive"
+		 *           ]
+		 *         },
+		 *         {
+		 *           "node": "parse",
+		 *           "requires": [
+		 *             "ocr"
+		 *           ]
+		 *         },
+		 *         {
+		 *           "node": "file",
+		 *           "requires": [
+		 *             "apply_rules",
+		 *             "pages"
+		 *           ]
+		 *         }
+		 *       ]
+		 *     }
+		 */
+		PipelineOut: {
+			/**
+			 * Nodes
+			 * @description In graph order: every node after its needs.
+			 */
+			nodes: components['schemas']['GraphNodeOut'][];
+		};
 		/** Processing */
 		Processing: {
-			/** @description `processing`: `current_node` is due; `review`: stopped before `current_node` until the uncertain fields are confirmed; `completed`; `failed` at `current_node`. */
+			/** @description `processing`: nodes are due or running; `review`: stopped before filing until the uncertain fields are confirmed; `completed`; `failed`: a node failed (nodes still running finish, nothing new starts). */
 			status: components['schemas']['ProcessingStatus'];
-			current_node: components['schemas']['Node'] | null;
 			/**
 			 * Run
 			 * @description Grows with every retry or reprocessing.
 			 */
 			run: number;
 			/**
-			 * Outcomes
-			 * @description Results of the current run.
+			 * Nodes
+			 * @description The state of every node of the graph in the current run, in graph order: every node after the nodes it needs.
 			 */
-			outcomes: {
-				[key: string]: components['schemas']['Outcome'];
-			};
+			nodes: components['schemas']['NodeStateOut'][];
 		};
 		/**
 		 * ProcessingStatus
@@ -2675,7 +2794,8 @@ export interface components {
 		 * ReprocessNode
 		 * @enum {string}
 		 */
-		ReprocessNode: 'ocr' | 'parse' | 'classify' | 'extract_fields' | 'apply_rules' | 'file';
+		ReprocessNode:
+			'ocr' | 'pages' | 'parse' | 'classify' | 'extract_fields' | 'apply_rules' | 'file';
 		/**
 		 * ReprocessRequest
 		 * @example {
@@ -3446,7 +3566,7 @@ export interface components {
 			url: string;
 			/**
 			 * Event Types
-			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.received`, `document.updated`, or `*` for all, also future ones.
+			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones.
 			 */
 			event_types: string[];
 			/**
@@ -3567,7 +3687,7 @@ export interface components {
 			url?: string | null;
 			/**
 			 * Event Types
-			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.received`, `document.updated`, or `*` for all, also future ones.
+			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones.
 			 */
 			event_types?: string[] | null;
 			/**
@@ -12491,6 +12611,60 @@ export interface operations {
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
 					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	pipeline_api_v1_pipeline_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PipelineOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

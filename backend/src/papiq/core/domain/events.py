@@ -31,6 +31,15 @@ class DocumentReceived(DocumentEvent):
 
 
 @dataclass(frozen=True, kw_only=True)
+class NodeStarted(DocumentEvent):
+    """A worker took the node up; again after a lost lease."""
+
+    type: ClassVar[str] = "document.node_started"
+    node: Node
+    run: int
+
+
+@dataclass(frozen=True, kw_only=True)
 class NodeCompleted(DocumentEvent):
     type: ClassVar[str] = "document.node_completed"
     node: Node
@@ -73,6 +82,7 @@ EVENT_TYPES: dict[str, type[DomainEvent]] = {
     kind.type: kind
     for kind in (
         DocumentReceived,
+        NodeStarted,
         NodeCompleted,
         LaneChanged,
         DocumentFiled,

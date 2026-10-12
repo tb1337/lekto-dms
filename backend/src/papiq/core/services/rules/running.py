@@ -127,7 +127,7 @@ async def prepare(
     """Load the text if a rule looks at it and run the rules' patterns on it."""
     if not any(rule.definition.uses_text for rule in rules):
         return Prepared()
-    if document.processing.outcomes.get(Node.PARSE) not in (Outcome.OK, Outcome.UNCERTAIN):
+    if document.processing.outcome(Node.PARSE) not in (Outcome.OK, Outcome.UNCERTAIN):
         return Prepared()
     try:
         markdown = (await store.get(markdown_key(document.id))).decode("utf-8")

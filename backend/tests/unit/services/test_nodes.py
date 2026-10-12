@@ -8,7 +8,7 @@ import pytest
 from papiq.adapters.outbound.memory import FakeOcr, FakeParser, FakePreviewRenderer
 from papiq.adapters.outbound.memory.processing import FAKE_PDF
 from papiq.core.domain.documents import Document
-from papiq.core.domain.pipeline import Lane, Node, Outcome
+from papiq.core.domain.pipeline import Lane, Node, NodeRun, Outcome
 from papiq.core.domain.users import User
 from papiq.core.ports import OcrResult, ParseResult
 from papiq.core.services.nodes import OcrNode, ParseNode, has_text
@@ -91,11 +91,17 @@ async def test_ocr_and_parse_store_their_derivatives(world: World, sample: str) 
     assert parse.model_version == "fake-parser 1"
 
 
+async def logged(world: World, owner: User, document: Document, node: Node) -> NodeRun:
+    """The log entry of `node`."""
+    log = await world.documents.processing_log(owner.id, document.id)
+    return next(entry for entry in log if entry.node is node)
+
+
 async def test_a_damaged_file_goes_red_at_once(world: World) -> None:
     ocr = FakeOcr()
     owner, document = await ingest(world, pipeline(world, ocr=ocr), "damaged.pdf")
     assert document.lane is Lane.RED
-    assert document.processing.current_node is Node.OCR
+    assert document.processing.failed() == (Node.OCR,)
     assert len(ocr.calls) == 1
     entry = (await world.documents.processing_log(owner.id, document.id))[-1]
     assert entry.result.reason == "the file is damaged or not a valid document"
@@ -106,7 +112,7 @@ async def test_an_archive_that_is_not_pdfa_is_uncertain(world: World) -> None:
     owner, document = await ingest(world, pipeline(world, ocr=NotPdfa()), "scan.pdf")
     assert document.lane is Lane.YELLOW
     assert document.processing.outcomes[Node.OCR] is Outcome.UNCERTAIN
-    entry = (await world.documents.processing_log(owner.id, document.id))[1]
+    entry = await logged(world, owner, document, Node.OCR)
     assert entry.node is Node.OCR
     assert entry.result.reason == "the archive could not be made PDF/A"
     assert "note" not in entry.result.output
@@ -116,7 +122,7 @@ async def test_the_engines_reason_for_a_plain_pdf_is_in_the_log(world: World) ->
     note = "not PDF/A: Setting Overprint Mode to 1 not permitted in PDF/A-2"
     owner, document = await ingest(world, pipeline(world, ocr=NotPdfa(note)), "scan.pdf")
     assert document.lane is Lane.YELLOW
-    entry = (await world.documents.processing_log(owner.id, document.id))[1]
+    entry = await logged(world, owner, document, Node.OCR)
     assert entry.result.reason == f"the archive could not be made PDF/A: {note}"
     assert entry.result.output["note"] == note
 
@@ -124,7 +130,7 @@ async def test_the_engines_reason_for_a_plain_pdf_is_in_the_log(world: World) ->
 async def test_a_signature_left_out_of_the_archive_is_ok_with_a_note(world: World) -> None:
     owner, document = await ingest(world, pipeline(world, ocr=Unsigned()), "scan.pdf")
     assert document.lane is Lane.GREEN
-    entry = (await world.documents.processing_log(owner.id, document.id))[1]
+    entry = await logged(world, owner, document, Node.OCR)
     assert entry.node is Node.OCR and entry.result.outcome is Outcome.OK
     assert entry.result.reason == "signature not carried"
     assert entry.result.output["note"] == "signature not carried"
@@ -133,7 +139,7 @@ async def test_a_signature_left_out_of_the_archive_is_ok_with_a_note(world: Worl
 async def test_a_document_without_text_goes_red(world: World) -> None:
     owner, document = await ingest(world, pipeline(world, text="<!-- image -->\n\n"), "blank.pdf")
     assert document.lane is Lane.RED
-    assert document.processing.current_node is Node.PARSE
+    assert document.processing.failed() == (Node.PARSE,)
     entry = (await world.documents.processing_log(owner.id, document.id))[-1]
     assert entry.result.reason == "no text recognised: the pages are blank or hold only pictures"
     assert await world.object_store.exists(markdown_key(document.id))  # kept for inspection
@@ -158,7 +164,7 @@ async def test_a_parser_that_fell_back_to_the_text_layer_is_uncertain(world: Wor
     owner, document = await ingest(world, service, "scan.pdf")
     assert document.lane is Lane.YELLOW
     assert document.processing.outcomes[Node.PARSE] is Outcome.UNCERTAIN
-    entry = (await world.documents.processing_log(owner.id, document.id))[2]
+    entry = await logged(world, owner, document, Node.PARSE)
     assert entry.node is Node.PARSE
     assert entry.result.reason == "text layer used"
     assert entry.result.output["note"] == "text layer used"

@@ -13,6 +13,7 @@ from papiq.core.domain.events import (
     DomainEvent,
     LaneChanged,
     NodeCompleted,
+    NodeStarted,
 )
 from papiq.core.domain.ids import DocumentId, DrawerId, UserId, new_id
 from papiq.core.domain.pipeline import Lane, Node, Outcome
@@ -86,6 +87,7 @@ class EventBusContract:
         document = DocumentId(new_id())
         events: list[DomainEvent] = [
             DocumentReceived(document_id=document, occurred_at=NOW),
+            NodeStarted(document_id=document, occurred_at=NOW, node=Node.OCR, run=2),
             NodeCompleted(
                 document_id=document, occurred_at=NOW, node=Node.OCR, run=2, outcome=Outcome.OK
             ),

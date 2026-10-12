@@ -3,6 +3,7 @@
 import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import httpx2
@@ -39,20 +40,45 @@ async def test_upload_is_accepted_and_processed(api: Api) -> None:
     assert status["media_type"] == "application/pdf"
     assert status["original_filename"] == "scan.pdf"
     assert status["lane"] is None
-    assert status["processing"] == {
-        "status": "processing",
-        "current_node": "ocr",
-        "run": 1,
-        "outcomes": {"receive": "ok"},
+    processing = status["processing"]
+    assert (processing["status"], processing["run"]) == ("processing", 1)
+    assert [node["node"] for node in processing["nodes"]] == [
+        "receive",
+        "ocr",
+        "pages",
+        "parse",
+        "classify",
+        "extract_fields",
+        "apply_rules",
+        "file",
+    ]
+    assert processing["nodes"][0] == {
+        "node": "receive",
+        "status": "done",
+        "outcome": "ok",
+        "started_at": "2026-10-06T12:00:00Z",
+        "finished_at": "2026-10-06T12:00:00Z",
+    }
+    assert processing["nodes"][1] == {
+        "node": "ocr",
+        "status": "waiting",
+        "outcome": None,
+        "started_at": None,
+        "finished_at": None,
     }
 
     await api.drain()
     status = (await api.client.get(f"{DOCUMENTS}/{id}", headers=auth(owner))).json()
     assert (status["lane"], status["processing"]["status"]) == ("green", "completed")
     log = (await api.client.get(f"{DOCUMENTS}/{id}/log", headers=auth(owner))).json()
-    assert [entry["node"] for entry in log][:3] == ["receive", "ocr", "parse"]
+    assert [entry["node"] for entry in log][:3] in (
+        ["receive", "ocr", "pages"],
+        ["receive", "pages", "ocr"],
+        ["receive", "ocr", "parse"],
+    )
     assert log[0]["output"]["sha256"]
-    assert log[1]["model_version"] == "fake-ocr 1"
+    ocr = next(entry for entry in log if entry["node"] == "ocr")
+    assert ocr["model_version"] == "fake-ocr 1"
 
 
 async def test_a_duplicate_of_the_same_owner_is_rejected(api: Api) -> None:
@@ -267,11 +293,12 @@ async def test_retry_and_reprocess(api: Api) -> None:
     executors[Node.OCR] = working
     retried = await api.client.post(f"{url}/retry", headers=auth(owner))
     assert retried.status_code == 202
-    assert retried.json()["processing"] == {
-        "status": "processing",
-        "current_node": "ocr",
-        "run": 2,
-        "outcomes": {"receive": "ok"},
+    processing = retried.json()["processing"]
+    assert (processing["status"], processing["run"]) == ("processing", 2)
+    assert nodes(processing) == {
+        "receive": "done",
+        "pages": nodes(failed["processing"])["pages"],  # done or dropped: the branches race
+        **waiting("ocr", "parse", "classify", "extract_fields", "apply_rules", "file"),
     }
     again = await api.client.post(f"{url}/retry", headers=auth(owner))
     assert again.status_code == 409  # running, not failed
@@ -282,7 +309,8 @@ async def test_retry_and_reprocess(api: Api) -> None:
         f"{url}/reprocess", json={"from_node": "parse"}, headers=auth(owner)
     )
     assert reprocessed.status_code == 202
-    assert reprocessed.json()["processing"]["current_node"] == "parse"
+    assert nodes(reprocessed.json()["processing"])["parse"] == "waiting"
+    assert nodes(reprocessed.json()["processing"])["ocr"] == "done"
     await api.drain()
     log = (await api.client.get(f"{url}/log", headers=auth(owner))).json()
     runs = [(entry["node"], entry["run"]) for entry in log if entry["node"] in ("ocr", "parse")]
@@ -382,3 +410,12 @@ async def test_uploads_have_their_own_limit() -> None:
         files = {"file": ("big.pdf", content, "application/pdf")}
         response = await client.post(DOCUMENTS, files=files, headers=auth(owner))
     assert response.status_code == 202, response.text
+
+
+def nodes(processing: dict[str, Any]) -> dict[str, str]:
+    """The status of each node, by node."""
+    return {node["node"]: node["status"] for node in processing["nodes"]}
+
+
+def waiting(*names: str) -> dict[str, str]:
+    return dict.fromkeys(names, "waiting")

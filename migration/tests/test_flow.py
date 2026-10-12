@@ -424,7 +424,8 @@ async def test_the_check_compares_numbers_by_value_and_skips_what_a_stopped_pipe
     document["fields"][count] = "4.2E+1"  # 42
     stopped = by_title(setup, "Document 12")
     stopped["title"] = "scan-12"  # the pipeline stopped before the metadata was applied
-    stopped["processing"]["outcomes"] = {}
+    for node in stopped["processing"]["nodes"]:
+        node["outcome"] = None
     assert await setup.run("verify") == 0
     findings = setup.report("verify")["findings"]
     assert findings[0]["id"] == 12 and "applied after a retry" in findings[0]["reason"]

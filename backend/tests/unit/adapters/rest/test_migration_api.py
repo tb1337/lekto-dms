@@ -148,7 +148,8 @@ async def test_a_red_document_keeps_the_metadata_and_gets_them_when_retried(api:
     await api.drain()
     url = response.json()["status_url"]
     document = (await api.client.get(url, headers=auth(owner))).json()
-    assert (document["lane"], document["processing"]["current_node"]) == ("red", "ocr")
+    failed = [n["node"] for n in document["processing"]["nodes"] if n["outcome"] == "failed"]
+    assert (document["lane"], failed) == ("red", ["ocr"])
     assert (document["title"], document["contact_id"], document["fields"]) == (
         "scan",
         None,

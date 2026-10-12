@@ -77,12 +77,15 @@ def document(
 
 
 def run_pipeline(document: Document, results: dict[Node, NodeResult] | None = None) -> Document:
-    """Run the remaining nodes with OK (or the given results) until processing stops."""
+    """Run the due nodes with OK (or the given results), one at a time in graph order, until
+    processing stops."""
     results = results or {}
-    node = document.processing.current_node
-    while node is not None and document.is_awaiting(node, document.processing.run):
-        node = document.record_result(node, document.processing.run, results.get(node, OK), NOW)
-    return document
+    while True:
+        run = document.processing.run
+        due = [node for node in document.processing.due() if document.is_awaiting(node, run)]
+        if not due:
+            return document
+        document.record_result(due[0], run, results.get(due[0], OK), NOW)
 
 
 def processed(

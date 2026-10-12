@@ -10217,13 +10217,75 @@
         ]
       }
     },
+    "/api/v1/pipeline": {
+      "get": {
+        "tags": [
+          "pipeline"
+        ],
+        "summary": "The processing graph",
+        "description": "The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Papiq; `processing.nodes` of a document names the state of each node.",
+        "operationId": "pipeline_api_v1_pipeline_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/events": {
       "get": {
         "tags": [
           "events"
         ],
         "summary": "Progress of documents (server-sent events)",
-        "description": "A stream of document events (`document.received`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream checks every 30 seconds that its session or token is still valid and ends otherwise.",
+        "description": "A stream of document events (`document.received`, `document.node_started`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream checks every 30 seconds that its session or token is still valid and ends otherwise.",
         "operationId": "events_api_v1_events_get",
         "parameters": [
           {
@@ -12479,10 +12541,22 @@
             "original_filename": "scan_0042.pdf",
             "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
             "processing": {
-              "outcomes": {
-                "classify": "ok",
-                "ocr": "ok"
-              },
+              "nodes": [
+                {
+                  "finished_at": "2026-04-02T08:15:00Z",
+                  "node": "receive",
+                  "outcome": "ok",
+                  "started_at": "2026-04-02T08:15:00Z",
+                  "status": "done"
+                },
+                {
+                  "finished_at": "2026-04-02T08:15:40Z",
+                  "node": "ocr",
+                  "outcome": "ok",
+                  "started_at": "2026-04-02T08:15:01Z",
+                  "status": "done"
+                }
+              ],
               "run": 1,
               "status": "completed"
             },
@@ -12675,10 +12749,22 @@
             "original_filename": "scan_0042.pdf",
             "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
             "processing": {
-              "outcomes": {
-                "classify": "ok",
-                "ocr": "ok"
-              },
+              "nodes": [
+                {
+                  "finished_at": "2026-04-02T08:15:00Z",
+                  "node": "receive",
+                  "outcome": "ok",
+                  "started_at": "2026-04-02T08:15:00Z",
+                  "status": "done"
+                },
+                {
+                  "finished_at": "2026-04-02T08:15:40Z",
+                  "node": "ocr",
+                  "outcome": "ok",
+                  "started_at": "2026-04-02T08:15:01Z",
+                  "status": "done"
+                }
+              ],
               "run": 1,
               "status": "completed"
             },
@@ -13443,6 +13529,27 @@
         ],
         "title": "ForceReviewAction"
       },
+      "GraphNodeOut": {
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/Node"
+          },
+          "requires": {
+            "items": {
+              "$ref": "#/components/schemas/Node"
+            },
+            "type": "array",
+            "title": "Requires",
+            "description": "The nodes whose results this node needs."
+          }
+        },
+        "type": "object",
+        "required": [
+          "node",
+          "requires"
+        ],
+        "title": "GraphNodeOut"
+      },
       "Health": {
         "properties": {
           "status": {
@@ -13933,6 +14040,7 @@
         "enum": [
           "receive",
           "ocr",
+          "pages",
           "parse",
           "classify",
           "extract_fields",
@@ -13940,7 +14048,7 @@
           "file"
         ],
         "title": "Node",
-        "description": "Pipeline nodes in their fixed order."
+        "description": "The nodes of the ingest graph, in a topological order: every node comes after the nodes\nit needs (`GRAPH`). Nodes that do not need each other run side by side."
       },
       "NodeReviewOut": {
         "properties": {
@@ -14011,6 +14119,71 @@
         ],
         "title": "NodeReviewOut",
         "description": "The latest run of classification or field extraction by the model."
+      },
+      "NodeStateOut": {
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/Node"
+          },
+          "status": {
+            "$ref": "#/components/schemas/NodeStatus",
+            "description": "`waiting`: not run yet (it runs once the nodes it needs are done); `running`: a worker is at it; `done`: has an outcome; `skipped`: left out in this run."
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Outcome"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set once the node is done."
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node",
+          "status",
+          "outcome",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "NodeStateOut"
+      },
+      "NodeStatus": {
+        "type": "string",
+        "enum": [
+          "waiting",
+          "running",
+          "done",
+          "skipped"
+        ],
+        "title": "NodeStatus"
       },
       "OidcInfo": {
         "properties": {
@@ -14171,45 +14344,83 @@
           }
         ]
       },
+      "PipelineOut": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNodeOut"
+            },
+            "type": "array",
+            "title": "Nodes",
+            "description": "In graph order: every node after its needs."
+          }
+        },
+        "type": "object",
+        "required": [
+          "nodes"
+        ],
+        "title": "PipelineOut",
+        "examples": [
+          {
+            "nodes": [
+              {
+                "node": "receive",
+                "requires": []
+              },
+              {
+                "node": "ocr",
+                "requires": [
+                  "receive"
+                ]
+              },
+              {
+                "node": "pages",
+                "requires": [
+                  "receive"
+                ]
+              },
+              {
+                "node": "parse",
+                "requires": [
+                  "ocr"
+                ]
+              },
+              {
+                "node": "file",
+                "requires": [
+                  "apply_rules",
+                  "pages"
+                ]
+              }
+            ]
+          }
+        ]
+      },
       "Processing": {
         "properties": {
           "status": {
             "$ref": "#/components/schemas/ProcessingStatus",
-            "description": "`processing`: `current_node` is due; `review`: stopped before `current_node` until the uncertain fields are confirmed; `completed`; `failed` at `current_node`."
-          },
-          "current_node": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Node"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "description": "`processing`: nodes are due or running; `review`: stopped before filing until the uncertain fields are confirmed; `completed`; `failed`: a node failed (nodes still running finish, nothing new starts)."
           },
           "run": {
             "type": "integer",
             "title": "Run",
             "description": "Grows with every retry or reprocessing."
           },
-          "outcomes": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/Outcome"
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/NodeStateOut"
             },
-            "propertyNames": {
-              "$ref": "#/components/schemas/Node"
-            },
-            "type": "object",
-            "title": "Outcomes",
-            "description": "Results of the current run."
+            "type": "array",
+            "title": "Nodes",
+            "description": "The state of every node of the graph in the current run, in graph order: every node after the nodes it needs."
           }
         },
         "type": "object",
         "required": [
           "status",
-          "current_node",
           "run",
-          "outcomes"
+          "nodes"
         ],
         "title": "Processing"
       },
@@ -14288,6 +14499,7 @@
         "type": "string",
         "enum": [
           "ocr",
+          "pages",
           "parse",
           "classify",
           "extract_fields",
@@ -15861,7 +16073,7 @@
             "type": "array",
             "minItems": 1,
             "title": "Event Types",
-            "description": "Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.received`, `document.updated`, or `*` for all, also future ones."
+            "description": "Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones."
           },
           "active": {
             "type": "boolean",
@@ -16114,7 +16326,7 @@
               }
             ],
             "title": "Event Types",
-            "description": "Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.received`, `document.updated`, or `*` for all, also future ones."
+            "description": "Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones."
           },
           "active": {
             "anyOf": [

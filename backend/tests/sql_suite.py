@@ -29,7 +29,7 @@ from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.ids import new_id
 from papiq.core.domain.jobs import Job
-from papiq.core.domain.pipeline import PIPELINE
+from papiq.core.domain.pipeline import NODES, Node
 from papiq.core.domain.users import User
 from papiq.core.ports import DeliveryRetry, EventBus, UnitOfWorkFactory
 from papiq.core.services.pipeline import PipelineService, PlaceholderNode
@@ -161,7 +161,7 @@ class SqlAdapterSuite:
             uow_factory,
             ManualClock(NOW),
             MemoryObjectStore(),
-            {node: PlaceholderNode() for node in PIPELINE[1:]},
+            {node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE},
             pipeline_version="test",
         )
 
@@ -329,8 +329,8 @@ class MigrationSuite:
                     "id": ids["document"],
                     "owner_id": ids["user"],
                     "drawer_id": ids["drawer"],
-                    "processing_step": "extract_attributes",
-                    "processing_outcomes": {"classify": "ok", "extract_attributes": "ok"},
+                    "processing_step": "apply_rules",
+                    "processing_outcomes": {**_OK_UP_TO_CLASSIFY, "extract_attributes": "ok"},
                 },
             ),
             (_OLD["values"], {"document_id": ids["document"], "attribute_id": ids["field"]}),
@@ -386,7 +386,7 @@ class MigrationSuite:
         assert after["definition"] == (ids["field"], "Due", "date")
         assert after["scope"] == (ids["field"], ids["type"])
         assert after["value"] == (ids["document"], ids["field"], "text", "Monday")
-        assert after["document"] == ("extract_fields", {"classify": "ok", "extract_fields": "ok"})
+        assert after["document"] == ("apply_rules", {**_OK_UP_TO_CLASSIFY, "extract_fields": "ok"})
         assert after["log"] == (
             "extract_fields",
             {
@@ -504,6 +504,123 @@ class MigrationSuite:
         assert await _node_names(empty_database, old=True) == before
         assert before["job"][0] == "pipeline.step"
 
+    async def test_the_current_node_and_the_outcomes_become_node_states_and_back(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0010 turns the current node and the outcomes into the state of every node,
+        with the times of the latest log entry; `pages` is skipped. The downgrade derives the
+        current node and the outcomes again."""
+        await migrate(empty_database, "0009")
+        ids = {name: new_id() for name in ("user", "drawer", "a", "b", "c", "d")}
+        second, third = NOW + timedelta(seconds=1), NOW + timedelta(seconds=3)
+        rules_ok = {**_OK_UP_TO_CLASSIFY, "extract_fields": "ok", "apply_rules": "ok"}
+        documents = {
+            "a": ("processing", "parse", {"receive": "ok", "ocr": "ok"}),
+            "b": ("failed", "ocr", {"receive": "ok", "ocr": "failed"}),
+            "c": ("review", "file", {**rules_ok, "classify": "uncertain"}),
+            "d": ("completed", None, {**rules_ok, "file": "ok"}),
+        }
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
+            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+        ]
+        for name, (status, current, outcomes) in documents.items():
+            rows.append(
+                (
+                    _before_0010(t.documents),
+                    {
+                        "id": ids[name],
+                        "owner_id": ids["user"],
+                        "drawer_id": ids["drawer"],
+                        "sha256": name * 64,
+                        "processing_status": status,
+                        "processing_node": current,
+                        "processing_outcomes": outcomes,
+                        "updated_at": third,
+                    },
+                )
+            )
+        log = {
+            "document_id": ids["a"],
+            "input": {},
+            "output": {},
+            "started_at": NOW,
+            "duration_us": 1_000_000,
+        }
+        rows += [
+            (t.processing_log, {**log, "node": "receive"}),
+            (t.processing_log, {**log, "node": "ocr", "run": 1, "started_at": NOW}),
+            (t.processing_log, {**log, "node": "ocr", "run": 2, "started_at": second}),
+            (t.processing_log, {**log, "document_id": ids["d"], "node": "apply_rules"}),
+            (
+                t.processing_log,
+                {
+                    **log,
+                    "document_id": ids["d"],
+                    "node": "apply_rules",
+                    "model_version": "rules:apply",
+                    "started_at": third,
+                },
+            ),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+
+        await migrate(empty_database)
+
+        def done(outcome: str, started: datetime, finished: datetime) -> dict[str, Any]:
+            return {
+                "status": "done",
+                "outcome": outcome,
+                "started_at": started.isoformat(),
+                "finished_at": finished.isoformat(),
+            }
+
+        waiting = {"status": "waiting", "outcome": None, "started_at": None, "finished_at": None}
+        skipped = {**waiting, "status": "skipped"}
+        states = await _node_states(empty_database, ids)
+        assert states["a"] == {
+            "receive": done("ok", NOW, second),
+            "ocr": done("ok", second, second + timedelta(seconds=1)),  # the latest entry
+            "pages": skipped,
+            **dict.fromkeys(
+                ("parse", "classify", "extract_fields", "apply_rules", "file"), waiting
+            ),
+        }
+        assert states["b"] == {
+            "receive": done("ok", third, third),  # no log entry: the document's updated_at
+            "ocr": done("failed", third, third),
+            "pages": skipped,
+            **dict.fromkeys(
+                ("parse", "classify", "extract_fields", "apply_rules", "file"), waiting
+            ),
+        }
+        assert states["c"]["classify"] == done("uncertain", third, third)
+        assert (states["c"]["file"], states["c"]["pages"]) == (waiting, skipped)
+        assert states["d"]["file"] == done("ok", third, third)
+        assert states["d"]["apply_rules"] == done("ok", NOW, second)  # not the rule applied later
+        assert states["d"]["pages"] == skipped
+        assert all(state["status"] != "waiting" for state in states["d"].values())
+        assert [row.processing_status for row in await _document_rows(empty_database)] == [
+            "processing",
+            "failed",
+            "review",
+            "completed",
+        ]
+
+        await _downgrade(empty_database, "0009")
+        restored = {
+            name: (row.processing_node, row.processing_outcomes)
+            for name, row in zip(
+                documents, await _document_rows(empty_database, old=True), strict=True
+            )
+        }
+        assert restored == {
+            name: (current, outcomes) for name, (_, current, outcomes) in documents.items()
+        }
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -546,6 +663,8 @@ _OLD = {
         sa.column("value_text", sa.Text()),
     ),
 }
+_OK_UP_TO_CLASSIFY = {"receive": "ok", "ocr": "ok", "parse": "ok", "classify": "ok"}
+
 _DEFAULTS: dict[str, Any] = {
     "created_at": NOW,
     "updated_at": NOW,
@@ -565,7 +684,7 @@ _DEFAULTS: dict[str, Any] = {
     "original_filename": "t.pdf",
     "media_type": "application/pdf",
     "channel": "api",
-    "processing_status": "running",
+    "processing_status": "processing",
     "processing_run": 1,
     "processing_outcomes": {},
     "run": 1,
@@ -615,8 +734,9 @@ async def _stored(database: Database, *, old: bool) -> dict[str, Any]:
         "scope": tuple(scope),
         "value": tuple(value),
         "document": (
-            document.processing_step if old else document.processing_node,
-            document.processing_outcomes,
+            (document.processing_step, document.processing_outcomes)
+            if old
+            else _current_and_outcomes(document.processing_nodes)
         ),
         "log": (log.step if old else log.node, log.output),
         "rule": (rule.conditions, rule.actions),
@@ -638,7 +758,9 @@ async def _node_names(database: Database, *, old: bool) -> dict[str, Any]:
         job, event = await one(t.jobs), await one(t.outbox)
         webhook, delivery = await one(t.webhooks), await one(t.webhook_deliveries)
     return {
-        "document": document.processing_step if old else document.processing_node,
+        "document": (
+            document.processing_step if old else _current_and_outcomes(document.processing_nodes)[0]
+        ),
         "log": log.step if old else log.node,
         "job": (job.kind, job.payload),
         "event": (event.type, event.payload),
@@ -647,10 +769,49 @@ async def _node_names(database: Database, *, old: bool) -> dict[str, Any]:
     }
 
 
+async def _node_states(database: Database, ids: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """`processing_nodes` of the documents of `ids`, by name."""
+    by_id = {id: name for name, id in ids.items()}
+    return {
+        by_id[row.id]: row.processing_nodes
+        for row in await _document_rows(database)
+        if row.id in by_id
+    }
+
+
+async def _document_rows(database: Database, *, old: bool = False) -> list[Any]:
+    table = _before_0010(t.documents) if old else t.documents
+    async with database.reading() as connection:
+        return list((await connection.execute(select(table).order_by(table.c.sha256))).all())
+
+
+def _before_0010(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0010 had it: the current node and the outcomes instead
+    of the state of every node."""
+    columns = [sa.column(c.name, c.type) for c in table.c if c.name != "processing_nodes"]
+    if table.name == "documents":
+        columns.append(sa.column("processing_node", sa.Text()))
+        columns.append(sa.column("processing_outcomes", json_type()))
+    return sa.table(table.name, *columns)
+
+
 def _before_0009(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0009 had it: the node columns under their old names."""
     old = {"processing_node": "processing_step", "node": "step"}
-    return sa.table(table.name, *(sa.column(old.get(c.name, c.name), c.type) for c in table.c))
+    before = _before_0010(table)
+    return sa.table(table.name, *(sa.column(old.get(c.name, c.name), c.type) for c in before.c))
+
+
+def _current_and_outcomes(nodes: dict[str, Any]) -> tuple[str | None, dict[str, str]]:
+    """The current node and the outcomes as the revisions before 0010 stored them, derived
+    from the state of every node (the way the downgrade does it)."""
+    waiting = [name for name, state in nodes.items() if state["status"] == "waiting"]
+    outcomes = {
+        name: state["outcome"]
+        for name, state in nodes.items()
+        if name != "pages" and state["outcome"] is not None
+    }
+    return (waiting[0] if waiting else None), outcomes
 
 
 async def _downgrade(database: Database, revision: str) -> None:

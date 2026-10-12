@@ -27,7 +27,7 @@ from papiq.composition.container import (
 )
 from papiq.composition.errors import ConfigurationError
 from papiq.composition.settings import Settings
-from papiq.core.domain.pipeline import PIPELINE, Node
+from papiq.core.domain.pipeline import NODES, Node
 from papiq.core.ports import LanguageModel
 from papiq.core.services.classification.nodes import ClassifyNode, ExtractFieldsNode
 from papiq.core.services.classification.prompts import CLASSIFY_PROMPT, EXTRACT_PROMPT
@@ -61,7 +61,9 @@ def build_environment(
 
     def pipeline_for(case: Case) -> PipelineService:
         model = model_for(case)
-        executors: dict[Node, NodeExecutor] = {node: PlaceholderNode() for node in PIPELINE[1:]}
+        executors: dict[Node, NodeExecutor] = {
+            node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE
+        }
         executors[Node.CLASSIFY] = ClassifyNode(uow, store, model, clock, policy)
         executors[Node.EXTRACT_FIELDS] = ExtractFieldsNode(uow, store, model, clock, policy)
         return PipelineService(

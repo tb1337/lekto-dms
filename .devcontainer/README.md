@@ -42,8 +42,9 @@ Once, in the devcontainer (VS Code: Terminal → Run Task):
    or the host) or rebuild the container; `/api/v1/health` says `object_store: failed` until then.
 2. Fill in `live.env`: `PAPIQ_ADMIN_USERNAME` and `PAPIQ_ADMIN_PASSWORD` for the first admin
    (use the user name you have in Paperless, so the migration maps the documents to you), the
-   address of your Ollama in `PAPIQ_LLM_BASE_URL` and `PAPIQ_EMBEDDING_BASE_URL` (or remove the
-   four model variables to run without a language model: documents then stop yellow for the
+   address of your Open WebUI (`https://<host>/api`) in `PAPIQ_LLM_BASE_URL` and
+   `PAPIQ_EMBEDDING_BASE_URL` and its API key in `PAPIQ_LLM_API_KEY` and
+   `PAPIQ_EMBEDDING_API_KEY` (or remove the model variables to run without a language model: documents then stop yellow for the
    contact and the type, and the search works with words only). The other values fit the
    devcontainer. All variables: [backend/README.md](../backend/README.md#configuration).
 3. **Papiq starten** (below).
@@ -80,7 +81,7 @@ a file in the workspace), the tasks work as before.
 
 ## The language model
 
-`live.env.example` points at Ollama with `qwen3:8b-ctx8k` (classification) and
+`live.env.example` points at Open WebUI (in front of Ollama) with `qwen3:8b-ctx8k` (classification) and
 `snowflake-arctic-embed2` (search vectors), the models evaluated in `.idea/architektur.md`. On a
 CPU a document takes 3 to 10 minutes in the model (`PAPIQ_LLM_TIMEOUT=600`); embeddings take
 about 0.6 s per section. Single uploads are fine at any time. Mass runs (the migration with

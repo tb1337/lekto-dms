@@ -177,6 +177,8 @@ Native Logins sind der Standard; ein externer Identity Provider ist optional.
 
 ## Ingest-Workflow
 
+Stand 0.1. Das Zielbild der Neuauflage (Graph aus Knoten, mehrere Signale, Seitenbilder, Sichtbarkeit je Knoten in der UI) steht in `ingest-v2.md` mit Tobis Entscheidungen vom 12.10.2026; es ersetzt diesen Abschnitt, sobald es umgesetzt ist.
+
 Jedes Dokument durchläuft feste Schritte, jeder Schritt ist einzeln wiederholbar, und das Ergebnis landet in einer von drei Lanes.
 
 **Drei Ebenen**
@@ -205,7 +207,7 @@ Die Lane eines Dokuments ist das schlechteste Ergebnis aller Schritte. Solange d
 **Konfidenz aus prüfbaren Fakten statt LLM-Selbsteinschätzung**
 
 - Kontakt: Abgleich gegen bestehende Kontakte, ihre Namen und Aliase; kein Treffer → neuer Kontakt → Gelb. Grün nur, wenn Name oder ein Alias des Kontakts im Text steht. Das Modell sieht eine Vorauswahl von höchstens 20 Kontakten (mit Aliasen), deren Namen der Text am stärksten zeigt (ganzer Name, sonst Anteil der Wörter), und nennt einen davon oder den Namen wie im Dokument.
-- Aliase (Tobi, 10.10.2026): weitere Namen eines Kontakts („Nord Krankenversicherung AG“ für „Nord Versicherungsgruppe“), über alle Kontakte eindeutig zusammen mit den Namen. Wählt die Person in der Prüfansicht einen bestehenden Kontakt (eingegeben oder Vorschlag angenommen), wird der gelesene Name dessen Alias, sofern er mit Name oder Alias des Kontakts ein Wort (ab drei Buchstaben) teilt oder so ähnlich ist wie ein Kontaktvorschlag (Empfängernamen sollen kein Alias werden); war er Alias eines anderen Kontakts, wandert er. Ein Alias darf nicht wie der Name oder Alias eines anderen Kontakts verglichen werden (Rechtsform und Satzzeichen zählen nicht). Aliase stehen auf einer Zeile (höchstens 100 je Kontakt, gelernte höchstens 100 Zeichen); die Listen im Prompt gelten wie der Text als Daten. Kein maschinelles Lernen wie in Paperless; keine Aliase für Tags; Paperless-Match-Regeln werden bei der Migration nicht übernommen.
+- Aliase (Tobi, 10.10.2026): weitere Namen eines Kontakts („Nord Krankenversicherung AG“ für „Nord Versicherungsgruppe“), über alle Kontakte eindeutig zusammen mit den Namen. Wählt die Person in der Prüfansicht einen bestehenden Kontakt (eingegeben oder Vorschlag angenommen), wird der gelesene Name dessen Alias, sofern er mit Name oder Alias des Kontakts ein Wort (ab drei Buchstaben) teilt oder so ähnlich ist wie ein Kontaktvorschlag (Empfängernamen sollen kein Alias werden); war er Alias eines anderen Kontakts, wandert er. Ein Alias darf nicht wie der Name oder Alias eines anderen Kontakts verglichen werden (Rechtsform und Satzzeichen zählen nicht). Aliase stehen auf einer Zeile (höchstens 100 je Kontakt, gelernte höchstens 100 Zeichen); die Listen im Prompt gelten wie der Text als Daten. Maschinelles Lernen wie in Paperless kommt mit der Ingest-Neuauflage (`ingest-v2.md`, Tobi 12.10.2026; die Festlegung vom 10.10.2026 dagegen ist zurückgenommen); keine Aliase für Tags; Paperless-Match-Regeln werden bei der Migration nicht übernommen.
 - Dokumenttyp: LLM wählt nur aus der bestehenden Liste; Vorschlag eines neuen Typs → Gelb. Je Typ kann eine Beschreibung (höchstens 300 Zeichen) sagen, was dazugehört; sie steht in der Nachricht vor dem Dokument, nicht im System-Prompt.
 - Felder, Datum, Betrag: Wert muss im Dokumenttext vorkommen und gültig sein; sonst Gelb. Ein Datumsfeld gleich dem Dokumentdatum ist nur ein Vorschlag (Gelb), weil Modelle das Dokumentdatum für fehlende Daten wie die Fälligkeit einsetzen.
 - Regelkonflikt (zwei Regeln, verschiedene Schubladen) → Gelb.

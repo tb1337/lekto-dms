@@ -41,3 +41,47 @@ export function reprocessable(graph: readonly GraphNode[], processing: Processin
 			return failed.every((state) => state.node === node || again.has(state.node));
 		});
 }
+
+/**
+ * The nodes in rows by level: a node's level is one more than the highest level of the nodes it
+ * needs, so nodes that run side by side share a row.
+ */
+export function levels(graph: readonly GraphNode[]): Node[][] {
+	const level = new Map<Node, number>();
+	for (const entry of graph) {
+		const needed = entry.requires.map((node) => level.get(node) ?? 0);
+		level.set(entry.node, needed.length === 0 ? 0 : Math.max(...needed) + 1);
+	}
+	const rows: Node[][] = [];
+	for (const entry of graph) {
+		const row = level.get(entry.node) ?? 0;
+		(rows[row] ??= []).push(entry.node);
+	}
+	return rows;
+}
+
+export interface Progress {
+	/** Nodes done or skipped. */
+	done: number;
+	/** Nodes of the run. */
+	total: number;
+	/** Nodes a worker is at right now. */
+	running: Node[];
+}
+
+/** How far the processing of a document has come. */
+export function progress(processing: Processing): Progress {
+	const nodes = processing.nodes;
+	return {
+		done: nodes.filter((state) => state.status === 'done' || state.status === 'skipped').length,
+		total: nodes.length,
+		running: nodes.filter((state) => state.status === 'running').map((state) => state.node)
+	};
+}
+
+/** Seconds a node took, or has been running for at `now`; null while it has not started. */
+export function durationSeconds(state: NodeState, now: Date): number | null {
+	if (state.started_at === null) return null;
+	const end = state.finished_at === null ? now : new Date(state.finished_at);
+	return Math.max(0, (end.getTime() - new Date(state.started_at).getTime()) / 1000);
+}

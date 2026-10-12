@@ -16,9 +16,11 @@
 	import { BASE } from '#lib/base.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import DocumentEditor from '#lib/components/DocumentEditor.svelte';
+	import DocumentText from '#lib/components/DocumentText.svelte';
 	import LaneBadge from '#lib/components/LaneBadge.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import PdfViewer from '#lib/components/PdfViewer.svelte';
+	import ProcessingGraph from '#lib/components/ProcessingGraph.svelte';
 	import ProcessingLog from '#lib/components/ProcessingLog.svelte';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
@@ -221,6 +223,13 @@
 			<LaneBadge lane={document.lane} />
 		</header>
 
+		<section class="flex flex-col gap-2" aria-labelledby="graph-heading">
+			<h2 id="graph-heading" class="text-sm font-semibold text-muted-foreground">
+				{m.graph_title()}
+			</h2>
+			<ProcessingGraph processing={document.processing} {graph} />
+		</section>
+
 		{#if status === 'failed' || status === 'review'}
 			<p class="rounded-xl border bg-card px-4 py-3 text-sm" role="status">
 				{status === 'failed' ? m.processing_failed() : m.processing_review()}
@@ -299,6 +308,11 @@
 				{/if}
 			</div>
 		</div>
+
+		<section class="flex flex-col gap-3" aria-labelledby="text-heading">
+			<h2 id="text-heading" class="text-lg font-semibold">{m.text_title()}</h2>
+			<DocumentText documentId={id} />
+		</section>
 
 		{#if manageable}
 			<section class="flex flex-col gap-3" aria-labelledby="log-heading">

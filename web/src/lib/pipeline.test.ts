@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { descendants, reprocessable, type GraphNode, type Processing } from './pipeline.ts';
+import {
+	descendants,
+	durationSeconds,
+	levels,
+	progress,
+	reprocessable,
+	type GraphNode,
+	type Processing
+} from './pipeline.ts';
 
 const GRAPH: GraphNode[] = [
 	{ node: 'receive', requires: [] },
@@ -80,5 +88,44 @@ describe('reprocessable', () => {
 		});
 		expect(reprocessable(GRAPH, yellow)).not.toContain('file');
 		expect(reprocessable(GRAPH, yellow)).toContain('apply_rules');
+	});
+});
+
+describe('levels', () => {
+	it('puts nodes that run side by side into one row', () => {
+		expect(levels(GRAPH)).toEqual([
+			['receive'],
+			['ocr', 'pages'],
+			['parse'],
+			['classify'],
+			['extract_fields'],
+			['apply_rules'],
+			['file']
+		]);
+	});
+});
+
+describe('progress', () => {
+	it('counts the done and skipped nodes and names the running ones', () => {
+		const state = processing('processing', { receive: 'ok', ocr: 'ok' });
+		state.nodes[2] = { ...state.nodes[2], status: 'skipped' };
+		state.nodes[3] = { ...state.nodes[3], status: 'running', started_at: '2026-10-06T12:00:00Z' };
+		expect(progress(state)).toEqual({ done: 3, total: 8, running: ['parse'] });
+	});
+});
+
+describe('durationSeconds', () => {
+	const now = new Date('2026-10-06T12:00:10Z');
+	const waiting = { node: 'ocr', status: 'waiting', outcome: null } as const;
+
+	it('is unknown before the node started', () => {
+		expect(durationSeconds({ ...waiting, started_at: null, finished_at: null }, now)).toBeNull();
+	});
+
+	it('runs with the clock until the node finished', () => {
+		const started_at = '2026-10-06T12:00:03Z';
+		expect(durationSeconds({ ...waiting, started_at, finished_at: null }, now)).toBe(7);
+		const finished_at = '2026-10-06T12:00:05.500Z';
+		expect(durationSeconds({ ...waiting, started_at, finished_at }, now)).toBe(2.5);
 	});
 });

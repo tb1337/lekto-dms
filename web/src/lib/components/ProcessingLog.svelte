@@ -12,11 +12,35 @@
 	type Node = components['schemas']['Node'];
 	type Outcome = components['schemas']['Outcome'];
 
-	// What each node did: result, confidence, reason, model and duration.
+	type LogEntry = components['schemas']['LogEntry'];
+
+	// What each node did: result, confidence, reason, model and duration, grouped by node in
+	// graph order, the runs of a node oldest first.
 	let { documentId }: { documentId: string } = $props();
 
-	let entries = $state<components['schemas']['LogEntry'][] | null>(null);
+	let entries = $state<LogEntry[] | null>(null);
 	let problem = $state<string | null>(null);
+
+	const ORDER: Node[] = [
+		'receive',
+		'ocr',
+		'pages',
+		'parse',
+		'classify',
+		'extract_fields',
+		'apply_rules',
+		'file'
+	];
+	const groups = $derived.by(() => {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- built and read at once
+		const byNode = new Map<Node, LogEntry[]>();
+		for (const entry of entries ?? []) {
+			const list = byNode.get(entry.node) ?? [];
+			list.push(entry);
+			byNode.set(entry.node, list);
+		}
+		return [...byNode.entries()].sort(([a], [b]) => ORDER.indexOf(a) - ORDER.indexOf(b));
+	});
 
 	const nodeLabel: Record<Node, () => string> = {
 		receive: m.node_receive,
@@ -83,34 +107,36 @@
 			</Table.Row>
 		</Table.Header>
 		<Table.Body>
-			{#each entries as entry (`${entry.run}-${entry.node}-${entry.started_at}`)}
-				<Table.Row>
-					<Table.Cell>
-						{nodeLabel[entry.node]()}
-						<span class="block text-xs text-muted-foreground">
-							{m.log_run({ run: entry.run })} · {formatDate(entry.started_at, {
-								dateStyle: 'short',
-								timeStyle: 'short'
-							})}
-						</span>
-					</Table.Cell>
-					<Table.Cell>{outcomeLabel[entry.outcome]()}</Table.Cell>
-					<Table.Cell>
-						{entry.confidence === null
-							? '–'
-							: formatNumber(entry.confidence, { style: 'percent', maximumFractionDigits: 0 })}
-					</Table.Cell>
-					<Table.Cell class="max-w-xs whitespace-normal">{entry.reason ?? '–'}</Table.Cell>
-					<Table.Cell>{entry.model_version ?? '–'}</Table.Cell>
-					<Table.Cell
-						>{formatNumber(entry.duration_ms / 1000, {
-							style: 'unit',
-							unit: 'second',
-							unitDisplay: 'narrow',
-							maximumFractionDigits: 1
-						})}</Table.Cell
-					>
-				</Table.Row>
+			{#each groups as [node, runs] (node)}
+				{#each runs as entry, index (`${entry.run}-${entry.node}-${entry.started_at}`)}
+					<Table.Row data-node={node}>
+						<Table.Cell>
+							{#if index === 0}{nodeLabel[node]()}{/if}
+							<span class="block text-xs text-muted-foreground">
+								{m.log_run({ run: entry.run })} · {formatDate(entry.started_at, {
+									dateStyle: 'short',
+									timeStyle: 'short'
+								})}
+							</span>
+						</Table.Cell>
+						<Table.Cell>{outcomeLabel[entry.outcome]()}</Table.Cell>
+						<Table.Cell>
+							{entry.confidence === null
+								? '–'
+								: formatNumber(entry.confidence, { style: 'percent', maximumFractionDigits: 0 })}
+						</Table.Cell>
+						<Table.Cell class="max-w-xs whitespace-normal">{entry.reason ?? '–'}</Table.Cell>
+						<Table.Cell>{entry.model_version ?? '–'}</Table.Cell>
+						<Table.Cell
+							>{formatNumber(entry.duration_ms / 1000, {
+								style: 'unit',
+								unit: 'second',
+								unitDisplay: 'narrow',
+								maximumFractionDigits: 1
+							})}</Table.Cell
+						>
+					</Table.Row>
+				{/each}
 			{/each}
 		</Table.Body>
 	</Table.Root>

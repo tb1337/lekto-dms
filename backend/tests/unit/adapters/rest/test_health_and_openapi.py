@@ -1,6 +1,8 @@
 """Health endpoint and the OpenAPI contract."""
 
+import importlib
 import json
+import pkgutil
 import re
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -320,11 +322,16 @@ async def test_request_bodies_have_examples(api: Api) -> None:
 
 
 def test_examples_are_valid_bodies() -> None:
-    models = [
-        model
-        for model in vars(schemas).values()
-        if isinstance(model, type) and issubclass(model, BaseModel) and model is not BaseModel
+    modules = [
+        importlib.import_module(f"{schemas.__name__}.{name}")
+        for _, name, _ in pkgutil.iter_modules(schemas.__path__)
     ]
+    models = {
+        model
+        for module in modules
+        for model in vars(module).values()
+        if isinstance(model, type) and issubclass(model, BaseModel) and model is not BaseModel
+    }
     for model in models:
         extra = model.model_config.get("json_schema_extra")
         examples = extra.get("examples", []) if isinstance(extra, dict) else []

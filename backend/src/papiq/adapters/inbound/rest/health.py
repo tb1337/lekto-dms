@@ -9,7 +9,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from papiq.adapters.inbound.rest.context import Context, HealthCheck
-from papiq.adapters.inbound.rest.schemas import Health
+from papiq.adapters.inbound.rest.schemas.health import Health
 
 log = logging.getLogger(__name__)
 

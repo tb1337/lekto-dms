@@ -13,13 +13,11 @@ from papiq.adapters.inbound.rest.auth import (
 )
 from papiq.adapters.inbound.rest.context import Context
 from papiq.adapters.inbound.rest.problems import problem_responses
-from papiq.adapters.inbound.rest.schemas import (
+from papiq.adapters.inbound.rest.schemas.account import LinkOut, Removed, UserOut
+from papiq.adapters.inbound.rest.schemas.users import (
     AccountOut,
-    LinkOut,
     PasswordReset,
-    Removed,
     UserCreate,
-    UserOut,
     UserPatch,
 )
 from papiq.core.domain.errors import PermissionDeniedError

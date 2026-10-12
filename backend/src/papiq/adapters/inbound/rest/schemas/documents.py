@@ -1,0 +1,318 @@
+"""Documents: upload, details, changes, processing."""
+
+from datetime import date, datetime
+from enum import StrEnum
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from papiq.adapters.inbound.rest.schemas.drawers import ShareOut
+from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
+from papiq.core.domain.documents import Channel, Document
+from papiq.core.domain.drawers import Drawer, ShareLevel
+from papiq.core.domain.permissions import can_manage_drawer
+from papiq.core.domain.pipeline import PIPELINE, Lane, Outcome, ProcessingStatus, Step, StepRun
+from papiq.core.domain.users import User
+
+ReprocessStep = StrEnum(  # type: ignore[misc]
+    "ReprocessStep", {step.name: step.value for step in PIPELINE[1:]}
+)
+"""Steps processing can restart from; receiving cannot be repeated."""
+
+
+class DocumentAccepted(BaseModel):
+    id: UUID
+    status_url: str = Field(description="Where to follow the processing.")
+
+
+class Processing(BaseModel):
+    status: ProcessingStatus = Field(
+        description=(
+            "`processing`: `current_step` is due; `review`: stopped before `current_step` until "
+            "the uncertain fields are confirmed; `completed`; `failed` at `current_step`."
+        )
+    )
+    current_step: Step | None
+    run: int = Field(description="Grows with every retry or reprocessing.")
+    outcomes: dict[Step, Outcome] = Field(description="Results of the current run.")
+
+
+class DocumentDetails(BaseModel):
+    """A document's metadata and processing state, with the caller's access."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b",
+                    "title": "Electricity bill March",
+                    "original_filename": "scan_0042.pdf",
+                    "media_type": "application/pdf",
+                    "channel": "web",
+                    "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+                    "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
+                    "drawer_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
+                    "access": "read_write",
+                    "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
+                    "document_type_id": None,
+                    "tag_ids": [],
+                    "document_date": "2026-03-31",
+                    "fields": {
+                        "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b": {
+                            "amount": "84.20",
+                            "currency": "EUR",
+                        }
+                    },
+                    "lane": "green",
+                    "processing": {
+                        "status": "completed",
+                        "current_step": None,
+                        "run": 1,
+                        "outcomes": {"ocr": "ok", "classify": "ok"},
+                    },
+                    "created_at": "2026-04-02T08:15:00Z",
+                    "updated_at": "2026-04-02T08:16:10Z",
+                }
+            ]
+        }
+    )
+
+    id: UUID
+    title: str
+    original_filename: str
+    media_type: str = Field(examples=["application/pdf"])
+    channel: Channel = Field(
+        description="How the document arrived: `web` (web UI), `api`, `migration`."
+    )
+    sha256: str = Field(
+        description="SHA-256 of the original file, in lower-case hex.",
+        examples=["9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"],
+    )
+    owner_id: UUID
+    drawer_id: UUID
+    access: ShareLevel = Field(description="What the caller may do: read, or read and write.")
+    contact_id: UUID | None
+    document_type_id: UUID | None
+    tag_ids: list[UUID]
+    document_date: date | None
+    fields: dict[UUID, FieldJson] = Field(description="Values by field id.")
+    lane: Lane | None = Field(description="None while processing runs.")
+    processing: Processing
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def of(cls, document: Document, access: ShareLevel) -> "DocumentDetails":
+        state = document.processing
+        return cls(
+            id=document.id,
+            title=document.title,
+            original_filename=document.original_filename,
+            media_type=document.media_type,
+            channel=document.channel,
+            sha256=document.sha256.hex,
+            owner_id=document.owner_id,
+            drawer_id=document.drawer_id,
+            access=access,
+            contact_id=document.contact_id,
+            document_type_id=document.document_type_id,
+            tag_ids=sorted(document.tag_ids),
+            document_date=document.document_date,
+            fields={key: field_json(value) for key, value in sorted(document.fields.items())},
+            lane=document.lane,
+            processing=Processing(
+                status=state.status,
+                current_step=state.current_step,
+                run=state.run,
+                outcomes=dict(state.outcomes),
+            ),
+            created_at=document.created_at,
+            updated_at=document.updated_at,
+        )
+
+
+class DocumentPage(BaseModel):
+    items: list[DocumentDetails]
+    next_cursor: str | None = Field(
+        description="Pass as `cursor` for the next page; null on the last page."
+    )
+
+
+class DocumentPatch(BaseModel):
+    """Fields left out stay as they are; null removes a value."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "title": "Electricity bill March",
+                    "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
+                    "tag_ids": ["01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b"],
+                    "document_date": "2026-03-31",
+                    "fields": {
+                        "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b": {
+                            "amount": "84.20",
+                            "currency": "EUR",
+                        }
+                    },
+                }
+            ]
+        },
+    )
+
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    contact_id: UUID | None = None
+    document_type_id: UUID | None = None
+    tag_ids: list[UUID] | None = Field(default=None, max_length=500)
+    document_date: date | None = None
+    fields: dict[UUID, Any] | None = Field(
+        default=None,
+        description="Values by field id, in the form of `fields` above; null removes.",
+    )
+
+
+class ImportedMetadataIn(BaseModel):
+    """The metadata a document taken over from another system comes with (form field
+    `metadata` of `POST /documents`, as JSON)."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "title": "Electricity bill March",
+                    "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
+                    "tag_ids": ["01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b"],
+                    "document_date": "2026-03-31",
+                    "fields": {"01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b": "84.20"},
+                }
+            ]
+        },
+    )
+
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    contact_id: UUID | None = None
+    document_type_id: UUID | None = None
+    tag_ids: list[UUID] = Field(default_factory=list, max_length=500)
+    document_date: date | None = None
+    fields: dict[UUID, Any] = Field(
+        default_factory=dict, description="Values by field id, as in `PATCH /documents/{id}`."
+    )
+
+
+class MoveRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"examples": [{"drawer_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b"}]},
+    )
+
+    drawer_id: UUID
+
+
+class LogEntry(BaseModel):
+    """One execution of one step."""
+
+    step: Step
+    run: int
+    outcome: Outcome
+    reason: str | None
+    confidence: float | None
+    model_version: str | None = Field(examples=["ocrmypdf 17.13.0, tesseract 5.5.0"])
+    input: dict[str, Any]
+    output: dict[str, Any]
+    pipeline_version: str
+    started_at: datetime
+    duration_ms: float
+
+    @classmethod
+    def of(cls, run: StepRun) -> "LogEntry":
+        result = run.result
+        return cls(
+            step=run.step,
+            run=run.run,
+            outcome=result.outcome,
+            reason=result.reason,
+            confidence=result.confidence,
+            model_version=result.model_version,
+            input=dict(result.input),
+            output=dict(result.output),
+            pipeline_version=run.pipeline_version,
+            started_at=run.started_at,
+            duration_ms=run.duration.total_seconds() * 1000,
+        )
+
+
+class ReprocessRequest(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"examples": [{"from_step": "classify"}]})
+
+    from_step: ReprocessStep = Field(
+        description="Discard the results from this step on and process again from there."
+    )
+
+
+class DocumentChanged(DocumentDetails):
+    rules: list[RuleReportOut] | None = Field(
+        default=None,
+        description=(
+            "For the owner: the rules the change set off (they hold now and did not before) "
+            "and what they did. Nothing turns yellow; what could not be applied is listed."
+        ),
+    )
+
+
+class DocumentOutOfReach(BaseModel):
+    """After a change by an editor: the owner's rules filed the document where the editor can
+    no longer read it. The change is stored; nothing else about the document is shown."""
+
+    id: UUID
+    access: None = Field(default=None, description="The caller can no longer read the document.")
+
+
+class VisibilityOut(BaseModel):
+    """Who sees the document. Its owner always; while it is green also the drawer's owner and
+    the users the drawer is shared with."""
+
+    owner_id: UUID = Field(description="The document's owner.")
+    drawer_id: UUID
+    drawer_owner_id: UUID | None = Field(description="None unless the document is green.")
+    shares: list[ShareOut] | None = Field(
+        description=(
+            "The drawer's shares, if the document is green and the caller owns the drawer or is "
+            "an admin; otherwise not shown."
+        )
+    )
+
+    @classmethod
+    def of(cls, document: Document, drawer: Drawer, viewer: User) -> "VisibilityOut":
+        green = document.lane is Lane.GREEN
+        shares = None
+        if green and can_manage_drawer(viewer, drawer):
+            shares = [
+                ShareOut(user_id=u, level=level) for u, level in sorted(drawer.shares.items())
+            ]
+        return cls(
+            owner_id=document.owner_id,
+            drawer_id=drawer.id,
+            drawer_owner_id=drawer.owner_id if green else None,
+            shares=shares,
+        )
+
+
+class DocumentPreviewOut(BaseModel):
+    """What a change would do; nothing is stored."""
+
+    document: DocumentDetails | None = Field(
+        description="The document after the change; null if the caller could not read it then."
+    )
+    changed: list[str] = Field(
+        description="Fields that would change: `title`, `contact`, `document_type`, `tags`, "
+        "`document_date`, `field:<id>`, `drawer`."
+    )
+    rules: list[RuleReportOut] | None = Field(
+        description="For the owner: the rules the change would set off, and what they would do."
+    )
+    visibility: VisibilityOut | None = Field(
+        description="Who would see the document; null if the caller could not read it then."
+    )

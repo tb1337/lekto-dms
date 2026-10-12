@@ -57,6 +57,9 @@ _RECORD_ATTEMPTS = 3
 
 NODE_JOB = "pipeline.node"
 """Job kind of a pipeline node; payload: document id, node, processing run."""
+CATCH_UP_JOB = "pipeline.catch_up"
+"""Job kind of a node skipped in the document's current run that is run afterwards, outside
+processing (`PipelineService.catch_up`); the same payload."""
 
 
 class DeferredResult(Protocol):
@@ -441,6 +444,33 @@ class PipelineService:
         await uow.outbox.add(document.pull_events())
         await uow.commit()
 
+    async def catch_up(self, node: Node) -> int:
+        """Queue a job for every document whose `node` was skipped in its current run and that
+        is not being processed (the command `render-pages`: page images of documents from
+        before the node existed). Returns how many were queued; a document with such a job
+        already is not queued again."""
+        now = self._clock.now()
+        queued = 0
+        async with self._uow() as uow:
+            for document in await uow.documents.list_all():
+                run = document.processing.run
+                if not document.is_skipped(node, run):
+                    continue
+                payload: JsonObject = {
+                    "document_id": str(document.id),
+                    "node": node.value,
+                    "run": run,
+                }
+                job = await uow.jobs.enqueue(
+                    CATCH_UP_JOB,
+                    payload,
+                    run_at=now,
+                    dedup_key=f"{document.id}:{run}:{node.value}:catch-up",
+                )
+                queued += job is not None
+            await uow.commit()
+        return queued
+
     # --- worker ---------------------------------------------------------------------------------
 
     async def run_next_job(self) -> bool:
@@ -456,9 +486,14 @@ class PipelineService:
         If the caller is cancelled after the claim (the worker shuts down), the job is released
         at once to run again, instead of waiting for its lease to expire; the interrupted claim
         does not count as an attempt.
+
+        A catch-up job (`catch_up`) runs the same way, except that its node is not marked as
+        running and its result changes neither the status nor the lane.
         """
         async with self._uow() as uow:
-            job = await uow.jobs.claim(now=self._clock.now(), lease=self._lease, kinds=[NODE_JOB])
+            job = await uow.jobs.claim(
+                now=self._clock.now(), lease=self._lease, kinds=[NODE_JOB, CATCH_UP_JOB]
+            )
             await uow.commit()
         if job is None:
             return False
@@ -477,7 +512,10 @@ class PipelineService:
             await self._finish(job, error=f"invalid payload: {error}")
             return
         started = self._clock.now()
-        document = await self._start(document_id, node, run, started)
+        if job.kind == CATCH_UP_JOB:
+            document = await self._skipped(document_id, node, run)
+        else:
+            document = await self._start(document_id, node, run, started)
         if document is None:
             await self._finish(job)
             return
@@ -512,6 +550,14 @@ class PipelineService:
             return
 
         await self._record(job, document_id, node, run, outcome, started)
+
+    async def _skipped(self, document_id: DocumentId, node: Node, run: int) -> Document | None:
+        """The document, if its `node` is still to catch up on; None if the job is stale."""
+        async with self._uow() as uow:
+            document = await uow.documents.find(document_id)
+        if document is None or not document.is_skipped(node, run):
+            return None
+        return document
 
     async def _start(
         self, document_id: DocumentId, node: Node, run: int, now: datetime
@@ -567,9 +613,12 @@ class PipelineService:
         started: datetime,
     ) -> None:
         now = self._clock.now()
+        catching_up = job.kind == CATCH_UP_JOB
         async with self._uow() as uow:
             document = await uow.documents.find(document_id)
-            if document is None or not document.is_awaiting(node, run):
+            if document is None or not (
+                document.is_skipped(node, run) if catching_up else document.is_awaiting(node, run)
+            ):
                 await uow.jobs.complete(job)
                 await uow.commit()
                 return
@@ -577,7 +626,11 @@ class PipelineService:
                 result = outcome
             else:
                 result = await outcome.apply(uow, document, now)
-            due = document.record_result(node, run, result, now)
+            if catching_up:
+                document.catch_up(node, run, result, started, now)
+                due: tuple[Node, ...] = ()
+            else:
+                due = document.record_result(node, run, result, now)
             await uow.documents.update(document)
             await self._log(uow, document.id, node, run, result, started, now)
             await _enqueue(uow, document, due, now)

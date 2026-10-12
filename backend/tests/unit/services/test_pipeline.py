@@ -17,6 +17,7 @@ from papiq.core.domain.errors import (
     UnsupportedMediaTypeError,
 )
 from papiq.core.domain.events import (
+    DocumentEvent,
     DocumentFiled,
     DocumentReceived,
     LaneChanged,
@@ -39,6 +40,7 @@ from papiq.core.domain.pipeline import (
 from papiq.core.domain.users import User
 from papiq.core.services.objects import original_key
 from papiq.core.services.pipeline import (
+    CATCH_UP_JOB,
     NODE_JOB,
     MetadataResult,
     PipelineService,
@@ -244,6 +246,66 @@ async def test_exhausted_retries_end_red_and_retry_recovers(world: World) -> Non
     stored = await world.documents.get(owner.id, stored.id)
     assert stored.lane is Lane.GREEN
     assert broken.calls == 4
+
+
+async def test_skipped_pages_are_caught_up_on_without_a_new_run(world: World) -> None:
+    owner, document = await receive(world)
+    await world.drain()
+    red = await world.pipeline({Node.PARSE: Returns(FAILED)}).receive(
+        owner.id, incoming(b"%PDF-1.7 red"), filename="red.pdf"
+    )
+    await world.drain(world.pipeline({Node.PARSE: Returns(FAILED)}))
+    processing = await world.pipeline().receive(owner.id, incoming(b"%PDF-1.7 p"), filename="p.pdf")
+    async with world.uow() as uow:  # as revision 0010 leaves documents from before the node
+        for id in (document.id, red.id, processing.id):
+            stored = await uow.documents.get(id)
+            stored.processing.nodes[Node.PAGES] = NodeState(status=NodeStatus.SKIPPED)
+            await uow.documents.update(stored)
+        await uow.commit()
+    world.database.outbox.clear()
+
+    pages = Returns(builders.OK)
+    pipeline = world.pipeline({Node.PAGES: pages})
+    assert await pipeline.catch_up(Node.PAGES) == 2  # not the one being processed
+    assert await pipeline.catch_up(Node.PAGES) == 0  # queued already
+    assert await world.drain(pipeline) == 2 + 7  # and the processing one (its pages job is stale)
+    assert pages.calls == 2
+    for id, lane, status in ((document.id, Lane.GREEN, "completed"), (red.id, Lane.RED, "failed")):
+        stored = await world.documents.get(owner.id, id)
+        assert (stored.lane, stored.processing.status.value, stored.processing.run) == (
+            lane,
+            status,
+            1,
+        )
+        assert stored.processing.nodes[Node.PAGES].status is NodeStatus.DONE
+        log = await world.documents.processing_log(owner.id, id)
+        assert log[-1].node is Node.PAGES and log[-1].run == 1
+    kinds = [job.kind for job in world.database.jobs.values() if job.status is JobStatus.DONE]
+    assert kinds.count(CATCH_UP_JOB) == 2
+    assert "document.lane_changed" not in [
+        event.type
+        for event in world.events()
+        if isinstance(event, DocumentEvent) and event.document_id in (document.id, red.id)
+    ]
+
+
+async def test_a_catch_up_job_is_stale_once_the_document_runs_again(world: World) -> None:
+    owner, document = await receive(world)
+    await world.drain()
+    async with world.uow() as uow:
+        stored = await uow.documents.get(document.id)
+        stored.processing.nodes[Node.PAGES] = NodeState(status=NodeStatus.SKIPPED)
+        await uow.documents.update(stored)
+        await uow.commit()
+    pages = Returns(builders.OK)
+    pipeline = world.pipeline({Node.PAGES: pages})
+    assert await pipeline.catch_up(Node.PAGES) == 1
+    await pipeline.reprocess_from(owner.id, document.id, Node.CLASSIFY)  # run 2
+    await world.drain(pipeline)
+    assert pages.calls == 0
+    stored = await world.documents.get(owner.id, document.id)
+    assert stored.processing.nodes[Node.PAGES].status is NodeStatus.SKIPPED
+    assert all(job.status is JobStatus.DONE for job in world.database.jobs.values())
 
 
 async def test_reprocess_from_a_step(world: World) -> None:

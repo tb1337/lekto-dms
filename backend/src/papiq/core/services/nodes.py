@@ -1,4 +1,4 @@
-"""The technical pipeline nodes after receive: OCR and parsing.
+"""The technical pipeline nodes after receive: OCR, page images and parsing.
 
 Each node downloads its input into a temporary directory, runs the port (which does the heavy
 work outside the event loop) and uploads the derivatives. Derivatives are keyed by document, so
@@ -11,18 +11,21 @@ import shutil
 import tempfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from papiq.core.domain import media_types
 from papiq.core.domain.documents import Document
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.pipeline import NodeResult, Outcome
-from papiq.core.ports import DocumentParser, ObjectStore, Ocr, PreviewRenderer
-from papiq.core.ports.preview import PREVIEW_MEDIA_TYPE
+from papiq.core.ports import DocumentParser, ObjectStore, Ocr, PageRenderer, UnitOfWork
+from papiq.core.ports.pages import PAGE_MEDIA_TYPE, PREVIEW_FILE
 from papiq.core.services.objects import (
     archive_key,
     markdown_key,
     original_key,
+    page_key,
     preview_key,
     structure_key,
 )
@@ -33,32 +36,26 @@ _WORD = re.compile(r"\w")
 
 
 class OcrNode:
-    """Archive PDF with text layer and preview of the first page. A damaged or encrypted file
-    fails at once (UnprocessableDocumentError, see PipelineService); an archive that is not
-    PDF/A is uncertain, with the engine's reason. An archive that is PDF/A but differs from
-    what was asked (a signature not carried over) is OK with the engine's note as reason."""
+    """Archive PDF with text layer. A damaged or encrypted file fails at once
+    (UnprocessableDocumentError, see PipelineService); an archive that is not PDF/A is
+    uncertain, with the engine's reason. An archive that is PDF/A but differs from what was
+    asked (a signature not carried over) is OK with the engine's note as reason."""
 
-    def __init__(self, store: ObjectStore, ocr: Ocr, previews: PreviewRenderer) -> None:
+    def __init__(self, store: ObjectStore, ocr: Ocr) -> None:
         self._store = store
         self._ocr = ocr
-        self._previews = previews
 
     async def run(self, document: Document) -> NodeResult:
         async with work_directory() as work:
-            original, archive, preview = work / "original", work / "archive.pdf", work / "preview"
+            original, archive = work / "original", work / "archive.pdf"
             await self._store.download(original_key(document.sha256), original)
             result = await self._ocr.make_archive(original, archive, media_type=document.media_type)
-            await self._previews.render_first_page(archive, preview)
             await self._store.upload(
                 archive_key(document.id), archive, content_type=media_types.PDF
-            )
-            await self._store.upload(
-                preview_key(document.id), preview, content_type=PREVIEW_MEDIA_TYPE
             )
         input: JsonObject = {"original": original_key(document.sha256)}
         output: JsonObject = {
             "archive": archive_key(document.id),
-            "preview": preview_key(document.id),
             "pages": result.pages,
             "pdfa": result.pdfa,
         }
@@ -82,6 +79,57 @@ class OcrNode:
             input=input,
             output=output,
         )
+
+
+class PagesNode:
+    """Images of every page of the original, and the preview of the first: what the web UI
+    shows (and later, what grounding and vision models look at). Runs beside OCR, so it reads
+    the original, not the archive. A file that cannot be read fails at once."""
+
+    def __init__(self, store: ObjectStore, renderer: PageRenderer) -> None:
+        self._store = store
+        self._renderer = renderer
+
+    async def run(self, document: Document) -> "PagesResult":
+        async with work_directory() as work:
+            original, pages = work / "original", work / "pages"
+            pages.mkdir()
+            await self._store.download(original_key(document.sha256), original)
+            rendered = await self._renderer.render_pages(
+                original, media_type=document.media_type, target=pages
+            )
+            for number in range(1, rendered.pages + 1):
+                await self._store.upload(
+                    page_key(document.id, number),
+                    pages / f"{number}.webp",
+                    content_type=PAGE_MEDIA_TYPE,
+                )
+            await self._store.upload(
+                preview_key(document.id), pages / PREVIEW_FILE, content_type=PAGE_MEDIA_TYPE
+            )
+        result = NodeResult(
+            outcome=Outcome.OK,
+            model_version=rendered.renderer,
+            input={"original": original_key(document.sha256)},
+            output={
+                "pages": rendered.pages,
+                "first_page": page_key(document.id, 1),
+                "preview": preview_key(document.id),
+            },
+        )
+        return PagesResult(result, rendered.pages)
+
+
+@dataclass(frozen=True)
+class PagesResult:
+    """The page images are there: the document's page count is stored with the result."""
+
+    result: NodeResult
+    pages: int
+
+    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
+        document.set_page_count(self.pages, now)
+        return self.result
 
 
 class ParseNode:

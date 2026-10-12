@@ -184,6 +184,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
                 document_date=row.document_date,
                 channel=Channel(row.channel),
                 lane=None if row.lane is None else Lane(row.lane),
+                page_count=row.page_count,
                 processing=Processing(
                     status=ProcessingStatus(row.processing_status),
                     run=row.processing_run,
@@ -214,6 +215,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             "document_date": entity.document_date,
             "channel": entity.channel.value,
             "lane": None if entity.lane is None else entity.lane.value,
+            "page_count": entity.page_count,
             "processing_status": processing.status.value,
             "processing_run": processing.run,
             "processing_nodes": {

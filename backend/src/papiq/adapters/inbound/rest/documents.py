@@ -16,6 +16,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response
+from fastapi import Path as FastApiPath
 from fastapi.responses import FileResponse
 from pydantic import ValidationError as PydanticValidationError
 from starlette.background import BackgroundTask
@@ -376,14 +377,39 @@ _file_route(
 _file_route(DocumentFile.PREVIEW, "The preview image of the first page", "image/webp", "inline")
 
 
+@router.get(
+    "/{id}/pages/{number}",
+    summary="The image of one page",
+    description=(
+        "Needs read access. Pages are numbered from 1 up to `page_count`; 404 while the page "
+        "images do not exist (yet) or for a number the document does not have."
+    ),
+    response_class=FileResponse,
+    responses={
+        200: {"content": {"image/webp": {"schema": {"type": "string", "format": "binary"}}}},
+        **problem_responses(401, 404, 422),
+    },
+)
+async def get_document_page(
+    id: UUID, number: Annotated[int, FastApiPath(ge=1)], user: CurrentUser, context: Context
+) -> FileResponse:
+    return await _download(context, user, DocumentId(id), DocumentFile.PAGE, "inline", page=number)
+
+
 async def _download(
-    context: Context, user: UserId, id: DocumentId, file: DocumentFile, disposition: str
+    context: Context,
+    user: UserId,
+    id: DocumentId,
+    file: DocumentFile,
+    disposition: str,
+    *,
+    page: int = 1,
 ) -> FileResponse:
     descriptor, name = await asyncio.to_thread(tempfile.mkstemp, prefix="papiq-download-")
     os.close(descriptor)
     path = Path(name)
     try:
-        info = await context.documents.download(user, id, file, path)
+        info = await context.documents.download(user, id, file, path, page=page)
     except BaseException:
         await asyncio.shield(asyncio.to_thread(path.unlink, missing_ok=True))
         raise

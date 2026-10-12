@@ -13,7 +13,7 @@ import pytest
 from papiq.adapters.outbound.docling import DoclingParser
 from papiq.adapters.outbound.filesystem import FilesystemObjectStore
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
-from papiq.adapters.outbound.pdfium import PdfiumPreviewRenderer
+from papiq.adapters.outbound.pdfium import PdfiumPageRenderer
 from papiq.composition.container import build_memory_container, build_services
 from papiq.composition.settings import Settings
 from papiq.core.domain import media_types
@@ -56,7 +56,7 @@ async def test_scan_and_photo_are_processed(
         object_store=object_store,
         ocr=OcrmypdfEngine(languages=["deu", "eng"], timeout=timedelta(minutes=5)),
         parser=DoclingParser(models=settings.docling_models_path, timeout=timedelta(minutes=5)),
-        previews=PdfiumPreviewRenderer(),
+        pages=PdfiumPageRenderer(),
     )
     services = build_services(container)
     builders.skip_classification(services.pipeline)

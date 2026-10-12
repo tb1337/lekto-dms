@@ -169,6 +169,8 @@ documents = Table(
     # State of every node in the current run: {node: {status, outcome, started_at, finished_at}}.
     # The default is for the column's addition (revision 0010); every row is written in full.
     Column("processing_nodes", json_type(), nullable=False, server_default="{}"),
+    # Set once the pages node rendered the page images.
+    Column("page_count", Integer, nullable=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("updated_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),

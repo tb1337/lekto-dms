@@ -25,7 +25,7 @@ from papiq.core.domain.permissions import (
 from papiq.core.domain.pipeline import Lane, NodeRun
 from papiq.core.domain.users import User
 from papiq.core.ports import Clock, DocumentFilter, ObjectStore, UnitOfWork, UnitOfWorkFactory
-from papiq.core.ports.preview import PREVIEW_MEDIA_TYPE
+from papiq.core.ports.pages import PAGE_MEDIA_TYPE
 from papiq.core.services._access import (
     check_references,
     load_actor,
@@ -35,7 +35,13 @@ from papiq.core.services._access import (
 )
 from papiq.core.services.inbox import InboxItem, Review, node_reviews, open_nodes
 from papiq.core.services.maintenance import REMOVE_FILES_JOB
-from papiq.core.services.objects import archive_key, markdown_key, original_key, preview_key
+from papiq.core.services.objects import (
+    archive_key,
+    markdown_key,
+    original_key,
+    page_key,
+    preview_key,
+)
 from papiq.core.services.rules.changes import ChangeRules
 from papiq.core.services.rules.running import Prepared, RuleRun
 
@@ -79,6 +85,7 @@ class DocumentFile(StrEnum):
     ORIGINAL = "original"
     ARCHIVE = "archive"
     PREVIEW = "preview"
+    PAGE = "page"  # the image of one page; `download` takes its number
 
 
 @dataclass(frozen=True)
@@ -180,10 +187,11 @@ class DocumentService:
         return views
 
     async def download(
-        self, actor: UserId, id: DocumentId, file: DocumentFile, target: Path
+        self, actor: UserId, id: DocumentId, file: DocumentFile, target: Path, *, page: int = 1
     ) -> FileInfo:
         """Write a file of a readable document to the local path `target`. NotFoundError if
-        the caller may not read the document or the file does not exist (yet)."""
+        the caller may not read the document or the file does not exist (yet); for a page,
+        also if the document has fewer pages."""
         assert self._store is not None, "DocumentService needs an object store for downloads"
         async with self._uow() as uow:
             document, _ = await readable_document(uow, await load_actor(uow, actor), id)
@@ -195,7 +203,11 @@ class DocumentService:
             case DocumentFile.ARCHIVE:
                 key, info = archive_key(id), FileInfo(media_types.PDF, f"{stem}.pdf")
             case DocumentFile.PREVIEW:
-                key, info = preview_key(id), FileInfo(PREVIEW_MEDIA_TYPE, f"{stem}.webp")
+                key, info = preview_key(id), FileInfo(PAGE_MEDIA_TYPE, f"{stem}.webp")
+            case DocumentFile.PAGE:
+                if document.page_count is None or not 1 <= page <= document.page_count:
+                    raise NotFoundError(f"page {page} of document", id)
+                key, info = page_key(id, page), FileInfo(PAGE_MEDIA_TYPE, f"{stem}-{page}.webp")
         if not await self._store.exists(key):
             raise NotFoundError(f"{file.value} of document", id)
         await self._store.download(key, target)
@@ -364,7 +376,11 @@ class DocumentService:
             await uow.outbox.add(document.pull_events())
             await uow.jobs.enqueue(
                 REMOVE_FILES_JOB,
-                {"document_id": str(id), "sha256": document.sha256.hex},
+                {
+                    "document_id": str(id),
+                    "sha256": document.sha256.hex,
+                    "page_count": document.page_count,
+                },
                 run_at=self._clock.now(),
             )
             await uow.commit()

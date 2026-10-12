@@ -269,6 +269,24 @@ async def test_others_see_a_document_only_through_a_share_once_green(api: Api) -
         assert missing.headers["content-type"] == PROBLEM
 
 
+async def test_page_images_are_served_by_number(api: Api) -> None:
+    owner = await api.user()
+    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    url = response.json()["status_url"]
+    assert (await api.client.get(f"{url}/pages/1", headers=auth(owner))).status_code == 404
+    await api.drain()
+    document = (await api.client.get(url, headers=auth(owner))).json()
+    assert document["page_count"] == 1
+    page = await api.client.get(f"{url}/pages/1", headers=auth(owner))
+    assert page.status_code == 200
+    assert page.headers["content-type"] == "image/webp"
+    assert page.headers["content-disposition"].startswith("inline")
+    assert page.content[:4] == b"RIFF"
+    assert (await api.client.get(f"{url}/pages/2", headers=auth(owner))).status_code == 404
+    assert (await api.client.get(f"{url}/pages/0", headers=auth(owner))).status_code == 422
+    assert (await api.client.get(f"{url}/pages/1")).status_code == 401
+
+
 async def test_retry_and_reprocess(api: Api) -> None:
     class Broken:
         async def run(self, document: object) -> object:

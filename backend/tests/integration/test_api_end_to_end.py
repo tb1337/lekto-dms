@@ -18,7 +18,7 @@ from papiq.adapters.inbound.rest import PREFIX
 from papiq.adapters.inbound.worker import Worker
 from papiq.adapters.outbound.docling import DoclingParser
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
-from papiq.adapters.outbound.pdfium import PdfiumPreviewRenderer
+from papiq.adapters.outbound.pdfium import PdfiumPageRenderer
 from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory
 from papiq.composition.api import build_app
 from papiq.composition.container import (
@@ -105,7 +105,7 @@ async def system(stores: tuple[Database, ObjectStore], settings: Settings) -> As
         object_store=object_store,
         ocr=ocr,
         parser=DoclingParser(models=settings.docling_models_path, timeout=timedelta(minutes=5)),
-        previews=PdfiumPreviewRenderer(),
+        pages=PdfiumPageRenderer(),
     )
     tuning = Settings.model_construct(
         node_max_attempts=1,  # a broken node fails at once

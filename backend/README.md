@@ -165,7 +165,8 @@ jobs of the old run are recognised as stale.
 
 | Node | Input | Derivatives (object store) | Outcome |
 | --- | --- | --- | --- |
-| OCR (`OcrNode`) | `originals/<sha256>` | `documents/<id>/archive.pdf` (PDF/A with text layer), `documents/<id>/preview.webp` (first page, 400 px wide) | uncertain if the archive is not PDF/A, with the reason; OK with a note if the original's digital signature is not in the archive |
+| OCR (`OcrNode`) | `originals/<sha256>` | `documents/<id>/archive.pdf` (PDF/A with text layer) | uncertain if the archive is not PDF/A, with the reason; OK with a note if the original's digital signature is not in the archive |
+| Pages (`PagesNode`) | `originals/<sha256>` | `documents/<id>/pages/<n>.webp` (every page, 1200 px wide; an image narrower than that keeps its size, each frame of a TIFF is a page), `documents/<id>/preview.webp` (first page, 400 px wide); sets `page_count` | failed if the file cannot be read |
 | Parse (`ParseNode`) | the archive PDF | `documents/<id>/content.md`, `documents/<id>/content.json` (Docling) | failed if no text was recognised; uncertain if the text is the plain text layer because the layout analysis found none |
 | Classify (`ClassifyNode`) | `content.md`, master data | contact, document type, tags, document date (applied if checked) | see below |
 | Extract fields (`ExtractFieldsNode`) | `content.md`, the fields of the type | field values (applied if checked) | see below |
@@ -456,7 +457,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`; change (write access; the answer has the change rules' `rules` report for the owner); delete (owner or admin) |
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result and the differences |
 | `POST /documents/{id}/move` | Into another drawer (owner, or an admin without read access) |
-| `GET /documents/{id}/original`, `/archive`, `/preview` | Files (read access) |
+| `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
 | `GET /documents/{id}/log` | Processing log (owner or admin) |
 | `POST /documents/{id}/retry` | Repeat the failed nodes (owner or admin) |
 | `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (owner or admin) |

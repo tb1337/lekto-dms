@@ -63,6 +63,7 @@ in your password manager, not only in `live.env`.
 | Papiq: UI bauen | `pnpm build` in `web/`; the API serves `web/build` below `/ui` (`PAPIQ_UI_DIR`) |
 | Papiq: UI dev | Vite on <http://localhost:5173/ui/> with `/api` proxied to the API, for UI work with hot reload |
 | Papiq: Suche neu aufbauen | `reindex`: rebuild the search index from database and bucket (after a restore, a model change, or to add vectors) |
+| Papiq: Seitenbilder nachholen | `render-pages`: queue the page images of documents from before the pages node; the worker renders them |
 | Migration: plan, run, verify | The Paperless migration client with the `PAPIQ_MIGRATION_*` variables of `live.env` (see below) |
 
 Nothing starts when the container opens. After **Papiq starten**, open

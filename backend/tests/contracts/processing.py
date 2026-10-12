@@ -1,4 +1,4 @@
-"""Contracts of the processing ports: OCR, parser, preview renderer. The samples are in
+"""Contracts of the processing ports: OCR, parser, page renderer. The samples are in
 `tests/samples` (see `make_samples.py`)."""
 
 import json
@@ -8,7 +8,7 @@ import pytest
 
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import UnprocessableDocumentError
-from papiq.core.ports import DocumentParser, Ocr, PreviewRenderer
+from papiq.core.ports import DocumentParser, Ocr, PageRenderer
 
 SAMPLES = Path(__file__).parent.parent / "samples"
 
@@ -74,23 +74,31 @@ class ParserContract:
         assert list(tmp_path.iterdir()) == []
 
 
-class PreviewRendererContract:
-    """Needs the fixture `preview_renderer`."""
+class PageRendererContract:
+    """Needs the fixture `page_renderer`."""
 
-    async def test_renders_a_webp_image(
-        self, preview_renderer: PreviewRenderer, tmp_path: Path
+    @pytest.mark.parametrize(
+        ("sample", "media_type"),
+        [("scan.pdf", media_types.PDF), ("photo.jpg", media_types.JPEG)],
+    )
+    async def test_renders_every_page_and_the_preview_as_webp(
+        self, page_renderer: PageRenderer, tmp_path: Path, sample: str, media_type: str
     ) -> None:
-        target = tmp_path / "preview.webp"
-        await preview_renderer.render_first_page(SAMPLES / "scan.pdf", target)
-        data = target.read_bytes()
-        assert data[:4] == b"RIFF" and data[8:12] == b"WEBP"
-        assert [path.name for path in tmp_path.iterdir()] == ["preview.webp"]
+        rendered = await page_renderer.render_pages(
+            SAMPLES / sample, media_type=media_type, target=tmp_path
+        )
+        assert rendered.pages >= 1 and rendered.renderer
+        expected = {f"{number}.webp" for number in range(1, rendered.pages + 1)} | {"preview.webp"}
+        assert {path.name for path in tmp_path.iterdir()} == expected
+        for path in tmp_path.iterdir():
+            data = path.read_bytes()
+            assert data[:4] == b"RIFF" and data[8:12] == b"WEBP", path.name
 
     async def test_a_damaged_pdf_is_unprocessable(
-        self, preview_renderer: PreviewRenderer, tmp_path: Path
+        self, page_renderer: PageRenderer, tmp_path: Path
     ) -> None:
         with pytest.raises(UnprocessableDocumentError):
-            await preview_renderer.render_first_page(
-                SAMPLES / "damaged.pdf", tmp_path / "preview.webp"
+            await page_renderer.render_pages(
+                SAMPLES / "damaged.pdf", media_type=media_types.PDF, target=tmp_path
             )
         assert list(tmp_path.iterdir()) == []

@@ -89,6 +89,9 @@ class MaintenanceService:
         try:
             document = DocumentId(UUID(str(job.payload["document_id"])))
             sha256 = Sha256(str(job.payload["sha256"]))
+            pages = job.payload.get("page_count")
+            if pages is not None and not isinstance(pages, int):
+                raise ValueError(f"page_count {pages!r}")
         except (KeyError, ValueError, ValidationError) as error:
             async with self._uow() as uow:
                 await uow.jobs.fail(job, error=f"invalid payload: {error}")
@@ -97,7 +100,7 @@ class MaintenanceService:
         assert self._store is not None, "removing files needs the object store"
         original = original_key(sha256)
         try:
-            for key in derivative_keys(document):
+            for key in derivative_keys(document, pages):
                 await self._store.delete(key)
             async with self._uow() as uow:
                 await uow.lock(original)

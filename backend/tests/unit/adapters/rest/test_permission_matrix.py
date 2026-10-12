@@ -212,6 +212,18 @@ GREEN: dict[str, tuple[Call, dict[str, int]]] = {
             **DENIED,
         },
     ),
+    "page": (
+        doc("GET", "/pages/1"),
+        {
+            "owner": 200,
+            "reader": 200,
+            "writer": 200,
+            "read_token": 200,
+            "admin": 200,
+            **HIDDEN,
+            **DENIED,
+        },
+    ),
     "change": (
         doc("PATCH", body={"title": "Changed"}),
         {
@@ -332,6 +344,7 @@ HIDDEN_FROM_SHARES = [
     "original",
     "archive",
     "preview",
+    "page",
     "change",
     "delete",
     "log",
@@ -352,7 +365,7 @@ async def test_yellow_and_processing_documents_are_the_owners_and_admins(
         assert response.json()["detail"] == f"document {scene.document(which)} not found"
     for actor in ("owner", "admin"):
         response = await call(scene, api.client, scene.headers[actor], which)
-        if which == "processing" and operation in {"archive", "preview"}:
+        if which == "processing" and operation in {"archive", "preview", "page"}:
             assert response.status_code == 404  # not made yet
         else:
             assert response.status_code in {200, 204}, (actor, response.text)

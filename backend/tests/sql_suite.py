@@ -787,8 +787,9 @@ async def _document_rows(database: Database, *, old: bool = False) -> list[Any]:
 
 def _before_0010(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0010 had it: the current node and the outcomes instead
-    of the state of every node."""
-    columns = [sa.column(c.name, c.type) for c in table.c if c.name != "processing_nodes"]
+    of the state of every node, and no page count (0011)."""
+    later = {"processing_nodes", "page_count"}
+    columns = [sa.column(c.name, c.type) for c in table.c if c.name not in later]
     if table.name == "documents":
         columns.append(sa.column("processing_node", sa.Text()))
         columns.append(sa.column("processing_outcomes", json_type()))

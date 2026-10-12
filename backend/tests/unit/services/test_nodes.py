@@ -1,21 +1,22 @@
-"""OCR and parse nodes on the fakes: derivatives, outcomes, failures."""
+"""OCR, pages and parse nodes on the fakes: derivatives, outcomes, failures."""
 
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from papiq.adapters.outbound.memory import FakeOcr, FakeParser, FakePreviewRenderer
+from papiq.adapters.outbound.memory import FakeOcr, FakePageRenderer, FakeParser
 from papiq.adapters.outbound.memory.processing import FAKE_PDF
 from papiq.core.domain.documents import Document
 from papiq.core.domain.pipeline import Lane, Node, NodeRun, Outcome
 from papiq.core.domain.users import User
 from papiq.core.ports import OcrResult, ParseResult
-from papiq.core.services.nodes import OcrNode, ParseNode, has_text
+from papiq.core.services.nodes import OcrNode, PagesNode, ParseNode, has_text
 from papiq.core.services.objects import (
     archive_key,
     markdown_key,
     original_key,
+    page_key,
     preview_key,
     structure_key,
 )
@@ -44,12 +45,17 @@ class Unsigned(FakeOcr):
 
 
 def pipeline(
-    world: World, *, ocr: FakeOcr | None = None, text: str = "Rechnung"
+    world: World,
+    *,
+    ocr: FakeOcr | None = None,
+    text: str = "Rechnung",
+    pages: FakePageRenderer | None = None,
 ) -> PipelineService:
     store = world.object_store
     return world.pipeline(
         {
-            Node.OCR: OcrNode(store, ocr or FakeOcr(), FakePreviewRenderer()),
+            Node.OCR: OcrNode(store, ocr or FakeOcr()),
+            Node.PAGES: PagesNode(store, pages or FakePageRenderer()),
             Node.PARSE: ParseNode(store, FakeParser(text)),
         }
     )
@@ -64,28 +70,34 @@ async def ingest(world: World, service: PipelineService, sample: str) -> tuple[U
 
 
 @pytest.mark.parametrize("sample", ["scan.pdf", "photo.jpg"])
-async def test_ocr_and_parse_store_their_derivatives(world: World, sample: str) -> None:
-    owner, document = await ingest(world, pipeline(world), sample)
+async def test_ocr_pages_and_parse_store_their_derivatives(world: World, sample: str) -> None:
+    owner, document = await ingest(world, pipeline(world, pages=FakePageRenderer(2)), sample)
     assert document.lane is Lane.GREEN
+    assert document.page_count == 2
     store = world.object_store
     assert await store.get(archive_key(document.id)) == FAKE_PDF
     assert store.content_type(archive_key(document.id)) == "application/pdf"
     assert store.content_type(preview_key(document.id)) == "image/webp"
+    for number in (1, 2):
+        assert store.content_type(page_key(document.id, number)) == "image/webp"
+    assert not await store.exists(page_key(document.id, 3))
     assert await store.get(markdown_key(document.id)) == b"Rechnung"
     assert store.content_type(structure_key(document.id)) == "application/json"
 
     log = {
         entry.node: entry for entry in await world.documents.processing_log(owner.id, document.id)
     }
-    ocr, parse = log[Node.OCR].result, log[Node.PARSE].result
+    ocr, pages, parse = log[Node.OCR].result, log[Node.PAGES].result, log[Node.PARSE].result
     assert ocr.input == {"original": original_key(document.sha256)}
-    assert ocr.output == {
-        "archive": archive_key(document.id),
-        "preview": preview_key(document.id),
-        "pages": 1,
-        "pdfa": True,
-    }
+    assert ocr.output == {"archive": archive_key(document.id), "pages": 1, "pdfa": True}
     assert ocr.model_version == "fake-ocr 1"
+    assert pages.input == {"original": original_key(document.sha256)}
+    assert pages.output == {
+        "pages": 2,
+        "first_page": page_key(document.id, 1),
+        "preview": preview_key(document.id),
+    }
+    assert pages.model_version == "fake-pages 1"
     assert parse.input == {"archive": archive_key(document.id)}
     assert parse.output["characters"] == len("Rechnung")
     assert parse.model_version == "fake-parser 1"
@@ -98,13 +110,18 @@ async def logged(world: World, owner: User, document: Document, node: Node) -> N
 
 
 async def test_a_damaged_file_goes_red_at_once(world: World) -> None:
-    ocr = FakeOcr()
-    owner, document = await ingest(world, pipeline(world, ocr=ocr), "damaged.pdf")
+    ocr, pages = FakeOcr(), FakePageRenderer()
+    owner, document = await ingest(world, pipeline(world, ocr=ocr, pages=pages), "damaged.pdf")
     assert document.lane is Lane.RED
-    assert document.processing.failed() == (Node.OCR,)
-    assert len(ocr.calls) == 1
-    entry = (await world.documents.processing_log(owner.id, document.id))[-1]
-    assert entry.result.reason == "the file is damaged or not a valid document"
+    assert document.page_count is None
+    # OCR and the pages run side by side; whichever comes first fails and stops the rest.
+    failed = document.processing.failed()
+    assert failed and set(failed) <= {Node.OCR, Node.PAGES}
+    assert 1 <= len(ocr.calls) + len(pages.calls) <= 2
+    log = await world.documents.processing_log(owner.id, document.id)
+    for node in failed:
+        entry = next(entry for entry in log if entry.node is node)
+        assert entry.result.reason == "the file is damaged or not a valid document"
     assert not await world.object_store.exists(archive_key(document.id))
 
 
@@ -157,7 +174,7 @@ async def test_a_parser_that_fell_back_to_the_text_layer_is_uncertain(world: Wor
     store = world.object_store
     service = world.pipeline(
         {
-            Node.OCR: OcrNode(store, FakeOcr(), FakePreviewRenderer()),
+            Node.OCR: OcrNode(store, FakeOcr()),
             Node.PARSE: ParseNode(store, TextLayer("Lohnabrechnung Februar")),
         }
     )

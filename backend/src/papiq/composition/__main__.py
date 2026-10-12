@@ -1,5 +1,5 @@
 """`python -m papiq.composition [check | migrate | api | worker | evaluate | evaluate-search |
-reindex]`.
+reindex | render-pages]`.
 
 - `check` (default): validate the configuration and print it without secrets.
 - `migrate`: validate, then bring the configured database to the newest schema. Run before the
@@ -24,6 +24,8 @@ reindex]`.
   value; the real length is measured) as the configuration is checked first.
 - `reindex`: rebuild the search index from the database and the object store, in the foreground,
   with progress. The search keeps working meanwhile. Needs `PAPIQ_MEILISEARCH_URL`.
+- `render-pages`: queue the page images of every document from before the pages node existed
+  (its `pages` node is skipped); the worker renders them.
 
 Exits with status 1 and a readable message when the configuration is invalid, the command does
 not fit `PAPIQ_ROLE`, or the migration or the service fails.
@@ -44,6 +46,7 @@ from papiq.composition.endpoints import external_endpoints
 from papiq.composition.errors import ConfigurationError
 from papiq.composition.evaluation import run_evaluation
 from papiq.composition.logging_setup import configure_logging
+from papiq.composition.pages import run_render_pages
 from papiq.composition.reindex import run_reindex
 from papiq.composition.search_evaluation import (
     DEFAULT_RATIOS,
@@ -70,6 +73,7 @@ def main(argv: Sequence[str] = ()) -> int:
             "evaluate",
             "evaluate-search",
             "reindex",
+            "render-pages",
         ],
         default="check",
     )
@@ -138,6 +142,8 @@ def main(argv: Sequence[str] = ()) -> int:
     if command == "evaluate-search":
         return _evaluate_search(settings, arguments)
 
+    if command == "render-pages":
+        return _render_pages(settings)
     if command == "reindex":
         return _reindex(settings)
 
@@ -183,6 +189,17 @@ def _reindex(settings: Settings) -> int:
         queued=result.queued,
         removed=result.removed,
     )
+    return 0
+
+
+def _render_pages(settings: Settings) -> int:
+    log = structlog.get_logger("papiq.composition")
+    try:
+        queued = asyncio.run(run_render_pages(settings))
+    except Exception:
+        log.exception("queueing the page images failed")
+        return 1
+    log.info("render-pages queued", documents=queued)
     return 0
 
 

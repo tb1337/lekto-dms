@@ -25,9 +25,9 @@ from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.adapters.outbound.memory import (
     FakeCipher,
     FakeOcr,
+    FakePageRenderer,
     FakeParser,
     FakePasswordHasher,
-    FakePreviewRenderer,
     FakeTotp,
     FakeWebhookSender,
     MemoryDatabase,
@@ -39,7 +39,7 @@ from papiq.adapters.outbound.memory import (
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
 from papiq.adapters.outbound.oidc import AuthlibOidcProvider
 from papiq.adapters.outbound.openai_compat import OpenAiCompatEmbeddings, OpenAiCompatLanguageModel
-from papiq.adapters.outbound.pdfium import PdfiumPreviewRenderer
+from papiq.adapters.outbound.pdfium import PdfiumPageRenderer
 from papiq.adapters.outbound.regex import RegexPatternMatcher
 from papiq.adapters.outbound.s3 import S3ObjectStore
 from papiq.adapters.outbound.sql import SqlEventBus, SqlUnitOfWorkFactory
@@ -59,9 +59,9 @@ from papiq.core.ports import (
     ObjectStore,
     Ocr,
     OidcProvider,
+    PageRenderer,
     PasswordHasher,
     PatternMatcher,
-    PreviewRenderer,
     SearchIndex,
     SecretCipher,
     Totp,
@@ -80,7 +80,7 @@ from papiq.core.services.imports import ImportedClassifyNode, ImportedExtractNod
 from papiq.core.services.indexing import IndexingPolicy, IndexingService
 from papiq.core.services.maintenance import MaintenanceService
 from papiq.core.services.master_data import MasterDataService
-from papiq.core.services.nodes import OcrNode, ParseNode
+from papiq.core.services.nodes import OcrNode, PagesNode, ParseNode
 from papiq.core.services.oidc import OidcService
 from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode, RetryPolicy
 from papiq.core.services.rules import RuleService
@@ -220,9 +220,7 @@ def docling_parser(settings: Settings) -> DoclingParser:
 
 OCR_ENGINES: dict[str, Factory[Ocr]] = {"ocrmypdf": ocrmypdf_engine}
 PARSERS: dict[str, Factory[DocumentParser]] = {"docling": docling_parser}
-PREVIEW_RENDERERS: dict[str, Factory[PreviewRenderer]] = {
-    "pdfium": lambda _: PdfiumPreviewRenderer()
-}
+PAGE_RENDERERS: dict[str, Factory[PageRenderer]] = {"pdfium": lambda _: PdfiumPageRenderer()}
 
 
 def redirect_uri(settings: Settings) -> str:
@@ -267,7 +265,7 @@ class Container:
     clock: Clock
     ocr: Ocr
     parser: DocumentParser
-    previews: PreviewRenderer
+    pages: PageRenderer
     password_hasher: PasswordHasher
     cipher: SecretCipher
     webhook_sender: WebhookSender
@@ -312,7 +310,7 @@ def build_container(settings: Settings) -> Container:
         object_store=object_store,
         ocr=_select("ocr", "ocrmypdf", OCR_ENGINES, settings),
         parser=_select("parser", "docling", PARSERS, settings),
-        previews=_select("previews", "pdfium", PREVIEW_RENDERERS, settings),
+        pages=_select("pages", "pdfium", PAGE_RENDERERS, settings),
         password_hasher=Argon2PasswordHasher(),
         cipher=secret_cipher(settings),
         webhook_sender=HttpWebhookSender(user_agent=f"Papiq/{__version__}"),
@@ -350,7 +348,7 @@ def build_memory_container(clock: Clock | None = None) -> Container:
         clock=clock or SystemClock(),
         ocr=FakeOcr(),
         parser=FakeParser(),
-        previews=FakePreviewRenderer(),
+        pages=FakePageRenderer(),
         password_hasher=FakePasswordHasher(),
         cipher=FakeCipher(),
         webhook_sender=FakeWebhookSender(),
@@ -448,7 +446,8 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
     executors: dict[Node, NodeExecutor] = {
         node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE
     }
-    executors[Node.OCR] = OcrNode(store, container.ocr, container.previews)
+    executors[Node.OCR] = OcrNode(store, container.ocr)
+    executors[Node.PAGES] = PagesNode(store, container.pages)
     executors[Node.PARSE] = ParseNode(store, container.parser)
     policy = policy_of(settings)
     model = container.language_model

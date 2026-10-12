@@ -1,8 +1,8 @@
-"""Stand-ins for OCR, parser and preview renderer: fast, deterministic, no external programs.
+"""Stand-ins for OCR, parser and page renderer: fast, deterministic, no external programs.
 
 They follow the contracts without real recognition: the archive is a minimal PDF that names the
-source, the Markdown is a short text, the preview a tiny WebP header. A file that is neither a
-PDF ending with `%%EOF` nor a supported image counts as damaged.
+source, the Markdown is a short text, the page images tiny WebP headers. A file that is neither
+a PDF ending with `%%EOF` nor a supported image counts as damaged.
 """
 
 import asyncio
@@ -12,6 +12,7 @@ from pathlib import Path
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.ports.ocr import OcrResult
+from papiq.core.ports.pages import PREVIEW_FILE, RenderedPages
 from papiq.core.ports.parser import ParseResult
 
 FAKE_PDF = b"%PDF-1.7\n% papiq fake archive\n%%EOF\n"
@@ -45,10 +46,20 @@ class FakeParser:
         return ParseResult(pages=1, parser="fake-parser 1")
 
 
-class FakePreviewRenderer:
-    async def render_first_page(self, source: Path, target: Path) -> None:
+class FakePageRenderer:
+    """`pages` images per document."""
+
+    def __init__(self, pages: int = 1) -> None:
+        self.pages = pages
+        self.calls: list[Path] = []
+
+    async def render_pages(self, source: Path, *, media_type: str, target: Path) -> RenderedPages:
+        self.calls.append(source)
         _check(await asyncio.to_thread(source.read_bytes))
-        await asyncio.to_thread(target.write_bytes, FAKE_WEBP)
+        for number in range(1, self.pages + 1):
+            await asyncio.to_thread((target / f"{number}.webp").write_bytes, FAKE_WEBP)
+        await asyncio.to_thread((target / PREVIEW_FILE).write_bytes, FAKE_WEBP)
+        return RenderedPages(pages=self.pages, renderer="fake-pages 1")
 
 
 def _check(data: bytes) -> None:

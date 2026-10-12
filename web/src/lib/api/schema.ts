@@ -1029,6 +1029,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/{id}/pages/{number}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The image of one page
+		 * @description Needs read access. Pages are numbered from 1 up to `page_count`; 404 while the page images do not exist (yet) or for a number the document does not have.
+		 */
+		get: operations['get_document_page_api_v1_documents__id__pages__number__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/{id}/log': {
 		parameters: {
 			query?: never;
@@ -1770,6 +1790,7 @@ export interface components {
 		 *       "media_type": "application/pdf",
 		 *       "original_filename": "scan_0042.pdf",
 		 *       "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "page_count": 2,
 		 *       "processing": {
 		 *         "nodes": [
 		 *           {
@@ -1848,6 +1869,11 @@ export interface components {
 			};
 			/** @description None while processing runs. */
 			lane: components['schemas']['Lane'] | null;
+			/**
+			 * Page Count
+			 * @description Pages of the document, once its page images are rendered (`pages` node).
+			 */
+			page_count: number | null;
 			processing: components['schemas']['Processing'];
 			/**
 			 * Created At
@@ -1886,6 +1912,7 @@ export interface components {
 		 *       "media_type": "application/pdf",
 		 *       "original_filename": "scan_0042.pdf",
 		 *       "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "page_count": 2,
 		 *       "processing": {
 		 *         "nodes": [
 		 *           {
@@ -1964,6 +1991,11 @@ export interface components {
 			};
 			/** @description None while processing runs. */
 			lane: components['schemas']['Lane'] | null;
+			/**
+			 * Page Count
+			 * @description Pages of the document, once its page images are rendered (`pages` node).
+			 */
+			page_count: number | null;
 			processing: components['schemas']['Processing'];
 			/**
 			 * Created At
@@ -11829,6 +11861,97 @@ export interface operations {
 			header?: never;
 			path: {
 				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'image/webp': string;
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	get_document_page_api_v1_documents__id__pages__number__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+				number: number;
 			};
 			cookie?: never;
 		};

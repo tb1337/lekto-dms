@@ -118,8 +118,14 @@ async def test_deleting_a_document_removes_its_files(world: World) -> None:
     other = await world.pipeline().receive(bob.id, incoming(shared_file), filename="c.pdf")
     await world.drain()
     for document in (kept, gone):
-        for key in derivative_keys(document.id):
+        for key in derivative_keys(document.id, 2):
             await world.object_store.put(key, b"x", content_type="x")
+    async with world.uow() as uow:
+        for document in (kept, gone):
+            stored = await uow.documents.get(document.id)
+            stored.set_page_count(2, world.clock.now())
+            await uow.documents.update(stored)
+        await uow.commit()
 
     await world.documents.delete(alice.id, gone.id)
     await world.documents.delete(alice.id, kept.id)
@@ -127,7 +133,7 @@ async def test_deleting_a_document_removes_its_files(world: World) -> None:
     assert not await service.run_next_job()
 
     for document in (kept, gone):
-        for key in derivative_keys(document.id):
+        for key in derivative_keys(document.id, 2):
             assert not await world.object_store.exists(key)
     assert not await world.object_store.exists(original_key(gone.sha256))
     assert await world.object_store.exists(original_key(other.sha256))  # Bob still has it

@@ -19,9 +19,9 @@ from papiq.core.ports.job_queue import JobQueue
 from papiq.core.ports.llm import LanguageModel, StructuredAnswer, StructuredRequest
 from papiq.core.ports.object_store import ObjectStore
 from papiq.core.ports.ocr import Ocr, OcrResult
+from papiq.core.ports.pages import PageRenderer
 from papiq.core.ports.parser import DocumentParser, ParseResult
 from papiq.core.ports.patterns import PatternMatcher
-from papiq.core.ports.preview import PreviewRenderer
 from papiq.core.ports.repository import (
     ContactRepository,
     DocumentFilter,
@@ -76,10 +76,10 @@ __all__ = [
     "OcrResult",
     "OidcProvider",
     "Outbox",
+    "PageRenderer",
     "ParseResult",
     "PasswordHasher",
     "PatternMatcher",
-    "PreviewRenderer",
     "ProcessingLog",
     "Repository",
     "RuleApplicationRepository",

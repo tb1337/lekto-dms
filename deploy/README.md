@@ -237,9 +237,9 @@ derivatives). **Not** Meilisearch: the index is derived; after a restore `papiq 
 it. Keep the secrets (`PAPIQ_SECRET_KEY` above all) in your password manager, not only in the
 backup. Back up the database first, then the objects: the originals never change (their key is the SHA-256
 of the content), so objects that came in after the database copy are only unused files, while the
-other order could leave documents without a file. The derivatives (archive PDF, text, preview) are
-written again when a document is processed again; a copy of an older state is still usable, and
-reprocessing the document renews it.
+other order could leave documents without a file. The derivatives (archive PDF, text, preview,
+page images) are written again when a document is processed again; a copy of an older state is
+still usable, and reprocessing the document renews it.
 
 ### SQLite and file system
 
@@ -308,4 +308,6 @@ update the API container first: a worker that starts waits for the schema, and a
 newer image migrated is refused by an older one.
 
 An update that changes what the search index holds says so in its release notes; run
-`papiq reindex` after it (the update that renamed attributes to fields is one).
+`papiq reindex` after it (the update that renamed attributes to fields is one). The update
+that made the pipeline a graph (0.2.0) added the page images: run `papiq render-pages` once
+after it, and the worker renders the pages of the documents from before.

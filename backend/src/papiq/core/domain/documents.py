@@ -122,6 +122,7 @@ class Document:
     channel: Channel = Channel.API
     lane: Lane | None = None
     processing: Processing
+    page_count: int | None = None  # known once the pages node has rendered the page images
     created_at: datetime
     updated_at: datetime
     version: int = 1
@@ -305,6 +306,45 @@ class Document:
             )
         self._reset({resume_at}, now)
         return tuple(overruled)
+
+    def set_page_count(self, count: int, now: datetime) -> None:
+        """The pages node rendered `count` page images."""
+        if count < 1:
+            raise ValidationError(f"a document has at least one page, not {count}")
+        self.page_count = count
+        self._touch(now)
+
+    def is_skipped(self, node: Node, run: int) -> bool:
+        """True if `node` was skipped in run `run` and processing is not running: a catch-up
+        may record its result (`catch_up`)."""
+        processing = self.processing
+        return (
+            run == processing.run
+            and processing.status is not ProcessingStatus.PROCESSING
+            and processing.nodes[node].status is NodeStatus.SKIPPED
+        )
+
+    def catch_up(
+        self, node: Node, run: int, result: NodeResult, started: datetime, now: datetime
+    ) -> None:
+        """Record the result of a node that was skipped in the current run, outside
+        processing (the command `render-pages` catching up on page images). Status and lane
+        stay as they are: a failure shows in the node's state and the log only."""
+        if not self.is_skipped(node, run):
+            raise InvalidTransitionError(
+                f"document {self.id}: node {node} of run {run} was not skipped "
+                f"({self.processing.status}, {self.processing.nodes[node].status}, "
+                f"run {self.processing.run})"
+            )
+        self.processing.nodes[node] = NodeState(
+            status=NodeStatus.DONE, outcome=result.outcome, started_at=started, finished_at=now
+        )
+        self._record(
+            NodeCompleted(
+                document_id=self.id, occurred_at=now, node=node, run=run, outcome=result.outcome
+            )
+        )
+        self._touch(now)
 
     def _require_awaiting(self, node: Node, run: int) -> None:
         if not self.is_awaiting(node, run):

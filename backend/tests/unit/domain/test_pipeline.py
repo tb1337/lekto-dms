@@ -473,6 +473,41 @@ def test_reprocess_rules() -> None:
     assert document.reprocess_from(Node.OCR, NOW) == (Node.OCR,)
 
 
+def test_the_page_count_is_set_by_the_pages_node() -> None:
+    document = received()
+    document.set_page_count(3, LATER)
+    assert (document.page_count, document.updated_at) == (3, LATER)
+    with pytest.raises(ValidationError, match="at least one page"):
+        document.set_page_count(0, NOW)
+
+
+def test_a_skipped_node_is_caught_up_on_without_touching_status_or_lane() -> None:
+    document = received()
+    document.processing.nodes[Node.PAGES] = NodeState(status=NodeStatus.SKIPPED)
+    assert not document.is_skipped(Node.PAGES, 1)  # not while processing
+    builders.run_pipeline(document, {Node.CLASSIFY: UNCERTAIN})
+    document.pull_events()
+    assert document.is_skipped(Node.PAGES, 1)
+    assert not document.is_skipped(Node.OCR, 1) and not document.is_skipped(Node.PAGES, 2)
+
+    document.catch_up(Node.PAGES, 1, OK, NOW, LATER)
+    assert document.processing.nodes[Node.PAGES] == NodeState(
+        status=NodeStatus.DONE, outcome=Outcome.OK, started_at=NOW, finished_at=LATER
+    )
+    assert (status(document), document.lane) == (ProcessingStatus.REVIEW, Lane.YELLOW)
+    (event,) = document.pull_events()
+    assert isinstance(event, NodeCompleted) and event.node is Node.PAGES
+    with pytest.raises(InvalidTransitionError, match="was not skipped"):
+        document.catch_up(Node.PAGES, 1, OK, NOW, LATER)
+
+    # A failure stays in the node; the document is not red for it.
+    green = builders.run_pipeline(received())
+    green.processing.nodes[Node.PAGES] = NodeState(status=NodeStatus.SKIPPED)
+    green.catch_up(Node.PAGES, 1, FAILED, NOW, LATER)
+    assert green.processing.outcome(Node.PAGES) is Outcome.FAILED
+    assert (status(green), green.lane) == (ProcessingStatus.COMPLETED, Lane.GREEN)
+
+
 def test_a_skipped_node_counts_as_done_for_the_nodes_after_it() -> None:
     document = received()
     document.processing.nodes[Node.PAGES] = NodeState(status=NodeStatus.SKIPPED)

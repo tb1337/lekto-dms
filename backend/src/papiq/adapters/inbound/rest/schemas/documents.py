@@ -101,6 +101,7 @@ class DocumentDetails(BaseModel):
                         }
                     },
                     "lane": "green",
+                    "page_count": 2,
                     "processing": {
                         "status": "completed",
                         "run": 1,
@@ -148,6 +149,9 @@ class DocumentDetails(BaseModel):
     document_date: date | None
     fields: dict[UUID, FieldJson] = Field(description="Values by field id.")
     lane: Lane | None = Field(description="None while processing runs.")
+    page_count: int | None = Field(
+        description="Pages of the document, once its page images are rendered (`pages` node)."
+    )
     processing: Processing
     created_at: datetime
     updated_at: datetime
@@ -171,6 +175,7 @@ class DocumentDetails(BaseModel):
             document_date=document.document_date,
             fields={key: field_json(value) for key, value in sorted(document.fields.items())},
             lane=document.lane,
+            page_count=document.page_count,
             processing=Processing(
                 status=state.status,
                 run=state.run,

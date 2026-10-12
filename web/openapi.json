@@ -9364,6 +9364,123 @@
         ]
       }
     },
+    "/api/v1/documents/{id}/pages/{number}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "The image of one page",
+        "description": "Needs read access. Pages are numbered from 1 up to `page_count`; 404 while the page images do not exist (yet) or for a number the document does not have.",
+        "operationId": "get_document_page_api_v1_documents__id__pages__number__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents/{id}/log": {
       "get": {
         "tags": [
@@ -12470,6 +12587,18 @@
             ],
             "description": "None while processing runs."
           },
+          "page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count",
+            "description": "Pages of the document, once its page images are rendered (`pages` node)."
+          },
           "processing": {
             "$ref": "#/components/schemas/Processing"
           },
@@ -12516,6 +12645,7 @@
           "document_date",
           "fields",
           "lane",
+          "page_count",
           "processing",
           "created_at",
           "updated_at"
@@ -12540,6 +12670,7 @@
             "media_type": "application/pdf",
             "original_filename": "scan_0042.pdf",
             "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
+            "page_count": 2,
             "processing": {
               "nodes": [
                 {
@@ -12692,6 +12823,18 @@
             ],
             "description": "None while processing runs."
           },
+          "page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count",
+            "description": "Pages of the document, once its page images are rendered (`pages` node)."
+          },
           "processing": {
             "$ref": "#/components/schemas/Processing"
           },
@@ -12723,6 +12866,7 @@
           "document_date",
           "fields",
           "lane",
+          "page_count",
           "processing",
           "created_at",
           "updated_at"
@@ -12748,6 +12892,7 @@
             "media_type": "application/pdf",
             "original_filename": "scan_0042.pdf",
             "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
+            "page_count": 2,
             "processing": {
               "nodes": [
                 {

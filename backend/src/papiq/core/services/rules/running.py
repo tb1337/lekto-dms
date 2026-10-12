@@ -35,7 +35,17 @@ from papiq.core.domain.ids import (
 )
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.permissions import can_file_into
-from papiq.core.domain.pipeline import Outcome, Step, StepResult, StepRun
+from papiq.core.domain.pipeline import (
+    CHOSEN_DRAWER,
+    PERSON,
+    PERSON_DRAWER,
+    RULES,
+    RULES_CHANGE,
+    Outcome,
+    Step,
+    StepResult,
+    StepRun,
+)
 from papiq.core.domain.rule_engine import (
     DRAWER,
     TEXT_TARGET,
@@ -52,16 +62,7 @@ from papiq.core.domain.rule_engine import (
 from papiq.core.domain.rules import Rule, SetDrawer, Trigger
 from papiq.core.domain.users import User
 from papiq.core.ports import ObjectStore, PatternMatcher, UnitOfWork
-from papiq.core.services.inbox import (
-    CHOSEN_DRAWER,
-    MODEL_STEPS,
-    PERSON,
-    PERSON_DRAWER,
-    RULES,
-    RULES_CHANGE,
-    field_checks,
-    latest_entries,
-)
+from papiq.core.services.inbox import MODEL_STEPS, field_checks, latest_entries
 from papiq.core.services.objects import markdown_key
 
 log = logging.getLogger(__name__)

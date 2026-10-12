@@ -20,6 +20,8 @@ from papiq.core.domain.permissions import can_manage_master_data
 from papiq.core.domain.rules import References
 from papiq.core.ports import Clock, NamedRepository, UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import load_actor
+
+# A rename queues the indexing service's refresh job; the worker runs it through that service.
 from papiq.core.services.indexing import REFRESH_JOB
 from papiq.core.services.rules.references import disable_rules, misfits, refers_to
 

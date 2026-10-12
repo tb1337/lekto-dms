@@ -8,7 +8,8 @@ from fastapi import APIRouter
 from papiq.adapters.inbound.rest.auth import PROTECTED, Authenticated
 from papiq.adapters.inbound.rest.context import Context
 from papiq.adapters.inbound.rest.problems import problem_responses
-from papiq.adapters.inbound.rest.schemas import DrawerCreate, DrawerOut, NameIn, ShareIn
+from papiq.adapters.inbound.rest.schemas.common import NameIn
+from papiq.adapters.inbound.rest.schemas.drawers import DrawerCreate, DrawerOut, ShareIn
 from papiq.core.domain.ids import DrawerId, UserId
 
 router = APIRouter(prefix="/drawers", tags=["drawers"], dependencies=PROTECTED)

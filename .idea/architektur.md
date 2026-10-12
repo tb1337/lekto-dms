@@ -79,8 +79,10 @@ Papiq ist hexagonal aufgebaut: Der fachliche Kern kennt keine Datenbank, kein S3
 | Passwort-Hash, Geheimnis-Verschlüsselung, TOTP | Argon2id, AES-GCM, pyotp | andere Verfahren |
 
 Webhook-Versand ist ein ausgehender Adapter, der Ereignisse vom Event-Bus abonniert. Jeder Port
-hat einen In-Memory-Adapter für die Kern-Tests (M13-Review: der Mustersuche fehlt er noch, der
-Speicher-Container nutzt den `regex`-Adapter, der ohne Dienst läuft).
+hat einen In-Memory-Adapter für die Kern-Tests. Ausnahme: die Mustersuche. Ihr Vertrag verlangt
+eine Suche, die ein Zeitlimit abbricht und den Event-Loop nicht blockiert; das kann die
+`regex`-Engine, Pythons `re` nicht. Der `regex`-Adapter braucht keinen Dienst und läuft auch im
+Speicher-Container (Tobi, 12.10.2026).
 
 Hexagonal betrifft den inneren Aufbau, nicht die Zahl der Container: Ein Adapter kann lokal laufen oder einen entfernten Dienst ansprechen, ohne dass sich der Kern ändert.
 

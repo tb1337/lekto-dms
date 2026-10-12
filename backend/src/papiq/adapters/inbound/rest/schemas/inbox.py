@@ -1,0 +1,196 @@
+"""The inbox: open fields, review and confirmation."""
+
+from enum import StrEnum
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails, DocumentPatch
+from papiq.core.domain.classification import FieldCheck
+from papiq.core.domain.drawers import ShareLevel
+from papiq.core.domain.pipeline import Outcome, Step
+from papiq.core.services.inbox import InboxItem, OpenStep, Review, StepReview
+
+ResumeStep = StrEnum(  # type: ignore[misc]
+    "ResumeStep", {step.name: step.value for step in (Step.EXTRACT_FIELDS, Step.APPLY_RULES)}
+)
+"""Steps processing can resume with after a confirmation."""
+
+
+class FieldCheckOut(BaseModel):
+    """A field the model proposed, and its check."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "field": "contact",
+                    "outcome": "uncertain",
+                    "confidence": 0.5,
+                    "reason": "'Stadtwerke' does not appear in the text",
+                    "proposed": "Stadtwerke",
+                    "evidence": None,
+                    "value": None,
+                    "suggestion": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
+                    "new_name": None,
+                }
+            ]
+        }
+    )
+
+    field: str = Field(
+        description=("`contact`, `document_type`, `tags`, `document_date`, or `field:<id>`.")
+    )
+    outcome: Outcome = Field(description="`ok` or `uncertain`.")
+    confidence: float = Field(description="0 to 1, from checks against the text.")
+    reason: str | None = Field(description="Why the field is uncertain.")
+    proposed: Any = Field(description="What the model answered, unchanged.")
+    evidence: str | None = Field(description="The excerpt the model quoted.")
+    value: Any = Field(
+        description=(
+            "The checked value, applied to the document (`ok` only): an id, a list of tag ids, "
+            "a date, or a field value."
+        )
+    )
+    suggestion: Any = Field(
+        description="A value that can be accepted as it is (uncertain fields only)."
+    )
+    new_name: str | None = Field(
+        description="A contact or document type that does not exist; an admin can create it."
+    )
+
+    @classmethod
+    def of(cls, check: FieldCheck) -> "FieldCheckOut":
+        return cls(
+            field=check.field,
+            outcome=check.outcome,
+            confidence=round(check.confidence, 4),
+            reason=check.reason,
+            proposed=check.proposed,
+            evidence=check.evidence,
+            value=check.value,
+            suggestion=check.suggestion,
+            new_name=check.new_name,
+        )
+
+
+class OpenStepOut(BaseModel):
+    """A step that was uncertain or failed, with the fields left to decide."""
+
+    step: Step
+    outcome: Outcome
+    reason: str | None
+    fields: list[FieldCheckOut] = Field(
+        description=(
+            "Uncertain fields of classification, field extraction and the rules (also "
+            "`drawer`, `title`, `review`), and of filing (`drawer`)."
+        )
+    )
+
+    @classmethod
+    def of(cls, item: OpenStep) -> "OpenStepOut":
+        return cls(
+            step=item.step,
+            outcome=item.outcome,
+            reason=item.reason,
+            fields=[FieldCheckOut.of(check) for check in item.fields],
+        )
+
+
+class InboxItemOut(BaseModel):
+    document: DocumentDetails
+    open: list[OpenStepOut]
+
+    @classmethod
+    def of(cls, item: InboxItem) -> "InboxItemOut":
+        return cls(
+            document=DocumentDetails.of(item.document, ShareLevel.READ_WRITE),
+            open=[OpenStepOut.of(step) for step in item.open],
+        )
+
+
+class InboxPage(BaseModel):
+    items: list[InboxItemOut]
+    next_cursor: str | None = Field(
+        description="Pass as `cursor` for the next page; null on the last page."
+    )
+
+
+class StepReviewOut(BaseModel):
+    """The latest run of classification or field extraction by the model."""
+
+    step: Step
+    run: int
+    outcome: Outcome
+    reason: str | None
+    model_version: str | None = Field(examples=["qwen3:8b"])
+    truncated: bool | None = Field(description="Whether a part of the text was left out.")
+    fields: list[FieldCheckOut]
+
+    @classmethod
+    def of(cls, review: StepReview) -> "StepReviewOut":
+        return cls(
+            step=review.step,
+            run=review.run,
+            outcome=review.outcome,
+            reason=review.reason,
+            model_version=review.model_version,
+            truncated=review.truncated,
+            fields=[FieldCheckOut.of(check) for check in review.fields],
+        )
+
+
+class ReviewOut(BaseModel):
+    document: DocumentDetails
+    open: list[OpenStepOut]
+    steps: list[StepReviewOut]
+
+    @classmethod
+    def of(cls, review: Review) -> "ReviewOut":
+        return cls(
+            document=DocumentDetails.of(review.document, ShareLevel.READ_WRITE),
+            open=[OpenStepOut.of(step) for step in review.open],
+            steps=[StepReviewOut.of(step) for step in review.steps],
+        )
+
+
+class ConfirmRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "changes": {"document_date": "2026-03-31"},
+                    "accept_suggestions": True,
+                    "resume_at": "apply_rules",
+                }
+            ]
+        },
+    )
+
+    changes: DocumentPatch = Field(
+        default_factory=DocumentPatch,
+        description="A metadata change as with PATCH; decides the fields it sets.",
+    )
+    accept_suggestions: bool = Field(
+        default=False,
+        description=(
+            "Take the suggestion of every open field that is neither in `changes` nor set on "
+            "the document."
+        ),
+    )
+    resume_at: ResumeStep = Field(
+        default=ResumeStep.APPLY_RULES,  # type: ignore[attr-defined]
+        description=(
+            "`extract_fields` after correcting the document type, so the fields of the "
+            "new type are extracted."
+        ),
+    )
+    drawer_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Move the document into this drawer (one the owner may write to); decides the "
+            "rules' open field `drawer`. Default: it stays where it is."
+        ),
+    )

@@ -21,6 +21,8 @@ from sqlalchemy import func, insert, select
 
 from papiq.adapters.outbound.sql import events, tables
 from papiq.adapters.outbound.sql.database import Database
+from papiq.adapters.outbound.sql.documents import SqlDocumentRepository, SqlProcessingLog
+from papiq.adapters.outbound.sql.drawers import SqlDrawerRepository
 from papiq.adapters.outbound.sql.identity import (
     SqlApiTokenRepository,
     SqlCredentialRepository,
@@ -29,18 +31,15 @@ from papiq.adapters.outbound.sql.identity import (
     SqlSessionRepository,
 )
 from papiq.adapters.outbound.sql.job_queue import SqlJobQueue
-from papiq.adapters.outbound.sql.repositories import (
+from papiq.adapters.outbound.sql.master_data import (
     SqlContactRepository,
-    SqlDocumentRepository,
     SqlDocumentTypeRepository,
-    SqlDrawerRepository,
     SqlFieldRepository,
-    SqlProcessingLog,
     SqlTagRepository,
-    SqlUserRepository,
 )
 from papiq.adapters.outbound.sql.rules import SqlRuleApplicationRepository, SqlRuleRepository
 from papiq.adapters.outbound.sql.transaction import Transaction
+from papiq.adapters.outbound.sql.users import SqlUserRepository
 from papiq.adapters.outbound.sql.webhooks import SqlWebhookRepository
 from papiq.core.domain.events import DomainEvent
 

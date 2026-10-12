@@ -6,9 +6,8 @@ from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import NotFoundError, ValidationError
 from papiq.core.domain.ids import DocumentId, new_id
-from papiq.core.domain.pipeline import Lane
+from papiq.core.domain.pipeline import RULES_APPLY, Lane
 from papiq.core.domain.rules import ApplicationStatus, ForceReview, SetDrawer, SetTitle
-from papiq.core.services.inbox import RULES_APPLY
 from papiq.core.services.rules.retroactive import BATCH
 from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (

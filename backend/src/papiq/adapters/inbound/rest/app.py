@@ -35,7 +35,7 @@ from papiq.adapters.inbound.rest.auth import (
 from papiq.adapters.inbound.rest.context import ApiContext
 from papiq.adapters.inbound.rest.events import EventHub, dispatch_forever
 from papiq.adapters.inbound.rest.middleware import LimitRequestBody, NoStore
-from papiq.adapters.inbound.rest.schemas import EventMessage
+from papiq.adapters.inbound.rest.schemas.events import EventMessage
 from papiq.adapters.inbound.rest.ui import ui_routes
 
 PREFIX = "/api/v1"

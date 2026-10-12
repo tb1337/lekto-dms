@@ -8,11 +8,10 @@ import pytest
 from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import NotFoundError
-from papiq.core.domain.pipeline import Lane, Outcome, ProcessingStatus
+from papiq.core.domain.pipeline import RULES_CHANGE, Lane, Outcome, ProcessingStatus
 from papiq.core.domain.rule_engine import Note
 from papiq.core.domain.rules import ForceReview, SetContact, SetDrawer, SetTitle, Trigger
 from papiq.core.services.documents import MetadataChange
-from papiq.core.services.inbox import RULES_CHANGE
 from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (
     Classifies,

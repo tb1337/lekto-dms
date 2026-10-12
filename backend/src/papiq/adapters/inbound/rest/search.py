@@ -9,8 +9,8 @@ from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
 from papiq.adapters.inbound.rest.documents import LaneFilter, document_filter
 from papiq.adapters.inbound.rest.problems import problem_responses
-from papiq.adapters.inbound.rest.schemas import (
-    DocumentDetails,
+from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails
+from papiq.adapters.inbound.rest.schemas.search import (
     SearchResultItem,
     SearchResultPage,
     SnippetSegment,

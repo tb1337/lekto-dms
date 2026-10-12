@@ -36,6 +36,8 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
 )
 from papiq.core.services._access import load_actor
+
+# Signing in through a provider composes the sign-in and the account use cases.
 from papiq.core.services.auth import AuthService, SignedIn
 from papiq.core.services.users import add_user
 

@@ -14,6 +14,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request, Response
 
+from papiq.adapters.inbound.bearer import bearer_token
 from papiq.adapters.inbound.rest.context import ApiContext, Context
 from papiq.core.domain.errors import AuthenticationError, PermissionDeniedError
 from papiq.core.domain.identity import csrf_matches
@@ -67,10 +68,7 @@ async def authenticate(request: Request, context: Context) -> Principal:
         return cached
     header = request.headers.get("authorization")
     if header is not None:
-        scheme, _, token = header.partition(" ")
-        if scheme.lower() != "bearer" or not token.strip():
-            raise AuthenticationError("authentication is required")
-        principal = await context.auth.authenticate_token(token.strip())
+        principal = await context.auth.authenticate_token(bearer_token(header))
         if request.method not in SAFE_METHODS and not principal.can_write:
             raise PermissionDeniedError("this API token may only read")
     else:

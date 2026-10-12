@@ -6,12 +6,11 @@ from datetime import datetime
 from papiq.core.domain.classification import FieldCheck
 from papiq.core.domain.documents import Document
 from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.pipeline import Outcome, StepResult
+from papiq.core.domain.pipeline import RULES, Outcome, StepResult
 from papiq.core.domain.rule_engine import DRAWER, Mode
 from papiq.core.domain.rules import Trigger
 from papiq.core.ports import ObjectStore, PatternMatcher, UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import may_file
-from papiq.core.services.inbox import RULES
 from papiq.core.services.rules.running import (
     Prepared,
     active_rules,

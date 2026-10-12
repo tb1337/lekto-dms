@@ -10,9 +10,9 @@ from papiq.core.domain.permissions import (
     can_write_document,
     drawer_access,
 )
+from papiq.core.domain.pipeline import drawer_chooser
 from papiq.core.domain.users import User
 from papiq.core.ports import UnitOfWork
-from papiq.core.services.inbox import drawer_chooser
 
 
 async def load_actor(uow: UnitOfWork, actor: UserId) -> User:

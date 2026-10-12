@@ -11,7 +11,8 @@ from pydantic import BaseModel
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import ApiContext, Context
 from papiq.adapters.inbound.rest.problems import problem_responses
-from papiq.adapters.inbound.rest.schemas import (
+from papiq.adapters.inbound.rest.schemas.common import NameIn
+from papiq.adapters.inbound.rest.schemas.master_data import (
     ContactCreate,
     ContactOut,
     ContactPatch,
@@ -22,7 +23,6 @@ from papiq.adapters.inbound.rest.schemas import (
     FieldOut,
     FieldPatch,
     MasterDataOut,
-    NameIn,
 )
 from papiq.core.domain.documents import UNSET, Unset
 from papiq.core.domain.ids import DocumentTypeId, FieldId

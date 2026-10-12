@@ -23,8 +23,7 @@ from starlette.background import BackgroundTask
 from papiq.adapters.inbound.rest.auth import PROTECTED, Authenticated, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
 from papiq.adapters.inbound.rest.problems import problem_responses
-from papiq.adapters.inbound.rest.schemas import (
-    ConfirmRequest,
+from papiq.adapters.inbound.rest.schemas.documents import (
     DocumentAccepted,
     DocumentChanged,
     DocumentDetails,
@@ -33,13 +32,16 @@ from papiq.adapters.inbound.rest.schemas import (
     DocumentPatch,
     DocumentPreviewOut,
     ImportedMetadataIn,
-    InboxItemOut,
-    InboxPage,
     LogEntry,
     MoveRequest,
     ReprocessRequest,
-    ReviewOut,
     VisibilityOut,
+)
+from papiq.adapters.inbound.rest.schemas.inbox import (
+    ConfirmRequest,
+    InboxItemOut,
+    InboxPage,
+    ReviewOut,
 )
 from papiq.adapters.inbound.rest.upload import FILE_FIELD, read_upload
 from papiq.adapters.inbound.schemas import RuleReportOut

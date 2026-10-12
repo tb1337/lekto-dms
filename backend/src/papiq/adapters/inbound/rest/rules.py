@@ -7,7 +7,7 @@ from fastapi import APIRouter, Query, Request, Response
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
 from papiq.adapters.inbound.rest.problems import problem_responses
-from papiq.adapters.inbound.rest.schemas import (
+from papiq.adapters.inbound.rest.schemas.rules import (
     ApplyPreviewItemOut,
     ApplyPreviewOut,
     ApplyPreviewRequest,

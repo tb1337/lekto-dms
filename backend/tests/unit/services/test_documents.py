@@ -14,11 +14,10 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.events import DocumentDeleted, DocumentFiled, DocumentUpdated
 from papiq.core.domain.fields import FieldType
 from papiq.core.domain.ids import ContactId, DocumentId, DrawerId, TagId, UserId, new_id
-from papiq.core.domain.pipeline import Lane, Step
+from papiq.core.domain.pipeline import PERSON_DRAWER, Lane, Step
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import DocumentFilter
 from papiq.core.services.documents import DocumentFile, FileInfo
-from papiq.core.services.inbox import PERSON_DRAWER
 from papiq.core.services.objects import archive_key, markdown_key, preview_key
 from tests.builders import UNCERTAIN, incoming
 from tests.unit.services.conftest import Returns, World

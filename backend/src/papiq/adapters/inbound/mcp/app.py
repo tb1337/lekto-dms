@@ -21,6 +21,7 @@ from starlette.datastructures import Headers
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from papiq.adapters.inbound.bearer import bearer_token
 from papiq.adapters.inbound.context import ApiContext
 from papiq.adapters.inbound.mcp.server import build_server
 from papiq.adapters.inbound.problems import problem
@@ -42,10 +43,8 @@ class BearerAuth:
             await self._app(scope, receive, send)
             return
         try:
-            scheme, _, token = Headers(scope=scope).get("authorization", "").partition(" ")
-            if scheme.lower() != "bearer" or not token.strip():
-                raise AuthenticationError("authentication is required")
-            principal = await self._context.auth.authenticate_token(token.strip())
+            token = bearer_token(Headers(scope=scope).get("authorization", ""))
+            principal = await self._context.auth.authenticate_token(token)
         except AuthenticationError as error:
             response = problem(401, str(error), headers={"WWW-Authenticate": "Bearer"})
             await response(scope, receive, send)

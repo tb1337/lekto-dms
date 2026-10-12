@@ -23,7 +23,7 @@ from papiq.adapters.inbound.rest.auth import (
 )
 from papiq.adapters.inbound.rest.context import ApiContext, Context
 from papiq.adapters.inbound.rest.problems import problem_responses
-from papiq.adapters.inbound.rest.schemas import (
+from papiq.adapters.inbound.rest.schemas.account import (
     AuthorizationUrl,
     CodeIn,
     LinkOut,

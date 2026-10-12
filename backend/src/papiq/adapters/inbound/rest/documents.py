@@ -39,10 +39,10 @@ from papiq.adapters.inbound.rest.schemas import (
     MoveRequest,
     ReprocessRequest,
     ReviewOut,
-    RuleReportOut,
     VisibilityOut,
 )
 from papiq.adapters.inbound.rest.upload import FILE_FIELD, read_upload
+from papiq.adapters.inbound.schemas import RuleReportOut
 from papiq.adapters.inbound.values import field_value
 from papiq.core.domain.documents import UNSET, Channel, Document, DocumentChanges
 from papiq.core.domain.drawers import ShareLevel

@@ -269,6 +269,33 @@ async def test_others_see_a_document_only_through_a_share_once_green(api: Api) -
         assert missing.headers["content-type"] == PROBLEM
 
 
+async def test_the_text_is_read_in_pieces(api: Api) -> None:
+    owner = await api.user()
+    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    url = response.json()["status_url"]
+    assert (await api.client.get(f"{url}/text", headers=auth(owner))).status_code == 409
+    await api.drain()
+    whole = (await api.client.get(f"{url}/text", headers=auth(owner))).json()
+    text = whole["text"]
+    assert text and whole == {
+        "text": text,
+        "offset": 0,
+        "total_length": len(text),
+        "next_offset": None,
+    }
+    piece = await api.client.get(f"{url}/text?offset=2&limit=3", headers=auth(owner))
+    assert piece.json() == {
+        "text": text[2:5],
+        "offset": 2,
+        "total_length": len(text),
+        "next_offset": 5 if len(text) > 5 else None,
+    }
+    assert (await api.client.get(f"{url}/text?limit=0", headers=auth(owner))).status_code == 422
+    assert (await api.client.get(f"{url}/text")).status_code == 401
+    other = await api.user()
+    assert (await api.client.get(f"{url}/text", headers=auth(other))).status_code == 404
+
+
 async def test_page_images_are_served_by_number(api: Api) -> None:
     owner = await api.user()
     response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))

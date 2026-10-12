@@ -212,6 +212,18 @@ GREEN: dict[str, tuple[Call, dict[str, int]]] = {
             **DENIED,
         },
     ),
+    "text": (
+        doc("GET", "/text"),
+        {
+            "owner": 200,
+            "reader": 200,
+            "writer": 200,
+            "read_token": 200,
+            "admin": 200,
+            **HIDDEN,
+            **DENIED,
+        },
+    ),
     "page": (
         doc("GET", "/pages/1"),
         {
@@ -344,6 +356,7 @@ HIDDEN_FROM_SHARES = [
     "original",
     "archive",
     "preview",
+    "text",
     "page",
     "change",
     "delete",
@@ -367,6 +380,8 @@ async def test_yellow_and_processing_documents_are_the_owners_and_admins(
         response = await call(scene, api.client, scene.headers[actor], which)
         if which == "processing" and operation in {"archive", "preview", "page"}:
             assert response.status_code == 404  # not made yet
+        elif which == "processing" and operation == "text":
+            assert response.status_code == 409  # not parsed yet
         else:
             assert response.status_code in {200, 204}, (actor, response.text)
         if operation == "delete":

@@ -32,6 +32,7 @@ from papiq.adapters.inbound.rest.schemas.documents import (
     DocumentPage,
     DocumentPatch,
     DocumentPreviewOut,
+    DocumentTextOut,
     ImportedMetadataIn,
     LogEntry,
     MoveRequest,
@@ -425,6 +426,37 @@ async def _download(
             "Cache-Control": "private, no-store",
         },
         background=BackgroundTask(path.unlink, missing_ok=True),
+    )
+
+
+TEXT_MAX = 20_000
+"""Characters of text one answer holds at most."""
+
+
+@router.get(
+    "/{id}/text",
+    summary="The recognised text of a document",
+    description=(
+        "Needs read access. The parsed text (Markdown), in pieces of at most "
+        f"{TEXT_MAX} characters; continue with `next_offset`. 409 while the document has no "
+        "text yet (it is not parsed)."
+    ),
+    response_model=DocumentTextOut,
+    responses=problem_responses(401, 404, 409, 422),
+)
+async def document_text(
+    id: UUID,
+    user: CurrentUser,
+    context: Context,
+    offset: Annotated[int, Query(ge=0, description="First character.")] = 0,
+    limit: Annotated[int, Query(ge=1, le=TEXT_MAX, description="Characters.")] = TEXT_MAX,
+) -> DocumentTextOut:
+    piece = await context.documents.read_text(user, DocumentId(id), offset=offset, limit=limit)
+    return DocumentTextOut(
+        text=piece.text,
+        offset=piece.offset,
+        total_length=piece.total_length,
+        next_offset=piece.next_offset,
     )
 
 

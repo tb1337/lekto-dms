@@ -265,6 +265,15 @@ class MoveRequest(BaseModel):
     drawer_id: UUID
 
 
+class DocumentTextOut(BaseModel):
+    """A piece of the parsed text (Markdown); offsets and lengths count characters."""
+
+    text: str
+    offset: int
+    total_length: int
+    next_offset: int | None = Field(description="Where the next piece starts; null at the end.")
+
+
 class LogEntry(BaseModel):
     """One execution of one node."""
 

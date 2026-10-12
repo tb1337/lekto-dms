@@ -1049,6 +1049,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/{id}/text': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The recognised text of a document
+		 * @description Needs read access. The parsed text (Markdown), in pieces of at most 20000 characters; continue with `next_offset`. 409 while the document has no text yet (it is not parsed).
+		 */
+		get: operations['document_text_api_v1_documents__id__text_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/{id}/log': {
 		parameters: {
 			query?: never;
@@ -2091,6 +2111,23 @@ export interface components {
 			rules: components['schemas']['RuleReportOut'][] | null;
 			/** @description Who would see the document; null if the caller could not read it then. */
 			visibility: components['schemas']['VisibilityOut'] | null;
+		};
+		/**
+		 * DocumentTextOut
+		 * @description A piece of the parsed text (Markdown); offsets and lengths count characters.
+		 */
+		DocumentTextOut: {
+			/** Text */
+			text: string;
+			/** Offset */
+			offset: number;
+			/** Total Length */
+			total_length: number;
+			/**
+			 * Next Offset
+			 * @description Where the next piece starts; null at the end.
+			 */
+			next_offset: number | null;
 		};
 		/**
 		 * DocumentTypeCreate
@@ -11995,6 +12032,118 @@ export interface operations {
 					 *       "title": "Not Found",
 					 *       "status": 404,
 					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	document_text_api_v1_documents__id__text_get: {
+		parameters: {
+			query?: {
+				/** @description First character. */
+				offset?: number;
+				/** @description Characters. */
+				limit?: number;
+			};
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DocumentTextOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

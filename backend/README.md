@@ -458,6 +458,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result and the differences |
 | `POST /documents/{id}/move` | Into another drawer (owner, or an admin without read access) |
 | `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
+| `GET /documents/{id}/text` | The recognised text (Markdown) in pieces: `offset`, `limit`; `409` while not parsed |
 | `GET /documents/{id}/log` | Processing log (owner or admin) |
 | `POST /documents/{id}/retry` | Repeat the failed nodes (owner or admin) |
 | `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (owner or admin) |

@@ -16,6 +16,7 @@ from papiq.adapters.inbound.evaluation.search import (
     QuerySet,
     SearchRun,
     SearchRunInfo,
+    SearchServices,
     evaluate_search,
     load_queries,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "RunInfo",
     "SearchRun",
     "SearchRunInfo",
+    "SearchServices",
     "Summary",
     "evaluate",
     "evaluate_search",

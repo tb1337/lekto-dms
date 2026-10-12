@@ -768,7 +768,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_LLM_BASE_URL` | Worker | unset | OpenAI-compatible endpoint with version path (`http://ollama:11434/v1`); set together with the model or neither |
 | `PAPIQ_LLM_MODEL` | Worker | unset | see above |
 | `PAPIQ_LLM_API_KEY` | Worker | unset | *secret* |
-| `PAPIQ_LLM_TEMPERATURE` | Worker | `0` | 0 to 2; 0 for repeatable answers |
+| `PAPIQ_LLM_TEMPERATURE` | Worker | `0` | 0 to 2; 0 for repeatable answers; `none` sends no temperature (models that reject the parameter, e.g. newer Claude models) |
 | `PAPIQ_LLM_SEED` | Worker | unset | Passed to the endpoint, if set |
 | `PAPIQ_LLM_TIMEOUT` | Worker | `300` | Seconds per request (`600` on a CPU) |
 | `PAPIQ_LLM_RESPONSE_FORMAT` | Worker | `json_schema` | `json_object` for providers without JSON schema support |

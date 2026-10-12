@@ -115,6 +115,11 @@ def test_classification_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.confidence_threshold == settings.contact_suggest_threshold == 0.8
 
 
+def test_temperature_can_be_left_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PAPIQ_LLM_TEMPERATURE", "None")
+    assert load_settings().llm_temperature is None
+
+
 @pytest.mark.parametrize(
     ("name", "value"),
     [

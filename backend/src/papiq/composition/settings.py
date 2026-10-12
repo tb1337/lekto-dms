@@ -56,6 +56,16 @@ def _seconds(value: Any) -> Any:
     return value
 
 
+def _none_or(value: Any) -> Any:
+    """`none` stands for "do not send the parameter"."""
+    if isinstance(value, str) and value.strip().lower() == "none":
+        return None
+    return value
+
+
+# The sampling temperature, or None: some models (newer Claude models) reject the parameter.
+Temperature = Annotated[Annotated[float, Field(ge=0, le=2)] | None, BeforeValidator(_none_or)]
+
 # A positive duration, configured in seconds.
 Seconds = Annotated[timedelta, BeforeValidator(_seconds), Field(gt=timedelta(0))]
 
@@ -193,7 +203,7 @@ class Settings(BaseSettings):
     llm_base_url: AnyHttpUrl | None = None
     llm_model: str | None = None
     llm_api_key: SecretStr | None = None
-    llm_temperature: Annotated[float, Field(ge=0, le=2)] = 0.0
+    llm_temperature: Temperature = 0.0
     llm_seed: int | None = None
     llm_timeout: Seconds = timedelta(minutes=5)
     # `json_object` for providers without JSON Schema support; the answer is checked anyway.

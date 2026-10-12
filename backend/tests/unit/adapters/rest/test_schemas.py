@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from papiq.adapters.inbound.rest.schemas import MoneyValue, field_json
+from papiq.adapters.inbound.schemas import MoneyValue, field_json
 from papiq.core.domain.fields import Money, Url
 
 

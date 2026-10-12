@@ -15,12 +15,11 @@ from papiq.adapters.inbound.rest.schemas import (
     RuleApplicationOut,
     RuleCreate,
     RuleDefinitionIn,
-    RuleEffectOut,
-    RuleNoteOut,
     RuleOut,
     RulePatch,
     RuleVersionOut,
 )
+from papiq.adapters.inbound.schemas import RuleEffectOut, RuleNoteOut
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.ids import DocumentId, RuleApplicationId, RuleId
 from papiq.core.domain.rule_engine import Note

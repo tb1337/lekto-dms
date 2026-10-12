@@ -71,7 +71,9 @@ changes in `migration/` its checks.
   S3 or HTTP clients). It logs through the standard library `logging`.
 - Ports are Python protocols defined in `core/ports`; adapters implement them.
 - Only `composition` knows which adapter implements which port. Inbound and outbound adapters never
-  import each other. `lint-imports` enforces this; keep it green.
+  import each other, and neither do the inbound adapters (REST, MCP, worker, evaluation) among
+  themselves: what more than one of them needs lives directly in `adapters/inbound`. `lint-imports`
+  enforces this; keep it green.
 - Every port gets an in-memory adapter and a contract test suite that every real adapter passes.
 - Configuration is environment variables with prefix `PAPIQ_` only, no config file. Secrets also work
   as `PAPIQ_<NAME>_FILE`; both set is an error. See `backend/src/papiq/composition/settings.py`.

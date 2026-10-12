@@ -21,9 +21,9 @@ from starlette.datastructures import Headers
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from papiq.adapters.inbound.context import ApiContext
 from papiq.adapters.inbound.mcp.server import build_server
-from papiq.adapters.inbound.rest.context import ApiContext
-from papiq.adapters.inbound.rest.problems import problem
+from papiq.adapters.inbound.problems import problem
 from papiq.core.domain.errors import AuthenticationError
 
 log = logging.getLogger(__name__)

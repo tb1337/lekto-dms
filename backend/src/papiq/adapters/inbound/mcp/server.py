@@ -24,8 +24,8 @@ from pydantic import BaseModel, Field
 from starlette.requests import Request
 
 from papiq import __version__
-from papiq.adapters.inbound.rest.context import ApiContext
-from papiq.adapters.inbound.rest.schemas import FieldJson, RuleReportOut, field_json
+from papiq.adapters.inbound.context import ApiContext
+from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
 from papiq.adapters.inbound.values import field_value
 from papiq.core.domain.documents import UNSET, Document, DocumentChanges
 from papiq.core.domain.drawers import ShareLevel

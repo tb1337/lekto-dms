@@ -96,6 +96,16 @@ modules = [
 ]
 
 [[tool.importlinter.contracts]]
+name = "Inbound adapters are independent of each other"
+type = "independence"
+modules = [
+    "papiq.adapters.inbound.evaluation",
+    "papiq.adapters.inbound.mcp",
+    "papiq.adapters.inbound.rest",
+    "papiq.adapters.inbound.worker",
+]
+
+[[tool.importlinter.contracts]]
 name = "Domain model depends on nothing else in the core"
 type = "forbidden"
 source_modules = ["papiq.core.domain"]

@@ -706,3 +706,8 @@ def test_every_setting_is_documented_with_its_role() -> None:
         f"unknown in README: {sorted(set(names) - set(expected))}"
     )
     assert len(names) == len(set(names)), "a variable is documented twice"
+
+
+def test_renamed_variables_are_refused_with_their_new_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    message = error_message(monkeypatch, {"PAPIQ_STEP_MAX_ATTEMPTS": "5"})
+    assert message == "PAPIQ_STEP_MAX_ATTEMPTS was renamed to PAPIQ_NODE_MAX_ATTEMPTS"

@@ -444,11 +444,23 @@ def find_unknown_variables(environ: Mapping[str, str] | None = None) -> list[str
     )
 
 
-def load_settings() -> Settings:
+RENAMED: dict[str, str] = {
+    "PAPIQ_STEP_MAX_ATTEMPTS": "PAPIQ_NODE_MAX_ATTEMPTS",
+    "PAPIQ_STEP_RETRY_DELAY": "PAPIQ_NODE_RETRY_DELAY",
+}
+"""Variables of earlier versions and their names now; setting an old one is an error, so a
+value does not fall back to the default unnoticed."""
+
+
+def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     """Read and validate the configuration from the environment.
 
     Raises ConfigurationError with a message that names the offending variables.
     """
+    environ = os.environ if environ is None else environ
+    renamed = [f"{old} was renamed to {new}" for old, new in RENAMED.items() if old in environ]
+    if renamed:
+        raise ConfigurationError("; ".join(renamed))
     try:
         return Settings()
     except ValidationError as error:

@@ -309,5 +309,9 @@ newer image migrated is refused by an older one.
 
 An update that changes what the search index holds says so in its release notes; run
 `papiq reindex` after it (the update that renamed attributes to fields is one). The update
-that made the pipeline a graph (0.2.0) added the page images: run `papiq render-pages` once
-after it, and the worker renders the pages of the documents from before.
+that made the pipeline a graph (0.2.0) added the page images: run `papiq render-pages` after
+it, and the worker renders the pages of the documents from before (a document that is being
+processed at that moment keeps its job; run the command again until it reports 0 queued).
+The same update renamed `PAPIQ_STEP_MAX_ATTEMPTS` and `PAPIQ_STEP_RETRY_DELAY` to
+`PAPIQ_NODE_MAX_ATTEMPTS` and `PAPIQ_NODE_RETRY_DELAY`; a container with an old name refuses
+to start and says so.

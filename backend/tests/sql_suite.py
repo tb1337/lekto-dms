@@ -551,6 +551,10 @@ class MigrationSuite:
             (t.processing_log, {**log, "node": "receive"}),
             (t.processing_log, {**log, "node": "ocr", "run": 1, "started_at": NOW}),
             (t.processing_log, {**log, "node": "ocr", "run": 2, "started_at": second}),
+            (
+                t.processing_log,
+                {**log, "node": "ocr", "run": 3, "model_version": "person", "started_at": third},
+            ),
             (t.processing_log, {**log, "document_id": ids["d"], "node": "apply_rules"}),
             (
                 t.processing_log,
@@ -583,7 +587,9 @@ class MigrationSuite:
         states = await _node_states(empty_database, ids)
         assert states["a"] == {
             "receive": done("ok", NOW, second),
-            "ocr": done("ok", second, second + timedelta(seconds=1)),  # the latest entry
+            "ocr": done(
+                "ok", second, second + timedelta(seconds=1)
+            ),  # the latest run, not the person
             "pages": skipped,
             **dict.fromkeys(
                 ("parse", "classify", "extract_fields", "apply_rules", "file"), waiting
@@ -609,6 +615,16 @@ class MigrationSuite:
             "review",
             "completed",
         ]
+
+        # A node a worker is at becomes the current node of the old schema.
+        running = {**states["a"]["classify"], "status": "running", "started_at": third.isoformat()}
+        async with empty_database.writing() as connection:
+            await connection.execute(
+                t.documents.update()
+                .where(t.documents.c.id == ids["a"])
+                .values(processing_nodes={**states["a"], "classify": running})
+            )
+        documents["a"] = ("processing", "classify", documents["a"][2])
 
         await _downgrade(empty_database, "0009")
         restored = {

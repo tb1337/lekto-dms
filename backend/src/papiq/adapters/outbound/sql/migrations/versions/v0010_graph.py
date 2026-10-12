@@ -11,9 +11,10 @@ A node with an outcome is `done`; its start and end come from its latest process
 document is `waiting`, as is every later node. The new node `pages` is `skipped` for every
 existing document; the command `render-pages` catches up on it.
 
-The downgrade derives the current node again: the first waiting node of a processing
-document, the failed node, `file` of a reviewed document, none of a completed one. The state
-of `pages` is lost.
+The downgrade derives the current node again: the running node of a processing document,
+else its first waiting node, the failed node, `file` of a reviewed document, none of a
+completed one. The state of `pages` is lost, and a document whose only open nodes are `pages`
+and `file` (reprocessed from the pages) has no job for `file` under 0.1: reprocess it there.
 
 Columns are added and dropped in place (SQLite 3.35 or newer drops columns), never by
 recreating the table: with foreign keys enforced, dropping the old table would take the
@@ -37,7 +38,8 @@ depends_on: str | Sequence[str] | None = None
 # The graph at this revision, in topological order.
 _NODES = ("receive", "ocr", "pages", "parse", "classify", "extract_fields", "apply_rules", "file")
 _NEW = "pages"
-_OUTSIDE_PIPELINE = ("rules:change", "rules:apply", "person:drawer")
+# Log entries that are no run of the node: written by rules outside processing or by a person.
+_NOT_A_RUN = ("rules:change", "rules:apply", "person:drawer", "person")
 
 _documents = sa.table(
     "documents",
@@ -156,7 +158,7 @@ def _times(connection: sa.Connection, document_id: Any) -> dict[str, tuple[datet
     rows = connection.execute(
         sa.select(_log.c.node, _log.c.started_at, _log.c.duration_us)
         .where(_log.c.document_id == document_id)
-        .where(_log.c.model_version.is_(None) | _log.c.model_version.not_in(_OUTSIDE_PIPELINE))
+        .where(_log.c.model_version.is_(None) | _log.c.model_version.not_in(_NOT_A_RUN))
         .order_by(_log.c.seq)
     )
     times = {}
@@ -173,7 +175,10 @@ def _current(status: str, nodes: dict[str, Any]) -> str | None:
     if status == "failed":
         failed = [name for name in _NODES if nodes.get(name, {}).get("outcome") == "failed"]
         return failed[0] if failed else None
-    waiting = [
-        name for name in _NODES if name != _NEW and nodes.get(name, {}).get("status") == "waiting"
-    ]
-    return waiting[0] if waiting else None
+    for wanted in ("running", "waiting"):
+        found = [
+            name for name in _NODES if name != _NEW and nodes.get(name, {}).get("status") == wanted
+        ]
+        if found:
+            return found[0]
+    return None

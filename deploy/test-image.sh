@@ -168,7 +168,7 @@ document() { curl -fsS -b "$jar" "$(url all)/documents/$id"; }
 lane() { document | python3 -c 'import json, sys; print(json.load(sys.stdin).get("lane") or "")'; }
 has_lane() { [ -n "$(lane)" ]; }
 if wait_for 300 "the document reaches a lane" has_lane; then
-  outcomes=$(document | python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin)["processing"]["outcomes"]))')
+  outcomes=$(document | python3 -c 'import json, sys; nodes = json.load(sys.stdin)["processing"]["nodes"]; print(json.dumps({n["node"]: n["outcome"] for n in nodes if n["outcome"]}))')
   echo "   lane: $(lane), outcomes: $outcomes"
   check "lane yellow (no language model: classification is uncertain)" test "$(lane)" = yellow
   check "OCR and parsing succeeded" python3 -c "

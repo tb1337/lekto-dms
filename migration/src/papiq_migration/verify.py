@@ -251,7 +251,7 @@ async def verify(
         if actual.get("lane") in ("yellow", "red"):
             reason = row.reason or ""
             if not applied:
-                reason += " (the metadata from Paperless is applied after a retry of the step)"
+                reason += " (the metadata from Paperless is applied after a retry of the node)"
             findings.append(
                 {
                     "id": document_id,

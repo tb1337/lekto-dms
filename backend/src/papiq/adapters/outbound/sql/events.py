@@ -11,11 +11,11 @@ from papiq.core.domain.events import (
     DocumentUpdated,
     DomainEvent,
     LaneChanged,
-    StepCompleted,
+    NodeCompleted,
 )
 from papiq.core.domain.ids import DocumentId, DrawerId, EventId, UserId
 from papiq.core.domain.json_value import JsonObject
-from papiq.core.domain.pipeline import Lane, Outcome, Step
+from papiq.core.domain.pipeline import Lane, Node, Outcome
 
 
 def encode(event: DomainEvent) -> JsonObject:
@@ -28,10 +28,10 @@ def encode(event: DomainEvent) -> JsonObject:
                 "document_id": str(event.document_id),
                 "readers": [str(reader) for reader in event.readers],
             }
-        case StepCompleted():
+        case NodeCompleted():
             return {
                 "document_id": str(event.document_id),
-                "step": event.step.value,
+                "node": event.node.value,
                 "run": event.run,
                 "outcome": event.outcome.value,
             }
@@ -60,10 +60,10 @@ def decode(type: str, id: UUID, occurred_at: datetime, payload: dict[str, Any]) 
         case DocumentDeleted.type:
             readers = tuple(UserId(UUID(reader)) for reader in payload.get("readers", ()))
             return DocumentDeleted(**common, readers=readers)
-        case StepCompleted.type:
-            return StepCompleted(
+        case NodeCompleted.type:
+            return NodeCompleted(
                 **common,
-                step=Step(payload["step"]),
+                node=Node(payload["node"]),
                 run=payload["run"],
                 outcome=Outcome(payload["outcome"]),
             )

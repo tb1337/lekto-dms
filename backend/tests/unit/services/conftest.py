@@ -18,39 +18,39 @@ from papiq.core.domain.documents import Document
 from papiq.core.domain.drawers import Drawer
 from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.identity import Credential, check_new_password
-from papiq.core.domain.pipeline import PIPELINE, Step, StepResult
+from papiq.core.domain.pipeline import PIPELINE, Node, NodeResult
 from papiq.core.domain.users import Role, User
 from papiq.core.services.auth import AuthService
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.drawers import DrawerService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.oidc import OidcService
-from papiq.core.services.pipeline import PipelineService, PlaceholderStep, StepExecutor
+from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode
 from papiq.core.services.users import UserService
 from papiq.core.services.webhooks import WebhookDeliveryService, WebhookPolicy, WebhookService
 from tests import builders
 
 
 class Returns:
-    """Step executor that returns a fixed result."""
+    """Node executor that returns a fixed result."""
 
-    def __init__(self, result: StepResult) -> None:
+    def __init__(self, result: NodeResult) -> None:
         self.result = result
         self.calls = 0
 
-    async def run(self, document: Document) -> StepResult:
+    async def run(self, document: Document) -> NodeResult:
         self.calls += 1
         return self.result
 
 
 class Raises:
-    """Step executor that raises `times` times, then returns OK."""
+    """Node executor that raises `times` times, then returns OK."""
 
     def __init__(self, times: int) -> None:
         self.times = times
         self.calls = 0
 
-    async def run(self, document: Document) -> StepResult:
+    async def run(self, document: Document) -> NodeResult:
         self.calls += 1
         if self.calls <= self.times:
             raise OSError("scanner glitch")
@@ -64,8 +64,8 @@ class World:
     clock: ManualClock = field(default_factory=lambda: ManualClock(builders.NOW))
     database: MemoryDatabase = field(default_factory=MemoryDatabase)
     object_store: MemoryObjectStore = field(default_factory=MemoryObjectStore)
-    executors: dict[Step, StepExecutor] = field(
-        default_factory=lambda: {step: PlaceholderStep() for step in PIPELINE[1:]}
+    executors: dict[Node, NodeExecutor] = field(
+        default_factory=lambda: {node: PlaceholderNode() for node in PIPELINE[1:]}
     )
     hasher: FakePasswordHasher = field(default_factory=FakePasswordHasher)
     cipher: FakeCipher = field(default_factory=FakeCipher)
@@ -117,7 +117,7 @@ class World:
     def webhook_delivery(self, policy: WebhookPolicy | None = None) -> WebhookDeliveryService:
         return WebhookDeliveryService(self.uow, self.clock, self.cipher, self.sender, policy)
 
-    def pipeline(self, executors: Mapping[Step, StepExecutor] | None = None) -> PipelineService:
+    def pipeline(self, executors: Mapping[Node, NodeExecutor] | None = None) -> PipelineService:
         return PipelineService(
             self.uow,
             self.clock,

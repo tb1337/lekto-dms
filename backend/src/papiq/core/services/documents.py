@@ -22,7 +22,7 @@ from papiq.core.domain.permissions import (
     document_access,
     in_reach,
 )
-from papiq.core.domain.pipeline import Lane, StepRun
+from papiq.core.domain.pipeline import Lane, NodeRun
 from papiq.core.domain.users import User
 from papiq.core.ports import Clock, DocumentFilter, ObjectStore, UnitOfWork, UnitOfWorkFactory
 from papiq.core.ports.preview import PREVIEW_MEDIA_TYPE
@@ -33,7 +33,7 @@ from papiq.core.services._access import (
     visible_drawer,
     writable_document,
 )
-from papiq.core.services.inbox import InboxItem, Review, open_steps, step_reviews
+from papiq.core.services.inbox import InboxItem, Review, node_reviews, open_nodes
 from papiq.core.services.maintenance import REMOVE_FILES_JOB
 from papiq.core.services.objects import archive_key, markdown_key, original_key, preview_key
 from papiq.core.services.rules.changes import ChangeRules
@@ -236,7 +236,7 @@ class DocumentService:
                     admins.add(candidate)
             return admins
 
-    async def processing_log(self, actor: UserId, id: DocumentId) -> list[StepRun]:
+    async def processing_log(self, actor: UserId, id: DocumentId) -> list[NodeRun]:
         """Owner or admin: the log may hold technical details of failed runs."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
@@ -270,7 +270,7 @@ class DocumentService:
                 if not all_users and document.owner_id != actor:
                     continue  # only owners see their yellow and red documents in their reach
                 log = await uow.processing_log.list_for(document.id)
-                items.append(InboxItem(document, open_steps(document, log)))
+                items.append(InboxItem(document, open_nodes(document, log)))
         return items
 
     async def review(self, actor: UserId, id: DocumentId) -> Review:
@@ -281,7 +281,7 @@ class DocumentService:
             if not can_control_document(user, document):
                 raise PermissionDeniedError(f"only the owner reviews document {id}")
             log = await uow.processing_log.list_for(id)
-        return Review(document, open_steps(document, log), step_reviews(log))
+        return Review(document, open_nodes(document, log), node_reviews(log))
 
     async def update_metadata(
         self, actor: UserId, id: DocumentId, changes: DocumentChanges

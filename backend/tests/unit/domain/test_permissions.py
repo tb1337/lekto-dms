@@ -18,7 +18,7 @@ from papiq.core.domain.permissions import (
     reach_access,
     reach_drawer_access,
 )
-from papiq.core.domain.pipeline import Lane, Step, StepResult
+from papiq.core.domain.pipeline import Lane, Node, NodeResult
 from papiq.core.domain.users import User
 from tests import builders
 from tests.builders import FAILED, UNCERTAIN
@@ -77,11 +77,11 @@ def test_green_document_is_visible_through_the_share(
 
 @pytest.mark.parametrize(
     "results",
-    [{Step.CLASSIFY: UNCERTAIN}, {Step.OCR: FAILED}],
+    [{Node.CLASSIFY: UNCERTAIN}, {Node.OCR: FAILED}],
     ids=["yellow", "red"],
 )
 def test_yellow_and_red_documents_are_visible_to_the_owner_only(
-    owner: User, reader: User, writer: User, shared: Drawer, results: dict[Step, StepResult]
+    owner: User, reader: User, writer: User, shared: Drawer, results: dict[Node, NodeResult]
 ) -> None:
     document = builders.processed(owner, shared, results)
     assert document.lane in {Lane.YELLOW, Lane.RED}
@@ -105,7 +105,7 @@ def test_drawer_owner_sees_green_documents_of_others_in_the_drawer(
     filed_by_writer = builders.processed(writer, shared)
     assert document_access(writer, filed_by_writer, shared) is ShareLevel.READ_WRITE
     assert document_access(owner, filed_by_writer, shared) is ShareLevel.READ_WRITE
-    yellow = builders.processed(writer, shared, {Step.CLASSIFY: UNCERTAIN})
+    yellow = builders.processed(writer, shared, {Node.CLASSIFY: UNCERTAIN})
     assert document_access(owner, yellow, shared) is None
 
 
@@ -150,11 +150,11 @@ def test_only_admins_manage_master_data_and_users() -> None:
 
 @pytest.mark.parametrize(
     "results",
-    [None, {Step.CLASSIFY: UNCERTAIN}, {Step.OCR: FAILED}, "processing"],
+    [None, {Node.CLASSIFY: UNCERTAIN}, {Node.OCR: FAILED}, "processing"],
     ids=["green", "yellow", "red", "processing"],
 )
 def test_admins_have_every_right_on_documents_and_drawers(
-    owner: User, shared: Drawer, results: dict[Step, StepResult] | str | None
+    owner: User, shared: Drawer, results: dict[Node, NodeResult] | str | None
 ) -> None:
     """Tobi, 08.10.2026: admins have every right and see everything."""
     if results == "processing":
@@ -181,7 +181,7 @@ def test_the_reach_is_access_without_the_admins_rights(
     owner: User, reader: User, writer: User, stranger: User, shared: Drawer
 ) -> None:
     green = builders.processed(owner, shared)
-    yellow = builders.processed(owner, shared, {Step.CLASSIFY: UNCERTAIN})
+    yellow = builders.processed(owner, shared, {Node.CLASSIFY: UNCERTAIN})
     for user in (owner, reader, writer, stranger):
         for document in (green, yellow):
             assert reach_access(user, document, shared) is document_access(user, document, shared)

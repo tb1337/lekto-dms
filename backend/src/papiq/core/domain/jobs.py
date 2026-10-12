@@ -1,4 +1,4 @@
-"""Background jobs: retryable units of work, e.g. one pipeline step for one document."""
+"""Background jobs: retryable units of work, e.g. one pipeline node for one document."""
 
 from dataclasses import dataclass
 from datetime import datetime

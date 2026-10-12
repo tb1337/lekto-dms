@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import ClassVar
 
 from papiq.core.domain.ids import DocumentId, DrawerId, EventId, UserId, new_id
-from papiq.core.domain.pipeline import Lane, Outcome, Step
+from papiq.core.domain.pipeline import Lane, Node, Outcome
 from papiq.core.domain.validation import require_utc
 
 
@@ -31,9 +31,9 @@ class DocumentReceived(DocumentEvent):
 
 
 @dataclass(frozen=True, kw_only=True)
-class StepCompleted(DocumentEvent):
-    type: ClassVar[str] = "document.step_completed"
-    step: Step
+class NodeCompleted(DocumentEvent):
+    type: ClassVar[str] = "document.node_completed"
+    node: Node
     run: int
     outcome: Outcome
 
@@ -73,7 +73,7 @@ EVENT_TYPES: dict[str, type[DomainEvent]] = {
     kind.type: kind
     for kind in (
         DocumentReceived,
-        StepCompleted,
+        NodeCompleted,
         LaneChanged,
         DocumentFiled,
         DocumentUpdated,

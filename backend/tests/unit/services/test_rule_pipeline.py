@@ -1,4 +1,4 @@
-"""The rules on arrival: the steps `apply_rules` and `file`, and confirming in the inbox."""
+"""The rules on arrival: the nodes `apply_rules` and `file`, and confirming in the inbox."""
 
 import logging
 
@@ -8,7 +8,7 @@ from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import OpenFieldsError
 from papiq.core.domain.fields import FieldType
-from papiq.core.domain.pipeline import PERSON, RULES, Lane, Outcome, ProcessingStatus, Step
+from papiq.core.domain.pipeline import PERSON, RULES, Lane, Node, Outcome, ProcessingStatus
 from papiq.core.domain.rules import (
     ForceReview,
     SetContact,
@@ -101,7 +101,7 @@ async def test_conflicting_rules_wait_in_the_inbox_until_the_owner_decides(world
     assert document.contact_id is None  # priority orders, but never decides
     (item,) = await r.documents.inbox(owner.id)
     (open,) = item.open
-    assert open.step is Step.APPLY_RULES
+    assert open.node is Node.APPLY_RULES
     (check,) = open.fields
     assert (check.field, check.suggestion) == ("contact", str(acme.id))
     assert ("contact", "conflict") in notes(
@@ -163,7 +163,7 @@ async def test_a_forced_review_holds_the_document_once(world: World) -> None:
     again = (await r.rule_entries(document, RULES))[-1]
     assert notes(again.result.output) == [("review", "overruled"), ("review", "overruled")]
     confirmed = [entry for entry in await r.log(document) if entry.result.model_version == PERSON]
-    assert [entry.step for entry in confirmed] == [Step.APPLY_RULES]
+    assert [entry.node for entry in confirmed] == [Node.APPLY_RULES]
 
 
 async def test_unconfirmed_model_values_do_not_file_into_a_drawer_others_see(
@@ -261,10 +261,10 @@ async def test_filing_checks_the_owners_write_access_once_more(world: World) -> 
 
     document = await r.stored(received)
     assert document.lane is Lane.YELLOW
-    assert document.processing.outcomes[Step.FILE] is Outcome.UNCERTAIN
+    assert document.processing.outcomes[Node.FILE] is Outcome.UNCERTAIN
     assert "document.filed" not in world.event_types()
     (open,) = (await r.documents.review(owner.id, document.id)).open
-    assert (open.step, [check.field for check in open.fields]) == (Step.FILE, ["drawer"])
+    assert (open.node, [check.field for check in open.fields]) == (Node.FILE, ["drawer"])
 
     # Keeping the drawer would stop filing again: the owner has to choose one.
     with pytest.raises(OpenFieldsError) as error:

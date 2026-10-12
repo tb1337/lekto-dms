@@ -10,7 +10,7 @@ from papiq.adapters.inbound.rest import PREFIX
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import SearchUnavailableError
 from papiq.core.domain.ids import DocumentId
-from papiq.core.domain.pipeline import Step
+from papiq.core.domain.pipeline import Node
 from tests.api import auth
 from tests.unit.adapters.rest.conftest import Api
 from tests.unit.adapters.rest.test_permission_matrix import ACTORS, DENIED, Scene, build_scene
@@ -91,7 +91,7 @@ async def test_a_withdrawn_share_ends_the_search_at_once(api: Api) -> None:
 async def test_a_lane_that_changed_before_the_index_heard_of_it(api: Api) -> None:
     scene = await indexed_scene(api)
     pipeline = api.services.pipeline
-    await pipeline.reprocess_from(scene.owner.id, DocumentId(UUID(scene.green)), Step.CLASSIFY)
+    await pipeline.reprocess_from(scene.owner.id, DocumentId(UUID(scene.green)), Node.CLASSIFY)
     assert await found(scene, "reader") == set()  # in processing again; the index says green
     assert await found(scene, "owner") >= {scene.green}
 

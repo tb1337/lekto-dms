@@ -47,11 +47,11 @@ async def test_events_reach_only_users_who_may_read_the_document(api: Api) -> No
         await api.drain()  # processing runs to green
         await until(lambda: own.events and own.events[-1]["type"] == "document.lane_changed")
 
-        assert own.types()[:2] == ["document.received", "document.step_completed"]
+        assert own.types()[:2] == ["document.received", "document.node_completed"]
         assert own.events[-1]["new"] == "green"
         assert {event["document_id"] for event in own.events} == {document}
-        step = own.events[1]
-        assert (step["step"], step["run"], step["outcome"]) == ("receive", 1, "ok")
+        node = own.events[1]
+        assert (node["node"], node["run"], node["outcome"]) == ("receive", 1, "ok")
 
         shared_events = streams[reader.id].types()
         assert "document.received" not in shared_events  # not visible while processing

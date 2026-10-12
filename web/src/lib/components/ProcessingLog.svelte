@@ -9,23 +9,23 @@
 	import { formatDate, formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
-	type Step = components['schemas']['Step'];
+	type Node = components['schemas']['Node'];
 	type Outcome = components['schemas']['Outcome'];
 
-	// What each step did: result, confidence, reason, model and duration.
+	// What each node did: result, confidence, reason, model and duration.
 	let { documentId }: { documentId: string } = $props();
 
 	let entries = $state<components['schemas']['LogEntry'][] | null>(null);
 	let problem = $state<string | null>(null);
 
-	const stepLabel: Record<Step, () => string> = {
-		receive: m.step_receive,
-		ocr: m.step_ocr,
-		parse: m.step_parse,
-		classify: m.step_classify,
-		extract_fields: m.step_extract_fields,
-		apply_rules: m.step_apply_rules,
-		file: m.step_file
+	const nodeLabel: Record<Node, () => string> = {
+		receive: m.node_receive,
+		ocr: m.node_ocr,
+		parse: m.node_parse,
+		classify: m.node_classify,
+		extract_fields: m.node_extract_fields,
+		apply_rules: m.node_apply_rules,
+		file: m.node_file
 	};
 	const outcomeLabel: Record<Outcome, () => string> = {
 		ok: m.outcome_ok,
@@ -58,7 +58,7 @@
 		void events.generation;
 		void load();
 		return events.subscribe((event) => {
-			if (event.document_id === documentId && event.type === 'document.step_completed') void load();
+			if (event.document_id === documentId && event.type === 'document.node_completed') void load();
 		});
 	});
 </script>
@@ -73,7 +73,7 @@
 	<Table.Root>
 		<Table.Header>
 			<Table.Row>
-				<Table.Head>{m.log_step()}</Table.Head>
+				<Table.Head>{m.log_node()}</Table.Head>
 				<Table.Head>{m.log_outcome()}</Table.Head>
 				<Table.Head>{m.log_confidence()}</Table.Head>
 				<Table.Head>{m.log_reason()}</Table.Head>
@@ -82,10 +82,10 @@
 			</Table.Row>
 		</Table.Header>
 		<Table.Body>
-			{#each entries as entry (`${entry.run}-${entry.step}-${entry.started_at}`)}
+			{#each entries as entry (`${entry.run}-${entry.node}-${entry.started_at}`)}
 				<Table.Row>
 					<Table.Cell>
-						{stepLabel[entry.step]()}
+						{nodeLabel[entry.node]()}
 						<span class="block text-xs text-muted-foreground">
 							{m.log_run({ run: entry.run })} · {formatDate(entry.started_at, {
 								dateStyle: 'short',

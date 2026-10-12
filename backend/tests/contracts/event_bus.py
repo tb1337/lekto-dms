@@ -12,10 +12,10 @@ from papiq.core.domain.events import (
     DocumentUpdated,
     DomainEvent,
     LaneChanged,
-    StepCompleted,
+    NodeCompleted,
 )
 from papiq.core.domain.ids import DocumentId, DrawerId, UserId, new_id
-from papiq.core.domain.pipeline import Lane, Outcome, Step
+from papiq.core.domain.pipeline import Lane, Node, Outcome
 from papiq.core.ports import Clock, DeliveryRetry, EventBus, UnitOfWorkFactory
 from papiq.core.ports.event_bus import DEFAULT_DELIVERY_RETRY
 from tests.builders import NOW
@@ -86,8 +86,8 @@ class EventBusContract:
         document = DocumentId(new_id())
         events: list[DomainEvent] = [
             DocumentReceived(document_id=document, occurred_at=NOW),
-            StepCompleted(
-                document_id=document, occurred_at=NOW, step=Step.OCR, run=2, outcome=Outcome.OK
+            NodeCompleted(
+                document_id=document, occurred_at=NOW, node=Node.OCR, run=2, outcome=Outcome.OK
             ),
             LaneChanged(document_id=document, occurred_at=NOW, old=None, new=Lane.YELLOW),
             LaneChanged(document_id=document, occurred_at=NOW, old=Lane.RED, new=None),

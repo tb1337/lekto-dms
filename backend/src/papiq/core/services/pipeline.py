@@ -1,4 +1,4 @@
-"""Ingest and processing: receive a document, run its steps as jobs, retry and reprocess."""
+"""Ingest and processing: receive a document, run its nodes as jobs, retry and reprocess."""
 
 import asyncio
 import hashlib
@@ -28,7 +28,7 @@ from papiq.core.domain.imports import IMPORTED, ImportedMetadata
 from papiq.core.domain.jobs import Job, JobStatus
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.permissions import can_control_document, can_file_into
-from papiq.core.domain.pipeline import CHOSEN_DRAWER, PIPELINE, Outcome, Step, StepResult, StepRun
+from papiq.core.domain.pipeline import CHOSEN_DRAWER, PIPELINE, Node, NodeResult, NodeRun, Outcome
 from papiq.core.domain.rule_engine import DRAWER, changed_fields
 from papiq.core.domain.users import User
 from papiq.core.ports import Clock, ObjectStore, UnitOfWork, UnitOfWorkFactory
@@ -44,7 +44,7 @@ from papiq.core.services.inbox import (
     alias_to_learn,
     confirmation,
     decide,
-    open_steps,
+    open_nodes,
 )
 from papiq.core.services.master_data import learn_alias
 from papiq.core.services.objects import original_key
@@ -52,32 +52,32 @@ from papiq.core.services.rules.running import drawer_choice, person_record
 
 log = logging.getLogger(__name__)
 
-# Attempts to store a step result while the document is changed concurrently.
+# Attempts to store a node result while the document is changed concurrently.
 _RECORD_ATTEMPTS = 3
 
-STEP_JOB = "pipeline.step"
-"""Job kind of a pipeline step; payload: document id, step, processing run."""
+NODE_JOB = "pipeline.node"
+"""Job kind of a pipeline node; payload: document id, node, processing run."""
 
 
 class DeferredResult(Protocol):
-    """A step result that is completed in the transaction that stores it, on the state that is
+    """A node result that is completed in the transaction that stores it, on the state that is
     stored (applying metadata, running rules)."""
 
-    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> StepResult: ...
+    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult: ...
 
 
 @dataclass(frozen=True)
 class MetadataResult:
-    """A step result together with a change of the document's metadata (classification).
+    """A node result together with a change of the document's metadata (classification).
     Both are stored in the same transaction. If the change no longer fits (master data was
-    removed meanwhile), nothing is changed and the step is uncertain. `add_tags` are added to
+    removed meanwhile), nothing is changed and the node is uncertain. `add_tags` are added to
     the tags the document has when the result is stored, so tags set meanwhile stay."""
 
-    result: StepResult
+    result: NodeResult
     changes: DocumentChanges
     add_tags: frozenset[TagId] = frozenset()
 
-    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> StepResult:
+    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
         changes = self.changes
         if not self.add_tags <= document.tag_ids:
             changes = replace(changes, tag_ids=frozenset(document.tag_ids | self.add_tags))
@@ -86,32 +86,32 @@ class MetadataResult:
             definitions = {item.id: item for item in await uow.fields.list_all()}
             document.apply_changes(changes, definitions, now)
         except (NotFoundError, ValidationError) as error:
-            reason = f"the master data changed during the step; nothing was applied ({error})"
+            reason = f"the master data changed during the node; nothing was applied ({error})"
             return replace(self.result, outcome=Outcome.UNCERTAIN, reason=reason)
         return self.result
 
 
-class StepExecutor(Protocol):
-    """Does the work of one pipeline step (OCR, parsing, classification, ...).
+class NodeExecutor(Protocol):
+    """Does the work of one pipeline node (OCR, parsing, classification, ...).
 
-    Runs outside any transaction and may take long. Returns what the step decided, or a result
+    Runs outside any transaction and may take long. Returns what the node decided, or a result
     to complete when it is stored; raising an exception counts as a failed attempt and is
-    retried, except UnprocessableDocumentError, which fails the step at once.
+    retried, except UnprocessableDocumentError, which fails the node at once.
     """
 
-    async def run(self, document: Document) -> StepResult | DeferredResult: ...
+    async def run(self, document: Document) -> NodeResult | DeferredResult: ...
 
 
-class PlaceholderStep:
-    """Stands in for steps whose logic comes in later milestones (M3, M5, M7)."""
+class PlaceholderNode:
+    """Stands in for nodes whose logic comes in later milestones (M3, M5, M7)."""
 
-    async def run(self, document: Document) -> StepResult:
-        return StepResult(outcome=Outcome.OK)
+    async def run(self, document: Document) -> NodeResult:
+        return NodeResult(outcome=Outcome.OK)
 
 
 @dataclass(frozen=True)
 class RetryPolicy:
-    """Automatic retries of a step that raised: `max_attempts` in total, waiting
+    """Automatic retries of a node that raised: `max_attempts` in total, waiting
     `delay * 2^(attempt-1)` before the next one."""
 
     max_attempts: int = 3
@@ -153,7 +153,7 @@ class PipelineService:
         uow: UnitOfWorkFactory,
         clock: Clock,
         object_store: ObjectStore,
-        executors: Mapping[Step, StepExecutor],
+        executors: Mapping[Node, NodeExecutor],
         *,
         pipeline_version: str,
         retry: RetryPolicy = DEFAULT_RETRY,
@@ -161,7 +161,7 @@ class PipelineService:
     ) -> None:
         missing = set(PIPELINE[1:]) - set(executors)
         if missing:
-            raise ValueError(f"no executor for steps: {', '.join(sorted(missing))}")
+            raise ValueError(f"no executor for nodes: {', '.join(sorted(missing))}")
         self._uow = uow
         self._clock = clock
         self._store = object_store
@@ -198,7 +198,7 @@ class PipelineService:
         becomes its owner (the duplicate check, the default drawer and the write access to
         `drawer` are the owner's). `imported`: metadata of a document taken over from another
         system, for an active admin and the channel `migration` only; it is checked against the
-        master data now and applied by the classification steps instead of the language model.
+        master data now and applied by the classification nodes instead of the language model.
         """
         started = self._clock.now()
         sha256 = file.sha256
@@ -221,7 +221,7 @@ class PipelineService:
             output["uploaded_by"] = str(actor)
         if imported is not None:
             output[IMPORTED] = imported.to_json()
-        result = StepResult(outcome=Outcome.OK, output=output)
+        result = NodeResult(outcome=Outcome.OK, output=output)
         try:
             return await self._create(
                 actor,
@@ -254,7 +254,7 @@ class PipelineService:
         filename: str,
         media_type: str,
         channel: Channel,
-        result: StepResult,
+        result: NodeResult,
         started: datetime,
         *,
         chosen: bool,
@@ -281,19 +281,19 @@ class PipelineService:
                 channel=channel,
             )
             await uow.documents.add(document)
-            await self._log(uow, document.id, Step.RECEIVE, 1, result, started, now)
+            await self._log(uow, document.id, Node.RECEIVE, 1, result, started, now)
             if chosen:
                 await uow.processing_log.append(
                     drawer_choice(
                         document,
-                        step=Step.RECEIVE,
+                        node=Node.RECEIVE,
                         actor=actor,
                         trigger="upload",
                         version=self._version,
                         now=now,
                     )
                 )
-            await _enqueue_step(uow, document, now)
+            await _enqueue_node(uow, document, now)
             await uow.outbox.add(document.pull_events())
             await uow.commit()
         return document
@@ -340,18 +340,18 @@ class PipelineService:
     # --- retry and reprocess --------------------------------------------------------------------
 
     async def retry(self, actor: UserId, id: DocumentId) -> Document:
-        """Owner or admin: repeat the failed step and continue from there."""
+        """Owner or admin: repeat the failed node and continue from there."""
         async with self._uow() as uow:
             document = await _owned_document(uow, await load_actor(uow, actor), id)
             document.retry(self._clock.now())
             await self._restart(uow, document)
         return document
 
-    async def reprocess_from(self, actor: UserId, id: DocumentId, step: Step) -> Document:
-        """Owner or admin: discard the results from `step` on and process again from there."""
+    async def reprocess_from(self, actor: UserId, id: DocumentId, node: Node) -> Document:
+        """Owner or admin: discard the results from `node` on and process again from there."""
         async with self._uow() as uow:
             document = await _owned_document(uow, await load_actor(uow, actor), id)
-            document.reprocess_from(step, self._clock.now())
+            document.reprocess_from(node, self._clock.now())
             await self._restart(uow, document)
         return document
 
@@ -362,7 +362,7 @@ class PipelineService:
         changes: DocumentChanges,
         *,
         accept_suggestions: bool = False,
-        resume_at: Step = Step.APPLY_RULES,
+        resume_at: Node = Node.APPLY_RULES,
         drawer: DrawerId | None = None,
     ) -> Document:
         """Owner or admin, for a document in the inbox: decide its open fields, apply `changes`
@@ -370,8 +370,8 @@ class PipelineService:
         chooses any drawer, and filing accepts it) and let processing continue from `resume_at`,
         up to filing.
 
-        Each uncertain field of the steps before `resume_at`, and of the rules when processing
-        resumes with them, needs a decision (see `inbox.decide`). The steps whose results the
+        Each uncertain field of the nodes before `resume_at`, and of the rules when processing
+        resumes with them, needs a decision (see `inbox.decide`). The nodes whose results the
         owner overruled get a log entry; so do the rules, with what the owner decided and
         changed: the rules that run next leave it as it is.
 
@@ -384,9 +384,9 @@ class PipelineService:
             outcomes = dict(document.processing.outcomes)
             open = [
                 item
-                for item in open_steps(document, log)
-                if item.step.position < resume_at.position
-                or (item.step is Step.APPLY_RULES and resume_at is Step.APPLY_RULES)
+                for item in open_nodes(document, log)
+                if item.node.position < resume_at.position
+                or (item.node is Node.APPLY_RULES and resume_at is Node.APPLY_RULES)
             ]
             target = None if drawer is None else await visible_drawer(uow, user, drawer)
             if target is not None and not (user.is_active_admin or can_file_into(user, target)):
@@ -413,11 +413,11 @@ class PipelineService:
             if target is not None:
                 document.move_to(target.id, now)
             run = document.processing.run
-            for step in overruled:
-                result = confirmation(step, outcomes.get(step), decision, user.id)
-                await self._log(uow, id, step, run, result, now, now)
+            for node in overruled:
+                result = confirmation(node, outcomes.get(node), decision, user.id)
+                await self._log(uow, id, node, run, result, now, now)
             result = confirmation(
-                Step.APPLY_RULES, outcomes.get(Step.APPLY_RULES), decision, user.id
+                Node.APPLY_RULES, outcomes.get(Node.APPLY_RULES), decision, user.id
             )
             person = person_record(
                 changed=changed_fields(decision.changes) | ({DRAWER} if target else set()),
@@ -429,24 +429,24 @@ class PipelineService:
             if learned is not None and await learn_alias(uow, *learned) is not None:
                 chosen[LEARNED_ALIAS] = {"contact_id": str(learned[0]), "alias": learned[1]}
             result = replace(result, output={**result.output, **person, **chosen})
-            await self._log(uow, id, Step.APPLY_RULES, run, result, now, now)
+            await self._log(uow, id, Node.APPLY_RULES, run, result, now, now)
             await self._restart(uow, document)
         return document
 
     async def _restart(self, uow: UnitOfWork, document: Document) -> None:
         await uow.documents.update(document)
-        await _enqueue_step(uow, document, self._clock.now())
+        await _enqueue_node(uow, document, self._clock.now())
         await uow.outbox.add(document.pull_events())
         await uow.commit()
 
     # --- worker ---------------------------------------------------------------------------------
 
     async def run_next_job(self) -> bool:
-        """Claim the next due step job and run it. Returns False if no job was due.
+        """Claim the next due node job and run it. Returns False if no job was due.
 
-        The step's work runs outside any transaction; its result, the processing log entry,
-        the events and the next step's job are stored in one transaction with the job's
-        completion. A job whose step is no longer due (stale) is just completed. A job that
+        The node's work runs outside any transaction; its result, the processing log entry,
+        the events and the next node's job are stored in one transaction with the job's
+        completion. A job whose node is no longer due (stale) is just completed. A job that
         was claimed more often than the retry policy allows (the worker died or overran its
         lease each time) fails without running again.
 
@@ -455,7 +455,7 @@ class PipelineService:
         does not count as an attempt.
         """
         async with self._uow() as uow:
-            job = await uow.jobs.claim(now=self._clock.now(), lease=self._lease, kinds=[STEP_JOB])
+            job = await uow.jobs.claim(now=self._clock.now(), lease=self._lease, kinds=[NODE_JOB])
             await uow.commit()
         if job is None:
             return False
@@ -468,69 +468,69 @@ class PipelineService:
 
     async def _run_claimed(self, job: Job) -> None:
         try:
-            document_id, step, run = _parse_payload(job.payload)
+            document_id, node, run = _parse_payload(job.payload)
         except (KeyError, TypeError, ValueError) as error:
-            log.error("invalid step job", extra={"job_id": str(job.id), "error": str(error)})
+            log.error("invalid node job", extra={"job_id": str(job.id), "error": str(error)})
             await self._finish(job, error=f"invalid payload: {error}")
             return
         async with self._uow() as uow:
             document = await uow.documents.find(document_id)
-        if document is None or not document.is_awaiting(step, run):
+        if document is None or not document.is_awaiting(node, run):
             await self._finish(job)
             return
 
         started = self._clock.now()
         if job.tries > self._retry.max_attempts:
             reason = (
-                f"step did not finish in {self._retry.max_attempts} attempts "
+                f"node did not finish in {self._retry.max_attempts} attempts "
                 "(the worker died or ran out of time each time)"
             )
-            await self._record(job, document_id, step, run, _failed(reason), started)
+            await self._record(job, document_id, node, run, _failed(reason), started)
             return
         try:
-            outcome: StepResult | DeferredResult = await self._executors[step].run(document)
+            outcome: NodeResult | DeferredResult = await self._executors[node].run(document)
         except UnprocessableDocumentError as error:
             outcome = _failed(str(error))
         except Exception as error:
             reason = f"{type(error).__name__}: {error}"
             retry_at = self._retry.next_run(job.tries, self._clock.now())
             log.warning(
-                "pipeline step failed",
-                extra={"document_id": str(document_id), "step": step, "attempt": job.tries},
+                "pipeline node failed",
+                extra={"document_id": str(document_id), "node": node, "attempt": job.tries},
                 exc_info=True,
             )
             if retry_at is None:
-                await self._record(job, document_id, step, run, _failed(reason), started)
+                await self._record(job, document_id, node, run, _failed(reason), started)
                 return
             try:
                 async with self._uow() as uow:
                     await uow.jobs.reschedule(job, run_at=retry_at, error=reason)
                     await uow.commit()
             except ConcurrencyError:
-                log.warning("lost the claim of a step job", extra={"job_id": str(job.id)})
+                log.warning("lost the claim of a node job", extra={"job_id": str(job.id)})
             return
 
-        await self._record(job, document_id, step, run, outcome, started)
+        await self._record(job, document_id, node, run, outcome, started)
 
     async def _record(
         self,
         job: Job,
         document_id: DocumentId,
-        step: Step,
+        node: Node,
         run: int,
-        result: StepResult | DeferredResult,
+        result: NodeResult | DeferredResult,
         started: datetime,
     ) -> None:
-        """Store a step result (completing a deferred one on the stored state). A concurrent
+        """Store a node result (completing a deferred one on the stored state). A concurrent
         change of the document (e.g. a metadata edit) is retried; if the job's claim was lost,
-        another worker owns the step and nothing is stored."""
+        another worker owns the node and nothing is stored."""
         for attempt in range(1, _RECORD_ATTEMPTS + 1):
             try:
-                await self._record_once(job, document_id, step, run, result, started)
+                await self._record_once(job, document_id, node, run, result, started)
                 return
             except ConcurrencyError:
                 if not await self._still_claimed(job):
-                    log.warning("lost the claim of a step job", extra={"job_id": str(job.id)})
+                    log.warning("lost the claim of a node job", extra={"job_id": str(job.id)})
                     return
                 if attempt == _RECORD_ATTEMPTS:
                     raise
@@ -539,27 +539,27 @@ class PipelineService:
         self,
         job: Job,
         document_id: DocumentId,
-        step: Step,
+        node: Node,
         run: int,
-        outcome: StepResult | DeferredResult,
+        outcome: NodeResult | DeferredResult,
         started: datetime,
     ) -> None:
         now = self._clock.now()
         async with self._uow() as uow:
             document = await uow.documents.find(document_id)
-            if document is None or not document.is_awaiting(step, run):
+            if document is None or not document.is_awaiting(node, run):
                 await uow.jobs.complete(job)
                 await uow.commit()
                 return
-            if isinstance(outcome, StepResult):
+            if isinstance(outcome, NodeResult):
                 result = outcome
             else:
                 result = await outcome.apply(uow, document, now)
-            next_step = document.record_result(step, run, result, now)
+            next_step = document.record_result(node, run, result, now)
             await uow.documents.update(document)
-            await self._log(uow, document.id, step, run, result, started, now)
+            await self._log(uow, document.id, node, run, result, started, now)
             if next_step is not None:
-                await _enqueue_step(uow, document, now)
+                await _enqueue_node(uow, document, now)
             if result.outcome is Outcome.FAILED:
                 await uow.jobs.fail(job, error=result.reason or "failed")
             else:
@@ -600,22 +600,22 @@ class PipelineService:
                     await uow.jobs.fail(job, error=error)
                 await uow.commit()
         except ConcurrencyError:
-            log.warning("lost the claim of a step job", extra={"job_id": str(job.id)})
+            log.warning("lost the claim of a node job", extra={"job_id": str(job.id)})
 
     async def _log(
         self,
         uow: UnitOfWork,
         document: DocumentId,
-        step: Step,
+        node: Node,
         run: int,
-        result: StepResult,
+        result: NodeResult,
         started: datetime,
         now: datetime,
     ) -> None:
         await uow.processing_log.append(
-            StepRun(
+            NodeRun(
                 document_id=document,
-                step=step,
+                node=node,
                 run=run,
                 result=result,
                 pipeline_version=self._version,
@@ -633,13 +633,13 @@ async def _owned_document(uow: UnitOfWork, user: User, id: DocumentId) -> Docume
     return document
 
 
-async def _enqueue_step(uow: UnitOfWork, document: Document, now: datetime) -> JobId | None:
-    step = document.processing.current_step
-    assert step is not None  # called while processing
+async def _enqueue_node(uow: UnitOfWork, document: Document, now: datetime) -> JobId | None:
+    node = document.processing.current_node
+    assert node is not None  # called while processing
     run = document.processing.run
-    payload: JsonObject = {"document_id": str(document.id), "step": step.value, "run": run}
+    payload: JsonObject = {"document_id": str(document.id), "node": node.value, "run": run}
     return await uow.jobs.enqueue(
-        STEP_JOB, payload, run_at=now, dedup_key=f"{document.id}:{run}:{step.value}"
+        NODE_JOB, payload, run_at=now, dedup_key=f"{document.id}:{run}:{node.value}"
     )
 
 
@@ -659,7 +659,7 @@ async def _check_imported(
             sha256=Sha256("0" * 64),
             original_filename="scratch",
             media_type="application/pdf",
-            result=StepResult(outcome=Outcome.OK),
+            result=NodeResult(outcome=Outcome.OK),
             now=now,
         )
         scratch.apply_changes(changes, definitions, now)
@@ -667,8 +667,8 @@ async def _check_imported(
         raise ValidationError(f"metadata: {error}") from None
 
 
-def _failed(reason: str) -> StepResult:
-    return StepResult(outcome=Outcome.FAILED, reason=reason)
+def _failed(reason: str) -> NodeResult:
+    return NodeResult(outcome=Outcome.FAILED, reason=reason)
 
 
 def _head(path: Path) -> bytes:
@@ -676,8 +676,8 @@ def _head(path: Path) -> bytes:
         return file.read(media_types.SNIFF_SIZE)
 
 
-def _parse_payload(payload: JsonObject) -> tuple[DocumentId, Step, int]:
+def _parse_payload(payload: JsonObject) -> tuple[DocumentId, Node, int]:
     run = payload["run"]
     if not isinstance(run, int):
-        raise ValueError(f"invalid step job payload {payload!r}")
-    return DocumentId(UUID(str(payload["document_id"]))), Step(str(payload["step"])), run
+        raise ValueError(f"invalid node job payload {payload!r}")
+    return DocumentId(UUID(str(payload["document_id"]))), Node(str(payload["node"])), run

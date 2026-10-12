@@ -12,7 +12,7 @@ from papiq.core.domain.errors import (
     NotFoundError,
     PermissionDeniedError,
 )
-from papiq.core.domain.pipeline import Lane, Step
+from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.rules import RuleScope, SetDrawer
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import DocumentFilter
@@ -73,7 +73,7 @@ async def test_admins_control_other_users_documents_in_every_lane(world: World) 
     assert (await world.documents.get(admin.id, received.id)).lane is None
     with pytest.raises(NotFoundError):
         await world.documents.get(stranger.id, received.id)
-    await world.drain(world.pipeline({Step.CLASSIFY: Returns(UNCERTAIN)}))
+    await world.drain(world.pipeline({Node.CLASSIFY: Returns(UNCERTAIN)}))
     yellow = await world.documents.get(admin.id, received.id)
     assert yellow.lane is Lane.YELLOW
 
@@ -112,7 +112,7 @@ async def test_admins_control_other_users_documents_in_every_lane(world: World) 
     await world.drain()
     assert (await world.documents.get(owner.id, yellow.id)).lane is Lane.GREEN
 
-    await world.pipeline().reprocess_from(admin.id, yellow.id, Step.PARSE)
+    await world.pipeline().reprocess_from(admin.id, yellow.id, Node.PARSE)
     await world.drain()
     await world.users.set_active(boss.id, admin.id, False)
     with pytest.raises(AuthenticationError):
@@ -168,11 +168,11 @@ async def test_admins_confirm_into_any_drawer(world: World) -> None:
     assert (await world.documents.get(stranger.id, received.id)).id == received.id
 
     # The admin's choice holds while they are an admin; then filing asks the owner again.
-    await pipeline.reprocess_from(owner.id, received.id, Step.APPLY_RULES)
+    await pipeline.reprocess_from(owner.id, received.id, Node.APPLY_RULES)
     await world.drain(pipeline)
     assert (await world.documents.get(owner.id, received.id)).lane is Lane.GREEN
     await world.users.set_active(boss.id, admin.id, False)
-    await pipeline.reprocess_from(owner.id, received.id, Step.APPLY_RULES)
+    await pipeline.reprocess_from(owner.id, received.id, Node.APPLY_RULES)
     await world.drain(pipeline)
     assert (await world.documents.get(owner.id, received.id)).lane is Lane.YELLOW
 

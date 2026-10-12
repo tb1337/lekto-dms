@@ -12,13 +12,13 @@ from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
 from papiq.core.domain.documents import Channel, Document
 from papiq.core.domain.drawers import Drawer, ShareLevel
 from papiq.core.domain.permissions import can_manage_drawer
-from papiq.core.domain.pipeline import PIPELINE, Lane, Outcome, ProcessingStatus, Step, StepRun
+from papiq.core.domain.pipeline import PIPELINE, Lane, Node, NodeRun, Outcome, ProcessingStatus
 from papiq.core.domain.users import User
 
-ReprocessStep = StrEnum(  # type: ignore[misc]
-    "ReprocessStep", {step.name: step.value for step in PIPELINE[1:]}
+ReprocessNode = StrEnum(  # type: ignore[misc]
+    "ReprocessNode", {node.name: node.value for node in PIPELINE[1:]}
 )
-"""Steps processing can restart from; receiving cannot be repeated."""
+"""Nodes processing can restart from; receiving cannot be repeated."""
 
 
 class DocumentAccepted(BaseModel):
@@ -29,13 +29,13 @@ class DocumentAccepted(BaseModel):
 class Processing(BaseModel):
     status: ProcessingStatus = Field(
         description=(
-            "`processing`: `current_step` is due; `review`: stopped before `current_step` until "
-            "the uncertain fields are confirmed; `completed`; `failed` at `current_step`."
+            "`processing`: `current_node` is due; `review`: stopped before `current_node` until "
+            "the uncertain fields are confirmed; `completed`; `failed` at `current_node`."
         )
     )
-    current_step: Step | None
+    current_node: Node | None
     run: int = Field(description="Grows with every retry or reprocessing.")
-    outcomes: dict[Step, Outcome] = Field(description="Results of the current run.")
+    outcomes: dict[Node, Outcome] = Field(description="Results of the current run.")
 
 
 class DocumentDetails(BaseModel):
@@ -67,7 +67,7 @@ class DocumentDetails(BaseModel):
                     "lane": "green",
                     "processing": {
                         "status": "completed",
-                        "current_step": None,
+                        "current_node": None,
                         "run": 1,
                         "outcomes": {"ocr": "ok", "classify": "ok"},
                     },
@@ -123,7 +123,7 @@ class DocumentDetails(BaseModel):
             lane=document.lane,
             processing=Processing(
                 status=state.status,
-                current_step=state.current_step,
+                current_node=state.current_node,
                 run=state.run,
                 outcomes=dict(state.outcomes),
             ),
@@ -212,9 +212,9 @@ class MoveRequest(BaseModel):
 
 
 class LogEntry(BaseModel):
-    """One execution of one step."""
+    """One execution of one node."""
 
-    step: Step
+    node: Node
     run: int
     outcome: Outcome
     reason: str | None
@@ -227,10 +227,10 @@ class LogEntry(BaseModel):
     duration_ms: float
 
     @classmethod
-    def of(cls, run: StepRun) -> "LogEntry":
+    def of(cls, run: NodeRun) -> "LogEntry":
         result = run.result
         return cls(
-            step=run.step,
+            node=run.node,
             run=run.run,
             outcome=result.outcome,
             reason=result.reason,
@@ -245,10 +245,10 @@ class LogEntry(BaseModel):
 
 
 class ReprocessRequest(BaseModel):
-    model_config = ConfigDict(json_schema_extra={"examples": [{"from_step": "classify"}]})
+    model_config = ConfigDict(json_schema_extra={"examples": [{"from_node": "classify"}]})
 
-    from_step: ReprocessStep = Field(
-        description="Discard the results from this step on and process again from there."
+    from_node: ReprocessNode = Field(
+        description="Discard the results from this node on and process again from there."
     )
 
 

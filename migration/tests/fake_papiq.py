@@ -224,7 +224,7 @@ class FakePapiq:
             "document_date": metadata.get("document_date"),
             "fields": metadata.get("fields", {}),
             "lane": None,
-            "processing": {"status": "processing", "current_step": "ocr", "run": 1, "outcomes": {}},
+            "processing": {"status": "processing", "current_node": "ocr", "run": 1, "outcomes": {}},
             "_lane": self.lanes.get(filename, "green"),
             "_log": [],
         }
@@ -238,7 +238,7 @@ class FakePapiq:
         if self.ticks >= 0 and self._polls[id] > self.ticks:
             lane = document["_lane"]
             document["lane"] = lane
-            steps = [
+            nodes = [
                 "receive",
                 "ocr",
                 "parse",
@@ -250,19 +250,19 @@ class FakePapiq:
             if lane == "green":
                 document["processing"] = {
                     "status": "completed",
-                    "current_step": None,
+                    "current_node": None,
                     "run": 1,
-                    "outcomes": {step: "ok" for step in steps},
+                    "outcomes": {node: "ok" for node in nodes},
                 }
             else:
                 document["processing"] = {
                     "status": "failed",
-                    "current_step": "parse",
+                    "current_node": "parse",
                     "run": 1,
                     "outcomes": {"receive": "ok", "ocr": "ok"},
                 }
                 document["_log"] = [
-                    {"step": "parse", "outcome": "failed", "reason": "no text recognised"}
+                    {"node": "parse", "outcome": "failed", "reason": "no text recognised"}
                 ]
         return {key: value for key, value in document.items() if not key.startswith("_")}
 

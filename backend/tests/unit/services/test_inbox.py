@@ -20,9 +20,9 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.ids import ContactId, DrawerId, UserId
 from papiq.core.domain.master_data import Contact
-from papiq.core.domain.pipeline import PERSON, Lane, Outcome, ProcessingStatus, Step, StepResult
+from papiq.core.domain.pipeline import PERSON, Lane, Node, NodeResult, Outcome, ProcessingStatus
 from papiq.core.domain.users import User
-from papiq.core.services.inbox import OpenStep, decide, field_checks
+from papiq.core.services.inbox import OpenNode, decide, field_checks
 from papiq.core.services.pipeline import PipelineService
 from tests.builders import FAILED, NOW, document, incoming
 from tests.unit.services.conftest import Returns, World
@@ -40,7 +40,7 @@ class Scene:
     document: Document
 
 
-def classified(contact: Contact) -> StepResult:
+def classified(contact: Contact) -> NodeResult:
     checks = [
         FieldCheck(
             field="contact",
@@ -53,7 +53,7 @@ def classified(contact: Contact) -> StepResult:
         FieldCheck(field="tags", outcome=Outcome.OK, confidence=1, value=[]),
         FieldCheck(field="document_date", outcome=Outcome.UNCERTAIN, confidence=0, reason=UNSURE),
     ]
-    return StepResult(
+    return NodeResult(
         outcome=Outcome.UNCERTAIN,
         reason="contact, document_date",
         model_version="fake-llm 1",
@@ -62,7 +62,7 @@ def classified(contact: Contact) -> StepResult:
     )
 
 
-def extracted(amount: FieldDefinition) -> StepResult:
+def extracted(amount: FieldDefinition) -> NodeResult:
     check = FieldCheck(
         field=field_key(amount.id),
         outcome=Outcome.UNCERTAIN,
@@ -71,7 +71,7 @@ def extracted(amount: FieldDefinition) -> StepResult:
         proposed={"amount": "84.20", "currency": "EUR"},
         suggestion={"amount": "84.20", "currency": "EUR"},
     )
-    return StepResult(
+    return NodeResult(
         outcome=Outcome.UNCERTAIN,
         reason="Betrag",
         model_version="fake-llm 1",
@@ -89,8 +89,8 @@ async def scene(world: World) -> Scene:
         await uow.commit()
     pipeline = world.pipeline(
         {
-            Step.CLASSIFY: Returns(classified(contact)),
-            Step.EXTRACT_FIELDS: Returns(extracted(amount)),
+            Node.CLASSIFY: Returns(classified(contact)),
+            Node.EXTRACT_FIELDS: Returns(extracted(amount)),
         }
     )
     document = await pipeline.receive(owner.id, incoming(b"%PDF-1.7\n%%EOF\n"), filename="a.pdf")
@@ -104,9 +104,9 @@ async def test_an_uncertain_document_is_in_the_inbox(world: World) -> None:
     assert s.document.processing.status is ProcessingStatus.REVIEW
     (item,) = await world.documents.inbox(s.owner.id)
     assert item.document.id == s.document.id
-    assert [(step.step, step.outcome) for step in item.open] == [
-        (Step.CLASSIFY, Outcome.UNCERTAIN),
-        (Step.EXTRACT_FIELDS, Outcome.UNCERTAIN),
+    assert [(node.node, node.outcome) for node in item.open] == [
+        (Node.CLASSIFY, Outcome.UNCERTAIN),
+        (Node.EXTRACT_FIELDS, Outcome.UNCERTAIN),
     ]
     assert [check.field for check in item.open[0].fields] == ["contact", "document_date"]
     assert item.open[1].fields[0].field == field_key(s.amount.id)
@@ -116,9 +116,9 @@ async def test_an_uncertain_document_is_in_the_inbox(world: World) -> None:
 async def test_the_review_shows_the_model_runs(world: World) -> None:
     s = await scene(world)
     review = await world.documents.review(s.owner.id, s.document.id)
-    classify, extract = review.steps
-    assert (classify.step, classify.truncated, classify.model_version) == (
-        Step.CLASSIFY,
+    classify, extract = review.nodes
+    assert (classify.node, classify.truncated, classify.model_version) == (
+        Node.CLASSIFY,
         True,
         "fake-llm 1",
     )
@@ -154,7 +154,7 @@ async def test_a_confirmed_document_is_filed(world: World) -> None:
         accept_suggestions=True,
     )
     assert confirmed.processing.status is ProcessingStatus.PROCESSING
-    assert confirmed.processing.current_step is Step.APPLY_RULES
+    assert confirmed.processing.current_node is Node.APPLY_RULES
     assert confirmed.lane is None
     await world.drain(s.pipeline)
 
@@ -168,10 +168,10 @@ async def test_a_confirmed_document_is_filed(world: World) -> None:
 
     log = await world.documents.processing_log(s.owner.id, s.document.id)
     confirmations = [entry for entry in log if entry.result.model_version == PERSON]
-    assert [(entry.step, entry.run) for entry in confirmations] == [
-        (Step.CLASSIFY, 2),
-        (Step.EXTRACT_FIELDS, 2),
-        (Step.APPLY_RULES, 2),
+    assert [(entry.node, entry.run) for entry in confirmations] == [
+        (Node.CLASSIFY, 2),
+        (Node.EXTRACT_FIELDS, 2),
+        (Node.APPLY_RULES, 2),
     ]
     assert confirmations[0].result.output == {
         "confirmed_by": str(s.owner.id),
@@ -206,7 +206,7 @@ async def test_accepting_the_suggested_contact_learns_the_name_read(world: World
     rules = next(
         entry
         for entry in log
-        if entry.step is Step.APPLY_RULES and entry.result.model_version == PERSON
+        if entry.node is Node.APPLY_RULES and entry.result.model_version == PERSON
     )
     assert rules.result.output["learned_alias"] == {
         "contact_id": str(s.contact.id),
@@ -297,26 +297,26 @@ async def test_after_a_type_correction_fields_are_extracted_again(world: World) 
         s.owner.id,
         s.document.id,
         DocumentChanges(contact_id=None, document_date=None),
-        resume_at=Step.EXTRACT_FIELDS,
+        resume_at=Node.EXTRACT_FIELDS,
     )
     await world.drain(s.pipeline)
     document = await world.documents.get(s.owner.id, s.document.id)
     assert document.processing.status is ProcessingStatus.REVIEW  # extraction is uncertain again
     log = await world.documents.processing_log(s.owner.id, s.document.id)
-    assert [entry.step for entry in log if entry.result.model_version == PERSON] == [
-        Step.CLASSIFY,
-        Step.APPLY_RULES,
+    assert [entry.node for entry in log if entry.result.model_version == PERSON] == [
+        Node.CLASSIFY,
+        Node.APPLY_RULES,
     ]
 
 
 async def test_a_red_document_can_be_taken_over(world: World) -> None:
     owner = await world.user()
-    pipeline = world.pipeline({Step.CLASSIFY: Returns(FAILED)})
+    pipeline = world.pipeline({Node.CLASSIFY: Returns(FAILED)})
     document = await pipeline.receive(owner.id, incoming(b"%PDF-1.7\n%%EOF\n"), filename="a.pdf")
     await world.drain(pipeline)
     (item,) = await world.documents.inbox(owner.id)
-    assert (item.open[0].step, item.open[0].outcome, item.open[0].fields) == (
-        Step.CLASSIFY,
+    assert (item.open[0].node, item.open[0].outcome, item.open[0].fields) == (
+        Node.CLASSIFY,
         Outcome.FAILED,
         (),
     )
@@ -327,10 +327,10 @@ async def test_a_red_document_can_be_taken_over(world: World) -> None:
     assert stored.lane is Lane.GREEN
     log = await world.documents.processing_log(owner.id, document.id)
     taken = [entry for entry in log if entry.result.model_version == PERSON]
-    assert [entry.step for entry in taken] == [
-        Step.CLASSIFY,
-        Step.EXTRACT_FIELDS,
-        Step.APPLY_RULES,
+    assert [entry.node for entry in taken] == [
+        Node.CLASSIFY,
+        Node.EXTRACT_FIELDS,
+        Node.APPLY_RULES,
     ]
     assert taken[0].result.output["outcome_before"] == "failed"
     assert taken[1].result.output["outcome_before"] is None
@@ -399,7 +399,7 @@ def test_suggestions_that_do_not_fit_are_refused() -> None:
         reason="similar",
         suggestion="not an id",
     )
-    open = [OpenStep(Step.CLASSIFY, Outcome.UNCERTAIN, "x", (check,))]
+    open = [OpenNode(Node.CLASSIFY, Outcome.UNCERTAIN, "x", (check,))]
     with pytest.raises(ValidationError, match="cannot be taken"):
         decide(open, DOCUMENT, DocumentChanges(), accept_suggestions=True, definitions={})
     decision = decide(
@@ -409,7 +409,7 @@ def test_suggestions_that_do_not_fit_are_refused() -> None:
         accept_suggestions=True,
         definitions={},
     )
-    assert decision.entered == {Step.CLASSIFY: ("contact",)}
+    assert decision.entered == {Node.CLASSIFY: ("contact",)}
     assert decision.accepted == {}
 
 
@@ -418,6 +418,6 @@ def test_fields_of_removed_fields_need_no_decision() -> None:
     check = FieldCheck(
         field=field_key(gone.id), outcome=Outcome.UNCERTAIN, confidence=0, reason="x"
     )
-    open = [OpenStep(Step.EXTRACT_FIELDS, Outcome.UNCERTAIN, "x", (check,))]
+    open = [OpenNode(Node.EXTRACT_FIELDS, Outcome.UNCERTAIN, "x", (check,))]
     decision = decide(open, DOCUMENT, DocumentChanges(), accept_suggestions=False, definitions={})
     assert decision.changes == DocumentChanges()

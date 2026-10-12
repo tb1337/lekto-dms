@@ -33,7 +33,7 @@
 	import { cn } from '#lib/utils.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
-	type ReprocessStep = components['schemas']['ReprocessStep'];
+	type ReprocessNode = components['schemas']['ReprocessNode'];
 
 	const id = $derived(page.params.id ?? '');
 	let document = $state<Document | null>(null);
@@ -44,7 +44,7 @@
 	let moveOpen = $state(false);
 	let reprocessOpen = $state(false);
 	let target = $state('');
-	let fromStep = $state<ReprocessStep>('ocr');
+	let fromNode = $state<ReprocessNode>('ocr');
 	let busy = $state(false);
 
 	const base = $derived(`/api/v1/documents/${id}`);
@@ -67,8 +67,8 @@
 		lookup?.drawers.find((drawer) => drawer.id === document?.drawer_id)?.name ?? null
 	);
 
-	// Steps a reprocessing may start from: not past a failed step, not `file` while fields wait.
-	const STEPS: ReprocessStep[] = [
+	// Nodes a reprocessing may start from: not past a failed node, not `file` while fields wait.
+	const NODES: ReprocessNode[] = [
 		'ocr',
 		'parse',
 		'classify',
@@ -76,21 +76,21 @@
 		'apply_rules',
 		'file'
 	];
-	const stepLabel: Record<ReprocessStep, () => string> = {
-		ocr: m.step_ocr,
-		parse: m.step_parse,
-		classify: m.step_classify,
-		extract_fields: m.step_extract_fields,
-		apply_rules: m.step_apply_rules,
-		file: m.step_file
+	const nodeLabel: Record<ReprocessNode, () => string> = {
+		ocr: m.node_ocr,
+		parse: m.node_parse,
+		classify: m.node_classify,
+		extract_fields: m.node_extract_fields,
+		apply_rules: m.node_apply_rules,
+		file: m.node_file
 	};
-	const steps = $derived.by(() => {
+	const nodes = $derived.by(() => {
 		const failedAt =
-			document?.processing.status === 'failed' ? document.processing.current_step : null;
-		return STEPS.filter((step) => {
-			if (document?.processing.status === 'review' && step === 'file') return false;
-			return failedAt === null || STEPS.indexOf(step) <= STEPS.indexOf(failedAt as ReprocessStep);
-		}).map((step) => ({ value: step, label: stepLabel[step]() }));
+			document?.processing.status === 'failed' ? document.processing.current_node : null;
+		return NODES.filter((node) => {
+			if (document?.processing.status === 'review' && node === 'file') return false;
+			return failedAt === null || NODES.indexOf(node) <= NODES.indexOf(failedAt as ReprocessNode);
+		}).map((node) => ({ value: node, label: nodeLabel[node]() }));
 	});
 
 	// An answer for a document the page has left behind must not replace the current one.
@@ -160,7 +160,7 @@
 					unwrap(
 						api.POST('/api/v1/documents/{id}/reprocess', {
 							params: { path: { id } },
-							body: { from_step: fromStep }
+							body: { from_node: fromNode }
 						})
 					),
 				m.reprocess_started()
@@ -259,15 +259,15 @@
 			{#if manageable && status === 'failed'}
 				<Button variant="outline" disabled={busy} onclick={retry}>
 					<RotateCcw aria-hidden="true" />
-					{m.retry_step()}
+					{m.retry_node()}
 				</Button>
 			{/if}
-			{#if manageable && status !== 'processing' && steps.length > 0}
+			{#if manageable && status !== 'processing' && nodes.length > 0}
 				<Button
 					variant="outline"
 					disabled={busy}
 					onclick={() => {
-						fromStep = steps[0].value;
+						fromNode = nodes[0].value;
 						reprocessOpen = true;
 					}}
 				>
@@ -353,8 +353,8 @@
 			<Dialog.Description>{m.reprocess_hint()}</Dialog.Description>
 		</Dialog.Header>
 		<Field.Field>
-			<Field.Label for="reprocess-step">{m.reprocess_from()}</Field.Label>
-			<NativeSelect id="reprocess-step" bind:value={fromStep} options={steps} />
+			<Field.Label for="reprocess-node">{m.reprocess_from()}</Field.Label>
+			<NativeSelect id="reprocess-node" bind:value={fromNode} options={nodes} />
 		</Field.Field>
 		<Dialog.Footer>
 			<Button variant="ghost" onclick={() => (reprocessOpen = false)}>{m.cancel()}</Button>

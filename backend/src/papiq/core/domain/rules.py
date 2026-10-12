@@ -6,7 +6,7 @@ A rule has a scope, triggers, a tree of conditions and actions:
   fields and reviews (nothing that changes who sees a document). A user rule is made by any
   user and acts on that user's own documents with all actions; it files only into drawers its
   owner may write to.
-- Triggers: a document arriving (`ingest`, the pipeline step `apply_rules`) and a document being
+- Triggers: a document arriving (`ingest`, the pipeline node `apply_rules`) and a document being
   changed by a person (`change`).
 - Conditions: groups of `all` (and) or `any` (or), each may be negated; a condition is field,
   operator and value.
@@ -69,7 +69,7 @@ class RuleScope(StrEnum):
 
 
 class Trigger(StrEnum):
-    INGEST = "ingest"  # the pipeline step `apply_rules`
+    INGEST = "ingest"  # the pipeline node `apply_rules`
     CHANGE = "change"  # a person changed the document's metadata
 
 

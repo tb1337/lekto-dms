@@ -1,11 +1,11 @@
-"""The classification steps: classify (contact, type, tags, date) and extract fields.
+"""The classification nodes: classify (contact, type, tags, date) and extract fields.
 
-Each step asks the language model once, checks the answer's structure and asks once more if it
-does not fit; a second unfit answer fails the step (red). Every proposed field is then checked
+Each node asks the language model once, checks the answer's structure and asks once more if it
+does not fit; a second unfit answer fails the node (red). Every proposed field is then checked
 against facts (`FieldCheck`): the confidence comes from what the text shows and what the master
 data holds, never from the model's own judgement. Fields that pass are applied to the document;
-uncertain ones are only proposed, and the step is uncertain (the document waits in the inbox).
-An unreachable model raises, so the pipeline retries the step.
+uncertain ones are only proposed, and the node is uncertain (the document waits in the inbox).
+An unreachable model raises, so the pipeline retries the node.
 """
 
 import re
@@ -41,7 +41,7 @@ from papiq.core.domain.ids import ContactId, FieldId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.names import best_match, mentions, name_key, named_share
-from papiq.core.domain.pipeline import Outcome, StepResult
+from papiq.core.domain.pipeline import NodeResult, Outcome
 from papiq.core.ports import Clock, LanguageModel, ObjectStore, UnitOfWorkFactory
 from papiq.core.ports.llm import StructuredAnswer, StructuredRequest
 from papiq.core.services.classification.answers import (
@@ -154,8 +154,8 @@ class _ModelStep:
             "endpoint": self._model.endpoint,
         }
 
-    def _unfit(self, error: _UnfitAnswerError, input: JsonObject) -> StepResult:
-        return StepResult(
+    def _unfit(self, error: _UnfitAnswerError, input: JsonObject) -> NodeResult:
+        return NodeResult(
             outcome=Outcome.FAILED,
             reason=f"the model's answer does not fit the schema: {error}",
             model_version=_model_version(error.answers[-1]),
@@ -168,12 +168,12 @@ class _ModelStep:
         )
 
 
-class ClassifyStep(_ModelStep):
+class ClassifyNode(_ModelStep):
     """Contact, document type, tags and document date."""
 
-    async def run(self, document: Document) -> StepResult | MetadataResult:
+    async def run(self, document: Document) -> NodeResult | MetadataResult:
         if self._model is None:
-            return StepResult(outcome=Outcome.UNCERTAIN, reason=NO_MODEL)
+            return NodeResult(outcome=Outcome.UNCERTAIN, reason=NO_MODEL)
         text = await self._text(document)
         async with self._uow() as uow:
             contacts = await uow.contacts.list_all()
@@ -214,7 +214,7 @@ class ClassifyStep(_ModelStep):
             and answer.new_document_type is None
             and answer.document_date.value is None
         ):
-            return StepResult(
+            return NodeResult(
                 outcome=Outcome.FAILED,
                 reason="nothing recognised: no contact, document type or date",
                 model_version=_model_version(answers[-1]),
@@ -289,12 +289,12 @@ class ClassifyStep(_ModelStep):
         )
 
 
-class ExtractFieldsStep(_ModelStep):
+class ExtractFieldsNode(_ModelStep):
     """The values of the fields that apply to the document: those of its type and the
     global ones. A type's field that the document does not show is uncertain; a global
     one stays unset."""
 
-    async def run(self, document: Document) -> StepResult | MetadataResult:
+    async def run(self, document: Document) -> NodeResult | MetadataResult:
         async with self._uow() as uow:
             definitions = sorted(
                 (
@@ -310,9 +310,9 @@ class ExtractFieldsStep(_ModelStep):
                 else await uow.document_types.find(document.document_type_id)
             )
         if not definitions:
-            return StepResult(outcome=Outcome.OK, output={"fields": []})
+            return NodeResult(outcome=Outcome.OK, output={"fields": []})
         if self._model is None:
-            return StepResult(outcome=Outcome.UNCERTAIN, reason=NO_MODEL)
+            return NodeResult(outcome=Outcome.UNCERTAIN, reason=NO_MODEL)
         text = await self._text(document)
         facts = DocumentText(text)
         keys = field_keys(definitions)
@@ -666,9 +666,9 @@ def _result(
     answer: JsonObject,
     answers: list[StructuredAnswer],
     input: JsonObject,
-) -> StepResult:
+) -> NodeResult:
     uncertain = [check for check in checks if not check.ok]
-    return StepResult(
+    return NodeResult(
         outcome=Outcome.UNCERTAIN if uncertain else Outcome.OK,
         reason="; ".join(_reason(check) for check in uncertain) or None,
         confidence=min((check.confidence for check in checks), default=1.0),

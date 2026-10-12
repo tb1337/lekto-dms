@@ -4,7 +4,7 @@ a confirmed review) is not undone by rules later in the processing run."""
 from papiq.core.domain.classification import FieldCheck, checks_to_json
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.drawers import ShareLevel
-from papiq.core.domain.pipeline import PERSON_DRAWER, RULES, Lane, Outcome, StepResult
+from papiq.core.domain.pipeline import PERSON_DRAWER, RULES, Lane, NodeResult, Outcome
 from papiq.core.domain.rule_engine import Note
 from papiq.core.domain.rules import ForceReview, RemoveTags, SetDrawer, Trigger
 from papiq.core.services.pipeline import MetadataResult
@@ -29,7 +29,7 @@ class UnsureOfTheContact:
         check = FieldCheck(
             field="contact", outcome=Outcome.UNCERTAIN, confidence=0.2, reason="unsure"
         )
-        result = StepResult(
+        result = NodeResult(
             outcome=Outcome.UNCERTAIN,
             reason="contact: unsure",
             model_version="fake-llm 1",

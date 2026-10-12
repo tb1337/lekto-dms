@@ -48,7 +48,7 @@ from papiq.adapters.outbound.webhooks import HttpWebhookSender
 from papiq.composition.database import open_database
 from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
-from papiq.core.domain.pipeline import PIPELINE, Step
+from papiq.core.domain.pipeline import PIPELINE, Node
 from papiq.core.ports import (
     Clock,
     DeliveryRetry,
@@ -69,25 +69,25 @@ from papiq.core.ports import (
     WebhookSender,
 )
 from papiq.core.services.auth import AuthService, SessionPolicy
-from papiq.core.services.classification.steps import (
+from papiq.core.services.classification.nodes import (
     ClassificationPolicy,
-    ClassifyStep,
-    ExtractFieldsStep,
+    ClassifyNode,
+    ExtractFieldsNode,
 )
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.drawers import DrawerService
-from papiq.core.services.imports import ImportedClassifyStep, ImportedExtractStep
+from papiq.core.services.imports import ImportedClassifyNode, ImportedExtractNode
 from papiq.core.services.indexing import IndexingPolicy, IndexingService
 from papiq.core.services.maintenance import MaintenanceService
 from papiq.core.services.master_data import MasterDataService
+from papiq.core.services.nodes import OcrNode, ParseNode
 from papiq.core.services.oidc import OidcService
-from papiq.core.services.pipeline import PipelineService, PlaceholderStep, RetryPolicy, StepExecutor
+from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode, RetryPolicy
 from papiq.core.services.rules import RuleService
 from papiq.core.services.rules.changes import ChangeRules
+from papiq.core.services.rules.nodes import ApplyRulesNode, FileNode
 from papiq.core.services.rules.retroactive import RuleApplicationService
-from papiq.core.services.rules.steps import ApplyRulesStep, FileStep
 from papiq.core.services.search import SearchPolicy, SearchService
-from papiq.core.services.steps import OcrStep, ParseStep
 from papiq.core.services.users import UserService
 from papiq.core.services.webhooks import (
     WebhookDeliveryService,
@@ -383,7 +383,7 @@ class Services:
     search: SearchService | None  # with a search index
 
 
-# Time a step job may take beyond its time limit: downloads, uploads, preview, bookkeeping.
+# Time a node job may take beyond its time limit: downloads, uploads, preview, bookkeeping.
 LEASE_MARGIN = timedelta(minutes=2)
 
 
@@ -445,21 +445,21 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
     settings = settings or Settings.model_construct()
     uow, clock, store = container.unit_of_work, container.clock, container.object_store
     index, embeddings = container.search_index, container.embeddings
-    executors: dict[Step, StepExecutor] = {step: PlaceholderStep() for step in PIPELINE[1:]}
-    executors[Step.OCR] = OcrStep(store, container.ocr, container.previews)
-    executors[Step.PARSE] = ParseStep(store, container.parser)
+    executors: dict[Node, NodeExecutor] = {node: PlaceholderNode() for node in PIPELINE[1:]}
+    executors[Node.OCR] = OcrNode(store, container.ocr, container.previews)
+    executors[Node.PARSE] = ParseNode(store, container.parser)
     policy = policy_of(settings)
     model = container.language_model
-    executors[Step.CLASSIFY] = ImportedClassifyStep(
-        uow, ClassifyStep(uow, store, model, clock, policy)
+    executors[Node.CLASSIFY] = ImportedClassifyNode(
+        uow, ClassifyNode(uow, store, model, clock, policy)
     )
-    executors[Step.EXTRACT_FIELDS] = ImportedExtractStep(
-        uow, ExtractFieldsStep(uow, store, model, clock, policy)
+    executors[Node.EXTRACT_FIELDS] = ImportedExtractNode(
+        uow, ExtractFieldsNode(uow, store, model, clock, policy)
     )
-    executors[Step.APPLY_RULES] = ApplyRulesStep(
+    executors[Node.APPLY_RULES] = ApplyRulesNode(
         uow, store, container.patterns, max_text=settings.rules_max_text
     )
-    executors[Step.FILE] = FileStep()
+    executors[Node.FILE] = FileNode()
     auth = AuthService(
         uow,
         clock,
@@ -520,10 +520,10 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             executors,
             pipeline_version=__version__,
             retry=RetryPolicy(
-                max_attempts=settings.step_max_attempts, delay=settings.step_retry_delay
+                max_attempts=settings.node_max_attempts, delay=settings.node_retry_delay
             ),
-            # Longer than any step may take, so a running step never loses its claim.
-            # A classification step may ask the model twice (once more after an invalid answer).
+            # Longer than any node may take, so a running node never loses its claim.
+            # A classification node may ask the model twice (once more after an invalid answer).
             lease=max(settings.ocr_timeout, settings.parse_timeout, 2 * settings.llm_timeout)
             + LEASE_MARGIN,
         ),

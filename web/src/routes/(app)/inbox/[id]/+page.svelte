@@ -39,13 +39,13 @@
 	let formError = $state<string | null>(null);
 
 	const base = $derived(`/api/v1/documents/${id}`);
-	const checks = $derived<Check[]>(review ? review.open.flatMap((step) => step.fields) : []);
+	const checks = $derived<Check[]>(review ? review.open.flatMap((node) => node.fields) : []);
 	const inputs = $derived(checks.filter((check) => !isRuleField(check.field)));
 	const ruleNotes = $derived(
 		checks.filter((check) => check.field === 'review' || check.field === 'title')
 	);
 	const hasDrawer = $derived(checks.some((check) => check.field === 'drawer'));
-	const failedStep = $derived(review?.open.find((step) => step.outcome === 'failed') ?? null);
+	const failedNode = $derived(review?.open.find((node) => node.outcome === 'failed') ?? null);
 	// The owner confirms into drawers they may write to; an admin into any drawer.
 	const drawers = $derived(writableDrawers(lookup?.drawers ?? [], session.user));
 
@@ -78,7 +78,7 @@
 	$effect(() => {
 		if (!review || !lookup) return;
 		const next: Record<string, ReviewValue> = {};
-		for (const check of review.open.flatMap((step) => step.fields)) {
+		for (const check of review.open.flatMap((node) => node.fields)) {
 			next[check.field] = initialValue(check, review.document, lookup.fields);
 		}
 		const fresh = review.document.drawer_id;
@@ -106,7 +106,7 @@
 		return events.subscribe((event) => {
 			if (event.document_id !== id) return;
 			if (event.type === 'document.deleted') void goto(`${BASE}/inbox`);
-			else if (event.type !== 'document.step_completed') void load();
+			else if (event.type !== 'document.node_completed') void load();
 		});
 	});
 
@@ -198,14 +198,14 @@
 			</div>
 
 			<form class="flex flex-col gap-4" onsubmit={confirm} novalidate>
-				{#if failedStep}
+				{#if failedNode}
 					<div class="flex flex-col gap-3 rounded-2xl border border-destructive/40 bg-card p-4">
 						<p class="font-medium">{m.review_failed()}</p>
-						{#if failedStep.reason}<p class="text-sm">{failedStep.reason}</p>{/if}
+						{#if failedNode.reason}<p class="text-sm">{failedNode.reason}</p>{/if}
 						<div class="flex flex-wrap gap-2">
 							<Button type="button" variant="outline" disabled={busy} onclick={retry}>
 								<RotateCcw aria-hidden="true" />
-								{m.retry_step()}
+								{m.retry_node()}
 							</Button>
 							<a href="{BASE}/documents/{id}" class={cn(buttonVariants({ variant: 'ghost' }))}>
 								{m.review_open_document()}
@@ -241,11 +241,11 @@
 
 				{#if formError}<p class="text-sm text-destructive" role="alert">{formError}</p>{/if}
 
-				{#if inputs.length === 0 && !failedStep && ruleNotes.length === 0 && !hasDrawer}
+				{#if inputs.length === 0 && !failedNode && ruleNotes.length === 0 && !hasDrawer}
 					<p class="text-muted-foreground">{m.review_nothing_open()}</p>
 				{/if}
 
-				{#if !failedStep || inputs.length > 0 || hasDrawer}
+				{#if !failedNode || inputs.length > 0 || hasDrawer}
 					<div>
 						<Button type="submit" disabled={busy}>{m.review_confirm()}</Button>
 					</div>

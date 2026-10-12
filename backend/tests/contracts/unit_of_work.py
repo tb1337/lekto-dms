@@ -11,7 +11,7 @@ from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from papiq.core.domain.ids import DocumentId, DrawerId, new_id
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.permissions import can_read_document
-from papiq.core.domain.pipeline import Lane, Outcome, ProcessingStatus, Step, StepResult, StepRun
+from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
 from papiq.core.domain.users import User
 from papiq.core.ports import DocumentFilter, UnitOfWorkFactory
 from tests import builders
@@ -448,7 +448,7 @@ class UnitOfWorkContract:
             {d.id: d for d in definitions},
             NOW,
         )
-        builders.run_pipeline(document, {Step.CLASSIFY: UNCERTAIN})
+        builders.run_pipeline(document, {Node.CLASSIFY: UNCERTAIN})
         document.pull_events()
         async with uow_factory() as uow:
             await uow.contacts.add(contact)
@@ -466,11 +466,11 @@ class UnitOfWorkContract:
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
         owner, drawer = await owner_with_drawer(uow_factory)
-        failed = builders.processed(owner, drawer, {Step.PARSE: FAILED})
+        failed = builders.processed(owner, drawer, {Node.PARSE: FAILED})
         failed.retry(NOW)
         failed.pull_events()
         received = builders.document(owner, drawer)
-        in_review = builders.processed(owner, drawer, {Step.CLASSIFY: UNCERTAIN})
+        in_review = builders.processed(owner, drawer, {Node.CLASSIFY: UNCERTAIN})
         assert in_review.processing.status is ProcessingStatus.REVIEW
         async with uow_factory() as uow:
             for document in (failed, received, in_review):
@@ -533,11 +533,11 @@ class UnitOfWorkContract:
         documents = [
             builders.processed(owner, private),
             builders.processed(owner, shared),
-            builders.processed(owner, shared, {Step.CLASSIFY: UNCERTAIN}),
-            builders.processed(owner, shared, {Step.OCR: FAILED}),
+            builders.processed(owner, shared, {Node.CLASSIFY: UNCERTAIN}),
+            builders.processed(owner, shared, {Node.OCR: FAILED}),
             builders.document(owner, shared),
             builders.processed(reader, shared),
-            builders.processed(reader, shared, {Step.CLASSIFY: UNCERTAIN}),
+            builders.processed(reader, shared, {Node.CLASSIFY: UNCERTAIN}),
             builders.processed(reader, reader_default),
         ]
         async with uow_factory() as uow:
@@ -580,7 +580,7 @@ class UnitOfWorkContract:
             document = builders.processed(
                 owner,
                 other if number == 5 else drawer,
-                {Step.CLASSIFY: UNCERTAIN} if number == 4 else None,
+                {Node.CLASSIFY: UNCERTAIN} if number == 4 else None,
             )
             tags = frozenset({tax.id, paid.id} if number < 2 else {tax.id} if number < 4 else set())
             document.apply_changes(
@@ -655,9 +655,9 @@ class UnitOfWorkContract:
     ) -> None:
         owner, drawer = await owner_with_drawer(uow_factory)
         document = builders.document(owner, drawer)
-        entry = StepRun(
+        entry = NodeRun(
             document_id=document.id,
-            step=Step.RECEIVE,
+            node=Node.RECEIVE,
             run=1,
             result=OK,
             pipeline_version="0.1.0",
@@ -681,20 +681,20 @@ class UnitOfWorkContract:
         owner, drawer = await owner_with_drawer(uow_factory)
         document, other = builders.document(owner, drawer), builders.document(owner, drawer)
         entries = [
-            StepRun(
+            NodeRun(
                 document_id=document.id,
-                step=step,
+                node=node,
                 run=1,
                 result=result,
                 pipeline_version="0.1.0",
                 started_at=NOW,
                 duration=timedelta(milliseconds=250),
             )
-            for step, result in [
-                (Step.RECEIVE, OK),
+            for node, result in [
+                (Node.RECEIVE, OK),
                 (
-                    Step.OCR,
-                    StepResult(
+                    Node.OCR,
+                    NodeResult(
                         outcome=Outcome.UNCERTAIN,
                         reason="low quality scan",
                         confidence=0.25,
@@ -703,7 +703,7 @@ class UnitOfWorkContract:
                         output={"languages": ["deu", "eng"], "ratio": 0.5, "ok": None},
                     ),
                 ),
-                (Step.PARSE, FAILED),
+                (Node.PARSE, FAILED),
             ]
         ]
         async with uow_factory() as uow:

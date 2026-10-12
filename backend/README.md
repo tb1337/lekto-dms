@@ -164,7 +164,7 @@ Receive → OCR → parse → classify → extract fields → apply rules → fi
 | Apply rules (`ApplyRulesStep`) | `content.md` (only if a rule looks at the text), the rules | drawer, contact, type, title, tags, fields | uncertain on conflicts, refused actions and forced reviews; see Rules |
 | File (`FileStep`) | the drawer | - | uncertain if the owner may no longer file into the drawer (field `drawer`) |
 
-- A step that raises is retried (`PAPIQ_STEP_MAX_ATTEMPTS`, delay `PAPIQ_STEP_RETRY_DELAY`,
+- A step that raises is retried (`PAPIQ_NODE_MAX_ATTEMPTS`, delay `PAPIQ_NODE_RETRY_DELAY`,
   doubling); after the last attempt the document goes red. A damaged or encrypted file
   (`UnprocessableDocumentError`) fails at once. The processing log records input, output,
   engine version, reason and duration of every run.
@@ -174,7 +174,7 @@ Receive → OCR → parse → classify → extract fields → apply rules → fi
   plus two minutes, so a step normally keeps its claim; if it overruns (e.g. a slow S3
   transfer), another worker takes the job over and the late result is discarded. A step
   interrupted by a stopping worker is released at once (`JobQueue.release`); that does not
-  count against `PAPIQ_STEP_MAX_ATTEMPTS`.
+  count against `PAPIQ_NODE_MAX_ATTEMPTS`.
 - OCRmyPDF: `--skip-text` (pages with text are not recognised again), `--output-type pdfa`,
   languages `PAPIQ_OCR_LANGUAGES`. Images whose stated resolution gives an implausible page
   size (none, or 72 dpi from a phone) are scaled to the long edge of A4; transparency is put on
@@ -451,7 +451,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /documents/{id}/original`, `/archive`, `/preview` | Files (read access) |
 | `GET /documents/{id}/log` | Processing log (owner or admin) |
 | `POST /documents/{id}/retry` | Repeat the failed step (owner or admin) |
-| `POST /documents/{id}/reprocess` | `{"from_step": "ocr"}`: process again from a step (owner or admin) |
+| `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a step (owner or admin) |
 | `GET /inbox` | The caller's yellow and red documents, newest first, with their open steps and fields; `limit`, `cursor` |
 | `GET /documents/{id}/review` | What the model proposed and how each field was checked (owner or admin) |
 | `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `drawer_id`), then continue from `resume_at` (`apply_rules`, or `extract_fields` after a type change) up to filing (owner or admin); undecided fields: `422` with `open_fields` |
@@ -506,7 +506,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   PyTorch; the number of threads changes nothing). OCRmyPDF takes about 150 MB per job, the
   worker itself about 0.5 GB. A Docling process that the operating system kills for lack of
   memory ends with exit code -9; the step is repeated and the document goes red after
-  `PAPIQ_STEP_MAX_ATTEMPTS`. Choose `PAPIQ_WORKER_CONCURRENCY` by the RAM of the machine
+  `PAPIQ_NODE_MAX_ATTEMPTS`. Choose `PAPIQ_WORKER_CONCURRENCY` by the RAM of the machine
   (about 2 GB per loop plus 1 GB; API and worker in one container share it):
 
   | RAM | `PAPIQ_WORKER_CONCURRENCY` |
@@ -545,7 +545,7 @@ admin reads includes the target URL (which may be a capability URL) and, in the 
 IDs and event types of that user's deliveries.
 At most `PAPIQ_WEBHOOKS_PER_USER` (20) per user.
 
-**Events.** `document.received`, `document.step_completed`, `document.lane_changed`,
+**Events.** `document.received`, `document.node_completed`, `document.lane_changed`,
 `document.filed`, `document.updated`, `document.deleted`, or `*` for all, also future ones. A
 webhook only hears of documents its owner may read, as with the event stream: the right is
 checked when the event is queued and again before every attempt, and a user who lost access in
@@ -742,8 +742,8 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_WORKER_CONCURRENCY` | Worker | `2` | Jobs at the same time; about 2 GB of RAM each (Docling), see Worker |
 | `PAPIQ_WORKER_POLL_INTERVAL` | Worker | `1` | Seconds between looks for due jobs |
 | `PAPIQ_WORKER_SHUTDOWN_TIMEOUT` | Worker | `30` | Seconds running jobs get to finish on SIGTERM |
-| `PAPIQ_STEP_MAX_ATTEMPTS` | Worker | `3` | Attempts of a pipeline step that raises |
-| `PAPIQ_STEP_RETRY_DELAY` | Worker | `30` | Seconds before the second attempt, doubling after |
+| `PAPIQ_NODE_MAX_ATTEMPTS` | Worker | `3` | Attempts of a pipeline step that raises |
+| `PAPIQ_NODE_RETRY_DELAY` | Worker | `30` | Seconds before the second attempt, doubling after |
 | `PAPIQ_EVENTS_POLL_INTERVAL` | Worker | `1` | Seconds between outbox dispatches |
 | `PAPIQ_EVENTS_MAX_ATTEMPTS` | Worker | `10` | Delivery attempts of an event per subscriber |
 | `PAPIQ_CLEANUP_INTERVAL` | Worker | `3600` | Seconds between cleanups |

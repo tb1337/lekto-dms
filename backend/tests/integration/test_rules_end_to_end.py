@@ -100,10 +100,10 @@ class System:
                 await asyncio.sleep(0.2)
 
     async def rules_entry(self, user: User, id: str) -> dict[str, Any]:
-        """The log entry of the step `apply_rules`."""
+        """The log entry of the node `apply_rules`."""
         response = await self.client.get(f"{DOCUMENTS}/{id}/log", headers=auth(user))
         assert response.status_code == 200, response.text
-        (entry,) = [item for item in response.json() if item["step"] == "apply_rules"]
+        (entry,) = [item for item in response.json() if item["node"] == "apply_rules"]
         found: dict[str, Any] = entry
         return found
 
@@ -171,7 +171,7 @@ async def test_a_user_rule_files_and_tags_arriving_documents(system: System) -> 
     filed = await system.settled(owner, bill)
     assert filed["lane"] == "green", filed
     assert filed["processing"]["status"] == "completed"
-    assert filed["processing"]["current_step"] is None
+    assert filed["processing"]["current_node"] is None
     assert filed["processing"]["outcomes"]["apply_rules"] == "ok"
     assert filed["processing"]["outcomes"]["file"] == "ok"
     assert filed["drawer_id"] == drawer["id"]

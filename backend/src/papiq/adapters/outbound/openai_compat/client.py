@@ -5,7 +5,7 @@ base URL includes the version path; `/chat/completions` and `/embeddings` are ap
 
 - Structured output: `response_format` `json_schema` (strict) by default; `json_object` for
   providers that only promise JSON. The answer is not checked here (see the port).
-- No retries of its own: failures raise, and the pipeline's retry policy repeats the step.
+- No retries of its own: failures raise, and the pipeline's retry policy repeats the node.
 - Neither the API key nor document content is logged; errors carry the HTTP status and a short
   excerpt of the provider's message.
 """

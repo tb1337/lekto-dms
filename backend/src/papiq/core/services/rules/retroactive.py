@@ -31,7 +31,7 @@ from papiq.core.domain.ids import DocumentId, RuleApplicationId, RuleId, UserId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.permissions import can_write_document
-from papiq.core.domain.pipeline import RULES_APPLY, Lane, Outcome, Step, StepResult, StepRun
+from papiq.core.domain.pipeline import RULES_APPLY, Lane, Node, NodeResult, NodeRun, Outcome
 from papiq.core.domain.rule_engine import Effect, Mode, Note
 from papiq.core.domain.rules import Rule, RuleApplication, RuleScope
 from papiq.core.domain.users import User
@@ -329,11 +329,11 @@ class RuleApplicationService:
         if problem is not None:
             return problem
         await uow.processing_log.append(
-            StepRun(
+            NodeRun(
                 document_id=document.id,
-                step=Step.APPLY_RULES,
+                node=Node.APPLY_RULES,
                 run=document.processing.run,
-                result=StepResult(
+                result=NodeResult(
                     outcome=Outcome.OK,
                     model_version=RULES_APPLY,
                     input={

@@ -23,7 +23,7 @@ class InboxCount {
 		if (this.#stop) return;
 		void this.refresh();
 		const stopEvents = events.subscribe((event) => {
-			if (event.type === 'document.received' || event.type === 'document.step_completed') return;
+			if (event.type === 'document.received' || event.type === 'document.node_completed') return;
 			clearTimeout(this.#timer);
 			this.#timer = setTimeout(() => void this.refresh(), 500);
 		});

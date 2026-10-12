@@ -6,10 +6,10 @@ Layout of a set directory:
 - `master_data.json`: `contacts`, `document_types`, `tags` (names) and `fields`
   (`name`, `data_type`, `document_types` (names, or null for global), `choices`); optional
   `contact_aliases` (aliases by contact name) and `type_descriptions` (by type name).
-- `cases/<name>.md`: the document text, as the parse step would produce it.
+- `cases/<name>.md`: the document text, as the parse node would produce it.
 - `cases/<name>.json`: `description`, `expected` (`lane`, `contact`, `document_type`, `tags`,
   `document_date`, `fields` by name, in the JSON form of the API) and `fake`
-  (`classification`: the answer of the classify step; `fields`: proposals by field
+  (`classification`: the answer of the classify node; `fields`: proposals by field
   name; `lane`: the lane this answer leads to, if not the expected one).
 """
 
@@ -64,7 +64,7 @@ class FakeAnswer:
     lane: Lane
 
     def respond(self, request: StructuredRequest) -> JsonObject:
-        """The answer to a request of the classify or extract step."""
+        """The answer to a request of the classify or extract node."""
         if request.schema_name == "classification":
             return self.classification
         keys = dict(re.findall(r'^- (a\d+): "([^"\n]*)"', _before_document(request.user), re.M))

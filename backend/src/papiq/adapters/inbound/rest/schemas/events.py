@@ -12,7 +12,7 @@ class EventMessage(BaseModel):
 
     model_config = {"extra": "allow"}
 
-    type: str = Field(examples=["document.step_completed"])
+    type: str = Field(examples=["document.node_completed"])
     id: UUID
     occurred_at: datetime
     document_id: UUID

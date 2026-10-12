@@ -457,17 +457,17 @@ async def test_the_rebuild_swaps_and_removes_the_old_index() -> None:
     build = await index.begin_rebuild()
     await build.add([index_document()])
     await build.finish()
-    steps = [
+    nodes = [
         (request.method, request.url.path)
         for request in sim.requests
         if request.url.path != "/tasks/1"
     ]
-    assert ("DELETE", "/indexes/papiq-test-rebuild") in steps
-    assert ("PUT", "/indexes/papiq-test-rebuild/documents") in steps
+    assert ("DELETE", "/indexes/papiq-test-rebuild") in nodes
+    assert ("PUT", "/indexes/papiq-test-rebuild/documents") in nodes
     swap = [request for request in sim.requests if request.url.path == "/swap-indexes"]
     assert sim.body(swap[0]) == [{"indexes": ["papiq-test", "papiq-test-rebuild"]}]
-    assert steps[-1] == ("DELETE", "/indexes/papiq-test-rebuild")
-    assert steps.index(("POST", "/swap-indexes")) < len(steps) - 1
+    assert nodes[-1] == ("DELETE", "/indexes/papiq-test-rebuild")
+    assert nodes.index(("POST", "/swap-indexes")) < len(nodes) - 1
 
 
 async def test_the_rebuild_goes_on_when_there_is_no_old_build_index() -> None:

@@ -15,7 +15,7 @@ from papiq.core.domain.identity import ApiToken, ExternalIdentity, Session
 from papiq.core.domain.ids import EventId, JobId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.master_data import Contact, MasterData
-from papiq.core.domain.pipeline import StepRun
+from papiq.core.domain.pipeline import NodeRun
 from papiq.core.domain.users import User
 from papiq.core.domain.validation import name_key
 
@@ -112,7 +112,7 @@ class MemoryDatabase:
     """What has been committed. Rows are private copies; insertion order is creation order."""
 
     tables: dict[str, dict[UUID, Any]] = field(default_factory=dict)
-    processing_log: list[StepRun] = field(default_factory=list)
+    processing_log: list[NodeRun] = field(default_factory=list)
     outbox: list[DomainEvent] = field(default_factory=list)
     recorded_at: dict[EventId, datetime] = field(default_factory=dict)  # when committed
     purged: set[int] = field(default_factory=set)  # outbox positions removed by `purge`

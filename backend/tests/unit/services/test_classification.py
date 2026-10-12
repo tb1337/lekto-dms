@@ -16,16 +16,16 @@ from papiq.core.domain.errors import LanguageModelError
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
-from papiq.core.domain.pipeline import Lane, Outcome, ProcessingStatus, Step, StepResult
+from papiq.core.domain.pipeline import Lane, Node, NodeResult, Outcome, ProcessingStatus
 from papiq.core.ports import StructuredRequest
-from papiq.core.services.classification.steps import (
+from papiq.core.services.classification.nodes import (
     NO_MODEL,
     ClassificationPolicy,
-    ClassifyStep,
-    ExtractFieldsStep,
+    ClassifyNode,
+    ExtractFieldsNode,
 )
 from papiq.core.services.objects import markdown_key
-from papiq.core.services.pipeline import MetadataResult, StepExecutor
+from papiq.core.services.pipeline import MetadataResult, NodeExecutor
 from tests import builders
 from tests.builders import NOW, incoming
 from tests.unit.services.conftest import World
@@ -139,17 +139,17 @@ async def document_with(
     return document
 
 
-def classify_step(world: World, fake: FakeLanguageModel | None, **policy: Any) -> ClassifyStep:
-    return ClassifyStep(
+def classify_step(world: World, fake: FakeLanguageModel | None, **policy: Any) -> ClassifyNode:
+    return ClassifyNode(
         world.uow, world.object_store, fake, world.clock, ClassificationPolicy(**policy)
     )
 
 
-def extract_step(world: World, fake: FakeLanguageModel | None) -> ExtractFieldsStep:
-    return ExtractFieldsStep(world.uow, world.object_store, fake, world.clock)
+def extract_step(world: World, fake: FakeLanguageModel | None) -> ExtractFieldsNode:
+    return ExtractFieldsNode(world.uow, world.object_store, fake, world.clock)
 
 
-def checks(result: StepResult) -> dict[str, FieldCheck]:
+def checks(result: NodeResult) -> dict[str, FieldCheck]:
     return {check.field: check for check in checks_from_json(result.output["fields"])}
 
 
@@ -362,7 +362,7 @@ async def test_nothing_recognised_fails(world: World) -> None:
     await seed(world)
     document = await document_with(world)
     result = await classify_step(world, FakeLanguageModel()).run(document)
-    assert isinstance(result, StepResult)
+    assert isinstance(result, NodeResult)
     assert result.outcome is Outcome.FAILED
     assert result.reason == "nothing recognised: no contact, document type or date"
 
@@ -383,7 +383,7 @@ async def test_two_unfit_answers_fail_the_step(world: World) -> None:
     await seed(world)
     injected = classification() | {"drawer": "Shared", "owner": "mallory"}
     outcome = await classify_step(world, model(injected)).run(await document_with(world))
-    assert isinstance(outcome, StepResult)
+    assert isinstance(outcome, NodeResult)
     assert outcome.outcome is Outcome.FAILED
     assert outcome.reason == (
         "the model's answer does not fit the schema: the answer: unexpected drawer, owner"
@@ -394,7 +394,7 @@ async def test_two_unfit_answers_fail_the_step(world: World) -> None:
 
 async def test_without_a_model_a_person_classifies(world: World) -> None:
     result = await classify_step(world, None).run(await document_with(world))
-    assert result == StepResult(outcome=Outcome.UNCERTAIN, reason=NO_MODEL)
+    assert result == NodeResult(outcome=Outcome.UNCERTAIN, reason=NO_MODEL)
 
 
 async def test_an_unreachable_model_raises_for_a_retry(world: World) -> None:
@@ -497,8 +497,8 @@ async def test_contacts_the_text_names_most_are_listed(world: World) -> None:
     await add_contact(world, "Nord Sport")
     fake = model(classification())
     text = EXAMPLE_LETTER + "\nINTER, Südstadt\n"
-    step = classify_step(world, fake, max_contacts=3)
-    result = await step.run(await document_with(world, text))
+    node = classify_step(world, fake, max_contacts=3)
+    result = await node.run(await document_with(world, text))
     contacts = fake.requests[0].user.split("\n\nDocument types:")[0]
     assert contacts == (
         "Contacts:\n"
@@ -679,7 +679,7 @@ async def test_no_fields_no_question(world: World) -> None:
         await uow.commit()
     fake = model(extraction())
     result = await extract_step(world, fake).run(document)
-    assert result == StepResult(outcome=Outcome.OK, output={"fields": []})
+    assert result == NodeResult(outcome=Outcome.OK, output={"fields": []})
     assert fake.requests == []
     assert await extract_step(world, None).run(document) == result
 
@@ -688,7 +688,7 @@ async def test_fields_without_a_model(world: World) -> None:
     seeded = await seed(world)
     document = await document_with(world, type=seeded.types["Rechnung"])
     result = await extract_step(world, None).run(document)
-    assert result == StepResult(outcome=Outcome.UNCERTAIN, reason=NO_MODEL)
+    assert result == NodeResult(outcome=Outcome.UNCERTAIN, reason=NO_MODEL)
 
 
 async def test_extraction_prompt_names_type_and_fields(world: World) -> None:
@@ -712,9 +712,9 @@ def responder(
 
 async def run(world: World, fake: FakeLanguageModel) -> tuple[Any, Document]:
     owner = await world.user()
-    executors: dict[Step, StepExecutor] = {
-        Step.CLASSIFY: classify_step(world, fake),
-        Step.EXTRACT_FIELDS: extract_step(world, fake),
+    executors: dict[Node, NodeExecutor] = {
+        Node.CLASSIFY: classify_step(world, fake),
+        Node.EXTRACT_FIELDS: extract_step(world, fake),
     }
     pipeline = world.pipeline(executors)
     document = await pipeline.receive(owner.id, incoming(b"%PDF-1.7\n%%EOF\n"), filename="a.pdf")
@@ -736,7 +736,7 @@ async def test_a_verified_document_is_filed_green(world: World) -> None:
     assert document.fields[seeded.fields["Rechnungsbetrag"].id] == Money(Decimal("84.20"), "EUR")
     assert "document.filed" in world.event_types()
     log = await world.documents.processing_log(owner.id, document.id)
-    classified = next(entry for entry in log if entry.step is Step.CLASSIFY)
+    classified = next(entry for entry in log if entry.node is Node.CLASSIFY)
     assert classified.result.output["answer"] == classification()
     assert len(checks(classified.result)) == 4
 

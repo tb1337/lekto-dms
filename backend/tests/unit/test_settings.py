@@ -393,8 +393,8 @@ def test_mcp_defaults() -> None:
 def test_worker_and_processing_defaults() -> None:
     settings = load_settings()
     assert settings.worker_concurrency == 2
-    assert settings.step_max_attempts == 3
-    assert settings.step_retry_delay == timedelta(seconds=30)
+    assert settings.node_max_attempts == 3
+    assert settings.node_retry_delay == timedelta(seconds=30)
     assert settings.ocr_languages == "deu+eng"
     assert settings.ocr_timeout == settings.parse_timeout == timedelta(minutes=10)
     assert settings.docling_models_path == Path("/opt/docling-models")

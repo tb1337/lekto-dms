@@ -32,7 +32,7 @@ from papiq.core.domain.jobs import Job
 from papiq.core.domain.pipeline import PIPELINE
 from papiq.core.domain.users import User
 from papiq.core.ports import DeliveryRetry, EventBus, UnitOfWorkFactory
-from papiq.core.services.pipeline import PipelineService, PlaceholderStep
+from papiq.core.services.pipeline import PipelineService, PlaceholderNode
 from tests import builders
 from tests.builders import NOW, incoming
 from tests.contracts.event_bus import EventBusFactory, Recorder, publish, received
@@ -161,7 +161,7 @@ class SqlAdapterSuite:
             uow_factory,
             ManualClock(NOW),
             MemoryObjectStore(),
-            {step: PlaceholderStep() for step in PIPELINE[1:]},
+            {node: PlaceholderNode() for node in PIPELINE[1:]},
             pipeline_version="test",
         )
 
@@ -324,7 +324,7 @@ class MigrationSuite:
             (_OLD["definitions"], {"id": ids["field"], "name": "Due", "name_key": "due"}),
             (_OLD["types"], {"attribute_id": ids["field"], "document_type_id": ids["type"]}),
             (
-                t.documents,
+                _before_0009(t.documents),
                 {
                     "id": ids["document"],
                     "owner_id": ids["user"],
@@ -335,7 +335,7 @@ class MigrationSuite:
             ),
             (_OLD["values"], {"document_id": ids["document"], "attribute_id": ids["field"]}),
             (
-                t.processing_log,
+                _before_0009(t.processing_log),
                 {
                     "document_id": ids["document"],
                     "step": "extract_attributes",
@@ -405,7 +405,7 @@ class MigrationSuite:
             ],
         )
         assert after["job"] == (
-            {"document_id": document, "step": "extract_fields", "run": 1},
+            {"document_id": document, "node": "extract_fields", "run": 1},
             f"{document}:1:extract_fields",
         )
         assert after["event"] == {"document_id": document, "fields": ["title", "fields"]}
@@ -415,6 +415,94 @@ class MigrationSuite:
         # The answer's key stays `fields`: checks were stored under `fields` before as well.
         before["log"][1]["answer"] = {"fields": {"a1": "attributes"}}
         assert restored == before
+
+    async def test_steps_become_nodes_and_back(self, empty_database: Database) -> None:
+        """Revision 0009 renames the columns, the job kind, the payload keys and the event type
+        `document.step_completed` wherever it is stored; the downgrade restores them."""
+        await migrate(empty_database, "0008")
+        ids = {name: new_id() for name in ("user", "drawer", "document", "webhook")}
+        document = str(ids["document"])
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
+            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+            (
+                _before_0009(t.documents),
+                {
+                    "id": ids["document"],
+                    "owner_id": ids["user"],
+                    "drawer_id": ids["drawer"],
+                    "processing_step": "ocr",
+                    "processing_outcomes": {"receive": "ok"},
+                },
+            ),
+            (
+                _before_0009(t.processing_log),
+                {"document_id": ids["document"], "step": "receive", "input": {}, "output": {}},
+            ),
+            (
+                t.jobs,
+                {
+                    "id": new_id(),
+                    "kind": "pipeline.step",
+                    "payload": {"document_id": document, "step": "ocr", "run": 1},
+                    "dedup_key": f"{document}:1:ocr",
+                },
+            ),
+            (
+                t.outbox,
+                {
+                    "event_id": new_id(),
+                    "type": "document.step_completed",
+                    "payload": {"document_id": document, "step": "receive", "run": 1},
+                },
+            ),
+            (
+                t.webhooks,
+                {
+                    "id": ids["webhook"],
+                    "owner_id": ids["user"],
+                    "url": "https://example.org/hook",
+                    "event_types": ["document.step_completed", "document.filed"],
+                    "secret": b"s",
+                    "active": True,
+                    "failed_streak": 0,
+                },
+            ),
+            (
+                t.webhook_deliveries,
+                {
+                    "id": new_id(),
+                    "webhook_id": ids["webhook"],
+                    "event_id": new_id(),
+                    "event_type": "document.step_completed",
+                    "attempt": 1,
+                    "duration_ms": 1,
+                },
+            ),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+        before = await _node_names(empty_database, old=True)
+
+        await migrate(empty_database)
+        after = await _node_names(empty_database, old=False)
+        assert after == {
+            "document": "ocr",
+            "log": "receive",
+            "job": ("pipeline.node", {"document_id": document, "node": "ocr", "run": 1}),
+            "event": (
+                "document.node_completed",
+                {"document_id": document, "node": "receive", "run": 1},
+            ),
+            "webhook": ["document.node_completed", "document.filed"],
+            "delivery": "document.node_completed",
+        }
+
+        await _downgrade(empty_database, "0008")
+        assert await _node_names(empty_database, old=True) == before
+        assert before["job"][0] == "pipeline.step"
 
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
@@ -518,18 +606,51 @@ async def _stored(database: Database, *, old: bool) -> dict[str, Any]:
             return (await connection.execute(select(table))).one()
 
         definition, scope, value = await one(definitions), await one(types), await one(values)
-        document, log = await one(t.documents), await one(t.processing_log)
+        documents = _before_0009(t.documents) if old else t.documents
+        log_table = _before_0009(t.processing_log) if old else t.processing_log
+        document, log = await one(documents), await one(log_table)
         rule, job, event = await one(t.rule_versions), await one(t.jobs), await one(t.outbox)
     return {
         "definition": tuple(definition),
         "scope": tuple(scope),
         "value": tuple(value),
-        "document": (document.processing_step, document.processing_outcomes),
-        "log": (log.step, log.output),
+        "document": (
+            document.processing_step if old else document.processing_node,
+            document.processing_outcomes,
+        ),
+        "log": (log.step if old else log.node, log.output),
         "rule": (rule.conditions, rule.actions),
         "job": (job.payload, job.dedup_key),
         "event": event.payload,
     }
+
+
+async def _node_names(database: Database, *, old: bool) -> dict[str, Any]:
+    """The rows of `test_steps_become_nodes_and_back`, under the old or new names."""
+    documents = _before_0009(t.documents) if old else t.documents
+    log_table = _before_0009(t.processing_log) if old else t.processing_log
+    async with database.reading() as connection:
+
+        async def one(table: Any) -> Any:
+            return (await connection.execute(select(table))).one()
+
+        document, log = await one(documents), await one(log_table)
+        job, event = await one(t.jobs), await one(t.outbox)
+        webhook, delivery = await one(t.webhooks), await one(t.webhook_deliveries)
+    return {
+        "document": document.processing_step if old else document.processing_node,
+        "log": log.step if old else log.node,
+        "job": (job.kind, job.payload),
+        "event": (event.type, event.payload),
+        "webhook": webhook.event_types,
+        "delivery": delivery.event_type,
+    }
+
+
+def _before_0009(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0009 had it: the node columns under their old names."""
+    old = {"processing_node": "processing_step", "node": "step"}
+    return sa.table(table.name, *(sa.column(old.get(c.name, c.name), c.type) for c in table.c))
 
 
 async def _downgrade(database: Database, revision: str) -> None:

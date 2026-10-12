@@ -59,7 +59,7 @@ from papiq.core.domain.ids import (
     UserId,
 )
 from papiq.core.domain.imports import ImportedMetadata
-from papiq.core.domain.pipeline import Lane, Step
+from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.ports import DocumentFilter
 from papiq.core.services.documents import MAX_PAGE, DocumentFile, MetadataChange
 
@@ -148,7 +148,7 @@ _UPLOAD_BODY: dict[str, Any] = {
                                 "Admins only, with `channel=migration`: JSON of the metadata "
                                 "the document comes with (up to 48 KiB), as `ImportedMetadataIn`. "
                                 "Classification and field extraction apply it instead of "
-                                "asking the language model; the other steps and the rules run "
+                                "asking the language model; the other nodes and the rules run "
                                 "as usual."
                             ),
                         },
@@ -405,7 +405,7 @@ async def _download(
 @router.get(
     "/{id}/log",
     summary="Processing log of a document",
-    description="The owner and admins. Every execution of every step, oldest first.",
+    description="The owner and admins. Every execution of every node, oldest first.",
     response_model=list[LogEntry],
     responses=problem_responses(401, 403, 404, 422),
 )
@@ -418,8 +418,8 @@ async def processing_log(id: UUID, user: CurrentUser, context: Context) -> list[
 @router.post(
     "/{id}/retry",
     status_code=202,
-    summary="Repeat the failed step",
-    description="The owner and admins. Processing continues with the following steps.",
+    summary="Repeat the failed node",
+    description="The owner and admins. Processing continues with the following nodes.",
     response_model=DocumentDetails,
     responses=problem_responses(401, 403, 404, 409, 422),
 )
@@ -430,10 +430,10 @@ async def retry(id: UUID, user: CurrentUser, context: Context) -> DocumentDetail
 @router.post(
     "/{id}/reprocess",
     status_code=202,
-    summary="Process again from a step",
+    summary="Process again from a node",
     description=(
-        "The owner and admins. Discards the results from `from_step` on, e.g. after a model "
-        "change. Not while processing runs, not past a failed step, and not from `file` while "
+        "The owner and admins. Discards the results from `from_node` on, e.g. after a model "
+        "change. Not while processing runs, not past a failed node, and not from `file` while "
         "uncertain fields wait for confirmation."
     ),
     response_model=DocumentDetails,
@@ -442,15 +442,15 @@ async def retry(id: UUID, user: CurrentUser, context: Context) -> DocumentDetail
 async def reprocess(
     id: UUID, body: ReprocessRequest, user: CurrentUser, context: Context
 ) -> DocumentDetails:
-    step = Step(body.from_step.value)
-    return _details(await context.pipeline.reprocess_from(user, DocumentId(id), step))
+    node = Node(body.from_node.value)
+    return _details(await context.pipeline.reprocess_from(user, DocumentId(id), node))
 
 
 @router.get(
     "/{id}/review",
     summary="What the model proposed for a document",
     description=(
-        "The owner and admins. The open steps and fields, and the latest classification and "
+        "The owner and admins. The open nodes and fields, and the latest classification and "
         "field extraction by the model: each field as proposed, checked and applied."
     ),
     response_model=ReviewOut,
@@ -467,7 +467,7 @@ async def review(id: UUID, user: CurrentUser, context: Context) -> ReviewOut:
     description=(
         "The owner and admins, for yellow and red documents that are not being processed. "
         "`drawer_id` must be a drawer the owner may write to; an admin chooses any drawer. "
-        "Every open field of the steps before `resume_at` (and of `apply_rules` when processing "
+        "Every open field of the nodes before `resume_at` (and of `apply_rules` when processing "
         "resumes with it) needs a decision: a value or null in `changes`, a value the document "
         "already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 "
         "lists the open fields in `open_fields`. The rules' fields `drawer`, `title` and "
@@ -488,7 +488,7 @@ async def confirm(
         DocumentId(id),
         changes,
         accept_suggestions=body.accept_suggestions,
-        resume_at=Step(body.resume_at.value),
+        resume_at=Node(body.resume_at.value),
         drawer=None if body.drawer_id is None else DrawerId(body.drawer_id),
     )
     return _details(document)
@@ -498,9 +498,9 @@ async def confirm(
     "",
     summary="The caller's inbox",
     description=(
-        "The caller's yellow and red documents, newest first, each with its open steps and "
+        "The caller's yellow and red documents, newest first, each with its open nodes and "
         "fields; with `all_users` (admins, others: 403) those of every user. Confirm them with "
-        "`POST /documents/{id}/confirm`, or repeat a failed step with `retry`."
+        "`POST /documents/{id}/confirm`, or repeat a failed node with `retry`."
     ),
     response_model=InboxPage,
     responses=problem_responses(401, 403, 422),

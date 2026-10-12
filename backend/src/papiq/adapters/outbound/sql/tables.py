@@ -165,9 +165,9 @@ documents = Table(
     Column("channel", Text, nullable=False, server_default="api"),
     Column("lane", Text, nullable=True),
     Column("processing_status", Text, nullable=False),
-    Column("processing_step", Text, nullable=True),
+    Column("processing_node", Text, nullable=True),
     Column("processing_run", Integer, nullable=False),
-    # Outcomes of the current run: {step: outcome}.
+    # Outcomes of the current run: {node: outcome}.
     Column("processing_outcomes", json_type(), nullable=False),
     Column("created_at", UtcDateTime, nullable=False),
     Column("updated_at", UtcDateTime, nullable=False),
@@ -208,7 +208,7 @@ processing_log = Table(
         nullable=False,
         index=True,
     ),
-    Column("step", Text, nullable=False),
+    Column("node", Text, nullable=False),
     Column("run", Integer, nullable=False),
     Column("outcome", Text, nullable=False),
     Column("reason", Text, nullable=True),

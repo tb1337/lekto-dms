@@ -17,7 +17,7 @@ from papiq.core.domain.events import (
     DocumentReceived,
     DocumentUpdated,
     LaneChanged,
-    StepCompleted,
+    NodeCompleted,
 )
 from papiq.core.domain.fields import FieldDefinition, FieldValue
 from papiq.core.domain.ids import (
@@ -33,11 +33,11 @@ from papiq.core.domain.ids import (
 from papiq.core.domain.pipeline import (
     PIPELINE,
     Lane,
+    Node,
+    NodeResult,
     Outcome,
     Processing,
     ProcessingStatus,
-    Step,
-    StepResult,
 )
 from papiq.core.domain.validation import require_name, require_utc
 
@@ -145,14 +145,14 @@ class Document:
         sha256: Sha256,
         original_filename: str,
         media_type: str,
-        result: StepResult,
+        result: NodeResult,
         now: datetime,
         channel: Channel = Channel.API,
     ) -> Self:
-        """A newly received document. The receive step (hash, duplicate check, storage) is done;
+        """A newly received document. The receive node (hash, duplicate check, storage) is done;
         processing continues with OCR."""
         if result.outcome is Outcome.FAILED:
-            raise ValidationError("a document whose receive step failed is not created")
+            raise ValidationError("a document whose receive node failed is not created")
         filename = require_name(original_filename, "original filename")
         document = cls(
             id=DocumentId(new_id()),
@@ -164,38 +164,38 @@ class Document:
             media_type=media_type,
             channel=channel,
             processing=Processing(
-                status=ProcessingStatus.PROCESSING, current_step=Step.RECEIVE, run=1
+                status=ProcessingStatus.PROCESSING, current_node=Node.RECEIVE, run=1
             ),
             created_at=now,
             updated_at=now,
         )
         document._record(DocumentReceived(document_id=document.id, occurred_at=now))
-        document.record_result(Step.RECEIVE, 1, result, now)
+        document.record_result(Node.RECEIVE, 1, result, now)
         return document
 
     # --- processing state machine ---------------------------------------------------------------
 
-    def is_awaiting(self, step: Step, run: int) -> bool:
-        """True if `step` of processing run `run` is due; otherwise a job for it is stale."""
+    def is_awaiting(self, node: Node, run: int) -> bool:
+        """True if `node` of processing run `run` is due; otherwise a job for it is stale."""
         return (
             self.processing.status is ProcessingStatus.PROCESSING
-            and self.processing.current_step is step
+            and self.processing.current_node is node
             and self.processing.run == run
         )
 
-    def record_result(self, step: Step, run: int, result: StepResult, now: datetime) -> Step | None:
-        """Store the result of the due step and advance. Returns the next due step, if any."""
-        if not self.is_awaiting(step, run):
+    def record_result(self, node: Node, run: int, result: NodeResult, now: datetime) -> Node | None:
+        """Store the result of the due node and advance. Returns the next due node, if any."""
+        if not self.is_awaiting(node, run):
             raise InvalidTransitionError(
-                f"document {self.id}: step {step} of run {run} is not due "
-                f"({self.processing.status}, {self.processing.current_step}, "
+                f"document {self.id}: node {node} of run {run} is not due "
+                f"({self.processing.status}, {self.processing.current_node}, "
                 f"run {self.processing.run})"
             )
         processing = self.processing
-        processing.outcomes[step] = result.outcome
+        processing.outcomes[node] = result.outcome
         self._record(
-            StepCompleted(
-                document_id=self.id, occurred_at=now, step=step, run=run, outcome=result.outcome
+            NodeCompleted(
+                document_id=self.id, occurred_at=now, node=node, run=run, outcome=result.outcome
             )
         )
         self._touch(now)
@@ -203,61 +203,61 @@ class Document:
             processing.status = ProcessingStatus.FAILED
             self._set_lane(Lane.RED, now)
             return None
-        if step is Step.FILE and result.outcome is Outcome.OK:
+        if node is Node.FILE and result.outcome is Outcome.OK:
             self._record(
                 DocumentFiled(document_id=self.id, occurred_at=now, drawer_id=self.drawer_id)
             )
-        following = step.next
-        if following is Step.FILE and self._uncertain_before(Step.FILE):
+        following = node.next
+        if following is Node.FILE and self._uncertain_before(Node.FILE):
             # Filed only once the owner has confirmed what is uncertain.
             processing.status = ProcessingStatus.REVIEW
-            processing.current_step = following
+            processing.current_node = following
             self._set_lane(Lane.YELLOW, now)
             return None
         if following is None:
             processing.status = ProcessingStatus.COMPLETED
-            processing.current_step = None
+            processing.current_node = None
             self._set_lane(Lane.from_outcomes(processing.outcomes.values()), now)
             return None
-        processing.current_step = following
+        processing.current_node = following
         return following
 
-    def retry(self, now: datetime) -> Step:
-        """Repeat the failed step; processing then continues with the following steps."""
+    def retry(self, now: datetime) -> Node:
+        """Repeat the failed node; processing then continues with the following nodes."""
         if self.processing.status is not ProcessingStatus.FAILED:
             raise InvalidTransitionError(f"document {self.id}: only failed processing is retried")
-        step = self.processing.current_step
-        assert step is not None  # failed processing always names its step
-        return self.reprocess_from(step, now)
+        node = self.processing.current_node
+        assert node is not None  # failed processing always names its node
+        return self.reprocess_from(node, now)
 
-    def reprocess_from(self, step: Step, now: datetime) -> Step:
-        """Discard the results from `step` on and process again from there."""
+    def reprocess_from(self, node: Node, now: datetime) -> Node:
+        """Discard the results from `node` on and process again from there."""
         processing = self.processing
         if processing.status is ProcessingStatus.PROCESSING:
             raise InvalidTransitionError(f"document {self.id} is being processed")
-        if step is Step.RECEIVE:
-            raise InvalidTransitionError("the receive step cannot be repeated")
-        failed_at = processing.current_step
-        if failed_at is not None and step.position > failed_at.position:
+        if node is Node.RECEIVE:
+            raise InvalidTransitionError("the receive node cannot be repeated")
+        failed_at = processing.current_node
+        if failed_at is not None and node.position > failed_at.position:
             raise InvalidTransitionError(f"processing stopped at {failed_at}; cannot skip it")
-        if step is Step.FILE and self._uncertain_before(Step.FILE):
+        if node is Node.FILE and self._uncertain_before(Node.FILE):
             raise InvalidTransitionError(
                 f"document {self.id} has uncertain results; confirm them before filing"
             )
-        for later in PIPELINE[step.position :]:
+        for later in PIPELINE[node.position :]:
             processing.outcomes.pop(later, None)
         processing.run += 1
         processing.status = ProcessingStatus.PROCESSING
-        processing.current_step = step
+        processing.current_node = node
         self._set_lane(None, now)
         self._touch(now)
-        return step
+        return node
 
-    def confirm(self, resume_at: Step, now: datetime) -> tuple[Step, ...]:
+    def confirm(self, resume_at: Node, now: datetime) -> tuple[Node, ...]:
         """The owner has decided what was uncertain or failed (the inbox): the results before
         `resume_at` count as OK from now on, processing runs again from `resume_at` (applying
         rules, or extracting fields after a type correction) up to filing. Returns the
-        steps whose results the owner overruled.
+        nodes whose results the owner overruled.
 
         Only for documents in the inbox (yellow or red, not being processed). Extracting
         fields needs a parsed text."""
@@ -268,34 +268,34 @@ class Document:
             ProcessingStatus.COMPLETED,
         ):
             raise InvalidTransitionError(f"document {self.id} is not waiting for confirmation")
-        if resume_at not in (Step.EXTRACT_FIELDS, Step.APPLY_RULES):
+        if resume_at not in (Node.EXTRACT_FIELDS, Node.APPLY_RULES):
             raise InvalidTransitionError(
-                f"processing resumes with {Step.EXTRACT_FIELDS} or {Step.APPLY_RULES}, "
+                f"processing resumes with {Node.EXTRACT_FIELDS} or {Node.APPLY_RULES}, "
                 f"not {resume_at}"
             )
-        if resume_at is Step.EXTRACT_FIELDS and processing.outcomes.get(Step.PARSE) not in (
+        if resume_at is Node.EXTRACT_FIELDS and processing.outcomes.get(Node.PARSE) not in (
             Outcome.OK,
             Outcome.UNCERTAIN,
         ):
             raise InvalidTransitionError(f"document {self.id} has no text to extract from")
         earlier = PIPELINE[: resume_at.position]
         overruled = tuple(
-            step for step in earlier if processing.outcomes.get(step) is not Outcome.OK
+            node for node in earlier if processing.outcomes.get(node) is not Outcome.OK
         )
-        for step in earlier:
-            processing.outcomes[step] = Outcome.OK
+        for node in earlier:
+            processing.outcomes[node] = Outcome.OK
         for later in PIPELINE[resume_at.position :]:
             processing.outcomes.pop(later, None)
         processing.run += 1
         processing.status = ProcessingStatus.PROCESSING
-        processing.current_step = resume_at
+        processing.current_node = resume_at
         self._set_lane(None, now)
         self._touch(now)
         return overruled
 
-    def _uncertain_before(self, step: Step) -> bool:
+    def _uncertain_before(self, node: Node) -> bool:
         return any(
-            outcome is Outcome.UNCERTAIN and earlier.position < step.position
+            outcome is Outcome.UNCERTAIN and earlier.position < node.position
             for earlier, outcome in self.processing.outcomes.items()
         )
 

@@ -1,7 +1,7 @@
 """The worker service: runs background jobs, delivers events and keeps the cleanup scheduled.
 
 - `concurrency` job loops claim and run due jobs (the cleanup when due, then search indexing,
-  else pipeline steps);
+  else pipeline nodes);
   a loop that finds nothing waits `poll_interval`.
 - `webhook_concurrency` further loops deliver webhooks, apart from the job loops: a receiver that
   does not answer holds up deliveries, never the pipeline.

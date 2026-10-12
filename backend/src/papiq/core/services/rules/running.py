@@ -41,10 +41,10 @@ from papiq.core.domain.pipeline import (
     PERSON_DRAWER,
     RULES,
     RULES_CHANGE,
+    Node,
+    NodeResult,
+    NodeRun,
     Outcome,
-    Step,
-    StepResult,
-    StepRun,
 )
 from papiq.core.domain.rule_engine import (
     DRAWER,
@@ -62,7 +62,7 @@ from papiq.core.domain.rule_engine import (
 from papiq.core.domain.rules import Rule, SetDrawer, Trigger
 from papiq.core.domain.users import User
 from papiq.core.ports import ObjectStore, PatternMatcher, UnitOfWork
-from papiq.core.services.inbox import MODEL_STEPS, field_checks, latest_entries
+from papiq.core.services.inbox import MODEL_NODES, field_checks, latest_entries
 from papiq.core.services.objects import markdown_key
 
 log = logging.getLogger(__name__)
@@ -127,7 +127,7 @@ async def prepare(
     """Load the text if a rule looks at it and run the rules' patterns on it."""
     if not any(rule.definition.uses_text for rule in rules):
         return Prepared()
-    if document.processing.outcomes.get(Step.PARSE) not in (Outcome.OK, Outcome.UNCERTAIN):
+    if document.processing.outcomes.get(Node.PARSE) not in (Outcome.OK, Outcome.UNCERTAIN):
         return Prepared()
     try:
         markdown = (await store.get(markdown_key(document.id))).decode("utf-8")
@@ -196,9 +196,9 @@ class Provenance:
         return frozenset(name for name in (CONTACT, DOCUMENT_TYPE) if name in self.model_values)
 
 
-def provenance(log: Sequence[StepRun], document: Document) -> Provenance:
+def provenance(log: Sequence[NodeRun], document: Document) -> Provenance:
     latest = latest_entries(log, by_model=True)
-    model_run = max((latest[step].run for step in MODEL_STEPS if step in latest), default=0)
+    model_run = max((latest[node].run for node in MODEL_NODES if node in latest), default=0)
     person: set[str] = set()
     added: set[TagId] = set()
     removed: set[TagId] = set()
@@ -283,14 +283,14 @@ def person_record(
 
 
 def drawer_choice(
-    document: Document, *, step: Step, actor: UserId, trigger: str, version: str, now: datetime
-) -> StepRun:
+    document: Document, *, node: Node, actor: UserId, trigger: str, version: str, now: datetime
+) -> NodeRun:
     """The log entry of a person choosing the document's drawer outside the inbox."""
-    return StepRun(
+    return NodeRun(
         document_id=document.id,
-        step=step,
+        node=node,
         run=document.processing.run,
-        result=StepResult(
+        result=NodeResult(
             outcome=Outcome.OK,
             model_version=PERSON_DRAWER,
             input={

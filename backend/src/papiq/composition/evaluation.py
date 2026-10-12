@@ -27,11 +27,11 @@ from papiq.composition.container import (
 )
 from papiq.composition.errors import ConfigurationError
 from papiq.composition.settings import Settings
-from papiq.core.domain.pipeline import PIPELINE, Step
+from papiq.core.domain.pipeline import PIPELINE, Node
 from papiq.core.ports import LanguageModel
+from papiq.core.services.classification.nodes import ClassifyNode, ExtractFieldsNode
 from papiq.core.services.classification.prompts import CLASSIFY_PROMPT, EXTRACT_PROMPT
-from papiq.core.services.classification.steps import ClassifyStep, ExtractFieldsStep
-from papiq.core.services.pipeline import PipelineService, PlaceholderStep, RetryPolicy, StepExecutor
+from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode, RetryPolicy
 
 FAKE_MODEL = "fixed answers"
 PIPELINE_VERSION = "evaluation"
@@ -52,7 +52,7 @@ def build_environment(
     model_for: Callable[[Case], LanguageModel | None],
 ) -> Environment:
     """The evaluation's services on the container's adapters. The pipeline of a case runs
-    classification and field extraction with `model_for(case)`, the other steps pass through,
+    classification and field extraction with `model_for(case)`, the other nodes pass through,
     and there are no automatic retries: a model that cannot be reached ends the case red at
     once."""
     services = build_services(container, settings)
@@ -61,9 +61,9 @@ def build_environment(
 
     def pipeline_for(case: Case) -> PipelineService:
         model = model_for(case)
-        executors: dict[Step, StepExecutor] = {step: PlaceholderStep() for step in PIPELINE[1:]}
-        executors[Step.CLASSIFY] = ClassifyStep(uow, store, model, clock, policy)
-        executors[Step.EXTRACT_FIELDS] = ExtractFieldsStep(uow, store, model, clock, policy)
+        executors: dict[Node, NodeExecutor] = {node: PlaceholderNode() for node in PIPELINE[1:]}
+        executors[Node.CLASSIFY] = ClassifyNode(uow, store, model, clock, policy)
+        executors[Node.EXTRACT_FIELDS] = ExtractFieldsNode(uow, store, model, clock, policy)
         return PipelineService(
             uow,
             clock,

@@ -16,7 +16,7 @@ How the actions of all matching rules come together (`plan`):
 - A value the model set and no person confirmed is not replaced either: a conflict.
 - Tags added and removed by rules are combined; a tag added by one rule and removed by another
   is a conflict. Removing a tag the model set is no conflict (tags are unchecked proposals).
-- On arrival (`ingest`) conflicts, refused actions and forced reviews make the step uncertain:
+- On arrival (`ingest`) conflicts, refused actions and forced reviews make the node uncertain:
   the document waits in the inbox. On a change by a person (`change`) nothing turns yellow (a
   filed document would disappear for everyone else): what cannot be applied is only reported.
 - Applied to existing documents on request (`retroactive`), one rule: a field that has another
@@ -447,7 +447,7 @@ class RuleReport:
 class RulePlan:
     """The combined change of all matching rules.
 
-    `checks`: per single field the rules touched, as in the model steps: OK if applied,
+    `checks`: per single field the rules touched, as in the model nodes: OK if applied,
     uncertain (on arrival) if a person has to decide; the inbox reads them. `reviews`:
     reasons of forced reviews that hold."""
 

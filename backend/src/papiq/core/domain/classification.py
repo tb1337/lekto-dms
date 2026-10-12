@@ -2,7 +2,7 @@
 
 Each field the model proposed is checked against facts; a `FieldCheck` records the proposal,
 the check and its outcome. Checks are stored in the processing log (output of the classify and
-extract steps), so what the model proposed stays traceable after a person corrected it; the
+extract nodes), so what the model proposed stays traceable after a person corrected it; the
 inbox and the rules (M7) read them from there.
 """
 

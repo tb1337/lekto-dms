@@ -1,8 +1,8 @@
-"""Running the evaluation set through the pipeline's classification and extraction steps.
+"""Running the evaluation set through the pipeline's classification and extraction nodes.
 
-Each case becomes a document of one owner, whose text is stored as if the parse step had
+Each case becomes a document of one owner, whose text is stored as if the parse node had
 produced it. OCR, parsing, rules and filing pass through; classification and field
-extraction are the same steps as in the pipeline, with the given model.
+extraction are the same nodes as in the pipeline, with the given model.
 """
 
 import secrets
@@ -18,11 +18,11 @@ from papiq.core.domain.documents import Document
 from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.pipeline import Lane, ProcessingStatus, Step, StepRun
+from papiq.core.domain.pipeline import Lane, Node, NodeRun, ProcessingStatus
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import ObjectStore
 from papiq.core.services.documents import DocumentService
-from papiq.core.services.inbox import field_checks, open_steps
+from papiq.core.services.inbox import field_checks, open_nodes
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.objects import markdown_key
 from papiq.core.services.pipeline import IncomingFile, PipelineService
@@ -30,7 +30,7 @@ from papiq.core.services.users import UserService
 
 ADMIN = "evaluation-admin"  # creates the master data
 OWNER = "evaluation"  # owns the documents
-_MAX_JOBS = 50  # per case; the pipeline needs one per step
+_MAX_JOBS = 50  # per case; the pipeline needs one per node
 
 
 @dataclass(frozen=True)
@@ -39,11 +39,11 @@ class Environment:
     memory, or the real ones in the integration test), built by the composition root.
 
     `pipeline_for(case)` is the pipeline the case runs through: classification and field
-    extraction with the case's model, the other steps pass through, and no automatic retries,
+    extraction with the case's model, the other nodes pass through, and no automatic retries,
     so a model that cannot be reached ends the case red at once.
     """
 
-    store: ObjectStore  # the text of a case is stored as the parse step would have
+    store: ObjectStore  # the text of a case is stored as the parse node would have
     users: UserService
     master_data: MasterDataService
     documents: DocumentService
@@ -76,7 +76,7 @@ class CaseResult:
     fields: dict[str, JsonValue]
     checks: dict[str, FieldCheck]  # by field; fields by their name
     proposed: dict[str, JsonValue]  # by field as `checks`: the value, else the suggestion, by name
-    reasons: dict[Step, str]  # steps that are uncertain or failed
+    reasons: dict[Node, str]  # nodes that are uncertain or failed
     seconds: float
     violations: tuple[str, ...]  # changes no check backs, or of fields the model must not touch
     truncated: bool
@@ -175,7 +175,7 @@ def _result(
     case: Case,
     before: Document,
     after: Document,
-    log: list[StepRun],
+    log: list[NodeRun],
     master: MasterData,
     seconds: float,
 ) -> CaseResult:
@@ -183,7 +183,7 @@ def _result(
     truncated = any(
         entry.result.input.get("truncated") is True
         for entry in log
-        if entry.step in (Step.CLASSIFY, Step.EXTRACT_FIELDS)
+        if entry.node in (Node.CLASSIFY, Node.EXTRACT_FIELDS)
     )
     return CaseResult(
         case=case,
@@ -202,7 +202,7 @@ def _result(
         fields={master.fields[id].name: field_to_json(value) for id, value in after.fields.items()},
         checks=checks,
         proposed={label: _resolved(check, master) for label, check in checks.items()},
-        reasons={item.step: item.reason or "" for item in open_steps(after, log)},
+        reasons={item.node: item.reason or "" for item in open_nodes(after, log)},
         seconds=seconds,
         violations=_violations(before, after, field_checks(log)),
         truncated=truncated,

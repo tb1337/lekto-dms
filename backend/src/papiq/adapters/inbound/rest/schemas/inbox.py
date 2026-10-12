@@ -9,13 +9,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails, DocumentPatch
 from papiq.core.domain.classification import FieldCheck
 from papiq.core.domain.drawers import ShareLevel
-from papiq.core.domain.pipeline import Outcome, Step
-from papiq.core.services.inbox import InboxItem, OpenStep, Review, StepReview
+from papiq.core.domain.pipeline import Node, Outcome
+from papiq.core.services.inbox import InboxItem, NodeReview, OpenNode, Review
 
-ResumeStep = StrEnum(  # type: ignore[misc]
-    "ResumeStep", {step.name: step.value for step in (Step.EXTRACT_FIELDS, Step.APPLY_RULES)}
+ResumeNode = StrEnum(  # type: ignore[misc]
+    "ResumeNode", {node.name: node.value for node in (Node.EXTRACT_FIELDS, Node.APPLY_RULES)}
 )
-"""Steps processing can resume with after a confirmation."""
+"""Nodes processing can resume with after a confirmation."""
 
 
 class FieldCheckOut(BaseModel):
@@ -75,10 +75,10 @@ class FieldCheckOut(BaseModel):
         )
 
 
-class OpenStepOut(BaseModel):
-    """A step that was uncertain or failed, with the fields left to decide."""
+class OpenNodeOut(BaseModel):
+    """A node that was uncertain or failed, with the fields left to decide."""
 
-    step: Step
+    node: Node
     outcome: Outcome
     reason: str | None
     fields: list[FieldCheckOut] = Field(
@@ -89,9 +89,9 @@ class OpenStepOut(BaseModel):
     )
 
     @classmethod
-    def of(cls, item: OpenStep) -> "OpenStepOut":
+    def of(cls, item: OpenNode) -> "OpenNodeOut":
         return cls(
-            step=item.step,
+            node=item.node,
             outcome=item.outcome,
             reason=item.reason,
             fields=[FieldCheckOut.of(check) for check in item.fields],
@@ -100,13 +100,13 @@ class OpenStepOut(BaseModel):
 
 class InboxItemOut(BaseModel):
     document: DocumentDetails
-    open: list[OpenStepOut]
+    open: list[OpenNodeOut]
 
     @classmethod
     def of(cls, item: InboxItem) -> "InboxItemOut":
         return cls(
             document=DocumentDetails.of(item.document, ShareLevel.READ_WRITE),
-            open=[OpenStepOut.of(step) for step in item.open],
+            open=[OpenNodeOut.of(node) for node in item.open],
         )
 
 
@@ -117,10 +117,10 @@ class InboxPage(BaseModel):
     )
 
 
-class StepReviewOut(BaseModel):
+class NodeReviewOut(BaseModel):
     """The latest run of classification or field extraction by the model."""
 
-    step: Step
+    node: Node
     run: int
     outcome: Outcome
     reason: str | None
@@ -129,9 +129,9 @@ class StepReviewOut(BaseModel):
     fields: list[FieldCheckOut]
 
     @classmethod
-    def of(cls, review: StepReview) -> "StepReviewOut":
+    def of(cls, review: NodeReview) -> "NodeReviewOut":
         return cls(
-            step=review.step,
+            node=review.node,
             run=review.run,
             outcome=review.outcome,
             reason=review.reason,
@@ -143,15 +143,15 @@ class StepReviewOut(BaseModel):
 
 class ReviewOut(BaseModel):
     document: DocumentDetails
-    open: list[OpenStepOut]
-    steps: list[StepReviewOut]
+    open: list[OpenNodeOut]
+    nodes: list[NodeReviewOut]
 
     @classmethod
     def of(cls, review: Review) -> "ReviewOut":
         return cls(
             document=DocumentDetails.of(review.document, ShareLevel.READ_WRITE),
-            open=[OpenStepOut.of(step) for step in review.open],
-            steps=[StepReviewOut.of(step) for step in review.steps],
+            open=[OpenNodeOut.of(node) for node in review.open],
+            nodes=[NodeReviewOut.of(node) for node in review.nodes],
         )
 
 
@@ -180,8 +180,8 @@ class ConfirmRequest(BaseModel):
             "the document."
         ),
     )
-    resume_at: ResumeStep = Field(
-        default=ResumeStep.APPLY_RULES,  # type: ignore[attr-defined]
+    resume_at: ResumeNode = Field(
+        default=ResumeNode.APPLY_RULES,  # type: ignore[attr-defined]
         description=(
             "`extract_fields` after correcting the document type, so the fields of the "
             "new type are extracted."

@@ -1,6 +1,6 @@
-"""The technical pipeline steps after receive: OCR and parsing.
+"""The technical pipeline nodes after receive: OCR and parsing.
 
-Each step downloads its input into a temporary directory, runs the port (which does the heavy
+Each node downloads its input into a temporary directory, runs the port (which does the heavy
 work outside the event loop) and uploads the derivatives. Derivatives are keyed by document, so
 reprocessing replaces them.
 """
@@ -16,7 +16,7 @@ from pathlib import Path
 from papiq.core.domain import media_types
 from papiq.core.domain.documents import Document
 from papiq.core.domain.json_value import JsonObject
-from papiq.core.domain.pipeline import Outcome, StepResult
+from papiq.core.domain.pipeline import NodeResult, Outcome
 from papiq.core.ports import DocumentParser, ObjectStore, Ocr, PreviewRenderer
 from papiq.core.ports.preview import PREVIEW_MEDIA_TYPE
 from papiq.core.services.objects import (
@@ -32,7 +32,7 @@ _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _WORD = re.compile(r"\w")
 
 
-class OcrStep:
+class OcrNode:
     """Archive PDF with text layer and preview of the first page. A damaged or encrypted file
     fails at once (UnprocessableDocumentError, see PipelineService); an archive that is not
     PDF/A is uncertain, with the engine's reason. An archive that is PDF/A but differs from
@@ -43,7 +43,7 @@ class OcrStep:
         self._ocr = ocr
         self._previews = previews
 
-    async def run(self, document: Document) -> StepResult:
+    async def run(self, document: Document) -> NodeResult:
         async with work_directory() as work:
             original, archive, preview = work / "original", work / "archive.pdf", work / "preview"
             await self._store.download(original_key(document.sha256), original)
@@ -68,14 +68,14 @@ class OcrStep:
             reason = "the archive could not be made PDF/A"
             if result.note is not None:
                 reason = f"{reason}: {result.note}"
-            return StepResult(
+            return NodeResult(
                 outcome=Outcome.UNCERTAIN,
                 reason=reason,
                 model_version=result.engine,
                 input=input,
                 output=output,
             )
-        return StepResult(
+        return NodeResult(
             outcome=Outcome.OK,
             reason=result.note,
             model_version=result.engine,
@@ -84,17 +84,17 @@ class OcrStep:
         )
 
 
-class ParseStep:
+class ParseNode:
     """Markdown and structure from the archive PDF. A document without any text fails: there
     is nothing to classify, a person has to look at it. A parser that had to fall back (the
-    text layer instead of its layout analysis, see `ParseResult.note`) makes the step
+    text layer instead of its layout analysis, see `ParseResult.note`) makes the node
     uncertain, so the owner sees the document before it is filed."""
 
     def __init__(self, store: ObjectStore, parser: DocumentParser) -> None:
         self._store = store
         self._parser = parser
 
-    async def run(self, document: Document) -> StepResult:
+    async def run(self, document: Document) -> NodeResult:
         async with work_directory() as work:
             archive, markdown, structure = (
                 work / "archive.pdf",
@@ -118,7 +118,7 @@ class ParseStep:
             "characters": len(text),
         }
         if not has_text(text):
-            return StepResult(
+            return NodeResult(
                 outcome=Outcome.FAILED,
                 reason="no text recognised: the pages are blank or hold only pictures",
                 model_version=result.parser,
@@ -127,14 +127,14 @@ class ParseStep:
             )
         if result.note is not None:
             output["note"] = result.note
-            return StepResult(
+            return NodeResult(
                 outcome=Outcome.UNCERTAIN,
                 reason=result.note,
                 model_version=result.parser,
                 input=input,
                 output=output,
             )
-        return StepResult(
+        return NodeResult(
             outcome=Outcome.OK, model_version=result.parser, input=input, output=output
         )
 

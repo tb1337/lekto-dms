@@ -13,7 +13,7 @@ from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.errors import EmbeddingsError, PermissionDeniedError, SearchIndexError
 from papiq.core.domain.fields import FieldType
 from papiq.core.domain.jobs import JobStatus
-from papiq.core.domain.pipeline import Lane, Step
+from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.search import IndexDocument
 from papiq.core.domain.users import Role
 from papiq.core.services.indexing import (
@@ -60,8 +60,8 @@ async def test_the_lane_follows_the_pipeline(setup: Setup) -> None:
     document = await setup.document(owner)
     assert (setup.entry(document.id).lane_value, document.lane) == ("green", Lane.GREEN)
 
-    await setup.world.pipeline().reprocess_from(owner.id, document.id, Step.CLASSIFY)
-    await setup.settle(pipeline_service=setup.world.pipeline({Step.CLASSIFY: Returns(UNCERTAIN)}))
+    await setup.world.pipeline().reprocess_from(owner.id, document.id, Node.CLASSIFY)
+    await setup.settle(pipeline_service=setup.world.pipeline({Node.CLASSIFY: Returns(UNCERTAIN)}))
     assert setup.entry(document.id).lane_value == "yellow"
 
 
@@ -211,7 +211,7 @@ async def test_a_failing_embedding_service_is_waited_for(world: World) -> None:
     await setup.put_text(received.id, "Text")
     await setup.bus.dispatch()
     indexing = setup.indexing
-    assert await run_due(indexing) == 2  # the events `received` and `step_completed`
+    assert await run_due(indexing) == 2  # the events `received` and `node_completed`
     assert setup.entry(received.id).vectors == ()  # found by its words, the vectors follow
     jobs = index_jobs(world)
     assert [job.status for job in jobs] == [JobStatus.QUEUED] * 2

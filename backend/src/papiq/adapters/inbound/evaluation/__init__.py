@@ -1,5 +1,5 @@
 """The evaluation set: synthetic documents with expected metadata, run through the
-classification steps to compare models (`python -m papiq.composition evaluate`)."""
+classification nodes to compare models (`python -m papiq.composition evaluate`)."""
 
 from papiq.adapters.inbound.evaluation.cases import (
     Case,

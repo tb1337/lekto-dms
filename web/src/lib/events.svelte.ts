@@ -7,7 +7,7 @@ import { BASE_API } from '#lib/api/base.ts';
 
 export const EVENT_TYPES = [
 	'document.received',
-	'document.step_completed',
+	'document.node_completed',
 	'document.lane_changed',
 	'document.filed',
 	'document.updated',

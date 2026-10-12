@@ -28,10 +28,10 @@ from papiq.composition.container import (
 from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
 from papiq.core.domain.events import DomainEvent
-from papiq.core.domain.pipeline import Lane, Step
+from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.users import Role
+from papiq.core.services.nodes import OcrNode, ParseNode
 from papiq.core.services.pipeline import RetryPolicy
-from papiq.core.services.steps import OcrStep, ParseStep
 from tests import builders
 from tests.builders import NOW, incoming
 from tests.contracts.processing import SAMPLES
@@ -116,8 +116,8 @@ def test_processing_adapters_follow_the_settings(tmp_path: Path) -> None:
 
 def test_services_take_their_tuning_from_the_settings() -> None:
     configured = settings(
-        step_max_attempts="5",
-        step_retry_delay="10",
+        node_max_attempts="5",
+        node_retry_delay="10",
         ocr_timeout="120",
         parse_timeout="300",
         llm_timeout="100",
@@ -128,11 +128,11 @@ def test_services_take_their_tuning_from_the_settings() -> None:
     pipeline = services.pipeline
     assert pipeline._retry == RetryPolicy(max_attempts=5, delay=timedelta(seconds=10))
     assert pipeline._lease == timedelta(minutes=5) + container.LEASE_MARGIN
-    # A classification step may ask the model twice.
+    # A classification node may ask the model twice.
     longer = build_services(build_memory_container(), settings(llm_timeout="400")).pipeline
     assert longer._lease == timedelta(seconds=800) + container.LEASE_MARGIN
-    assert isinstance(pipeline._executors[Step.OCR], OcrStep)
-    assert isinstance(pipeline._executors[Step.PARSE], ParseStep)
+    assert isinstance(pipeline._executors[Node.OCR], OcrNode)
+    assert isinstance(pipeline._executors[Node.PARSE], ParseNode)
     maintenance = services.maintenance
     assert (maintenance._interval, maintenance._retention) == (
         timedelta(minutes=1),

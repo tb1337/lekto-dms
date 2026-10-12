@@ -1,4 +1,4 @@
-"""Ingest pipeline: steps, step results, processing state and lanes."""
+"""Ingest pipeline: nodes, node results, processing state and lanes."""
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
@@ -12,8 +12,8 @@ from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.validation import require_utc
 
 
-class Step(StrEnum):
-    """Pipeline steps in their fixed order."""
+class Node(StrEnum):
+    """Pipeline nodes in their fixed order."""
 
     RECEIVE = "receive"
     OCR = "ocr"
@@ -28,12 +28,12 @@ class Step(StrEnum):
         return PIPELINE.index(self)
 
     @property
-    def next(self) -> "Step | None":
+    def next(self) -> "Node | None":
         position = self.position + 1
         return PIPELINE[position] if position < len(PIPELINE) else None
 
 
-PIPELINE: tuple[Step, ...] = tuple(Step)
+PIPELINE: tuple[Node, ...] = tuple(Node)
 
 
 class Outcome(StrEnum):
@@ -59,8 +59,8 @@ class Lane(StrEnum):
 
 
 @dataclass(frozen=True, kw_only=True)
-class StepResult:
-    """What a step decided. A reason is required unless the step went through cleanly."""
+class NodeResult:
+    """What a node decided. A reason is required unless the node went through cleanly."""
 
     outcome: Outcome
     reason: str | None = None
@@ -71,19 +71,19 @@ class StepResult:
 
     def __post_init__(self) -> None:
         if self.outcome is not Outcome.OK and not (self.reason and self.reason.strip()):
-            raise ValidationError(f"a {self.outcome} step result needs a reason")
+            raise ValidationError(f"a {self.outcome} node result needs a reason")
         if self.confidence is not None and not 0 <= self.confidence <= 1:
             raise ValidationError(f"confidence must be between 0 and 1, got {self.confidence}")
 
 
 @dataclass(frozen=True, kw_only=True)
-class StepRun:
-    """Processing log entry: one execution of one step for one document."""
+class NodeRun:
+    """Processing log entry: one execution of one node for one document."""
 
     document_id: DocumentId
-    step: Step
+    node: Node
     run: int
-    result: StepResult
+    result: NodeResult
     pipeline_version: str
     started_at: datetime
     duration: timedelta
@@ -98,9 +98,9 @@ class StepRun:
 
 # Entries that people and rules write carry these as `model_version`, in place of a model.
 PERSON = "person"
-"""`model_version` of a log entry in which the owner confirmed a step's results."""
+"""`model_version` of a log entry in which the owner confirmed a node's results."""
 RULES = "rules"
-"""`model_version` of the log entry of the pipeline step `apply_rules`."""
+"""`model_version` of the log entry of the pipeline node `apply_rules`."""
 RULES_CHANGE = "rules:change"
 """`model_version` of the `apply_rules` log entry of a metadata change by a person (with the
 rules it set off)."""
@@ -114,10 +114,10 @@ CHOSEN_DRAWER = "drawer_id"
 """Key of the drawer a person chose, in the input of a `PERSON_DRAWER` entry and the output of a
 `PERSON` entry."""
 OUTSIDE_PIPELINE = frozenset({RULES_CHANGE, RULES_APPLY, PERSON_DRAWER})
-"""Log entries written outside processing; they say nothing about a step's state."""
+"""Log entries written outside processing; they say nothing about a node's state."""
 
 
-def drawer_chooser(log: Sequence[StepRun], drawer: UUID) -> UUID | None:
+def drawer_chooser(log: Sequence[NodeRun], drawer: UUID) -> UUID | None:
     """Who last put the document into `drawer` by hand (confirming, uploading into a given
     drawer, moving), if anyone. Entries written before the drawer was recorded name none."""
     for entry in reversed(log):
@@ -134,10 +134,10 @@ def drawer_chooser(log: Sequence[StepRun], drawer: UUID) -> UUID | None:
 
 
 class ProcessingStatus(StrEnum):
-    PROCESSING = "processing"  # `current_step` is due
-    COMPLETED = "completed"  # all steps done
-    FAILED = "failed"  # stopped at `current_step`
-    REVIEW = "review"  # uncertain results; waits before `current_step` (filing) for the owner
+    PROCESSING = "processing"  # `current_node` is due
+    COMPLETED = "completed"  # all nodes done
+    FAILED = "failed"  # stopped at `current_node`
+    REVIEW = "review"  # uncertain results; waits before `current_node` (filing) for the owner
 
 
 @dataclass(kw_only=True)
@@ -149,10 +149,10 @@ class Processing:
     """
 
     status: ProcessingStatus
-    current_step: Step | None
+    current_node: Node | None
     run: int
-    outcomes: dict[Step, Outcome] = field(default_factory=dict)
+    outcomes: dict[Node, Outcome] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if (self.status is ProcessingStatus.COMPLETED) != (self.current_step is None):
-            raise ValidationError("only completed processing has no current step")
+        if (self.status is ProcessingStatus.COMPLETED) != (self.current_node is None):
+            raise ValidationError("only completed processing has no current node")

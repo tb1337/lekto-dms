@@ -14,7 +14,7 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.events import DocumentDeleted, DocumentFiled, DocumentUpdated
 from papiq.core.domain.fields import FieldType
 from papiq.core.domain.ids import ContactId, DocumentId, DrawerId, TagId, UserId, new_id
-from papiq.core.domain.pipeline import PERSON_DRAWER, Lane, Step
+from papiq.core.domain.pipeline import PERSON_DRAWER, Lane, Node
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import DocumentFilter
 from papiq.core.services.documents import DocumentFile, FileInfo
@@ -69,10 +69,10 @@ async def test_visibility(world: World, scene: Scene) -> None:
 
 
 async def test_yellow_document_is_hidden_from_shares(world: World, scene: Scene) -> None:
-    await world.pipeline().reprocess_from(scene.owner.id, scene.document.id, Step.CLASSIFY)
+    await world.pipeline().reprocess_from(scene.owner.id, scene.document.id, Node.CLASSIFY)
     with pytest.raises(NotFoundError):
         await world.documents.get(scene.reader.id, scene.document.id)  # in processing
-    await world.drain(world.pipeline({Step.CLASSIFY: Returns(UNCERTAIN)}))
+    await world.drain(world.pipeline({Node.CLASSIFY: Returns(UNCERTAIN)}))
     assert (await world.documents.get(scene.owner.id, scene.document.id)).lane is Lane.YELLOW
     for user in (scene.reader, scene.writer):
         with pytest.raises(NotFoundError):
@@ -214,7 +214,7 @@ async def test_a_deactivated_user_and_a_document_in_the_inbox_have_fewer_readers
     received = await world.pipeline().receive(
         scene.owner.id, incoming(b"%PDF-1.7 yellow"), filename="y.pdf", drawer=scene.shared.id
     )
-    await world.drain(world.pipeline({Step.CLASSIFY: Returns(UNCERTAIN)}))
+    await world.drain(world.pipeline({Node.CLASSIFY: Returns(UNCERTAIN)}))
     yellow = await world.documents.get(scene.owner.id, received.id)
     assert yellow.lane is Lane.YELLOW
     world.database.outbox.clear()
@@ -226,8 +226,8 @@ async def test_a_deactivated_user_and_a_document_in_the_inbox_have_fewer_readers
 
 async def test_only_the_owner_reads_the_processing_log(world: World, scene: Scene) -> None:
     entries = await world.documents.processing_log(scene.owner.id, scene.document.id)
-    steps = [entry.step for entry in entries if entry.result.model_version != PERSON_DRAWER]
-    assert steps == list(Step)
+    nodes = [entry.node for entry in entries if entry.result.model_version != PERSON_DRAWER]
+    assert nodes == list(Node)
     for user in (scene.reader, scene.writer):
         with pytest.raises(PermissionDeniedError, match="only the owner"):
             await world.documents.processing_log(user.id, scene.document.id)
@@ -241,7 +241,7 @@ async def test_filter_readers_follows_the_visibility(world: World, scene: Scene)
     readers = await world.documents.filter_readers(scene.document.id, {*everyone, unknown})
     assert readers == {scene.owner.id, scene.reader.id, scene.writer.id}
 
-    await world.pipeline().reprocess_from(scene.owner.id, scene.document.id, Step.CLASSIFY)
+    await world.pipeline().reprocess_from(scene.owner.id, scene.document.id, Node.CLASSIFY)
     assert await world.documents.filter_readers(scene.document.id, everyone) == {scene.owner.id}
     assert await world.documents.filter_readers(DocumentId(new_id()), everyone) == set()
     assert await world.documents.filter_readers(scene.document.id, set()) == set()
@@ -285,7 +285,7 @@ async def test_downloads_need_read_access(world: World, scene: Scene, tmp_path: 
     )
     assert info == FileInfo("application/pdf", "electricity.pdf")
     assert target.read_bytes() == b"%PDF-1.7 electricity"
-    with pytest.raises(NotFoundError):  # not made by the placeholder steps
+    with pytest.raises(NotFoundError):  # not made by the placeholder nodes
         await world.documents.download(
             scene.owner.id, scene.document.id, DocumentFile.ARCHIVE, target
         )

@@ -47,7 +47,7 @@
 		);
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const stop = events.subscribe((event) => {
-			if (event.type === 'document.received' || event.type === 'document.step_completed') return;
+			if (event.type === 'document.received' || event.type === 'document.node_completed') return;
 			clearTimeout(timer);
 			timer = setTimeout(() => void list.refresh(), 400);
 		});

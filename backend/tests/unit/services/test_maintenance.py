@@ -49,7 +49,7 @@ async def test_cleanup_runs_and_schedules_the_next_one(world: World) -> None:
     step_jobs = len(world.database.jobs)
 
     await service.schedule()
-    world.clock.advance(RETENTION)  # the step jobs are not older than the retention yet
+    world.clock.advance(RETENTION)  # the node jobs are not older than the retention yet
     assert await service.run_next_job()
     assert len(world.database.jobs) == step_jobs + 2
     assert sorted(cleanup_jobs(world)) == [JobStatus.DONE, JobStatus.QUEUED]

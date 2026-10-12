@@ -14,12 +14,12 @@ from papiq.core.domain.json_value import JsonObject, JsonValue
 
 IMPORTED = "imported"
 """Key of the receive log entry's output that holds the metadata, and the `model_version` of
-the steps that applied it."""
+the nodes that applied it."""
 
 
 @dataclass(frozen=True, kw_only=True)
 class ImportedMetadata:
-    """What the source system knew about a document. The classification steps apply it instead
+    """What the source system knew about a document. The classification nodes apply it instead
     of asking the language model. `None` leaves a field unset."""
 
     title: str | None = None

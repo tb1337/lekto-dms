@@ -6,9 +6,9 @@ import ProcessingLog from './ProcessingLog.svelte';
 
 const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
 
-function entry(step: string) {
+function entry(node: string) {
 	return {
-		step,
+		node,
 		run: 1,
 		outcome: 'ok',
 		reason: null,
@@ -45,11 +45,11 @@ describe('ProcessingLog', () => {
 		const { rerender } = render(ProcessingLog, { documentId: 'first' });
 		await tick();
 		await rerender({ documentId: 'second' });
-		await screen.findByText(m.step_classify());
+		await screen.findByText(m.node_classify());
 		releaseFirst?.();
 		await tick();
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		expect(screen.queryByText(m.step_ocr())).toBeNull();
-		expect(screen.getByText(m.step_classify())).toBeTruthy();
+		expect(screen.queryByText(m.node_ocr())).toBeNull();
+		expect(screen.getByText(m.node_classify())).toBeTruthy();
 	});
 });

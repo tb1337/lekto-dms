@@ -62,7 +62,7 @@ export function initialValue(
 
 /**
  * The confirmation for the decisions: every open field with its value (empty = no value), the
- * drawer if it changed, and the step to continue at: after a corrected document type the
+ * drawer if it changed, and the node to continue at: after a corrected document type the
  * fields of the new type are extracted again.
  */
 export function buildConfirm(

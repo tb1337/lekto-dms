@@ -35,7 +35,7 @@ from papiq.core.domain.ids import (
     WebhookId,
 )
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
-from papiq.core.domain.pipeline import Lane, StepRun
+from papiq.core.domain.pipeline import Lane, NodeRun
 from papiq.core.domain.rules import Rule, RuleApplication, RuleVersion
 from papiq.core.domain.users import User
 from papiq.core.domain.webhooks import Webhook, WebhookDelivery
@@ -175,11 +175,11 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
 
 
 class ProcessingLog(Protocol):
-    """Append-only log of step executions."""
+    """Append-only log of node executions."""
 
-    async def append(self, run: StepRun) -> None: ...
+    async def append(self, run: NodeRun) -> None: ...
 
-    async def list_for(self, document: DocumentId) -> list[StepRun]:
+    async def list_for(self, document: DocumentId) -> list[NodeRun]:
         """All entries of the document in the order they were appended."""
         ...
 

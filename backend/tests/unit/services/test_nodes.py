@@ -1,4 +1,4 @@
-"""OCR and parse steps on the fakes: derivatives, outcomes, failures."""
+"""OCR and parse nodes on the fakes: derivatives, outcomes, failures."""
 
 import tempfile
 from pathlib import Path
@@ -8,9 +8,10 @@ import pytest
 from papiq.adapters.outbound.memory import FakeOcr, FakeParser, FakePreviewRenderer
 from papiq.adapters.outbound.memory.processing import FAKE_PDF
 from papiq.core.domain.documents import Document
-from papiq.core.domain.pipeline import Lane, Outcome, Step
+from papiq.core.domain.pipeline import Lane, Node, Outcome
 from papiq.core.domain.users import User
 from papiq.core.ports import OcrResult, ParseResult
+from papiq.core.services.nodes import OcrNode, ParseNode, has_text
 from papiq.core.services.objects import (
     archive_key,
     markdown_key,
@@ -19,7 +20,6 @@ from papiq.core.services.objects import (
     structure_key,
 )
 from papiq.core.services.pipeline import PipelineService
-from papiq.core.services.steps import OcrStep, ParseStep, has_text
 from tests.builders import incoming
 from tests.contracts.processing import SAMPLES
 from tests.unit.services.conftest import World
@@ -49,8 +49,8 @@ def pipeline(
     store = world.object_store
     return world.pipeline(
         {
-            Step.OCR: OcrStep(store, ocr or FakeOcr(), FakePreviewRenderer()),
-            Step.PARSE: ParseStep(store, FakeParser(text)),
+            Node.OCR: OcrNode(store, ocr or FakeOcr(), FakePreviewRenderer()),
+            Node.PARSE: ParseNode(store, FakeParser(text)),
         }
     )
 
@@ -75,9 +75,9 @@ async def test_ocr_and_parse_store_their_derivatives(world: World, sample: str) 
     assert store.content_type(structure_key(document.id)) == "application/json"
 
     log = {
-        entry.step: entry for entry in await world.documents.processing_log(owner.id, document.id)
+        entry.node: entry for entry in await world.documents.processing_log(owner.id, document.id)
     }
-    ocr, parse = log[Step.OCR].result, log[Step.PARSE].result
+    ocr, parse = log[Node.OCR].result, log[Node.PARSE].result
     assert ocr.input == {"original": original_key(document.sha256)}
     assert ocr.output == {
         "archive": archive_key(document.id),
@@ -95,7 +95,7 @@ async def test_a_damaged_file_goes_red_at_once(world: World) -> None:
     ocr = FakeOcr()
     owner, document = await ingest(world, pipeline(world, ocr=ocr), "damaged.pdf")
     assert document.lane is Lane.RED
-    assert document.processing.current_step is Step.OCR
+    assert document.processing.current_node is Node.OCR
     assert len(ocr.calls) == 1
     entry = (await world.documents.processing_log(owner.id, document.id))[-1]
     assert entry.result.reason == "the file is damaged or not a valid document"
@@ -105,9 +105,9 @@ async def test_a_damaged_file_goes_red_at_once(world: World) -> None:
 async def test_an_archive_that_is_not_pdfa_is_uncertain(world: World) -> None:
     owner, document = await ingest(world, pipeline(world, ocr=NotPdfa()), "scan.pdf")
     assert document.lane is Lane.YELLOW
-    assert document.processing.outcomes[Step.OCR] is Outcome.UNCERTAIN
+    assert document.processing.outcomes[Node.OCR] is Outcome.UNCERTAIN
     entry = (await world.documents.processing_log(owner.id, document.id))[1]
-    assert entry.step is Step.OCR
+    assert entry.node is Node.OCR
     assert entry.result.reason == "the archive could not be made PDF/A"
     assert "note" not in entry.result.output
 
@@ -125,7 +125,7 @@ async def test_a_signature_left_out_of_the_archive_is_ok_with_a_note(world: Worl
     owner, document = await ingest(world, pipeline(world, ocr=Unsigned()), "scan.pdf")
     assert document.lane is Lane.GREEN
     entry = (await world.documents.processing_log(owner.id, document.id))[1]
-    assert entry.step is Step.OCR and entry.result.outcome is Outcome.OK
+    assert entry.node is Node.OCR and entry.result.outcome is Outcome.OK
     assert entry.result.reason == "signature not carried"
     assert entry.result.output["note"] == "signature not carried"
 
@@ -133,7 +133,7 @@ async def test_a_signature_left_out_of_the_archive_is_ok_with_a_note(world: Worl
 async def test_a_document_without_text_goes_red(world: World) -> None:
     owner, document = await ingest(world, pipeline(world, text="<!-- image -->\n\n"), "blank.pdf")
     assert document.lane is Lane.RED
-    assert document.processing.current_step is Step.PARSE
+    assert document.processing.current_node is Node.PARSE
     entry = (await world.documents.processing_log(owner.id, document.id))[-1]
     assert entry.result.reason == "no text recognised: the pages are blank or hold only pictures"
     assert await world.object_store.exists(markdown_key(document.id))  # kept for inspection
@@ -151,15 +151,15 @@ async def test_a_parser_that_fell_back_to_the_text_layer_is_uncertain(world: Wor
     store = world.object_store
     service = world.pipeline(
         {
-            Step.OCR: OcrStep(store, FakeOcr(), FakePreviewRenderer()),
-            Step.PARSE: ParseStep(store, TextLayer("Lohnabrechnung Februar")),
+            Node.OCR: OcrNode(store, FakeOcr(), FakePreviewRenderer()),
+            Node.PARSE: ParseNode(store, TextLayer("Lohnabrechnung Februar")),
         }
     )
     owner, document = await ingest(world, service, "scan.pdf")
     assert document.lane is Lane.YELLOW
-    assert document.processing.outcomes[Step.PARSE] is Outcome.UNCERTAIN
+    assert document.processing.outcomes[Node.PARSE] is Outcome.UNCERTAIN
     entry = (await world.documents.processing_log(owner.id, document.id))[2]
-    assert entry.step is Step.PARSE
+    assert entry.node is Node.PARSE
     assert entry.result.reason == "text layer used"
     assert entry.result.output["note"] == "text layer used"
     text = await world.object_store.get(markdown_key(document.id))
@@ -170,7 +170,7 @@ async def test_reprocessing_from_parse_reuses_the_archive(world: World) -> None:
     ocr = FakeOcr()
     service = pipeline(world, ocr=ocr)
     owner, document = await ingest(world, service, "scan.pdf")
-    await service.reprocess_from(owner.id, document.id, Step.PARSE)
+    await service.reprocess_from(owner.id, document.id, Node.PARSE)
     await world.drain(service)
     assert len(ocr.calls) == 1
     assert (await world.documents.get(owner.id, document.id)).lane is Lane.GREEN

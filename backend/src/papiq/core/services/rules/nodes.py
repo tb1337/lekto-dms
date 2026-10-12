@@ -1,4 +1,4 @@
-"""The pipeline steps `apply_rules` and `file`."""
+"""The pipeline nodes `apply_rules` and `file`."""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -6,7 +6,7 @@ from datetime import datetime
 from papiq.core.domain.classification import FieldCheck
 from papiq.core.domain.documents import Document
 from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.pipeline import RULES, Outcome, StepResult
+from papiq.core.domain.pipeline import RULES, NodeResult, Outcome
 from papiq.core.domain.rule_engine import DRAWER, Mode
 from papiq.core.domain.rules import Trigger
 from papiq.core.ports import ObjectStore, PatternMatcher, UnitOfWork, UnitOfWorkFactory
@@ -22,12 +22,12 @@ from papiq.core.services.rules.running import (
 )
 
 
-class ApplyRulesStep:
+class ApplyRulesNode:
     """Runs the rules with trigger `ingest`: the global ones and those of the document's owner.
 
     The text is loaded and its patterns run here, outside any transaction; the rules are
     evaluated and applied when the result is stored, on the state that is stored. Conflicts,
-    refused actions and forced reviews make the step uncertain: the document waits in the
+    refused actions and forced reviews make the node uncertain: the document waits in the
     inbox before it is filed."""
 
     def __init__(
@@ -58,7 +58,7 @@ class RulesResult:
     prepared: Prepared
     matcher: PatternMatcher
 
-    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> StepResult:
+    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
         owner = await uow.users.get(document.owner_id)
         rules = await active_rules(uow, owner, Trigger.INGEST)
         input: dict[str, JsonValue] = {
@@ -66,7 +66,7 @@ class RulesResult:
             "rules": checked_rules(rules),
         }
         if not rules:
-            return StepResult(outcome=Outcome.OK, model_version=RULES, input=input)
+            return NodeResult(outcome=Outcome.OK, model_version=RULES, input=input)
         origin = provenance(await uow.processing_log.list_for(document.id), document)
         definitions = {item.id: item for item in await uow.fields.list_all()}
         run = await run_rules(
@@ -85,20 +85,20 @@ class RulesResult:
         problem = apply_plan(document, run.plan, definitions, now)
         reasons = run.plan.reasons + ([problem] if problem else [])
         if reasons:
-            return StepResult(
+            return NodeResult(
                 outcome=Outcome.UNCERTAIN,
                 reason="; ".join(reasons),
                 model_version=RULES,
                 input=input,
                 output=output,
             )
-        return StepResult(outcome=Outcome.OK, model_version=RULES, input=input, output=output)
+        return NodeResult(outcome=Outcome.OK, model_version=RULES, input=input, output=output)
 
 
-class FileStep:
+class FileNode:
     """Files the document into its drawer. The owner must still be allowed to write to it (a
     share can be withdrawn while the document is processed), unless an active admin put the
-    document there; otherwise the step is uncertain and the owner chooses another drawer in the
+    document there; otherwise the node is uncertain and the owner chooses another drawer in the
     inbox."""
 
     async def run(self, document: Document) -> "FileResult":
@@ -107,12 +107,12 @@ class FileStep:
 
 @dataclass(frozen=True)
 class FileResult:
-    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> StepResult:
+    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
         drawer = await uow.drawers.get(document.drawer_id)
         if not await may_file(uow, document, drawer):
             reason = f"the owner may not file into drawer '{drawer.name}' (any more)"
             check = FieldCheck(field=DRAWER, outcome=Outcome.UNCERTAIN, confidence=0, reason=reason)
-            return StepResult(
+            return NodeResult(
                 outcome=Outcome.UNCERTAIN, reason=reason, output={"fields": [check.to_json()]}
             )
-        return StepResult(outcome=Outcome.OK)
+        return NodeResult(outcome=Outcome.OK)

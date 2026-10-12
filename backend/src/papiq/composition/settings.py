@@ -151,8 +151,8 @@ class Settings(BaseSettings):
     worker_concurrency: Annotated[int, Field(ge=1, le=64)] = 2
     worker_poll_interval: Seconds = timedelta(seconds=1)
     worker_shutdown_timeout: Seconds = timedelta(seconds=30)
-    step_max_attempts: Annotated[int, Field(ge=1, le=20)] = 3
-    step_retry_delay: Seconds = timedelta(seconds=30)
+    node_max_attempts: Annotated[int, Field(ge=1, le=20)] = 3
+    node_retry_delay: Seconds = timedelta(seconds=30)
     events_poll_interval: Seconds = timedelta(seconds=1)
     events_max_attempts: Annotated[int, Field(ge=1, le=100)] = 10
     cleanup_interval: Seconds = timedelta(hours=1)

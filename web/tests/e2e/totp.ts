@@ -1,4 +1,4 @@
-// TOTP codes (RFC 6238: SHA-1, 6 digits, 30-second steps) with Web Crypto, for the smoke test.
+// TOTP codes (RFC 6238: SHA-1, 6 digits, 30-second nodes) with Web Crypto, for the smoke test.
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
@@ -11,12 +11,12 @@ function base32(secret: string): Uint8Array<ArrayBuffer> {
 	return bytes;
 }
 
-/** The time step of `at` (milliseconds). */
-export function step(at: number = Date.now()): number {
+/** The time node of `at` (milliseconds). */
+export function node(at: number = Date.now()): number {
 	return Math.floor(at / 1000 / 30);
 }
 
-/** The code of `secret` (base32) for time step `counter`. */
+/** The code of `secret` (base32) for time node `counter`. */
 export async function code(secret: string, counter: number): Promise<string> {
 	const key = await crypto.subtle.importKey(
 		'raw',

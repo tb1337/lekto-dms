@@ -65,7 +65,7 @@ from papiq.core.domain.ids import (
 from papiq.core.domain.jobs import Job, JobStatus
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag
-from papiq.core.domain.pipeline import Lane, StepRun
+from papiq.core.domain.pipeline import Lane, NodeRun
 from papiq.core.domain.users import User
 from papiq.core.domain.validation import name_key, require_utc
 from papiq.core.ports.repository import DocumentFilter
@@ -78,7 +78,7 @@ class MemoryUnitOfWork:
         self._writes: dict[str, dict[UUID, Any]] = {}
         self._tables: dict[str, Table] = {}
         self._base_versions: dict[tuple[str, UUID], int | None] = {}
-        self._log: list[StepRun] = []
+        self._log: list[NodeRun] = []
         self._events: list[DomainEvent] = []
         self._jobs: dict[JobId, Job] = {}
         self._job_base: dict[JobId, Job | None] = {}
@@ -348,11 +348,11 @@ class MemoryProcessingLog:
     def __init__(self, uow: MemoryUnitOfWork) -> None:
         self._uow = uow
 
-    async def append(self, run: StepRun) -> None:
+    async def append(self, run: NodeRun) -> None:
         self._uow._check_open()
         self._uow._log.append(run)
 
-    async def list_for(self, document: DocumentId) -> list[StepRun]:
+    async def list_for(self, document: DocumentId) -> list[NodeRun]:
         self._uow._check_open()
         if self._uow._row(DOCUMENTS, document) is _REMOVED:
             return []

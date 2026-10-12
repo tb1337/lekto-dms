@@ -132,7 +132,7 @@ async def test_rules_act_on_arrival_and_conflicts_wait_in_the_inbox(api: Api) ->
     document = (await api.client.get(f"{PREFIX}/documents/{id}", headers=o)).json()
     assert document["lane"] == "yellow", document
     review = (await api.client.get(f"{PREFIX}/documents/{id}/review", headers=o)).json()
-    fields = [field["field"] for step in review["open"] for field in step["fields"]]
+    fields = [field["field"] for node in review["open"] for field in node["fields"]]
     assert fields == ["drawer"]
     response = await api.client.post(
         f"{PREFIX}/documents/{id}/confirm", json={"drawer_id": other["id"]}, headers=o

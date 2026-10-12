@@ -23,12 +23,12 @@ from papiq.core.domain.ids import (
 )
 from papiq.core.domain.pipeline import (
     Lane,
+    Node,
+    NodeResult,
+    NodeRun,
     Outcome,
     Processing,
     ProcessingStatus,
-    Step,
-    StepResult,
-    StepRun,
 )
 from papiq.core.ports.repository import DocumentFilter
 
@@ -183,11 +183,11 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
                 lane=None if row.lane is None else Lane(row.lane),
                 processing=Processing(
                     status=ProcessingStatus(row.processing_status),
-                    current_step=None if row.processing_step is None else Step(row.processing_step),
+                    current_node=None if row.processing_node is None else Node(row.processing_node),
                     run=row.processing_run,
                     outcomes={
-                        Step(step): Outcome(outcome)
-                        for step, outcome in row.processing_outcomes.items()
+                        Node(node): Outcome(outcome)
+                        for node, outcome in row.processing_outcomes.items()
                     },
                 ),
                 created_at=row.created_at,
@@ -213,12 +213,12 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             "channel": entity.channel.value,
             "lane": None if entity.lane is None else entity.lane.value,
             "processing_status": processing.status.value,
-            "processing_step": (
-                None if processing.current_step is None else processing.current_step.value
+            "processing_node": (
+                None if processing.current_node is None else processing.current_node.value
             ),
             "processing_run": processing.run,
             "processing_outcomes": {
-                step.value: outcome.value for step, outcome in processing.outcomes.items()
+                node.value: outcome.value for node, outcome in processing.outcomes.items()
             },
             "created_at": entity.created_at,
             "updated_at": entity.updated_at,
@@ -291,12 +291,12 @@ class SqlProcessingLog:
     def __init__(self, transaction: Transaction) -> None:
         self._tx = transaction
 
-    async def append(self, run: StepRun) -> None:
+    async def append(self, run: NodeRun) -> None:
         result = run.result
         await self._tx.write(
             insert(t.processing_log).values(
                 document_id=run.document_id,
-                step=run.step.value,
+                node=run.node.value,
                 run=run.run,
                 outcome=result.outcome.value,
                 reason=result.reason,
@@ -310,20 +310,20 @@ class SqlProcessingLog:
             )
         )
 
-    async def list_for(self, document: DocumentId) -> list[StepRun]:
+    async def list_for(self, document: DocumentId) -> list[NodeRun]:
         log = t.processing_log
         rows = await self._tx.read(
             select(log).where(log.c.document_id == document).order_by(log.c.seq)
         )
-        return [_step_run(row) for row in rows]
+        return [_node_run(row) for row in rows]
 
 
-def _step_run(row: Row[Any]) -> StepRun:
-    return StepRun(
+def _node_run(row: Row[Any]) -> NodeRun:
+    return NodeRun(
         document_id=DocumentId(row.document_id),
-        step=Step(row.step),
+        node=Node(row.node),
         run=row.run,
-        result=StepResult(
+        result=NodeResult(
             outcome=Outcome(row.outcome),
             reason=row.reason,
             confidence=row.confidence,

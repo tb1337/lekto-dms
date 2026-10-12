@@ -46,7 +46,7 @@ PROCESSING = 180.0  # seconds a document may take here
 
 
 class Interruptible:
-    """OCR that can be made to time out, to break a step on purpose."""
+    """OCR that can be made to time out, to break a node on purpose."""
 
     def __init__(self, engine: OcrmypdfEngine) -> None:
         self.engine = engine
@@ -108,7 +108,7 @@ async def system(stores: tuple[Database, ObjectStore], settings: Settings) -> As
         previews=PdfiumPreviewRenderer(),
     )
     tuning = Settings.model_construct(
-        step_max_attempts=1,  # a broken step fails at once
+        node_max_attempts=1,  # a broken node fails at once
         worker_concurrency=2,
         events_poll_interval=timedelta(milliseconds=50),
     )
@@ -181,23 +181,23 @@ async def test_documents_go_through_the_api(system: System, object_store: Object
     assert "document.received" not in shared_stream.types()  # hidden while processing
     assert streams[stranger.id].events == []
 
-    # A step broken on purpose fails, is retried alone, and reprocessing works.
+    # A node broken on purpose fails, is retried alone, and reprocessing works.
     system.ocr.broken = True
     born_digital = await system.upload(owner, "text.pdf")
     url, id = born_digital.json()["status_url"], born_digital.json()["id"]
     failed = await system.settled(owner, id)
-    assert (failed["lane"], failed["processing"]["current_step"]) == ("red", "ocr")
+    assert (failed["lane"], failed["processing"]["current_node"]) == ("red", "ocr")
     system.ocr.broken = False
     retried = await system.client.post(f"{url}/retry", headers=auth(owner))
     assert retried.status_code == 202
     assert (await system.settled(owner, id))["lane"] == "green"
     reprocess = await system.client.post(
-        f"{url}/reprocess", json={"from_step": "parse"}, headers=auth(owner)
+        f"{url}/reprocess", json={"from_node": "parse"}, headers=auth(owner)
     )
     assert reprocess.status_code == 202
     assert (await system.settled(owner, id))["lane"] == "green"
     log = (await system.client.get(f"{url}/log", headers=auth(owner))).json()
-    runs = [(entry["step"], entry["run"], entry["outcome"]) for entry in log][:5]
+    runs = [(entry["node"], entry["run"], entry["outcome"]) for entry in log][:5]
     assert runs == [
         ("receive", 1, "ok"),
         ("ocr", 1, "failed"),
@@ -205,7 +205,7 @@ async def test_documents_go_through_the_api(system: System, object_store: Object
         ("parse", 2, "ok"),
         ("classify", 2, "ok"),
     ]
-    assert ("parse", 3, "ok") in [(entry["step"], entry["run"], entry["outcome"]) for entry in log]
+    assert ("parse", 3, "ok") in [(entry["node"], entry["run"], entry["outcome"]) for entry in log]
 
     health = await system.client.get(f"{PREFIX}/health")
     assert health.json()["status"] == "ok"

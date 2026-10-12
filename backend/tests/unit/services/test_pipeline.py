@@ -19,7 +19,7 @@ from papiq.core.domain.events import (
     DocumentFiled,
     DocumentReceived,
     LaneChanged,
-    StepCompleted,
+    NodeCompleted,
 )
 from papiq.core.domain.ids import ContactId, TagId
 from papiq.core.domain.jobs import JobStatus
@@ -27,18 +27,18 @@ from papiq.core.domain.master_data import Tag
 from papiq.core.domain.pipeline import (
     PIPELINE,
     Lane,
+    Node,
+    NodeResult,
     Outcome,
     ProcessingStatus,
-    Step,
-    StepResult,
 )
 from papiq.core.domain.users import User
 from papiq.core.services.objects import original_key
 from papiq.core.services.pipeline import (
-    STEP_JOB,
+    NODE_JOB,
     MetadataResult,
     PipelineService,
-    PlaceholderStep,
+    PlaceholderNode,
     RetryPolicy,
 )
 from tests.builders import FAILED, NOW, UNCERTAIN, incoming
@@ -62,14 +62,14 @@ async def test_receive_stores_original_document_events_and_job(world: World) -> 
     assert document.sha256 == Sha256.of(PDF)
     assert await world.object_store.get(original_key(document.sha256)) == PDF
     assert document.drawer_id == (await world.default_drawer(owner)).id
-    assert document.processing.current_step is Step.OCR
+    assert document.processing.current_node is Node.OCR
     assert document.lane is None
 
-    assert world.event_types() == ["document.received", "document.step_completed"]
+    assert world.event_types() == ["document.received", "document.node_completed"]
     async with world.uow() as uow:
         assert await uow.documents.get(document.id) == document
         (entry,) = await uow.processing_log.list_for(document.id)
-        assert (entry.step, entry.run, entry.result.outcome) == (Step.RECEIVE, 1, Outcome.OK)
+        assert (entry.node, entry.run, entry.result.outcome) == (Node.RECEIVE, 1, Outcome.OK)
         assert entry.result.output == {
             "sha256": document.sha256.hex,
             "size": len(PDF),
@@ -77,8 +77,8 @@ async def test_receive_stores_original_document_events_and_job(world: World) -> 
         }
         assert entry.pipeline_version == "test"
         job = await uow.jobs.claim(now=NOW, lease=timedelta(minutes=1))
-    assert job is not None and job.kind == STEP_JOB
-    assert job.payload == {"document_id": str(document.id), "step": "ocr", "run": 1}
+    assert job is not None and job.kind == NODE_JOB
+    assert job.payload == {"document_id": str(document.id), "node": "ocr", "run": 1}
 
 
 async def test_pipeline_runs_to_green(world: World) -> None:
@@ -91,40 +91,40 @@ async def test_pipeline_runs_to_green(world: World) -> None:
 
     events = world.events()
     assert isinstance(events[0], DocumentReceived)
-    steps = [event.step for event in events if isinstance(event, StepCompleted)]
-    assert steps == list(PIPELINE)
+    nodes = [event.node for event in events if isinstance(event, NodeCompleted)]
+    assert nodes == list(PIPELINE)
     assert isinstance(events[-2], DocumentFiled)
     assert isinstance(events[-1], LaneChanged) and events[-1].new is Lane.GREEN
     log = await world.documents.processing_log(owner.id, document.id)
-    assert [entry.step for entry in log] == list(PIPELINE)
+    assert [entry.node for entry in log] == list(PIPELINE)
     assert len(world.database.jobs) == len(PIPELINE) - 1
     assert all(job.status is JobStatus.DONE for job in world.database.jobs.values())
 
 
 async def test_uncertain_step_ends_yellow(world: World) -> None:
-    pipeline = world.pipeline({Step.CLASSIFY: Returns(UNCERTAIN)})
+    pipeline = world.pipeline({Node.CLASSIFY: Returns(UNCERTAIN)})
     owner, document = await receive(world, pipeline)
     await world.drain(pipeline)
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.YELLOW
     log = await world.documents.processing_log(owner.id, stored.id)
-    classify = next(entry for entry in log if entry.step is Step.CLASSIFY)
+    classify = next(entry for entry in log if entry.node is Node.CLASSIFY)
     assert classify.result.reason == "new contact"
 
 
 async def test_failed_result_stops_red(world: World) -> None:
-    pipeline = world.pipeline({Step.PARSE: Returns(FAILED)})
+    pipeline = world.pipeline({Node.PARSE: Returns(FAILED)})
     owner, document = await receive(world, pipeline)
     assert await world.drain(pipeline) == 2
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.RED
     assert stored.processing.status is ProcessingStatus.FAILED
-    assert stored.processing.current_step is Step.PARSE
+    assert stored.processing.current_node is Node.PARSE
 
 
 async def test_exceptions_are_retried_with_backoff(world: World) -> None:
     flaky = Raises(times=2)
-    pipeline = world.pipeline({Step.OCR: flaky})
+    pipeline = world.pipeline({Node.OCR: flaky})
     owner, document = await receive(world, pipeline)
     assert await pipeline.run_next_job()  # attempt 1 fails
     assert not await pipeline.run_next_job()  # waits 30 s
@@ -137,14 +137,14 @@ async def test_exceptions_are_retried_with_backoff(world: World) -> None:
     assert flaky.calls == 3
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.GREEN
-    ocr_job = next(job for job in world.database.jobs.values() if job.payload["step"] == "ocr")
+    ocr_job = next(job for job in world.database.jobs.values() if job.payload["node"] == "ocr")
     assert (ocr_job.attempts, ocr_job.status) == (3, JobStatus.DONE)
     assert ocr_job.last_error == "OSError: scanner glitch"
 
 
 async def test_exhausted_retries_end_red_and_retry_recovers(world: World) -> None:
     broken = Raises(times=3)
-    pipeline = world.pipeline({Step.OCR: broken})
+    pipeline = world.pipeline({Node.OCR: broken})
     owner, document = await receive(world, pipeline)
     for _ in range(3):
         assert await pipeline.run_next_job()
@@ -155,7 +155,7 @@ async def test_exhausted_retries_end_red_and_retry_recovers(world: World) -> Non
     log = await world.documents.processing_log(owner.id, stored.id)
     assert log[-1].result.outcome is Outcome.FAILED
     assert log[-1].result.reason == "OSError: scanner glitch"
-    ocr_job = next(job for job in world.database.jobs.values() if job.payload["step"] == "ocr")
+    ocr_job = next(job for job in world.database.jobs.values() if job.payload["node"] == "ocr")
     assert ocr_job.status is JobStatus.FAILED
 
     retried = await pipeline.retry(owner.id, stored.id)
@@ -171,8 +171,8 @@ async def test_reprocess_from_a_step(world: World) -> None:
     owner, document = await receive(world)
     await world.drain()
     world.database.outbox.clear()
-    pipeline = world.pipeline({Step.EXTRACT_FIELDS: Returns(UNCERTAIN)})
-    await pipeline.reprocess_from(owner.id, document.id, Step.CLASSIFY)
+    pipeline = world.pipeline({Node.EXTRACT_FIELDS: Returns(UNCERTAIN)})
+    await pipeline.reprocess_from(owner.id, document.id, Node.CLASSIFY)
     assert await world.drain(pipeline) == 3  # waits before filing
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.YELLOW
@@ -192,10 +192,10 @@ async def test_retry_and_reprocess_are_for_the_owner(world: World) -> None:
     )
     await world.drain()
     with pytest.raises(PermissionDeniedError):
-        await world.pipeline().reprocess_from(writer.id, document.id, Step.OCR)
+        await world.pipeline().reprocess_from(writer.id, document.id, Node.OCR)
     stranger = await world.user()
     with pytest.raises(NotFoundError):
-        await world.pipeline().reprocess_from(stranger.id, document.id, Step.OCR)
+        await world.pipeline().reprocess_from(stranger.id, document.id, Node.OCR)
     with pytest.raises(InvalidTransitionError):
         await world.pipeline().retry(owner.id, document.id)
 
@@ -237,12 +237,12 @@ async def test_stale_jobs_are_skipped(world: World) -> None:
     owner, document = await receive(world)
     await world.documents.delete(owner.id, document.id)
     calls = Returns(FAILED)
-    pipeline = world.pipeline({Step.OCR: calls})
+    pipeline = world.pipeline({Node.OCR: calls})
     assert await pipeline.run_next_job()
     assert calls.calls == 0
     assert not await pipeline.run_next_job()
-    steps = [job for job in world.database.jobs.values() if job.kind == STEP_JOB]
-    assert all(job.status is JobStatus.DONE for job in steps)
+    nodes = [job for job in world.database.jobs.values() if job.kind == NODE_JOB]
+    assert all(job.status is JobStatus.DONE for job in nodes)
 
 
 async def crash(world: World) -> None:
@@ -258,7 +258,7 @@ async def test_a_step_that_keeps_killing_the_worker_ends_red(world: World) -> No
     for _ in range(3):
         await crash(world)
     ocr = Returns(FAILED)
-    pipeline = world.pipeline({Step.OCR: ocr})
+    pipeline = world.pipeline({Node.OCR: ocr})
     assert await pipeline.run_next_job()
     assert ocr.calls == 0
     stored = await world.documents.get(owner.id, document.id)
@@ -274,24 +274,24 @@ async def test_a_worker_that_lost_its_claim_stores_nothing(world: World) -> None
     class Slow:
         """Runs longer than the lease; meanwhile another worker takes the job over."""
 
-        async def run(self, document: Document) -> StepResult:
+        async def run(self, document: Document) -> NodeResult:
             world.clock.advance(timedelta(minutes=11))
             async with world.uow() as uow:
                 assert await uow.jobs.claim(now=world.clock.now(), lease=timedelta(minutes=10))
                 await uow.commit()
             return FAILED
 
-    assert await world.pipeline({Step.OCR: Slow()}).run_next_job()
+    assert await world.pipeline({Node.OCR: Slow()}).run_next_job()
     stored = await world.documents.get(owner.id, document.id)
-    assert stored.processing.current_step is Step.OCR
+    assert stored.processing.current_node is Node.OCR
     assert stored.lane is None
-    (job,) = [job for job in world.database.jobs.values() if job.payload["step"] == "ocr"]
+    (job,) = [job for job in world.database.jobs.values() if job.payload["node"] == "ocr"]
     assert (job.status, job.attempts) == (JobStatus.RUNNING, 2)
 
 
 async def test_invalid_job_payload_fails_the_job(world: World) -> None:
     async with world.uow() as uow:
-        await uow.jobs.enqueue(STEP_JOB, {"step": "ocr"}, run_at=world.clock.now())
+        await uow.jobs.enqueue(NODE_JOB, {"node": "ocr"}, run_at=world.clock.now())
         await uow.commit()
     assert await world.pipeline().run_next_job()
     (job,) = world.database.jobs.values()
@@ -305,7 +305,7 @@ async def test_every_step_needs_an_executor(world: World) -> None:
             world.uow,
             world.clock,
             world.object_store,
-            {Step.OCR: PlaceholderStep()},
+            {Node.OCR: PlaceholderNode()},
             pipeline_version="test",
         )
 
@@ -318,12 +318,12 @@ def test_retry_policy() -> None:
 
 
 class Blocks:
-    """Step executor that waits until cancelled."""
+    """Node executor that waits until cancelled."""
 
     def __init__(self) -> None:
         self.started = asyncio.Event()
 
-    async def run(self, document: Document) -> StepResult:
+    async def run(self, document: Document) -> NodeResult:
         self.started.set()
         await asyncio.Event().wait()
         raise AssertionError("not reached")
@@ -333,29 +333,29 @@ class Unprocessable:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def run(self, document: Document) -> StepResult:
+    async def run(self, document: Document) -> NodeResult:
         self.calls += 1
         raise UnprocessableDocumentError("the PDF is encrypted")
 
 
 async def test_an_unprocessable_document_fails_at_once(world: World) -> None:
     ocr = Unprocessable()
-    pipeline = world.pipeline({Step.OCR: ocr})
+    pipeline = world.pipeline({Node.OCR: ocr})
     owner, document = await receive(world, pipeline)
     await world.drain(pipeline)
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.RED
     assert ocr.calls == 1  # no automatic retry
     log = await world.documents.processing_log(owner.id, document.id)
-    assert (log[-1].step, log[-1].result.reason) == (Step.OCR, "the PDF is encrypted")
-    (job,) = [job for job in world.database.jobs.values() if job.payload["step"] == "ocr"]
+    assert (log[-1].node, log[-1].result.reason) == (Node.OCR, "the PDF is encrypted")
+    (job,) = [job for job in world.database.jobs.values() if job.payload["node"] == "ocr"]
     assert job.status is JobStatus.FAILED
 
 
 async def test_a_cancelled_step_releases_its_job_at_once(world: World) -> None:
     """Interruptions (the worker stops) do not use up the attempts of the retry policy."""
     blocking = Blocks()
-    pipeline = world.pipeline({Step.OCR: blocking})
+    pipeline = world.pipeline({Node.OCR: blocking})
     owner, document = await receive(world, pipeline)
     for _ in range(5):  # more than RetryPolicy.max_attempts
         blocking.started.clear()
@@ -365,7 +365,7 @@ async def test_a_cancelled_step_releases_its_job_at_once(world: World) -> None:
         with pytest.raises(asyncio.CancelledError):
             await task
 
-    (job,) = [job for job in world.database.jobs.values() if job.payload["step"] == "ocr"]
+    (job,) = [job for job in world.database.jobs.values() if job.payload["node"] == "ocr"]
     assert (job.status, job.tries, job.run_at, job.last_error) == (
         JobStatus.QUEUED,
         0,
@@ -437,7 +437,7 @@ class Changes:
         self.add_tags = add_tags
 
     async def run(self, document: Document) -> MetadataResult:
-        return MetadataResult(StepResult(outcome=Outcome.OK), self.changes, self.add_tags)
+        return MetadataResult(NodeResult(outcome=Outcome.OK), self.changes, self.add_tags)
 
 
 async def test_a_step_changes_metadata_with_its_result(world: World) -> None:
@@ -446,7 +446,7 @@ async def test_a_step_changes_metadata_with_its_result(world: World) -> None:
         await uow.tags.add(tag)
         await uow.commit()
     changes = DocumentChanges(tag_ids=frozenset({tag.id}))
-    pipeline = world.pipeline({Step.CLASSIFY: Changes(changes)})
+    pipeline = world.pipeline({Node.CLASSIFY: Changes(changes)})
     owner, document = await receive(world, pipeline)
     await world.drain(pipeline)
     stored = await world.documents.get(owner.id, document.id)
@@ -460,7 +460,7 @@ async def test_classified_tags_are_added_to_the_documents_tags(world: World) -> 
         await uow.tags.add(mine)
         await uow.tags.add(strom)
         await uow.commit()
-    pipeline = world.pipeline({Step.CLASSIFY: Changes(DocumentChanges(), frozenset({strom.id}))})
+    pipeline = world.pipeline({Node.CLASSIFY: Changes(DocumentChanges(), frozenset({strom.id}))})
     owner, document = await receive(world, pipeline)
     await world.documents.update_metadata(
         owner.id, document.id, DocumentChanges(tag_ids=frozenset({mine.id}))
@@ -475,13 +475,13 @@ async def test_changes_that_no_longer_fit_make_the_step_uncertain(world: World) 
     changes = DocumentChanges(
         contact_id=ContactId(UUID(int=1)), tag_ids=frozenset({TagId(UUID(int=2))})
     )
-    pipeline = world.pipeline({Step.CLASSIFY: Changes(changes)})
+    pipeline = world.pipeline({Node.CLASSIFY: Changes(changes)})
     owner, document = await receive(world, pipeline)
     await world.drain(pipeline)
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.YELLOW
     assert stored.contact_id is None
     log = await world.documents.processing_log(owner.id, document.id)
-    classified = next(entry for entry in log if entry.step is Step.CLASSIFY)
+    classified = next(entry for entry in log if entry.node is Node.CLASSIFY)
     assert classified.result.outcome is Outcome.UNCERTAIN
-    assert (classified.result.reason or "").startswith("the master data changed during the step")
+    assert (classified.result.reason or "").startswith("the master data changed during the node")

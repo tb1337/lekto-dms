@@ -13,7 +13,7 @@ from papiq.composition.container import build_memory_container, build_services
 from papiq.core.domain.documents import Sha256
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import UnprocessableDocumentError
-from papiq.core.domain.pipeline import Step
+from papiq.core.domain.pipeline import Node
 from papiq.core.services.objects import original_key
 from tests.api import auth, issue_token
 from tests.builders import PASSWORD
@@ -41,7 +41,7 @@ async def test_upload_is_accepted_and_processed(api: Api) -> None:
     assert status["lane"] is None
     assert status["processing"] == {
         "status": "processing",
-        "current_step": "ocr",
+        "current_node": "ocr",
         "run": 1,
         "outcomes": {"receive": "ok"},
     }
@@ -50,7 +50,7 @@ async def test_upload_is_accepted_and_processed(api: Api) -> None:
     status = (await api.client.get(f"{DOCUMENTS}/{id}", headers=auth(owner))).json()
     assert (status["lane"], status["processing"]["status"]) == ("green", "completed")
     log = (await api.client.get(f"{DOCUMENTS}/{id}/log", headers=auth(owner))).json()
-    assert [entry["step"] for entry in log][:3] == ["receive", "ocr", "parse"]
+    assert [entry["node"] for entry in log][:3] == ["receive", "ocr", "parse"]
     assert log[0]["output"]["sha256"]
     assert log[1]["model_version"] == "fake-ocr 1"
 
@@ -250,26 +250,26 @@ async def test_retry_and_reprocess(api: Api) -> None:
 
     owner = await api.user()
     executors = api.services.pipeline._executors
-    working = executors[Step.OCR]
-    executors[Step.OCR] = Broken()  # type: ignore[assignment]
+    working = executors[Node.OCR]
+    executors[Node.OCR] = Broken()  # type: ignore[assignment]
     response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
     url = response.json()["status_url"]
     await api.drain()
     failed = (await api.client.get(url, headers=auth(owner))).json()
     assert (failed["lane"], failed["processing"]["status"]) == ("red", "failed")
 
-    # Reprocessing must not skip the failed step.
+    # Reprocessing must not skip the failed node.
     skip = await api.client.post(
-        f"{url}/reprocess", json={"from_step": "parse"}, headers=auth(owner)
+        f"{url}/reprocess", json={"from_node": "parse"}, headers=auth(owner)
     )
     assert skip.status_code == 409
 
-    executors[Step.OCR] = working
+    executors[Node.OCR] = working
     retried = await api.client.post(f"{url}/retry", headers=auth(owner))
     assert retried.status_code == 202
     assert retried.json()["processing"] == {
         "status": "processing",
-        "current_step": "ocr",
+        "current_node": "ocr",
         "run": 2,
         "outcomes": {"receive": "ok"},
     }
@@ -279,13 +279,13 @@ async def test_retry_and_reprocess(api: Api) -> None:
     assert (await api.client.get(url, headers=auth(owner))).json()["lane"] == "green"
 
     reprocessed = await api.client.post(
-        f"{url}/reprocess", json={"from_step": "parse"}, headers=auth(owner)
+        f"{url}/reprocess", json={"from_node": "parse"}, headers=auth(owner)
     )
     assert reprocessed.status_code == 202
-    assert reprocessed.json()["processing"]["current_step"] == "parse"
+    assert reprocessed.json()["processing"]["current_node"] == "parse"
     await api.drain()
     log = (await api.client.get(f"{url}/log", headers=auth(owner))).json()
-    runs = [(entry["step"], entry["run"]) for entry in log if entry["step"] in ("ocr", "parse")]
+    runs = [(entry["node"], entry["run"]) for entry in log if entry["node"] in ("ocr", "parse")]
     assert runs == [("ocr", 1), ("ocr", 2), ("parse", 2), ("parse", 3)]
 
 
@@ -294,11 +294,11 @@ async def test_reprocess_validates_the_step(api: Api) -> None:
     response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
     url = response.json()["status_url"]
     await api.drain()
-    for body in ({"from_step": "receive"}, {"from_step": "nope"}, {}):
+    for body in ({"from_node": "receive"}, {"from_node": "nope"}, {}):
         invalid = await api.client.post(f"{url}/reprocess", json=body, headers=auth(owner))
         assert invalid.status_code == 422, body
         assert invalid.headers["content-type"] == PROBLEM
-        assert "from_step" in invalid.json()["detail"]
+        assert "from_node" in invalid.json()["detail"]
 
 
 async def test_only_the_owner_controls_processing(api: Api) -> None:
@@ -311,7 +311,7 @@ async def test_only_the_owner_controls_processing(api: Api) -> None:
     url = response.json()["status_url"]
     await api.drain()
     denied = await api.client.post(
-        f"{url}/reprocess", json={"from_step": "ocr"}, headers=auth(writer)
+        f"{url}/reprocess", json={"from_node": "ocr"}, headers=auth(writer)
     )
     assert denied.status_code == 403
     missing = await api.client.post(f"{DOCUMENTS}/{UUID(int=0)}/retry", headers=auth(owner))

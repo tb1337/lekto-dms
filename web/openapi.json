@@ -83,7 +83,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -239,7 +239,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -372,7 +372,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -599,7 +599,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -914,7 +914,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -1040,7 +1040,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -1189,7 +1189,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -1399,7 +1399,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -1527,7 +1527,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -1655,7 +1655,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -1957,7 +1957,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -2087,7 +2087,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -2233,7 +2233,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -2378,7 +2378,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -2503,7 +2503,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -2631,7 +2631,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -2750,7 +2750,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -2930,7 +2930,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -3051,7 +3051,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -3197,7 +3197,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -3342,7 +3342,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -3525,7 +3525,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -3646,7 +3646,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -3792,7 +3792,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -3937,7 +3937,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -4120,7 +4120,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -4241,7 +4241,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -4387,7 +4387,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -4532,7 +4532,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -4731,7 +4731,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -4852,7 +4852,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -4998,7 +4998,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -5143,7 +5143,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -5343,7 +5343,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -5464,7 +5464,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -5610,7 +5610,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -5755,7 +5755,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -5897,7 +5897,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -6043,7 +6043,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -6181,7 +6181,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -6299,7 +6299,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -6421,7 +6421,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -6567,7 +6567,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -6729,7 +6729,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -6874,7 +6874,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -6984,7 +6984,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -7099,7 +7099,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -7231,7 +7231,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -7379,7 +7379,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -7501,7 +7501,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -7758,7 +7758,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -8047,7 +8047,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -8103,7 +8103,7 @@
                   },
                   "metadata": {
                     "type": "string",
-                    "description": "Admins only, with `channel=migration`: JSON of the metadata the document comes with (up to 48 KiB), as `ImportedMetadataIn`. Classification and field extraction apply it instead of asking the language model; the other steps and the rules run as usual."
+                    "description": "Admins only, with `channel=migration`: JSON of the metadata the document comes with (up to 48 KiB), as `ImportedMetadataIn`. Classification and field extraction apply it instead of asking the language model; the other nodes and the rules run as usual."
                   }
                 }
               }
@@ -8317,7 +8317,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -8423,7 +8423,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -8577,7 +8577,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -8706,7 +8706,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -8854,7 +8854,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -8995,7 +8995,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -9118,7 +9118,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -9225,7 +9225,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -9332,7 +9332,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -9370,7 +9370,7 @@
           "documents"
         ],
         "summary": "Processing log of a document",
-        "description": "The owner and admins. Every execution of every step, oldest first.",
+        "description": "The owner and admins. Every execution of every node, oldest first.",
         "operationId": "processing_log_api_v1_documents__id__log_get",
         "parameters": [
           {
@@ -9458,7 +9458,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -9495,8 +9495,8 @@
         "tags": [
           "documents"
         ],
-        "summary": "Repeat the failed step",
-        "description": "The owner and admins. Processing continues with the following steps.",
+        "summary": "Repeat the failed node",
+        "description": "The owner and admins. Processing continues with the following nodes.",
         "operationId": "retry_api_v1_documents__id__retry_post",
         "parameters": [
           {
@@ -9596,7 +9596,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -9633,8 +9633,8 @@
         "tags": [
           "documents"
         ],
-        "summary": "Process again from a step",
-        "description": "The owner and admins. Discards the results from `from_step` on, e.g. after a model change. Not while processing runs, not past a failed step, and not from `file` while uncertain fields wait for confirmation.",
+        "summary": "Process again from a node",
+        "description": "The owner and admins. Discards the results from `from_node` on, e.g. after a model change. Not while processing runs, not past a failed node, and not from `file` while uncertain fields wait for confirmation.",
         "operationId": "reprocess_api_v1_documents__id__reprocess_post",
         "parameters": [
           {
@@ -9744,7 +9744,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -9798,7 +9798,7 @@
           "documents"
         ],
         "summary": "What the model proposed for a document",
-        "description": "The owner and admins. The open steps and fields, and the latest classification and field extraction by the model: each field as proposed, checked and applied.",
+        "description": "The owner and admins. The open nodes and fields, and the latest classification and field extraction by the model: each field as proposed, checked and applied.",
         "operationId": "review_api_v1_documents__id__review_get",
         "parameters": [
           {
@@ -9882,7 +9882,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -9920,7 +9920,7 @@
           "documents"
         ],
         "summary": "Confirm a document from the inbox",
-        "description": "The owner and admins, for yellow and red documents that are not being processed. `drawer_id` must be a drawer the owner may write to; an admin chooses any drawer. Every open field of the steps before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `drawer`, `title` and `review` always have a value: confirming keeps it, `drawer_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the owner decided or changed as it is. From `extract_fields` on, the extracted fields replace the ones the document has.",
+        "description": "The owner and admins, for yellow and red documents that are not being processed. `drawer_id` must be a drawer the owner may write to; an admin chooses any drawer. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `drawer`, `title` and `review` always have a value: confirming keeps it, `drawer_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the owner decided or changed as it is. From `extract_fields` on, the extracted fields replace the ones the document has.",
         "operationId": "confirm_api_v1_documents__id__confirm_post",
         "parameters": [
           {
@@ -10030,7 +10030,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -10084,7 +10084,7 @@
           "inbox"
         ],
         "summary": "The caller's inbox",
-        "description": "The caller's yellow and red documents, newest first, each with its open steps and fields; with `all_users` (admins, others: 403) those of every user. Confirm them with `POST /documents/{id}/confirm`, or repeat a failed step with `retry`.",
+        "description": "The caller's yellow and red documents, newest first, each with its open nodes and fields; with `all_users` (admins, others: 403) those of every user. Confirm them with `POST /documents/{id}/confirm`, or repeat a failed node with `retry`.",
         "operationId": "list_inbox_api_v1_inbox_get",
         "parameters": [
           {
@@ -10185,7 +10185,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -10223,7 +10223,7 @@
           "events"
         ],
         "summary": "Progress of documents (server-sent events)",
-        "description": "A stream of document events (`document.received`, `document.step_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream checks every 30 seconds that its session or token is still valid and ends otherwise.",
+        "description": "A stream of document events (`document.received`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream checks every 30 seconds that its session or token is still valid and ends otherwise.",
         "operationId": "events_api_v1_events_get",
         "parameters": [
           {
@@ -10280,7 +10280,7 @@
                     }
                   }
                 },
-                "example": "event: document.step_completed\nid: 01999d5f-1b2c-7d3e-8f40-5a6b7c8d9e0f\ndata: {\"type\": \"document.step_completed\", \"id\": \"01999d5f-1b2c-7d3e-8f40-5a6b7c8d9e0f\", \"occurred_at\": \"2026-10-07T08:00:00Z\", \"document_id\": \"01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b\", \"step\": \"ocr\", \"run\": 1, \"outcome\": \"ok\"}\n\n"
+                "example": "event: document.node_completed\nid: 01999d5f-1b2c-7d3e-8f40-5a6b7c8d9e0f\ndata: {\"type\": \"document.node_completed\", \"id\": \"01999d5f-1b2c-7d3e-8f40-5a6b7c8d9e0f\", \"occurred_at\": \"2026-10-07T08:00:00Z\", \"document_id\": \"01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b\", \"node\": \"ocr\", \"run\": 1, \"outcome\": \"ok\"}\n\n"
               }
             }
           },
@@ -10327,7 +10327,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -10430,7 +10430,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -10548,7 +10548,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -10670,7 +10670,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -10816,7 +10816,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -10945,7 +10945,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -11067,7 +11067,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -11208,7 +11208,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -11330,7 +11330,7 @@
                   "type": "about:blank",
                   "title": "Unprocessable Content",
                   "status": 422,
-                  "detail": "from_step: Input should be 'ocr', 'parse', ..."
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -11972,7 +11972,7 @@
             "default": false
           },
           "resume_at": {
-            "$ref": "#/components/schemas/ResumeStep",
+            "$ref": "#/components/schemas/ResumeNode",
             "description": "`extract_fields` after correcting the document type, so the fields of the new type are extracted.",
             "default": "apply_rules"
           },
@@ -13487,7 +13487,7 @@
           },
           "open": {
             "items": {
-              "$ref": "#/components/schemas/OpenStepOut"
+              "$ref": "#/components/schemas/OpenNodeOut"
             },
             "type": "array",
             "title": "Open"
@@ -13578,8 +13578,8 @@
       },
       "LogEntry": {
         "properties": {
-          "step": {
-            "$ref": "#/components/schemas/Step"
+          "node": {
+            "$ref": "#/components/schemas/Node"
           },
           "run": {
             "type": "integer",
@@ -13650,7 +13650,7 @@
         },
         "type": "object",
         "required": [
-          "step",
+          "node",
           "run",
           "outcome",
           "reason",
@@ -13663,7 +13663,7 @@
           "duration_ms"
         ],
         "title": "LogEntry",
-        "description": "One execution of one step."
+        "description": "One execution of one node."
       },
       "LoginMethod": {
         "type": "string",
@@ -13928,6 +13928,90 @@
           }
         ]
       },
+      "Node": {
+        "type": "string",
+        "enum": [
+          "receive",
+          "ocr",
+          "parse",
+          "classify",
+          "extract_fields",
+          "apply_rules",
+          "file"
+        ],
+        "title": "Node",
+        "description": "Pipeline nodes in their fixed order."
+      },
+      "NodeReviewOut": {
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/Node"
+          },
+          "run": {
+            "type": "integer",
+            "title": "Run"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/Outcome"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version",
+            "examples": [
+              "qwen3:8b"
+            ]
+          },
+          "truncated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Truncated",
+            "description": "Whether a part of the text was left out."
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldCheckOut"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node",
+          "run",
+          "outcome",
+          "reason",
+          "model_version",
+          "truncated",
+          "fields"
+        ],
+        "title": "NodeReviewOut",
+        "description": "The latest run of classification or field extraction by the model."
+      },
       "OidcInfo": {
         "properties": {
           "enabled": {
@@ -13956,10 +14040,10 @@
         ],
         "title": "OidcInfo"
       },
-      "OpenStepOut": {
+      "OpenNodeOut": {
         "properties": {
-          "step": {
-            "$ref": "#/components/schemas/Step"
+          "node": {
+            "$ref": "#/components/schemas/Node"
           },
           "outcome": {
             "$ref": "#/components/schemas/Outcome"
@@ -13986,13 +14070,13 @@
         },
         "type": "object",
         "required": [
-          "step",
+          "node",
           "outcome",
           "reason",
           "fields"
         ],
-        "title": "OpenStepOut",
-        "description": "A step that was uncertain or failed, with the fields left to decide."
+        "title": "OpenNodeOut",
+        "description": "A node that was uncertain or failed, with the fields left to decide."
       },
       "Operator": {
         "type": "string",
@@ -14091,12 +14175,12 @@
         "properties": {
           "status": {
             "$ref": "#/components/schemas/ProcessingStatus",
-            "description": "`processing`: `current_step` is due; `review`: stopped before `current_step` until the uncertain fields are confirmed; `completed`; `failed` at `current_step`."
+            "description": "`processing`: `current_node` is due; `review`: stopped before `current_node` until the uncertain fields are confirmed; `completed`; `failed` at `current_node`."
           },
-          "current_step": {
+          "current_node": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Step"
+                "$ref": "#/components/schemas/Node"
               },
               {
                 "type": "null"
@@ -14113,7 +14197,7 @@
               "$ref": "#/components/schemas/Outcome"
             },
             "propertyNames": {
-              "$ref": "#/components/schemas/Step"
+              "$ref": "#/components/schemas/Node"
             },
             "type": "object",
             "title": "Outcomes",
@@ -14123,7 +14207,7 @@
         "type": "object",
         "required": [
           "status",
-          "current_step",
+          "current_node",
           "run",
           "outcomes"
         ],
@@ -14200,25 +14284,7 @@
         ],
         "title": "Removed"
       },
-      "ReprocessRequest": {
-        "properties": {
-          "from_step": {
-            "$ref": "#/components/schemas/ReprocessStep",
-            "description": "Discard the results from this step on and process again from there."
-          }
-        },
-        "type": "object",
-        "required": [
-          "from_step"
-        ],
-        "title": "ReprocessRequest",
-        "examples": [
-          {
-            "from_step": "classify"
-          }
-        ]
-      },
-      "ReprocessStep": {
+      "ReprocessNode": {
         "type": "string",
         "enum": [
           "ocr",
@@ -14228,15 +14294,33 @@
           "apply_rules",
           "file"
         ],
-        "title": "ReprocessStep"
+        "title": "ReprocessNode"
       },
-      "ResumeStep": {
+      "ReprocessRequest": {
+        "properties": {
+          "from_node": {
+            "$ref": "#/components/schemas/ReprocessNode",
+            "description": "Discard the results from this node on and process again from there."
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_node"
+        ],
+        "title": "ReprocessRequest",
+        "examples": [
+          {
+            "from_node": "classify"
+          }
+        ]
+      },
+      "ResumeNode": {
         "type": "string",
         "enum": [
           "extract_fields",
           "apply_rules"
         ],
-        "title": "ResumeStep"
+        "title": "ResumeNode"
       },
       "ReviewOut": {
         "properties": {
@@ -14245,24 +14329,24 @@
           },
           "open": {
             "items": {
-              "$ref": "#/components/schemas/OpenStepOut"
+              "$ref": "#/components/schemas/OpenNodeOut"
             },
             "type": "array",
             "title": "Open"
           },
-          "steps": {
+          "nodes": {
             "items": {
-              "$ref": "#/components/schemas/StepReviewOut"
+              "$ref": "#/components/schemas/NodeReviewOut"
             },
             "type": "array",
-            "title": "Steps"
+            "title": "Nodes"
           }
         },
         "type": "object",
         "required": [
           "document",
           "open",
-          "steps"
+          "nodes"
         ],
         "title": "ReviewOut"
       },
@@ -15347,90 +15431,6 @@
         ],
         "title": "SnippetSegment"
       },
-      "Step": {
-        "type": "string",
-        "enum": [
-          "receive",
-          "ocr",
-          "parse",
-          "classify",
-          "extract_fields",
-          "apply_rules",
-          "file"
-        ],
-        "title": "Step",
-        "description": "Pipeline steps in their fixed order."
-      },
-      "StepReviewOut": {
-        "properties": {
-          "step": {
-            "$ref": "#/components/schemas/Step"
-          },
-          "run": {
-            "type": "integer",
-            "title": "Run"
-          },
-          "outcome": {
-            "$ref": "#/components/schemas/Outcome"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "model_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model Version",
-            "examples": [
-              "qwen3:8b"
-            ]
-          },
-          "truncated": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Truncated",
-            "description": "Whether a part of the text was left out."
-          },
-          "fields": {
-            "items": {
-              "$ref": "#/components/schemas/FieldCheckOut"
-            },
-            "type": "array",
-            "title": "Fields"
-          }
-        },
-        "type": "object",
-        "required": [
-          "step",
-          "run",
-          "outcome",
-          "reason",
-          "model_version",
-          "truncated",
-          "fields"
-        ],
-        "title": "StepReviewOut",
-        "description": "The latest run of classification or field extraction by the model."
-      },
       "TokenCreate": {
         "properties": {
           "name": {
@@ -15861,7 +15861,7 @@
             "type": "array",
             "minItems": 1,
             "title": "Event Types",
-            "description": "Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.received`, `document.step_completed`, `document.updated`, or `*` for all, also future ones."
+            "description": "Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.received`, `document.updated`, or `*` for all, also future ones."
           },
           "active": {
             "type": "boolean",
@@ -16114,7 +16114,7 @@
               }
             ],
             "title": "Event Types",
-            "description": "Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.received`, `document.step_completed`, `document.updated`, or `*` for all, also future ones."
+            "description": "Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.received`, `document.updated`, or `*` for all, also future ones."
           },
           "active": {
             "anyOf": [
@@ -16145,7 +16145,7 @@
         "properties": {
           "type": {
             "examples": [
-              "document.step_completed"
+              "document.node_completed"
             ],
             "title": "Type",
             "type": "string"

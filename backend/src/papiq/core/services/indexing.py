@@ -4,7 +4,7 @@ The index is derived data and lags a little behind: a document event creates a j
 reads the current state of the document from the database and the object store and writes it
 into the index. A job is idempotent and may be repeated.
 
-- Every event of a document (`received`, `step_completed`, `lane_changed`, `filed`, `updated`,
+- Every event of a document (`received`, `node_completed`, `lane_changed`, `filed`, `updated`,
   `deleted`) leads to a `search.index` job, without a dedup key: a key would also count a job
   that is running and has read its state already, and lose the change that arrived since.
 - A job that finds the document gone removes it from the index.

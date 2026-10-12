@@ -204,7 +204,7 @@ def render(results: Sequence[CaseResult], info: RunInfo) -> str:
     ]
     for result in results:
         lane = expected_lane(result.case, fake=info.fake)
-        reasons = "; ".join(f"{step.value}: {reason}" for step, reason in result.reasons.items())
+        reasons = "; ".join(f"{node.value}: {reason}" for node, reason in result.reasons.items())
         lines.append(
             f"| {result.case.name} | {lane.value} | {_lane(result.lane)} | "
             f"{result.seconds:.1f} | {'yes' if result.truncated else 'no'} | "

@@ -14,7 +14,7 @@ from papiq.composition.container import Container, Services, build_memory_contai
 from papiq.composition.container import build_services as build_all_services
 from papiq.core.domain.documents import Document
 from papiq.core.domain.events import DomainEvent
-from papiq.core.domain.pipeline import Lane, Step, StepResult
+from papiq.core.domain.pipeline import Lane, Node, NodeResult
 from papiq.core.domain.users import User
 from papiq.core.services.indexing import SUBSCRIBER
 from papiq.core.services.maintenance import CLEANUP_JOB
@@ -73,7 +73,7 @@ class Slow:
         self.seconds = seconds
         self.started = asyncio.Event()
 
-    async def run(self, document: Document) -> StepResult:
+    async def run(self, document: Document) -> NodeResult:
         self.started.set()
         if self.seconds is None:
             await asyncio.Event().wait()
@@ -89,7 +89,7 @@ def build_services(container: Container) -> Services:
 
 def with_ocr(services: Services, executor: Slow) -> Services:
     pipeline = services.pipeline
-    pipeline._executors[Step.OCR] = executor
+    pipeline._executors[Node.OCR] = executor
     return replace(services, pipeline=pipeline)
 
 
@@ -153,30 +153,30 @@ async def test_the_cleanup_is_scheduled_at_start() -> None:
 
 async def test_stop_lets_running_jobs_finish() -> None:
     container = build_memory_container()
-    step = Slow(0.2)
-    services = with_ocr(build_services(container), step)
+    node = Slow(0.2)
+    services = with_ocr(build_services(container), node)
     user = await owner(container)
     document = await services.pipeline.receive(
         user.id, incoming((SAMPLES / "scan.pdf").read_bytes()), filename="a.pdf"
     )
     async with running(worker(container, services)):
-        await step.started.wait()
+        await node.started.wait()
     log = await services.documents.processing_log(user.id, document.id)
-    assert [entry.step for entry in log] == [Step.RECEIVE, Step.OCR]  # nothing new after stop
+    assert [entry.node for entry in log] == [Node.RECEIVE, Node.OCR]  # nothing new after stop
 
 
 async def test_jobs_still_running_after_the_timeout_are_released() -> None:
     container = build_memory_container()
-    step = Slow(None)
-    services = with_ocr(build_services(container), step)
+    node = Slow(None)
+    services = with_ocr(build_services(container), node)
     user = await owner(container)
     await services.pipeline.receive(
         user.id, incoming((SAMPLES / "scan.pdf").read_bytes()), filename="a.pdf"
     )
     async with running(worker(container, services, shutdown_timeout=FAST)):
-        await step.started.wait()
+        await node.started.wait()
     async with container.unit_of_work() as uow:
-        job = await uow.jobs.claim(now=container.clock.now(), lease=FAST, kinds=["pipeline.step"])
+        job = await uow.jobs.claim(now=container.clock.now(), lease=FAST, kinds=["pipeline.node"])
     assert job is not None
     assert (job.attempts, job.last_error) == (2, "interrupted: the worker stopped")
 

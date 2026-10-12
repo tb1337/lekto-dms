@@ -1038,7 +1038,7 @@ export interface paths {
 		};
 		/**
 		 * Processing log of a document
-		 * @description The owner and admins. Every execution of every step, oldest first.
+		 * @description The owner and admins. Every execution of every node, oldest first.
 		 */
 		get: operations['processing_log_api_v1_documents__id__log_get'];
 		put?: never;
@@ -1059,8 +1059,8 @@ export interface paths {
 		get?: never;
 		put?: never;
 		/**
-		 * Repeat the failed step
-		 * @description The owner and admins. Processing continues with the following steps.
+		 * Repeat the failed node
+		 * @description The owner and admins. Processing continues with the following nodes.
 		 */
 		post: operations['retry_api_v1_documents__id__retry_post'];
 		delete?: never;
@@ -1079,8 +1079,8 @@ export interface paths {
 		get?: never;
 		put?: never;
 		/**
-		 * Process again from a step
-		 * @description The owner and admins. Discards the results from `from_step` on, e.g. after a model change. Not while processing runs, not past a failed step, and not from `file` while uncertain fields wait for confirmation.
+		 * Process again from a node
+		 * @description The owner and admins. Discards the results from `from_node` on, e.g. after a model change. Not while processing runs, not past a failed node, and not from `file` while uncertain fields wait for confirmation.
 		 */
 		post: operations['reprocess_api_v1_documents__id__reprocess_post'];
 		delete?: never;
@@ -1098,7 +1098,7 @@ export interface paths {
 		};
 		/**
 		 * What the model proposed for a document
-		 * @description The owner and admins. The open steps and fields, and the latest classification and field extraction by the model: each field as proposed, checked and applied.
+		 * @description The owner and admins. The open nodes and fields, and the latest classification and field extraction by the model: each field as proposed, checked and applied.
 		 */
 		get: operations['review_api_v1_documents__id__review_get'];
 		put?: never;
@@ -1120,7 +1120,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Confirm a document from the inbox
-		 * @description The owner and admins, for yellow and red documents that are not being processed. `drawer_id` must be a drawer the owner may write to; an admin chooses any drawer. Every open field of the steps before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `drawer`, `title` and `review` always have a value: confirming keeps it, `drawer_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the owner decided or changed as it is. From `extract_fields` on, the extracted fields replace the ones the document has.
+		 * @description The owner and admins, for yellow and red documents that are not being processed. `drawer_id` must be a drawer the owner may write to; an admin chooses any drawer. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `drawer`, `title` and `review` always have a value: confirming keeps it, `drawer_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the owner decided or changed as it is. From `extract_fields` on, the extracted fields replace the ones the document has.
 		 */
 		post: operations['confirm_api_v1_documents__id__confirm_post'];
 		delete?: never;
@@ -1138,7 +1138,7 @@ export interface paths {
 		};
 		/**
 		 * The caller's inbox
-		 * @description The caller's yellow and red documents, newest first, each with its open steps and fields; with `all_users` (admins, others: 403) those of every user. Confirm them with `POST /documents/{id}/confirm`, or repeat a failed step with `retry`.
+		 * @description The caller's yellow and red documents, newest first, each with its open nodes and fields; with `all_users` (admins, others: 403) those of every user. Confirm them with `POST /documents/{id}/confirm`, or repeat a failed node with `retry`.
 		 */
 		get: operations['list_inbox_api_v1_inbox_get'];
 		put?: never;
@@ -1158,7 +1158,7 @@ export interface paths {
 		};
 		/**
 		 * Progress of documents (server-sent events)
-		 * @description A stream of document events (`document.received`, `document.step_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream checks every 30 seconds that its session or token is still valid and ends otherwise.
+		 * @description A stream of document events (`document.received`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream checks every 30 seconds that its session or token is still valid and ends otherwise.
 		 */
 		get: operations['events_api_v1_events_get'];
 		put?: never;
@@ -1592,7 +1592,7 @@ export interface components {
 			 * @description `extract_fields` after correcting the document type, so the fields of the new type are extracted.
 			 * @default apply_rules
 			 */
-			resume_at: components['schemas']['ResumeStep'];
+			resume_at: components['schemas']['ResumeNode'];
 			/**
 			 * Drawer Id
 			 * @description Move the document into this drawer (one the owner may write to); decides the rules' open field `drawer`. Default: it stays where it is.
@@ -2298,7 +2298,7 @@ export interface components {
 		InboxItemOut: {
 			document: components['schemas']['DocumentDetails'];
 			/** Open */
-			open: components['schemas']['OpenStepOut'][];
+			open: components['schemas']['OpenNodeOut'][];
 		};
 		/** InboxPage */
 		InboxPage: {
@@ -2340,10 +2340,10 @@ export interface components {
 		};
 		/**
 		 * LogEntry
-		 * @description One execution of one step.
+		 * @description One execution of one node.
 		 */
 		LogEntry: {
-			step: components['schemas']['Step'];
+			node: components['schemas']['Node'];
 			/** Run */
 			run: number;
 			outcome: components['schemas']['Outcome'];
@@ -2509,6 +2509,36 @@ export interface components {
 			 */
 			name: string;
 		};
+		/**
+		 * Node
+		 * @description Pipeline nodes in their fixed order.
+		 * @enum {string}
+		 */
+		Node: 'receive' | 'ocr' | 'parse' | 'classify' | 'extract_fields' | 'apply_rules' | 'file';
+		/**
+		 * NodeReviewOut
+		 * @description The latest run of classification or field extraction by the model.
+		 */
+		NodeReviewOut: {
+			node: components['schemas']['Node'];
+			/** Run */
+			run: number;
+			outcome: components['schemas']['Outcome'];
+			/** Reason */
+			reason: string | null;
+			/**
+			 * Model Version
+			 * @example qwen3:8b
+			 */
+			model_version: string | null;
+			/**
+			 * Truncated
+			 * @description Whether a part of the text was left out.
+			 */
+			truncated: boolean | null;
+			/** Fields */
+			fields: components['schemas']['FieldCheckOut'][];
+		};
 		/** OidcInfo */
 		OidcInfo: {
 			/** Enabled */
@@ -2520,11 +2550,11 @@ export interface components {
 			display_name: string | null;
 		};
 		/**
-		 * OpenStepOut
-		 * @description A step that was uncertain or failed, with the fields left to decide.
+		 * OpenNodeOut
+		 * @description A node that was uncertain or failed, with the fields left to decide.
 		 */
-		OpenStepOut: {
-			step: components['schemas']['Step'];
+		OpenNodeOut: {
+			node: components['schemas']['Node'];
 			outcome: components['schemas']['Outcome'];
 			/** Reason */
 			reason: string | null;
@@ -2592,9 +2622,9 @@ export interface components {
 		};
 		/** Processing */
 		Processing: {
-			/** @description `processing`: `current_step` is due; `review`: stopped before `current_step` until the uncertain fields are confirmed; `completed`; `failed` at `current_step`. */
+			/** @description `processing`: `current_node` is due; `review`: stopped before `current_node` until the uncertain fields are confirmed; `completed`; `failed` at `current_node`. */
 			status: components['schemas']['ProcessingStatus'];
-			current_step: components['schemas']['Step'] | null;
+			current_node: components['schemas']['Node'] | null;
 			/**
 			 * Run
 			 * @description Grows with every retry or reprocessing.
@@ -2642,32 +2672,32 @@ export interface components {
 			removed: number;
 		};
 		/**
+		 * ReprocessNode
+		 * @enum {string}
+		 */
+		ReprocessNode: 'ocr' | 'parse' | 'classify' | 'extract_fields' | 'apply_rules' | 'file';
+		/**
 		 * ReprocessRequest
 		 * @example {
-		 *       "from_step": "classify"
+		 *       "from_node": "classify"
 		 *     }
 		 */
 		ReprocessRequest: {
-			/** @description Discard the results from this step on and process again from there. */
-			from_step: components['schemas']['ReprocessStep'];
+			/** @description Discard the results from this node on and process again from there. */
+			from_node: components['schemas']['ReprocessNode'];
 		};
 		/**
-		 * ReprocessStep
+		 * ResumeNode
 		 * @enum {string}
 		 */
-		ReprocessStep: 'ocr' | 'parse' | 'classify' | 'extract_fields' | 'apply_rules' | 'file';
-		/**
-		 * ResumeStep
-		 * @enum {string}
-		 */
-		ResumeStep: 'extract_fields' | 'apply_rules';
+		ResumeNode: 'extract_fields' | 'apply_rules';
 		/** ReviewOut */
 		ReviewOut: {
 			document: components['schemas']['DocumentDetails'];
 			/** Open */
-			open: components['schemas']['OpenStepOut'][];
-			/** Steps */
-			steps: components['schemas']['StepReviewOut'][];
+			open: components['schemas']['OpenNodeOut'][];
+			/** Nodes */
+			nodes: components['schemas']['NodeReviewOut'][];
 		};
 		/**
 		 * Role
@@ -3200,36 +3230,6 @@ export interface components {
 			match: boolean;
 		};
 		/**
-		 * Step
-		 * @description Pipeline steps in their fixed order.
-		 * @enum {string}
-		 */
-		Step: 'receive' | 'ocr' | 'parse' | 'classify' | 'extract_fields' | 'apply_rules' | 'file';
-		/**
-		 * StepReviewOut
-		 * @description The latest run of classification or field extraction by the model.
-		 */
-		StepReviewOut: {
-			step: components['schemas']['Step'];
-			/** Run */
-			run: number;
-			outcome: components['schemas']['Outcome'];
-			/** Reason */
-			reason: string | null;
-			/**
-			 * Model Version
-			 * @example qwen3:8b
-			 */
-			model_version: string | null;
-			/**
-			 * Truncated
-			 * @description Whether a part of the text was left out.
-			 */
-			truncated: boolean | null;
-			/** Fields */
-			fields: components['schemas']['FieldCheckOut'][];
-		};
-		/**
 		 * TokenCreate
 		 * @example {
 		 *       "expires_at": "2027-01-01T00:00:00Z",
@@ -3446,7 +3446,7 @@ export interface components {
 			url: string;
 			/**
 			 * Event Types
-			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.received`, `document.step_completed`, `document.updated`, or `*` for all, also future ones.
+			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.received`, `document.updated`, or `*` for all, also future ones.
 			 */
 			event_types: string[];
 			/**
@@ -3567,7 +3567,7 @@ export interface components {
 			url?: string | null;
 			/**
 			 * Event Types
-			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.received`, `document.step_completed`, `document.updated`, or `*` for all, also future ones.
+			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.received`, `document.updated`, or `*` for all, also future ones.
 			 */
 			event_types?: string[] | null;
 			/**
@@ -3584,7 +3584,7 @@ export interface components {
 		EventMessage: {
 			/**
 			 * Type
-			 * @example document.step_completed
+			 * @example document.node_completed
 			 */
 			type: string;
 			/**
@@ -3745,7 +3745,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -3871,7 +3871,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -3961,7 +3961,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -4193,7 +4193,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -4495,7 +4495,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -4619,7 +4619,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -4762,7 +4762,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -4959,7 +4959,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5064,7 +5064,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5172,7 +5172,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5474,7 +5474,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5565,7 +5565,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5687,7 +5687,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5832,7 +5832,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5958,7 +5958,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6063,7 +6063,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6170,7 +6170,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6350,7 +6350,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6440,7 +6440,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6562,7 +6562,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6707,7 +6707,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6887,7 +6887,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6977,7 +6977,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7099,7 +7099,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7244,7 +7244,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7424,7 +7424,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7514,7 +7514,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7636,7 +7636,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7781,7 +7781,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7978,7 +7978,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8068,7 +8068,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8190,7 +8190,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8335,7 +8335,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8532,7 +8532,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8622,7 +8622,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8744,7 +8744,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8889,7 +8889,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9018,7 +9018,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9126,7 +9126,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9219,7 +9219,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9345,7 +9345,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9435,7 +9435,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9580,7 +9580,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9702,7 +9702,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9847,7 +9847,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9937,7 +9937,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10028,7 +10028,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10156,7 +10156,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10284,7 +10284,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10374,7 +10374,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10476,7 +10476,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10678,7 +10678,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10733,7 +10733,7 @@ export interface operations {
 					 * @description Admins only: the active user who owns the document. Default: the caller. The duplicate check, the default drawer and the write access to `drawer_id` are the owner's.
 					 */
 					owner?: string;
-					/** @description Admins only, with `channel=migration`: JSON of the metadata the document comes with (up to 48 KiB), as `ImportedMetadataIn`. Classification and field extraction apply it instead of asking the language model; the other steps and the rules run as usual. */
+					/** @description Admins only, with `channel=migration`: JSON of the metadata the document comes with (up to 48 KiB), as `ImportedMetadataIn`. Classification and field extraction apply it instead of asking the language model; the other nodes and the rules run as usual. */
 					metadata?: string;
 				};
 			};
@@ -10886,7 +10886,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10976,7 +10976,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11081,7 +11081,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11227,7 +11227,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11372,7 +11372,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11498,7 +11498,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11588,7 +11588,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11678,7 +11678,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11768,7 +11768,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11875,7 +11875,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11999,7 +11999,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12144,7 +12144,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12251,7 +12251,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12396,7 +12396,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12490,7 +12490,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12534,9 +12534,9 @@ export interface operations {
 				};
 				content: {
 					/**
-					 * @example event: document.step_completed
+					 * @example event: document.node_completed
 					 *     id: 01999d5f-1b2c-7d3e-8f40-5a6b7c8d9e0f
-					 *     data: {"type": "document.step_completed", "id": "01999d5f-1b2c-7d3e-8f40-5a6b7c8d9e0f", "occurred_at": "2026-10-07T08:00:00Z", "document_id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b", "step": "ocr", "run": 1, "outcome": "ok"}
+					 *     data: {"type": "document.node_completed", "id": "01999d5f-1b2c-7d3e-8f40-5a6b7c8d9e0f", "occurred_at": "2026-10-07T08:00:00Z", "document_id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b", "node": "ocr", "run": 1, "outcome": "ok"}
 					 */
 					'text/event-stream': string;
 				};
@@ -12586,7 +12586,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12660,7 +12660,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12786,7 +12786,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12876,7 +12876,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12981,7 +12981,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13126,7 +13126,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13233,7 +13233,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13327,7 +13327,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13434,7 +13434,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

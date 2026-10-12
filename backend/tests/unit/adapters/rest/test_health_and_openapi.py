@@ -240,9 +240,9 @@ async def test_schemas_of_status_log_and_events(api: Api) -> None:
     assert {"DocumentDetails", "DocumentAccepted", "LogEntry", "EventMessage", "Health"} <= set(
         schemas
     )
-    reprocess = schemas["ReprocessRequest"]["properties"]["from_step"]
-    step = schemas[reprocess["$ref"].rsplit("/", 1)[1]]
-    assert "receive" not in step["enum"]
+    reprocess = schemas["ReprocessRequest"]["properties"]["from_node"]
+    node = schemas[reprocess["$ref"].rsplit("/", 1)[1]]
+    assert "receive" not in node["enum"]
     resume = schemas["ConfirmRequest"]["properties"]["resume_at"]
     resume_at = schemas[resume["$ref"].rsplit("/", 1)[1]]
     assert resume_at["enum"] == ["extract_fields", "apply_rules"]

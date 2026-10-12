@@ -17,7 +17,7 @@ from papiq.adapters.outbound.pdfium import PdfiumPreviewRenderer
 from papiq.composition.container import build_memory_container, build_services
 from papiq.composition.settings import Settings
 from papiq.core.domain import media_types
-from papiq.core.domain.pipeline import Lane, Step
+from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.ports import ObjectStore
 from papiq.core.services.objects import archive_key, markdown_key, preview_key, structure_key
 from tests import builders
@@ -80,6 +80,6 @@ async def test_scan_and_photo_are_processed(
     markdown = (await object_store.get(markdown_key(document.id))).decode()
     assert "Rechnung Nummer 4711" in " ".join(markdown.split())
     assert await object_store.exists(structure_key(document.id))
-    models = {entry.step: entry.result.model_version or "" for entry in log}
-    assert models[Step.OCR].startswith("ocrmypdf")
-    assert models[Step.PARSE].startswith("docling")
+    models = {entry.node: entry.result.model_version or "" for entry in log}
+    assert models[Node.OCR].startswith("ocrmypdf")
+    assert models[Node.PARSE].startswith("docling")

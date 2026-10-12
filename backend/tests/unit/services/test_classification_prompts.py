@@ -39,8 +39,7 @@ def test_classify_schema_lists_the_master_data() -> None:
     properties = schema["properties"]
     assert isinstance(properties, dict)
     assert properties["document_type"] == {
-        "type": ["string", "null"],
-        "enum": ["Rechnung", "Vertrag", None],
+        "anyOf": [{"type": "string", "enum": ["Rechnung", "Vertrag"]}, {"type": "null"}]
     }
     assert properties["tags"] == {"type": "array", "items": {"type": "string", "enum": ["Strom"]}}
     assert schema["additionalProperties"] is False
@@ -107,7 +106,9 @@ def test_extract_schema_and_answer() -> None:
     fields = schema["properties"]["fields"]
     values = {key: item["properties"]["value"] for key, item in fields["properties"].items()}
     assert values["a2"] == {"type": ["boolean", "null"]}
-    assert values["a3"] == {"type": ["string", "null"], "enum": ["Strom", "Gas", None]}
+    assert values["a3"] == {
+        "anyOf": [{"type": "string", "enum": ["Strom", "Gas"]}, {"type": "null"}]
+    }
     assert values["a1"]["anyOf"][1] == {"type": "null"}
     assert parse_extract(json.dumps(minimal_instance(schema)), list(keys))["a1"].value is None
 

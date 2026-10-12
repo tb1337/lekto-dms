@@ -67,7 +67,7 @@ def classify_schema(document_types: Sequence[str], tags: Sequence[str]) -> JsonO
     return _object(
         {
             "contact": _proposal({"type": ["string", "null"]}),
-            "document_type": {"type": ["string", "null"], "enum": [*document_types, None]},
+            "document_type": _choice_or_null(document_types),
             "new_document_type": _TEXT_OR_NULL,
             "tags": tag_list,
             "new_tags": {"type": "array", "items": {"type": "string"}},
@@ -132,12 +132,22 @@ def _value_schema(definition: FieldDefinition) -> JsonObject:
         case FieldType.BOOLEAN:
             return {"type": ["boolean", "null"]}
         case FieldType.CHOICE:
-            return {"type": ["string", "null"], "enum": [*definition.choices, None]}
+            return _choice_or_null(definition.choices)
         case _:
             return dict(_TEXT_OR_NULL)
 
 
 # --- helpers ----------------------------------------------------------------------------------
+
+
+def _choice_or_null(choices: Sequence[str]) -> JsonObject:
+    """One of the choices or null. Not `{"type": ["string", "null"], "enum": [..., null]}`: valid
+    JSON Schema, but the validators of some providers (Groq, Anthropic) reject a string in an
+    enum next to a type list."""
+    null: JsonObject = {"type": "null"}
+    if not choices:
+        return null
+    return {"anyOf": [{"type": "string", "enum": list(choices)}, null]}
 
 
 def _object(properties: JsonObject) -> JsonObject:

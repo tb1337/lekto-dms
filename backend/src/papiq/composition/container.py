@@ -51,7 +51,6 @@ from papiq.composition.settings import Settings
 from papiq.core.domain.pipeline import PIPELINE, Step
 from papiq.core.ports import (
     Clock,
-    DecryptionError,
     DeliveryRetry,
     DocumentParser,
     Embeddings,
@@ -226,16 +225,6 @@ PREVIEW_RENDERERS: dict[str, Factory[PreviewRenderer]] = {
 }
 
 
-class MissingKeyCipher:
-    """Stands in where `PAPIQ_SECRET_KEY` is not set (the worker): any use is an error."""
-
-    def encrypt(self, plaintext: bytes, *, context: bytes) -> bytes:
-        raise RuntimeError("PAPIQ_SECRET_KEY is not set")
-
-    def decrypt(self, ciphertext: bytes, *, context: bytes) -> bytes:
-        raise DecryptionError("PAPIQ_SECRET_KEY is not set")
-
-
 def redirect_uri(settings: Settings) -> str:
     """Where the provider sends the browser back: the API's OIDC callback."""
     assert settings.public_url is not None
@@ -259,8 +248,7 @@ OIDC_PROVIDERS: dict[str, Factory[OidcProvider]] = {"authlib": oidc_provider}
 
 
 def secret_cipher(settings: Settings) -> SecretCipher:
-    if settings.secret_key is None:
-        return MissingKeyCipher()
+    assert settings.secret_key is not None  # Settings require it for every role.
     return AesGcmCipher(decode_key(settings.secret_key.get_secret_value()))
 
 

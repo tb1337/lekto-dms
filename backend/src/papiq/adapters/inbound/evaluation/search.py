@@ -12,17 +12,16 @@ import time
 from collections.abc import Callable, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from papiq.adapters.inbound.evaluation.cases import Case, EvaluationSet, EvaluationSetError
+from papiq.adapters.inbound.evaluation.cases import EvaluationSet, EvaluationSetError
 from papiq.adapters.inbound.evaluation.runner import Environment, evaluate
 from papiq.core.domain.ids import DocumentId, UserId
-from papiq.core.ports import EmbeddingResult, Embeddings, LanguageModel, SearchIndex
-from papiq.core.services.classification.steps import ClassificationPolicy
-from papiq.core.services.indexing import IndexingPolicy, IndexingService
-from papiq.core.services.search import SearchPolicy, SearchService
+from papiq.core.ports import EmbeddingResult, Embeddings, SearchIndex
+from papiq.core.services.indexing import IndexingService
+from papiq.core.services.search import SearchService
 
 CUTOFF = 10  # results looked at per query
 KINDS_AT = 3  # the rank that counts as found when comparing kinds of queries
@@ -112,6 +111,15 @@ class Backend:
 
 
 @dataclass(frozen=True)
+class SearchServices:
+    """The services on a backend's index and its embeddings (timed by the evaluation), as the
+    composition root builds them."""
+
+    indexing: Callable[[SearchIndex, Embeddings | None], IndexingService]
+    search: Callable[[SearchIndex, Embeddings | None], SearchService]
+
+
+@dataclass(frozen=True)
 class QueryOutcome:
     case: SearchCase
     rank: int | None  # of the first expected case among the first CUTOFF results
@@ -196,67 +204,41 @@ async def evaluate_search(
     evaluation: EvaluationSet,
     queries: QuerySet,
     environment: Environment,
-    model_for: Callable[[Case], LanguageModel | None],
-    policy: ClassificationPolicy,
+    services: SearchServices,
     backends: Sequence[Backend],
     ratios: Sequence[float],
     *,
-    indexing: IndexingPolicy | None = None,
-    searching: SearchPolicy | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> SearchRun:
-    """Seed the documents of the set, then index them and run the queries for each backend."""
+    """Seed the documents of the set, then index them and run the queries for each backend.
+
+    The title and the file name of a document carry a number only, or the search would find a
+    document by the name of its case.
+    """
     say = progress or (lambda message: None)
-    await evaluate(evaluation, environment, model_for, policy)
-    names, owner = await _anonymise(environment)
+    numbers = {case.name: number for number, case in enumerate(evaluation.cases, start=1)}
+    results = await evaluate(
+        evaluation, environment, filename_for=lambda case: f"scan_{numbers[case.name]:04d}.pdf"
+    )
+    if not results:
+        raise EvaluationSetError("the evaluation set has no cases")
+    names = {result.document_id: result.case.name for result in results}
+    owner = results[0].owner_id
     say(f"{len(names)} documents ready")
     models = []
     for backend in backends:
-        models.append(
-            await _measure(
-                backend,
-                queries,
-                environment,
-                names,
-                owner,
-                ratios,
-                indexing or IndexingPolicy(),
-                searching or SearchPolicy(embed_timeout=timedelta(minutes=2)),
-                say,
-            )
-        )
+        models.append(await _measure(backend, queries, services, names, owner, ratios, say))
     sections = [m.sections / len(names) for m in models if m.sections]
     return SearchRun(len(names), sections[0] if sections else 0.0, models)
-
-
-async def _anonymise(environment: Environment) -> tuple[dict[DocumentId, str], UserId]:
-    """The case name of each document; the title and file name then carry a number only, or the
-    search would find a document by the name of its case."""
-    names: dict[DocumentId, str] = {}
-    owner: UserId | None = None
-    async with environment.uow() as uow:
-        documents = sorted(await uow.documents.list_all(), key=lambda d: d.original_filename)
-        for number, document in enumerate(documents, start=1):
-            names[document.id] = document.original_filename.removesuffix(".pdf")
-            owner = document.owner_id
-            document.original_filename = f"scan_{number:04d}.pdf"
-            document.title = f"scan_{number:04d}"
-            await uow.documents.update(document)
-        await uow.commit()
-    if owner is None:
-        raise EvaluationSetError("the evaluation set has no cases")
-    return names, owner
 
 
 async def _measure(
     backend: Backend,
     queries: QuerySet,
-    environment: Environment,
+    services: SearchServices,
     names: dict[DocumentId, str],
     owner: UserId,
     ratios: Sequence[float],
-    indexing: IndexingPolicy,
-    searching: SearchPolicy,
     say: Callable[[str], None],
 ) -> ModelResult:
     timed = None if backend.embeddings is None else TimedEmbeddings(backend.embeddings)
@@ -268,14 +250,12 @@ async def _measure(
     async with backend.open_index(dimensions) as index:
         say(f"{backend.name}: indexing {len(names)} documents")
         started = time.perf_counter()
-        await IndexingService(
-            environment.uow, environment.clock, environment.store, index, timed, indexing
-        ).rebuild()
+        await services.indexing(index, timed).rebuild()
         index_seconds = time.perf_counter() - started
         embed_seconds, sections, calls = (
             (0.0, 0, 0) if timed is None else (timed.seconds, timed.texts, timed.calls)
         )
-        search = SearchService(environment.uow, index, timed, searching)
+        search = services.search(index, timed)
         results = []
         for ratio in ratios if timed is not None else [0.0]:
             say(f"{backend.name}: {len(queries.cases)} queries at ratio {ratio:g}")

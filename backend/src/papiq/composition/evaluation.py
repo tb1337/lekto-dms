@@ -2,6 +2,7 @@
 language model (or the set's fixed answers) and write a Markdown report."""
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,13 +18,23 @@ from papiq.adapters.inbound.evaluation import (
     summarise,
 )
 from papiq.adapters.outbound.memory import FakeLanguageModel
-from papiq.composition.container import build_memory_container, openai_language_model, policy_of
+from papiq.composition.container import (
+    Container,
+    build_memory_container,
+    build_services,
+    openai_language_model,
+    policy_of,
+)
 from papiq.composition.errors import ConfigurationError
 from papiq.composition.settings import Settings
+from papiq.core.domain.pipeline import PIPELINE, Step
 from papiq.core.ports import LanguageModel
 from papiq.core.services.classification.prompts import CLASSIFY_PROMPT, EXTRACT_PROMPT
+from papiq.core.services.classification.steps import ClassifyStep, ExtractFieldsStep
+from papiq.core.services.pipeline import PipelineService, PlaceholderStep, RetryPolicy, StepExecutor
 
 FAKE_MODEL = "fixed answers"
+PIPELINE_VERSION = "evaluation"
 
 
 @dataclass(frozen=True)
@@ -33,6 +44,42 @@ class Evaluation:
     false_green: int
     green_but_wrong: int
     violations: int
+
+
+def build_environment(
+    container: Container,
+    settings: Settings,
+    model_for: Callable[[Case], LanguageModel | None],
+) -> Environment:
+    """The evaluation's services on the container's adapters. The pipeline of a case runs
+    classification and field extraction with `model_for(case)`, the other steps pass through,
+    and there are no automatic retries: a model that cannot be reached ends the case red at
+    once."""
+    services = build_services(container, settings)
+    uow, clock, store = container.unit_of_work, container.clock, container.object_store
+    policy = policy_of(settings)
+
+    def pipeline_for(case: Case) -> PipelineService:
+        model = model_for(case)
+        executors: dict[Step, StepExecutor] = {step: PlaceholderStep() for step in PIPELINE[1:]}
+        executors[Step.CLASSIFY] = ClassifyStep(uow, store, model, clock, policy)
+        executors[Step.EXTRACT_FIELDS] = ExtractFieldsStep(uow, store, model, clock, policy)
+        return PipelineService(
+            uow,
+            clock,
+            store,
+            executors,
+            pipeline_version=PIPELINE_VERSION,
+            retry=RetryPolicy(max_attempts=1),
+        )
+
+    return Environment(
+        store=store,
+        users=services.users,
+        master_data=services.master_data,
+        documents=services.documents,
+        pipeline_for=pipeline_for,
+    )
 
 
 async def run_evaluation(
@@ -66,15 +113,11 @@ async def run_evaluation(
         print(f"{result.case.name}: {lane} ({result.seconds:.1f} s)", flush=True)
 
     container = build_memory_container()
-    environment = Environment(container.unit_of_work, container.object_store, container.clock)
+    environment = build_environment(container, settings, model_for)
     started = datetime.now(UTC)
     try:
         results = await evaluate(
-            evaluation,
-            environment,
-            model_for,
-            policy_of(settings),
-            progress=report_progress if progress else None,
+            evaluation, environment, progress=report_progress if progress else None
         )
     finally:
         await container.aclose()

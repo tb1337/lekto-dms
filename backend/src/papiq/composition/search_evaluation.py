@@ -12,10 +12,10 @@ from pathlib import Path
 from papiq.adapters.inbound.evaluation import (
     Backend,
     Case,
-    Environment,
     ModelResult,
     SearchRun,
     SearchRunInfo,
+    SearchServices,
     evaluate_search,
     load_queries,
     load_set,
@@ -32,12 +32,14 @@ from papiq.composition.container import (
     build_memory_container,
     indexing_policy_of,
     openai_embeddings,
-    policy_of,
     search_policy_of,
 )
 from papiq.composition.errors import ConfigurationError
+from papiq.composition.evaluation import build_environment
 from papiq.composition.settings import Settings
 from papiq.core.ports import LanguageModel, SearchIndex
+from papiq.core.services.indexing import IndexingService
+from papiq.core.services.search import SearchService
 
 DEFAULT_RATIOS = (0.0, 0.5, 1.0)
 QUERY_TIMEOUT = timedelta(minutes=2)  # a model may be loaded into memory on the first query
@@ -103,22 +105,28 @@ async def run_search_evaluation(
         print(message, flush=True)
 
     container = build_memory_container()
-    environment = Environment(container.unit_of_work, container.object_store, container.clock)
+    environment = build_environment(container, settings, model_for)
+    uow, clock, store = container.unit_of_work, container.clock, container.object_store
+    # The length of the vectors is measured per model, not the configured one.
+    indexing_policy = replace(indexing_policy_of(settings), dimensions=None)
+    search_policy = replace(
+        search_policy_of(settings), embed_timeout=QUERY_TIMEOUT, dimensions=None
+    )
+    services = SearchServices(
+        indexing=lambda index, embeddings: IndexingService(
+            uow, clock, store, index, embeddings, indexing_policy
+        ),
+        search=lambda index, embeddings: SearchService(uow, index, embeddings, search_policy),
+    )
     started = datetime.now(UTC)
     try:
         run = await evaluate_search(
             evaluation,
             query_set,
             environment,
-            model_for,
-            policy_of(settings),
+            services,
             backends,
             ratios,
-            # The length of the vectors is measured per model, not the configured one.
-            indexing=replace(indexing_policy_of(settings), dimensions=None),
-            searching=replace(
-                search_policy_of(settings), embed_timeout=QUERY_TIMEOUT, dimensions=None
-            ),
             progress=say if progress else None,
         )
     finally:

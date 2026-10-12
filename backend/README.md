@@ -9,9 +9,10 @@ src/papiq/
     ports/         interfaces the core needs (Python protocols)
     services/      use cases: ingest pipeline, rules, permissions
   adapters/
-    inbound/       call the core: REST API, MCP server, worker, CLI
+    inbound/       call the core: REST API, MCP server, worker, evaluation
     outbound/      implement ports: database, object store, search, LLM, OCR, parser
-  composition/     composition root: reads configuration, wires adapters to ports
+  composition/     composition root: reads configuration, wires adapters to ports, the
+                   commands of `python -m papiq.composition`
 ```
 
 Dependency rules, enforced by `uv run lint-imports`:

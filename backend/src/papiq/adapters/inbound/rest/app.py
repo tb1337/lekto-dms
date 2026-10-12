@@ -3,15 +3,15 @@ one, below `/ui`."""
 
 import asyncio
 import contextlib
-from collections.abc import AsyncIterator
-from typing import Any
+from collections.abc import AsyncIterator, Sequence
+from typing import Any, Protocol
 
 from fastapi import FastAPI
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute, iter_route_contexts
+from starlette.routing import BaseRoute
 
 from papiq import __version__
-from papiq.adapters.inbound.mcp import McpEndpoint
 from papiq.adapters.inbound.rest import (
     account,
     documents,
@@ -75,16 +75,21 @@ EVENT_ITEM = {
 }
 
 
-def create_app(context: ApiContext) -> FastAPI:
-    """The API on the given services. While the app runs (lifespan), it delivers outbox events
-    to its event streams."""
+class Mount(Protocol):
+    """Something the app serves besides the API, below its prefix (the MCP endpoint): its
+    routes, and `run()` around the app's lifetime."""
+
+    @property
+    def routes(self) -> Sequence[BaseRoute]: ...
+
+    def run(self) -> contextlib.AbstractAsyncContextManager[None]: ...
+
+
+def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
+    """The API on the given services, with the mounts after its routes. While the app runs
+    (lifespan), it delivers outbox events to its event streams and runs the mounts."""
     hub = EventHub(context.documents)
     hub.attach(context.event_bus)
-    mcp = (
-        McpEndpoint(context, path=f"{PREFIX}/mcp", text_max=context.mcp_text_max)
-        if context.mcp_enabled
-        else None
-    )
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -93,8 +98,8 @@ def create_app(context: ApiContext) -> FastAPI:
         )
         try:
             async with contextlib.AsyncExitStack() as stack:
-                if mcp is not None:
-                    await stack.enter_async_context(mcp.run())
+                for mount in mounts:
+                    await stack.enter_async_context(mount.run())
                 yield
         finally:
             hub.close()
@@ -140,8 +145,8 @@ def create_app(context: ApiContext) -> FastAPI:
         health.router,
     ):
         app.include_router(router, prefix=PREFIX)
-    if mcp is not None:
-        app.router.routes.extend(mcp.routes)
+    for mount in mounts:
+        app.router.routes.extend(mount.routes)
     # After the API: its paths never reach the UI.
     if context.ui_directory is not None:
         app.router.routes.extend(ui_routes(context.ui_directory))

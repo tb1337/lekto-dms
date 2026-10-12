@@ -10,7 +10,14 @@ from uuid import UUID
 import uvicorn
 from fastapi import FastAPI
 
-from papiq.adapters.inbound.rest import ApiContext, HealthCheck, close_event_streams, create_app
+from papiq.adapters.inbound.mcp import McpEndpoint
+from papiq.adapters.inbound.rest import (
+    PREFIX,
+    ApiContext,
+    HealthCheck,
+    close_event_streams,
+    create_app,
+)
 from papiq.adapters.outbound.filesystem import FilesystemObjectStore
 from papiq.adapters.outbound.s3 import S3ObjectStore
 from papiq.composition.bootstrap import ensure_first_admin
@@ -49,34 +56,37 @@ def health_checks(container: Container) -> dict[str, HealthCheck]:
 def build_app(
     container: Container, settings: Settings, services: Services | None = None
 ) -> FastAPI:
+    """The API with, if enabled, the MCP endpoint below its prefix."""
     services = services or build_services(container, settings)
-    return create_app(
-        ApiContext(
-            auth=services.auth,
-            users=services.users,
-            drawers=services.drawers,
-            master_data=services.master_data,
-            oidc=services.oidc,
-            search=services.search,
-            indexing=services.indexing,
-            cookie_secure=settings.cookie_secure,
-            pipeline=services.pipeline,
-            documents=services.documents,
-            rules=services.rules,
-            rule_applications=services.rule_applications,
-            webhooks=services.webhooks,
-            webhook_delivery=services.webhook_delivery,
-            event_bus=container.event_bus,
-            health_checks=health_checks(container),
-            optional_checks=frozenset({"search"}),
-            max_upload_size=int(settings.upload_max_size),
-            max_request_size=int(settings.request_max_size),
-            events_poll_interval=settings.events_poll_interval,
-            mcp_enabled=settings.mcp_enabled,
-            mcp_text_max=settings.mcp_text_max,
-            ui_directory=settings.ui_dir,
-        )
+    context = ApiContext(
+        auth=services.auth,
+        users=services.users,
+        drawers=services.drawers,
+        master_data=services.master_data,
+        oidc=services.oidc,
+        search=services.search,
+        indexing=services.indexing,
+        cookie_secure=settings.cookie_secure,
+        pipeline=services.pipeline,
+        documents=services.documents,
+        rules=services.rules,
+        rule_applications=services.rule_applications,
+        webhooks=services.webhooks,
+        webhook_delivery=services.webhook_delivery,
+        event_bus=container.event_bus,
+        health_checks=health_checks(container),
+        optional_checks=frozenset({"search"}),
+        max_upload_size=int(settings.upload_max_size),
+        max_request_size=int(settings.request_max_size),
+        events_poll_interval=settings.events_poll_interval,
+        ui_directory=settings.ui_dir,
     )
+    mounts = (
+        [McpEndpoint(context, path=f"{PREFIX}/mcp", text_max=settings.mcp_text_max)]
+        if settings.mcp_enabled
+        else []
+    )
+    return create_app(context, mounts)
 
 
 class _Server(uvicorn.Server):

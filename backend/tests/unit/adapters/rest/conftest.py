@@ -11,6 +11,7 @@ import httpx2
 import pytest
 from fastapi import FastAPI
 
+from papiq.adapters.inbound.mcp import McpEndpoint
 from papiq.adapters.inbound.rest import PREFIX, ApiContext, create_app
 from papiq.adapters.inbound.rest.auth import CSRF_HEADER
 from papiq.adapters.outbound.memory import ManualClock
@@ -44,32 +45,30 @@ def make_app(
     async def ok() -> None:
         pass
 
-    return create_app(
-        ApiContext(
-            auth=services.auth,
-            users=services.users,
-            drawers=services.drawers,
-            master_data=services.master_data,
-            oidc=services.oidc,
-            search=services.search,
-            indexing=services.indexing,
-            pipeline=services.pipeline,
-            documents=services.documents,
-            rules=services.rules,
-            rule_applications=services.rule_applications,
-            webhooks=services.webhooks,
-            webhook_delivery=services.webhook_delivery,
-            event_bus=container.event_bus,
-            health_checks={"database": ok, "object_store": ok},
-            max_upload_size=max_upload,
-            events_poll_interval=poll,
-            cookie_secure=cookie_secure,
-            stream_recheck_interval=recheck,
-            mcp_enabled=mcp,
-            mcp_text_max=mcp_text_max,
-            ui_directory=ui_directory,
-        )
+    context = ApiContext(
+        auth=services.auth,
+        users=services.users,
+        drawers=services.drawers,
+        master_data=services.master_data,
+        oidc=services.oidc,
+        search=services.search,
+        indexing=services.indexing,
+        pipeline=services.pipeline,
+        documents=services.documents,
+        rules=services.rules,
+        rule_applications=services.rule_applications,
+        webhooks=services.webhooks,
+        webhook_delivery=services.webhook_delivery,
+        event_bus=container.event_bus,
+        health_checks={"database": ok, "object_store": ok},
+        max_upload_size=max_upload,
+        events_poll_interval=poll,
+        cookie_secure=cookie_secure,
+        stream_recheck_interval=recheck,
+        ui_directory=ui_directory,
     )
+    mounts = [McpEndpoint(context, path=f"{PREFIX}/mcp", text_max=mcp_text_max)] if mcp else []
+    return create_app(context, mounts)
 
 
 @dataclass

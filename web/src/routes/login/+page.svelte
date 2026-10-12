@@ -19,8 +19,8 @@
 
 	let { data } = $props();
 
-	type Node = 'password' | 'totp' | 'recovery';
-	let node = $state<Node>('password');
+	type Step = 'password' | 'totp' | 'recovery';
+	let step = $state<Step>('password');
 	let username = $state('');
 	let password = $state('');
 	let code = $state('');
@@ -30,8 +30,8 @@
 	let codeInput = $state<HTMLInputElement | null>(null);
 
 	// The code field takes the focus as soon as it appears.
-	async function showStep(next: Node) {
-		node = next;
+	async function showStep(next: Step) {
+		step = next;
 		code = '';
 		await tick();
 		codeInput?.focus();
@@ -51,8 +51,8 @@
 				body: {
 					username,
 					password,
-					code: node === 'totp' ? code.replace(/\s/g, '') : null,
-					recovery_code: node === 'recovery' ? code.trim() : null
+					code: step === 'totp' ? code.replace(/\s/g, '') : null,
+					recovery_code: step === 'recovery' ? code.trim() : null
 				}
 			});
 			if (signedIn) {
@@ -62,7 +62,7 @@
 			} else if (response.status === 401 && error?.second_factor_required) {
 				await showStep('totp');
 			} else if (response.status === 401) {
-				message = node === 'password' ? m.login_failed() : m.login_code_failed();
+				message = step === 'password' ? m.login_failed() : m.login_code_failed();
 			} else {
 				message = describeError(await apiError(response, error));
 			}
@@ -74,14 +74,14 @@
 	}
 
 	function back() {
-		node = 'password';
+		step = 'password';
 		code = '';
 		message = null;
 	}
 
 	function swapCode() {
 		message = null;
-		void showStep(node === 'recovery' ? 'totp' : 'recovery');
+		void showStep(step === 'recovery' ? 'totp' : 'recovery');
 	}
 </script>
 
@@ -110,15 +110,15 @@
 			<div class="flex w-full max-w-[400px] flex-col gap-7">
 				<div class="flex flex-col gap-2">
 					<h1 class="text-[1.875rem] font-semibold tracking-tight">
-						{node === 'password' ? m.login_title() : m.login_second_title()}
+						{step === 'password' ? m.login_title() : m.login_second_title()}
 					</h1>
 					<p class="text-muted-foreground">
-						{#if node === 'password'}{m.login_subtitle()}{:else if node === 'totp'}{m.login_totp_hint()}{:else}{m.login_recovery_hint()}{/if}
+						{#if step === 'password'}{m.login_subtitle()}{:else if step === 'totp'}{m.login_totp_hint()}{:else}{m.login_recovery_hint()}{/if}
 					</p>
 				</div>
 
 				<form class="flex flex-col gap-5" onsubmit={submit} novalidate>
-					{#if node === 'password'}
+					{#if step === 'password'}
 						<Field.Field>
 							<Field.Label for="username">{m.login_username()}</Field.Label>
 							<Input
@@ -146,7 +146,7 @@
 								class="h-12"
 							/>
 						</Field.Field>
-					{:else if node === 'totp'}
+					{:else if step === 'totp'}
 						<Field.Field>
 							<Field.Label for="code">{m.login_totp_label()}</Field.Label>
 							<Input
@@ -195,7 +195,7 @@
 					<!-- Not disabled while busy: the focus stays on the button. -->
 					<Button type="submit" size="lg" aria-disabled={busy}>{m.login_submit()}</Button>
 
-					{#if node === 'password'}
+					{#if step === 'password'}
 						{#if data.oidc}
 							<Button variant="outline" size="lg" href={oidcLoginHref(data.next)}>
 								<KeyRound aria-hidden="true" />
@@ -210,7 +210,7 @@
 								onclick={back}>{m.login_back()}</button
 							>
 							<button type="button" class="font-medium text-brand" onclick={swapCode}>
-								{node === 'recovery' ? m.login_use_totp() : m.login_use_recovery()}
+								{step === 'recovery' ? m.login_use_totp() : m.login_use_recovery()}
 							</button>
 						</div>
 					{/if}

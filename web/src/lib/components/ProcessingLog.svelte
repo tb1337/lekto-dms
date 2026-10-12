@@ -58,19 +58,22 @@
 		failed: m.outcome_failed
 	};
 
-	// An answer for a document the page has left behind must not replace the current one.
+	// An answer for a document the page has left behind, or one overtaken by a later request,
+	// must not replace the current entries.
+	let latest = 0;
 	async function load() {
 		const wanted = documentId;
+		const request = ++latest;
 		try {
 			const loaded = await unwrap(
 				api.GET('/api/v1/documents/{id}/log', { params: { path: { id: wanted } } })
 			);
-			if (wanted === documentId) {
+			if (wanted === documentId && request === latest) {
 				entries = loaded;
 				problem = null;
 			}
 		} catch (error) {
-			if (wanted === documentId) problem = describeError(error);
+			if (wanted === documentId && request === latest) problem = describeError(error);
 		}
 	}
 

@@ -11,12 +11,12 @@ function base32(secret: string): Uint8Array<ArrayBuffer> {
 	return bytes;
 }
 
-/** The time node of `at` (milliseconds). */
-export function node(at: number = Date.now()): number {
+/** The time step of `at` (milliseconds). */
+export function step(at: number = Date.now()): number {
 	return Math.floor(at / 1000 / 30);
 }
 
-/** The code of `secret` (base32) for time node `counter`. */
+/** The code of `secret` (base32) for time step `counter`. */
 export async function code(secret: string, counter: number): Promise<string> {
 	const key = await crypto.subtle.importKey(
 		'raw',

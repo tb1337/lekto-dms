@@ -19,8 +19,12 @@
 	let problem = $state<string | null>(null);
 	let busy = $state(false);
 
+	// An answer overtaken by a later request (several events at once) must not replace the
+	// current text.
+	let latest = 0;
 	async function load(offset = 0) {
 		const wanted = documentId;
+		const request = ++latest;
 		busy = true;
 		try {
 			const piece = await unwrap(
@@ -28,18 +32,20 @@
 					params: { path: { id: wanted }, query: { offset, limit: PIECE } }
 				})
 			);
-			if (wanted !== documentId) return;
+			if (wanted !== documentId || request !== latest) return;
 			text = offset === 0 ? piece.text : (text ?? '') + piece.text;
 			total = piece.total_length;
 			next = piece.next_offset;
 			problem = null;
 		} catch (error) {
-			if (wanted !== documentId) return;
+			if (wanted !== documentId || request !== latest) return;
 			// 409: not parsed yet; the next event brings the text.
-			if (error instanceof ApiError && error.status === 409) text = null;
-			else problem = describeError(error);
+			if (error instanceof ApiError && error.status === 409) {
+				text = null;
+				problem = null;
+			} else problem = describeError(error);
 		} finally {
-			busy = false;
+			if (request === latest) busy = false;
 		}
 	}
 

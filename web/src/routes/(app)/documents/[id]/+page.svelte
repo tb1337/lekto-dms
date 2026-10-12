@@ -89,19 +89,22 @@
 			: []
 	);
 
-	// An answer for a document the page has left behind must not replace the current one.
+	// An answer for a document the page has left behind, or one overtaken by a later request
+	// (several events arrive at once), must not replace the current state.
+	let latest = 0;
 	async function load() {
 		const wanted = id;
+		const request = ++latest;
 		try {
 			const loaded = await unwrap(
 				api.GET('/api/v1/documents/{id}', { params: { path: { id: wanted } } })
 			);
-			if (wanted === id) {
+			if (wanted === id && request === latest) {
 				document = loaded;
 				problem = null;
 			}
 		} catch (error) {
-			if (wanted === id) problem = error;
+			if (wanted === id && request === latest) problem = error;
 		}
 	}
 

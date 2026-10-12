@@ -31,6 +31,9 @@ export class Uploads {
 	#queue: { upload: Upload; file: File; drawerId: string | null }[] = [];
 	#running = 0;
 	#next = 1;
+	// The latest request per item: an answer overtaken by a later one is dropped.
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping, not shown
+	#requests = new Map<number, number>();
 	#stop: (() => void) | null = null;
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	#settled = new Set<() => void>();
@@ -132,10 +135,12 @@ export class Uploads {
 
 	async #refreshLane(upload: Upload): Promise<void> {
 		if (!upload.documentId) return;
+		const request = (this.#requests.get(upload.key) ?? 0) + 1;
+		this.#requests.set(upload.key, request);
 		const { data } = await api.GET('/api/v1/documents/{id}', {
 			params: { path: { id: upload.documentId } }
 		});
-		if (!data) return;
+		if (!data || this.#requests.get(upload.key) !== request) return;
 		upload.lane = data.lane;
 		upload.processing = data.processing;
 		if (data.lane !== null) upload.state = 'done';

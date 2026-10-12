@@ -1,7 +1,7 @@
 // Smoke test of the built UI against a real API: sign in with password and TOTP, navigate,
 // reload, sign out, and the return to the page after signing in again.
 import { expect, test, type APIRequestContext } from '@playwright/test';
-import { code, node } from './totp.ts';
+import { code, step } from './totp.ts';
 
 const ADMIN = process.env.PAPIQ_ADMIN_USERNAME ?? 'admin';
 const ADMIN_PASSWORD = process.env.PAPIQ_ADMIN_PASSWORD ?? '';
@@ -33,7 +33,7 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 	const setup = await user.post('/api/v1/auth/totp', { headers: { 'X-CSRF-Token': token } });
 	expect(setup.ok(), await setup.text()).toBe(true);
 	secret = ((await setup.json()) as { secret: string }).secret;
-	usedStep = node();
+	usedStep = step();
 	const confirmed = await user.post('/api/v1/auth/totp/confirm', {
 		headers: { 'X-CSRF-Token': token },
 		data: { code: await code(secret, usedStep) }
@@ -43,12 +43,12 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 });
 
 /**
- * A code the server has not seen yet. It takes each node once, at most one ahead of its clock;
- * when that node is used up, this waits for the next one.
+ * A code the server has not seen yet. It takes each step once, at most one ahead of its clock;
+ * when that step is used up, this waits for the next one.
  */
 async function freshCode(): Promise<string> {
-	while (usedStep >= node() + 1) await new Promise((resolve) => setTimeout(resolve, 1000));
-	usedStep = Math.max(node(), usedStep + 1);
+	while (usedStep >= step() + 1) await new Promise((resolve) => setTimeout(resolve, 1000));
+	usedStep = Math.max(step(), usedStep + 1);
 	return code(secret, usedStep);
 }
 

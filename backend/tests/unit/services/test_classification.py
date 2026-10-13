@@ -1,8 +1,9 @@
 """Classification and field extraction with a fake language model: every check, the
 answer handling, and the way through the pipeline."""
 
+import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -13,6 +14,7 @@ from papiq.adapters.outbound.memory import FakeLanguageModel
 from papiq.core.domain.classification import FieldCheck, checks_from_json, field_key
 from papiq.core.domain.documents import UNSET, Document, DocumentChanges
 from papiq.core.domain.errors import LanguageModelError
+from papiq.core.domain.exchanges import RunExchange, exchanges_from_json
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
@@ -24,7 +26,8 @@ from papiq.core.services.classification.nodes import (
     ClassifyNode,
     ExtractFieldsNode,
 )
-from papiq.core.services.objects import markdown_key
+from papiq.core.services.classification.prompts import CLASSIFY_SYSTEM, EXTRACT_SYSTEM
+from papiq.core.services.objects import exchanges_key, markdown_key
 from papiq.core.services.pipeline import MetadataResult, NodeExecutor
 from tests import builders
 from tests.builders import NOW, incoming
@@ -379,6 +382,53 @@ async def test_an_unfit_answer_is_asked_again(world: World) -> None:
     first, second = fake.requests
     assert second.user.startswith(first.user)
     assert "Your previous answer was not valid: the answer is not JSON" in second.user
+
+
+async def exchanges(world: World, document: Document, node: Node) -> list[RunExchange]:
+    return exchanges_from_json(
+        json.loads(await world.object_store.get(exchanges_key(document.id, node)))
+    )
+
+
+async def test_what_was_sent_is_kept_per_run(world: World) -> None:
+    await seed(world)
+    fake = model("Sure! Here is the JSON.", classification())
+    document = await document_with(world)
+    await classify_step(world, fake).run(document)
+
+    (kept,) = await exchanges(world, document, Node.CLASSIFY)
+    assert kept.run == document.processing.run
+    first, second = kept.calls
+    assert (first.system, first.user) == (CLASSIFY_SYSTEM, fake.requests[0].user)
+    assert first.answer == "Sure! Here is the JSON."
+    assert second.user == fake.requests[1].user
+    assert json.loads(second.answer) == classification()
+    assert (second.model, second.usage) == ("fake-llm 1", {})
+
+    # The same run again replaces its calls; a later run is added.
+    await classify_step(world, model(classification())).run(document)
+    (again,) = await exchanges(world, document, Node.CLASSIFY)
+    assert len(again.calls) == 1
+    later = replace(document, processing=replace(document.processing, run=2))
+    await classify_step(world, model(classification())).run(later)
+    assert [run.run for run in await exchanges(world, document, Node.CLASSIFY)] == [1, 2]
+
+
+async def test_the_exchanges_of_a_failed_step_are_kept(world: World) -> None:
+    await seed(world)
+    document = await document_with(world)
+    await classify_step(world, model("not json")).run(document)
+    (kept,) = await exchanges(world, document, Node.CLASSIFY)
+    assert [call.answer for call in kept.calls] == ["not json", "not json"]
+
+
+async def test_the_field_extraction_keeps_its_own_exchanges(world: World) -> None:
+    seeded = await seed(world)
+    document = await document_with(world, type=seeded.types["Rechnung"])
+    await extract_step(world, model(extraction())).run(document)
+    (kept,) = await exchanges(world, document, Node.EXTRACT_FIELDS)
+    assert kept.calls[0].system == EXTRACT_SYSTEM
+    assert not await world.object_store.exists(exchanges_key(document.id, Node.CLASSIFY))
 
 
 async def test_two_unfit_answers_fail_the_step(world: World) -> None:

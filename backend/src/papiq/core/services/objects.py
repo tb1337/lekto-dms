@@ -2,6 +2,10 @@
 
 from papiq.core.domain.documents import Sha256
 from papiq.core.domain.ids import DocumentId
+from papiq.core.domain.pipeline import Node
+
+EXCHANGE_NODES = (Node.CLASSIFY, Node.EXTRACT_FIELDS)
+"""The nodes that ask the language model and keep what they sent (`exchanges_key`)."""
 
 
 def original_key(sha256: Sha256) -> str:
@@ -34,6 +38,11 @@ def structure_key(document: DocumentId) -> str:
     return f"documents/{document}/content.json"
 
 
+def exchanges_key(document: DocumentId, node: Node) -> str:
+    """What `node` sent to the language model and got back, every run (`domain.exchanges`)."""
+    return f"documents/{document}/exchanges/{node.value}.json"
+
+
 def derivative_keys(document: DocumentId, page_count: int | None = None) -> list[str]:
     """Everything the pipeline stores for one document with `page_count` page images."""
     return [
@@ -41,5 +50,6 @@ def derivative_keys(document: DocumentId, page_count: int | None = None) -> list
         preview_key(document),
         markdown_key(document),
         structure_key(document),
+        *(exchanges_key(document, node) for node in EXCHANGE_NODES),
         *(page_key(document, number) for number in range(1, (page_count or 0) + 1)),
     ]

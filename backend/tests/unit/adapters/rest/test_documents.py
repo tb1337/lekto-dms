@@ -1,5 +1,6 @@
 """Upload, status, processing log, retry and reprocessing over HTTP."""
 
+import json
 import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -14,8 +15,10 @@ from papiq.composition.container import build_memory_container, build_services
 from papiq.core.domain.documents import Sha256
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import UnprocessableDocumentError
+from papiq.core.domain.exchanges import ModelCall, RunExchange, exchanges_to_json
+from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.pipeline import Node
-from papiq.core.services.objects import original_key
+from papiq.core.services.objects import exchanges_key, original_key
 from tests.api import auth, issue_token
 from tests.builders import PASSWORD
 from tests.contracts.processing import SAMPLES
@@ -294,6 +297,54 @@ async def test_the_text_is_read_in_pieces(api: Api) -> None:
     assert (await api.client.get(f"{url}/text")).status_code == 401
     other = await api.user()
     assert (await api.client.get(f"{url}/text", headers=auth(other))).status_code == 404
+
+
+async def test_the_structure_is_served_as_stored(api: Api) -> None:
+    owner = await api.user()
+    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    url = response.json()["status_url"]
+    assert (await api.client.get(f"{url}/structure", headers=auth(owner))).status_code == 409
+    await api.drain()
+    structure = await api.client.get(f"{url}/structure", headers=auth(owner))
+    assert structure.status_code == 200
+    assert structure.headers["content-type"] == "application/json"
+    assert structure.headers["x-content-type-options"] == "nosniff"
+    assert "text" in structure.json()  # what the fake parser writes
+
+
+async def test_the_model_exchanges_are_listed_per_run(api: Api) -> None:
+    owner = await api.user()
+    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    url = response.json()["status_url"]
+    await api.drain()
+    # Without a language model nothing was sent.
+    listed = await api.client.get(f"{url}/exchanges/classify", headers=auth(owner))
+    assert (listed.status_code, listed.json()) == (200, [])
+    id = DocumentId(UUID(url.rsplit("/", 1)[-1]))
+    call = ModelCall(system="s", user="u", answer="{}", model="m", usage={"total_tokens": 9})
+    runs = [RunExchange(run=1, calls=(call,))]
+    await api.container.object_store.put(
+        exchanges_key(id, Node.CLASSIFY),
+        json.dumps(exchanges_to_json(runs)).encode(),
+        content_type="application/json",
+    )
+    listed = await api.client.get(f"{url}/exchanges/classify", headers=auth(owner))
+    assert listed.json() == [
+        {
+            "run": 1,
+            "calls": [
+                {
+                    "system": "s",
+                    "user": "u",
+                    "answer": "{}",
+                    "model": "m",
+                    "usage": {"total_tokens": 9},
+                }
+            ],
+        }
+    ]
+    wrong = await api.client.get(f"{url}/exchanges/ocr", headers=auth(owner))
+    assert wrong.status_code == 422
 
 
 async def test_page_images_are_served_by_number(api: Api) -> None:

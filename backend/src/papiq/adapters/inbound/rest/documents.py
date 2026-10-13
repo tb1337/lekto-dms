@@ -33,10 +33,12 @@ from papiq.adapters.inbound.rest.schemas.documents import (
     DocumentPatch,
     DocumentPreviewOut,
     DocumentTextOut,
+    ExchangeNode,
     ImportedMetadataIn,
     LogEntry,
     MoveRequest,
     ReprocessRequest,
+    RunExchangeOut,
     VisibilityOut,
 )
 from papiq.adapters.inbound.rest.schemas.inbox import (
@@ -458,6 +460,47 @@ async def document_text(
         total_length=piece.total_length,
         next_offset=piece.next_offset,
     )
+
+
+@router.get(
+    "/{id}/structure",
+    summary="The parsed structure of a document",
+    description=(
+        "Needs read access. The parser's lossless structure (Docling's JSON: text, tables and "
+        "layout with page and box of each element) as it stored it; can be large. 409 while "
+        "the document is not parsed."
+    ),
+    response_class=Response,
+    responses={
+        200: {"content": {"application/json": {"schema": {"type": "object"}}}},
+        **problem_responses(401, 404, 409, 422),
+    },
+)
+async def document_structure(id: UUID, user: CurrentUser, context: Context) -> Response:
+    data = await context.documents.read_structure(user, DocumentId(id))
+    return Response(
+        data,
+        media_type="application/json",
+        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
+    )
+
+
+@router.get(
+    "/{id}/exchanges/{node}",
+    summary="What a node sent to the language model",
+    description=(
+        "The owner and admins, as the log. The messages, the answer and the usage report of "
+        "every call of `node` to the language model, per processing run, oldest first; empty "
+        "if it never asked one (also for runs from before the messages were kept)."
+    ),
+    response_model=list[RunExchangeOut],
+    responses=problem_responses(401, 403, 404, 422),
+)
+async def model_exchanges(
+    id: UUID, node: ExchangeNode, user: CurrentUser, context: Context
+) -> list[RunExchangeOut]:
+    exchanges = await context.documents.exchanges(user, DocumentId(id), Node(node.value))
+    return [RunExchangeOut.of(exchange) for exchange in exchanges]
 
 
 @router.get(

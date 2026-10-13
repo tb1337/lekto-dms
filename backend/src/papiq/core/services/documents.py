@@ -1,4 +1,5 @@
 import copy
+import json
 import logging
 from collections.abc import Collection
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from papiq.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
+from papiq.core.domain.exchanges import RunExchange, exchanges_from_json
 from papiq.core.domain.ids import DocumentId, DrawerId, UserId
 from papiq.core.domain.permissions import (
     can_control_document,
@@ -22,7 +24,7 @@ from papiq.core.domain.permissions import (
     document_access,
     in_reach,
 )
-from papiq.core.domain.pipeline import Lane, NodeRun
+from papiq.core.domain.pipeline import Lane, Node, NodeRun
 from papiq.core.domain.users import User
 from papiq.core.ports import Clock, DocumentFilter, ObjectStore, UnitOfWork, UnitOfWorkFactory
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE
@@ -36,11 +38,14 @@ from papiq.core.services._access import (
 from papiq.core.services.inbox import InboxItem, Review, node_reviews, open_nodes
 from papiq.core.services.maintenance import REMOVE_FILES_JOB
 from papiq.core.services.objects import (
+    EXCHANGE_NODES,
     archive_key,
+    exchanges_key,
     markdown_key,
     original_key,
     page_key,
     preview_key,
+    structure_key,
 )
 from papiq.core.services.rules.changes import ChangeRules
 from papiq.core.services.rules.running import Prepared, RuleRun
@@ -150,6 +155,18 @@ class DocumentService:
             next_offset=end if end < len(text) else None,
         )
 
+    async def read_structure(self, actor: UserId, id: DocumentId) -> bytes:
+        """The parsed structure in the parser's JSON format (Docling's, with page and box of
+        every element). NotFoundError if the caller may not read the document; ConflictError
+        while it is not parsed."""
+        assert self._store is not None, "reading the structure needs the object store"
+        async with self._uow() as uow:
+            await readable_document(uow, await load_actor(uow, actor), id)
+        try:
+            return await self._store.get(structure_key(id))
+        except NotFoundError:
+            raise ConflictError("document has no structure yet") from None
+
     async def query(
         self,
         actor: UserId,
@@ -256,6 +273,24 @@ class DocumentService:
             if not can_control_document(user, document):
                 raise PermissionDeniedError(f"only the owner reads the processing log of {id}")
             return await uow.processing_log.list_for(id)
+
+    async def exchanges(self, actor: UserId, id: DocumentId, node: Node) -> list[RunExchange]:
+        """Owner or admin, as the log: what `node` sent to the language model and got back,
+        every run, oldest first; none if it never asked one. ValidationError for a node that
+        does not ask the model."""
+        if node not in EXCHANGE_NODES:
+            raise ValidationError(f"node {node.value} does not ask a language model")
+        assert self._store is not None, "reading model exchanges needs the object store"
+        async with self._uow() as uow:
+            user = await load_actor(uow, actor)
+            document, _ = await readable_document(uow, user, id)
+            if not can_control_document(user, document):
+                raise PermissionDeniedError(f"only the owner reads the model exchanges of {id}")
+        try:
+            data = await self._store.get(exchanges_key(id, node))
+        except NotFoundError:
+            return []
+        return exchanges_from_json(json.loads(data))
 
     async def inbox(
         self,

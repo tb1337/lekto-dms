@@ -11,6 +11,7 @@ from papiq.adapters.inbound.rest.schemas.drawers import ShareOut
 from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
 from papiq.core.domain.documents import Channel, Document
 from papiq.core.domain.drawers import Drawer, ShareLevel
+from papiq.core.domain.exchanges import ModelCall, RunExchange
 from papiq.core.domain.permissions import can_manage_drawer
 from papiq.core.domain.pipeline import (
     Lane,
@@ -22,11 +23,17 @@ from papiq.core.domain.pipeline import (
     ProcessingStatus,
 )
 from papiq.core.domain.users import User
+from papiq.core.services.objects import EXCHANGE_NODES
 
 ReprocessNode = StrEnum(  # type: ignore[misc]
     "ReprocessNode", {node.name: node.value for node in Node if node is not Node.RECEIVE}
 )
 """Nodes processing can restart from; receiving cannot be repeated."""
+
+ExchangeNode = StrEnum(  # type: ignore[misc]
+    "ExchangeNode", {node.name: node.value for node in EXCHANGE_NODES}
+)
+"""Nodes that ask the language model."""
 
 
 class DocumentAccepted(BaseModel):
@@ -305,6 +312,45 @@ class LogEntry(BaseModel):
             started_at=run.started_at,
             duration_ms=run.duration.total_seconds() * 1000,
         )
+
+
+class ModelCallOut(BaseModel):
+    """One request to the language model and its answer."""
+
+    system: str = Field(description="The system message.")
+    user: str = Field(description="The user message, with the document's text.")
+    answer: str = Field(description="The model's text as it came.")
+    model: str = Field(examples=["qwen3:8b"])
+    usage: dict[str, Any] = Field(
+        description=(
+            "The endpoint's usage report as it sent it: `prompt_tokens`, `completion_tokens`, "
+            "with some endpoints (Ollama through OpenWebUI) durations and speeds; empty if "
+            "none."
+        )
+    )
+
+    @classmethod
+    def of(cls, call: ModelCall) -> "ModelCallOut":
+        return cls(
+            system=call.system,
+            user=call.user,
+            answer=call.answer,
+            model=call.model,
+            usage=dict(call.usage),
+        )
+
+
+class RunExchangeOut(BaseModel):
+    """What a node sent to the language model in one processing run."""
+
+    run: int
+    calls: list[ModelCallOut] = Field(
+        description="One call, or two after an answer that did not fit the schema."
+    )
+
+    @classmethod
+    def of(cls, exchange: RunExchange) -> "RunExchangeOut":
+        return cls(run=exchange.run, calls=[ModelCallOut.of(call) for call in exchange.calls])
 
 
 class ReprocessRequest(BaseModel):

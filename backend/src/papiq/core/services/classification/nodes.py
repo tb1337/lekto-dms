@@ -8,6 +8,8 @@ uncertain ones are only proposed, and the node is uncertain (the document waits 
 An unreachable model raises, so the pipeline retries the node.
 """
 
+import json
+import logging
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -28,8 +30,15 @@ from papiq.core.domain.classification import (
     field_to_json,
 )
 from papiq.core.domain.documents import UNSET, Document, DocumentChanges, Unset
-from papiq.core.domain.errors import ValidationError
+from papiq.core.domain.errors import NotFoundError, ValidationError
 from papiq.core.domain.evidence import DocumentText
+from papiq.core.domain.exchanges import (
+    ModelCall,
+    RunExchange,
+    exchanges_from_json,
+    exchanges_to_json,
+    with_run,
+)
 from papiq.core.domain.fields import (
     FieldDefinition,
     FieldType,
@@ -41,7 +50,7 @@ from papiq.core.domain.ids import ContactId, FieldId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.names import best_match, mentions, name_key, named_share
-from papiq.core.domain.pipeline import NodeResult, Outcome
+from papiq.core.domain.pipeline import Node, NodeResult, Outcome
 from papiq.core.ports import Clock, LanguageModel, ObjectStore, UnitOfWorkFactory
 from papiq.core.ports.llm import StructuredAnswer, StructuredRequest
 from papiq.core.services.classification.answers import (
@@ -66,8 +75,10 @@ from papiq.core.services.classification.prompts import (
     retry_message,
     shorten,
 )
-from papiq.core.services.objects import markdown_key
+from papiq.core.services.objects import exchanges_key, markdown_key
 from papiq.core.services.pipeline import MetadataResult
+
+log = logging.getLogger(__name__)
 
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _RAW_LENGTH = 4000  # characters of an unfit answer kept in the log
@@ -123,24 +134,64 @@ class _ModelStep:
         return (await self._store.get(markdown_key(document.id))).decode("utf-8")
 
     async def _ask[T](
-        self, system: str, message: str, schema: JsonObject, name: str, parse: Callable[[str], T]
+        self,
+        document: Document,
+        node: Node,
+        system: str,
+        message: str,
+        schema: JsonObject,
+        name: str,
+        parse: Callable[[str], T],
     ) -> tuple[T, list[StructuredAnswer]]:
-        """The parsed answer and all answers; once more after an unfit one."""
+        """The parsed answer and all answers; once more after an unfit one. What was sent and
+        received is kept beside the document (`exchanges_key`), also when the node fails."""
         assert self._model is not None
         answers: list[StructuredAnswer] = []
+        calls: list[ModelCall] = []
         errors: list[str] = []
         user = message
-        for _ in range(2):
-            answer = await self._model.complete(
-                StructuredRequest(system=system, user=user, schema=schema, schema_name=name)
+        try:
+            for _ in range(2):
+                answer = await self._model.complete(
+                    StructuredRequest(system=system, user=user, schema=schema, schema_name=name)
+                )
+                answers.append(answer)
+                calls.append(
+                    ModelCall(
+                        system=system,
+                        user=user,
+                        answer=answer.content,
+                        model=answer.model,
+                        usage=answer.usage,
+                    )
+                )
+                try:
+                    return parse(answer.content), answers
+                except AnswerError as error:
+                    errors.append(str(error))
+                    user = retry_message(message, str(error))
+            raise _UnfitAnswerError(errors, answers)
+        finally:
+            if calls:
+                await self._keep(document, node, calls)
+
+    async def _keep(self, document: Document, node: Node, calls: list[ModelCall]) -> None:
+        """Add the calls of this run to the node's file; a run that is there already (the node
+        ran again within it) is replaced."""
+        key = exchanges_key(document.id, node)
+        runs: list[RunExchange] = []
+        try:
+            runs = exchanges_from_json(json.loads(await self._store.get(key)))
+        except NotFoundError:
+            pass
+        except (ValueError, ValidationError):
+            log.warning(
+                "replacing an unreadable file of model exchanges",
+                extra={"document_id": str(document.id), "node": node.value},
             )
-            answers.append(answer)
-            try:
-                return parse(answer.content), answers
-            except AnswerError as error:
-                errors.append(str(error))
-                user = retry_message(message, str(error))
-        raise _UnfitAnswerError(errors, answers)
+        runs = with_run(runs, RunExchange(run=document.processing.run, calls=tuple(calls)))
+        data = json.dumps(exchanges_to_json(runs), ensure_ascii=False).encode("utf-8")
+        await self._store.put(key, data, content_type="application/json")
 
     def _input(self, document: Document, text: str, sent: Shortened, prompt: str) -> JsonObject:
         assert self._model is not None
@@ -194,6 +245,8 @@ class ClassifyNode(_ModelStep):
         tag_names = [item.name for item in listed]
         try:
             answer, answers = await self._ask(
+                document,
+                Node.CLASSIFY,
                 CLASSIFY_SYSTEM,
                 classify_message(
                     [Listed(item.name, aliases=tuple(item.aliases)) for item in candidates],
@@ -322,6 +375,8 @@ class ExtractFieldsNode(_ModelStep):
         }
         try:
             proposals, answers = await self._ask(
+                document,
+                Node.EXTRACT_FIELDS,
                 EXTRACT_SYSTEM,
                 extract_message(None if document_type is None else document_type.name, keys, sent),
                 extract_schema(keys),

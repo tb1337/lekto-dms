@@ -9630,6 +9630,262 @@
         ]
       }
     },
+    "/api/v1/documents/{id}/structure": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "The parsed structure of a document",
+        "description": "Needs read access. The parser's lossless structure (Docling's JSON: text, tables and layout with page and box of each element) as it stored it; can be large. 409 while the document is not parsed.",
+        "operationId": "document_structure_api_v1_documents__id__structure_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/documents/{id}/exchanges/{node}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "What a node sent to the language model",
+        "description": "The owner and admins, as the log. The messages, the answer and the usage report of every call of `node` to the language model, per processing run, oldest first; empty if it never asked one (also for runs from before the messages were kept).",
+        "operationId": "model_exchanges_api_v1_documents__id__exchanges__node__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "node",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ExchangeNode"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunExchangeOut"
+                  },
+                  "title": "Response Model Exchanges Api V1 Documents  Id  Exchanges  Node  Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only the owner controls processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents/{id}/log": {
       "get": {
         "tags": [
@@ -13544,6 +13800,14 @@
         ],
         "title": "DrawerOut"
       },
+      "ExchangeNode": {
+        "type": "string",
+        "enum": [
+          "classify",
+          "extract_fields"
+        ],
+        "title": "ExchangeNode"
+      },
       "FieldCheckOut": {
         "properties": {
           "field": {
@@ -14295,6 +14559,48 @@
             }
           }
         ]
+      },
+      "ModelCallOut": {
+        "properties": {
+          "system": {
+            "type": "string",
+            "title": "System",
+            "description": "The system message."
+          },
+          "user": {
+            "type": "string",
+            "title": "User",
+            "description": "The user message, with the document's text."
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer",
+            "description": "The model's text as it came."
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "examples": [
+              "qwen3:8b"
+            ]
+          },
+          "usage": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Usage",
+            "description": "The endpoint's usage report as it sent it: `prompt_tokens`, `completion_tokens`, with some endpoints (Ollama through OpenWebUI) durations and speeds; empty if none."
+          }
+        },
+        "type": "object",
+        "required": [
+          "system",
+          "user",
+          "answer",
+          "model",
+          "usage"
+        ],
+        "title": "ModelCallOut",
+        "description": "One request to the language model and its answer."
       },
       "MoneyValue": {
         "properties": {
@@ -15644,6 +15950,29 @@
           "created_by"
         ],
         "title": "RuleVersionOut"
+      },
+      "RunExchangeOut": {
+        "properties": {
+          "run": {
+            "type": "integer",
+            "title": "Run"
+          },
+          "calls": {
+            "items": {
+              "$ref": "#/components/schemas/ModelCallOut"
+            },
+            "type": "array",
+            "title": "Calls",
+            "description": "One call, or two after an answer that did not fit the schema."
+          }
+        },
+        "type": "object",
+        "required": [
+          "run",
+          "calls"
+        ],
+        "title": "RunExchangeOut",
+        "description": "What a node sent to the language model in one processing run."
       },
       "SearchResultItem": {
         "properties": {

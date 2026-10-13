@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from pathlib import Path
 
@@ -12,13 +13,20 @@ from papiq.core.domain.errors import (
     ValidationError,
 )
 from papiq.core.domain.events import DocumentDeleted, DocumentFiled, DocumentUpdated
+from papiq.core.domain.exchanges import ModelCall, RunExchange, exchanges_to_json
 from papiq.core.domain.fields import FieldType
 from papiq.core.domain.ids import ContactId, DocumentId, DrawerId, TagId, UserId, new_id
 from papiq.core.domain.pipeline import PERSON_DRAWER, Lane, Node
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import DocumentFilter
 from papiq.core.services.documents import DocumentFile, FileInfo
-from papiq.core.services.objects import archive_key, markdown_key, preview_key
+from papiq.core.services.objects import (
+    archive_key,
+    exchanges_key,
+    markdown_key,
+    preview_key,
+    structure_key,
+)
 from tests.builders import UNCERTAIN, incoming
 from tests.unit.services.conftest import Returns, World
 
@@ -340,3 +348,37 @@ async def test_a_document_without_text_says_so(world: World, scene: Scene) -> No
     await world.object_store.delete(markdown_key(scene.document.id))
     with pytest.raises(ConflictError, match="no text yet"):
         await world.documents.read_text(scene.owner.id, scene.document.id, limit=10)
+
+
+async def test_the_structure_is_for_readers(world: World, scene: Scene) -> None:
+    key = structure_key(scene.document.id)
+    await world.object_store.put(key, b'{"name": "electricity"}', content_type="application/json")
+    for user in (scene.owner, scene.reader):
+        structure = await world.documents.read_structure(user.id, scene.document.id)
+        assert structure == b'{"name": "electricity"}'
+    with pytest.raises(NotFoundError):
+        await world.documents.read_structure(scene.stranger.id, scene.document.id)
+    await world.object_store.delete(key)
+    with pytest.raises(ConflictError, match="no structure yet"):
+        await world.documents.read_structure(scene.owner.id, scene.document.id)
+
+
+async def test_only_the_owner_reads_the_model_exchanges(world: World, scene: Scene) -> None:
+    id = scene.document.id
+    assert await world.documents.exchanges(scene.owner.id, id, Node.CLASSIFY) == []
+    call = ModelCall(system="s", user="u", answer="{}", model="m", usage={"prompt_tokens": 3})
+    runs = [RunExchange(run=1, calls=(call,)), RunExchange(run=2, calls=(call, call))]
+    await world.object_store.put(
+        exchanges_key(id, Node.CLASSIFY),
+        json.dumps(exchanges_to_json(runs)).encode(),
+        content_type="application/json",
+    )
+    assert await world.documents.exchanges(scene.owner.id, id, Node.CLASSIFY) == runs
+    assert await world.documents.exchanges(scene.owner.id, id, Node.EXTRACT_FIELDS) == []
+    for user in (scene.reader, scene.writer):
+        with pytest.raises(PermissionDeniedError):
+            await world.documents.exchanges(user.id, id, Node.CLASSIFY)
+    with pytest.raises(NotFoundError):
+        await world.documents.exchanges(scene.stranger.id, id, Node.CLASSIFY)
+    with pytest.raises(ValidationError, match="does not ask a language model"):
+        await world.documents.exchanges(scene.owner.id, id, Node.OCR)

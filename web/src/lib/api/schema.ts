@@ -1069,6 +1069,46 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/{id}/structure': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The parsed structure of a document
+		 * @description Needs read access. The parser's lossless structure (Docling's JSON: text, tables and layout with page and box of each element) as it stored it; can be large. 409 while the document is not parsed.
+		 */
+		get: operations['document_structure_api_v1_documents__id__structure_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/{id}/exchanges/{node}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * What a node sent to the language model
+		 * @description The owner and admins, as the log. The messages, the answer and the usage report of every call of `node` to the language model, per processing run, oldest first; empty if it never asked one (also for runs from before the messages were kept).
+		 */
+		get: operations['model_exchanges_api_v1_documents__id__exchanges__node__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/{id}/log': {
 		parameters: {
 			query?: never;
@@ -2232,6 +2272,11 @@ export interface components {
 			created_at: string;
 		};
 		/**
+		 * ExchangeNode
+		 * @enum {string}
+		 */
+		ExchangeNode: 'classify' | 'extract_fields';
+		/**
 		 * FieldCheckOut
 		 * @description A field the model proposed, and its check.
 		 * @example {
@@ -2589,6 +2634,39 @@ export interface components {
 			totp_enabled: boolean;
 			/** Linked Accounts */
 			linked_accounts: components['schemas']['LinkOut'][];
+		};
+		/**
+		 * ModelCallOut
+		 * @description One request to the language model and its answer.
+		 */
+		ModelCallOut: {
+			/**
+			 * System
+			 * @description The system message.
+			 */
+			system: string;
+			/**
+			 * User
+			 * @description The user message, with the document's text.
+			 */
+			user: string;
+			/**
+			 * Answer
+			 * @description The model's text as it came.
+			 */
+			answer: string;
+			/**
+			 * Model
+			 * @example qwen3:8b
+			 */
+			model: string;
+			/**
+			 * Usage
+			 * @description The endpoint's usage report as it sent it: `prompt_tokens`, `completion_tokens`, with some endpoints (Ollama through OpenWebUI) durations and speeds; empty if none.
+			 */
+			usage: {
+				[key: string]: unknown;
+			};
 		};
 		/** MoneyValue */
 		MoneyValue: {
@@ -3241,6 +3319,19 @@ export interface components {
 			created_at: string;
 			/** Created By */
 			created_by: string | null;
+		};
+		/**
+		 * RunExchangeOut
+		 * @description What a node sent to the language model in one processing run.
+		 */
+		RunExchangeOut: {
+			/** Run */
+			run: number;
+			/**
+			 * Calls
+			 * @description One call, or two after an answer that did not fit the schema.
+			 */
+			calls: components['schemas']['ModelCallOut'][];
 		};
 		/** SearchResultItem */
 		SearchResultItem: {
@@ -12144,6 +12235,221 @@ export interface operations {
 					 *       "title": "Conflict",
 					 *       "status": 409,
 					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	document_structure_api_v1_documents__id__structure_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': Record<string, never>;
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	model_exchanges_api_v1_documents__id__exchanges__node__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+				node: components['schemas']['ExchangeNode'];
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['RunExchangeOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

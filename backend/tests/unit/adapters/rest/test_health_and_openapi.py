@@ -129,6 +129,8 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/pipeline", "get"),
         (f"{PREFIX}/documents/{{id}}/pages/{{number}}", "get"),
         (f"{PREFIX}/documents/{{id}}/text", "get"),
+        (f"{PREFIX}/documents/{{id}}/structure", "get"),
+        (f"{PREFIX}/documents/{{id}}/exchanges/{{node}}", "get"),
         (f"{PREFIX}/auth/login", "post"),
         (f"{PREFIX}/auth/logout", "post"),
         (f"{PREFIX}/auth/me", "get"),

@@ -1,12 +1,11 @@
 # Ingest-Neuauflage: Zielbild und Entscheidungen
 
-Stand: 12.10.2026 · Tobi (Entscheidungen) und Creamy (Vorschlag)
+Stand: 13.10.2026 · Tobi (Entscheidungen) und Creamy (Vorschlag)
 
-Dieses Dokument beschreibt, wie die Verarbeitung eines Dokuments nach 0.1 aussehen soll. Der
-Abschnitt „Ingest-Workflow“ in `architektur.md` beschreibt den Stand 0.1 und bleibt gültig, bis
-die Phasen unten umgesetzt sind; dann wird er durch dieses Zielbild ersetzt. Die Entscheidungen
-am Ende hat Tobi am 12.10.2026 getroffen; was als Lesart oder Vorschlag markiert ist, braucht noch
-sein Ja.
+Dieses Dokument beschreibt, wie die Verarbeitung eines Dokuments nach 0.1 aussehen soll. Phase 1
+(M14) und Phase 2 (M15) sind umgesetzt; ihren Stand beschreibt der Abschnitt „Ingest-Workflow“ in
+`architektur.md`, der dafür gilt. Die Entscheidungen am Ende hat Tobi am 12.10.2026 getroffen,
+die Lesarten am 13.10.2026 bestätigt oder ersetzt (siehe dort).
 
 ## Ist-Stand und Befund
 
@@ -107,7 +106,7 @@ Dafür braucht es im Backend: Zustand je Knoten am Dokument (`GET /documents/{id
 abrufbare Ressourcen (Text und Seiten) und die Kandidaten der Signale in der Prüfansicht. Die
 Idee „Live-Verarbeitungsstand beim Upload“ aus `umsetzungsplan.md` geht hierin auf.
 
-## Grün-Regel (Lesart von Entscheidung 4, zu bestätigen)
+## Grün-Regel (Lesart von Entscheidung 4, bestätigt 13.10.2026)
 
 Tobi: nicht hundertprozentig sicher heißt kein Grün; Kontaktnamen auf Dokumenten weichen vom
 Stammdatennamen ab, der Abgleich ist nicht wörtlich.
@@ -119,12 +118,17 @@ Stammdatennamen ab, der Abgleich ist nicht wörtlich.
   Kontakt nennt (Klassifikator über Schwelle oder Mehrheit der Nachbarn). Nur ein Signal, auch ein
   starkes, bleibt gelb mit gereihten Kandidaten.
 - **Typ und Tags** sind grün, wenn mindestens zwei unabhängige Signale denselben Wert nennen
-  und keines widerspricht; der Typ nur aus der bestehenden Liste (wie heute).
+  und keines widerspricht; der Typ nur aus der bestehenden Liste (wie heute). Kaltstart je Wert:
+  Deckt außer dem Modell kein Signal den Wert ab (der Klassifikator kennt ihn nicht, kein
+  bestätigtes Dokument trägt ihn), genügt das Modell. Tags machen nie gelb: Nennt nur ein Signal
+  einen Tag, den ein anderes abdeckt, ist er ein Vorschlag (Tobi, 13.10.2026).
 - **Datum und Felder** wie heute: der Wert muss im Text stehen und gültig sein; neu die
   Normalisierung deutscher Zahlen und Daten vor der Prüfung.
-- **Widerspruch** zwischen Signalen ist immer gelb, mit allen Kandidaten und ihren Quellen.
+- **Widerspruch** zwischen Signalen ist immer gelb, mit allen Kandidaten und ihren Quellen, auch
+  gegen einen Wert, den das widersprechende Signal nicht kennt (sonst bliebe der Lohnnachweis
+  grün, dessen Angestellten das Modell für den Absender hält).
 - Ein automatisch grüner Kontakt lernt **keinen** Alias; Aliase lernen weiterhin nur aus
-  Bestätigungen einer Person (Entscheidung vom 10.10.2026). Vorschlag, zu bestätigen.
+  Bestätigungen einer Person (Entscheidung vom 10.10.2026). Bestätigt 13.10.2026.
 - Kaltstart ohne Klassifikator und ohne Nachbarn: die heutige Regel (Name oder Alias im Text).
 
 ## Entscheidungen (Tobi, 12.10.2026)
@@ -140,18 +144,25 @@ Stammdatennamen ab, der Abgleich ist nicht wörtlich.
 3. **Trainingsdaten:** übernommene Dokumente (Kanal `migration`) zählen als bestätigt und
    trainieren von Anfang an. Lesart: Trainingsbeispiele sind Dokumente, deren Metadaten eine
    Person gesetzt oder bestätigt hat, die Übernahme eingeschlossen; automatisch grüne Dokumente
-   trainieren nicht, sonst verstärkt der Klassifikator seine eigenen Fehler. Zu bestätigen.
+   trainieren nicht, sonst verstärkt der Klassifikator seine eigenen Fehler. Bestätigt
+   13.10.2026.
 4. **Grün-Regel:** siehe oben.
 5. **Globale Felder:** Lesart von „ja“: Ein Feld wird nur extrahiert, wenn der entschiedene Typ
    es führt. Globale Felder werden nicht mehr aus jedem Dokument gezogen; sie bleiben für Hand
-   und Regeln. Zu bestätigen.
+   und Regeln. **Ersetzt (Tobi, 13.10.2026):** Felder sind Pflicht oder optional, je Zuordnung zu
+   einem Typ, globale mit eigenem Schalter, nach der Übernahme alle optional. Pflichtfelder
+   müssen erkannt werden; optionale sollten, müssen aber nicht. Auch ein optionales Feld muss,
+   wenn das Modell einen Wert nennt, richtig gelesen sein, sonst gelb; wird nichts gefunden,
+   bleibt es leer.
 6. **Schublade:** Der Klassifikator schlägt keine Schublade vor. Schubladen tragen Rechte; sie
    sind kein Speicherpfad wie in Paperless. Ablegen bleibt bei Regeln und Personen.
 7. **Titel:** Das Modell schlägt den Titel vor, wenn keine Regel ihn setzt (heute der
    Dateiname). Neu je Dokumenttyp ein optionales **Titelmuster**, etwa `{datum:YYYY}/{datum:MM}`
    für Lohnnachweise, mit Platzhaltern für Datum, Kontakt und Felder des Typs. Vorschlag: Hat
    der Typ ein Muster, wird der Titel daraus gerendert und nicht vom Modell vorgeschlagen; das
-   Modell liefert nur die Werte. Zu bestätigen.
+   Modell liefert nur die Werte. Bestätigt 13.10.2026; Regeln können den Titel weiter setzen.
+   Die Platzhalter sind englisch wie bei der Regel „Titel setzen“, etwa
+   `{document_date:YYYY}/{document_date:MM}`.
 8. **Struktur:** ein Graph mit einem Job je Knoten (DAG), dazu die Sichtbarkeit in der UI wie
    oben.
 9. **Reihenfolge der Phasen:** Empfehlung unten.
@@ -222,7 +233,6 @@ Review durch einen separaten Agenten.
 
 ## Offen
 
-- Bestätigung der Lesarten zu 3, 4, 5 und 7.
 - OpenWebUI: Bilder über die API an Claude und Groq (Phase 3 misst es).
 - `granite-docling-258M` auf der CPU des NUC: Laufzeit je Seite (Phase 3 misst es).
 - Kennungen in der Übernahme aus Paperless: dort gibt es sie nicht; sie entstehen aus

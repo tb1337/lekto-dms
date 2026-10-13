@@ -67,6 +67,7 @@ Papiq ist hexagonal aufgebaut: Der fachliche Kern kennt keine Datenbank, kein S3
 | Suchindex | Meilisearch | Typesense, Postgres-Volltext |
 | LLM | OpenAI-kompatible API | Anbieter-spezifische API |
 | Embeddings | OpenAI-kompatible API | lokales Modell |
+| Klassifikator | scikit-learn (TF-IDF, logistische Regression), Modell als `npz` | anderes Verfahren |
 | OCR | OCRmyPDF | entfernter OCR-Dienst |
 | Parser | Docling | anderer Parser |
 | Job-Queue | Job-Tabelle in der Datenbank | Valkey/Redis-basierte Queue |
@@ -103,6 +104,7 @@ Backend und Worker in Python; ein Container mit s6-overlay als Prozessüberwachu
 | OCR | OCRmyPDF | entschieden |
 | Parsing | Docling | entschieden |
 | LLM | OpenAI-kompatible Schnittstelle (Ollama, Cloud) | entschieden |
+| Klassifikator | scikit-learn, Vorhersage mit numpy | entschieden |
 | LLM-Modell (lokal) | `qwen3:8b` über Ollama mit 8192 Token Kontext (NUC, nur CPU); Bewertung siehe unten | entschieden |
 | Embedding-Modell (lokal) | `snowflake-arctic-embed2` über Ollama, Anfragen mit dem Präfix `query: `; Bewertung unter „Suche“ | entschieden |
 | Jobs | eigene Job-Tabelle über SQLAlchemy | entschieden |
@@ -127,7 +129,7 @@ Drei Speicher mit klarer Aufgabe: Datenbank für Metadaten, Objektspeicher für 
 - Zwei gleichwertige Adapter: S3 (erster Server: Garage) oder lokales Dateisystem.
 - Papiq nutzt keine Speicher-Events. Ereignisse entstehen ausschließlich in der Outbox; so bleibt der Adapter frei tauschbar (Garage und Dateisystem kennen keine Events).
 - Originale unveränderlich, Objekt-Key = SHA-256 des Inhalts; Dubletten werden darüber erkannt. Eine Datei, die derselbe Besitzer schon hat, wird abgelehnt; ein anderer Nutzer bekommt ein eigenes Dokument zum selben Objekt.
-- Daneben die Derivate: Archiv-PDF mit Textlayer, Docling-Ausgabe (Markdown/JSON), Vorschaubilder.
+- Daneben die Derivate: Archiv-PDF mit Textlayer, Docling-Ausgabe (Markdown/JSON), Seitenbilder und Vorschau, die Anfragen an das Sprachmodell; dazu die Modelle des Klassifikators (`classifier/model-<n>.npz`).
 
 **Suche (Meilisearch)**
 
@@ -143,10 +145,10 @@ Angelehnt an Paperless-ngx, ohne Speicherpfade, mit Schubladen als Ablage- und R
 | Begriff | Bedeutung | Regeln |
 | --- | --- | --- |
 | Dokument | Datei mit Metadaten | Besitzer, genau eine Schublade, höchstens ein Kontakt, höchstens ein Typ, Hash, Dokumentdatum |
-| Kontakt | Gegenseite des Dokuments (Paperless: Korrespondent) | höchstens einer pro Dokument (leer, bis die Klassifizierung oder eine Person einen setzt); global, ohne Besitzer |
-| Dokumenttyp | Art des Dokuments | global; bringt zugeordnete Felder mit |
+| Kontakt | Gegenseite des Dokuments (Paperless: Korrespondent) | höchstens einer pro Dokument (leer, bis das Urteil oder eine Person einen setzt); global, ohne Besitzer; Aliase und Kennungen (IBAN, USt-IdNr, Kundennummer, E-Mail-Domain) |
+| Dokumenttyp | Art des Dokuments | global; bringt zugeordnete Felder mit, je Pflicht oder optional; optional ein Titelmuster |
 | Tag | Klassifizierung | beliebig viele pro Dokument; global; trägt keine Rechte |
-| Feld | frei definierbares Feld (Paperless: Custom Field) | Geltungsbereich global oder je Dokumenttyp; fester Datentyp |
+| Feld | frei definierbares Feld (Paperless: Custom Field) | Geltungsbereich global oder je Dokumenttyp; fester Datentyp; Pflicht oder optional (je Typ, ein globales mit eigenem Schalter) |
 | Schublade | Ablage- und Rechte-Einheit | hat einen Besitzer; teilbar; jeder Nutzer hat eine private Standardschublade (nicht teilbar, nicht löschbar) |
 
 - Stammdaten (Kontakte, Typen, Tags, Felder) pflegen nur Admins. Ausnahme: Wählt eine Person in der Prüfansicht einen Kontakt für ein offenes Kontaktfeld, lernt der Kontakt den vom Modell gelesenen Namen als Alias, gleich welche Rolle sie hat (Tobi, 10.10.2026).
@@ -178,44 +180,86 @@ Native Logins sind der Standard; ein externer Identity Provider ist optional.
 
 ## Ingest-Workflow
 
-Stand 0.1. Das Zielbild der Neuauflage (Graph aus Knoten, mehrere Signale, Seitenbilder, Sichtbarkeit je Knoten in der UI) steht in `ingest-v2.md` mit Tobis Entscheidungen vom 12.10.2026; es ersetzt diesen Abschnitt, sobald es umgesetzt ist.
+Stand 0.2 (M14 Graph, M15 Verstehen; Zielbild und Entscheidungen in `ingest-v2.md`). Die Lesung mit Seitenbildern (M16) und die Eskalation (M18) fehlen noch.
 
-Jedes Dokument durchläuft feste Schritte, jeder Schritt ist einzeln wiederholbar, und das Ergebnis landet in einer von drei Lanes.
+Die Verarbeitung ist ein Graph aus Knoten; jeder Knoten ist ein Job mit Wiederholung, Knoten ohne gegenseitige Abhängigkeit laufen parallel, und das Ergebnis landet in einer von drei Lanes.
+
+```
+receive ─┬─► pages ───────────────────────────────────────────────┐
+         └─► ocr ─► parse ─┬─► signal_llm ────────┐                 │
+                           ├─► signal_classifier ─┤                 │
+                           ├─► signal_neighbours ─┼─► judge ─► fields ─► apply_rules ─► file
+                           └─► signal_facts ──────┘
+```
 
 **Drei Ebenen**
 
-1. Technische Pipeline, fest im Code: Empfangen (Hash, Dublette, S3) → OCR → Parsen.
-2. Fachliche Verarbeitung, konfigurierbar: Klassifizieren → Felder je Dokumenttyp extrahieren → Regeln anwenden.
+1. Technische Pipeline, fest im Code: Empfangen (Hash, Dublette, Objektspeicher) → OCR und Seitenbilder → Parsen.
+2. Verstehen: vier Signale schlagen vor, das Urteil entscheidet Kontakt, Typ, Tags und Datum, der Felder-Knoten liest die Felder des entschiedenen Typs und den Titel, dann die Regeln.
 3. Mensch im Ablauf: Posteingang für alles, was nicht grün ist.
 
-**Zustandsautomat**
+**Zustand und Protokoll**
 
-- Jedes Dokument hat einen Status, jeder Schritt ist ein Job mit Retry.
-- Jeder Schritt liefert *ok*, *unsicher (mit Grund)* oder *fehlgeschlagen*.
-- Protokoll pro Schritt: Eingabe, Ergebnis, Konfidenz, Grund, Modell- und Pipeline-Version, Dauer.
-- In der UI: „Schritt wiederholen“ und „ab Schritt X neu verarbeiten“ (z. B. nach Modellwechsel).
+- Jeder Knoten hat einen Zustand (wartet, läuft, fertig, übersprungen) und ein Ergebnis: *ok*, *unsicher (mit Grund)* oder *fehlgeschlagen*.
+- Protokoll je Knoten: Eingabe, Ergebnis, Konfidenz, Grund, Modell- und Pipeline-Version, Dauer; die Signale schreiben ihre Vorschläge, Urteil und Felder je Feld eine Prüfung mit gereihten Kandidaten und ihren Quellen.
+- In der UI: der Graph live mit Zustand und Dauer, jedes Zwischenergebnis, sobald es vorliegt; „ab Knoten X neu“ setzt X und alle Nachfolger zurück.
 
 **Lanes**
 
 | Lane | Bedeutung | Auslöser |
 | --- | --- | --- |
-| Grün | sauber durchgelaufen | alle Schritte ok, alle Prüfungen bestanden |
-| Gelb | Mensch muss bestätigen | geringe Konfidenz oder neue Gegebenheit |
-| Rot | Mensch muss eingreifen | technischer Fehler nach allen Retries, oder nichts erkannt |
+| Grün | sauber durchgelaufen | alle Knoten ok, alle Prüfungen bestanden |
+| Gelb | Mensch muss bestätigen | ein Wert nicht sicher genug, Widerspruch zwischen Signalen, neue Gegebenheit |
+| Rot | Mensch muss eingreifen | technischer Fehler nach allen Wiederholungen, oder das Modell antwortete und nichts wurde erkannt |
 
-Die Lane eines Dokuments ist das schlechteste Ergebnis aller Schritte. Solange die Pipeline läuft, hat ein Dokument keine Lane; andere Nutzer sehen es erst, wenn es grün ist. Gelbe und rote Dokumente bleiben im Posteingang des Besitzers, bis sie gelöst sind.
+Die Lane eines Dokuments ist das schlechteste Ergebnis aller Knoten. Solange die Verarbeitung läuft, hat ein Dokument keine Lane; andere Nutzer sehen es erst, wenn es grün ist. Gelbe und rote Dokumente bleiben im Posteingang des Besitzers, bis sie gelöst sind.
 
-**Konfidenz aus prüfbaren Fakten statt LLM-Selbsteinschätzung**
+**Signale**
 
-- Kontakt: Abgleich gegen bestehende Kontakte, ihre Namen und Aliase; kein Treffer → neuer Kontakt → Gelb. Grün nur, wenn Name oder ein Alias des Kontakts im Text steht. Das Modell sieht eine Vorauswahl von höchstens 20 Kontakten (mit Aliasen), deren Namen der Text am stärksten zeigt (ganzer Name, sonst Anteil der Wörter), und nennt einen davon oder den Namen wie im Dokument.
-- Aliase (Tobi, 10.10.2026): weitere Namen eines Kontakts („Nord Krankenversicherung AG“ für „Nord Versicherungsgruppe“), über alle Kontakte eindeutig zusammen mit den Namen. Wählt die Person in der Prüfansicht einen bestehenden Kontakt (eingegeben oder Vorschlag angenommen), wird der gelesene Name dessen Alias, sofern er mit Name oder Alias des Kontakts ein Wort (ab drei Buchstaben) teilt oder so ähnlich ist wie ein Kontaktvorschlag (Empfängernamen sollen kein Alias werden); war er Alias eines anderen Kontakts, wandert er. Ein Alias darf nicht wie der Name oder Alias eines anderen Kontakts verglichen werden (Rechtsform und Satzzeichen zählen nicht). Aliase stehen auf einer Zeile (höchstens 100 je Kontakt, gelernte höchstens 100 Zeichen); die Listen im Prompt gelten wie der Text als Daten. Maschinelles Lernen wie in Paperless kommt mit der Ingest-Neuauflage (`ingest-v2.md`, Tobi 12.10.2026; die Festlegung vom 10.10.2026 dagegen ist zurückgenommen); keine Aliase für Tags; Paperless-Match-Regeln werden bei der Migration nicht übernommen.
-- Dokumenttyp: LLM wählt nur aus der bestehenden Liste; Vorschlag eines neuen Typs → Gelb. Je Typ kann eine Beschreibung (höchstens 300 Zeichen) sagen, was dazugehört; sie steht in der Nachricht vor dem Dokument, nicht im System-Prompt.
-- Felder, Datum, Betrag: Wert muss im Dokumenttext vorkommen und gültig sein; sonst Gelb. Ein Datumsfeld gleich dem Dokumentdatum ist nur ein Vorschlag (Gelb), weil Modelle das Dokumentdatum für fehlende Daten wie die Fälligkeit einsetzen.
-- Regelkonflikt (zwei Regeln, verschiedene Schubladen) → Gelb.
+Signale bestimmen die Lane nicht: Sie enden ok, auch wenn sie sich enthalten (der Grund steht in der Ausgabe); fehlschlagen kann nur `signal_llm`, nach zwei unpassenden Antworten.
+
+| Signal | Vorschlag |
+| --- | --- |
+| `signal_llm` | Ein Aufruf des Sprachmodells (Prompt `propose-1`): Absender und Empfänger, Typ, Tags, Datum, Titel, Sprache, dazu die Felder des gewählten Typs und die globalen, je mit Zitat. Der Absender wird Kontakt, der Empfänger nie. Ohne Modell enthält es sich. |
+| `signal_classifier` | Klassifikator aus TF-IDF (Wörter und Wortpaare, keine reinen Ziffern) und logistischer Regression je Ziel: Kontakt, Typ, je Tag. Ein Modell für alle Nutzer. Ohne trainiertes Modell enthält es sich. |
+| `signal_neighbours` | Die fünf ähnlichsten bestätigten Dokumente, die der Besitzer lesen darf (Vektor des ersten Abschnitts gegen den Suchindex); ihr Kontakt, Typ und ihre Tags aus der Datenbank, dazu was die bestätigten Dokumente überhaupt tragen. Ohne Embeddings oder Index enthält es sich. |
+| `signal_facts` | Harte Beweise im Text: Name oder Alias eines Kontakts ganz im Text, Kennungen von Kontakten, unbekannte IBANs und USt-IdNr als Hinweis. |
+
+Übernommene Dokumente (Migration) durchlaufen die Signale ohne Modellaufruf; das Urteil übernimmt die Metadaten aus Paperless.
+
+**Urteil (Grün-Regel, Tobi 13.10.2026)**
+
+Nicht hundertprozentig sicher heißt kein Grün. Ein Signal *nennt* einen Wert, wenn es sicher ist: das Modell, wenn sein Absender einem Kontakt (Name oder Alias, Rechtsform und Satzzeichen beiseite) zu mindestens 0,9 gleicht und kein anderer nahe kommt, bzw. einen Typ oder Tag aus der Liste; der Klassifikator mit seiner besten Klasse ab `PAPIQ_CLASSIFIER_THRESHOLD` (0,8); die Nachbarn mit mindestens zwei Stimmen und mehr als der Hälfte der gefundenen.
+
+- **Widerspruch** ist immer gelb, mit allen Kandidaten und ihren Quellen: ein Signal nennt einen anderen Wert (auch einen, den es nicht hätte nennen können), der Empfänger des Modells ist der Kontakt, die Kennung eines anderen Kontakts steht im Text, oder der Absender des Modells ist kein Kontakt und hat mit dem Kandidaten nichts zu tun.
+- **Kontakt** grün ohne Widerspruch, wenn ein harter Beweis (Kennung, Name oder Alias im Text) vorliegt und ein Signal ihn nennt, oder wenn der Absender des Modells ihm zu mindestens 0,75 gleicht und Klassifikator oder Nachbarn ihn nennen. Eine Kennung allein ergibt einen gelben, gereihten Vorschlag; ein Name im Text schlägt allein nichts vor (Kontoauszüge nennen Zahlungsempfänger, Lohnnachweise den Angestellten).
+- **Typ** grün ohne Widerspruch, wenn zwei Signale ihn nennen, oder wenn nur das Modell ihn nennt und kein anderes Signal ihn abdeckt (Kaltstart je Wert). Ein Signal deckt einen Wert ab, wenn es ihn hätte nennen können: der Klassifikator, wenn er auf ihn trainiert ist; die Nachbarn, wenn sie welche fanden und ein bestätigtes Dokument den Wert trägt.
+- **Tags** machen nie gelb: gesetzt, wenn zwei Signale sie nennen oder nur das Modell und kein anderes Signal sie abdeckt; sonst ein Vorschlag.
+- **Datum**: Der Wert muss im Text stehen und plausibel sein.
+- Ohne den Vorschlag des Modells ist das Urteil unsicher (eine Person klassifiziert); rot nur, wenn das Modell antwortete und kein Signal etwas erkannte.
+
+**Felder (`fields`)**
+
+- Gelesen werden die Felder des entschiedenen Typs und die globalen. Hat das Modell nach dem Typ gefragt, den das Urteil entschied, werden seine Werte übernommen; sonst (nach einer Korrektur des Typs) fragt der Knoten das Modell nach den fehlenden (Prompt `extract-2`).
+- Ein Feld ist je Zuordnung zu einem Typ Pflicht oder optional, ein globales mit eigenem Schalter; nach der Übernahme ist alles optional (Tobi, 13.10.2026). Pflicht: der Wert muss gefunden und geprüft sein, sonst gelb. Optional: ohne Wert bleibt das Feld leer; ein Wert, der die Prüfung nicht besteht, macht gelb.
+- Werte werden gelesen, wie Menschen sie schreiben (`2.111,68 €`, `12. März 2026`, `ja`); eine mehrdeutige Zahl so, wie der Text sie zeigt, sonst nach der Sprache des Dokuments. Der Wert muss im Text stehen; ein Datumsfeld gleich dem Dokumentdatum ist nur ein Vorschlag, weil Modelle das Dokumentdatum für fehlende Daten wie die Fälligkeit einsetzen.
+- **Titel**: das Titelmuster des Typs (`{contact}`, `{document_type}`, `{document_date}` und `{document_date:YYYY-MM}`, `{filename}`, `{field:Name}`), sonst der Titel des Modells, solange das Dokument noch den Dateinamen oder den Titel der Maschine trägt; fehlt ein Wert des Musters, der des Modells mit Hinweis. Beim Bestätigen wird das Muster mit den entschiedenen Werten neu gerendert. Regeln setzen den Titel weiter und ersetzen den der Maschine ohne Gelb.
+
+**Kontakte: Aliase und Kennungen**
+
+- Aliase (Tobi, 10.10.2026): weitere Namen eines Kontakts („Nord Krankenversicherung AG“ für „Nord Versicherungsgruppe“), über alle Kontakte eindeutig zusammen mit den Namen. Wählt die Person in der Prüfansicht einen bestehenden Kontakt, wird der gelesene Name dessen Alias, sofern er mit Name oder Alias ein Wort (ab drei Buchstaben) teilt oder so ähnlich ist wie ein Kontaktvorschlag; war er Alias eines anderen Kontakts, wandert er. Ein automatisch grüner Kontakt lernt keinen Alias. Aliase stehen auf einer Zeile (höchstens 100 je Kontakt, gelernte höchstens 100 Zeichen); die Listen im Prompt gelten wie der Text als Daten. Keine Aliase für Tags; Paperless-Match-Regeln werden nicht übernommen.
+- Kennungen (IBAN mit Prüfziffer, USt-IdNr, Kundennummer hinter einer Beschriftung, E-Mail-Domain ohne Freemail), eindeutig über alle Kontakte. Admins pflegen sie von Hand; das Training lernt weitere: eine Kennung, die in mindestens zwei bestätigten Dokumenten steht, alle eines Kontakts (die eigene IBAN steht bei vielen und wird nie gelernt). Eine verworfene gelernte Kennung bleibt gesperrt; eine gelernte kann von Hand übernommen werden.
+- Das Modell sieht eine Vorauswahl von höchstens 20 Kontakten, deren Namen der Text am stärksten zeigt.
+
+**Training und Rückkopplung**
+
+- Trainingsbeispiele sind Dokumente, deren Metadaten eine Person gesetzt oder bestätigt hat (`confirmed_at`: Bestätigen im Posteingang, Änderung von Kontakt, Typ, Tags, Datum oder Feldern, die Übernahme); automatisch grüne trainieren nicht. Ändert die Verarbeitung Kontakt, Typ oder Tags, gilt das Dokument nicht mehr als bestätigt.
+- Ein wiederkehrender Job prüft alle zehn Minuten, ob genug neue Bestätigungen da sind (`PAPIQ_CLASSIFIER_RETRAIN_AFTER`, erstes Modell ab `PAPIQ_CLASSIFIER_MIN_EXAMPLES`), und reiht das Training ein; `train` und `POST /classifier/train` stoßen es sofort an. Das Modell liegt als `npz` ohne Pickle im Objektspeicher (die letzten drei bleiben), die Vorhersage rechnet mit numpy allein.
+- Jede Korrektur hält fest, was eine Person wirklich geändert hat (`corrected`); daraus das Rückkopplungsmaß je Feld, der Anteil automatisch gesetzter Werte, die später korrigiert wurden. Es steht im Bewertungsbericht; Anzeige im Betrieb und Kalibrierung der Schwellen kommen mit M18.
 
 **Bewertung des lokalen Modells (07.10.2026):** `qwen3:8b` mit 8192 Kontext auf dem NUC, 5 Dokumente des Bewertungssatzes: kein falsches Grün, keine Änderung ohne bestandene Prüfung, Kontakt, Typ, Datum und Beträge richtig, Anweisungen im Text ohne Wirkung. Zweimal grün mit falscher Fälligkeit (Dokumentdatum eingesetzt), daraufhin die Regel oben. Laufzeit 3 bis 10 Minuten pro Dokument (Median 190 s); empfohlen ist daher `PAPIQ_LLM_TIMEOUT=600`.
 
-LangGraph wird nicht eingesetzt: Die Verzweigung je Dokumenttyp ist deterministisch, Regeln müssen in der UI änderbar sein. Der Klassifizierungsschritt bleibt austauschbar, falls er später agentisch werden soll.
+LangGraph wird nicht eingesetzt: Der Graph ist fest, die Verzweigung je Dokumenttyp deterministisch, Regeln müssen in der UI änderbar sein. Das Signal des Sprachmodells bleibt austauschbar, falls es später agentisch werden soll.
 
 ## Suche
 

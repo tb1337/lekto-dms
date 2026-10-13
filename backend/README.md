@@ -154,7 +154,8 @@ small objects; files of any size go through `upload`/`download`, which work on l
 
 A document goes through a graph of nodes (`core/domain/pipeline.py`, `GRAPH`; `GET /pipeline`
 lists it), each node a job (`pipeline.node`): receive → OCR and pages side by side; OCR → parse →
-classify → extract fields → apply rules → file; filing waits for the pages too. Nodes that do not
+the four signals side by side → judge → fields → apply rules → file; filing waits for the pages
+too. Nodes that do not
 need each other run as soon as their needs are met, so two workers may process one document at
 once. `processing.nodes` of a document holds the state of every node of the current run
 (`waiting`, `running`, `done` with its outcome, `skipped`) with start and end; the events
@@ -169,8 +170,9 @@ jobs of the old run are recognised as stale.
 | OCR (`OcrNode`) | `originals/<sha256>` | `documents/<id>/archive.pdf` (PDF/A with text layer) | uncertain if the archive is not PDF/A, with the reason; OK with a note if the original's digital signature is not in the archive |
 | Pages (`PagesNode`) | `originals/<sha256>` | `documents/<id>/pages/<n>.webp` (every page, 1200 px wide; an image narrower than that keeps its size, each frame of a TIFF is a page), `documents/<id>/preview.webp` (first page, 400 px wide); sets `page_count` | failed if the file cannot be read |
 | Parse (`ParseNode`) | the archive PDF | `documents/<id>/content.md`, `documents/<id>/content.json` (Docling) | failed if no text was recognised; uncertain if the text is the plain text layer because the layout analysis found none |
-| Classify (`ClassifyNode`) | `content.md`, master data | contact, document type, tags, document date (applied if checked) | see below |
-| Extract fields (`ExtractFieldsNode`) | `content.md`, the fields of the type | field values (applied if checked) | see below |
+| Signals (`signal_llm`, `signal_classifier`, `signal_neighbours`, `signal_facts`) | `content.md`, master data, the classifier's model, the search index | proposals in the log | OK, also when abstaining (`abstained` names why); only `signal_llm` fails, after two unfit answers |
+| Judge (`JudgeNode`) | the signals' entries in the log, `content.md` | contact, document type, tags, document date (applied if green) | see Understanding |
+| Fields (`FieldsNode`) | `content.md`, the fields of the type and the global ones | field values and the title (applied if checked) | see Understanding |
 | Apply rules (`ApplyRulesNode`) | `content.md` (only if a rule looks at the text), the rules | drawer, contact, type, title, tags, fields | uncertain on conflicts, refused actions and forced reviews; see Rules |
 | File (`FileNode`) | the drawer | - | uncertain if the owner may no longer file into the drawer (field `drawer`) |
 
@@ -211,13 +213,14 @@ jobs of the old run are recognised as stale.
   `uv run docling-tools models download layout tableformer -o <dir>`.
 - Previews: PDFium (pypdfium2) renders, Pillow encodes WebP. PDFium is not thread-safe; all
   its use in a process shares one lock.
-- Quotes on the page: classification and field extraction look up every quote of the model in
+- Quotes on the page: the judge and the fields node look up every quote of the model in
   the text layer of the archive (`TextLocator`, PDFium): case, spacing, line breaks, hyphens at
   line ends and the marks of Markdown do not matter. Each field check keeps up to five places
   (page and one box per line, fractions of the page as shown, its rotation applied) and whether
   the quote shows the value itself or only leads to it (`quote_shows_value`); `/review`
   returns both. Documents processed before this have none until they are processed again.
-- What the model nodes send is kept beside the document, one file per node with every run
+- What the model nodes (`signal_llm`, `fields`) send is kept beside the document, one file per
+  node with every run
   (`documents/{id}/exchanges/<node>.json`: system and user message, the raw answer and the
   endpoint's whole usage report); owner and admins read it through
   `GET /documents/{id}/exchanges/{node}`. The files go with the document's other derivatives.
@@ -234,41 +237,79 @@ jobs of the old run are recognised as stale.
   the drawer's rights changed meanwhile), the object stays without a document. Removing such
   objects is left to a later cleanup of the object store.
 
-## Classification
+## Understanding
 
-Two requests per document to an OpenAI-compatible chat completions endpoint
-(`adapters/outbound/openai_compat`, `PAPIQ_LLM_*`): one for contact, document type, tags and
-document date, one for the fields of the document type. The answer must follow a JSON schema
-(`response_format` `json_schema`, or `json_object` for providers without schema support); an
-answer that does not fit is asked for once more, then the step fails (red). Without a
-configured model both steps end uncertain (yellow): the owner fills in the fields.
+Four signals propose, the judge decides contact, document type, tags and document date, the
+fields node reads the fields of the decided type and the title (`core/services/classification`,
+the rules in `core/domain/verdict.py`).
 
-The model only chooses and proposes; the core checks every field against facts, and only what
-passes is applied (the same way as a change by the owner):
+- **`signal_llm`**: one request to an OpenAI-compatible chat completions endpoint
+  (`adapters/outbound/openai_compat`, `PAPIQ_LLM_*`, prompt `propose-1`) for sender and recipient,
+  type, tags, date, a title, the language, and the values of the fields of the type it chooses
+  and of the global ones, each with the quoted passage. The answer must follow a JSON schema
+  (`response_format` `json_schema`, or `json_object` for providers without schema support); an
+  answer that does not fit is asked for once more, then the signal fails (red). Without a
+  configured model it abstains, and the owner classifies.
+- **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
+  (contact, type, each tag), trained on the confirmed documents (`PAPIQ_CLASSIFIER`, see
+  Classifier). It abstains without a trained model.
+- **`signal_neighbours`**: the `PAPIQ_NEIGHBOURS` most similar confirmed documents the owner may
+  read, by the vector of the start of the text against the search index; their contact, type
+  and tags come from the database. It abstains without embeddings or index.
+- **`signal_facts`**: names and aliases of contacts standing whole in the text, identifiers of
+  contacts (IBAN, VAT ID, customer number, mail domain), unknown IBANs and VAT IDs.
+
+A signal *names* a value it is sure of: the model, a contact whose name or alias its sender
+matches at least `PAPIQ_CONFIDENCE_THRESHOLD` (legal forms and punctuation aside) with no other
+close, or a type or tag of the lists; the classifier, its best class from
+`PAPIQ_CLASSIFIER_THRESHOLD` on; the neighbours, a value at least two and more than half of them
+carry. A signal naming another value contradicts: always yellow, with every candidate and its
+sources. The judge's rule:
+
+| Field | Green (no contradiction) | Otherwise |
+| --- | --- | --- |
+| Contact | hard evidence (its identifier, or its name or alias in the text) and a signal names it; or the model's sender matches it from `PAPIQ_CONTACT_SUGGEST_THRESHOLD` on and the classifier or the neighbours name it. Never the model's recipient | yellow with ranked candidates; an identifier alone is a suggestion; an unknown sender a new contact (an admin creates it) |
+| Document type | two signals name it, or only the model and no other signal covers it (the classifier was not trained on it, no confirmed document carries it) | yellow; a type outside the list is proposed as new |
+| Tags | set as a type is green | a suggestion; tags never make a document yellow |
+| Document date | a valid date that appears in the text (`31.03.2026`, `31.3.26`, `2026-03-31`, `31. März 2026`, `March 31, 2026`, ...) | suggested |
+
+Without the model's proposal the judge is uncertain; it fails (red) only if the model answered
+and no signal recognised anything.
+
+The fields node reads the fields of the decided type and the global ones. If the model asked
+for the type the judge decided, its values are taken over; otherwise (after a type correction,
+or for a document from before the signals) it asks the model for the missing ones (prompt
+`extract-2`). Each field is required or optional per type it is assigned to, a global one by its
+own switch:
 
 | Field | Check | Not passed |
 | --- | --- | --- |
-| Contact | Contacts are not sent; the proposed name is matched against all contacts (legal forms and punctuation ignored). Accepted if similar enough (`PAPIQ_CONFIDENCE_THRESHOLD`), named in the text and not ambiguous | an existing contact is suggested from `PAPIQ_CONTACT_SUGGEST_THRESHOLD` on, otherwise a new contact (only an admin can create it) |
-| Document type | One of the existing types | new type suggested |
-| Tags | Only existing tags are applied; proposed new tags are only logged | - |
-| Document date, date fields | A valid date that appears in the text (`31.03.2026`, `31.3.26`, `2026-03-31`, `31. März 2026`, `March 31, 2026`, ...); a date field must differ from the document date | the date is suggested |
-| Amounts, numbers | The number appears in the text (German or English notation); the currency is shown as code, sign or word | |
-| Text, link, choice, yes/no | The value, or the quoted passage, appears in the text | |
-| Fields of the type | A missing value makes the document yellow (global fields may be missing) | |
+| Required field | its value is found and passes | yellow |
+| Optional field | no value is fine (left empty); a value given must pass | yellow |
+| Amounts, numbers | read as written (`2.111,68 €`, `1,234.56`, `-12,50`; an ambiguous one as the text shows it, else in the document's language) and found in the text; the currency shown as code, sign or word | |
+| Dates | as the document date; a date field must differ from the document date | the date is suggested |
+| Text, link, choice, yes/no | the value, or the quoted passage, appears in the text (`ja`/`nein` read as yes or no) | |
 
-The quoted passage must appear in the text as well. Every check and the raw answer are in the
-processing log (`fields`, `answer`), so the proposal stays traceable after a correction; the
-rules read them with `core.services.inbox.field_checks`.
+The quoted passage must appear in the text as well. The title comes from the type's title
+pattern (`{contact}`, `{document_type}`, `{document_date}`, `{document_date:YYYY-MM}` with
+`YYYY YY MM DD`, `{filename}`, `{field:Name}`), else from the model, while the document still
+has its file name or the title the machine gave it; a pattern missing a value falls back to the
+model's title. Confirming in the inbox renders the pattern again with the decided values; a
+rule replaces the machine's title without making the document yellow. Every check with its
+candidates and the raw answer is in the processing log (`fields`, `answer`), so a proposal stays
+traceable after a correction; the rules read them with `core.services.inbox.field_checks`.
 
 The document text is sent between markers derived from its hash, and the model is told to treat
 it as data. It can only answer with the fixed schema: there is no field for drawers, owners,
 shares or actions, and additional fields make the answer unfit. Long documents are shortened to
 `PAPIQ_LLM_INPUT_BUDGET` characters (beginning and end kept, the middle left out); with many
-tags, at most `PAPIQ_LLM_MAX_TAGS` are listed, those named in the text first.
+tags, at most `PAPIQ_LLM_MAX_TAGS` are listed, those named in the text first; of the contacts,
+the 20 the text names most (with their aliases).
 
-**Privacy.** The shortened document text and the names of document types, tags and fields
-go to the endpoint in `PAPIQ_LLM_BASE_URL`; the file, contacts and users do not. Every log entry
-of the two steps names the endpoint host and the model. At start, a warning names every
+**Privacy.** The shortened document text, the names of document types, tags and fields, and the
+names of the contacts the text names go to the endpoint in `PAPIQ_LLM_BASE_URL`; the file, other
+contacts and users do not. Every log entry of the two model nodes names the endpoint host and
+the model. At start, a warning names every
 configured model endpoint outside the local network (not loopback, private, link-local or a
 local name), because document content leaves the system there.
 
@@ -277,8 +318,26 @@ context size over this API and cuts longer prompts silently (often at 4,096 toke
 with `OLLAMA_CONTEXT_LENGTH=8192` or more. Local models on a CPU are slow:
 `PAPIQ_LLM_TIMEOUT` is per request, and the job lease allows twice that (one repeated request).
 
+**Classifier.** One model for all users (`core/services/classifier.py`,
+`adapters/outbound/sklearn`). Training examples are the documents whose metadata a person set or
+confirmed (`confirmed_at`: confirming in the inbox, changing contact, type, tags, date or fields,
+taking a document over); green documents do not train. A recurring job (`classifier.check`,
+every ten minutes) queues the training (`classifier.train`) once `PAPIQ_CLASSIFIER_MIN_EXAMPLES`
+documents are confirmed and no model exists, or `PAPIQ_CLASSIFIER_RETRAIN_AFTER` were confirmed
+since the last one; `python -m papiq.composition train` and `POST /classifier/train` train at
+once. Training also learns identifiers of contacts: one that stands in at least two confirmed
+documents, all of one contact (the household's own IBAN stands on letters of many and is never
+learned); a learned identifier an admin rejected stays rejected. The model is stored as `npz`
+without pickle (`classifier/model-<n>.npz`, the latest three are kept) and predicted with numpy
+alone, so a new scikit-learn version cannot break it. `GET /classifier` tells its state.
+
+**After the update to 0.2.** The search index gets the attribute `confirmed` the neighbours
+filter on: run `python -m papiq.composition reindex` (or `POST /search/reindex`) once; until
+then the neighbours find nothing and abstain. Documents taken over before count as confirmed;
+the first training starts by itself once the worker runs.
+
 **Evaluation.** `python -m papiq.composition evaluate [--fake]` runs the synthetic documents in
-`evaluation/` through both steps and writes a report; see [evaluation/README.md](evaluation/README.md).
+`evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).
 
 ## Rules
 
@@ -477,7 +536,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /pipeline` | The graph: every node and what it needs, in graph order |
 | `GET /inbox` | The caller's yellow and red documents, newest first, with their open nodes and fields; `limit`, `cursor` |
 | `GET /documents/{id}/review` | What the model proposed and how each field was checked (owner or admin) |
-| `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `drawer_id`), then continue from `resume_at` (`apply_rules`, or `extract_fields` after a type change) up to filing (owner or admin); undecided fields: `422` with `open_fields` |
+| `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `drawer_id`), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (owner or admin); undecided fields: `422` with `open_fields` |
 | `GET/POST /rules`, `GET/PUT/PATCH/DELETE /rules/{id}`, `GET /rules/{id}/versions`, `/versions/{number}` | Rules: list (`scope`, `include_disabled`, `all_users` for admins), create, change (new version), enable or disable, delete; see Rules |
 | `POST /rules/{id}/apply/preview`, `POST /rules/{id}/apply`, `GET /rule-applications/{id}` | Apply a rule to existing documents: preview, start (`202`), progress |
 | `GET /events` | Server-sent events of the documents the caller may read; `?document_id=` |

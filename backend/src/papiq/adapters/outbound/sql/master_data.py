@@ -9,6 +9,7 @@ from sqlalchemy import Row, delete
 from papiq.adapters.outbound.sql import tables as t
 from papiq.adapters.outbound.sql.repositories import SqlRepository, Values
 from papiq.core.domain.fields import FieldDefinition, FieldType
+from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId
 from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag
 from papiq.core.domain.validation import name_key
@@ -34,13 +35,19 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
     table = t.contacts
 
     async def _entities(self, rows: Sequence[Row[Any]]) -> list[Contact]:
-        aliases = await self._children(t.contact_aliases, "contact_id", (row.id for row in rows))
+        ids = [row.id for row in rows]
+        aliases = await self._children(t.contact_aliases, "contact_id", ids)
+        identifiers = await self._children(t.contact_identifiers, "contact_id", ids)
         return [
             Contact(
                 id=ContactId(row.id),
                 name=row.name,
                 aliases=[
                     alias.name for alias in sorted(aliases[row.id], key=lambda item: item.position)
+                ],
+                identifiers=[
+                    Identifier(IdentifierKind(item.kind), item.value, IdentifierSource(item.source))
+                    for item in identifiers[row.id]
                 ],
                 created_at=row.created_at,
                 version=row.version,
@@ -61,10 +68,25 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
                 for position, alias in enumerate(entity.aliases)
             ],
         )
+        await self._insert_many(
+            t.contact_identifiers,
+            [
+                {
+                    "contact_id": entity.id,
+                    "kind": item.kind.value,
+                    "value": item.value,
+                    "source": item.source.value,
+                }
+                for item in entity.identifiers
+            ],
+        )
 
     async def _delete_children(self, ids: list[ContactId]) -> None:
         await self._tx.write(
             delete(t.contact_aliases).where(t.contact_aliases.c.contact_id.in_(ids))
+        )
+        await self._tx.write(
+            delete(t.contact_identifiers).where(t.contact_identifiers.c.contact_id.in_(ids))
         )
 
 

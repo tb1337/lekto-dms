@@ -12645,6 +12645,15 @@
                 "ACME Energy Services GmbH"
               ]
             ]
+          },
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/IdentifierIn"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Identifiers",
+            "description": "Values the contact's documents carry: IBAN, VAT number, customer (or contract) number, the domain of its e-mail and web addresses. Unique across contacts; found in a document, they are evidence for the contact. The identifiers entered by hand: a learned one given here becomes one entered by hand."
           }
         },
         "additionalProperties": false,
@@ -12692,6 +12701,14 @@
                 "ACME Strom"
               ]
             ]
+          },
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/IdentifierOut"
+            },
+            "type": "array",
+            "title": "Identifiers",
+            "description": "Entered, learned and rejected identifiers, in this order."
           }
         },
         "type": "object",
@@ -12699,7 +12716,8 @@
           "id",
           "name",
           "created_at",
-          "aliases"
+          "aliases",
+          "identifiers"
         ],
         "title": "ContactOut"
       },
@@ -12746,12 +12764,44 @@
               }
             ],
             "title": "Aliases"
+          },
+          "identifiers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/IdentifierIn"
+                },
+                "type": "array",
+                "maxItems": 100,
+                "description": "Values the contact's documents carry: IBAN, VAT number, customer (or contract) number, the domain of its e-mail and web addresses. Unique across contacts; found in a document, they are evidence for the contact. The identifiers entered by hand: a learned one given here becomes one entered by hand."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identifiers"
+          },
+          "rejected_identifiers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/IdentifierIn"
+                },
+                "type": "array",
+                "maxItems": 100,
+                "description": "The rejected identifiers: a learned one given here no longer counts, and training does not learn it again; one left out may be learned again."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected Identifiers"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "ContactPatch",
-        "description": "Fields left out stay; `aliases` replaces all aliases.",
+        "description": "Fields left out stay; `aliases` replaces all aliases, `identifiers` those entered by\nhand and `rejected_identifiers` the rejected ones. A value another contact learned or\nrejected moves here; one another contact entered by hand is a conflict (409).",
         "examples": [
           {
             "aliases": [
@@ -14230,6 +14280,74 @@
           "checks"
         ],
         "title": "Health"
+      },
+      "IdentifierIn": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Value",
+            "examples": [
+              "DE89 3704 0044 0532 0130 00"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "value"
+        ],
+        "title": "IdentifierIn",
+        "description": "Written as in documents; papiq stores it normalised (an IBAN without spaces, a domain\nwithout `www.`)."
+      },
+      "IdentifierKind": {
+        "type": "string",
+        "enum": [
+          "iban",
+          "vat_id",
+          "customer_number",
+          "email_domain"
+        ],
+        "title": "IdentifierKind"
+      },
+      "IdentifierOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "examples": [
+              "DE89370400440532013000"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/IdentifierSource",
+            "description": "`manual`: entered by an admin; `learned`: found by training in confirmed documents of only this contact; `rejected`: learned, then rejected by an admin (does not count, and training does not learn it again)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "source"
+        ],
+        "title": "IdentifierOut"
+      },
+      "IdentifierSource": {
+        "type": "string",
+        "enum": [
+          "manual",
+          "learned",
+          "rejected"
+        ],
+        "title": "IdentifierSource"
       },
       "InboxItemOut": {
         "properties": {

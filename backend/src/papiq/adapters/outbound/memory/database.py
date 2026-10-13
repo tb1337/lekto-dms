@@ -44,7 +44,11 @@ def _name_keys(item: MasterData) -> Iterable[Hashable]:
 
 
 def _contact_keys(contact: Contact) -> Iterable[Hashable]:
-    return [*_name_keys(contact), *(("alias", name_key(alias)) for alias in contact.aliases)]
+    return [
+        *_name_keys(contact),
+        *(("alias", name_key(alias)) for alias in contact.aliases),
+        *(("identifier", *item.key) for item in contact.identifiers),
+    ]
 
 
 def _field_keys(item: FieldDefinition) -> Iterable[Hashable]:

@@ -122,6 +122,23 @@ contact_aliases = Table(
     Column("position", Integer, nullable=False),
 )
 
+# Values a contact's documents carry (IBAN, VAT number, ...); kind and value are unique across
+# contacts. `source`: entered by hand, learned by training, or learned and rejected.
+contact_identifiers = Table(
+    "contact_identifiers",
+    metadata,
+    Column(
+        "contact_id",
+        Uuid,
+        ForeignKey("contacts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    ),
+    Column("kind", Text, primary_key=True),
+    Column("value", Text, primary_key=True),
+    Column("source", Text, nullable=False),
+)
+
 field_definitions = Table(
     "field_definitions",
     metadata,

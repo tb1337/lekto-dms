@@ -1,10 +1,11 @@
-from collections.abc import Awaitable, Callable, Collection, Iterator
+from collections.abc import Awaitable, Callable, Collection, Iterator, Mapping
 from datetime import datetime
 from typing import Any
 
 from papiq.core.domain.documents import UNSET, Unset
 from papiq.core.domain.errors import ConflictError, PermissionDeniedError
 from papiq.core.domain.fields import FieldDefinition, FieldType
+from papiq.core.domain.identifiers import Identifier, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId, UserId
 from papiq.core.domain.master_data import (
     MAX_ALIASES,
@@ -26,6 +27,8 @@ from papiq.core.services.indexing import REFRESH_JOB
 from papiq.core.services.rules.references import disable_rules, misfits, refers_to
 
 type Repo[E] = Callable[[UnitOfWork], NamedRepository[Any, E]]
+
+MANUAL = IdentifierSource.MANUAL
 
 
 def _contacts(uow: UnitOfWork) -> NamedRepository[ContactId, Contact]:
@@ -57,12 +60,15 @@ class MasterDataService:
         self._index_renames = index_renames
 
     async def create_contact(
-        self, actor: UserId, name: str, aliases: Collection[str] = ()
+        self,
+        actor: UserId,
+        name: str,
+        aliases: Collection[str] = (),
+        identifiers: Collection[Identifier] = (),
     ) -> Contact:
-        item = Contact.create(name=name, now=self._now(), aliases=aliases)
-        return await self._create(
-            actor, _contacts, item, lambda uow: _check_contact_names(uow, item)
-        )
+        """`identifiers`: entered by hand (see `change_contact`)."""
+        item = Contact.create(name=name, now=self._now(), aliases=aliases, identifiers=identifiers)
+        return await self._create(actor, _contacts, item, lambda uow: _check_contact(uow, item))
 
     async def rename_contact(self, actor: UserId, id: ContactId, name: str) -> Contact:
         return await self.change_contact(actor, id, name=name)
@@ -74,21 +80,32 @@ class MasterDataService:
         *,
         name: str | None = None,
         aliases: Collection[str] | None = None,
+        identifiers: Collection[Identifier] | None = None,
+        rejected_identifiers: Collection[Identifier] | None = None,
     ) -> Contact:
-        """`None` leaves the name or the aliases as they are; `aliases` replaces all of them."""
+        """`None` leaves a part as it is. `aliases` replaces all of them; `identifiers`
+        replaces those entered by hand (a learned one given is then entered by hand) and
+        `rejected_identifiers` the rejected ones (a learned one given no longer counts and is
+        not learned again). A value entered here that another contact learned or rejected
+        moves here; one another contact has entered is a conflict."""
 
         def change(item: Contact) -> None:
             if name is not None:
                 item.rename(name)
             if aliases is not None:
                 item.set_aliases(aliases)
+            if identifiers is not None or rejected_identifiers is not None:
+                entered = identifiers
+                if entered is None:
+                    entered = [entry for entry in item.identifiers if entry.source is MANUAL]
+                item.set_identifiers(entered, rejected_identifiers)
 
         return await self._change(
             actor,
             _contacts,
             id,
             change,
-            check=lambda uow, item: _check_contact_names(uow, item),
+            check=lambda uow, item: _check_contact(uow, item),
             index_as="contact" if name is not None else None,
         )
 
@@ -376,6 +393,64 @@ async def _check_name_free[E: MasterData](repository: NamedRepository[Any, E], i
     # Every kind of master data has an `id`; the base class leaves its type to the kinds.
     if existing is not None and getattr(existing, "id") != getattr(item, "id"):  # noqa: B009
         raise ConflictError(f"'{item.name}' already exists")
+
+
+async def _check_contact(uow: UnitOfWork, contact: Contact) -> None:
+    await _check_contact_names(uow, contact)
+    await _check_contact_identifiers(uow, contact)
+
+
+async def _check_contact_identifiers(uow: UnitOfWork, contact: Contact) -> None:
+    """No identifier of the contact is one another contact entered by hand. Another contact's
+    learned or rejected one gives way, in `uow`: a person's choice is the newer word."""
+    mine = {item.key for item in contact.identifiers}
+    for other in await uow.contacts.list_all():
+        if other.id == contact.id:
+            continue
+        changed = False
+        for theirs in [item for item in other.identifiers if item.key in mine]:
+            if theirs.source is MANUAL:
+                raise ConflictError(
+                    f"'{theirs.value}' is already an identifier of the contact '{other.name}'"
+                )
+            changed |= other.drop_identifier(theirs.key)
+        if changed:
+            await uow.contacts.update(other)
+
+
+async def replace_learned_identifiers(
+    uow: UnitOfWork, learned: Mapping[ContactId, Collection[Identifier]]
+) -> int:
+    """Make `learned` the learned identifiers of all contacts (training found them), in `uow`
+    without committing; a contact not in `learned` has none afterwards. Values entered or
+    rejected anywhere stay where they are. Returns how many are learned."""
+    contacts = await uow.contacts.list_all()
+    taken = {
+        item.key
+        for contact in contacts
+        for item in contact.identifiers
+        if item.source is not IdentifierSource.LEARNED
+    }
+    fresh = {
+        contact.id: [item for item in learned.get(contact.id, ()) if item.key not in taken]
+        for contact in contacts
+    }
+    # First every contact gives up what it no longer holds, then takes what is new: a value
+    # may move from one contact to another, and it is unique across contacts.
+    for contact in contacts:
+        keep = {item.key for item in fresh[contact.id]}
+        held = [item for item in contact.identifiers if item.source is IdentifierSource.LEARNED]
+        if any(item.key not in keep for item in held):
+            contact.set_learned([item for item in held if item.key in keep])
+            await uow.contacts.update(contact)
+    count = 0
+    for contact in contacts:
+        before = list(contact.identifiers)
+        contact.set_learned(fresh[contact.id])
+        count += sum(item.source is IdentifierSource.LEARNED for item in contact.identifiers)
+        if contact.identifiers != before:
+            await uow.contacts.update(contact)
+    return count
 
 
 async def _check_contact_names(uow: UnitOfWork, contact: Contact) -> None:

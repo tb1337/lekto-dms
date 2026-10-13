@@ -1737,6 +1737,11 @@ export interface components {
 			 *     ]
 			 */
 			aliases?: string[];
+			/**
+			 * Identifiers
+			 * @description Values the contact's documents carry: IBAN, VAT number, customer (or contract) number, the domain of its e-mail and web addresses. Unique across contacts; found in a document, they are evidence for the contact. The identifiers entered by hand: a learned one given here becomes one entered by hand.
+			 */
+			identifiers?: components['schemas']['IdentifierIn'][];
 		};
 		/** ContactOut */
 		ContactOut: {
@@ -1762,10 +1767,17 @@ export interface components {
 			 *     ]
 			 */
 			aliases: string[];
+			/**
+			 * Identifiers
+			 * @description Entered, learned and rejected identifiers, in this order.
+			 */
+			identifiers: components['schemas']['IdentifierOut'][];
 		};
 		/**
 		 * ContactPatch
-		 * @description Fields left out stay; `aliases` replaces all aliases.
+		 * @description Fields left out stay; `aliases` replaces all aliases, `identifiers` those entered by
+		 *     hand and `rejected_identifiers` the rejected ones. A value another contact learned or
+		 *     rejected moves here; one another contact entered by hand is a conflict (409).
 		 * @example {
 		 *       "aliases": [
 		 *         "ACME Strom"
@@ -1777,6 +1789,10 @@ export interface components {
 			name?: string | null;
 			/** Aliases */
 			aliases?: string[] | null;
+			/** Identifiers */
+			identifiers?: components['schemas']['IdentifierIn'][] | null;
+			/** Rejected Identifiers */
+			rejected_identifiers?: components['schemas']['IdentifierIn'][] | null;
 		};
 		/** DeliveryOut */
 		DeliveryOut: {
@@ -2486,6 +2502,40 @@ export interface components {
 				[key: string]: 'ok' | 'failed';
 			};
 		};
+		/**
+		 * IdentifierIn
+		 * @description Written as in documents; papiq stores it normalised (an IBAN without spaces, a domain
+		 *     without `www.`).
+		 */
+		IdentifierIn: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @example DE89 3704 0044 0532 0130 00
+			 */
+			value: string;
+		};
+		/**
+		 * IdentifierKind
+		 * @enum {string}
+		 */
+		IdentifierKind: 'iban' | 'vat_id' | 'customer_number' | 'email_domain';
+		/** IdentifierOut */
+		IdentifierOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @example DE89370400440532013000
+			 */
+			value: string;
+			/** @description `manual`: entered by an admin; `learned`: found by training in confirmed documents of only this contact; `rejected`: learned, then rejected by an admin (does not count, and training does not learn it again). */
+			source: components['schemas']['IdentifierSource'];
+		};
+		/**
+		 * IdentifierSource
+		 * @enum {string}
+		 */
+		IdentifierSource: 'manual' | 'learned' | 'rejected';
 		/** InboxItemOut */
 		InboxItemOut: {
 			document: components['schemas']['DocumentDetails'];

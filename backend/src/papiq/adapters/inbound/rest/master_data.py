@@ -25,6 +25,7 @@ from papiq.adapters.inbound.rest.schemas.master_data import (
     MasterDataOut,
 )
 from papiq.core.domain.documents import UNSET, Unset
+from papiq.core.domain.identifiers import Identifier, IdentifierKind
 from papiq.core.domain.ids import DocumentTypeId, FieldId
 from papiq.core.domain.master_data import MasterData
 
@@ -43,10 +44,11 @@ def _simple(
     patch_in: type[BaseModel],
     *,
     change: str = "rename",
+    arguments: Callable[[dict[str, Any]], dict[str, Any]] = lambda given: given,
 ) -> APIRouter:
     """List, create, read, change (`change`: the service's verb) and delete one kind of named
-    master data. The bodies' fields are the service's keyword arguments; a patch passes only
-    the fields given."""
+    master data. The bodies' fields are the service's keyword arguments (as `arguments` turns
+    them); a patch passes only the fields given."""
     router = APIRouter(prefix=f"/{path}", tags=["master data"], dependencies=PROTECTED)
 
     def service(context: ApiContext, action: str) -> Operation:
@@ -79,7 +81,8 @@ def _simple(
         user: CurrentUser,
         context: Context,
     ) -> MasterDataOut:
-        return out.of(await service(context, "create")(user, **cast(BaseModel, body).model_dump()))
+        given = arguments(cast(BaseModel, body).model_dump())
+        return out.of(await service(context, "create")(user, **given))
 
     @router.get(
         "/{id}",
@@ -105,7 +108,8 @@ def _simple(
         user: CurrentUser,
         context: Context,
     ) -> MasterDataOut:
-        given = {field: getattr(body, field) for field in cast(BaseModel, body).model_fields_set}
+        model = cast(BaseModel, body)
+        given = arguments(model.model_dump(include=model.model_fields_set))
         return out.of(await service(context, change)(user, id, **given))
 
     @router.delete(
@@ -122,9 +126,19 @@ def _simple(
     return router
 
 
+def _contact_arguments(given: dict[str, Any]) -> dict[str, Any]:
+    """Identifiers as written, normalised (ValidationError, 422, if one is none)."""
+    for key in ("identifiers", "rejected_identifiers"):
+        if given.get(key) is not None:
+            given[key] = [
+                Identifier.parse(IdentifierKind(item["kind"]), item["value"]) for item in given[key]
+            ]
+    return given
+
+
 contacts = _simple(
     "contacts", "contact", "contacts", "contact", ContactOut, ContactCreate, ContactPatch,
-    change="change",
+    change="change", arguments=_contact_arguments,
 )  # fmt: skip
 document_types = _simple(
     "document-types",

@@ -306,6 +306,30 @@ async def test_field_definitions_change(api: Api) -> None:
 # --- M4-04: request sizes ----------------------------------------------------------
 
 
+async def test_contact_identifiers(api: Api) -> None:
+    a = auth(await api.admin())
+    iban = {"kind": "iban", "value": "de89 3704 0044 0532 0130 00"}
+    contact = await post(api, "/contacts", {"name": "Stadtwerke", "identifiers": [iban]}, a)
+    assert contact["identifiers"] == [
+        {"kind": "iban", "value": "DE89370400440532013000", "source": "manual"}
+    ]
+    path = f"{PREFIX}/contacts/{contact['id']}"
+    domain = {"kind": "email_domain", "value": "www.stadtwerke.example"}
+    response = await api.client.patch(path, json={"rejected_identifiers": [domain]}, headers=a)
+    assert [item["source"] for item in response.json()["identifiers"]] == ["manual", "rejected"]
+    other = await post(api, "/contacts", {"name": "Bank"}, a)
+    response = await api.client.patch(
+        f"{PREFIX}/contacts/{other['id']}", json={"identifiers": [iban]}, headers=a
+    )
+    assert response.status_code == 409
+    for bad in (
+        {"identifiers": [{"kind": "iban", "value": "DE00 1234"}]},
+        {"identifiers": [{"kind": "phone", "value": "0621 1234"}]},
+        {"identifiers": [{"kind": "email_domain", "value": "gmail.com"}]},
+    ):
+        assert (await api.client.patch(path, json=bad, headers=a)).status_code == 422
+
+
 async def test_contact_aliases_and_type_descriptions(api: Api) -> None:
     a = auth(await api.admin())
     contact = await post(api, "/contacts", {"name": "Nord", "aliases": ["Nord KV"]}, a)

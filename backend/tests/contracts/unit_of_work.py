@@ -8,6 +8,7 @@ from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.drawers import Drawer, ShareLevel
 from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url
+from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import DocumentId, DrawerId, new_id
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.permissions import can_read_document
@@ -386,6 +387,55 @@ class UnitOfWorkContract:
         async with uow_factory() as uow:
             # The aliases went with the contact: they are free again.
             await uow.contacts.add(Contact.create(name="New", now=NOW, aliases=["Nord Allgemeine"]))
+            await uow.commit()
+
+    async def test_contact_identifiers(self, uow_factory: UnitOfWorkFactory) -> None:
+        """Identifiers keep their source, change with the contact and go with it; kind and
+        value are unique across contacts, also when rejected."""
+        iban = Identifier.parse(IdentifierKind.IBAN, "DE89 3704 0044 0532 0130 00")
+        domain = Identifier.parse(IdentifierKind.EMAIL_DOMAIN, "stadtwerke.example")
+        contact = Contact.create(name="Stadtwerke", now=NOW, identifiers=[iban])
+        contact.set_learned([domain])
+        async with uow_factory() as uow:
+            await uow.contacts.add(contact)
+            await uow.commit()
+        async with uow_factory() as uow:
+            stored = await uow.contacts.get(contact.id)
+            assert stored == contact
+            assert [item.source for item in stored.identifiers] == [
+                IdentifierSource.MANUAL,
+                IdentifierSource.LEARNED,
+            ]
+            stored.set_identifiers([iban], rejected=[domain])
+            await uow.contacts.update(stored)
+            await uow.commit()
+        async with uow_factory() as uow:
+            stored = await uow.contacts.get(contact.id)
+            assert stored.identifiers[1] == Identifier(
+                IdentifierKind.EMAIL_DOMAIN, "stadtwerke.example", IdentifierSource.REJECTED
+            )
+            with pytest.raises(ConflictError):
+                await uow.contacts.add(Contact.create(name="Other", now=NOW, identifiers=[domain]))
+                await uow.commit()
+        other = Contact.create(name="Other", now=NOW)
+        async with uow_factory() as uow:
+            await uow.contacts.add(other)
+            await uow.commit()
+        async with uow_factory() as uow:
+            # A value moves to another contact in one transaction, given up first.
+            source, target = await uow.contacts.get(contact.id), await uow.contacts.get(other.id)
+            source.set_identifiers([])
+            target.set_identifiers([iban])
+            await uow.contacts.update(source)
+            await uow.contacts.update(target)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.contacts.get(other.id)).identifiers == [iban]
+            await uow.contacts.remove(contact.id)
+            await uow.contacts.remove(other.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            await uow.contacts.add(Contact.create(name="New", now=NOW, identifiers=[iban, domain]))
             await uow.commit()
 
     async def test_field_definition_round_trip(self, uow_factory: UnitOfWorkFactory) -> None:

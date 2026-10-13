@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from papiq.adapters.inbound.rest.schemas.common import Name, NameIn
 from papiq.core.domain.fields import FieldDefinition, FieldType
+from papiq.core.domain.identifiers import MAX_IDENTIFIERS, IdentifierKind, IdentifierSource
 from papiq.core.domain.master_data import (
     MAX_ALIASES,
     MAX_DESCRIPTION,
@@ -41,6 +42,49 @@ Aliases = Annotated[
 ]
 
 
+class IdentifierIn(BaseModel):
+    """Written as in documents; papiq stores it normalised (an IBAN without spaces, a domain
+    without `www.`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: IdentifierKind
+    value: str = Field(min_length=1, max_length=100, examples=["DE89 3704 0044 0532 0130 00"])
+
+
+class IdentifierOut(BaseModel):
+    kind: IdentifierKind
+    value: str = Field(examples=["DE89370400440532013000"])
+    source: IdentifierSource = Field(
+        description="`manual`: entered by an admin; `learned`: found by training in "
+        "confirmed documents of only this contact; `rejected`: learned, then rejected by an "
+        "admin (does not count, and training does not learn it again)."
+    )
+
+
+Identifiers = Annotated[
+    list[IdentifierIn],
+    Field(
+        max_length=MAX_IDENTIFIERS,
+        description=(
+            "Values the contact's documents carry: IBAN, VAT number, customer (or contract) "
+            "number, the domain of its e-mail and web addresses. Unique across contacts; found "
+            "in a document, they are evidence for the contact. The identifiers entered by "
+            "hand: a learned one given here becomes one entered by hand."
+        ),
+    ),
+]
+
+Rejected = Annotated[
+    list[IdentifierIn],
+    Field(
+        max_length=MAX_IDENTIFIERS,
+        description="The rejected identifiers: a learned one given here no longer counts, and "
+        "training does not learn it again; one left out may be learned again.",
+    ),
+]
+
+
 Description = Annotated[
     str,
     Field(
@@ -58,10 +102,13 @@ class ContactCreate(NameIn):
     )
 
     aliases: Aliases = Field(default_factory=list)
+    identifiers: Identifiers = Field(default_factory=list)
 
 
 class ContactPatch(BaseModel):
-    """Fields left out stay; `aliases` replaces all aliases."""
+    """Fields left out stay; `aliases` replaces all aliases, `identifiers` those entered by
+    hand and `rejected_identifiers` the rejected ones. A value another contact learned or
+    rejected moves here; one another contact entered by hand is a conflict (409)."""
 
     model_config = ConfigDict(
         extra="forbid", json_schema_extra={"examples": [{"aliases": ["ACME Strom"]}]}
@@ -69,15 +116,29 @@ class ContactPatch(BaseModel):
 
     name: Name | None = None
     aliases: Aliases | None = None
+    identifiers: Identifiers | None = None
+    rejected_identifiers: Rejected | None = None
 
 
 class ContactOut(MasterDataOut):
     aliases: list[str] = Field(examples=[["ACME Strom"]])
+    identifiers: list[IdentifierOut] = Field(
+        description="Entered, learned and rejected identifiers, in this order."
+    )
 
     @classmethod
     def of(cls, item: MasterData) -> "ContactOut":
         assert isinstance(item, Contact)
-        return cls(id=item.id, name=item.name, aliases=item.aliases, created_at=item.created_at)
+        return cls(
+            id=item.id,
+            name=item.name,
+            aliases=item.aliases,
+            identifiers=[
+                IdentifierOut(kind=entry.kind, value=entry.value, source=entry.source)
+                for entry in item.identifiers
+            ],
+            created_at=item.created_at,
+        )
 
 
 class DocumentTypeCreate(NameIn):

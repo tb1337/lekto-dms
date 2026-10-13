@@ -97,6 +97,14 @@ class DocumentChanges:
     fields: Mapping[FieldId, object] = field(default_factory=dict)
 
 
+CONFIRMING = frozenset({"contact_id", "document_type_id", "tag_ids", "document_date", "fields"})
+"""Metadata a person confirms by changing it (as `Document.apply_changes` names it); a title
+or a drawer alone does not."""
+CLASSIFIER_LABELS = frozenset({"contact_id", "document_type_id", "tag_ids"})
+"""What the classifier learns from confirmed documents: the pipeline deriving them anew ends
+the confirmation."""
+
+
 @dataclass(kw_only=True)
 class Document:
     """A file with metadata.
@@ -124,6 +132,10 @@ class Document:
     lane: Lane | None = None
     processing: Processing
     page_count: int | None = None  # known once the pages node has rendered the page images
+    # When a person last set or confirmed its metadata (in the inbox, or by changing contact,
+    # type, tags, date or fields), or it was taken over with the source system's; None while
+    # its metadata is the pipeline's own. Confirmed documents train the classifier.
+    confirmed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     version: int = 1
@@ -284,7 +296,8 @@ class Document:
         nodes that are not run again count as OK from now on, processing runs again from
         `resume_at` (applying rules, or extracting fields after a type correction) up to filing.
         Nodes that never ran and are not needed to resume (the pages after a failed OCR) run
-        now. Returns the nodes whose results the owner overruled.
+        now. The metadata counts as confirmed. Returns the nodes whose results the owner
+        overruled.
 
         Only for documents in the inbox (yellow or red, not being processed, no node still
         running after a failure). Extracting fields needs a parsed text."""
@@ -325,6 +338,7 @@ class Document:
                 finished_at=state.finished_at or now,
             )
         self._reset({resume_at}, now)
+        self.confirmed_at = require_utc(now, "confirmed_at")
         return tuple(overruled)
 
     def set_page_count(self, count: int, now: datetime) -> None:
@@ -458,6 +472,15 @@ class Document:
             )
             self._touch(now)
         return tuple(changed)
+
+    def mark_confirmed(self, now: datetime) -> None:
+        """A person set or confirmed the metadata (or it was taken over)."""
+        self.confirmed_at = require_utc(now, "confirmed_at")
+        self._touch(now)
+
+    def drop_confirmation(self) -> None:
+        """The pipeline derived contact, type or tags anew: they are no longer a person's."""
+        self.confirmed_at = None
 
     def move_to(self, drawer_id: DrawerId, now: datetime) -> None:
         """File the document into another drawer. Permissions are checked by the caller."""

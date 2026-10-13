@@ -59,7 +59,7 @@ class ImportedClassifyNode(_ImportedStep):
             model_version=IMPORTED,
             output={IMPORTED: imported.to_json()},
         )
-        return MetadataResult(result, imported.classification(), imported.tag_ids)
+        return MetadataResult(result, imported.classification(), imported.tag_ids, confirms=True)
 
 
 class ImportedExtractNode(_ImportedStep):

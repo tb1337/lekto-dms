@@ -633,6 +633,26 @@ class UnitOfWorkContract:
             yellow_ids = {d.id for d in await uow.documents.query(yellow, limit=100)}
             assert yellow_ids == {d.id for d in documents if d.lane is Lane.YELLOW}
 
+    async def test_confirmed_documents(self, uow_factory: UnitOfWorkFactory) -> None:
+        """The time a person confirmed the metadata is kept; documents filter and count by it."""
+        owner, drawer = await owner_with_drawer(uow_factory)
+        early, late, never = (builders.processed(owner, drawer) for _ in range(3))
+        early.mark_confirmed(NOW)
+        late.mark_confirmed(NOW + timedelta(hours=1))
+        async with uow_factory() as uow:
+            for document in (early, late, never):
+                await uow.documents.add(document)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.documents.get(late.id)).confirmed_at == NOW + timedelta(hours=1)
+            assert (await uow.documents.get(never.id)).confirmed_at is None
+            confirmed = await uow.documents.query(DocumentFilter(confirmed=True), limit=9)
+            assert {document.id for document in confirmed} == {early.id, late.id}
+            open_ = await uow.documents.query(DocumentFilter(confirmed=False), limit=9)
+            assert [document.id for document in open_] == [never.id]
+            assert await uow.documents.count_confirmed() == 2
+            assert await uow.documents.count_confirmed(after=NOW) == 1
+
     async def test_query_filters_and_pages(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, drawer = await owner_with_drawer(uow_factory)
         other = builders.drawer(owner, "Other")

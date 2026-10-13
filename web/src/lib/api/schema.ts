@@ -1965,6 +1965,11 @@ export interface components {
 			 * @description Pages of the document, once its page images are rendered (`pages` node).
 			 */
 			page_count: number | null;
+			/**
+			 * Confirmed At
+			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, tags, date or fields), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
+			 */
+			confirmed_at: string | null;
 			processing: components['schemas']['Processing'];
 			/**
 			 * Created At
@@ -2087,6 +2092,11 @@ export interface components {
 			 * @description Pages of the document, once its page images are rendered (`pages` node).
 			 */
 			page_count: number | null;
+			/**
+			 * Confirmed At
+			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, tags, date or fields), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
+			 */
+			confirmed_at: string | null;
 			processing: components['schemas']['Processing'];
 			/**
 			 * Created At

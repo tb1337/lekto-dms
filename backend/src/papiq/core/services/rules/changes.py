@@ -40,6 +40,7 @@ from papiq.core.services.rules.running import (
     active_rules,
     apply_plan,
     checked_rules,
+    corrected_fields,
     drawer_choice,
     field_patterns,
     person_record,
@@ -105,7 +106,10 @@ class ChangeRules:
         evaluated."""
         changed = changed_fields(changes)
         record = person_record(
-            changed=changed, tags_before=before.tag_ids, tags_after=document.tag_ids
+            changed=changed,
+            tags_before=before.tag_ids,
+            tags_after=document.tag_ids,
+            corrected=corrected_fields(before, document),
         )
         input: dict[str, JsonValue] = {
             "trigger": Trigger.CHANGE.value,

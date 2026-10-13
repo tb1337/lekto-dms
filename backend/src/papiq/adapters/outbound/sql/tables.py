@@ -199,6 +199,8 @@ documents = Table(
     Column("processing_nodes", json_type(), nullable=False, server_default="{}"),
     # Set once the pages node rendered the page images.
     Column("page_count", Integer, nullable=True),
+    # When a person last set or confirmed the metadata (see `Document.confirmed_at`).
+    Column("confirmed_at", UtcDateTime, nullable=True, index=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("updated_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),

@@ -13083,6 +13083,19 @@
             "title": "Page Count",
             "description": "Pages of the document, once its page images are rendered (`pages` node)."
           },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At",
+            "description": "When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, tags, date or fields), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier."
+          },
           "processing": {
             "$ref": "#/components/schemas/Processing"
           },
@@ -13130,6 +13143,7 @@
           "fields",
           "lane",
           "page_count",
+          "confirmed_at",
           "processing",
           "created_at",
           "updated_at"
@@ -13319,6 +13333,19 @@
             "title": "Page Count",
             "description": "Pages of the document, once its page images are rendered (`pages` node)."
           },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At",
+            "description": "When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, tags, date or fields), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier."
+          },
           "processing": {
             "$ref": "#/components/schemas/Processing"
           },
@@ -13351,6 +13378,7 @@
           "fields",
           "lane",
           "page_count",
+          "confirmed_at",
           "processing",
           "created_at",
           "updated_at"

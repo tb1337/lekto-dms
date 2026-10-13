@@ -15,6 +15,7 @@ from uuid import UUID
 
 from papiq.core.domain.classification import (
     CONTACT,
+    DOCUMENT_DATE,
     DOCUMENT_TYPE,
     TAGS,
     field_key,
@@ -49,6 +50,7 @@ from papiq.core.domain.pipeline import (
 from papiq.core.domain.rule_engine import (
     DRAWER,
     TEXT_TARGET,
+    TITLE,
     DrawerTarget,
     Facts,
     Mode,
@@ -270,16 +272,38 @@ def person_record(
     changed: Iterable[str],
     tags_before: Collection[TagId],
     tags_after: Collection[TagId],
+    corrected: Iterable[str] = (),
 ) -> dict[str, JsonValue]:
-    """What a person changed, for a log entry `provenance` reads: the fields, and the tags they
-    added and removed."""
+    """What a person changed, for a log entry `provenance` reads: the fields they set, the
+    tags they added and removed, and (`corrected`) the fields whose values they really
+    altered, for the share of automatic values corrected later."""
     added = sorted(str(tag) for tag in set(tags_after) - set(tags_before))
     removed = sorted(str(tag) for tag in set(tags_before) - set(tags_after))
     return {
         "changed": list[JsonValue](sorted(changed)),
         "tags_added": list[JsonValue](added),
         "tags_removed": list[JsonValue](removed),
+        "corrected": list[JsonValue](sorted(corrected)),
     }
+
+
+def corrected_fields(before: Document, after: Document) -> frozenset[str]:
+    """The values that differ between two states of a document, named as in field checks."""
+    names = {
+        name
+        for name, attribute in (
+            (TITLE, "title"),
+            (CONTACT, "contact_id"),
+            (DOCUMENT_TYPE, "document_type_id"),
+            (TAGS, "tag_ids"),
+            (DOCUMENT_DATE, "document_date"),
+        )
+        if getattr(before, attribute) != getattr(after, attribute)
+    }
+    for field_id in set(before.fields) | set(after.fields):
+        if before.fields.get(field_id) != after.fields.get(field_id):
+            names.add(field_key(field_id))
+    return frozenset(names)
 
 
 def drawer_choice(

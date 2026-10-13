@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import ColumnElement, Row, and_, delete, insert, or_, select
+from sqlalchemy import ColumnElement, Row, and_, delete, func, insert, or_, select
 
 from papiq.adapters.outbound.sql import tables as t
 from papiq.adapters.outbound.sql.drawers import visible_to
@@ -111,6 +111,9 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             criteria.append(
                 documents.c.id.in_(select(tags.c.document_id).where(tags.c.tag_id == tag))
             )
+        if filter.confirmed is not None:
+            confirmed = documents.c.confirmed_at
+            criteria.append(confirmed.is_not(None) if filter.confirmed else confirmed.is_(None))
         if filter.lanes is not None:
             values = [lane.value for lane in filter.lanes if lane is not None]
             lane_criteria = [documents.c.lane.in_(values)]
@@ -123,6 +126,13 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             )
         ).all()
         return await self._entities(rows)
+
+    async def count_confirmed(self, *, after: datetime | None = None) -> int:
+        confirmed = t.documents.c.confirmed_at
+        statement = select(func.count()).select_from(t.documents).where(confirmed.is_not(None))
+        if after is not None:
+            statement = statement.where(confirmed > after)
+        return int((await self._tx.read(statement)).scalar_one())
 
     async def exists(
         self,
@@ -185,6 +195,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
                 channel=Channel(row.channel),
                 lane=None if row.lane is None else Lane(row.lane),
                 page_count=row.page_count,
+                confirmed_at=row.confirmed_at,
                 processing=Processing(
                     status=ProcessingStatus(row.processing_status),
                     run=row.processing_run,
@@ -216,6 +227,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             "channel": entity.channel.value,
             "lane": None if entity.lane is None else entity.lane.value,
             "page_count": entity.page_count,
+            "confirmed_at": entity.confirmed_at,
             "processing_status": processing.status.value,
             "processing_run": processing.run,
             "processing_nodes": {

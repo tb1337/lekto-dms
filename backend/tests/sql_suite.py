@@ -637,6 +637,103 @@ class MigrationSuite:
             name: (current, outcomes) for name, (_, current, outcomes) in documents.items()
         }
 
+    async def test_the_confirmation_is_read_from_the_log(self, empty_database: Database) -> None:
+        """Revision 0014 takes the latest confirmation by a person (in the inbox, or a change
+        beyond the title) or the source system; a later model run at `classify` undoes it."""
+        await migrate(empty_database, "0013")
+        ids = {name: new_id() for name in ("user", "drawer", "inbox", "change", "title", "model")}
+        later = NOW + timedelta(minutes=5)
+        documents = sa.table(
+            "documents",
+            *(sa.column(c.name, c.type) for c in t.documents.c if c.name != "confirmed_at"),
+        )
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
+            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+        ]
+        for number, name in enumerate(("inbox", "change", "title", "model")):
+            values = {
+                "id": ids[name],
+                "owner_id": ids["user"],
+                "drawer_id": ids["drawer"],
+                "sha256": str(number) * 64,
+                "processing_nodes": {},
+            }
+            rows.append((documents, values))
+        log = {"input": {}, "output": {}, "started_at": NOW}
+        change = {"changed": ["contact"], "tags_added": [], "tags_removed": []}
+        rows += [
+            (t.processing_log, {**log, "document_id": ids["inbox"], "node": "classify"}),
+            (
+                t.processing_log,
+                {
+                    **log,
+                    "document_id": ids["inbox"],
+                    "node": "classify",
+                    "model_version": "person",
+                    "started_at": later,
+                },
+            ),
+            (
+                t.processing_log,
+                {
+                    **log,
+                    "document_id": ids["change"],
+                    "node": "apply_rules",
+                    "model_version": "rules:change",
+                    "input": change,
+                },
+            ),
+            (
+                t.processing_log,
+                {
+                    **log,
+                    "document_id": ids["title"],
+                    "node": "apply_rules",
+                    "model_version": "rules:change",
+                    "input": {**change, "changed": ["title"]},
+                },
+            ),
+            (
+                t.processing_log,
+                {
+                    **log,
+                    "document_id": ids["model"],
+                    "node": "classify",
+                    "model_version": "imported",
+                },
+            ),
+            (
+                t.processing_log,
+                {
+                    **log,
+                    "document_id": ids["model"],
+                    "node": "classify",
+                    "model_version": "qwen3:8b",
+                    "started_at": later,
+                },
+            ),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+
+        await migrate(empty_database)
+        async with empty_database.reading() as connection:
+            found = dict(
+                (
+                    await connection.execute(select(t.documents.c.id, t.documents.c.confirmed_at))
+                ).all()
+            )
+        assert found == {
+            ids["inbox"]: later,
+            ids["change"]: NOW,
+            ids["title"]: None,
+            ids["model"]: None,
+        }
+        await _downgrade(empty_database, "0013")
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -803,8 +900,8 @@ async def _document_rows(database: Database, *, old: bool = False) -> list[Any]:
 
 def _before_0010(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0010 had it: the current node and the outcomes instead
-    of the state of every node, and no page count (0011)."""
-    later = {"processing_nodes", "page_count"}
+    of the state of every node, and no page count (0011) or confirmation (0014)."""
+    later = {"processing_nodes", "page_count", "confirmed_at"}
     columns = [sa.column(c.name, c.type) for c in table.c if c.name not in later]
     if table.name == "documents":
         columns.append(sa.column("processing_node", sa.Text()))

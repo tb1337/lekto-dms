@@ -377,6 +377,7 @@ class IndexingService:
             fields=_field_texts(document),
             document_date=document.document_date,
             created_at=document.created_at,
+            confirmed=document.confirmed_at is not None,
             vectors=vectors,
             embedding=stamp,
         )

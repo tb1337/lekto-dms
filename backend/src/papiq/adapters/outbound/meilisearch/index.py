@@ -53,7 +53,15 @@ FETCH_PAGE = 1000
 _EXCERPT = 300  # characters of an error message from Meilisearch
 
 SEARCHABLE = ["title", "contact", "document_type", "tags", "fields", "filename", "text"]
-FILTERABLE = ["owner_id", "drawer_id", "lane", "contact_id", "document_type_id", "tag_ids"]
+FILTERABLE = [
+    "owner_id",
+    "drawer_id",
+    "lane",
+    "contact_id",
+    "document_type_id",
+    "tag_ids",
+    "confirmed",
+]
 SORTABLE = ["document_date", "created_at"]
 STATE_FIELDS = ["id", "version", "embedding_model", "embedding_digest"]
 MAX_TOTAL_HITS = 1000
@@ -317,6 +325,7 @@ class MeilisearchIndex:
             if document.document_date is None
             else int(datetime.combine(document.document_date, time(), UTC).timestamp()),
             "created_at": int(document.created_at.timestamp()),
+            "confirmed": document.confirmed,
         }
         if document.vectors is not None:
             payload["embedding_model"] = _stamp(document, "model")

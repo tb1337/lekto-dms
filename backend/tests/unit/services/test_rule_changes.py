@@ -72,6 +72,7 @@ async def test_a_change_rule_acts_when_it_starts_to_hold(world: World) -> None:
         "changed": ["contact", "title"],
         "tags_added": [],
         "tags_removed": [],
+        "corrected": ["contact", "title"],
         "rules": [{"id": str(rule.id), "version": 1}],
     }
 

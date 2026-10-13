@@ -1,7 +1,7 @@
 """The inbox: open fields, the review, and confirming."""
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -23,11 +23,12 @@ from papiq.core.domain.master_data import Contact
 from papiq.core.domain.pipeline import PERSON, Lane, Node, NodeResult, Outcome, ProcessingStatus
 from papiq.core.domain.users import User
 from papiq.core.services.inbox import OpenNode, decide, field_checks
-from papiq.core.services.pipeline import PipelineService
+from papiq.core.services.pipeline import MetadataResult, PipelineService
 from tests.builders import FAILED, NOW, document, incoming
 from tests.unit.services.conftest import Returns, World
 
 UNSURE = "not shown in the text"
+OK = NodeResult(outcome=Outcome.OK)
 DOCUMENT = document(UserId(UUID(int=1)), DrawerId(UUID(int=2)))
 
 
@@ -97,6 +98,52 @@ async def scene(world: World) -> Scene:
     await world.drain(pipeline)
     stored = await world.documents.get(owner.id, document.id)
     return Scene(owner, contact, amount, pipeline, stored)
+
+
+async def test_a_person_confirms_the_metadata(world: World) -> None:
+    """In the inbox, or by changing contact, type, tags, date or fields; a new title alone, or
+    the pipeline deriving the metadata, confirms nothing."""
+    s = await scene(world)
+    assert s.document.confirmed_at is None
+    await s.pipeline.confirm(
+        s.owner.id,
+        s.document.id,
+        DocumentChanges(document_date=date(2026, 3, 31)),
+        accept_suggestions=True,
+    )
+    await world.drain(s.pipeline)
+    confirmed = await world.documents.get(s.owner.id, s.document.id)
+    assert confirmed.confirmed_at == world.clock.now()
+    world.clock.advance(timedelta(hours=1))
+    await world.documents.change_metadata(s.owner.id, s.document.id, DocumentChanges(title="X"))
+    titled = await world.documents.get(s.owner.id, s.document.id)
+    assert titled.confirmed_at == confirmed.confirmed_at
+    await world.documents.change_metadata(
+        s.owner.id, s.document.id, DocumentChanges(document_date=date(2026, 4, 1))
+    )
+    assert (await world.documents.get(s.owner.id, s.document.id)).confirmed_at == (
+        world.clock.now()
+    )
+
+
+async def test_the_model_deriving_contact_type_or_tags_ends_the_confirmation(
+    world: World,
+) -> None:
+    s = await scene(world)
+    other = Contact.create(name="Andere", now=NOW)
+    async with world.uow() as uow:
+        await uow.contacts.add(other)
+        document = await uow.documents.get(s.document.id)
+        document.mark_confirmed(NOW)
+        same = MetadataResult(OK, DocumentChanges(document_date=date(2026, 3, 1)))
+        await same.apply(uow, document, NOW)
+        assert document.confirmed_at == NOW
+        changed = MetadataResult(OK, DocumentChanges(contact_id=other.id))
+        await changed.apply(uow, document, NOW)
+        assert document.confirmed_at is None
+        imported = MetadataResult(OK, DocumentChanges(contact_id=s.contact.id), confirms=True)
+        await imported.apply(uow, document, NOW)
+        assert document.confirmed_at == NOW
 
 
 async def test_an_uncertain_document_is_in_the_inbox(world: World) -> None:

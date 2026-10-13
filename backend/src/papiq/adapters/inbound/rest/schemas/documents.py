@@ -109,6 +109,7 @@ class DocumentDetails(BaseModel):
                     },
                     "lane": "green",
                     "page_count": 2,
+                    "confirmed_at": None,
                     "processing": {
                         "status": "completed",
                         "run": 1,
@@ -159,6 +160,14 @@ class DocumentDetails(BaseModel):
     page_count: int | None = Field(
         description="Pages of the document, once its page images are rendered (`pages` node)."
     )
+    confirmed_at: datetime | None = Field(
+        description=(
+            "When a person last set or confirmed the metadata (in the inbox, or by changing "
+            "contact, type, tags, date or fields), or it was taken over with the source "
+            "system's; null while it is the pipeline's own. Confirmed documents train the "
+            "classifier."
+        )
+    )
     processing: Processing
     created_at: datetime
     updated_at: datetime
@@ -183,6 +192,7 @@ class DocumentDetails(BaseModel):
             fields={key: field_json(value) for key, value in sorted(document.fields.items())},
             lane=document.lane,
             page_count=document.page_count,
+            confirmed_at=document.confirmed_at,
             processing=Processing(
                 status=state.status,
                 run=state.run,

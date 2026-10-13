@@ -62,6 +62,9 @@ class IndexDocument:
     fields: tuple[str, ...] = ()
     document_date: date | None = None
     created_at: datetime
+    # A person set or confirmed its metadata (`Document.confirmed_at`): it may vote as a
+    # neighbour of a new document.
+    confirmed: bool = False
     vectors: tuple[tuple[float, ...], ...] | None = field(default=(), repr=False)
     embedding: EmbeddingStamp | None = None
 

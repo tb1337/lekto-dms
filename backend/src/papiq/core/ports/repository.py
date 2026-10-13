@@ -106,13 +106,15 @@ class FieldDefinitionRepository(NamedRepository[FieldId, FieldDefinition], Proto
 @dataclass(frozen=True, kw_only=True)
 class DocumentFilter:
     """Criteria for listing documents; all given ones must match. `tags`: every one of them.
-    `lanes`: one of them, where None stands for documents still in processing."""
+    `lanes`: one of them, where None stands for documents still in processing. `confirmed`:
+    whether a person set or confirmed the metadata (`Document.confirmed_at`)."""
 
     contact: ContactId | None = None
     document_type: DocumentTypeId | None = None
     tags: frozenset[TagId] = frozenset()
     drawer: DrawerId | None = None
     lanes: frozenset[Lane | None] | None = None
+    confirmed: bool | None = None
 
 
 class DocumentRepository(Repository[DocumentId, Document], Protocol):
@@ -156,6 +158,11 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
 
     async def remove(self, id: DocumentId) -> None:
         """Delete the document and its processing log; NotFoundError if it does not exist."""
+        ...
+
+    async def count_confirmed(self, *, after: datetime | None = None) -> int:
+        """Documents a person set or confirmed the metadata of, after `after` if given (the
+        confirmations since the classifier was trained)."""
         ...
 
     async def exists(

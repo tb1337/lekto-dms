@@ -318,6 +318,12 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
     ) -> list[Document]:
         return _query([_copy(row) for row in self._all()], filter, before=before, limit=limit)
 
+    async def count_confirmed(self, *, after: datetime | None = None) -> int:
+        return sum(
+            row.confirmed_at is not None and (after is None or row.confirmed_at > after)
+            for row in self._all()
+        )
+
     async def exists(
         self,
         *,
@@ -515,5 +521,6 @@ def _query(
         and filter.tags <= document.tag_ids
         and (filter.drawer is None or document.drawer_id == filter.drawer)
         and (filter.lanes is None or document.lane in filter.lanes)
+        and (filter.confirmed is None or (document.confirmed_at is not None) is filter.confirmed)
     ]
     return sorted(matching, key=lambda document: document.id, reverse=True)[:limit]

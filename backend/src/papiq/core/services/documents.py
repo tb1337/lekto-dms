@@ -7,7 +7,7 @@ from enum import StrEnum
 from pathlib import Path, PurePath
 
 from papiq.core.domain import media_types
-from papiq.core.domain.documents import Document, DocumentChanges
+from papiq.core.domain.documents import CONFIRMING, Document, DocumentChanges
 from papiq.core.domain.drawers import Drawer, ShareLevel
 from papiq.core.domain.errors import (
     ConflictError,
@@ -356,7 +356,8 @@ class DocumentService:
             definitions = {item.id: item for item in await uow.fields.list_all()}
             now = self._clock.now()
             before = copy.deepcopy(document)
-            document.apply_changes(changes, definitions, now)
+            if CONFIRMING & set(document.apply_changes(changes, definitions, now)):
+                document.mark_confirmed(now)
             run = None
             if rules is not None:
                 run = await rules.after_change(

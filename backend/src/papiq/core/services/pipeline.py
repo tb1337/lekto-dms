@@ -11,7 +11,13 @@ from typing import Protocol
 from uuid import UUID
 
 from papiq.core.domain import media_types
-from papiq.core.domain.documents import Channel, Document, DocumentChanges, Sha256
+from papiq.core.domain.documents import (
+    CLASSIFIER_LABELS,
+    Channel,
+    Document,
+    DocumentChanges,
+    Sha256,
+)
 from papiq.core.domain.errors import (
     ConcurrencyError,
     ConflictError,
@@ -82,11 +88,16 @@ class MetadataResult:
     """A node result together with a change of the document's metadata (classification).
     Both are stored in the same transaction. If the change no longer fits (master data was
     removed meanwhile), nothing is changed and the node is uncertain. `add_tags` are added to
-    the tags the document has when the result is stored, so tags set meanwhile stay."""
+    the tags the document has when the result is stored, so tags set meanwhile stay.
+
+    `confirms`: metadata taken over from the source system, which counts as confirmed;
+    otherwise it is the pipeline's, and a document whose contact, type or tags it changes is
+    no longer confirmed."""
 
     result: NodeResult
     changes: DocumentChanges
     add_tags: frozenset[TagId] = frozenset()
+    confirms: bool = False
 
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
         changes = self.changes
@@ -95,10 +106,14 @@ class MetadataResult:
         try:
             await check_references(uow, changes)
             definitions = {item.id: item for item in await uow.fields.list_all()}
-            document.apply_changes(changes, definitions, now)
+            changed = document.apply_changes(changes, definitions, now)
         except (NotFoundError, ValidationError) as error:
             reason = f"the master data changed during the node; nothing was applied ({error})"
             return replace(self.result, outcome=Outcome.UNCERTAIN, reason=reason)
+        if self.confirms:
+            document.mark_confirmed(now)
+        elif CLASSIFIER_LABELS & set(changed):
+            document.drop_confirmation()
         return self.result
 
 

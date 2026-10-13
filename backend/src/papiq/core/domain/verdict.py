@@ -142,6 +142,7 @@ class _ContactView:
     quote: str | None
     matched: ContactId | None  # the contact the model's sender matches at least `suggest`
     match_score: float
+    ambiguous: bool  # another contact matches the sender about as well
     model_names: bool
     recipient: ContactId | None
     probabilities: Mapping[ContactId, float]
@@ -175,7 +176,8 @@ class _ContactView:
         if self.contradicted(id):
             return False
         backed = id in (self.classifier_names, self.neighbours_name)
-        return (self.hard(id) and id in self.proposers) or (self.matched == id and backed)
+        soft = self.matched == id and not self.ambiguous and backed
+        return (self.hard(id) and id in self.proposers) or soft
 
     def sources(self, id: ContactId) -> tuple[CandidateSource, ...]:
         sources = []
@@ -286,15 +288,13 @@ def _contact_view(
     model = signals.model
     sender = model.sender if model else None
     matched: ContactId | None = None
-    match_score, model_names = 0.0, False
+    match_score, model_names, ambiguous = 0.0, False, False
     if sender:
         match = best_match(sender, pairs)
         if match.best is not None and match.score >= thresholds.suggest:
             matched, match_score = match.best.id, match.score
-            model_names = (
-                match.score >= thresholds.accept
-                and match.runner_up < match.score - thresholds.ambiguity
-            )
+            ambiguous = match.runner_up >= match.score - thresholds.ambiguity
+            model_names = match.score >= thresholds.accept and not ambiguous
     recipient: ContactId | None = None
     if model and model.recipient:
         found = best_match(model.recipient, pairs)
@@ -325,6 +325,7 @@ def _contact_view(
         quote=model.sender_quote if model else None,
         matched=matched,
         match_score=match_score,
+        ambiguous=ambiguous,
         model_names=model_names,
         recipient=recipient,
         probabilities=dict(ranking),

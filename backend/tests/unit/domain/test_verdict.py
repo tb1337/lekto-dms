@@ -92,6 +92,22 @@ def test_a_contact_the_text_does_not_show_needs_a_second_signal() -> None:
     assert (check.outcome, check.value) == (Outcome.OK, str(BANK.id))
 
 
+def test_a_name_as_similar_to_two_contacts_needs_hard_evidence() -> None:
+    """ "Sparkasse" is as close to both savings banks: the classifier's choice alone does not
+    settle it, the name in the text does."""
+    north = Contact.create(name="Sparkasse Nord", now=NOW)
+    south = Contact.create(name="Sparkasse Süd", now=NOW)
+    banks = [north, south]
+    sure = ClassifierView(
+        contacts=[(north.id, 0.95)], known_contacts=frozenset({north.id, south.id})
+    )
+    signals = Signals(model=model(sender="Sparkasse"), classifier=sure)
+    check = judge_contact(signals, banks)
+    assert (check.outcome, check.suggestion) == (Outcome.UNCERTAIN, str(north.id))
+    named = replace(signals, facts=FactsView(named=frozenset({north.id})))
+    assert judge_contact(named, banks).outcome is Outcome.OK
+
+
 def test_similar_documents_back_a_contact_by_majority() -> None:
     three = neighbours((BANK.id, None), (BANK.id, None), (UTILITY.id, None))
     check = judge_contact(Signals(model=model(sender="Beispielbank"), neighbours=three), CONTACTS)

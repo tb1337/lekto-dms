@@ -46,6 +46,24 @@ class SearchQuery:
 
 
 @dataclass(frozen=True, kw_only=True)
+class SimilarQuery:
+    """The documents nearest to `vector` (by their nearest section): a new document's
+    neighbours. Rights and criteria as in `SearchQuery`; `exclude` is the document itself."""
+
+    vector: tuple[float, ...]
+    visibility: Visibility
+    filter: DocumentFilter = field(default_factory=DocumentFilter)
+    exclude: DocumentId | None = None
+    limit: int = 5
+
+    def __post_init__(self) -> None:
+        if not self.vector:
+            raise ValueError("the vector is empty")
+        if not 1 <= self.limit <= MAX_LIMIT:
+            raise ValueError(f"limit must be between 1 and {MAX_LIMIT}")
+
+
+@dataclass(frozen=True, kw_only=True)
 class SearchHit:
     id: DocumentId
     version: int
@@ -96,6 +114,12 @@ class SearchIndex(Protocol):
     async def search(self, query: SearchQuery) -> SearchResult:
         """Documents that match the text and the filter and that `query.visibility` allows,
         best first, from `offset` on, at most `limit`."""
+        ...
+
+    async def similar(self, query: SimilarQuery) -> list[SearchHit]:
+        """Documents with vectors that `query.visibility` allows and the filter matches,
+        nearest first, at most `limit`, without snippets. SearchIndexError if the index holds
+        no vectors (it has no embedder)."""
         ...
 
     async def begin_rebuild(self) -> IndexBuild:

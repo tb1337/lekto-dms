@@ -12,11 +12,13 @@ from dataclasses import replace
 from papiq.core.domain.errors import SearchIndexError
 from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.search import IndexDocument, IndexState, Segment
+from papiq.core.ports.repository import DocumentFilter
 from papiq.core.ports.search_index import (
     IndexBuild,
     SearchHit,
     SearchQuery,
     SearchResult,
+    SimilarQuery,
 )
 
 _WORD = re.compile(r"\w+")
@@ -55,7 +57,7 @@ class MemorySearchIndex:
         use_vector = query.vector is not None and query.semantic_ratio > 0
         scored: list[tuple[float, IndexDocument]] = []
         for document in self._documents.values():
-            if not query.visibility.allows(document) or not _matches_filter(document, query):
+            if not query.visibility.allows(document) or not _matches_filter(document, query.filter):
                 continue
             words = _word_score(document, terms)
             similarity = _similarity(document, query.vector) if use_vector else None
@@ -80,6 +82,23 @@ class MemorySearchIndex:
             for score, document in page
         ]
         return SearchResult(hits=hits, estimated_total=len(scored), semantic=use_vector)
+
+    async def similar(self, query: SimilarQuery) -> list[SearchHit]:
+        if self._dimensions is None:
+            raise SearchIndexError("the index has no embedder, so it takes no vectors")
+        scored = [
+            (similarity, document)
+            for document in self._documents.values()
+            if document.id != query.exclude
+            and query.visibility.allows(document)
+            and _matches_filter(document, query.filter)
+            and (similarity := _similarity(document, query.vector)) is not None
+        ]
+        scored.sort(key=lambda item: (-item[0], str(item[1].id)))
+        return [
+            SearchHit(id=document.id, version=document.version, score=score, snippet=())
+            for score, document in scored[: query.limit]
+        ]
 
     async def begin_rebuild(self) -> IndexBuild:
         return _MemoryBuild(self)
@@ -191,8 +210,7 @@ def _cosine(left: Sequence[float], right: Sequence[float]) -> float:
     return sum(a * b for a, b in zip(left, right, strict=True)) / norm
 
 
-def _matches_filter(document: IndexDocument, query: SearchQuery) -> bool:
-    criteria = query.filter
+def _matches_filter(document: IndexDocument, criteria: DocumentFilter) -> bool:
     if criteria.contact is not None and document.contact_id != criteria.contact:
         return False
     if criteria.document_type is not None and document.document_type_id != criteria.document_type:
@@ -200,6 +218,8 @@ def _matches_filter(document: IndexDocument, query: SearchQuery) -> bool:
     if not criteria.tags <= set(document.tag_ids):
         return False
     if criteria.drawer is not None and document.drawer_id != criteria.drawer:
+        return False
+    if criteria.confirmed is not None and document.confirmed is not criteria.confirmed:
         return False
     return criteria.lanes is None or document.lane in criteria.lanes
 

@@ -36,11 +36,13 @@ from papiq.core.domain.search import (
     Visibility,
     lane_value,
 )
+from papiq.core.ports.repository import DocumentFilter
 from papiq.core.ports.search_index import (
     IndexBuild,
     SearchHit,
     SearchQuery,
     SearchResult,
+    SimilarQuery,
 )
 
 log = logging.getLogger(__name__)
@@ -154,7 +156,7 @@ class MeilisearchIndex:
             "highlightPostTag": HIGHLIGHT_END,
             "showRankingScore": True,
         }
-        if (expression := filter_expression(query)) is not None:
+        if (expression := filter_expression(query.visibility, query.filter)) is not None:
             body["filter"] = expression
         semantic = query.vector is not None and query.semantic_ratio > 0
         if semantic:
@@ -180,6 +182,30 @@ class MeilisearchIndex:
         return SearchResult(
             hits=hits, estimated_total=max(total, query.offset + len(hits)), semantic=semantic
         )
+
+    async def similar(self, query: SimilarQuery) -> list[SearchHit]:
+        await self._ensure_ready()
+        if self._dimensions is None:
+            raise SearchIndexError("the index has no embedder, so it takes no vectors")
+        if query.filter.lanes is not None and not query.filter.lanes:
+            return []
+        # One more, in case the document itself is among them (`id` is not filterable).
+        body: dict[str, Any] = {
+            "q": "",
+            "vector": list(query.vector),
+            "hybrid": {"embedder": EMBEDDER, "semanticRatio": 1.0},
+            "limit": query.limit + 1,
+            "attributesToRetrieve": ["id", "version"],
+            "showRankingScore": True,
+        }
+        if (expression := filter_expression(query.visibility, query.filter)) is not None:
+            body["filter"] = expression
+        data = await self._request("POST", f"/indexes/{self._index}/search", json=body)
+        try:
+            hits = [_hit_of(item) for item in data["hits"]]
+        except (KeyError, TypeError, ValueError):
+            raise SearchIndexError("Meilisearch sent an unusable search result") from None
+        return [hit for hit in hits if hit.id != query.exclude][: query.limit]
 
     async def begin_rebuild(self) -> IndexBuild:
         await self._ensure_ready()
@@ -403,12 +429,12 @@ class _MeilisearchBuild:
         await self._index._delete_index(self._index._build_index)
 
 
-def filter_expression(query: SearchQuery) -> str | None:
-    """The Meilisearch filter for the rights of the user and the criteria of the query; None if
+def filter_expression(visibility: Visibility, criteria: DocumentFilter) -> str | None:
+    """The Meilisearch filter for the rights of the user and the criteria of a query; None if
     nothing is filtered (an admin's search over everything without criteria). Only ids and lane
-    names go in, both quoted."""
-    parts = [] if query.visibility.everything else [_visibility_filter(query.visibility)]
-    criteria = query.filter
+    names go in, both quoted. A document indexed before `confirmed` existed counts as not
+    confirmed."""
+    parts = [] if visibility.everything else [_visibility_filter(visibility)]
     if criteria.contact is not None:
         parts.append(f"contact_id = {_quote(criteria.contact)}")
     if criteria.document_type is not None:
@@ -419,6 +445,8 @@ def filter_expression(query: SearchQuery) -> str | None:
     if criteria.lanes:
         lanes = sorted(lane_value(lane) for lane in criteria.lanes)
         parts.append(f"lane IN [{', '.join(_quote(lane) for lane in lanes)}]")
+    if criteria.confirmed is not None:
+        parts.append("confirmed = true" if criteria.confirmed else "NOT confirmed = true")
     return " AND ".join(parts) or None
 
 

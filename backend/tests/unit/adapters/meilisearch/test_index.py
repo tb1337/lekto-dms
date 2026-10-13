@@ -516,7 +516,7 @@ def _query(**fields: Any) -> SearchQuery:
 
 
 def test_the_filter_for_a_user_without_drawers() -> None:
-    assert filter_expression(_query()) == f'(owner_id = "{uid(100)}")'
+    assert filter_expression(_query().visibility, _query().filter) == f'(owner_id = "{uid(100)}")'
 
 
 def test_the_filter_for_a_user_with_drawers_and_criteria() -> None:
@@ -532,7 +532,7 @@ def test_the_filter_for_a_user_with_drawers_and_criteria() -> None:
             lanes=frozenset({Lane.GREEN, None}),
         ),
     )
-    assert filter_expression(query) == (
+    assert filter_expression(query.visibility, query.filter) == (
         f'(owner_id = "{uid(100)}" OR (lane = "green" AND drawer_id IN '
         f'["{uid(1)}", "{uid(2)}"])) '
         f'AND contact_id = "{uid(3)}" AND document_type_id = "{uid(4)}" '
@@ -543,11 +543,20 @@ def test_the_filter_for_a_user_with_drawers_and_criteria() -> None:
 
 def test_the_filter_of_a_search_over_everything() -> None:
     everything = Visibility(UserId(uid(100)), frozenset(), everything=True)
-    assert filter_expression(SearchQuery(text="x", visibility=everything)) is None
+    assert filter_expression(everything, DocumentFilter()) is None
     query = SearchQuery(
         text="x", visibility=everything, filter=DocumentFilter(contact=ContactId(uid(3)))
     )
-    assert filter_expression(query) == f'contact_id = "{uid(3)}"'
+    assert filter_expression(query.visibility, query.filter) == f'contact_id = "{uid(3)}"'
+
+
+def test_the_filter_for_confirmed_documents() -> None:
+    """A document indexed before the attribute existed counts as not confirmed."""
+    everything = Visibility(UserId(uid(100)), frozenset(), everything=True)
+    assert filter_expression(everything, DocumentFilter(confirmed=True)) == "confirmed = true"
+    assert filter_expression(everything, DocumentFilter(confirmed=False)) == (
+        "NOT confirmed = true"
+    )
 
 
 def test_segments() -> None:

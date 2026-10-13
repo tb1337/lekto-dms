@@ -16,6 +16,7 @@ from papiq.core.domain.ids import (
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.search import EmbeddingStamp, IndexDocument, Visibility
 from papiq.core.ports import DocumentFilter, SearchIndex, SearchQuery
+from papiq.core.ports.search_index import SimilarQuery
 from tests.builders import index_document
 
 DIMENSIONS = 3
@@ -391,6 +392,42 @@ class SearchIndexContract:
             query("irgendwas", visibility(me), vector=(0.0, 1.0, 0.0), semantic_ratio=1.0)
         )
         assert result.hits == []
+
+    async def test_similar_documents(self, search_index: SearchIndex) -> None:
+        """Nearest first, as the rights and the criteria allow, without the document itself;
+        documents without vectors are not among them."""
+        me, other = UserId(new_id()), UserId(new_id())
+        shared = DrawerId(new_id())
+
+        def vectored(vector: tuple[float, ...], **fields: object) -> IndexDocument:
+            return index_document(vectors=(vector,), embedding=STAMP, **fields)
+
+        itself = vectored((0.0, 1.0, 0.0), owner_id=me, confirmed=True)
+        near = vectored((0.1, 0.9, 0.0), owner_id=me, confirmed=True)
+        farther = vectored((0.5, 0.5, 0.0), owner_id=me, confirmed=True)
+        unconfirmed = vectored((0.0, 1.0, 0.0), owner_id=me)
+        hidden = vectored((0.0, 1.0, 0.0), owner_id=other, confirmed=True, lane=Lane.YELLOW)
+        visible = vectored(
+            (0.0, 0.0, 1.0), owner_id=other, drawer_id=shared, confirmed=True, lane=Lane.GREEN
+        )
+        plain = index_document(owner_id=me, confirmed=True)
+        await search_index.upsert([itself, near, farther, unconfirmed, hidden, visible, plain])
+        confirmed = DocumentFilter(confirmed=True)
+        found = await search_index.similar(
+            SimilarQuery(
+                vector=(0.0, 1.0, 0.0),
+                visibility=visibility(me, shared),
+                filter=confirmed,
+                exclude=itself.id,
+                limit=3,
+            )
+        )
+        assert [hit.id for hit in found] == [near.id, farther.id, visible.id]
+        one = await search_index.similar(
+            SimilarQuery(vector=(0.0, 1.0, 0.0), visibility=visibility(me), limit=1)
+        )
+        (nearest,) = one
+        assert nearest.id in {itself.id, unconfirmed.id}
 
     # --- rebuild --------------------------------------------------------------------------------
 

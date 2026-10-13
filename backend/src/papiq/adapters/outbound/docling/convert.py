@@ -10,6 +10,10 @@ The layout model sometimes takes a whole scanned page for a picture (a payslip, 
 Markdown has no text, although OCR did recognise some. Then the text layer of the archive is
 written as plain Markdown instead, one block per page, and the note says so; the structure
 stays Docling's.
+
+The Markdown is the text the model, the search and the checks read, so it has no HTML entities:
+`&`, `<` and `>` stay as they are, and a `|` in a table cell is written `\\|` (Markdown's own
+escape) instead of Docling's `&#124;`.
 """
 
 import json
@@ -29,6 +33,14 @@ TEXT_LAYER_NOTE = (
 # Markdown without any letter or digit has no text; comments are placeholders (`<!-- image -->`).
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _WORD = re.compile(r"\w")
+
+
+def cells_unescaped(markdown: str) -> str:
+    """Docling's `&#124;` in the rows of a table as `\\|`."""
+    return "\n".join(
+        line.replace("&#124;", "\\|") if line.lstrip().startswith("|") else line
+        for line in markdown.split("\n")
+    )
 
 
 def markdown_or_text_layer(markdown: str, source: Path) -> tuple[str, str | None]:
@@ -68,7 +80,8 @@ def main(argv: list[str]) -> int:
         print(f"the PDF cannot be parsed: {errors}", file=sys.stderr)
         return UNPROCESSABLE
     document = result.document
-    text, note = markdown_or_text_layer(document.export_to_markdown(), source)
+    exported = cells_unescaped(document.export_to_markdown(escape_html=False))
+    text, note = markdown_or_text_layer(exported, source)
     markdown.write_text(text, encoding="utf-8")
     structure.write_text(json.dumps(document.export_to_dict()), encoding="utf-8")
     print(json.dumps({"pages": len(document.pages), "note": note}))

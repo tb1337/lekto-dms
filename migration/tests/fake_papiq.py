@@ -258,7 +258,20 @@ class FakePapiq:
         return {key: value for key, value in document.items() if not key.startswith("_")}
 
 
-NODES = ("receive", "ocr", "pages", "parse", "classify", "extract_fields", "apply_rules", "file")
+NODES = (
+    "receive",
+    "ocr",
+    "pages",
+    "parse",
+    "signal_llm",
+    "signal_classifier",
+    "signal_neighbours",
+    "signal_facts",
+    "judge",
+    "fields",
+    "apply_rules",
+    "file",
+)
 
 
 def _nodes(outcomes: dict[str, str]) -> list[dict[str, Any]]:

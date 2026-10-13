@@ -295,7 +295,9 @@ def _compare(
     metadata was applied (then there is nothing to compare: the document is a finding)."""
     id, meta = item.id, item.metadata
     outcomes = _outcomes(actual)
-    classified, extracted = "classify" in outcomes, "extract_fields" in outcomes
+    # Papiq 0.2 calls the nodes `judge` and `fields`, 0.1 `classify` and `extract_fields`.
+    classified = "judge" in outcomes or "classify" in outcomes
+    extracted = "fields" in outcomes or "extract_fields" in outcomes
     if classified:
         if actual["title"] != meta["title"]:
             deviation("document", id, "title differs", meta["title"], actual["title"])

@@ -323,17 +323,17 @@ async def test_the_model_exchanges_are_listed_per_run(api: Api) -> None:
     url = response.json()["status_url"]
     await api.drain()
     # Without a language model nothing was sent.
-    listed = await api.client.get(f"{url}/exchanges/judge", headers=auth(owner))
+    listed = await api.client.get(f"{url}/exchanges/signal_llm", headers=auth(owner))
     assert (listed.status_code, listed.json()) == (200, [])
     id = DocumentId(UUID(url.rsplit("/", 1)[-1]))
     call = ModelCall(system="s", user="u", answer="{}", model="m", usage={"total_tokens": 9})
     runs = [RunExchange(run=1, calls=(call,))]
     await api.container.object_store.put(
-        exchanges_key(id, Node.JUDGE),
+        exchanges_key(id, Node.SIGNAL_LLM),
         json.dumps(exchanges_to_json(runs)).encode(),
         content_type="application/json",
     )
-    listed = await api.client.get(f"{url}/exchanges/judge", headers=auth(owner))
+    listed = await api.client.get(f"{url}/exchanges/signal_llm", headers=auth(owner))
     assert listed.json() == [
         {
             "run": 1,

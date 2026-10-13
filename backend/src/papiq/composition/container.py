@@ -76,8 +76,9 @@ from papiq.core.ports import (
 from papiq.core.services.auth import AuthService, SessionPolicy
 from papiq.core.services.classification.nodes import (
     ClassificationPolicy,
-    ClassifyNode,
-    ExtractFieldsNode,
+    FieldsNode,
+    JudgeNode,
+    LlmSignal,
 )
 from papiq.core.services.classification.signals import (
     ClassifierSignal,
@@ -88,7 +89,7 @@ from papiq.core.services.classification.signals import (
 from papiq.core.services.classifier import ClassifierPolicy, ClassifierService
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.drawers import DrawerService
-from papiq.core.services.imports import ImportedClassifyNode, ImportedExtractNode, ImportedSignal
+from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from papiq.core.services.indexing import IndexingPolicy, IndexingService
 from papiq.core.services.maintenance import MaintenanceService
 from papiq.core.services.master_data import MasterDataService
@@ -503,11 +504,20 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
     policy = policy_of(settings)
     model = container.language_model
     locator = container.locator
-    executors[Node.JUDGE] = ImportedClassifyNode(
-        uow, ClassifyNode(uow, store, model, clock, policy, locator=locator)
+    executors[Node.SIGNAL_LLM] = ImportedSignal(uow, LlmSignal(uow, store, model, clock, policy))
+    executors[Node.JUDGE] = ImportedJudgeNode(
+        uow,
+        JudgeNode(
+            uow,
+            store,
+            clock,
+            policy,
+            locator=locator,
+            classifier_threshold=settings.classifier_threshold,
+        ),
     )
-    executors[Node.FIELDS] = ImportedExtractNode(
-        uow, ExtractFieldsNode(uow, store, model, clock, policy, locator=locator)
+    executors[Node.FIELDS] = ImportedFieldsNode(
+        uow, FieldsNode(uow, store, model, clock, policy, locator=locator)
     )
     executors[Node.SIGNAL_FACTS] = ImportedSignal(uow, FactsSignal(uow, store))
     executors[Node.SIGNAL_CLASSIFIER] = ImportedSignal(uow, ClassifierSignal(store, classifier))

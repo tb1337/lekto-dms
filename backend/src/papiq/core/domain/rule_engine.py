@@ -36,6 +36,7 @@ from papiq.core.domain.classification import (
     CONTACT,
     DOCUMENT_TYPE,
     TAGS,
+    TITLE,
     FieldCheck,
     field_from_json,
     field_key,
@@ -80,7 +81,6 @@ from papiq.core.domain.rules import (
 from papiq.core.domain.titles import TitleValues, render
 
 DRAWER = "drawer"
-TITLE = "title"
 REVIEW = "review"
 TEXT_TARGET = "text"
 

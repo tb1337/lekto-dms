@@ -12,18 +12,28 @@ model's signal fails, when its answers do not fit or it cannot be reached after 
 """
 
 import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
+from uuid import UUID
 
 from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import ClassifierError, EmbeddingsError, NotFoundError, SearchError
 from papiq.core.domain.identifiers import identifiers_in, matches
+from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact
 from papiq.core.domain.names import mentions, name_key
 from papiq.core.domain.permissions import reach_access
-from papiq.core.domain.pipeline import NodeResult, Outcome
+from papiq.core.domain.pipeline import SIGNALS, Node, NodeResult, NodeRun, Outcome
 from papiq.core.domain.search import Visibility
+from papiq.core.domain.verdict import (
+    ClassifierView,
+    FactsView,
+    ModelProposal,
+    Neighbour,
+    Signals,
+)
 from papiq.core.ports import DocumentFilter, Embeddings, ObjectStore, UnitOfWorkFactory
 from papiq.core.ports.search_index import SearchIndex, SimilarQuery
 from papiq.core.services.classifier import ClassifierService
@@ -230,3 +240,109 @@ class NeighboursSignal:
 
 def _texts(ids: Iterable[object]) -> list[JsonValue]:
     return list[JsonValue](sorted(str(id) for id in ids))
+
+
+# --- what the judge reads ---------------------------------------------------------------------
+
+
+def latest_signals(log: Sequence[NodeRun]) -> dict[Node, NodeRun]:
+    """The latest entry of each signal: a reprocessing from the judge on keeps the signals of
+    an earlier run."""
+    latest: dict[Node, NodeRun] = {}
+    for entry in log:
+        if entry.node in SIGNALS and entry.result.outcome is Outcome.OK:
+            latest[entry.node] = entry
+    return latest
+
+
+def signals_of(entries: Mapping[Node, NodeRun]) -> Signals:
+    """The signals as the judge's rules take them; a signal that abstained (or never ran) is
+    None."""
+
+    def output(node: Node) -> Mapping[str, Any] | None:
+        entry = entries.get(node)
+        if entry is None or ABSTAINED in entry.result.output:
+            return None
+        return entry.result.output
+
+    return Signals(
+        model=_model_view(output(Node.SIGNAL_LLM)),
+        classifier=_classifier_view(output(Node.SIGNAL_CLASSIFIER)),
+        neighbours=_neighbours_view(output(Node.SIGNAL_NEIGHBOURS)),
+        facts=_facts_view(output(Node.SIGNAL_FACTS)),
+    )
+
+
+def model_proposal(entries: Mapping[Node, NodeRun]) -> Mapping[str, Any] | None:
+    """The language model's proposal as it stored it; None if it gave none."""
+    entry = entries.get(Node.SIGNAL_LLM)
+    if entry is None or ABSTAINED in entry.result.output:
+        return None
+    proposal = entry.result.output.get("proposal")
+    return proposal if isinstance(proposal, dict) else None
+
+
+def _model_view(output: Mapping[str, Any] | None) -> ModelProposal | None:
+    proposal = None if output is None else output.get("proposal")
+    if not isinstance(proposal, dict):
+        return None
+    sender = proposal.get("sender") or {}
+    return ModelProposal(
+        sender=_optional_text(sender.get("value")),
+        sender_quote=_optional_text(sender.get("evidence")),
+        recipient=_optional_text(proposal.get("recipient")),
+        document_type=_optional_text(proposal.get("document_type")),
+        new_document_type=_optional_text(proposal.get("new_document_type")),
+        tags=tuple(item for item in proposal.get("tags") or () if isinstance(item, str)),
+        new_tags=tuple(item for item in proposal.get("new_tags") or () if isinstance(item, str)),
+    )
+
+
+def _classifier_view(output: Mapping[str, Any] | None) -> ClassifierView | None:
+    if output is None:
+        return None
+    known = output.get("known") or {}
+    return ClassifierView(
+        contacts=[(ContactId(UUID(id)), float(p)) for id, p in output.get("contacts") or ()],
+        document_types=[
+            (DocumentTypeId(UUID(id)), float(p)) for id, p in output.get("document_types") or ()
+        ],
+        tags={TagId(UUID(id)): float(p) for id, p in (output.get("tags") or {}).items()},
+        known_contacts=frozenset(ContactId(UUID(id)) for id in known.get("contacts") or ()),
+        known_types=frozenset(DocumentTypeId(UUID(id)) for id in known.get("document_types") or ()),
+    )
+
+
+def _neighbours_view(output: Mapping[str, Any] | None) -> tuple[Neighbour, ...] | None:
+    if output is None:
+        return None
+    return tuple(
+        Neighbour(
+            document=str(item["document_id"]),
+            contact=None if item.get("contact_id") is None else ContactId(UUID(item["contact_id"])),
+            document_type=(
+                None
+                if item.get("document_type_id") is None
+                else DocumentTypeId(UUID(item["document_type_id"]))
+            ),
+            tags=frozenset(TagId(UUID(tag)) for tag in item.get("tag_ids") or ()),
+        )
+        for item in output.get("neighbours") or ()
+    )
+
+
+def _facts_view(output: Mapping[str, Any] | None) -> FactsView | None:
+    if output is None:
+        return None
+    identifiers: dict[ContactId, tuple[str, ...]] = {}
+    for item in output.get("identifiers") or ():
+        contact = ContactId(UUID(item["contact_id"]))
+        identifiers[contact] = (*identifiers.get(contact, ()), str(item["kind"]))
+    return FactsView(
+        named=frozenset(ContactId(UUID(item["contact_id"])) for item in output.get("named") or ()),
+        identifiers=identifiers,
+    )
+
+
+def _optional_text(value: object) -> str | None:
+    return value if isinstance(value, str) and value.strip() else None

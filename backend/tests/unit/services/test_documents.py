@@ -365,20 +365,20 @@ async def test_the_structure_is_for_readers(world: World, scene: Scene) -> None:
 
 async def test_only_the_owner_reads_the_model_exchanges(world: World, scene: Scene) -> None:
     id = scene.document.id
-    assert await world.documents.exchanges(scene.owner.id, id, Node.JUDGE) == []
+    assert await world.documents.exchanges(scene.owner.id, id, Node.SIGNAL_LLM) == []
     call = ModelCall(system="s", user="u", answer="{}", model="m", usage={"prompt_tokens": 3})
     runs = [RunExchange(run=1, calls=(call,)), RunExchange(run=2, calls=(call, call))]
     await world.object_store.put(
-        exchanges_key(id, Node.JUDGE),
+        exchanges_key(id, Node.SIGNAL_LLM),
         json.dumps(exchanges_to_json(runs)).encode(),
         content_type="application/json",
     )
-    assert await world.documents.exchanges(scene.owner.id, id, Node.JUDGE) == runs
+    assert await world.documents.exchanges(scene.owner.id, id, Node.SIGNAL_LLM) == runs
     assert await world.documents.exchanges(scene.owner.id, id, Node.FIELDS) == []
     for user in (scene.reader, scene.writer):
         with pytest.raises(PermissionDeniedError):
-            await world.documents.exchanges(user.id, id, Node.JUDGE)
+            await world.documents.exchanges(user.id, id, Node.SIGNAL_LLM)
     with pytest.raises(NotFoundError):
-        await world.documents.exchanges(scene.stranger.id, id, Node.JUDGE)
+        await world.documents.exchanges(scene.stranger.id, id, Node.SIGNAL_LLM)
     with pytest.raises(ValidationError, match="does not ask a language model"):
         await world.documents.exchanges(scene.owner.id, id, Node.OCR)

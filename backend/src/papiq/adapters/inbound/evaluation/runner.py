@@ -1,8 +1,8 @@
-"""Running the evaluation set through the pipeline's classification and extraction nodes.
+"""Running the evaluation set through the pipeline's signals, judge and fields node.
 
 Each case becomes a document of one owner, whose text is stored as if the parse node had
-produced it. OCR, parsing, rules and filing pass through; classification and field
-extraction are the same nodes as in the pipeline, with the given model.
+produced it. OCR, parsing, rules and filing pass through; the signals, the judge and the
+fields node are the same as in the pipeline, with the given model.
 """
 
 import secrets
@@ -38,9 +38,9 @@ class Environment:
     """Where the cases run: the services on a database and an object store of their own (in
     memory, or the real ones in the integration test), built by the composition root.
 
-    `pipeline_for(case)` is the pipeline the case runs through: classification and field
-    extraction with the case's model, the other nodes pass through, and no automatic retries,
-    so a model that cannot be reached ends the case red at once.
+    `pipeline_for(case)` is the pipeline the case runs through: the signals, the judge and the
+    fields node with the case's model, the other nodes pass through, and no automatic
+    retries, so a model that cannot be reached ends the case red at once.
     """
 
     store: ObjectStore  # the text of a case is stored as the parse node would have

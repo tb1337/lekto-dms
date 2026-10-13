@@ -56,7 +56,7 @@ class ImportedSignal(_ImportedStep):
         return NodeResult(outcome=Outcome.OK, reason=REASON, model_version=IMPORTED)
 
 
-class ImportedClassifyNode(_ImportedStep):
+class ImportedJudgeNode(_ImportedStep):
     """Title, contact, document type, tags and document date from the source system."""
 
     def _apply(self, imported: ImportedMetadata) -> MetadataResult:
@@ -69,7 +69,7 @@ class ImportedClassifyNode(_ImportedStep):
         return MetadataResult(result, imported.classification(), imported.tag_ids, confirms=True)
 
 
-class ImportedExtractNode(_ImportedStep):
+class ImportedFieldsNode(_ImportedStep):
     """Field values from the source system."""
 
     def _apply(self, imported: ImportedMetadata) -> MetadataResult:

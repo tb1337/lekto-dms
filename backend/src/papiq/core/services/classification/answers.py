@@ -34,58 +34,105 @@ class Proposal:
     evidence: str | None
 
 
+# --- the proposal (`signal_llm`) --------------------------------------------------------------
+
+
 @dataclass(frozen=True, kw_only=True)
-class ClassifyAnswer:
-    contact: Proposal  # value: the name, or None
+class ProposeAnswer:
+    sender: Proposal  # value: the name, or None
+    recipient: str | None
     document_type: str | None
     new_document_type: str | None
     tags: list[str]
     new_tags: list[str]
-    document_date: Proposal  # value: ISO date text, or None
+    document_date: Proposal  # value: the date as written, or None
+    title: str | None
+    language: str | None
+    fields: dict[str, Proposal]  # by key; only the fields the model gave
     raw: JsonObject
 
 
-# --- classification ---------------------------------------------------------------------------
-
-_CLASSIFY_FIELDS = (
-    "contact",
+_PROPOSE_FIELDS = (
+    "sender",
+    "recipient",
     "document_type",
     "new_document_type",
     "tags",
     "new_tags",
     "document_date",
+    "title",
+    "language",
+    "fields",
 )
+_TITLE_LENGTH = 200
+_FIELD_ENTRY = ("key", "value", "evidence")
 
 
-def classify_schema(document_types: Sequence[str], tags: Sequence[str]) -> JsonObject:
+def propose_schema(
+    document_types: Sequence[str], tags: Sequence[str], keys: Sequence[str]
+) -> JsonObject:
+    """Every field value is text, as written in the document; the fields come as a list of
+    the keys the document shows (the model leaves the others out)."""
     tag_items: JsonObject = {"type": "string"}
     if tags:
         tag_items["enum"] = list(tags)
     tag_list: JsonObject = {"type": "array", "items": tag_items}
     if not tags:
         tag_list["maxItems"] = 0
+    key: JsonObject = {"type": "string"}
+    if keys:
+        key["enum"] = list(keys)
+    entry = _object({"key": key, "value": dict(_TEXT_OR_NULL), "evidence": dict(_TEXT_OR_NULL)})
+    fields: JsonObject = {"type": "array", "items": entry}
+    if not keys:
+        fields["maxItems"] = 0
     return _object(
         {
-            "contact": _proposal({"type": ["string", "null"]}),
+            "sender": _proposal(dict(_TEXT_OR_NULL)),
+            "recipient": dict(_TEXT_OR_NULL),
             "document_type": {"type": ["string", "null"], "enum": [*document_types, None]},
-            "new_document_type": _TEXT_OR_NULL,
+            "new_document_type": dict(_TEXT_OR_NULL),
             "tags": tag_list,
             "new_tags": {"type": "array", "items": {"type": "string"}},
-            "document_date": _proposal(_TEXT_OR_NULL),
+            "document_date": _proposal(dict(_TEXT_OR_NULL)),
+            "title": dict(_TEXT_OR_NULL),
+            "language": dict(_TEXT_OR_NULL),
+            "fields": fields,
         }
     )
 
 
-def parse_classify(content: str) -> ClassifyAnswer:
+def parse_propose(content: str, keys: Sequence[str]) -> ProposeAnswer:
+    """Strict about the structure; a field entry with a key that is not listed is left out,
+    and of two entries for one key the first counts."""
     data = _load(content)
-    _require_fields(data, _CLASSIFY_FIELDS, "the answer")
-    return ClassifyAnswer(
-        contact=_parse_proposal(data["contact"], "contact", text=True),
+    _require_fields(data, _PROPOSE_FIELDS, "the answer")
+    entries = data["fields"]
+    if not isinstance(entries, list):
+        raise AnswerError("fields: expected a list")
+    fields: dict[str, Proposal] = {}
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise AnswerError(f"fields[{index}]: expected an object")
+        _require_fields(entry, _FIELD_ENTRY, f"fields[{index}]")
+        key = entry["key"]
+        if isinstance(key, str) and key in keys and key not in fields:
+            proposal = _parse_proposal(
+                {"value": entry["value"], "evidence": entry["evidence"]}, f"fields[{index}]"
+            )
+            fields[key] = proposal
+    title = _text_or_null(data["title"], "title")
+    return ProposeAnswer(
+        sender=_parse_proposal(data["sender"], "sender", text=True),
+        recipient=_text_or_null(data["recipient"], "recipient"),
         document_type=_text_or_null(data["document_type"], "document_type"),
         new_document_type=_text_or_null(data["new_document_type"], "new_document_type"),
         tags=_texts(data["tags"], "tags"),
         new_tags=_texts(data["new_tags"], "new_tags"),
         document_date=_parse_proposal(data["document_date"], "document_date", text=True),
+        title=None if title is None else title[:_TITLE_LENGTH],
+        language=_text_or_null(data["language"], "language"),
+        fields=fields,
         raw=data,
     )
 

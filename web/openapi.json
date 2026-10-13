@@ -14345,7 +14345,7 @@
       "ExchangeNode": {
         "type": "string",
         "enum": [
-          "judge",
+          "signal_llm",
           "fields"
         ],
         "title": "ExchangeNode"

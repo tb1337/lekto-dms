@@ -2471,7 +2471,7 @@ export interface components {
 		 * ExchangeNode
 		 * @enum {string}
 		 */
-		ExchangeNode: 'judge' | 'fields';
+		ExchangeNode: 'signal_llm' | 'fields';
 		/**
 		 * FieldCheckOut
 		 * @description A field the model proposed, and its check.

@@ -21,7 +21,8 @@ const graph: GraphNode[] = [
 	{ node: 'receive', requires: [] },
 	{ node: 'ocr', requires: ['receive'] },
 	{ node: 'pages', requires: ['receive'] },
-	{ node: 'judge', requires: ['ocr'] }
+	{ node: 'signal_llm', requires: ['ocr'] },
+	{ node: 'judge', requires: ['signal_llm'] }
 ];
 
 function state(node: string, outcome: string | null, status = 'done') {
@@ -43,17 +44,18 @@ const document = {
 			state('receive', 'ok'),
 			state('ocr', 'ok'),
 			state('pages', 'ok'),
+			state('signal_llm', 'ok'),
 			state('judge', 'uncertain')
 		]
 	}
 } as unknown as Document;
 
-const classified = {
-	node: 'judge',
+const proposed = {
+	node: 'signal_llm',
 	run: 1,
-	outcome: 'uncertain',
-	reason: 'contact: the name is only similar',
-	confidence: 0.62,
+	outcome: 'ok',
+	reason: null,
+	confidence: null,
 	model_version: 'qwen3:8b',
 	input: {},
 	output: {
@@ -66,12 +68,22 @@ const classified = {
 	duration_ms: 6300
 };
 
+const judged = {
+	...proposed,
+	node: 'judge',
+	outcome: 'uncertain',
+	reason: 'contact: the name is only similar',
+	confidence: 0.62,
+	output: {},
+	duration_ms: 12
+};
+
 beforeEach(() => {
 	fetchMock.mockReset();
 	fetchMock.mockImplementation(async (request) => {
 		const path = new URL(request.url).pathname;
-		if (path.endsWith('/log')) return json([classified]);
-		if (path.endsWith('/exchanges/judge')) {
+		if (path.endsWith('/log')) return json([proposed, judged]);
+		if (path.endsWith('/exchanges/signal_llm')) {
 			return json([
 				{
 					run: 1,
@@ -103,14 +115,14 @@ describe('DocumentLog', () => {
 			onreprocess: vi.fn()
 		});
 		const rows = container.querySelectorAll('ol > li');
-		expect(rows).toHaveLength(3);
+		expect(rows).toHaveLength(4);
 		expect(
 			[...rows[1].querySelectorAll('[data-node]')].map((node) => node.getAttribute('data-node'))
 		).toEqual(['ocr', 'pages']);
 		// What is uncertain is open.
-		const classify = container.querySelector('[data-node="judge"]') as HTMLDetailsElement;
-		expect(classify.open).toBe(true);
-		expect(await within(classify).findByText('contact: the name is only similar')).toBeTruthy();
+		const judge = container.querySelector('[data-node="judge"]') as HTMLDetailsElement;
+		expect(judge.open).toBe(true);
+		expect(await within(judge).findByText('contact: the name is only similar')).toBeTruthy();
 	});
 
 	it('tells the tokens behind the info icon and shows the prompt', async () => {

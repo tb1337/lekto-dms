@@ -12,9 +12,9 @@ from papiq.adapters.inbound.rest import PREFIX
 from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.domain.identity import TokenScope
-from papiq.core.domain.pipeline import Node, NodeResult
+from papiq.core.domain.pipeline import SIGNALS, Node, NodeResult
 from papiq.core.domain.users import User
-from papiq.core.services.imports import ImportedClassifyNode, ImportedExtractNode
+from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from papiq.core.services.pipeline import DeferredResult, NodeExecutor, PlaceholderNode
 from tests.api import auth, bearer
 from tests.contracts.processing import SAMPLES
@@ -25,12 +25,14 @@ DOCUMENTS = f"{PREFIX}/documents"
 
 @pytest.fixture(autouse=True)
 def imported_steps(api: Api) -> None:
-    """The classification nodes as the container builds them, around nodes that do nothing
-    (there is no language model)."""
+    """The signals, the judge and the fields node as the container builds them, around nodes
+    that do nothing (there is no language model)."""
     uow = api.container.unit_of_work
     executors = api.services.pipeline._executors
-    executors[Node.JUDGE] = ImportedClassifyNode(uow, PlaceholderNode())
-    executors[Node.FIELDS] = ImportedExtractNode(uow, PlaceholderNode())
+    for signal in SIGNALS:
+        executors[signal] = ImportedSignal(uow, PlaceholderNode())
+    executors[Node.JUDGE] = ImportedJudgeNode(uow, PlaceholderNode())
+    executors[Node.FIELDS] = ImportedFieldsNode(uow, PlaceholderNode())
 
 
 def file(name: str = "scan.pdf") -> dict[str, tuple[str, bytes, str]]:

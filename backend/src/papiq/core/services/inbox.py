@@ -1,9 +1,9 @@
 """The inbox: what is open in a yellow or red document, and how its owner's decision on the open
 fields turns into a metadata change.
 
-What the model proposed and how each field was checked lies in the processing log (output of
-the classify and extract nodes). These functions read it from there; the rules (M7) use
-`field_checks` for the proposals of the latest model run.
+What the signals proposed and how each field was checked lies in the processing log (output
+of the judge and the fields node). These functions read it from there; the rules (M7) use
+`field_checks` for the values of the latest run.
 """
 
 from collections.abc import Collection, Mapping, Sequence
@@ -41,12 +41,13 @@ ALWAYS_SET = frozenset({"drawer", "title", "review"})
 """Open fields of the rules that always have a value: confirming keeps it."""
 
 MODEL_NODES = (Node.JUDGE, Node.FIELDS)
+"""The nodes whose output holds field checks."""
 
 
 @dataclass(frozen=True)
 class OpenNode:
     """A node whose result is uncertain or failed: why, and the fields its owner has to decide
-    (uncertain fields of classification or field extraction; none for other nodes)."""
+    (uncertain fields of the judge or the fields node; none for other nodes)."""
 
     node: Node
     outcome: Outcome
@@ -106,7 +107,7 @@ def latest_entries(log: Sequence[NodeRun], *, by_model: bool = False) -> dict[No
 
 
 def field_checks(log: Sequence[NodeRun]) -> dict[str, FieldCheck]:
-    """The field checks of the latest classification and field extraction, by field."""
+    """The field checks of the latest judge and fields node, by field."""
     latest = latest_entries(log, by_model=True)
     checks: dict[str, FieldCheck] = {}
     for node in MODEL_NODES:

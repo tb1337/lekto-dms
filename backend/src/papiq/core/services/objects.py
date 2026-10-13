@@ -4,10 +4,10 @@ from papiq.core.domain.documents import Sha256
 from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.pipeline import Node
 
-EXCHANGE_NODES = (Node.JUDGE, Node.FIELDS)
+EXCHANGE_NODES = (Node.SIGNAL_LLM, Node.FIELDS)
 """The nodes that ask the language model and keep what they sent (`exchanges_key`)."""
-LEGACY_EXCHANGES = {Node.JUDGE: "classify", Node.FIELDS: "extract_fields"}
-"""The names their files had before 0.2.0 renamed the nodes (`legacy_exchanges_key`)."""
+LEGACY_EXCHANGES = {Node.SIGNAL_LLM: "classify", Node.FIELDS: "extract_fields"}
+"""The names their files had before 0.2.0 (`classify` asked the model what the signal asks)."""
 
 
 def original_key(sha256: Sha256) -> str:

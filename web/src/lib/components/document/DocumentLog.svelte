@@ -53,7 +53,7 @@
 	} = $props();
 
 	// The nodes that ask the language model and keep what they sent.
-	const MODEL_NODES: readonly ExchangeNode[] = ['judge', 'fields'];
+	const MODEL_NODES: readonly ExchangeNode[] = ['signal_llm', 'fields'];
 
 	let entries = $state<LogEntry[] | null>(null);
 	let exchanges = $state<Partial<Record<Node, Exchange[]>>>({});

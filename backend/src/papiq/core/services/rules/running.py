@@ -18,6 +18,7 @@ from papiq.core.domain.classification import (
     DOCUMENT_DATE,
     DOCUMENT_TYPE,
     TAGS,
+    TITLE,
     field_key,
     field_to_json,
 )
@@ -50,7 +51,6 @@ from papiq.core.domain.pipeline import (
 from papiq.core.domain.rule_engine import (
     DRAWER,
     TEXT_TARGET,
-    TITLE,
     DrawerTarget,
     Facts,
     Mode,

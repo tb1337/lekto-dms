@@ -297,7 +297,7 @@ GREEN: dict[str, tuple[Call, dict[str, int]]] = {
         },
     ),
     "exchanges": (
-        doc("GET", "/exchanges/judge"),
+        doc("GET", "/exchanges/signal_llm"),
         {
             "owner": 200,
             "reader": 403,

@@ -14,8 +14,8 @@ from papiq_migration.config import Config
 from papiq_migration.fake_paperless import FakePaperless, sample_archive
 
 from papiq.adapters.inbound.rest import PREFIX
-from papiq.core.domain.pipeline import Node
-from papiq.core.services.imports import ImportedClassifyNode, ImportedExtractNode
+from papiq.core.domain.pipeline import SIGNALS, Node
+from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from papiq.core.services.pipeline import PlaceholderNode
 from tests import api as helpers
 from tests.contracts.processing import SAMPLES
@@ -67,12 +67,15 @@ class Migrating:
 
 @asynccontextmanager
 async def migrating(api: Api, directory: Path) -> AsyncIterator[Migrating]:
-    """The API with its worker running, an admin to migrate with, and the real classification
-    nodes around nodes that do nothing (there is no language model)."""
+    """The API with its worker running, an admin to migrate with, and the real signals, judge
+    and fields node of a migration around nodes that do nothing (there is no language
+    model)."""
     uow = api.container.unit_of_work
     executors = api.services.pipeline._executors
-    executors[Node.JUDGE] = ImportedClassifyNode(uow, PlaceholderNode())
-    executors[Node.FIELDS] = ImportedExtractNode(uow, PlaceholderNode())
+    for signal in SIGNALS:
+        executors[signal] = ImportedSignal(uow, PlaceholderNode())
+    executors[Node.JUDGE] = ImportedJudgeNode(uow, PlaceholderNode())
+    executors[Node.FIELDS] = ImportedFieldsNode(uow, PlaceholderNode())
     admin = await api.admin()
 
     async def work() -> None:
@@ -137,7 +140,7 @@ async def test_the_whole_migration_runs_against_the_api(api: Api, tmp_path: Path
         imported = {e["node"]: e for e in log if e["model_version"] == "imported"}
         # Taken over, the document's signals propose nothing and its judge applies the metadata.
         signals = {"signal_llm", "signal_classifier", "signal_neighbours", "signal_facts"}
-        assert {"judge", "fields"} <= set(imported) <= {"judge", "fields", *signals}
+        assert set(imported) == {"judge", "fields", *signals}
 
         assert await m.run("verify") == 0, m.messages
         assert await m.run("verify", rehash=True) == 0

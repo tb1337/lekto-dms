@@ -1,9 +1,9 @@
-"""Results of classification and field extraction, field by field.
+"""Results of the judge and the fields node, field by field.
 
-Each field the model proposed is checked against facts; a `FieldCheck` records the proposal,
-the check and its outcome. Checks are stored in the processing log (output of the classify and
-extract nodes), so what the model proposed stays traceable after a person corrected it; the
-inbox and the rules (M7) read them from there.
+Each value the signals proposed is checked against facts; a `FieldCheck` records the proposal,
+the candidates with their sources, the check and its outcome. Checks are stored in the
+processing log (output of the judge and the fields node), so what was proposed stays traceable
+after a person corrected it; the inbox and the rules (M7) read them from there.
 """
 
 from dataclasses import dataclass
@@ -28,6 +28,7 @@ CONTACT = "contact"
 DOCUMENT_TYPE = "document_type"
 TAGS = "tags"
 DOCUMENT_DATE = "document_date"
+TITLE = "title"
 _FIELD_PREFIX = "field:"
 
 

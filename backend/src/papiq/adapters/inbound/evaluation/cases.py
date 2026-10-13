@@ -9,8 +9,10 @@ Layout of a set directory:
 - `cases/<name>.md`: the document text, as the parse node would produce it.
 - `cases/<name>.json`: `description`, `expected` (`lane`, `contact`, `document_type`, `tags`,
   `document_date`, `fields` by name, in the JSON form of the API) and `fake`
-  (`classification`: the answer of the classify node; `fields`: proposals by field
-  name; `lane`: the lane this answer leads to, if not the expected one).
+  (`classification`: `contact`, `document_type`, `new_document_type`, `tags`, `new_tags`,
+  `document_date`, optionally `recipient`, `title` and `language`, from which the answer of
+  the language model's signal is built; `fields`: proposals by field name, in that answer as
+  text; `lane`: the lane this answer leads to, if not the expected one).
 """
 
 import json
@@ -69,12 +71,30 @@ class FakeAnswer:
     lane: Lane
 
     def respond(self, request: StructuredRequest) -> JsonObject:
-        """The answer to a request of the classify or extract node."""
-        if request.schema_name == "classification":
-            return self.classification
-        keys = dict(re.findall(r'^- (a\d+): "([^"\n]*)"', _before_document(request.user), re.M))
+        """The answer to a request of the language model's signal (`proposal`) or of the fields
+        node."""
+        if request.schema_name == "proposal":
+            return self._proposal(request.user)
+        keys = dict(_KEY_LINE.findall(_before_document(request.user)))
         empty: JsonObject = {"value": None, "evidence": None}
         return {"fields": {key: self.fields.get(name, empty) for key, name in keys.items()}}
+
+    def _proposal(self, message: str) -> JsonObject:
+        """The classification as the signal's answer, with `contact` as the sender and
+        everything else as it is (an answer that obeys instructions in the text keeps its
+        extra keys): the fields it lists for the chosen type and for every document, those of
+        `fields` with a value, written as text."""
+        answer = dict(self.classification)
+        if "contact" in answer:
+            answer["sender"] = answer.pop("contact")
+        keys = _proposal_keys(message, answer.get("document_type"))
+        fields: list[JsonValue] = []
+        for key, name in keys.items():
+            proposal = self.fields.get(name)
+            if isinstance(proposal, dict) and proposal.get("value") is not None:
+                value = _written(proposal["value"])
+                fields.append({"key": key, "value": value, "evidence": proposal.get("evidence")})
+        return {"recipient": None, "title": None, "language": "de", **answer, "fields": fields}
 
 
 @dataclass(frozen=True)
@@ -108,6 +128,42 @@ def load_set(path: Path) -> EvaluationSet:
 
 def _before_document(message: str) -> str:
     return message.split("The document follows", 1)[0]
+
+
+_KEY_LINE = re.compile(r'^\s*- (a\d+): "([^"\n]*)"', re.M)
+
+
+def _proposal_keys(message: str, document_type: JsonValue) -> dict[str, str]:
+    """Field names by key in the signal's request: those listed under `document_type` and
+    those for every document."""
+    keys: dict[str, str] = {}
+    section, chosen = None, False
+    for line in _before_document(message).splitlines():
+        if not line.startswith(" ") and line.endswith(":"):
+            section = line
+            continue
+        if section and section.startswith("Document types") and line.startswith("- "):
+            chosen = isinstance(document_type, str) and (
+                line == f"- {document_type}" or line.startswith(f"- {document_type}: ")
+            )
+            continue
+        found = _KEY_LINE.match(line)
+        if found and (chosen or (section or "").startswith("Fields for every document")):
+            keys[found[1]] = found[2]
+    return keys
+
+
+def _written(value: JsonValue) -> JsonValue:
+    """A value in the JSON form of the API as the document writes it."""
+    match value:
+        case {"amount": amount, "currency": currency}:
+            return f"{amount} {currency}"
+        case bool():
+            return "ja" if value else "nein"
+        case int() | float():
+            return str(value)
+        case _:
+            return value
 
 
 def _json(path: Path) -> Any:

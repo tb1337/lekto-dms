@@ -1,16 +1,18 @@
-"""The classification nodes: classify (contact, type, tags, date) and extract fields.
+"""The nodes that understand a document: the language model's signal, the judge and the
+fields node.
 
-Each node asks the language model once, checks the answer's structure and asks once more if it
-does not fit; a second unfit answer fails the node (red). Every proposed field is then checked
-against facts (`FieldCheck`): the confidence comes from what the text shows and what the master
-data holds, never from the model's own judgement. Fields that pass are applied to the document;
-uncertain ones are only proposed, and the node is uncertain (the document waits in the inbox).
-An unreachable model raises, so the pipeline retries the node.
+A node that asks the language model checks the answer's structure and asks once more if it
+does not fit; a second unfit answer fails the node (red). An unreachable model raises, so the
+pipeline retries the node. Every value is then checked against facts (`FieldCheck`): the
+confidence comes from what the text shows, what the master data holds and what the other
+signals say, never from the model's own judgement. Values that pass are applied to the
+document; uncertain ones are only proposed, and the node is uncertain (the document waits in
+the inbox).
 """
 
 import json
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
@@ -18,10 +20,8 @@ from typing import Any
 from uuid import UUID
 
 from papiq.core.domain.classification import (
-    CONTACT,
     DOCUMENT_DATE,
-    DOCUMENT_TYPE,
-    TAGS,
+    TITLE,
     FieldCheck,
     checks_to_json,
     field_from_json,
@@ -53,44 +53,59 @@ from papiq.core.domain.fields import (
 from papiq.core.domain.ids import ContactId, FieldId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
-from papiq.core.domain.names import best_match, mentions, name_key, named_share
-from papiq.core.domain.pipeline import Node, NodeResult, Outcome
+from papiq.core.domain.names import mentions, name_key, named_share
+from papiq.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
+from papiq.core.domain.verdict import (
+    DEFAULT_THRESHOLDS,
+    Thresholds,
+    judge_contact,
+    judge_tags,
+    judge_type,
+)
 from papiq.core.ports import Clock, LanguageModel, ObjectStore, TextLocator, UnitOfWorkFactory
 from papiq.core.ports.llm import StructuredAnswer, StructuredRequest
 from papiq.core.services.classification.answers import (
     AnswerError,
-    ClassifyAnswer,
     Proposal,
-    classify_schema,
     extract_schema,
     field_keys,
-    parse_classify,
     parse_extract,
+    parse_propose,
+    propose_schema,
 )
 from papiq.core.services.classification.prompts import (
-    CLASSIFY_PROMPT,
-    CLASSIFY_SYSTEM,
     EXTRACT_PROMPT,
     EXTRACT_SYSTEM,
+    PROPOSE_PROMPT,
+    PROPOSE_SYSTEM,
     Listed,
     Shortened,
-    classify_message,
     extract_message,
+    propose_message,
     retry_message,
     shorten,
+)
+from papiq.core.services.classification.signals import (
+    ABSTAINED,
+    abstained,
+    latest_signals,
+    model_proposal,
+    signals_of,
 )
 from papiq.core.services.nodes import work_directory
 from papiq.core.services.objects import archive_key, exchanges_key, markdown_key
 from papiq.core.services.pipeline import MetadataResult
+from papiq.core.services.titles import has_machine_title, pattern_title
 
 log = logging.getLogger(__name__)
 
 _RAW_LENGTH = 4000  # characters of an unfit answer kept in the log
-_AMBIGUITY = 0.05  # two contacts this close to each other are ambiguous
 _EARLIEST = date(1900, 1, 1)
 _LATEST_AHEAD = timedelta(days=366)
 
 NO_MODEL = "no language model is configured (PAPIQ_LLM_BASE_URL)"
+JUDGE = "judge"
+"""`model_version` of the judge's entry when the language model gave nothing."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -266,145 +281,218 @@ class _ModelStep:
         )
 
 
-class ClassifyNode(_ModelStep):
-    """Contact, document type, tags and document date."""
+class LlmSignal(_ModelStep):
+    """The language model's proposal (`signal_llm`): one request for the sender and the
+    recipient, the type, tags, date, a title and the language, and the values of the fields of
+    the type it chooses and of the global ones. Without a model it abstains; two unfit answers
+    fail it. It checks nothing: the judge and the fields node do."""
 
-    async def run(self, document: Document) -> NodeResult | MetadataResult:
+    async def run(self, document: Document) -> NodeResult:
         if self._model is None:
-            return NodeResult(outcome=Outcome.UNCERTAIN, reason=NO_MODEL)
+            return abstained(NO_MODEL)
         text = await self._text(document)
         async with self._uow() as uow:
             contacts = await uow.contacts.list_all()
             types = sorted(await uow.document_types.list_all(), key=lambda item: item.name)
             tags = sorted(await uow.tags.list_all(), key=lambda item: item.name)
+            definitions = sorted(await uow.fields.list_all(), key=lambda item: item.name)
         facts = DocumentText(text)
         listed = _listed_tags(tags, facts, self._policy.max_tags)
         candidates = _listed_contacts(contacts, facts, self._policy.max_contacts)
+        keys = field_keys(definitions)
+        key_of = {definition.id: key for key, definition in keys.items()}
+        typed = [
+            (
+                Listed(kind.name, description=kind.description),
+                [
+                    (key_of[definition.id], definition)
+                    for definition in definitions
+                    if not definition.is_global and definition.applies_to(kind.id)
+                ],
+            )
+            for kind in types
+        ]
+        general = [(key_of[item.id], item) for item in definitions if item.is_global]
         sent = shorten(text, self._policy.input_budget)
-        input = self._input(document, text, sent, CLASSIFY_PROMPT) | {
+        input = self._input(document, text, sent, PROPOSE_PROMPT) | {
             "contacts": len(contacts),
             "contacts_listed": len(candidates),
             "document_types": len(types),
             "tags": len(tags),
             "tags_listed": len(listed),
+            "fields": {key: str(definition.id) for key, definition in keys.items()},
         }
-        type_names = [item.name for item in types]
         tag_names = [item.name for item in listed]
         try:
             answer, answers = await self._ask(
                 document,
-                Node.JUDGE,
-                CLASSIFY_SYSTEM,
-                classify_message(
+                Node.SIGNAL_LLM,
+                PROPOSE_SYSTEM,
+                propose_message(
                     [Listed(item.name, aliases=tuple(item.aliases)) for item in candidates],
-                    [Listed(item.name, description=item.description) for item in types],
+                    typed,
+                    general,
                     tag_names,
                     sent,
                 ),
-                classify_schema(type_names, tag_names),
-                "classification",
-                parse_classify,
+                propose_schema([item.name for item in types], tag_names, list(keys)),
+                "proposal",
+                lambda content: parse_propose(content, list(keys)),
             )
         except _UnfitAnswerError as error:
             return self._unfit(error, input)
+        proposal: JsonObject = {
+            "sender": _proposal_json(answer.sender),
+            "recipient": answer.recipient,
+            "document_type": answer.document_type,
+            "new_document_type": answer.new_document_type,
+            "tags": list[JsonValue](answer.tags),
+            "new_tags": list[JsonValue](answer.new_tags),
+            "document_date": _proposal_json(answer.document_date),
+            "title": answer.title,
+            "language": answer.language,
+            "fields": {
+                str(keys[key].id): _proposal_json(value) for key, value in answer.fields.items()
+            },
+        }
+        return NodeResult(
+            outcome=Outcome.OK,
+            model_version=_model_version(answers[-1]),
+            input=input,
+            output={
+                "attempts": len(answers),
+                "answer": answer.raw,
+                "tokens": _tokens(answers),
+                "proposal": proposal,
+            },
+        )
 
-        if (
-            answer.contact.value is None
-            and answer.document_type is None
-            and answer.new_document_type is None
-            and answer.document_date.value is None
-        ):
+
+class JudgeNode(_ModelStep):
+    """The judge (`judge`): contact, document type and tags from the signals' proposals by the
+    rules of `domain.verdict`, and the document date the model read, checked against the text.
+    What is green is applied; tags are added. A document the model answered for, but no signal
+    recognised anything in, fails (red); without the model's proposal the judge is uncertain."""
+
+    def __init__(
+        self,
+        uow: UnitOfWorkFactory,
+        store: ObjectStore,
+        clock: Clock,
+        policy: ClassificationPolicy = DEFAULT_POLICY,
+        *,
+        locator: TextLocator | None = None,
+        classifier_threshold: float = DEFAULT_THRESHOLDS.classifier,
+    ) -> None:
+        super().__init__(uow, store, None, clock, policy, locator=locator)
+        self._thresholds = Thresholds(
+            accept=policy.accept,
+            suggest=policy.suggest_contact,
+            classifier=classifier_threshold,
+        )
+
+    async def run(self, document: Document) -> NodeResult | MetadataResult:
+        async with self._uow() as uow:
+            log = await uow.processing_log.list_for(document.id)
+            contacts = await uow.contacts.list_all()
+            types = await uow.document_types.list_all()
+            tags = await uow.tags.list_all()
+        entries = latest_signals(log)
+        signals = signals_of(entries)
+        proposal = model_proposal(entries)
+        text = await self._text(document)
+        facts = DocumentText(text)
+        if proposal is None:
+            silent = entries.get(Node.SIGNAL_LLM)
+            why = (
+                str(silent.result.output.get(ABSTAINED, "it did not run"))
+                if silent is not None
+                else "it did not run"
+            )
+            date_check = FieldCheck(
+                field=DOCUMENT_DATE,
+                outcome=Outcome.UNCERTAIN,
+                confidence=0,
+                reason=f"no date recognised: the language model gave none ({why})",
+            )
+        else:
+            written = proposal.get("document_date") or {}
+            date_check = _check_date(
+                DOCUMENT_DATE,
+                Proposal(value=written.get("value"), evidence=written.get("evidence")),
+                facts,
+                self._today(),
+            )
+        contact = judge_contact(signals, contacts, self._thresholds)
+        kind = judge_type(signals, types, self._thresholds)
+        tagged = judge_tags(signals, tags, self._thresholds)
+        model_entry = entries.get(Node.SIGNAL_LLM)
+        llm_input = model_entry.result.input if model_entry is not None else {}
+        input: JsonObject = {
+            key: llm_input[key] for key in ("truncated", "model", "endpoint") if key in llm_input
+        }
+        input["signals"] = {
+            node.value: (
+                "abstained" if ABSTAINED in entry.result.output else entry.result.model_version
+            )
+            for node, entry in sorted(entries.items())
+        }
+        model_version = (
+            model_entry.result.model_version
+            if model_entry is not None and proposal is not None
+            else JUDGE
+        )
+        recognised = contact.candidates or kind.candidates or date_check.value
+        if proposal is not None and not (recognised or date_check.suggestion):
+            # The model answered, and no signal recognised anything: as before the signals.
+            # Without its proposal the judge is uncertain, and a person classifies.
             return NodeResult(
                 outcome=Outcome.FAILED,
                 reason="nothing recognised: no contact, document type or date",
-                model_version=_model_version(answers[-1]),
+                model_version=model_version,
                 input=input,
-                output=_output(answer.raw, [], answers),
+                output={"fields": checks_to_json([contact, kind, tagged, date_check])},
             )
-        checks = [
-            self._check_contact(answer.contact, contacts, facts),
-            _check_type(answer, types),
-            _check_tags(answer, tags),
-            _check_date(DOCUMENT_DATE, answer.document_date, facts, self._today()),
-        ]
-        checks = await self._locate(document, checks)
+        checks = await self._locate(document, [contact, kind, tagged, date_check])
+        contact, kind, tagged, date_check = checks
         changes = DocumentChanges(
-            contact_id=_applied(checks[0], lambda value: ContactId(UUID(value))),
-            document_type_id=_applied(checks[1], lambda value: _by_id(types, value).id),
-            document_date=_applied(checks[3], date.fromisoformat),
+            contact_id=_applied(contact, lambda value: ContactId(UUID(value))),
+            document_type_id=_applied(kind, lambda value: _by_id(types, value).id),
+            document_date=_applied(date_check, date.fromisoformat),
         )
         # Tags are added: those the document has (set by its owner) stay.
-        add_tags = frozenset(_by_id(tags, value).id for value in _list(checks[2].value))
-        return MetadataResult(_result(checks, answer.raw, answers, input), changes, add_tags)
+        add_tags = frozenset(_by_id(tags, value).id for value in _list(tagged.value))
+        uncertain = [check for check in checks if not check.ok]
+        result = NodeResult(
+            outcome=Outcome.UNCERTAIN if uncertain else Outcome.OK,
+            reason="; ".join(_reason(check) for check in uncertain) or None,
+            confidence=min(check.confidence for check in checks),
+            model_version=model_version,
+            input=input,
+            output={"fields": checks_to_json(checks)},
+        )
+        return MetadataResult(result, changes, add_tags)
 
     def _today(self) -> date:
         return self._clock.now().date()
 
-    def _check_contact(
-        self, proposal: Proposal, contacts: Sequence[Contact], facts: DocumentText
-    ) -> FieldCheck:
-        name = proposal.value
-        common: dict[str, Any] = {
-            "field": CONTACT,
-            "proposed": name,
-            "evidence": proposal.evidence,
-        }
-        if not isinstance(name, str):
-            return FieldCheck(
-                outcome=Outcome.UNCERTAIN, confidence=0, reason="no contact recognised", **common
-            )
-        match = best_match(
-            name, [(contact, own) for contact in contacts for own in contact.names()]
-        )
-        best = match.best
-        suggested = (
-            best if best is not None and match.score >= self._policy.suggest_contact else None
-        )
-        names = tuple(suggested.names()) if suggested is not None else (name,)
-        common["quote_shows_value"] = _quoted(
-            proposal,
-            lambda quote: any(mentions(name_key(quote.raw), name_key(own)) for own in names),
-        )
-        # The contact itself must be named in the text (by its name or an alias), not just
-        # something similar.
-        text_key = name_key(facts.raw)
-        named = best is not None and any(mentions(text_key, name_key(own)) for own in best.names())
-        ambiguous = best is not None and match.runner_up >= match.score - _AMBIGUITY
-        if best is not None and match.score >= self._policy.suggest_contact:
-            if match.score >= self._policy.accept and named and not ambiguous:
-                return FieldCheck(
-                    outcome=Outcome.OK, confidence=match.score, value=str(best.id), **common
-                )
-            if ambiguous:
-                reason = f"several contacts are similar to '{name}'; the closest is '{best.name}'"
-            elif not named:
-                reason = f"the contact '{best.name}' does not appear in the text"
-            else:
-                reason = f"'{name}' is similar to the contact '{best.name}'"
-            capped = match.score if named and not ambiguous else min(match.score, 0.5)
-            return FieldCheck(
-                outcome=Outcome.UNCERTAIN,
-                confidence=min(capped, self._policy.accept - 0.01),
-                reason=reason,
-                suggestion=str(best.id),
-                **common,
-            )
-        return FieldCheck(
-            outcome=Outcome.UNCERTAIN,
-            confidence=match.score,
-            reason=f"no contact matches '{name}'; a new contact is proposed",
-            new_name=name,
-            **common,
-        )
 
+class FieldsNode(_ModelStep):
+    """The fields that apply to the document (those of its type and the global ones) and its
+    title.
 
-class ExtractFieldsNode(_ModelStep):
-    """The values of the fields that apply to the document: those of its type and the
-    global ones. A type's field that the document does not show is uncertain; a global
-    one stays unset."""
+    The language model's signal gave the values of the global fields and of the fields of the
+    type it chose; if the judge decided on that type, they are taken over, else (or for a
+    document from before the signals) the fields it did not give are asked for. A required
+    field the document does not show is uncertain, an optional one stays empty; a value given
+    must pass its check either way.
+
+    The title comes from the type's title pattern, or from the model's proposal, as long as
+    the document's title is still the file name or the one set here before."""
 
     async def run(self, document: Document) -> NodeResult | MetadataResult:
         async with self._uow() as uow:
+            log = await uow.processing_log.list_for(document.id)
             definitions = sorted(
                 (
                     item
@@ -418,100 +506,140 @@ class ExtractFieldsNode(_ModelStep):
                 if document.document_type_id is None
                 else await uow.document_types.find(document.document_type_id)
             )
-        if not definitions:
-            return NodeResult(outcome=Outcome.OK, output={"fields": []})
-        if self._model is None:
-            return NodeResult(outcome=Outcome.UNCERTAIN, reason=NO_MODEL)
-        text = await self._text(document)
-        facts = DocumentText(text)
-        keys = field_keys(definitions)
-        sent = shorten(text, self._policy.input_budget)
-        input = self._input(document, text, sent, EXTRACT_PROMPT) | {
-            "fields": {key: str(definition.id) for key, definition in keys.items()},
-        }
-        try:
-            proposals, answers = await self._ask(
-                document,
-                Node.FIELDS,
-                EXTRACT_SYSTEM,
-                extract_message(None if document_type is None else document_type.name, keys, sent),
-                extract_schema(keys),
-                "fields",
-                lambda content: parse_extract(content, list(keys)),
+            contact = (
+                None
+                if document.contact_id is None
+                else await uow.contacts.find(document.contact_id)
             )
-        except _UnfitAnswerError as error:
-            return self._unfit(error, input)
+        entries = latest_signals(log)
+        proposal = model_proposal(entries)
+        given: dict[FieldId, Proposal] = {}
+        if proposal is not None:
+            same_type = document_type is not None and _same_name(
+                proposal.get("document_type"), document_type.name
+            )
+            proposed = proposal.get("fields") or {}
+            for definition in definitions:
+                if definition.is_global or same_type:
+                    written = proposed.get(str(definition.id)) or {}
+                    given[definition.id] = Proposal(
+                        value=written.get("value"), evidence=written.get("evidence")
+                    )
+        missing = [item for item in definitions if item.id not in given]
+        answers: list[StructuredAnswer] = []
+        text = await self._text(document) if definitions else ""
+        input: JsonObject = {"taken_over": len(given)}
+        if missing:
+            if self._model is None:
+                return NodeResult(outcome=Outcome.UNCERTAIN, reason=NO_MODEL)
+            keys = field_keys(missing)
+            sent = shorten(text, self._policy.input_budget)
+            input |= self._input(document, text, sent, EXTRACT_PROMPT) | {
+                "fields": {key: str(definition.id) for key, definition in keys.items()},
+            }
+            try:
+                proposals, answers = await self._ask(
+                    document,
+                    Node.FIELDS,
+                    EXTRACT_SYSTEM,
+                    extract_message(
+                        None if document_type is None else document_type.name, keys, sent
+                    ),
+                    extract_schema(keys),
+                    "fields",
+                    lambda content: parse_extract(content, list(keys)),
+                )
+            except _UnfitAnswerError as error:
+                return self._unfit(error, input)
+            given |= {keys[key].id: value for key, value in proposals.items()}
+        facts = DocumentText(text)
+        language = _text_value(proposal.get("language")) if proposal else None
         checks = [
             _check_field(
                 definition,
-                proposals[key],
+                given[definition.id],
                 facts,
                 self._clock.now().date(),
                 document.document_date,
                 required=definition.is_required_for(document.document_type_id),
+                language=language,
             )
-            for key, definition in keys.items()
+            for definition in definitions
         ]
         checks = await self._locate(document, checks)
         values: dict[FieldId, object] = {}
         for check, definition in zip(checks, definitions, strict=True):
             if check.ok and check.value is not None:
                 values[definition.id] = field_from_json(definition, check.value)
-        raw: JsonObject = {key: _proposal_json(proposal) for key, proposal in proposals.items()}
-        return MetadataResult(
-            _result(checks, {"fields": raw}, answers, input),
-            DocumentChanges(fields=values),
+        title = _title(document, document_type, contact, definitions, values, proposal, log)
+        changes = DocumentChanges(fields=values)
+        if title is not None and title.value is not None:
+            changes = replace(changes, title=str(title.value))
+        raw: JsonObject = {str(id): _proposal_json(value) for id, value in given.items()}
+        all_checks = [*checks, *([title] if title is not None else [])]
+        model_version = (
+            _model_version(answers[-1])
+            if answers
+            else (entries[Node.SIGNAL_LLM].result.model_version if given else None)
         )
+        uncertain = [check for check in checks if not check.ok]
+        result = NodeResult(
+            outcome=Outcome.UNCERTAIN if uncertain else Outcome.OK,
+            reason="; ".join(_reason(check) for check in uncertain) or None,
+            confidence=min((check.confidence for check in checks), default=1.0),
+            model_version=model_version,
+            input=input,
+            output={
+                "attempts": len(answers),
+                "answer": {"fields": raw},
+                "fields": checks_to_json(all_checks),
+                "tokens": _tokens(answers),
+            },
+        )
+        return MetadataResult(result, changes)
+
+
+def _title(
+    document: Document,
+    document_type: DocumentType | None,
+    contact: Contact | None,
+    definitions: Sequence[FieldDefinition],
+    values: dict[FieldId, object],
+    proposal: Mapping[str, Any] | None,
+    log: Sequence[NodeRun],
+) -> FieldCheck | None:
+    """The title check: the type's pattern rendered, else the model's title; None if the
+    document has a title of its own (a person's or a rule's), or there is none to give."""
+    if not has_machine_title(document, log):
+        return None
+    proposed = _text_value(proposal.get("title")) if proposal else None
+    rendered = pattern_title(document, document_type, contact, definitions, values)
+    if rendered is not None:
+        return FieldCheck(
+            field=TITLE, outcome=Outcome.OK, confidence=1, proposed=proposed, value=rendered
+        )
+    if not proposed:
+        return None
+    missing = document_type is not None and bool(document_type.title_pattern)
+    return FieldCheck(
+        field=TITLE,
+        outcome=Outcome.OK,
+        confidence=1,
+        reason="the title pattern misses a value; the model's title" if missing else None,
+        proposed=proposed,
+        value=proposed,
+    )
+
+
+def _text_value(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _same_name(proposed: object, name: str) -> bool:
+    return isinstance(proposed, str) and proposed.casefold() == name.casefold()
 
 
 # --- checks -----------------------------------------------------------------------------------
-
-
-def _check_type(answer: ClassifyAnswer, types: Sequence[DocumentType]) -> FieldCheck:
-    proposed = answer.document_type
-    common: dict[str, Any] = {"field": DOCUMENT_TYPE, "proposed": proposed}
-    if proposed is not None:
-        known = _by_name(types, proposed)
-        if known is not None:
-            return FieldCheck(outcome=Outcome.OK, confidence=1, value=str(known.id), **common)
-        return FieldCheck(
-            outcome=Outcome.UNCERTAIN,
-            confidence=0,
-            reason=f"'{proposed}' is not a document type; a new type is proposed",
-            new_name=proposed,
-            **common,
-        )
-    if answer.new_document_type is not None:
-        return FieldCheck(
-            outcome=Outcome.UNCERTAIN,
-            confidence=0,
-            reason=f"no document type fits; a new type '{answer.new_document_type}' is proposed",
-            new_name=answer.new_document_type,
-            **common,
-        )
-    return FieldCheck(
-        outcome=Outcome.UNCERTAIN, confidence=0, reason="no document type recognised", **common
-    )
-
-
-def _check_tags(answer: ClassifyAnswer, tags: Sequence[Tag]) -> FieldCheck:
-    """Known tags are applied; unknown and new ones are only proposals (admins create tags)."""
-    known: list[str] = []
-    proposed_new = list(answer.new_tags)
-    for name in answer.tags:
-        tag = _by_name(tags, name)
-        if tag is None:
-            proposed_new.append(name)
-        elif str(tag.id) not in known:
-            known.append(str(tag.id))
-    return FieldCheck(
-        field=TAGS,
-        outcome=Outcome.OK,
-        confidence=1,
-        proposed={"tags": list(answer.tags), "new_tags": list(answer.new_tags)},
-        value=list(known),
-        suggestion=[name for name in dict.fromkeys(proposed_new)] or None,
-    )
 
 
 def _check_date(field: str, proposal: Proposal, facts: DocumentText, today: date) -> FieldCheck:
@@ -544,6 +672,7 @@ def _check_field(
     document_date: date | None,
     *,
     required: bool,
+    language: str | None = None,
 ) -> FieldCheck:
     """A required field must be found, an optional one may stay empty; a value given must
     pass the checks either way. A date equal to the document date is only suggested: models
@@ -583,7 +712,7 @@ def _check_field(
             **common,
         )
     try:
-        value = _parse_value(definition, proposal.value, facts)
+        value = _parse_value(definition, proposal.value, facts, language)
     except ValidationError:
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
@@ -682,24 +811,31 @@ def _verified(
 # --- values -----------------------------------------------------------------------------------
 
 
-def _parse_value(definition: FieldDefinition, raw: JsonValue, facts: DocumentText) -> FieldValue:
-    """A proposed value read leniently, as a person writes it (`2.111,68 €`, `12.03.2026`; an
-    ambiguous number the way the text shows it), then checked against the definition.
-    ValidationError if it does not fit."""
+_YES_NO = {"true": True, "yes": True, "ja": True, "false": False, "no": False, "nein": False}
+
+
+def _parse_value(
+    definition: FieldDefinition, raw: JsonValue, facts: DocumentText, language: str | None
+) -> FieldValue:
+    """A proposed value read leniently, as a person writes it (`2.111,68 €`, `12.03.2026`,
+    `ja`; an ambiguous number the way the text shows it, else as the document's `language`
+    writes it), then checked against the definition. ValidationError if it does not fit."""
     value: object = raw
     match definition.data_type:
         case FieldType.NUMBER:
-            value = _number(raw, facts)
+            value = _number(raw, facts, language)
         case FieldType.AMOUNT if isinstance(raw, dict):
-            number, currency = _number(raw.get("amount"), facts), raw.get("currency")
+            number, currency = _number(raw.get("amount"), facts, language), raw.get("currency")
             if number is not None:
                 code = currency.strip().upper() if isinstance(currency, str) else ""
                 value = Money(number, code)
         case FieldType.AMOUNT if isinstance(raw, str):
-            amount = read_amount(raw, facts)
+            amount = read_amount(raw, facts, language=language)
             value = None if amount is None else Money(*amount)
         case FieldType.DATE if isinstance(raw, str):
             value = read_date(raw, facts)
+        case FieldType.BOOLEAN if isinstance(raw, str):
+            value = _YES_NO.get(raw.strip().casefold(), raw)
         case FieldType.LINK if isinstance(raw, str):
             value = Url(raw.strip())
         case FieldType.TEXT | FieldType.CHOICE if isinstance(raw, str):
@@ -707,14 +843,14 @@ def _parse_value(definition: FieldDefinition, raw: JsonValue, facts: DocumentTex
     return definition.validate(value)
 
 
-def _number(raw: JsonValue, facts: DocumentText) -> Decimal | None:
+def _number(raw: JsonValue, facts: DocumentText, language: str | None) -> Decimal | None:
     """A number given as JSON number or as written."""
     if isinstance(raw, bool):
         return None
     if isinstance(raw, int | float):
         number = Decimal(str(raw))
         return number if number.is_finite() else None
-    return read_number(raw, facts) if isinstance(raw, str) else None
+    return read_number(raw, facts, language=language) if isinstance(raw, str) else None
 
 
 # --- helpers ----------------------------------------------------------------------------------
@@ -746,11 +882,6 @@ def _listed_contacts(contacts: Sequence[Contact], facts: DocumentText, limit: in
     return [contact for _, contact in ranked[:limit]]
 
 
-def _by_name[T: Contact | DocumentType | Tag](items: Sequence[T], name: str) -> T | None:
-    wanted = name.strip().casefold()
-    return next((item for item in items if item.name.casefold() == wanted), None)
-
-
 def _by_id[T: Contact | DocumentType | Tag](items: Sequence[T], id: JsonValue) -> T:
     return next(item for item in items if str(item.id) == id)
 
@@ -773,38 +904,13 @@ def _proposal_json(proposal: Proposal) -> JsonObject:
     return {"value": proposal.value, "evidence": proposal.evidence}
 
 
-def _output(
-    answer: JsonObject, checks: list[FieldCheck], answers: list[StructuredAnswer]
-) -> JsonObject:
-    tokens: list[JsonValue] = [
+def _tokens(answers: Sequence[StructuredAnswer]) -> list[JsonValue]:
+    return [
         {"prompt": item.prompt_tokens, "completion": item.completion_tokens, "usage": item.usage}
         for item in answers
     ]
-    return {
-        "attempts": len(answers),
-        "answer": answer,
-        "fields": checks_to_json(checks),
-        "tokens": tokens,
-    }
 
 
 def _reason(check: FieldCheck) -> str:
     """Reasons of field checks name the field already."""
     return str(check.reason) if field_id_of(check.field) else f"{check.field}: {check.reason}"
-
-
-def _result(
-    checks: list[FieldCheck],
-    answer: JsonObject,
-    answers: list[StructuredAnswer],
-    input: JsonObject,
-) -> NodeResult:
-    uncertain = [check for check in checks if not check.ok]
-    return NodeResult(
-        outcome=Outcome.UNCERTAIN if uncertain else Outcome.OK,
-        reason="; ".join(_reason(check) for check in uncertain) or None,
-        confidence=min((check.confidence for check in checks), default=1.0),
-        model_version=_model_version(answers[-1]),
-        input=input,
-        output=_output(answer, checks, answers),
-    )

@@ -29,8 +29,13 @@ from papiq.composition.errors import ConfigurationError
 from papiq.composition.settings import Settings
 from papiq.core.domain.pipeline import NODES, Node
 from papiq.core.ports import LanguageModel
-from papiq.core.services.classification.nodes import ClassifyNode, ExtractFieldsNode
-from papiq.core.services.classification.prompts import CLASSIFY_PROMPT, EXTRACT_PROMPT
+from papiq.core.services.classification.nodes import FieldsNode, JudgeNode, LlmSignal
+from papiq.core.services.classification.prompts import EXTRACT_PROMPT, PROPOSE_PROMPT
+from papiq.core.services.classification.signals import (
+    ClassifierSignal,
+    FactsSignal,
+    NeighboursSignal,
+)
 from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode, RetryPolicy
 
 FAKE_MODEL = "fixed answers"
@@ -51,8 +56,8 @@ def build_environment(
     settings: Settings,
     model_for: Callable[[Case], LanguageModel | None],
 ) -> Environment:
-    """The evaluation's services on the container's adapters. The pipeline of a case runs
-    classification and field extraction with `model_for(case)`, the other nodes pass through,
+    """The evaluation's services on the container's adapters. The pipeline of a case runs the
+    signals, the judge and the fields node with `model_for(case)`, the other nodes pass through,
     and there are no automatic retries: a model that cannot be reached ends the case red at
     once."""
     services = build_services(container, settings)
@@ -64,8 +69,15 @@ def build_environment(
         executors: dict[Node, NodeExecutor] = {
             node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE
         }
-        executors[Node.JUDGE] = ClassifyNode(uow, store, model, clock, policy)
-        executors[Node.FIELDS] = ExtractFieldsNode(uow, store, model, clock, policy)
+        executors[Node.SIGNAL_LLM] = LlmSignal(uow, store, model, clock, policy)
+        executors[Node.SIGNAL_FACTS] = FactsSignal(uow, store)
+        # Without a trained model and similar documents, these two abstain.
+        executors[Node.SIGNAL_CLASSIFIER] = ClassifierSignal(store, None)
+        executors[Node.SIGNAL_NEIGHBOURS] = NeighboursSignal(uow, store, None, None)
+        executors[Node.JUDGE] = JudgeNode(
+            uow, store, clock, policy, classifier_threshold=settings.classifier_threshold
+        )
+        executors[Node.FIELDS] = FieldsNode(uow, store, model, clock, policy)
         return PipelineService(
             uow,
             clock,
@@ -127,7 +139,7 @@ async def run_evaluation(
         model=FAKE_MODEL if model is None else model.model,
         endpoint="memory" if model is None else model.endpoint,
         started=started,
-        prompts=f"{CLASSIFY_PROMPT}, {EXTRACT_PROMPT}",
+        prompts=f"{PROPOSE_PROMPT}, {EXTRACT_PROMPT}",
         settings={
             "PAPIQ_LLM_INPUT_BUDGET": settings.llm_input_budget,
             "PAPIQ_LLM_MAX_TAGS": settings.llm_max_tags,

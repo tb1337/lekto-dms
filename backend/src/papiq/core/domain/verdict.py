@@ -333,6 +333,10 @@ def _contact_reason(view: _ContactView, top: ContactId | None, no_model: bool) -
     if view.sender and view.matched is None:
         return f"'{view.sender}' is no contact, and only other signals point to '{name}'"
     if top not in view.proposers:
+        if top == view.matched and view.match_score >= view.thresholds.accept:
+            return f"'{view.sender}' matches several contacts"
+        if top == view.matched:
+            return f"'{view.sender}' is only similar to the contact '{name}'"
         return f"'{name}' is only suggested: no signal is sure of it"
     if not view.hard(top):
         return f"the contact '{name}' does not appear in the text"

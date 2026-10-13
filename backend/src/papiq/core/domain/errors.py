@@ -105,5 +105,10 @@ class SearchIndexError(SearchError):
     """The search index refused a request or a task failed (e.g. vectors of the wrong length)."""
 
 
+class ClassifierError(DomainError):
+    """The classifier cannot learn from the examples (too few, no text) or cannot read a model
+    (damaged, or written in another format)."""
+
+
 class PatternTimeoutError(DomainError):
     """A regular expression of a rule took longer than its time limit."""

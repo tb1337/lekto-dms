@@ -8,6 +8,7 @@ import pytest
 from papiq.adapters.outbound.memory import (
     BagOfWordsEmbeddings,
     FakeCipher,
+    FakeClassifier,
     FakeEmbeddings,
     FakeLanguageModel,
     FakeOcr,
@@ -35,6 +36,7 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
 )
 from papiq.core.ports.event_bus import DEFAULT_DELIVERY_RETRY
+from tests.contracts.classifier import ClassifierContract
 from tests.contracts.clock import ClockContract
 from tests.contracts.event_bus import EventBusContract, EventBusFactory
 from tests.contracts.identity import (
@@ -272,4 +274,13 @@ def search_index() -> MemorySearchIndex:
 
 
 class TestMemorySearchIndex(SearchIndexContract):
+    pass
+
+
+@pytest.fixture
+def classifier() -> FakeClassifier:
+    return FakeClassifier()
+
+
+class TestFakeClassifier(ClassifierContract):
     pass

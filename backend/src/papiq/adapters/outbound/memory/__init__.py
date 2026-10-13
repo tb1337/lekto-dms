@@ -3,6 +3,7 @@
 They behave like the real adapters, including transactions: nothing is stored without commit.
 """
 
+from papiq.adapters.outbound.memory.classifier import FakeClassifier
 from papiq.adapters.outbound.memory.clock import ManualClock
 from papiq.adapters.outbound.memory.crypto import FakeCipher, FakePasswordHasher, FakeTotp
 from papiq.adapters.outbound.memory.database import MemoryDatabase
@@ -27,6 +28,7 @@ from papiq.adapters.outbound.memory.webhook_sender import FakeWebhookSender
 __all__ = [
     "BagOfWordsEmbeddings",
     "FakeCipher",
+    "FakeClassifier",
     "FakeEmbeddings",
     "FakeLanguageModel",
     "FakeOcr",

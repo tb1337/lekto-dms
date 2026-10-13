@@ -1,5 +1,6 @@
 """Outbound ports: interfaces the core needs, implemented by outbound adapters."""
 
+from papiq.core.ports.classifier import Classifier, Prediction, TrainedModel, TrainingExample
 from papiq.core.ports.clock import Clock
 from papiq.core.ports.embeddings import EmbeddingResult, Embeddings
 from papiq.core.ports.event_bus import DeliveryRetry, EventBus, EventHandler, Outbox
@@ -51,6 +52,7 @@ from papiq.core.ports.webhook_sender import WebhookRequest, WebhookResponse, Web
 
 __all__ = [
     "ApiTokenRepository",
+    "Classifier",
     "Clock",
     "ContactRepository",
     "CredentialRepository",
@@ -81,6 +83,7 @@ __all__ = [
     "ParseResult",
     "PasswordHasher",
     "PatternMatcher",
+    "Prediction",
     "ProcessingLog",
     "Repository",
     "RuleApplicationRepository",
@@ -96,6 +99,8 @@ __all__ = [
     "TagRepository",
     "TextLocator",
     "Totp",
+    "TrainedModel",
+    "TrainingExample",
     "UnitOfWork",
     "UnitOfWorkFactory",
     "UserRepository",

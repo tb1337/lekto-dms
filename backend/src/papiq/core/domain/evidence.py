@@ -186,6 +186,70 @@ def currencies_in(text: str) -> set[str]:
     return found
 
 
+# --- values as a person or a model writes them ------------------------------------------------
+
+_SIGNS = "-\u2212\u2013"  # hyphen-minus, minus sign, en dash
+# A minus standing on its own before or after the number (`-12,50`, `€ -5`, `12,50-`), not
+# joined to a word (`R-2026`).
+_SIGN_BEFORE = re.compile(rf"(?:^|[\s(:€$£¥])[{_SIGNS}]\s*$")
+_SIGN_AFTER = re.compile(rf"\s*[{_SIGNS}](?:$|[\s)€$£¥])")
+
+
+def read_number(
+    raw: str, facts: "DocumentText | None" = None, *, language: str | None = None
+) -> Decimal | None:
+    """The one number in `raw`, as written: `2.111,68`, `1,234.56`, `84,20`, `-12,50`,
+    `12,50-`, `1 234`. None unless `raw` holds exactly one. An ambiguous notation (`1.234`) is
+    read the way `facts` shows it; where the text shows both readings (or no text is given),
+    the German one, unless `language` is English."""
+    text = normalise(raw)
+    tokens = list(_NUMBER.finditer(text))
+    if len(tokens) != 1:
+        return None
+    token = tokens[0]
+    german = _reading(token.group(), ",", ".' ")
+    english = _reading(token.group(), ".", ",' ")
+    if german is None or english is None or german == english:
+        number = german if german is not None else english
+        if number is None:
+            return None
+    elif facts is not None and facts.has_number(german) != facts.has_number(english):
+        number = german if facts.has_number(german) else english
+    else:
+        number = english if language == "en" else german
+    if _SIGN_BEFORE.search(text[: token.start()]) or _SIGN_AFTER.match(text[token.end() :]):
+        number = -number
+    return number
+
+
+def read_date(raw: str, facts: "DocumentText | None" = None) -> date | None:
+    """The one date in `raw`, in any notation `dates_in` reads (`2026-03-12`, `12.03.2026`,
+    `12. März 2026`). Of several, the one `facts` shows, if it is just one; else None."""
+    found = dates_in(normalise(raw))
+    if len(found) > 1 and facts is not None:
+        found = {value for value in found if facts.has_date(value)}
+    return next(iter(found)) if len(found) == 1 else None
+
+
+def read_amount(
+    raw: str, facts: "DocumentText | None" = None, *, language: str | None = None
+) -> tuple[Decimal, str] | None:
+    """The amount and its currency (ISO 4217) in `raw`, read as `read_number` does: `2.111,68
+    EUR`, `€ 84,20`. Without a currency in `raw` (or with one standing for several, `kr`),
+    the one currency `facts` shows; None if that does not settle it."""
+    number = read_number(raw, facts, language=language)
+    if number is None:
+        return None
+    codes = currencies_in(normalise(raw))
+    if len(codes) != 1 and facts is not None:
+        narrowed = codes & facts.currencies if codes else facts.currencies
+        if len(narrowed) == 1:
+            codes = narrowed
+    if len(codes) != 1:
+        return None
+    return number, next(iter(codes))
+
+
 # --- text -------------------------------------------------------------------------------------
 
 _SHORTEST_SPACELESS = 8  # characters; shorter values compared without spaces match too easily

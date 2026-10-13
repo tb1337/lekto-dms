@@ -10,6 +10,9 @@ from papiq.core.domain.evidence import (
     dates_in,
     normalise,
     numbers_in,
+    read_amount,
+    read_date,
+    read_number,
 )
 
 
@@ -134,3 +137,56 @@ def test_document_text() -> None:
     assert facts.has_number(Decimal("-84.2"))
     assert facts.has_currency("EUR")
     assert facts.contains("rechnung")
+
+
+@pytest.mark.parametrize(
+    ("written", "number"),
+    [
+        ("2.111,68", "2111.68"),
+        ("2111.68", "2111.68"),
+        ("1,234.56", "1234.56"),
+        ("84,20", "84.20"),
+        ("1 234", "1234"),
+        ("-12,50 €", "-12.50"),
+        ("12,50-", "-12.50"),
+        ("€ -5", "-5"),
+        ("ca. 84,20 EUR", "84.20"),
+    ],
+)
+def test_numbers_as_written(written: str, number: str) -> None:
+    assert read_number(written) == Decimal(number)
+
+
+def test_a_number_needs_to_stand_alone() -> None:
+    assert read_number("R-2026") == Decimal("2026")
+    assert read_number("R-2026-0815") is None
+    assert read_number("keine Angabe") is None
+
+
+def test_an_ambiguous_number_is_read_the_way_the_text_shows_it() -> None:
+    assert read_number("1.234") == Decimal("1234")
+    assert read_number("1.234", language="en") == Decimal("1.234")
+    assert read_number("1.234", DocumentText("Faktor 1.2340")) == Decimal("1.234")
+    assert read_number("1.234", DocumentText("Menge 1,234 kg")) == Decimal("1234")
+    assert read_number("1.234", DocumentText("Menge 1234 Stück")) == Decimal("1234")
+
+
+@pytest.mark.parametrize(
+    "written", ["2026-03-12", "12.03.2026", "12.3.26", "12. März 2026", "March 12, 2026"]
+)
+def test_dates_as_written(written: str) -> None:
+    assert read_date(written) == date(2026, 3, 12)
+
+
+def test_of_several_dates_the_one_in_the_text() -> None:
+    assert read_date("01.06.2026 bis 30.06.2026") is None
+    facts = DocumentText("Leistung bis 30.06.2026")
+    assert read_date("01.06.2026 bis 30.06.2026", facts) == date(2026, 6, 30)
+
+
+def test_amounts_as_written() -> None:
+    assert read_amount("2.111,68 EUR") == (Decimal("2111.68"), "EUR")
+    assert read_amount("€ 84,20") == (Decimal("84.20"), "EUR")
+    assert read_amount("84,20") is None
+    assert read_amount("84,20", DocumentText("Summe 84,20 €")) == (Decimal("84.20"), "EUR")
+    assert read_amount("120 kr", DocumentText("Pris 120 SEK")) == (Decimal("120"), "SEK")

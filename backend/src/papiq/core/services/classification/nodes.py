@@ -10,11 +10,10 @@ An unreachable model raises, so the pipeline retries the node.
 
 import json
 import logging
-import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -25,6 +24,7 @@ from papiq.core.domain.classification import (
     TAGS,
     FieldCheck,
     checks_to_json,
+    field_from_json,
     field_id_of,
     field_key,
     field_to_json,
@@ -35,7 +35,7 @@ from papiq.core.domain.errors import (
     UnprocessableDocumentError,
     ValidationError,
 )
-from papiq.core.domain.evidence import DocumentText
+from papiq.core.domain.evidence import DocumentText, read_amount, read_date, read_number
 from papiq.core.domain.exchanges import (
     ModelCall,
     RunExchange,
@@ -85,7 +85,6 @@ from papiq.core.services.pipeline import MetadataResult
 
 log = logging.getLogger(__name__)
 
-_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _RAW_LENGTH = 4000  # characters of an unfit answer kept in the log
 _AMBIGUITY = 0.05  # two contacts this close to each other are ambiguous
 _EARLIEST = date(1900, 1, 1)
@@ -456,7 +455,7 @@ class ExtractFieldsNode(_ModelStep):
         values: dict[FieldId, object] = {}
         for check, definition in zip(checks, definitions, strict=True):
             if check.ok and check.value is not None:
-                values[definition.id] = _parse_value(definition, check.value)
+                values[definition.id] = field_from_json(definition, check.value)
         raw: JsonObject = {key: _proposal_json(proposal) for key, proposal in proposals.items()}
         return MetadataResult(
             _result(checks, {"fields": raw}, answers, input),
@@ -520,12 +519,12 @@ def _check_date(field: str, proposal: Proposal, facts: DocumentText, today: date
         return FieldCheck(
             outcome=Outcome.UNCERTAIN, confidence=0, reason="no date recognised", **common
         )
-    value = _date(proposal.value)
+    value = read_date(proposal.value, facts) if isinstance(proposal.value, str) else None
     if value is None:
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
             confidence=0,
-            reason=f"{proposal.value!r} is not a date (YYYY-MM-DD)",
+            reason=f"{proposal.value!r} is not a date",
             **common,
         )
     common["quote_shows_value"] = _quoted(proposal, lambda quote: quote.has_date(value))
@@ -579,7 +578,7 @@ def _check_field(
             **common,
         )
     try:
-        value = _parse_value(definition, proposal.value)
+        value = _parse_value(definition, proposal.value, facts)
     except ValidationError:
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
@@ -678,50 +677,39 @@ def _verified(
 # --- values -----------------------------------------------------------------------------------
 
 
-def _parse_value(definition: FieldDefinition, raw: JsonValue) -> FieldValue:
-    """A proposed value read leniently (a number may come as number or with a decimal
-    comma), then checked against the definition. ValidationError if it does not fit."""
+def _parse_value(definition: FieldDefinition, raw: JsonValue, facts: DocumentText) -> FieldValue:
+    """A proposed value read leniently, as a person writes it (`2.111,68 €`, `12.03.2026`; an
+    ambiguous number the way the text shows it), then checked against the definition.
+    ValidationError if it does not fit."""
     value: object = raw
-    try:
-        match definition.data_type:
-            case FieldType.NUMBER:
-                value = _decimal(raw)
-            case FieldType.AMOUNT if isinstance(raw, dict):
-                currency = raw.get("currency")
-                value = Money(
-                    _decimal(raw.get("amount")),
-                    currency.strip().upper() if isinstance(currency, str) else "",
-                )
-            case FieldType.DATE:
-                value = _date(raw)
-            case FieldType.LINK if isinstance(raw, str):
-                value = Url(raw.strip())
-            case FieldType.TEXT | FieldType.CHOICE if isinstance(raw, str):
-                value = raw.strip()
-    except (InvalidOperation, ValueError, TypeError):
-        raise ValidationError(f"invalid value {raw!r}") from None
+    match definition.data_type:
+        case FieldType.NUMBER:
+            value = _number(raw, facts)
+        case FieldType.AMOUNT if isinstance(raw, dict):
+            number, currency = _number(raw.get("amount"), facts), raw.get("currency")
+            if number is not None:
+                code = currency.strip().upper() if isinstance(currency, str) else ""
+                value = Money(number, code)
+        case FieldType.AMOUNT if isinstance(raw, str):
+            amount = read_amount(raw, facts)
+            value = None if amount is None else Money(*amount)
+        case FieldType.DATE if isinstance(raw, str):
+            value = read_date(raw, facts)
+        case FieldType.LINK if isinstance(raw, str):
+            value = Url(raw.strip())
+        case FieldType.TEXT | FieldType.CHOICE if isinstance(raw, str):
+            value = raw.strip()
     return definition.validate(value)
 
 
-def _decimal(raw: JsonValue) -> Decimal:
-    if isinstance(raw, bool) or not isinstance(raw, str | int | float):
-        raise ValueError(raw)
-    text = str(raw).strip().replace(" ", "")
-    if "," in text and "." not in text:
-        text = text.replace(",", ".")
-    number = Decimal(text)
-    if not number.is_finite():
-        raise ValueError(raw)
-    return number
-
-
-def _date(raw: JsonValue) -> date | None:
-    if not isinstance(raw, str) or not _ISO_DATE.fullmatch(raw.strip()):
+def _number(raw: JsonValue, facts: DocumentText) -> Decimal | None:
+    """A number given as JSON number or as written."""
+    if isinstance(raw, bool):
         return None
-    try:
-        return date.fromisoformat(raw.strip())
-    except ValueError:
-        return None
+    if isinstance(raw, int | float):
+        number = Decimal(str(raw))
+        return number if number.is_finite() else None
+    return read_number(raw, facts) if isinstance(raw, str) else None
 
 
 # --- helpers ----------------------------------------------------------------------------------

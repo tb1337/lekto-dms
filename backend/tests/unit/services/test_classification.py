@@ -342,8 +342,8 @@ async def test_new_tags_are_only_proposed(world: World) -> None:
             "the quoted passage does not appear in the text",
             "2026-03-31",
         ),
-        ("31.03.2026", None, "'31.03.2026' is not a date (YYYY-MM-DD)", None),
-        ("2026-02-30", None, "'2026-02-30' is not a date (YYYY-MM-DD)", None),
+        ("31.13.2026", None, "'31.13.2026' is not a date", None),
+        ("2026-02-30", None, "'2026-02-30' is not a date", None),
         ("1850-03-31", None, "1850-03-31 is not plausible", None),
         ("2030-03-31", None, "2030-03-31 is not plausible", None),
         (None, None, "no date recognised", None),
@@ -627,9 +627,9 @@ async def test_verified_fields_are_applied(world: World) -> None:
             {"amount": "84.20", "currency": "USD"},
         ),
         (
-            {"a3": {"value": "84,20 €", "evidence": None}},
+            {"a3": {"value": "zwölf Euro", "evidence": None}},
             "Rechnungsbetrag",
-            "'84,20 €' is not a valid value of 'Rechnungsbetrag' (amount)",
+            "'zwölf Euro' is not a valid value of 'Rechnungsbetrag' (amount)",
             None,
         ),
         (
@@ -720,6 +720,19 @@ async def test_values_are_read_leniently(world: World) -> None:
     fields = seeded.fields
     assert result.changes.fields[fields["Rechnungsbetrag"].id] == Money(Decimal("84.2"), "EUR")
     assert result.changes.fields[fields["Bezahlt"].id] is True
+
+
+async def test_values_are_read_as_written_in_german(world: World) -> None:
+    seeded, result = await extract(
+        world,
+        extraction(
+            a2={"value": "15.04.2026", "evidence": "Zahlbar bis 15.04.2026."},
+            a3={"value": "84,20 €", "evidence": "Gesamtbetrag | 84,20 €"},
+        ),
+    )
+    fields = seeded.fields
+    assert result.changes.fields[fields["Rechnungsbetrag"].id] == Money(Decimal("84.20"), "EUR")
+    assert result.changes.fields[fields["Fällig am"].id] == date(2026, 4, 15)
 
 
 async def test_no_fields_no_question(world: World) -> None:

@@ -28,7 +28,7 @@
 		{:else if token.type === 'del'}
 			<del>{@render inline(children(token))}</del>
 		{:else if token.type === 'codespan'}
-			<code class="rounded bg-muted px-1 font-mono text-[0.9em]">{decodeEntities(token.text)}</code>
+			<code class="rounded bg-muted px-1 font-mono text-[0.9em]">{token.text}</code>
 		{:else if token.type === 'br'}
 			<br />
 		{:else if token.type === 'link'}
@@ -116,9 +116,9 @@
 				{@render blocks(children(token))}
 			</blockquote>
 		{:else if token.type === 'code'}
-			<pre class="mb-3 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-sm">{decodeEntities(
-					(token as Tokens.Code).text
-				)}</pre>
+			<!-- Code is literal: the parser escapes nothing in it (a printout keeps its columns). -->
+			{@const code = token as Tokens.Code}
+			<pre class="mb-3 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-sm">{code.text}</pre>
 		{:else if token.type === 'hr'}
 			<hr class="my-4" />
 		{:else if token.type === 'html'}

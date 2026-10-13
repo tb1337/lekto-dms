@@ -53,6 +53,12 @@ describe('Markdown', () => {
 		expect(container.textContent).not.toContain('<!-- image -->');
 	});
 
+	it('keeps code as it stands, spaces and entities alike', () => {
+		const printout = '|Tag |Std.|TAZPL |\n|Mo  |7,48|0,54  |\n| A &amp; B         |';
+		const { container } = render(Markdown, { source: `\`\`\`\n${printout}\n\`\`\`\n` });
+		expect(container.querySelector('pre')?.textContent).toBe(printout);
+	});
+
 	it('shows escaped text as the characters, still not as markup', () => {
 		const { container } = render(Markdown, {
 			source:

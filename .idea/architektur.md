@@ -73,6 +73,7 @@ Papiq ist hexagonal aufgebaut: Der fachliche Kern kennt keine Datenbank, kein S3
 | Event-Bus | Outbox-Tabelle in der Datenbank, Verteilung im Prozess | Valkey Streams, NATS |
 | Identität | nativer Login, OIDC | weitere Anbieter |
 | Vorschau | PDFium (erste Seite als WebP) | anderer Renderer |
+| Fundstellen (Zitat → Seite und Box) | PDFium (Textebene des Archiv-PDFs) | Docling-Provenienz, anderer Locator |
 | Mustersuche (Regeln) | `regex` mit Zeitlimit | eigener Dienst |
 | Webhook-Versand | httpx2 | andere HTTP-Bibliothek |
 | Uhr | Systemuhr | feste Uhr in Tests |

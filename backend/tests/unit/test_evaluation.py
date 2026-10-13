@@ -1,4 +1,5 @@
-"""The evaluation set with its fixed answers: the checks must catch every wrong answer."""
+"""The evaluation set with its fixed answers, cold and trained: the checks must catch every
+wrong answer."""
 
 import json
 import shutil
@@ -6,11 +7,18 @@ from pathlib import Path
 
 import pytest
 
-from papiq.adapters.inbound.evaluation import EvaluationSetError, load_set
+from papiq.adapters.inbound.evaluation import EvaluationSetError, Run, evaluate, load_set
+from papiq.adapters.outbound.memory import FakeLanguageModel
 from papiq.composition.__main__ import main
 from papiq.composition.errors import ConfigurationError
-from papiq.composition.evaluation import run_evaluation
+from papiq.composition.evaluation import (
+    FAKE_MODEL,
+    build_environment,
+    evaluation_container,
+    run_evaluation,
+)
 from papiq.composition.settings import Settings
+from papiq.core.domain.identifiers import IdentifierKind, IdentifierSource
 from papiq.core.domain.pipeline import Lane
 
 SET = Path(__file__).parents[2] / "evaluation"
@@ -21,19 +29,22 @@ async def test_the_fixed_answers_give_the_expected_lanes(tmp_path: Path) -> None
     evaluation = await run_evaluation(
         Settings.model_construct(), cases=SET, fake=True, output=report
     )
-    assert len(evaluation.results) >= 20
+    assert len(evaluation.results) >= 60
+    assert {result.run for result in evaluation.results} == set(Run)
     for result in evaluation.results:
         assert result.case.fake is not None
-        assert result.lane is result.case.fake.lane, (result.case.name, result.reasons)
+        lane = result.case.fake.lane_in(result.run)
+        assert result.lane is lane, (result.run, result.case.name, result.reasons)
         assert result.violations == (), result.case.name
     assert evaluation.false_green == 0
     assert evaluation.green_but_wrong == 0
     assert evaluation.violations == 0
 
     text = report.read_text(encoding="utf-8")
-    assert "- False green: **0**" in text
-    assert "| green | " in text
-    assert "## Instructions in the document text" in text
+    assert "| False green | **0** | **0** |" in text
+    assert "the trained one took over 55 documents of the training corpus first" in text
+    assert "## Lanes (trained)" in text
+    assert "## Instructions in the document text (cold)" in text
 
 
 async def test_instructions_in_the_text_change_only_checked_fields(tmp_path: Path) -> None:
@@ -41,7 +52,8 @@ async def test_instructions_in_the_text_change_only_checked_fields(tmp_path: Pat
         Settings.model_construct(), cases=SET, fake=True, output=tmp_path / "r.md"
     )
     injections = [result for result in evaluation.results if result.case.injection]
-    assert len(injections) == 2
+    assert len(injections) == 4
+    injections = [result for result in injections if result.run is Run.COLD]
     for result in injections:
         assert result.lane is not Lane.GREEN
         assert result.violations == ()
@@ -95,8 +107,12 @@ async def test_green_with_a_wrong_value_counts(tmp_path: Path) -> None:
     evaluation = await run_evaluation(
         Settings.model_construct(), cases=tmp_path / "set", fake=True, output=tmp_path / "r.md"
     )
-    assert evaluation.green_but_wrong == 1
+    assert evaluation.green_but_wrong == 2  # cold and trained
     assert "01-stromrechnung (document_date)" in (tmp_path / "r.md").read_text(encoding="utf-8")
+    # The person sets the expected date: the log tells they corrected the automatic one.
+    (cold, trained) = [item for item in evaluation.results if item.case.name == case.stem]
+    assert "document_date" in cold.corrected & cold.automatic
+    assert "document_date" in trained.corrected & trained.automatic
 
 
 def test_the_command(
@@ -105,9 +121,53 @@ def test_the_command(
     report = tmp_path / "report.md"
     assert main(["evaluate", "--fake", "--cases", str(SET), "--output", str(report)]) == 0
     assert report.exists()
-    assert "01-stromrechnung: green" in capsys.readouterr().out
+    assert "cold: 01-stromrechnung: green" in capsys.readouterr().out
+    cold = ["evaluate", "--fake", "--runs", "cold", "--cases", str(SET), "--output", str(report)]
+    assert main(cold) == 0
+    assert "trained:" not in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        main(["evaluate", "--fake", "--runs", "warm"])
     with pytest.raises(SystemExit):
         main(["check", "--fake"])
     with pytest.raises(SystemExit):
         main(["check", "--cases", str(SET)])
     assert main(["evaluate", "--cases", str(tmp_path)]) == 1
+
+
+async def test_the_trained_run_learns_from_the_corpus() -> None:
+    """The corpus is taken over and trained on: identifiers that stand on one contact's letters
+    only are learned, the household's IBAN (on letters of many) and the utility's (also on the
+    bank statements) are not. The sender known only by its identifiers is then green."""
+    evaluation = load_set(SET)
+    container = evaluation_container(Run.TRAINED)
+    environment = build_environment(
+        container,
+        Settings.model_construct(),
+        lambda case: FakeLanguageModel(case.fake.respond, model=FAKE_MODEL) if case.fake else None,
+        Run.TRAINED,
+    )
+    try:
+        results = await evaluate(evaluation, environment)
+        async with container.unit_of_work() as uow:
+            contacts = {contact.name: contact for contact in await uow.contacts.list_all()}
+    finally:
+        await container.aclose()
+    learned = {
+        name: {
+            (item.kind, item.value)
+            for item in contact.identifiers
+            if item.source is IdentifierSource.LEARNED
+        }
+        for name, contact in contacts.items()
+    }
+    assert (IdentifierKind.VAT_ID, "DE276543210") in learned["Versandhaus Bergmann GmbH"]
+    every = {value for identifiers in learned.values() for _, value in identifiers}
+    assert "DE89370400440532013000" not in every
+    assert "DE12250501800004471100" not in every
+    # Entered by hand, it stays so.
+    insurer = contacts["Hanse Versicherung AG"]
+    assert any(item.source is IdentifierSource.MANUAL for item in insurer.identifiers)
+    (logo,) = [result for result in results if result.case.name == "31-absender-nur-kennung"]
+    assert logo.lane is Lane.GREEN
+    (best, *_) = logo.checks["contact"].candidates
+    assert any(source.identifiers for source in best.sources)

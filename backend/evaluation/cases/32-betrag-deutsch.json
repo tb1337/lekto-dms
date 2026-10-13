@@ -1,0 +1,49 @@
+{
+  "description": "Invoice with the amount written as in German, 2.111,68 €, and so given by the model: read as 2111.68, it is found in the text.",
+  "expected": {
+    "lane": "green",
+    "contact": "Elektro Krause GmbH",
+    "document_type": "Rechnung",
+    "tags": [
+      "Handwerker",
+      "Wohnung"
+    ],
+    "document_date": "2026-02-19",
+    "fields": {
+      "Betrag": {
+        "amount": "2111.68",
+        "currency": "EUR"
+      },
+      "Rechnungsnummer": "2026-118"
+    }
+  },
+  "fake": {
+    "classification": {
+      "contact": {
+        "value": "Elektro Krause GmbH",
+        "evidence": "Elektro Krause GmbH"
+      },
+      "document_type": "Rechnung",
+      "new_document_type": null,
+      "tags": [
+        "Handwerker",
+        "Wohnung"
+      ],
+      "new_tags": [],
+      "document_date": {
+        "value": "19.02.2026",
+        "evidence": "Datum: 19.02.2026"
+      }
+    },
+    "fields": {
+      "Betrag": {
+        "value": "2.111,68 EUR",
+        "evidence": "Summe inkl. 19 % MwSt.: 2.111,68 EUR"
+      },
+      "Rechnungsnummer": {
+        "value": "2026-118",
+        "evidence": "Rechnung Nr. 2026-118"
+      }
+    }
+  }
+}

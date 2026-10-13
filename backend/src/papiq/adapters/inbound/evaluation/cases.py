@@ -1,23 +1,32 @@
-"""The evaluation set on disk: master data, and per case a document as Markdown with what is
-expected of it and, for runs without a model, a fixed answer.
+"""The evaluation set on disk: master data, a training corpus, and per case a document as
+Markdown with what is expected of it and, for runs without a model, a fixed answer.
 
 Layout of a set directory:
 
 - `master_data.json`: `contacts`, `document_types`, `tags` (names) and `fields`
-  (`name`, `data_type`, `document_types` (names, or null for global), `choices`); optional
-  `contact_aliases` (aliases by contact name) and `type_descriptions` (by type name).
+  (`name`, `data_type`, `document_types` (names, or null for global), `choices`, `required`:
+  true for a global field, else the names of the types it is required for); optional
+  `contact_aliases` (aliases by contact name), `contact_identifiers` (by contact name, a list
+  of `kind` and `value`, entered by hand), `type_descriptions` and `title_patterns` (by type
+  name).
+- `training/<name>.md` and `training/<name>.json`: the corpus the trained run takes over
+  before the cases, a document's text and its metadata (`contact`, `document_type`, `tags`,
+  `document_date`).
 - `cases/<name>.md`: the document text, as the parse node would produce it.
 - `cases/<name>.json`: `description`, `expected` (`lane`, `contact`, `document_type`, `tags`,
   `document_date`, `fields` by name, in the JSON form of the API) and `fake`
   (`classification`: `contact`, `document_type`, `new_document_type`, `tags`, `new_tags`,
   `document_date`, optionally `recipient`, `title` and `language`, from which the answer of
   the language model's signal is built; `fields`: proposals by field name, in that answer as
-  text; `lane`: the lane this answer leads to, if not the expected one).
+  text; `lane`: the lane this answer leads to, if not the expected one). `expected` and
+  `fake` may give `lanes` by run where a run differs; `runs` names the runs a case belongs to
+  (default: both).
 """
 
 import json
 import re
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +38,14 @@ from papiq.core.ports import StructuredRequest
 
 class EvaluationSetError(Exception):
     """The evaluation set is incomplete or malformed."""
+
+
+class Run(StrEnum):
+    """The two runs of the set: without what the signals learn (a fresh installation), and
+    after the training corpus was taken over, indexed and trained on."""
+
+    COLD = "cold"
+    TRAINED = "trained"
 
 
 @dataclass(frozen=True)
@@ -51,7 +68,9 @@ class MasterDataSpec:
     tags: tuple[str, ...]
     fields: tuple[FieldSpec, ...]
     contact_aliases: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    contact_identifiers: dict[str, tuple[tuple[str, str], ...]] = field(default_factory=dict)
     type_descriptions: dict[str, str] = field(default_factory=dict)
+    title_patterns: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -62,6 +81,10 @@ class Expected:
     tags: frozenset[str]
     document_date: str | None
     fields: dict[str, JsonValue] = field(default_factory=dict)
+    lanes: dict[Run, Lane] = field(default_factory=dict)
+
+    def lane_in(self, run: Run) -> Lane:
+        return self.lanes.get(run, self.lane)
 
 
 @dataclass(frozen=True)
@@ -69,6 +92,10 @@ class FakeAnswer:
     classification: JsonObject
     fields: dict[str, JsonValue]
     lane: Lane
+    lanes: dict[Run, Lane] = field(default_factory=dict)
+
+    def lane_in(self, run: Run) -> Lane:
+        return self.lanes.get(run, self.lane)
 
     def respond(self, request: StructuredRequest) -> JsonObject:
         """The answer to a request of the language model's signal (`proposal`) or of the fields
@@ -105,6 +132,19 @@ class Case:
     expected: Expected
     fake: FakeAnswer | None
     injection: bool = False
+    runs: frozenset[Run] = frozenset(Run)
+
+
+@dataclass(frozen=True)
+class TrainingDocument:
+    """A document of the training corpus: taken over with its metadata, as from Paperless."""
+
+    name: str
+    text: str
+    contact: str | None
+    document_type: str | None
+    tags: frozenset[str]
+    document_date: str | None
 
 
 @dataclass(frozen=True)
@@ -112,6 +152,10 @@ class EvaluationSet:
     path: Path
     master_data: MasterDataSpec
     cases: tuple[Case, ...]
+    training: tuple[TrainingDocument, ...] = ()
+
+    def cases_in(self, run: Run) -> tuple[Case, ...]:
+        return tuple(case for case in self.cases if run in case.runs)
 
 
 def load_set(path: Path) -> EvaluationSet:
@@ -123,7 +167,9 @@ def load_set(path: Path) -> EvaluationSet:
     cases = tuple(_case(markdown, master) for markdown in sorted(directory.glob("*.md")))
     if not cases:
         raise EvaluationSetError(f"{directory}: no cases")
-    return EvaluationSet(path, master, cases)
+    corpus = path / "training"
+    training = tuple(_training(markdown, master) for markdown in sorted(corpus.glob("*.md")))
+    return EvaluationSet(path, master, cases, training)
 
 
 def _before_document(message: str) -> str:
@@ -200,13 +246,20 @@ def _master_data(data: Any) -> MasterDataSpec:
             contact_aliases={
                 name: tuple(aliases) for name, aliases in data.get("contact_aliases", {}).items()
             },
+            contact_identifiers={
+                name: tuple((str(item["kind"]), str(item["value"])) for item in identifiers)
+                for name, identifiers in data.get("contact_identifiers", {}).items()
+            },
             type_descriptions=dict(data.get("type_descriptions", {})),
+            title_patterns=dict(data.get("title_patterns", {})),
         )
     except (KeyError, TypeError, ValueError) as error:
         raise EvaluationSetError(f"master_data.json: {error!r}") from None
     for what, names, known in (
         ("contact_aliases", master.contact_aliases, master.contacts),
+        ("contact_identifiers", master.contact_identifiers, master.contacts),
         ("type_descriptions", master.type_descriptions, master.document_types),
+        ("title_patterns", master.title_patterns, master.document_types),
     ):
         if set(names) - set(known):
             raise EvaluationSetError(
@@ -233,6 +286,7 @@ def _case(markdown: Path, master: MasterDataSpec) -> Case:
             tags=frozenset(expected_data.get("tags", ())),
             document_date=expected_data.get("document_date"),
             fields=dict(expected_data.get("fields", {})),
+            lanes=_lanes(expected_data),
         )
         fake = None
         if data.get("fake") is not None:
@@ -241,6 +295,12 @@ def _case(markdown: Path, master: MasterDataSpec) -> Case:
                 classification=fake_data["classification"],
                 fields=dict(fake_data.get("fields", {})),
                 lane=Lane(fake_data.get("lane", expected.lane.value)),
+                # Without a lane of its own, the answer leads where the expected values do.
+                lanes=(
+                    _lanes(fake_data)
+                    if "lane" in fake_data or "lanes" in fake_data
+                    else dict(expected.lanes)
+                ),
             )
         case = Case(
             name=name,
@@ -249,6 +309,7 @@ def _case(markdown: Path, master: MasterDataSpec) -> Case:
             expected=expected,
             fake=fake,
             injection=bool(data.get("injection", False)),
+            runs=frozenset(Run(run) for run in data.get("runs", list(Run))),
         )
     except (KeyError, TypeError, ValueError) as error:
         raise EvaluationSetError(f"{name}: {error!r}") from None
@@ -256,14 +317,44 @@ def _case(markdown: Path, master: MasterDataSpec) -> Case:
     return case
 
 
+def _lanes(data: Any) -> dict[Run, Lane]:
+    return {Run(run): Lane(lane) for run, lane in data.get("lanes", {}).items()}
+
+
+def _training(markdown: Path, master: MasterDataSpec) -> TrainingDocument:
+    name = markdown.stem
+    data = _json(markdown.with_suffix(".json"))
+    try:
+        document = TrainingDocument(
+            name=name,
+            text=markdown.read_text(encoding="utf-8"),
+            contact=data.get("contact"),
+            document_type=data.get("document_type"),
+            tags=frozenset(data.get("tags", ())),
+            document_date=data.get("document_date"),
+        )
+    except (TypeError, ValueError) as error:
+        raise EvaluationSetError(f"training/{name}: {error!r}") from None
+    problems = _unknown_names(document.contact, document.document_type, document.tags, master)
+    if problems:
+        raise EvaluationSetError(f"training/{name}: {', '.join(problems)}")
+    return document
+
+
+def _unknown_names(
+    contact: str | None, document_type: str | None, tags: frozenset[str], master: MasterDataSpec
+) -> list[str]:
+    problems = []
+    if contact is not None and contact not in master.contacts:
+        problems.append(f"unknown contact {contact!r}")
+    if document_type is not None and document_type not in master.document_types:
+        problems.append(f"unknown document type {document_type!r}")
+    return problems + [f"unknown tag {tag!r}" for tag in sorted(tags - set(master.tags))]
+
+
 def _check_names(case: Case, master: MasterDataSpec) -> None:
     expected = case.expected
-    problems = []
-    if expected.contact is not None and expected.contact not in master.contacts:
-        problems.append(f"unknown contact {expected.contact!r}")
-    if expected.document_type is not None and expected.document_type not in master.document_types:
-        problems.append(f"unknown document type {expected.document_type!r}")
-    problems += [f"unknown tag {tag!r}" for tag in sorted(expected.tags - set(master.tags))]
+    problems = _unknown_names(expected.contact, expected.document_type, expected.tags, master)
     names = {field.name for field in master.fields}
     problems += [f"unknown field {name!r}" for name in expected.fields if name not in names]
     if problems:

@@ -2,8 +2,8 @@
 language model (or the set's fixed answers) and write a Markdown report."""
 
 import re
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -11,17 +11,24 @@ from papiq.adapters.inbound.evaluation import (
     Case,
     CaseResult,
     Environment,
+    Run,
     RunInfo,
     evaluate,
     load_set,
     render,
     summarise,
 )
-from papiq.adapters.outbound.memory import FakeLanguageModel
+from papiq.adapters.outbound.memory import (
+    BagOfWordsEmbeddings,
+    FakeLanguageModel,
+    MemorySearchIndex,
+)
+from papiq.adapters.outbound.sklearn import SklearnClassifier
 from papiq.composition.container import (
     Container,
     build_memory_container,
     build_services,
+    neighbours_policy_of,
     openai_language_model,
     policy_of,
 )
@@ -36,6 +43,7 @@ from papiq.core.services.classification.signals import (
     FactsSignal,
     NeighboursSignal,
 )
+from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode, RetryPolicy
 
 FAKE_MODEL = "fixed answers"
@@ -51,33 +59,75 @@ class Evaluation:
     violations: int
 
 
+EMBEDDING_DIMENSIONS = 256
+"""Length of the bag-of-words vectors the trained run indexes with."""
+
+
+def evaluation_container(run: Run) -> Container:
+    """The adapters of a run, all in memory: for the trained one a search index with
+    bag-of-words vectors and the scikit-learn classifier."""
+    container = build_memory_container()
+    if run is Run.COLD:
+        return container
+    return replace(
+        container,
+        search_index=MemorySearchIndex(dimensions=EMBEDDING_DIMENSIONS),
+        embeddings=BagOfWordsEmbeddings(dimensions=EMBEDDING_DIMENSIONS),
+        classifier=SklearnClassifier(),
+    )
+
+
 def build_environment(
     container: Container,
     settings: Settings,
     model_for: Callable[[Case], LanguageModel | None],
+    run: Run = Run.COLD,
 ) -> Environment:
     """The evaluation's services on the container's adapters. The pipeline of a case runs the
     signals, the judge and the fields node with `model_for(case)`, the other nodes pass through,
     and there are no automatic retries: a model that cannot be reached ends the case red at
-    once."""
+    once. Taken-over documents (the training corpus) pass the signals, the judge and the
+    fields node as in the container. In the cold run the classifier and the similar documents
+    abstain."""
+    if run is Run.TRAINED:
+        settings = settings.model_copy(
+            update={
+                "embedding_dimensions": EMBEDDING_DIMENSIONS,
+                "embedding_document_prefix": None,
+                "embedding_query_prefix": None,
+            }
+        )
     services = build_services(container, settings)
     uow, clock, store = container.unit_of_work, container.clock, container.object_store
     policy = policy_of(settings)
+    trained = run is Run.TRAINED
+    classifier = services.classifier if trained else None
+    index = container.search_index if trained else None
+    embeddings = container.embeddings if trained else None
 
-    def pipeline_for(case: Case) -> PipelineService:
-        model = model_for(case)
+    def pipeline_for(case: Case | None) -> PipelineService:
+        model = None if case is None else model_for(case)
         executors: dict[Node, NodeExecutor] = {
             node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE
         }
-        executors[Node.SIGNAL_LLM] = LlmSignal(uow, store, model, clock, policy)
-        executors[Node.SIGNAL_FACTS] = FactsSignal(uow, store)
-        # Without a trained model and similar documents, these two abstain.
-        executors[Node.SIGNAL_CLASSIFIER] = ClassifierSignal(store, None)
-        executors[Node.SIGNAL_NEIGHBOURS] = NeighboursSignal(uow, store, None, None)
-        executors[Node.JUDGE] = JudgeNode(
-            uow, store, clock, policy, classifier_threshold=settings.classifier_threshold
+        signals: dict[Node, NodeExecutor] = {
+            Node.SIGNAL_LLM: LlmSignal(uow, store, model, clock, policy),
+            Node.SIGNAL_FACTS: FactsSignal(uow, store),
+            Node.SIGNAL_CLASSIFIER: ClassifierSignal(store, classifier),
+            Node.SIGNAL_NEIGHBOURS: NeighboursSignal(
+                uow, store, index, embeddings, neighbours_policy_of(settings)
+            ),
+        }
+        executors |= {node: ImportedSignal(uow, signal) for node, signal in signals.items()}
+        executors[Node.JUDGE] = ImportedJudgeNode(
+            uow,
+            JudgeNode(
+                uow, store, clock, policy, classifier_threshold=settings.classifier_threshold
+            ),
         )
-        executors[Node.FIELDS] = FieldsNode(uow, store, model, clock, policy)
+        executors[Node.FIELDS] = ImportedFieldsNode(
+            uow, FieldsNode(uow, store, model, clock, policy)
+        )
         return PipelineService(
             uow,
             clock,
@@ -93,6 +143,9 @@ def build_environment(
         master_data=services.master_data,
         documents=services.documents,
         pipeline_for=pipeline_for,
+        run=run,
+        indexing=services.indexing if trained else None,
+        classifier=classifier,
     )
 
 
@@ -103,9 +156,11 @@ async def run_evaluation(
     fake: bool = False,
     output: Path | None = None,
     progress: bool = False,
+    runs: Sequence[Run] = tuple(Run),
 ) -> Evaluation:
-    """Run the set in `cases`; write the report to `output` (default:
-    `<cases>/reports/<date>-<model>.md`). Without `fake`, PAPIQ_LLM_BASE_URL is required."""
+    """Run the set in `cases`, cold and trained (or the `runs` given); write the report to
+    `output` (default: `<cases>/reports/<date>-<model>.md`). Without `fake`,
+    PAPIQ_LLM_BASE_URL is required."""
     evaluation = load_set(cases)
     model: LanguageModel | None = None
     if not fake:
@@ -124,17 +179,19 @@ async def run_evaluation(
 
     def report_progress(result: CaseResult) -> None:
         lane = "none" if result.lane is None else result.lane.value
-        print(f"{result.case.name}: {lane} ({result.seconds:.1f} s)", flush=True)
+        print(f"{result.run}: {result.case.name}: {lane} ({result.seconds:.1f} s)", flush=True)
 
-    container = build_memory_container()
-    environment = build_environment(container, settings, model_for)
     started = datetime.now(UTC)
-    try:
-        results = await evaluate(
-            evaluation, environment, progress=report_progress if progress else None
-        )
-    finally:
-        await container.aclose()
+    results: dict[Run, list[CaseResult]] = {}
+    for run in runs:
+        container = evaluation_container(run)
+        environment = build_environment(container, settings, model_for, run)
+        try:
+            results[run] = await evaluate(
+                evaluation, environment, progress=report_progress if progress else None
+            )
+        finally:
+            await container.aclose()
     info = RunInfo(
         model=FAKE_MODEL if model is None else model.model,
         endpoint="memory" if model is None else model.endpoint,
@@ -147,19 +204,22 @@ async def run_evaluation(
             "PAPIQ_LLM_RESPONSE_FORMAT": settings.llm_response_format,
             "PAPIQ_CONFIDENCE_THRESHOLD": settings.confidence_threshold,
             "PAPIQ_CONTACT_SUGGEST_THRESHOLD": settings.contact_suggest_threshold,
+            "PAPIQ_CLASSIFIER_THRESHOLD": settings.classifier_threshold,
+            "PAPIQ_NEIGHBOURS": settings.neighbours,
         },
         fake=fake,
+        training=len(evaluation.training),
     )
     path = output or cases / "reports" / f"{started:%Y-%m-%d}-{_slug(info.model)}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render(results, info), encoding="utf-8")
-    summary = summarise(results, fake=fake)
+    summaries = [summarise(items, fake=fake) for items in results.values()]
     return Evaluation(
         path,
-        results,
-        len(summary.false_green),
-        len(summary.green_but_wrong),
-        len(summary.violations),
+        [result for items in results.values() for result in items],
+        sum(len(summary.false_green) for summary in summaries),
+        sum(len(summary.green_but_wrong) for summary in summaries),
+        sum(len(summary.violations) for summary in summaries),
     )
 
 

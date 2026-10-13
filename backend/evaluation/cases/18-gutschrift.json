@@ -1,5 +1,5 @@
 {
-  "description": "Credit note for a returned order.",
+  "description": "Credit note for a returned order. Trained, the mail-order company's earlier letters are invoices: the signals name that type, a contradiction.",
   "expected": {
     "lane": "green",
     "contact": "Versandhaus Bergmann GmbH",
@@ -14,6 +14,9 @@
         "currency": "EUR"
       },
       "Kundennummer": "88 77 66"
+    },
+    "lanes": {
+      "trained": "yellow"
     }
   },
   "fake": {

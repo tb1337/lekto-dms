@@ -1,0 +1,56 @@
+{
+  "description": "Invoice whose letterhead is a logo: the sender's name is not in the text, only its identifiers (VAT ID, customer number, IBAN, mail domain). Cold, nothing knows them; trained, the identifiers learned from the corpus and the classifier name the mail-order company.",
+  "expected": {
+    "lane": "green",
+    "lanes": {
+      "cold": "yellow"
+    },
+    "contact": "Versandhaus Bergmann GmbH",
+    "document_type": "Rechnung",
+    "tags": [
+      "Einkauf"
+    ],
+    "document_date": "2026-03-06",
+    "fields": {
+      "Betrag": {
+        "amount": "84.75",
+        "currency": "EUR"
+      },
+      "Rechnungsnummer": "VB-552871",
+      "Kundennummer": "88 77 66"
+    }
+  },
+  "fake": {
+    "classification": {
+      "contact": {
+        "value": null,
+        "evidence": null
+      },
+      "recipient": "Erika Musterfrau",
+      "document_type": "Rechnung",
+      "new_document_type": null,
+      "tags": [
+        "Einkauf"
+      ],
+      "new_tags": [],
+      "document_date": {
+        "value": "06.03.2026",
+        "evidence": "Musterstadt, 06.03.2026"
+      }
+    },
+    "fields": {
+      "Betrag": {
+        "value": "84,75 €",
+        "evidence": "Gesamtbetrag | 84,75 €"
+      },
+      "Rechnungsnummer": {
+        "value": "VB-552871",
+        "evidence": "Rechnung VB-552871"
+      },
+      "Kundennummer": {
+        "value": "88 77 66",
+        "evidence": "Kundennummer: 88 77 66"
+      }
+    }
+  }
+}

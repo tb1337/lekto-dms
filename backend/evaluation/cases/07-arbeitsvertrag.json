@@ -1,5 +1,5 @@
 {
-  "description": "Employment contract; start date written with the month name.",
+  "description": "Employment contract; start date written with the month name. Trained, the employer's earlier documents are pay slips: the signals name that type, a contradiction.",
   "expected": {
     "lane": "green",
     "contact": "Nordlicht Software AG",
@@ -10,6 +10,9 @@
     "document_date": "2026-02-10",
     "fields": {
       "Vertragsbeginn": "2026-04-01"
+    },
+    "lanes": {
+      "trained": "yellow"
     }
   },
   "fake": {

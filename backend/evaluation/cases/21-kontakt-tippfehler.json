@@ -1,5 +1,5 @@
 {
-  "description": "The letterhead has a typo in the contact's name (OCR error): the contact is only suggested.",
+  "description": "The letterhead has a typo in the contact's name (OCR error): the contact is only suggested. Trained, the classifier and the similar documents name the utility as well: the similar name and a second signal make it green.",
   "expected": {
     "lane": "yellow",
     "contact": "Stadtwerke Musterstadt GmbH",
@@ -15,6 +15,9 @@
       },
       "Rechnungsnummer": "R-2026-005522",
       "Kundennummer": "100 200 300"
+    },
+    "lanes": {
+      "trained": "green"
     }
   },
   "fake": {

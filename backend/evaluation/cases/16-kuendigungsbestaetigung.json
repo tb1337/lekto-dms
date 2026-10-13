@@ -1,5 +1,5 @@
 {
-  "description": "Cancellation confirmation, a notice.",
+  "description": "Cancellation confirmation, a notice. Trained, the provider's earlier letters are bills: the signals name that type, a contradiction.",
   "expected": {
     "lane": "green",
     "contact": "FernNetz Telekommunikation GmbH",
@@ -11,6 +11,9 @@
     "document_date": "2026-05-22",
     "fields": {
       "Kundennummer": "KD-55 12 34"
+    },
+    "lanes": {
+      "trained": "yellow"
     }
   },
   "fake": {

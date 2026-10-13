@@ -1,5 +1,5 @@
 {
-  "description": "An English invoice in US dollars.",
+  "description": "An English invoice in US dollars. Trained, the similar documents name a contact of the corpus for this new one: a contradiction.",
   "expected": {
     "lane": "green",
     "contact": "Cloudberry Hosting Inc.",
@@ -14,6 +14,9 @@
         "currency": "USD"
       },
       "Rechnungsnummer": "INV-2026-0331"
+    },
+    "lanes": {
+      "trained": "yellow"
     }
   },
   "fake": {

@@ -9,11 +9,10 @@
 	import { BASE } from '#lib/base.ts';
 	import DocumentContent from '#lib/components/document/DocumentContent.svelte';
 	import DocumentForm from '#lib/components/document/DocumentForm.svelte';
+	import DocumentLog from '#lib/components/document/DocumentLog.svelte';
 	import DocumentHeader from '#lib/components/document/DocumentHeader.svelte';
 	import PageImages from '#lib/components/document/PageImages.svelte';
 	import PdfViewer from '#lib/components/PdfViewer.svelte';
-	import ProcessingGraph from '#lib/components/ProcessingGraph.svelte';
-	import ProcessingLog from '#lib/components/ProcessingLog.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import {
 		neighbours,
@@ -235,15 +234,7 @@
 		{:else if tab === 'content'}
 			<DocumentContent documentId={id} filename={document.original_filename} />
 		{:else if tab === 'log'}
-			<ProcessingGraph processing={document.processing} {graph} />
-			{#if manageable}
-				<ProcessingLog documentId={id} />
-				<div>
-					<Button variant="outline" onclick={() => header?.startReprocess()}>
-						{m.reprocess_title()}
-					</Button>
-				</div>
-			{/if}
+			<DocumentLog {document} {graph} {manageable} onreprocess={() => header?.startReprocess()} />
 		{/if}
 	{/if}
 </div>

@@ -40,6 +40,7 @@
 		type Lookup
 	} from '#lib/masterdata.svelte.ts';
 	import { writableDrawers } from '#lib/permissions.ts';
+	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { fieldId, initialValue, isRuleField, type ReviewValue } from '#lib/review.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -104,6 +105,10 @@
 	const decisions = $derived(openChecks.filter((check) => !isRuleField(check.field)));
 	const ruleNotes = $derived(
 		openChecks.filter((check) => check.field === 'review' || check.field === 'title')
+	);
+	// Uncertain nodes without a field of their own (no language model, nothing recognised).
+	const nodeNotes = $derived(
+		review?.open.filter((node) => node.outcome === 'uncertain' && node.fields.length === 0) ?? []
 	);
 	const hasDrawer = $derived(reviewing && openChecks.some((check) => check.field === 'drawer'));
 	// The owner confirms into drawers they may write to; an admin into any drawer.
@@ -416,6 +421,12 @@
 		{/if}
 
 		{#if reviewing}
+			{#each nodeNotes as note (note.node)}
+				<p class="rounded-xl border bg-card px-4 py-3 text-sm">
+					<span class="font-medium">{NODE_LABELS[note.node]()}:</span>
+					{note.reason}
+				</p>
+			{/each}
 			{#each ruleNotes as note (note.field)}
 				<p class="rounded-xl border bg-card px-4 py-3 text-sm">
 					<span class="font-medium">{fieldLabel(note.field, lookup)}:</span>
@@ -591,7 +602,7 @@
 			</FieldGroup>
 		{/if}
 
-		{#if reviewing && decisions.length === 0 && !failedNode && ruleNotes.length === 0 && !hasDrawer}
+		{#if reviewing && decisions.length === 0 && !failedNode && ruleNotes.length === 0 && nodeNotes.length === 0 && !hasDrawer}
 			<p class="px-1 text-sm text-muted-foreground">{m.review_nothing_open()}</p>
 		{/if}
 	</div>

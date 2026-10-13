@@ -5,6 +5,7 @@ dates in German, English and ISO notation, numbers with German or English separa
 currencies as code, symbol or word. Everything works on a normalised text (see `normalise`).
 """
 
+import html
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -21,9 +22,10 @@ _UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue"})
 
 
 def normalise(text: str) -> str:
-    """Compatibility forms unified (NFKC), lower case (case folding, so `ß` is `ss`),
+    """HTML entities as characters (texts parsed before 0.2.0 have `&amp;` and `&#124;`),
+    compatibility forms unified (NFKC), lower case (case folding, so `ß` is `ss`),
     hyphenation at line ends and Markdown markup removed, whitespace collapsed."""
-    text = unicodedata.normalize("NFKC", text).replace("­", "")
+    text = unicodedata.normalize("NFKC", html.unescape(text)).replace("­", "")
     text = _HYPHENATION.sub("", text)
     text = _MARKUP.sub(" ", text)
     return _WHITESPACE.sub(" ", text.casefold()).strip()

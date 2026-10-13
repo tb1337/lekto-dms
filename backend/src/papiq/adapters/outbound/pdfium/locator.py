@@ -9,6 +9,7 @@ as shown, its rotation applied.
 """
 
 import asyncio
+import html
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -158,7 +159,8 @@ def _matches(
     if limit <= 0:
         return []
     for page, is_loose in ((strict, False), (loose, True)):
-        needle = _normalize(text, loose=is_loose).text.strip()
+        # A quote from a text parsed before 0.2.0 may carry its HTML entities.
+        needle = _normalize(html.unescape(text), loose=is_loose).text.strip()
         if not needle or (is_loose and len(needle) < _SHORTEST_LOOSE):
             continue
         places: list[tuple[int, int]] = []

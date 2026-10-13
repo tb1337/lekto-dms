@@ -18,6 +18,14 @@ def test_normalise() -> None:
     assert normalise(text) == "rechnungsnummer: 4711 strasse gross fi"
 
 
+def test_entities_of_older_parses_count_as_their_characters() -> None:
+    # Texts parsed before 0.2.0 carry Docling's HTML escapes.
+    text = DocumentText("Müller &amp; Söhne &lt;GmbH&gt;\n\n| Std.&#124;TAZPL | 7,48 &#124; 0,54 |")
+    assert text.contains("Müller & Söhne <GmbH>")
+    assert text.has_number(Decimal("0.54"))
+    assert normalise("&amp;") == "&"
+
+
 @pytest.mark.parametrize(
     "written",
     [

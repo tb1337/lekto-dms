@@ -96,3 +96,12 @@ def test_the_words_of_a_line_make_one_box() -> None:
         Box(0.1, 0.3135, 0.2, 0.008),
     ]
     assert _lines(tight) == (Box(0.1, 0.3049, 0.21, 0.0082), Box(0.1, 0.3135, 0.2, 0.008))
+
+
+async def test_entities_of_an_older_parse_do_not_hide_a_quote(tmp_path: Path) -> None:
+    pdf = tmp_path / "entities.pdf"
+    pdf.write_bytes(text_pdf(["Mueller & Soehne", "Std.|TAZPL 7,48"]))
+    found, cell = await PdfiumTextLocator().locate(
+        pdf, ["Mueller &amp; Soehne", "Std.&#124;TAZPL 7,48"]
+    )
+    assert len(found) == 1 and len(cell) == 1

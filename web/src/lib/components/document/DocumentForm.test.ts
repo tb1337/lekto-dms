@@ -240,6 +240,8 @@ describe('DocumentForm', () => {
 		expect(within(card).getByText(m.candidates_title())).toBeTruthy();
 		expect(within(card).getAllByText(m.candidate_contradicted())).toHaveLength(2);
 		expect(within(card).getByText(m.candidate_named())).toBeTruthy();
+		// The model's quote is read out, not only shown on hover.
+		expect(within(card).getByText(': „Stadtwerk“')).toBeTruthy();
 		expect(within(card).getByText(m.candidate_new())).toBeTruthy();
 		expect(within(card).getByText(m.candidate_neighbours({ votes: 2, found: 3 }))).toBeTruthy();
 		const similar = within(card).getByRole('link', { name: m.candidate_document({ number: 1 }) });

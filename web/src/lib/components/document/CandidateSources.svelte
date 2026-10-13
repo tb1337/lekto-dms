@@ -24,6 +24,7 @@
 			)}
 		>
 			{chip.text}
+			{#if chip.quote}<span class="sr-only">: „{chip.quote}“</span>{/if}
 			{#if !chip.strong}<span class="sr-only">({m.candidate_weak()})</span>{/if}
 			{#each chip.documents as id, number (id)}
 				<a

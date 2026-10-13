@@ -49,6 +49,13 @@ class _ImportedStep:
         raise NotImplementedError
 
 
+class ImportedSignal(_ImportedStep):
+    """Nothing to propose: the source system's metadata is applied as it is."""
+
+    def _apply(self, imported: ImportedMetadata) -> NodeResult:
+        return NodeResult(outcome=Outcome.OK, reason=REASON, model_version=IMPORTED)
+
+
 class ImportedClassifyNode(_ImportedStep):
     """Title, contact, document type, tags and document date from the source system."""
 

@@ -79,10 +79,16 @@ from papiq.core.services.classification.nodes import (
     ClassifyNode,
     ExtractFieldsNode,
 )
+from papiq.core.services.classification.signals import (
+    ClassifierSignal,
+    FactsSignal,
+    NeighboursPolicy,
+    NeighboursSignal,
+)
 from papiq.core.services.classifier import ClassifierPolicy, ClassifierService
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.drawers import DrawerService
-from papiq.core.services.imports import ImportedClassifyNode, ImportedExtractNode
+from papiq.core.services.imports import ImportedClassifyNode, ImportedExtractNode, ImportedSignal
 from papiq.core.services.indexing import IndexingPolicy, IndexingService
 from papiq.core.services.maintenance import MaintenanceService
 from papiq.core.services.master_data import MasterDataService
@@ -438,6 +444,16 @@ def _prefix(value: str | None) -> str:
     return "" if not value else value + " "
 
 
+def neighbours_policy_of(settings: Settings) -> NeighboursPolicy:
+    """The neighbours' vector is made as the index makes the first section's."""
+    return NeighboursPolicy(
+        count=settings.neighbours,
+        chunk_size=settings.search_chunk_size,
+        document_prefix=_prefix(settings.embedding_document_prefix),
+        dimensions=settings.embedding_dimensions,
+    )
+
+
 def indexing_policy_of(settings: Settings) -> IndexingPolicy:
     return IndexingPolicy(
         max_text=settings.search_max_text,
@@ -492,6 +508,12 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
     )
     executors[Node.FIELDS] = ImportedExtractNode(
         uow, ExtractFieldsNode(uow, store, model, clock, policy, locator=locator)
+    )
+    executors[Node.SIGNAL_FACTS] = ImportedSignal(uow, FactsSignal(uow, store))
+    executors[Node.SIGNAL_CLASSIFIER] = ImportedSignal(uow, ClassifierSignal(store, classifier))
+    executors[Node.SIGNAL_NEIGHBOURS] = ImportedSignal(
+        uow,
+        NeighboursSignal(uow, store, index, embeddings, neighbours_policy_of(settings)),
     )
     executors[Node.APPLY_RULES] = ApplyRulesNode(
         uow, store, container.patterns, max_text=settings.rules_max_text

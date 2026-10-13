@@ -542,5 +542,7 @@
 	"rule_apply_failed": "Stopped: {error}",
 	"rule_apply_skipped": "Skipped",
 	"rule_subgroup": "Group",
-	"rule_left_off": "The change failed and the rule stays switched off."
+	"rule_left_off": "The change failed and the rule stays switched off.",
+	"header_search_label": "Search documents",
+	"header_search_placeholder": "Search documents …"
 }

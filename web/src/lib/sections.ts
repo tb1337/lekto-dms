@@ -19,16 +19,24 @@ export interface Section {
 	admin: boolean;
 }
 
+// The search is the field in the header, not an area of its own (Tobi, 13.10.2026).
 export const SECTIONS: readonly Section[] = [
-	{ path: '/documents', label: m.nav_documents, icon: FileText, admin: false },
 	{ path: '/inbox', label: m.nav_inbox, icon: Inbox, admin: false },
-	{ path: '/search', label: m.nav_search, icon: Search, admin: false },
+	{ path: '/documents', label: m.nav_documents, icon: FileText, admin: false },
 	{ path: '/drawers', label: m.nav_drawers, icon: Archive, admin: false },
 	{ path: '/rules', label: m.nav_rules, icon: Workflow, admin: false },
 	{ path: '/webhooks', label: m.nav_webhooks, icon: Webhook, admin: false },
-	{ path: '/admin/users', label: m.nav_users, icon: Users, admin: true },
-	{ path: '/admin/master-data', label: m.nav_master_data, icon: Tags, admin: true }
+	{ path: '/admin/master-data', label: m.nav_master_data, icon: Tags, admin: true },
+	{ path: '/admin/users', label: m.nav_users, icon: Users, admin: true }
 ];
+
+/** The search page, opened from the field in the header. */
+export const SEARCH: Section = {
+	path: '/search',
+	label: m.nav_search,
+	icon: Search,
+	admin: false
+};
 
 export const SETTINGS: Section = {
 	path: '/settings',

@@ -14,8 +14,17 @@ describe('visibleSections', () => {
 	});
 });
 
+describe('SECTIONS', () => {
+	it('starts with the inbox, the search is not among them', () => {
+		const paths = SECTIONS.map((section) => section.path);
+		expect(paths.slice(0, 2)).toEqual(['/inbox', '/documents']);
+		expect(paths).not.toContain('/search');
+		expect(paths.slice(-2)).toEqual(['/admin/master-data', '/admin/users']);
+	});
+});
+
 describe('isCurrent', () => {
-	const documents = SECTIONS[0];
+	const documents = SECTIONS.find((section) => section.path === '/documents')!;
 
 	it('matches the section and pages below it', () => {
 		expect(href(documents)).toBe('/ui/documents');

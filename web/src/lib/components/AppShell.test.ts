@@ -53,6 +53,23 @@ describe('AppShell', () => {
 		expect(inbox.getAttribute('aria-current')).toBe('page');
 	});
 
+	it('lists the inbox first and offers the search in the header', () => {
+		signIn('admin');
+		render(AppShell, { children });
+		const links = within(mainNavigation()).getAllByRole('link');
+		expect(links.map((link) => link.getAttribute('href'))).toEqual([
+			'/ui/inbox',
+			'/ui/documents',
+			'/ui/drawers',
+			'/ui/rules',
+			'/ui/webhooks',
+			'/ui/admin/master-data',
+			'/ui/admin/users'
+		]);
+		expect(screen.getByRole('search')).toBeTruthy();
+		expect(screen.getByRole('searchbox', { name: m.header_search_label() })).toBeTruthy();
+	});
+
 	it('offers a skip link and the account menu', () => {
 		signIn('user');
 		render(AppShell, { children });

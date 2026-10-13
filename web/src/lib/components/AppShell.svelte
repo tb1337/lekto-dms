@@ -2,8 +2,10 @@
 	import type { Snippet } from 'svelte';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Menu from '@lucide/svelte/icons/menu';
+	import SearchIcon from '@lucide/svelte/icons/search';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import HeaderSearch from '#lib/components/HeaderSearch.svelte';
 	import LanguageMenu from '#lib/components/LanguageMenu.svelte';
 	import Logo from '#lib/components/Logo.svelte';
 	import ThemeMenu from '#lib/components/ThemeMenu.svelte';
@@ -14,7 +16,14 @@
 	import { home, loginHref } from '#lib/navigation.ts';
 	import { inbox } from '#lib/inbox.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { href, isCurrent, SETTINGS, visibleSections, type Section } from '#lib/sections.ts';
+	import {
+		href,
+		isCurrent,
+		SEARCH,
+		SETTINGS,
+		visibleSections,
+		type Section
+	} from '#lib/sections.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -111,6 +120,14 @@
 			</nav>
 
 			<div class="ml-auto flex items-center gap-2">
+				<HeaderSearch class="hidden w-64 md:flex xl:w-80" />
+				<a
+					href={href(SEARCH)}
+					class={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'md:hidden')}
+					aria-label={m.header_search_label()}
+				>
+					<SearchIcon aria-hidden="true" />
+				</a>
 				<LanguageMenu />
 				<ThemeMenu />
 				<DropdownMenu.Root>

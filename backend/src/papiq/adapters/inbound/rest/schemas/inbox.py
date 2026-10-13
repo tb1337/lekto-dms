@@ -314,8 +314,7 @@ class ConfirmRequest(BaseModel):
     resume_at: ResumeNode = Field(
         default=ResumeNode.APPLY_RULES,  # type: ignore[attr-defined]
         description=(
-            "`extract_fields` after correcting the document type, so the fields of the "
-            "new type are extracted."
+            "`fields` after correcting the document type, so the fields of the new type are read."
         ),
     )
     drawer_id: UUID | None = Field(

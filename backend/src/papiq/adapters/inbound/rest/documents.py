@@ -575,7 +575,9 @@ async def review(id: UUID, user: CurrentUser, context: Context) -> ReviewOut:
         "`review` always have a value: confirming keeps it, `drawer_id` moves the document. The "
         "results before `resume_at` count as confirmed; processing continues from there up to "
         "filing, and the rules leave what the owner decided or changed as it is. From "
-        "`extract_fields` on, the extracted fields replace the ones the document has."
+        "`fields` on, the fields read again replace the ones the document has; otherwise the "
+        "type's title pattern is rendered with the decided values (while the title is the "
+        "machine's)."
     ),
     response_model=DocumentDetails,
     responses=problem_responses(401, 403, 404, 409, 422),

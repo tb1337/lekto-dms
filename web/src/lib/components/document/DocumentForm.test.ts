@@ -40,8 +40,9 @@ const lookup = {
 	users: []
 } as unknown as Lookup;
 
-function documentOf(status: string): Document {
+function documentOf(status: string, lane: string | null = 'yellow'): Document {
 	return {
+		lane,
 		id: 'doc-1',
 		title: 'Stromrechnung März 2026',
 		owner_id: OWNER,
@@ -211,11 +212,88 @@ describe('DocumentForm', () => {
 	});
 
 	it('outside the inbox, shows a change as a dry run first', async () => {
-		render(DocumentForm, props({ document: documentOf('done'), review: null, next: null }));
+		render(
+			DocumentForm,
+			props({ document: documentOf('completed', 'green'), review: null, next: null })
+		);
 		const button = screen.getByRole('button', { name: m.edit_review() });
 		expect((button as HTMLButtonElement).disabled).toBe(true);
 		expect(screen.queryByRole('button', { name: m.review_confirm() })).toBeNull();
 		await userEvent.type(screen.getByLabelText('Notiz', { selector: 'input' }), 'bezahlt');
 		expect((button as HTMLButtonElement).disabled).toBe(false);
+	});
+
+	it('confirms a filed document that waits for its drawer, with the drawer to file into', async () => {
+		fetchMock.mockResolvedValue(
+			new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+		);
+		const waiting = {
+			document: {},
+			open: [
+				{
+					node: 'file',
+					outcome: 'uncertain',
+					reason: 'drawer',
+					fields: [check('drawer', { outcome: 'uncertain', reason: 'no write access' })]
+				}
+			],
+			nodes: []
+		} as unknown as Review;
+		render(DocumentForm, props({ document: documentOf('completed'), review: waiting, next: null }));
+		expect(screen.getByLabelText(m.field_drawer(), { selector: 'select' })).toBeTruthy();
+		await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
+		expect(await fetchMock.mock.calls[0][0].json()).toEqual({
+			changes: {},
+			accept_suggestions: false,
+			resume_at: 'apply_rules'
+		});
+	});
+
+	it('lets a failed document with nothing to decide be changed instead of confirmed', () => {
+		const failed = {
+			document: {},
+			open: [{ node: 'ocr', outcome: 'failed', reason: 'the PDF is damaged', fields: [] }],
+			nodes: []
+		} as unknown as Review;
+		render(DocumentForm, props({ document: documentOf('failed', 'red'), review: failed }));
+		expect(screen.getByText('the PDF is damaged')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.review_confirm() })).toBeNull();
+		expect(screen.getByRole('button', { name: m.edit_review() })).toBeTruthy();
+	});
+
+	it("after a corrected type sends no suggestion of the old type as the owner's value", async () => {
+		fetchMock.mockResolvedValue(
+			new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+		);
+		const OTHER = '0199a6c4-0000-7000-8000-0000000000e2';
+		const typed = {
+			document: {},
+			open: [
+				{
+					node: 'extract_fields',
+					outcome: 'uncertain',
+					reason: 'note',
+					fields: [
+						check(`field:${NOTE}`, { outcome: 'uncertain', reason: 'x', suggestion: 'bezahlt' })
+					]
+				}
+			],
+			nodes: []
+		} as unknown as Review;
+		const withOther = {
+			...lookup,
+			documentTypes: [...lookup.documentTypes, named(OTHER, 'Vertrag')]
+		};
+		render(DocumentForm, props({ review: typed, lookup: withOther, next: null }));
+		await userEvent.selectOptions(
+			screen.getByLabelText(m.field_document_type(), { selector: 'select' }),
+			OTHER
+		);
+		await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
+		expect(await fetchMock.mock.calls[0][0].json()).toEqual({
+			changes: { document_type_id: OTHER },
+			accept_suggestions: false,
+			resume_at: 'extract_fields'
+		});
 	});
 });

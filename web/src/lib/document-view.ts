@@ -3,6 +3,7 @@
  * stands on the page), and the place of a document among those waiting in the inbox.
  */
 import type { components } from '#lib/api/schema.ts';
+import { BASE } from '#lib/base.ts';
 import { sameValue, type ApiValue } from '#lib/fields.ts';
 
 export type Check = components['schemas']['FieldCheckOut'];
@@ -116,14 +117,22 @@ export interface Neighbours {
 	next: string | null;
 }
 
-/** The documents before and after `id` among `ids`, in the order of the inbox. */
+/**
+ * The documents before and after `id` among `ids`, in the order of the inbox; none for a
+ * document that is not among them (it left the inbox, or the list is another one).
+ */
 export function neighbours(ids: readonly string[], id: string): Neighbours {
 	const index = ids.indexOf(id);
-	if (index < 0) return { position: null, total: ids.length, previous: null, next: ids[0] ?? null };
+	if (index < 0) return { position: null, total: ids.length, previous: null, next: null };
 	return {
 		position: index + 1,
 		total: ids.length,
 		previous: ids[index - 1] ?? null,
 		next: ids[index + 1] ?? null
 	};
+}
+
+/** A document opened from the inbox (of every user, for an admin who chose that). */
+export function inboxDocument(id: string, allUsers = false): string {
+	return `${BASE}/documents/${id}?from=inbox${allUsers ? '&all=1' : ''}`;
 }

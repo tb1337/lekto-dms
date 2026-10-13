@@ -15,6 +15,7 @@
 	import PdfViewer from '#lib/components/PdfViewer.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import {
+		inboxDocument,
 		neighbours,
 		tabHref,
 		tabOf,
@@ -39,6 +40,8 @@
 	const id = $derived(page.params.id ?? '');
 	const tab = $derived(tabOf(page.url));
 	const fromInbox = $derived(page.url.searchParams.get('from') === 'inbox');
+	// An admin's inbox of every user.
+	const allUsers = $derived(page.url.searchParams.get('all') === '1');
 	let document = $state<Document | null>(null);
 	let review = $state<Review | null>(null);
 	let lookup = $state<Lookup | null>(null);
@@ -88,7 +91,11 @@
 
 	async function loadInbox() {
 		try {
-			const listed = await unwrap(api.GET('/api/v1/inbox', { params: { query: { limit: 100 } } }));
+			const listed = await unwrap(
+				api.GET('/api/v1/inbox', {
+					params: { query: { limit: 100, all_users: allUsers || undefined } }
+				})
+			);
 			inboxIds = listed.items.map((item) => item.document.id);
 		} catch (error) {
 			reportError(error);
@@ -134,7 +141,7 @@
 	}
 
 	async function confirmed(next: string | null) {
-		await goto(next ? `${BASE}/documents/${next}?from=inbox` : `${BASE}/inbox`);
+		await goto(next ? inboxDocument(next, allUsers) : `${BASE}/inbox`);
 	}
 
 	const tabs: { tab: Tab; label: () => string }[] = [
@@ -168,6 +175,7 @@
 			{graph}
 			{archive}
 			{inbox}
+			{allUsers}
 			onchanged={load}
 		/>
 
@@ -196,15 +204,16 @@
 		{#if tab === 'details'}
 			<div class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_28rem]">
 				<div class="flex min-h-[32rem] flex-col lg:h-[calc(100vh-19.5rem)]">
-					{#key id}
+					<!-- Anew once the archive exists: the marks belong to it, not to the original. -->
+					{#key `${id}:${archive}`}
 						{#if archive || !document.page_count}
 							<PdfViewer
 								bind:this={viewer}
-								sources={document.media_type === 'application/pdf'
-									? [`${base}/archive`, `${base}/original`]
-									: [`${base}/archive`]}
+								sources={archive || document.media_type !== 'application/pdf'
+									? [`${base}/archive`]
+									: [`${base}/archive`, `${base}/original`]}
 								label={document.title}
-								{marks}
+								marks={archive ? marks : []}
 							/>
 						{:else}
 							<PageImages documentId={id} pageCount={document.page_count} label={document.title} />

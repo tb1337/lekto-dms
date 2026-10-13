@@ -97,11 +97,14 @@
 	const evidence = $derived(fieldEvidence(review));
 	const openChecks = $derived(review ? review.open.flatMap((node) => node.fields) : []);
 	const failedNode = $derived(review?.open.find((node) => node.outcome === 'failed') ?? null);
-	const reviewing = $derived(
-		review !== null &&
-			review.open.length > 0 &&
-			(document.processing.status === 'review' || document.processing.status === 'failed')
+	// Waiting in the inbox as the API sees it: yellow or red, not being processed, no node
+	// still running after a failure.
+	const confirmable = $derived(
+		(document.lane === 'yellow' || document.lane === 'red') &&
+			['review', 'failed', 'completed'].includes(document.processing.status) &&
+			!document.processing.nodes.some((state) => state.status === 'running')
 	);
+	const reviewing = $derived(review !== null && review.open.length > 0 && confirmable);
 	const decisions = $derived(openChecks.filter((check) => !isRuleField(check.field)));
 	const ruleNotes = $derived(
 		openChecks.filter((check) => check.field === 'review' || check.field === 'title')
@@ -111,12 +114,15 @@
 		review?.open.filter((node) => node.outcome === 'uncertain' && node.fields.length === 0) ?? []
 	);
 	const hasDrawer = $derived(reviewing && openChecks.some((check) => check.field === 'drawer'));
+	// Something to confirm. A failed node alone is repeated, not confirmed; its document can
+	// still be changed (dry run and save).
+	const confirming = $derived(reviewing && (!failedNode || decisions.length > 0 || hasDrawer));
 	// The owner confirms into drawers they may write to; an admin into any drawer.
 	const drawers = $derived(writableDrawers(lookup.drawers, session.user));
 
 	const snapshot = () =>
 		JSON.stringify([title, date, contact, documentType, tags, values, drawerId]);
-	let baseline: { id: string; form: string } | null = null;
+	let baseline: { id: string; form: string; reviewing: boolean } | null = null;
 
 	function assign(key: string, value: ReviewValue) {
 		const id = fieldId(key);
@@ -144,7 +150,18 @@
 			for (const check of decisions)
 				assign(check.field, initialValue(check, document, lookup.fields));
 		}
-		baseline = { id: document.id, form: snapshot() };
+		baseline = { id: document.id, form: snapshot(), reviewing };
+	}
+
+	/** The field's value as the document stores it, in the form of the API. */
+	function stored(key: string): ApiValue | string[] | null {
+		const id = fieldId(key);
+		if (id !== null) return document.fields[id] ?? null;
+		if (key === 'contact') return document.contact_id;
+		if (key === 'document_type') return document.document_type_id;
+		if (key === 'document_date') return document.document_date;
+		if (key === 'tags') return document.tag_ids;
+		return null;
 	}
 
 	$effect(() => {
@@ -155,6 +172,16 @@
 		untrack(() => {
 			const edited = baseline?.id === document.id && snapshot() !== baseline.form;
 			if (!edited) fromDocument();
+			else if (reviewing && baseline && !baseline.reviewing) {
+				// It came into the inbox while the user typed: their input stays, the open
+				// fields they left alone take the suggestions.
+				for (const check of decisions) {
+					if (JSON.stringify(current(check.field)) === JSON.stringify(stored(check.field))) {
+						assign(check.field, initialValue(check, document, lookup.fields));
+					}
+				}
+				baseline = { ...baseline, reviewing: true };
+			}
 		});
 	});
 
@@ -213,13 +240,16 @@
 			const id = fieldId(check.field);
 			if (id !== null) {
 				const field = lookup.fields.find((entry) => entry.id === id);
-				if (field && !typeChanged) fields[id] = toApi(field.data_type, values[id]);
+				// Extracted again for the new type: a suggestion must not count as the owner's.
+				if (typeChanged) delete fields[id];
+				else if (field) fields[id] = toApi(field.data_type, values[id]);
 			} else if (check.field === 'contact') changes.contact_id = contact || null;
 			else if (check.field === 'document_type') changes.document_type_id = documentType || null;
 			else if (check.field === 'document_date') changes.document_date = date || null;
 			else if (check.field === 'tags') changes.tag_ids = [...tags];
 		}
 		if (Object.keys(fields).length > 0) changes.fields = fields;
+		else delete changes.fields;
 		return {
 			changes,
 			accept_suggestions: false,
@@ -242,7 +272,7 @@
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
 		if (busy || !editable) return;
-		if (reviewing) await confirm();
+		if (confirming) await confirm();
 		else await dryRun();
 	}
 
@@ -611,21 +641,19 @@
 		{#if formError}<p class="text-sm text-destructive" role="alert">{formError}</p>{/if}
 		{#if !editable}
 			<p class="text-sm text-muted-foreground">{m.edit_read_only()}</p>
-		{:else if reviewing}
+		{:else if confirming}
 			{#if next}
 				<label class="flex items-center gap-2 text-sm text-muted-foreground">
 					<input type="checkbox" bind:checked={openNext} class="size-4 accent-primary" />
 					{m.review_next_document()}
 				</label>
 			{/if}
-			{#if !failedNode || decisions.length > 0 || hasDrawer}
-				<div class="flex gap-2">
-					<Button type="submit" disabled={busy}>{m.review_confirm()}</Button>
-					<Button type="button" variant="ghost" disabled={busy} onclick={reset}>
-						{m.review_reset()}
-					</Button>
-				</div>
-			{/if}
+			<div class="flex gap-2">
+				<Button type="submit" disabled={busy}>{m.review_confirm()}</Button>
+				<Button type="button" variant="ghost" disabled={busy} onclick={reset}>
+					{m.review_reset()}
+				</Button>
+			</div>
 		{:else}
 			<p class="text-sm text-muted-foreground">{m.edit_hint()}</p>
 			<div class="flex gap-2">

@@ -21,76 +21,91 @@
 
 	type View = 'text' | 'markdown' | 'json';
 	const PIECE = 20_000;
-	// More than this is not shown; the download has all of it.
+	// More than this is not shown (the download has all of it).
 	const MOST_TEXT = 2_000_000;
 	const MOST_JSON = 400_000;
 
 	let view = $state<View>('text');
 	let text = $state<string | null>(null);
 	let total = $state(0);
+	let textProblem = $state<string | null>(null);
+	let loading = $state(true);
 	let structure = $state<string | null>(null);
 	let structureBytes = $state(0);
-	let problem = $state<string | null>(null);
-	let loading = $state(true);
+	let structureCut = $state(false);
+	let structureProblem = $state<string | null>(null);
 	let loadingStructure = $state(false);
 
+	type Piece = { text: string; total_length: number; next_offset: number | null };
+
+	/** The text from `offset` on, up to `most` characters; with the total length. */
+	async function readText(id: string, most: number): Promise<{ text: string; total: number }> {
+		let offset: number | null = 0;
+		let collected = '';
+		let length = 0;
+		while (offset !== null && collected.length < most) {
+			const piece: Piece = await unwrap(
+				api.GET('/api/v1/documents/{id}/text', {
+					params: { path: { id }, query: { offset, limit: PIECE } }
+				})
+			);
+			collected += piece.text;
+			length = piece.total_length;
+			offset = piece.next_offset;
+		}
+		return { text: collected, total: length };
+	}
+
 	// An answer overtaken by a later request (several events at once) must not replace the
-	// current text.
+	// current text or structure.
 	let latest = 0;
 	async function loadText() {
 		const wanted = documentId;
 		const request = ++latest;
 		loading = true;
 		try {
-			let offset: number | null = 0;
-			let collected = '';
-			let length = 0;
-			while (offset !== null && collected.length < MOST_TEXT) {
-				const piece: { text: string; total_length: number; next_offset: number | null } =
-					await unwrap(
-						api.GET('/api/v1/documents/{id}/text', {
-							params: { path: { id: wanted }, query: { offset, limit: PIECE } }
-						})
-					);
-				collected += piece.text;
-				length = piece.total_length;
-				offset = piece.next_offset;
-			}
+			const read = await readText(wanted, MOST_TEXT);
 			if (wanted !== documentId || request !== latest) return;
-			text = collected;
-			total = length;
-			problem = null;
+			text = read.text;
+			total = read.total;
+			textProblem = null;
 		} catch (error) {
 			if (wanted !== documentId || request !== latest) return;
 			// 409: not parsed yet; the next event brings the text.
 			if (error instanceof ApiError && error.status === 409) text = null;
-			else problem = describeError(error);
+			else textProblem = describeError(error);
 		} finally {
 			if (request === latest) loading = false;
 		}
 	}
 
+	let latestStructure = 0;
 	async function loadStructure() {
 		const wanted = documentId;
+		const request = ++latestStructure;
 		loadingStructure = true;
 		try {
 			const answer = await apiFetch(
 				new Request(new URL(`/api/v1/documents/${wanted}/structure`, location.origin))
 			);
+			if (wanted !== documentId || request !== latestStructure) return;
 			if (answer.status === 409) {
 				structure = null;
 				return;
 			}
 			if (!answer.ok) throw await apiError(answer);
 			const raw = await answer.text();
-			if (wanted !== documentId) return;
+			if (wanted !== documentId || request !== latestStructure) return;
 			structureBytes = new Blob([raw]).size;
-			structure =
-				raw.length > MOST_JSON ? raw.slice(0, MOST_JSON) : JSON.stringify(JSON.parse(raw), null, 2);
+			structureCut = raw.length > MOST_JSON;
+			structure = structureCut ? raw.slice(0, MOST_JSON) : JSON.stringify(JSON.parse(raw), null, 2);
+			structureProblem = null;
 		} catch (error) {
-			if (wanted === documentId) problem = describeError(error);
+			if (wanted === documentId && request === latestStructure) {
+				structureProblem = describeError(error);
+			}
 		} finally {
-			loadingStructure = false;
+			if (request === latestStructure) loadingStructure = false;
 		}
 	}
 
@@ -99,7 +114,8 @@
 		untrack(() => {
 			text = null;
 			structure = null;
-			problem = null;
+			textProblem = null;
+			structureProblem = null;
 		});
 		void events.generation;
 		void loadText();
@@ -112,11 +128,14 @@
 	});
 
 	$effect(() => {
-		if (view === 'json' && structure === null) untrack(() => void loadStructure());
+		if (view === 'json' && structure === null && structureProblem === null) {
+			untrack(() => void loadStructure());
+		}
 	});
 
 	const shown = $derived(view === 'json' ? structure : text);
-	const cut = $derived(view === 'json' && structureBytes > MOST_JSON);
+	const problem = $derived(view === 'json' ? structureProblem : textProblem);
+	const cut = $derived(view === 'json' && structureCut);
 	const stem = $derived(filename.replace(/\.[^.]+$/, '') || 'document');
 
 	async function copy() {
@@ -129,7 +148,7 @@
 		}
 	}
 
-	function download() {
+	async function download() {
 		const link = window.document.createElement('a');
 		if (view === 'json') {
 			link.href = `/api/v1/documents/${documentId}/structure`;
@@ -138,7 +157,17 @@
 			return;
 		}
 		if (text === null) return;
-		const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown;charset=utf-8' }));
+		let whole = text;
+		if (text.length < total) {
+			// What is shown stops short; the file has all of it.
+			try {
+				whole = (await readText(documentId, Infinity)).text;
+			} catch (error) {
+				toast.error(describeError(error));
+				return;
+			}
+		}
+		const url = URL.createObjectURL(new Blob([whole], { type: 'text/markdown;charset=utf-8' }));
 		link.href = url;
 		link.download = `${stem}.md`;
 		link.click();

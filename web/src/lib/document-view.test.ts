@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	fieldEvidence,
+	inboxDocument,
 	marksOf,
 	neighbours,
 	placesApply,
@@ -138,12 +139,14 @@ describe('neighbours', () => {
 			previous: null,
 			next: 'b'
 		});
-		// Confirmed meanwhile: it left the inbox, the first one is next.
+		// Not among them: no neighbours, back to the inbox after confirming.
 		expect(neighbours(['a', 'b'], 'x')).toEqual({
 			position: null,
 			total: 2,
 			previous: null,
-			next: 'a'
+			next: null
 		});
+		expect(inboxDocument('a')).toBe('/ui/documents/a?from=inbox');
+		expect(inboxDocument('a', true)).toBe('/ui/documents/a?from=inbox&all=1');
 	});
 });

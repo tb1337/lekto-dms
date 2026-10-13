@@ -71,7 +71,7 @@
 					· {m.prompt_attempts({ count: usage.attempts })}{/if}
 			</p>
 			<dl class="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 tabular-nums">
-				{#each rows as [name, value] (name)}
+				{#each rows as [name, value], index (index)}
 					<dt class="whitespace-nowrap opacity-75">{name}</dt>
 					<dd class="text-right">{value}</dd>
 				{/each}

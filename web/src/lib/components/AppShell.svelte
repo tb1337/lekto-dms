@@ -124,10 +124,14 @@
 			</nav>
 
 			<div class="ml-auto flex items-center gap-2">
-				<HeaderSearch class="hidden w-64 md:flex xl:w-80" />
+				<!-- The field where there is room: beside the menu from xl, instead of it from md. -->
+				<HeaderSearch class="hidden w-64 md:flex lg:hidden xl:flex xl:w-80" />
 				<a
 					href={href(SEARCH)}
-					class={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'md:hidden')}
+					class={cn(
+						buttonVariants({ variant: 'ghost', size: 'icon' }),
+						'md:hidden lg:inline-flex xl:hidden'
+					)}
 					aria-label={m.header_search_label()}
 				>
 					<SearchIcon aria-hidden="true" />

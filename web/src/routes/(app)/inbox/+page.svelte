@@ -2,10 +2,10 @@
 	import { onMount } from 'svelte';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
-	import { BASE } from '#lib/base.ts';
 	import AllUsersToggle from '#lib/components/AllUsersToggle.svelte';
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
+	import { inboxDocument } from '#lib/document-view.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
@@ -106,7 +106,7 @@
 					<DocumentRow
 						document={item.document}
 						{lookup}
-						href="{BASE}/documents/{item.document.id}?from=inbox"
+						href={inboxDocument(item.document.id, allUsers)}
 					>
 						<span class="truncate text-sm">
 							{item.open[0]?.reason ?? m.inbox_open_fields({ count: item.open.length })}

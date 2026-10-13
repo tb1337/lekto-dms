@@ -22,7 +22,7 @@
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
-	import type { Neighbours } from '#lib/document-view.ts';
+	import { inboxDocument, type Neighbours } from '#lib/document-view.ts';
 	import { reportError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import { drawerLabel, type Lookup } from '#lib/masterdata.svelte.ts';
@@ -44,6 +44,7 @@
 		graph,
 		archive,
 		inbox,
+		allUsers = false,
 		onchanged
 	}: {
 		document: Document;
@@ -53,6 +54,8 @@
 		archive: boolean;
 		/** Opened from the inbox: the documents before and after this one. */
 		inbox: Neighbours | null;
+		/** The inbox of every user (admins). */
+		allUsers?: boolean;
 		/** After an action that changed the document. */
 		onchanged: () => void;
 	} = $props();
@@ -84,7 +87,7 @@
 			.filter((node): node is ReprocessNode => node !== 'receive')
 			.map((node) => ({ value: node, label: NODE_LABELS[node]() }))
 	);
-	const inboxHref = (id: string) => `${BASE}/documents/${id}?from=inbox`;
+	const inboxHref = (id: string) => inboxDocument(id, allUsers);
 
 	/** Open the reprocessing dialog (also from the log). */
 	export function startReprocess() {

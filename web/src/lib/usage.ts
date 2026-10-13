@@ -61,13 +61,19 @@ export function usageOf(output: Record<string, unknown>): Usage | null {
 	const input = sum(attempts.map((attempt) => number(attempt.prompt)));
 	const output_ = sum(attempts.map((attempt) => number(attempt.completion)));
 	const reported = sum(reports.map((report) => number(report.total_tokens)));
-	const extra: [string, string][] = [];
+	// Other figures, one per name: numbers summed over the attempts, texts the last one.
+	const others = new Map<string, number | string>();
 	for (const report of reports) {
 		for (const [key, value] of Object.entries(report)) {
 			if (KNOWN.has(key) || (typeof value !== 'number' && typeof value !== 'string')) continue;
-			extra.push([key, String(value)]);
+			const before = others.get(key);
+			others.set(
+				key,
+				typeof value === 'number' && typeof before === 'number' ? before + value : value
+			);
 		}
 	}
+	const extra: [string, string][] = [...others].map(([key, value]) => [key, String(value)]);
 	const usage: Usage = {
 		input,
 		output: output_,

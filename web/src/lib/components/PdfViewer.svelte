@@ -265,7 +265,8 @@
 		{:else if problem}
 			<p class="py-16 text-destructive" role="alert">{problem}</p>
 		{:else}
-			{#each pages as size, index (`${index}-${zoom}`)}
+			<!-- A new width (zoom, resize) makes new page elements, and `watch` observes them anew. -->
+			{#each pages as size, index (`${index}-${size.width}`)}
 				<div
 					use:watch={index + 1}
 					class="relative shrink-0 bg-white shadow-sm"

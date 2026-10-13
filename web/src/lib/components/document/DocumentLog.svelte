@@ -86,17 +86,23 @@
 		}
 	}
 
+	// Loaded once per document and after each completed node; a new state of the document
+	// (every event) does not load it again.
+	const documentId = $derived(document.id);
+	let loadedFor = '';
 	$effect(() => {
-		void document.id;
-		untrack(() => {
-			entries = null;
-			problem = null;
-		});
+		const id = documentId;
 		void events.generation;
-		void load();
+		untrack(() => {
+			if (loadedFor !== id) {
+				entries = null;
+				problem = null;
+				loadedFor = id;
+			}
+			void load();
+		});
 		return events.subscribe((event) => {
-			if (event.document_id === document.id && event.type === 'document.node_completed')
-				void load();
+			if (event.document_id === id && event.type === 'document.node_completed') void load();
 		});
 	});
 

@@ -5,7 +5,11 @@ describe('usageOf', () => {
 	it('sums the attempts and reads the durations of Ollama', () => {
 		const usage = usageOf({
 			tokens: [
-				{ prompt: 2000, completion: 20, usage: { prompt_tokens: 2000, eval_duration: 1e9 } },
+				{
+					prompt: 2000,
+					completion: 20,
+					usage: { prompt_tokens: 2000, eval_duration: 1e9, queue_time: 0.01 }
+				},
 				{
 					prompt: 318,
 					completion: 164,
@@ -32,7 +36,7 @@ describe('usageOf', () => {
 			generation: 3.03,
 			duration: 6.3,
 			attempts: 2,
-			extra: [['queue_time', '0.02']]
+			extra: [['queue_time', '0.03']]
 		});
 	});
 

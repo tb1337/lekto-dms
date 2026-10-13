@@ -14,9 +14,9 @@ const GRAPH: GraphNode[] = [
 	{ node: 'ocr', requires: ['receive'] },
 	{ node: 'pages', requires: ['receive'] },
 	{ node: 'parse', requires: ['ocr'] },
-	{ node: 'classify', requires: ['parse'] },
-	{ node: 'extract_fields', requires: ['classify'] },
-	{ node: 'apply_rules', requires: ['extract_fields'] },
+	{ node: 'judge', requires: ['parse'] },
+	{ node: 'fields', requires: ['judge'] },
+	{ node: 'apply_rules', requires: ['fields'] },
 	{ node: 'file', requires: ['apply_rules', 'pages'] }
 ];
 
@@ -40,7 +40,7 @@ function processing(
 describe('descendants', () => {
 	it('follows the edges to every node after the given one', () => {
 		expect([...descendants(GRAPH, 'pages')]).toEqual(['file']);
-		expect([...descendants(GRAPH, 'extract_fields')].sort()).toEqual(['apply_rules', 'file']);
+		expect([...descendants(GRAPH, 'fields')].sort()).toEqual(['apply_rules', 'file']);
 		expect(descendants(GRAPH, 'file').size).toBe(0);
 		expect(descendants(GRAPH, 'receive').size).toBe(7);
 	});
@@ -53,8 +53,8 @@ describe('reprocessable', () => {
 			ocr: 'ok',
 			pages: 'ok',
 			parse: 'ok',
-			classify: 'ok',
-			extract_fields: 'ok',
+			judge: 'ok',
+			fields: 'ok',
 			apply_rules: 'ok',
 			file: 'ok'
 		});
@@ -62,8 +62,8 @@ describe('reprocessable', () => {
 			'ocr',
 			'pages',
 			'parse',
-			'classify',
-			'extract_fields',
+			'judge',
+			'fields',
 			'apply_rules',
 			'file'
 		]);
@@ -82,8 +82,8 @@ describe('reprocessable', () => {
 			ocr: 'ok',
 			pages: 'ok',
 			parse: 'ok',
-			classify: 'uncertain',
-			extract_fields: 'ok',
+			judge: 'uncertain',
+			fields: 'ok',
 			apply_rules: 'ok'
 		});
 		expect(reprocessable(GRAPH, yellow)).not.toContain('file');
@@ -97,8 +97,8 @@ describe('levels', () => {
 			['receive'],
 			['ocr', 'pages'],
 			['parse'],
-			['classify'],
-			['extract_fields'],
+			['judge'],
+			['fields'],
 			['apply_rules'],
 			['file']
 		]);

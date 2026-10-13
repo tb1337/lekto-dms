@@ -54,7 +54,7 @@ describe('fieldEvidence', () => {
 			document: {},
 			open: [
 				{
-					node: 'classify',
+					node: 'judge',
 					outcome: 'uncertain',
 					reason: 'x',
 					fields: [check('contact', { outcome: 'uncertain' })]
@@ -62,7 +62,7 @@ describe('fieldEvidence', () => {
 			],
 			nodes: [
 				{
-					node: 'classify',
+					node: 'judge',
 					run: 1,
 					outcome: 'uncertain',
 					reason: 'x',

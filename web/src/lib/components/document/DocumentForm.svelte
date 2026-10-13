@@ -253,7 +253,7 @@
 		return {
 			changes,
 			accept_suggestions: false,
-			resume_at: typeChanged ? 'extract_fields' : 'apply_rules',
+			resume_at: typeChanged ? 'fields' : 'apply_rules',
 			...(hasDrawer && drawerId && drawerId !== document.drawer_id ? { drawer_id: drawerId } : {})
 		};
 	}

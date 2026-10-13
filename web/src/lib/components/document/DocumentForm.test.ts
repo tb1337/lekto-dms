@@ -80,7 +80,7 @@ const review = {
 	document: {},
 	open: [
 		{
-			node: 'classify',
+			node: 'judge',
 			outcome: 'uncertain',
 			reason: 'contact',
 			fields: [
@@ -99,7 +99,7 @@ const review = {
 	],
 	nodes: [
 		{
-			node: 'classify',
+			node: 'judge',
 			run: 1,
 			outcome: 'uncertain',
 			reason: 'contact',
@@ -270,7 +270,7 @@ describe('DocumentForm', () => {
 			document: {},
 			open: [
 				{
-					node: 'extract_fields',
+					node: 'fields',
 					outcome: 'uncertain',
 					reason: 'note',
 					fields: [
@@ -293,7 +293,7 @@ describe('DocumentForm', () => {
 		expect(await fetchMock.mock.calls[0][0].json()).toEqual({
 			changes: { document_type_id: OTHER },
 			accept_suggestions: false,
-			resume_at: 'extract_fields'
+			resume_at: 'fields'
 		});
 	});
 });

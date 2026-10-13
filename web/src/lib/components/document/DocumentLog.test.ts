@@ -21,7 +21,7 @@ const graph: GraphNode[] = [
 	{ node: 'receive', requires: [] },
 	{ node: 'ocr', requires: ['receive'] },
 	{ node: 'pages', requires: ['receive'] },
-	{ node: 'classify', requires: ['ocr'] }
+	{ node: 'judge', requires: ['ocr'] }
 ];
 
 function state(node: string, outcome: string | null, status = 'done') {
@@ -43,13 +43,13 @@ const document = {
 			state('receive', 'ok'),
 			state('ocr', 'ok'),
 			state('pages', 'ok'),
-			state('classify', 'uncertain')
+			state('judge', 'uncertain')
 		]
 	}
 } as unknown as Document;
 
 const classified = {
-	node: 'classify',
+	node: 'judge',
 	run: 1,
 	outcome: 'uncertain',
 	reason: 'contact: the name is only similar',
@@ -71,7 +71,7 @@ beforeEach(() => {
 	fetchMock.mockImplementation(async (request) => {
 		const path = new URL(request.url).pathname;
 		if (path.endsWith('/log')) return json([classified]);
-		if (path.endsWith('/exchanges/classify')) {
+		if (path.endsWith('/exchanges/judge')) {
 			return json([
 				{
 					run: 1,
@@ -108,7 +108,7 @@ describe('DocumentLog', () => {
 			[...rows[1].querySelectorAll('[data-node]')].map((node) => node.getAttribute('data-node'))
 		).toEqual(['ocr', 'pages']);
 		// What is uncertain is open.
-		const classify = container.querySelector('[data-node="classify"]') as HTMLDetailsElement;
+		const classify = container.querySelector('[data-node="judge"]') as HTMLDetailsElement;
 		expect(classify.open).toBe(true);
 		expect(await within(classify).findByText('contact: the name is only similar')).toBeTruthy();
 	});

@@ -136,8 +136,6 @@
 	"node_receive": "Annahme",
 	"node_ocr": "Texterkennung",
 	"node_parse": "Auslesen",
-	"node_classify": "Klassifizierung",
-	"node_extract_fields": "Felder",
 	"node_apply_rules": "Regeln",
 	"node_file": "Ablage",
 	"node_pages": "Seiten",
@@ -654,5 +652,11 @@
 	"classifier_next": "{since} von {needed} Bestätigungen bis zum nächsten Training.",
 	"classifier_first": "{confirmed} von {needed} bestätigten Dokumenten für das erste Modell.",
 	"classifier_train": "Jetzt trainieren",
-	"classifier_train_queued": "Training eingereiht; es läuft im Hintergrund."
+	"classifier_train_queued": "Training eingereiht; es läuft im Hintergrund.",
+	"node_signal_llm": "Sprachmodell",
+	"node_signal_classifier": "Klassifikator",
+	"node_signal_neighbours": "Ähnliche Dokumente",
+	"node_signal_facts": "Fakten im Text",
+	"node_judge": "Urteil",
+	"node_fields": "Felder"
 }

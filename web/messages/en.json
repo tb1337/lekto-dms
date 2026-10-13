@@ -136,8 +136,6 @@
 	"node_receive": "Receive",
 	"node_ocr": "Text recognition",
 	"node_parse": "Reading",
-	"node_classify": "Classification",
-	"node_extract_fields": "Fields",
 	"node_apply_rules": "Rules",
 	"node_file": "Filing",
 	"node_pages": "Pages",
@@ -654,5 +652,11 @@
 	"classifier_next": "{since} of {needed} confirmations until the next training.",
 	"classifier_first": "{confirmed} of {needed} confirmed documents for the first model.",
 	"classifier_train": "Train now",
-	"classifier_train_queued": "Training queued; it runs in the background."
+	"classifier_train_queued": "Training queued; it runs in the background.",
+	"node_signal_llm": "Language model",
+	"node_signal_classifier": "Classifier",
+	"node_signal_neighbours": "Similar documents",
+	"node_signal_facts": "Facts in the text",
+	"node_judge": "Judgement",
+	"node_fields": "Fields"
 }

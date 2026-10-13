@@ -10,8 +10,9 @@
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Progress } from '#lib/components/ui/progress/index.ts';
 	import { writableDrawers } from '#lib/permissions.ts';
+	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { progress, type Node } from '#lib/pipeline.ts';
+	import { progress } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { uploads } from '#lib/upload.svelte.ts';
 	import { drawerLabel, type Drawer, type UserName } from '#lib/masterdata.svelte.ts';
@@ -35,17 +36,6 @@
 	let drawerId = $state('');
 	let over = $state(false);
 	let input = $state<HTMLInputElement | null>(null);
-
-	const nodeLabel: Record<Node, () => string> = {
-		receive: m.node_receive,
-		ocr: m.node_ocr,
-		pages: m.node_pages,
-		parse: m.node_parse,
-		classify: m.node_classify,
-		extract_fields: m.node_extract_fields,
-		apply_rules: m.node_apply_rules,
-		file: m.node_file
-	};
 
 	function take(list: FileList | null) {
 		if (list && list.length > 0) uploads.add([...list], drawerId || null);
@@ -121,7 +111,7 @@
 									{:else if done}
 										{m.upload_progress({ done: done.done, total: done.total })}
 										{#if done.running.length > 0}
-											· {done.running.map((node) => nodeLabel[node]()).join(', ')}
+											· {done.running.map((node) => NODE_LABELS[node]()).join(', ')}
 										{/if}
 									{:else}{m.upload_processing()}{/if}
 								</span>

@@ -34,6 +34,7 @@
 	type Document = components['schemas']['DocumentDetails'];
 	type LogEntry = components['schemas']['LogEntry'];
 	type Exchange = components['schemas']['RunExchangeOut'];
+	type ExchangeNode = components['schemas']['ExchangeNode'];
 	type Outcome = components['schemas']['Outcome'];
 
 	// The processing of a document: every node of the graph in a row by level (nodes that run
@@ -51,7 +52,8 @@
 		onreprocess: () => void;
 	} = $props();
 
-	const MODEL_NODES: readonly Node[] = ['classify', 'extract_fields'];
+	// The nodes that ask the language model and keep what they sent.
+	const MODEL_NODES: readonly ExchangeNode[] = ['judge', 'fields'];
 
 	let entries = $state<LogEntry[] | null>(null);
 	let exchanges = $state<Partial<Record<Node, Exchange[]>>>({});
@@ -72,7 +74,7 @@
 				...MODEL_NODES.map((node) =>
 					unwrap(
 						api.GET('/api/v1/documents/{id}/exchanges/{node}', {
-							params: { path: { id: wanted, node: node as 'classify' | 'extract_fields' } }
+							params: { path: { id: wanted, node } }
 						})
 					)
 				)

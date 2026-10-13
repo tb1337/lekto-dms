@@ -177,7 +177,9 @@ async def test_failed_result_stops_red(world: World) -> None:
     assert stored.lane is Lane.RED
     assert stored.processing.status is ProcessingStatus.FAILED
     assert stored.processing.failed() == (Node.PARSE,)
-    assert stored.processing.outcome(Node.PAGES) is Outcome.OK
+    # `pages` runs beside the text: done if its job came first, else dropped (jobs due at the
+    # same time run in no fixed order; the next test covers the dropped node).
+    assert stored.processing.outcome(Node.PAGES) in (Outcome.OK, None)
 
 
 async def test_a_node_still_queued_after_a_failure_is_dropped_and_retried_later(

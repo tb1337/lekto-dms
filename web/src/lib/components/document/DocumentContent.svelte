@@ -7,6 +7,7 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import { apiFetch } from '#lib/api/fetch.ts';
 	import { apiError, ApiError } from '#lib/api/problem.ts';
+	import JsonTree from '#lib/components/document/JsonTree.svelte';
 	import Markdown from '#lib/components/document/Markdown.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
@@ -23,16 +24,17 @@
 	const PIECE = 20_000;
 	// More than this is not shown (the download has all of it).
 	const MOST_TEXT = 2_000_000;
-	const MOST_JSON = 400_000;
+	const MOST_JSON = 50_000_000;
 
 	let view = $state<View>('text');
 	let text = $state<string | null>(null);
 	let total = $state(0);
 	let textProblem = $state<string | null>(null);
 	let loading = $state(true);
-	let structure = $state<string | null>(null);
+	// The parsed structure; `undefined` until it is there. Too large ones are only downloaded.
+	let structure = $state<unknown>(undefined);
 	let structureBytes = $state(0);
-	let structureCut = $state(false);
+	let structureTooLarge = $state(false);
 	let structureProblem = $state<string | null>(null);
 	let loadingStructure = $state(false);
 
@@ -90,15 +92,15 @@
 			);
 			if (wanted !== documentId || request !== latestStructure) return;
 			if (answer.status === 409) {
-				structure = null;
+				structure = undefined;
 				return;
 			}
 			if (!answer.ok) throw await apiError(answer);
 			const raw = await answer.text();
 			if (wanted !== documentId || request !== latestStructure) return;
 			structureBytes = new Blob([raw]).size;
-			structureCut = raw.length > MOST_JSON;
-			structure = structureCut ? raw.slice(0, MOST_JSON) : JSON.stringify(JSON.parse(raw), null, 2);
+			structureTooLarge = raw.length > MOST_JSON;
+			structure = structureTooLarge ? null : JSON.parse(raw);
 			structureProblem = null;
 		} catch (error) {
 			if (wanted === documentId && request === latestStructure) {
@@ -113,7 +115,8 @@
 		void documentId;
 		untrack(() => {
 			text = null;
-			structure = null;
+			structure = undefined;
+			structureTooLarge = false;
 			textProblem = null;
 			structureProblem = null;
 		});
@@ -122,26 +125,28 @@
 		return events.subscribe((event) => {
 			if (event.document_id === documentId && event.type === 'document.node_completed') {
 				void loadText();
-				if (structure !== null) void loadStructure();
+				if (structure !== undefined) void loadStructure();
 			}
 		});
 	});
 
 	$effect(() => {
-		if (view === 'json' && structure === null && structureProblem === null) {
+		if (view === 'json' && structure === undefined && structureProblem === null) {
 			untrack(() => void loadStructure());
 		}
 	});
 
-	const shown = $derived(view === 'json' ? structure : text);
+	const ready = $derived(view === 'json' ? structure !== undefined : text !== null);
 	const problem = $derived(view === 'json' ? structureProblem : textProblem);
-	const cut = $derived(view === 'json' && structureCut);
 	const stem = $derived(filename.replace(/\.[^.]+$/, '') || 'document');
 
 	async function copy() {
-		if (shown === null) return;
+		if (!ready) return;
 		try {
-			await navigator.clipboard.writeText(shown);
+			// The structure as text only when asked for: it can be large.
+			await navigator.clipboard.writeText(
+				view === 'json' ? JSON.stringify(structure, null, 2) : (text ?? '')
+			);
 			toast.success(m.content_copied());
 		} catch (error) {
 			toast.error(describeError(error));
@@ -206,7 +211,7 @@
 		</div>
 		<span class="text-sm text-muted-foreground">
 			{#if view === 'json'}
-				{#if structure !== null}
+				{#if structure !== undefined}
 					{m.content_json_size({
 						size: formatNumber(structureBytes / 1024, { maximumFractionDigits: 0 })
 					})}
@@ -216,35 +221,36 @@
 			{/if}
 		</span>
 		<div class="ml-auto flex gap-2">
-			<Button variant="outline" disabled={shown === null} onclick={copy}>
+			<Button variant="outline" disabled={!ready || structureTooLarge} onclick={copy}>
 				<Copy aria-hidden="true" />
 				{m.content_copy()}
 			</Button>
-			<Button variant="outline" disabled={shown === null} onclick={download}>
+			<Button variant="outline" disabled={!ready} onclick={download}>
 				<Download aria-hidden="true" />
 				{m.doc_download()}
 			</Button>
 		</div>
 	</div>
 
-	{#if cut}<p class="text-sm text-muted-foreground">{m.content_json_cut()}</p>{/if}
-
 	<div class="h-[calc(100vh-17rem)] min-h-96 overflow-auto rounded-2xl border bg-card">
 		{#if problem}
 			<p class="p-6 text-destructive" role="alert">{problem}</p>
-		{:else if shown === null}
+		{:else if !ready}
 			<p class="p-6 text-sm text-muted-foreground">
 				{(view === 'json' ? loadingStructure : loading) ? m.loading() : m.text_none()}
 			</p>
 		{:else if view === 'text'}
 			<article class="px-9 py-7">
-				<Markdown source={shown} />
+				<Markdown source={text ?? ''} />
 			</article>
+		{:else if view === 'markdown'}
+			<pre class="px-7 py-6 font-mono text-[13px] leading-relaxed whitespace-pre-wrap">{text}</pre>
+		{:else if structureTooLarge}
+			<p class="p-6 text-sm text-muted-foreground">{m.content_json_too_large()}</p>
 		{:else}
-			<pre
-				class="px-7 py-6 font-mono text-[13px] leading-relaxed {view === 'markdown'
-					? 'whitespace-pre-wrap'
-					: 'whitespace-pre'}">{shown}</pre>
+			<div class="px-5 py-5 font-mono text-[13px] leading-relaxed">
+				<JsonTree value={structure} />
+			</div>
 		{/if}
 	</div>
 </section>

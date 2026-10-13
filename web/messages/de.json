@@ -584,7 +584,6 @@
 	"content_copy": "Kopieren",
 	"content_copied": "Kopiert.",
 	"content_json_size": "content.json · {size} KB",
-	"content_json_cut": "Nur der Anfang ist zu sehen; der Download enthält alles.",
 	"tokens_details": "Token-Details",
 	"tokens_input": "Eingabe-Tokens",
 	"tokens_output": "Ausgabe-Tokens",
@@ -611,5 +610,11 @@
 	"log_status": "Stand",
 	"log_started": "Gestartet",
 	"log_tokens": "Tokens",
-	"log_tokens_sum": "Eingabe {input} · Ausgabe {output}"
+	"log_tokens_sum": "Eingabe {input} · Ausgabe {output}",
+	"json_items": "{count} Einträge",
+	"json_keys": "{count} Schlüssel",
+	"json_more": "{count} weitere anzeigen (von {total})",
+	"content_json_too_large": "Zu groß für die Anzeige; lade die Datei herunter.",
+	"json_item": "1 Eintrag",
+	"json_key": "1 Schlüssel"
 }

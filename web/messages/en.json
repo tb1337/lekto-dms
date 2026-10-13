@@ -584,7 +584,6 @@
 	"content_copy": "Copy",
 	"content_copied": "Copied.",
 	"content_json_size": "content.json · {size} KB",
-	"content_json_cut": "Only the beginning is shown; the download has all of it.",
 	"tokens_details": "Token details",
 	"tokens_input": "Input tokens",
 	"tokens_output": "Output tokens",
@@ -611,5 +610,11 @@
 	"log_status": "State",
 	"log_started": "Started",
 	"log_tokens": "Tokens",
-	"log_tokens_sum": "input {input} · output {output}"
+	"log_tokens_sum": "input {input} · output {output}",
+	"json_items": "{count} items",
+	"json_keys": "{count} keys",
+	"json_more": "Show {count} more (of {total})",
+	"content_json_too_large": "Too large to show here; download the file.",
+	"json_item": "1 item",
+	"json_key": "1 key"
 }

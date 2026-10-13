@@ -11,6 +11,7 @@ import pytest
 from papiq.adapters.outbound.docling import DoclingParser
 from papiq.composition.settings import Settings
 from tests.contracts.processing import SAMPLES, ParserContract
+from tests.samples.make_samples import PRINTOUT
 
 pytestmark = pytest.mark.docling
 
@@ -39,6 +40,18 @@ async def test_text_and_structure(parser: DoclingParser, tmp_path: Path) -> None
     assert "Rechnung Nummer 4711" in text
     assert json.loads(structure.read_text(encoding="utf-8"))["schema_name"] == "DoclingDocument"
     assert result.parser.startswith("docling ")
+
+
+async def test_a_printout_keeps_its_columns(parser: DoclingParser, tmp_path: Path) -> None:
+    markdown, structure = tmp_path / "content.md", tmp_path / "content.json"
+    await parser.parse(SAMPLES / "printout.pdf", markdown=markdown, structure=structure)
+    text = markdown.read_text(encoding="utf-8")
+    printed = "\n".join(PRINTOUT)
+    assert "Zeitnachweis" in text
+    assert f"```\n{printed}\n```" in text
+    assert "&#124;" not in text
+    items = json.loads(structure.read_text(encoding="utf-8"))["texts"]
+    assert [item["text"] for item in items if item["label"] == "code"] == [printed]
 
 
 async def test_missing_models_are_reported(tmp_path: Path) -> None:

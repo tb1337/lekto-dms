@@ -9,6 +9,8 @@
 - blank.pdf       a scanned empty page: OCR finds no text
 - signed.pdf      text.pdf with a signature flag (OCRmyPDF refuses it unless told to
                   invalidate the signature)
+- printout.pdf    a time sheet printed in Courier, its table drawn with `|` and `-`, below a
+                  title in Helvetica
 - damaged.pdf     a PDF header followed by garbage
 - unsupported.docx  an Office file (a ZIP archive), not supported
 """
@@ -24,6 +26,22 @@ HERE = Path(__file__).parent
 
 LINES = ["Rechnung Nummer 4711", "Papiq Testdokument", "Betrag 123,45 EUR"]
 
+PRINTOUT_TITLE = "Zeitnachweis"
+PRINTOUT = [
+    " Mitarbeiter        : Erika Musterfrau          Seite         : 1",
+    " Personalnummer     : 00012345                  Druckdatum    : 15.07.2026",
+    " Kostenstelle       : 4711",
+    "",
+    "-----------------------------------------------------------------",
+    "|Tag Text           |Kommen Gehen Std.|TAZPL |Sollz.|Rahmz.|GLZ  |",
+    "-----------------------------------------------------------------",
+    "|01  Mo             |07:31 12:34 5.03 |      |      |      |     |",
+    "|                   |13:18 15:53 2.35 |760   |  7.36| 7.38 | 0.02|",
+    "|02  Di             |07:47 16:04 7.47 |760   |  7.36| 7.47 | 0.11|",
+    "|Wochen-Summation   |                 |      | 14.72|14.85 | 0.13|",
+    "-----------------------------------------------------------------",
+]
+
 
 def page(lines: list[str], size: tuple[int, int] = (1240, 1754)) -> Image.Image:
     """An A4 page at 150 dpi with large black text."""
@@ -38,17 +56,39 @@ def page(lines: list[str], size: tuple[int, int] = (1240, 1754)) -> Image.Image:
 def text_pdf(lines: list[str], *, signed: bool = False) -> bytes:
     """A minimal PDF with Helvetica text, written by hand. `signed`: the catalog declares a
     signature (`/AcroForm /SigFlags 1`), which is what OCRmyPDF checks."""
-    content = (
-        "BT /F1 24 Tf 72 760 Td " + " ".join(f"({line}) Tj 0 -36 Td" for line in lines) + " ET"
-    )
+    return pdf(text_lines("F1", 24, 36, 72, 760, lines), signed=signed)
+
+
+def printout_pdf(title: str, lines: list[str]) -> bytes:
+    """A page printed by a program: `title` in Helvetica, below it `lines` in Courier (an empty
+    line stays empty)."""
+    heading = text_lines("F1", 14, 0, 60, 790, [title])
+    content = f"{heading} {text_lines('F2', 9.5, 13.5, 60, 750, lines)}"
+    return pdf(content, fonts=("Helvetica", "Courier"))
+
+
+def text_lines(font: str, size: float, leading: float, x: float, y: float, lines: list[str]) -> str:
+    """Text lines in a content stream, from (x, y) down."""
+    escaped = (line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)") for line in lines)
+    shown = " ".join(f"({line}) Tj 0 -{leading} Td" for line in escaped)
+    return f"BT /{font} {size} Tf {x} {y} Td {shown} ET"
+
+
+def pdf(content: str, *, fonts: tuple[str, ...] = ("Helvetica",), signed: bool = False) -> bytes:
+    """A one-page A4 PDF with the content stream `content`, written by hand; `fonts` (standard
+    ones) are `F1`, `F2` and so on."""
     acroform = " /AcroForm << /Fields [] /SigFlags 1 >>" if signed else ""
+    numbers = [4, *range(6, 5 + len(fonts))]  # the content stream is object 5
+    names = " ".join(f"/F{index} {number} 0 R" for index, number in enumerate(numbers, start=1))
+    font_objects = [f"<< /Type /Font /Subtype /Type1 /BaseFont /{font} >>" for font in fonts]
     objects = [
         f"<< /Type /Catalog /Pages 2 0 R{acroform} >>",
         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
-        "/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        f"/Resources << /Font << {names} >> >> /Contents 5 0 R >>",
+        font_objects[0],
         f"<< /Length {len(content)} >>\nstream\n{content}\nendstream",
+        *font_objects[1:],
     ]
     out = io.BytesIO()
     out.write(b"%PDF-1.7\n")
@@ -70,6 +110,7 @@ def main() -> None:
     page(LINES).save(HERE / "scan.pdf", resolution=150)
     (HERE / "text.pdf").write_bytes(text_pdf(LINES))
     (HERE / "signed.pdf").write_bytes(text_pdf(LINES, signed=True))
+    (HERE / "printout.pdf").write_bytes(printout_pdf(PRINTOUT_TITLE, PRINTOUT))
     page(LINES, (1000, 1300)).convert("RGB").save(HERE / "photo.jpg", quality=80)
     page(LINES, (900, 1200)).convert("RGB").save(HERE / "lowres.jpg", quality=80, dpi=(72, 72))
     transparent = Image.new("RGBA", (1000, 600), (255, 255, 255, 0))

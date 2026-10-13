@@ -1,5 +1,5 @@
-"""PDFium (pypdfium2): page images (Pillow reads images and encodes WebP) and the places of
-quotes in a PDF's text layer."""
+"""PDFium (pypdfium2): page images (Pillow reads images and encodes WebP), the places of
+quotes in a PDF's text layer and its text in fixed-pitch fonts (for the Docling child process)."""
 
 from papiq.adapters.outbound.pdfium.library import count_pages
 from papiq.adapters.outbound.pdfium.locator import PdfiumTextLocator

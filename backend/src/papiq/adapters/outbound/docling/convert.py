@@ -11,9 +11,13 @@ Markdown has no text, although OCR did recognise some. Then the text layer of th
 written as plain Markdown instead, one block per page, and the note says so; the structure
 stays Docling's.
 
-The Markdown is the text the model, the search and the checks read, so it has no HTML entities:
-`&`, `<` and `>` stay as they are, and a `|` in a table cell is written `\\|` (Markdown's own
-escape) instead of Docling's `&#124;`.
+Text set in a fixed-pitch font (a printout with tables drawn in characters) is kept as it is
+set, one code block per run of lines, in place of what the layout analysis read there (see
+`papiq.adapters.outbound.docling.fixed_pitch`).
+
+The Markdown is the text the model, the search and the checks read, so `&`, `<` and `>` stay as
+they are (no HTML escapes). A `|` in the cell of a table Docling recognised is its `&#124;`, which
+the readers of the text decode.
 """
 
 import json
@@ -22,6 +26,7 @@ import re
 import sys
 from pathlib import Path
 
+from papiq.adapters.outbound.pdfium.fixed_pitch import fixed_pitch_blocks
 from papiq.adapters.outbound.pdfium.library import text_layer
 
 UNPROCESSABLE = 3
@@ -33,14 +38,6 @@ TEXT_LAYER_NOTE = (
 # Markdown without any letter or digit has no text; comments are placeholders (`<!-- image -->`).
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _WORD = re.compile(r"\w")
-
-
-def cells_unescaped(markdown: str) -> str:
-    """Docling's `&#124;` in the rows of a table as `\\|`."""
-    return "\n".join(
-        line.replace("&#124;", "\\|") if line.lstrip().startswith("|") else line
-        for line in markdown.split("\n")
-    )
 
 
 def markdown_or_text_layer(markdown: str, source: Path) -> tuple[str, str | None]:
@@ -66,6 +63,8 @@ def main(argv: list[str]) -> int:
     from docling.document_converter import DocumentConverter, PdfFormatOption
     from docling.exceptions import ConversionError
 
+    from papiq.adapters.outbound.docling.fixed_pitch import keep_fixed_pitch
+
     options = PdfPipelineOptions(artifacts_path=models, do_ocr=False, do_table_structure=True)
     converter = DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)}
@@ -80,7 +79,8 @@ def main(argv: list[str]) -> int:
         print(f"the PDF cannot be parsed: {errors}", file=sys.stderr)
         return UNPROCESSABLE
     document = result.document
-    exported = cells_unescaped(document.export_to_markdown(escape_html=False))
+    keep_fixed_pitch(document, fixed_pitch_blocks(source))
+    exported = document.export_to_markdown(escape_html=False)
     text, note = markdown_or_text_layer(exported, source)
     markdown.write_text(text, encoding="utf-8")
     structure.write_text(json.dumps(document.export_to_dict()), encoding="utf-8")

@@ -16,7 +16,7 @@ from papiq.core.domain.master_data import (
     one_line,
 )
 from papiq.core.domain.names import name_key as match_key
-from papiq.core.domain.names import similarity
+from papiq.core.domain.names import related
 from papiq.core.domain.permissions import can_manage_master_data
 from papiq.core.domain.rules import References
 from papiq.core.domain.titles import check_pattern, field_names, rename_field
@@ -526,20 +526,14 @@ def _alias_pairs(contact: Contact, other: Contact) -> Iterator[tuple[str, str]]:
                 yield mine, theirs
 
 
-_SHORTEST_SHARED = 3  # letters of a word a learned alias shares with the contact
-_SIMILAR = 0.75  # or as similar as a contact classification suggests (`suggest_contact`)
-
-
 async def learn_alias(uow: UnitOfWork, contact_id: ContactId, alias: str) -> Contact | None:
     """Make `alias` an alias of the contact, in `uow` without committing: a person chose the
     contact for a document in which the language model read `alias`. The contact with the new
     alias, or None if nothing is learned:
 
     - it is a name or an alias of the contact already, or the contact has all aliases it may;
-    - it is not related to the contact's names: shares no word of at least three letters and
-      is less similar than a suggestion of classification (`names.similarity` below
-      `_SIMILAR`). The model read something else, often the recipient, and the person
-      corrected it;
+    - it is not related to the contact's names (`names.related`): the model read something
+      else, often the recipient, and the person corrected it;
     - it matches another contact's name (see `names.name_key`).
 
     An alias of another contact that it matches moves (the person's choice is the newer word).
@@ -566,8 +560,4 @@ async def learn_alias(uow: UnitOfWork, contact_id: ContactId, alias: str) -> Con
 
 
 def _related(key: str, contact: Contact) -> bool:
-    words = {word for word in key.split() if len(word) >= _SHORTEST_SHARED}
-    return any(
-        words & set(match_key(own).split()) or similarity(key, match_key(own)) >= _SIMILAR
-        for own in contact.names()
-    )
+    return any(related(key, match_key(own)) for own in contact.names())

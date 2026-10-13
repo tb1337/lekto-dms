@@ -41,6 +41,92 @@ def field_id_of(field: str) -> str | None:
 
 
 @dataclass(frozen=True, kw_only=True)
+class CandidateSource:
+    """What one signal says about a candidate: `names` whether it is sure enough to name it
+    (it counts for the judge's rule), `score` its match, probability or share of the similar
+    documents, `votes` of `of` similar documents (`documents`) that carry it, the `quote` the
+    language model gave, the `identifiers` (kinds) of the contact found in the text, and
+    whether its name or an alias stands in the text (`named_in_text`)."""
+
+    signal: str  # the node: signal_llm, signal_classifier, signal_neighbours, signal_facts
+    names: bool = False
+    score: float | None = None
+    votes: int | None = None
+    of: int | None = None
+    quote: str | None = None
+    identifiers: tuple[str, ...] = ()
+    documents: tuple[str, ...] = ()
+    named_in_text: bool = False
+
+    def to_json(self) -> JsonObject:
+        data: JsonObject = {"signal": self.signal, "names": self.names}
+        if self.score is not None:
+            data["score"] = round(self.score, 4)
+        for key, value in (("votes", self.votes), ("of", self.of), ("quote", self.quote)):
+            if value is not None:
+                data[key] = value
+        if self.identifiers:
+            data["identifiers"] = list(self.identifiers)
+        if self.documents:
+            data["documents"] = list(self.documents)
+        if self.named_in_text:
+            data["named_in_text"] = True
+        return data
+
+    @classmethod
+    def from_json(cls, data: JsonValue) -> Self:
+        if not isinstance(data, dict) or not isinstance(data.get("signal"), str):
+            raise ValidationError(f"invalid candidate source {data!r}")
+        score = data.get("score")
+        return cls(
+            signal=str(data["signal"]),
+            names=data.get("names") is True,
+            score=float(score) if isinstance(score, int | float) else None,
+            votes=_optional_int(data.get("votes")),
+            of=_optional_int(data.get("of")),
+            quote=_optional_text(data.get("quote")),
+            identifiers=_texts(data.get("identifiers")),
+            documents=_texts(data.get("documents")),
+            named_in_text=data.get("named_in_text") is True,
+        )
+
+
+@dataclass(frozen=True, kw_only=True)
+class Candidate:
+    """A value the signals proposed for a field, best first: `value` as the check's (a contact
+    or type id, a tag id) or None for a name that does not exist yet (`label`), with what each
+    signal said, and whether a signal named another value against it (`contradicted`)."""
+
+    value: JsonValue
+    label: str
+    sources: tuple[CandidateSource, ...] = ()
+    contradicted: bool = False
+
+    def to_json(self) -> JsonObject:
+        return {
+            "value": self.value,
+            "label": self.label,
+            "sources": [source.to_json() for source in self.sources],
+            "contradicted": self.contradicted,
+        }
+
+    @classmethod
+    def from_json(cls, data: JsonValue) -> Self:
+        if not isinstance(data, dict) or not isinstance(data.get("label"), str):
+            raise ValidationError(f"invalid candidate {data!r}")
+        sources = data.get("sources")
+        return cls(
+            value=data.get("value"),
+            label=str(data["label"]),
+            sources=tuple(
+                CandidateSource.from_json(item)
+                for item in (sources if isinstance(sources, list) else [])
+            ),
+            contradicted=data.get("contradicted") is True,
+        )
+
+
+@dataclass(frozen=True, kw_only=True)
 class FieldCheck:
     """One field of a model's proposal and its check.
 
@@ -57,6 +143,8 @@ class FieldCheck:
       contact, a passage for a yes/no field); None without a quote.
     - `locations`: where the quote stands on the pages of the archive PDF; none if it was not
       found there (or before this was recorded).
+    - `candidates`: the values the signals proposed, best first, with their sources (the
+      judge's checks; none in others, and in entries from before the signals).
     """
 
     field: str
@@ -70,6 +158,7 @@ class FieldCheck:
     new_name: str | None = None
     quote_shows_value: bool | None = None
     locations: tuple[Location, ...] = ()
+    candidates: tuple[Candidate, ...] = ()
 
     def __post_init__(self) -> None:
         if self.outcome is Outcome.FAILED:
@@ -96,6 +185,7 @@ class FieldCheck:
             "new_name": self.new_name,
             "quote_shows_value": self.quote_shows_value,
             "locations": locations_to_json(self.locations),
+            "candidates": [candidate.to_json() for candidate in self.candidates],
         }
 
     @classmethod
@@ -118,6 +208,7 @@ class FieldCheck:
                 new_name=_optional_text(data.get("new_name")),
                 quote_shows_value=_optional_bool(data.get("quote_shows_value")),
                 locations=locations_from_json(data.get("locations")),
+                candidates=_candidates(data.get("candidates")),
             )
         except (KeyError, ValueError) as error:
             raise ValidationError(f"invalid field check: {error}") from None
@@ -140,6 +231,18 @@ def _optional_text(value: JsonValue) -> str | None:
 
 def _optional_bool(value: JsonValue) -> bool | None:
     return value if isinstance(value, bool) else None
+
+
+def _optional_int(value: JsonValue) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _texts(value: JsonValue) -> tuple[str, ...]:
+    return tuple(item for item in value if isinstance(item, str)) if isinstance(value, list) else ()
+
+
+def _candidates(value: JsonValue) -> tuple[Candidate, ...]:
+    return tuple(Candidate.from_json(item) for item in value) if isinstance(value, list) else ()
 
 
 # --- field values as JSON -----------------------------------------------------------------

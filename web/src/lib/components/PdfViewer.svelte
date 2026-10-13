@@ -126,17 +126,21 @@
 		}
 	}
 
-	function watch(node: HTMLElement, number: number) {
-		const canvas = node.querySelector('canvas');
-		node.dataset.page = String(number);
-		const visible = (entries: IntersectionObserverEntry[]) => {
-			for (const entry of entries) {
-				if (entry.isIntersecting && canvas) {
-					void draw(number, canvas);
-					current = number;
-				}
+	// One observer serves all pages: each entry names its page through the observed element.
+	function visible(entries: IntersectionObserverEntry[]) {
+		for (const entry of entries) {
+			const target = entry.target as HTMLElement;
+			const number = Number(target.dataset.page);
+			const canvas = target.querySelector('canvas');
+			if (entry.isIntersecting && canvas && number > 0) {
+				void draw(number, canvas);
+				current = number;
 			}
-		};
+		}
+	}
+
+	function watch(node: HTMLElement, number: number) {
+		node.dataset.page = String(number);
 		observer ??= new IntersectionObserver(visible, { root: container, rootMargin: '300px 0px' });
 		const own = observer;
 		own.observe(node);

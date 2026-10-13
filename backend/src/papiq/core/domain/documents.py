@@ -33,6 +33,7 @@ from papiq.core.domain.ids import (
     new_id,
 )
 from papiq.core.domain.pipeline import (
+    CURRENT_SIGNALS,
     SIGNALS,
     Lane,
     Node,
@@ -274,8 +275,10 @@ class Document:
 
     def reprocess_from(self, node: Node, now: datetime) -> tuple[Node, ...]:
         """Discard the results of `node` and the nodes after it and process them again.
-        Signals `node` needs that were skipped (a document from before they existed) run first.
-        Returns the nodes that are due now."""
+        Signals `node` needs that were skipped (a document from before they existed) run first,
+        and so do those that ask no language model (`CURRENT_SIGNALS`): the judge sees the
+        master data, the model and the index as they are now. Returns the nodes that are due
+        now."""
         processing = self.processing
         if processing.status is ProcessingStatus.PROCESSING:
             raise InvalidTransitionError(f"document {self.id} is being processed")
@@ -291,12 +294,12 @@ class Document:
             raise InvalidTransitionError(
                 f"document {self.id} has uncertain results; confirm them before filing"
             )
-        skipped_signals = {
+        signals = {
             signal
             for signal in node.requires & SIGNALS
-            if processing.nodes[signal].status is NodeStatus.SKIPPED
+            if signal in CURRENT_SIGNALS or processing.nodes[signal].status is NodeStatus.SKIPPED
         }
-        return self._reset({node, *skipped_signals}, now)
+        return self._reset({node, *signals}, now)
 
     def confirm(self, resume_at: Node, now: datetime) -> tuple[Node, ...]:
         """The owner has decided what was uncertain or failed (the inbox): the results of the

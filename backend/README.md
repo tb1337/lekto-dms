@@ -162,7 +162,8 @@ once. `processing.nodes` of a document holds the state of every node of the curr
 `document.node_started`, `document.node_deferred` (an attempt raised; the node waits for the
 next one) and `document.node_completed` follow it. A node that fails stops the
 document (red): nodes still running finish, nothing new starts. A retry repeats the failed
-nodes, a reprocessing from node X repeats X and every node after it; both start a new run, so
+nodes, a reprocessing from node X repeats X and every node after it (from the judge also the
+signals that ask no model, so new aliases, identifiers or a new model count); both start a new run, so
 jobs of the old run are recognised as stale.
 
 | Node | Input | Derivatives (object store) | Outcome |

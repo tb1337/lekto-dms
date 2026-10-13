@@ -345,7 +345,8 @@ async def test_reprocess_from_a_step(world: World) -> None:
     world.database.outbox.clear()
     pipeline = world.pipeline({Node.FIELDS: Returns(UNCERTAIN)})
     await pipeline.reprocess_from(owner.id, document.id, Node.JUDGE)
-    assert await world.drain(pipeline) == 3  # waits before filing; the pages stay
+    # The three signals without a model call, judge, fields, rules; it waits before filing.
+    assert await world.drain(pipeline) == 6
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.YELLOW
     assert stored.processing.status is ProcessingStatus.REVIEW

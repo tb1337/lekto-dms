@@ -59,6 +59,13 @@ SIGNALS: frozenset["Node"] = frozenset(
 )
 """The nodes that propose metadata for the judge; they never decide the lane themselves."""
 
+CURRENT_SIGNALS: frozenset["Node"] = frozenset(
+    {Node.SIGNAL_CLASSIFIER, Node.SIGNAL_NEIGHBOURS, Node.SIGNAL_FACTS}
+)
+"""The signals that read the current master data, model and index without asking a language
+model: a reprocessing from the judge runs them again, so a new alias, identifier or model takes
+effect. The language model's signal keeps its answer."""
+
 GRAPH: Mapping[Node, frozenset[Node]] = {
     Node.RECEIVE: frozenset(),
     Node.OCR: frozenset({Node.RECEIVE}),

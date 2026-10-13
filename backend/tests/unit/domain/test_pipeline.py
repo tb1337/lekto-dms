@@ -13,6 +13,7 @@ from papiq.core.domain.events import (
 )
 from papiq.core.domain.ids import new_id
 from papiq.core.domain.pipeline import (
+    CURRENT_SIGNALS,
     GRAPH,
     NODES,
     SIGNALS,
@@ -31,6 +32,7 @@ from tests.builders import FAILED, NOW, OK, UNCERTAIN
 
 LATER = NOW + timedelta(seconds=5)
 SIGNAL_NODES = tuple(node for node in NODES if node in SIGNALS)  # in graph order
+CURRENT_NODES = tuple(node for node in NODES if node in CURRENT_SIGNALS)
 
 
 def status(document: Document) -> ProcessingStatus:
@@ -442,14 +444,15 @@ def test_retry_needs_failed_processing() -> None:
 def test_reprocess_from_a_node_discards_the_results_after_it() -> None:
     document = builders.run_pipeline(received(), {Node.FIELDS: UNCERTAIN})
     assert document.lane is Lane.YELLOW
-    assert document.reprocess_from(Node.JUDGE, NOW) == (Node.JUDGE,)
+    # The signals without a model call read the master data again; the model's answer stays.
+    assert document.reprocess_from(Node.JUDGE, NOW) == CURRENT_NODES
     assert document.processing.run == 2
     assert set(document.processing.outcomes) == {
         Node.RECEIVE,
         Node.OCR,
         Node.PAGES,
         Node.PARSE,
-        *SIGNALS,
+        Node.SIGNAL_LLM,
     }
     assert document.lane is None
     builders.run_pipeline(document)
@@ -457,13 +460,14 @@ def test_reprocess_from_a_node_discards_the_results_after_it() -> None:
 
 
 def test_reprocessing_from_the_judge_runs_the_signals_a_document_skipped() -> None:
-    """A document from before the signals existed has them skipped; done, they stay."""
+    """A document from before the signals existed has them skipped; done, the language model's
+    stays."""
     document = builders.run_pipeline(received())
     for signal in SIGNALS:
         document.processing.nodes[signal] = NodeState(status=NodeStatus.SKIPPED)
     assert document.reprocess_from(Node.JUDGE, NOW) == SIGNAL_NODES
     builders.run_pipeline(document)
-    assert document.reprocess_from(Node.JUDGE, NOW) == (Node.JUDGE,)
+    assert document.reprocess_from(Node.JUDGE, NOW) == CURRENT_NODES
 
 
 def test_reprocessing_the_pages_leaves_the_text_branch_alone() -> None:
@@ -526,7 +530,7 @@ def test_a_skipped_node_is_caught_up_on_without_touching_status_or_lane() -> Non
     (event,) = green.pull_events()
     assert isinstance(event, NodeCompleted) and event.outcome is Outcome.FAILED
     assert green.is_skipped(Node.PAGES, 1)
-    assert green.reprocess_from(Node.JUDGE, LATER) == (Node.JUDGE,)
+    assert green.reprocess_from(Node.JUDGE, LATER) == CURRENT_NODES
 
 
 def test_confirming_waits_for_a_node_still_running() -> None:

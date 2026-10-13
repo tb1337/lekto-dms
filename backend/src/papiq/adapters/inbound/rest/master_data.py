@@ -186,6 +186,8 @@ async def create_field(body: FieldCreate, user: CurrentUser, context: Context) -
             else [DocumentTypeId(id) for id in body.document_type_ids]
         ),
         choices=body.choices,
+        required=body.required,
+        required_document_type_ids=[DocumentTypeId(id) for id in body.required_document_type_ids],
     )
     return FieldOut.of(item)
 
@@ -219,8 +221,17 @@ async def change_field(id: UUID, body: FieldPatch, user: CurrentUser, context: C
             if body.document_type_ids is None
             else [DocumentTypeId(type_id) for type_id in body.document_type_ids]
         )
+    required_types = body.required_document_type_ids
     item = await context.master_data.change_field(
-        user, FieldId(id), name=body.name, choices=body.choices, document_type_ids=scope
+        user,
+        FieldId(id),
+        name=body.name,
+        choices=body.choices,
+        document_type_ids=scope,
+        required=body.required,
+        required_document_type_ids=(
+            None if required_types is None else [DocumentTypeId(id) for id in required_types]
+        ),
     )
     return FieldOut.of(item)
 

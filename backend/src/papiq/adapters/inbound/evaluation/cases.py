@@ -31,10 +31,15 @@ class EvaluationSetError(Exception):
 
 @dataclass(frozen=True)
 class FieldSpec:
+    """`required`: a global field required everywhere; `required_types`: the types a typed
+    one is required for (in the JSON, `"required"` is either)."""
+
     name: str
     data_type: FieldType
     document_types: tuple[str, ...] | None
     choices: tuple[str, ...] = ()
+    required: bool = False
+    required_types: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -124,6 +129,10 @@ def _master_data(data: Any) -> MasterDataSpec:
                     None if item.get("document_types") is None else tuple(item["document_types"])
                 ),
                 choices=tuple(item.get("choices", ())),
+                required=item.get("required") is True,
+                required_types=(
+                    tuple(item["required"]) if isinstance(item.get("required"), list) else ()
+                ),
             )
             for item in data["fields"]
         )

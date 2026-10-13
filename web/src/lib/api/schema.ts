@@ -2215,6 +2215,8 @@ export interface components {
 			name: string;
 			/** Description */
 			description?: string | null;
+			/** Title Pattern */
+			title_pattern?: string | null;
 		};
 		/** DocumentTypeOut */
 		DocumentTypeOut: {
@@ -2238,10 +2240,16 @@ export interface components {
 			 * @example Entgeltbescheinigung
 			 */
 			description: string | null;
+			/**
+			 * Title Pattern
+			 * @example Lohn {document_date:YYYY-MM}
+			 */
+			title_pattern: string | null;
 		};
 		/**
 		 * DocumentTypePatch
-		 * @description Fields left out stay; a `description` of null or empty removes it.
+		 * @description Fields left out stay; a `description` or `title_pattern` of null or empty removes
+		 *     it.
 		 * @example {
 		 *       "description": "Entgeltbescheinigung"
 		 *     }
@@ -2251,6 +2259,8 @@ export interface components {
 			name?: string | null;
 			/** Description */
 			description?: string | null;
+			/** Title Pattern */
+			title_pattern?: string | null;
 		};
 		/**
 		 * DrawerCreate
@@ -2400,6 +2410,17 @@ export interface components {
 			 * @description For `choice` only.
 			 */
 			choices?: string[];
+			/**
+			 * Required
+			 * @description A global field: whether extraction must find it in every document.
+			 * @default false
+			 */
+			required: boolean;
+			/**
+			 * Required Document Type Ids
+			 * @description A typed field: the document types (of its own) it is required for; for the others it is optional. Extraction must find a required field; an optional one may stay empty, but a value it gives must be shown by the text.
+			 */
+			required_document_type_ids?: string[];
 		};
 		/**
 		 * FieldOut
@@ -2408,7 +2429,9 @@ export interface components {
 		 *       "created_at": "2026-01-10T09:00:00Z",
 		 *       "data_type": "amount",
 		 *       "id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b",
-		 *       "name": "Amount"
+		 *       "name": "Amount",
+		 *       "required": false,
+		 *       "required_document_type_ids": []
 		 *     }
 		 */
 		FieldOut: {
@@ -2424,6 +2447,16 @@ export interface components {
 			document_type_ids: string[] | null;
 			/** Choices */
 			choices: string[];
+			/**
+			 * Required
+			 * @description A global field: whether extraction must find it in every document.
+			 */
+			required: boolean;
+			/**
+			 * Required Document Type Ids
+			 * @description A typed field: the document types (of its own) it is required for; for the others it is optional. Extraction must find a required field; an optional one may stay empty, but a value it gives must be shown by the text.
+			 */
+			required_document_type_ids: string[];
 			/**
 			 * Created At
 			 * Format: date-time
@@ -2452,9 +2485,13 @@ export interface components {
 			choices?: string[] | null;
 			/**
 			 * Document Type Ids
-			 * @description null: global. Narrowing is a conflict (409) while documents outside the new scope have values.
+			 * @description null: global. Narrowing is a conflict (409) while documents outside the new scope have values; the types it is required for narrow with it.
 			 */
 			document_type_ids?: string[] | null;
+			/** Required */
+			required?: boolean | null;
+			/** Required Document Type Ids */
+			required_document_type_ids?: string[] | null;
 		};
 		/**
 		 * FieldType

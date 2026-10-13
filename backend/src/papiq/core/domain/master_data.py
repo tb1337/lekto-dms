@@ -14,6 +14,7 @@ from papiq.core.domain.identifiers import (
     IdentifierSource,
 )
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
+from papiq.core.domain.titles import check_pattern
 from papiq.core.domain.validation import name_key, require_name, require_utc
 
 MAX_ALIASES = 100
@@ -139,21 +140,41 @@ class Contact(MasterData):
 @dataclass(kw_only=True)
 class DocumentType(MasterData):
     """The kind of a document; field definitions can be bound to it. `description` tells the
-    language model what belongs to the type ("pay slips, Entgeltbescheinigung, ...")."""
+    language model what belongs to the type ("pay slips, Entgeltbescheinigung, ...").
+    `title_pattern` (see `titles`) renders the title of its documents, in place of the
+    model's proposal; that its fields exist is the service's to check."""
 
     id: DocumentTypeId
     description: str | None = None
+    title_pattern: str | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
         self.description = _description(self.description)
+        self.title_pattern = _title_pattern(self.title_pattern)
 
     @classmethod
-    def create(cls, *, name: str, now: datetime, description: str | None = None) -> Self:
-        return cls(id=DocumentTypeId(new_id()), name=name, created_at=now, description=description)
+    def create(
+        cls,
+        *,
+        name: str,
+        now: datetime,
+        description: str | None = None,
+        title_pattern: str | None = None,
+    ) -> Self:
+        return cls(
+            id=DocumentTypeId(new_id()),
+            name=name,
+            created_at=now,
+            description=description,
+            title_pattern=title_pattern,
+        )
 
     def describe(self, description: str | None) -> None:
         self.description = _description(description)
+
+    def set_title_pattern(self, pattern: str | None) -> None:
+        self.title_pattern = _title_pattern(pattern)
 
 
 @dataclass(kw_only=True)
@@ -210,6 +231,12 @@ def _identifiers(identifiers: Iterable[Identifier]) -> list[Identifier]:
     if sum(item.counts for item in result) > MAX_IDENTIFIERS:
         raise ValidationError(f"a contact has at most {MAX_IDENTIFIERS} identifiers")
     return result
+
+
+def _title_pattern(pattern: str | None) -> str | None:
+    if pattern is None or not pattern.strip():
+        return None
+    return check_pattern(one_line(pattern), with_fields=True)
 
 
 def _description(description: str | None) -> str | None:

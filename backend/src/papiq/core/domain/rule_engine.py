@@ -77,6 +77,7 @@ from papiq.core.domain.rules import (
     SetField,
     SetTitle,
 )
+from papiq.core.domain.titles import TitleValues, render
 
 DRAWER = "drawer"
 TITLE = "title"
@@ -743,22 +744,17 @@ class _Planner:
             return
         document, s = self._document, self._s
         contact = result.get(CONTACT, self._current(CONTACT))
-        names = {
-            "contact": "" if contact is None else s.names.get(ContactId(UUID(str(contact))), ""),
-            "document_type": "" if type_after is None else s.names.get(type_after, ""),
-            "document_date": (
-                "" if document.document_date is None else document.document_date.isoformat()
-            ),
-            "filename": _default_title(document),
-        }
+        values = TitleValues(
+            contact=None if contact is None else s.names.get(ContactId(UUID(str(contact)))),
+            document_type=None if type_after is None else s.names.get(type_after),
+            document_date=document.document_date,
+            filename=_default_title(document),
+        )
         for report, action, match in self._titles:
             if match.rule.scope is RuleScope.GLOBAL:
                 report.notes.append(Note(TITLE, "refused", "global rules cannot set it"))
                 continue
-            rendered = re.sub(
-                r"\{([^{}]*)\}", lambda found: names.get(found.group(1), ""), action.template
-            )
-            title = re.sub(r"\s+", " ", rendered).strip()
+            title = render(action.template, values)
             if not title:
                 report.notes.append(Note(TITLE, "skipped", "the title would be empty"))
                 continue

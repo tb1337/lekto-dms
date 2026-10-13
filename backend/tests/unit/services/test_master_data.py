@@ -1,7 +1,12 @@
 import pytest
 
 from papiq.core.domain.documents import DocumentChanges
-from papiq.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
+from papiq.core.domain.errors import (
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from papiq.core.domain.fields import FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, new_id
@@ -130,6 +135,46 @@ async def test_training_replaces_the_learned_identifiers(world: World) -> None:
     async with world.uow() as uow:
         assert (await uow.contacts.get(utility.id)).identifiers == []
         assert (await uow.contacts.get(bank.id)).identifiers == [IBAN, *learned]
+
+
+async def test_required_fields_and_title_patterns(world: World) -> None:
+    admin = await world.user(role=Role.ADMIN)
+    service = world.master_data
+    payslip = await service.create_document_type(
+        admin.id, "Lohnnachweis", title_pattern="Lohn {document_date:YYYY-MM}"
+    )
+    other = await service.create_document_type(admin.id, "Brief")
+    period = await service.create_field(
+        admin.id,
+        "Zeitraum",
+        FieldType.TEXT,
+        document_type_ids=[payslip.id, other.id],
+        required_document_type_ids=[payslip.id],
+    )
+    assert period.is_required_for(payslip.id) and not period.is_required_for(other.id)
+    note = await service.create_field(admin.id, "Notiz", FieldType.TEXT, required=True)
+    assert note.is_required_for(None)
+    # A pattern names fields of the type only.
+    changed = await service.change_document_type(
+        admin.id, payslip.id, title_pattern="Lohn {field:Zeitraum} {field:Notiz}"
+    )
+    assert changed.title_pattern == "Lohn {field:Zeitraum} {field:Notiz}"
+    with pytest.raises(ValidationError):
+        await service.change_document_type(admin.id, payslip.id, title_pattern="{field:Betrag}")
+    with pytest.raises(ValidationError):
+        await service.create_document_type(admin.id, "Neu", title_pattern="{field:Zeitraum}")
+    # Renamed, the field is renamed in the patterns; narrowed, it stays required for the rest.
+    await service.rename_field(admin.id, period.id, "Abrechnungszeitraum")
+    async with world.uow() as uow:
+        assert (await uow.document_types.get(payslip.id)).title_pattern == (
+            "Lohn {field:Abrechnungszeitraum} {field:Notiz}"
+        )
+    narrowed = await service.change_field(admin.id, period.id, document_type_ids=[payslip.id])
+    assert narrowed.required_types == frozenset({payslip.id})
+    optional = await service.change_field(admin.id, period.id, required_document_type_ids=[])
+    assert not optional.is_required_for(payslip.id)
+    with pytest.raises(ValidationError):
+        await service.change_field(admin.id, period.id, required=True)
 
 
 async def test_learn_alias(world: World) -> None:

@@ -448,6 +448,7 @@ class ExtractFieldsNode(_ModelStep):
                 facts,
                 self._clock.now().date(),
                 document.document_date,
+                required=definition.is_required_for(document.document_type_id),
             )
             for key, definition in keys.items()
         ]
@@ -541,13 +542,17 @@ def _check_field(
     facts: DocumentText,
     today: date,
     document_date: date | None,
+    *,
+    required: bool,
 ) -> FieldCheck:
-    """A date equal to the document date is only suggested: models put the document date into
-    date fields the text does not show (a due date "within 30 days")."""
+    """A required field must be found, an optional one may stay empty; a value given must
+    pass the checks either way. A date equal to the document date is only suggested: models
+    put the document date into date fields the text does not show (a due date "within 30
+    days")."""
     field = field_key(definition.id)
     common = _common(field, proposal)
     if proposal.value is None:
-        if definition.is_global:
+        if not required:
             return FieldCheck(outcome=Outcome.OK, confidence=1, **common)
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,

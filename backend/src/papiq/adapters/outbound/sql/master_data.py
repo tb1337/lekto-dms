@@ -95,13 +95,17 @@ class SqlDocumentTypeRepository(SqlNamedRepository[DocumentTypeId, DocumentType]
     table = t.document_types
 
     def _values(self, entity: DocumentType) -> Values:
-        return super()._values(entity) | {"description": entity.description}
+        return super()._values(entity) | {
+            "description": entity.description,
+            "title_pattern": entity.title_pattern,
+        }
 
     def _entity(self, row: Row[Any]) -> DocumentType:
         return DocumentType(
             id=DocumentTypeId(row.id),
             name=row.name,
             description=row.description,
+            title_pattern=row.title_pattern,
             created_at=row.created_at,
             version=row.version,
         )
@@ -132,6 +136,12 @@ class SqlFieldRepository(SqlNamedRepository[FieldId, FieldDefinition]):
                     else frozenset(DocumentTypeId(s.document_type_id) for s in scopes[row.id])
                 ),
                 choices=tuple(row.choices),
+                required=row.is_global and row.required,
+                required_types=frozenset(
+                    DocumentTypeId(s.document_type_id)
+                    for s in scopes[row.id]
+                    if s.required and not row.is_global
+                ),
                 created_at=row.created_at,
                 version=row.version,
             )
@@ -143,6 +153,7 @@ class SqlFieldRepository(SqlNamedRepository[FieldId, FieldDefinition]):
             **super()._values(entity),
             "data_type": entity.data_type.value,
             "is_global": entity.document_type_ids is None,
+            "required": entity.required,
             "choices": list(entity.choices),
         }
 
@@ -150,7 +161,11 @@ class SqlFieldRepository(SqlNamedRepository[FieldId, FieldDefinition]):
         await self._insert_many(
             t.field_document_types,
             [
-                {"field_id": entity.id, "document_type_id": type_id}
+                {
+                    "field_id": entity.id,
+                    "document_type_id": type_id,
+                    "required": type_id in entity.required_types,
+                }
                 for type_id in entity.document_type_ids or ()
             ],
         )

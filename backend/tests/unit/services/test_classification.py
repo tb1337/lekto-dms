@@ -78,8 +78,13 @@ async def seed(world: World, contacts: tuple[str, ...] = ()) -> Seeded:
         ("Fällig am", FieldType.DATE, [invoice]),
         ("Bezahlt", FieldType.BOOLEAN, None),
     ]:
+        # Bound to the invoice, the fields are required for it; the global one is optional.
         seeded.fields[name] = FieldDefinition.create(
-            name=name, data_type=data_type, document_type_ids=scope, now=NOW
+            name=name,
+            data_type=data_type,
+            document_type_ids=scope,
+            required_types=scope or (),
+            now=NOW,
         )
     async with world.uow() as uow:
         for contact in seeded.contacts.values():
@@ -720,6 +725,23 @@ async def test_values_are_read_leniently(world: World) -> None:
     fields = seeded.fields
     assert result.changes.fields[fields["Rechnungsbetrag"].id] == Money(Decimal("84.2"), "EUR")
     assert result.changes.fields[fields["Bezahlt"].id] is True
+
+
+async def test_an_optional_field_may_stay_empty_but_a_value_must_be_shown(world: World) -> None:
+    seeded = await seed(world)
+    number = seeded.fields["Rechnungsnummer"]
+    number.require(types=[])
+    async with world.uow() as uow:
+        await uow.fields.update(number)
+        await uow.commit()
+    document = await document_with(world, INVOICE, seeded.types["Rechnung"])
+    for answer, outcome in (
+        (extraction(), Outcome.OK),
+        (extraction(a4={"value": "R-2026", "evidence": None}), Outcome.UNCERTAIN),
+    ):
+        result = await extract_step(world, model(answer)).run(document)
+        assert isinstance(result, MetadataResult)
+        assert field_check(seeded, result, "Rechnungsnummer").outcome is outcome
 
 
 async def test_values_are_read_as_written_in_german(world: World) -> None:

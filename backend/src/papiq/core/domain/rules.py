@@ -47,6 +47,7 @@ from papiq.core.domain.ids import (
     new_id,
 )
 from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.titles import check_pattern
 from papiq.core.domain.validation import require_name, require_utc
 
 DEFAULT_PRIORITY = 100
@@ -59,8 +60,6 @@ MAX_NAME = 200
 MAX_TEXT = 500
 MAX_PATTERN = 200
 MAX_LIST = 100
-TITLE_PLACEHOLDERS = ("contact", "document_type", "document_date", "filename")
-_PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
 
 
 class RuleScope(StrEnum):
@@ -266,20 +265,16 @@ class SetDocumentType:
 
 @dataclass(frozen=True)
 class SetTitle:
-    """The title from a template; placeholders `{contact}`, `{document_type}`,
-    `{document_date}` (ISO) and `{filename}` (the original's name without extension)."""
+    """The title from a template; placeholders as in `titles`: `{contact}`,
+    `{document_type}`, `{document_date}` (ISO, or `{document_date:YYYY-MM}`) and `{filename}`
+    (the original's name without extension), no fields."""
 
     template: str
     type: Literal["set_title"] = "set_title"
 
     def __post_init__(self) -> None:
         _text(self.template, MAX_TEXT)
-        for name in _PLACEHOLDER.findall(self.template):
-            if name not in TITLE_PLACEHOLDERS:
-                raise ValidationError(
-                    f"unknown placeholder {{{name}}}; known: "
-                    + ", ".join(f"{{{item}}}" for item in TITLE_PLACEHOLDERS)
-                )
+        check_pattern(self.template)
 
 
 @dataclass(frozen=True)

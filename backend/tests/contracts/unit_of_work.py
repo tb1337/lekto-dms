@@ -439,17 +439,26 @@ class UnitOfWorkContract:
             await uow.commit()
 
     async def test_field_definition_round_trip(self, uow_factory: UnitOfWorkFactory) -> None:
-        invoice = DocumentType.create(name="Invoice", now=NOW)
+        """Scope and choices; a field required for some of its types or, global, everywhere.
+        A document type keeps its title pattern."""
+        invoice = DocumentType.create(
+            name="Invoice", now=NOW, title_pattern="{document_date:YYYY} {field:Number}"
+        )
+        reminder = DocumentType.create(name="Reminder", now=NOW)
         bound = FieldDefinition.create(
             name="Billing period",
             data_type=FieldType.CHOICE,
             now=NOW,
-            document_type_ids=[invoice.id],
+            document_type_ids=[invoice.id, reminder.id],
             choices=["monthly", "yearly"],
+            required_types=[invoice.id],
         )
-        global_ = FieldDefinition.create(name="Note", data_type=FieldType.TEXT, now=NOW)
+        global_ = FieldDefinition.create(
+            name="Note", data_type=FieldType.TEXT, now=NOW, required=True
+        )
         async with uow_factory() as uow:
             await uow.document_types.add(invoice)
+            await uow.document_types.add(reminder)
             await uow.fields.add(bound)
             await uow.fields.add(global_)
             await uow.commit()
@@ -457,6 +466,12 @@ class UnitOfWorkContract:
             assert await uow.fields.get(bound.id) == bound
             assert await uow.fields.get(global_.id) == global_
             assert await uow.fields.find_by_name("NOTE") == global_
+            assert (await uow.document_types.get(invoice.id)).title_pattern == (
+                "{document_date:YYYY} {field:Number}"
+            )
+            stored = await uow.fields.get(bound.id)
+            assert stored.is_required_for(invoice.id)
+            assert not stored.is_required_for(reminder.id)
 
     # --- documents ------------------------------------------------------------------------------
 

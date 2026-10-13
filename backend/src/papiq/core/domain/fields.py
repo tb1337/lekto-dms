@@ -68,15 +68,30 @@ class FieldDefinition(MasterData):
 
     Scope: `document_type_ids is None` means global (every document); otherwise the field
     applies only to documents of one of the listed types. `choices` is used by CHOICE only.
+
+    A field is required or optional where it applies: a global one as `required` says, a
+    typed one for the types in `required_types` (a part of its types). Extraction must find
+    a required field; an optional one may stay empty.
     """
 
     id: FieldId
     data_type: FieldType
     document_type_ids: frozenset[DocumentTypeId] | None = None
     choices: tuple[str, ...] = ()
+    required: bool = False
+    required_types: frozenset[DocumentTypeId] = frozenset()
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        self.required_types = frozenset(self.required_types)
+        if self.document_type_ids is None:
+            if self.required_types:
+                raise ValidationError("a global field is required by `required`, not per type")
+        else:
+            if self.required:
+                raise ValidationError("a typed field is required per type")
+            if not self.required_types <= self.document_type_ids:
+                raise ValidationError("a field can only be required for its own types")
         if self.data_type is FieldType.CHOICE:
             choices = tuple(require_name(choice, "choice") for choice in self.choices)
             if not choices:
@@ -96,6 +111,8 @@ class FieldDefinition(MasterData):
         now: datetime,
         document_type_ids: Collection[DocumentTypeId] | None = None,
         choices: Collection[str] = (),
+        required: bool = False,
+        required_types: Collection[DocumentTypeId] = (),
     ) -> Self:
         return cls(
             id=FieldId(new_id()),
@@ -103,6 +120,8 @@ class FieldDefinition(MasterData):
             data_type=data_type,
             document_type_ids=None if document_type_ids is None else frozenset(document_type_ids),
             choices=tuple(choices),
+            required=required,
+            required_types=frozenset(required_types),
             created_at=now,
         )
 
@@ -123,7 +142,34 @@ class FieldDefinition(MasterData):
         if new is not None and not new:
             raise ValidationError("give at least one document type, or null for global")
         old, self.document_type_ids = self.document_type_ids, new
+        if new is None:
+            self.required_types = frozenset()
+        else:
+            self.required, self.required_types = False, self.required_types & new
         return new is not None and (old is None or not old <= new)
+
+    def require(
+        self, *, required: bool | None = None, types: Collection[DocumentTypeId] | None = None
+    ) -> None:
+        """Required or optional: `required` while global, `types` the types it is required
+        for (of its own); None leaves a part as it is."""
+        if required is not None:
+            if required and self.document_type_ids is not None:
+                raise ValidationError("a typed field is required per type")
+            self.required = required
+        if types is not None:
+            types = frozenset(types)
+            if types and self.document_type_ids is None:
+                raise ValidationError("a global field is required by `required`, not per type")
+            if not types <= (self.document_type_ids or frozenset()):
+                raise ValidationError("a field can only be required for its own types")
+            self.required_types = types
+
+    def is_required_for(self, document_type_id: DocumentTypeId | None) -> bool:
+        """Whether extraction must find it in a document of that type (it applies to it)."""
+        if self.document_type_ids is None:
+            return self.required
+        return document_type_id in self.required_types
 
     @property
     def is_global(self) -> bool:

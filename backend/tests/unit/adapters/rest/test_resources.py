@@ -330,6 +330,36 @@ async def test_contact_identifiers(api: Api) -> None:
         assert (await api.client.patch(path, json=bad, headers=a)).status_code == 422
 
 
+async def test_required_fields_and_title_patterns(api: Api) -> None:
+    a = auth(await api.admin())
+    payslip = await post(
+        api, "/document-types", {"name": "Lohn", "title_pattern": "{document_date:YYYY}"}, a
+    )
+    assert payslip["title_pattern"] == "{document_date:YYYY}"
+    field = await post(
+        api,
+        "/fields",
+        {
+            "name": "Zeitraum",
+            "data_type": "text",
+            "document_type_ids": [payslip["id"]],
+            "required_document_type_ids": [payslip["id"]],
+        },
+        a,
+    )
+    assert (field["required"], field["required_document_type_ids"]) == (False, [payslip["id"]])
+    path = f"{PREFIX}/fields/{field['id']}"
+    response = await api.client.patch(path, json={"required_document_type_ids": []}, headers=a)
+    assert response.json()["required_document_type_ids"] == []
+    response = await api.client.patch(path, json={"required": True}, headers=a)
+    assert response.status_code == 422  # a typed field is required per type
+    type_path = f"{PREFIX}/document-types/{payslip['id']}"
+    response = await api.client.patch(type_path, json={"title_pattern": "{amount}"}, headers=a)
+    assert response.status_code == 422
+    response = await api.client.patch(type_path, json={"title_pattern": None}, headers=a)
+    assert response.json()["title_pattern"] is None
+
+
 async def test_contact_aliases_and_type_descriptions(api: Api) -> None:
     a = auth(await api.admin())
     contact = await post(api, "/contacts", {"name": "Nord", "aliases": ["Nord KV"]}, a)

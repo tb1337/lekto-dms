@@ -25,6 +25,7 @@ from sqlalchemy import (
     Table,
     Text,
     Uuid,
+    false,
     true,
 )
 
@@ -101,7 +102,12 @@ def _master_data(name: str, *columns: Column[Any]) -> Table:
 
 
 contacts = _master_data("contacts")
-document_types = _master_data("document_types", Column("description", Text, nullable=True))
+document_types = _master_data(
+    "document_types",
+    Column("description", Text, nullable=True),
+    # A pattern the title of the type's documents is rendered from (see `domain.titles`).
+    Column("title_pattern", Text, nullable=True),
+)
 tags = _master_data("tags")
 
 # Other names of a contact; unique across contacts. That no alias is another contact's name is
@@ -148,6 +154,8 @@ field_definitions = Table(
     Column("data_type", Text, nullable=False),
     # False: the field applies to the types in `field_document_types` only (maybe none).
     Column("is_global", Boolean, nullable=False),
+    # Whether a global field is required (typed ones: `field_document_types.required`).
+    Column("required", Boolean, nullable=False, server_default=false()),
     Column("choices", json_type(), nullable=False),
     Column("created_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),
@@ -163,6 +171,9 @@ field_document_types = Table(
         primary_key=True,
     ),
     Column("document_type_id", Uuid, ForeignKey("document_types.id"), primary_key=True),
+    # Whether the field is required for documents of the type; assignments made before
+    # revision 0013 were.
+    Column("required", Boolean, nullable=False, server_default=true()),
 )
 
 documents = Table(

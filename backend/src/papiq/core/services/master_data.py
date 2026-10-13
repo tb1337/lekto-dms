@@ -19,6 +19,7 @@ from papiq.core.domain.names import name_key as match_key
 from papiq.core.domain.names import similarity
 from papiq.core.domain.permissions import can_manage_master_data
 from papiq.core.domain.rules import References
+from papiq.core.domain.titles import check_pattern, field_names, rename_field
 from papiq.core.ports import Clock, NamedRepository, UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import load_actor
 
@@ -110,10 +111,20 @@ class MasterDataService:
         )
 
     async def create_document_type(
-        self, actor: UserId, name: str, description: str | None = None
+        self,
+        actor: UserId,
+        name: str,
+        description: str | None = None,
+        title_pattern: str | None = None,
     ) -> DocumentType:
-        item = DocumentType.create(name=name, now=self._now(), description=description)
-        return await self._create(actor, _document_types, item)
+        """`title_pattern` (see `domain.titles`) may name global fields only: no other field
+        applies to a new type yet."""
+        item = DocumentType.create(
+            name=name, now=self._now(), description=description, title_pattern=title_pattern
+        )
+        return await self._create(
+            actor, _document_types, item, lambda uow: _check_title_pattern(uow, item)
+        )
 
     async def rename_document_type(
         self, actor: UserId, id: DocumentTypeId, name: str
@@ -127,21 +138,29 @@ class MasterDataService:
         *,
         name: str | None = None,
         description: str | Unset | None = UNSET,
+        title_pattern: str | Unset | None = UNSET,
     ) -> DocumentType:
-        """`None` (name) or UNSET (description) leaves it as it is; a description of None
-        removes it."""
+        """`None` (name) or UNSET (description, title pattern) leaves it as it is; None
+        removes a description or pattern. A pattern's fields must apply to the type."""
 
         def change(item: DocumentType) -> None:
             if name is not None:
                 item.rename(name)
             if not isinstance(description, Unset):
                 item.describe(description)
+            if not isinstance(title_pattern, Unset):
+                item.set_title_pattern(title_pattern)
 
         return await self._change(
             actor,
             _document_types,
             id,
             change,
+            check=(
+                None
+                if isinstance(title_pattern, Unset)
+                else lambda uow, item: _check_title_pattern(uow, item)
+            ),
             index_as="document_type" if name is not None else None,
         )
 
@@ -159,14 +178,19 @@ class MasterDataService:
         *,
         document_type_ids: Collection[DocumentTypeId] | None = None,
         choices: Collection[str] = (),
+        required: bool = False,
+        required_document_type_ids: Collection[DocumentTypeId] = (),
     ) -> FieldDefinition:
-        """`document_type_ids=None` creates a global field."""
+        """`document_type_ids=None` creates a global field; `required` makes it required
+        (global), `required_document_type_ids` for those of its types (typed)."""
         definition = FieldDefinition.create(
             name=name,
             data_type=data_type,
             now=self._now(),
             document_type_ids=document_type_ids,
             choices=choices,
+            required=required,
+            required_types=required_document_type_ids,
         )
 
         async def check(uow: UnitOfWork) -> None:
@@ -183,17 +207,22 @@ class MasterDataService:
         name: str | None = None,
         choices: Collection[str] | None = None,
         document_type_ids: Collection[DocumentTypeId] | Unset | None = UNSET,
+        required: bool | None = None,
+        required_document_type_ids: Collection[DocumentTypeId] | None = None,
     ) -> FieldDefinition:
-        """Admins only. Name; choices (adding is free, removing only what no document uses);
-        scope (`None`: global; widening is free, narrowing only while no document outside the
-        new scope has a value). The data type never changes. ConflictError if values are in
-        use."""
+        """Admins only. Name (title patterns that use it follow); choices (adding is free,
+        removing only what no document uses); scope (`None`: global; widening is free,
+        narrowing only while no document outside the new scope has a value; the types it is
+        required for narrow with it); required (global) or the types it is required for. The
+        data type never changes. ConflictError if values are in use."""
         async with self._uow() as uow:
             await _require_admin(uow, actor)
             definition = await uow.fields.get(id)
+            old_name = definition.name
             if name is not None:
                 definition.rename(name)
                 await _check_name_free(uow.fields, definition)
+                await _rename_in_patterns(uow, old_name, definition.name)
             if choices is not None:
                 removed = definition.change_choices(choices)
                 if removed and await uow.documents.field_in_use(id, values=removed):
@@ -209,6 +238,7 @@ class MasterDataService:
                     and await uow.documents.field_in_use(id, outside_types=scope)
                 ):
                     raise ConflictError("documents outside the new scope have values")
+            definition.require(required=required, types=required_document_type_ids)
             await uow.fields.update(definition)
             if choices is not None:
                 fields = {item.id: item for item in await uow.fields.list_all()}
@@ -223,7 +253,7 @@ class MasterDataService:
         return definition
 
     async def rename_field(self, actor: UserId, id: FieldId, name: str) -> FieldDefinition:
-        return await self._rename(actor, _fields, id, name)
+        return await self.change_field(actor, id, name=name)
 
     # --- reading (every signed-in user) ----------------------------------------------------------
 
@@ -393,6 +423,24 @@ async def _check_name_free[E: MasterData](repository: NamedRepository[Any, E], i
     # Every kind of master data has an `id`; the base class leaves its type to the kinds.
     if existing is not None and getattr(existing, "id") != getattr(item, "id"):  # noqa: B009
         raise ConflictError(f"'{item.name}' already exists")
+
+
+async def _check_title_pattern(uow: UnitOfWork, document_type: DocumentType) -> None:
+    """The fields a title pattern names apply to the type."""
+    if document_type.title_pattern is None:
+        return
+    names = [item.name for item in await uow.fields.list_all() if item.applies_to(document_type.id)]
+    check_pattern(document_type.title_pattern, fields=names)
+
+
+async def _rename_in_patterns(uow: UnitOfWork, old: str, new: str) -> None:
+    if old == new:
+        return
+    for document_type in await uow.document_types.list_all():
+        pattern = document_type.title_pattern
+        if pattern is not None and old in field_names(pattern):
+            document_type.set_title_pattern(rename_field(pattern, old, new))
+            await uow.document_types.update(document_type)
 
 
 async def _check_contact(uow: UnitOfWork, contact: Contact) -> None:

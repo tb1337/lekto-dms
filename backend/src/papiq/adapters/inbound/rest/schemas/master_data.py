@@ -16,6 +16,7 @@ from papiq.core.domain.master_data import (
     DocumentType,
     MasterData,
 )
+from papiq.core.domain.titles import MAX_PATTERN
 
 
 class MasterDataOut(BaseModel):
@@ -95,6 +96,22 @@ Description = Annotated[
 ]
 
 
+TitlePattern = Annotated[
+    str,
+    Field(
+        max_length=MAX_PATTERN,
+        description=(
+            "The title of the type's documents, rendered from their values in place of the "
+            "language model's proposal (a rule may still set another). Placeholders: "
+            "`{contact}`, `{document_type}`, `{filename}`, `{document_date}` (ISO) or "
+            "`{document_date:FORMAT}` with `YYYY`, `YY`, `MM`, `DD`, and `{field:NAME}` for a "
+            "field of the type. A document missing a value gets the model's title."
+        ),
+        examples=["Lohn {document_date:YYYY-MM}"],
+    ),
+]
+
+
 class ContactCreate(NameIn):
     model_config = ConfigDict(
         extra="forbid",
@@ -150,10 +167,12 @@ class DocumentTypeCreate(NameIn):
     )
 
     description: Description | None = None
+    title_pattern: TitlePattern | None = None
 
 
 class DocumentTypePatch(BaseModel):
-    """Fields left out stay; a `description` of null or empty removes it."""
+    """Fields left out stay; a `description` or `title_pattern` of null or empty removes
+    it."""
 
     model_config = ConfigDict(
         extra="forbid", json_schema_extra={"examples": [{"description": "Entgeltbescheinigung"}]}
@@ -161,17 +180,39 @@ class DocumentTypePatch(BaseModel):
 
     name: Name | None = None
     description: Description | None = None
+    title_pattern: TitlePattern | None = None
 
 
 class DocumentTypeOut(MasterDataOut):
     description: str | None = Field(examples=["Entgeltbescheinigung"])
+    title_pattern: str | None = Field(examples=["Lohn {document_date:YYYY-MM}"])
 
     @classmethod
     def of(cls, item: MasterData) -> "DocumentTypeOut":
         assert isinstance(item, DocumentType)
         return cls(
-            id=item.id, name=item.name, description=item.description, created_at=item.created_at
+            id=item.id,
+            name=item.name,
+            description=item.description,
+            title_pattern=item.title_pattern,
+            created_at=item.created_at,
         )
+
+
+Required = Annotated[
+    bool,
+    Field(description="A global field: whether extraction must find it in every document."),
+]
+RequiredTypes = Annotated[
+    list[UUID],
+    Field(
+        description=(
+            "A typed field: the document types (of its own) it is required for; for the others "
+            "it is optional. Extraction must find a required field; an optional one may stay "
+            "empty, but a value it gives must be shown by the text."
+        )
+    ),
+]
 
 
 class FieldCreate(BaseModel):
@@ -196,6 +237,8 @@ class FieldCreate(BaseModel):
     choices: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
         default_factory=list, max_length=200, description="For `choice` only."
     )
+    required: Required = False
+    required_document_type_ids: RequiredTypes = Field(default_factory=list)
 
 
 class FieldPatch(BaseModel):
@@ -218,9 +261,11 @@ class FieldPatch(BaseModel):
         default=None,
         description=(
             "null: global. Narrowing is a conflict (409) while documents outside the new scope "
-            "have values."
+            "have values; the types it is required for narrow with it."
         ),
     )
+    required: Required | None = None
+    required_document_type_ids: RequiredTypes | None = None
 
 
 class FieldOut(BaseModel):
@@ -233,6 +278,8 @@ class FieldOut(BaseModel):
                     "data_type": "amount",
                     "document_type_ids": None,
                     "choices": [],
+                    "required": False,
+                    "required_document_type_ids": [],
                     "created_at": "2026-01-10T09:00:00Z",
                 }
             ]
@@ -244,6 +291,8 @@ class FieldOut(BaseModel):
     data_type: FieldType
     document_type_ids: list[UUID] | None
     choices: list[str]
+    required: Required
+    required_document_type_ids: RequiredTypes
     created_at: datetime
 
     @classmethod
@@ -256,5 +305,7 @@ class FieldOut(BaseModel):
                 None if item.document_type_ids is None else sorted(item.document_type_ids)
             ),
             choices=list(item.choices),
+            required=item.required,
+            required_document_type_ids=sorted(item.required_types),
             created_at=item.created_at,
         )

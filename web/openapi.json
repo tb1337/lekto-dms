@@ -13679,6 +13679,22 @@
               }
             ],
             "title": "Description"
+          },
+          "title_pattern": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "description": "The title of the type's documents, rendered from their values in place of the language model's proposal (a rule may still set another). Placeholders: `{contact}`, `{document_type}`, `{filename}`, `{document_date}` (ISO) or `{document_date:FORMAT}` with `YYYY`, `YY`, `MM`, `DD`, and `{field:NAME}` for a field of the type. A document missing a value gets the model's title.",
+                "examples": [
+                  "Lohn {document_date:YYYY-MM}"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title Pattern"
           }
         },
         "additionalProperties": false,
@@ -13726,6 +13742,20 @@
             "examples": [
               "Entgeltbescheinigung"
             ]
+          },
+          "title_pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title Pattern",
+            "examples": [
+              "Lohn {document_date:YYYY-MM}"
+            ]
           }
         },
         "type": "object",
@@ -13733,7 +13763,8 @@
           "id",
           "name",
           "created_at",
-          "description"
+          "description",
+          "title_pattern"
         ],
         "title": "DocumentTypeOut"
       },
@@ -13770,12 +13801,28 @@
               }
             ],
             "title": "Description"
+          },
+          "title_pattern": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "description": "The title of the type's documents, rendered from their values in place of the language model's proposal (a rule may still set another). Placeholders: `{contact}`, `{document_type}`, `{filename}`, `{document_date}` (ISO) or `{document_date:FORMAT}` with `YYYY`, `YY`, `MM`, `DD`, and `{field:NAME}` for a field of the type. A document missing a value gets the model's title.",
+                "examples": [
+                  "Lohn {document_date:YYYY-MM}"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title Pattern"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "DocumentTypePatch",
-        "description": "Fields left out stay; a `description` of null or empty removes it.",
+        "description": "Fields left out stay; a `description` or `title_pattern` of null or empty removes\nit.",
         "examples": [
           {
             "description": "Entgeltbescheinigung"
@@ -14037,6 +14084,21 @@
             "maxItems": 200,
             "title": "Choices",
             "description": "For `choice` only."
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "description": "A global field: whether extraction must find it in every document.",
+            "default": false
+          },
+          "required_document_type_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Required Document Type Ids",
+            "description": "A typed field: the document types (of its own) it is required for; for the others it is optional. Extraction must find a required field; an optional one may stay empty, but a value it gives must be shown by the text."
           }
         },
         "additionalProperties": false,
@@ -14092,6 +14154,20 @@
             "type": "array",
             "title": "Choices"
           },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "description": "A global field: whether extraction must find it in every document."
+          },
+          "required_document_type_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Required Document Type Ids",
+            "description": "A typed field: the document types (of its own) it is required for; for the others it is optional. Extraction must find a required field; an optional one may stay empty, but a value it gives must be shown by the text."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -14105,6 +14181,8 @@
           "data_type",
           "document_type_ids",
           "choices",
+          "required",
+          "required_document_type_ids",
           "created_at"
         ],
         "title": "FieldOut",
@@ -14114,7 +14192,9 @@
             "created_at": "2026-01-10T09:00:00Z",
             "data_type": "amount",
             "id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b",
-            "name": "Amount"
+            "name": "Amount",
+            "required": false,
+            "required_document_type_ids": []
           }
         ]
       },
@@ -14168,7 +14248,35 @@
               }
             ],
             "title": "Document Type Ids",
-            "description": "null: global. Narrowing is a conflict (409) while documents outside the new scope have values."
+            "description": "null: global. Narrowing is a conflict (409) while documents outside the new scope have values; the types it is required for narrow with it."
+          },
+          "required": {
+            "anyOf": [
+              {
+                "type": "boolean",
+                "description": "A global field: whether extraction must find it in every document."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required"
+          },
+          "required_document_type_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array",
+                "description": "A typed field: the document types (of its own) it is required for; for the others it is optional. Extraction must find a required field; an optional one may stay empty, but a value it gives must be shown by the text."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Document Type Ids"
           }
         },
         "additionalProperties": false,

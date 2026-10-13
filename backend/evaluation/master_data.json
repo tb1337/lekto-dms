@@ -58,12 +58,23 @@
         "Gutschrift",
         "Mahnung",
         "Kassenbon"
+      ],
+      "required": [
+        "Rechnung",
+        "Bescheid",
+        "Gutschrift",
+        "Mahnung",
+        "Kassenbon"
       ]
     },
     {
       "name": "Rechnungsnummer",
       "data_type": "text",
       "document_types": [
+        "Rechnung",
+        "Mahnung"
+      ],
+      "required": [
         "Rechnung",
         "Mahnung"
       ]
@@ -73,12 +84,18 @@
       "data_type": "date",
       "document_types": [
         "Vertrag"
+      ],
+      "required": [
+        "Vertrag"
       ]
     },
     {
       "name": "Aktenzeichen",
       "data_type": "text",
       "document_types": [
+        "Bescheid"
+      ],
+      "required": [
         "Bescheid"
       ]
     },
@@ -87,12 +104,18 @@
       "data_type": "amount",
       "document_types": [
         "Kontoauszug"
+      ],
+      "required": [
+        "Kontoauszug"
       ]
     },
     {
       "name": "Versicherungsnummer",
       "data_type": "text",
       "document_types": [
+        "Versicherung"
+      ],
+      "required": [
         "Versicherung"
       ]
     },
@@ -101,12 +124,18 @@
       "data_type": "amount",
       "document_types": [
         "Versicherung"
+      ],
+      "required": [
+        "Versicherung"
       ]
     },
     {
       "name": "Nettolohn",
       "data_type": "amount",
       "document_types": [
+        "Lohnabrechnung"
+      ],
+      "required": [
         "Lohnabrechnung"
       ]
     },
@@ -121,6 +150,9 @@
         "Überweisung",
         "Bar",
         "Karte"
+      ],
+      "required": [
+        "Kassenbon"
       ]
     },
     {

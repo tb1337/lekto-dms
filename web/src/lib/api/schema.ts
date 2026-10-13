@@ -1678,6 +1678,77 @@ export interface components {
 			height: number;
 		};
 		/**
+		 * CandidateOut
+		 * @description A value the signals proposed for a field.
+		 */
+		CandidateOut: {
+			/**
+			 * Value
+			 * @description As the check's value (a contact, type or tag id); null for a name that does not exist yet.
+			 */
+			value: unknown;
+			/**
+			 * Label
+			 * @description The contact's, type's or tag's name, or the name read.
+			 */
+			label: string;
+			/** Sources */
+			sources: components['schemas']['CandidateSourceOut'][];
+			/**
+			 * Contradicted
+			 * @description A signal named another value against it.
+			 */
+			contradicted: boolean;
+		};
+		/**
+		 * CandidateSourceOut
+		 * @description What one signal says about a candidate.
+		 */
+		CandidateSourceOut: {
+			signal: components['schemas']['Signal'];
+			/**
+			 * Names
+			 * @description Sure enough to name the value: it counts for the judge's rule.
+			 */
+			names: boolean;
+			/**
+			 * Score
+			 * @description `signal_llm`: how well the name the model read matches the contact; `signal_classifier`: the probability; `signal_neighbours`: the share of the similar documents that carry the value.
+			 */
+			score?: number | null;
+			/**
+			 * Votes
+			 * @description `signal_neighbours`: similar documents that carry it.
+			 */
+			votes?: number | null;
+			/**
+			 * Found
+			 * @description `signal_neighbours`: similar documents found.
+			 */
+			found?: number | null;
+			/**
+			 * Quote
+			 * @description `signal_llm`: the quoted passage.
+			 */
+			quote?: string | null;
+			/**
+			 * Identifiers
+			 * @description `signal_facts`: kinds of the contact's identifiers found in the text.
+			 */
+			identifiers?: string[];
+			/**
+			 * Documents
+			 * @description `signal_neighbours`: the similar documents that carry the value.
+			 */
+			documents?: string[];
+			/**
+			 * Named In Text
+			 * @description `signal_facts`: the contact's name or an alias stands in the text.
+			 * @default false
+			 */
+			named_in_text: boolean;
+		};
+		/**
 		 * Channel
 		 * @description How a document came in (its intake channel). Further connectors (mail, folder) follow.
 		 * @enum {string}
@@ -2537,6 +2608,11 @@ export interface components {
 			 * @description Where the quote stands in the archive PDF: at most a few places, in page order; empty if it was not found there or the check is older than this.
 			 */
 			locations?: components['schemas']['LocationOut'][];
+			/**
+			 * Candidates
+			 * @description Contact, document type and tags: the values the signals proposed, best first, with what each signal said; empty for other fields and older checks.
+			 */
+			candidates?: components['schemas']['CandidateOut'][];
 		};
 		/**
 		 * FieldCreate
@@ -3790,6 +3866,11 @@ export interface components {
 			user_id: string;
 			level: components['schemas']['ShareLevel'];
 		};
+		/**
+		 * Signal
+		 * @enum {string}
+		 */
+		Signal: 'signal_llm' | 'signal_classifier' | 'signal_neighbours' | 'signal_facts';
 		/** SkippedOut */
 		SkippedOut: {
 			/**

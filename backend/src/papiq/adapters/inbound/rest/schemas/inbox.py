@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails, DocumentPatch
-from papiq.core.domain.classification import FieldCheck
+from papiq.core.domain.classification import Candidate, CandidateSource, FieldCheck
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.pipeline import Node, Outcome
@@ -42,6 +42,86 @@ class LocationOut(BaseModel):
     @classmethod
     def of(cls, location: Location) -> "LocationOut":
         return cls(page=location.page, boxes=[BoxOut.of(box) for box in location.boxes])
+
+
+class Signal(StrEnum):
+    LLM = Node.SIGNAL_LLM.value
+    CLASSIFIER = Node.SIGNAL_CLASSIFIER.value
+    NEIGHBOURS = Node.SIGNAL_NEIGHBOURS.value
+    FACTS = Node.SIGNAL_FACTS.value
+
+
+class CandidateSourceOut(BaseModel):
+    """What one signal says about a candidate."""
+
+    signal: Signal
+    names: bool = Field(
+        description="Sure enough to name the value: it counts for the judge's rule."
+    )
+    score: float | None = Field(
+        default=None,
+        description=(
+            "`signal_llm`: how well the name the model read matches the contact; "
+            "`signal_classifier`: the probability; `signal_neighbours`: the share of the "
+            "similar documents that carry the value."
+        ),
+    )
+    votes: int | None = Field(
+        default=None, description="`signal_neighbours`: similar documents that carry it."
+    )
+    found: int | None = Field(
+        default=None, description="`signal_neighbours`: similar documents found."
+    )
+    quote: str | None = Field(default=None, description="`signal_llm`: the quoted passage.")
+    identifiers: list[str] = Field(
+        default_factory=list,
+        description="`signal_facts`: kinds of the contact's identifiers found in the text.",
+    )
+    documents: list[UUID] = Field(
+        default_factory=list,
+        description="`signal_neighbours`: the similar documents that carry the value.",
+    )
+    named_in_text: bool = Field(
+        default=False,
+        description="`signal_facts`: the contact's name or an alias stands in the text.",
+    )
+
+    @classmethod
+    def of(cls, source: CandidateSource) -> "CandidateSourceOut":
+        return cls(
+            signal=Signal(source.signal),
+            names=source.names,
+            score=None if source.score is None else round(source.score, 4),
+            votes=source.votes,
+            found=source.of,
+            quote=source.quote,
+            identifiers=list(source.identifiers),
+            documents=[UUID(document) for document in source.documents],
+            named_in_text=source.named_in_text,
+        )
+
+
+class CandidateOut(BaseModel):
+    """A value the signals proposed for a field."""
+
+    value: Any = Field(
+        description=(
+            "As the check's value (a contact, type or tag id); null for a name that does not "
+            "exist yet."
+        )
+    )
+    label: str = Field(description="The contact's, type's or tag's name, or the name read.")
+    sources: list[CandidateSourceOut]
+    contradicted: bool = Field(description="A signal named another value against it.")
+
+    @classmethod
+    def of(cls, candidate: Candidate) -> "CandidateOut":
+        return cls(
+            value=candidate.value,
+            label=candidate.label,
+            sources=[CandidateSourceOut.of(source) for source in candidate.sources],
+            contradicted=candidate.contradicted,
+        )
 
 
 class FieldCheckOut(BaseModel):
@@ -100,6 +180,13 @@ class FieldCheckOut(BaseModel):
             "empty if it was not found there or the check is older than this."
         ),
     )
+    candidates: list[CandidateOut] = Field(
+        default_factory=list,
+        description=(
+            "Contact, document type and tags: the values the signals proposed, best first, "
+            "with what each signal said; empty for other fields and older checks."
+        ),
+    )
 
     @classmethod
     def of(cls, check: FieldCheck) -> "FieldCheckOut":
@@ -115,6 +202,7 @@ class FieldCheckOut(BaseModel):
             new_name=check.new_name,
             quote_shows_value=check.quote_shows_value,
             locations=[LocationOut.of(location) for location in check.locations],
+            candidates=[CandidateOut.of(candidate) for candidate in check.candidates],
         )
 
 

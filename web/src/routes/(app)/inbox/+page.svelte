@@ -103,7 +103,11 @@
 		<ul class="flex flex-col gap-2" aria-busy={list.loading}>
 			{#each shown as item (item.document.id)}
 				<li>
-					<DocumentRow document={item.document} {lookup} href="{BASE}/inbox/{item.document.id}">
+					<DocumentRow
+						document={item.document}
+						{lookup}
+						href="{BASE}/documents/{item.document.id}?from=inbox"
+					>
 						<span class="truncate text-sm">
 							{item.open[0]?.reason ?? m.inbox_open_fields({ count: item.open.length })}
 						</span>

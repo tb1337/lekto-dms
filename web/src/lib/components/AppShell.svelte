@@ -163,7 +163,8 @@
 	</header>
 
 	<main id="main" tabindex="-1" class="flex flex-1 justify-center px-4 py-8 outline-none sm:px-8">
-		<div class="w-full max-w-[1040px]">
+		<!-- A page that needs the room (the document view) marks itself `data-wide`. -->
+		<div class="w-full max-w-[1040px] has-[[data-wide]]:max-w-[1600px]">
 			{@render children()}
 		</div>
 	</main>

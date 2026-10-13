@@ -10,16 +10,25 @@
 	import { apiError, ApiError } from '#lib/api/problem.ts';
 	import { BASE } from '#lib/base.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
+	import type { Mark, Place } from '#lib/document-view.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { cn } from '#lib/utils.ts';
 
 	// Shows a PDF page by page (PDF.js, worker and data files from this site). The file comes
 	// through the API client's fetch, so the session and a lost sign-in are handled as elsewhere.
+	// `marks` are drawn over the pages (boxes are fractions of a page), `reveal` scrolls to one.
 	let {
 		sources,
 		label,
+		marks = [],
 		onsource
-	}: { sources: readonly string[]; label: string; onsource?: (source: string) => void } = $props();
+	}: {
+		sources: readonly string[];
+		label: string;
+		marks?: readonly Mark[];
+		onsource?: (source: string) => void;
+	} = $props();
 
 	pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -154,6 +163,14 @@
 		await layout();
 	}
 
+	/** Scroll so that the place stands in the upper third of the view. */
+	export function reveal(place: Place) {
+		const node = container?.querySelector<HTMLElement>(`[data-page="${place.page}"]`);
+		if (!container || !node) return;
+		const y = node.offsetTop + (place.boxes[0]?.y ?? 0) * node.offsetHeight;
+		container.scrollTo({ top: Math.max(0, y - container.clientHeight / 3), behavior: 'smooth' });
+	}
+
 	function keydown(event: KeyboardEvent) {
 		if (event.key === '+' || event.key === '=') void setZoom(zoom * 1.25);
 		else if (event.key === '-') void setZoom(zoom / 1.25);
@@ -169,7 +186,7 @@
 	});
 </script>
 
-<div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-panel">
+<div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-surface">
 	<div class="flex items-center gap-1 border-b bg-card px-3 py-2">
 		<Button
 			variant="ghost"
@@ -204,7 +221,7 @@
 		tabindex="0"
 		aria-label={label}
 		onkeydown={keydown}
-		class="flex min-h-[24rem] flex-1 flex-col items-center gap-3 overflow-auto p-3"
+		class="relative flex min-h-[24rem] flex-1 flex-col items-center gap-3 overflow-auto p-3"
 	>
 		{#if loading}
 			<p class="py-16 text-muted-foreground">{m.loading()}</p>
@@ -214,11 +231,38 @@
 			{#each pages as size, index (`${index}-${zoom}`)}
 				<div
 					use:watch={index + 1}
-					class="shrink-0 bg-white shadow-sm"
+					class="relative shrink-0 bg-white shadow-sm"
 					style:width={`${size.width}px`}
 					style:height={`${size.height}px`}
 				>
 					<canvas class="size-full" aria-hidden="true"></canvas>
+					{#each marks.filter((mark) => mark.page === index + 1) as mark, markIndex (`${mark.key}-${markIndex}`)}
+						{#each mark.boxes as box, boxIndex (boxIndex)}
+							<div
+								class={cn(
+									'pointer-events-none absolute rounded-[3px] transition-shadow',
+									mark.derived
+										? 'bg-primary/10 outline-2 outline-offset-1 outline-primary outline-dashed'
+										: 'bg-primary/20 ring-2 ring-primary',
+									mark.pinned &&
+										'shadow-[0_0_0_7px_color-mix(in_oklab,var(--primary)_22%,transparent)]'
+								)}
+								style:left={`${box.x * 100}%`}
+								style:top={`${box.y * 100}%`}
+								style:width={`${box.width * 100}%`}
+								style:height={`${box.height * 100}%`}
+								aria-hidden="true"
+							>
+								{#if boxIndex === 0}
+									<span
+										class="absolute bottom-full left-0 mb-1 rounded-md bg-primary px-1.5 text-[10px] leading-4 font-semibold whitespace-nowrap text-primary-foreground"
+									>
+										{mark.label}
+									</span>
+								{/if}
+							</div>
+						{/each}
+					{/each}
 				</div>
 			{/each}
 		{/if}

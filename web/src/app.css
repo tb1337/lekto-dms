@@ -37,6 +37,8 @@
 	/* The petrol as text and the tinted panel of the sign-in page. */
 	--brand: #0d6b6b;
 	--panel: #e6f1ef;
+	/* Neutral ground behind pages and cards (document viewer, field groups). */
+	--surface: #f4f3ef;
 
 	--lane-green: #e1f2e6;
 	--lane-green-foreground: #17652f;
@@ -70,6 +72,7 @@
 
 	--brand: #5fd0c6;
 	--panel: #132826;
+	--surface: #151918;
 
 	--lane-green: #12291c;
 	--lane-green-foreground: #74d396;
@@ -110,6 +113,7 @@
 	--color-ring: var(--ring);
 	--color-brand: var(--brand);
 	--color-panel: var(--panel);
+	--color-surface: var(--surface);
 
 	--color-lane-green: var(--lane-green);
 	--color-lane-green-foreground: var(--lane-green-foreground);

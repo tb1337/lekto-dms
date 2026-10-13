@@ -1,0 +1,136 @@
+<script lang="ts">
+	import SearchX from '@lucide/svelte/icons/search-x';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import type { Snippet } from 'svelte';
+	import SourceChip from '#lib/components/document/SourceChip.svelte';
+	import { describeValue } from '#lib/describe.ts';
+	import { provenance, type FieldEvidence, type Place } from '#lib/document-view.ts';
+	import { formatNumber } from '#lib/i18n.ts';
+	import type { Lookup } from '#lib/masterdata.svelte.ts';
+	import { m } from '#lib/paraglide/messages.js';
+	import { cn } from '#lib/utils.ts';
+
+	// One field of the document with what backs it. A field that waits for a decision is a
+	// card with the model's confidence, reason and quote; any other is a label and the input,
+	// with the page of its quote. Hovering or focusing it marks the quote in the viewer.
+	let {
+		key,
+		label,
+		inputId,
+		evidence,
+		lookup,
+		review = false,
+		applies = true,
+		active = false,
+		onfocus,
+		onjump,
+		children
+	}: {
+		key: string;
+		label: string;
+		inputId: string;
+		evidence?: FieldEvidence;
+		lookup: Lookup;
+		/** The document is being reviewed: open fields are cards. */
+		review?: boolean;
+		/** The checked value is still the field's (its quote's places still apply). */
+		applies?: boolean;
+		active?: boolean;
+		onfocus: (key: string | null) => void;
+		onjump: (key: string, place: Place) => void;
+		children: Snippet;
+	} = $props();
+
+	const check = $derived(evidence?.check);
+	const card = $derived(review && evidence?.open === true);
+	const kind = $derived(check ? provenance(check) : null);
+	const places = $derived(applies ? (check?.locations ?? []) : []);
+	const labelId = $derived(`${inputId}-label`);
+</script>
+
+{#snippet chips()}
+	{#each places as place, index (index)}
+		<SourceChip {place} onjump={(picked) => onjump(key, picked)} />
+	{/each}
+{/snippet}
+
+<div
+	role="group"
+	aria-labelledby={labelId}
+	data-field={key}
+	onmouseenter={() => onfocus(key)}
+	onmouseleave={() => onfocus(null)}
+	onfocusin={() => onfocus(key)}
+	onfocusout={() => onfocus(null)}
+	class={cn(
+		card
+			? 'my-1 flex flex-col gap-2.5 rounded-2xl border border-lane-yellow-foreground/25 bg-lane-yellow/25 p-3.5 transition-shadow'
+			: '-mx-2.5 flex flex-col gap-1.5 rounded-xl px-2.5 py-2 transition-colors',
+		active && (card ? 'ring-2 ring-primary' : 'bg-panel')
+	)}
+>
+	{#if card && check}
+		<div class="flex items-center gap-2">
+			<TriangleAlert
+				class="size-4 shrink-0 text-lane-yellow-foreground"
+				aria-hidden="true"
+				strokeWidth={2.2}
+			/>
+			<label id={labelId} for={inputId} class="font-semibold">{label}</label>
+			<span
+				class="ml-auto rounded-full bg-lane-yellow px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap text-lane-yellow-foreground"
+			>
+				{m.review_confidence({
+					confidence: formatNumber(check.confidence, { style: 'percent', maximumFractionDigits: 0 })
+				})}
+			</span>
+		</div>
+		{#if check.reason}<p class="text-sm">{check.reason}</p>{/if}
+		{#if check.new_name}
+			<p class="text-sm">
+				<span class="text-muted-foreground">{m.review_new_name()}:</span>
+				{check.new_name}
+			</p>
+		{:else if (check.suggestion ?? null) === null && (check.proposed ?? null) !== null}
+			<p class="text-sm">
+				<span class="text-muted-foreground">{m.review_proposed()}:</span>
+				{describeValue(check.proposed, lookup)}
+			</p>
+		{/if}
+		{#if kind === 'none'}
+			<p
+				class="flex items-center gap-2 rounded-lg bg-muted px-2.5 py-2 text-sm text-muted-foreground"
+			>
+				<SearchX class="size-4 shrink-0" aria-hidden="true" />
+				{m.source_none()}
+			</p>
+		{:else}
+			<div
+				class={cn(
+					'flex items-baseline gap-2 rounded-lg px-2.5 py-2 text-sm',
+					kind === 'derived' ? 'border border-dashed border-input' : 'bg-muted'
+				)}
+			>
+				<span class="shrink-0 text-muted-foreground">
+					{kind === 'derived' ? m.source_derived() : m.review_evidence()}
+				</span>
+				<q class="min-w-0 flex-1 break-words italic">{check.evidence}</q>
+				{@render chips()}
+			</div>
+		{/if}
+	{:else}
+		<div class="flex items-center gap-2">
+			<label id={labelId} for={inputId} class="text-sm font-medium text-muted-foreground">
+				{label}
+			</label>
+			<span class="ml-auto flex items-center gap-1">
+				{#if places.length > 0}
+					{@render chips()}
+				{:else if kind === 'none'}
+					<span class="text-xs text-muted-foreground">{m.source_without()}</span>
+				{/if}
+			</span>
+		</div>
+	{/if}
+	{@render children()}
+</div>

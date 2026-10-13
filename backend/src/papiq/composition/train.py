@@ -1,6 +1,7 @@
 """`python -m papiq.composition train`: train the classifier from the confirmed documents, in
 the foreground, and learn identifiers of contacts from them. The same training the worker runs
-as a job (after enough confirmations, or `POST /classifier/train`); do not run both at once."""
+as a job (after enough confirmations, or `POST /classifier/train`). Running both at once costs
+only time: one stores its model after the other."""
 
 from papiq.composition.container import build_container, build_services
 from papiq.composition.errors import ConfigurationError

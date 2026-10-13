@@ -1,5 +1,7 @@
 """Training the classifier from confirmed documents, its jobs, its status and its prediction."""
 
+import asyncio
+from collections.abc import Mapping
 from datetime import timedelta
 
 import pytest
@@ -8,15 +10,18 @@ from papiq.adapters.outbound.memory import FakeClassifier
 from papiq.core.domain.classifier import KEPT_MODELS
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
-from papiq.core.domain.identifiers import IdentifierKind, IdentifierSource
+from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
+from papiq.core.domain.ids import ContactId
 from papiq.core.domain.master_data import Contact
 from papiq.core.domain.users import Role, User
+from papiq.core.ports import UnitOfWork
 from papiq.core.services.classifier import (
     CHECK_JOB,
     TRAIN_JOB,
     ClassifierPolicy,
     ClassifierService,
 )
+from papiq.core.services.master_data import replace_learned_identifiers
 from papiq.core.services.objects import classifier_key, markdown_key
 from tests import builders
 from tests.unit.services.conftest import World
@@ -87,6 +92,40 @@ async def test_training_learns_from_the_confirmed_documents(world: World) -> Non
     predicted = await classifier.predict("Stadtwerke Zählerstand Stromrechnung")
     assert predicted is not None
     assert predicted[1].contacts[0][0] == utility.id
+
+
+async def test_two_trainings_at_once_take_two_numbers(world: World) -> None:
+    """The worker's job and the command at the same time: one stores after the other."""
+    await corpus(world)
+    first, second = await asyncio.gather(service(world).train(), service(world).train())
+    assert {first.number, second.number} == {1, 2}
+
+
+async def test_a_contact_changed_meanwhile_stores_the_model_again(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An admin saves a contact while the learned identifiers are written: the version
+    conflict repeats the step on the new state instead of losing the training."""
+    _, utility, _ = await corpus(world)
+    admin = await world.user(role=Role.ADMIN)
+    calls = 0
+
+    async def meanwhile(uow: UnitOfWork, learned: Mapping[ContactId, list[Identifier]]) -> int:
+        """The learned identifiers are staged; then the admin's change commits first."""
+        nonlocal calls
+        calls += 1
+        staged = await replace_learned_identifiers(uow, learned)
+        if calls == 1:
+            await world.master_data.change_contact(admin.id, utility.id, aliases=["SWM"])
+        return staged
+
+    monkeypatch.setattr("papiq.core.services.classifier.replace_learned_identifiers", meanwhile)
+    model = await service(world).train()
+    assert (model.number, calls) == (1, 2)
+    async with world.uow() as uow:
+        contact = await uow.contacts.get(utility.id)
+    assert contact.aliases == ["SWM"]
+    assert [item.source for item in contact.identifiers] == [IdentifierSource.LEARNED]
 
 
 async def test_old_models_go(world: World) -> None:

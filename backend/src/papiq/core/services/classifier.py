@@ -11,7 +11,7 @@ import asyncio
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from papiq.core.domain.classifier import KEPT_MODELS, ClassifierModel
 from papiq.core.domain.documents import Document
@@ -22,8 +22,13 @@ from papiq.core.domain.errors import (
     NotFoundError,
     PermissionDeniedError,
 )
-from papiq.core.domain.identifiers import IdentifierSource, identifiers_in, mine_identifiers
-from papiq.core.domain.ids import ClassifierModelId, DocumentId, UserId
+from papiq.core.domain.identifiers import (
+    IdentifierKind,
+    IdentifierSource,
+    identifiers_in,
+    mine_identifiers,
+)
+from papiq.core.domain.ids import ClassifierModelId, ContactId, DocumentId, UserId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.ports import (
@@ -32,6 +37,7 @@ from papiq.core.ports import (
     DocumentFilter,
     ObjectStore,
     Prediction,
+    TrainedModel,
     TrainingExample,
     UnitOfWork,
     UnitOfWorkFactory,
@@ -47,6 +53,7 @@ TRAIN_JOB = "classifier.train"
 _TRAIN_ATTEMPTS = 3
 _RETRY_DELAY = timedelta(minutes=5)
 _PAGE = 500
+_COMMIT_ATTEMPTS = 3  # a contact changed while the learned identifiers were written: again
 _HOLDOUT_FROM = 50  # examples from which a share is held out to measure the model
 _HOLDOUT_EVERY = 5  # every fifth example: a fifth held out
 _MODEL_TYPE = "application/octet-stream"
@@ -185,7 +192,41 @@ class ClassifierService:
             default=None,
         )
         found = [(item.document.contact_id, identifiers_in(item.example.text)) for item in examples]
+        for attempt in range(1, _COMMIT_ATTEMPTS + 1):
+            try:
+                model, learned, old = await self._store_model(
+                    trained, found, accuracy, len(examples), until
+                )
+                break
+            except ConcurrencyError:
+                if attempt == _COMMIT_ATTEMPTS:
+                    raise
+                log.info("a contact changed while the model was stored; storing again")
+        for item in old:
+            await self._forget(item.object_key)
+        log.info(
+            "classifier trained",
+            extra={
+                "number": model.number,
+                "examples": len(examples),
+                "learned_identifiers": learned,
+            },
+        )
+        return model
+
+    async def _store_model(
+        self,
+        trained: TrainedModel,
+        found: list[tuple[ContactId | None, set[tuple[IdentifierKind, str]]]],
+        accuracy: JsonObject | None,
+        examples: int,
+        until: datetime | None,
+    ) -> tuple[ClassifierModel, int, list[ClassifierModel]]:
+        """Store the model with the next number, the identifiers learned and the pruning in one
+        commit. One training at a time does it (a lock), so two trainings, the worker's and the
+        command's, never take the same number."""
         async with self._uow() as uow:
+            await uow.lock(TRAIN_JOB)
             latest = await uow.classifier_models.latest()
             number = 1 if latest is None else latest.number + 1
             key = classifier_key(number)
@@ -206,7 +247,7 @@ class ClassifierService:
             model = ClassifierModel.create(
                 number=number,
                 now=self._clock.now(),
-                examples=len(examples),
+                examples=examples,
                 examples_until=until,
                 object_key=key,
                 summary=summary,
@@ -216,13 +257,7 @@ class ClassifierService:
             for item in old:
                 await uow.classifier_models.remove(item.id)
             await uow.commit()
-        for item in old:
-            await self._forget(item.object_key)
-        log.info(
-            "classifier trained",
-            extra={"number": number, "examples": len(examples), "learned_identifiers": learned},
-        )
-        return model
+        return model, learned, old
 
     async def _examples(self) -> list[_Example]:
         """The confirmed documents with their texts (one without a text yet is left out)."""
@@ -310,9 +345,6 @@ class ClassifierService:
                 await self.check()
             else:
                 await self.train()
-        except ConcurrencyError:
-            log.warning("lost the claim of a classifier job", extra={"job_id": str(job.id)})
-            return
         except ClassifierError as error:
             log.warning("the classifier cannot be trained", extra={"error": str(error)})
             await self._finish(job, error=str(error))

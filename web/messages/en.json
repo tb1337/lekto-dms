@@ -633,5 +633,12 @@
 	"identifier_rejected": "rejected",
 	"identifier_keep": "Keep",
 	"identifier_reject": "Reject",
-	"identifier_unblock": "Allow again"
+	"identifier_unblock": "Allow again",
+	"field_def_required": "Required",
+	"field_def_required_for": "Required for {type}",
+	"field_def_required_everywhere": "Required in every document",
+	"field_def_required_in": "{scope} (required)",
+	"field_def_required_hint": "A required field must be recognised, else the document waits in the inbox. An optional one may stay empty; a value it gets must stand in the document.",
+	"master_title_pattern": "Title pattern",
+	"master_title_pattern_hint": "Papiq writes the title of the type's documents from it, instead of the model's proposal; a rule can still set another. If a value is missing, the model's title is used. Placeholders (the last one names a field of the type):"
 }

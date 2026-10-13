@@ -633,5 +633,12 @@
 	"identifier_rejected": "verworfen",
 	"identifier_keep": "Übernehmen",
 	"identifier_reject": "Verwerfen",
-	"identifier_unblock": "Wieder zulassen"
+	"identifier_unblock": "Wieder zulassen",
+	"field_def_required": "Pflicht",
+	"field_def_required_for": "Pflicht bei {type}",
+	"field_def_required_everywhere": "Pflicht in jedem Dokument",
+	"field_def_required_in": "{scope} (Pflicht)",
+	"field_def_required_hint": "Ein Pflichtfeld muss erkannt werden, sonst wartet das Dokument im Posteingang. Ein optionales darf leer bleiben; ein erkannter Wert muss im Dokument stehen.",
+	"master_title_pattern": "Titelmuster",
+	"master_title_pattern_hint": "Daraus schreibt Papiq den Titel der Dokumente dieses Typs, statt des Vorschlags des Modells; eine Regel kann weiter einen anderen setzen. Fehlt ein Wert, gilt der Titel des Modells. Platzhalter (der letzte nennt ein Feld des Typs):"
 }

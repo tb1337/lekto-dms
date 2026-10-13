@@ -41,6 +41,9 @@
 	let dataType = $state<DataType>('text');
 	let global = $state(true);
 	let scope = $state<string[]>([]);
+	// Required everywhere (global) or for these of its types.
+	let required = $state(false);
+	let requiredTypes = $state<string[]>([]);
 	let choices = $state('');
 	let error = $state<string | null>(null);
 	let busy = $state(false);
@@ -66,15 +69,25 @@
 		dataType = have?.data_type ?? 'text';
 		global = have ? have.document_type_ids === null : true;
 		scope = have?.document_type_ids ? [...have.document_type_ids] : [];
+		required = have?.required ?? false;
+		requiredTypes = have ? [...have.required_document_type_ids] : [];
 		choices = have ? have.choices.join('\n') : '';
 	}
 
-	const scopeText = (field: FieldDefinition) =>
-		field.document_type_ids === null
-			? m.field_def_scope_global()
-			: field.document_type_ids
-					.map((id) => types.find((type) => type.id === id)?.name ?? id)
-					.join(', ');
+	function scopeText(field: FieldDefinition): string {
+		if (field.document_type_ids === null) {
+			const all = m.field_def_scope_global();
+			return field.required ? m.field_def_required_in({ scope: all }) : all;
+		}
+		return field.document_type_ids
+			.map((id) => {
+				const label = types.find((type) => type.id === id)?.name ?? id;
+				return field.required_document_type_ids.includes(id)
+					? m.field_def_required_in({ scope: label })
+					: label;
+			})
+			.join(', ');
+	}
 
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
@@ -86,6 +99,10 @@
 			.map((line) => line.trim())
 			.filter(Boolean);
 		const document_type_ids = global ? null : scope;
+		const requirement = {
+			required: global && required,
+			required_document_type_ids: global ? [] : requiredTypes.filter((id) => scope.includes(id))
+		};
 		try {
 			if (editing === 'new') {
 				await unwrap(
@@ -94,6 +111,7 @@
 							name: name.trim(),
 							data_type: dataType,
 							document_type_ids,
+							...requirement,
 							...(dataType === 'choice' ? { choices: list } : {})
 						}
 					})
@@ -105,6 +123,7 @@
 						body: {
 							name: name.trim(),
 							document_type_ids,
+							...requirement,
 							...(editing.data_type === 'choice' ? { choices: list } : {})
 						}
 					})
@@ -216,19 +235,43 @@
 					<input type="checkbox" bind:checked={global} class="size-4 accent-primary" />
 					{m.field_def_scope_global()}
 				</label>
-				{#if !global}
+				{#if global}
+					<label class="flex items-center gap-2 pl-6 text-sm">
+						<input type="checkbox" bind:checked={required} class="size-4 accent-primary" />
+						{m.field_def_required_everywhere()}
+					</label>
+				{:else}
 					{#each types as type (type.id)}
-						<label class="flex items-center gap-2 pl-6 text-sm">
-							<input
-								type="checkbox"
-								value={type.id}
-								bind:group={scope}
-								class="size-4 accent-primary"
-							/>
-							{type.name}
-						</label>
+						<div class="flex items-center gap-2 pl-6 text-sm">
+							<label class="flex min-w-0 flex-1 items-center gap-2">
+								<input
+									type="checkbox"
+									value={type.id}
+									bind:group={scope}
+									class="size-4 accent-primary"
+								/>
+								<span class="truncate">{type.name}</span>
+							</label>
+							<label
+								class={[
+									'flex items-center gap-1.5 text-muted-foreground',
+									!scope.includes(type.id) && 'opacity-50'
+								]}
+							>
+								<input
+									type="checkbox"
+									value={type.id}
+									bind:group={requiredTypes}
+									disabled={!scope.includes(type.id)}
+									aria-label={m.field_def_required_for({ type: type.name })}
+									class="size-4 accent-primary"
+								/>
+								{m.field_def_required()}
+							</label>
+						</div>
 					{/each}
 				{/if}
+				<p class="text-sm text-muted-foreground">{m.field_def_required_hint()}</p>
 			</fieldset>
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
 			<Dialog.Footer>

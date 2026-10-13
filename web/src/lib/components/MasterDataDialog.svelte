@@ -7,7 +7,13 @@
 	import { Textarea } from '#lib/components/ui/textarea/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { changesOf, type IdentifierRow, rowsOf } from '#lib/identifiers.ts';
-	import { type Extra, type Item, parseAliases, type Values } from '#lib/masterdata-api.ts';
+	import {
+		type Extra,
+		type Item,
+		parseAliases,
+		TITLE_PLACEHOLDERS,
+		type Values
+	} from '#lib/masterdata-api.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
 	// Create or change a contact (name, aliases, identifiers), a document type (name,
@@ -32,6 +38,7 @@
 	let aliases = $state('');
 	let identifiers = $state<IdentifierRow[]>([]);
 	let description = $state('');
+	let titlePattern = $state('');
 	let error = $state<string | null>(null);
 	let busy = $state(false);
 
@@ -41,6 +48,7 @@
 			aliases = (initial?.aliases ?? []).join('\n');
 			identifiers = rowsOf(initial?.identifiers);
 			description = initial?.description ?? '';
+			titlePattern = initial?.title_pattern ?? '';
 			error = null;
 		}
 	});
@@ -55,7 +63,8 @@
 				name: name.trim(),
 				aliases: parseAliases(aliases),
 				...changesOf(identifiers),
-				description: description.trim() || null
+				description: description.trim() || null,
+				title_pattern: titlePattern.trim() || null
 			});
 			open = false;
 		} catch (problem) {
@@ -90,6 +99,16 @@
 					<Field.Label for="master-description">{m.master_description()}</Field.Label>
 					<Textarea id="master-description" bind:value={description} rows={3} maxlength={300} />
 					<Field.Description>{m.master_description_hint()}</Field.Description>
+				</Field.Field>
+				<Field.Field>
+					<Field.Label for="master-title-pattern">{m.master_title_pattern()}</Field.Label>
+					<Input id="master-title-pattern" bind:value={titlePattern} maxlength={200} />
+					<Field.Description>
+						{m.master_title_pattern_hint()}
+						{#each TITLE_PLACEHOLDERS as placeholder (placeholder)}
+							<code class="mx-0.5 rounded bg-muted px-1 font-mono text-xs">{placeholder}</code>
+						{/each}
+					</Field.Description>
 				</Field.Field>
 			{/if}
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}

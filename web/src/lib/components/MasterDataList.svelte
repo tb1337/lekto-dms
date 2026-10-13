@@ -94,6 +94,11 @@
 						{#if !item.aliases?.length && item.description}
 							<span class="truncate text-sm text-muted-foreground">{item.description}</span>
 						{/if}
+						{#if item.title_pattern}
+							<span class="truncate font-mono text-xs text-muted-foreground">
+								{item.title_pattern}
+							</span>
+						{/if}
 					</div>
 					<Button
 						variant="ghost"

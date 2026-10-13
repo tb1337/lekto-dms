@@ -15,6 +15,7 @@ export type Item = MasterData & {
 	aliases?: string[];
 	identifiers?: IdentifierOut[];
 	description?: string | null;
+	title_pattern?: string | null;
 };
 
 /** What a dialog edits: the name and, by kind, aliases and identifiers or a description. */
@@ -24,6 +25,7 @@ export interface Values {
 	identifiers: IdentifierIn[];
 	rejected_identifiers: IdentifierIn[];
 	description: string | null;
+	title_pattern: string | null;
 }
 
 export interface KindOps {
@@ -60,11 +62,14 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		add: m.master_add_type,
 		extra: 'description',
 		list: () => unwrap(api.GET('/api/v1/document-types')),
-		create: ({ name, description }) =>
-			unwrap(api.POST('/api/v1/document-types', { body: { name, description } })),
-		change: (id, { name, description }) =>
+		create: ({ name, description, title_pattern }) =>
+			unwrap(api.POST('/api/v1/document-types', { body: { name, description, title_pattern } })),
+		change: (id, { name, description, title_pattern }) =>
 			unwrap(
-				api.PATCH('/api/v1/document-types/{id}', { ...path(id), body: { name, description } })
+				api.PATCH('/api/v1/document-types/{id}', {
+					...path(id),
+					body: { name, description, title_pattern }
+				})
 			),
 		remove: (id) => unwrap(api.DELETE('/api/v1/document-types/{id}', path(id)))
 	},
@@ -79,6 +84,16 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		remove: (id) => unwrap(api.DELETE('/api/v1/tags/{id}', path(id)))
 	}
 };
+
+/** The placeholders of a title pattern (syntax, not words: the same in every language). */
+export const TITLE_PLACEHOLDERS = [
+	'{contact}',
+	'{document_type}',
+	'{document_date}',
+	'{document_date:YYYY-MM}',
+	'{filename}',
+	'{field:…}'
+] as const;
 
 /** One alias per line; empty lines dropped. */
 export function parseAliases(text: string): string[] {

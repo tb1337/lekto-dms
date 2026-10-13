@@ -19,5 +19,30 @@ export function safeHref(href: string | null | undefined): string | null {
 
 /** HTML in the Markdown is shown as text, comments (Docling's image placeholders) not at all. */
 export function htmlText(token: Tokens.HTML | Tokens.Tag): string {
-	return token.text.trim().startsWith('<!--') ? '' : token.text;
+	return token.text.trim().startsWith('<!--') ? '' : decodeEntities(token.text);
+}
+
+const NAMED: Record<string, string> = {
+	amp: '&',
+	lt: '<',
+	gt: '>',
+	quot: '"',
+	apos: "'",
+	nbsp: '\u00a0'
+};
+
+/**
+ * Text with its HTML entities as characters. The parser writes `&amp;`, `&lt;`, `&gt;` and, in
+ * table cells, `&#124;`; the lexer turns only the numbered ones back. The text is shown as
+ * text, so nothing of it becomes markup.
+ */
+export function decodeEntities(text: string): string {
+	return text.replace(/&(#x[0-9a-f]{1,6}|#[0-9]{1,7}|[a-z]+);/gi, (entity, name: string) => {
+		if (name[0] === '#') {
+			const code =
+				name[1] === 'x' || name[1] === 'X' ? parseInt(name.slice(2), 16) : Number(name.slice(1));
+			return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : entity;
+		}
+		return NAMED[name.toLowerCase()] ?? entity;
+	});
 }

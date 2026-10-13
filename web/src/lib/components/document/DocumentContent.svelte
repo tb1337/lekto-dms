@@ -237,7 +237,7 @@
 				{(view === 'json' ? loadingStructure : loading) ? m.loading() : m.text_none()}
 			</p>
 		{:else if view === 'text'}
-			<article class="max-w-3xl px-9 py-7">
+			<article class="px-9 py-7">
 				<Markdown source={shown} />
 			</article>
 		{:else}

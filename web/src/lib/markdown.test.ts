@@ -1,7 +1,7 @@
 import { render } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import Markdown from '#lib/components/document/Markdown.svelte';
-import { lex, safeHref } from './markdown.ts';
+import { decodeEntities, lex, safeHref } from './markdown.ts';
 
 describe('markdown', () => {
 	it('lexes tables as GitHub does', () => {
@@ -16,6 +16,15 @@ describe('markdown', () => {
 		expect(safeHref('javascript:alert(1)')).toBeNull();
 		expect(safeHref('data:text/html,x')).toBeNull();
 		expect(safeHref(undefined)).toBeNull();
+	});
+});
+
+describe('decodeEntities', () => {
+	it('turns the entities of the parser into characters, once', () => {
+		expect(decodeEntities('Müller &amp; Söhne &lt;GmbH&gt; &#124; &#x7C; &quot;x&quot;')).toBe(
+			'Müller & Söhne <GmbH> | | "x"'
+		);
+		expect(decodeEntities('&amp;lt; &unknown; & alone')).toBe('&lt; &unknown; & alone');
 	});
 });
 
@@ -42,5 +51,18 @@ describe('Markdown', () => {
 		expect(container.textContent).toContain('<script>');
 		expect(container.textContent).toContain('klick');
 		expect(container.textContent).not.toContain('<!-- image -->');
+	});
+
+	it('shows escaped text as the characters, still not as markup', () => {
+		const { container } = render(Markdown, {
+			source:
+				'Müller &amp; Söhne &lt;script&gt;alert(1)&lt;/script&gt;\n\n| a &#124; b |\n|---|\n| x &amp; y |\n'
+		});
+		expect(container.querySelector('script')).toBeNull();
+		expect(container.querySelector('p')?.textContent).toBe(
+			'Müller & Söhne <script>alert(1)</script>'
+		);
+		expect(container.querySelector('th')?.textContent?.trim()).toBe('a | b');
+		expect(container.querySelector('td')?.textContent?.trim()).toBe('x & y');
 	});
 });

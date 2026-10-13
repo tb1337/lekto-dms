@@ -1605,6 +1605,21 @@ export interface components {
 			authorization_url: string;
 		};
 		/**
+		 * BoxOut
+		 * @description A rectangle on the page as shown (rotation applied), in fractions of its width and
+		 *     height from the top left corner.
+		 */
+		BoxOut: {
+			/** X */
+			x: number;
+			/** Y */
+			y: number;
+			/** Width */
+			width: number;
+			/** Height */
+			height: number;
+		};
+		/**
 		 * Channel
 		 * @description How a document came in (its intake channel). Further connectors (mail, folder) follow.
 		 * @enum {string}
@@ -2331,6 +2346,16 @@ export interface components {
 			 * @description A contact or document type that does not exist; an admin can create it.
 			 */
 			new_name: string | null;
+			/**
+			 * Quote Shows Value
+			 * @description Whether the quote itself shows the proposed value (the contact's name, the date, the amount); false if it only leads to it (a customer number for the contact); null without a quote.
+			 */
+			quote_shows_value?: boolean | null;
+			/**
+			 * Locations
+			 * @description Where the quote stands in the archive PDF: at most a few places, in page order; empty if it was not found there or the check is older than this.
+			 */
+			locations?: components['schemas']['LocationOut'][];
 		};
 		/**
 		 * FieldCreate
@@ -2504,6 +2529,22 @@ export interface components {
 			 * Format: date-time
 			 */
 			created_at: string;
+		};
+		/**
+		 * LocationOut
+		 * @description Where a quote stands in the archive PDF.
+		 */
+		LocationOut: {
+			/**
+			 * Page
+			 * @description From 1.
+			 */
+			page: number;
+			/**
+			 * Boxes
+			 * @description One per line the quote covers.
+			 */
+			boxes: components['schemas']['BoxOut'][];
 		};
 		/**
 		 * LogEntry

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails, DocumentPatch
 from papiq.core.domain.classification import FieldCheck
 from papiq.core.domain.drawers import ShareLevel
+from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.pipeline import Node, Outcome
 from papiq.core.services.inbox import InboxItem, NodeReview, OpenNode, Review
 
@@ -16,6 +17,31 @@ ResumeNode = StrEnum(  # type: ignore[misc]
     "ResumeNode", {node.name: node.value for node in (Node.EXTRACT_FIELDS, Node.APPLY_RULES)}
 )
 """Nodes processing can resume with after a confirmation."""
+
+
+class BoxOut(BaseModel):
+    """A rectangle on the page as shown (rotation applied), in fractions of its width and
+    height from the top left corner."""
+
+    x: float
+    y: float
+    width: float
+    height: float
+
+    @classmethod
+    def of(cls, box: Box) -> "BoxOut":
+        return cls(x=box.x, y=box.y, width=box.width, height=box.height)
+
+
+class LocationOut(BaseModel):
+    """Where a quote stands in the archive PDF."""
+
+    page: int = Field(description="From 1.")
+    boxes: list[BoxOut] = Field(description="One per line the quote covers.")
+
+    @classmethod
+    def of(cls, location: Location) -> "LocationOut":
+        return cls(page=location.page, boxes=[BoxOut.of(box) for box in location.boxes])
 
 
 class FieldCheckOut(BaseModel):
@@ -59,6 +85,21 @@ class FieldCheckOut(BaseModel):
     new_name: str | None = Field(
         description="A contact or document type that does not exist; an admin can create it."
     )
+    quote_shows_value: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the quote itself shows the proposed value (the contact's name, the date, "
+            "the amount); false if it only leads to it (a customer number for the contact); "
+            "null without a quote."
+        ),
+    )
+    locations: list[LocationOut] = Field(
+        default_factory=list,
+        description=(
+            "Where the quote stands in the archive PDF: at most a few places, in page order; "
+            "empty if it was not found there or the check is older than this."
+        ),
+    )
 
     @classmethod
     def of(cls, check: FieldCheck) -> "FieldCheckOut":
@@ -72,6 +113,8 @@ class FieldCheckOut(BaseModel):
             value=check.value,
             suggestion=check.suggestion,
             new_name=check.new_name,
+            quote_shows_value=check.quote_shows_value,
+            locations=[LocationOut.of(location) for location in check.locations],
         )
 
 

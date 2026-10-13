@@ -1,5 +1,5 @@
-"""Contracts of the processing ports: OCR, parser, page renderer. The samples are in
-`tests/samples` (see `make_samples.py`)."""
+"""Contracts of the processing ports: OCR, parser, page renderer, text locator. The samples
+are in `tests/samples` (see `make_samples.py`)."""
 
 import json
 from pathlib import Path
@@ -8,7 +8,8 @@ import pytest
 
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import UnprocessableDocumentError
-from papiq.core.ports import DocumentParser, Ocr, PageRenderer
+from papiq.core.domain.locations import Location
+from papiq.core.ports import DocumentParser, Ocr, PageRenderer, TextLocator
 
 SAMPLES = Path(__file__).parent.parent / "samples"
 
@@ -102,3 +103,52 @@ class PageRendererContract:
                 SAMPLES / "damaged.pdf", media_type=media_types.PDF, target=tmp_path
             )
         assert list(tmp_path.iterdir()) == []
+
+
+class TextLocatorContract:
+    """Needs the fixture `text_locator`, which knows `text.pdf`: one page with the lines
+    "Rechnung Nummer 4711", "Papiq Testdokument" and "Betrag 123,45 EUR"."""
+
+    @staticmethod
+    def on_the_page(location: Location) -> None:
+        assert location.page == 1
+        assert location.boxes
+        for box in location.boxes:
+            assert box.width > 0 and box.height > 0
+            assert box.x + box.width <= 1 and box.y + box.height <= 1
+
+    async def test_finds_a_quote_with_page_and_box(self, text_locator: TextLocator) -> None:
+        (places,) = await text_locator.locate(SAMPLES / "text.pdf", ["Betrag 123,45 EUR"])
+        (place,) = places
+        self.on_the_page(place)
+        assert len(place.boxes) == 1
+
+    async def test_case_spacing_and_line_breaks_do_not_matter(
+        self, text_locator: TextLocator
+    ) -> None:
+        spaced, broken = await text_locator.locate(
+            SAMPLES / "text.pdf", ["betrag   123,45 eur", "Testdokument\nBetrag"]
+        )
+        assert len(spaced) == 1
+        (place,) = broken
+        self.on_the_page(place)
+        assert len(place.boxes) == 2  # one per line
+        assert place.boxes[0].y < place.boxes[1].y
+
+    async def test_markdown_marks_do_not_hide_a_quote(self, text_locator: TextLocator) -> None:
+        (places,) = await text_locator.locate(SAMPLES / "text.pdf", ["**Betrag** | 123,45 EUR"])
+        assert len(places) == 1
+
+    async def test_one_answer_per_text_in_order(self, text_locator: TextLocator) -> None:
+        second, missing, first = await text_locator.locate(
+            SAMPLES / "text.pdf", ["Papiq Testdokument", "Kündigung", "Rechnung Nummer 4711"]
+        )
+        assert missing == ()
+        assert first[0].boxes[0].y < second[0].boxes[0].y  # the first line is higher up
+
+    async def test_no_texts_no_answers(self, text_locator: TextLocator) -> None:
+        assert await text_locator.locate(SAMPLES / "damaged.pdf", []) == []
+
+    async def test_a_damaged_pdf_is_unprocessable(self, text_locator: TextLocator) -> None:
+        with pytest.raises(UnprocessableDocumentError):
+            await text_locator.locate(SAMPLES / "damaged.pdf", ["Betrag"])

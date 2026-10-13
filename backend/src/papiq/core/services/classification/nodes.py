@@ -30,7 +30,11 @@ from papiq.core.domain.classification import (
     field_to_json,
 )
 from papiq.core.domain.documents import UNSET, Document, DocumentChanges, Unset
-from papiq.core.domain.errors import NotFoundError, ValidationError
+from papiq.core.domain.errors import (
+    NotFoundError,
+    UnprocessableDocumentError,
+    ValidationError,
+)
 from papiq.core.domain.evidence import DocumentText
 from papiq.core.domain.exchanges import (
     ModelCall,
@@ -51,7 +55,7 @@ from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.names import best_match, mentions, name_key, named_share
 from papiq.core.domain.pipeline import Node, NodeResult, Outcome
-from papiq.core.ports import Clock, LanguageModel, ObjectStore, UnitOfWorkFactory
+from papiq.core.ports import Clock, LanguageModel, ObjectStore, TextLocator, UnitOfWorkFactory
 from papiq.core.ports.llm import StructuredAnswer, StructuredRequest
 from papiq.core.services.classification.answers import (
     AnswerError,
@@ -75,7 +79,8 @@ from papiq.core.services.classification.prompts import (
     retry_message,
     shorten,
 )
-from papiq.core.services.objects import exchanges_key, markdown_key
+from papiq.core.services.nodes import work_directory
+from papiq.core.services.objects import archive_key, exchanges_key, markdown_key
 from papiq.core.services.pipeline import MetadataResult
 
 log = logging.getLogger(__name__)
@@ -123,12 +128,16 @@ class _ModelStep:
         model: LanguageModel | None,
         clock: Clock,
         policy: ClassificationPolicy = DEFAULT_POLICY,
+        *,
+        locator: TextLocator | None = None,
     ) -> None:
+        """`locator`: find each quote on the pages of the archive PDF (`FieldCheck.locations`)."""
         self._uow = uow
         self._store = store
         self._model = model
         self._clock = clock
         self._policy = policy
+        self._locator = locator
 
     async def _text(self, document: Document) -> str:
         return (await self._store.get(markdown_key(document.id))).decode("utf-8")
@@ -174,6 +183,31 @@ class _ModelStep:
         finally:
             if calls:
                 await self._keep(document, node, calls)
+
+    async def _locate(self, document: Document, checks: list[FieldCheck]) -> list[FieldCheck]:
+        """Each quote's page and boxes in the archive PDF. Without a locator, an archive or a
+        readable PDF the checks stay as they are: the places help a person find the passage,
+        they are not part of the check."""
+        quotes = sorted({(check.evidence or "").strip() for check in checks} - {""})
+        if self._locator is None or not quotes:
+            return checks
+        async with work_directory() as work:
+            archive = work / "archive.pdf"
+            try:
+                await self._store.download(archive_key(document.id), archive)
+                places = await self._locator.locate(archive, quotes)
+            except (NotFoundError, UnprocessableDocumentError) as error:
+                log.warning(
+                    "the quotes were not located: %s",
+                    error,
+                    extra={"document_id": str(document.id)},
+                )
+                return checks
+        found = dict(zip(quotes, places, strict=True))
+        return [
+            replace(check, locations=found.get((check.evidence or "").strip(), ()))
+            for check in checks
+        ]
 
     async def _keep(self, document: Document, node: Node, calls: list[ModelCall]) -> None:
         """Add the calls of this run to the node's file; a run that is there already (the node
@@ -280,6 +314,7 @@ class ClassifyNode(_ModelStep):
             _check_tags(answer, tags),
             _check_date(DOCUMENT_DATE, answer.document_date, facts, self._today()),
         ]
+        checks = await self._locate(document, checks)
         changes = DocumentChanges(
             contact_id=_applied(checks[0], lambda value: ContactId(UUID(value))),
             document_type_id=_applied(checks[1], lambda value: _by_id(types, value).id),
@@ -309,6 +344,14 @@ class ClassifyNode(_ModelStep):
             name, [(contact, own) for contact in contacts for own in contact.names()]
         )
         best = match.best
+        suggested = (
+            best if best is not None and match.score >= self._policy.suggest_contact else None
+        )
+        names = tuple(suggested.names()) if suggested is not None else (name,)
+        common["quote_shows_value"] = _quoted(
+            proposal,
+            lambda quote: any(mentions(name_key(quote.raw), name_key(own)) for own in names),
+        )
         # The contact itself must be named in the text (by its name or an alias), not just
         # something similar.
         text_key = name_key(facts.raw)
@@ -395,6 +438,7 @@ class ExtractFieldsNode(_ModelStep):
             )
             for key, definition in keys.items()
         ]
+        checks = await self._locate(document, checks)
         values: dict[FieldId, object] = {}
         for check, definition in zip(checks, definitions, strict=True):
             if check.ok and check.value is not None:
@@ -470,6 +514,7 @@ def _check_date(field: str, proposal: Proposal, facts: DocumentText, today: date
             reason=f"{proposal.value!r} is not a date (YYYY-MM-DD)",
             **common,
         )
+    common["quote_shows_value"] = _quoted(proposal, lambda quote: quote.has_date(value))
     if not _EARLIEST <= value <= today + _LATEST_AHEAD:
         return FieldCheck(
             outcome=Outcome.UNCERTAIN, confidence=0, reason=f"{value} is not plausible", **common
@@ -516,6 +561,7 @@ def _check_field(
             confidence=check.confidence,
             reason=f"'{definition.name}': {reason}",
             suggestion=check.suggestion,
+            quote_shows_value=check.quote_shows_value,
             **common,
         )
     try:
@@ -528,6 +574,7 @@ def _check_field(
             f"({definition.data_type})",
             **common,
         )
+    common["quote_shows_value"] = _quoted(proposal, lambda quote: _literally(value, quote))
     shown, what = _shown(definition, value, proposal, facts)
     check = _verified(common, field_to_json(value), proposal, facts, shown, what)
     if check.ok:
@@ -563,6 +610,28 @@ def _shown(
         case _:
             evidence = (proposal.evidence or "").strip()
             return len(evidence) >= _SHORTEST_EVIDENCE, "quoted passage"
+
+
+def _quoted(proposal: Proposal, shows: Callable[[DocumentText], bool]) -> bool | None:
+    """Whether the quoted passage itself shows the value; None without a quote."""
+    evidence = (proposal.evidence or "").strip()
+    return shows(DocumentText(evidence)) if evidence else None
+
+
+def _literally(value: FieldValue, quote: DocumentText) -> bool:
+    """Whether `quote` shows the value itself, not only what it follows from: a yes or no is
+    never written as such."""
+    match value:
+        case Money():
+            return quote.has_number(value.amount)
+        case Decimal():
+            return quote.has_number(value)
+        case Url():
+            return quote.contains(value.value)
+        case str():
+            return quote.contains(value)
+        case _:
+            return False
 
 
 def _common(field: str, proposal: Proposal) -> dict[str, Any]:

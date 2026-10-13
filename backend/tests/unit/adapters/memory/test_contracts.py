@@ -15,6 +15,7 @@ from papiq.adapters.outbound.memory import (
     FakePageRenderer,
     FakeParser,
     FakePasswordHasher,
+    FakeTextLocator,
     FakeTotp,
     ManualClock,
     MemoryDatabase,
@@ -47,7 +48,12 @@ from tests.contracts.identity import (
 from tests.contracts.job_queue import JobQueueContract
 from tests.contracts.language_model import EmbeddingsContract, LanguageModelContract
 from tests.contracts.object_store import ObjectStoreContract
-from tests.contracts.processing import OcrContract, PageRendererContract, ParserContract
+from tests.contracts.processing import (
+    OcrContract,
+    PageRendererContract,
+    ParserContract,
+    TextLocatorContract,
+)
 from tests.contracts.rules import RuleRepositoriesContract
 from tests.contracts.search_index import DIMENSIONS, SearchIndexContract
 from tests.contracts.unit_of_work import UnitOfWorkContract
@@ -132,6 +138,15 @@ class TestFakeOcr(OcrContract):
 
 
 class TestFakeParser(ParserContract):
+    pass
+
+
+@pytest.fixture
+def text_locator() -> FakeTextLocator:
+    return FakeTextLocator(["Rechnung Nummer 4711\nPapiq Testdokument\nBetrag 123,45 EUR"])
+
+
+class TestFakeTextLocator(TextLocatorContract):
     pass
 
 

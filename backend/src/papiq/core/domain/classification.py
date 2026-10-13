@@ -21,6 +21,7 @@ from papiq.core.domain.fields import (
 )
 from papiq.core.domain.ids import FieldId
 from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.locations import Location, locations_from_json, locations_to_json
 from papiq.core.domain.pipeline import Outcome
 
 CONTACT = "contact"
@@ -51,6 +52,11 @@ class FieldCheck:
       contact, a date or field value that is valid but not shown in the text).
     - `new_name`: the name of a contact or type the model proposed that does not exist; only
       an admin can create it.
+    - `quote_shows_value`: whether the quoted passage itself shows the proposed value (a
+      contact's name, the date, the amount), or only leads to it (a customer number for the
+      contact, a passage for a yes/no field); None without a quote.
+    - `locations`: where the quote stands on the pages of the archive PDF; none if it was not
+      found there (or before this was recorded).
     """
 
     field: str
@@ -62,6 +68,8 @@ class FieldCheck:
     value: JsonValue = None
     suggestion: JsonValue = None
     new_name: str | None = None
+    quote_shows_value: bool | None = None
+    locations: tuple[Location, ...] = ()
 
     def __post_init__(self) -> None:
         if self.outcome is Outcome.FAILED:
@@ -86,6 +94,8 @@ class FieldCheck:
             "value": self.value,
             "suggestion": self.suggestion,
             "new_name": self.new_name,
+            "quote_shows_value": self.quote_shows_value,
+            "locations": locations_to_json(self.locations),
         }
 
     @classmethod
@@ -106,6 +116,8 @@ class FieldCheck:
                 value=data.get("value"),
                 suggestion=data.get("suggestion"),
                 new_name=_optional_text(data.get("new_name")),
+                quote_shows_value=_optional_bool(data.get("quote_shows_value")),
+                locations=locations_from_json(data.get("locations")),
             )
         except (KeyError, ValueError) as error:
             raise ValidationError(f"invalid field check: {error}") from None
@@ -124,6 +136,10 @@ def checks_from_json(data: JsonValue) -> list[FieldCheck]:
 
 def _optional_text(value: JsonValue) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _optional_bool(value: JsonValue) -> bool | None:
+    return value if isinstance(value, bool) else None
 
 
 # --- field values as JSON -----------------------------------------------------------------

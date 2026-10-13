@@ -10,7 +10,8 @@ from typing import Any
 
 import pytest
 
-from papiq.adapters.outbound.memory import FakeLanguageModel
+from papiq.adapters.outbound.memory import FakeLanguageModel, FakeTextLocator
+from papiq.adapters.outbound.memory.processing import FAKE_PDF
 from papiq.core.domain.classification import FieldCheck, checks_from_json, field_key
 from papiq.core.domain.documents import UNSET, Document, DocumentChanges
 from papiq.core.domain.errors import LanguageModelError
@@ -27,7 +28,7 @@ from papiq.core.services.classification.nodes import (
     ExtractFieldsNode,
 )
 from papiq.core.services.classification.prompts import CLASSIFY_SYSTEM, EXTRACT_SYSTEM
-from papiq.core.services.objects import exchanges_key, markdown_key
+from papiq.core.services.objects import archive_key, exchanges_key, markdown_key
 from papiq.core.services.pipeline import MetadataResult, NodeExecutor
 from tests import builders
 from tests.builders import NOW, incoming
@@ -802,3 +803,64 @@ async def test_an_uncertain_document_waits_in_the_inbox(world: World) -> None:
     assert document.contact_id is None  # only proposed
     assert document.document_type_id == seeded.types["Rechnung"].id  # verified, so applied
     assert "document.filed" not in world.event_types()
+
+
+# --- quotes on the page ---------------------------------------------------------------------
+
+
+async def test_quotes_are_located_in_the_archive(world: World) -> None:
+    await seed(world)
+    document = await document_with(world)
+    await world.object_store.put(archive_key(document.id), FAKE_PDF, content_type="application/pdf")
+    locator = FakeTextLocator([INVOICE])
+    step = ClassifyNode(
+        world.uow, world.object_store, model(classification()), world.clock, locator=locator
+    )
+    outcome = await step.run(document)
+    assert isinstance(outcome, MetadataResult)
+    found = checks(outcome.result)
+    dated = found["document_date"]
+    assert dated.quote_shows_value is True
+    (place,) = dated.locations
+    assert place.page == 1 and place.boxes
+    assert found["contact"].locations == ()  # no quote
+    assert found["contact"].quote_shows_value is None
+    assert locator.calls == [["Musterstadt, 31.03.2026"]]
+
+
+async def test_without_an_archive_the_quotes_stay_unlocated(world: World) -> None:
+    await seed(world)
+    document = await document_with(world)
+    step = ClassifyNode(
+        world.uow,
+        world.object_store,
+        model(classification()),
+        world.clock,
+        locator=FakeTextLocator([INVOICE]),
+    )
+    outcome = await step.run(document)
+    assert isinstance(outcome, MetadataResult)
+    assert outcome.result.outcome is Outcome.OK
+    assert checks(outcome.result)["document_date"].locations == ()
+
+
+@pytest.mark.parametrize(
+    ("evidence", "shows"),
+    [("Stadtwerke Musterstadt GmbH", True), ("Postfach 12 34, 12345 Musterstadt", False)],
+)
+async def test_a_quote_may_lead_to_the_contact_without_naming_it(
+    world: World, evidence: str, shows: bool
+) -> None:
+    await seed(world)
+    contact = {"value": "Stadtwerke Musterstadt GmbH", "evidence": evidence}
+    result = await classify(world, classification(contact=contact))
+    assert checks(result.result)["contact"].quote_shows_value is shows
+
+
+async def test_field_quotes_show_amounts_and_dates_but_never_yes_or_no(world: World) -> None:
+    paid = {"value": True, "evidence": "Zahlbar bis 15.04.2026."}
+    seeded, result = await extract(world, extraction(a1=paid))
+    assert field_check(seeded, result, "Rechnungsbetrag").quote_shows_value is True
+    assert field_check(seeded, result, "Fällig am").quote_shows_value is True
+    assert field_check(seeded, result, "Bezahlt").quote_shows_value is False
+    assert field_check(seeded, result, "Rechnungsnummer").quote_shows_value is None

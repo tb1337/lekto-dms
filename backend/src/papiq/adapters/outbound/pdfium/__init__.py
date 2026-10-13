@@ -1,6 +1,8 @@
-"""Page image adapter: PDFium (pypdfium2) renders PDFs, Pillow reads images and encodes WebP."""
+"""PDFium (pypdfium2): page images (Pillow reads images and encodes WebP) and the places of
+quotes in a PDF's text layer."""
 
 from papiq.adapters.outbound.pdfium.library import count_pages
+from papiq.adapters.outbound.pdfium.locator import PdfiumTextLocator
 from papiq.adapters.outbound.pdfium.pages import PdfiumPageRenderer
 
-__all__ = ["PdfiumPageRenderer", "count_pages"]
+__all__ = ["PdfiumPageRenderer", "PdfiumTextLocator", "count_pages"]

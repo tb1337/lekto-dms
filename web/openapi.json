@@ -12424,6 +12424,35 @@
         ],
         "title": "AuthorizationUrl"
       },
+      "BoxOut": {
+        "properties": {
+          "x": {
+            "type": "number",
+            "title": "X"
+          },
+          "y": {
+            "type": "number",
+            "title": "Y"
+          },
+          "width": {
+            "type": "number",
+            "title": "Width"
+          },
+          "height": {
+            "type": "number",
+            "title": "Height"
+          }
+        },
+        "type": "object",
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "title": "BoxOut",
+        "description": "A rectangle on the page as shown (rotation applied), in fractions of its width and\nheight from the top left corner."
+      },
       "Channel": {
         "type": "string",
         "enum": [
@@ -13871,6 +13900,26 @@
             ],
             "title": "New Name",
             "description": "A contact or document type that does not exist; an admin can create it."
+          },
+          "quote_shows_value": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote Shows Value",
+            "description": "Whether the quote itself shows the proposed value (the contact's name, the date, the amount); false if it only leads to it (a customer number for the contact); null without a quote."
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/LocationOut"
+            },
+            "type": "array",
+            "title": "Locations",
+            "description": "Where the quote stands in the archive PDF: at most a few places, in page order; empty if it was not found there or the check is older than this."
           }
         },
         "type": "object",
@@ -14277,6 +14326,30 @@
         ],
         "title": "LinkOut",
         "description": "A link to an account at the identity provider."
+      },
+      "LocationOut": {
+        "properties": {
+          "page": {
+            "type": "integer",
+            "title": "Page",
+            "description": "From 1."
+          },
+          "boxes": {
+            "items": {
+              "$ref": "#/components/schemas/BoxOut"
+            },
+            "type": "array",
+            "title": "Boxes",
+            "description": "One per line the quote covers."
+          }
+        },
+        "type": "object",
+        "required": [
+          "page",
+          "boxes"
+        ],
+        "title": "LocationOut",
+        "description": "Where a quote stands in the archive PDF."
       },
       "LogEntry": {
         "properties": {

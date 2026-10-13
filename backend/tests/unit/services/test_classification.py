@@ -864,3 +864,22 @@ async def test_field_quotes_show_amounts_and_dates_but_never_yes_or_no(world: Wo
     assert field_check(seeded, result, "Fällig am").quote_shows_value is True
     assert field_check(seeded, result, "Bezahlt").quote_shows_value is False
     assert field_check(seeded, result, "Rechnungsnummer").quote_shows_value is None
+
+
+async def test_a_failure_to_keep_the_exchanges_does_not_fail_the_node(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await seed(world)
+    document = await document_with(world)
+    put = world.object_store.put
+
+    async def failing(key: str, data: bytes, *, content_type: str) -> None:
+        if "/exchanges/" in key:
+            raise OSError("the object store is full")
+        await put(key, data, content_type=content_type)
+
+    monkeypatch.setattr(world.object_store, "put", failing)
+    outcome = await classify_step(world, model(classification())).run(document)
+    assert isinstance(outcome, MetadataResult)
+    assert outcome.result.outcome is Outcome.OK
+    assert not await world.object_store.exists(exchanges_key(document.id, Node.CLASSIFY))

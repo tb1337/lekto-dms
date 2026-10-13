@@ -9,6 +9,7 @@ as shown, its rotation applied.
 """
 
 import asyncio
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,8 @@ import pypdfium2
 from papiq.adapters.outbound.pdfium.library import LOCK
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.domain.locations import Box, Location
+
+log = logging.getLogger(__name__)
 
 MAX_PLACES = 5
 """Places reported per text: a quote is a passage, more than a few hits mean a common word."""
@@ -43,16 +46,32 @@ def _locate(pdf: Path, texts: list[str]) -> list[tuple[Location, ...]]:
         except pypdfium2.PdfiumError as error:
             raise UnprocessableDocumentError(f"the PDF cannot be read: {error}") from None
         try:
-            for number, page in enumerate(document, start=1):
-                textpage = page.get_textpage()
-                try:
-                    _search_page(number, page, textpage, texts, found)
-                finally:
-                    textpage.close()
-                    page.close()
+            for number in range(1, len(document) + 1):
+                _search_or_skip(document, number, texts, found)
         finally:
             document.close()
     return [tuple(places) for places in found]
+
+
+def _search_or_skip(
+    document: pypdfium2.PdfDocument, number: int, texts: list[str], found: list[list[Location]]
+) -> None:
+    """A page PDFium cannot read has no places; the others still count."""
+    try:
+        page = document[number - 1]
+    except pypdfium2.PdfiumError:
+        log.warning("page %d of a PDF cannot be read", number)
+        return
+    try:
+        textpage = page.get_textpage()
+        try:
+            _search_page(number, page, textpage, texts, found)
+        finally:
+            textpage.close()
+    except pypdfium2.PdfiumError:
+        log.warning("page %d of a PDF has no readable text layer", number)
+    finally:
+        page.close()
 
 
 def _search_page(
@@ -205,24 +224,37 @@ def _boxes(
 
 def _lines(boxes: list[Box]) -> tuple[Box, ...]:
     """One box per line: an OCR text layer places every word on its own, PDFium gives a box
-    per word then. Boxes that share most of their height and stand close are joined."""
-    joined: list[Box] = []
-    for box in sorted(boxes, key=lambda box: (round(box.y, 2), box.x)):
-        last = joined[-1] if joined else None
-        if last is not None and _same_line(last, box):
-            joined[-1] = Box.clamped(
-                min(last.x, box.x),
-                min(last.y, box.y),
-                max(last.x + last.width, box.x + box.width),
-                max(last.y + last.height, box.y + box.height),
-            )
+    per word then. Boxes whose middles lie within half a box height of each other form a line
+    (top to bottom); in a line, boxes that stand close are joined (left to right), a wide gap
+    (another column) keeps them apart."""
+    rows: list[list[Box]] = []
+    for box in sorted(boxes, key=_middle):
+        row = rows[-1] if rows else None
+        if (
+            row is not None
+            and abs(_middle(box) - _middle(row[-1])) <= max(box.height, row[-1].height) / 2
+        ):
+            row.append(box)
         else:
-            joined.append(box)
+            rows.append([box])
+    joined: list[Box] = []
+    for row in rows:
+        pieces: list[Box] = []
+        for box in sorted(row, key=lambda box: box.x):
+            last = pieces[-1] if pieces else None
+            gap = box.x - (last.x + last.width) if last is not None else 0.0
+            if last is not None and gap <= 2 * max(last.height, box.height):
+                pieces[-1] = Box.clamped(
+                    last.x,
+                    min(last.y, box.y),
+                    max(last.x + last.width, box.x + box.width),
+                    max(last.y + last.height, box.y + box.height),
+                )
+            else:
+                pieces.append(box)
+        joined.extend(pieces)
     return tuple(joined)
 
 
-def _same_line(left: Box, right: Box) -> bool:
-    overlap = min(left.y + left.height, right.y + right.height) - max(left.y, right.y)
-    gap = right.x - (left.x + left.width)
-    height = min(left.height, right.height)
-    return overlap >= height / 2 and gap <= 2 * max(left.height, right.height)
+def _middle(box: Box) -> float:
+    return box.y + box.height / 2

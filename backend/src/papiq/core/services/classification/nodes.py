@@ -196,10 +196,11 @@ class _ModelStep:
             try:
                 await self._store.download(archive_key(document.id), archive)
                 places = await self._locator.locate(archive, quotes)
-            except (NotFoundError, UnprocessableDocumentError) as error:
+            except Exception as error:
                 log.warning(
                     "the quotes were not located: %s",
                     error,
+                    exc_info=not isinstance(error, (NotFoundError, UnprocessableDocumentError)),
                     extra={"document_id": str(document.id)},
                 )
                 return checks
@@ -211,7 +212,20 @@ class _ModelStep:
 
     async def _keep(self, document: Document, node: Node, calls: list[ModelCall]) -> None:
         """Add the calls of this run to the node's file; a run that is there already (the node
-        ran again within it) is replaced."""
+        ran again within it) is replaced. Keeping them is for people who look into a document:
+        it never fails the node, nor hides why the node failed."""
+        try:
+            await self._write_exchanges(document, node, calls)
+        except Exception:
+            log.warning(
+                "the model exchanges were not kept",
+                exc_info=True,
+                extra={"document_id": str(document.id), "node": node.value},
+            )
+
+    async def _write_exchanges(
+        self, document: Document, node: Node, calls: list[ModelCall]
+    ) -> None:
         key = exchanges_key(document.id, node)
         runs: list[RunExchange] = []
         try:

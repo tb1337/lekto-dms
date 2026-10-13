@@ -89,3 +89,10 @@ def test_the_words_of_a_line_make_one_box() -> None:
         far,
         below,
     )
+    # Tops on either side of a rounding step, lines closer than 1 % of the page: still apart.
+    tight = [
+        Box(0.1, 0.3049, 0.1, 0.008),
+        Box(0.21, 0.3051, 0.1, 0.008),
+        Box(0.1, 0.3135, 0.2, 0.008),
+    ]
+    assert _lines(tight) == (Box(0.1, 0.3049, 0.21, 0.0082), Box(0.1, 0.3135, 0.2, 0.008))

@@ -1,5 +1,6 @@
 """The judge's rules for contact, document type and tags."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -10,6 +11,7 @@ from papiq.core.domain.pipeline import Outcome
 from papiq.core.domain.verdict import (
     ClassifierView,
     FactsView,
+    KnownLabels,
     ModelProposal,
     Neighbour,
     Signals,
@@ -39,13 +41,18 @@ def classifier(
     p: float = 0.95,
     kind: DocumentTypeId | None = None,
     tags: dict[TagId, float] | None = None,
+    *,
+    contacts: frozenset[ContactId] = frozenset({UTILITY.id, BANK.id}),
+    types: frozenset[DocumentTypeId] = frozenset({INVOICE.id, STATEMENT.id}),
 ) -> ClassifierView:
+    """It knows `contacts` and `types`: by default the utility and the bank, invoices and
+    statements."""
     return ClassifierView(
         contacts=[(contact, p)] if contact else [],
         document_types=[(kind, p)] if kind else [],
         tags=tags or {},
-        known_contacts=frozenset({UTILITY.id, BANK.id}),
-        known_types=frozenset({INVOICE.id, STATEMENT.id}),
+        known_contacts=contacts,
+        known_types=types,
     )
 
 
@@ -136,6 +143,42 @@ def test_a_contradiction_is_never_green(signals: Signals, reason: str) -> None:
     check = judge_contact(signals, CONTACTS)
     assert check.outcome is Outcome.UNCERTAIN
     assert check.reason == reason
+
+
+def test_similar_documents_cover_only_what_confirmed_documents_carry() -> None:
+    """Similar documents were found, but none carries a type or tag: they could not have named
+    the model's, which stand on its word as before the signals. An older entry without what
+    they know counts as covering everything."""
+    two = neighbours((BANK.id, None), (UTILITY.id, None))
+    signals = Signals(
+        model=model(document_type="Rechnung", tags=("Energie",)),
+        neighbours=two,
+        neighbours_know=KnownLabels(contacts=frozenset({UTILITY.id, BANK.id})),
+    )
+    assert judge_type(signals, TYPES).outcome is Outcome.OK
+    assert judge_tags(signals, TAGS).value == [str(ENERGY.id)]
+    knowing = replace(
+        signals,
+        neighbours_know=KnownLabels(
+            document_types=frozenset({INVOICE.id}), tags=frozenset({ENERGY.id})
+        ),
+    )
+    for known in (knowing, replace(signals, neighbours_know=None)):
+        assert judge_type(known, TYPES).outcome is Outcome.UNCERTAIN
+        assert judge_tags(known, TAGS).suggestion == ["Energie"]
+
+
+def test_a_signal_naming_another_value_contradicts_even_one_it_does_not_know() -> None:
+    """A pay slip: the model takes the employee, a contact no confirmed document has, for the
+    sender. The classifier, trained on the employer's pay slips, is sure of the employer."""
+    signals = Signals(
+        model=model(sender="Max Nord"),
+        classifier=classifier(BANK.id),
+        facts=FactsView(named=frozenset({EMPLOYEE.id, BANK.id})),
+    )
+    check = judge_contact(signals, CONTACTS)
+    assert check.outcome is Outcome.UNCERTAIN
+    assert check.reason == "the signals disagree: 'Max Nord' or 'Beispielbank'"
 
 
 def test_an_identifier_alone_is_a_suggestion() -> None:

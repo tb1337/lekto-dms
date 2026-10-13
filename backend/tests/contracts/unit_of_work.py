@@ -15,6 +15,7 @@ from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.permissions import can_read_document
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
 from papiq.core.domain.users import User
+from papiq.core.domain.verdict import KnownLabels
 from papiq.core.ports import DocumentFilter, UnitOfWorkFactory
 from tests import builders
 from tests.builders import FAILED, NOW, OK, UNCERTAIN
@@ -653,6 +654,40 @@ class UnitOfWorkContract:
             assert [document.id for document in open_] == [never.id]
             assert await uow.documents.count_confirmed() == 2
             assert await uow.documents.count_confirmed(after=NOW) == 1
+
+    async def test_confirmed_labels(self, uow_factory: UnitOfWorkFactory) -> None:
+        """What the confirmed documents carry, of every owner; not what the others do."""
+        owner, drawer = await owner_with_drawer(uow_factory)
+        known, other = (Contact.create(name=name, now=NOW) for name in ("Known", "Other"))
+        kind = DocumentType.create(name="Invoice", now=NOW)
+        tag, untouched = (Tag.create(name=name, now=NOW) for name in ("Energy", "Unused"))
+        confirmed, open_ = builders.processed(owner, drawer), builders.processed(owner, drawer)
+        confirmed.apply_changes(
+            DocumentChanges(
+                contact_id=known.id, document_type_id=kind.id, tag_ids=frozenset({tag.id})
+            ),
+            {},
+            NOW,
+        )
+        confirmed.mark_confirmed(NOW)
+        open_.apply_changes(
+            DocumentChanges(contact_id=other.id, tag_ids=frozenset({untouched.id})), {}, NOW
+        )
+        async with uow_factory() as uow:
+            for contact in (known, other):
+                await uow.contacts.add(contact)
+            await uow.document_types.add(kind)
+            for label in (tag, untouched):
+                await uow.tags.add(label)
+            for document in (confirmed, open_):
+                await uow.documents.add(document)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.documents.confirmed_labels() == KnownLabels(
+                contacts=frozenset({known.id}),
+                document_types=frozenset({kind.id}),
+                tags=frozenset({tag.id}),
+            )
 
     async def test_classifier_models(self, uow_factory: UnitOfWorkFactory) -> None:
         """Newest first by number; a number is used once."""

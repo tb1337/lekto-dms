@@ -33,6 +33,7 @@ from papiq.core.domain.pipeline import (
     Processing,
     ProcessingStatus,
 )
+from papiq.core.domain.verdict import KnownLabels
 from papiq.core.ports.repository import DocumentFilter
 
 
@@ -133,6 +134,25 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         if after is not None:
             statement = statement.where(confirmed > after)
         return int((await self._tx.read(statement)).scalar_one())
+
+    async def confirmed_labels(self) -> KnownLabels:
+        documents, tags = t.documents, t.document_tags
+        confirmed = documents.c.confirmed_at.is_not(None)
+
+        async def values(column: Any, source: Any) -> list[Any]:
+            statement = (
+                select(column).select_from(source).where(confirmed, column.is_not(None)).distinct()
+            )
+            return [row[0] for row in await self._tx.read(statement)]
+
+        tagged = documents.join(tags, tags.c.document_id == documents.c.id)
+        return KnownLabels(
+            contacts=frozenset(map(ContactId, await values(documents.c.contact_id, documents))),
+            document_types=frozenset(
+                map(DocumentTypeId, await values(documents.c.document_type_id, documents))
+            ),
+            tags=frozenset(map(TagId, await values(tags.c.tag_id, tagged))),
+        )
 
     async def exists(
         self,

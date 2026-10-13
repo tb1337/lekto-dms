@@ -40,6 +40,7 @@ from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.pipeline import Lane, NodeRun
 from papiq.core.domain.rules import Rule, RuleApplication, RuleVersion
 from papiq.core.domain.users import User
+from papiq.core.domain.verdict import KnownLabels
 from papiq.core.domain.webhooks import Webhook, WebhookDelivery
 
 
@@ -165,6 +166,11 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
     async def count_confirmed(self, *, after: datetime | None = None) -> int:
         """Documents a person set or confirmed the metadata of, after `after` if given (the
         confirmations since the classifier was trained)."""
+        ...
+
+    async def confirmed_labels(self) -> KnownLabels:
+        """The contacts, document types and tags the confirmed documents carry (of every
+        owner): what a similar document can name."""
         ...
 
     async def exists(

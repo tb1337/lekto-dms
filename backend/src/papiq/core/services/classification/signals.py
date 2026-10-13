@@ -30,6 +30,7 @@ from papiq.core.domain.search import Visibility
 from papiq.core.domain.verdict import (
     ClassifierView,
     FactsView,
+    KnownLabels,
     ModelProposal,
     Neighbour,
     Signals,
@@ -164,7 +165,8 @@ class NeighboursPolicy:
 class NeighboursSignal:
     """The most similar confirmed documents the owner may read: by the vector of the start of
     the text, against the index's vectors; their contact, type and tags (from the database,
-    not the index, which lags a little)."""
+    not the index, which lags a little), and what any confirmed document carries (`known`):
+    the values similar documents could have named."""
 
     def __init__(
         self,
@@ -215,6 +217,7 @@ class NeighboursSignal:
             return abstained(f"the search index cannot be asked: {error}")
         neighbours: list[JsonValue] = []
         async with self._uow() as uow:
+            known = await uow.documents.confirmed_labels()
             for hit in hits:
                 found = await uow.documents.find(hit.id)
                 if found is None or found.confirmed_at is None:
@@ -235,7 +238,15 @@ class NeighboursSignal:
                 )
         if not neighbours:
             return abstained("no similar confirmed document")
-        return NodeResult(outcome=Outcome.OK, output={"neighbours": neighbours})
+        output: JsonObject = {
+            "neighbours": neighbours,
+            "known": {
+                "contacts": _texts(known.contacts),
+                "document_types": _texts(known.document_types),
+                "tags": _texts(known.tags),
+            },
+        }
+        return NodeResult(outcome=Outcome.OK, output=output)
 
 
 def _texts(ids: Iterable[object]) -> list[JsonValue]:
@@ -265,11 +276,13 @@ def signals_of(entries: Mapping[Node, NodeRun]) -> Signals:
             return None
         return entry.result.output
 
+    neighbours = output(Node.SIGNAL_NEIGHBOURS)
     return Signals(
         model=_model_view(output(Node.SIGNAL_LLM)),
         classifier=_classifier_view(output(Node.SIGNAL_CLASSIFIER)),
-        neighbours=_neighbours_view(output(Node.SIGNAL_NEIGHBOURS)),
+        neighbours=_neighbours_view(neighbours),
         facts=_facts_view(output(Node.SIGNAL_FACTS)),
+        neighbours_know=_known_view(neighbours),
     )
 
 
@@ -328,6 +341,21 @@ def _neighbours_view(output: Mapping[str, Any] | None) -> tuple[Neighbour, ...] 
             tags=frozenset(TagId(UUID(tag)) for tag in item.get("tag_ids") or ()),
         )
         for item in output.get("neighbours") or ()
+    )
+
+
+def _known_view(output: Mapping[str, Any] | None) -> KnownLabels | None:
+    """What the similar documents could have named; None for an entry from before it was
+    kept (then they count as covering every value)."""
+    known = None if output is None else output.get("known")
+    if not isinstance(known, dict):
+        return None
+    return KnownLabels(
+        contacts=frozenset(ContactId(UUID(id)) for id in known.get("contacts") or ()),
+        document_types=frozenset(
+            DocumentTypeId(UUID(id)) for id in known.get("document_types") or ()
+        ),
+        tags=frozenset(TagId(UUID(id)) for id in known.get("tags") or ()),
     )
 
 

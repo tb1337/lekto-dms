@@ -14,14 +14,19 @@ contact alone makes it a candidate, never green.
 
 A signal *contradicts* a value when it names another one; for a contact also when the model's
 recipient is that contact, when an identifier of another contact stands in the text, and when
-the model's sender is none of the contacts and unrelated to this one.
+the model's sender is none of the contacts and unrelated to this one. A contradiction is
+always uncertain, also against a value the other signal could not have named.
+
+A signal *covers* a value when it could have named it: the classifier if it was trained on
+the value, the similar documents if any was found and a confirmed document carries the
+value.
 
 - A contact is green without contradiction if hard evidence backs it and a signal names it, or
   if the model's sender matches it at least `suggest` and the classifier or the similar
   documents name it.
 - A type is green without contradiction if two signals name it, or if only the model names it
-  and no other signal could have (the classifier does not know the type, no similar document
-  was found): the rule from before the signals, per value, until the others know it.
+  and no other signal covers it: the rule from before the signals, per value, until the
+  others know it.
 - A tag is set as a type is green; one only a single signal names is a suggestion. Tags never
   make a document uncertain.
 """
@@ -103,13 +108,26 @@ class FactsView:
 
 
 @dataclass(frozen=True)
+class KnownLabels:
+    """The contacts, types and tags confirmed documents carry: what similar documents can
+    name."""
+
+    contacts: frozenset[ContactId] = frozenset()
+    document_types: frozenset[DocumentTypeId] = frozenset()
+    tags: frozenset[TagId] = frozenset()
+
+
+@dataclass(frozen=True)
 class Signals:
-    """What each signal said; None where it abstained (or, before the signals, never ran)."""
+    """What each signal said; None where it abstained (or, before the signals, never ran).
+    `neighbours_know`: what the similar documents could have named; None (an older entry)
+    counts as everything."""
 
     model: ModelProposal | None = None
     classifier: ClassifierView | None = None
     neighbours: tuple[Neighbour, ...] | None = None
     facts: FactsView | None = None
+    neighbours_know: KnownLabels | None = None
 
 
 # --- contact ----------------------------------------------------------------------------------
@@ -382,8 +400,12 @@ def judge_type(
         if named is not None:
             namers[named] = (*namers.get(named, ()), signal)
 
+    known = signals.neighbours_know
+
     def covered_by_others(id: DocumentTypeId) -> bool:
-        return bool(neighbours) or (classifier is not None and id in classifier.known_types)
+        by_classifier = classifier is not None and id in classifier.known_types
+        by_neighbours = bool(neighbours) and (known is None or id in known.document_types)
+        return by_classifier or by_neighbours
 
     def contradicted(id: DocumentTypeId) -> bool:
         return any(other != id for other in namers)
@@ -506,8 +528,11 @@ def judge_tags(
             found.append(NEIGHBOURS)
         return tuple(found)
 
+    known = signals.neighbours_know
+
     def covered_by_others(id: TagId) -> bool:
-        return bool(neighbours) or id in probabilities
+        by_neighbours = bool(neighbours) and (known is None or id in known.tags)
+        return by_neighbours or id in probabilities
 
     applied: list[TagId] = []
     suggested: list[TagId] = []

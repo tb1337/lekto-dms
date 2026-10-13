@@ -70,6 +70,7 @@ from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag
 from papiq.core.domain.pipeline import Lane, NodeRun
 from papiq.core.domain.users import User
 from papiq.core.domain.validation import name_key, require_utc
+from papiq.core.domain.verdict import KnownLabels
 from papiq.core.ports.repository import DocumentFilter
 
 
@@ -325,6 +326,16 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         return sum(
             row.confirmed_at is not None and (after is None or row.confirmed_at > after)
             for row in self._all()
+        )
+
+    async def confirmed_labels(self) -> KnownLabels:
+        confirmed = [row for row in self._all() if row.confirmed_at is not None]
+        return KnownLabels(
+            contacts=frozenset(row.contact_id for row in confirmed if row.contact_id is not None),
+            document_types=frozenset(
+                row.document_type_id for row in confirmed if row.document_type_id is not None
+            ),
+            tags=frozenset(tag for row in confirmed for tag in row.tag_ids),
         )
 
     async def exists(

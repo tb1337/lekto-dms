@@ -193,6 +193,12 @@ async def test_neighbours_are_the_confirmed_documents_the_owner_may_read(world: 
     (neighbour,) = output(result)["neighbours"]
     assert neighbour["document_id"] == str(near.id)
     assert neighbour["contact_id"] == str(utility.id)
+    # What the confirmed documents carry, of every owner: what similar documents could name.
+    assert output(result)["known"] == {
+        "contacts": [str(utility.id)],
+        "document_types": [],
+        "tags": [],
+    }
 
     for unavailable in (
         NeighboursSignal(world.uow, world.object_store, None, embeddings),

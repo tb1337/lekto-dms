@@ -44,10 +44,17 @@ from papiq.core.domain.errors import (
     PermissionDeniedError,
     SearchIndexError,
 )
-from papiq.core.domain.events import DocumentEvent, DomainEvent
+from papiq.core.domain.events import (
+    DocumentEvent,
+    DomainEvent,
+    NodeCompleted,
+    NodeDeferred,
+    NodeStarted,
+)
 from papiq.core.domain.fields import FieldValue, Money, Url
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, TagId, UserId
 from papiq.core.domain.jobs import Job
+from papiq.core.domain.pipeline import SIGNALS
 from papiq.core.domain.search import EmbeddingStamp, IndexDocument, IndexState
 from papiq.core.ports import (
     Clock,
@@ -142,8 +149,12 @@ class IndexingService:
     # --- events and jobs ------------------------------------------------------------------------
 
     async def on_event(self, event: DomainEvent) -> None:
-        """The event bus subscriber: queue an index job for the document of the event."""
-        if not isinstance(event, DocumentEvent):
+        """The event bus subscriber: queue an index job for the document of the event. A node
+        starting or waiting for its next attempt changes nothing the index holds, nor does a
+        signal: they only propose, the judge decides."""
+        if not isinstance(event, DocumentEvent) or isinstance(event, NodeStarted | NodeDeferred):
+            return
+        if isinstance(event, NodeCompleted) and event.node in SIGNALS:
             return
         async with self._uow() as uow:
             await uow.jobs.enqueue(

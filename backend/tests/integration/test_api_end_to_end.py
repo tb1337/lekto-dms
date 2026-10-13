@@ -201,13 +201,17 @@ async def test_documents_go_through_the_api(system: System, object_store: Object
     runs = [(entry["node"], entry["run"], entry["outcome"]) for entry in log]
     # The pages run beside the OCR: in the first run if they got there before it failed, else
     # after the retry, before or after the OCR. Their place in the log is a matter of timing.
-    assert [run for run in runs if run[0] != "pages"][:5] == [
+    # The signals, too, run side by side; the judge comes after all of them.
+    chain = [run for run in runs if run[0] != "pages"]
+    assert chain[:4] == [
         ("receive", 1, "ok"),
         ("ocr", 1, "failed"),
         ("ocr", 2, "ok"),
         ("parse", 2, "ok"),
-        ("classify", 2, "ok"),
     ]
+    signals = {"signal_llm", "signal_classifier", "signal_neighbours", "signal_facts"}
+    assert {node for node, _, _ in chain[4:8]} == signals
+    assert chain[8] == ("judge", 2, "ok")
     assert [outcome for node, _, outcome in runs if node == "pages"][:1] == ["ok"]
     assert ("parse", 3, "ok") in runs
 

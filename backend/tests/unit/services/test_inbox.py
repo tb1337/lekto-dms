@@ -90,8 +90,8 @@ async def scene(world: World) -> Scene:
         await uow.commit()
     pipeline = world.pipeline(
         {
-            Node.CLASSIFY: Returns(classified(contact)),
-            Node.EXTRACT_FIELDS: Returns(extracted(amount)),
+            Node.JUDGE: Returns(classified(contact)),
+            Node.FIELDS: Returns(extracted(amount)),
         }
     )
     document = await pipeline.receive(owner.id, incoming(b"%PDF-1.7\n%%EOF\n"), filename="a.pdf")
@@ -152,8 +152,8 @@ async def test_an_uncertain_document_is_in_the_inbox(world: World) -> None:
     (item,) = await world.documents.inbox(s.owner.id)
     assert item.document.id == s.document.id
     assert [(node.node, node.outcome) for node in item.open] == [
-        (Node.CLASSIFY, Outcome.UNCERTAIN),
-        (Node.EXTRACT_FIELDS, Outcome.UNCERTAIN),
+        (Node.JUDGE, Outcome.UNCERTAIN),
+        (Node.FIELDS, Outcome.UNCERTAIN),
     ]
     assert [check.field for check in item.open[0].fields] == ["contact", "document_date"]
     assert item.open[1].fields[0].field == field_key(s.amount.id)
@@ -165,7 +165,7 @@ async def test_the_review_shows_the_model_runs(world: World) -> None:
     review = await world.documents.review(s.owner.id, s.document.id)
     classify, extract = review.nodes
     assert (classify.node, classify.truncated, classify.model_version) == (
-        Node.CLASSIFY,
+        Node.JUDGE,
         True,
         "fake-llm 1",
     )
@@ -216,8 +216,8 @@ async def test_a_confirmed_document_is_filed(world: World) -> None:
     log = await world.documents.processing_log(s.owner.id, s.document.id)
     confirmations = [entry for entry in log if entry.result.model_version == PERSON]
     assert [(entry.node, entry.run) for entry in confirmations] == [
-        (Node.CLASSIFY, 2),
-        (Node.EXTRACT_FIELDS, 2),
+        (Node.JUDGE, 2),
+        (Node.FIELDS, 2),
         (Node.APPLY_RULES, 2),
     ]
     assert confirmations[0].result.output == {
@@ -344,26 +344,26 @@ async def test_after_a_type_correction_fields_are_extracted_again(world: World) 
         s.owner.id,
         s.document.id,
         DocumentChanges(contact_id=None, document_date=None),
-        resume_at=Node.EXTRACT_FIELDS,
+        resume_at=Node.FIELDS,
     )
     await world.drain(s.pipeline)
     document = await world.documents.get(s.owner.id, s.document.id)
     assert document.processing.status is ProcessingStatus.REVIEW  # extraction is uncertain again
     log = await world.documents.processing_log(s.owner.id, s.document.id)
     assert [entry.node for entry in log if entry.result.model_version == PERSON] == [
-        Node.CLASSIFY,
+        Node.JUDGE,
         Node.APPLY_RULES,
     ]
 
 
 async def test_a_red_document_can_be_taken_over(world: World) -> None:
     owner = await world.user()
-    pipeline = world.pipeline({Node.CLASSIFY: Returns(FAILED)})
+    pipeline = world.pipeline({Node.JUDGE: Returns(FAILED)})
     document = await pipeline.receive(owner.id, incoming(b"%PDF-1.7\n%%EOF\n"), filename="a.pdf")
     await world.drain(pipeline)
     (item,) = await world.documents.inbox(owner.id)
     assert (item.open[0].node, item.open[0].outcome, item.open[0].fields) == (
-        Node.CLASSIFY,
+        Node.JUDGE,
         Outcome.FAILED,
         (),
     )
@@ -375,8 +375,8 @@ async def test_a_red_document_can_be_taken_over(world: World) -> None:
     log = await world.documents.processing_log(owner.id, document.id)
     taken = [entry for entry in log if entry.result.model_version == PERSON]
     assert [entry.node for entry in taken] == [
-        Node.CLASSIFY,
-        Node.EXTRACT_FIELDS,
+        Node.JUDGE,
+        Node.FIELDS,
         Node.APPLY_RULES,
     ]
     assert taken[0].result.output["outcome_before"] == "failed"
@@ -446,7 +446,7 @@ def test_suggestions_that_do_not_fit_are_refused() -> None:
         reason="similar",
         suggestion="not an id",
     )
-    open = [OpenNode(Node.CLASSIFY, Outcome.UNCERTAIN, "x", (check,))]
+    open = [OpenNode(Node.JUDGE, Outcome.UNCERTAIN, "x", (check,))]
     with pytest.raises(ValidationError, match="cannot be taken"):
         decide(open, DOCUMENT, DocumentChanges(), accept_suggestions=True, definitions={})
     decision = decide(
@@ -456,7 +456,7 @@ def test_suggestions_that_do_not_fit_are_refused() -> None:
         accept_suggestions=True,
         definitions={},
     )
-    assert decision.entered == {Node.CLASSIFY: ("contact",)}
+    assert decision.entered == {Node.JUDGE: ("contact",)}
     assert decision.accepted == {}
 
 
@@ -465,6 +465,6 @@ def test_fields_of_removed_fields_need_no_decision() -> None:
     check = FieldCheck(
         field=field_key(gone.id), outcome=Outcome.UNCERTAIN, confidence=0, reason="x"
     )
-    open = [OpenNode(Node.EXTRACT_FIELDS, Outcome.UNCERTAIN, "x", (check,))]
+    open = [OpenNode(Node.FIELDS, Outcome.UNCERTAIN, "x", (check,))]
     decision = decide(open, DOCUMENT, DocumentChanges(), accept_suggestions=False, definitions={})
     assert decision.changes == DocumentChanges()

@@ -73,7 +73,7 @@ async def test_admins_control_other_users_documents_in_every_lane(world: World) 
     assert (await world.documents.get(admin.id, received.id)).lane is None
     with pytest.raises(NotFoundError):
         await world.documents.get(stranger.id, received.id)
-    await world.drain(world.pipeline({Node.CLASSIFY: Returns(UNCERTAIN)}))
+    await world.drain(world.pipeline({Node.JUDGE: Returns(UNCERTAIN)}))
     yellow = await world.documents.get(admin.id, received.id)
     assert yellow.lane is Lane.YELLOW
 

@@ -2471,7 +2471,7 @@ export interface components {
 		 * ExchangeNode
 		 * @enum {string}
 		 */
-		ExchangeNode: 'classify' | 'extract_fields';
+		ExchangeNode: 'judge' | 'fields';
 		/**
 		 * FieldCheckOut
 		 * @description A field the model proposed, and its check.
@@ -2996,6 +2996,10 @@ export interface components {
 		 * Node
 		 * @description The nodes of the ingest graph, in a topological order: every node comes after the nodes
 		 *     it needs (`GRAPH`). Nodes that do not need each other run side by side.
+		 *
+		 *     The signals each propose metadata from one source: the language model, the trained
+		 *     classifier, similar confirmed documents, facts in the text (names, identifiers). `judge`
+		 *     decides from all of them, `fields` reads the fields of the decided type.
 		 * @enum {string}
 		 */
 		Node:
@@ -3003,8 +3007,12 @@ export interface components {
 			| 'ocr'
 			| 'pages'
 			| 'parse'
-			| 'classify'
-			| 'extract_fields'
+			| 'signal_llm'
+			| 'signal_classifier'
+			| 'signal_neighbours'
+			| 'signal_facts'
+			| 'judge'
+			| 'fields'
 			| 'apply_rules'
 			| 'file';
 		/**
@@ -3225,11 +3233,21 @@ export interface components {
 		 * @enum {string}
 		 */
 		ReprocessNode:
-			'ocr' | 'pages' | 'parse' | 'classify' | 'extract_fields' | 'apply_rules' | 'file';
+			| 'ocr'
+			| 'pages'
+			| 'parse'
+			| 'signal_llm'
+			| 'signal_classifier'
+			| 'signal_neighbours'
+			| 'signal_facts'
+			| 'judge'
+			| 'fields'
+			| 'apply_rules'
+			| 'file';
 		/**
 		 * ReprocessRequest
 		 * @example {
-		 *       "from_node": "classify"
+		 *       "from_node": "judge"
 		 *     }
 		 */
 		ReprocessRequest: {
@@ -3240,7 +3258,7 @@ export interface components {
 		 * ResumeNode
 		 * @enum {string}
 		 */
-		ResumeNode: 'extract_fields' | 'apply_rules';
+		ResumeNode: 'fields' | 'apply_rules';
 		/** ReviewOut */
 		ReviewOut: {
 			document: components['schemas']['DocumentDetails'];

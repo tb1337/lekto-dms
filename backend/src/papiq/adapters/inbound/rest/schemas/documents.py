@@ -364,7 +364,7 @@ class RunExchangeOut(BaseModel):
 
 
 class ReprocessRequest(BaseModel):
-    model_config = ConfigDict(json_schema_extra={"examples": [{"from_node": "classify"}]})
+    model_config = ConfigDict(json_schema_extra={"examples": [{"from_node": "judge"}]})
 
     from_node: ReprocessNode = Field(
         description="Discard the results from this node on and process again from there."

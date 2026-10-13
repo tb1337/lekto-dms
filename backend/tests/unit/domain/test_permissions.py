@@ -77,7 +77,7 @@ def test_green_document_is_visible_through_the_share(
 
 @pytest.mark.parametrize(
     "results",
-    [{Node.CLASSIFY: UNCERTAIN}, {Node.OCR: FAILED}],
+    [{Node.JUDGE: UNCERTAIN}, {Node.OCR: FAILED}],
     ids=["yellow", "red"],
 )
 def test_yellow_and_red_documents_are_visible_to_the_owner_only(
@@ -105,7 +105,7 @@ def test_drawer_owner_sees_green_documents_of_others_in_the_drawer(
     filed_by_writer = builders.processed(writer, shared)
     assert document_access(writer, filed_by_writer, shared) is ShareLevel.READ_WRITE
     assert document_access(owner, filed_by_writer, shared) is ShareLevel.READ_WRITE
-    yellow = builders.processed(writer, shared, {Node.CLASSIFY: UNCERTAIN})
+    yellow = builders.processed(writer, shared, {Node.JUDGE: UNCERTAIN})
     assert document_access(owner, yellow, shared) is None
 
 
@@ -150,7 +150,7 @@ def test_only_admins_manage_master_data_and_users() -> None:
 
 @pytest.mark.parametrize(
     "results",
-    [None, {Node.CLASSIFY: UNCERTAIN}, {Node.OCR: FAILED}, "processing"],
+    [None, {Node.JUDGE: UNCERTAIN}, {Node.OCR: FAILED}, "processing"],
     ids=["green", "yellow", "red", "processing"],
 )
 def test_admins_have_every_right_on_documents_and_drawers(
@@ -181,7 +181,7 @@ def test_the_reach_is_access_without_the_admins_rights(
     owner: User, reader: User, writer: User, stranger: User, shared: Drawer
 ) -> None:
     green = builders.processed(owner, shared)
-    yellow = builders.processed(owner, shared, {Node.CLASSIFY: UNCERTAIN})
+    yellow = builders.processed(owner, shared, {Node.JUDGE: UNCERTAIN})
     for user in (owner, reader, writer, stranger):
         for document in (green, yellow):
             assert reach_access(user, document, shared) is document_access(user, document, shared)

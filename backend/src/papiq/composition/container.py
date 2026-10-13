@@ -487,10 +487,10 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
     policy = policy_of(settings)
     model = container.language_model
     locator = container.locator
-    executors[Node.CLASSIFY] = ImportedClassifyNode(
+    executors[Node.JUDGE] = ImportedClassifyNode(
         uow, ClassifyNode(uow, store, model, clock, policy, locator=locator)
     )
-    executors[Node.EXTRACT_FIELDS] = ImportedExtractNode(
+    executors[Node.FIELDS] = ImportedExtractNode(
         uow, ExtractFieldsNode(uow, store, model, clock, policy, locator=locator)
     )
     executors[Node.APPLY_RULES] = ApplyRulesNode(

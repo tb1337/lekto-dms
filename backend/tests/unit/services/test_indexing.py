@@ -11,9 +11,11 @@ from papiq.adapters.outbound.memory import (
 )
 from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.errors import EmbeddingsError, PermissionDeniedError, SearchIndexError
+from papiq.core.domain.events import NodeCompleted, NodeDeferred, NodeStarted
 from papiq.core.domain.fields import FieldType
+from papiq.core.domain.ids import DocumentId, new_id
 from papiq.core.domain.jobs import JobStatus
-from papiq.core.domain.pipeline import Lane, Node
+from papiq.core.domain.pipeline import Lane, Node, Outcome
 from papiq.core.domain.search import IndexDocument
 from papiq.core.domain.users import Role
 from papiq.core.services.indexing import (
@@ -23,7 +25,7 @@ from papiq.core.services.indexing import (
     IndexingPolicy,
     split_sections,
 )
-from tests.builders import UNCERTAIN, incoming, index_document
+from tests.builders import NOW, UNCERTAIN, incoming, index_document
 from tests.unit.services.conftest import Returns, World
 from tests.unit.services.search_support import (
     HOUR,
@@ -34,6 +36,8 @@ from tests.unit.services.search_support import (
     index_jobs,
     run_due,
 )
+
+OK = Outcome.OK
 
 
 @pytest.fixture
@@ -55,13 +59,30 @@ async def test_a_document_in_processing_is_indexed_for_its_owner(setup: Setup) -
     assert entry.filename == "a.pdf"
 
 
+async def test_starts_deferrals_and_signals_queue_no_index_job(setup: Setup) -> None:
+    document = DocumentId(new_id())
+    for event in (
+        NodeStarted(document_id=document, occurred_at=NOW, node=Node.OCR, run=1),
+        NodeDeferred(document_id=document, occurred_at=NOW, node=Node.OCR, run=1, retry_at=NOW),
+        NodeCompleted(
+            document_id=document, occurred_at=NOW, node=Node.SIGNAL_LLM, run=1, outcome=OK
+        ),
+    ):
+        await setup.indexing.on_event(event)
+    assert index_jobs(setup.world) == []
+    await setup.indexing.on_event(
+        NodeCompleted(document_id=document, occurred_at=NOW, node=Node.JUDGE, run=1, outcome=OK)
+    )
+    assert len(index_jobs(setup.world)) == 1
+
+
 async def test_the_lane_follows_the_pipeline(setup: Setup) -> None:
     owner = await setup.world.user()
     document = await setup.document(owner)
     assert (setup.entry(document.id).lane_value, document.lane) == ("green", Lane.GREEN)
 
-    await setup.world.pipeline().reprocess_from(owner.id, document.id, Node.CLASSIFY)
-    await setup.settle(pipeline_service=setup.world.pipeline({Node.CLASSIFY: Returns(UNCERTAIN)}))
+    await setup.world.pipeline().reprocess_from(owner.id, document.id, Node.JUDGE)
+    await setup.settle(pipeline_service=setup.world.pipeline({Node.JUDGE: Returns(UNCERTAIN)}))
     assert setup.entry(document.id).lane_value == "yellow"
 
 

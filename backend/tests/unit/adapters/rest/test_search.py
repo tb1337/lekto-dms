@@ -91,7 +91,7 @@ async def test_a_withdrawn_share_ends_the_search_at_once(api: Api) -> None:
 async def test_a_lane_that_changed_before_the_index_heard_of_it(api: Api) -> None:
     scene = await indexed_scene(api)
     pipeline = api.services.pipeline
-    await pipeline.reprocess_from(scene.owner.id, DocumentId(UUID(scene.green)), Node.CLASSIFY)
+    await pipeline.reprocess_from(scene.owner.id, DocumentId(UUID(scene.green)), Node.JUDGE)
     assert await found(scene, "reader") == set()  # in processing again; the index says green
     assert await found(scene, "owner") >= {scene.green}
 

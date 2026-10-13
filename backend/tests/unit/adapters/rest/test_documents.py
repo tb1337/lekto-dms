@@ -25,6 +25,7 @@ from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.rest.conftest import MAX_UPLOAD, Api, make_app
 
 DOCUMENTS = f"{PREFIX}/documents"
+SIGNALS = ("signal_llm", "signal_classifier", "signal_neighbours", "signal_facts")
 PROBLEM = "application/problem+json"
 
 
@@ -50,8 +51,12 @@ async def test_upload_is_accepted_and_processed(api: Api) -> None:
         "ocr",
         "pages",
         "parse",
-        "classify",
-        "extract_fields",
+        "signal_llm",
+        "signal_classifier",
+        "signal_neighbours",
+        "signal_facts",
+        "judge",
+        "fields",
         "apply_rules",
         "file",
     ]
@@ -318,17 +323,17 @@ async def test_the_model_exchanges_are_listed_per_run(api: Api) -> None:
     url = response.json()["status_url"]
     await api.drain()
     # Without a language model nothing was sent.
-    listed = await api.client.get(f"{url}/exchanges/classify", headers=auth(owner))
+    listed = await api.client.get(f"{url}/exchanges/judge", headers=auth(owner))
     assert (listed.status_code, listed.json()) == (200, [])
     id = DocumentId(UUID(url.rsplit("/", 1)[-1]))
     call = ModelCall(system="s", user="u", answer="{}", model="m", usage={"total_tokens": 9})
     runs = [RunExchange(run=1, calls=(call,))]
     await api.container.object_store.put(
-        exchanges_key(id, Node.CLASSIFY),
+        exchanges_key(id, Node.JUDGE),
         json.dumps(exchanges_to_json(runs)).encode(),
         content_type="application/json",
     )
-    listed = await api.client.get(f"{url}/exchanges/classify", headers=auth(owner))
+    listed = await api.client.get(f"{url}/exchanges/judge", headers=auth(owner))
     assert listed.json() == [
         {
             "run": 1,
@@ -394,7 +399,7 @@ async def test_retry_and_reprocess(api: Api) -> None:
     assert nodes(processing) == {
         "receive": "done",
         "pages": nodes(failed["processing"])["pages"],  # done or dropped: the branches race
-        **waiting("ocr", "parse", "classify", "extract_fields", "apply_rules", "file"),
+        **waiting("ocr", "parse", *SIGNALS, "judge", "fields", "apply_rules", "file"),
     }
     again = await api.client.post(f"{url}/retry", headers=auth(owner))
     assert again.status_code == 409  # running, not failed

@@ -77,10 +77,10 @@ async def test_visibility(world: World, scene: Scene) -> None:
 
 
 async def test_yellow_document_is_hidden_from_shares(world: World, scene: Scene) -> None:
-    await world.pipeline().reprocess_from(scene.owner.id, scene.document.id, Node.CLASSIFY)
+    await world.pipeline().reprocess_from(scene.owner.id, scene.document.id, Node.JUDGE)
     with pytest.raises(NotFoundError):
         await world.documents.get(scene.reader.id, scene.document.id)  # in processing
-    await world.drain(world.pipeline({Node.CLASSIFY: Returns(UNCERTAIN)}))
+    await world.drain(world.pipeline({Node.JUDGE: Returns(UNCERTAIN)}))
     assert (await world.documents.get(scene.owner.id, scene.document.id)).lane is Lane.YELLOW
     for user in (scene.reader, scene.writer):
         with pytest.raises(NotFoundError):
@@ -222,7 +222,7 @@ async def test_a_deactivated_user_and_a_document_in_the_inbox_have_fewer_readers
     received = await world.pipeline().receive(
         scene.owner.id, incoming(b"%PDF-1.7 yellow"), filename="y.pdf", drawer=scene.shared.id
     )
-    await world.drain(world.pipeline({Node.CLASSIFY: Returns(UNCERTAIN)}))
+    await world.drain(world.pipeline({Node.JUDGE: Returns(UNCERTAIN)}))
     yellow = await world.documents.get(scene.owner.id, received.id)
     assert yellow.lane is Lane.YELLOW
     world.database.outbox.clear()
@@ -249,7 +249,7 @@ async def test_filter_readers_follows_the_visibility(world: World, scene: Scene)
     readers = await world.documents.filter_readers(scene.document.id, {*everyone, unknown})
     assert readers == {scene.owner.id, scene.reader.id, scene.writer.id}
 
-    await world.pipeline().reprocess_from(scene.owner.id, scene.document.id, Node.CLASSIFY)
+    await world.pipeline().reprocess_from(scene.owner.id, scene.document.id, Node.JUDGE)
     assert await world.documents.filter_readers(scene.document.id, everyone) == {scene.owner.id}
     assert await world.documents.filter_readers(DocumentId(new_id()), everyone) == set()
     assert await world.documents.filter_readers(scene.document.id, set()) == set()
@@ -365,20 +365,20 @@ async def test_the_structure_is_for_readers(world: World, scene: Scene) -> None:
 
 async def test_only_the_owner_reads_the_model_exchanges(world: World, scene: Scene) -> None:
     id = scene.document.id
-    assert await world.documents.exchanges(scene.owner.id, id, Node.CLASSIFY) == []
+    assert await world.documents.exchanges(scene.owner.id, id, Node.JUDGE) == []
     call = ModelCall(system="s", user="u", answer="{}", model="m", usage={"prompt_tokens": 3})
     runs = [RunExchange(run=1, calls=(call,)), RunExchange(run=2, calls=(call, call))]
     await world.object_store.put(
-        exchanges_key(id, Node.CLASSIFY),
+        exchanges_key(id, Node.JUDGE),
         json.dumps(exchanges_to_json(runs)).encode(),
         content_type="application/json",
     )
-    assert await world.documents.exchanges(scene.owner.id, id, Node.CLASSIFY) == runs
-    assert await world.documents.exchanges(scene.owner.id, id, Node.EXTRACT_FIELDS) == []
+    assert await world.documents.exchanges(scene.owner.id, id, Node.JUDGE) == runs
+    assert await world.documents.exchanges(scene.owner.id, id, Node.FIELDS) == []
     for user in (scene.reader, scene.writer):
         with pytest.raises(PermissionDeniedError):
-            await world.documents.exchanges(user.id, id, Node.CLASSIFY)
+            await world.documents.exchanges(user.id, id, Node.JUDGE)
     with pytest.raises(NotFoundError):
-        await world.documents.exchanges(scene.stranger.id, id, Node.CLASSIFY)
+        await world.documents.exchanges(scene.stranger.id, id, Node.JUDGE)
     with pytest.raises(ValidationError, match="does not ask a language model"):
         await world.documents.exchanges(scene.owner.id, id, Node.OCR)

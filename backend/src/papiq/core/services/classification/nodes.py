@@ -293,7 +293,7 @@ class ClassifyNode(_ModelStep):
         try:
             answer, answers = await self._ask(
                 document,
-                Node.CLASSIFY,
+                Node.JUDGE,
                 CLASSIFY_SYSTEM,
                 classify_message(
                     [Listed(item.name, aliases=tuple(item.aliases)) for item in candidates],
@@ -432,7 +432,7 @@ class ExtractFieldsNode(_ModelStep):
         try:
             proposals, answers = await self._ask(
                 document,
-                Node.EXTRACT_FIELDS,
+                Node.FIELDS,
                 EXTRACT_SYSTEM,
                 extract_message(None if document_type is None else document_type.name, keys, sent),
                 extract_schema(keys),

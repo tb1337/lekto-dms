@@ -252,7 +252,7 @@ async def test_schemas_of_status_log_and_events(api: Api) -> None:
     assert "receive" not in node["enum"]
     resume = schemas["ConfirmRequest"]["properties"]["resume_at"]
     resume_at = schemas[resume["$ref"].rsplit("/", 1)[1]]
-    assert resume_at["enum"] == ["extract_fields", "apply_rules"]
+    assert resume_at["enum"] == ["fields", "apply_rules"]
     events = schema["paths"][f"{PREFIX}/events"]["get"]["responses"]["200"]["content"]
     stream = events["text/event-stream"]
     assert stream["schema"]["type"] == "string"

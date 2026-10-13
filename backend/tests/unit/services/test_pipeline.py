@@ -159,13 +159,13 @@ async def test_a_running_node_is_visible_until_its_result_is_stored(world: World
 
 
 async def test_uncertain_step_ends_yellow(world: World) -> None:
-    pipeline = world.pipeline({Node.CLASSIFY: Returns(UNCERTAIN)})
+    pipeline = world.pipeline({Node.JUDGE: Returns(UNCERTAIN)})
     owner, document = await receive(world, pipeline)
     await world.drain(pipeline)
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.YELLOW
     log = await world.documents.processing_log(owner.id, stored.id)
-    classify = next(entry for entry in log if entry.node is Node.CLASSIFY)
+    classify = next(entry for entry in log if entry.node is Node.JUDGE)
     assert classify.result.reason == "new contact"
 
 
@@ -273,7 +273,8 @@ async def test_skipped_pages_are_caught_up_on_without_a_new_run(world: World) ->
     pipeline = world.pipeline({Node.PAGES: pages})
     assert await pipeline.catch_up(Node.PAGES) == 3  # also the one being processed
     assert await pipeline.catch_up(Node.PAGES) == 0  # queued already
-    assert await world.drain(pipeline) == 3 + 7  # and the processing one (its pages job is stale)
+    # And the processing one: eleven nodes, its pages job stale.
+    assert await world.drain(pipeline) == 3 + 11
     assert pages.calls == 3
     caught_up = await world.documents.get(owner.id, processing.id)
     assert caught_up.lane is Lane.GREEN
@@ -316,7 +317,7 @@ async def test_a_failed_catch_up_keeps_the_node_skipped_and_blocks_nothing(world
     (job,) = [job for job in world.database.jobs.values() if job.kind == CATCH_UP_JOB]
     assert job.status is JobStatus.FAILED
     assert await pipeline.catch_up(Node.PAGES) == 1  # tried again next time
-    await pipeline.reprocess_from(owner.id, document.id, Node.CLASSIFY)  # not blocked
+    await pipeline.reprocess_from(owner.id, document.id, Node.JUDGE)  # not blocked
 
 
 async def test_a_catch_up_job_is_stale_once_the_document_runs_again(world: World) -> None:
@@ -330,7 +331,7 @@ async def test_a_catch_up_job_is_stale_once_the_document_runs_again(world: World
     pages = Returns(builders.OK)
     pipeline = world.pipeline({Node.PAGES: pages})
     assert await pipeline.catch_up(Node.PAGES) == 1
-    await pipeline.reprocess_from(owner.id, document.id, Node.CLASSIFY)  # run 2
+    await pipeline.reprocess_from(owner.id, document.id, Node.JUDGE)  # run 2
     await world.drain(pipeline)
     assert pages.calls == 0
     stored = await world.documents.get(owner.id, document.id)
@@ -342,8 +343,8 @@ async def test_reprocess_from_a_step(world: World) -> None:
     owner, document = await receive(world)
     await world.drain()
     world.database.outbox.clear()
-    pipeline = world.pipeline({Node.EXTRACT_FIELDS: Returns(UNCERTAIN)})
-    await pipeline.reprocess_from(owner.id, document.id, Node.CLASSIFY)
+    pipeline = world.pipeline({Node.FIELDS: Returns(UNCERTAIN)})
+    await pipeline.reprocess_from(owner.id, document.id, Node.JUDGE)
     assert await world.drain(pipeline) == 3  # waits before filing; the pages stay
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.YELLOW
@@ -622,7 +623,7 @@ async def test_a_step_changes_metadata_with_its_result(world: World) -> None:
         await uow.tags.add(tag)
         await uow.commit()
     changes = DocumentChanges(tag_ids=frozenset({tag.id}))
-    pipeline = world.pipeline({Node.CLASSIFY: Changes(changes)})
+    pipeline = world.pipeline({Node.JUDGE: Changes(changes)})
     owner, document = await receive(world, pipeline)
     await world.drain(pipeline)
     stored = await world.documents.get(owner.id, document.id)
@@ -636,7 +637,7 @@ async def test_classified_tags_are_added_to_the_documents_tags(world: World) -> 
         await uow.tags.add(mine)
         await uow.tags.add(strom)
         await uow.commit()
-    pipeline = world.pipeline({Node.CLASSIFY: Changes(DocumentChanges(), frozenset({strom.id}))})
+    pipeline = world.pipeline({Node.JUDGE: Changes(DocumentChanges(), frozenset({strom.id}))})
     owner, document = await receive(world, pipeline)
     await world.documents.update_metadata(
         owner.id, document.id, DocumentChanges(tag_ids=frozenset({mine.id}))
@@ -651,13 +652,13 @@ async def test_changes_that_no_longer_fit_make_the_step_uncertain(world: World) 
     changes = DocumentChanges(
         contact_id=ContactId(UUID(int=1)), tag_ids=frozenset({TagId(UUID(int=2))})
     )
-    pipeline = world.pipeline({Node.CLASSIFY: Changes(changes)})
+    pipeline = world.pipeline({Node.JUDGE: Changes(changes)})
     owner, document = await receive(world, pipeline)
     await world.drain(pipeline)
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.YELLOW
     assert stored.contact_id is None
     log = await world.documents.processing_log(owner.id, document.id)
-    classified = next(entry for entry in log if entry.node is Node.CLASSIFY)
+    classified = next(entry for entry in log if entry.node is Node.JUDGE)
     assert classified.result.outcome is Outcome.UNCERTAIN
     assert (classified.result.reason or "").startswith("the master data changed during the node")

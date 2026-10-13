@@ -71,8 +71,8 @@ async def migrating(api: Api, directory: Path) -> AsyncIterator[Migrating]:
     nodes around nodes that do nothing (there is no language model)."""
     uow = api.container.unit_of_work
     executors = api.services.pipeline._executors
-    executors[Node.CLASSIFY] = ImportedClassifyNode(uow, PlaceholderNode())
-    executors[Node.EXTRACT_FIELDS] = ImportedExtractNode(uow, PlaceholderNode())
+    executors[Node.JUDGE] = ImportedClassifyNode(uow, PlaceholderNode())
+    executors[Node.FIELDS] = ImportedExtractNode(uow, PlaceholderNode())
     admin = await api.admin()
 
     async def work() -> None:
@@ -135,7 +135,7 @@ async def test_the_whole_migration_runs_against_the_api(api: Api, tmp_path: Path
             )
         ).json()
         imported = {e["node"]: e for e in log if e["model_version"] == "imported"}
-        assert set(imported) == {"classify", "extract_fields"}
+        assert set(imported) == {"judge", "fields"}
 
         assert await m.run("verify") == 0, m.messages
         assert await m.run("verify", rehash=True) == 0

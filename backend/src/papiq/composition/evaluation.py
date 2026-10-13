@@ -64,8 +64,8 @@ def build_environment(
         executors: dict[Node, NodeExecutor] = {
             node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE
         }
-        executors[Node.CLASSIFY] = ClassifyNode(uow, store, model, clock, policy)
-        executors[Node.EXTRACT_FIELDS] = ExtractFieldsNode(uow, store, model, clock, policy)
+        executors[Node.JUDGE] = ClassifyNode(uow, store, model, clock, policy)
+        executors[Node.FIELDS] = ExtractFieldsNode(uow, store, model, clock, policy)
         return PipelineService(
             uow,
             clock,

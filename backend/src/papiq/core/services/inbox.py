@@ -40,7 +40,7 @@ from papiq.core.domain.pipeline import (
 ALWAYS_SET = frozenset({"drawer", "title", "review"})
 """Open fields of the rules that always have a value: confirming keeps it."""
 
-MODEL_NODES = (Node.CLASSIFY, Node.EXTRACT_FIELDS)
+MODEL_NODES = (Node.JUDGE, Node.FIELDS)
 
 
 @dataclass(frozen=True)
@@ -220,7 +220,7 @@ def alias_to_learn(
     it: the owner entered the contact or accepted the suggestion. None if the field was not
     open, the model read no name, or the document has no contact."""
     for item in open:
-        if item.node is not Node.CLASSIFY:
+        if item.node is not Node.JUDGE:
             continue
         decided = (*decision.entered.get(item.node, ()), *decision.accepted.get(item.node, ()))
         for check in item.fields:

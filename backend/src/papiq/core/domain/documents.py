@@ -33,6 +33,7 @@ from papiq.core.domain.ids import (
     new_id,
 )
 from papiq.core.domain.pipeline import (
+    SIGNALS,
     Lane,
     Node,
     NodeResult,
@@ -273,6 +274,7 @@ class Document:
 
     def reprocess_from(self, node: Node, now: datetime) -> tuple[Node, ...]:
         """Discard the results of `node` and the nodes after it and process them again.
+        Signals `node` needs that were skipped (a document from before they existed) run first.
         Returns the nodes that are due now."""
         processing = self.processing
         if processing.status is ProcessingStatus.PROCESSING:
@@ -289,7 +291,12 @@ class Document:
             raise InvalidTransitionError(
                 f"document {self.id} has uncertain results; confirm them before filing"
             )
-        return self._reset({node}, now)
+        skipped_signals = {
+            signal
+            for signal in node.requires & SIGNALS
+            if processing.nodes[signal].status is NodeStatus.SKIPPED
+        }
+        return self._reset({node, *skipped_signals}, now)
 
     def confirm(self, resume_at: Node, now: datetime) -> tuple[Node, ...]:
         """The owner has decided what was uncertain or failed (the inbox): the results of the
@@ -313,12 +320,11 @@ class Document:
             raise InvalidTransitionError(
                 f"document {self.id}: {', '.join(running)} is still running; confirm afterwards"
             )
-        if resume_at not in (Node.EXTRACT_FIELDS, Node.APPLY_RULES):
+        if resume_at not in (Node.FIELDS, Node.APPLY_RULES):
             raise InvalidTransitionError(
-                f"processing resumes with {Node.EXTRACT_FIELDS} or {Node.APPLY_RULES}, "
-                f"not {resume_at}"
+                f"processing resumes with {Node.FIELDS} or {Node.APPLY_RULES}, not {resume_at}"
             )
-        if resume_at is Node.EXTRACT_FIELDS and processing.outcome(Node.PARSE) not in (
+        if resume_at is Node.FIELDS and processing.outcome(Node.PARSE) not in (
             Outcome.OK,
             Outcome.UNCERTAIN,
         ):

@@ -14345,8 +14345,8 @@
       "ExchangeNode": {
         "type": "string",
         "enum": [
-          "classify",
-          "extract_fields"
+          "judge",
+          "fields"
         ],
         "title": "ExchangeNode"
       },
@@ -15394,13 +15394,17 @@
           "ocr",
           "pages",
           "parse",
-          "classify",
-          "extract_fields",
+          "signal_llm",
+          "signal_classifier",
+          "signal_neighbours",
+          "signal_facts",
+          "judge",
+          "fields",
           "apply_rules",
           "file"
         ],
         "title": "Node",
-        "description": "The nodes of the ingest graph, in a topological order: every node comes after the nodes\nit needs (`GRAPH`). Nodes that do not need each other run side by side."
+        "description": "The nodes of the ingest graph, in a topological order: every node comes after the nodes\nit needs (`GRAPH`). Nodes that do not need each other run side by side.\n\nThe signals each propose metadata from one source: the language model, the trained\nclassifier, similar confirmed documents, facts in the text (names, identifiers). `judge`\ndecides from all of them, `fields` reads the fields of the decided type."
       },
       "NodeReviewOut": {
         "properties": {
@@ -15853,8 +15857,12 @@
           "ocr",
           "pages",
           "parse",
-          "classify",
-          "extract_fields",
+          "signal_llm",
+          "signal_classifier",
+          "signal_neighbours",
+          "signal_facts",
+          "judge",
+          "fields",
           "apply_rules",
           "file"
         ],
@@ -15874,14 +15882,14 @@
         "title": "ReprocessRequest",
         "examples": [
           {
-            "from_node": "classify"
+            "from_node": "judge"
           }
         ]
       },
       "ResumeNode": {
         "type": "string",
         "enum": [
-          "extract_fields",
+          "fields",
           "apply_rules"
         ],
         "title": "ResumeNode"

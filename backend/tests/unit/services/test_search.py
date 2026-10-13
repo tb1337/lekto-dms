@@ -72,10 +72,10 @@ async def test_the_owner_finds_everything_in_any_lane(scene: Scene) -> None:
     assert await scene.ids(scene.owner, "Stromrechnung") == {scene.shared_document.id}
     assert await scene.ids(scene.owner, "Mietvertrag") == {scene.private_document.id}
     await scene.setup.world.pipeline().reprocess_from(
-        scene.owner.id, scene.private_document.id, Node.CLASSIFY
+        scene.owner.id, scene.private_document.id, Node.JUDGE
     )
     await scene.setup.settle(
-        pipeline_service=scene.setup.world.pipeline({Node.CLASSIFY: Returns(UNCERTAIN)})
+        pipeline_service=scene.setup.world.pipeline({Node.JUDGE: Returns(UNCERTAIN)})
     )
     assert await scene.ids(scene.owner, "Mietvertrag") == {scene.private_document.id}
 
@@ -101,10 +101,10 @@ async def test_meaning_finds_only_what_the_caller_may_read(scene: Scene) -> None
 
 async def test_a_yellow_document_is_not_found_by_others(scene: Scene) -> None:
     await scene.setup.world.pipeline().reprocess_from(
-        scene.owner.id, scene.shared_document.id, Node.CLASSIFY
+        scene.owner.id, scene.shared_document.id, Node.JUDGE
     )
     await scene.setup.settle(
-        pipeline_service=scene.setup.world.pipeline({Node.CLASSIFY: Returns(UNCERTAIN)})
+        pipeline_service=scene.setup.world.pipeline({Node.JUDGE: Returns(UNCERTAIN)})
     )
     assert await scene.ids(scene.reader, "Stromrechnung") == set()
     assert await scene.ids(scene.owner, "Stromrechnung") == {scene.shared_document.id}
@@ -118,8 +118,8 @@ async def test_a_withdrawn_share_hides_the_documents_at_once(scene: Scene) -> No
 async def test_the_database_is_asked_again_when_the_index_is_behind(scene: Scene) -> None:
     world = scene.setup.world
     # Changes the index has not heard of yet: no event is delivered, no job runs.
-    await world.pipeline().reprocess_from(scene.owner.id, scene.shared_document.id, Node.CLASSIFY)
-    await world.drain(world.pipeline({Node.CLASSIFY: Returns(UNCERTAIN)}))
+    await world.pipeline().reprocess_from(scene.owner.id, scene.shared_document.id, Node.JUDGE)
+    await world.drain(world.pipeline({Node.JUDGE: Returns(UNCERTAIN)}))
     state = await scene.setup.index.state(scene.shared_document.id)
     assert state is not None
     assert scene.setup.entry(scene.shared_document.id).lane_value == "green"  # the index is behind

@@ -185,7 +185,7 @@ def _result(
     truncated = any(
         entry.result.input.get("truncated") is True
         for entry in log
-        if entry.node in (Node.CLASSIFY, Node.EXTRACT_FIELDS)
+        if entry.node in (Node.JUDGE, Node.FIELDS)
     )
     return CaseResult(
         case=case,

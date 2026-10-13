@@ -41,6 +41,7 @@ from papiq.core.services.objects import (
     EXCHANGE_NODES,
     archive_key,
     exchanges_key,
+    legacy_exchanges_key,
     markdown_key,
     original_key,
     page_key,
@@ -286,11 +287,15 @@ class DocumentService:
             document, _ = await readable_document(uow, user, id)
             if not can_control_document(user, document):
                 raise PermissionDeniedError(f"only the owner reads the model exchanges of {id}")
-        try:
-            data = await self._store.get(exchanges_key(id, node))
-        except NotFoundError:
-            return []
-        return exchanges_from_json(json.loads(data))
+        for key in (exchanges_key(id, node), legacy_exchanges_key(id, node)):
+            if key is None:
+                continue
+            try:
+                data = await self._store.get(key)
+            except NotFoundError:
+                continue
+            return exchanges_from_json(json.loads(data))
+        return []
 
     async def inbox(
         self,

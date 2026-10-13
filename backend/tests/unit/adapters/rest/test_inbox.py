@@ -46,7 +46,7 @@ async def test_confirm_from_the_inbox(api: Api) -> None:
     async with api.container.unit_of_work() as uow:
         await uow.contacts.add(contact)
         await uow.commit()
-    api.services.pipeline._executors[Node.CLASSIFY] = Returns(uncertain(contact))
+    api.services.pipeline._executors[Node.JUDGE] = Returns(uncertain(contact))
     response = await api.client.post(f"{PREFIX}/documents", files=pdf(), headers=auth(owner))
     url = response.json()["status_url"]
     await api.drain()
@@ -57,12 +57,12 @@ async def test_confirm_from_the_inbox(api: Api) -> None:
     assert item["document"]["lane"] == "yellow"
     assert item["document"]["processing"]["status"] == "review"
     (open,) = item["open"]
-    assert (open["node"], open["outcome"]) == ("classify", "uncertain")
+    assert (open["node"], open["outcome"]) == ("judge", "uncertain")
     assert [field["field"] for field in open["fields"]] == ["contact", "document_date"]
     assert open["fields"][0]["suggestion"] == str(contact.id)
 
     review = (await api.client.get(f"{url}/review", headers=auth(owner))).json()
-    (classify,) = [node for node in review["nodes"] if node["node"] == "classify"]
+    (classify,) = [node for node in review["nodes"] if node["node"] == "judge"]
     assert (classify["model_version"], classify["truncated"]) == ("fake-llm 1", False)
     assert classify["fields"][1]["proposed"] == "2026-03-31"
 
@@ -84,7 +84,7 @@ async def test_confirm_from_the_inbox(api: Api) -> None:
     )
     assert confirmed.status_code == 202, confirmed.text
     nodes = {node["node"]: node["status"] for node in confirmed.json()["processing"]["nodes"]}
-    assert (nodes["extract_fields"], nodes["apply_rules"]) == ("done", "waiting")
+    assert (nodes["fields"], nodes["apply_rules"]) == ("done", "waiting")
     await api.drain()
     document = (await api.client.get(url, headers=auth(owner))).json()
     assert document["lane"] == "green"

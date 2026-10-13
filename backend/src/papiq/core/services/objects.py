@@ -4,8 +4,10 @@ from papiq.core.domain.documents import Sha256
 from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.pipeline import Node
 
-EXCHANGE_NODES = (Node.CLASSIFY, Node.EXTRACT_FIELDS)
+EXCHANGE_NODES = (Node.JUDGE, Node.FIELDS)
 """The nodes that ask the language model and keep what they sent (`exchanges_key`)."""
+LEGACY_EXCHANGES = {Node.JUDGE: "classify", Node.FIELDS: "extract_fields"}
+"""The names their files had before 0.2.0 renamed the nodes (`legacy_exchanges_key`)."""
 
 
 def original_key(sha256: Sha256) -> str:
@@ -48,13 +50,21 @@ def classifier_key(number: int) -> str:
     return f"classifier/model-{number}.npz"
 
 
+def legacy_exchanges_key(document: DocumentId, node: Node) -> str | None:
+    """Where a document processed before the nodes were renamed keeps `node`'s exchanges."""
+    name = LEGACY_EXCHANGES.get(node)
+    return None if name is None else f"documents/{document}/exchanges/{name}.json"
+
+
 def derivative_keys(document: DocumentId, page_count: int | None = None) -> list[str]:
     """Everything the pipeline stores for one document with `page_count` page images."""
+    legacy = (legacy_exchanges_key(document, node) for node in LEGACY_EXCHANGES)
     return [
         archive_key(document),
         preview_key(document),
         markdown_key(document),
         structure_key(document),
         *(exchanges_key(document, node) for node in EXCHANGE_NODES),
+        *(key for key in legacy if key is not None),
         *(page_key(document, number) for number in range(1, (page_count or 0) + 1)),
     ]

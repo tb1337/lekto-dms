@@ -29,8 +29,8 @@ def imported_steps(api: Api) -> None:
     (there is no language model)."""
     uow = api.container.unit_of_work
     executors = api.services.pipeline._executors
-    executors[Node.CLASSIFY] = ImportedClassifyNode(uow, PlaceholderNode())
-    executors[Node.EXTRACT_FIELDS] = ImportedExtractNode(uow, PlaceholderNode())
+    executors[Node.JUDGE] = ImportedClassifyNode(uow, PlaceholderNode())
+    executors[Node.FIELDS] = ImportedExtractNode(uow, PlaceholderNode())
 
 
 def file(name: str = "scan.pdf") -> dict[str, tuple[str, bytes, str]]:
@@ -108,13 +108,11 @@ async def test_an_admin_uploads_for_another_owner_with_the_metadata(api: Api) ->
     receive = log[0]
     assert receive["output"]["uploaded_by"] == str(admin.id)
     assert receive["output"]["imported"]["title"] == "Electricity March"
-    applied = {
-        entry["node"]: entry for entry in log if entry["node"] in ("classify", "extract_fields")
-    }
-    assert applied["classify"]["outcome"] == "ok"
-    assert applied["classify"]["reason"] == "taken over from the source system"
-    assert applied["classify"]["model_version"] == "imported"
-    assert applied["extract_fields"]["model_version"] == "imported"
+    applied = {entry["node"]: entry for entry in log if entry["node"] in ("judge", "fields")}
+    assert applied["judge"]["outcome"] == "ok"
+    assert applied["judge"]["reason"] == "taken over from the source system"
+    assert applied["judge"]["model_version"] == "imported"
+    assert applied["fields"]["model_version"] == "imported"
     # The admin does not own it.
     other = await api.client.get(f"{DOCUMENTS}?limit=50", headers=auth(admin))
     assert other.json()["items"] == []
@@ -318,7 +316,7 @@ async def test_reprocessing_applies_the_metadata_again(api: Api) -> None:
     url = response.json()["status_url"]
     await api.client.patch(url, json={"title": "Changed", "tag_ids": []}, headers=auth(owner))
     reprocess = await api.client.post(
-        f"{url}/reprocess", json={"from_node": "classify"}, headers=auth(owner)
+        f"{url}/reprocess", json={"from_node": "judge"}, headers=auth(owner)
     )
     assert reprocess.status_code == 202, reprocess.text
     await api.drain()

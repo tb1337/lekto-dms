@@ -177,7 +177,7 @@ class RuleWorld:
             Node.FILE: FileNode(),
         }
         if classify is not None:
-            executors[Node.CLASSIFY] = classify
+            executors[Node.JUDGE] = classify
         return self.world.pipeline(executors)
 
     # --- seeding ---------------------------------------------------------------------------------

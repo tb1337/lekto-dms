@@ -14,7 +14,7 @@ from papiq.core.domain.pipeline import Node, Outcome
 from papiq.core.services.inbox import InboxItem, NodeReview, OpenNode, Review
 
 ResumeNode = StrEnum(  # type: ignore[misc]
-    "ResumeNode", {node.name: node.value for node in (Node.EXTRACT_FIELDS, Node.APPLY_RULES)}
+    "ResumeNode", {node.name: node.value for node in (Node.FIELDS, Node.APPLY_RULES)}
 )
 """Nodes processing can resume with after a confirmation."""
 

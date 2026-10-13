@@ -15,6 +15,7 @@ from papiq.core.domain.ids import new_id
 from papiq.core.domain.pipeline import (
     GRAPH,
     NODES,
+    SIGNALS,
     Lane,
     Node,
     NodeResult,
@@ -29,6 +30,7 @@ from tests import builders
 from tests.builders import FAILED, NOW, OK, UNCERTAIN
 
 LATER = NOW + timedelta(seconds=5)
+SIGNAL_NODES = tuple(node for node in NODES if node in SIGNALS)  # in graph order
 
 
 def status(document: Document) -> ProcessingStatus:
@@ -57,8 +59,9 @@ def test_ocr_and_pages_run_side_by_side_and_filing_waits_for_both() -> None:
     assert Node.FILE.requires == {Node.APPLY_RULES, Node.PAGES}
     assert Node.OCR.descendants == {
         Node.PARSE,
-        Node.CLASSIFY,
-        Node.EXTRACT_FIELDS,
+        *SIGNALS,
+        Node.JUDGE,
+        Node.FIELDS,
         Node.APPLY_RULES,
         Node.FILE,
     }
@@ -66,8 +69,9 @@ def test_ocr_and_pages_run_side_by_side_and_filing_waits_for_both() -> None:
         Node.RECEIVE,
         Node.OCR,
         Node.PARSE,
-        Node.CLASSIFY,
-        Node.EXTRACT_FIELDS,
+        *SIGNALS,
+        Node.JUDGE,
+        Node.FIELDS,
     }
 
 
@@ -200,9 +204,12 @@ def test_a_result_names_the_nodes_that_became_due_with_it() -> None:
     document = received()
     assert document.record_result(Node.OCR, 1, OK, NOW) == (Node.PARSE,)
     assert document.record_result(Node.PAGES, 1, OK, NOW) == ()
-    assert document.record_result(Node.PARSE, 1, OK, NOW) == (Node.CLASSIFY,)
-    document.record_result(Node.CLASSIFY, 1, OK, NOW)
-    document.record_result(Node.EXTRACT_FIELDS, 1, OK, NOW)
+    assert document.record_result(Node.PARSE, 1, OK, NOW) == SIGNAL_NODES
+    for signal in SIGNAL_NODES[:-1]:
+        assert document.record_result(signal, 1, OK, NOW) == ()
+    assert document.record_result(SIGNAL_NODES[-1], 1, OK, NOW) == (Node.JUDGE,)
+    document.record_result(Node.JUDGE, 1, OK, NOW)
+    document.record_result(Node.FIELDS, 1, OK, NOW)
     assert document.record_result(Node.APPLY_RULES, 1, OK, NOW) == (Node.FILE,)
     assert document.record_result(Node.FILE, 1, OK, NOW) == ()
     assert status(document) is ProcessingStatus.COMPLETED
@@ -210,7 +217,7 @@ def test_a_result_names_the_nodes_that_became_due_with_it() -> None:
 
 def test_filing_waits_for_the_pages() -> None:
     document = received()
-    for node in (Node.OCR, Node.PARSE, Node.CLASSIFY, Node.EXTRACT_FIELDS):
+    for node in (Node.OCR, Node.PARSE, *SIGNAL_NODES, Node.JUDGE, Node.FIELDS):
         document.record_result(node, 1, OK, NOW)
     assert document.record_result(Node.APPLY_RULES, 1, OK, NOW) == ()
     assert status(document) is ProcessingStatus.PROCESSING
@@ -243,13 +250,13 @@ def test_a_worker_starts_a_due_node() -> None:
         finished_at=LATER + timedelta(seconds=1),
     )
     with pytest.raises(InvalidTransitionError, match="not due"):
-        document.start_node(Node.CLASSIFY, 1, NOW)
+        document.start_node(Node.JUDGE, 1, NOW)
     with pytest.raises(InvalidTransitionError, match="not due"):
         document.start_node(Node.OCR, 1, NOW)
 
 
 def test_uncertain_node_continues_and_waits_yellow_before_filing() -> None:
-    document = builders.run_pipeline(received(), {Node.CLASSIFY: UNCERTAIN})
+    document = builders.run_pipeline(received(), {Node.JUDGE: UNCERTAIN})
     assert document.processing.status is ProcessingStatus.REVIEW
     assert Node.APPLY_RULES in document.processing.outcomes
     assert Node.FILE not in document.processing.outcomes
@@ -264,15 +271,15 @@ def test_an_uncertain_filing_node_completes_yellow() -> None:
     assert document.lane is Lane.YELLOW
 
 
-@pytest.mark.parametrize("resume_at", [Node.EXTRACT_FIELDS, Node.APPLY_RULES])
+@pytest.mark.parametrize("resume_at", [Node.FIELDS, Node.APPLY_RULES])
 def test_confirming_a_yellow_document_resumes_and_files_it_green(resume_at: Node) -> None:
-    document = builders.run_pipeline(received(), {Node.OCR: UNCERTAIN, Node.CLASSIFY: UNCERTAIN})
+    document = builders.run_pipeline(received(), {Node.OCR: UNCERTAIN, Node.JUDGE: UNCERTAIN})
     run = document.processing.run
     document.pull_events()
 
     overruled = document.confirm(resume_at, NOW)
 
-    assert overruled == (Node.OCR, Node.CLASSIFY)
+    assert overruled == (Node.OCR, Node.JUDGE)
     assert document.processing.run == run + 1
     assert document.processing.status is ProcessingStatus.PROCESSING
     assert document.processing.due() == (resume_at,)
@@ -297,8 +304,9 @@ def test_confirming_a_red_document_takes_over_the_failed_and_unrun_nodes() -> No
     assert document.confirm(Node.APPLY_RULES, NOW) == (
         Node.OCR,
         Node.PARSE,
-        Node.CLASSIFY,
-        Node.EXTRACT_FIELDS,
+        *SIGNAL_NODES,
+        Node.JUDGE,
+        Node.FIELDS,
     )
     taken_over = document.processing.nodes[Node.PARSE]
     assert (taken_over.status, taken_over.outcome) == (NodeStatus.DONE, Outcome.OK)
@@ -313,12 +321,12 @@ def test_confirming_a_red_document_takes_over_the_failed_and_unrun_nodes() -> No
 def test_fields_are_only_extracted_again_from_a_parsed_text() -> None:
     document = builders.run_pipeline(received(), {Node.PARSE: FAILED})
     with pytest.raises(InvalidTransitionError, match="no text"):
-        document.confirm(Node.EXTRACT_FIELDS, NOW)
+        document.confirm(Node.FIELDS, NOW)
 
 
-@pytest.mark.parametrize("resume_at", [Node.OCR, Node.CLASSIFY, Node.FILE])
+@pytest.mark.parametrize("resume_at", [Node.OCR, Node.JUDGE, Node.FILE])
 def test_confirmation_resumes_only_after_classification(resume_at: Node) -> None:
-    document = builders.run_pipeline(received(), {Node.CLASSIFY: UNCERTAIN})
+    document = builders.run_pipeline(received(), {Node.JUDGE: UNCERTAIN})
     with pytest.raises(InvalidTransitionError, match="resumes with"):
         document.confirm(resume_at, NOW)
 
@@ -333,7 +341,7 @@ def test_only_documents_in_the_inbox_are_confirmed() -> None:
 
 
 def test_uncertain_results_are_not_filed_by_reprocessing() -> None:
-    document = builders.run_pipeline(received(), {Node.CLASSIFY: UNCERTAIN})
+    document = builders.run_pipeline(received(), {Node.JUDGE: UNCERTAIN})
     with pytest.raises(InvalidTransitionError, match="confirm them before filing"):
         document.reprocess_from(Node.FILE, NOW)
     document.reprocess_from(Node.APPLY_RULES, NOW)
@@ -345,8 +353,8 @@ def test_failed_node_stops_processing_red() -> None:
     document = builders.run_pipeline(received(), {Node.PARSE: FAILED})
     assert document.processing.status is ProcessingStatus.FAILED
     assert document.processing.failed() == (Node.PARSE,)
-    assert document.processing.nodes[Node.CLASSIFY] == NodeState()
-    assert Node.CLASSIFY not in document.processing.outcomes
+    assert document.processing.nodes[Node.JUDGE] == NodeState()
+    assert Node.JUDGE not in document.processing.outcomes
     assert document.lane is Lane.RED
 
 
@@ -387,15 +395,15 @@ def test_completed_document_accepts_no_more_results() -> None:
 
 
 def test_retry_repeats_the_failed_node_and_continues() -> None:
-    document = builders.run_pipeline(received(), {Node.CLASSIFY: FAILED})
-    assert document.retry(NOW) == (Node.CLASSIFY,)
+    document = builders.run_pipeline(received(), {Node.JUDGE: FAILED})
+    assert document.retry(NOW) == (Node.JUDGE,)
     assert document.processing.status is ProcessingStatus.PROCESSING
     assert document.processing.run == 2
     assert document.lane is None
-    assert Node.CLASSIFY not in document.processing.outcomes
+    assert Node.JUDGE not in document.processing.outcomes
     assert document.processing.outcomes[Node.PARSE] is Outcome.OK
     assert document.processing.outcomes[Node.PAGES] is Outcome.OK
-    assert not document.is_awaiting(Node.CLASSIFY, 1)
+    assert not document.is_awaiting(Node.JUDGE, 1)
 
     builders.run_pipeline(document)
     assert status(document) is ProcessingStatus.COMPLETED
@@ -432,14 +440,30 @@ def test_retry_needs_failed_processing() -> None:
 
 
 def test_reprocess_from_a_node_discards_the_results_after_it() -> None:
-    document = builders.run_pipeline(received(), {Node.EXTRACT_FIELDS: UNCERTAIN})
+    document = builders.run_pipeline(received(), {Node.FIELDS: UNCERTAIN})
     assert document.lane is Lane.YELLOW
-    assert document.reprocess_from(Node.CLASSIFY, NOW) == (Node.CLASSIFY,)
+    assert document.reprocess_from(Node.JUDGE, NOW) == (Node.JUDGE,)
     assert document.processing.run == 2
-    assert set(document.processing.outcomes) == {Node.RECEIVE, Node.OCR, Node.PAGES, Node.PARSE}
+    assert set(document.processing.outcomes) == {
+        Node.RECEIVE,
+        Node.OCR,
+        Node.PAGES,
+        Node.PARSE,
+        *SIGNALS,
+    }
     assert document.lane is None
     builders.run_pipeline(document)
     assert document.lane is Lane.GREEN
+
+
+def test_reprocessing_from_the_judge_runs_the_signals_a_document_skipped() -> None:
+    """A document from before the signals existed has them skipped; done, they stay."""
+    document = builders.run_pipeline(received())
+    for signal in SIGNALS:
+        document.processing.nodes[signal] = NodeState(status=NodeStatus.SKIPPED)
+    assert document.reprocess_from(Node.JUDGE, NOW) == SIGNAL_NODES
+    builders.run_pipeline(document)
+    assert document.reprocess_from(Node.JUDGE, NOW) == (Node.JUDGE,)
 
 
 def test_reprocessing_the_pages_leaves_the_text_branch_alone() -> None:
@@ -458,7 +482,7 @@ def test_reprocess_rules() -> None:
     with pytest.raises(InvalidTransitionError, match="receive"):
         document.reprocess_from(Node.RECEIVE, NOW)
     with pytest.raises(InvalidTransitionError, match="stopped at parse; cannot skip"):
-        document.reprocess_from(Node.CLASSIFY, NOW)
+        document.reprocess_from(Node.JUDGE, NOW)
     with pytest.raises(InvalidTransitionError, match="stopped at parse; cannot skip"):
         document.reprocess_from(Node.PAGES, NOW)
     assert document.reprocess_from(Node.OCR, NOW) == (Node.OCR,)
@@ -476,7 +500,7 @@ def test_a_skipped_node_is_caught_up_on_without_touching_status_or_lane() -> Non
     document = received()
     document.processing.nodes[Node.PAGES] = NodeState(status=NodeStatus.SKIPPED)
     assert document.is_skipped(Node.PAGES, 1)  # also while the other nodes are processed
-    builders.run_pipeline(document, {Node.CLASSIFY: UNCERTAIN})
+    builders.run_pipeline(document, {Node.JUDGE: UNCERTAIN})
     document.pull_events()
     assert document.is_skipped(Node.PAGES, 1)
     assert not document.is_skipped(Node.OCR, 1) and not document.is_skipped(Node.PAGES, 2)
@@ -502,7 +526,7 @@ def test_a_skipped_node_is_caught_up_on_without_touching_status_or_lane() -> Non
     (event,) = green.pull_events()
     assert isinstance(event, NodeCompleted) and event.outcome is Outcome.FAILED
     assert green.is_skipped(Node.PAGES, 1)
-    assert green.reprocess_from(Node.CLASSIFY, LATER) == (Node.CLASSIFY,)
+    assert green.reprocess_from(Node.JUDGE, LATER) == (Node.JUDGE,)
 
 
 def test_confirming_waits_for_a_node_still_running() -> None:
@@ -516,8 +540,9 @@ def test_confirming_waits_for_a_node_still_running() -> None:
     assert document.confirm(Node.APPLY_RULES, NOW) == (
         Node.PAGES,
         Node.PARSE,
-        Node.CLASSIFY,
-        Node.EXTRACT_FIELDS,
+        *SIGNAL_NODES,
+        Node.JUDGE,
+        Node.FIELDS,
     )
 
 
@@ -561,11 +586,11 @@ def test_a_skipped_node_counts_as_done_for_the_nodes_after_it() -> None:
 
 def test_events_follow_the_state_changes() -> None:
     document = received()
-    builders.run_pipeline(document, {Node.CLASSIFY: UNCERTAIN})
+    builders.run_pipeline(document, {Node.JUDGE: UNCERTAIN})
     events = document.pull_events()
     completed = [event for event in events if isinstance(event, NodeCompleted)]
     assert [event.node for event in completed] == list(NODES[1:-1])
-    assert completed[3].outcome is Outcome.UNCERTAIN
+    assert completed[NODES.index(Node.JUDGE) - 1].outcome is Outcome.UNCERTAIN
     assert not any(isinstance(event, DocumentFiled) for event in events)
     assert [type(event) for event in events[-2:]] == [NodeCompleted, LaneChanged]
     lane_changed = events[-1]

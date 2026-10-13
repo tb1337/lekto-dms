@@ -381,7 +381,7 @@ class MigrationSuite:
                 await connection.execute(insert(table).values({**defaults, **values}))
         before = await _stored(empty_database, old=True)
 
-        await migrate(empty_database)
+        await migrate(empty_database, "0015")  # 0016 renames the nodes it reads
         after = await _stored(empty_database, old=False)
         assert after["definition"] == (ids["field"], "Due", "date")
         assert after["scope"] == (ids["field"], ids["type"])
@@ -572,7 +572,7 @@ class MigrationSuite:
                 defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
                 await connection.execute(insert(table).values({**defaults, **values}))
 
-        await migrate(empty_database)
+        await migrate(empty_database, "0015")  # 0016 renames the nodes it reads
 
         def done(outcome: str, started: datetime, finished: datetime) -> dict[str, Any]:
             return {
@@ -734,6 +734,108 @@ class MigrationSuite:
         }
         await _downgrade(empty_database, "0013")
 
+    async def test_signals_come_before_the_judge_and_back(self, empty_database: Database) -> None:
+        """Revision 0016 renames `classify` and `extract_fields` in the node states, the log,
+        the jobs and the events; the signals are skipped where the judge ran, waiting where it
+        waits, with jobs once the text is parsed. The downgrade restores the old graph."""
+        await migrate(empty_database, "0015")
+        ids = {name: new_id() for name in ("user", "drawer", "done", "parsed", "early")}
+
+        def state(status: str, outcome: str | None = None) -> dict[str, Any]:
+            return {"status": status, "outcome": outcome, "started_at": None, "finished_at": None}
+
+        ok = state("done", "ok")
+        before = ("receive", "ocr", "pages", "parse")
+        after = ("classify", "extract_fields", "apply_rules", "file")
+        graphs = {
+            "done": {**dict.fromkeys(before, ok), **dict.fromkeys(after, ok)},
+            "parsed": {**dict.fromkeys(before, ok), **dict.fromkeys(after, state("waiting"))},
+            "early": {
+                "receive": ok,
+                "pages": ok,
+                **dict.fromkeys(("ocr", "parse", *after), state("waiting")),
+            },
+        }
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
+            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+        ]
+        for number, (name, graph) in enumerate(graphs.items()):
+            values = {
+                "id": ids[name],
+                "owner_id": ids["user"],
+                "drawer_id": ids["drawer"],
+                "sha256": str(number) * 64,
+                "processing_nodes": graph,
+            }
+            rows.append((t.documents, values))
+        parsed = str(ids["parsed"])
+        rows += [
+            (
+                t.processing_log,
+                {"document_id": ids["done"], "node": "classify", "input": {}, "output": {}},
+            ),
+            (
+                t.jobs,
+                {
+                    "id": new_id(),
+                    "kind": "pipeline.node",
+                    "payload": {"document_id": parsed, "node": "classify", "run": 1},
+                    "dedup_key": f"{parsed}:1:classify",
+                    "status": "queued",
+                },
+            ),
+            (
+                t.outbox,
+                {
+                    "event_id": new_id(),
+                    "type": "document.node_completed",
+                    "payload": {"document_id": parsed, "node": "extract_fields", "run": 1},
+                },
+            ),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+
+        async def stored() -> tuple[dict[Any, Any], list[Any], list[Any], list[Any]]:
+            async with empty_database.reading() as connection:
+                documents = (
+                    await connection.execute(
+                        select(t.documents.c.id, t.documents.c.processing_nodes)
+                    )
+                ).all()
+                log = (await connection.execute(select(t.processing_log.c.node))).all()
+                jobs = (
+                    await connection.execute(
+                        select(t.jobs.c.dedup_key).where(t.jobs.c.status == "queued")
+                    )
+                ).all()
+                events = (await connection.execute(select(t.outbox.c.payload))).all()
+            return (
+                {id: nodes for id, nodes in documents},
+                [row[0] for row in log],
+                sorted(row[0] for row in jobs),
+                [row[0]["node"] for row in events],
+            )
+
+        await migrate(empty_database)
+        nodes, log, jobs, events = await stored()
+        assert nodes[ids["done"]]["judge"] == ok and nodes[ids["done"]]["fields"] == ok
+        assert {nodes[ids["done"]][signal]["status"] for signal in _SIGNALS} == {"skipped"}
+        assert {nodes[ids["parsed"]][signal]["status"] for signal in _SIGNALS} == {"waiting"}
+        assert {nodes[ids["early"]][signal]["status"] for signal in _SIGNALS} == {"waiting"}
+        assert "classify" not in nodes[ids["parsed"]]
+        assert (log, events) == (["judge"], ["fields"])
+        assert jobs == sorted(f"{parsed}:1:{signal}" for signal in _SIGNALS)
+
+        await _downgrade(empty_database, "0015")
+        nodes, log, jobs, events = await stored()
+        assert set(nodes[ids["parsed"]]) == set(graphs["parsed"])
+        assert nodes[ids["done"]] == graphs["done"]
+        assert (log, events, jobs) == (["classify"], ["extract_fields"], [f"{parsed}:1:classify"])
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -776,6 +878,7 @@ _OLD = {
         sa.column("value_text", sa.Text()),
     ),
 }
+_SIGNALS = ("signal_llm", "signal_classifier", "signal_neighbours", "signal_facts")
 _OK_UP_TO_CLASSIFY = {"receive": "ok", "ocr": "ok", "parse": "ok", "classify": "ok"}
 
 _DEFAULTS: dict[str, Any] = {

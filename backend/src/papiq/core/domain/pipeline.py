@@ -14,14 +14,22 @@ from papiq.core.domain.validation import require_utc
 
 class Node(StrEnum):
     """The nodes of the ingest graph, in a topological order: every node comes after the nodes
-    it needs (`GRAPH`). Nodes that do not need each other run side by side."""
+    it needs (`GRAPH`). Nodes that do not need each other run side by side.
+
+    The signals each propose metadata from one source: the language model, the trained
+    classifier, similar confirmed documents, facts in the text (names, identifiers). `judge`
+    decides from all of them, `fields` reads the fields of the decided type."""
 
     RECEIVE = "receive"
     OCR = "ocr"
     PAGES = "pages"
     PARSE = "parse"
-    CLASSIFY = "classify"
-    EXTRACT_FIELDS = "extract_fields"
+    SIGNAL_LLM = "signal_llm"
+    SIGNAL_CLASSIFIER = "signal_classifier"
+    SIGNAL_NEIGHBOURS = "signal_neighbours"
+    SIGNAL_FACTS = "signal_facts"
+    JUDGE = "judge"
+    FIELDS = "fields"
     APPLY_RULES = "apply_rules"
     FILE = "file"
 
@@ -46,14 +54,20 @@ class Node(StrEnum):
         return _closure(self, lambda node: node.successors)
 
 
+SIGNALS: frozenset["Node"] = frozenset(
+    {Node.SIGNAL_LLM, Node.SIGNAL_CLASSIFIER, Node.SIGNAL_NEIGHBOURS, Node.SIGNAL_FACTS}
+)
+"""The nodes that propose metadata for the judge; they never decide the lane themselves."""
+
 GRAPH: Mapping[Node, frozenset[Node]] = {
     Node.RECEIVE: frozenset(),
     Node.OCR: frozenset({Node.RECEIVE}),
     Node.PAGES: frozenset({Node.RECEIVE}),
     Node.PARSE: frozenset({Node.OCR}),
-    Node.CLASSIFY: frozenset({Node.PARSE}),
-    Node.EXTRACT_FIELDS: frozenset({Node.CLASSIFY}),
-    Node.APPLY_RULES: frozenset({Node.EXTRACT_FIELDS}),
+    **dict.fromkeys(SIGNALS, frozenset({Node.PARSE})),
+    Node.JUDGE: SIGNALS,
+    Node.FIELDS: frozenset({Node.JUDGE}),
+    Node.APPLY_RULES: frozenset({Node.FIELDS}),
     Node.FILE: frozenset({Node.APPLY_RULES, Node.PAGES}),
 }
 """What each node needs. `receive` is the source, `file` the only sink: every other node is

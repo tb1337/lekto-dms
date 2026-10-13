@@ -402,7 +402,7 @@ async def test_what_was_sent_is_kept_per_run(world: World) -> None:
     document = await document_with(world)
     await classify_step(world, fake).run(document)
 
-    (kept,) = await exchanges(world, document, Node.CLASSIFY)
+    (kept,) = await exchanges(world, document, Node.JUDGE)
     assert kept.run == document.processing.run
     first, second = kept.calls
     assert (first.system, first.user) == (CLASSIFY_SYSTEM, fake.requests[0].user)
@@ -413,18 +413,18 @@ async def test_what_was_sent_is_kept_per_run(world: World) -> None:
 
     # The same run again replaces its calls; a later run is added.
     await classify_step(world, model(classification())).run(document)
-    (again,) = await exchanges(world, document, Node.CLASSIFY)
+    (again,) = await exchanges(world, document, Node.JUDGE)
     assert len(again.calls) == 1
     later = replace(document, processing=replace(document.processing, run=2))
     await classify_step(world, model(classification())).run(later)
-    assert [run.run for run in await exchanges(world, document, Node.CLASSIFY)] == [1, 2]
+    assert [run.run for run in await exchanges(world, document, Node.JUDGE)] == [1, 2]
 
 
 async def test_the_exchanges_of_a_failed_step_are_kept(world: World) -> None:
     await seed(world)
     document = await document_with(world)
     await classify_step(world, model("not json")).run(document)
-    (kept,) = await exchanges(world, document, Node.CLASSIFY)
+    (kept,) = await exchanges(world, document, Node.JUDGE)
     assert [call.answer for call in kept.calls] == ["not json", "not json"]
 
 
@@ -432,9 +432,9 @@ async def test_the_field_extraction_keeps_its_own_exchanges(world: World) -> Non
     seeded = await seed(world)
     document = await document_with(world, type=seeded.types["Rechnung"])
     await extract_step(world, model(extraction())).run(document)
-    (kept,) = await exchanges(world, document, Node.EXTRACT_FIELDS)
+    (kept,) = await exchanges(world, document, Node.FIELDS)
     assert kept.calls[0].system == EXTRACT_SYSTEM
-    assert not await world.object_store.exists(exchanges_key(document.id, Node.CLASSIFY))
+    assert not await world.object_store.exists(exchanges_key(document.id, Node.JUDGE))
 
 
 async def test_two_unfit_answers_fail_the_step(world: World) -> None:
@@ -801,8 +801,8 @@ def responder(
 async def run(world: World, fake: FakeLanguageModel) -> tuple[Any, Document]:
     owner = await world.user()
     executors: dict[Node, NodeExecutor] = {
-        Node.CLASSIFY: classify_step(world, fake),
-        Node.EXTRACT_FIELDS: extract_step(world, fake),
+        Node.JUDGE: classify_step(world, fake),
+        Node.FIELDS: extract_step(world, fake),
     }
     pipeline = world.pipeline(executors)
     document = await pipeline.receive(owner.id, incoming(b"%PDF-1.7\n%%EOF\n"), filename="a.pdf")
@@ -824,7 +824,7 @@ async def test_a_verified_document_is_filed_green(world: World) -> None:
     assert document.fields[seeded.fields["Rechnungsbetrag"].id] == Money(Decimal("84.20"), "EUR")
     assert "document.filed" in world.event_types()
     log = await world.documents.processing_log(owner.id, document.id)
-    classified = next(entry for entry in log if entry.node is Node.CLASSIFY)
+    classified = next(entry for entry in log if entry.node is Node.JUDGE)
     assert classified.result.output["answer"] == classification()
     assert len(checks(classified.result)) == 4
 
@@ -917,4 +917,4 @@ async def test_a_failure_to_keep_the_exchanges_does_not_fail_the_node(
     outcome = await classify_step(world, model(classification())).run(document)
     assert isinstance(outcome, MetadataResult)
     assert outcome.result.outcome is Outcome.OK
-    assert not await world.object_store.exists(exchanges_key(document.id, Node.CLASSIFY))
+    assert not await world.object_store.exists(exchanges_key(document.id, Node.JUDGE))

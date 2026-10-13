@@ -514,7 +514,7 @@ class UnitOfWorkContract:
             {d.id: d for d in definitions},
             NOW,
         )
-        builders.run_pipeline(document, {Node.CLASSIFY: UNCERTAIN})
+        builders.run_pipeline(document, {Node.JUDGE: UNCERTAIN})
         document.pull_events()
         async with uow_factory() as uow:
             await uow.contacts.add(contact)
@@ -536,7 +536,7 @@ class UnitOfWorkContract:
         failed.retry(NOW)
         failed.pull_events()
         received = builders.document(owner, drawer)
-        in_review = builders.processed(owner, drawer, {Node.CLASSIFY: UNCERTAIN})
+        in_review = builders.processed(owner, drawer, {Node.JUDGE: UNCERTAIN})
         assert in_review.processing.status is ProcessingStatus.REVIEW
         async with uow_factory() as uow:
             for document in (failed, received, in_review):
@@ -599,11 +599,11 @@ class UnitOfWorkContract:
         documents = [
             builders.processed(owner, private),
             builders.processed(owner, shared),
-            builders.processed(owner, shared, {Node.CLASSIFY: UNCERTAIN}),
+            builders.processed(owner, shared, {Node.JUDGE: UNCERTAIN}),
             builders.processed(owner, shared, {Node.OCR: FAILED}),
             builders.document(owner, shared),
             builders.processed(reader, shared),
-            builders.processed(reader, shared, {Node.CLASSIFY: UNCERTAIN}),
+            builders.processed(reader, shared, {Node.JUDGE: UNCERTAIN}),
             builders.processed(reader, reader_default),
         ]
         async with uow_factory() as uow:
@@ -698,7 +698,7 @@ class UnitOfWorkContract:
             document = builders.processed(
                 owner,
                 other if number == 5 else drawer,
-                {Node.CLASSIFY: UNCERTAIN} if number == 4 else None,
+                {Node.JUDGE: UNCERTAIN} if number == 4 else None,
             )
             tags = frozenset({tax.id, paid.id} if number < 2 else {tax.id} if number < 4 else set())
             document.apply_changes(

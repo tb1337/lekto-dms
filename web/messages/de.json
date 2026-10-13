@@ -616,5 +616,22 @@
 	"json_more": "{count} weitere anzeigen (von {total})",
 	"content_json_too_large": "Zu groß für die Anzeige; lade die Datei herunter.",
 	"json_item": "1 Eintrag",
-	"json_key": "1 Schlüssel"
+	"json_key": "1 Schlüssel",
+	"master_identifiers": "Kennungen",
+	"master_identifiers_hint": "IBAN, USt-IdNr., Kunden- oder Vertragsnummer, die Domain der E-Mail- und Webadressen. Steht eine im Dokument, belegt sie den Kontakt. Papiq lernt weitere aus bestätigten Dokumenten.",
+	"master_identifier_one": "1 Kennung",
+	"master_identifiers_many": "{count} Kennungen",
+	"identifier_add": "Kennung hinzufügen",
+	"identifier_kind": "Art der Kennung",
+	"identifier_value": "Kennung",
+	"identifier_remove": "Kennung entfernen",
+	"identifier_kind_iban": "IBAN",
+	"identifier_kind_vat_id": "USt-IdNr.",
+	"identifier_kind_customer_number": "Kunden- oder Vertragsnummer",
+	"identifier_kind_email_domain": "Domain (E-Mail, Web)",
+	"identifier_learned": "gelernt",
+	"identifier_rejected": "verworfen",
+	"identifier_keep": "Übernehmen",
+	"identifier_reject": "Verwerfen",
+	"identifier_unblock": "Wieder zulassen"
 }

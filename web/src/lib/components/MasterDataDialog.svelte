@@ -1,15 +1,17 @@
 <script lang="ts">
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
+	import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { Textarea } from '#lib/components/ui/textarea/index.ts';
 	import { describeError } from '#lib/errors.ts';
+	import { changesOf, type IdentifierRow, rowsOf } from '#lib/identifiers.ts';
 	import { type Extra, type Item, parseAliases, type Values } from '#lib/masterdata-api.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
-	// Create or change a contact (name, aliases), a document type (name, description) or a tag
-	// (name). The API decides what is valid; its answer (e.g. 409 for a taken name) shows below.
+	// Create or change a contact (name, aliases, identifiers), a document type (name,
+	// description) or a tag (name). The API decides what is valid; its answer (e.g. 409 for a taken name) shows below.
 	let {
 		open = $bindable(false),
 		title,
@@ -28,6 +30,7 @@
 
 	let name = $state('');
 	let aliases = $state('');
+	let identifiers = $state<IdentifierRow[]>([]);
 	let description = $state('');
 	let error = $state<string | null>(null);
 	let busy = $state(false);
@@ -36,6 +39,7 @@
 		if (open) {
 			name = initial?.name ?? '';
 			aliases = (initial?.aliases ?? []).join('\n');
+			identifiers = rowsOf(initial?.identifiers);
 			description = initial?.description ?? '';
 			error = null;
 		}
@@ -50,6 +54,7 @@
 			await onsubmit({
 				name: name.trim(),
 				aliases: parseAliases(aliases),
+				...changesOf(identifiers),
 				description: description.trim() || null
 			});
 			open = false;
@@ -62,7 +67,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-w-lg">
+	<Dialog.Content class="max-h-[90vh] max-w-lg overflow-y-auto sm:max-w-xl">
 		<form class="flex flex-col gap-4" onsubmit={submit} novalidate>
 			<Dialog.Header><Dialog.Title>{title}</Dialog.Title></Dialog.Header>
 			<Field.Field>
@@ -74,6 +79,11 @@
 					<Field.Label for="master-aliases">{m.master_aliases()}</Field.Label>
 					<Textarea id="master-aliases" bind:value={aliases} rows={4} />
 					<Field.Description>{m.master_aliases_hint()}</Field.Description>
+				</Field.Field>
+				<Field.Field>
+					<Field.Label>{m.master_identifiers()}</Field.Label>
+					<IdentifiersEditor bind:rows={identifiers} />
+					<Field.Description>{m.master_identifiers_hint()}</Field.Description>
 				</Field.Field>
 			{:else if extra === 'description'}
 				<Field.Field>

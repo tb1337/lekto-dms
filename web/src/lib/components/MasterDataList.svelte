@@ -21,6 +21,11 @@
 	let editing = $state<Item | null>(null);
 	let removing = $state<Item | null>(null);
 
+	/** Identifiers that count: entered and learned. */
+	function counted(item: Item): number {
+		return (item.identifiers ?? []).filter((entry) => entry.source !== 'rejected').length;
+	}
+
 	async function load() {
 		try {
 			items = await ops.list();
@@ -78,7 +83,15 @@
 							<span class="truncate text-sm text-muted-foreground">
 								{m.master_aliases_list({ aliases: item.aliases.join(', ') })}
 							</span>
-						{:else if item.description}
+						{/if}
+						{#if counted(item) > 0}
+							<span class="truncate text-sm text-muted-foreground">
+								{counted(item) === 1
+									? m.master_identifier_one()
+									: m.master_identifiers_many({ count: counted(item) })}
+							</span>
+						{/if}
+						{#if !item.aliases?.length && item.description}
 							<span class="truncate text-sm text-muted-foreground">{item.description}</span>
 						{/if}
 					</div>

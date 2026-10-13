@@ -1,6 +1,7 @@
 /** Create, change and delete for the three simple kinds of master data. */
 import { api } from '#lib/api/client.ts';
 import { unwrap } from '#lib/api/call.ts';
+import type { IdentifierIn, IdentifierOut } from '#lib/identifiers.ts';
 import type { MasterData } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
@@ -9,13 +10,19 @@ export type SimpleKind = 'contacts' | 'document-types' | 'tags';
 /** A contact's aliases or a document type's description; tags have neither. */
 export type Extra = 'aliases' | 'description' | null;
 
-/** One item as listed: contacts carry aliases, document types a description. */
-export type Item = MasterData & { aliases?: string[]; description?: string | null };
+/** One item as listed: contacts carry aliases and identifiers, document types a description. */
+export type Item = MasterData & {
+	aliases?: string[];
+	identifiers?: IdentifierOut[];
+	description?: string | null;
+};
 
-/** What a dialog edits: the name and, by kind, aliases or a description. */
+/** What a dialog edits: the name and, by kind, aliases and identifiers or a description. */
 export interface Values {
 	name: string;
 	aliases: string[];
+	identifiers: IdentifierIn[];
+	rejected_identifiers: IdentifierIn[];
 	description: string | null;
 }
 
@@ -37,10 +44,15 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		add: m.master_add_contact,
 		extra: 'aliases',
 		list: () => unwrap(api.GET('/api/v1/contacts')),
-		create: ({ name, aliases }) =>
-			unwrap(api.POST('/api/v1/contacts', { body: { name, aliases } })),
-		change: (id, { name, aliases }) =>
-			unwrap(api.PATCH('/api/v1/contacts/{id}', { ...path(id), body: { name, aliases } })),
+		create: ({ name, aliases, identifiers }) =>
+			unwrap(api.POST('/api/v1/contacts', { body: { name, aliases, identifiers } })),
+		change: (id, { name, aliases, identifiers, rejected_identifiers }) =>
+			unwrap(
+				api.PATCH('/api/v1/contacts/{id}', {
+					...path(id),
+					body: { name, aliases, identifiers, rejected_identifiers }
+				})
+			),
 		remove: (id) => unwrap(api.DELETE('/api/v1/contacts/{id}', path(id)))
 	},
 	'document-types': {

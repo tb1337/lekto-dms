@@ -821,8 +821,9 @@ def _before_0009(table: sa.Table) -> sa.TableClause:
 
 def _current_and_outcomes(nodes: dict[str, Any]) -> tuple[str | None, dict[str, str]]:
     """The current node and the outcomes as the revisions before 0010 stored them, derived
-    from the state of every node (the way the downgrade does it)."""
-    waiting = [name for name, state in nodes.items() if state["status"] == "waiting"]
+    from the state of every node (the way the downgrade does it). In graph order: Postgres
+    keeps the keys of a JSONB object shortest first, not as they were written."""
+    waiting = [node.value for node in NODES if nodes.get(node.value, {}).get("status") == "waiting"]
     outcomes = {
         name: state["outcome"]
         for name, state in nodes.items()

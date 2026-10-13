@@ -60,7 +60,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-w-3xl">
+	<Dialog.Content class="sm:max-w-3xl">
 		<Dialog.Header>
 			<Dialog.Title>{title}</Dialog.Title>
 			<Dialog.Description>{meta}</Dialog.Description>

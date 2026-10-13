@@ -194,8 +194,8 @@
 		</nav>
 
 		{#if tab === 'details'}
-			<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_28rem]">
-				<div class="flex min-h-[32rem] flex-col lg:h-[calc(100vh-15rem)]">
+			<div class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_28rem]">
+				<div class="flex min-h-[32rem] flex-col lg:h-[calc(100vh-19.5rem)]">
 					{#key id}
 						{#if archive || !document.page_count}
 							<PdfViewer
@@ -211,7 +211,7 @@
 						{/if}
 					{/key}
 				</div>
-				<div class="flex min-h-[32rem] flex-col lg:h-[calc(100vh-15rem)]">
+				<div class="flex min-h-[32rem] flex-col lg:h-[calc(100vh-19.5rem)]">
 					{#if lookup}
 						{#key id}
 							<DocumentForm

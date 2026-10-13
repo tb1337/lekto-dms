@@ -628,7 +628,7 @@
 </form>
 
 <Dialog.Root open={preview !== null} onOpenChange={(open) => !open && (preview = null)}>
-	<Dialog.Content class="max-w-xl">
+	<Dialog.Content class="sm:max-w-xl">
 		<Dialog.Header>
 			<Dialog.Title>{m.dryrun_title()}</Dialog.Title>
 			<Dialog.Description>{m.dryrun_hint()}</Dialog.Description>

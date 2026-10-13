@@ -200,4 +200,29 @@ def _boxes(
         box = geometry.box(*textpage.get_rect(index))
         if box is not None and box.width > 0 and box.height > 0:
             boxes.append(box)
-    return tuple(boxes)
+    return _lines(boxes)
+
+
+def _lines(boxes: list[Box]) -> tuple[Box, ...]:
+    """One box per line: an OCR text layer places every word on its own, PDFium gives a box
+    per word then. Boxes that share most of their height and stand close are joined."""
+    joined: list[Box] = []
+    for box in sorted(boxes, key=lambda box: (round(box.y, 2), box.x)):
+        last = joined[-1] if joined else None
+        if last is not None and _same_line(last, box):
+            joined[-1] = Box.clamped(
+                min(last.x, box.x),
+                min(last.y, box.y),
+                max(last.x + last.width, box.x + box.width),
+                max(last.y + last.height, box.y + box.height),
+            )
+        else:
+            joined.append(box)
+    return tuple(joined)
+
+
+def _same_line(left: Box, right: Box) -> bool:
+    overlap = min(left.y + left.height, right.y + right.height) - max(left.y, right.y)
+    gap = right.x - (left.x + left.width)
+    height = min(left.height, right.height)
+    return overlap >= height / 2 and gap <= 2 * max(left.height, right.height)

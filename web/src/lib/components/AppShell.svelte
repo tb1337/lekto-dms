@@ -34,6 +34,10 @@
 	const adminSections = $derived(sections.filter((section) => section.admin));
 	const username = $derived(session.user?.username ?? '');
 	let menuOpen = $state(false);
+	// A document opened from the inbox belongs to the inbox.
+	const currentPath = $derived(
+		page.url.searchParams.get('from') === 'inbox' ? `${home()}inbox` : page.url.pathname
+	);
 
 	async function signOut() {
 		try {
@@ -47,7 +51,7 @@
 </script>
 
 {#snippet pill(section: Section, vertical: boolean)}
-	{@const current = isCurrent(section, page.url.pathname)}
+	{@const current = isCurrent(section, currentPath)}
 	<a
 		href={href(section)}
 		aria-current={current ? 'page' : undefined}

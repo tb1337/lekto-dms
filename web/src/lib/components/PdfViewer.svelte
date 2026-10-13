@@ -141,10 +141,7 @@
 			const target = entry.target as HTMLElement;
 			const number = Number(target.dataset.page);
 			const canvas = target.querySelector('canvas');
-			if (entry.isIntersecting && canvas && number > 0) {
-				void draw(number, canvas);
-				current = number;
-			}
+			if (entry.isIntersecting && canvas && number > 0) void draw(number, canvas);
 		}
 	}
 
@@ -163,6 +160,18 @@
 		await layout();
 	}
 
+	/** The page shown in the upper third of the view (the pages are drawn ahead of it). */
+	function follow() {
+		if (!container) return;
+		const line = container.scrollTop + container.clientHeight / 3;
+		let found = 1;
+		for (const node of container.querySelectorAll<HTMLElement>('[data-page]')) {
+			if (node.offsetTop > line) break;
+			found = Number(node.dataset.page);
+		}
+		current = found;
+	}
+
 	/** Scroll so that the place stands in the upper third of the view. */
 	export function reveal(place: Place) {
 		const node = container?.querySelector<HTMLElement>(`[data-page="${place.page}"]`);
@@ -177,7 +186,34 @@
 		else if (event.key === '0') void setZoom(1);
 	}
 
-	onMount(() => void open());
+	// The pages fit the width: a viewer that gets narrower or wider (window, panel) lays them
+	// out anew.
+	let width = 0;
+	let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+	function resized() {
+		const next = container?.clientWidth ?? 0;
+		if (Math.abs(next - width) < 24) return;
+		width = next;
+		clearTimeout(resizeTimer);
+		resizeTimer = setTimeout(() => {
+			observer?.disconnect();
+			observer = null;
+			void layout();
+		}, 150);
+	}
+
+	onMount(() => {
+		void open();
+		const watcher = new ResizeObserver(resized);
+		if (container) {
+			width = container.clientWidth;
+			watcher.observe(container);
+		}
+		return () => {
+			watcher.disconnect();
+			clearTimeout(resizeTimer);
+		};
+	});
 	onDestroy(() => {
 		destroyed = true;
 		observer?.disconnect();
@@ -221,6 +257,7 @@
 		tabindex="0"
 		aria-label={label}
 		onkeydown={keydown}
+		onscroll={follow}
 		class="relative flex min-h-[24rem] flex-1 flex-col items-center gap-3 overflow-auto p-3"
 	>
 		{#if loading}

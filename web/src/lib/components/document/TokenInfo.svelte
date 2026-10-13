@@ -64,7 +64,7 @@
 		<div
 			{id}
 			role="tooltip"
-			class="absolute top-full left-1/2 z-20 mt-1.5 w-72 -translate-x-1/2 rounded-xl bg-foreground px-3.5 py-3 text-[12.5px] leading-normal text-background shadow-lg"
+			class="absolute top-full left-1/2 z-20 mt-1.5 w-80 -translate-x-1/2 rounded-xl bg-foreground px-3.5 py-3 text-[12.5px] leading-normal text-background shadow-lg"
 		>
 			<p class="mb-1.5 font-semibold">
 				{model ?? ''}{#if usage.attempts > 1}
@@ -72,7 +72,7 @@
 			</p>
 			<dl class="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 tabular-nums">
 				{#each rows as [name, value] (name)}
-					<dt class="opacity-75">{name}</dt>
+					<dt class="whitespace-nowrap opacity-75">{name}</dt>
 					<dd class="text-right">{value}</dd>
 				{/each}
 			</dl>

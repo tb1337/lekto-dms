@@ -7,10 +7,10 @@
 	import { ApiError } from '#lib/api/problem.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
+	import DocumentContent from '#lib/components/document/DocumentContent.svelte';
 	import DocumentForm from '#lib/components/document/DocumentForm.svelte';
 	import DocumentHeader from '#lib/components/document/DocumentHeader.svelte';
 	import PageImages from '#lib/components/document/PageImages.svelte';
-	import DocumentText from '#lib/components/DocumentText.svelte';
 	import PdfViewer from '#lib/components/PdfViewer.svelte';
 	import ProcessingGraph from '#lib/components/ProcessingGraph.svelte';
 	import ProcessingLog from '#lib/components/ProcessingLog.svelte';
@@ -233,7 +233,7 @@
 				</div>
 			</div>
 		{:else if tab === 'content'}
-			<DocumentText documentId={id} />
+			<DocumentContent documentId={id} filename={document.original_filename} />
 		{:else if tab === 'log'}
 			<ProcessingGraph processing={document.processing} {graph} />
 			{#if manageable}

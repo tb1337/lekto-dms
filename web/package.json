@@ -66,6 +66,7 @@
 		"vitest": "5.0.3"
 	},
 	"dependencies": {
+		"marked": "18.0.14",
 		"pdfjs-dist": "6.4.299",
 		"uqr": "0.1.3"
 	}

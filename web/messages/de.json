@@ -158,10 +158,8 @@
 	"node_status_waiting": "Wartet",
 	"node_status_running": "Läuft",
 	"node_status_skipped": "Übersprungen",
-	"text_title": "Erkannter Text",
 	"text_none": "Noch kein Text: das Dokument ist nicht ausgelesen.",
 	"text_length": "{characters} Zeichen",
-	"text_more": "Mehr anzeigen",
 	"upload_progress": "Schritt {done} von {total}",
 	"field_tag_add": "Tag hinzufügen",
 	"inbox_all": "Alle",
@@ -578,5 +576,13 @@
 	"tab_details": "Details",
 	"tab_content": "Inhalt",
 	"tab_log": "Protokoll",
-	"tab_log_attention": "Schritte unsicher oder fehlgeschlagen"
+	"tab_log_attention": "Schritte unsicher oder fehlgeschlagen",
+	"content_view": "Darstellung des Inhalts",
+	"content_text": "Text",
+	"content_markdown": "Markdown",
+	"content_json": "Docling-JSON",
+	"content_copy": "Kopieren",
+	"content_copied": "Kopiert.",
+	"content_json_size": "content.json · {size} KB",
+	"content_json_cut": "Nur der Anfang ist zu sehen; der Download enthält alles."
 }

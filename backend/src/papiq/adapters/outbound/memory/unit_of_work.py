@@ -328,8 +328,9 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
             for row in self._all()
         )
 
-    async def confirmed_labels(self) -> KnownLabels:
-        confirmed = [row for row in self._all() if row.confirmed_at is not None]
+    async def confirmed_labels(self, reader: UserId) -> KnownLabels:
+        readable = await self.list_visible_to(reader)
+        confirmed = [row for row in readable if row.confirmed_at is not None]
         return KnownLabels(
             contacts=frozenset(row.contact_id for row in confirmed if row.contact_id is not None),
             document_types=frozenset(

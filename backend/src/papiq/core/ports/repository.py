@@ -168,9 +168,9 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         confirmations since the classifier was trained)."""
         ...
 
-    async def confirmed_labels(self) -> KnownLabels:
-        """The contacts, document types and tags the confirmed documents carry (of every
-        owner): what a similar document can name."""
+    async def confirmed_labels(self, reader: UserId) -> KnownLabels:
+        """The contacts, document types and tags the confirmed documents `reader` may read
+        carry: what a document similar to one of theirs can name."""
         ...
 
     async def exists(

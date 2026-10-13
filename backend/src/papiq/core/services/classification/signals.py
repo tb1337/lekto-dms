@@ -217,7 +217,7 @@ class NeighboursSignal:
             return abstained(f"the search index cannot be asked: {error}")
         neighbours: list[JsonValue] = []
         async with self._uow() as uow:
-            known = await uow.documents.confirmed_labels()
+            known = await uow.documents.confirmed_labels(owner.id)
             for hit in hits:
                 found = await uow.documents.find(hit.id)
                 if found is None or found.confirmed_at is None:

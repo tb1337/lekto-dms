@@ -656,12 +656,17 @@ class UnitOfWorkContract:
             assert await uow.documents.count_confirmed(after=NOW) == 1
 
     async def test_confirmed_labels(self, uow_factory: UnitOfWorkFactory) -> None:
-        """What the confirmed documents carry, of every owner; not what the others do."""
+        """What the confirmed documents a user may read carry; not what the open ones do, nor
+        another owner's."""
         owner, drawer = await owner_with_drawer(uow_factory)
-        known, other = (Contact.create(name=name, now=NOW) for name in ("Known", "Other"))
+        stranger, elsewhere = await owner_with_drawer(uow_factory)
+        known, other, foreign = (
+            Contact.create(name=name, now=NOW) for name in ("Known", "Other", "Foreign")
+        )
         kind = DocumentType.create(name="Invoice", now=NOW)
         tag, untouched = (Tag.create(name=name, now=NOW) for name in ("Energy", "Unused"))
         confirmed, open_ = builders.processed(owner, drawer), builders.processed(owner, drawer)
+        theirs = builders.processed(stranger, elsewhere)
         confirmed.apply_changes(
             DocumentChanges(
                 contact_id=known.id, document_type_id=kind.id, tag_ids=frozenset({tag.id})
@@ -669,24 +674,29 @@ class UnitOfWorkContract:
             {},
             NOW,
         )
-        confirmed.mark_confirmed(NOW)
         open_.apply_changes(
             DocumentChanges(contact_id=other.id, tag_ids=frozenset({untouched.id})), {}, NOW
         )
+        theirs.apply_changes(DocumentChanges(contact_id=foreign.id), {}, NOW)
+        for document in (confirmed, theirs):
+            document.mark_confirmed(NOW)
         async with uow_factory() as uow:
-            for contact in (known, other):
+            for contact in (known, other, foreign):
                 await uow.contacts.add(contact)
             await uow.document_types.add(kind)
             for label in (tag, untouched):
                 await uow.tags.add(label)
-            for document in (confirmed, open_):
+            for document in (confirmed, open_, theirs):
                 await uow.documents.add(document)
             await uow.commit()
         async with uow_factory() as uow:
-            assert await uow.documents.confirmed_labels() == KnownLabels(
+            assert await uow.documents.confirmed_labels(owner.id) == KnownLabels(
                 contacts=frozenset({known.id}),
                 document_types=frozenset({kind.id}),
                 tags=frozenset({tag.id}),
+            )
+            assert await uow.documents.confirmed_labels(stranger.id) == KnownLabels(
+                contacts=frozenset({foreign.id})
             )
 
     async def test_classifier_models(self, uow_factory: UnitOfWorkFactory) -> None:

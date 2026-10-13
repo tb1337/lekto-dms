@@ -135,13 +135,17 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             statement = statement.where(confirmed > after)
         return int((await self._tx.read(statement)).scalar_one())
 
-    async def confirmed_labels(self) -> KnownLabels:
+    async def confirmed_labels(self, reader: UserId) -> KnownLabels:
         documents, tags = t.documents, t.document_tags
         confirmed = documents.c.confirmed_at.is_not(None)
+        readable = visible_to(reader)
 
         async def values(column: Any, source: Any) -> list[Any]:
             statement = (
-                select(column).select_from(source).where(confirmed, column.is_not(None)).distinct()
+                select(column)
+                .select_from(source)
+                .where(confirmed, readable, column.is_not(None))
+                .distinct()
             )
             return [row[0] for row in await self._tx.read(statement)]
 

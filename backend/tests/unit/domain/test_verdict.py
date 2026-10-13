@@ -181,6 +181,23 @@ def test_a_signal_naming_another_value_contradicts_even_one_it_does_not_know() -
     assert check.reason == "the signals disagree: 'Max Nord' or 'Beispielbank'"
 
 
+def test_classes_of_the_model_that_no_longer_exist_are_left_out() -> None:
+    """Two contacts were merged after the training: the model still names the deleted one."""
+    gone = Contact.create(name="Stadtwerke Alt", now=NOW)
+    kind = DocumentType.create(name="Abschlag", now=NOW)
+    signals = Signals(
+        model=model(sender="Stadtwerke Musterstadt", document_type="Rechnung"),
+        classifier=classifier(gone.id, kind=kind.id, tags={TagId(gone.id): 0.99}),
+        facts=NAMED_UTILITY,
+    )
+    contact = judge_contact(signals, CONTACTS)
+    assert (contact.outcome, contact.value) == (Outcome.OK, str(UTILITY.id))
+    # The classifier knows invoices and did not name it: the model alone is not enough, but the
+    # deleted type is no contradiction.
+    assert judge_type(signals, TYPES).reason == "only one signal names 'Rechnung'"
+    assert judge_tags(signals, TAGS).value == []
+
+
 def test_an_identifier_alone_is_a_suggestion() -> None:
     check = judge_contact(Signals(facts=UTILITY_IBAN), CONTACTS)
     assert (check.outcome, check.suggestion) == (Outcome.UNCERTAIN, str(UTILITY.id))

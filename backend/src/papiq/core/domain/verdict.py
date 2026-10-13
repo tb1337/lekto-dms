@@ -300,10 +300,16 @@ def _contact_view(
         found = best_match(model.recipient, pairs)
         if found.best is not None and found.score >= thresholds.accept:
             recipient = found.best.id
-    classifier = signals.classifier
-    classifier_names = _top(classifier.contacts if classifier else (), thresholds.classifier)
+    names = {contact.id: contact for contact in contacts}
+    # A model trained before a contact was deleted (two merged) still knows it: leave it out.
+    ranking = [
+        (id, p)
+        for id, p in (signals.classifier.contacts if signals.classifier else ())
+        if id in names
+    ]
+    classifier_names = _top(ranking, thresholds.classifier)
     neighbours = signals.neighbours or ()
-    votes = Counter(item.contact for item in neighbours if item.contact is not None)
+    votes = Counter(item.contact for item in neighbours if item.contact in names)
     neighbours_name = _majority(votes, len(neighbours))
     proposers: dict[ContactId, tuple[str, ...]] = {}
     for signal, named in (
@@ -314,14 +320,14 @@ def _contact_view(
         if named is not None:
             proposers[named] = (*proposers.get(named, ()), signal)
     return _ContactView(
-        names={contact.id: contact for contact in contacts},
+        names=names,
         sender=sender,
         quote=model.sender_quote if model else None,
         matched=matched,
         match_score=match_score,
         model_names=model_names,
         recipient=recipient,
-        probabilities=dict(classifier.contacts) if classifier else {},
+        probabilities=dict(ranking),
         classifier_names=classifier_names,
         neighbours=neighbours,
         votes=votes,
@@ -386,10 +392,13 @@ def judge_type(
         proposed if proposed and by_model is None else None
     )
     classifier = signals.classifier
-    probabilities = dict(classifier.document_types) if classifier else {}
-    classifier_names = _top(classifier.document_types if classifier else (), thresholds.classifier)
+    ranking = [
+        (id, p) for id, p in (classifier.document_types if classifier else ()) if id in names
+    ]
+    probabilities = dict(ranking)
+    classifier_names = _top(ranking, thresholds.classifier)
     neighbours = signals.neighbours or ()
-    votes = Counter(item.document_type for item in neighbours if item.document_type is not None)
+    votes = Counter(item.document_type for item in neighbours if item.document_type in names)
     neighbours_name = _majority(votes, len(neighbours))
     namers: dict[DocumentTypeId, tuple[str, ...]] = {}
     for signal, named in (
@@ -514,7 +523,9 @@ def judge_tags(
     by_model = {found.id for name in proposed_names if (found := _by_name(tags, name))}
     unknown = [name for name in proposed_names if _by_name(tags, name) is None]
     classifier = signals.classifier
-    probabilities = dict(classifier.tags) if classifier else {}
+    probabilities = {
+        id: p for id, p in (classifier.tags if classifier else {}).items() if id in names
+    }
     neighbours = signals.neighbours or ()
     carried = Counter(tag for item in neighbours for tag in item.tags)
 

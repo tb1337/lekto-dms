@@ -11,6 +11,7 @@ from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.imports import IMPORTED, ImportedMetadata
 from papiq.core.domain.pipeline import Node, NodeResult, Outcome
 from papiq.core.ports import UnitOfWorkFactory
+from papiq.core.services.classification.signals import abstained
 from papiq.core.services.pipeline import DeferredResult, MetadataResult, NodeExecutor
 
 REASON = "taken over from the source system"
@@ -50,10 +51,11 @@ class _ImportedStep:
 
 
 class ImportedSignal(_ImportedStep):
-    """Nothing to propose: the source system's metadata is applied as it is."""
+    """Nothing to propose: the source system's metadata is applied as it is. The signal
+    abstains, as one without its service does."""
 
     def _apply(self, imported: ImportedMetadata) -> NodeResult:
-        return NodeResult(outcome=Outcome.OK, reason=REASON, model_version=IMPORTED)
+        return abstained(REASON, model_version=IMPORTED)
 
 
 class ImportedJudgeNode(_ImportedStep):

@@ -151,6 +151,9 @@ async def test_a_rule_does_not_replace_the_models_value(world: World) -> None:
     await world.drain(r.pipeline())
     document = await r.stored(document)
     assert (document.lane, document.contact_id) == (Lane.GREEN, rule.id)
+    # The confirmation records the model's value the owner corrected.
+    (confirmed,) = await r.rule_entries(document, PERSON)
+    assert confirmed.result.output["corrected"] == ["contact"]
 
 
 async def test_a_forced_review_holds_the_document_once(world: World) -> None:

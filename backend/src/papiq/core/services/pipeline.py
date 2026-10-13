@@ -1,6 +1,7 @@
 """Ingest and processing: receive a document, run its nodes as jobs, retry and reprocess."""
 
 import asyncio
+import copy
 import hashlib
 import logging
 import random
@@ -65,7 +66,7 @@ from papiq.core.services.inbox import (
 )
 from papiq.core.services.master_data import learn_alias
 from papiq.core.services.objects import original_key
-from papiq.core.services.rules.running import drawer_choice, person_record
+from papiq.core.services.rules.running import corrected_fields, drawer_choice, person_record
 from papiq.core.services.titles import RENDERED_TITLE, has_machine_title, pattern_title
 
 log = logging.getLogger(__name__)
@@ -446,7 +447,9 @@ class PipelineService:
                 given=() if target is None else (DRAWER,),
             )
             await check_references(uow, decision.changes)
+            before = copy.deepcopy(document)
             document.apply_changes(decision.changes, definitions, now)
+            corrected = corrected_fields(before, document)
             rendered = None
             if Node.FIELDS not in again and TITLE not in changed_fields(decision.changes):
                 rendered = await _rendered_title(uow, document, log, definitions.values())
@@ -465,6 +468,7 @@ class PipelineService:
                 changed=changed_fields(decision.changes) | ({DRAWER} if target else set()),
                 tags_before=tags_before,
                 tags_after=document.tag_ids,
+                corrected=corrected,
             )
             chosen: JsonObject = {} if target is None else {CHOSEN_DRAWER: str(target.id)}
             if rendered is not None:

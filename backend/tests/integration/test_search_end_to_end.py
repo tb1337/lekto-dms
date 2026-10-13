@@ -141,6 +141,16 @@ class System:
 
         await self.eventually(idle, "the worker is idle")
 
+    async def processed(self, user: User, id: str) -> None:
+        """Wait until the pipeline is done with the document: the search finds it earlier, and
+        a change while nodes still run meets their writes (409)."""
+
+        async def done() -> bool:
+            response = await self.client.get(f"{DOCUMENTS}/{id}", headers=auth(user))
+            return bool(response.json()["processing"]["status"] != "processing")
+
+        await self.eventually(done, f"{id} processed")
+
     async def found(self, user: User, text: str, expected: set[str], **params: Any) -> None:
         """Wait until the search finds exactly `expected` (the index follows a moment later)."""
 
@@ -240,6 +250,7 @@ async def test_documents_are_found_by_those_who_may_read_them(system: System) ->
     assert any(piece["match"] for piece in hit["snippet"])
 
     # Changes reach the index.
+    await system.processed(owner, lease)
     patched = await system.client.patch(
         f"{DOCUMENTS}/{lease}", json={"title": "Wohnungsvertrag Hamburg"}, headers=auth(owner)
     )

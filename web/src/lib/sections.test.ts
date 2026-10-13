@@ -6,6 +6,7 @@ describe('visibleSections', () => {
 		const paths = visibleSections(false).map((section) => section.path);
 		expect(paths).not.toContain('/admin/users');
 		expect(paths).not.toContain('/admin/master-data');
+		expect(paths).not.toContain('/admin/classifier');
 		expect(paths).toContain('/documents');
 	});
 
@@ -19,7 +20,7 @@ describe('SECTIONS', () => {
 		const paths = SECTIONS.map((section) => section.path);
 		expect(paths.slice(0, 2)).toEqual(['/inbox', '/documents']);
 		expect(paths).not.toContain('/search');
-		expect(paths.slice(-2)).toEqual(['/admin/master-data', '/admin/users']);
+		expect(paths.slice(-3)).toEqual(['/admin/master-data', '/admin/users', '/admin/classifier']);
 	});
 });
 

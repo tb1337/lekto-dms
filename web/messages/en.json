@@ -640,5 +640,19 @@
 	"field_def_required_in": "{scope} (required)",
 	"field_def_required_hint": "A required field must be recognised, else the document waits in the inbox. An optional one may stay empty; a value it gets must stand in the document.",
 	"master_title_pattern": "Title pattern",
-	"master_title_pattern_hint": "Papiq writes the title of the type's documents from it, instead of the model's proposal; a rule can still set another. If a value is missing, the model's title is used. Placeholders (the last one names a field of the type):"
+	"master_title_pattern_hint": "Papiq writes the title of the type's documents from it, instead of the model's proposal; a rule can still set another. If a value is missing, the model's title is used. Placeholders (the last one names a field of the type):",
+	"nav_classifier": "Classifier",
+	"classifier_intro": "Papiq learns contact, document type and tags from the documents a person confirmed or that were taken over with their metadata, and suggests them for new ones. After enough confirmations it trains again on its own.",
+	"classifier_not_configured": "No classifier is set up (PAPIQ_CLASSIFIER is none).",
+	"classifier_no_model": "No model yet.",
+	"classifier_model": "Model {number}, trained {date}",
+	"classifier_examples": "Learned from {count} confirmed documents.",
+	"classifier_classes": "Knows {contacts} contacts, {types} document types and {tags} tags.",
+	"classifier_identifiers": "Learned {count} identifiers of contacts.",
+	"classifier_accuracy": "On a held-out fifth ({tested} documents) it names the contact right in {contact} and the type in {type}.",
+	"classifier_accuracy_none": "It is measured from 50 confirmed documents on.",
+	"classifier_next": "{since} of {needed} confirmations until the next training.",
+	"classifier_first": "{confirmed} of {needed} confirmed documents for the first model.",
+	"classifier_train": "Train now",
+	"classifier_train_queued": "Training queued; it runs in the background."
 }

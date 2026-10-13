@@ -64,7 +64,8 @@ describe('AppShell', () => {
 			'/ui/rules',
 			'/ui/webhooks',
 			'/ui/admin/master-data',
-			'/ui/admin/users'
+			'/ui/admin/users',
+			'/ui/admin/classifier'
 		]);
 		expect(screen.getByRole('search')).toBeTruthy();
 		expect(screen.getByRole('searchbox', { name: m.header_search_label() })).toBeTruthy();

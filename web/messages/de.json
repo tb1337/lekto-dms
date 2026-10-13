@@ -640,5 +640,19 @@
 	"field_def_required_in": "{scope} (Pflicht)",
 	"field_def_required_hint": "Ein Pflichtfeld muss erkannt werden, sonst wartet das Dokument im Posteingang. Ein optionales darf leer bleiben; ein erkannter Wert muss im Dokument stehen.",
 	"master_title_pattern": "Titelmuster",
-	"master_title_pattern_hint": "Daraus schreibt Papiq den Titel der Dokumente dieses Typs, statt des Vorschlags des Modells; eine Regel kann weiter einen anderen setzen. Fehlt ein Wert, gilt der Titel des Modells. Platzhalter (der letzte nennt ein Feld des Typs):"
+	"master_title_pattern_hint": "Daraus schreibt Papiq den Titel der Dokumente dieses Typs, statt des Vorschlags des Modells; eine Regel kann weiter einen anderen setzen. Fehlt ein Wert, gilt der Titel des Modells. Platzhalter (der letzte nennt ein Feld des Typs):",
+	"nav_classifier": "Klassifikator",
+	"classifier_intro": "Papiq lernt Kontakt, Dokumenttyp und Tags aus den Dokumenten, die eine Person bestätigt hat oder die mit ihren Metadaten übernommen wurden, und schlägt sie für neue vor. Nach genug Bestätigungen trainiert es von selbst neu.",
+	"classifier_not_configured": "Es ist kein Klassifikator eingerichtet (PAPIQ_CLASSIFIER ist none).",
+	"classifier_no_model": "Noch kein Modell.",
+	"classifier_model": "Modell {number}, trainiert am {date}",
+	"classifier_examples": "Gelernt aus {count} bestätigten Dokumenten.",
+	"classifier_classes": "Kennt {contacts} Kontakte, {types} Dokumenttypen und {tags} Tags.",
+	"classifier_identifiers": "Hat {count} Kennungen von Kontakten gelernt.",
+	"classifier_accuracy": "An einem zurückgehaltenen Fünftel ({tested} Dokumente) nennt es den Kontakt in {contact} und den Typ in {type} richtig.",
+	"classifier_accuracy_none": "Gemessen wird ab 50 bestätigten Dokumenten.",
+	"classifier_next": "{since} von {needed} Bestätigungen bis zum nächsten Training.",
+	"classifier_first": "{confirmed} von {needed} bestätigten Dokumenten für das erste Modell.",
+	"classifier_train": "Jetzt trainieren",
+	"classifier_train_queued": "Training eingereiht; es läuft im Hintergrund."
 }

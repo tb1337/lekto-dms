@@ -1,5 +1,6 @@
 import type { Component } from 'svelte';
 import Archive from '@lucide/svelte/icons/archive';
+import BrainCircuit from '@lucide/svelte/icons/brain-circuit';
 import FileText from '@lucide/svelte/icons/file-text';
 import Inbox from '@lucide/svelte/icons/inbox';
 import Search from '@lucide/svelte/icons/search';
@@ -27,7 +28,8 @@ export const SECTIONS: readonly Section[] = [
 	{ path: '/rules', label: m.nav_rules, icon: Workflow, admin: false },
 	{ path: '/webhooks', label: m.nav_webhooks, icon: Webhook, admin: false },
 	{ path: '/admin/master-data', label: m.nav_master_data, icon: Tags, admin: true },
-	{ path: '/admin/users', label: m.nav_users, icon: Users, admin: true }
+	{ path: '/admin/users', label: m.nav_users, icon: Users, admin: true },
+	{ path: '/admin/classifier', label: m.nav_classifier, icon: BrainCircuit, admin: true }
 ];
 
 /** The search page, opened from the field in the header. */

@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import logging
+import random
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
@@ -66,8 +67,10 @@ from papiq.core.services.rules.running import drawer_choice, person_record
 
 log = logging.getLogger(__name__)
 
-# Attempts to store a node result while the document is changed concurrently.
-_RECORD_ATTEMPTS = 3
+# Attempts to store a node result while the document is changed concurrently: the signals of a
+# document finish side by side, each attempt waits a little longer, at random.
+_RECORD_ATTEMPTS = 10
+_RECORD_BACKOFF = 0.02  # seconds, times the attempt
 
 NODE_JOB = "pipeline.node"
 """Job kind of a pipeline node; payload: document id, node, processing run."""
@@ -604,6 +607,7 @@ class PipelineService:
                     return
                 if attempt == _RECORD_ATTEMPTS:
                     raise
+                await _backoff(attempt)
 
     async def _skipped(self, document_id: DocumentId, node: Node, run: int) -> Document | None:
         """The document, if its `node` is still to catch up on; None if the job is stale."""
@@ -632,6 +636,7 @@ class PipelineService:
             except ConcurrencyError:
                 if attempt == _RECORD_ATTEMPTS:
                     raise
+                await _backoff(attempt)
         raise AssertionError("unreachable")
 
     async def _record(
@@ -656,6 +661,7 @@ class PipelineService:
                     return
                 if attempt == _RECORD_ATTEMPTS:
                     raise
+                await _backoff(attempt)
 
     async def _record_once(
         self,
@@ -759,6 +765,10 @@ async def _owned_document(uow: UnitOfWork, user: User, id: DocumentId) -> Docume
     if not can_control_document(user, document):
         raise PermissionDeniedError(f"only the owner controls processing of document {id}")
     return document
+
+
+async def _backoff(attempt: int) -> None:
+    await asyncio.sleep(random.uniform(0, _RECORD_BACKOFF * attempt))
 
 
 async def _enqueue(

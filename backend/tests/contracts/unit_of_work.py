@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import pytest
 
+from papiq.core.domain.classifier import ClassifierModel
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.drawers import Drawer, ShareLevel
 from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
@@ -652,6 +653,38 @@ class UnitOfWorkContract:
             assert [document.id for document in open_] == [never.id]
             assert await uow.documents.count_confirmed() == 2
             assert await uow.documents.count_confirmed(after=NOW) == 1
+
+    async def test_classifier_models(self, uow_factory: UnitOfWorkFactory) -> None:
+        """Newest first by number; a number is used once."""
+        first, second = (
+            ClassifierModel.create(
+                number=number,
+                now=NOW,
+                examples=40 * number,
+                examples_until=None if number == 1 else NOW,
+                object_key=f"classifier/model-{number}.npz",
+                summary={"classes": {"contact": number}},
+            )
+            for number in (1, 2)
+        )
+        async with uow_factory() as uow:
+            assert await uow.classifier_models.latest() is None
+            await uow.classifier_models.add(first)
+            await uow.classifier_models.add(second)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.classifier_models.latest() == second
+            assert await uow.classifier_models.list_all() == [second, first]
+            await uow.classifier_models.remove(first.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.classifier_models.list_all() == [second]
+            with pytest.raises(ConflictError):
+                again = ClassifierModel.create(
+                    number=2, now=NOW, examples=1, examples_until=None, object_key="x", summary={}
+                )
+                await uow.classifier_models.add(again)
+                await uow.commit()
 
     async def test_query_filters_and_pages(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, drawer = await owner_with_drawer(uow_factory)

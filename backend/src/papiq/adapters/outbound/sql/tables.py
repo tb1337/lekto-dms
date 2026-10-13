@@ -130,6 +130,20 @@ contact_aliases = Table(
 
 # Values a contact's documents carry (IBAN, VAT number, ...); kind and value are unique across
 # contacts. `source`: entered by hand, learned by training, or learned and rejected.
+# The trained classifiers; the models themselves are files in the object store.
+classifier_models = Table(
+    "classifier_models",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("number", Integer, nullable=False, unique=True),
+    Column("trained_at", UtcDateTime, nullable=False),
+    Column("examples", Integer, nullable=False),
+    Column("examples_until", UtcDateTime, nullable=True),
+    Column("object_key", Text, nullable=False),
+    Column("summary", json_type(), nullable=False),
+    Column("version", Integer, nullable=False),
+)
+
 contact_identifiers = Table(
     "contact_identifiers",
     metadata,

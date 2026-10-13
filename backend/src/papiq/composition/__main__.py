@@ -1,5 +1,5 @@
 """`python -m papiq.composition [check | migrate | api | worker | evaluate | evaluate-search |
-reindex | render-pages]`.
+reindex | render-pages | train]`.
 
 - `check` (default): validate the configuration and print it without secrets.
 - `migrate`: validate, then bring the configured database to the newest schema. Run before the
@@ -26,6 +26,8 @@ reindex | render-pages]`.
   with progress. The search keeps working meanwhile. Needs `PAPIQ_MEILISEARCH_URL`.
 - `render-pages`: queue the page images of every document from before the pages node existed
   (its `pages` node is skipped); the worker renders them.
+- `train`: train the classifier from the confirmed documents now, in the foreground, and learn
+  identifiers of contacts from them (the worker does it on its own after enough confirmations).
 
 Exits with status 1 and a readable message when the configuration is invalid, the command does
 not fit `PAPIQ_ROLE`, or the migration or the service fails.
@@ -54,6 +56,7 @@ from papiq.composition.search_evaluation import (
     run_search_evaluation,
 )
 from papiq.composition.settings import Settings, find_unknown_variables, load_settings
+from papiq.composition.train import run_training
 from papiq.composition.worker import run_worker
 
 # Services and the roles that run them.
@@ -74,6 +77,7 @@ def main(argv: Sequence[str] = ()) -> int:
             "evaluate-search",
             "reindex",
             "render-pages",
+            "train",
         ],
         default="check",
     )
@@ -146,6 +150,8 @@ def main(argv: Sequence[str] = ()) -> int:
         return _render_pages(settings)
     if command == "reindex":
         return _reindex(settings)
+    if command == "train":
+        return _train(settings)
 
     if command == "check-schema":
         return _check_schema(settings, wait=arguments.wait or 0)
@@ -188,6 +194,25 @@ def _reindex(settings: Settings) -> int:
         documents=result.documents,
         queued=result.queued,
         removed=result.removed,
+    )
+    return 0
+
+
+def _train(settings: Settings) -> int:
+    log = structlog.get_logger("papiq.composition")
+    try:
+        model = asyncio.run(run_training(settings))
+    except ConfigurationError as error:
+        print(error, file=sys.stderr)
+        return 1
+    except Exception:
+        log.exception("training the classifier failed")
+        return 1
+    log.info(
+        "classifier trained",
+        number=model.number,
+        examples=model.examples,
+        summary=model.summary,
     )
     return 0
 

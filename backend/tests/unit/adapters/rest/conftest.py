@@ -53,6 +53,7 @@ def make_app(
         oidc=services.oidc,
         search=services.search,
         indexing=services.indexing,
+        classifier=services.classifier,
         pipeline=services.pipeline,
         documents=services.documents,
         rules=services.rules,

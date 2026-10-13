@@ -14,8 +14,10 @@ from types import TracebackType
 from typing import Any, Self
 from uuid import UUID
 
+from papiq.adapters.outbound.memory.classifier_models import MemoryClassifierModelRepository
 from papiq.adapters.outbound.memory.database import (
     API_TOKENS,
+    CLASSIFIER_MODELS,
     CONTACTS,
     CREDENTIALS,
     DOCUMENT_TYPES,
@@ -97,6 +99,7 @@ class MemoryUnitOfWork:
         self.processing_log = MemoryProcessingLog(self)
         self.rules = MemoryRuleRepository(self, RULES)
         self.rule_applications = MemoryRuleApplicationRepository(self, RULE_APPLICATIONS)
+        self.classifier_models = MemoryClassifierModelRepository(self, CLASSIFIER_MODELS)
         self.webhooks = MemoryWebhookRepository(self, WEBHOOKS)
         self.outbox = MemoryOutbox(self)
         self.jobs = MemoryJobQueue(self)

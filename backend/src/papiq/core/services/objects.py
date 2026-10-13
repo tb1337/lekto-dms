@@ -43,6 +43,11 @@ def exchanges_key(document: DocumentId, node: Node) -> str:
     return f"documents/{document}/exchanges/{node.value}.json"
 
 
+def classifier_key(number: int) -> str:
+    """The `number`-th trained classifier (outside `documents/`: not one document's)."""
+    return f"classifier/model-{number}.npz"
+
+
 def derivative_keys(document: DocumentId, page_count: int | None = None) -> list[str]:
     """Everything the pipeline stores for one document with `page_count` page images."""
     return [

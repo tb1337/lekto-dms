@@ -66,6 +66,7 @@ def build_app(
         oidc=services.oidc,
         search=services.search,
         indexing=services.indexing,
+        classifier=services.classifier,
         cookie_secure=settings.cookie_secure,
         pipeline=services.pipeline,
         documents=services.documents,

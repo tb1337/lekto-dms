@@ -877,6 +877,46 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/classifier': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The classifier's status
+		 * @description Admins only. The latest model (trained from the documents a person confirmed or that were taken over with metadata) and the confirmations since. 503 without a classifier.
+		 */
+		get: operations['status_api_v1_classifier_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/classifier/train': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Train the classifier
+		 * @description Admins only. Trains a new model in the background (it also happens on its own after enough confirmations); one that is queued or running is not queued twice. 409 with fewer confirmed documents than the first model needs, 503 without a classifier.
+		 */
+		post: operations['train_api_v1_classifier_train_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents': {
 		parameters: {
 			query?: never;
@@ -1426,6 +1466,24 @@ export interface components {
 			/** Linked Accounts */
 			linked_accounts: components['schemas']['LinkOut'][];
 		};
+		/** AccuracyOut */
+		AccuracyOut: {
+			/**
+			 * Tested
+			 * @description Examples held out (a fifth) to measure the model.
+			 */
+			tested: number;
+			/**
+			 * Contact
+			 * @description Share of them whose contact it named first.
+			 */
+			contact: number | null;
+			/**
+			 * Document Type
+			 * @description Share whose type it named first.
+			 */
+			document_type: number | null;
+		};
 		/** AddTagsAction */
 		AddTagsAction: {
 			/**
@@ -1625,6 +1683,93 @@ export interface components {
 		 * @enum {string}
 		 */
 		Channel: 'web' | 'api' | 'migration';
+		/** ClassesOut */
+		ClassesOut: {
+			/**
+			 * Contact
+			 * @description Contacts it can name.
+			 * @default 0
+			 */
+			contact: number;
+			/**
+			 * Document Type
+			 * @description Document types it can name.
+			 * @default 0
+			 */
+			document_type: number;
+			/**
+			 * Tags
+			 * @description Tags it can name.
+			 * @default 0
+			 */
+			tags: number;
+		};
+		/** ClassifierModelOut */
+		ClassifierModelOut: {
+			/**
+			 * Number
+			 * @description Counts the trainings: the first model is 1.
+			 */
+			number: number;
+			/**
+			 * Trained At
+			 * Format: date-time
+			 */
+			trained_at: string;
+			/**
+			 * Examples
+			 * @description Confirmed documents it learned from.
+			 */
+			examples: number;
+			/**
+			 * Examples Until
+			 * @description When the latest of them was confirmed; later confirmations count towards the next training.
+			 */
+			examples_until: string | null;
+			classes: components['schemas']['ClassesOut'];
+			/**
+			 * Learned Identifiers
+			 * @description Identifiers of contacts training learned from the same documents.
+			 */
+			learned_identifiers: number;
+			/** @description Measured from 50 examples on: trained on four fifths, tested on the rest. */
+			accuracy: components['schemas']['AccuracyOut'] | null;
+			/**
+			 * Method
+			 * @example scikit-learn 1.9.1 papiq-tfidf-logreg/1
+			 */
+			method: string | null;
+		};
+		/** ClassifierStatusOut */
+		ClassifierStatusOut: {
+			/** @description The latest model; null before any. */
+			model: components['schemas']['ClassifierModelOut'] | null;
+			/**
+			 * Confirmed
+			 * @description Documents a person confirmed (the training examples).
+			 */
+			confirmed: number;
+			/**
+			 * Since
+			 * @description Of them, confirmed after the latest model's examples.
+			 */
+			since: number;
+			/**
+			 * Min Examples
+			 * @description Confirmed documents the first model needs.
+			 */
+			min_examples: number;
+			/**
+			 * Retrain After
+			 * @description Confirmations after which it is trained again.
+			 */
+			retrain_after: number;
+			/**
+			 * Threshold
+			 * @description How sure a prediction must be to name its class.
+			 */
+			threshold: number;
+		};
 		/**
 		 * CodeIn
 		 * @example {
@@ -10981,6 +11126,197 @@ export interface operations {
 					 *       "title": "Forbidden",
 					 *       "status": 403,
 					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	status_api_v1_classifier_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ClassifierStatusOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	train_api_v1_classifier_train_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Queued. */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

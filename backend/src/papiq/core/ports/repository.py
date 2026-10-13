@@ -18,10 +18,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
+from papiq.core.domain.classifier import ClassifierModel
 from papiq.core.domain.documents import Document, Sha256
 from papiq.core.domain.drawers import Drawer
 from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.ids import (
+    ClassifierModelId,
     ContactId,
     DeliveryId,
     DocumentId,
@@ -238,6 +240,22 @@ class RuleApplicationRepository(Protocol):
     async def add(self, application: RuleApplication) -> None: ...
 
     async def update(self, application: RuleApplication) -> None: ...
+
+
+class ClassifierModelRepository(Protocol):
+    """The trained classifiers (their files are in the object store)."""
+
+    async def add(self, model: ClassifierModel) -> None: ...
+
+    async def latest(self) -> ClassifierModel | None:
+        """The model with the highest number."""
+        ...
+
+    async def list_all(self) -> list[ClassifierModel]:
+        """Newest first."""
+        ...
+
+    async def remove(self, id: ClassifierModelId) -> None: ...
 
 
 class WebhookRepository(Protocol):

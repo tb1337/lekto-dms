@@ -25,6 +25,7 @@ from papiq.core.ports.pages import PageRenderer
 from papiq.core.ports.parser import DocumentParser, ParseResult
 from papiq.core.ports.patterns import PatternMatcher
 from papiq.core.ports.repository import (
+    ClassifierModelRepository,
     ContactRepository,
     DocumentFilter,
     DocumentRepository,
@@ -53,6 +54,7 @@ from papiq.core.ports.webhook_sender import WebhookRequest, WebhookResponse, Web
 __all__ = [
     "ApiTokenRepository",
     "Classifier",
+    "ClassifierModelRepository",
     "Clock",
     "ContactRepository",
     "CredentialRepository",

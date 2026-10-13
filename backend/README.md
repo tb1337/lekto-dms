@@ -806,6 +806,11 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_EMBEDDING_DOCUMENT_PREFIX` | Worker | unset | Put before document sections, for models that ask for it |
 | `PAPIQ_CONFIDENCE_THRESHOLD` | Worker | `0.9` | A field passes from this confidence on |
 | `PAPIQ_CONTACT_SUGGEST_THRESHOLD` | Worker | `0.75` | An existing contact is suggested from this similarity on; not above the confidence threshold |
+| `PAPIQ_CLASSIFIER` | both | `scikit-learn` | The classifier trained from confirmed documents; `none` turns it off |
+| `PAPIQ_CLASSIFIER_MIN_EXAMPLES` | both | `20` | Confirmed documents before the first model is trained |
+| `PAPIQ_CLASSIFIER_RETRAIN_AFTER` | both | `25` | Documents confirmed since the last model before it is trained again |
+| `PAPIQ_CLASSIFIER_THRESHOLD` | Worker | `0.8` | A prediction this sure names its contact, type or tag |
+| `PAPIQ_NEIGHBOURS` | Worker | `5` | Similar confirmed documents that vote on a new one (needs the search index with embeddings); `0` turns them off |
 | `PAPIQ_RULES_PATTERN_TIMEOUT` | both | `0.2` | Seconds a regular expression of a rule may run per text or value (worker: rules; API: previews) |
 | `PAPIQ_RULES_MAX_TEXT` | both | `200000` | Characters of text rules look at (1,000 to 10,000,000) |
 | `PAPIQ_RULES_APPLY_MAX_DOCUMENTS` | both | `1000` | Documents per retroactive rule application (1 to 100,000) |

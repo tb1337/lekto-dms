@@ -110,5 +110,9 @@ class ClassifierError(DomainError):
     (damaged, or written in another format)."""
 
 
+class ClassifierUnavailableError(DomainError):
+    """No classifier is configured (`PAPIQ_CLASSIFIER=none`)."""
+
+
 class PatternTimeoutError(DomainError):
     """A regular expression of a rule took longer than its time limit."""

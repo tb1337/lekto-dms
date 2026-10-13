@@ -20,6 +20,7 @@ from typing import Self
 from sqlalchemy import func, insert, select
 
 from papiq.adapters.outbound.sql import events, tables
+from papiq.adapters.outbound.sql.classifier_models import SqlClassifierModelRepository
 from papiq.adapters.outbound.sql.database import Database
 from papiq.adapters.outbound.sql.documents import SqlDocumentRepository, SqlProcessingLog
 from papiq.adapters.outbound.sql.drawers import SqlDrawerRepository
@@ -96,6 +97,7 @@ class SqlUnitOfWork:
         self.processing_log = SqlProcessingLog(self._tx)
         self.rules = SqlRuleRepository(self._tx)
         self.rule_applications = SqlRuleApplicationRepository(self._tx)
+        self.classifier_models = SqlClassifierModelRepository(self._tx)
         self.webhooks = SqlWebhookRepository(self._tx)
         self.outbox = SqlOutbox(self._tx)
         self.jobs = SqlJobQueue(self._tx)

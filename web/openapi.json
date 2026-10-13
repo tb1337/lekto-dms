@@ -7893,6 +7893,203 @@
         ]
       }
     },
+    "/api/v1/classifier": {
+      "get": {
+        "tags": [
+          "classifier"
+        ],
+        "summary": "The classifier's status",
+        "description": "Admins only. The latest model (trained from the documents a person confirmed or that were taken over with metadata) and the confirmations since. 503 without a classifier.",
+        "operationId": "status_api_v1_classifier_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassifierStatusOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only the owner controls processing of this document"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "database: unreachable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/classifier/train": {
+      "post": {
+        "tags": [
+          "classifier"
+        ],
+        "summary": "Train the classifier",
+        "description": "Admins only. Trains a new model in the background (it also happens on its own after enough confirmations); one that is queued or running is not queued twice. 409 with fewer confirmed documents than the first model needs, 503 without a classifier.",
+        "operationId": "train_api_v1_classifier_train_post",
+        "responses": {
+          "202": {
+            "description": "Queued."
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only the owner controls processing of this document"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "database: unreachable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents": {
       "post": {
         "tags": [
@@ -12070,6 +12267,46 @@
         ],
         "title": "AccountOut"
       },
+      "AccuracyOut": {
+        "properties": {
+          "tested": {
+            "type": "integer",
+            "title": "Tested",
+            "description": "Examples held out (a fifth) to measure the model."
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact",
+            "description": "Share of them whose contact it named first."
+          },
+          "document_type": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type",
+            "description": "Share whose type it named first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "tested",
+          "contact",
+          "document_type"
+        ],
+        "title": "AccuracyOut"
+      },
       "AddTagsAction": {
         "properties": {
           "type": {
@@ -12462,6 +12699,157 @@
         ],
         "title": "Channel",
         "description": "How a document came in (its intake channel). Further connectors (mail, folder) follow."
+      },
+      "ClassesOut": {
+        "properties": {
+          "contact": {
+            "type": "integer",
+            "title": "Contact",
+            "description": "Contacts it can name.",
+            "default": 0
+          },
+          "document_type": {
+            "type": "integer",
+            "title": "Document Type",
+            "description": "Document types it can name.",
+            "default": 0
+          },
+          "tags": {
+            "type": "integer",
+            "title": "Tags",
+            "description": "Tags it can name.",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "ClassesOut"
+      },
+      "ClassifierModelOut": {
+        "properties": {
+          "number": {
+            "type": "integer",
+            "title": "Number",
+            "description": "Counts the trainings: the first model is 1."
+          },
+          "trained_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Trained At"
+          },
+          "examples": {
+            "type": "integer",
+            "title": "Examples",
+            "description": "Confirmed documents it learned from."
+          },
+          "examples_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Examples Until",
+            "description": "When the latest of them was confirmed; later confirmations count towards the next training."
+          },
+          "classes": {
+            "$ref": "#/components/schemas/ClassesOut"
+          },
+          "learned_identifiers": {
+            "type": "integer",
+            "title": "Learned Identifiers",
+            "description": "Identifiers of contacts training learned from the same documents."
+          },
+          "accuracy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccuracyOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Measured from 50 examples on: trained on four fifths, tested on the rest."
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method",
+            "examples": [
+              "scikit-learn 1.9.1 papiq-tfidf-logreg/1"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "number",
+          "trained_at",
+          "examples",
+          "examples_until",
+          "classes",
+          "learned_identifiers",
+          "accuracy",
+          "method"
+        ],
+        "title": "ClassifierModelOut"
+      },
+      "ClassifierStatusOut": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassifierModelOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest model; null before any."
+          },
+          "confirmed": {
+            "type": "integer",
+            "title": "Confirmed",
+            "description": "Documents a person confirmed (the training examples)."
+          },
+          "since": {
+            "type": "integer",
+            "title": "Since",
+            "description": "Of them, confirmed after the latest model's examples."
+          },
+          "min_examples": {
+            "type": "integer",
+            "title": "Min Examples",
+            "description": "Confirmed documents the first model needs."
+          },
+          "retrain_after": {
+            "type": "integer",
+            "title": "Retrain After",
+            "description": "Confirmations after which it is trained again."
+          },
+          "threshold": {
+            "type": "number",
+            "title": "Threshold",
+            "description": "How sure a prediction must be to name its class."
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "confirmed",
+          "since",
+          "min_examples",
+          "retrain_after",
+          "threshold"
+        ],
+        "title": "ClassifierStatusOut"
       },
       "CodeIn": {
         "properties": {

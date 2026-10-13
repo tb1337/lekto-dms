@@ -187,6 +187,8 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/documents", "post"),
         (f"{PREFIX}/documents/search", "get"),
         (f"{PREFIX}/search/reindex", "post"),
+        (f"{PREFIX}/classifier", "get"),
+        (f"{PREFIX}/classifier/train", "post"),
         (f"{PREFIX}/documents/{{id}}", "get"),
         (f"{PREFIX}/documents/{{id}}", "patch"),
         (f"{PREFIX}/documents/{{id}}", "delete"),

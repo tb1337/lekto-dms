@@ -85,6 +85,27 @@ def test_reindex_needs_a_search_index(capsys: pytest.CaptureFixture[str]) -> Non
     assert "PAPIQ_MEILISEARCH_URL is not set" in capsys.readouterr().err
 
 
+def test_train_needs_a_classifier(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("PAPIQ_CLASSIFIER", "none")
+    assert main(["train"]) == 1
+    assert "PAPIQ_CLASSIFIER is none" in capsys.readouterr().err
+
+
+def test_train_without_confirmed_documents_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
+    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "docling")):
+        monkeypatch.setitem(table, name, lambda _: object())
+    assert main(["migrate"]) == 0
+
+    assert main(["train"]) == 1
+    events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
+    assert "training the classifier failed" in [event["event"] for event in events]
+
+
 def test_render_pages_queues_the_documents_without_page_images(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:

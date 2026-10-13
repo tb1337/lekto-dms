@@ -218,6 +218,17 @@ class Settings(BaseSettings):
     confidence_threshold: Annotated[float, Field(gt=0, le=1)] = 0.9
     contact_suggest_threshold: Annotated[float, Field(gt=0, le=1)] = 0.75
 
+    # The classifier, trained from confirmed documents (`none`: no classifier signal): the
+    # confirmed documents before the first model, the confirmations since the last one before
+    # another, and how sure a prediction must be to name its class.
+    classifier: Literal["scikit-learn", "none"] = "scikit-learn"
+    classifier_min_examples: Annotated[int, Field(ge=2, le=1_000_000)] = 20
+    classifier_retrain_after: Annotated[int, Field(ge=1, le=1_000_000)] = 25
+    classifier_threshold: Annotated[float, Field(gt=0, le=1)] = 0.8
+    # Similar confirmed documents that vote on a new one's contact, type and tags (needs the
+    # search index with embeddings); 0 turns them off.
+    neighbours: Annotated[int, Field(ge=0, le=20)] = 5
+
     # Rules: the time limit of one regular expression, the characters of document text that
     # text conditions see, and the documents one retroactive application may cover.
     rules_pattern_timeout: Seconds = timedelta(milliseconds=200)

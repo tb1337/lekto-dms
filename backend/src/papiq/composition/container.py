@@ -24,6 +24,7 @@ from papiq.adapters.outbound.filesystem import FilesystemObjectStore
 from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.adapters.outbound.memory import (
     FakeCipher,
+    FakeClassifier,
     FakeOcr,
     FakePageRenderer,
     FakeParser,
@@ -43,6 +44,7 @@ from papiq.adapters.outbound.openai_compat import OpenAiCompatEmbeddings, OpenAi
 from papiq.adapters.outbound.pdfium import PdfiumPageRenderer, PdfiumTextLocator
 from papiq.adapters.outbound.regex import RegexPatternMatcher
 from papiq.adapters.outbound.s3 import S3ObjectStore
+from papiq.adapters.outbound.sklearn import SklearnClassifier
 from papiq.adapters.outbound.sql import SqlEventBus, SqlUnitOfWorkFactory
 from papiq.adapters.outbound.system import SystemClock
 from papiq.adapters.outbound.webhooks import HttpWebhookSender
@@ -51,6 +53,7 @@ from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
 from papiq.core.domain.pipeline import NODES, Node
 from papiq.core.ports import (
+    Classifier,
     Clock,
     DeliveryRetry,
     DocumentParser,
@@ -76,6 +79,7 @@ from papiq.core.services.classification.nodes import (
     ClassifyNode,
     ExtractFieldsNode,
 )
+from papiq.core.services.classifier import ClassifierPolicy, ClassifierService
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.drawers import DrawerService
 from papiq.core.services.imports import ImportedClassifyNode, ImportedExtractNode
@@ -224,6 +228,7 @@ OCR_ENGINES: dict[str, Factory[Ocr]] = {"ocrmypdf": ocrmypdf_engine}
 PARSERS: dict[str, Factory[DocumentParser]] = {"docling": docling_parser}
 PAGE_RENDERERS: dict[str, Factory[PageRenderer]] = {"pdfium": lambda _: PdfiumPageRenderer()}
 TEXT_LOCATORS: dict[str, Factory[TextLocator]] = {"pdfium": lambda _: PdfiumTextLocator()}
+CLASSIFIERS: dict[str, Factory[Classifier]] = {"scikit-learn": lambda _: SklearnClassifier()}
 
 
 def redirect_uri(settings: Settings) -> str:
@@ -279,6 +284,7 @@ class Container:
     search_index: SearchIndex | None
     language_model: LanguageModel | None
     embeddings: Embeddings | None
+    classifier: Classifier | None
     closers: tuple[Closer, ...] = field(default=(), repr=False)
 
     async def aclose(self) -> None:
@@ -335,6 +341,11 @@ def build_container(settings: Settings) -> Container:
             if settings.embedding_base_url is not None
             else None
         ),
+        classifier=(
+            None
+            if settings.classifier == "none"
+            else _select("classifier", settings.classifier, CLASSIFIERS, settings)
+        ),
         closers=tuple(closers),
     )
 
@@ -364,6 +375,7 @@ def build_memory_container(clock: Clock | None = None) -> Container:
         search_index=MemorySearchIndex(),
         language_model=None,
         embeddings=None,
+        classifier=FakeClassifier(),
     )
 
 
@@ -385,10 +397,20 @@ class Services:
     maintenance: MaintenanceService
     indexing: IndexingService | None  # with a search index
     search: SearchService | None  # with a search index
+    classifier: ClassifierService | None  # with a classifier
 
 
 # Time a node job may take beyond its time limit: downloads, uploads, preview, bookkeeping.
 LEASE_MARGIN = timedelta(minutes=2)
+
+
+def classifier_policy_of(settings: Settings) -> ClassifierPolicy:
+    return ClassifierPolicy(
+        min_examples=settings.classifier_min_examples,
+        retrain_after=settings.classifier_retrain_after,
+        threshold=settings.classifier_threshold,
+        text_limit=settings.llm_input_budget,
+    )
 
 
 def policy_of(settings: Settings) -> ClassificationPolicy:
@@ -448,6 +470,13 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
     """
     settings = settings or Settings.model_construct()
     uow, clock, store = container.unit_of_work, container.clock, container.object_store
+    classifier = (
+        None
+        if container.classifier is None
+        else ClassifierService(
+            uow, store, clock, container.classifier, classifier_policy_of(settings)
+        )
+    )
     index, embeddings = container.search_index, container.embeddings
     executors: dict[Node, NodeExecutor] = {
         node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE
@@ -554,6 +583,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             if index is None
             else SearchService(uow, index, embeddings, search_policy_of(settings))
         ),
+        classifier=classifier,
     )
 
 

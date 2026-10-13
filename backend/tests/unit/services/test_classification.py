@@ -186,6 +186,8 @@ async def test_a_verified_classification_is_applied(world: World) -> None:
     assert result.input["endpoint"] == "memory"
     assert result.input["contacts"] == 3
     assert result.output["attempts"] == 1
+    # Per attempt; the fake model reports no usage.
+    assert result.output["tokens"] == [{"prompt": None, "completion": None, "usage": {}}]
     assert result.output["answer"] == classification()
     assert set(checks(result)) == {"contact", "document_type", "tags", "document_date"}
 

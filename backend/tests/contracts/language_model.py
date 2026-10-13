@@ -28,6 +28,11 @@ class LanguageModelContract:
         assert json.loads(answer.content) == {"answer": "ok"}
         assert answer.model
 
+    async def test_usage_is_a_json_object(self, language_model: LanguageModel) -> None:
+        answer = await language_model.complete(REQUEST)
+        assert isinstance(answer.usage, dict)
+        json.dumps(answer.usage)
+
     def test_names_model_and_endpoint(self, language_model: LanguageModel) -> None:
         assert language_model.model
         assert language_model.endpoint

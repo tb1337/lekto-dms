@@ -646,7 +646,8 @@ def _output(
     answer: JsonObject, checks: list[FieldCheck], answers: list[StructuredAnswer]
 ) -> JsonObject:
     tokens: list[JsonValue] = [
-        {"prompt": item.prompt_tokens, "completion": item.completion_tokens} for item in answers
+        {"prompt": item.prompt_tokens, "completion": item.completion_tokens, "usage": item.usage}
+        for item in answers
     ]
     return {
         "attempts": len(answers),

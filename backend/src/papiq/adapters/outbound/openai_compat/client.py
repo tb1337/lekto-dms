@@ -79,13 +79,15 @@ class OpenAiCompatLanguageModel:
         try:
             choice = data["choices"][0]
             content = choice["message"].get("content")
-            usage = data.get("usage") or {}
+            usage = data.get("usage")
+            usage = usage if isinstance(usage, dict) else {}
             return StructuredAnswer(
                 content=content if isinstance(content, str) else "",
                 model=str(data.get("model") or self._model),
                 fingerprint=_optional_text(data.get("system_fingerprint")),
                 prompt_tokens=_optional_int(usage.get("prompt_tokens")),
                 completion_tokens=_optional_int(usage.get("completion_tokens")),
+                usage=usage,
             )
         except (KeyError, IndexError, TypeError, AttributeError):
             raise LanguageModelError("the language model sent an unusable response") from None

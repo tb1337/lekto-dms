@@ -40,7 +40,12 @@ class SimulatedEndpoint:
                     "model": body["model"] + ":latest",
                     "system_fingerprint": "fp_ollama",
                     "choices": [{"message": {"role": "assistant", "content": self.content}}],
-                    "usage": {"prompt_tokens": 12, "completion_tokens": 5},
+                    "usage": {
+                        "prompt_tokens": 12,
+                        "completion_tokens": 5,
+                        "total_tokens": 17,
+                        "eval_duration": 41000000,
+                    },
                 },
             )
         if request.url.path.endswith("/embeddings"):
@@ -135,6 +140,13 @@ async def test_sends_a_strict_json_schema_request(endpoint: SimulatedEndpoint) -
     assert answer.model == "qwen3:latest"
     assert answer.fingerprint == "fp_ollama"
     assert (answer.prompt_tokens, answer.completion_tokens) == (12, 5)
+    # The whole report, also what only some endpoints send (here a duration of Ollama).
+    assert answer.usage == {
+        "prompt_tokens": 12,
+        "completion_tokens": 5,
+        "total_tokens": 17,
+        "eval_duration": 41000000,
+    }
 
 
 async def test_json_object_format_and_no_key(endpoint: SimulatedEndpoint) -> None:

@@ -924,6 +924,15 @@ def test_retroactive_default_drawer_and_file_name_title_count_as_empty() -> None
     assert notes(filed) == [("drawer", "conflict"), ("title", "conflict")]
 
 
+def test_retroactive_the_machines_title_counts_as_empty() -> None:
+    titled = doc(contact_id=ACME, title="Stromrechnung März 2026")
+    rules = [rule(SetTitle("{contact} invoice"))]
+    replaced = run(rules, situation(titled, Mode.RETROACTIVE, machine_title=titled.title))
+    kept = run(rules, situation(titled, Mode.RETROACTIVE, machine_title="Another"))
+    assert replaced.changes.title == "ACME GmbH invoice"
+    assert kept.changes.title is UNSET
+
+
 # --- titles -----------------------------------------------------------------------------------
 
 

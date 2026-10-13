@@ -1,9 +1,10 @@
 """The title the machine gives a document: its type's title pattern rendered with the
 document's values, or else the language model's proposal.
 
-A title is the machine's as long as the document has it and the log shows the fields node
-gave it (or it is the file name): the fields node may replace it. A title a person or a rule
-gave stays.
+A title is the machine's as long as the document has it and the log shows the machine gave
+it (or it is the file name): the fields node may replace it, confirming in the inbox renders
+the pattern again with the decided values, and a rule may set another one without the
+document becoming uncertain. A title a person or a rule gave stays.
 """
 
 from collections.abc import Mapping, Sequence
@@ -19,6 +20,9 @@ from papiq.core.domain.master_data import Contact, DocumentType
 from papiq.core.domain.pipeline import Node, NodeRun
 from papiq.core.domain.titles import TitleValues, render
 
+RENDERED_TITLE = "rendered_title"
+"""Key in the output of a confirmation: the title the pattern gave with the decided values."""
+
 
 def file_title(document: Document) -> str:
     """The title a document is received with: its file name without the extension."""
@@ -26,8 +30,12 @@ def file_title(document: Document) -> str:
 
 
 def machine_title(log: Sequence[NodeRun]) -> str | None:
-    """The title the machine gave last: the fields node's title check."""
+    """The title the machine gave last: the fields node's title check, or the title rendered
+    when a person confirmed the document."""
     for entry in reversed(log):
+        rendered = entry.result.output.get(RENDERED_TITLE)
+        if isinstance(rendered, str):
+            return rendered
         if entry.node is not Node.FIELDS:
             continue
         try:

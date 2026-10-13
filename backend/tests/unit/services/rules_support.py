@@ -88,6 +88,22 @@ class Classifies:
         return MetadataResult(result, changes, add_tags=self.tags)
 
 
+class Titles:
+    """The fields node giving the document a title, as the machine does."""
+
+    def __init__(self, title: str) -> None:
+        self.title = title
+
+    async def run(self, document: Document) -> MetadataResult:
+        check = FieldCheck(field="title", outcome=Outcome.OK, confidence=1, value=self.title)
+        result = NodeResult(
+            outcome=Outcome.OK,
+            model_version="fake-llm 1",
+            output={"fields": checks_to_json([check])},
+        )
+        return MetadataResult(result, DocumentChanges(title=self.title))
+
+
 # --- rule definitions ---------------------------------------------------------------------------
 
 
@@ -169,7 +185,9 @@ class RuleWorld:
             self.world.uow, self.world.clock, self.world.object_store, rules=change_rules
         )
 
-    def pipeline(self, classify: NodeExecutor | None = None) -> PipelineService:
+    def pipeline(
+        self, classify: NodeExecutor | None = None, fields: NodeExecutor | None = None
+    ) -> PipelineService:
         executors: dict[Node, NodeExecutor] = {
             Node.APPLY_RULES: ApplyRulesNode(
                 self.world.uow, self.world.object_store, self.matcher, max_text=MAX_TEXT
@@ -178,6 +196,8 @@ class RuleWorld:
         }
         if classify is not None:
             executors[Node.JUDGE] = classify
+        if fields is not None:
+            executors[Node.FIELDS] = fields
         return self.world.pipeline(executors)
 
     # --- seeding ---------------------------------------------------------------------------------
@@ -201,11 +221,12 @@ class RuleWorld:
         drawer: DrawerId | None = None,
         text: str | None = None,
         classify: NodeExecutor | None = None,
+        fields: NodeExecutor | None = None,
         filename: str = "scan.pdf",
     ) -> Document:
         """Upload a document, give it `text` as its parsed Markdown, process it; the stored
         document."""
-        pipeline = self.pipeline(classify)
+        pipeline = self.pipeline(classify, fields)
         received = await pipeline.receive(
             owner.id, incoming_pdf(), filename=filename, drawer=drawer
         )

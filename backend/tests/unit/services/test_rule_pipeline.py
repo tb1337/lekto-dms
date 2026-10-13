@@ -21,6 +21,7 @@ from papiq.core.services.rules.running import PatternBudget, prepare
 from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (
     Classifies,
+    Titles,
     add_tags,
     channel_api,
     contact_is,
@@ -118,6 +119,17 @@ async def test_conflicting_rules_wait_in_the_inbox_until_the_owner_decides(world
     assert again.result.outcome is Outcome.OK
     assert notes(again.result.output) == [("contact", "conflict"), ("contact", "conflict")]
     assert again.result.output["fields"] == []
+
+
+async def test_a_rule_replaces_the_machines_title(world: World) -> None:
+    """The title the machine gave is no value the model checked: a rule sets another one
+    without the document becoming uncertain."""
+    r = await rule_world(world)
+    owner = await world.user()
+    await r.user_rule(owner, definition("Title", channel_api(), SetTitle("{filename} (rule)")))
+
+    document = await r.arrive(owner, fields=Titles("Stromrechnung März 2026"))
+    assert (document.lane, document.title) == (Lane.GREEN, "scan (rule)")
 
 
 async def test_a_rule_does_not_replace_the_models_value(world: World) -> None:

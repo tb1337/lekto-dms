@@ -379,6 +379,8 @@ class Situation:
     - `existing`: ids of the contacts, types, tags and fields that exist.
     - `names`: names of contacts and types, for titles.
     - `model_values`: single fields that hold the value the model set, unconfirmed, as JSON.
+    - `machine_title`: the title the machine gave, if the document still has it; like the
+      file name, rules may replace it.
     - `locked`: single fields a person decided; `person_added_tags` and `person_removed_tags`
       likewise for tags.
     - `reviewed`: rules whose forced review a person confirmed in this processing run.
@@ -393,6 +395,7 @@ class Situation:
     existing: frozenset[object] = frozenset()
     names: Mapping[object, str] = field(default_factory=dict)
     model_values: Mapping[str, JsonValue] = field(default_factory=dict)
+    machine_title: str | None = None
     locked: frozenset[str] = frozenset()
     person_added_tags: frozenset[TagId] = frozenset()
     person_removed_tags: frozenset[TagId] = frozenset()
@@ -790,11 +793,11 @@ class _Planner:
     def _empty(self, field_name: str, current: JsonValue) -> bool:
         """For applying to existing documents: the field has no value of its own (a drawer
         counts as empty in the owner's default drawer, a title as long as it is the file
-        name)."""
+        name or the machine's)."""
         if field_name == DRAWER:
             return current == str(self._s.default_drawer)
         if field_name == TITLE:
-            return current == _default_title(self._document)
+            return current in (_default_title(self._document), self._s.machine_title)
         return current is None
 
     def _uncertain(self, field_name: str, reason: str, *, suggestion: JsonValue) -> None:

@@ -66,6 +66,7 @@ from papiq.core.domain.users import User
 from papiq.core.ports import ObjectStore, PatternMatcher, UnitOfWork
 from papiq.core.services.inbox import MODEL_NODES, field_checks, latest_entries
 from papiq.core.services.objects import markdown_key
+from papiq.core.services.titles import machine_title
 
 log = logging.getLogger(__name__)
 
@@ -180,6 +181,9 @@ class Provenance:
 
     - `model_values`: single fields (contact, type, date, fields) whose value the model set
       in its latest run and no person has decided since, as JSON.
+    - `machine_title`: the title the machine gave (`titles.machine_title`), if the document
+      still has it and no person decided the title; applied to existing documents, rules
+      replace it as they replace the file name.
     - `model_tags`: tags the model set that no person has decided on since.
     - `person`: fields a person decided (confirming in the inbox, or changing the document)
       since the model's latest run; `tags_added` and `tags_removed` by a person likewise.
@@ -192,6 +196,7 @@ class Provenance:
     reviewed: frozenset[RuleId]
     tags_added: frozenset[TagId] = frozenset()
     tags_removed: frozenset[TagId] = frozenset()
+    machine_title: str | None = None
 
     @property
     def unverified(self) -> frozenset[str]:
@@ -237,6 +242,7 @@ def provenance(log: Sequence[NodeRun], document: Document) -> Provenance:
             open_reviews = _reviewing(entry.result.output)
         elif entry.result.model_version == PERSON and entry.run == run:
             reviewed |= open_reviews
+    given = machine_title(log)
     return Provenance(
         model_values,
         model_tags,
@@ -244,6 +250,7 @@ def provenance(log: Sequence[NodeRun], document: Document) -> Provenance:
         frozenset(reviewed),
         frozenset(added),
         frozenset(removed),
+        machine_title=given if TITLE not in person and document.title == given else None,
     )
 
 
@@ -424,6 +431,7 @@ async def situation(
         existing=frozenset(existing),
         names=names,
         model_values=origin.model_values,
+        machine_title=origin.machine_title,
         locked=frozenset(locked),
         person_added_tags=person_added_tags,
         person_removed_tags=person_removed_tags,

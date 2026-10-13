@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime
 
-from papiq.core.domain.classification import TAGS
+from papiq.core.domain.classification import TAGS, TITLE
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.ids import FieldId
@@ -132,6 +132,7 @@ class ChangeRules:
                     if name not in changed
                 },
                 model_tags=frozenset() if TAGS in changed else origin.model_tags,
+                machine_title=None if TITLE in changed else origin.machine_title,
                 tags_added=(origin.tags_added & document.tag_ids)
                 | (document.tag_ids - before.tag_ids),
                 tags_removed=(origin.tags_removed - document.tag_ids)

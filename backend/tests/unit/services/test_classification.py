@@ -37,7 +37,8 @@ from papiq.core.services.classification.signals import (
     NeighboursSignal,
 )
 from papiq.core.services.objects import archive_key, exchanges_key, markdown_key
-from papiq.core.services.pipeline import MetadataResult, NodeExecutor
+from papiq.core.services.pipeline import MetadataResult, NodeExecutor, PlaceholderNode
+from papiq.core.services.titles import machine_title
 from tests import builders
 from tests.builders import NOW, incoming
 from tests.unit.services.conftest import World
@@ -1163,6 +1164,31 @@ async def test_an_uncertain_document_waits_in_the_inbox(world: World) -> None:
     assert document.contact_id is None  # only proposed
     assert document.document_type_id == seeded.types["Rechnung"].id  # verified, so applied
     assert "document.filed" not in world.event_types()
+
+
+async def test_confirming_renders_the_title_pattern_with_the_decided_values(
+    world: World,
+) -> None:
+    """The invoice number is missing: the model's title stands in for the pattern until the
+    owner enters it."""
+    seeded = await seed(world)
+    kind = seeded.types["Rechnung"]
+    kind.set_title_pattern("{document_type} {field:Rechnungsnummer}")
+    async with world.uow() as uow:
+        await uow.document_types.update(kind)
+        await uow.commit()
+    answer = proposal(fields=FIELDS[:2])
+    owner, document = await run(world, FakeLanguageModel(responder(answer, extraction())))
+    assert document.lane is Lane.YELLOW
+    assert document.title == "Stromrechnung März 2026"
+
+    number = seeded.fields["Rechnungsnummer"].id
+    pipeline = world.pipeline({Node.FILE: PlaceholderNode()})
+    await pipeline.confirm(owner.id, document.id, DocumentChanges(fields={number: "R-2026-0815"}))
+    document = await world.documents.get(owner.id, document.id)
+    assert document.title == "Rechnung R-2026-0815"
+    log = await world.documents.processing_log(owner.id, document.id)
+    assert machine_title(log) == "Rechnung R-2026-0815"
 
 
 # --- quotes on the page ---------------------------------------------------------------------

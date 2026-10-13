@@ -13,11 +13,13 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import PromptDialog from '#lib/components/document/PromptDialog.svelte';
+	import SignalSummary from '#lib/components/document/SignalSummary.svelte';
 	import TokenInfo from '#lib/components/document/TokenInfo.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { events } from '#lib/events.svelte.ts';
 	import { formatDate, formatNumber } from '#lib/i18n.ts';
+	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import {
@@ -44,11 +46,14 @@
 		document,
 		graph,
 		manageable,
+		lookup = null,
 		onreprocess
 	}: {
 		document: Document;
 		graph: readonly GraphNode[];
 		manageable: boolean;
+		/** Names of contacts and types in what the signals said. */
+		lookup?: Lookup | null;
 		onreprocess: () => void;
 	} = $props();
 
@@ -337,6 +342,7 @@
 												<dt class="text-muted-foreground">{m.log_reason()}</dt>
 												<dd class="break-words">{entry.reason}</dd>
 											{/if}
+											<SignalSummary {entry} {lookup} />
 										</dl>
 									</div>
 								{/each}

@@ -243,7 +243,13 @@
 		{:else if tab === 'content'}
 			<DocumentContent documentId={id} filename={document.original_filename} />
 		{:else if tab === 'log'}
-			<DocumentLog {document} {graph} {manageable} onreprocess={() => header?.startReprocess()} />
+			<DocumentLog
+				{document}
+				{graph}
+				{manageable}
+				{lookup}
+				onreprocess={() => header?.startReprocess()}
+			/>
 		{/if}
 	{/if}
 </div>

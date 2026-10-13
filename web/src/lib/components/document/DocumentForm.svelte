@@ -404,6 +404,18 @@
 		focused = key;
 	}
 
+	// A value the signals proposed, taken with a click on its card.
+	function take(key: string, value: unknown) {
+		assign(key, value as ReviewValue);
+	}
+
+	/** A field the chosen type requires (a global one by its own switch). */
+	function required(field: FieldDefinition): boolean {
+		return field.document_type_ids === null
+			? field.required
+			: documentType !== '' && field.required_document_type_ids.includes(documentType);
+	}
+
 	function jump(key: string, place: Place) {
 		pinned = key;
 		clearTimeout(unpin);
@@ -513,6 +525,7 @@
 				active={focused === 'contact' || pinned === 'contact'}
 				onfocus={focus}
 				onjump={jump}
+				onpick={take}
 			>
 				<NativeSelect
 					id="doc-contact"
@@ -532,6 +545,7 @@
 				active={focused === 'document_type' || pinned === 'document_type'}
 				onfocus={focus}
 				onjump={jump}
+				onpick={take}
 			>
 				<NativeSelect
 					id="doc-type"
@@ -588,6 +602,7 @@
 				review={reviewing}
 				applies={applies(key)}
 				active={focused === key || pinned === key}
+				required={required(field)}
 				onfocus={focus}
 				onjump={jump}
 			>

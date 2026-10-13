@@ -2,7 +2,10 @@
 	import SearchX from '@lucide/svelte/icons/search-x';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import type { Snippet } from 'svelte';
+	import { chosen } from '#lib/candidates.ts';
+	import CandidateList from '#lib/components/document/CandidateList.svelte';
 	import SourceChip from '#lib/components/document/SourceChip.svelte';
+	import SourcesInfo from '#lib/components/document/SourcesInfo.svelte';
 	import { describeValue } from '#lib/describe.ts';
 	import { provenance, type FieldEvidence, type Place } from '#lib/document-view.ts';
 	import { formatNumber } from '#lib/i18n.ts';
@@ -11,8 +14,9 @@
 	import { cn } from '#lib/utils.ts';
 
 	// One field of the document with what backs it. A field that waits for a decision is a
-	// card with the model's confidence, reason and quote; any other is a label and the input,
-	// with the page of its quote. Hovering or focusing it marks the quote in the viewer.
+	// card with the confidence, reason and quote, and what the signals proposed (a click takes
+	// one); any other is a label and the input, with the page of its quote and where its value
+	// comes from. Hovering or focusing it marks the quote in the viewer.
 	let {
 		key,
 		label,
@@ -22,8 +26,10 @@
 		review = false,
 		applies = true,
 		active = false,
+		required = false,
 		onfocus,
 		onjump,
+		onpick,
 		children
 	}: {
 		key: string;
@@ -36,8 +42,12 @@
 		/** The checked value is still the field's (its quote's places still apply). */
 		applies?: boolean;
 		active?: boolean;
+		/** The field must have a value (a required field of the document's type). */
+		required?: boolean;
 		onfocus: (key: string | null) => void;
 		onjump: (key: string, place: Place) => void;
+		/** Take a proposed value for the field. */
+		onpick?: (key: string, value: unknown) => void;
 		children: Snippet;
 	} = $props();
 
@@ -46,7 +56,15 @@
 	const kind = $derived(check ? provenance(check) : null);
 	const places = $derived(applies ? (check?.locations ?? []) : []);
 	const labelId = $derived(`${inputId}-label`);
+	const sources = $derived(check && applies ? chosen(check) : []);
+	const pick = $derived(onpick ? (value: unknown) => onpick(key, value) : undefined);
 </script>
+
+{#snippet labelText()}
+	{label}{#if required}<span class="text-destructive" aria-hidden="true">&nbsp;*</span><span
+			class="sr-only">({m.field_required()})</span
+		>{/if}
+{/snippet}
 
 {#snippet chips()}
 	{#each places as place, index (index)}
@@ -76,7 +94,7 @@
 				aria-hidden="true"
 				strokeWidth={2.2}
 			/>
-			<label id={labelId} for={inputId} class="font-semibold">{label}</label>
+			<label id={labelId} for={inputId} class="font-semibold">{@render labelText()}</label>
 			<span
 				class="ml-auto rounded-full bg-lane-yellow px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap text-lane-yellow-foreground"
 			>
@@ -86,6 +104,9 @@
 			</span>
 		</div>
 		{#if check.reason}<p class="text-sm">{check.reason}</p>{/if}
+		{#if check.candidates?.length}
+			<CandidateList candidates={check.candidates} onpick={pick} />
+		{/if}
 		{#if check.new_name}
 			<p class="text-sm">
 				<span class="text-muted-foreground">{m.review_new_name()}:</span>
@@ -121,9 +142,12 @@
 	{:else}
 		<div class="flex items-center gap-2">
 			<label id={labelId} for={inputId} class="text-sm font-medium text-muted-foreground">
-				{label}
+				{@render labelText()}
 			</label>
 			<span class="ml-auto flex items-center gap-1">
+				{#if sources.length > 0}
+					<SourcesInfo candidates={sources} id="{inputId}-sources" />
+				{/if}
 				{#if places.length > 0}
 					{@render chips()}
 				{:else if kind === 'none'}

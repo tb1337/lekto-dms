@@ -16,6 +16,8 @@ vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 const OWNER = '0199a6c4-0000-7000-8000-000000000001';
 const DRAWER = '0199a6c4-0000-7000-8000-0000000000d1';
 const CONTACT = '0199a6c4-0000-7000-8000-0000000000c1';
+const BANK = '0199a6c4-0000-7000-8000-0000000000c2';
+const SIMILAR = '0199a6c4-0000-7000-8000-0000000000a1';
 const INVOICE = '0199a6c4-0000-7000-8000-0000000000e1';
 const NUMBER = '0199a6c4-0000-7000-8000-0000000000f1';
 const NOTE = '0199a6c4-0000-7000-8000-0000000000f2';
@@ -23,7 +25,7 @@ const NOTE = '0199a6c4-0000-7000-8000-0000000000f2';
 const named = (id: string, name: string) => ({ id, name }) as Lookup['contacts'][number];
 
 const lookup = {
-	contacts: [named(CONTACT, 'Stadtwerke Musterstadt')],
+	contacts: [named(CONTACT, 'Stadtwerke Musterstadt'), named(BANK, 'Beispielbank')],
 	documentTypes: [named(INVOICE, 'Rechnung')],
 	tags: [],
 	fields: [
@@ -32,9 +34,19 @@ const lookup = {
 			name: 'Rechnungsnummer',
 			data_type: 'text',
 			document_type_ids: [INVOICE],
+			required: false,
+			required_document_type_ids: [INVOICE],
 			choices: []
 		},
-		{ id: NOTE, name: 'Notiz', data_type: 'text', document_type_ids: null, choices: [] }
+		{
+			id: NOTE,
+			name: 'Notiz',
+			data_type: 'text',
+			document_type_ids: null,
+			required: false,
+			required_document_type_ids: [],
+			choices: []
+		}
 	],
 	drawers: [{ id: DRAWER, name: 'Haushalt', owner_id: OWNER, access: 'read_write' }],
 	users: []
@@ -72,6 +84,7 @@ function check(field: string, changes: Record<string, unknown> = {}) {
 		new_name: null,
 		quote_shows_value: null,
 		locations: [],
+		candidates: [],
 		...changes
 	};
 }
@@ -169,6 +182,121 @@ describe('DocumentForm', () => {
 		// The suggestion is preselected.
 		const select = screen.getByLabelText(m.field_contact(), { selector: 'select' });
 		expect((select as HTMLSelectElement).value).toBe(CONTACT);
+	});
+
+	it('lists what the signals propose; a click takes one, a contradiction is marked', async () => {
+		const proposals = {
+			document: {},
+			open: [
+				{
+					node: 'judge',
+					outcome: 'uncertain',
+					reason: 'contact',
+					fields: [
+						check('contact', {
+							outcome: 'uncertain',
+							confidence: 0.82,
+							reason: 'the signals disagree',
+							suggestion: CONTACT,
+							candidates: [
+								{
+									value: CONTACT,
+									label: 'Stadtwerke Musterstadt',
+									contradicted: true,
+									sources: [
+										{ signal: 'signal_llm', names: false, score: 0.82, quote: 'Stadtwerk' },
+										{ signal: 'signal_facts', names: false, named_in_text: true }
+									]
+								},
+								{
+									value: BANK,
+									label: 'Beispielbank',
+									contradicted: true,
+									sources: [
+										{
+											signal: 'signal_neighbours',
+											names: true,
+											votes: 2,
+											found: 3,
+											documents: [SIMILAR]
+										}
+									]
+								},
+								{
+									value: null,
+									label: 'Stadtwerk Netz',
+									contradicted: false,
+									sources: [{ signal: 'signal_llm', names: false }]
+								}
+							]
+						})
+					]
+				}
+			],
+			nodes: []
+		} as unknown as Review;
+		render(DocumentForm, props({ review: proposals }));
+		const card = screen.getByRole('group', { name: m.field_contact() });
+		expect(within(card).getByText(m.candidates_title())).toBeTruthy();
+		expect(within(card).getAllByText(m.candidate_contradicted())).toHaveLength(2);
+		expect(within(card).getByText(m.candidate_named())).toBeTruthy();
+		expect(within(card).getByText(m.candidate_new())).toBeTruthy();
+		expect(within(card).getByText(m.candidate_neighbours({ votes: 2, found: 3 }))).toBeTruthy();
+		const similar = within(card).getByRole('link', { name: m.candidate_document({ number: 1 }) });
+		expect(similar.getAttribute('href')).toBe(`/ui/documents/${SIMILAR}`);
+
+		const select = screen.getByLabelText(m.field_contact(), { selector: 'select' });
+		expect((select as HTMLSelectElement).value).toBe(CONTACT);
+		await userEvent.click(
+			within(card).getByRole('button', { name: m.candidate_pick({ name: 'Beispielbank' }) })
+		);
+		expect((select as HTMLSelectElement).value).toBe(BANK);
+	});
+
+	it('tells where a green value comes from, and marks required fields', async () => {
+		const green = {
+			document: {},
+			open: [],
+			nodes: [
+				{
+					node: 'judge',
+					run: 1,
+					outcome: 'ok',
+					reason: null,
+					model_version: 'qwen3:8b',
+					truncated: false,
+					fields: [
+						check('document_type', {
+							value: INVOICE,
+							candidates: [
+								{
+									value: INVOICE,
+									label: 'Rechnung',
+									contradicted: false,
+									sources: [
+										{ signal: 'signal_llm', names: true },
+										{ signal: 'signal_classifier', names: true, score: 0.94 }
+									]
+								}
+							]
+						})
+					]
+				}
+			]
+		} as unknown as Review;
+		render(
+			DocumentForm,
+			props({ document: documentOf('completed', 'green'), review: green, next: null })
+		);
+		const kind = screen.getByRole('group', { name: m.field_document_type() });
+		await userEvent.click(within(kind).getByRole('button', { name: m.sources_details() }));
+		expect(within(kind).getByText(m.candidate_classifier({ score: '94%' }))).toBeTruthy();
+		expect(within(kind).getByText(m.candidate_llm())).toBeTruthy();
+
+		const number = screen.getByRole('group', { name: /Rechnungsnummer/ });
+		expect(within(number).getByText(`(${m.field_required()})`)).toBeTruthy();
+		const note = screen.getByRole('group', { name: 'Notiz' });
+		expect(within(note).queryByText(`(${m.field_required()})`)).toBeNull();
 	});
 
 	it('marks the quote of the field under the pointer, while the value is the checked one', async () => {

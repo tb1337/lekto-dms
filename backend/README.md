@@ -211,6 +211,16 @@ jobs of the old run are recognised as stale.
   `uv run docling-tools models download layout tableformer -o <dir>`.
 - Previews: PDFium (pypdfium2) renders, Pillow encodes WebP. PDFium is not thread-safe; all
   its use in a process shares one lock.
+- Quotes on the page: classification and field extraction look up every quote of the model in
+  the text layer of the archive (`TextLocator`, PDFium): case, spacing, line breaks, hyphens at
+  line ends and the marks of Markdown do not matter. Each field check keeps up to five places
+  (page and one box per line, fractions of the page as shown, its rotation applied) and whether
+  the quote shows the value itself or only leads to it (`quote_shows_value`); `/review`
+  returns both. Documents processed before this have none until they are processed again.
+- What the model nodes send is kept beside the document, one file per node with every run
+  (`documents/{id}/exchanges/<node>.json`: system and user message, the raw answer and the
+  endpoint's whole usage report); owner and admins read it through
+  `GET /documents/{id}/exchanges/{node}`. The files go with the document's other derivatives.
 - Deleting a document queues `documents.remove_files` in the same transaction: the worker
   removes its derivatives and its original, unless a document of any owner still has the same
   file (failures are repeated up to five times, from one minute, doubling). The removal and an

@@ -85,6 +85,15 @@ def test_parse_propose() -> None:
     assert answer.raw == ANSWER
 
 
+def test_the_title_comes_on_one_line_and_short() -> None:
+    title = "Strom\nrechnung\x00  März " + "x" * 300
+    answer = parse_propose(json.dumps(ANSWER | {"title": title}), [])
+    assert answer.title is not None
+    assert answer.title.startswith("Strom rechnung März x")
+    assert len(answer.title) == 200 and "\n" not in answer.title
+    assert parse_propose(json.dumps(ANSWER | {"title": " \n\t "}), []).title is None
+
+
 def test_fenced_answers_are_read() -> None:
     fenced = "```json\n" + json.dumps(ANSWER) + "\n```"
     assert parse_propose(fenced, []).document_type == "Rechnung"

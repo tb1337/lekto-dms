@@ -949,10 +949,22 @@ async def test_no_fields_no_question(world: World) -> None:
 
 
 async def test_fields_without_a_model(world: World) -> None:
+    """Nothing reads them: the required fields of the invoice are open, the optional global one
+    stays empty; with only optional fields the node is OK."""
     seeded = await seed(world)
     document = await document_with(world, type=seeded.types["Rechnung"])
-    result = await fields_step(world, None).run(document)
-    assert result == NodeResult(outcome=Outcome.UNCERTAIN, reason=NO_MODEL)
+    outcome = await fields_step(world, None).run(document)
+    assert isinstance(outcome, MetadataResult)
+    assert outcome.result.outcome is Outcome.UNCERTAIN
+    number = field_check(seeded, outcome, "Rechnungsnummer")
+    assert number.reason == f"'Rechnungsnummer' was not read: {NO_MODEL}"
+    assert field_check(seeded, outcome, "Bezahlt").ok
+    assert outcome.changes.fields == {}
+
+    untyped = await document_with(world)  # only the optional global field applies
+    outcome = await fields_step(world, None).run(untyped)
+    assert isinstance(outcome, MetadataResult)
+    assert outcome.result.outcome is Outcome.OK
 
 
 async def test_extraction_prompt_names_type_and_fields(world: World) -> None:

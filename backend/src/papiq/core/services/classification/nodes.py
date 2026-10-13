@@ -485,7 +485,8 @@ class FieldsNode(_ModelStep):
     type it chose; if the judge decided on that type, they are taken over, else (or for a
     document from before the signals) the fields it did not give are asked for. A required
     field the document does not show is uncertain, an optional one stays empty; a value given
-    must pass its check either way.
+    must pass its check either way. Without a model nothing reads the missing ones: the same
+    holds, the required ones say why.
 
     The title comes from the type's title pattern, or from the model's proposal, as long as
     the document's title is still the file name or the one set here before."""
@@ -528,10 +529,14 @@ class FieldsNode(_ModelStep):
         missing = [item for item in definitions if item.id not in given]
         answers: list[StructuredAnswer] = []
         text = await self._text(document) if definitions else ""
-        input: JsonObject = {"taken_over": len(given)}
-        if missing:
-            if self._model is None:
-                return NodeResult(outcome=Outcome.UNCERTAIN, reason=NO_MODEL)
+        taken_over = len(given)
+        input: JsonObject = {"taken_over": taken_over}
+        unread: set[FieldId] = set()
+        if missing and self._model is None:
+            # Nothing read them: an optional field stays empty, a required one is open.
+            unread = {item.id for item in missing}
+            given |= {item.id: Proposal(value=None, evidence=None) for item in missing}
+        elif missing:
             keys = field_keys(missing)
             sent = shorten(text, self._policy.input_budget)
             input |= self._input(document, text, sent, EXTRACT_PROMPT) | {
@@ -566,6 +571,12 @@ class FieldsNode(_ModelStep):
             )
             for definition in definitions
         ]
+        checks = [
+            replace(check, reason=f"'{definition.name}' was not read: {NO_MODEL}")
+            if definition.id in unread and not check.ok
+            else check
+            for check, definition in zip(checks, definitions, strict=True)
+        ]
         checks = await self._locate(document, checks)
         values: dict[FieldId, object] = {}
         for check, definition in zip(checks, definitions, strict=True):
@@ -580,7 +591,7 @@ class FieldsNode(_ModelStep):
         model_version = (
             _model_version(answers[-1])
             if answers
-            else (entries[Node.SIGNAL_LLM].result.model_version if given else None)
+            else (entries[Node.SIGNAL_LLM].result.model_version if taken_over else None)
         )
         uncertain = [check for check in checks if not check.ok]
         result = NodeResult(

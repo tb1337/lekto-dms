@@ -1,11 +1,12 @@
 """JSON Schemas of the model's answers, and checking an answer's structure.
 
 The schemas are built per document from the master data (lists as `enum`); every property is
-required, nothing else is allowed, "not found" is `null`. The check is strict about structure
-(an answer with a missing or an extra field is invalid, since an extra field may be an
-instruction from the document at work) and lenient about values: a document type outside the
-list counts as a proposed new type, unknown tags as proposed new tags, and a value that cannot
-be read makes only its field uncertain.
+required, nothing else is allowed, "not found" is `null`. They keep to what strict validators
+accept (Claude's too): one of a list or null as `anyOf`, no limits on arrays. The check is
+strict about structure (an answer with a missing or an extra field is invalid, since an extra
+field may be an instruction from the document at work) and lenient about values: a document
+type outside the list counts as a proposed new type, unknown tags as proposed new tags, and a
+value that cannot be read makes only its field uncertain.
 """
 
 import json
@@ -74,31 +75,26 @@ def propose_schema(
 ) -> JsonObject:
     """Every field value is text, as written in the document; the fields come as a list of
     the keys the document shows (the model leaves the others out)."""
+    # Without tags or fields to list, anything given is left out or proposed as new.
     tag_items: JsonObject = {"type": "string"}
     if tags:
         tag_items["enum"] = list(tags)
-    tag_list: JsonObject = {"type": "array", "items": tag_items}
-    if not tags:
-        tag_list["maxItems"] = 0
     key: JsonObject = {"type": "string"}
     if keys:
         key["enum"] = list(keys)
     entry = _object({"key": key, "value": dict(_TEXT_OR_NULL), "evidence": dict(_TEXT_OR_NULL)})
-    fields: JsonObject = {"type": "array", "items": entry}
-    if not keys:
-        fields["maxItems"] = 0
     return _object(
         {
             "sender": _proposal(dict(_TEXT_OR_NULL)),
             "recipient": dict(_TEXT_OR_NULL),
-            "document_type": {"type": ["string", "null"], "enum": [*document_types, None]},
+            "document_type": _one_of_or_null(document_types),
             "new_document_type": dict(_TEXT_OR_NULL),
-            "tags": tag_list,
+            "tags": {"type": "array", "items": tag_items},
             "new_tags": {"type": "array", "items": {"type": "string"}},
             "document_date": _proposal(dict(_TEXT_OR_NULL)),
             "title": dict(_TEXT_OR_NULL),
             "language": dict(_TEXT_OR_NULL),
-            "fields": fields,
+            "fields": {"type": "array", "items": entry},
         }
     )
 
@@ -182,7 +178,7 @@ def _value_schema(definition: FieldDefinition) -> JsonObject:
         case FieldType.BOOLEAN:
             return {"type": ["boolean", "null"]}
         case FieldType.CHOICE:
-            return {"type": ["string", "null"], "enum": [*definition.choices, None]}
+            return _one_of_or_null(definition.choices)
         case _:
             return dict(_TEXT_OR_NULL)
 
@@ -197,6 +193,13 @@ def _object(properties: JsonObject) -> JsonObject:
         "required": list(properties),
         "additionalProperties": False,
     }
+
+
+def _one_of_or_null(names: Sequence[str]) -> JsonObject:
+    """One of `names`, or null; any text without names."""
+    if not names:
+        return dict(_TEXT_OR_NULL)
+    return {"anyOf": [{"type": "string", "enum": list(names)}, {"type": "null"}]}
 
 
 def _proposal(value: JsonObject) -> JsonObject:

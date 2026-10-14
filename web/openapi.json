@@ -14326,10 +14326,10 @@
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 200,
-                "description": "The title of the type's documents, rendered from their values in place of the language model's proposal (a rule may still set another). Placeholders: `{contact}`, `{document_type}`, `{filename}`, `{document_date}` (ISO) or `{document_date:FORMAT}` with `YYYY`, `YY`, `MM`, `DD`, and `{field:NAME}` for a field of the type. A document missing a value gets the model's title.",
+                "maxLength": 500,
+                "description": "The title of the type's documents: a template as a rule's title (`SetTitleAction.template`), with the fields of the type. A rule of the type carries it out (`RuleOut.managed_by_document_type_id`, read-only): it replaces the language model's title and gives way to another rule that sets the title. A document missing a value it writes keeps the model's title.",
                 "examples": [
-                  "Lohn {document_date:YYYY-MM}"
+                  "Lohn {{ document_date | date: '%Y-%m' }} {{ field.la_brutto }}"
                 ]
               },
               {
@@ -14448,10 +14448,10 @@
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 200,
-                "description": "The title of the type's documents, rendered from their values in place of the language model's proposal (a rule may still set another). Placeholders: `{contact}`, `{document_type}`, `{filename}`, `{document_date}` (ISO) or `{document_date:FORMAT}` with `YYYY`, `YY`, `MM`, `DD`, and `{field:NAME}` for a field of the type. A document missing a value gets the model's title.",
+                "maxLength": 500,
+                "description": "The title of the type's documents: a template as a rule's title (`SetTitleAction.template`), with the fields of the type. A rule of the type carries it out (`RuleOut.managed_by_document_type_id`, read-only): it replaces the language model's title and gives way to another rule that sets the title. A document missing a value it writes keeps the model's title.",
                 "examples": [
-                  "Lohn {document_date:YYYY-MM}"
+                  "Lohn {{ document_date | date: '%Y-%m' }} {{ field.la_brutto }}"
                 ]
               },
               {
@@ -16627,10 +16627,11 @@
               "overruled",
               "refused",
               "conflict",
-              "review"
+              "review",
+              "yielded"
             ],
             "title": "Kind",
-            "description": "`overruled`: a person decided the field; `refused`: not allowed (rights, scope, unconfirmed values); `conflict`: rules or values disagree; `skipped`: something it refers to is gone or does not apply; `review`: the rule holds the document for a review."
+            "description": "`overruled`: a person decided the field; `refused`: not allowed (rights, scope, unconfirmed values); `conflict`: rules or values disagree; `skipped`: something it refers to is gone or does not apply, or a template writes a missing value; `review`: the rule holds the document for a review; `yielded`: a document type's title pattern gave way to another rule that sets the title."
           },
           "reason": {
             "type": "string",
@@ -16760,6 +16761,19 @@
             "title": "Disabled Reason",
             "description": "Why the rule was disabled automatically, e.g. a contact it uses was deleted."
           },
+          "managed_by_document_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Managed By Document Type Id",
+            "description": "The document type whose title pattern this rule is: it follows the type and is read-only (changing, switching or deleting it is 409); None for other rules."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -16784,6 +16798,7 @@
           "version",
           "enabled",
           "disabled_reason",
+          "managed_by_document_type_id",
           "created_at",
           "updated_at"
         ],

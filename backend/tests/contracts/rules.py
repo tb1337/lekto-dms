@@ -17,6 +17,7 @@ from papiq.core.domain.ids import (
     TagId,
     new_id,
 )
+from papiq.core.domain.master_data import DocumentType
 from papiq.core.domain.rules import (
     AddTags,
     ApplicationStatus,
@@ -226,6 +227,58 @@ class RuleRepositoriesContract:
         assert stored == rule
         assert (stored.scope, stored.owner_id) == (RuleScope.GLOBAL, None)
         assert stored.current.created_by == admin.id
+
+    async def test_the_rule_of_a_title_pattern_names_its_type(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        (admin,) = await users(uow_factory, 1)
+        kind = DocumentType.create(name="Lohnabrechnung", now=NOW)
+        async with uow_factory() as uow:
+            await uow.document_types.add(kind)
+            await uow.commit()
+        title = RuleDefinition(
+            name="Lohnabrechnung",
+            conditions=Group(
+                mode="all",
+                items=(
+                    Condition(
+                        field=ConditionField.DOCUMENT_TYPE, op=Operator.IS, value=str(kind.id)
+                    ),
+                ),
+            ),
+            actions=(SetTitle("Lohn {{ document_date | date: '%Y-%m' }}"),),
+        )
+        rule = Rule.create(
+            scope=RuleScope.GLOBAL,
+            owner_id=None,
+            definition=title,
+            by=admin.id,
+            now=NOW,
+            managed_by=kind.id,
+        )
+        await store(uow_factory, rule)
+        async with uow_factory() as uow:
+            stored = await uow.rules.get(rule.id)
+            listed = await uow.rules.list_for(owners=[], include_global=True)
+        assert stored == rule and stored.managed_by == kind.id
+        assert [item.managed_by for item in listed] == [kind.id]
+        # Deleted, it is no type's rule any more: the type may get another one.
+        stored.delete(NOW)
+        async with uow_factory() as uow:
+            await uow.rules.update(stored)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.rules.get(rule.id)).managed_by is None
+            again = Rule.create(
+                scope=RuleScope.GLOBAL,
+                owner_id=None,
+                definition=title,
+                by=admin.id,
+                now=NOW,
+                managed_by=kind.id,
+            )
+            await uow.rules.add(again)
+            await uow.commit()
 
     async def test_missing_rules_and_versions(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, _ = await owner_with_drawer(uow_factory)

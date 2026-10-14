@@ -47,6 +47,7 @@ from papiq.core.domain.ids import (
     new_id,
 )
 from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.master_data import DocumentType
 from papiq.core.domain.validation import require_name, require_utc
 
 DEFAULT_PRIORITY = 100
@@ -463,15 +464,34 @@ def _single_key(action: Action) -> str | None:
     return action.type
 
 
-def check_scope(definition: RuleDefinition, scope: RuleScope) -> None:
-    """A global rule may only tag, set fields and force a review."""
+def check_scope(definition: RuleDefinition, scope: RuleScope, *, managed: bool = False) -> None:
+    """A global rule may only tag, set fields and force a review; the rule of a document
+    type's title pattern (`managed`) sets the title as well."""
+    allowed = (*GLOBAL_ACTIONS, SetTitle) if managed else GLOBAL_ACTIONS
     if scope is RuleScope.GLOBAL:
         for index, action in enumerate(definition.actions):
-            if not isinstance(action, GLOBAL_ACTIONS):
+            if not isinstance(action, allowed):
                 raise ValidationError(
                     f"actions[{index}]: a global rule cannot {action.type}: global rules only "
                     "add or remove tags, set fields and force a review"
                 )
+
+
+def title_rule(document_type: DocumentType) -> RuleDefinition:
+    """The rule of a type's title pattern (`Rule.managed_by`): "document type is X → set the
+    title", on arrival and on a change."""
+    if document_type.title_pattern is None:
+        raise ValidationError(f"'{document_type.name}' has no title pattern")
+    condition = Condition(
+        field=ConditionField.DOCUMENT_TYPE, op=Operator.IS, value=str(document_type.id)
+    )
+    return RuleDefinition(
+        name=document_type.name,
+        conditions=Group(mode="all", items=(condition,)),
+        actions=(SetTitle(document_type.title_pattern),),
+        priority=0,
+        triggers=frozenset({Trigger.INGEST, Trigger.CHANGE}),
+    )
 
 
 def check_fields(
@@ -549,7 +569,10 @@ class Rule:
 
     `disabled_reason` says why the rule was disabled automatically (e.g. a contact it refers to
     was deleted); None if a person disabled it or it is enabled. A deleted rule stays stored
-    for its versions; it never runs and is not listed."""
+    for its versions; it never runs and is not listed.
+
+    `managed_by`: the document type whose title pattern this rule is (global, it sets the
+    title). The type keeps it as the pattern says; nobody changes it otherwise."""
 
     id: RuleId
     scope: RuleScope
@@ -560,14 +583,18 @@ class Rule:
     enabled: bool = True
     disabled_reason: str | None = None
     deleted_at: datetime | None = None
+    managed_by: DocumentTypeId | None = None
     version: int = 1
 
     def __post_init__(self) -> None:
         if (self.scope is RuleScope.GLOBAL) != (self.owner_id is None):
             raise ValidationError("global rules have no owner, user rules have one")
+        if self.managed_by is not None and self.scope is not RuleScope.GLOBAL:
+            raise ValidationError("the rule of a title pattern is global")
         if self.current.rule_id != self.id:
             raise ValidationError("the current version belongs to another rule")
-        check_scope(self.current.definition, self.scope)
+        if self.deleted_at is None:  # a deleted rule never runs, and is no type's rule any more
+            check_scope(self.current.definition, self.scope, managed=self.managed_by is not None)
         self.created_at = require_utc(self.created_at, "created_at")
         self.updated_at = require_utc(self.updated_at, "updated_at")
 
@@ -580,6 +607,7 @@ class Rule:
         definition: RuleDefinition,
         by: UserId,
         now: datetime,
+        managed_by: DocumentTypeId | None = None,
     ) -> Self:
         id = RuleId(new_id())
         return cls(
@@ -591,6 +619,7 @@ class Rule:
             ),
             created_at=now,
             updated_at=now,
+            managed_by=managed_by,
         )
 
     @property
@@ -604,7 +633,7 @@ class Rule:
     def change(self, definition: RuleDefinition, by: UserId, now: datetime) -> RuleVersion:
         """A new version with `definition`."""
         self._check_not_deleted()
-        check_scope(definition, self.scope)
+        check_scope(definition, self.scope, managed=self.managed_by is not None)
         self.current = RuleVersion(
             rule_id=self.id,
             number=self.current.number + 1,
@@ -626,8 +655,10 @@ class Rule:
         self.updated_at = require_utc(now, "updated_at")
 
     def delete(self, now: datetime) -> None:
+        """A deleted rule is no document type's rule any more: the type may get another."""
         self._check_not_deleted()
         self.enabled = False
+        self.managed_by = None
         self.deleted_at = self.updated_at = require_utc(now, "deleted_at")
 
     def _check_not_deleted(self) -> None:

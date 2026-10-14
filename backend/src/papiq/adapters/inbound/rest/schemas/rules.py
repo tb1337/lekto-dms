@@ -274,6 +274,10 @@ class RuleOut(_RuleDefinitionOut):
     disabled_reason: str | None = Field(
         description="Why the rule was disabled automatically, e.g. a contact it uses was deleted."
     )
+    managed_by_document_type_id: UUID | None = Field(
+        description="The document type whose title pattern this rule is: it follows the type "
+        "and is read-only (changing, switching or deleting it is 409); None for other rules."
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -288,6 +292,7 @@ class RuleOut(_RuleDefinitionOut):
                 "version": rule.current.number,
                 "enabled": rule.enabled,
                 "disabled_reason": rule.disabled_reason,
+                "managed_by_document_type_id": rule.managed_by,
                 "created_at": rule.created_at,
                 "updated_at": rule.updated_at,
             }

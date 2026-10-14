@@ -96,7 +96,7 @@ from papiq.core.services.classification.signals import (
 from papiq.core.services.nodes import work_directory
 from papiq.core.services.objects import archive_key, exchanges_key, load_text, text_key
 from papiq.core.services.pipeline import MetadataResult
-from papiq.core.services.titles import has_machine_title, pattern_title
+from papiq.core.services.titles import has_machine_title
 
 log = logging.getLogger(__name__)
 
@@ -515,11 +515,6 @@ class FieldsNode(_ModelStep):
                 if document.document_type_id is None
                 else await uow.document_types.find(document.document_type_id)
             )
-            contact = (
-                None
-                if document.contact_id is None
-                else await uow.contacts.find(document.contact_id)
-            )
         entries = latest_signals(log)
         proposal = model_proposal(entries)
         given: dict[FieldId, Proposal] = {}
@@ -598,7 +593,7 @@ class FieldsNode(_ModelStep):
         for check, definition in zip(checks, definitions, strict=True):
             if check.ok and check.value is not None:
                 values[definition.id] = field_from_json(definition, check.value)
-        title = _title(document, document_type, contact, definitions, values, proposal, log)
+        title = _title(document, proposal, log)
         changes = DocumentChanges(fields=values)
         if title is not None and title.value is not None:
             changes = replace(changes, title=str(title.value))
@@ -627,34 +622,18 @@ class FieldsNode(_ModelStep):
 
 
 def _title(
-    document: Document,
-    document_type: DocumentType | None,
-    contact: Contact | None,
-    definitions: Sequence[FieldDefinition],
-    values: dict[FieldId, object],
-    proposal: Mapping[str, Any] | None,
-    log: Sequence[NodeRun],
+    document: Document, proposal: Mapping[str, Any] | None, log: Sequence[NodeRun]
 ) -> FieldCheck | None:
-    """The title check: the type's pattern rendered, else the model's title; None if the
-    document has a title of its own (a person's or a rule's), or there is none to give."""
+    """The title check: the model's title; None if the document has a title of its own (a
+    person's or a rule's), or the model gave none. A type's title pattern is a rule
+    (`rules.title_rule`): it replaces this title when the rules run."""
     if not has_machine_title(document, log):
         return None
     proposed = _text_value(proposal.get("title")) if proposal else None
-    rendered = pattern_title(document, document_type, contact, definitions, values)
-    if rendered is not None:
-        return FieldCheck(
-            field=TITLE, outcome=Outcome.OK, confidence=1, proposed=proposed, value=rendered
-        )
     if not proposed:
         return None
-    missing = document_type is not None and bool(document_type.title_pattern)
     return FieldCheck(
-        field=TITLE,
-        outcome=Outcome.OK,
-        confidence=1,
-        reason="the title pattern misses a value; the model's title" if missing else None,
-        proposed=proposed,
-        value=proposed,
+        field=TITLE, outcome=Outcome.OK, confidence=1, proposed=proposed, value=proposed
     )
 
 

@@ -10,11 +10,15 @@ Who may do what:
 """
 
 import builtins
-import re
 from collections.abc import Iterable
 from dataclasses import replace
 
-from papiq.core.domain.errors import NotFoundError, PermissionDeniedError, ValidationError
+from papiq.core.domain.errors import (
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.ids import RuleId, UserId
 from papiq.core.domain.permissions import drawer_access
@@ -28,7 +32,14 @@ from papiq.core.domain.rules import (
     SetTitle,
     check_fields,
 )
-from papiq.core.domain.templates import FIELD, NAMES, unknown_values
+from papiq.core.domain.templates import (
+    FIELD,
+    NAMES,
+    old_placeholder,
+    rename_field_key,
+    unknown_values,
+)
+from papiq.core.domain.templates import uses_field as field_used
 from papiq.core.domain.users import User
 from papiq.core.ports import Clock, TemplateRenderer, UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import load_actor
@@ -177,6 +188,9 @@ async def check_templates(
     fields = await uow.fields.list_all()
     keys = {field.key for field in fields}
     for index, template in action_templates(definition, fields):
+        old = old_placeholder(template)
+        if old is not None:
+            raise ValidationError(f"actions[{index}]: {old}")
         try:
             used = templates.check(template)
         except ValidationError as error:
@@ -213,35 +227,26 @@ def uses_field(
     key: str,
 ) -> bool:
     """Whether a template of the definition uses the field with `key`."""
-    for _, template in action_templates(definition, fields):
-        used = templates.check(template)
-        if any(path == f"{FIELD}.{key}" or path.startswith(f"{FIELD}.{key}.") for path in used):
-            return True
-    return False
+    return any(
+        field_used(templates.check(template), key)
+        for _, template in action_templates(definition, fields)
+    )
 
 
 def renamed_field(
     definition: RuleDefinition, fields: Iterable[FieldDefinition], old: str, new: str
 ) -> RuleDefinition:
-    """The definition with `field.<old>` written `field.<new>` in its templates (also
-    `field["<old>"]`)."""
-    pattern = re.compile(
-        rf"(?<![\w.]){FIELD}(?:\.{re.escape(old)}(?!\w)|\[(['\"]){re.escape(old)}\1\])"
-    )
-
-    def rename(template: str) -> str:
-        return pattern.sub(f"{FIELD}.{new}", template)
-
+    """The definition with `field.<old>` written `field.<new>` in its templates."""
     texts = {field.id for field in fields if field.data_type is FieldType.TEXT}
     actions = []
     for action in definition.actions:
         match action:
             case SetTitle(template=template):
-                action = replace(action, template=rename(template))
+                action = replace(action, template=rename_field_key(template, old, new))
             case ForceReview(reason=reason):
-                action = replace(action, reason=rename(reason))
+                action = replace(action, reason=rename_field_key(reason, old, new))
             case SetField(field_id=field, value=str() as value) if field in texts:
-                action = replace(action, value=rename(value))
+                action = replace(action, value=rename_field_key(value, old, new))
         actions.append(action)
     return replace(definition, actions=tuple(actions))
 
@@ -257,9 +262,18 @@ async def visible_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
 
 
 async def _managed_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
+    """The rule, if the user may change, switch or delete it; the rule of a title pattern
+    nobody does (ConflictError): it follows its document type."""
     rule = await visible_rule(uow, user, id)
     if rule.deleted_at is not None:
         raise NotFoundError("rule", id)
+    if rule.managed_by is not None:
+        document_type = await uow.document_types.find(rule.managed_by)
+        name = rule.definition.name if document_type is None else document_type.name
+        raise ConflictError(
+            f"the rule of the title pattern of '{name}' follows the document type: change "
+            "the pattern there"
+        )
     if user.is_active_admin:
         return rule
     if rule.scope is RuleScope.GLOBAL:

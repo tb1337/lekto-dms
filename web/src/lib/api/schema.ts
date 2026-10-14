@@ -3613,10 +3613,10 @@ export interface components {
 			field: string;
 			/**
 			 * Kind
-			 * @description `overruled`: a person decided the field; `refused`: not allowed (rights, scope, unconfirmed values); `conflict`: rules or values disagree; `skipped`: something it refers to is gone or does not apply; `review`: the rule holds the document for a review.
+			 * @description `overruled`: a person decided the field; `refused`: not allowed (rights, scope, unconfirmed values); `conflict`: rules or values disagree; `skipped`: something it refers to is gone or does not apply, or a template writes a missing value; `review`: the rule holds the document for a review; `yielded`: a document type's title pattern gave way to another rule that sets the title.
 			 * @enum {string}
 			 */
-			kind: 'skipped' | 'overruled' | 'refused' | 'conflict' | 'review';
+			kind: 'skipped' | 'overruled' | 'refused' | 'conflict' | 'review' | 'yielded';
 			/** Reason */
 			reason: string;
 		};
@@ -3665,6 +3665,11 @@ export interface components {
 			 * @description Why the rule was disabled automatically, e.g. a contact it uses was deleted.
 			 */
 			disabled_reason: string | null;
+			/**
+			 * Managed By Document Type Id
+			 * @description The document type whose title pattern this rule is: it follows the type and is read-only (changing, switching or deleting it is 409); None for other rules.
+			 */
+			managed_by_document_type_id: string | null;
 			/**
 			 * Created At
 			 * Format: date-time

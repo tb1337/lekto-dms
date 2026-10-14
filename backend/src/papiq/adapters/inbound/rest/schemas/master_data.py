@@ -12,11 +12,11 @@ from papiq.core.domain.identifiers import MAX_IDENTIFIERS, IdentifierKind, Ident
 from papiq.core.domain.master_data import (
     MAX_ALIASES,
     MAX_DESCRIPTION,
+    MAX_TITLE_PATTERN,
     Contact,
     DocumentType,
     MasterData,
 )
-from papiq.core.domain.titles import MAX_PATTERN
 
 
 class MasterDataOut(BaseModel):
@@ -110,15 +110,15 @@ FieldDescription = Annotated[
 TitlePattern = Annotated[
     str,
     Field(
-        max_length=MAX_PATTERN,
+        max_length=MAX_TITLE_PATTERN,
         description=(
-            "The title of the type's documents, rendered from their values in place of the "
-            "language model's proposal (a rule may still set another). Placeholders: "
-            "`{contact}`, `{document_type}`, `{filename}`, `{document_date}` (ISO) or "
-            "`{document_date:FORMAT}` with `YYYY`, `YY`, `MM`, `DD`, and `{field:NAME}` for a "
-            "field of the type. A document missing a value gets the model's title."
+            "The title of the type's documents: a template as a rule's title "
+            "(`SetTitleAction.template`), with the fields of the type. A rule of the type "
+            "carries it out (`RuleOut.managed_by_document_type_id`, read-only): it replaces "
+            "the language model's title and gives way to another rule that sets the title. A "
+            "document missing a value it writes keeps the model's title."
         ),
-        examples=["Lohn {document_date:YYYY-MM}"],
+        examples=["Lohn {{ document_date | date: '%Y-%m' }} {{ field.la_brutto }}"],
     ),
 ]
 

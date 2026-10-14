@@ -303,6 +303,25 @@ rule_versions = Table(
     Column("created_by", Uuid, nullable=True),
 )
 
+# The rule of a document type's title pattern (`Rule.managed_by`), while it is not deleted.
+title_pattern_rules = Table(
+    "title_pattern_rules",
+    metadata,
+    Column(
+        "document_type_id",
+        Uuid,
+        ForeignKey("document_types.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "rule_id",
+        Uuid,
+        ForeignKey("rules.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    ),
+)
+
 rule_applications = Table(
     "rule_applications",
     metadata,

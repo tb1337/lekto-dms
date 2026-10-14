@@ -55,12 +55,13 @@ class RuleEffectOut(BaseModel):
 
 class RuleNoteOut(BaseModel):
     field: str
-    kind: Literal["skipped", "overruled", "refused", "conflict", "review"] = Field(
+    kind: Literal["skipped", "overruled", "refused", "conflict", "review", "yielded"] = Field(
         description=(
             "`overruled`: a person decided the field; `refused`: not allowed (rights, scope, "
             "unconfirmed values); `conflict`: rules or values disagree; `skipped`: something "
-            "it refers to is gone or does not apply; `review`: the rule holds the document for "
-            "a review."
+            "it refers to is gone or does not apply, or a template writes a missing value; "
+            "`review`: the rule holds the document for a review; `yielded`: a document type's "
+            "title pattern gave way to another rule that sets the title."
         )
     )
     reason: str

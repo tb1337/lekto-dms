@@ -19,7 +19,7 @@ from alembic.migration import MigrationContext
 from sqlalchemy import Connection, insert, inspect, select
 
 from papiq.adapters.outbound.memory import ManualClock, MemoryObjectStore
-from papiq.adapters.outbound.sql import Database, migrate, schema_state
+from papiq.adapters.outbound.sql import Database, SqlUnitOfWorkFactory, migrate, schema_state
 from papiq.adapters.outbound.sql import tables as t
 from papiq.adapters.outbound.sql.migrations import alembic_config
 from papiq.adapters.outbound.sql.types import UtcDateTime, json_type
@@ -893,6 +893,82 @@ class MigrationSuite:
 
         await _downgrade(empty_database, "0017")
         assert await stored() == old_actions
+
+    async def test_title_patterns_become_rules_of_their_types_and_back(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0019 writes title patterns in Liquid (a field by its key) and gives each
+        type with one a global rule that sets the title; the downgrade removes the rules and
+        writes the old placeholders again."""
+        await migrate(empty_database, "0018")
+        payslip, letter, field = new_id(), new_id(), new_id()
+        old = "Lohn {contact} {document_date:YYYY-MM} {field:LA Brutto}"
+        rows: list[tuple[sa.Table, dict[str, Any]]] = [
+            (
+                t.document_types,
+                {"id": payslip, "name": "Lohn", "name_key": "lohn", "title_pattern": old},
+            ),
+            (t.document_types, {"id": letter, "name": "Brief", "name_key": "brief"}),
+            (
+                t.field_definitions,
+                {"id": field, "name": "LA Brutto", "name_key": "la brutto", "data_type": "amount"},
+            ),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+
+        await migrate(empty_database)
+        async with empty_database.reading() as connection:
+            patterns = dict(
+                (
+                    await connection.execute(
+                        select(t.document_types.c.id, t.document_types.c.title_pattern)
+                    )
+                ).all()
+            )
+            (link,) = (await connection.execute(select(t.title_pattern_rules))).all()
+            (version,) = (await connection.execute(select(t.rule_versions))).mappings().all()
+            (rule,) = (await connection.execute(select(t.rules))).mappings().all()
+        new = "Lohn {{ contact }} {{ document_date | date: '%Y-%m' }} {{ field.la_brutto }}"
+        assert patterns == {payslip: new, letter: None}
+        assert link.document_type_id == payslip and link.rule_id == rule["id"]
+        assert (rule["scope"], rule["owner_id"], rule["enabled"]) == ("global", None, True)
+        assert version["name"] == "Lohn" and version["actions"] == [
+            {"type": "set_title", "template": new}
+        ]
+        assert version["conditions"] == {
+            "all": [{"field": "document_type", "op": "is", "value": str(payslip)}]
+        }
+        uow = SqlUnitOfWorkFactory(empty_database)
+        async with uow() as unit:
+            loaded = await unit.rules.get(rule["id"])
+        assert loaded.managed_by == payslip and loaded.definition.actions[0].type == "set_title"
+
+        await _downgrade(empty_database, "0018")
+        async with empty_database.reading() as connection:
+            restored = (
+                await connection.execute(
+                    select(t.document_types.c.title_pattern).where(t.document_types.c.id == payslip)
+                )
+            ).scalar_one()
+            remaining = (
+                await connection.execute(select(sa.func.count()).select_from(t.rules))
+            ).scalar_one()
+        assert (restored, remaining) == (old, 0)
+
+    async def test_two_fields_with_one_key_stop_revision_0019(
+        self, empty_database: Database
+    ) -> None:
+        await migrate(empty_database, "0018")
+        async with empty_database.writing() as connection:
+            for name in ("LA Brutto", "LA_Brutto"):
+                values = {"id": new_id(), "name": name, "name_key": name.casefold()}
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in t.field_definitions.c}
+                await connection.execute(insert(t.field_definitions).values({**defaults, **values}))
+        with pytest.raises(RuntimeError, match=r"would both be field\.la_brutto"):
+            await migrate(empty_database)
 
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database

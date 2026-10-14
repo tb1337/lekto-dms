@@ -229,6 +229,11 @@ async def test_deleting_a_user_removes_their_rules(world: World) -> None:
     ("action", "message"),
     [
         (SetTitle("{{ contact "), r"actions\[0\]: invalid template"),
+        (
+            SetTitle("{contact} Lohn"),
+            r"\{contact\} is no longer a placeholder: write \{\{ contact \}\}",
+        ),
+        (SetTitle("{field:LA Brutto}"), r"write \{\{ field\.LA Brutto \}\}"),
         (SetTitle("{{ sender }}"), r"actions\[0\]: unknown value sender"),
         (SetTitle("{{ field.brutto }}"), r"unknown value field\.brutto"),
         (SetTitle("{{ contact | nonsense }}"), "unknown filter"),

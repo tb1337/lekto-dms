@@ -5,7 +5,7 @@ import copy
 import hashlib
 import logging
 import random
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -13,7 +13,6 @@ from typing import Protocol
 from uuid import UUID
 
 from papiq.core.domain import media_types
-from papiq.core.domain.classification import TITLE
 from papiq.core.domain.documents import (
     CLASSIFIER_LABELS,
     Channel,
@@ -32,7 +31,6 @@ from papiq.core.domain.errors import (
     UnsupportedMediaTypeError,
     ValidationError,
 )
-from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.ids import DocumentId, DrawerId, JobId, TagId, UserId
 from papiq.core.domain.imports import IMPORTED, ImportedMetadata
 from papiq.core.domain.jobs import Job, JobStatus
@@ -68,7 +66,6 @@ from papiq.core.services.inbox import (
 from papiq.core.services.master_data import learn_alias
 from papiq.core.services.objects import original_key
 from papiq.core.services.rules.running import corrected_fields, drawer_choice, person_record
-from papiq.core.services.titles import RENDERED_TITLE, has_machine_title, pattern_title
 
 log = logging.getLogger(__name__)
 
@@ -452,11 +449,6 @@ class PipelineService:
             before = copy.deepcopy(document)
             document.apply_changes(decision.changes, definitions, now)
             corrected = corrected_fields(before, document)
-            rendered = None
-            if Node.FIELDS not in again and TITLE not in changed_fields(decision.changes):
-                rendered = await _rendered_title(uow, document, log, definitions.values())
-            if rendered is not None:
-                document.apply_changes(DocumentChanges(title=rendered), definitions, now)
             if target is not None:
                 document.move_to(target.id, now)
             run = document.processing.run
@@ -473,8 +465,6 @@ class PipelineService:
                 corrected=corrected,
             )
             chosen: JsonObject = {} if target is None else {CHOSEN_DRAWER: str(target.id)}
-            if rendered is not None:
-                chosen[RENDERED_TITLE] = rendered
             learned = alias_to_learn(open, decision, document)
             if learned is not None and await learn_alias(uow, *learned) is not None:
                 chosen[LEARNED_ALIAS] = {"contact_id": str(learned[0]), "alias": learned[1]}
@@ -865,23 +855,6 @@ class PipelineService:
                 duration=now - started,
             )
         )
-
-
-async def _rendered_title(
-    uow: UnitOfWork,
-    document: Document,
-    log: Sequence[NodeRun],
-    definitions: Iterable[FieldDefinition],
-) -> str | None:
-    """The type's title pattern rendered with the document's values, if the document has the
-    machine's title and the pattern gives another one."""
-    if document.document_type_id is None or not has_machine_title(document, log):
-        return None
-    kind = await uow.document_types.find(document.document_type_id)
-    contact = None if document.contact_id is None else await uow.contacts.find(document.contact_id)
-    applying = [item for item in definitions if kind and item.applies_to(kind.id)]
-    title = pattern_title(document, kind, contact, applying)
-    return title if title is not None and title != document.title else None
 
 
 async def _owned_document(uow: UnitOfWork, user: User, id: DocumentId) -> Document:

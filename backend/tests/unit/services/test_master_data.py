@@ -155,7 +155,7 @@ async def test_required_fields_and_title_patterns(world: World) -> None:
     admin = await world.user(role=Role.ADMIN)
     service = world.master_data
     payslip = await service.create_document_type(
-        admin.id, "Lohnnachweis", title_pattern="Lohn {document_date:YYYY-MM}"
+        admin.id, "Lohnnachweis", title_pattern="Lohn {{ document_date | date: '%Y-%m' }}"
     )
     other = await service.create_document_type(admin.id, "Brief")
     period = await service.create_field(
@@ -170,21 +170,28 @@ async def test_required_fields_and_title_patterns(world: World) -> None:
     assert note.is_required_for(None)
     # A pattern names fields of the type only.
     changed = await service.change_document_type(
-        admin.id, payslip.id, title_pattern="Lohn {field:Zeitraum} {field:Notiz}"
+        admin.id, payslip.id, title_pattern="Lohn {{ field.zeitraum }} {{ field.notiz }}"
     )
-    assert changed.title_pattern == "Lohn {field:Zeitraum} {field:Notiz}"
+    assert changed.title_pattern == "Lohn {{ field.zeitraum }} {{ field.notiz }}"
+    with pytest.raises(ValidationError, match=r"field\.betrag"):
+        await service.change_document_type(admin.id, payslip.id, title_pattern="{{ field.betrag }}")
+    with pytest.raises(ValidationError, match="invalid template"):
+        await service.change_document_type(admin.id, payslip.id, title_pattern="{{ contact")
     with pytest.raises(ValidationError):
-        await service.change_document_type(admin.id, payslip.id, title_pattern="{field:Betrag}")
-    with pytest.raises(ValidationError):
-        await service.create_document_type(admin.id, "Neu", title_pattern="{field:Zeitraum}")
+        await service.create_document_type(admin.id, "Neu", title_pattern="{{ field.zeitraum }}")
     # Renamed, the field is renamed in the patterns; narrowed, it stays required for the rest.
     await service.rename_field(admin.id, period.id, "Abrechnungszeitraum")
     async with world.uow() as uow:
         assert (await uow.document_types.get(payslip.id)).title_pattern == (
-            "Lohn {field:Abrechnungszeitraum} {field:Notiz}"
+            "Lohn {{ field.abrechnungszeitraum }} {{ field.notiz }}"
         )
     narrowed = await service.change_field(admin.id, period.id, document_type_ids=[payslip.id])
     assert narrowed.required_types == frozenset({payslip.id})
+    # Not narrowed past a type whose pattern uses it, not deleted while a pattern does.
+    with pytest.raises(ConflictError, match="the title pattern of 'Lohnnachweis'"):
+        await service.change_field(admin.id, note.id, document_type_ids=[other.id])
+    with pytest.raises(ConflictError, match="title patterns of 'Lohnnachweis'"):
+        await service.delete_field(admin.id, note.id)
     optional = await service.change_field(admin.id, period.id, required_document_type_ids=[])
     assert not optional.is_required_for(payslip.id)
     with pytest.raises(ValidationError):

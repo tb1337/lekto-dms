@@ -333,9 +333,12 @@ async def test_contact_identifiers(api: Api) -> None:
 async def test_required_fields_and_title_patterns(api: Api) -> None:
     a = auth(await api.admin())
     payslip = await post(
-        api, "/document-types", {"name": "Lohn", "title_pattern": "{document_date:YYYY}"}, a
+        api,
+        "/document-types",
+        {"name": "Lohn", "title_pattern": "{{ document_date | date: '%Y' }}"},
+        a,
     )
-    assert payslip["title_pattern"] == "{document_date:YYYY}"
+    assert payslip["title_pattern"] == "{{ document_date | date: '%Y' }}"
     field = await post(
         api,
         "/fields",
@@ -354,7 +357,7 @@ async def test_required_fields_and_title_patterns(api: Api) -> None:
     response = await api.client.patch(path, json={"required": True}, headers=a)
     assert response.status_code == 422  # a typed field is required per type
     type_path = f"{PREFIX}/document-types/{payslip['id']}"
-    response = await api.client.patch(type_path, json={"title_pattern": "{amount}"}, headers=a)
+    response = await api.client.patch(type_path, json={"title_pattern": "{{ amount }}"}, headers=a)
     assert response.status_code == 422
     response = await api.client.patch(type_path, json={"title_pattern": None}, headers=a)
     assert response.json()["title_pattern"] is None

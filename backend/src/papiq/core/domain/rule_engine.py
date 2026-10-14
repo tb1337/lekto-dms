@@ -418,7 +418,8 @@ class Effect:
 @dataclass(frozen=True)
 class Note:
     """An action that was not applied, and why (`kind`: skipped, overruled, refused,
-    conflict), or a review the rule forces (`review`)."""
+    conflict, yielded: the title pattern gave way to another rule), or a review the rule
+    forces (`review`)."""
 
     field: str
     kind: str
@@ -759,8 +760,10 @@ class _Planner:
     def _title(self, result: dict[str, JsonValue], values: Mapping[str, TemplateValue]) -> None:
         if not self._titles:
             return
+        patterns: list[_Candidate] = []
         for report, action, match in self._titles:
-            if match.rule.scope is RuleScope.GLOBAL:
+            pattern = match.rule.managed_by is not None
+            if match.rule.scope is RuleScope.GLOBAL and not pattern:
                 report.notes.append(Note(TITLE, "refused", "global rules cannot set it"))
                 continue
             rendered = self._render(report, TITLE, action.template, values)
@@ -770,7 +773,17 @@ class _Planner:
             if not title:
                 report.notes.append(Note(TITLE, "skipped", "the title would be empty"))
                 continue
-            self._candidates.setdefault(TITLE, []).append(_Candidate(report, title, match))
+            candidate = _Candidate(report, title, match)
+            if pattern:
+                patterns.append(candidate)
+            else:
+                self._candidates.setdefault(TITLE, []).append(candidate)
+        # The type's title pattern gives way to a rule of its own that sets the title.
+        if TITLE in self._candidates:
+            for candidate in patterns:
+                candidate.report.notes.append(Note(TITLE, "yielded", "another rule sets the title"))
+        elif patterns:
+            self._candidates[TITLE] = patterns
         self._single(TITLE, result)
 
     def _text_fields(

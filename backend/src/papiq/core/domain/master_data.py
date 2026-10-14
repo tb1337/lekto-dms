@@ -14,7 +14,6 @@ from papiq.core.domain.identifiers import (
     IdentifierSource,
 )
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
-from papiq.core.domain.titles import check_pattern
 from papiq.core.domain.validation import name_key, require_name, require_utc
 
 MAX_ALIASES = 100
@@ -141,8 +140,9 @@ class Contact(MasterData):
 class DocumentType(MasterData):
     """The kind of a document; field definitions can be bound to it. `description` tells the
     language model what belongs to the type ("pay slips, Entgeltbescheinigung, ...").
-    `title_pattern` (see `titles`) renders the title of its documents, in place of the
-    model's proposal; that its fields exist is the service's to check."""
+    `title_pattern`: a template (Liquid, `domain.templates`) for the title of its documents,
+    carried out by a rule the type keeps (`rules.title_rule`); its syntax and fields are the
+    service's to check."""
 
     id: DocumentTypeId
     description: str | None = None
@@ -233,10 +233,17 @@ def _identifiers(identifiers: Iterable[Identifier]) -> list[Identifier]:
     return result
 
 
+MAX_TITLE_PATTERN = 500
+
+
 def _title_pattern(pattern: str | None) -> str | None:
+    """A template on one line (Liquid; the service checks its syntax and values)."""
     if pattern is None or not pattern.strip():
         return None
-    return check_pattern(one_line(pattern), with_fields=True)
+    pattern = one_line(pattern).strip()
+    if len(pattern) > MAX_TITLE_PATTERN:
+        raise ValidationError(f"a title pattern is at most {MAX_TITLE_PATTERN} characters")
+    return pattern
 
 
 def checked_description(description: str | None) -> str | None:

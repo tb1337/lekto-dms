@@ -58,7 +58,7 @@
     ]
   },
   "title_patterns": {
-    "Kontoauszug": "{contact} Kontoauszug {document_date:YYYY-MM}"
+    "Kontoauszug": "{{ contact }} Kontoauszug {{ document_date | date: '%Y-%m' }}"
   },
   "fields": [
     {

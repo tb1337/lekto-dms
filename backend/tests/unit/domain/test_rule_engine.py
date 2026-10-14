@@ -6,6 +6,7 @@ from uuid import UUID
 import pytest
 
 from papiq.core.domain.documents import UNSET, Channel, Document, DocumentChanges
+from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.evidence import DocumentText
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from papiq.core.domain.ids import (
@@ -1019,6 +1020,64 @@ def test_a_review_holds_where_its_reason_cannot_be_rendered() -> None:
     )
 
     assert result.reviews == ["rule 'a': check {{ contact }}", "rule 'b': from Rechnung 2026"]
+
+
+def title_pattern(template: str) -> Rule:
+    """The rule of the title pattern of INVOICE."""
+    return Rule.create(
+        scope=RuleScope.GLOBAL,
+        owner_id=None,
+        definition=RuleDefinition(name="Invoice", conditions=ALWAYS, actions=(SetTitle(template),)),
+        by=OWNER,
+        now=NOW,
+        managed_by=INVOICE,
+    )
+
+
+def test_a_type_s_title_pattern_sets_the_title_as_a_global_rule() -> None:
+    result = run(
+        [title_pattern("{{ document_type }} {{ filename }}")],
+        situation(doc(document_type_id=INVOICE)),
+    )
+
+    assert result.changes.title == "Invoice Rechnung 2026"
+    # Any other global rule still cannot.
+    other = run([global_rule_storing(SetTitle("x"))], situation(doc()))
+    assert notes(other) == [("title", "refused")]
+
+
+def test_the_pattern_gives_way_to_another_rule_and_to_a_person() -> None:
+    rules = [title_pattern("{{ document_type }}"), rule(SetTitle("Mine"))]
+    result = run(rules, situation(doc(document_type_id=INVOICE)))
+
+    assert result.changes.title == "Mine"
+    assert ("title", "yielded") in notes(result)
+    assert check(result, "title").outcome is Outcome.OK  # no conflict
+
+    person = run(rules[:1], situation(doc(document_type_id=INVOICE), locked=frozenset({"title"})))
+    assert person.changes.title is UNSET
+    assert notes(person) == [("title", "overruled")]
+
+
+def test_a_title_pattern_rule_is_global_and_may_only_title() -> None:
+    with pytest.raises(ValidationError, match="global"):
+        Rule.create(
+            scope=RuleScope.USER,
+            owner_id=OWNER,
+            definition=RuleDefinition(name="x", conditions=ALWAYS, actions=(SetTitle("x"),)),
+            by=OWNER,
+            now=NOW,
+            managed_by=INVOICE,
+        )
+    with pytest.raises(ValidationError, match="cannot set_contact"):
+        Rule.create(
+            scope=RuleScope.GLOBAL,
+            owner_id=None,
+            definition=RuleDefinition(name="x", conditions=ALWAYS, actions=(SetContact(ACME),)),
+            by=OWNER,
+            now=NOW,
+            managed_by=INVOICE,
+        )
 
 
 def test_titles_of_two_rules_conflict() -> None:

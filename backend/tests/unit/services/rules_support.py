@@ -5,12 +5,12 @@ builders for rule definitions."""
 import re
 import uuid
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from papiq.core.domain.classification import FieldCheck, checks_to_json
 from papiq.core.domain.documents import Channel, Document, DocumentChanges
 from papiq.core.domain.errors import PatternTimeoutError
-from papiq.core.domain.ids import ContactId, DrawerId, TagId
+from papiq.core.domain.ids import ContactId, DocumentTypeId, DrawerId, TagId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact, Tag
 from papiq.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
@@ -64,9 +64,16 @@ class FakeMatcher:
 class Classifies:
     """Classification that sets a contact and tags as the model does: applied, unconfirmed."""
 
-    def __init__(self, *, contact: ContactId | None = None, tags: Iterable[TagId] = ()) -> None:
+    def __init__(
+        self,
+        *,
+        contact: ContactId | None = None,
+        tags: Iterable[TagId] = (),
+        document_type: DocumentTypeId | None = None,
+    ) -> None:
         self.contact = contact
         self.tags = frozenset(tags)
+        self.document_type = document_type
 
     async def run(self, document: Document) -> MetadataResult:
         checks: list[FieldCheck] = []
@@ -78,6 +85,16 @@ class Classifies:
                 )
             )
             changes = DocumentChanges(contact_id=self.contact)
+        if self.document_type is not None:
+            checks.append(
+                FieldCheck(
+                    field="document_type",
+                    outcome=Outcome.OK,
+                    confidence=0.9,
+                    value=str(self.document_type),
+                )
+            )
+            changes = replace(changes, document_type_id=self.document_type)
         tags: list[JsonValue] = [str(tag) for tag in sorted(self.tags)]
         checks.append(FieldCheck(field="tags", outcome=Outcome.OK, confidence=0.9, value=tags))
         result = NodeResult(

@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any
 
 from papiq.core.domain.documents import UNSET, Unset
-from papiq.core.domain.errors import ConflictError, PermissionDeniedError
+from papiq.core.domain.errors import ConflictError, PermissionDeniedError, ValidationError
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId, UserId
@@ -18,8 +18,9 @@ from papiq.core.domain.master_data import (
 from papiq.core.domain.names import name_key as match_key
 from papiq.core.domain.names import related
 from papiq.core.domain.permissions import can_manage_master_data
-from papiq.core.domain.rules import References, Rule
-from papiq.core.domain.titles import check_pattern, field_names, rename_field
+from papiq.core.domain.rules import References, Rule, RuleScope, definition_to_json, title_rule
+from papiq.core.domain.templates import old_placeholder, rename_field_key, unknown_values
+from papiq.core.domain.templates import uses_field as field_used
 from papiq.core.ports import (
     Clock,
     NamedRepository,
@@ -131,13 +132,18 @@ class MasterDataService:
         description: str | None = None,
         title_pattern: str | None = None,
     ) -> DocumentType:
-        """`title_pattern` (see `domain.titles`) may name global fields only: no other field
-        applies to a new type yet."""
+        """`title_pattern` (a template, `domain.templates`) may name global fields only: no
+        other field applies to a new type yet. A pattern is carried out by a rule of the type
+        (`rules.title_rule`)."""
         item = DocumentType.create(
             name=name, now=self._now(), description=description, title_pattern=title_pattern
         )
         return await self._create(
-            actor, _document_types, item, lambda uow: _check_title_pattern(uow, item)
+            actor,
+            _document_types,
+            item,
+            lambda uow: self._check_title_pattern(uow, item),
+            after=lambda uow: self._keep_title_rule(uow, actor, item),
         )
 
     async def rename_document_type(
@@ -173,8 +179,9 @@ class MasterDataService:
             check=(
                 None
                 if isinstance(title_pattern, Unset)
-                else lambda uow, item: _check_title_pattern(uow, item)
+                else lambda uow, item: self._check_title_pattern(uow, item)
             ),
+            after=lambda uow, item: self._keep_title_rule(uow, actor, item),
             index_as="document_type" if name is not None else None,
         )
 
@@ -238,13 +245,13 @@ class MasterDataService:
         async with self._uow() as uow:
             await _require_admin(uow, actor)
             definition = await uow.fields.get(id)
-            old_name, old_key = definition.name, definition.key
+            old_key = definition.key
             if name is not None:
                 definition.rename(name)
                 await _check_name_free(uow.fields, definition)
                 await _check_key_free(uow, definition)
-                await _rename_in_patterns(uow, old_name, definition.name)
                 if definition.key != old_key:
+                    await self._rename_in_patterns(uow, actor, old_key, definition.key)
                     await self._rename_in_rules(uow, actor, old_key, definition.key)
             if choices is not None:
                 removed = definition.change_choices(choices)
@@ -261,6 +268,13 @@ class MasterDataService:
                     and await uow.documents.field_in_use(id, outside_types=scope)
                 ):
                     raise ConflictError("documents outside the new scope have values")
+                if narrower:
+                    for patterned in await self._patterns_using(uow, definition.key):
+                        if not definition.applies_to(patterned.id):
+                            raise ConflictError(
+                                f"the title pattern of '{patterned.name}' uses "
+                                f"field.{definition.key}"
+                            )
             definition.require(required=required, types=required_document_type_ids)
             if not isinstance(description, Unset):
                 definition.describe(description)
@@ -325,8 +339,19 @@ class MasterDataService:
                 id in (field.document_type_ids or ()) for field in await uow.fields.list_all()
             )
 
+        async def drop_title_rule(uow: UnitOfWork) -> None:
+            rule = await _title_rule(uow, id)
+            if rule is not None:
+                rule.delete(self._now())
+                await uow.rules.update(rule)
+
         await self._delete(
-            actor, _document_types, id, used, ("document type", lambda refs: refs.document_types)
+            actor,
+            _document_types,
+            id,
+            used,
+            ("document type", lambda refs: refs.document_types),
+            before=drop_title_rule,
         )
 
     async def delete_tag(self, actor: UserId, id: TagId) -> None:
@@ -345,6 +370,12 @@ class MasterDataService:
             if await uow.documents.exists(field=id):
                 return True
             definition = await uow.fields.get(id)
+            patterns = await self._patterns_using(uow, definition.key)
+            if patterns:
+                names = ", ".join(sorted(f"'{item.name}'" for item in patterns))
+                raise ConflictError(
+                    f"field.{definition.key} is used by the title patterns of {names}"
+                )
             rules = await self._rules_using(uow, definition.key)
             if rules:
                 names = ", ".join(sorted(f"'{rule.definition.name}'" for rule in rules))
@@ -356,12 +387,75 @@ class MasterDataService:
         await self._delete(actor, _fields, id, used, ("field", lambda refs: refs.fields))
 
     async def _rules_using(self, uow: UnitOfWork, key: str) -> list[Rule]:
+        """The rules whose templates use the field `key`, but those of title patterns (they
+        follow their type)."""
         fields = await uow.fields.list_all()
         return [
             rule
             for rule in await uow.rules.list_for(owners=None, include_global=True)
-            if uses_field(self._templates, rule.definition, fields, key)
+            if rule.managed_by is None and uses_field(self._templates, rule.definition, fields, key)
         ]
+
+    async def _patterns_using(self, uow: UnitOfWork, key: str) -> list[DocumentType]:
+        return [
+            item
+            for item in await uow.document_types.list_all()
+            if item.title_pattern is not None
+            and field_used(self._templates.check(item.title_pattern), key)
+        ]
+
+    async def _rename_in_patterns(self, uow: UnitOfWork, actor: UserId, old: str, new: str) -> None:
+        """Title patterns that use `field.<old>` take the new key, and so do their rules."""
+        for document_type in await self._patterns_using(uow, old):
+            pattern = document_type.title_pattern or ""
+            document_type.set_title_pattern(rename_field_key(pattern, old, new))
+            await uow.document_types.update(document_type)
+            await self._keep_title_rule(uow, actor, document_type)
+
+    async def _check_title_pattern(self, uow: UnitOfWork, document_type: DocumentType) -> None:
+        """A pattern is a valid template whose fields apply to the type."""
+        if document_type.title_pattern is None:
+            return
+        old = old_placeholder(document_type.title_pattern)
+        if old is not None:
+            raise ValidationError(f"the title pattern: {old}")
+        keys = {
+            item.key for item in await uow.fields.list_all() if item.applies_to(document_type.id)
+        }
+        unknown = unknown_values(self._templates.check(document_type.title_pattern), keys)
+        if unknown:
+            raise ValidationError(
+                f"the title pattern uses {unknown[0]}, which a template of "
+                f"'{document_type.name}' does not know (fields: field.<key> of those that "
+                "apply to the type)"
+            )
+
+    async def _keep_title_rule(
+        self, uow: UnitOfWork, actor: UserId, document_type: DocumentType
+    ) -> None:
+        """The type's rule as its pattern says: made, given a new version, or deleted."""
+        rule = await _title_rule(uow, document_type.id)
+        now = self._now()
+        if document_type.title_pattern is None:
+            if rule is not None:
+                rule.delete(now)
+                await uow.rules.update(rule)
+            return
+        definition = title_rule(document_type)
+        if rule is None:
+            await uow.rules.add(
+                Rule.create(
+                    scope=RuleScope.GLOBAL,
+                    owner_id=None,
+                    definition=definition,
+                    by=actor,
+                    now=now,
+                    managed_by=document_type.id,
+                )
+            )
+        elif definition_to_json(rule.definition) != definition_to_json(definition):
+            rule.change(definition, actor, now)
+            await uow.rules.update(rule)
 
     async def _rename_in_rules(self, uow: UnitOfWork, actor: UserId, old: str, new: str) -> None:
         """The templates of rules that use `field.<old>` take the new key (a new version)."""
@@ -388,14 +482,19 @@ class MasterDataService:
         id: Any,
         used: Callable[[UnitOfWork], Awaitable[bool]],
         referenced: tuple[str, Callable[[References], frozenset[Any]]],
+        *,
+        before: Callable[[UnitOfWork], Awaitable[None]] | None = None,
     ) -> None:
-        """Only what no document uses; rules that refer to it are disabled."""
+        """Only what no document uses; rules that refer to it are disabled. `before`: what
+        goes with it, before it goes."""
         kind, select = referenced
         async with self._uow() as uow:
             await _require_admin(uow, actor)
             item = await repository(uow).get(id)
             if await used(uow):
                 raise ConflictError(f"'{item.name}' is in use")
+            if before is not None:
+                await before(uow)
             await repository(uow).remove(id)
             await disable_rules(
                 uow, self._now(), f"{kind} '{item.name}' was deleted", refers_to(select, id)
@@ -411,13 +510,18 @@ class MasterDataService:
         repository: Repo[E],
         item: E,
         check: Callable[[UnitOfWork], Awaitable[None]] | None = None,
+        *,
+        after: Callable[[UnitOfWork], Awaitable[None]] | None = None,
     ) -> E:
+        """`after`: what follows from the new item, in the same unit of work."""
         async with self._uow() as uow:
             await _require_admin(uow, actor)
             if check is not None:
                 await check(uow)
             await _check_name_free(repository(uow), item)
             await repository(uow).add(item)
+            if after is not None:
+                await after(uow)
             await uow.commit()
         return item
 
@@ -442,9 +546,11 @@ class MasterDataService:
         change: Callable[[E], None],
         *,
         check: Callable[[UnitOfWork, E], Awaitable[None]] | None = None,
+        after: Callable[[UnitOfWork, E], Awaitable[None]] | None = None,
         index_as: str | None = None,
     ) -> E:
-        """`index_as`: the kind whose documents' search index is brought up to date."""
+        """`after`: what follows from the change, in the same unit of work. `index_as`: the
+        kind whose documents' search index is brought up to date."""
         async with self._uow() as uow:
             await _require_admin(uow, actor)
             item = await repository(uow).get(id)
@@ -453,6 +559,8 @@ class MasterDataService:
             if check is not None:
                 await check(uow, item)
             await repository(uow).update(item)
+            if after is not None:
+                await after(uow, item)
             if index_as is not None and self._index_renames:
                 await uow.jobs.enqueue(
                     REFRESH_JOB, {"kind": index_as, "id": str(id)}, run_at=self._clock.now()
@@ -483,22 +591,12 @@ async def _check_key_free(uow: UnitOfWork, definition: FieldDefinition) -> None:
             )
 
 
-async def _check_title_pattern(uow: UnitOfWork, document_type: DocumentType) -> None:
-    """The fields a title pattern names apply to the type."""
-    if document_type.title_pattern is None:
-        return
-    names = [item.name for item in await uow.fields.list_all() if item.applies_to(document_type.id)]
-    check_pattern(document_type.title_pattern, fields=names)
-
-
-async def _rename_in_patterns(uow: UnitOfWork, old: str, new: str) -> None:
-    if old == new:
-        return
-    for document_type in await uow.document_types.list_all():
-        pattern = document_type.title_pattern
-        if pattern is not None and old in field_names(pattern):
-            document_type.set_title_pattern(rename_field(pattern, old, new))
-            await uow.document_types.update(document_type)
+async def _title_rule(uow: UnitOfWork, document_type: DocumentTypeId) -> Rule | None:
+    """The live rule of the type's title pattern, if it has one."""
+    for rule in await uow.rules.list_for(owners=[], include_global=True):
+        if rule.managed_by == document_type:
+            return rule
+    return None
 
 
 async def _check_contact(uow: UnitOfWork, contact: Contact) -> None:

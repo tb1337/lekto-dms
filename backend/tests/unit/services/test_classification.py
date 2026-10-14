@@ -12,6 +12,7 @@ import pytest
 
 from papiq.adapters.outbound.memory import FakeLanguageModel, FakeTextLocator
 from papiq.adapters.outbound.memory.processing import FAKE_PDF
+from papiq.adapters.outbound.regex import RegexPatternMatcher
 from papiq.core.domain.classification import TITLE, FieldCheck, checks_from_json, field_key
 from papiq.core.domain.documents import UNSET, Document, DocumentChanges
 from papiq.core.domain.errors import LanguageModelError
@@ -22,6 +23,7 @@ from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
 from papiq.core.domain.reading import PageReading, readings_to_json
+from papiq.core.domain.users import Role
 from papiq.core.ports import StructuredRequest
 from papiq.core.services.classification.nodes import (
     NO_MODEL,
@@ -39,7 +41,7 @@ from papiq.core.services.classification.signals import (
 )
 from papiq.core.services.objects import archive_key, exchanges_key, text_key
 from papiq.core.services.pipeline import MetadataResult, NodeExecutor, PlaceholderNode
-from papiq.core.services.titles import machine_title
+from papiq.core.services.rules.nodes import ApplyRulesNode
 from tests import builders
 from tests.builders import NOW, incoming
 from tests.unit.services.conftest import World
@@ -173,6 +175,16 @@ async def document_with(
         text_key(document.id), text.encode(), content_type="text/markdown; charset=utf-8"
     )
     return document
+
+
+def rules_step(world: World) -> ApplyRulesNode:
+    return ApplyRulesNode(
+        world.uow,
+        world.object_store,
+        RegexPatternMatcher(0.2),
+        builders.TEMPLATES,
+        max_text=200_000,
+    )
 
 
 def signal_step(world: World, fake: FakeLanguageModel | None, **policy: Any) -> LlmSignal:
@@ -1228,14 +1240,7 @@ async def test_an_optional_field_the_model_misreads_is_uncertain(world: World) -
 # --- the title --------------------------------------------------------------------------------
 
 
-async def titled(
-    world: World, seeded: Seeded, document: Document, pattern: str | None = None
-) -> FieldCheck | None:
-    kind = seeded.types["Rechnung"]
-    kind.set_title_pattern(pattern)
-    async with world.uow() as uow:
-        await uow.document_types.update(kind)
-        await uow.commit()
+async def titled(world: World, document: Document) -> FieldCheck | None:
     outcome = await fields_step(world, model(extraction())).run(document)
     assert isinstance(outcome, MetadataResult)
     title = checks(outcome.result).get(TITLE)
@@ -1243,36 +1248,25 @@ async def titled(
     return title
 
 
-async def test_the_title_comes_from_the_pattern_else_from_the_model(world: World) -> None:
+async def test_the_title_comes_from_the_model(world: World) -> None:
+    """A type's title pattern is a rule now (`test_title_patterns`), not the fields node's."""
     seeded = await seed(world)
     document, _ = await signalled(world, proposal(), seeded.types["Rechnung"])
     assert document.title == "scan"  # the file name
-
-    title = await titled(world, seeded, document)
+    title = await titled(world, document)
     assert title is not None
-    assert (title.value, title.outcome) == ("Stromrechnung März 2026", Outcome.OK)
-
-    document.contact_id = seeded.contacts["Stadtwerke Musterstadt GmbH"].id
-    document.document_date = date(2026, 3, 31)
-    pattern = "{contact} {document_date:YYYY-MM} {field:Rechnungsnummer}"
-    title = await titled(world, seeded, document, pattern)
-    assert title is not None
-    assert title.value == "Stadtwerke Musterstadt GmbH 2026-03 R-2026-0815"
-    assert title.proposed == "Stromrechnung März 2026"
-
-    # A value of the pattern is missing: the model's title, with a note.
-    document.contact_id = None
-    title = await titled(world, seeded, document, pattern)
-    assert title is not None
-    assert title.value == "Stromrechnung März 2026"
-    assert title.reason == "the title pattern misses a value; the model's title"
+    assert (title.value, title.outcome, title.reason) == (
+        "Stromrechnung März 2026",
+        Outcome.OK,
+        None,
+    )
 
 
 async def test_a_title_of_its_own_stays_but_the_machine_s_is_replaced(world: World) -> None:
     seeded = await seed(world)
     document, _ = await signalled(world, proposal(), seeded.types["Rechnung"])
     document.title = "Meine Stromrechnung"
-    assert await titled(world, seeded, document) is None
+    assert await titled(world, document) is None
 
     # The title the fields node set before is the machine's: a later run replaces it.
     document.title = "scan"
@@ -1280,9 +1274,9 @@ async def test_a_title_of_its_own_stays_but_the_machine_s_is_replaced(world: Wor
     assert isinstance(first, MetadataResult)
     await record(world, document, Node.FIELDS, first.result)
     document.title = "Stromrechnung März 2026"
-    title = await titled(world, seeded, document, "{document_type} {field:Rechnungsnummer}")
+    title = await titled(world, document)
     assert title is not None
-    assert title.value == "Rechnung R-2026-0815"
+    assert title.value == "Stromrechnung März 2026"
 
 
 # --- through the pipeline ---------------------------------------------------------------------
@@ -1304,7 +1298,7 @@ async def run(world: World, fake: FakeLanguageModel) -> tuple[Any, Document]:
         Node.JUDGE: JudgeNode(world.uow, world.object_store, world.clock),
         Node.FIELDS: fields_step(world, fake),
     }
-    pipeline = world.pipeline(executors)
+    pipeline = world.pipeline(executors | {Node.APPLY_RULES: rules_step(world)})
     document = await pipeline.receive(owner.id, incoming(b"%PDF-1.7\n%%EOF\n"), filename="a.pdf")
     await world.object_store.put(
         text_key(document.id), INVOICE.encode(), content_type="text/markdown; charset=utf-8"
@@ -1353,26 +1347,25 @@ async def test_an_uncertain_document_waits_in_the_inbox(world: World) -> None:
 async def test_confirming_renders_the_title_pattern_with_the_decided_values(
     world: World,
 ) -> None:
-    """The invoice number is missing: the model's title stands in for the pattern until the
-    owner enters it."""
+    """The invoice number is missing: the model's title stands until the owner enters it; the
+    pattern's rule runs again with the decided values."""
     seeded = await seed(world)
-    kind = seeded.types["Rechnung"]
-    kind.set_title_pattern("{document_type} {field:Rechnungsnummer}")
-    async with world.uow() as uow:
-        await uow.document_types.update(kind)
-        await uow.commit()
+    admin = await world.user(role=Role.ADMIN)
+    pattern = "{{ document_type }} {{ field.rechnungsnummer }}"
+    await world.master_data.change_document_type(
+        admin.id, seeded.types["Rechnung"].id, title_pattern=pattern
+    )
     answer = proposal(fields=FIELDS[:2])
     owner, document = await run(world, FakeLanguageModel(responder(answer, extraction())))
     assert document.lane is Lane.YELLOW
     assert document.title == "Stromrechnung März 2026"
 
     number = seeded.fields["Rechnungsnummer"].id
-    pipeline = world.pipeline({Node.FILE: PlaceholderNode()})
+    pipeline = world.pipeline({Node.APPLY_RULES: rules_step(world), Node.FILE: PlaceholderNode()})
     await pipeline.confirm(owner.id, document.id, DocumentChanges(fields={number: "R-2026-0815"}))
+    await world.drain(pipeline)
     document = await world.documents.get(owner.id, document.id)
     assert document.title == "Rechnung R-2026-0815"
-    log = await world.documents.processing_log(owner.id, document.id)
-    assert machine_title(log) == "Rechnung R-2026-0815"
 
 
 # --- quotes on the page ---------------------------------------------------------------------

@@ -307,7 +307,8 @@ traceable after a correction; the rules read them with `core.services.inbox.fiel
 The document text is sent between markers derived from its hash, and the model is told to treat
 it as data. It can only answer with the fixed schema: there is no field for drawers, owners,
 shares or actions, and additional fields make the answer unfit. Long documents are shortened to
-`PAPIQ_LLM_INPUT_BUDGET` characters (beginning and end kept, the middle left out); with many
+`PAPIQ_LLM_INPUT_BUDGET` characters, a run of spaces counted once (the columns of the text as it
+is set cost a model little; beginning and end kept, the middle left out); with many
 tags, at most `PAPIQ_LLM_MAX_TAGS` are listed, those named in the text first; of the contacts,
 the 20 the text names most (with their aliases).
 
@@ -848,7 +849,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_LLM_SEED` | Worker | unset | Passed to the endpoint, if set |
 | `PAPIQ_LLM_TIMEOUT` | Worker | `300` | Seconds per request (`600` on a CPU) |
 | `PAPIQ_LLM_RESPONSE_FORMAT` | Worker | `json_schema` | `json_object` for providers without JSON schema support |
-| `PAPIQ_LLM_INPUT_BUDGET` | Worker | `12000` | Characters of document text per request |
+| `PAPIQ_LLM_INPUT_BUDGET` | Worker | `12000` | Characters of document text per request (a run of spaces counts once) |
 | `PAPIQ_LLM_MAX_TAGS` | Worker | `200` | Tags listed per request |
 | `PAPIQ_EMBEDDING_BASE_URL` | both | unset | OpenAI-compatible endpoint; set together with the model or neither (the worker embeds sections, the API embeds queries) |
 | `PAPIQ_EMBEDDING_MODEL` | both | unset | see above |

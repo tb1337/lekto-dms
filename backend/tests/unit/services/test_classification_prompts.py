@@ -21,6 +21,7 @@ from papiq.core.services.classification.prompts import (
     propose_message,
     retry_message,
     shorten,
+    weight,
 )
 from tests.builders import NOW
 
@@ -169,6 +170,18 @@ def test_shorten_keeps_beginning_and_end() -> None:
     assert len(short.text) < 1300
     assert shorten("short", 1200).text == "short"
     assert shorten("short", 1200).omitted == 0
+
+
+def test_a_run_of_spaces_counts_once_against_the_budget() -> None:
+    """The columns of a text as it is set: wide, but light for a model."""
+    line = "Gesamtbrutto (EBeschV)" + " " * 60 + "6.767,00"
+    table = "\n".join([line] * 40)
+    assert weight(line) == len("Gesamtbrutto (EBeschV) 6.767,00")
+    assert len(table) > 3000 and shorten(table, 1400).omitted == 0
+    short = shorten(table, 400)
+    assert short.omitted > 0
+    assert short.text.startswith(line) and short.text.endswith(line)
+    assert weight(short.text) < 520
 
 
 def test_propose_message_lists_contacts_types_with_fields_and_tags() -> None:

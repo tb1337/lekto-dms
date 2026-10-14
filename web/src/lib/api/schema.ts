@@ -1289,6 +1289,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/pipeline/reparse': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Read the text of every document again
+		 * @description Admins only. After an update of the parser (0.2 reads the text as it is set instead of Docling's Markdown): the worker reads the text of every document again whose text was read in its current run and that is not being processed. Nodes, lane and metadata stay as they are; the processing log gets the new reading (`input.reparse`), the search index takes up the new text (with embeddings, one per document). Train the classifier afterwards (`POST /classifier/train`). A document queued already is not queued twice.
+		 */
+		post: operations['reparse_api_v1_pipeline_reparse_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/events': {
 		parameters: {
 			query?: never;
@@ -3303,6 +3323,14 @@ export interface components {
 		Removed: {
 			/** Removed */
 			removed: number;
+		};
+		/** ReparseOut */
+		ReparseOut: {
+			/**
+			 * Queued
+			 * @description Documents whose text is read again (not those queued already).
+			 */
+			queued: number;
 		};
 		/**
 		 * ReprocessNode
@@ -13816,6 +13844,77 @@ export interface operations {
 					 *       "title": "Unauthorized",
 					 *       "status": 401,
 					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	reparse_api_v1_pipeline_reparse_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ReparseOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

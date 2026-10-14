@@ -5,6 +5,7 @@ from tests.api import auth
 from tests.unit.adapters.rest.conftest import Api
 
 PIPELINE = f"{PREFIX}/pipeline"
+REPARSE = f"{PIPELINE}/reparse"
 
 
 async def test_the_graph_lists_every_node_with_its_needs(api: Api) -> None:
@@ -40,3 +41,12 @@ async def test_the_graph_lists_every_node_with_its_needs(api: Api) -> None:
 
 async def test_the_graph_needs_a_session(api: Api) -> None:
     assert (await api.client.get(PIPELINE)).status_code == 401
+
+
+async def test_only_admins_have_every_text_read_again(api: Api) -> None:
+    user, admin = await api.user(), await api.admin()
+    assert (await api.client.post(REPARSE)).status_code == 401
+    assert (await api.client.post(REPARSE, headers=auth(user))).status_code == 403
+    response = await api.client.post(REPARSE, headers=auth(admin))
+    assert response.status_code == 202
+    assert response.json() == {"queued": 0}

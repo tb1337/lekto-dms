@@ -120,6 +120,20 @@ def test_render_pages_queues_the_documents_without_page_images(
     assert [e["documents"] for e in events if e["event"] == "render-pages queued"] == [0]
 
 
+def test_reparse_queues_the_documents_to_read_again(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
+    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "layout")):
+        monkeypatch.setitem(table, name, lambda _: object())
+    assert main(["migrate"]) == 0
+
+    assert main(["reparse"]) == 0
+
+    events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
+    assert [e["documents"] for e in events if e["event"] == "reparse queued"] == [0]
+
+
 def test_reindex_rebuilds_the_index(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:

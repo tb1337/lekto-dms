@@ -37,11 +37,12 @@ from papiq.core.domain.pipeline import (
     Outcome,
     ProcessingStatus,
 )
-from papiq.core.domain.users import User
+from papiq.core.domain.users import Role, User
 from papiq.core.services.objects import original_key
 from papiq.core.services.pipeline import (
     CATCH_UP_JOB,
     NODE_JOB,
+    REPARSE_JOB,
     MetadataResult,
     PipelineService,
     PlaceholderNode,
@@ -337,6 +338,62 @@ async def test_a_catch_up_job_is_stale_once_the_document_runs_again(world: World
     stored = await world.documents.get(owner.id, document.id)
     assert stored.processing.nodes[Node.PAGES].status is NodeStatus.SKIPPED
     assert all(job.status is JobStatus.DONE for job in world.database.jobs.values())
+
+
+async def test_the_text_is_read_again_beside_processing(world: World) -> None:
+    """`reparse`: the parse node runs again for documents whose text was read and that are
+    not being processed; their nodes, lane and run stay, the log gets the reading."""
+    owner, document = await receive(world)
+    await world.drain()
+    red = await world.pipeline({Node.OCR: Returns(FAILED)}).receive(
+        owner.id, incoming(b"%PDF-1.7 red"), filename="red.pdf"
+    )
+    await world.drain(world.pipeline({Node.OCR: Returns(FAILED)}))
+    busy = await world.pipeline().receive(owner.id, incoming(b"%PDF-1.7 busy"), filename="b.pdf")
+    world.database.outbox.clear()
+
+    parse = Returns(builders.OK)
+    pipeline = world.pipeline({Node.PARSE: parse})
+    assert await pipeline.reparse() == 1  # neither the red one (no text) nor the busy one
+    assert await pipeline.reparse() == 0  # queued already
+    await world.drain(pipeline)
+    assert parse.calls == 2  # the reading, and the busy document's own run
+    stored = await world.documents.get(owner.id, document.id)
+    assert (stored.lane, stored.processing.run) == (Lane.GREEN, 1)
+    log = await world.documents.processing_log(owner.id, document.id)
+    assert (log[-1].node, log[-1].run, log[-1].result.input.get("reparse")) == (Node.PARSE, 1, True)
+    kinds = [job.kind for job in world.database.jobs.values() if job.status is JobStatus.DONE]
+    assert kinds.count(REPARSE_JOB) == 1
+    types = [
+        event.type
+        for event in world.events()
+        if isinstance(event, DocumentEvent) and event.document_id == document.id
+    ]
+    assert types == ["document.node_completed"]
+    assert (await world.documents.get(owner.id, busy.id)).lane is Lane.GREEN
+    assert (await world.documents.get(owner.id, red.id)).lane is Lane.RED
+
+
+async def test_a_reading_is_stale_once_the_document_runs_again(world: World) -> None:
+    owner, document = await receive(world)
+    await world.drain()
+    parse = Returns(builders.OK)
+    pipeline = world.pipeline({Node.PARSE: parse})
+    assert await pipeline.reparse() == 1
+    await pipeline.reprocess_from(owner.id, document.id, Node.JUDGE)  # run 2
+    await world.drain(pipeline)
+    assert parse.calls == 0
+    log = await world.documents.processing_log(owner.id, document.id)
+    assert not any(entry.result.input.get("reparse") for entry in log)
+
+
+async def test_only_admins_have_every_text_read_again(world: World) -> None:
+    owner, _ = await receive(world)
+    await world.drain()
+    with pytest.raises(PermissionDeniedError):
+        await world.pipeline().request_reparse(owner.id)
+    admin = await world.user(role=Role.ADMIN)
+    assert await world.pipeline().request_reparse(admin.id) == 1
 
 
 async def test_reprocess_from_a_step(world: World) -> None:

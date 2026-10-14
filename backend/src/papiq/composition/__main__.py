@@ -1,5 +1,5 @@
 """`python -m papiq.composition [check | migrate | api | worker | evaluate | evaluate-search |
-reindex | render-pages | train]`.
+reindex | render-pages | reparse | train]`.
 
 - `check` (default): validate the configuration and print it without secrets.
 - `migrate`: validate, then bring the configured database to the newest schema. Run before the
@@ -28,6 +28,9 @@ reindex | render-pages | train]`.
   with progress. The search keeps working meanwhile. Needs `PAPIQ_MEILISEARCH_URL`.
 - `render-pages`: queue the page images of every document from before the pages node existed
   (its `pages` node is skipped); the worker renders them.
+- `reparse`: queue reading the text of every document again (after the update to 0.2, which
+  reads the text as it is set instead of Docling's Markdown); the worker reads them, and the
+  search index takes up the new texts. Train the classifier afterwards (`train`).
 - `train`: train the classifier from the confirmed documents now, in the foreground, and learn
   identifiers of contacts from them (the worker does it on its own after enough confirmations).
 
@@ -52,6 +55,7 @@ from papiq.composition.evaluation import run_evaluation
 from papiq.composition.logging_setup import configure_logging
 from papiq.composition.pages import run_render_pages
 from papiq.composition.reindex import run_reindex
+from papiq.composition.reparse import run_reparse
 from papiq.composition.search_evaluation import (
     DEFAULT_RATIOS,
     parse_ratios,
@@ -79,6 +83,7 @@ def main(argv: Sequence[str] = ()) -> int:
             "evaluate-search",
             "reindex",
             "render-pages",
+            "reparse",
             "train",
         ],
         default="check",
@@ -157,6 +162,8 @@ def main(argv: Sequence[str] = ()) -> int:
 
     if command == "render-pages":
         return _render_pages(settings)
+    if command == "reparse":
+        return _reparse(settings)
     if command == "reindex":
         return _reindex(settings)
     if command == "train":
@@ -234,6 +241,17 @@ def _render_pages(settings: Settings) -> int:
         log.exception("queueing the page images failed")
         return 1
     log.info("render-pages queued", documents=queued)
+    return 0
+
+
+def _reparse(settings: Settings) -> int:
+    log = structlog.get_logger("papiq.composition")
+    try:
+        queued = asyncio.run(run_reparse(settings))
+    except Exception:
+        log.exception("queueing the texts to read again failed")
+        return 1
+    log.info("reparse queued", documents=queued)
     return 0
 
 

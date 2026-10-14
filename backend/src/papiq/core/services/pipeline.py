@@ -46,6 +46,7 @@ from papiq.core.domain.pipeline import (
     NodeRun,
     NodeStatus,
     Outcome,
+    ProcessingStatus,
 )
 from papiq.core.domain.rule_engine import DRAWER, changed_fields
 from papiq.core.domain.users import User
@@ -79,6 +80,7 @@ _RECORD_BACKOFF = 0.02  # seconds, times the attempt
 NODE_JOB = "pipeline.node"
 """Job kind of a pipeline node; payload: document id, node, processing run."""
 CATCH_UP_JOB = "pipeline.catch_up"
+REPARSE_JOB = "pipeline.reparse"
 """Job kind of a node skipped in the document's current run that is run afterwards, outside
 processing (`PipelineService.catch_up`); the same payload."""
 
@@ -515,6 +517,39 @@ class PipelineService:
             await uow.commit()
         return queued
 
+    async def request_reparse(self, actor: UserId) -> int:
+        """Admins only: `reparse`."""
+        async with self._uow() as uow:
+            if not (await load_actor(uow, actor)).is_active_admin:
+                raise PermissionDeniedError("only admins read the text of all documents again")
+        return await self.reparse()
+
+    async def reparse(self) -> int:
+        """Read the text of every document again (after an update of the parser): a job for
+        each document whose text was read in its current run and that is not being processed.
+        Returns how many were queued; a document with such a job already is not queued again.
+        Its nodes, status, lane and metadata stay as they are; its log gets the new reading, and
+        the search index takes up the new text. A document that starts a new run meanwhile has
+        its text read there; its job is stale then."""
+        now = self._clock.now()
+        queued = 0
+        async with self._uow() as uow:
+            for document in await uow.documents.list_all():
+                run = document.processing.run
+                if not _reparsable(document, run):
+                    continue
+                payload: JsonObject = {
+                    "document_id": str(document.id),
+                    "node": Node.PARSE.value,
+                    "run": run,
+                }
+                job = await uow.jobs.enqueue(
+                    REPARSE_JOB, payload, run_at=now, dedup_key=f"{document.id}:{run}:reparse"
+                )
+                queued += job is not None
+            await uow.commit()
+        return queued
+
     # --- worker ---------------------------------------------------------------------------------
 
     async def run_next_job(self) -> bool:
@@ -537,7 +572,9 @@ class PipelineService:
         """
         async with self._uow() as uow:
             job = await uow.jobs.claim(
-                now=self._clock.now(), lease=self._lease, kinds=[NODE_JOB, CATCH_UP_JOB]
+                now=self._clock.now(),
+                lease=self._lease,
+                kinds=[NODE_JOB, CATCH_UP_JOB, REPARSE_JOB],
             )
             await uow.commit()
         if job is None:
@@ -555,6 +592,9 @@ class PipelineService:
         except (KeyError, TypeError, ValueError) as error:
             log.error("invalid node job", extra={"job_id": str(job.id), "error": str(error)})
             await self._finish(job, error=f"invalid payload: {error}")
+            return
+        if job.kind == REPARSE_JOB:
+            await self._reparse(job, document_id, run)
             return
         started = self._clock.now()
         if job.kind == CATCH_UP_JOB:
@@ -625,6 +665,57 @@ class PipelineService:
                 if attempt == _RECORD_ATTEMPTS:
                     raise
                 await _backoff(attempt)
+
+    async def _reparse(self, job: Job, document_id: DocumentId, run: int) -> None:
+        """Read a document's text again (`reparse`) and record the reading beside processing.
+        An attempt that raises runs again later, like a node; the reading of a document that
+        was changed meanwhile is recorded again."""
+        async with self._uow() as uow:
+            document = await uow.documents.find(document_id)
+        if document is None or not _reparsable(document, run):
+            await self._finish(job)
+            return
+        started = self._clock.now()
+        try:
+            outcome = await self._executors[Node.PARSE].run(document)
+        except UnprocessableDocumentError as error:
+            outcome = _failed(str(error))
+        except Exception as error:
+            reason = f"{type(error).__name__}: {error}"
+            log.warning(
+                "reading the text again failed",
+                extra={"document_id": str(document_id), "attempt": job.tries},
+                exc_info=True,
+            )
+            retry_at = self._retry.next_run(job.tries, self._clock.now())
+            if retry_at is None:
+                await self._finish(job, error=reason)
+                return
+            async with self._uow() as uow:
+                await uow.jobs.reschedule(job, run_at=retry_at, error=reason)
+                await uow.commit()
+            return
+        assert isinstance(outcome, NodeResult), "parsing applies nothing"
+        result = replace(outcome, input={**outcome.input, "reparse": True})
+        for attempt in range(1, _RECORD_ATTEMPTS + 1):
+            now = self._clock.now()
+            try:
+                async with self._uow() as uow:
+                    document = await uow.documents.find(document_id)
+                    if document is not None and _reparsable(document, run):
+                        document.text_read_again(run, result.outcome, now)
+                        await uow.documents.update(document)
+                        await self._log(uow, document.id, Node.PARSE, run, result, started, now)
+                        await uow.outbox.add(document.pull_events())
+                    if result.outcome is Outcome.FAILED:
+                        await uow.jobs.fail(job, error=result.reason or "failed")
+                    else:
+                        await uow.jobs.complete(job)
+                    await uow.commit()
+                return
+            except ConcurrencyError:
+                if attempt == _RECORD_ATTEMPTS:
+                    raise
 
     async def _skipped(self, document_id: DocumentId, node: Node, run: int) -> Document | None:
         """The document, if its `node` is still to catch up on; None if the job is stale."""
@@ -859,3 +950,14 @@ def _parse_payload(payload: JsonObject) -> tuple[DocumentId, Node, int]:
     if not isinstance(run, int):
         raise ValueError(f"invalid node job payload {payload!r}")
     return DocumentId(UUID(str(payload["document_id"]))), Node(str(payload["node"])), run
+
+
+def _reparsable(document: Document, run: int) -> bool:
+    """Whether the document's text can be read again in `run`: it is its current run, the text
+    was read in it, and the document is not being processed."""
+    processing = document.processing
+    return (
+        processing.run == run
+        and processing.status is not ProcessingStatus.PROCESSING
+        and processing.nodes[Node.PARSE].status is NodeStatus.DONE
+    )

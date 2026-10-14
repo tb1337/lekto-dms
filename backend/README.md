@@ -337,12 +337,20 @@ learned); a learned identifier an admin rejected stays rejected. The model is st
 without pickle (`classifier/model-<n>.npz`, the latest three are kept) and predicted with numpy
 alone, so a new scikit-learn version cannot break it. `GET /classifier` tells its state.
 
-**After the update to 0.2.** The search index gets the attribute `confirmed` the neighbours
-filter on. The migration raises the version of every confirmed document, so the worker's
-reconciliation at its start writes them again; vectors of unchanged text are kept, so this
-needs no embedding calls and no `reindex` (which would embed every document anew). Until it is
-through, the neighbours find fewer documents. Documents taken over before count as confirmed;
-the first training starts by itself once the worker runs.
+**After the update to 0.2.** Two things, in this order:
+
+1. The search index gets the attribute `confirmed` the neighbours filter on. The migration
+   raises the version of every confirmed document, so the worker's reconciliation at its start
+   writes them again; vectors of unchanged text are kept, so this needs no embedding calls and
+   no `reindex` (which would embed every document anew). Until it is through, the neighbours
+   find fewer documents. Documents taken over before count as confirmed; the first training
+   starts by itself once the worker runs.
+2. 0.2 reads the text as it is set instead of Docling's Markdown. A document parsed before
+   keeps its Markdown, which is read meanwhile, until `python -m papiq.composition reparse` (or
+   `POST /pipeline/reparse`) has the worker read its text again; nodes, lane and metadata stay
+   as they are. The search index then takes up the new texts, which embeds every document anew
+   (with an embedding service elsewhere this takes a while: choose the time), and the
+   classifier is trained on the new texts afterwards (`train`).
 
 **Evaluation.** `python -m papiq.composition evaluate [--fake]` runs the synthetic documents in
 `evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).
@@ -542,6 +550,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /documents/{id}/retry` | Repeat the failed nodes (owner or admin) |
 | `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (owner or admin) |
 | `GET /pipeline` | The graph: every node and what it needs, in graph order |
+| `POST /pipeline/reparse` | Read the text of every document again in the background (admins, after the update to 0.2); `202` with `queued` |
 | `GET /inbox` | The caller's yellow and red documents, newest first, with their open nodes and fields; `limit`, `cursor` |
 | `GET /documents/{id}/review` | What the model proposed and how each field was checked (owner or admin) |
 | `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `drawer_id`), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (owner or admin); undecided fields: `422` with `open_fields` |

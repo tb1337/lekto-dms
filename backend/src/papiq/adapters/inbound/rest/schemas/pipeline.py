@@ -28,3 +28,9 @@ class PipelineOut(BaseModel):
     )
 
     nodes: list[GraphNodeOut] = Field(description="In graph order: every node after its needs.")
+
+
+class ReparseOut(BaseModel):
+    queued: int = Field(
+        description="Documents whose text is read again (not those queued already)."
+    )

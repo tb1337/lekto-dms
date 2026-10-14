@@ -389,6 +389,21 @@ class Document:
         )
         self._touch(now)
 
+    def text_read_again(self, run: int, outcome: Outcome, now: datetime) -> None:
+        """Its text was read again beside processing (the command `reparse`, after an update of
+        the parser): an event for those who follow the document, so the search index takes up
+        the new text. Its nodes, status and lane stay as they are."""
+        if run != self.processing.run:
+            raise InvalidTransitionError(
+                f"document {self.id}: run {run} is not its current run {self.processing.run}"
+            )
+        self._record(
+            NodeCompleted(
+                document_id=self.id, occurred_at=now, node=Node.PARSE, run=run, outcome=outcome
+            )
+        )
+        self._touch(now)
+
     def _require_awaiting(self, node: Node, run: int) -> None:
         if not self.is_awaiting(node, run):
             processing = self.processing

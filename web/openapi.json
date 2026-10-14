@@ -10998,6 +10998,84 @@
         ]
       }
     },
+    "/api/v1/pipeline/reparse": {
+      "post": {
+        "tags": [
+          "pipeline"
+        ],
+        "summary": "Read the text of every document again",
+        "description": "Admins only. After an update of the parser (0.2 reads the text as it is set instead of Docling's Markdown): the worker reads the text of every document again whose text was read in its current run and that is not being processed. Nodes, lane and metadata stay as they are; the processing log gets the new reading (`input.reparse`), the search index takes up the new text (with embeddings, one per document). Train the classifier afterwards (`POST /classifier/train`). A document queued already is not queued twice.",
+        "operationId": "reparse_api_v1_pipeline_reparse_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReparseOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only the owner controls processing of this document"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/events": {
       "get": {
         "tags": [
@@ -15982,6 +16060,20 @@
           "removed"
         ],
         "title": "Removed"
+      },
+      "ReparseOut": {
+        "properties": {
+          "queued": {
+            "type": "integer",
+            "title": "Queued",
+            "description": "Documents whose text is read again (not those queued already)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "queued"
+        ],
+        "title": "ReparseOut"
       },
       "ReprocessNode": {
         "type": "string",

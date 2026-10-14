@@ -89,5 +89,6 @@ def test_the_box_counts_from_the_visible_page(tmp_path: Path) -> None:
     assert 730 < block.top < 740
 
 
-def test_a_rotated_page_is_left_alone(tmp_path: Path) -> None:
-    assert fixed_pitch_blocks(write(tmp_path, courier(PRINTOUT), "/Rotate 90")) == []
+def test_a_page_shown_turned_is_read_the_way_its_text_runs(tmp_path: Path) -> None:
+    (block,) = fixed_pitch_blocks(write(tmp_path, courier(PRINTOUT), "/Rotate 90"))
+    assert block.text == "\n".join(PRINTOUT)

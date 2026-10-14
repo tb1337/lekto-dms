@@ -1,8 +1,8 @@
 """Text set in a fixed-pitch font, as it is set: lines of characters in columns.
 
 A program that prints in a fixed-pitch font (a time sheet from a payroll system, a terminal
-listing) lines its columns up with spaces and draws its tables with `|` and `-`. A layout
-analysis takes that for paragraphs and tables of its own and loses the alignment. Here a run of
+listing) lines its columns up with spaces and draws its tables with `|` and `-`; its columns
+only line up again on its own grid. Here a run of
 at least `MIN_LINES` lines whose characters are all set with one advance in fixed-pitch fonts
 becomes a block: each character goes to its column (counted in characters from the left edge of
 the block), and a wider gap between two lines becomes one blank line.
@@ -10,10 +10,8 @@ the block), and a wider gap between two lines becomes one blank line.
 Whether a font is fixed-pitch is measured: all its characters on the page have the same advance
 (PDFium's loose character box), over at least `_LETTERS` different letters. With fewer letters,
 the FixedPitch flag of its font descriptor decides, as long as the advances agree. The text layer
-OCR puts on a scan is set in a proportional font, so a scan keeps the layout analysis' reading.
-
-A rotated page is left alone: its boxes would have to be turned the way the layout analysis
-turns them.
+OCR puts on a scan is set in a proportional font, so a scan has no blocks. The characters are
+those of `chars`, on the page as shown and turned the way most of its text runs.
 """
 
 import itertools
@@ -31,6 +29,7 @@ from papiq.adapters.outbound.pdfium.chars import (
     Line,
     lines_of,
     page_chars,
+    reading_turn,
     same,
 )
 from papiq.adapters.outbound.pdfium.library import LOCK
@@ -83,11 +82,10 @@ def _page_chars(document: pypdfium2.PdfDocument, number: int) -> list[Char]:
     except pypdfium2.PdfiumError:
         return []
     try:
-        if page.get_rotation() % 360:
-            return []
         textpage = page.get_textpage()
         try:
-            upright, _ = page_chars(textpage, Geometry.of(page))
+            geometry = Geometry.of(page)
+            upright, _ = page_chars(textpage, geometry.turned(reading_turn(textpage, geometry)))
             return upright
         finally:
             textpage.close()

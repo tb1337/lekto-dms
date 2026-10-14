@@ -339,6 +339,7 @@ def _neighbours_view(output: Mapping[str, Any] | None) -> tuple[Neighbour, ...] 
                 else DocumentTypeId(UUID(item["document_type_id"]))
             ),
             tags=frozenset(TagId(UUID(tag)) for tag in item.get("tag_ids") or ()),
+            similarity=float(item["score"]) if isinstance(item.get("score"), int | float) else None,
         )
         for item in output.get("neighbours") or ()
     )

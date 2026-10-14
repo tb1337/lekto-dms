@@ -110,8 +110,18 @@ export function signalSummary(entry: LogEntry, lookup: Lookup | null): SummaryRo
 							.filter((id) => typeof id === 'string')
 							.map((id) => named(id, lookup));
 						const title = m.signal_document({ number: index + 1 });
+						const said = about.length > 0 ? `${title}: ${about.join(', ')}` : title;
+						const alike =
+							typeof found.score === 'number'
+								? m.signal_similarity({
+										similarity: formatNumber(found.score, {
+											minimumFractionDigits: 2,
+											maximumFractionDigits: 2
+										})
+									})
+								: null;
 						return {
-							text: about.length > 0 ? `${title}: ${about.join(', ')}` : title,
+							text: alike ? `${said} · ${alike}` : said,
 							href:
 								typeof found.document_id === 'string' ? documentHref(found.document_id) : undefined
 						};

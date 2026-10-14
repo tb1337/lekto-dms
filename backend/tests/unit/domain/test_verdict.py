@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from papiq.core.domain.classification import CandidateSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.pipeline import Outcome
@@ -116,6 +117,29 @@ def test_similar_documents_back_a_contact_by_majority() -> None:
     voted = next(source for source in bank.sources if source.signal == "signal_neighbours")
     assert (voted.votes, voted.of, voted.names) == (2, 3, True)
     assert utility.label == "Stadtwerke Musterstadt"
+
+
+def test_each_source_tells_its_value_and_from_where_it_names_one() -> None:
+    """The classifier's probability and its threshold, the model's match and its threshold,
+    the similar documents' votes and the highest similarity among those that carry it; and
+    what the log keeps reads back the same."""
+    near = (
+        Neighbour(document="d0", contact=BANK.id, document_type=None, similarity=0.88),
+        Neighbour(document="d1", contact=BANK.id, document_type=None, similarity=0.91),
+        Neighbour(document="d2", contact=UTILITY.id, document_type=None, similarity=0.95),
+    )
+    signals = Signals(
+        model=model(sender="Beispielbank"), classifier=classifier(BANK.id, 0.77), neighbours=near
+    )
+    (bank, *_) = judge_contact(signals, CONTACTS).candidates
+    by = {source.signal: source for source in bank.sources}
+    assert (by["signal_llm"].score, by["signal_llm"].threshold) == (1.0, 0.9)
+    assert (by["signal_classifier"].score, by["signal_classifier"].threshold) == (0.77, 0.8)
+    assert not by["signal_classifier"].names
+    assert (by["signal_neighbours"].votes, by["signal_neighbours"].similarity) == (2, 0.91)
+    for source in bank.sources:
+        again = CandidateSource.from_json(source.to_json())
+        assert (again.threshold, again.similarity) == (source.threshold, source.similarity)
 
 
 def test_similar_documents_split_between_senders_name_none() -> None:

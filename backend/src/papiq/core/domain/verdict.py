@@ -99,6 +99,7 @@ class Neighbour:
     contact: ContactId | None
     document_type: DocumentTypeId | None
     tags: frozenset[TagId] = frozenset()
+    similarity: float | None = None  # to the document, as the search index measures it
 
 
 @dataclass(frozen=True)
@@ -186,13 +187,21 @@ class _ContactView:
         if self.matched == id:
             sources.append(
                 CandidateSource(
-                    signal=LLM, names=self.model_names, score=self.match_score, quote=self.quote
+                    signal=LLM,
+                    names=self.model_names,
+                    score=self.match_score,
+                    threshold=self.thresholds.accept,
+                    quote=self.quote,
                 )
             )
         if id in self.probabilities:
             p = self.probabilities[id]
             named = p >= self.thresholds.classifier
-            sources.append(CandidateSource(signal=CLASSIFIER, names=named, score=p))
+            sources.append(
+                CandidateSource(
+                    signal=CLASSIFIER, names=named, score=p, threshold=self.thresholds.classifier
+                )
+            )
         if self.votes.get(id):
             sources.append(_neighbour_source(id, self.votes, self.neighbours, self.neighbours_name))
         if self.hard(id):
@@ -455,7 +464,12 @@ def judge_type(
         if id in probabilities:
             p = probabilities[id]
             found.append(
-                CandidateSource(signal=CLASSIFIER, names=p >= thresholds.classifier, score=p)
+                CandidateSource(
+                    signal=CLASSIFIER,
+                    names=p >= thresholds.classifier,
+                    score=p,
+                    threshold=thresholds.classifier,
+                )
             )
         if votes.get(id):
             found.append(_neighbour_source(id, votes, neighbours, neighbours_name))
@@ -604,17 +618,17 @@ def _majority[K](votes: Counter[K], found: int, *, undivided: bool = False) -> K
 def _neighbour_source[K](
     id: K, votes: Counter[K], neighbours: Sequence[Neighbour], named: K | None
 ) -> CandidateSource:
-    documents = tuple(
-        item.document for item in neighbours if id in (item.contact, item.document_type)
-    )
+    carrying = [item for item in neighbours if id in (item.contact, item.document_type)]
+    similarities = [item.similarity for item in carrying if item.similarity is not None]
     count = votes.get(id, 0)
     return CandidateSource(
         signal=NEIGHBOURS,
         names=named == id,
         score=count / len(neighbours) if neighbours else None,
+        similarity=max(similarities) if similarities else None,
         votes=count,
         of=len(neighbours),
-        documents=documents,
+        documents=tuple(item.document for item in carrying),
     )
 
 

@@ -298,7 +298,12 @@ class LogEntry(BaseModel):
     run: int
     outcome: Outcome
     reason: str | None
-    confidence: float | None
+    confidence: float | None = Field(
+        description=(
+            "The judge's and the fields node's summary of their checks, not a probability: the "
+            "lowest of their fields' (`FieldCheckOut.confidence`)."
+        )
+    )
     model_version: str | None = Field(examples=["ocrmypdf 17.13.0, tesseract 5.5.0"])
     input: dict[str, Any]
     output: dict[str, Any]

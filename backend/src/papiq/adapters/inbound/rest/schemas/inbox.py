@@ -61,9 +61,24 @@ class CandidateSourceOut(BaseModel):
     score: float | None = Field(
         default=None,
         description=(
-            "`signal_llm`: how well the name the model read matches the contact; "
-            "`signal_classifier`: the probability; `signal_neighbours`: the share of the "
-            "similar documents that carry the value."
+            "`signal_llm`: how well the name the model read matches the contact (the model "
+            "gives no probability of its own); `signal_classifier`: the probability; "
+            "`signal_neighbours`: the share of the similar documents that carry the value."
+        ),
+    )
+    threshold: float | None = Field(
+        default=None,
+        description=(
+            "The score from which the signal names a value (`signal_llm`: "
+            "`PAPIQ_CONFIDENCE_THRESHOLD`; `signal_classifier`: `PAPIQ_CLASSIFIER_THRESHOLD`). "
+            "The similar documents name a value by their votes instead."
+        ),
+    )
+    similarity: float | None = Field(
+        default=None,
+        description=(
+            "`signal_neighbours`: the highest similarity of the similar documents that carry "
+            "the value, as the search index measures it."
         ),
     )
     votes: int | None = Field(
@@ -92,6 +107,8 @@ class CandidateSourceOut(BaseModel):
             signal=Signal(source.signal),
             names=source.names,
             score=None if source.score is None else round(source.score, 4),
+            threshold=None if source.threshold is None else round(source.threshold, 4),
+            similarity=None if source.similarity is None else round(source.similarity, 4),
             votes=source.votes,
             found=source.of,
             quote=source.quote,
@@ -149,7 +166,13 @@ class FieldCheckOut(BaseModel):
         description=("`contact`, `document_type`, `tags`, `document_date`, or `field:<id>`.")
     )
     outcome: Outcome = Field(description="`ok` or `uncertain`.")
-    confidence: float = Field(description="0 to 1, from checks against the text.")
+    confidence: float = Field(
+        description=(
+            "0 to 1, the rule's summary, not a probability: 1 for a value the judge or the "
+            "checks accept, at most 0.89 for an uncertain one. The measured values are in "
+            "`candidates` (their `sources`)."
+        )
+    )
     reason: str | None = Field(description="Why the field is uncertain.")
     proposed: Any = Field(description="What the model answered, unchanged.")
     evidence: str | None = Field(description="The excerpt the model quoted.")

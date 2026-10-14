@@ -45,13 +45,16 @@ def field_id_of(field: str) -> str | None:
 class CandidateSource:
     """What one signal says about a candidate: `names` whether it is sure enough to name it
     (it counts for the judge's rule), `score` its match, probability or share of the similar
-    documents, `votes` of `of` similar documents (`documents`) that carry it, the `quote` the
-    language model gave, the `identifiers` (kinds) of the contact found in the text, and
+    documents, `threshold` the score from which it names a value, `votes` of `of` similar
+    documents (`documents`) that carry it and the highest `similarity` among them, the `quote`
+    the language model gave, the `identifiers` (kinds) of the contact found in the text, and
     whether its name or an alias stands in the text (`named_in_text`)."""
 
     signal: str  # the node: signal_llm, signal_classifier, signal_neighbours, signal_facts
     names: bool = False
     score: float | None = None
+    threshold: float | None = None
+    similarity: float | None = None
     votes: int | None = None
     of: int | None = None
     quote: str | None = None
@@ -61,8 +64,13 @@ class CandidateSource:
 
     def to_json(self) -> JsonObject:
         data: JsonObject = {"signal": self.signal, "names": self.names}
-        if self.score is not None:
-            data["score"] = round(self.score, 4)
+        for key, number in (
+            ("score", self.score),
+            ("threshold", self.threshold),
+            ("similarity", self.similarity),
+        ):
+            if number is not None:
+                data[key] = round(number, 4)
         for key, value in (("votes", self.votes), ("of", self.of), ("quote", self.quote)):
             if value is not None:
                 data[key] = value
@@ -78,11 +86,12 @@ class CandidateSource:
     def from_json(cls, data: JsonValue) -> Self:
         if not isinstance(data, dict) or not isinstance(data.get("signal"), str):
             raise ValidationError(f"invalid candidate source {data!r}")
-        score = data.get("score")
         return cls(
             signal=str(data["signal"]),
             names=data.get("names") is True,
-            score=float(score) if isinstance(score, int | float) else None,
+            score=_optional_number(data.get("score")),
+            threshold=_optional_number(data.get("threshold")),
+            similarity=_optional_number(data.get("similarity")),
             votes=_optional_int(data.get("votes")),
             of=_optional_int(data.get("of")),
             quote=_optional_text(data.get("quote")),
@@ -232,6 +241,10 @@ def _optional_text(value: JsonValue) -> str | None:
 
 def _optional_bool(value: JsonValue) -> bool | None:
     return value if isinstance(value, bool) else None
+
+
+def _optional_number(value: JsonValue) -> float | None:
+    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
 
 
 def _optional_int(value: JsonValue) -> int | None:

@@ -8,7 +8,6 @@
 	import SourcesInfo from '#lib/components/document/SourcesInfo.svelte';
 	import { describeValue } from '#lib/describe.ts';
 	import { provenance, type FieldEvidence, type Place } from '#lib/document-view.ts';
-	import { formatNumber } from '#lib/i18n.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
@@ -95,13 +94,6 @@
 				strokeWidth={2.2}
 			/>
 			<label id={labelId} for={inputId} class="font-semibold">{@render labelText()}</label>
-			<span
-				class="ml-auto rounded-full bg-lane-yellow px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap text-lane-yellow-foreground"
-			>
-				{m.review_confidence({
-					confidence: formatNumber(check.confidence, { style: 'percent', maximumFractionDigits: 0 })
-				})}
-			</span>
 		</div>
 		{#if check.reason}<p class="text-sm">{check.reason}</p>{/if}
 		{#if check.candidates?.length}

@@ -18,12 +18,18 @@ export interface SourceChip {
 	strong: boolean;
 	/** The passage the language model quoted. */
 	quote: string | null;
+	/** What the value means where it is no probability (the language model's). */
+	note: string | null;
 	/** Similar documents that carry the value. */
 	documents: string[];
 }
 
 const percent = (value: number) =>
 	formatNumber(value, { style: 'percent', maximumFractionDigits: 0 });
+const similarity = (value: number) =>
+	formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const given = (value: number | null | undefined): value is number =>
+	value !== null && value !== undefined;
 
 function identifierLabel(kind: string): string {
 	return (IDENTIFIER_KINDS as readonly string[]).includes(kind)
@@ -31,31 +37,51 @@ function identifierLabel(kind: string): string {
 		: kind;
 }
 
-/** The chips of one signal's say: one, or for the facts one per identifier and the name. */
+/**
+ * The chips of one signal's say: one, or for the facts one per identifier and the name. Each
+ * tells the measured value and, where the signal names a value from a threshold on, the
+ * threshold: the classifier's probability, how well the name the language model read matches
+ * (the model gives no probability of its own), the votes and the highest similarity of the
+ * similar documents. Older checks without them keep the shorter text.
+ */
 export function sourceChips(source: CandidateSource): SourceChip[] {
 	const chip = (text: string, strong = source.names): SourceChip => ({
 		text,
 		strong,
 		quote: null,
+		note: null,
 		documents: []
 	});
+	const { score, threshold } = source;
 	switch (source.signal) {
 		case 'signal_llm': {
-			const similar = !source.names && source.score !== null && source.score !== undefined;
-			const text = similar
-				? m.candidate_llm_similar({ score: percent(source.score ?? 0) })
-				: m.candidate_llm();
-			return [{ ...chip(text), quote: source.quote ?? null }];
+			if (!given(score)) return [{ ...chip(m.candidate_llm()), quote: source.quote ?? null }];
+			const text = given(threshold)
+				? m.candidate_llm_match({ score: percent(score), threshold: percent(threshold) })
+				: m.candidate_llm_similar({ score: percent(score) });
+			return [{ ...chip(text), quote: source.quote ?? null, note: m.candidate_llm_note() }];
 		}
 		case 'signal_classifier':
-			return [chip(m.candidate_classifier({ score: percent(source.score ?? 0) }))];
-		case 'signal_neighbours':
 			return [
-				{
-					...chip(m.candidate_neighbours({ votes: source.votes ?? 0, found: source.found ?? 0 })),
-					documents: source.documents ?? []
-				}
+				chip(
+					given(threshold)
+						? m.candidate_classifier_threshold({
+								score: percent(score ?? 0),
+								threshold: percent(threshold)
+							})
+						: m.candidate_classifier({ score: percent(score ?? 0) })
+				)
 			];
+		case 'signal_neighbours': {
+			const counted = { votes: source.votes ?? 0, found: source.found ?? 0 };
+			const text = given(source.similarity)
+				? m.candidate_neighbours_similar({
+						...counted,
+						similarity: similarity(source.similarity)
+					})
+				: m.candidate_neighbours(counted);
+			return [{ ...chip(text), documents: source.documents ?? [] }];
+		}
 		case 'signal_facts':
 			return [
 				...(source.identifiers ?? []).map((kind) =>

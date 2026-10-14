@@ -502,15 +502,7 @@
 												<dd>
 													{outcomeLabel[entry.outcome]()} · {seconds(entry.duration_ms / 1000)}
 												</dd>
-												{#if entry.confidence !== null}
-													<dt class="text-muted-foreground">{m.log_confidence()}</dt>
-													<dd>
-														{formatNumber(entry.confidence, {
-															style: 'percent',
-															maximumFractionDigits: 0
-														})}
-													</dd>
-												{/if}
+
 												{#if entry.reason}
 													<dt class="text-muted-foreground">{m.log_reason()}</dt>
 													<dd class="wrap-break-word">{entry.reason}</dd>

@@ -1733,9 +1733,19 @@ export interface components {
 			names: boolean;
 			/**
 			 * Score
-			 * @description `signal_llm`: how well the name the model read matches the contact; `signal_classifier`: the probability; `signal_neighbours`: the share of the similar documents that carry the value.
+			 * @description `signal_llm`: how well the name the model read matches the contact (the model gives no probability of its own); `signal_classifier`: the probability; `signal_neighbours`: the share of the similar documents that carry the value.
 			 */
 			score?: number | null;
+			/**
+			 * Threshold
+			 * @description The score from which the signal names a value (`signal_llm`: `PAPIQ_CONFIDENCE_THRESHOLD`; `signal_classifier`: `PAPIQ_CLASSIFIER_THRESHOLD`). The similar documents name a value by their votes instead.
+			 */
+			threshold?: number | null;
+			/**
+			 * Similarity
+			 * @description `signal_neighbours`: the highest similarity of the similar documents that carry the value, as the search index measures it.
+			 */
+			similarity?: number | null;
 			/**
 			 * Votes
 			 * @description `signal_neighbours`: similar documents that carry it.
@@ -2585,7 +2595,7 @@ export interface components {
 			outcome: components['schemas']['Outcome'];
 			/**
 			 * Confidence
-			 * @description 0 to 1, from checks against the text.
+			 * @description 0 to 1, the rule's summary, not a probability: 1 for a value the judge or the checks accept, at most 0.89 for an uncertain one. The measured values are in `candidates` (their `sources`).
 			 */
 			confidence: number;
 			/**
@@ -2895,7 +2905,10 @@ export interface components {
 			outcome: components['schemas']['Outcome'];
 			/** Reason */
 			reason: string | null;
-			/** Confidence */
+			/**
+			 * Confidence
+			 * @description The judge's and the fields node's summary of their checks, not a probability: the lowest of their fields' (`FieldCheckOut.confidence`).
+			 */
 			confidence: number | null;
 			/**
 			 * Model Version

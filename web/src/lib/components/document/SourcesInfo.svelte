@@ -9,6 +9,13 @@
 	// closes with Escape.
 	let { candidates, id }: { candidates: readonly Candidate[]; id: string } = $props();
 
+	// The language model's value is a match of names, no probability: said once below.
+	const matched = $derived(
+		candidates.some((candidate) =>
+			candidate.sources.some((source) => source.signal === 'signal_llm' && source.score != null)
+		)
+	);
+
 	let open = $state(false);
 
 	function left(event: FocusEvent & { currentTarget: HTMLElement }) {
@@ -47,6 +54,7 @@
 					<CandidateSources {candidate} inverted />
 				</div>
 			{/each}
+			{#if matched}<p class="text-background/70">{m.candidate_llm_note()}</p>{/if}
 		</div>
 	{/if}
 </span>

@@ -207,7 +207,7 @@ Bestand: Ein Dokument von vor 0.2 behält Doclings Markdown (`content.md`, wird 
 **Zustand und Protokoll**
 
 - Jeder Knoten hat einen Zustand (wartet, läuft, fertig, übersprungen) und ein Ergebnis: *ok*, *unsicher (mit Grund)* oder *fehlgeschlagen*.
-- Protokoll je Knoten: Eingabe, Ergebnis, Konfidenz, Grund, Modell- und Pipeline-Version, Dauer; die Signale schreiben ihre Vorschläge, Urteil und Felder je Feld eine Prüfung mit gereihten Kandidaten und ihren Quellen.
+- Protokoll je Knoten: Eingabe, Ergebnis, Konfidenz, Grund, Modell- und Pipeline-Version, Dauer; die Signale schreiben ihre Vorschläge, Urteil und Felder je Feld eine Prüfung mit gereihten Kandidaten und ihren Quellen. Jede Quelle trägt ihren gemessenen Wert und die Schwelle, ab der sie einen Wert nennt (Klassifikator: Wahrscheinlichkeit; Sprachmodell: wie genau der gelesene Name zum Kontakt passt, denn das Modell gibt keine Wahrscheinlichkeit; Nachbarn: Stimmen und höchste Ähnlichkeit). Die Konfidenz eines Felds ist nur die Zusammenfassung der Regel (1, bei Unsicherheit höchstens 0,89); die Oberfläche zeigt statt ihrer die Werte der Quellen (Tobi, 14.10.2026).
 - In der UI: der Graph live mit Zustand und Dauer, jedes Zwischenergebnis, sobald es vorliegt; „ab Knoten X neu“ setzt X und alle Nachfolger zurück; ab `judge` laufen auch die Signale ohne Modellaufruf neu (Fakten, Klassifikator, Nachbarn), damit ein neuer Alias, eine neue Kennung oder ein neues Modell wirkt; die Antwort des Sprachmodells bleibt.
 
 **Lanes**

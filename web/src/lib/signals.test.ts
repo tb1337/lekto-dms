@@ -65,12 +65,19 @@ describe('signalSummary', () => {
 
 		const [similar] = signalSummary(
 			entry('signal_neighbours', {
-				neighbours: [{ document_id: 'd1', contact_id: UTILITY, document_type_id: null }]
+				neighbours: [
+					{ document_id: 'd1', contact_id: UTILITY, document_type_id: null, score: 0.8776 },
+					{ document_id: 'd2', contact_id: null, document_type_id: null }
+				]
 			}),
 			lookup
 		);
 		expect(similar.items).toEqual([
-			{ text: `${m.signal_document({ number: 1 })}: Stadtwerke`, href: '/ui/documents/d1' }
+			{
+				text: `${m.signal_document({ number: 1 })}: Stadtwerke · ${m.signal_similarity({ similarity: '0.88' })}`,
+				href: '/ui/documents/d1'
+			},
+			{ text: m.signal_document({ number: 2 }), href: '/ui/documents/d2' }
 		]);
 
 		const facts = signalSummary(

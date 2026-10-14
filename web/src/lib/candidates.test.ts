@@ -8,7 +8,7 @@ const source = (fields: Partial<CandidateSource>) =>
 describe('sourceChips', () => {
 	it('names what each signal said, solid where it counts', () => {
 		expect(sourceChips(source({ signal: 'signal_llm', names: true, quote: 'Stadtwerke' }))).toEqual(
-			[{ text: m.candidate_llm(), strong: true, quote: 'Stadtwerke', documents: [] }]
+			[{ text: m.candidate_llm(), strong: true, quote: 'Stadtwerke', note: null, documents: [] }]
 		);
 		expect(sourceChips(source({ signal: 'signal_llm', score: 0.82 }))[0].text).toBe(
 			m.candidate_llm_similar({ score: '82%' })
@@ -22,6 +22,27 @@ describe('sourceChips', () => {
 				source({ signal: 'signal_neighbours', names: true, votes: 2, found: 3, documents: ['d1'] })
 			)[0]
 		).toMatchObject({ text: m.candidate_neighbours({ votes: 2, found: 3 }), documents: ['d1'] });
+	});
+
+	it('tells the measured value and the threshold it names a value from', () => {
+		const model = sourceChips(
+			source({ signal: 'signal_llm', names: true, score: 1, threshold: 0.9 })
+		);
+		expect(model[0]).toMatchObject({
+			text: m.candidate_llm_match({ score: '100%', threshold: '90%' }),
+			note: m.candidate_llm_note()
+		});
+		expect(
+			sourceChips(source({ signal: 'signal_classifier', score: 0.77, threshold: 0.8 }))[0]
+		).toMatchObject({
+			text: m.candidate_classifier_threshold({ score: '77%', threshold: '80%' }),
+			strong: false
+		});
+		expect(
+			sourceChips(
+				source({ signal: 'signal_neighbours', votes: 3, found: 5, similarity: 0.8776 })
+			)[0].text
+		).toBe(m.candidate_neighbours_similar({ votes: 3, found: 5, similarity: '0.88' }));
 	});
 
 	it('gives facts in the text a chip each: they are evidence', () => {

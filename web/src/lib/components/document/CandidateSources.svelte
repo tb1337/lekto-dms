@@ -13,7 +13,7 @@
 <span class="flex flex-wrap items-center gap-1">
 	{#each chips as chip, index (index)}
 		<span
-			title={chip.quote ?? undefined}
+			title={[chip.note, chip.quote && `„${chip.quote}“`].filter(Boolean).join(' ') || undefined}
 			class={cn(
 				'inline-flex items-center gap-1 rounded-full px-2 text-[11px] leading-5 whitespace-nowrap',
 				chip.strong
@@ -25,6 +25,7 @@
 		>
 			{chip.text}
 			{#if chip.quote}<span class="sr-only">: „{chip.quote}“</span>{/if}
+			{#if chip.note}<span class="sr-only">({chip.note})</span>{/if}
 			{#if !chip.strong}<span class="sr-only">({m.candidate_weak()})</span>{/if}
 			{#each chip.documents as id, number (id)}
 				<a

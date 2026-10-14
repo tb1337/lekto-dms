@@ -1,5 +1,6 @@
 from dataclasses import replace
-from datetime import timedelta
+from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,7 @@ from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
 from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.pipeline import Lane, Node
+from papiq.core.domain.templates import TemplateValue
 from papiq.core.domain.users import Role
 from papiq.core.services.nodes import OcrNode, ParseNode
 from papiq.core.services.pipeline import RetryPolicy
@@ -210,6 +212,20 @@ def test_language_model_and_embeddings_from_settings(monkeypatch: pytest.MonkeyP
     assert isinstance(embeddings, OpenAiCompatEmbeddings)
     assert embeddings.model == "bge-m3"
     assert (embeddings._headers, embeddings._timeout) == ({}, 20)
+
+
+def test_templates_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dates and amounts of templates in `PAPIQ_TEMPLATE_LOCALE`, the `currency` filter in
+    `PAPIQ_DEFAULT_CURRENCY`; the memory container takes the defaults."""
+    monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
+    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "layout")):
+        monkeypatch.setitem(table, name, lambda _: object())
+    values: dict[str, TemplateValue] = {"day": date(2026, 3, 31), "sum": Decimal("12.5")}
+    template = "{{ day | datetime: format: 'MMMM' }} {{ sum | currency }}"
+    built = build_container(settings(template_locale="en_US", default_currency="CHF"))
+    assert built.templates.render(template, values) == "March CHF12.50"
+    memory = build_memory_container()
+    assert memory.templates.render(template, values) == "März 12,50\xa0€"
 
 
 async def test_search_index_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:

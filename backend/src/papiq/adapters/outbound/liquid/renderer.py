@@ -5,8 +5,9 @@ and output.
 Values come as the domain has them and are given to Liquid in forms its filters understand: a
 number is a float that writes itself as its exact decimal text (Liquid's arithmetic filters
 know no `Decimal`), an amount a mapping of `amount` and `currency` that writes itself in the
-locale (`3.650,00 EUR`), a date stays a date. The filters `datetime`, `currency` and `decimal`
-format in `locale` (Babel); `datetime` takes a date without shifting it into a time zone.
+locale (`3.650,00 EUR` in `de`), a date stays a date. The filters `datetime`, `currency` and
+`decimal` format in the locale (Babel); `datetime` takes a date without shifting it into a time
+zone.
 """
 
 import re
@@ -27,7 +28,6 @@ from papiq.core.domain.errors import MissingValueError, ValidationError
 from papiq.core.domain.fields import Money
 from papiq.core.domain.templates import TemplateValue
 
-DEFAULT_LOCALE = "de"
 _UNDEFINED = re.compile(r"^'?(?P<path>.+?)'? is undefined$")
 _LOCATION = re.compile(r"' (?P<line>\d+):(?P<column>\d+)\n")
 _FORBIDDEN_TAGS = ("include", "render")
@@ -55,7 +55,9 @@ class _DateTime(DateTime):
 
 
 class LiquidTemplateRenderer:
-    def __init__(self, locale: str = DEFAULT_LOCALE) -> None:
+    def __init__(self, *, locale: str, currency: str) -> None:
+        """`locale` writes dates and amounts (`PAPIQ_TEMPLATE_LOCALE`); `currency` is that
+        of the `currency` filter where a template names none (`PAPIQ_DEFAULT_CURRENCY`)."""
         try:
             self._locale = str(Locale.parse(locale.replace("-", "_")))
         except UnknownLocaleError:
@@ -65,7 +67,7 @@ class LiquidTemplateRenderer:
             del environment.tags[tag]
         environment.filters["datetime"] = _DateTime(self._locale)
         environment.filters["currency"] = Currency(
-            default_locale=self._locale, default_currency_code="EUR"
+            default_locale=self._locale, default_currency_code=currency
         )
         environment.filters["decimal"] = Number(default_locale=self._locale)
         self._environment = environment

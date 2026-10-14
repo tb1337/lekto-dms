@@ -889,7 +889,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_CONFIDENCE_THRESHOLD` | Worker | `0.9` | A field passes from this confidence on |
 | `PAPIQ_CONTACT_SUGGEST_THRESHOLD` | Worker | `0.75` | An existing contact is suggested from this similarity on; not above the confidence threshold |
 | `PAPIQ_POOR_READING_THRESHOLD` | Worker | `0.08` | Share of unsure words (below 60 % of Tesseract's confidence) from which a page the OCR recognised counts as poorly read: a value on it is only suggested. The default lies between good scans (up to 7 %) and broken ones (from 9 %) of a first sample; calibration in M18 |
-| `PAPIQ_DEFAULT_CURRENCY` | Worker | `EUR` | The currency of an amount in a document that shows no currency at all (ISO 4217) |
+| `PAPIQ_DEFAULT_CURRENCY` | both | `EUR` | The currency of an amount in a document that shows no currency at all (ISO 4217), and of the `currency` filter in templates where they name none |
 | `PAPIQ_CLASSIFIER` | both | `scikit-learn` | The classifier trained from confirmed documents; `none` turns it off |
 | `PAPIQ_CLASSIFIER_MIN_EXAMPLES` | both | `20` | Confirmed documents before the first model is trained |
 | `PAPIQ_CLASSIFIER_RETRAIN_AFTER` | both | `25` | Documents confirmed since the last model before it is trained again |

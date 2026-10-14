@@ -332,7 +332,9 @@ def build_container(settings: Settings) -> Container:
         webhook_sender=HttpWebhookSender(user_agent=f"Papiq/{__version__}"),
         totp=PyotpTotp(),
         patterns=RegexPatternMatcher(settings.rules_pattern_timeout.total_seconds()),
-        templates=LiquidTemplateRenderer(settings.template_locale),
+        templates=LiquidTemplateRenderer(
+            locale=settings.template_locale, currency=settings.default_currency
+        ),
         oidc=(
             _select("oidc", "authlib", OIDC_PROVIDERS, settings) if settings.oidc_enabled else None
         ),
@@ -360,6 +362,11 @@ def build_container(settings: Settings) -> Container:
 DEFAULT_PATTERN_TIMEOUT = 0.2
 
 
+def _default(setting: str) -> str:
+    """The default of a setting, for the memory container, which reads no environment."""
+    return str(Settings.model_fields[setting].default)
+
+
 def build_memory_container(clock: Clock | None = None) -> Container:
     """All ports on in-memory adapters, for tests and local experiments. Nothing persists."""
     database = MemoryDatabase()
@@ -377,7 +384,9 @@ def build_memory_container(clock: Clock | None = None) -> Container:
         webhook_sender=FakeWebhookSender(),
         totp=FakeTotp(),
         patterns=RegexPatternMatcher(DEFAULT_PATTERN_TIMEOUT),
-        templates=LiquidTemplateRenderer(),
+        templates=LiquidTemplateRenderer(
+            locale=_default("template_locale"), currency=_default("default_currency")
+        ),
         oidc=None,
         search_index=MemorySearchIndex(),
         language_model=None,

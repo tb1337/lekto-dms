@@ -27,7 +27,8 @@ VALUES: dict[str, TemplateValue] = {
 
 
 class TemplateRendererContract:
-    """Needs the fixture `template_renderer`, with the locale `de`."""
+    """Needs the fixture `template_renderer`, set to the locale `de` (the expected texts are
+    German)."""
 
     def test_writes_the_values(self, template_renderer: TemplateRenderer) -> None:
         render = template_renderer.render

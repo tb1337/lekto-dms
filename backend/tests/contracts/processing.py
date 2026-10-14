@@ -52,16 +52,14 @@ class OcrContract:
 class ParserContract:
     """Needs the fixture `parser`."""
 
-    async def test_writes_markdown_and_structure(
-        self, parser: DocumentParser, tmp_path: Path
-    ) -> None:
-        markdown, structure = tmp_path / "content.md", tmp_path / "content.json"
-        result = await parser.parse(SAMPLES / "text.pdf", markdown=markdown, structure=structure)
-        assert markdown.read_text(encoding="utf-8").strip()
+    async def test_writes_text_and_structure(self, parser: DocumentParser, tmp_path: Path) -> None:
+        text, structure = tmp_path / "content.txt", tmp_path / "content.json"
+        result = await parser.parse(SAMPLES / "text.pdf", text=text, structure=structure)
+        assert text.read_text(encoding="utf-8").strip()
         assert isinstance(json.loads(structure.read_text(encoding="utf-8")), dict)
         assert result.pages == 1
         assert result.parser
-        assert sorted(path.name for path in tmp_path.iterdir()) == ["content.json", "content.md"]
+        assert sorted(path.name for path in tmp_path.iterdir()) == ["content.json", "content.txt"]
 
     async def test_a_damaged_file_is_unprocessable(
         self, parser: DocumentParser, tmp_path: Path
@@ -69,7 +67,7 @@ class ParserContract:
         with pytest.raises(UnprocessableDocumentError):
             await parser.parse(
                 SAMPLES / "damaged.pdf",
-                markdown=tmp_path / "content.md",
+                text=tmp_path / "content.txt",
                 structure=tmp_path / "content.json",
             )
         assert list(tmp_path.iterdir()) == []

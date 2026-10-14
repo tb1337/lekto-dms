@@ -52,7 +52,7 @@ from papiq.core.services.documents import DocumentService
 from papiq.core.services.inbox import field_checks, open_nodes
 from papiq.core.services.indexing import IndexingService
 from papiq.core.services.master_data import MasterDataService
-from papiq.core.services.objects import markdown_key
+from papiq.core.services.objects import text_key
 from papiq.core.services.pipeline import IncomingFile, PipelineService
 from papiq.core.services.users import UserService
 
@@ -265,9 +265,9 @@ async def _receive(
             imported=imported,
         )
     await environment.store.put(
-        markdown_key(received.id),
+        text_key(received.id),
         text.encode("utf-8"),
-        content_type="text/markdown; charset=utf-8",
+        content_type="text/plain; charset=utf-8",
     )
     return received
 

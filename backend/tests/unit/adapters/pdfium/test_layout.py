@@ -35,7 +35,7 @@ async def parse(tmp_path: Path, content: str | bytes, page: str = "") -> tuple[s
     source = tmp_path / "source.pdf"
     source.write_bytes(data)
     text, structure = tmp_path / "content.txt", tmp_path / "content.json"
-    await LayoutParser().parse(source, markdown=text, structure=structure)
+    await LayoutParser().parse(source, text=text, structure=structure)
     return text.read_text(encoding="utf-8"), json.loads(structure.read_text(encoding="utf-8"))
 
 
@@ -137,8 +137,8 @@ async def test_pages_are_apart_and_one_without_text_is_empty(tmp_path: Path) -> 
         document.pages.append(other.pages[0])
         document.save(source)
     text, structure = tmp_path / "content.txt", tmp_path / "content.json"
-    result = await LayoutParser().parse(source, markdown=text, structure=structure)
+    result = await LayoutParser().parse(source, text=text, structure=structure)
     first, empty, third = text.read_text(encoding="utf-8").split(PAGE_BREAK)
     assert first == third and first.startswith("Rechnung Nummer 4711") and empty == ""
-    assert result.pages == 3 and result.note is None
+    assert result.pages == 3
     assert result.parser.startswith("layout 1, pypdfium2 ")

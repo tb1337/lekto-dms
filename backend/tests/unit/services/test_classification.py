@@ -36,7 +36,7 @@ from papiq.core.services.classification.signals import (
     FactsSignal,
     NeighboursSignal,
 )
-from papiq.core.services.objects import archive_key, exchanges_key, markdown_key
+from papiq.core.services.objects import archive_key, exchanges_key, text_key
 from papiq.core.services.pipeline import MetadataResult, NodeExecutor, PlaceholderNode
 from papiq.core.services.titles import machine_title
 from tests import builders
@@ -169,7 +169,7 @@ async def document_with(
         await uow.documents.add(document)
         await uow.commit()
     await world.object_store.put(
-        markdown_key(document.id), text.encode(), content_type="text/markdown; charset=utf-8"
+        text_key(document.id), text.encode(), content_type="text/markdown; charset=utf-8"
     )
     return document
 
@@ -1181,7 +1181,7 @@ async def run(world: World, fake: FakeLanguageModel) -> tuple[Any, Document]:
     pipeline = world.pipeline(executors)
     document = await pipeline.receive(owner.id, incoming(b"%PDF-1.7\n%%EOF\n"), filename="a.pdf")
     await world.object_store.put(
-        markdown_key(document.id), INVOICE.encode(), content_type="text/markdown; charset=utf-8"
+        text_key(document.id), INVOICE.encode(), content_type="text/markdown; charset=utf-8"
     )
     await world.drain(pipeline)
     return owner, await world.documents.get(owner.id, document.id)

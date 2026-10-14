@@ -22,6 +22,6 @@ async def test_the_text_layer_of_a_scan_is_read_line_by_line(tmp_path: Path) -> 
     engine = OcrmypdfEngine(languages=["deu", "eng"], timeout=timedelta(minutes=2))
     await engine.make_archive(SAMPLES / "scan.pdf", archive, media_type=media_types.PDF)
     text = tmp_path / "content.txt"
-    result = await LayoutParser().parse(archive, markdown=text, structure=tmp_path / "s.json")
+    result = await LayoutParser().parse(archive, text=text, structure=tmp_path / "s.json")
     assert [line.strip() for line in text.read_text(encoding="utf-8").splitlines() if line] == LINES
-    assert result.pages == 1 and result.note is None
+    assert result.pages == 1

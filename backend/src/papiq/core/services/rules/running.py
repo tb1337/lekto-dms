@@ -65,7 +65,7 @@ from papiq.core.domain.rules import Rule, SetDrawer, Trigger
 from papiq.core.domain.users import User
 from papiq.core.ports import ObjectStore, PatternMatcher, UnitOfWork
 from papiq.core.services.inbox import MODEL_NODES, field_checks, latest_entries
-from papiq.core.services.objects import markdown_key
+from papiq.core.services.objects import load_text
 from papiq.core.services.titles import machine_title
 
 log = logging.getLogger(__name__)
@@ -133,7 +133,7 @@ async def prepare(
     if document.processing.outcome(Node.PARSE) not in (Outcome.OK, Outcome.UNCERTAIN):
         return Prepared()
     try:
-        markdown = (await store.get(markdown_key(document.id))).decode("utf-8")
+        markdown = (await load_text(store, document.id)).decode("utf-8")
     except NotFoundError:
         return Prepared()
     text = pattern_text(markdown, max_text)

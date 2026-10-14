@@ -22,7 +22,7 @@ from papiq.core.services.classifier import (
     ClassifierService,
 )
 from papiq.core.services.master_data import replace_learned_identifiers
-from papiq.core.services.objects import classifier_key, markdown_key
+from papiq.core.services.objects import classifier_key, text_key
 from tests import builders
 from tests.unit.services.conftest import World
 
@@ -49,9 +49,7 @@ async def confirmed(world: World, owner: User, contact: Contact, text: str) -> D
     async with world.uow() as uow:
         await uow.documents.add(document)
         await uow.commit()
-    await world.object_store.put(
-        markdown_key(document.id), text.encode(), content_type="text/markdown"
-    )
+    await world.object_store.put(text_key(document.id), text.encode(), content_type="text/markdown")
     return document
 
 

@@ -44,7 +44,7 @@ from papiq.core.ports import (
 )
 from papiq.core.services._access import load_actor
 from papiq.core.services.master_data import replace_learned_identifiers
-from papiq.core.services.objects import classifier_key, markdown_key
+from papiq.core.services.objects import classifier_key, load_text
 
 log = logging.getLogger(__name__)
 
@@ -275,7 +275,7 @@ class ClassifierService:
         examples = []
         for document in documents:
             try:
-                raw = await self._store.get(markdown_key(document.id))
+                raw = await load_text(self._store, document.id)
             except NotFoundError:
                 continue
             text = _shortened(raw.decode("utf-8", "replace"), self.policy.text_limit)

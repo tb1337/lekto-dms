@@ -9684,7 +9684,7 @@
           "documents"
         ],
         "summary": "The recognised text of a document",
-        "description": "Needs read access. The parsed text (Markdown), in pieces of at most 20000 characters; continue with `next_offset`. 409 while the document has no text yet (it is not parsed).",
+        "description": "Needs read access. The text read from the archive, plain text as it is set (the pages apart by a form feed on a line of its own; a document parsed before 0.2 has Markdown until it is read again), in pieces of at most 20000 characters; continue with `next_offset`. 409 while the document has no text yet (it is not parsed).",
         "operationId": "document_text_api_v1_documents__id__text_get",
         "parameters": [
           {
@@ -9833,7 +9833,7 @@
           "documents"
         ],
         "summary": "The parsed structure of a document",
-        "description": "Needs read access. The parser's lossless structure (Docling's JSON: text, tables and layout with page and box of each element) as it stored it; can be large. 409 while the document is not parsed.",
+        "description": "Needs read access. The structure of the text: `pages` with `number`, `width` and `height` (points), their `lines` with `text`, `box` and `words` (each with `text` and `box`); a box is `[x1, y1, x2, y2]` in fractions of the page as shown, from its top left. A document parsed before 0.2 has Docling's JSON until it is read again. Can be large. 409 while the document is not parsed.",
         "operationId": "document_structure_api_v1_documents__id__structure_get",
         "parameters": [
           {
@@ -14191,7 +14191,7 @@
           "next_offset"
         ],
         "title": "DocumentTextOut",
-        "description": "A piece of the parsed text (Markdown); offsets and lengths count characters."
+        "description": "A piece of the text read from the archive; offsets and lengths count characters."
       },
       "DocumentTypeCreate": {
         "properties": {

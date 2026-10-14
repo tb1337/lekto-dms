@@ -54,15 +54,15 @@ class TextOcr:
 class TextParser:
     """A parser that takes the text of a document from a line of the file: `%text: …`."""
 
-    async def parse(self, source: Path, *, markdown: Path, structure: Path) -> ParseResult:
+    async def parse(self, source: Path, *, text: Path, structure: Path) -> ParseResult:
         data = source.read_bytes()
-        text = next(
+        content = next(
             line.removeprefix(b"%text: ").decode()
             for line in data.splitlines()
             if line.startswith(b"%text: ")
         )
-        markdown.write_text(text, encoding="utf-8")
-        structure.write_text(json.dumps({"text": text}), encoding="utf-8")
+        text.write_text(content, encoding="utf-8")
+        structure.write_text(json.dumps({"text": content}), encoding="utf-8")
         return ParseResult(pages=1, parser="text-parser 1")
 
 

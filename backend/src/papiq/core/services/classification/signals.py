@@ -39,7 +39,7 @@ from papiq.core.ports import DocumentFilter, Embeddings, ObjectStore, UnitOfWork
 from papiq.core.ports.search_index import SearchIndex, SimilarQuery
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.indexing import split_sections
-from papiq.core.services.objects import markdown_key
+from papiq.core.services.objects import load_text
 
 log = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ def abstained(reason: str, *, model_version: str | None = None) -> NodeResult:
 
 async def _text(store: ObjectStore, document: Document) -> str | None:
     try:
-        return (await store.get(markdown_key(document.id))).decode("utf-8", "replace")
+        return (await load_text(store, document.id)).decode("utf-8", "replace")
     except NotFoundError:
         return None
 

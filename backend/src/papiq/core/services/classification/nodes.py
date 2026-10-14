@@ -93,7 +93,7 @@ from papiq.core.services.classification.signals import (
     signals_of,
 )
 from papiq.core.services.nodes import work_directory
-from papiq.core.services.objects import archive_key, exchanges_key, markdown_key
+from papiq.core.services.objects import archive_key, exchanges_key, load_text, text_key
 from papiq.core.services.pipeline import MetadataResult
 from papiq.core.services.titles import has_machine_title, pattern_title
 
@@ -156,7 +156,7 @@ class _ModelStep:
         self._locator = locator
 
     async def _text(self, document: Document) -> str:
-        return (await self._store.get(markdown_key(document.id))).decode("utf-8")
+        return (await load_text(self._store, document.id)).decode("utf-8")
 
     async def _ask[T](
         self,
@@ -260,7 +260,7 @@ class _ModelStep:
     def _input(self, document: Document, text: str, sent: Shortened, prompt: str) -> JsonObject:
         assert self._model is not None
         return {
-            "markdown": markdown_key(document.id),
+            "text": text_key(document.id),
             "characters": len(text),
             "sent": len(sent.text),
             "truncated": sent.omitted > 0,

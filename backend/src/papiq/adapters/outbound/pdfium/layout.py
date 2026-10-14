@@ -69,9 +69,9 @@ class Page:
 class LayoutParser:
     """The text as it is set; fast enough to run in a thread of the worker."""
 
-    async def parse(self, source: Path, *, markdown: Path, structure: Path) -> ParseResult:
+    async def parse(self, source: Path, *, text: Path, structure: Path) -> ParseResult:
         pages = await asyncio.to_thread(read_pages, source)
-        text = PAGE_BREAK.join(page.text for page in pages)
+        content = PAGE_BREAK.join(page.text for page in pages)
         data = {
             "parser": "layout",
             "version": VERSION,
@@ -82,12 +82,12 @@ class LayoutParser:
             ],
         }
         try:
-            await asyncio.to_thread(markdown.write_text, text, encoding="utf-8")
+            await asyncio.to_thread(text.write_text, content, encoding="utf-8")
             await asyncio.to_thread(
                 structure.write_text, json.dumps(data, ensure_ascii=False), encoding="utf-8"
             )
         except BaseException:
-            for path in (markdown, structure):
+            for path in (text, structure):
                 await asyncio.to_thread(path.unlink, missing_ok=True)
             raise
         return ParseResult(

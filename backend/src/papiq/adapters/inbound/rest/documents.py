@@ -439,7 +439,9 @@ TEXT_MAX = 20_000
     "/{id}/text",
     summary="The recognised text of a document",
     description=(
-        "Needs read access. The parsed text (Markdown), in pieces of at most "
+        "Needs read access. The text read from the archive, plain text as it is set (the "
+        "pages apart by a form feed on a line of its own; a document parsed before 0.2 has "
+        "Markdown until it is read again), in pieces of at most "
         f"{TEXT_MAX} characters; continue with `next_offset`. 409 while the document has no "
         "text yet (it is not parsed)."
     ),
@@ -466,9 +468,11 @@ async def document_text(
     "/{id}/structure",
     summary="The parsed structure of a document",
     description=(
-        "Needs read access. The parser's lossless structure (Docling's JSON: text, tables and "
-        "layout with page and box of each element) as it stored it; can be large. 409 while "
-        "the document is not parsed."
+        "Needs read access. The structure of the text: `pages` with `number`, `width` and "
+        "`height` (points), their `lines` with `text`, `box` and `words` (each with `text` and "
+        "`box`); a box is `[x1, y1, x2, y2]` in fractions of the page as shown, from its top "
+        "left. A document parsed before 0.2 has Docling's JSON until it is read again. Can be "
+        "large. 409 while the document is not parsed."
     ),
     response_class=Response,
     responses={

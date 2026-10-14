@@ -2,7 +2,7 @@
 external programs.
 
 They follow the contracts without real recognition: the archive is a minimal PDF that names the
-source, the Markdown is a short text, the page images tiny WebP headers, and the locator finds
+source, the text is a short one, the page images tiny WebP headers, and the locator finds
 texts in pages it is given instead of reading the PDF. A file that is neither a PDF ending with
 `%%EOF` nor a supported image counts as damaged.
 """
@@ -40,10 +40,10 @@ class FakeParser:
         self.text = text
         self.calls: list[Path] = []
 
-    async def parse(self, source: Path, *, markdown: Path, structure: Path) -> ParseResult:
+    async def parse(self, source: Path, *, text: Path, structure: Path) -> ParseResult:
         self.calls.append(source)
         _check(await asyncio.to_thread(source.read_bytes))
-        await asyncio.to_thread(markdown.write_text, self.text, encoding="utf-8")
+        await asyncio.to_thread(text.write_text, self.text, encoding="utf-8")
         await asyncio.to_thread(
             structure.write_text, json.dumps({"text": self.text}), encoding="utf-8"
         )

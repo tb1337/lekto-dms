@@ -7,24 +7,20 @@ from typing import Protocol
 class ParseResult:
     pages: int
     parser: str  # name and version of the parser, for the processing log
-    # Why the result is less than asked for, for the processing log: the layout analysis found
-    # no text and the Markdown is the plain text layer of the archive instead.
-    note: str | None = None
 
 
 class DocumentParser(Protocol):
-    """Extracts structure (text, tables, layout) as Markdown and JSON. First adapter: Docling.
+    """Reads the text of the archive PDF from its text layer, with its structure. Adapter: the
+    layout text of PDFium.
 
-    Parsing runs outside the event loop (adapters use processes) and is limited in time.
+    Parsing runs outside the event loop (adapters use a thread or a process).
     """
 
-    async def parse(self, source: Path, *, markdown: Path, structure: Path) -> ParseResult:
-        """Parse the archive PDF `source` using its text layer: Markdown to `markdown`, the
-        parser's lossless structure as JSON to `structure`. If the layout analysis finds no
-        text although the archive has a text layer, `markdown` is that text, plain, and `note`
-        says so.
+    async def parse(self, source: Path, *, text: Path, structure: Path) -> ParseResult:
+        """Read the archive PDF `source`: its text to `text` (plain text as it is set, the pages
+        apart by a form feed on a line of its own), its structure as JSON to `structure`.
 
-        UnprocessableDocumentError if the file cannot be processed; TimeoutError if parsing
-        takes too long. Other errors may be temporary. On error, neither file is created.
+        UnprocessableDocumentError if the file cannot be read. Other errors may be temporary. On
+        error, neither file is created.
         """
         ...

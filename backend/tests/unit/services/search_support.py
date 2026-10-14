@@ -15,7 +15,7 @@ from papiq.core.domain.users import User
 from papiq.core.ports import EmbeddingResult, IndexBuild
 from papiq.core.services.indexing import INDEX_JOB, SUBSCRIBER, IndexingPolicy, IndexingService
 from papiq.core.services.master_data import MasterDataService
-from papiq.core.services.objects import markdown_key
+from papiq.core.services.objects import text_key
 from tests.builders import incoming
 from tests.unit.services.conftest import World
 
@@ -125,9 +125,7 @@ class Setup:
         return await self.world.documents.get(owner.id, received.id)
 
     async def put_text(self, id: DocumentId, text: str) -> None:
-        await self.world.object_store.put(
-            markdown_key(id), text.encode(), content_type="text/plain"
-        )
+        await self.world.object_store.put(text_key(id), text.encode(), content_type="text/plain")
 
     def entry(self, id: DocumentId) -> IndexDocument:
         return self.index.documents[id]

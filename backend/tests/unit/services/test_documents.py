@@ -23,9 +23,9 @@ from papiq.core.services.documents import DocumentFile, FileInfo
 from papiq.core.services.objects import (
     archive_key,
     exchanges_key,
-    markdown_key,
     preview_key,
     structure_key,
+    text_key,
 )
 from tests.builders import UNCERTAIN, incoming
 from tests.unit.services.conftest import Returns, World
@@ -315,7 +315,7 @@ async def test_downloads_need_read_access(world: World, scene: Scene, tmp_path: 
 async def test_the_text_is_read_in_pieces(world: World, scene: Scene) -> None:
     text = "Strom März 84,20 €\n" * 5  # more than one piece, with non-ASCII characters
     await world.object_store.put(
-        markdown_key(scene.document.id), text.encode(), content_type="text/markdown"
+        text_key(scene.document.id), text.encode(), content_type="text/markdown"
     )
     first = await world.documents.read_text(scene.reader.id, scene.document.id, limit=30)
     assert (first.text, first.offset, first.total_length) == (text[:30], 0, len(text))
@@ -336,7 +336,7 @@ async def test_the_text_is_read_in_pieces(world: World, scene: Scene) -> None:
 
 async def test_the_text_is_for_readers_only(world: World, scene: Scene) -> None:
     await world.object_store.put(
-        markdown_key(scene.document.id), b"secret", content_type="text/markdown"
+        text_key(scene.document.id), b"secret", content_type="text/markdown"
     )
     with pytest.raises(NotFoundError):
         await world.documents.read_text(scene.stranger.id, scene.document.id, limit=10)
@@ -345,7 +345,7 @@ async def test_the_text_is_for_readers_only(world: World, scene: Scene) -> None:
 
 
 async def test_a_document_without_text_says_so(world: World, scene: Scene) -> None:
-    await world.object_store.delete(markdown_key(scene.document.id))
+    await world.object_store.delete(text_key(scene.document.id))
     with pytest.raises(ConflictError, match="no text yet"):
         await world.documents.read_text(scene.owner.id, scene.document.id, limit=10)
 

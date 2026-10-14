@@ -283,7 +283,7 @@ class MoveRequest(BaseModel):
 
 
 class DocumentTextOut(BaseModel):
-    """A piece of the parsed text (Markdown); offsets and lengths count characters."""
+    """A piece of the text read from the archive; offsets and lengths count characters."""
 
     text: str
     offset: int

@@ -10,15 +10,17 @@ from papiq.adapters.outbound.memory.processing import FAKE_PDF
 from papiq.core.domain.documents import Document
 from papiq.core.domain.pipeline import Lane, Node, NodeRun, Outcome
 from papiq.core.domain.users import User
-from papiq.core.ports import OcrResult, ParseResult
+from papiq.core.ports import OcrResult
 from papiq.core.services.nodes import OcrNode, PagesNode, ParseNode, has_text
 from papiq.core.services.objects import (
     archive_key,
-    markdown_key,
+    legacy_text_key,
+    load_text,
     original_key,
     page_key,
     preview_key,
     structure_key,
+    text_key,
 )
 from papiq.core.services.pipeline import PipelineService
 from tests.builders import incoming
@@ -81,7 +83,7 @@ async def test_ocr_pages_and_parse_store_their_derivatives(world: World, sample:
     for number in (1, 2):
         assert store.content_type(page_key(document.id, number)) == "image/webp"
     assert not await store.exists(page_key(document.id, 3))
-    assert await store.get(markdown_key(document.id)) == b"Rechnung"
+    assert await store.get(text_key(document.id)) == b"Rechnung"
     assert store.content_type(structure_key(document.id)) == "application/json"
 
     log = {
@@ -154,39 +156,30 @@ async def test_a_signature_left_out_of_the_archive_is_ok_with_a_note(world: Worl
 
 
 async def test_a_document_without_text_goes_red(world: World) -> None:
-    owner, document = await ingest(world, pipeline(world, text="<!-- image -->\n\n"), "blank.pdf")
+    owner, document = await ingest(world, pipeline(world, text="\n\f\n  \n"), "blank.pdf")
     assert document.lane is Lane.RED
     assert document.processing.failed() == (Node.PARSE,)
     entry = (await world.documents.processing_log(owner.id, document.id))[-1]
     assert entry.result.reason == "no text recognised: the pages are blank or hold only pictures"
-    assert await world.object_store.exists(markdown_key(document.id))  # kept for inspection
+    assert await world.object_store.exists(text_key(document.id))  # kept for inspection
 
 
-class TextLayer(FakeParser):
-    """A parser whose layout analysis found nothing and that fell back to the text layer."""
-
-    async def parse(self, source: Path, *, markdown: Path, structure: Path) -> ParseResult:
-        result = await super().parse(source, markdown=markdown, structure=structure)
-        return ParseResult(pages=result.pages, parser=result.parser, note="text layer used")
-
-
-async def test_a_parser_that_fell_back_to_the_text_layer_is_uncertain(world: World) -> None:
+async def test_the_markdown_of_before_goes_once_the_text_is_read_again(world: World) -> None:
+    """A document parsed before 0.2 kept Docling's Markdown; it is read until the document is
+    parsed again, then removed."""
     store = world.object_store
-    service = world.pipeline(
-        {
-            Node.OCR: OcrNode(store, FakeOcr()),
-            Node.PARSE: ParseNode(store, TextLayer("Lohnabrechnung Februar")),
-        }
-    )
+    service = pipeline(world)
     owner, document = await ingest(world, service, "scan.pdf")
-    assert document.lane is Lane.YELLOW
-    assert document.processing.outcomes[Node.PARSE] is Outcome.UNCERTAIN
+    read = await load_text(store, document.id)
+    await store.delete(text_key(document.id))
+    await store.put(legacy_text_key(document.id), b"# Docling", content_type="text/markdown")
+    assert await load_text(store, document.id) == b"# Docling"
+    await service.reprocess_from(owner.id, document.id, Node.PARSE)
+    await world.drain(service)
+    assert await load_text(store, document.id) == read
+    assert not await store.exists(legacy_text_key(document.id))
     entry = await logged(world, owner, document, Node.PARSE)
-    assert entry.node is Node.PARSE
-    assert entry.result.reason == "text layer used"
-    assert entry.result.output["note"] == "text layer used"
-    text = await world.object_store.get(markdown_key(document.id))
-    assert text == b"Lohnabrechnung Februar"
+    assert entry.result.output["text"] == text_key(document.id)
 
 
 async def test_reprocessing_from_parse_reuses_the_archive(world: World) -> None:
@@ -209,8 +202,8 @@ async def test_work_directories_are_removed(
 
 
 @pytest.mark.parametrize(
-    ("markdown", "expected"),
-    [("", False), ("  \n", False), ("<!-- image -->", False), ("# 4711", True), ("Ä", True)],
+    ("text", "expected"),
+    [("", False), ("  \n\f\n", False), ("--- | ---", False), ("4711", True), ("Ä", True)],
 )
-def test_has_text(markdown: str, expected: bool) -> None:
-    assert has_text(markdown) is expected
+def test_has_text(text: str, expected: bool) -> None:
+    assert has_text(text) is expected

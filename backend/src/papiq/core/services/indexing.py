@@ -65,7 +65,7 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
 )
 from papiq.core.services._access import load_actor
-from papiq.core.services.objects import markdown_key
+from papiq.core.services.objects import load_text
 
 log = logging.getLogger(__name__)
 
@@ -331,7 +331,7 @@ class IndexingService:
 
     async def _read_text(self, id: DocumentId) -> str:
         try:
-            data = await self._store.get(markdown_key(id))
+            data = await load_text(self._store, id)
         except NotFoundError:
             return ""  # not parsed yet
         return data.decode("utf-8", errors="replace")[: self._policy.max_text]

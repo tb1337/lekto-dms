@@ -42,7 +42,7 @@ from papiq.core.services.objects import (
     archive_key,
     exchanges_key,
     legacy_exchanges_key,
-    markdown_key,
+    load_text,
     original_key,
     page_key,
     preview_key,
@@ -79,7 +79,7 @@ class DocumentView:
 
 @dataclass(frozen=True)
 class DocumentText:
-    """A piece of the parsed text (Markdown): `offset` and lengths count characters."""
+    """A piece of the text read from the archive: `offset` and lengths count characters."""
 
     text: str
     offset: int
@@ -144,7 +144,7 @@ class DocumentService:
         async with self._uow() as uow:
             await readable_document(uow, await load_actor(uow, actor), id)
         try:
-            data = await self._store.get(markdown_key(id))
+            data = await load_text(self._store, id)
         except NotFoundError:
             raise ConflictError("document has no text yet") from None
         text = data.decode("utf-8", errors="replace")

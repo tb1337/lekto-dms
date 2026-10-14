@@ -25,7 +25,7 @@ from papiq.core.services.classification.signals import (
     NeighboursSignal,
 )
 from papiq.core.services.classifier import ClassifierPolicy, ClassifierService
-from papiq.core.services.objects import markdown_key
+from papiq.core.services.objects import text_key
 from tests import builders
 from tests.unit.services.conftest import World
 
@@ -53,7 +53,7 @@ async def stored(world: World, owner: User, text: str, contact: Contact | None =
     async with world.uow() as uow:
         await uow.documents.add(document)
         await uow.commit()
-    await world.object_store.put(markdown_key(document.id), text.encode(), content_type="text/md")
+    await world.object_store.put(text_key(document.id), text.encode(), content_type="text/md")
     return document
 
 

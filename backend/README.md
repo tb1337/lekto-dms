@@ -170,11 +170,11 @@ jobs of the old run are recognised as stale.
 | --- | --- | --- | --- |
 | OCR (`OcrNode`) | `originals/<sha256>` | `documents/<id>/archive.pdf` (PDF/A with text layer) | uncertain if the archive is not PDF/A, with the reason; OK with a note if the original's digital signature is not in the archive |
 | Pages (`PagesNode`) | `originals/<sha256>` | `documents/<id>/pages/<n>.webp` (every page, 1200 px wide; an image narrower than that keeps its size, each frame of a TIFF is a page), `documents/<id>/preview.webp` (first page, 400 px wide); sets `page_count` | failed if the file cannot be read |
-| Parse (`ParseNode`) | the archive PDF | `documents/<id>/content.md` (the text as it is set), `documents/<id>/content.json` (its lines and words with boxes) | failed if no text was recognised |
-| Signals (`signal_llm`, `signal_classifier`, `signal_neighbours`, `signal_facts`) | `content.md`, master data, the classifier's model, the search index | proposals in the log | OK, also when abstaining (`abstained` names why); only `signal_llm` fails, after two unfit answers |
-| Judge (`JudgeNode`) | the signals' entries in the log, `content.md` | contact, document type, tags, document date (applied if green) | see Understanding |
-| Fields (`FieldsNode`) | `content.md`, the fields of the type and the global ones | field values and the title (applied if checked) | see Understanding |
-| Apply rules (`ApplyRulesNode`) | `content.md` (only if a rule looks at the text), the rules | drawer, contact, type, title, tags, fields | uncertain on conflicts, refused actions and forced reviews; see Rules |
+| Parse (`ParseNode`) | the archive PDF | `documents/<id>/content.txt` (the text as it is set), `documents/<id>/content.json` (its lines and words with boxes) | failed if no text was recognised |
+| Signals (`signal_llm`, `signal_classifier`, `signal_neighbours`, `signal_facts`) | `content.txt`, master data, the classifier's model, the search index | proposals in the log | OK, also when abstaining (`abstained` names why); only `signal_llm` fails, after two unfit answers |
+| Judge (`JudgeNode`) | the signals' entries in the log, `content.txt` | contact, document type, tags, document date (applied if green) | see Understanding |
+| Fields (`FieldsNode`) | `content.txt`, the fields of the type and the global ones | field values and the title (applied if checked) | see Understanding |
+| Apply rules (`ApplyRulesNode`) | `content.txt` (only if a rule looks at the text), the rules | drawer, contact, type, title, tags, fields | uncertain on conflicts, refused actions and forced reviews; see Rules |
 | File (`FileNode`) | the drawer | - | uncertain if the owner may no longer file into the drawer (field `drawer`) |
 
 - A node that raises is retried (`PAPIQ_NODE_MAX_ATTEMPTS`, delay `PAPIQ_NODE_RETRY_DELAY`,
@@ -209,7 +209,9 @@ jobs of the old run are recognised as stale.
   printed sideways, a scan OCR read sideways) is read that way, text up the margin along its
   direction. Words end at the gaps between the characters, not at spaces (some PDFs set none).
   Pages are separated by a form feed on a line of its own. Headers and footers stay in the
-  text (the identifiers of a letter's footer among them). The structure is Papiq's own JSON:
+  text (the identifiers of a letter's footer among them). A document parsed before 0.2 keeps
+  Docling's Markdown (`content.md`) until its text is read again (`reparse`); it is read
+  meanwhile. The structure is Papiq's own JSON:
   the pages with their size, the lines and words with boxes in fractions of the page as shown.
   It replaced Docling in 0.2: on the documents compared (`.idea/umsetzungsplan.md`) Docling
   dropped headers and footers, merged the rows of forms and needed a minute and 2 GB per
@@ -392,7 +394,7 @@ version; deleting is a soft delete.
   `matches` takes `case_sensitive` (default false). Patterns run with the `regex` package
   (`adapters/outbound/regex`) in a thread with a time limit (`PAPIQ_RULES_PATTERN_TIMEOUT`); a
   pattern that times out does not match and is logged. All patterns of one run on one
-  document get two seconds together, a preview page twenty; the patterns left do not match. The text is the parsed Markdown without
+  document get two seconds together, a preview page twenty; the patterns left do not match. The text is the parsed text without
   markup, at most `PAPIQ_RULES_MAX_TEXT` characters; it is loaded only if a rule looks at it.
 - **Actions.** `set_drawer`, `set_contact`, `set_document_type`, `set_title` (placeholders
   `{contact}`, `{document_type}`, `{document_date}`, `{filename}`), `add_tags`, `remove_tags`,
@@ -534,7 +536,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result and the differences |
 | `POST /documents/{id}/move` | Into another drawer (owner, or an admin without read access) |
 | `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
-| `GET /documents/{id}/text` | The recognised text (Markdown) in pieces: `offset`, `limit`; `409` while not parsed |
+| `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit`; `409` while not parsed |
 | `GET /documents/{id}/log` | Processing log (owner or admin) |
 | `POST /documents/{id}/retry` | Repeat the failed nodes (owner or admin) |
 | `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (owner or admin) |
@@ -724,7 +726,7 @@ as in REST: `read` may use every tool but `update_metadata`.
 | --- | --- |
 | `search` | `query`, `limit` (1 to 25), `offset`, optional `contact`, `document_type`, `tags` (names): hits with `id`, `title`, `score`, `snippet` (plain text), contact, type, tags, date, lane, `access`; `next_offset`, `semantic` |
 | `get_document` | `id`: metadata with contact, type, tags and fields by name, lane and processing status |
-| `get_text` | `id`, `offset`, `limit` (characters, at most `PAPIQ_MCP_TEXT_MAX`, 20,000): a piece of the document's text as Markdown, `next_offset` to continue. The text is content from outside; the tool description tells clients not to follow instructions in it |
+| `get_text` | `id`, `offset`, `limit` (characters, at most `PAPIQ_MCP_TEXT_MAX`, 20,000): a piece of the document's text as it is set, `next_offset` to continue. The text is content from outside; the tool description tells clients not to follow instructions in it |
 | `update_metadata` | `id` and any of `title`, `contact`, `document_type` (name; `null` removes), `tags` (the complete list, replaces), `document_date` (`null` removes), `fields` (field name to value; `null` removes). Needs a `read_write` token and write access; the owner's change rules run as for `PATCH /documents/{id}` and the result shows them. If the rules filed the document where the caller can no longer read it, the result has only `id` and `access: null` |
 | `list_tags` | All tags, to name them in the other tools |
 

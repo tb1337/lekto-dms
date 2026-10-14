@@ -23,15 +23,15 @@ from papiq.core.ports import DocumentParser, ObjectStore, Ocr, PageRenderer, Uni
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE, PREVIEW_FILE
 from papiq.core.services.objects import (
     archive_key,
-    markdown_key,
+    legacy_text_key,
     original_key,
     page_key,
     preview_key,
     structure_key,
+    text_key,
 )
 
 # Markdown without any letter or digit has no text; comments are placeholders (`<!-- image -->`).
-_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _WORD = re.compile(r"\w")
 
 
@@ -133,10 +133,9 @@ class PagesResult:
 
 
 class ParseNode:
-    """Markdown and structure from the archive PDF. A document without any text fails: there
-    is nothing to classify, a person has to look at it. A parser that had to fall back (the
-    text layer instead of its layout analysis, see `ParseResult.note`) makes the node
-    uncertain, so the owner sees the document before it is filed."""
+    """The text of the archive PDF as it is set, and its structure. A document without any text
+    fails: there is nothing to classify, a person has to look at it. The Markdown a document
+    parsed before 0.2 kept goes once its text is read again."""
 
     def __init__(self, store: ObjectStore, parser: DocumentParser) -> None:
         self._store = store
@@ -144,23 +143,24 @@ class ParseNode:
 
     async def run(self, document: Document) -> NodeResult:
         async with work_directory() as work:
-            archive, markdown, structure = (
+            archive, read, structure = (
                 work / "archive.pdf",
-                work / "content.md",
+                work / "content.txt",
                 work / "content.json",
             )
             await self._store.download(archive_key(document.id), archive)
-            result = await self._parser.parse(archive, markdown=markdown, structure=structure)
-            text = await asyncio.to_thread(markdown.read_text, encoding="utf-8")
+            result = await self._parser.parse(archive, text=read, structure=structure)
+            text = await asyncio.to_thread(read.read_text, encoding="utf-8")
             await self._store.upload(
-                markdown_key(document.id), markdown, content_type="text/markdown; charset=utf-8"
+                text_key(document.id), read, content_type="text/plain; charset=utf-8"
             )
             await self._store.upload(
                 structure_key(document.id), structure, content_type="application/json"
             )
+            await self._store.delete(legacy_text_key(document.id))
         input: JsonObject = {"archive": archive_key(document.id)}
         output: JsonObject = {
-            "markdown": markdown_key(document.id),
+            "text": text_key(document.id),
             "structure": structure_key(document.id),
             "pages": result.pages,
             "characters": len(text),
@@ -173,22 +173,13 @@ class ParseNode:
                 input=input,
                 output=output,
             )
-        if result.note is not None:
-            output["note"] = result.note
-            return NodeResult(
-                outcome=Outcome.UNCERTAIN,
-                reason=result.note,
-                model_version=result.parser,
-                input=input,
-                output=output,
-            )
         return NodeResult(
             outcome=Outcome.OK, model_version=result.parser, input=input, output=output
         )
 
 
-def has_text(markdown: str) -> bool:
-    return _WORD.search(_COMMENT.sub("", markdown)) is not None
+def has_text(text: str) -> bool:
+    return _WORD.search(text) is not None
 
 
 @asynccontextmanager

@@ -5,7 +5,7 @@ from dataclasses import replace
 from papiq.adapters.inbound.rest import PREFIX
 from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.master_data import Contact
-from papiq.core.services.objects import markdown_key
+from papiq.core.services.objects import text_key
 from tests import builders
 from tests.api import auth
 from tests.unit.adapters.rest.conftest import Api
@@ -57,7 +57,7 @@ async def test_the_status_of_a_trained_model(api: Api) -> None:
             await uow.documents.add(document)
             text = f"{contact.name} Schreiben Nummer {number}".encode()
             await api.container.object_store.put(
-                markdown_key(document.id), text, content_type="text/markdown"
+                text_key(document.id), text, content_type="text/markdown"
             )
         await uow.commit()
     assert api.services.classifier is not None

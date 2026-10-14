@@ -18,7 +18,7 @@ from papiq.composition.settings import Settings
 from papiq.core.domain import media_types
 from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.ports import ObjectStore
-from papiq.core.services.objects import archive_key, markdown_key, preview_key, structure_key
+from papiq.core.services.objects import archive_key, preview_key, structure_key, text_key
 from tests import builders
 from tests.builders import incoming
 from tests.contracts.processing import SAMPLES
@@ -72,7 +72,7 @@ async def test_scan_and_photo_are_processed(
     assert stored.lane is Lane.GREEN, [entry.result for entry in log]
     assert (await object_store.get(archive_key(document.id))).startswith(b"%PDF-")
     assert (await object_store.get(preview_key(document.id)))[8:12] == b"WEBP"
-    markdown = (await object_store.get(markdown_key(document.id))).decode()
+    markdown = (await object_store.get(text_key(document.id))).decode()
     assert "Rechnung Nummer 4711" in " ".join(markdown.split())
     assert await object_store.exists(structure_key(document.id))
     models = {entry.node: entry.result.model_version or "" for entry in log}

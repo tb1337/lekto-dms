@@ -29,7 +29,7 @@ from papiq.composition.settings import Settings
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.users import User
 from papiq.core.ports import ObjectStore, OcrResult
-from papiq.core.services.objects import archive_key, markdown_key, preview_key, structure_key
+from papiq.core.services.objects import archive_key, preview_key, structure_key, text_key
 from tests import builders
 from tests.api import Stream, auth, issue_token, listen, serving, until
 from tests.contracts.processing import SAMPLES
@@ -154,7 +154,7 @@ async def test_documents_go_through_the_api(system: System, object_store: Object
         assert status["lane"] == "green", (name, status)
         assert await object_store.get(archive_key(key))
         assert (await object_store.get(preview_key(key)))[8:12] == b"WEBP"
-        text = " ".join((await object_store.get(markdown_key(key))).decode().split())
+        text = " ".join((await object_store.get(text_key(key))).decode().split())
         assert "Rechnung Nummer 4711" in text, name
         assert await object_store.exists(structure_key(key))
 

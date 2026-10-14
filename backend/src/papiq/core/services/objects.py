@@ -1,8 +1,10 @@
 """Object keys of originals and derivatives in the object store."""
 
 from papiq.core.domain.documents import Sha256
+from papiq.core.domain.errors import NotFoundError
 from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.pipeline import Node
+from papiq.core.ports.object_store import ObjectStore
 
 EXCHANGE_NODES = (Node.SIGNAL_LLM, Node.FIELDS)
 """The nodes that ask the language model and keep what they sent (`exchanges_key`)."""
@@ -30,14 +32,29 @@ def page_key(document: DocumentId, number: int) -> str:
     return f"documents/{document}/pages/{number}.webp"
 
 
-def markdown_key(document: DocumentId) -> str:
-    """The parsed text as Markdown."""
+def text_key(document: DocumentId) -> str:
+    """The text read from the archive: plain text as it is set, pages apart by form feeds."""
+    return f"documents/{document}/content.txt"
+
+
+def legacy_text_key(document: DocumentId) -> str:
+    """Where a document parsed before 0.2 keeps its text (Docling's Markdown) until it is read
+    again (`reparse`)."""
     return f"documents/{document}/content.md"
 
 
 def structure_key(document: DocumentId) -> str:
-    """The parsed structure, in the parser's JSON format."""
+    """The structure of the text: its pages, lines and words with their boxes (JSON)."""
     return f"documents/{document}/content.json"
+
+
+async def load_text(store: ObjectStore, document: DocumentId) -> bytes:
+    """The document's text, or the Markdown of one parsed before 0.2. NotFoundError if it has
+    neither (it is not parsed yet)."""
+    try:
+        return await store.get(text_key(document))
+    except NotFoundError:
+        return await store.get(legacy_text_key(document))
 
 
 def exchanges_key(document: DocumentId, node: Node) -> str:
@@ -62,7 +79,8 @@ def derivative_keys(document: DocumentId, page_count: int | None = None) -> list
     return [
         archive_key(document),
         preview_key(document),
-        markdown_key(document),
+        text_key(document),
+        legacy_text_key(document),
         structure_key(document),
         *(exchanges_key(document, node) for node in EXCHANGE_NODES),
         *(key for key in legacy if key is not None),

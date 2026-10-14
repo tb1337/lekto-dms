@@ -28,7 +28,7 @@ from papiq.core.domain.rules import (
 )
 from papiq.core.domain.users import Role, User
 from papiq.core.services.documents import DocumentService
-from papiq.core.services.objects import markdown_key
+from papiq.core.services.objects import text_key
 from papiq.core.services.pipeline import (
     IncomingFile,
     MetadataResult,
@@ -232,7 +232,7 @@ class RuleWorld:
         )
         if text is not None:
             await self.world.object_store.put(
-                markdown_key(received.id), text.encode(), content_type="text/markdown"
+                text_key(received.id), text.encode(), content_type="text/markdown"
             )
         await self.world.drain(pipeline)
         return await self.stored(received)

@@ -1,7 +1,6 @@
 """Milestone M3 end to end: documents arrive through the REST API, the worker processes them
-with OCRmyPDF and Docling, progress arrives as server-sent events. Real API server (Uvicorn)
-and worker, in two set-ups: SQLite with the filesystem, Postgres with S3 (Garage).
-Marker `docling` (slow)."""
+with OCRmyPDF and the layout text, progress arrives as server-sent events. Real API server
+(Uvicorn) and worker, in two set-ups: SQLite with the filesystem, Postgres with S3 (Garage)."""
 
 import asyncio
 import shutil
@@ -16,9 +15,8 @@ import pytest
 
 from papiq.adapters.inbound.rest import PREFIX
 from papiq.adapters.inbound.worker import Worker
-from papiq.adapters.outbound.docling import DoclingParser
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
-from papiq.adapters.outbound.pdfium import PdfiumPageRenderer
+from papiq.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer
 from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory
 from papiq.composition.api import build_app
 from papiq.composition.container import (
@@ -35,8 +33,6 @@ from papiq.core.services.objects import archive_key, markdown_key, preview_key, 
 from tests import builders
 from tests.api import Stream, auth, issue_token, listen, serving, until
 from tests.contracts.processing import SAMPLES
-
-pytestmark = pytest.mark.docling
 
 if not (shutil.which("tesseract") and shutil.which("gs")):
     pytest.skip("Tesseract or Ghostscript not installed", allow_module_level=True)
@@ -94,8 +90,6 @@ class System:
 
 @pytest.fixture
 async def system(stores: tuple[Database, ObjectStore], settings: Settings) -> AsyncIterator[System]:
-    if not settings.docling_models_path.is_dir():
-        pytest.skip(f"Docling models not found in {settings.docling_models_path}")
     database, object_store = stores
     ocr = Interruptible(OcrmypdfEngine(languages=["deu", "eng"], timeout=timedelta(minutes=5)))
     container = replace(
@@ -104,7 +98,7 @@ async def system(stores: tuple[Database, ObjectStore], settings: Settings) -> As
         event_bus=SqlEventBus(database),
         object_store=object_store,
         ocr=ocr,
-        parser=DoclingParser(models=settings.docling_models_path, timeout=timedelta(minutes=5)),
+        parser=LayoutParser(),
         pages=PdfiumPageRenderer(),
     )
     tuning = Settings.model_construct(

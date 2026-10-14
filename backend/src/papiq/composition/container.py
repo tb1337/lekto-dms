@@ -19,7 +19,6 @@ from papiq.adapters.outbound.crypto import (
     PyotpTotp,
     decode_key,
 )
-from papiq.adapters.outbound.docling import DoclingParser
 from papiq.adapters.outbound.filesystem import FilesystemObjectStore
 from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.adapters.outbound.memory import (
@@ -41,7 +40,7 @@ from papiq.adapters.outbound.memory import (
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
 from papiq.adapters.outbound.oidc import AuthlibOidcProvider
 from papiq.adapters.outbound.openai_compat import OpenAiCompatEmbeddings, OpenAiCompatLanguageModel
-from papiq.adapters.outbound.pdfium import PdfiumPageRenderer, PdfiumTextLocator
+from papiq.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer, PdfiumTextLocator
 from papiq.adapters.outbound.regex import RegexPatternMatcher
 from papiq.adapters.outbound.s3 import S3ObjectStore
 from papiq.adapters.outbound.sklearn import SklearnClassifier
@@ -223,16 +222,12 @@ def ocrmypdf_engine(settings: Settings) -> OcrmypdfEngine:
     )
 
 
-def docling_parser(settings: Settings) -> DoclingParser:
-    return DoclingParser(
-        models=settings.docling_models_path,
-        timeout=settings.parse_timeout,
-        threads=_cores_per_job(settings),
-    )
+def layout_parser(settings: Settings) -> LayoutParser:
+    return LayoutParser()
 
 
 OCR_ENGINES: dict[str, Factory[Ocr]] = {"ocrmypdf": ocrmypdf_engine}
-PARSERS: dict[str, Factory[DocumentParser]] = {"docling": docling_parser}
+PARSERS: dict[str, Factory[DocumentParser]] = {"layout": layout_parser}
 PAGE_RENDERERS: dict[str, Factory[PageRenderer]] = {"pdfium": lambda _: PdfiumPageRenderer()}
 TEXT_LOCATORS: dict[str, Factory[TextLocator]] = {"pdfium": lambda _: PdfiumTextLocator()}
 CLASSIFIERS: dict[str, Factory[Classifier]] = {"scikit-learn": lambda _: SklearnClassifier()}
@@ -326,7 +321,7 @@ def build_container(settings: Settings) -> Container:
         clock=SystemClock(),
         object_store=object_store,
         ocr=_select("ocr", "ocrmypdf", OCR_ENGINES, settings),
-        parser=_select("parser", "docling", PARSERS, settings),
+        parser=_select("parser", "layout", PARSERS, settings),
         pages=_select("pages", "pdfium", PAGE_RENDERERS, settings),
         locator=_select("locator", "pdfium", TEXT_LOCATORS, settings),
         password_hasher=Argon2PasswordHasher(),

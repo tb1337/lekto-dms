@@ -6,13 +6,13 @@ from typing import Any
 import pytest
 
 from papiq.adapters.outbound.crypto import Argon2PasswordHasher, PyotpTotp
-from papiq.adapters.outbound.docling import DoclingParser
 from papiq.adapters.outbound.filesystem import FilesystemObjectStore
 from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.adapters.outbound.memory import ManualClock
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
 from papiq.adapters.outbound.oidc import AuthlibOidcProvider
 from papiq.adapters.outbound.openai_compat import OpenAiCompatEmbeddings, OpenAiCompatLanguageModel
+from papiq.adapters.outbound.pdfium import LayoutParser
 from papiq.adapters.outbound.s3 import S3ObjectStore
 from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory, migrate
 from papiq.adapters.outbound.system import SystemClock
@@ -90,11 +90,11 @@ def test_the_storage_type_selects_the_object_store(tmp_path: Path) -> None:
 def test_each_port_is_checked_in_turn(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
     monkeypatch.delitem(container.OCR_ENGINES, "ocrmypdf")
-    monkeypatch.delitem(container.PARSERS, "docling")
+    monkeypatch.delitem(container.PARSERS, "layout")
     with pytest.raises(AdapterNotAvailableError, match="ocr: adapter 'ocrmypdf'"):
         build_container(settings())
     monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: object())
-    with pytest.raises(AdapterNotAvailableError, match="parser: adapter 'docling'"):
+    with pytest.raises(AdapterNotAvailableError, match="parser: adapter 'layout'"):
         build_container(settings())
 
 
@@ -109,9 +109,7 @@ def test_processing_adapters_follow_the_settings(tmp_path: Path) -> None:
     ocr = container.OCR_ENGINES["ocrmypdf"](configured)
     assert isinstance(ocr, OcrmypdfEngine)
     assert (ocr._languages, ocr._timeout) == ("deu+eng+fra", timedelta(minutes=2))
-    parser = container.PARSERS["docling"](configured)
-    assert isinstance(parser, DoclingParser)
-    assert (parser._models, parser._timeout) == (tmp_path, timedelta(minutes=5))
+    assert isinstance(container.PARSERS["layout"](configured), LayoutParser)
 
 
 def test_services_take_their_tuning_from_the_settings() -> None:
@@ -166,7 +164,7 @@ def test_optional_ports_are_only_selected_when_configured(
 ) -> None:
     monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
     tables: list[dict[str, Any]] = [container.OCR_ENGINES, container.PARSERS]
-    names = ["ocrmypdf", "docling"]
+    names = ["ocrmypdf", "layout"]
     for table, name in zip(tables, names, strict=True):
         monkeypatch.setitem(table, name, lambda _: object())
 
@@ -187,7 +185,7 @@ def test_optional_ports_are_only_selected_when_configured(
 
 def test_language_model_and_embeddings_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
-    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "docling")):
+    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "layout")):
         monkeypatch.setitem(table, name, lambda _: object())
 
     built = build_container(
@@ -219,7 +217,7 @@ def test_language_model_and_embeddings_from_settings(monkeypatch: pytest.MonkeyP
 
 async def test_search_index_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
-    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "docling")):
+    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "layout")):
         monkeypatch.setitem(table, name, lambda _: object())
 
     built = build_container(
@@ -255,7 +253,7 @@ async def test_search_index_from_settings(monkeypatch: pytest.MonkeyPatch) -> No
 
 async def test_search_services_follow_the_search_index(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
-    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "docling")):
+    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "layout")):
         monkeypatch.setitem(table, name, lambda _: object())
 
     without = build_container(settings())

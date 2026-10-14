@@ -297,11 +297,17 @@ own switch:
 | Dates | as the document date; a date field must differ from the document date | the date is suggested |
 | Text, link, choice, yes/no | the value, or the quoted passage, appears in the text (`ja`/`nein` read as yes or no) | |
 
-The quoted passage must appear in the text as well. The title comes from the type's title
-pattern (`{contact}`, `{document_type}`, `{document_date}`, `{document_date:YYYY-MM}` with
-`YYYY YY MM DD`, `{filename}`, `{field:Name}`), else from the model, while the document still
-has its file name or the title the machine gave it; a pattern missing a value falls back to the
-model's title. Confirming in the inbox renders the pattern again with the decided values; a
+The quoted passage must appear in the text as well. A field's description (up to 300
+characters) goes into both prompts after its name and choices: it tells the model what belongs
+in the field, whose name is often an internal one no document shows (`LA_Brutto`: the month's
+gross total, not the base salary). The model is told to copy the quoted passage exactly as it
+stands, numbers unchanged, and where the label and the value stand apart (a table, a form with
+boxes), the line the value stands on; the check stays strict.
+
+The title comes from the type's title pattern (`{contact}`, `{document_type}`,
+`{document_date}`, `{document_date:YYYY-MM}` with `YYYY YY MM DD`, `{filename}`,
+`{field:Name}`), else from the model, while the document still has its file name or the title
+the machine gave it; a pattern missing a value falls back to the model's title. Confirming in the inbox renders the pattern again with the decided values; a
 rule replaces the machine's title without making the document yellow. Every check with its
 candidates and the raw answer is in the processing log (`fields`, `answer`), so a proposal stays
 traceable after a correction; the rules read them with `core.services.inbox.field_checks`.
@@ -314,9 +320,9 @@ is set cost a model little; beginning and end kept, the middle left out); with m
 tags, at most `PAPIQ_LLM_MAX_TAGS` are listed, those named in the text first; of the contacts,
 the 20 the text names most (with their aliases).
 
-**Privacy.** The shortened document text, the names of document types, tags and fields, and the
-names of the contacts the text names go to the endpoint in `PAPIQ_LLM_BASE_URL`; the file, other
-contacts and users do not. Every log entry of the two model nodes names the endpoint host and
+**Privacy.** The shortened document text, the names of document types, tags and fields, the
+descriptions of types and fields, and the names of the contacts the text names go to the
+endpoint in `PAPIQ_LLM_BASE_URL`; the file, other contacts and users do not. Every log entry of the two model nodes names the endpoint host and
 the model. At start, a warning names every
 configured model endpoint outside the local network (not loopback, private, link-local or a
 local name), because document content leaves the system there.
@@ -537,7 +543,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /auth/oidc`, `/auth/oidc/login`, `/auth/oidc/callback`; `POST/DELETE /auth/oidc/link` | OpenID Connect |
 | `GET /users`, `GET/PATCH/DELETE /users/{id}` | Accounts: list (others see active users' names), role and state, delete (admins) |
 | `POST /users`, `POST /users/{id}/password`, `DELETE /users/{id}/totp`, `DELETE /users/{id}/oidc` | Create with password, reset password, turn TOTP off, remove links (admins, session only, not the own account) |
-| `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Fields: name, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409` |
+| `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409` |
 | `GET/POST /drawers`, `GET/PATCH/DELETE /drawers/{id}`, `PUT/DELETE /drawers/{id}/shares/{user_id}` | Drawers and shares (owner) |
 | `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `limit`, `offset`, `semantic_ratio`; hits with snippet, `estimated_total`, `next_offset`, `semantic` |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |

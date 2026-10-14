@@ -149,7 +149,16 @@
       ],
       "required": [
         "Lohnabrechnung"
-      ]
+      ],
+      "description": "Der Nettoverdienst des Monats, der Betrag, der überwiesen wird"
+    },
+    {
+      "name": "Bruttolohn",
+      "data_type": "amount",
+      "document_types": [
+        "Lohnabrechnung"
+      ],
+      "description": "Das Gesamtbrutto des Monats, nicht das Grundgehalt; steht als Gesamtbrutto oder Gesamt-Brutto"
     },
     {
       "name": "Zahlungsart",

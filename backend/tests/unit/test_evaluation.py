@@ -3,11 +3,13 @@ wrong answer."""
 
 import json
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from papiq.adapters.inbound.evaluation import EvaluationSetError, Run, evaluate, load_set
+from papiq.adapters.inbound.evaluation.cases import Case
 from papiq.adapters.outbound.memory import FakeLanguageModel
 from papiq.composition.__main__ import main
 from papiq.composition.errors import ConfigurationError
@@ -19,7 +21,9 @@ from papiq.composition.evaluation import (
 )
 from papiq.composition.settings import Settings
 from papiq.core.domain.identifiers import IdentifierKind, IdentifierSource
+from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.pipeline import Lane
+from papiq.core.ports.llm import StructuredRequest
 
 SET = Path(__file__).parents[2] / "evaluation"
 
@@ -171,3 +175,31 @@ async def test_the_trained_run_learns_from_the_corpus() -> None:
     assert logo.lane is Lane.GREEN
     (best, *_) = logo.checks["contact"].candidates
     assert any(source.identifiers for source in best.sources)
+
+
+async def test_a_field_s_description_reaches_the_model() -> None:
+    """The pay slip lists the base salary before the gross total; the description of the
+    field asks for the gross total, and the prompt carries it."""
+    evaluation = load_set(SET)
+    (case,) = [item for item in evaluation.cases if item.name == "35-lohnabrechnung-gesamtbrutto"]
+    asked: list[str] = []
+
+    def model(item: Case) -> FakeLanguageModel | None:
+        if item.fake is None:
+            return None
+        fake = item.fake
+
+        def respond(request: StructuredRequest) -> JsonObject:
+            asked.append(request.user)
+            return fake.respond(request)
+
+        return FakeLanguageModel(respond, model=FAKE_MODEL)
+
+    container = evaluation_container(Run.COLD)
+    environment = build_environment(container, Settings.model_construct(), model, Run.COLD)
+    try:
+        (result,) = await evaluate(replace(evaluation, cases=(case,)), environment)
+    finally:
+        await container.aclose()
+    assert result.lane is Lane.GREEN, result.reasons
+    assert any("Das Gesamtbrutto des Monats, nicht das Grundgehalt" in text for text in asked)

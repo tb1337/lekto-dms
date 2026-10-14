@@ -5,7 +5,8 @@ through the same signals, judge and fields node as the pipeline, to compare lang
 to check that the checks catch wrong answers.
 
 - `master_data.json`: contacts, document types, tags and fields the documents are matched
-  against (a field's `required`: true for a global one, else the types it is required for);
+  against (a field's `required`: true for a global one, else the types it is required for;
+  its `description`: what belongs in it, for the model);
   optionally `contact_aliases` (other names by contact), `contact_identifiers` (entered by
   hand: `kind` and `value` by contact), `type_descriptions` and `title_patterns` (by document
   type).

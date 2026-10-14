@@ -51,7 +51,8 @@ class Run(StrEnum):
 @dataclass(frozen=True)
 class FieldSpec:
     """`required`: a global field required everywhere; `required_types`: the types a typed
-    one is required for (in the JSON, `"required"` is either)."""
+    one is required for (in the JSON, `"required"` is either); `description`: what belongs in
+    it, for the language model."""
 
     name: str
     data_type: FieldType
@@ -59,6 +60,7 @@ class FieldSpec:
     choices: tuple[str, ...] = ()
     required: bool = False
     required_types: tuple[str, ...] = ()
+    description: str | None = None
 
 
 @dataclass(frozen=True)
@@ -235,6 +237,7 @@ def _master_data(data: Any) -> MasterDataSpec:
                 required_types=(
                     tuple(item["required"]) if isinstance(item.get("required"), list) else ()
                 ),
+                description=item.get("description"),
             )
             for item in data["fields"]
         )

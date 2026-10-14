@@ -118,6 +118,23 @@ def test_similar_documents_back_a_contact_by_majority() -> None:
     assert utility.label == "Stadtwerke Musterstadt"
 
 
+def test_similar_documents_split_between_senders_name_none() -> None:
+    """A pay slip of a new employer: the similar documents are the employee's pay slips from
+    two earlier ones, alike by the form and the employee. They name no sender, so they do not
+    contradict the model and the name in the text; undivided, they still would."""
+    split = neighbours(*[(BANK.id, None)] * 3, *[(EMPLOYEE.id, None)] * 2)
+    signals = Signals(
+        model=model(sender="Stadtwerke Musterstadt"), facts=NAMED_UTILITY, neighbours=split
+    )
+    check = judge_contact(signals, CONTACTS)
+    assert (check.outcome, check.value) == (Outcome.OK, str(UTILITY.id))
+    assert check.candidates[0].value == str(UTILITY.id) and not check.candidates[0].contradicted
+    undivided = neighbours(*[(BANK.id, None)] * 3, (EMPLOYEE.id, None), (None, None))
+    check = judge_contact(replace(signals, neighbours=undivided), CONTACTS)
+    assert check.outcome is Outcome.UNCERTAIN
+    assert check.reason == "the signals disagree: 'Stadtwerke Musterstadt' or 'Beispielbank'"
+
+
 @pytest.mark.parametrize(
     ("signals", "reason"),
     [

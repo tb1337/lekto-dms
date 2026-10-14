@@ -6,7 +6,9 @@ A signal *names* a value when it is sure of it:
   punctuation aside) at least `accept` and no other contact comes close; a type or tag from the
   lists;
 - the classifier: its best class with at least `classifier` probability (a tag: its own);
-- the similar documents: at least two of them, and more than half of those found, carry it.
+- the similar documents: at least two of them, and more than half of those found, carry it;
+  a contact only if no other contact is carried by two of them as well (similar documents split
+  between senders are alike by their form, a pay slip's employee for one, not by their sender).
 
 Facts in the text name nothing on their own; they are evidence: an identifier of the contact,
 or its name (or alias) standing whole in the text, is *hard* evidence. An identifier of a
@@ -310,7 +312,7 @@ def _contact_view(
     classifier_names = _top(ranking, thresholds.classifier)
     neighbours = signals.neighbours or ()
     votes = Counter(item.contact for item in neighbours if item.contact in names)
-    neighbours_name = _majority(votes, len(neighbours))
+    neighbours_name = _majority(votes, len(neighbours), undivided=True)
     proposers: dict[ContactId, tuple[str, ...]] = {}
     for signal, named in (
         (LLM, matched if model_names else None),
@@ -588,10 +590,14 @@ def _top[K](ranking: Sequence[tuple[K, float]], threshold: float) -> K | None:
     return ranking[0][0] if ranking and ranking[0][1] >= threshold else None
 
 
-def _majority[K](votes: Counter[K], found: int) -> K | None:
+def _majority[K](votes: Counter[K], found: int, *, undivided: bool = False) -> K | None:
+    """The value at least two and more than half of the `found` carry; `undivided`: and no
+    other value two of them carry."""
     if not votes:
         return None
-    value, count = votes.most_common(1)[0]
+    (value, count), *others = votes.most_common()
+    if undivided and any(other >= 2 for _, other in others):
+        return None
     return value if count >= 2 and count > found / 2 else None
 
 

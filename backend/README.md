@@ -268,7 +268,9 @@ A signal *names* a value it is sure of: the model, a contact whose name or alias
 matches at least `PAPIQ_CONFIDENCE_THRESHOLD` (legal forms and punctuation aside) with no other
 close, or a type or tag of the lists; the classifier, its best class from
 `PAPIQ_CLASSIFIER_THRESHOLD` on; the neighbours, a value at least two and more than half of them
-carry. A signal naming another value contradicts: always yellow, with every candidate and its
+carry, a contact only if no other contact is carried by two of them as well (neighbours split
+between senders are alike by their form, a pay slip's employee for one, and name no sender). A
+signal naming another value contradicts: always yellow, with every candidate and its
 sources. The judge's rule:
 
 | Field | Green (no contradiction) | Otherwise |

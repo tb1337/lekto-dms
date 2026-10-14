@@ -86,7 +86,10 @@
 		<div class="flex h-16 items-center gap-4 px-4 sm:px-8 lg:gap-7">
 			<Sheet.Root bind:open={menuOpen}>
 				<Sheet.Trigger
-					class={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'lg:hidden')}
+					class={cn(
+						buttonVariants({ variant: 'ghost', size: 'icon' }),
+						adminSections.length ? 'xl:hidden' : 'lg:hidden'
+					)}
 					aria-label={m.nav_open()}
 				>
 					<Menu aria-hidden="true" />
@@ -111,7 +114,14 @@
 
 			<a href={home()} class="rounded-md text-lg"><Logo /></a>
 
-			<nav aria-label={m.nav_main()} class="hidden min-w-0 flex-1 items-center gap-1 lg:flex">
+			<!-- The menu in the header where it fits: from lg, from xl with the admin's entries. -->
+			<nav
+				aria-label={m.nav_main()}
+				class={cn(
+					'hidden min-w-0 flex-1 items-center gap-1',
+					adminSections.length ? 'xl:flex' : 'lg:flex'
+				)}
+			>
 				{#each userSections as section (section.path)}
 					{@render pill(section, false)}
 				{/each}
@@ -124,20 +134,20 @@
 			</nav>
 
 			<div class="ml-auto flex items-center gap-2">
-				<!-- The field where there is room: beside the menu from xl (from 2xl with the admin's
-				     entries), instead of it from md. -->
+				<!-- The field where there is room: instead of the menu from md, beside it from xl
+				     (the admin's menu from xl, the field beside it from 2xl). -->
 				<HeaderSearch
 					class={cn(
-						'hidden w-64 md:flex lg:hidden',
-						adminSections.length ? '2xl:flex 2xl:w-80' : 'xl:flex xl:w-80'
+						'hidden w-64 md:flex',
+						adminSections.length ? 'xl:hidden 2xl:flex 2xl:w-80' : 'lg:hidden xl:flex xl:w-80'
 					)}
 				/>
 				<a
 					href={href(SEARCH)}
 					class={cn(
 						buttonVariants({ variant: 'ghost', size: 'icon' }),
-						'md:hidden lg:inline-flex',
-						adminSections.length ? '2xl:hidden' : 'xl:hidden'
+						'md:hidden',
+						adminSections.length ? 'xl:inline-flex 2xl:hidden' : 'lg:inline-flex xl:hidden'
 					)}
 					aria-label={m.header_search_label()}
 				>

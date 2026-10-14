@@ -188,8 +188,12 @@ jobs of the old run are recognised as stale.
   transfer), another worker takes the job over and the late result is discarded. A node
   interrupted by a stopping worker is released at once (`JobQueue.release`); that does not
   count against `PAPIQ_NODE_MAX_ATTEMPTS`.
-- OCRmyPDF: `--skip-text` (pages with text are not recognised again), `--output-type pdfa`,
-  languages `PAPIQ_OCR_LANGUAGES`. Images whose stated resolution gives an implausible page
+- OCRmyPDF: `--skip-text` (pages with text are not recognised again), `--deskew`,
+  `--rotate-pages`, `--output-type pdfa`, languages `PAPIQ_OCR_LANGUAGES`. A PDF with invisible
+  text carries the layer of another OCR (a scanner's, an older archive's), which may be poor and
+  says nothing of how well it read: it gets `--redo-ocr` instead (that layer is replaced,
+  visible text kept, no deskewing, which OCRmyPDF does not allow then), and the log says
+  `read_again`. Documents from before take the new reading when processed again from OCR. Images whose stated resolution gives an implausible page
   size (none, or 72 dpi from a phone) are scaled to the long edge of A4; transparency is put on
   white, CMYK is converted, all pages of a TIFF are kept. OCRmyPDF shares the CPU cores among
   `PAPIQ_WORKER_CONCURRENCY` jobs.

@@ -1,7 +1,10 @@
 """OCR with OCRmyPDF (Tesseract, Ghostscript), run as a child process per document.
 
 `--skip-text` leaves pages that already have text alone; `--output-type pdfa` makes the archive
-PDF/A. The output is written next to the target and renamed when complete.
+PDF/A. The output is written next to the target and renamed when complete. A PDF with invisible
+text carries the layer of another OCR (a scanner's, an older archive's) that may be poor and
+says nothing of how well it read: it gets `--redo-ocr` instead, which replaces that layer and
+keeps visible text. OCRmyPDF does not deskew then (`--deskew` is not allowed with it).
 
 Two things make OCRmyPDF refuse or downgrade a file, and both get a second run:
 
@@ -46,7 +49,7 @@ from pathlib import Path
 
 from PIL import Image, ImageSequence
 
-from papiq.adapters.outbound.pdfium import count_pages
+from papiq.adapters.outbound.pdfium import count_pages, has_hidden_text
 from papiq.adapters.outbound.system import Completed, run_process
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import UnprocessableDocumentError
@@ -120,10 +123,14 @@ class OcrmypdfEngine:
         work = target.with_name(f".{target.name}.{uuid.uuid4().hex}.work")
         try:
             extra: list[str] = []
+            again = False
             if media_type != media_types.PDF:
                 source, dpi = await asyncio.to_thread(prepare_image, source, prepared)
                 extra = ["--image-dpi", str(dpi)]
-            pdfa, notes = await self._convert(source, temporary, extra, work)
+            else:
+                again = await asyncio.to_thread(has_hidden_text, source)
+            mode = ["--redo-ocr"] if again else ["--skip-text", "--deskew"]
+            pdfa, notes = await self._convert(source, temporary, [*mode, *extra], work)
             pages = await asyncio.to_thread(count_pages, temporary)
             readings = await asyncio.to_thread(read_hocr, work)
             await asyncio.to_thread(temporary.replace, target)
@@ -139,6 +146,7 @@ class OcrmypdfEngine:
             pdfa=pdfa,
             note=_join(notes),
             readings=readings,
+            read_again=again,
         )
 
     async def _convert(
@@ -193,11 +201,9 @@ class OcrmypdfEngine:
             "ocrmypdf",
             "-v1",  # Ghostscript's messages name the reason when PDF/A fails
             "--keep-temporary-files",  # the hOCR tells how well each page was read
-            "--skip-text",
             "--output-type",
             "pdfa" if pdfa else "pdf",
             "--rotate-pages",
-            "--deskew",
             "--language",
             self._languages,
             "--jobs",

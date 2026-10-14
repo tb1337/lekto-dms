@@ -1,6 +1,7 @@
 """OCRmyPDF with Tesseract and Ghostscript: passes the contract and recognises text. Skips if
 the programs are not installed (the devcontainer has them)."""
 
+import asyncio
 import shutil
 from datetime import timedelta
 from pathlib import Path
@@ -9,6 +10,7 @@ import pypdfium2
 import pytest
 
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
+from papiq.adapters.outbound.pdfium import has_hidden_text
 from papiq.core.domain import media_types
 from tests.contracts.processing import SAMPLES, OcrContract
 
@@ -71,6 +73,20 @@ async def test_existing_text_is_kept(tmp_path: Path) -> None:
     result = await engine().make_archive(SAMPLES / "text.pdf", target, media_type=media_types.PDF)
     assert text_of(target).split() == text_of(SAMPLES / "text.pdf").split()
     assert result.readings == ()
+
+
+async def test_another_ocr_s_layer_is_read_again(tmp_path: Path) -> None:
+    """An archive of ours stands in for a scan another program made searchable."""
+    searchable = tmp_path / "searchable.pdf"
+    await engine().make_archive(SAMPLES / "scan.pdf", searchable, media_type=media_types.PDF)
+    assert await asyncio.to_thread(has_hidden_text, searchable)
+    assert not await asyncio.to_thread(has_hidden_text, SAMPLES / "text.pdf")
+    assert not await asyncio.to_thread(has_hidden_text, SAMPLES / "scan.pdf")
+    target = tmp_path / "archive.pdf"
+    result = await engine().make_archive(searchable, target, media_type=media_types.PDF)
+    assert result.read_again
+    assert [reading.page for reading in result.readings] == [1]
+    assert "Rechnung Nummer 4711" in " ".join(text_of(target).split())
 
 
 async def test_an_empty_page_has_no_text(tmp_path: Path) -> None:

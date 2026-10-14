@@ -16,6 +16,8 @@ class OcrResult:
     # How well each page the engine recognised was read; pages with text of their own are
     # not recognised and have none.
     readings: tuple[PageReading, ...] = ()
+    # The text layer another OCR had put over the scan (invisible text) was replaced.
+    read_again: bool = False
 
 
 class Ocr(Protocol):
@@ -26,8 +28,9 @@ class Ocr(Protocol):
 
     async def make_archive(self, source: Path, target: Path, *, media_type: str) -> OcrResult:
         """Write the archive PDF of `source` (a PDF or an image of `media_type`) to `target`:
-        PDF/A with a text layer. Pages that already contain text are not recognised again;
-        images become a PDF.
+        PDF/A with a text layer. Pages that already contain text are not recognised again,
+        unless it is the invisible layer another OCR put over a scan: that one is replaced by a
+        reading of its own (`read_again`). Images become a PDF.
 
         A digitally signed original is processed anyway; the archive does not carry the
         signature (the original is never changed) and `note` says so. If PDF/A is not possible

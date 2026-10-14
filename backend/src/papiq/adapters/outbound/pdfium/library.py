@@ -5,6 +5,7 @@ import threading
 from pathlib import Path
 
 import pypdfium2
+import pypdfium2.raw as pdfium_c
 
 from papiq.core.domain.errors import UnprocessableDocumentError
 
@@ -33,5 +34,26 @@ def count_pages(path: Path) -> int:
             raise UnprocessableDocumentError(f"the PDF cannot be read: {error}") from None
         try:
             return len(document)
+        finally:
+            document.close()
+
+
+def has_hidden_text(path: Path) -> bool:
+    """Whether a page of the PDF has invisible text, the layer an OCR puts over a scan
+    (blocking; run it in a thread). False for a PDF that cannot be read: OCRmyPDF says why."""
+    with LOCK:
+        try:
+            document = pypdfium2.PdfDocument(path)
+        except pypdfium2.PdfiumError:
+            return False
+        try:
+            for page in document:
+                textpage = page.get_textpage()
+                for index in range(textpage.count_chars()):
+                    found = pdfium_c.FPDFText_GetTextObject(textpage, index)
+                    mode = pdfium_c.FPDFTextObj_GetTextRenderMode(found) if found else None
+                    if mode == pdfium_c.FPDF_TEXTRENDERMODE_INVISIBLE:
+                        return True
+            return False
         finally:
             document.close()

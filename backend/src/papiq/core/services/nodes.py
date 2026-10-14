@@ -41,8 +41,8 @@ class OcrNode:
     (UnprocessableDocumentError, see PipelineService); an archive that is not PDF/A is
     uncertain, with the engine's reason. An archive that is PDF/A but differs from what was
     asked (a signature not carried over) is OK with the engine's note as reason. How well each
-    recognised page was read goes into the log (`readings`); the judge and the fields node
-    read it there."""
+    recognised page was read goes into the log (`readings`), and whether another OCR's text
+    layer was replaced (`read_again`); the judge and the fields node read the readings there."""
 
     def __init__(self, store: ObjectStore, ocr: Ocr) -> None:
         self._store = store
@@ -66,6 +66,8 @@ class OcrNode:
             output["note"] = result.note
         if result.readings:
             output["readings"] = readings_to_json(result.readings)
+        if result.read_again:
+            output["read_again"] = True
         if not result.pdfa:
             reason = "the archive could not be made PDF/A"
             if result.note is not None:

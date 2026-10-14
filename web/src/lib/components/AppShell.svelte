@@ -124,13 +124,20 @@
 			</nav>
 
 			<div class="ml-auto flex items-center gap-2">
-				<!-- The field where there is room: beside the menu from xl, instead of it from md. -->
-				<HeaderSearch class="hidden w-64 md:flex lg:hidden xl:flex xl:w-80" />
+				<!-- The field where there is room: beside the menu from xl (from 2xl with the admin's
+				     entries), instead of it from md. -->
+				<HeaderSearch
+					class={cn(
+						'hidden w-64 md:flex lg:hidden',
+						adminSections.length ? '2xl:flex 2xl:w-80' : 'xl:flex xl:w-80'
+					)}
+				/>
 				<a
 					href={href(SEARCH)}
 					class={cn(
 						buttonVariants({ variant: 'ghost', size: 'icon' }),
-						'md:hidden lg:inline-flex xl:hidden'
+						'md:hidden lg:inline-flex',
+						adminSections.length ? '2xl:hidden' : 'xl:hidden'
 					)}
 					aria-label={m.header_search_label()}
 				>

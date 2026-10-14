@@ -26,7 +26,7 @@ flowchart TB
     cli[Migrations-CLI<br/>aus Paperless-ngx]
     subgraph papiq[Papiq-Container · s6-overlay]
         api[API - FastAPI<br/>REST + MCP, Login, Rechte, UI-Dateien]
-        worker[Worker<br/>OCRmyPDF, Docling, Klassifizierung, Regeln]
+        worker[Worker<br/>OCRmyPDF, Text auslesen, Klassifizierung, Regeln]
     end
     idp[Identity Provider<br/>optional, OIDC]
     llm[LLM<br/>Ollama oder Cloud, OpenAI-kompatibel]
@@ -69,12 +69,12 @@ Papiq ist hexagonal aufgebaut: Der fachliche Kern kennt keine Datenbank, kein S3
 | Embeddings | OpenAI-kompatible API | lokales Modell |
 | Klassifikator | scikit-learn (TF-IDF, logistische Regression), Modell als `npz` | anderes Verfahren |
 | OCR | OCRmyPDF | entfernter OCR-Dienst |
-| Parser | Docling | anderer Parser |
+| Parser | PDFium: der Text der Textebene, wie er gesetzt ist (Layout-Text) | anderer Parser; ein VLM für Seiten, die die OCR nicht lesen kann (Issue #53) |
 | Job-Queue | Job-Tabelle in der Datenbank | Valkey/Redis-basierte Queue |
 | Event-Bus | Outbox-Tabelle in der Datenbank, Verteilung im Prozess | Valkey Streams, NATS |
 | Identität | nativer Login, OIDC | weitere Anbieter |
 | Vorschau | PDFium (erste Seite als WebP) | anderer Renderer |
-| Fundstellen (Zitat → Seite und Box) | PDFium (Textebene des Archiv-PDFs) | Docling-Provenienz, anderer Locator |
+| Fundstellen (Zitat → Seite und Box) | PDFium (Textebene des Archiv-PDFs) | anderer Locator |
 | Mustersuche (Regeln) | `regex` mit Zeitlimit | eigener Dienst |
 | Webhook-Versand | httpx2 | andere HTTP-Bibliothek |
 | Uhr | Systemuhr | feste Uhr in Tests |
@@ -102,7 +102,7 @@ Backend und Worker in Python; ein Container mit s6-overlay als Prozessüberwachu
 | Objektspeicher | Garage (S3) oder lokales Dateisystem, per Konfiguration | entschieden |
 | Suche | Meilisearch Community Edition (MIT) | entschieden |
 | OCR | OCRmyPDF | entschieden |
-| Parsing | Docling | entschieden |
+| Parsing | Layout-Text aus der Textebene mit PDFium (statt Docling, Tobi 14.10.2026, siehe Ingest-Workflow) | entschieden |
 | LLM | OpenAI-kompatible Schnittstelle (Ollama, Cloud) | entschieden |
 | Klassifikator | scikit-learn, Vorhersage mit numpy | entschieden |
 | LLM-Modell (lokal) | `qwen3:8b` über Ollama mit 8192 Token Kontext (NUC, nur CPU); Bewertung siehe unten | entschieden |
@@ -129,7 +129,7 @@ Drei Speicher mit klarer Aufgabe: Datenbank für Metadaten, Objektspeicher für 
 - Zwei gleichwertige Adapter: S3 (erster Server: Garage) oder lokales Dateisystem.
 - Papiq nutzt keine Speicher-Events. Ereignisse entstehen ausschließlich in der Outbox; so bleibt der Adapter frei tauschbar (Garage und Dateisystem kennen keine Events).
 - Originale unveränderlich, Objekt-Key = SHA-256 des Inhalts; Dubletten werden darüber erkannt. Eine Datei, die derselbe Besitzer schon hat, wird abgelehnt; ein anderer Nutzer bekommt ein eigenes Dokument zum selben Objekt.
-- Daneben die Derivate: Archiv-PDF mit Textlayer, Docling-Ausgabe (Markdown/JSON), Seitenbilder und Vorschau, die Anfragen an das Sprachmodell; dazu die Modelle des Klassifikators (`classifier/model-<n>.npz`).
+- Daneben die Derivate: Archiv-PDF mit Textlayer, der ausgelesene Text (`content.txt`, Klartext wie gesetzt) mit seiner Struktur (`content.json`: Seiten, Zeilen und Wörter mit Boxen), Seitenbilder und Vorschau, die Anfragen an das Sprachmodell; dazu die Modelle des Klassifikators (`classifier/model-<n>.npz`).
 
 **Suche (Meilisearch)**
 
@@ -197,6 +197,12 @@ receive ─┬─► pages ─────────────────�
 1. Technische Pipeline, fest im Code: Empfangen (Hash, Dublette, Objektspeicher) → OCR und Seitenbilder → Parsen.
 2. Verstehen: vier Signale schlagen vor, das Urteil entscheidet Kontakt, Typ, Tags und Datum, der Felder-Knoten liest die Felder des entschiedenen Typs und den Titel, dann die Regeln.
 3. Mensch im Ablauf: Posteingang für alles, was nicht grün ist.
+
+**Parsen: der Text, wie er gesetzt ist (Tobi, 14.10.2026; statt Docling).** Der Parse-Knoten liest die Textebene des Archiv-PDFs mit PDFium: jede Zeile so, wie sie gedruckt ist, ihre Wörter in Spalten auf dem Raster der Seite, sodass eine Beschriftung bei ihrem Betrag bleibt und Zahlenspalten untereinander stehen. Ausdrucke in Festbreitenschrift behalten ihre Spalten genau; eine Seite, deren Text quer läuft, wird in dieser Richtung gelesen; Kopf- und Fußzeilen bleiben im Text. Wörter enden an den Lücken zwischen den Zeichen, nicht an Leerzeichen (manche PDFs setzen keine). Ergebnis ist Klartext (`content.txt`, Seiten durch einen Seitenvorschub getrennt) und eine eigene Struktur (`content.json`: Seiten, Zeilen, Wörter mit Boxen). Ein Lauf von Leerzeichen zählt im Eingabebudget des Modells einmal.
+
+Begründung (Vergleich in `ocr_test`, vier echte und fünf synthetische Dokumente mit bekanntem Text): Docling ließ Kopf- und Fußzeilen weg (in einer Stichprobe von 250 Dokumenten standen bei 89 Kennungen nur dort), legte die Zeilen von Formularen in Zellen zusammen (die Lohnabrechnung: Brutto falsch, Zitat nicht im Text), polsterte Tabellen so, dass das Budget den Text abschnitt, und brauchte bis zu einer Minute und 2 GB je Dokument. Der Layout-Text verlor nichts gegenüber der Textebene, hielt Beträge bei ihren Beschriftungen und braucht Millisekunden. MarkItDown verklebte die Wörter eines Briefs ganz; Docling mit eigener OCR las schlechter als OCRmyPDF. Schlechte Scans und Fotos kann keine dieser Varianten retten, weil sie von der OCR abhängen; dort las nur ein VLM (Issue #53).
+
+Bestand: Ein Dokument von vor 0.2 behält Doclings Markdown (`content.md`, wird solange gelesen), bis `reparse` (Befehl, `POST /pipeline/reparse`, Admins) seinen Text neu ausliest; Knoten, Lane und Metadaten bleiben, der Suchindex bettet neu ein, danach wird der Klassifikator neu trainiert.
 
 **Zustand und Protokoll**
 
@@ -347,7 +353,7 @@ Kein API-Aufruf wartet auf OCR, Parsing oder LLM: Die API nimmt an, quittiert so
 
 **Nebenläufigkeit im Code**
 
-Durchgängig `async`: FastAPI, SQLAlchemy async (asyncpg bzw. aiosqlite), HTTP-Clients. Rechenlastige Schritte (OCR, Docling) laufen in eigenen Prozessen, damit sie die Event-Loop nicht blockieren.
+Durchgängig `async`: FastAPI, SQLAlchemy async (asyncpg bzw. aiosqlite), HTTP-Clients. Rechenlastige Schritte (OCR) laufen in eigenen Prozessen, damit sie die Event-Loop nicht blockieren; das Auslesen des Texts (Millisekunden je Seite) läuft in einem Thread.
 
 ## Schnittstellen
 
@@ -383,7 +389,7 @@ Papiq wird als ein Docker-Image ausgeliefert. Darin überwacht s6-overlay alle P
 **Image**
 
 - Basis: Debian slim (wegen der Systempakete von OCRmyPDF: Tesseract, Ghostscript u. a.).
-- Docling ist im Image enthalten, mit der CPU-Variante von PyTorch (kein GPU-Image).
+- Das Image braucht keine Modelle zum Auslesen: der Text kommt aus der Textebene (PDFium). Etwa 1,4 GB (mit Docling waren es 4,6 GB), kein PyTorch.
 
 ## Migration aus Paperless-ngx
 

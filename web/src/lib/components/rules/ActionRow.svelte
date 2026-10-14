@@ -10,7 +10,12 @@
 	import type { Drawer, Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { ACTION_LABELS, PLACEHOLDER_LABELS } from '#lib/rules/describe.ts';
-	import { TITLE_PLACEHOLDERS, defaultValue, type ActionNode } from '#lib/rules/model.ts';
+	import {
+		TEMPLATE_VALUES,
+		defaultValue,
+		templateValue,
+		type ActionNode
+	} from '#lib/rules/model.ts';
 
 	// One action. `drawers` are the ones the rule's owner may file into.
 	let {
@@ -51,9 +56,9 @@
 	);
 
 	/** Put `{name}` where the cursor is in the title template. */
-	function insert(name: string) {
+	function insert(name: (typeof TEMPLATE_VALUES)[number]) {
 		if (action.type !== 'set_title') return;
-		const text = `{${name}}`;
+		const text = templateValue(name);
 		const at = titleInput?.selectionStart ?? action.template.length;
 		const end = titleInput?.selectionEnd ?? at;
 		action.template = action.template.slice(0, at) + text + action.template.slice(end);
@@ -102,7 +107,7 @@
 				/>
 				<div class="flex flex-wrap items-center gap-1.5 text-sm">
 					<span class="text-muted-foreground">{m.rule_insert()}</span>
-					{#each TITLE_PLACEHOLDERS as name (name)}
+					{#each TEMPLATE_VALUES as name (name)}
 						<Button variant="outline" size="sm" class="h-7" onclick={() => insert(name)}>
 							{PLACEHOLDER_LABELS[name]()}
 						</Button>

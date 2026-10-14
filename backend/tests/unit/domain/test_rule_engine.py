@@ -25,6 +25,7 @@ from papiq.core.domain.rule_engine import (
     Facts,
     Match,
     Mode,
+    Note,
     RulePlan,
     Situation,
     Truth,
@@ -147,6 +148,7 @@ def situation(document: Document, mode: Mode = Mode.INGEST, **fields: Any) -> Si
         "drawers": DRAWERS,
         "existing": EXISTING,
         "names": NAMES,
+        "render": builders.TEMPLATES.render,
     }
     values.update(fields)
     return Situation(mode=mode, document=document, **values)
@@ -166,6 +168,10 @@ def notes(result: RulePlan) -> list[tuple[str, str]]:
 
 def check(result: RulePlan, field: str) -> Any:
     return next(item for item in result.checks if item.field == field)
+
+
+def check_or_none(result: RulePlan, field: str) -> Any:
+    return next((item for item in result.checks if item.field == field), None)
 
 
 # --- evaluation -------------------------------------------------------------------------------
@@ -878,7 +884,7 @@ def test_change_turns_nothing_yellow() -> None:
             rule(SetDocumentType(LETTER)),
             rule(AddTags(frozenset({PAID}))),
             rule(RemoveTags(frozenset({PAID}))),
-            rule(SetTitle("{contact} letter")),
+            rule(SetTitle("{{ contact | default: '' }} letter")),
         ],
         situation(document, Mode.CHANGE, model_values={"document_type": str(INVOICE)}),
     )
@@ -911,7 +917,7 @@ def test_retroactive_conflict_with_an_existing_value() -> None:
 
 
 def test_retroactive_default_drawer_and_file_name_title_count_as_empty() -> None:
-    actions = (SetDrawer(OWN), SetTitle("{contact} invoice"))
+    actions = (SetDrawer(OWN), SetTitle("{{ contact }} invoice"))
     fresh = run([rule(*actions)], situation(doc(contact_id=ACME), Mode.RETROACTIVE))
     filed = run(
         [rule(*actions)],
@@ -926,7 +932,7 @@ def test_retroactive_default_drawer_and_file_name_title_count_as_empty() -> None
 
 def test_retroactive_the_machines_title_counts_as_empty() -> None:
     titled = doc(contact_id=ACME, title="Stromrechnung März 2026")
-    rules = [rule(SetTitle("{contact} invoice"))]
+    rules = [rule(SetTitle("{{ contact }} invoice"))]
     replaced = run(rules, situation(titled, Mode.RETROACTIVE, machine_title=titled.title))
     kept = run(rules, situation(titled, Mode.RETROACTIVE, machine_title="Another"))
     assert replaced.changes.title == "ACME GmbH invoice"
@@ -936,36 +942,83 @@ def test_retroactive_the_machines_title_counts_as_empty() -> None:
 # --- titles -----------------------------------------------------------------------------------
 
 
-def test_title_placeholders() -> None:
+def test_title_template() -> None:
+    template = (
+        "{{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }} ({{ filename }})"
+    )
     result = run(
-        [
-            rule(SetDocumentType(INVOICE)),
-            rule(SetTitle("{contact} {document_type} {document_date} ({filename})")),
-        ],
+        [rule(SetDocumentType(INVOICE)), rule(SetTitle(template))],
         situation(doc(contact_id=ACME, document_date=date(2026, 3, 31))),
     )
 
-    assert result.changes.title == "ACME GmbH Invoice 2026-03-31 (Rechnung 2026)"
+    assert result.changes.title == "ACME GmbH Invoice 2026-03 (Rechnung 2026)"
     assert check(result, "title").outcome is Outcome.OK
 
 
 def test_title_uses_the_contact_a_rule_sets() -> None:
-    result = run([rule(SetContact(BETA), SetTitle("Letter {contact}"))], situation(doc()))
+    result = run([rule(SetContact(BETA), SetTitle("Letter {{ contact }}"))], situation(doc()))
 
     assert result.changes.title == "Letter Beta AG"
 
 
-def test_unknown_values_render_empty() -> None:
-    result = run([rule(SetTitle("{contact}  Invoice   {document_date}"))], situation(doc()))
+def test_a_missing_value_leaves_the_title() -> None:
+    """Written without a test or default, a missing value is no title: the one there stays."""
+    result = run([rule(SetTitle("Invoice {{ contact }}"))], situation(doc()))
+
+    assert result.changes.title is UNSET
+    assert result.reports[0].notes == [Note("title", "skipped", "contact has no value")]
+    assert check_or_none(result, "title") is None  # nothing to decide: not yellow
+
+
+def test_optional_parts_and_whitespace() -> None:
+    template = (
+        "{{ contact | default: '' }}  Invoice   "
+        "{% if document_date %}{{ document_date }}{% endif %}"
+    )
+    result = run([rule(SetTitle(template))], situation(doc()))
 
     assert result.changes.title == "Invoice"
 
 
 def test_empty_title_is_skipped() -> None:
-    result = run([rule(SetTitle("{contact} {document_type}"))], situation(doc()))
+    result = run([rule(SetTitle("{% if contact %}{{ contact }}{% endif %}"))], situation(doc()))
 
     assert result.changes.title is UNSET
     assert notes(result) == [("title", "skipped")]
+
+
+def test_the_title_sees_fields_tags_drawer_and_owner() -> None:
+    template = "{{ field.amount }} {{ tags | join: '+' }} {{ drawer }} {{ owner }}"
+    document = doc(fields={AMOUNT.id: Money(Decimal("99.90"), "EUR")}, tag_ids={PAID})
+    names = {**NAMES, PAID: "paid", URGENT: "urgent", DEFAULT: "Inbox"}
+    result = run(
+        [rule(AddTags(frozenset({URGENT})), SetTitle(template))],
+        situation(document, definitions=DEFINITIONS, names=names, owner_name="tobi"),
+    )
+
+    assert result.changes.title == "99,90 EUR paid+urgent Inbox tobi"
+
+
+def test_a_text_field_from_a_template() -> None:
+    number = FieldDefinition.create(name="Reference", data_type=FieldType.TEXT, now=NOW)
+    result = run(
+        [rule(SetContact(ACME), SetField(number.id, "{{ contact | upcase }}-{{ filename }}"))],
+        situation(doc(), definitions={number.id: number}),
+    )
+
+    assert result.changes.fields == {number.id: "ACME GMBH-Rechnung 2026"}
+
+
+def test_a_review_holds_where_its_reason_cannot_be_rendered() -> None:
+    result = run(
+        [
+            rule(ForceReview("check {{ contact }}"), name="a"),
+            rule(ForceReview("from {{ filename }}"), name="b"),
+        ],
+        situation(doc()),
+    )
+
+    assert result.reviews == ["rule 'a': check {{ contact }}", "rule 'b': from Rechnung 2026"]
 
 
 def test_titles_of_two_rules_conflict() -> None:

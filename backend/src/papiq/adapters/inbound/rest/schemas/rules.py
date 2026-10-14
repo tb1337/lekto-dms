@@ -100,16 +100,24 @@ class SetDocumentTypeAction(BaseModel):
     document_type_id: UUID
 
 
+TEMPLATE_DESCRIPTION = (
+    "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: "
+    "`title`, `filename` (the original's name without extension), `original_filename`, "
+    "`contact`, `document_type`, `document_date`, `added`, `tags` (a list), `drawer`, `owner`, "
+    "`channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and "
+    "`.currency`). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, "
+    "`decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: "
+    "''` or `{% if %}` make it optional)."
+)
+
+
 class SetTitleAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["set_title"]
     template: str = Field(
         max_length=500,
-        examples=["{contact} {document_type} {document_date}"],
-        description=(
-            "Placeholders: `{contact}`, `{document_type}`, `{document_date}` (YYYY-MM-DD), "
-            "`{filename}` (the original's name without extension); empty when unknown."
-        ),
+        examples=["{{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}"],
+        description=TEMPLATE_DESCRIPTION,
     )
 
 
@@ -129,13 +137,19 @@ class SetFieldAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["set_field"]
     field_id: UUID
-    value: FieldJson
+    value: FieldJson = Field(
+        description="As the field's type has it; for a text field a template, as a title's."
+    )
 
 
 class ForceReviewAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["force_review"]
-    reason: str = Field(max_length=500, examples=["check the contract term"])
+    reason: str = Field(
+        max_length=500,
+        examples=["check the contract term of {{ contact }}"],
+        description="A template, as a title's; the review holds where it cannot be rendered.",
+    )
 
 
 ActionSchema = Annotated[

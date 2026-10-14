@@ -33,7 +33,7 @@ from papiq.core.domain.pipeline import (
 from papiq.core.domain.rule_engine import Mode, changed_fields
 from papiq.core.domain.rules import Rule, Trigger
 from papiq.core.domain.users import User
-from papiq.core.ports import ObjectStore, PatternMatcher, UnitOfWork
+from papiq.core.ports import ObjectStore, PatternMatcher, TemplateRenderer, UnitOfWork
 from papiq.core.services.rules.running import (
     Prepared,
     RuleRun,
@@ -57,12 +57,14 @@ class ChangeRules:
         self,
         store: ObjectStore,
         matcher: PatternMatcher,
+        templates: TemplateRenderer,
         *,
         max_text: int,
         pipeline_version: str,
     ) -> None:
         self._store = store
         self._matcher = matcher
+        self._templates = templates
         self._max_text = max_text
         self._version = pipeline_version
 
@@ -142,6 +144,7 @@ class ChangeRules:
             run = await run_rules(
                 uow,
                 self._matcher,
+                self._templates,
                 mode=Mode.CHANGE,
                 document=document,
                 owner=owner,

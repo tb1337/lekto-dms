@@ -54,7 +54,10 @@ export const PLACEHOLDER_LABELS: Record<string, () => string> = {
 	contact: m.field_contact,
 	document_type: m.field_document_type,
 	document_date: m.field_date,
-	filename: m.rule_placeholder_filename
+	filename: m.rule_placeholder_filename,
+	tags: m.field_tags,
+	drawer: m.field_drawer,
+	owner: m.rule_placeholder_owner
 };
 
 const OPERATORS: Record<Operator, () => string> = {
@@ -116,8 +119,7 @@ const PROBLEMS: Record<Problem['code'], (params: Record<string, string | number>
 	actions_none: () => m.rule_error_actions_none(),
 	actions_many: (params) => m.rule_error_actions_many({ max: params.max }),
 	twice: () => m.rule_error_twice(),
-	scope: () => m.rule_error_scope(),
-	placeholder: (params) => m.rule_error_placeholder({ name: params.name })
+	scope: () => m.rule_error_scope()
 };
 
 export function problemText(problem: Problem): string {

@@ -3,7 +3,6 @@ from datetime import date
 import pytest
 
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.rules import SetTitle
 from papiq.core.domain.titles import (
     TitleValues,
     check_pattern,
@@ -60,9 +59,3 @@ def test_field_placeholders_follow_a_rename() -> None:
     pattern = "{field:Nummer} {contact}"
     assert field_names(pattern) == {"Nummer"}
     assert rename_field(pattern, "Nummer", "Rechnungsnummer") == "{field:Rechnungsnummer} {contact}"
-
-
-def test_the_title_rule_takes_date_formats_but_no_fields() -> None:
-    assert SetTitle("{contact} {document_date:YYYY}").template == "{contact} {document_date:YYYY}"
-    with pytest.raises(ValidationError):
-        SetTitle("{field:Nummer}")

@@ -61,6 +61,22 @@ async def test_global_rules_are_for_admins_and_only_tag(api: Api) -> None:
     assert [item["id"] for item in listed.json()] == [rule["id"]]
 
 
+async def test_a_template_that_does_not_fit_is_refused(api: Api) -> None:
+    user = await api.user()
+    body = {
+        "name": "Title",
+        "conditions": {"all": [{"field": "channel", "op": "is", "value": "api"}]},
+        "actions": [{"type": "set_title", "template": "{{ sender }}"}],
+    }
+    response = await api.client.post(f"{PREFIX}/rules", json=body, headers=auth(user))
+    assert response.status_code == 422, response.text
+    assert "actions[0]: unknown value sender" in response.text
+    body["actions"] = [{"type": "set_title", "template": "{{ contact"}]
+    response = await api.client.post(f"{PREFIX}/rules", json=body, headers=auth(user))
+    assert response.status_code == 422, response.text
+    assert "invalid template" in response.text
+
+
 async def test_deleting_a_contact_disables_the_rules_that_use_it(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
     contact = await post(api, "/contacts", {"name": "ACME"}, auth(admin))
@@ -104,7 +120,7 @@ async def test_rules_act_on_arrival_and_conflicts_wait_in_the_inbox(api: Api) ->
             "conditions": api_channel,
             "actions": [
                 {"type": "add_tags", "tag_ids": [tax["id"]]},
-                {"type": "set_title", "template": "Scan {filename}"},
+                {"type": "set_title", "template": "Scan {{ filename }}"},
                 {"type": "set_drawer", "drawer_id": drawer["id"]},
             ],
         },
@@ -198,7 +214,7 @@ async def test_a_rule_is_applied_to_existing_documents(api: Api) -> None:
             "conditions": {"all": [{"field": "channel", "op": "is", "value": "api"}]},
             "actions": [
                 {"type": "add_tags", "tag_ids": [tax["id"]]},
-                {"type": "set_title", "template": "Tax {filename}"},
+                {"type": "set_title", "template": "Tax {{ filename }}"},
             ],
         },
         o,

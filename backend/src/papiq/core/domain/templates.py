@@ -2,7 +2,7 @@
 does not have is left out, not given as None: the template tests it with `{% if %}` or
 `| default`, and writing it is a missing value (`MissingValueError`)."""
 
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from datetime import date
 from decimal import Decimal
 from pathlib import PurePath
@@ -20,6 +20,9 @@ type TemplateValue = (
     | Sequence[TemplateValue]
     | Mapping[str, TemplateValue]
 )
+
+type Render = Callable[[str, Mapping[str, TemplateValue]], str]
+"""A template renderer's `render` (the port `TemplateRenderer`), as the rule planner takes it."""
 
 
 # What a template can use; `field.<key>` names a field (`FieldDefinition.key`).

@@ -63,7 +63,7 @@ from papiq.core.domain.rule_engine import (
 )
 from papiq.core.domain.rules import Rule, SetDrawer, Trigger
 from papiq.core.domain.users import User
-from papiq.core.ports import ObjectStore, PatternMatcher, UnitOfWork
+from papiq.core.ports import ObjectStore, PatternMatcher, TemplateRenderer, UnitOfWork
 from papiq.core.services.inbox import MODEL_NODES, field_checks, latest_entries
 from papiq.core.services.objects import load_text
 from papiq.core.services.titles import machine_title
@@ -381,6 +381,7 @@ async def situation(
     rules: Iterable[Rule],
     definitions: Mapping[FieldId, FieldDefinition],
     origin: Provenance,
+    templates: TemplateRenderer,
     locked: Collection[str] = (),
     person_added_tags: frozenset[TagId] = frozenset(),
     person_removed_tags: frozenset[TagId] = frozenset(),
@@ -407,9 +408,11 @@ async def situation(
         if document_type is not None:
             existing.add(type_id)
             names[type_id] = document_type.name
-    for tag_id in {id for refs in references for id in refs.tags}:
-        if await uow.tags.find(tag_id) is not None:
+    for tag_id in {id for refs in references for id in refs.tags} | set(document.tag_ids):
+        tag = await uow.tags.find(tag_id)
+        if tag is not None:
             existing.add(tag_id)
+            names[tag_id] = tag.name
     drawers: dict[DrawerId, DrawerTarget] = {}
     for rule in rules:
         for action in rule.definition.actions:
@@ -421,12 +424,19 @@ async def situation(
                         writable=can_file_into(owner, drawer),
                         shared=drawer.owner_id != owner.id or bool(drawer.shares),
                     )
+    for drawer_id in {*drawers, document.drawer_id}:
+        if drawer_id in drawers:
+            names[drawer_id] = drawers[drawer_id].name
+        elif (current := await uow.drawers.find(drawer_id)) is not None:
+            names[drawer_id] = current.name
     default = await uow.drawers.get_default(owner.id)
     return Situation(
         mode=mode,
         document=document,
         default_drawer=default.id,
         definitions=definitions,
+        render=templates.render,
+        owner_name=owner.username,
         drawers=drawers,
         existing=frozenset(existing),
         names=names,
@@ -465,6 +475,7 @@ class RuleRun:
 async def run_rules(
     uow: UnitOfWork,
     matcher: PatternMatcher,
+    templates: TemplateRenderer,
     *,
     mode: Mode,
     document: Document,
@@ -494,6 +505,7 @@ async def run_rules(
         rules=[match.rule for match in matched],
         definitions=definitions,
         origin=origin,
+        templates=templates,
         locked=locked,
         person_added_tags=origin.tags_added,
         person_removed_tags=origin.tags_removed,

@@ -2783,7 +2783,8 @@ export interface components {
 			type: 'force_review';
 			/**
 			 * Reason
-			 * @example check the contract term
+			 * @description A template, as a title's; the review holds where it cannot be rendered.
+			 * @example check the contract term of {{ contact }}
 			 */
 			reason: string;
 		};
@@ -3881,7 +3882,7 @@ export interface components {
 			field_id: string;
 			/**
 			 * Value
-			 * @description By data type: text, choice and link: string; number: decimal as string; date: `YYYY-MM-DD`; boolean: true/false; amount: `{amount, currency}`.
+			 * @description As the field's type has it; for a text field a template, as a title's.
 			 */
 			value: string | boolean | components['schemas']['MoneyValue'];
 		};
@@ -3894,8 +3895,8 @@ export interface components {
 			type: 'set_title';
 			/**
 			 * Template
-			 * @description Placeholders: `{contact}`, `{document_type}`, `{document_date}` (YYYY-MM-DD), `{filename}` (the original's name without extension); empty when unknown.
-			 * @example {contact} {document_type} {document_date}
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `document_date`, `added`, `tags` (a list), `drawer`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional).
+			 * @example {{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}
 			 */
 			template: string;
 		};

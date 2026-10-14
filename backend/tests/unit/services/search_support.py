@@ -16,6 +16,7 @@ from papiq.core.ports import EmbeddingResult, IndexBuild
 from papiq.core.services.indexing import INDEX_JOB, SUBSCRIBER, IndexingPolicy, IndexingService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.objects import text_key
+from tests import builders
 from tests.builders import incoming
 from tests.unit.services.conftest import World
 
@@ -101,7 +102,9 @@ class Setup:
 
     @property
     def master_data(self) -> MasterDataService:
-        return MasterDataService(self.world.uow, self.world.clock, index_renames=True)
+        return MasterDataService(
+            self.world.uow, self.world.clock, builders.TEMPLATES, index_renames=True
+        )
 
     async def settle(self, *, pipeline: bool = True, pipeline_service: object = None) -> None:
         """Deliver events and run jobs until nothing is left to do."""

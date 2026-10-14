@@ -536,10 +536,6 @@ def test_title_template_with_known_placeholders(template: str) -> None:
 @pytest.mark.parametrize(
     ("template", "message"),
     [
-        ("{amount}", r"unknown placeholder \{amount\}"),
-        ("{Contact}", r"unknown placeholder \{Contact\}"),
-        ("Invoice {}", r"unknown placeholder \{\}"),
-        ("{contact} {date}", r"unknown placeholder \{date\}"),
         ("", "non-empty text"),
         ("   ", "non-empty text"),
         ("x" * (MAX_TEXT + 1), f"longer than {MAX_TEXT}"),
@@ -548,13 +544,6 @@ def test_title_template_with_known_placeholders(template: str) -> None:
 def test_invalid_title_template(template: str, message: str) -> None:
     with pytest.raises(ValidationError, match=message):
         SetTitle(template)
-
-
-def test_unknown_placeholder_is_rejected_from_json() -> None:
-    with pytest.raises(ValidationError, match=r"actions\[0\]: unknown placeholder"):
-        definition_from_json(
-            {**VALID_RULE, "actions": [{"type": "set_title", "template": "{sender}"}]}
-        )
 
 
 def test_action_values() -> None:

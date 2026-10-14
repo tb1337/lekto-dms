@@ -43,7 +43,7 @@ from papiq.core.domain.classification import (
     field_to_json,
 )
 from papiq.core.domain.documents import Channel, Document, DocumentChanges, Unset
-from papiq.core.domain.errors import ValidationError
+from papiq.core.domain.errors import MissingValueError, ValidationError
 from papiq.core.domain.evidence import DocumentText, contains, normalise
 from papiq.core.domain.fields import (
     FieldDefinition,
@@ -78,7 +78,7 @@ from papiq.core.domain.rules import (
     SetField,
     SetTitle,
 )
-from papiq.core.domain.titles import TitleValues, render
+from papiq.core.domain.templates import Render, TemplateValue, template_values
 
 DRAWER = "drawer"
 REVIEW = "review"
@@ -377,7 +377,10 @@ class Situation:
 
     - `drawers`: the drawers the rules file into that exist.
     - `existing`: ids of the contacts, types, tags and fields that exist.
-    - `names`: names of contacts and types, for titles.
+    - `names`: names of contacts, types, tags and drawers, for templates; `owner_name` that of
+      the document's owner.
+    - `render`: renders the templates of titles, text fields and review reasons (the port
+      `TemplateRenderer`).
     - `model_values`: single fields that hold the value the model set, unconfirmed, as JSON.
     - `machine_title`: the title the machine gave, if the document still has it; like the
       file name, rules may replace it.
@@ -391,6 +394,8 @@ class Situation:
     document: Document
     default_drawer: DrawerId
     definitions: Mapping[FieldId, FieldDefinition]
+    render: Render
+    owner_name: str | None = None
     drawers: Mapping[DrawerId, DrawerTarget] = field(default_factory=dict)
     existing: frozenset[object] = frozenset()
     names: Mapping[object, str] = field(default_factory=dict)
@@ -515,6 +520,8 @@ class _Planner:
         self._adds: dict[TagId, list[RuleReport]] = {}
         self._removes: dict[TagId, list[RuleReport]] = {}
         self._titles: list[tuple[RuleReport, SetTitle, Match]] = []
+        self._texts: list[tuple[RuleReport, SetField, Match]] = []
+        self._review_reasons: list[tuple[RuleReport, str]] = []
 
     def run(self) -> RulePlan:
         for match, report in zip(self._matched, self._reports, strict=True):
@@ -524,6 +531,7 @@ class _Planner:
         for field_name in (DOCUMENT_TYPE, CONTACT, DRAWER):
             self._single(field_name, result)
         type_after = self._type_after(result)
+        self._text_fields(result, type_after)
         fields: dict[FieldId, object] = {}
         for field_name in [name for name in self._candidates if name.startswith("field:")]:
             field = FieldId(UUID(field_name.removeprefix("field:")))
@@ -538,7 +546,10 @@ class _Planner:
             if field_name in result:
                 fields[field] = field_from_json(definition, result[field_name])
         tags = self._tags()
-        self._title(result, type_after)
+        values = self._values(result, type_after, fields, tags)
+        self._title(result, values)
+        for report, reason in self._review_reasons:
+            self._review(report, self._reason(reason, values))
         changes = DocumentChanges(fields=fields)
         if CONTACT in result:
             changes = replace(changes, contact_id=ContactId(UUID(str(result[CONTACT]))))
@@ -585,6 +596,9 @@ class _Planner:
                 if definition is None:
                     report.notes.append(Note(name, "skipped", "the field no longer exists"))
                     return
+                if definition.data_type is FieldType.TEXT and isinstance(value, str):
+                    self._texts.append((report, action, match))
+                    return
                 try:
                     field_from_json(definition, value)
                 except ValidationError as error:
@@ -592,7 +606,7 @@ class _Planner:
                     return
                 self._candidates.setdefault(name, []).append(_Candidate(report, value, match))
             case ForceReview(reason=reason):
-                self._review(report, reason)
+                self._review_reasons.append((report, reason))
 
     def _candidate(
         self, field_name: str, value: str, id: object, match: Match, report: RuleReport
@@ -742,27 +756,99 @@ class _Planner:
             return None
         return frozenset((current | added) - removed)
 
-    def _title(self, result: dict[str, JsonValue], type_after: DocumentTypeId | None) -> None:
+    def _title(self, result: dict[str, JsonValue], values: Mapping[str, TemplateValue]) -> None:
         if not self._titles:
             return
-        document, s = self._document, self._s
-        contact = result.get(CONTACT, self._current(CONTACT))
-        values = TitleValues(
-            contact=None if contact is None else s.names.get(ContactId(UUID(str(contact)))),
-            document_type=None if type_after is None else s.names.get(type_after),
-            document_date=document.document_date,
-            filename=_default_title(document),
-        )
         for report, action, match in self._titles:
             if match.rule.scope is RuleScope.GLOBAL:
                 report.notes.append(Note(TITLE, "refused", "global rules cannot set it"))
                 continue
-            title = render(action.template, values)
+            rendered = self._render(report, TITLE, action.template, values)
+            if rendered is None:
+                continue
+            title = " ".join(rendered.split())
             if not title:
                 report.notes.append(Note(TITLE, "skipped", "the title would be empty"))
                 continue
             self._candidates.setdefault(TITLE, []).append(_Candidate(report, title, match))
         self._single(TITLE, result)
+
+    def _text_fields(
+        self, result: Mapping[str, JsonValue], type_after: DocumentTypeId | None
+    ) -> None:
+        """The templates of text fields, with the contact, type and drawer the rules set (the
+        fields as they were: rules do not see each other's fields)."""
+        if not self._texts:
+            return
+        values = self._values(result, type_after, {}, None)
+        for report, action, match in self._texts:
+            name = field_key(action.field_id)
+            rendered = self._render(report, name, str(action.value), values)
+            if rendered is None:
+                continue
+            if not rendered.strip():
+                report.notes.append(Note(name, "skipped", "the value would be empty"))
+                continue
+            value = rendered.strip()
+            try:
+                field_from_json(self._s.definitions[action.field_id], value)
+            except ValidationError as error:
+                report.notes.append(Note(name, "skipped", str(error)))
+                continue
+            self._candidates.setdefault(name, []).append(_Candidate(report, value, match))
+
+    def _values(
+        self,
+        result: Mapping[str, JsonValue],
+        type_after: DocumentTypeId | None,
+        fields: Mapping[FieldId, object],
+        tags: frozenset[TagId] | None,
+    ) -> dict[str, TemplateValue]:
+        """What templates see: the document as the rules leave it."""
+        document, s = self._document, self._s
+        contact = result.get(CONTACT, self._current(CONTACT))
+        drawer = DrawerId(UUID(str(result[DRAWER]))) if DRAWER in result else document.drawer_id
+        current: dict[FieldId, object] = {**document.fields, **fields}
+        return template_values(
+            document,
+            contact=None if contact is None else s.names.get(ContactId(UUID(str(contact)))),
+            document_type=None if type_after is None else s.names.get(type_after),
+            drawer=s.names.get(drawer),
+            owner=s.owner_name,
+            tags=[
+                s.names[tag]
+                for tag in (document.tag_ids if tags is None else tags)
+                if tag in s.names
+            ],
+            document_date=document.document_date,
+            fields=[
+                (definition, _field_value(current.get(definition.id)))
+                for definition in s.definitions.values()
+                if definition.applies_to(type_after)
+            ],
+        )
+
+    def _reason(self, template: str, values: Mapping[str, TemplateValue]) -> str:
+        """A review's reason; as written where it cannot be rendered (the review holds)."""
+        try:
+            return " ".join(self._s.render(template, values).split()) or template
+        except (MissingValueError, ValidationError):
+            return template
+
+    def _render(
+        self,
+        report: RuleReport,
+        field_name: str,
+        template: str,
+        values: Mapping[str, TemplateValue],
+    ) -> str | None:
+        """The rendered template; None, and why in the report, if a value is missing or the
+        template cannot be rendered."""
+        try:
+            return self._s.render(template, values)
+        except (MissingValueError, ValidationError) as error:
+            report.notes.append(Note(field_name, "skipped", str(error)))
+            return None
 
     # --- helpers ------------------------------------------------------------------------------
 
@@ -817,6 +903,13 @@ class _Planner:
 def _key(value: JsonValue) -> str:
     """Comparable form of a JSON value."""
     return repr(value)
+
+
+def _field_value(value: object) -> FieldValue | None:
+    match value:
+        case str() | bool() | Decimal() | date() | Money() | Url():
+            return value
+    return None
 
 
 def _default_title(document: Document) -> str:

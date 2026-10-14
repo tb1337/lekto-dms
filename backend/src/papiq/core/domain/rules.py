@@ -47,7 +47,6 @@ from papiq.core.domain.ids import (
     new_id,
 )
 from papiq.core.domain.json_value import JsonObject, JsonValue
-from papiq.core.domain.titles import check_pattern
 from papiq.core.domain.validation import require_name, require_utc
 
 DEFAULT_PRIORITY = 100
@@ -265,16 +264,15 @@ class SetDocumentType:
 
 @dataclass(frozen=True)
 class SetTitle:
-    """The title from a template; placeholders as in `titles`: `{contact}`,
-    `{document_type}`, `{document_date}` (ISO, or `{document_date:YYYY-MM}`) and `{filename}`
-    (the original's name without extension), no fields."""
+    """The title from a template (Liquid, `domain.templates`): `{{ contact }} {{ document_date
+    | date: '%Y-%m' }}`. Its syntax and values are checked where the rule is saved (the
+    template renderer is a port)."""
 
     template: str
     type: Literal["set_title"] = "set_title"
 
     def __post_init__(self) -> None:
         _text(self.template, MAX_TEXT)
-        check_pattern(self.template)
 
 
 @dataclass(frozen=True)
@@ -297,7 +295,8 @@ class RemoveTags:
 
 @dataclass(frozen=True)
 class SetField:
-    """`value` in the JSON form of the field's type (`field_to_json`)."""
+    """`value` in the JSON form of the field's type (`field_to_json`); for a text field a
+    template, as the title's."""
 
     field_id: FieldId
     value: JsonValue
@@ -310,7 +309,8 @@ class SetField:
 
 @dataclass(frozen=True)
 class ForceReview:
-    """The document waits in the inbox with this reason (when it arrives)."""
+    """The document waits in the inbox with this reason (when it arrives), a template as the
+    title's; the review holds even where the reason cannot be rendered."""
 
     reason: str
     type: Literal["force_review"] = "force_review"

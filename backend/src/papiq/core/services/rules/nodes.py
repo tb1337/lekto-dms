@@ -9,7 +9,13 @@ from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.pipeline import RULES, NodeResult, Outcome
 from papiq.core.domain.rule_engine import DRAWER, Mode
 from papiq.core.domain.rules import Trigger
-from papiq.core.ports import ObjectStore, PatternMatcher, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports import (
+    ObjectStore,
+    PatternMatcher,
+    TemplateRenderer,
+    UnitOfWork,
+    UnitOfWorkFactory,
+)
 from papiq.core.services._access import may_file
 from papiq.core.services.rules.running import (
     Prepared,
@@ -35,12 +41,14 @@ class ApplyRulesNode:
         uow: UnitOfWorkFactory,
         store: ObjectStore,
         matcher: PatternMatcher,
+        templates: TemplateRenderer,
         *,
         max_text: int,
     ) -> None:
         self._uow = uow
         self._store = store
         self._matcher = matcher
+        self._templates = templates
         self._max_text = max_text
 
     async def run(self, document: Document) -> "RulesResult":
@@ -50,13 +58,14 @@ class ApplyRulesNode:
         prepared = await prepare(
             self._store, self._matcher, rules, document, max_text=self._max_text
         )
-        return RulesResult(prepared, self._matcher)
+        return RulesResult(prepared, self._matcher, self._templates)
 
 
 @dataclass(frozen=True)
 class RulesResult:
     prepared: Prepared
     matcher: PatternMatcher
+    templates: TemplateRenderer
 
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
         owner = await uow.users.get(document.owner_id)
@@ -72,6 +81,7 @@ class RulesResult:
         run = await run_rules(
             uow,
             self.matcher,
+            self.templates,
             mode=Mode.INGEST,
             document=document,
             owner=owner,

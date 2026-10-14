@@ -50,7 +50,7 @@ async def test_the_preview_lists_changes_and_the_job_applies_the_pinned_version(
             "Tax",
             channel_api(),
             add_tags(tax.id),
-            SetTitle("Tax {filename}"),
+            SetTitle("Tax {{ filename }}"),
             ForceReview("check"),
         ),
     )
@@ -75,7 +75,7 @@ async def test_the_preview_lists_changes_and_the_job_applies_the_pinned_version(
     )
     # A new version meanwhile does not change what the application does.
     await r.rules.change(
-        owner.id, rule.id, definition("Tax v2", channel_api(), SetTitle("V2 {filename}"))
+        owner.id, rule.id, definition("Tax v2", channel_api(), SetTitle("V2 {{ filename }}"))
     )
     assert await run_jobs(r) == 1
 

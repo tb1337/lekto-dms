@@ -537,7 +537,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         NeighboursSignal(uow, store, index, embeddings, neighbours_policy_of(settings)),
     )
     executors[Node.APPLY_RULES] = ApplyRulesNode(
-        uow, store, container.patterns, max_text=settings.rules_max_text
+        uow, store, container.patterns, container.templates, max_text=settings.rules_max_text
     )
     executors[Node.FILE] = FileNode()
     auth = AuthService(
@@ -567,8 +567,10 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         ),
         users=UserService(uow, clock, container.password_hasher),
         drawers=DrawerService(uow, clock),
-        master_data=MasterDataService(uow, clock, index_renames=index is not None),
-        rules=RuleService(uow, clock),
+        master_data=MasterDataService(
+            uow, clock, container.templates, index_renames=index is not None
+        ),
+        rules=RuleService(uow, clock, container.templates),
         webhooks=WebhookService(uow, clock, container.cipher, webhook_policy_of(settings)),
         webhook_delivery=WebhookDeliveryService(
             uow, clock, container.cipher, container.webhook_sender, webhook_policy_of(settings)
@@ -578,6 +580,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             clock,
             store,
             container.patterns,
+            container.templates,
             max_text=settings.rules_max_text,
             max_documents=settings.rules_apply_max_documents,
             pipeline_version=__version__,
@@ -589,6 +592,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             rules=ChangeRules(
                 store,
                 container.patterns,
+                container.templates,
                 max_text=settings.rules_max_text,
                 pipeline_version=__version__,
             ),

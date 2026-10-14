@@ -52,7 +52,7 @@ async def test_rules_act_on_arrival_and_the_log_names_rule_and_version(world: Wo
             "ACME",
             channel_api(),
             SetContact(acme.id),
-            SetTitle("{contact} {filename}"),
+            SetTitle("{{ contact }} {{ filename }}"),
             add_tags(tax.id),
             SetField(note.id, "from a rule"),
             SetDrawer(household.id),
@@ -126,7 +126,7 @@ async def test_a_rule_replaces_the_machines_title(world: World) -> None:
     without the document becoming uncertain."""
     r = await rule_world(world)
     owner = await world.user()
-    await r.user_rule(owner, definition("Title", channel_api(), SetTitle("{filename} (rule)")))
+    await r.user_rule(owner, definition("Title", channel_api(), SetTitle("{{ filename }} (rule)")))
 
     document = await r.arrive(owner, fields=Titles("Stromrechnung März 2026"))
     assert (document.lane, document.title) == (Lane.GREEN, "scan (rule)")

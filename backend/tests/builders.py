@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from papiq.adapters.outbound.liquid import LiquidTemplateRenderer
 from papiq.core.domain.documents import Document, Sha256
 from papiq.core.domain.drawers import Drawer
 from papiq.core.domain.ids import DocumentId, DrawerId, UserId, new_id
@@ -14,6 +15,8 @@ from papiq.core.domain.search import IndexDocument
 from papiq.core.domain.users import Role, User
 from papiq.core.services.pipeline import IncomingFile, PipelineService, PlaceholderNode
 
+# Templates of rules and title patterns, as the memory container renders them.
+TEMPLATES = LiquidTemplateRenderer(locale="de", currency="EUR")
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 
 # PAPIQ_SECRET_KEY for tests (32 bytes, base64); never use it elsewhere.

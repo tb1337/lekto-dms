@@ -86,12 +86,22 @@ export const CONDITION_FIELDS: readonly ConditionField[] = [
 	'document_date',
 	'field'
 ];
-export const TITLE_PLACEHOLDERS = [
+/** Values a title template can insert with a click (the template is Liquid; the server checks
+ * it). */
+export const TEMPLATE_VALUES = [
 	'contact',
 	'document_type',
 	'document_date',
-	'filename'
+	'filename',
+	'tags',
+	'drawer',
+	'owner'
 ] as const;
+
+/** How a value is written into a template: a list joined. */
+export function templateValue(name: (typeof TEMPLATE_VALUES)[number]): string {
+	return name === 'tags' ? "{{ tags | join: ', ' }}" : `{{ ${name} }}`;
+}
 
 const ALL_OPERATORS: readonly Operator[] = [
 	'is',
@@ -473,8 +483,7 @@ export type ProblemCode =
 	| 'actions_none'
 	| 'actions_many'
 	| 'twice'
-	| 'scope'
-	| 'placeholder';
+	| 'scope';
 
 export interface Problem {
 	code: ProblemCode;
@@ -641,7 +650,7 @@ function checkAction(
 		case 'set_document_type':
 			return action.document_type_id ? null : { code: 'choose' };
 		case 'set_title':
-			return checkTemplate(action.template);
+			return checkText(action.template, LIMITS.text);
 		case 'add_tags':
 		case 'remove_tags':
 			if (action.tag_ids.length === 0) return { code: 'list' };
@@ -656,15 +665,4 @@ function checkAction(
 		case 'force_review':
 			return checkText(action.reason, LIMITS.text);
 	}
-}
-
-function checkTemplate(template: string): Problem | null {
-	const problem = checkText(template, LIMITS.text);
-	if (problem) return problem;
-	for (const [, name] of template.matchAll(/\{([^{}]*)\}/g)) {
-		if (!(TITLE_PLACEHOLDERS as readonly string[]).includes(name)) {
-			return { code: 'placeholder', params: { name: `{${name}}` } };
-		}
-	}
-	return null;
 }

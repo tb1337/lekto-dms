@@ -105,7 +105,10 @@ const EVERY_ACTION: ApiDefinition['actions'] = [
 	{ type: 'set_drawer', drawer_id: ID(10) },
 	{ type: 'set_contact', contact_id: ID(1) },
 	{ type: 'set_document_type', document_type_id: ID(3) },
-	{ type: 'set_title', template: '{contact} {document_type} {document_date} {filename}' },
+	{
+		type: 'set_title',
+		template: "{{ contact }} {{ document_type }} {{ document_date | date: '%Y' }} {{ filename }}"
+	},
 	{ type: 'add_tags', tag_ids: [ID(4), ID(5)] },
 	{ type: 'remove_tags', tag_ids: [ID(6)] },
 	{ type: 'set_field', field_id: ID(104), value: { amount: '12.50', currency: 'EUR' } },
@@ -304,7 +307,7 @@ describe('checking a rule', () => {
 		} as never as RuleModel['actions'][number];
 		const title = {
 			...newAction('set_title'),
-			template: '{contact} {owner}'
+			template: ''
 		} as never as RuleModel['actions'][number];
 		const first = {
 			...newAction('set_contact'),
@@ -317,7 +320,7 @@ describe('checking a rule', () => {
 		const tags = newAction('add_tags');
 		model.actions = [drawer, title, first, second, tags];
 		expect(problems(model)).toEqual({
-			[title.key]: 'placeholder',
+			[title.key]: 'value',
 			[second.key]: 'twice',
 			[tags.key]: 'list'
 		});
@@ -368,9 +371,9 @@ describe('errors of saving', () => {
 			general: null
 		});
 		// A message with "; " in it stays whole.
-		const placeholder = failed(422, 'actions[0]: unknown placeholder {x}; known: {contact}');
-		expect(saveErrors(placeholder, model).byKey).toEqual({
-			[model.actions[0].key]: 'unknown placeholder {x}; known: {contact}'
+		const unknown = failed(422, 'actions[0]: unknown value x; templates know contact; and more');
+		expect(saveErrors(unknown, model).byKey).toEqual({
+			[model.actions[0].key]: 'unknown value x; templates know contact; and more'
 		});
 	});
 

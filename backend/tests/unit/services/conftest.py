@@ -106,7 +106,7 @@ class World:
 
     @property
     def master_data(self) -> MasterDataService:
-        return MasterDataService(self.uow, self.clock)
+        return MasterDataService(self.uow, self.clock, builders.TEMPLATES)
 
     @property
     def documents(self) -> DocumentService:

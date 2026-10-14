@@ -7,7 +7,7 @@ Test modules subclass the suites and provide the fixtures `database` (migrated, 
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -835,6 +835,64 @@ class MigrationSuite:
         assert set(nodes[ids["parsed"]]) == set(graphs["parsed"])
         assert nodes[ids["done"]] == graphs["done"]
         assert (log, events, jobs) == (["classify"], ["extract_fields"], [f"{parsed}:1:classify"])
+
+    async def test_rule_templates_become_liquid_and_back(self, empty_database: Database) -> None:
+        """Revision 0018 writes the placeholders of title templates in Liquid, doing what they
+        did, and keeps text values and reasons that would read as templates as written; the
+        downgrade turns them back."""
+        await migrate(empty_database, "0017")
+        user, rule, text, day = new_id(), new_id(), new_id(), new_id()
+        old_actions: list[Any] = [
+            {
+                "type": "set_title",
+                "template": "{contact} Lohn {document_date:YYYY-MM} ({filename})",
+            },
+            {"type": "set_title", "template": "100% {document_type}"},
+            {"type": "force_review", "reason": "check {{x}}"},
+            {"type": "set_field", "field_id": str(text), "value": "Nr. {% 1 %}"},
+            {"type": "set_field", "field_id": str(day), "value": "2026-01-01"},
+            {"type": "add_tags", "tag_ids": []},
+        ]
+        rows: list[tuple[sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": user, "username": "a", "username_key": "a", "role": "admin"}),
+            (
+                t.field_definitions,
+                {"id": text, "name": "Nr", "name_key": "nr", "data_type": "text"},
+            ),
+            (t.field_definitions, {"id": day, "name": "Tag", "name_key": "tag"}),
+            (t.rules, {"id": rule, "scope": "user", "owner_id": user, "current_version": 1}),
+            (
+                t.rule_versions,
+                {"rule_id": rule, "number": 1, "conditions": {"all": []}, "actions": old_actions},
+            ),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+
+        async def stored() -> list[Any]:
+            async with empty_database.reading() as connection:
+                return list((await connection.execute(select(t.rule_versions.c.actions))).one()[0])
+
+        await migrate(empty_database)
+        actions = await stored()
+        title = actions[0]["template"]
+        assert title == (
+            "{{ contact | default: '' }} Lohn "
+            "{% if document_date %}{{ document_date | date: '%Y-%m' }}{% endif %} ({{ filename }})"
+        )
+        assert actions[1]["template"] == "100% {{ document_type | default: '' }}"
+        assert actions[2]["reason"] == "{% raw %}check {{x}}{% endraw %}"
+        assert actions[3]["value"] == "{% raw %}Nr. {% 1 %}{% endraw %}"
+        assert actions[4:] == old_actions[4:]
+        # As before: a missing value leaves its gap, the date is written as it was.
+        values = {"filename": "scan", "document_date": date(2026, 3, 31)}
+        assert " ".join(builders.TEMPLATES.render(title, values).split()) == "Lohn 2026-03 (scan)"
+        assert builders.TEMPLATES.render(actions[2]["reason"], {}) == "check {{x}}"
+
+        await _downgrade(empty_database, "0017")
+        assert await stored() == old_actions
 
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database

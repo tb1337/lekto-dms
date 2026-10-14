@@ -4,7 +4,12 @@ references go away."""
 import pytest
 
 from papiq.core.domain.drawers import ShareLevel
-from papiq.core.domain.errors import NotFoundError, PermissionDeniedError, ValidationError
+from papiq.core.domain.errors import (
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from papiq.core.domain.fields import FieldType
 from papiq.core.domain.ids import ContactId, DrawerId, new_id
 from papiq.core.domain.rules import (
@@ -218,3 +223,82 @@ async def test_deleting_a_user_removes_their_rules(world: World) -> None:
     assert [rule.id for rule in await r.rules.list(r.admin.id, all_users=True)] == [files.id]
     rule = await r.rules.get(staying.id, files.id)
     assert (rule.enabled, rule.disabled_reason) == (False, "drawer 'Shared' was deleted")
+
+
+@pytest.mark.parametrize(
+    ("action", "message"),
+    [
+        (SetTitle("{{ contact "), r"actions\[0\]: invalid template"),
+        (SetTitle("{{ sender }}"), r"actions\[0\]: unknown value sender"),
+        (SetTitle("{{ field.brutto }}"), r"unknown value field\.brutto"),
+        (SetTitle("{{ contact | nonsense }}"), "unknown filter"),
+        (ForceReview("{% include 'x' %}"), r"actions\[0\]: invalid template"),
+    ],
+)
+async def test_a_rule_s_templates_are_checked(world: World, action: object, message: str) -> None:
+    r = await rule_world(world)
+    owner = await world.user()
+    with pytest.raises(ValidationError, match=message):
+        await r.user_rule(owner, definition("Bad", channel_api(), action))  # type: ignore[arg-type]
+
+
+async def test_templates_name_fields_by_their_key(world: World) -> None:
+    r = await rule_world(world)
+    owner = await world.user()
+    service = world.master_data
+    gross = await service.create_field(r.admin.id, "LA_Brutto", FieldType.AMOUNT)
+    note = await service.create_field(r.admin.id, "Notiz", FieldType.TEXT)
+    actions = (
+        SetTitle("Lohn {{ field.la_brutto }}"),
+        SetField(note.id, "{{ field.la_brutto.amount }} {{ field.la_brutto.currency }}"),
+        ForceReview("{% if field.notiz %}{{ field.notiz }}{% endif %}"),
+    )
+    rule = await r.user_rule(owner, definition("Lohn", channel_api(), *actions))
+    assert rule.definition.actions == actions
+    # A field that is not text takes its value as it is, not as a template.
+    amount = SetField(gross.id, {"amount": "1.00", "currency": "EUR"})
+    assert await r.user_rule(owner, definition("Betrag", channel_api(), amount))
+
+
+async def test_renaming_a_field_rewrites_the_templates_that_use_it(world: World) -> None:
+    r = await rule_world(world)
+    owner = await world.user()
+    service = world.master_data
+    gross = await service.create_field(r.admin.id, "LA_Brutto", FieldType.AMOUNT)
+    note = await service.create_field(r.admin.id, "Notiz", FieldType.TEXT)
+    await service.create_field(r.admin.id, "LA_Brutto_alt", FieldType.AMOUNT)
+    uses = await r.user_rule(
+        owner,
+        definition(
+            "Lohn",
+            channel_api(),
+            SetTitle("Lohn {{ field.la_brutto }} {{ field['la_brutto'].amount }}"),
+            SetField(note.id, "{% if field.la_brutto_alt %}x{% endif %}{{ field.la_brutto }}"),
+        ),
+    )
+    other = await r.user_rule(owner, definition("Andere", channel_api(), SetTitle("Scan")))
+
+    await service.change_field(r.admin.id, gross.id, name="Gesamtbrutto")
+
+    changed = await r.rules.get(owner.id, uses.id)
+    assert changed.current.number == 2 and changed.current.created_by == r.admin.id
+    assert changed.definition.actions == (
+        SetTitle("Lohn {{ field.gesamtbrutto }} {{ field.gesamtbrutto.amount }}"),
+        # Another field whose key begins the same stays.
+        SetField(note.id, "{% if field.la_brutto_alt %}x{% endif %}{{ field.gesamtbrutto }}"),
+    )
+    assert (await r.rules.get(owner.id, other.id)).current.number == 1
+
+
+async def test_a_field_a_template_uses_is_not_deleted(world: World) -> None:
+    r = await rule_world(world)
+    owner = await world.user()
+    service = world.master_data
+    gross = await service.create_field(r.admin.id, "LA_Brutto", FieldType.AMOUNT)
+    rule = await r.user_rule(
+        owner, definition("Lohn", channel_api(), ForceReview("{{ field.la_brutto.amount }}"))
+    )
+    with pytest.raises(ConflictError, match=r"field\.la_brutto is used by .*'Lohn'"):
+        await service.delete_field(r.admin.id, gross.id)
+    await r.rules.delete(owner.id, rule.id)
+    await service.delete_field(r.admin.id, gross.id)

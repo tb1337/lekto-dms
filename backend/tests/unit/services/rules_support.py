@@ -39,7 +39,7 @@ from papiq.core.services.rules import RuleService
 from papiq.core.services.rules.changes import ChangeRules
 from papiq.core.services.rules.nodes import ApplyRulesNode, FileNode
 from papiq.core.services.rules.retroactive import RuleApplicationService
-from tests.builders import incoming
+from tests.builders import TEMPLATES, incoming
 from tests.unit.services.conftest import World
 
 MAX_TEXT = 10_000
@@ -162,7 +162,7 @@ class RuleWorld:
 
     @property
     def rules(self) -> RuleService:
-        return RuleService(self.world.uow, self.world.clock)
+        return RuleService(self.world.uow, self.world.clock, TEMPLATES)
 
     @property
     def applications(self) -> RuleApplicationService:
@@ -171,6 +171,7 @@ class RuleWorld:
             self.world.clock,
             self.world.object_store,
             self.matcher,
+            TEMPLATES,
             max_text=MAX_TEXT,
             max_documents=MAX_DOCUMENTS,
             pipeline_version="test",
@@ -179,7 +180,11 @@ class RuleWorld:
     @property
     def documents(self) -> DocumentService:
         change_rules = ChangeRules(
-            self.world.object_store, self.matcher, max_text=MAX_TEXT, pipeline_version="test"
+            self.world.object_store,
+            self.matcher,
+            TEMPLATES,
+            max_text=MAX_TEXT,
+            pipeline_version="test",
         )
         return DocumentService(
             self.world.uow, self.world.clock, self.world.object_store, rules=change_rules
@@ -190,7 +195,11 @@ class RuleWorld:
     ) -> PipelineService:
         executors: dict[Node, NodeExecutor] = {
             Node.APPLY_RULES: ApplyRulesNode(
-                self.world.uow, self.world.object_store, self.matcher, max_text=MAX_TEXT
+                self.world.uow,
+                self.world.object_store,
+                self.matcher,
+                TEMPLATES,
+                max_text=MAX_TEXT,
             ),
             Node.FILE: FileNode(),
         }

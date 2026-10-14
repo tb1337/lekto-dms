@@ -40,6 +40,7 @@ from papiq.core.ports import (
     DocumentFilter,
     ObjectStore,
     PatternMatcher,
+    TemplateRenderer,
     UnitOfWork,
     UnitOfWorkFactory,
 )
@@ -94,6 +95,7 @@ class RuleApplicationService:
         clock: Clock,
         store: ObjectStore,
         matcher: PatternMatcher,
+        templates: TemplateRenderer,
         *,
         max_text: int,
         max_documents: int,
@@ -104,6 +106,7 @@ class RuleApplicationService:
         self._clock = clock
         self._store = store
         self._matcher = matcher
+        self._templates = templates
         self._max_text = max_text
         self._max_documents = max_documents
         self._version = pipeline_version
@@ -368,6 +371,7 @@ class RuleApplicationService:
         run = await run_rules(
             uow,
             self._matcher,
+            self._templates,
             mode=Mode.RETROACTIVE,
             document=document,
             owner=owner,

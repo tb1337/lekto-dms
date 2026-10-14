@@ -18,13 +18,20 @@ from papiq.core.domain.master_data import (
 from papiq.core.domain.names import name_key as match_key
 from papiq.core.domain.names import related
 from papiq.core.domain.permissions import can_manage_master_data
-from papiq.core.domain.rules import References
+from papiq.core.domain.rules import References, Rule
 from papiq.core.domain.titles import check_pattern, field_names, rename_field
-from papiq.core.ports import Clock, NamedRepository, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports import (
+    Clock,
+    NamedRepository,
+    TemplateRenderer,
+    UnitOfWork,
+    UnitOfWorkFactory,
+)
 from papiq.core.services._access import load_actor
 
 # A rename queues the indexing service's refresh job; the worker runs it through that service.
 from papiq.core.services.indexing import REFRESH_JOB
+from papiq.core.services.rules.management import renamed_field, uses_field
 from papiq.core.services.rules.references import disable_rules, misfits, refers_to
 
 type Repo[E] = Callable[[UnitOfWork], NamedRepository[Any, E]]
@@ -52,12 +59,19 @@ class MasterDataService:
     """Contacts, document types, tags and field definitions. Changes are admin-only."""
 
     def __init__(
-        self, uow: UnitOfWorkFactory, clock: Clock, *, index_renames: bool = False
+        self,
+        uow: UnitOfWorkFactory,
+        clock: Clock,
+        templates: TemplateRenderer,
+        *,
+        index_renames: bool = False,
     ) -> None:
-        """`index_renames`: renaming a contact, type or tag queues a job that brings the search
-        index of the documents that carry it up to date (set when there is a search index)."""
+        """`templates`: reads which fields the templates of rules use. `index_renames`:
+        renaming a contact, type or tag queues a job that brings the search index of the
+        documents that carry it up to date (set when there is a search index)."""
         self._uow = uow
         self._clock = clock
+        self._templates = templates
         self._index_renames = index_renames
 
     async def create_contact(
@@ -224,12 +238,14 @@ class MasterDataService:
         async with self._uow() as uow:
             await _require_admin(uow, actor)
             definition = await uow.fields.get(id)
-            old_name = definition.name
+            old_name, old_key = definition.name, definition.key
             if name is not None:
                 definition.rename(name)
                 await _check_name_free(uow.fields, definition)
                 await _check_key_free(uow, definition)
                 await _rename_in_patterns(uow, old_name, definition.name)
+                if definition.key != old_key:
+                    await self._rename_in_rules(uow, actor, old_key, definition.key)
             if choices is not None:
                 removed = definition.change_choices(choices)
                 if removed and await uow.documents.field_in_use(id, values=removed):
@@ -323,13 +339,36 @@ class MasterDataService:
         )
 
     async def delete_field(self, actor: UserId, id: FieldId) -> None:
-        await self._delete(
-            actor,
-            _fields,
-            id,
-            lambda uow: uow.documents.exists(field=id),
-            ("field", lambda refs: refs.fields),
-        )
+        """Not while a document has a value or a template of a rule uses it."""
+
+        async def used(uow: UnitOfWork) -> bool:
+            if await uow.documents.exists(field=id):
+                return True
+            definition = await uow.fields.get(id)
+            rules = await self._rules_using(uow, definition.key)
+            if rules:
+                names = ", ".join(sorted(f"'{rule.definition.name}'" for rule in rules))
+                raise ConflictError(
+                    f"field.{definition.key} is used by the templates of the rules {names}"
+                )
+            return False
+
+        await self._delete(actor, _fields, id, used, ("field", lambda refs: refs.fields))
+
+    async def _rules_using(self, uow: UnitOfWork, key: str) -> list[Rule]:
+        fields = await uow.fields.list_all()
+        return [
+            rule
+            for rule in await uow.rules.list_for(owners=None, include_global=True)
+            if uses_field(self._templates, rule.definition, fields, key)
+        ]
+
+    async def _rename_in_rules(self, uow: UnitOfWork, actor: UserId, old: str, new: str) -> None:
+        """The templates of rules that use `field.<old>` take the new key (a new version)."""
+        fields = await uow.fields.list_all()
+        for rule in await self._rules_using(uow, old):
+            rule.change(renamed_field(rule.definition, fields, old, new), actor, self._now())
+            await uow.rules.update(rule)
 
     async def _list[E: MasterData](self, actor: UserId, repository: Repo[E]) -> list[E]:
         async with self._uow() as uow:

@@ -15021,8 +15021,9 @@
             "type": "string",
             "maxLength": 500,
             "title": "Reason",
+            "description": "A template, as a title's; the review holds where it cannot be rendered.",
             "examples": [
-              "check the contract term"
+              "check the contract term of {{ contact }}"
             ]
           }
         },
@@ -17209,7 +17210,7 @@
               }
             ],
             "title": "Value",
-            "description": "By data type: text, choice and link: string; number: decimal as string; date: `YYYY-MM-DD`; boolean: true/false; amount: `{amount, currency}`."
+            "description": "As the field's type has it; for a text field a template, as a title's."
           }
         },
         "additionalProperties": false,
@@ -17232,9 +17233,9 @@
             "type": "string",
             "maxLength": 500,
             "title": "Template",
-            "description": "Placeholders: `{contact}`, `{document_type}`, `{document_date}` (YYYY-MM-DD), `{filename}` (the original's name without extension); empty when unknown.",
+            "description": "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `document_date`, `added`, `tags` (a list), `drawer`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional).",
             "examples": [
-              "{contact} {document_type} {document_date}"
+              "{{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}"
             ]
           }
         },

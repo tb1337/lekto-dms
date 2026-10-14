@@ -10,20 +10,35 @@ Who may do what:
 """
 
 import builtins
+import re
+from collections.abc import Iterable
+from dataclasses import replace
 
-from papiq.core.domain.errors import NotFoundError, PermissionDeniedError
+from papiq.core.domain.errors import NotFoundError, PermissionDeniedError, ValidationError
+from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.ids import RuleId, UserId
 from papiq.core.domain.permissions import drawer_access
-from papiq.core.domain.rules import Rule, RuleDefinition, RuleScope, RuleVersion, check_fields
+from papiq.core.domain.rules import (
+    ForceReview,
+    Rule,
+    RuleDefinition,
+    RuleScope,
+    RuleVersion,
+    SetField,
+    SetTitle,
+    check_fields,
+)
+from papiq.core.domain.templates import FIELD, NAMES, unknown_values
 from papiq.core.domain.users import User
-from papiq.core.ports import Clock, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports import Clock, TemplateRenderer, UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import load_actor
 
 
 class RuleService:
-    def __init__(self, uow: UnitOfWorkFactory, clock: Clock) -> None:
+    def __init__(self, uow: UnitOfWorkFactory, clock: Clock, templates: TemplateRenderer) -> None:
         self._uow = uow
         self._clock = clock
+        self._templates = templates
 
     async def list(
         self,
@@ -85,6 +100,7 @@ class RuleService:
                 now=self._clock.now(),
             )
             await check_references(uow, rule.definition, owner=user if rule.owner_id else None)
+            await check_templates(uow, self._templates, rule.definition)
             await uow.rules.add(rule)
             await uow.commit()
         return rule
@@ -96,6 +112,7 @@ class RuleService:
             rule = await _managed_rule(uow, user, id)
             rule.change(definition, user.id, self._clock.now())
             await check_references(uow, definition, owner=await _owner(uow, rule))
+            await check_templates(uow, self._templates, definition)
             await uow.rules.update(rule)
             await uow.commit()
         return rule
@@ -107,6 +124,7 @@ class RuleService:
             rule = await _managed_rule(uow, user, id)
             if enabled:
                 await check_references(uow, rule.definition, owner=await _owner(uow, rule))
+                await check_templates(uow, self._templates, rule.definition)
                 rule.enable(self._clock.now())
             else:
                 rule.disable(self._clock.now())
@@ -149,6 +167,83 @@ async def check_references(
             raise NotFoundError("drawer", drawer_id)
         if not access.can_write:
             raise PermissionDeniedError(f"no write access to drawer '{drawer.name}'")
+
+
+async def check_templates(
+    uow: UnitOfWork, templates: TemplateRenderer, definition: RuleDefinition
+) -> None:
+    """The templates of the actions (title, text field, review reason) are valid and use
+    values a template has (ValidationError naming the action)."""
+    fields = await uow.fields.list_all()
+    keys = {field.key for field in fields}
+    for index, template in action_templates(definition, fields):
+        try:
+            used = templates.check(template)
+        except ValidationError as error:
+            raise ValidationError(f"actions[{index}]: {error}") from None
+        unknown = unknown_values(used, keys)
+        if unknown:
+            known = ", ".join(name for name in NAMES if name != FIELD)
+            raise ValidationError(
+                f"actions[{index}]: unknown value {unknown[0]}; templates know {known} and "
+                "field.<key> of an existing field"
+            )
+
+
+def action_templates(
+    definition: RuleDefinition, fields: Iterable[FieldDefinition]
+) -> list[tuple[int, str]]:
+    """The templates among the actions, with their place: a title, the value of a text field,
+    a review's reason."""
+    texts = {field.id for field in fields if field.data_type is FieldType.TEXT}
+    found: list[tuple[int, str]] = []
+    for index, action in enumerate(definition.actions):
+        match action:
+            case SetTitle(template=template) | ForceReview(reason=template):
+                found.append((index, template))
+            case SetField(field_id=field, value=str() as value) if field in texts:
+                found.append((index, value))
+    return found
+
+
+def uses_field(
+    templates: TemplateRenderer,
+    definition: RuleDefinition,
+    fields: Iterable[FieldDefinition],
+    key: str,
+) -> bool:
+    """Whether a template of the definition uses the field with `key`."""
+    for _, template in action_templates(definition, fields):
+        used = templates.check(template)
+        if any(path == f"{FIELD}.{key}" or path.startswith(f"{FIELD}.{key}.") for path in used):
+            return True
+    return False
+
+
+def renamed_field(
+    definition: RuleDefinition, fields: Iterable[FieldDefinition], old: str, new: str
+) -> RuleDefinition:
+    """The definition with `field.<old>` written `field.<new>` in its templates (also
+    `field["<old>"]`)."""
+    pattern = re.compile(
+        rf"(?<![\w.]){FIELD}(?:\.{re.escape(old)}(?!\w)|\[(['\"]){re.escape(old)}\1\])"
+    )
+
+    def rename(template: str) -> str:
+        return pattern.sub(f"{FIELD}.{new}", template)
+
+    texts = {field.id for field in fields if field.data_type is FieldType.TEXT}
+    actions = []
+    for action in definition.actions:
+        match action:
+            case SetTitle(template=template):
+                action = replace(action, template=rename(template))
+            case ForceReview(reason=reason):
+                action = replace(action, reason=rename(reason))
+            case SetField(field_id=field, value=str() as value) if field in texts:
+                action = replace(action, value=rename(value))
+        actions.append(action)
+    return replace(definition, actions=tuple(actions))
 
 
 async def visible_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:

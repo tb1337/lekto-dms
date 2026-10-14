@@ -41,6 +41,20 @@ async def test_admin_maintains_master_data(world: World) -> None:
         assert (await uow.fields.get(period.id)).is_global
 
 
+async def test_no_two_fields_share_a_key_in_templates(world: World) -> None:
+    admin = await world.user(role=Role.ADMIN)
+    service = world.master_data
+    gross = await service.create_field(admin.id, "LA_Brutto", FieldType.AMOUNT)
+    assert gross.key == "la_brutto"
+    with pytest.raises(ConflictError, match=r"field\.la_brutto"):
+        await service.create_field(admin.id, "LA Brutto", FieldType.AMOUNT)
+    net = await service.create_field(admin.id, "LA Netto", FieldType.AMOUNT)
+    with pytest.raises(ConflictError, match=r"field\.la_brutto"):
+        await service.change_field(admin.id, net.id, name="la-brutto")
+    # The field keeps its own key when only the case of its name changes.
+    assert (await service.change_field(admin.id, gross.id, name="LA_BRUTTO")).key == "la_brutto"
+
+
 async def test_only_admins_change_master_data(world: World) -> None:
     admin, user = await world.user(role=Role.ADMIN), await world.user()
     service = world.master_data

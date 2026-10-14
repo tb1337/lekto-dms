@@ -290,6 +290,7 @@ class FieldOut(BaseModel):
                 {
                     "id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b",
                     "name": "Amount",
+                    "key": "amount",
                     "data_type": "amount",
                     "document_type_ids": None,
                     "choices": [],
@@ -304,6 +305,10 @@ class FieldOut(BaseModel):
 
     id: UUID
     name: str
+    key: str = Field(
+        description="The field in templates of rules and title patterns: `field.<key>`, from "
+        "the name (lower case, umlauts as ae/oe/ue, anything else `_`)"
+    )
     data_type: FieldType
     document_type_ids: list[UUID] | None
     choices: list[str]
@@ -317,6 +322,7 @@ class FieldOut(BaseModel):
         return cls(
             id=item.id,
             name=item.name,
+            key=item.key,
             data_type=item.data_type,
             document_type_ids=(
                 None if item.document_type_ids is None else sorted(item.document_type_ids)

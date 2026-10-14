@@ -1,6 +1,7 @@
 """Field definitions (Paperless-ngx: custom fields) and the values they accept."""
 
 import re
+import unicodedata
 from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -186,6 +187,11 @@ class FieldDefinition(MasterData):
     def is_global(self) -> bool:
         return self.document_type_ids is None
 
+    @property
+    def key(self) -> str:
+        """The field in templates: `field.la_brutto` (`template_key` of its name)."""
+        return template_key(self.name)
+
     def applies_to(self, document_type_id: DocumentTypeId | None) -> bool:
         if self.document_type_ids is None:
             return True
@@ -211,3 +217,19 @@ class FieldDefinition(MasterData):
             case FieldType.LINK if isinstance(value, Url):
                 return value
         raise ValidationError(f"field '{self.name}' ({self.data_type}) does not accept {value!r}")
+
+
+_UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue"})
+_NOT_KEY = re.compile(r"[^a-z0-9]+")
+
+
+def template_key(name: str) -> str:
+    """A field's name as templates write it: lower case, umlauts as `ae`, `oe`, `ue`, `ß` as
+    `ss`, other accents dropped, anything else an underscore (`LA_Brutto` → `la_brutto`,
+    `Fällig am` → `faellig_am`); `f_` before a leading digit."""
+    folded = unicodedata.normalize("NFKC", name).casefold().translate(_UMLAUTS)
+    plain = "".join(
+        char for char in unicodedata.normalize("NFKD", folded) if not unicodedata.combining(char)
+    )
+    key = _NOT_KEY.sub("_", plain).strip("_") or "field"
+    return f"f_{key}" if key[0].isdigit() else key

@@ -2694,6 +2694,7 @@ export interface components {
 		 *       "data_type": "amount",
 		 *       "description": "Gesamtbrutto des Monats, nicht das Grundgehalt",
 		 *       "id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "key": "amount",
 		 *       "name": "Amount",
 		 *       "required": false,
 		 *       "required_document_type_ids": []
@@ -2707,6 +2708,11 @@ export interface components {
 			id: string;
 			/** Name */
 			name: string;
+			/**
+			 * Key
+			 * @description The field in templates of rules and title patterns: `field.<key>`, from the name (lower case, umlauts as ae/oe/ue, anything else `_`)
+			 */
+			key: string;
 			data_type: components['schemas']['FieldType'];
 			/** Document Type Ids */
 			document_type_ids: string[] | null;

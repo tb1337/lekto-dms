@@ -199,6 +199,7 @@ class MasterDataService:
         async def check(uow: UnitOfWork) -> None:
             for document_type in definition.document_type_ids or ():
                 await uow.document_types.get(document_type)
+            await _check_key_free(uow, definition)
 
         return await self._create(actor, _fields, definition, check)
 
@@ -227,6 +228,7 @@ class MasterDataService:
             if name is not None:
                 definition.rename(name)
                 await _check_name_free(uow.fields, definition)
+                await _check_key_free(uow, definition)
                 await _rename_in_patterns(uow, old_name, definition.name)
             if choices is not None:
                 removed = definition.change_choices(choices)
@@ -430,6 +432,16 @@ async def _check_name_free[E: MasterData](repository: NamedRepository[Any, E], i
     # Every kind of master data has an `id`; the base class leaves its type to the kinds.
     if existing is not None and getattr(existing, "id") != getattr(item, "id"):  # noqa: B009
         raise ConflictError(f"'{item.name}' already exists")
+
+
+async def _check_key_free(uow: UnitOfWork, definition: FieldDefinition) -> None:
+    """Templates name a field by its key: no two fields may share one."""
+    for other in await uow.fields.list_all():
+        if other.id != definition.id and other.key == definition.key:
+            raise ConflictError(
+                f"'{definition.name}' would be field.{definition.key} in templates, "
+                f"as '{other.name}' is"
+            )
 
 
 async def _check_title_pattern(uow: UnitOfWork, document_type: DocumentType) -> None:

@@ -168,7 +168,7 @@ jobs of the old run are recognised as stale.
 
 | Node | Input | Derivatives (object store) | Outcome |
 | --- | --- | --- | --- |
-| OCR (`OcrNode`) | `originals/<sha256>` | `documents/<id>/archive.pdf` (PDF/A with text layer) | uncertain if the archive is not PDF/A, with the reason; OK with a note if the original's digital signature is not in the archive |
+| OCR (`OcrNode`) | `originals/<sha256>` | `documents/<id>/archive.pdf` (PDF/A with text layer); in the log, how well each recognised page was read (`readings`: words, unsure words below 60 % of Tesseract's confidence) | uncertain if the archive is not PDF/A, with the reason; OK with a note if the original's digital signature is not in the archive |
 | Pages (`PagesNode`) | `originals/<sha256>` | `documents/<id>/pages/<n>.webp` (every page, 1200 px wide; an image narrower than that keeps its size, each frame of a TIFF is a page), `documents/<id>/preview.webp` (first page, 400 px wide); sets `page_count` | failed if the file cannot be read |
 | Parse (`ParseNode`) | the archive PDF | `documents/<id>/content.txt` (the text as it is set), `documents/<id>/content.json` (its lines and words with boxes) | failed if no text was recognised |
 | Signals (`signal_llm`, `signal_classifier`, `signal_neighbours`, `signal_facts`) | `content.txt`, master data, the classifier's model, the search index | proposals in the log | OK, also when abstaining (`abstained` names why); only `signal_llm` fails, after two unfit answers |
@@ -301,7 +301,10 @@ The quoted passage must appear in the text as well, and for an amount, number, d
 link it must show the value itself: elsewhere in the text the same digits may stand for
 anything, on a broken scan a lone fragment. An amount counts in the quote only as an amount,
 with decimal places or a currency beside it (`620,00`, `620 €`, `620,-`; a bare `620` is none).
-Without such a quote the value is only suggested. A field's description (up to 300
+Without such a quote the value is only suggested, and so is a value on a page the OCR read
+poorly (`PAPIQ_POOR_READING_THRESHOLD`; the page of its quote, or any recognised page if the
+quote was not found): on a broken scan a number may be anything, however sure Tesseract was of
+it. The document date follows the same rules. A field's description (up to 300
 characters) goes into both prompts after its name and choices: it tells the model what belongs
 in the field, whose name is often an internal one no document shows (`LA_Brutto`: the month's
 gross total, not the base salary). The model is told to copy the quoted passage exactly as it
@@ -881,6 +884,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_EMBEDDING_DOCUMENT_PREFIX` | Worker | unset | Put before document sections, for models that ask for it |
 | `PAPIQ_CONFIDENCE_THRESHOLD` | Worker | `0.9` | A field passes from this confidence on |
 | `PAPIQ_CONTACT_SUGGEST_THRESHOLD` | Worker | `0.75` | An existing contact is suggested from this similarity on; not above the confidence threshold |
+| `PAPIQ_POOR_READING_THRESHOLD` | Worker | `0.08` | Share of unsure words (below 60 % of Tesseract's confidence) from which a page the OCR recognised counts as poorly read: a value on it is only suggested. The default lies between good scans (up to 7 %) and broken ones (from 9 %) of a first sample; calibration in M18 |
 | `PAPIQ_DEFAULT_CURRENCY` | Worker | `EUR` | The currency of an amount in a document that shows no currency at all (ISO 4217) |
 | `PAPIQ_CLASSIFIER` | both | `scikit-learn` | The classifier trained from confirmed documents; `none` turns it off |
 | `PAPIQ_CLASSIFIER_MIN_EXAMPLES` | both | `20` | Confirmed documents before the first model is trained |

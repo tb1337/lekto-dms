@@ -2,9 +2,10 @@
 external programs.
 
 They follow the contracts without real recognition: the archive is a minimal PDF that names the
-source, the text is a short one, the page images tiny WebP headers, and the locator finds
-texts in pages it is given instead of reading the PDF. A file that is neither a PDF ending with
-`%%EOF` nor a supported image counts as damaged.
+source (a scan or an image counts as read well, a PDF with fonts as not read), the text is a
+short one, the page images tiny WebP headers, and the locator finds texts in pages it is given
+instead of reading the PDF. A file that is neither a PDF ending with `%%EOF` nor a supported
+image counts as damaged.
 """
 
 import asyncio
@@ -15,6 +16,7 @@ from pathlib import Path
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.domain.locations import Box, Location
+from papiq.core.domain.reading import PageReading
 from papiq.core.ports.ocr import OcrResult
 from papiq.core.ports.pages import PREVIEW_FILE, RenderedPages
 from papiq.core.ports.parser import ParseResult
@@ -23,16 +25,24 @@ FAKE_PDF = b"%PDF-1.7\n% papiq fake archive\n%%EOF\n"
 FAKE_WEBP = b"RIFF\x0c\x00\x00\x00WEBPVP8 "
 
 
+FAKE_READING = PageReading(page=1, words=20, unsure=0)
+
+
 class FakeOcr:
-    def __init__(self) -> None:
+    """`readings`: what it says it read of a scan or an image, instead of `FAKE_READING`."""
+
+    def __init__(self, readings: Sequence[PageReading] | None = None) -> None:
         self.calls: list[Path] = []
+        self.readings = (FAKE_READING,) if readings is None else tuple(readings)
 
     async def make_archive(self, source: Path, target: Path, *, media_type: str) -> OcrResult:
         self.calls.append(source)
         data = await asyncio.to_thread(source.read_bytes)
         _check(data)
         await asyncio.to_thread(target.write_bytes, FAKE_PDF)
-        return OcrResult(pages=1, engine="fake-ocr 1", pdfa=True)
+        has_text = media_type == media_types.PDF and b"/Font" in data
+        readings = () if has_text else self.readings
+        return OcrResult(pages=1, engine="fake-ocr 1", pdfa=True, readings=readings)
 
 
 class FakeParser:

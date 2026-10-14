@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from papiq.core.domain.reading import PageReading
+
 
 @dataclass(frozen=True, kw_only=True)
 class OcrResult:
@@ -11,6 +13,9 @@ class OcrResult:
     # Why the archive is not what was asked for, for the processing log: the reason it is not
     # PDF/A, or that a digital signature of the original was not carried over.
     note: str | None = None
+    # How well each page the engine recognised was read; pages with text of their own are
+    # not recognised and have none.
+    readings: tuple[PageReading, ...] = ()
 
 
 class Ocr(Protocol):
@@ -27,6 +32,7 @@ class Ocr(Protocol):
         A digitally signed original is processed anyway; the archive does not carry the
         signature (the original is never changed) and `note` says so. If PDF/A is not possible
         for the file, a plain PDF is written and `pdfa` is False, `note` naming the reason.
+        `readings` tell how well each recognised page was read.
 
         UnprocessableDocumentError if the file cannot be processed (damaged, encrypted);
         repeating would not help. TimeoutError if recognition takes too long. Other errors may

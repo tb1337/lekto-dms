@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from papiq.adapters.outbound.memory import FakeOcr, FakePageRenderer, FakeParser
-from papiq.adapters.outbound.memory.processing import FAKE_PDF
+from papiq.adapters.outbound.memory.processing import FAKE_PDF, FAKE_READING
 from papiq.core.domain.documents import Document
 from papiq.core.domain.pipeline import Lane, Node, NodeRun, Outcome
 from papiq.core.domain.users import User
@@ -91,7 +91,12 @@ async def test_ocr_pages_and_parse_store_their_derivatives(world: World, sample:
     }
     ocr, pages, parse = log[Node.OCR].result, log[Node.PAGES].result, log[Node.PARSE].result
     assert ocr.input == {"original": original_key(document.sha256)}
-    assert ocr.output == {"archive": archive_key(document.id), "pages": 1, "pdfa": True}
+    assert ocr.output == {
+        "archive": archive_key(document.id),
+        "pages": 1,
+        "pdfa": True,
+        "readings": [FAKE_READING.to_json()],  # how well it read the scan or image
+    }
     assert ocr.model_version == "fake-ocr 1"
     assert pages.input == {"original": original_key(document.sha256)}
     assert pages.output == {

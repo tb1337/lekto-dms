@@ -36,6 +36,19 @@ class OcrContract:
         assert result.engine
         assert sorted(path.name for path in tmp_path.iterdir()) == ["archive.pdf"]
 
+    async def test_tells_how_well_it_read_the_pages_it_recognised(
+        self, ocr: Ocr, tmp_path: Path
+    ) -> None:
+        target = tmp_path / "archive.pdf"
+        scan = await ocr.make_archive(SAMPLES / "scan.pdf", target, media_type=media_types.PDF)
+        (reading,) = scan.readings
+        assert reading.page == 1
+        assert reading.words > 0
+        assert 0 <= reading.unsure <= reading.words
+        # A page with text of its own is not recognised again.
+        text = await ocr.make_archive(SAMPLES / "text.pdf", target, media_type=media_types.PDF)
+        assert text.readings == ()
+
     async def test_replaces_the_target(self, ocr: Ocr, tmp_path: Path) -> None:
         target = tmp_path / "archive.pdf"
         target.write_bytes(b"old")

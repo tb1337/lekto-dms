@@ -61,12 +61,16 @@ async def test_scans_and_images_get_a_text_layer(
     assert result.pdfa
     assert result.engine.startswith("ocrmypdf ")
     assert "tesseract" in result.engine
+    # Tesseract's hOCR, kept by OCRmyPDF: every page read, the clean sample without doubt.
+    assert [reading.page for reading in result.readings] == list(range(1, pages + 1))
+    assert all(reading.words > 0 for reading in result.readings)
 
 
 async def test_existing_text_is_kept(tmp_path: Path) -> None:
     target = tmp_path / "archive.pdf"
-    await engine().make_archive(SAMPLES / "text.pdf", target, media_type=media_types.PDF)
+    result = await engine().make_archive(SAMPLES / "text.pdf", target, media_type=media_types.PDF)
     assert text_of(target).split() == text_of(SAMPLES / "text.pdf").split()
+    assert result.readings == ()
 
 
 async def test_an_empty_page_has_no_text(tmp_path: Path) -> None:

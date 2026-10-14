@@ -21,6 +21,7 @@ from papiq.core.domain.identifiers import Identifier, IdentifierKind
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
+from papiq.core.domain.reading import PageReading, readings_to_json
 from papiq.core.ports import StructuredRequest
 from papiq.core.services.classification.nodes import (
     NO_MODEL,
@@ -1023,6 +1024,67 @@ async def test_the_quoted_passage_must_show_the_value(
     check = field_check(seeded, result, "Rechnungsbetrag")
     assert check.reason == (None if reason is None else f"'Rechnungsbetrag': {reason}")
     assert check.ok is (reason is None)
+
+
+def recognised(*readings: PageReading) -> NodeResult:
+    """The OCR's entry, with how well it read the pages."""
+    return NodeResult(outcome=Outcome.OK, output={"readings": readings_to_json(readings)})
+
+
+@pytest.mark.parametrize(
+    ("readings", "located", "reason"),
+    [
+        # The quote's page: a broken scan, 10 % of its words unsure.
+        ((PageReading(1, 224, 23),), 1, "page 1 was poorly read (10% of its words unsure)"),
+        ((PageReading(1, 224, 23), PageReading(2, 400, 8)), 2, None),  # the quote on a good page
+        ((PageReading(1, 224, 23), PageReading(2, 400, 8)), None, "page 1 was poorly read"),
+        ((PageReading(1, 409, 8),), None, None),  # a good scan
+        ((), None, None),  # text of its own, or recognised before readings
+    ],
+)
+async def test_a_value_on_a_poorly_read_page_is_only_suggested(
+    world: World, readings: tuple[PageReading, ...], located: int | None, reason: str | None
+) -> None:
+    seeded = await seed(world)
+    document = await document_with(world, INVOICE, seeded.types["Rechnung"])
+    await record(world, document, Node.OCR, recognised(*readings))
+    await world.object_store.put(archive_key(document.id), FAKE_PDF, content_type="application/pdf")
+    pages = [""] * 2
+    if located is not None:
+        pages[located - 1] = INVOICE
+    step = FieldsNode(
+        world.uow,
+        world.object_store,
+        model(extraction()),
+        world.clock,
+        locator=FakeTextLocator(pages),
+    )
+    result = await step.run(document)
+    assert isinstance(result, MetadataResult)
+    amount = field_check(seeded, result, "Rechnungsbetrag")
+    paid = field_check(seeded, result, "Bezahlt")
+    assert paid.ok  # yes or no is not read as written
+    if reason is None:
+        assert amount.ok
+        return
+    assert (amount.reason or "").startswith(f"'Rechnungsbetrag': {reason}")
+    assert amount.suggestion == {"amount": "84.20", "currency": "EUR"}
+    assert seeded.fields["Rechnungsbetrag"].id not in result.changes.fields
+
+
+async def test_the_document_date_on_a_poorly_read_page_is_only_suggested(world: World) -> None:
+    await seed(world)
+    document = await document_with(world)
+    await record(world, document, Node.OCR, recognised(PageReading(1, 224, 23)))
+    result = await judge(world, document, model(proposal()), poor_reading=0.11)
+    assert isinstance(result, MetadataResult)
+    assert checks(result.result)["document_date"].ok  # 10 % stays below 0.11
+    result = await judge(world, document, model(proposal()))
+    assert isinstance(result, MetadataResult)
+    check = checks(result.result)["document_date"]
+    assert check.reason == "page 1 was poorly read (10% of its words unsure)"
+    assert check.suggestion == "2026-03-31"
+    assert result.changes.document_date is UNSET
 
 
 async def test_values_are_read_as_written_in_german(world: World) -> None:

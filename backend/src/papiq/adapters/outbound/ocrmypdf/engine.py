@@ -24,15 +24,23 @@ Images are prepared before OCRmyPDF sees them (`prepare_image`):
   CMYK and high bit depths are converted. All pages of a multi-page TIFF are kept.
 
 OCRmyPDF's exit codes tell permanent problems (damaged or encrypted input) from others.
+
+How well a page was read comes from Tesseract's hOCR, which OCRmyPDF keeps in its work folder
+with `--keep-temporary-files` (`*_ocr_hocr.hocr`, one per page it recognised): the words with
+a confidence and how many fall below `UNSURE_BELOW`. The work folder is one of our own
+(`TMPDIR`), removed afterwards.
 """
 
 import asyncio
+import html
 import importlib.metadata
 import logging
 import re
+import shutil
 import sys
 import uuid
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 
@@ -42,6 +50,7 @@ from papiq.adapters.outbound.pdfium import count_pages
 from papiq.adapters.outbound.system import Completed, run_process
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import UnprocessableDocumentError
+from papiq.core.domain.reading import PageReading
 from papiq.core.ports.ocr import OcrResult
 
 log = logging.getLogger(__name__)
@@ -68,6 +77,19 @@ _KNOWN_ERRORS = {
 }
 _ERROR_LINE = re.compile(r"^(\w+Error): ?(.*)$")
 _GHOSTSCRIPT_LINE = re.compile(r"^GPL Ghostscript [\d.]+: (.*)$")
+# Tesseract's confidence (0 to 100) below which a word counts as unsure.
+UNSURE_BELOW = 60
+_HOCR_FILE = "*_ocr_hocr.hocr"
+_HOCR_WORD = re.compile(
+    r"<span class=['\"]ocrx_word['\"][^>]*?x_wconf (\d+)[^>]*>(.*?)</span>", re.S
+)
+_TAG = re.compile(r"<[^>]+>")
+# What `--keep-temporary-files` prints where it kept them, in the middle of the output (before
+# an error), with a line about containers when it runs in one.
+_KEPT = re.compile(
+    r"^Temporary working files retained at:\n[^\n]*\n(?:OCRmyPDF is running in a [^\n]*\n)?",
+    re.M,
+)
 _PDFA_ISSUE = re.compile(r"conversion to PDF/A did not succeed \(issue: (.+?)\)")
 _NOTE_MAX = 300
 
@@ -95,17 +117,20 @@ class OcrmypdfEngine:
     async def make_archive(self, source: Path, target: Path, *, media_type: str) -> OcrResult:
         temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp.pdf")
         prepared = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp.tiff")
+        work = target.with_name(f".{target.name}.{uuid.uuid4().hex}.work")
         try:
             extra: list[str] = []
             if media_type != media_types.PDF:
                 source, dpi = await asyncio.to_thread(prepare_image, source, prepared)
                 extra = ["--image-dpi", str(dpi)]
-            pdfa, notes = await self._convert(source, temporary, extra)
+            pdfa, notes = await self._convert(source, temporary, extra, work)
             pages = await asyncio.to_thread(count_pages, temporary)
+            readings = await asyncio.to_thread(read_hocr, work)
             await asyncio.to_thread(temporary.replace, target)
         finally:
             for path in (temporary, prepared):
                 await asyncio.to_thread(path.unlink, missing_ok=True)
+            await asyncio.to_thread(shutil.rmtree, work, ignore_errors=True)
         if not pdfa:
             log.warning("archive is not PDF/A", extra={"source": str(source), "notes": notes})
         return OcrResult(
@@ -113,25 +138,29 @@ class OcrmypdfEngine:
             engine=await self._engine_name(),
             pdfa=pdfa,
             note=_join(notes),
+            readings=readings,
         )
 
     async def _convert(
-        self, source: Path, output: Path, extra: Sequence[str]
+        self, source: Path, output: Path, extra: Sequence[str], work: Path
     ) -> tuple[bool, list[str]]:
         """Run OCRmyPDF, with a second run where it helps (see the module). Returns whether the
-        output is PDF/A, and the notes for the processing log."""
+        output is PDF/A, and the notes for the processing log; `work` keeps the files of the
+        last run."""
         notes: list[str] = []
         invalidate = False
-        completed = await self._run(source, output, extra, pdfa=True, invalidate=False)
+        completed = await self._run(source, output, extra, work, pdfa=True, invalidate=False)
         if completed.returncode == _INPUT_FILE and _SIGNATURE_HINT in completed.stderr:
             invalidate = True
             notes.append(SIGNATURE_NOTE)
-            completed = await self._run(source, output, extra, pdfa=True, invalidate=True)
+            completed = await self._run(source, output, extra, work, pdfa=True, invalidate=True)
         pdfa = True
         if completed.returncode == _BAD_ARGS:
             notes.append(f"not PDF/A: {_error_reason(completed.stderr)}")
             pdfa = False
-            completed = await self._run(source, output, extra, pdfa=False, invalidate=invalidate)
+            completed = await self._run(
+                source, output, extra, work, pdfa=False, invalidate=invalidate
+            )
         code = completed.returncode
         if code in _UNPROCESSABLE:
             raise UnprocessableDocumentError(
@@ -147,13 +176,23 @@ class OcrmypdfEngine:
         return pdfa, notes
 
     async def _run(
-        self, source: Path, output: Path, extra: Sequence[str], *, pdfa: bool, invalidate: bool
+        self,
+        source: Path,
+        output: Path,
+        extra: Sequence[str],
+        work: Path,
+        *,
+        pdfa: bool,
+        invalidate: bool,
     ) -> Completed:
+        """One run of OCRmyPDF, its work folder kept in an empty `work` (for the hOCR)."""
+        await asyncio.to_thread(_empty_folder, work)
         args = [
             sys.executable,
             "-m",
             "ocrmypdf",
             "-v1",  # Ghostscript's messages name the reason when PDF/A fails
+            "--keep-temporary-files",  # the hOCR tells how well each page was read
             "--skip-text",
             "--output-type",
             "pdfa" if pdfa else "pdf",
@@ -167,7 +206,11 @@ class OcrmypdfEngine:
         ]
         if invalidate:
             args.append("--invalidate-digital-signatures")
-        return await run_process([*args, str(source), str(output)], timeout=self._timeout)
+        completed = await run_process(
+            [*args, str(source), str(output)], timeout=self._timeout, env={"TMPDIR": str(work)}
+        )
+        # Where it kept the files is no reason for anything.
+        return replace(completed, stderr=_KEPT.sub("", completed.stderr))
 
     async def _engine_name(self) -> str:
         if self._engine is None:
@@ -178,6 +221,31 @@ class OcrmypdfEngine:
                 f"{first[0] if first else 'tesseract (unknown version)'}"
             )
         return self._engine
+
+
+def read_hocr(work: Path) -> tuple[PageReading, ...]:
+    """How well each page was read, from the hOCR files OCRmyPDF kept in `work`; none for
+    pages it did not recognise (they have text of their own)."""
+    readings: list[PageReading] = []
+    for path in work.glob(f"**/{_HOCR_FILE}"):
+        page = path.name.split("_", 1)[0]
+        if not page.isdigit():
+            continue
+        confidences = [
+            int(confidence)
+            for confidence, word in _HOCR_WORD.findall(path.read_text("utf-8", errors="replace"))
+            if html.unescape(_TAG.sub("", word)).strip()
+        ]
+        unsure = sum(confidence < UNSURE_BELOW for confidence in confidences)
+        readings.append(PageReading(page=int(page), words=len(confidences), unsure=unsure))
+    if not readings and not any(work.glob("*/")):
+        log.warning("ocrmypdf kept no work folder; how well the pages were read is unknown")
+    return tuple(sorted(readings, key=lambda reading: reading.page))
+
+
+def _empty_folder(path: Path) -> None:
+    shutil.rmtree(path, ignore_errors=True)
+    path.mkdir()
 
 
 def prepare_image(source: Path, prepared: Path) -> tuple[Path, int]:

@@ -224,6 +224,9 @@ class Settings(BaseSettings):
     # suggested from the second.
     confidence_threshold: Annotated[float, Field(gt=0, le=1)] = 0.9
     contact_suggest_threshold: Annotated[float, Field(gt=0, le=1)] = 0.75
+    # Share of unsure words from which a recognised page counts as poorly read: a value on it
+    # is only suggested. 0.08 lies between good scans (up to 7 %) and broken ones (from 9 %).
+    poor_reading_threshold: Annotated[float, Field(gt=0, le=1)] = 0.08
     # The currency of an amount in a document that shows none (ISO 4217).
     default_currency: Annotated[str, Field(pattern=r"^[A-Z]{3}$")] = "EUR"
 

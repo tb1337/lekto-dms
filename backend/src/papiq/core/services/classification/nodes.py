@@ -55,6 +55,7 @@ from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.names import mentions, name_key, named_share
 from papiq.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
+from papiq.core.domain.reading import PageReading, readings_from_json
 from papiq.core.domain.verdict import (
     DEFAULT_THRESHOLDS,
     Thresholds,
@@ -114,7 +115,8 @@ class ClassificationPolicy:
     existing contact at least this similar is suggested. Texts longer than `input_budget`
     characters are shortened; at most `max_tags` tags and `max_contacts` contacts (those the
     text names most) are listed in a prompt. `default_currency`: the currency of an amount in
-    a text that shows none."""
+    a text that shows none. `poor_reading`: the share of unsure words from which a recognised
+    page counts as poorly read (`PageReading.poor`)."""
 
     accept: float = 0.9
     suggest_contact: float = 0.75
@@ -122,6 +124,7 @@ class ClassificationPolicy:
     max_tags: int = 200
     max_contacts: int = 20
     default_currency: str = "EUR"
+    poor_reading: float = 0.08
 
 
 DEFAULT_POLICY = ClassificationPolicy()
@@ -455,8 +458,11 @@ class JudgeNode(_ModelStep):
                 input=input,
                 output={"fields": checks_to_json([contact, kind, tagged, date_check])},
             )
-        checks = await self._locate(document, [contact, kind, tagged, date_check])
-        contact, kind, tagged, date_check = checks
+        contact, kind, tagged, date_check = await self._locate(
+            document, [contact, kind, tagged, date_check]
+        )
+        date_check = _readable(date_check, _ocr_readings(log), self._policy.poor_reading)
+        checks = [contact, kind, tagged, date_check]
         changes = DocumentChanges(
             contact_id=_applied(contact, lambda value: ContactId(UUID(value))),
             document_type_id=_applied(kind, lambda value: _by_id(types, value).id),
@@ -581,6 +587,13 @@ class FieldsNode(_ModelStep):
             for check, definition in zip(checks, definitions, strict=True)
         ]
         checks = await self._locate(document, checks)
+        readings = _ocr_readings(log)
+        checks = [
+            _readable(check, readings, self._policy.poor_reading, definition.name)
+            if definition.data_type in _LITERAL
+            else check
+            for check, definition in zip(checks, definitions, strict=True)
+        ]
         values: dict[FieldId, object] = {}
         for check, definition in zip(checks, definitions, strict=True):
             if check.ok and check.value is not None:
@@ -754,8 +767,11 @@ def _check_field(
 
 
 _SHORTEST_EVIDENCE = 4  # characters of a quoted passage that alone backs a yes/no or choice
-# Values written as such: their quoted passage must show them (`_verified`).
-_LITERAL = frozenset({FieldType.TEXT, FieldType.NUMBER, FieldType.AMOUNT, FieldType.LINK})
+# Values written as such: their quoted passage must show them (`_verified`), and a poorly
+# read page does not back them (`_readable`).
+_LITERAL = frozenset(
+    {FieldType.TEXT, FieldType.NUMBER, FieldType.AMOUNT, FieldType.DATE, FieldType.LINK}
+)
 
 
 def _shown(
@@ -807,6 +823,44 @@ def _literally(value: FieldValue, quote: DocumentText) -> bool:
             return quote.contains(value)
         case _:
             return False
+
+
+def _ocr_readings(log: Sequence[NodeRun]) -> tuple[PageReading, ...]:
+    """How well the OCR read the pages, by its latest entry; none for a document recognised
+    before readings, or with text of its own."""
+    for entry in reversed(log):
+        if entry.node is Node.OCR:
+            return readings_from_json(entry.result.output.get("readings"))
+    return ()
+
+
+def _readable(
+    check: FieldCheck,
+    readings: Sequence[PageReading],
+    threshold: float,
+    name: str | None = None,
+) -> FieldCheck:
+    """A checked value on a poorly read page is only suggested: on a broken scan a number
+    may be anything, however sure the engine was of it. The page is that of its quote, or any
+    recognised page if the quote was not found on one."""
+    if not check.ok or check.value is None:
+        return check
+    pages = {location.page for location in check.locations}
+    poor = next(
+        (item for item in readings if item.poor(threshold) and (not pages or item.page in pages)),
+        None,
+    )
+    if poor is None:
+        return check
+    reason = f"page {poor.page} was poorly read ({poor.unsure_share:.0%} of its words unsure)"
+    return replace(
+        check,
+        outcome=Outcome.UNCERTAIN,
+        confidence=0,
+        reason=reason if name is None else f"'{name}': {reason}",
+        suggestion=check.value,
+        value=None,
+    )
 
 
 def _common(field: str, proposal: Proposal) -> dict[str, Any]:

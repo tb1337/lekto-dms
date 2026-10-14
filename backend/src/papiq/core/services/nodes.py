@@ -19,6 +19,7 @@ from papiq.core.domain import media_types
 from papiq.core.domain.documents import Document
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.pipeline import NodeResult, Outcome
+from papiq.core.domain.reading import readings_to_json
 from papiq.core.ports import DocumentParser, ObjectStore, Ocr, PageRenderer, UnitOfWork
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE, PREVIEW_FILE
 from papiq.core.services.objects import (
@@ -39,7 +40,9 @@ class OcrNode:
     """Archive PDF with text layer. A damaged or encrypted file fails at once
     (UnprocessableDocumentError, see PipelineService); an archive that is not PDF/A is
     uncertain, with the engine's reason. An archive that is PDF/A but differs from what was
-    asked (a signature not carried over) is OK with the engine's note as reason."""
+    asked (a signature not carried over) is OK with the engine's note as reason. How well each
+    recognised page was read goes into the log (`readings`); the judge and the fields node
+    read it there."""
 
     def __init__(self, store: ObjectStore, ocr: Ocr) -> None:
         self._store = store
@@ -61,6 +64,8 @@ class OcrNode:
         }
         if result.note is not None:
             output["note"] = result.note
+        if result.readings:
+            output["readings"] = readings_to_json(result.readings)
         if not result.pdfa:
             reason = "the archive could not be made PDF/A"
             if result.note is not None:

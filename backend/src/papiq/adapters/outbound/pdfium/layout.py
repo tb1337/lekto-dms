@@ -90,14 +90,9 @@ class LayoutParser:
             for path in (markdown, structure):
                 await asyncio.to_thread(path.unlink, missing_ok=True)
             raise
-        empty = [str(page.number) for page in pages if not page.text.strip()]
-        note = None
-        if empty and len(empty) < len(pages):
-            note = f"no text on page{'s' if len(empty) > 1 else ''} {', '.join(empty)}"
         return ParseResult(
             pages=len(pages),
             parser=f"layout {VERSION}, pypdfium2 {importlib.metadata.version('pypdfium2')}",
-            note=note,
         )
 
 

@@ -170,7 +170,7 @@ jobs of the old run are recognised as stale.
 | --- | --- | --- | --- |
 | OCR (`OcrNode`) | `originals/<sha256>` | `documents/<id>/archive.pdf` (PDF/A with text layer) | uncertain if the archive is not PDF/A, with the reason; OK with a note if the original's digital signature is not in the archive |
 | Pages (`PagesNode`) | `originals/<sha256>` | `documents/<id>/pages/<n>.webp` (every page, 1200 px wide; an image narrower than that keeps its size, each frame of a TIFF is a page), `documents/<id>/preview.webp` (first page, 400 px wide); sets `page_count` | failed if the file cannot be read |
-| Parse (`ParseNode`) | the archive PDF | `documents/<id>/content.md`, `documents/<id>/content.json` (Docling) | failed if no text was recognised; uncertain if the text is the plain text layer because the layout analysis found none |
+| Parse (`ParseNode`) | the archive PDF | `documents/<id>/content.md` (the text as it is set), `documents/<id>/content.json` (its lines and words with boxes) | failed if no text was recognised |
 | Signals (`signal_llm`, `signal_classifier`, `signal_neighbours`, `signal_facts`) | `content.md`, master data, the classifier's model, the search index | proposals in the log | OK, also when abstaining (`abstained` names why); only `signal_llm` fails, after two unfit answers |
 | Judge (`JudgeNode`) | the signals' entries in the log, `content.md` | contact, document type, tags, document date (applied if green) | see Understanding |
 | Fields (`FieldsNode`) | `content.md`, the fields of the type and the global ones | field values and the title (applied if checked) | see Understanding |
@@ -182,18 +182,17 @@ jobs of the old run are recognised as stale.
   document goes red. A damaged or encrypted file
   (`UnprocessableDocumentError`) fails at once. The processing log records input, output,
   engine version, reason and duration of every run.
-- OCRmyPDF (`adapters/outbound/ocrmypdf`) and Docling (`adapters/outbound/docling`) run as
-  child processes per document with a time limit (`PAPIQ_OCR_TIMEOUT`, `PAPIQ_PARSE_TIMEOUT`);
-  on timeout or cancellation the process group is killed. The job lease is the longer limit
-  plus two minutes, so a node normally keeps its claim; if it overruns (e.g. a slow S3
+- OCRmyPDF (`adapters/outbound/ocrmypdf`) runs as a child process per document with a time
+  limit (`PAPIQ_OCR_TIMEOUT`); on timeout or cancellation the process group is killed. The job
+  lease is the longest limit of a node (OCR, or twice `PAPIQ_LLM_TIMEOUT`) plus two minutes, so a node normally keeps its claim; if it overruns (e.g. a slow S3
   transfer), another worker takes the job over and the late result is discarded. A node
   interrupted by a stopping worker is released at once (`JobQueue.release`); that does not
   count against `PAPIQ_NODE_MAX_ATTEMPTS`.
 - OCRmyPDF: `--skip-text` (pages with text are not recognised again), `--output-type pdfa`,
   languages `PAPIQ_OCR_LANGUAGES`. Images whose stated resolution gives an implausible page
   size (none, or 72 dpi from a phone) are scaled to the long edge of A4; transparency is put on
-  white, CMYK is converted, all pages of a TIFF are kept. OCRmyPDF and Docling share the CPU
-  cores among `PAPIQ_WORKER_CONCURRENCY` jobs.
+  white, CMYK is converted, all pages of a TIFF are kept. OCRmyPDF shares the CPU cores among
+  `PAPIQ_WORKER_CONCURRENCY` jobs.
 - Two kinds of file get a second OCRmyPDF run. A digitally signed PDF is processed with
   `--invalidate-digital-signatures`: the original keeps its signature (originals never change),
   the archive has none, and the OCR entry of the log says so (outcome OK, `note`). A file whose
@@ -203,15 +202,18 @@ jobs of the old run are recognised as stale.
   code 10), the archive is a plain PDF as well and the reason comes from Ghostscript's
   messages. Such a document is yellow until its owner confirms it; the file cannot be made
   PDF/A without changing its content.
-- Docling uses the text layer of the archive (no OCR of its own) and the layout and table
-  models in `PAPIQ_DOCLING_MODELS_PATH`; it never downloads models (`HF_HUB_OFFLINE=1`). The
-  layout model sometimes takes a whole scanned page for a picture (a payslip in the M12 run)
-  and returns no text although OCR recognised some: then the plain text layer of the archive
-  becomes the Markdown, one block per page, the structure stays Docling's, and the node is
-  uncertain with that note, so the owner sees the document before it is filed. The
-  image stage `docling-models` downloads the models of the locked Docling version to
-  `/opt/docling-models`; the devcontainer has them. Elsewhere:
-  `uv run docling-tools models download layout tableformer -o <dir>`.
+- The text is read from the archive's text layer as it is set (`adapters/outbound/pdfium/
+  layout.py`, in a thread, milliseconds per page): every line as printed, its words in columns
+  on the page's grid, so a label keeps its amount and columns of figures line up; a printout
+  in a fixed-pitch font keeps its exact columns; a page whose text runs across it (a table
+  printed sideways, a scan OCR read sideways) is read that way, text up the margin along its
+  direction. Words end at the gaps between the characters, not at spaces (some PDFs set none).
+  Pages are separated by a form feed on a line of its own. Headers and footers stay in the
+  text (the identifiers of a letter's footer among them). The structure is Papiq's own JSON:
+  the pages with their size, the lines and words with boxes in fractions of the page as shown.
+  It replaced Docling in 0.2: on the documents compared (`.idea/umsetzungsplan.md`) Docling
+  dropped headers and footers, merged the rows of forms and needed a minute and 2 GB per
+  document.
 - Previews: PDFium (pypdfium2) renders, Pillow encodes WebP. PDFium is not thread-safe; all
   its use in a process shares one lock.
 - Quotes on the page: the judge and the fields node look up every quote of the model in
@@ -586,20 +588,9 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   `PAPIQ_WORKER_POLL_INTERVAL` when nothing is due. One loop delivers outbox events
   (`EventBus.dispatch`) every `PAPIQ_EVENTS_POLL_INTERVAL`. Postgres `LISTEN/NOTIFY` is not
   used.
-- Memory: every loop may run one Docling process, and Docling needs about 1.1 GB of RAM for a
-  one-page document and 1.8 to 2.0 GB for ten pages (measured on real scans, CPU build of
-  PyTorch; the number of threads changes nothing). OCRmyPDF takes about 150 MB per job, the
-  worker itself about 0.5 GB. A Docling process that the operating system kills for lack of
-  memory ends with exit code -9; the step is repeated and the document goes red after
-  `PAPIQ_NODE_MAX_ATTEMPTS`. Choose `PAPIQ_WORKER_CONCURRENCY` by the RAM of the machine
-  (about 2 GB per loop plus 1 GB; API and worker in one container share it):
-
-  | RAM | `PAPIQ_WORKER_CONCURRENCY` |
-  | --- | --- |
-  | 4 GB | 1 |
-  | 8 GB | 3 (4 was killed in a run of 1500 documents) |
-  | 16 GB | 6 |
-  | 32 GB | 12 |
+- Memory: OCRmyPDF takes about 150 MB per job, the worker itself about 0.5 GB; reading the
+  text needs little. The OCR is bound by the CPU: OCRmyPDF shares the cores among
+  `PAPIQ_WORKER_CONCURRENCY` jobs, so more loops than cores gain nothing.
 - The cleanup (`maintenance.cleanup`, one job with a fixed dedup key; it goes before pipeline
   steps when due) runs every
   `PAPIQ_CLEANUP_INTERVAL` and removes finished jobs and delivered events older than
@@ -824,7 +815,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_WEBHOOK_CONCURRENCY` | Worker | `4` | Deliveries at the same time |
 | `PAPIQ_MCP_ENABLED` | API | `true` | Serve MCP at `/api/v1/mcp` |
 | `PAPIQ_MCP_TEXT_MAX` | API | `20000` | Characters one `get_text` call returns at most (1,000 to 1,000,000) |
-| `PAPIQ_WORKER_CONCURRENCY` | Worker | `2` | Jobs at the same time; about 2 GB of RAM each (Docling), see Worker |
+| `PAPIQ_WORKER_CONCURRENCY` | Worker | `2` | Jobs at the same time, see Worker |
 | `PAPIQ_WORKER_POLL_INTERVAL` | Worker | `1` | Seconds between looks for due jobs |
 | `PAPIQ_WORKER_SHUTDOWN_TIMEOUT` | Worker | `30` | Seconds running jobs get to finish on SIGTERM |
 | `PAPIQ_NODE_MAX_ATTEMPTS` | Worker | `3` | Attempts of a pipeline node that raises |
@@ -835,8 +826,6 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_RETENTION` | Worker | `P7D` | Age of finished jobs, delivered events and webhook log rows to remove |
 | `PAPIQ_OCR_LANGUAGES` | Worker | `deu+eng` | Tesseract languages, joined by `+` |
 | `PAPIQ_OCR_TIMEOUT` | Worker | `600` | Seconds per document for OCR |
-| `PAPIQ_PARSE_TIMEOUT` | Worker | `600` | Seconds per document for parsing (Docling) |
-| `PAPIQ_DOCLING_MODELS_PATH` | Worker | `/opt/docling-models` | Docling layout and table models |
 | `PAPIQ_MEILISEARCH_URL` | both | unset | Without it there is no search (the API searches, the worker indexes) |
 | `PAPIQ_MEILISEARCH_API_KEY` | both | unset | *secret*; the master key or a key with access to the index |
 | `PAPIQ_MEILISEARCH_INDEX` | both | `papiq-documents` | The active index; a rebuild fills `<name>-rebuild` and swaps it in |
@@ -881,12 +870,10 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 ## Tests
 
 - `tests/unit` (marker `unit`): no external services.
-- `tests/integration` (marker `integration`): need Postgres, Garage or Meilisearch, the OCR
-  programs (Tesseract, Ghostscript) or the Docling models. Which services apply follows the
+- `tests/integration` (marker `integration`): need Postgres, Garage or Meilisearch or the OCR
+  programs (Tesseract, Ghostscript). Which services apply follows the
   `PAPIQ_` variables; a test skips itself if what it needs is not configured or not reachable.
   The devcontainer provides all of them.
-- Marker `docling`: the slow tests that run Docling (models load for every document); leave them
-  out with `-m "not docling"`.
 - Sample files (scan, text PDF, photo, empty page, damaged PDF, Office file) are in
   `tests/samples`, generated by `make_samples.py`.
 

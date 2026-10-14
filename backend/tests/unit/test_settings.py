@@ -396,8 +396,7 @@ def test_worker_and_processing_defaults() -> None:
     assert settings.node_max_attempts == 3
     assert settings.node_retry_delay == timedelta(seconds=30)
     assert settings.ocr_languages == "deu+eng"
-    assert settings.ocr_timeout == settings.parse_timeout == timedelta(minutes=10)
-    assert settings.docling_models_path == Path("/opt/docling-models")
+    assert settings.ocr_timeout == timedelta(minutes=10)
     assert settings.retention == timedelta(days=7)
 
 

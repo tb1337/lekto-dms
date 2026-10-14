@@ -13,7 +13,7 @@ Paperless-ngx. Python backend, hexagonal (ports and adapters); the REST API is t
 | `deploy/` | Runtime image files (s6-overlay services, `image/rootfs`), example Compose stacks (SQLite, Postgres + Garage), `test-image.sh`, `README.md` (operation, backup) |
 | `.devcontainer/` | Devcontainer: Compose services (Postgres, Garage, Meilisearch), dev credentials, the development instance (`README.md`, `live.env.example`, `live-setup.sh`) |
 | `.vscode/tasks.json` | VS Code tasks that run the development instance from the devcontainer (start, stop, migrate, UI, reindex, render-pages, migration) |
-| `Dockerfile` | Stages `base`, `deps`, `docling-models`, `app`, `s6`, `web` (UI build), `dev` (devcontainer) and `runtime` (production image) |
+| `Dockerfile` | Stages `base`, `deps`, `app`, `s6`, `web` (UI build), `dev` (devcontainer) and `runtime` (production image) |
 | `.idea/` | Design documents in German: `architektur.md` (binding), `umsetzungsplan.md` |
 
 ## Commands
@@ -27,8 +27,7 @@ uv run mypy
 uv run lint-imports
 uv run pytest                    # all tests; integration tests skip if a service is unreachable
 uv run pytest -m unit            # no external services
-uv run pytest -m integration     # needs Postgres, Garage, Meilisearch, OCR programs, Docling models
-uv run pytest -m "not docling"   # without the slow Docling tests
+uv run pytest -m integration     # needs Postgres, Garage, Meilisearch, OCR programs
 uv run pytest -n auto            # in parallel (pytest-xdist), as CI does
 uv run python -m papiq.composition   # validate PAPIQ_ configuration
 uv run python -m papiq.composition migrate   # bring the configured database to the newest schema

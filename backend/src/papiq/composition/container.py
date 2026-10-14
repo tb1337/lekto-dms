@@ -589,8 +589,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             ),
             # Longer than any node may take, so a running node never loses its claim.
             # A classification node may ask the model twice (once more after an invalid answer).
-            lease=max(settings.ocr_timeout, settings.parse_timeout, 2 * settings.llm_timeout)
-            + LEASE_MARGIN,
+            lease=max(settings.ocr_timeout, 2 * settings.llm_timeout) + LEASE_MARGIN,
         ),
         maintenance=MaintenanceService(
             uow,

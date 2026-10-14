@@ -102,8 +102,6 @@ def test_processing_adapters_follow_the_settings(tmp_path: Path) -> None:
     configured = settings(
         ocr_languages="deu+eng+fra",
         ocr_timeout="120",
-        parse_timeout="300",
-        docling_models_path=tmp_path,
         storage_path=tmp_path,
     )
     ocr = container.OCR_ENGINES["ocrmypdf"](configured)
@@ -116,8 +114,7 @@ def test_services_take_their_tuning_from_the_settings() -> None:
     configured = settings(
         node_max_attempts="5",
         node_retry_delay="10",
-        ocr_timeout="120",
-        parse_timeout="300",
+        ocr_timeout="300",
         llm_timeout="100",
         cleanup_interval="60",
         retention="P1D",

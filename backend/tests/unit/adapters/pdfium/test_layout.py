@@ -127,7 +127,7 @@ async def test_the_structure_has_pages_lines_and_words_with_boxes(tmp_path: Path
     assert x1 == pytest.approx(72 / 595, abs=0.01) and 0 < y1 < y2 < 0.15 and x1 < x2 <= 1
 
 
-async def test_pages_are_apart_and_one_without_text_is_noted(tmp_path: Path) -> None:
+async def test_pages_are_apart_and_one_without_text_is_empty(tmp_path: Path) -> None:
     source = tmp_path / "source.pdf"
     with (
         pikepdf.open(SAMPLES / "text.pdf") as document,
@@ -140,5 +140,5 @@ async def test_pages_are_apart_and_one_without_text_is_noted(tmp_path: Path) -> 
     result = await LayoutParser().parse(source, markdown=text, structure=structure)
     first, empty, third = text.read_text(encoding="utf-8").split(PAGE_BREAK)
     assert first == third and first.startswith("Rechnung Nummer 4711") and empty == ""
-    assert result.pages == 3 and result.note == "no text on page 2"
+    assert result.pages == 3 and result.note is None
     assert result.parser.startswith("layout 1, pypdfium2 ")

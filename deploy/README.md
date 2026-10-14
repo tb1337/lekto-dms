@@ -14,10 +14,9 @@ Outside the Papiq container: Postgres (if used), Garage (if S3 is used), Meilise
 language model, an identity provider. With SQLite and the file system, the database and the files
 live on one volume of the Papiq container.
 
-Image: Debian slim, Python 3.13, OCRmyPDF with Tesseract (German, English), Docling with the CPU
-build of PyTorch and its models (never downloaded at run time), s6-overlay 3.2.3.2, the built web
-UI in `/opt/papiq/ui` (static files; no Node.js in the image). For `amd64` and `arm64`. About 3 GB
-(`docker image inspect`). Nothing secret is part of the image.
+Image: Debian slim, Python 3.13, OCRmyPDF with Tesseract (German, English), s6-overlay 3.2.3.2,
+the built web UI in `/opt/papiq/ui` (static files; no Node.js in the image). For `amd64` and
+`arm64`. About 1.4 GB (`docker image inspect`; with Docling, before 0.2, it was 4.6 GB). Nothing secret is part of the image.
 
 ```sh
 docker build --target runtime -t papiq:local .     # in the repository root
@@ -88,7 +87,7 @@ environment variable of a container (visible in `docker inspect` of Meilisearch,
 | `PAPIQ_COOKIE_SECURE`, `PAPIQ_FORWARDED_ALLOW_IPS`, `PAPIQ_PUBLIC_URL` | `true`, –, – | behind a proxy, see below |
 | `PAPIQ_UPLOAD_MAX_SIZE` | 100 MiB | the proxy's body limit must allow it |
 | `PAPIQ_UI_DIR` | `/opt/papiq/ui` | the web UI's files; unset it to serve the API only |
-| `PAPIQ_WORKER_CONCURRENCY`, `PAPIQ_WORKER_SHUTDOWN_TIMEOUT` | 2, 30 s | about 2 GB of RAM per job for Docling, plus 1 GB: 1 on 4 GB, 3 on 8 GB, 6 on 16 GB; see [Stopping](#stopping) |
+| `PAPIQ_WORKER_CONCURRENCY`, `PAPIQ_WORKER_SHUTDOWN_TIMEOUT` | 2, 30 s | jobs at the same time (OCR shares the CPU cores among them); see [Stopping](#stopping) |
 | `PAPIQ_MCP_ENABLED`, `PAPIQ_MCP_TEXT_MAX` | `true`, 20000 | the MCP endpoint and the characters one `get_text` returns |
 | `PAPIQ_WEBHOOKS_PER_USER` | 20 | webhooks per user |
 | `PAPIQ_WEBHOOK_TIMEOUT`, `_MAX_ATTEMPTS`, `_RETRY_DELAY` | 10 s, 10, 30 s | per attempt; attempts per event; first delay, doubling up to one hour |
@@ -128,7 +127,7 @@ streams assume it.
 ## User and volumes
 
 s6 starts as root. Every Papiq process (configuration check, migration, API, worker and the OCR
-and Docling processes they start) runs as `PUID`:`PGID` (default `1000:1000`), never as root;
+processes they start) runs as `PUID`:`PGID` (default `1000:1000`), never as root;
 `0` is refused. `init-papiq` makes that user the owner of `/data` (and of the paths you set with
 `PAPIQ_DB_SQLITE_PATH` and `PAPIQ_STORAGE_PATH`): recursively only if the folder itself belongs to
 someone else, otherwise only the database files, so a large object store is not walked at each start.

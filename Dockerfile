@@ -1,14 +1,13 @@
 # syntax=docker/dockerfile:1
 
 # Papiq image, one Dockerfile for development and operation so both use the same system packages.
-#   base            Python and the system packages OCRmyPDF and Docling need
-#   deps            the locked dependencies (Docling, PyTorch CPU) in /opt/papiq/venv, no dev group
-#   docling-models  Docling's layout and table models, downloaded at build time (from deps)
+#   base            Python and the system packages OCRmyPDF needs
+#   deps            the locked dependencies in /opt/papiq/venv, no dev group
 #   app             deps + the Papiq package
 #   s6              s6-overlay, unpacked (version and checksums pinned below)
 #   web             the web UI (web/), built once on the build machine: static files only
-#   dev             devcontainer: base + uv, Node.js, pnpm, Git, Docling models
-#   runtime         the production image: base + s6-overlay + app + models + web UI +
+#   dev             devcontainer: base + uv, Node.js, pnpm, Git
+#   runtime         the production image: base + s6-overlay + app + web UI +
 #                   deploy/image/rootfs (no Node.js)
 # All stages build for linux/amd64 and linux/arm64, each natively on its own machine (CI uses an
 # arm64 runner; building the other architecture locally runs under emulation and is slow).
@@ -26,8 +25,7 @@ FROM ghcr.io/astral-sh/uv:0.11.33 AS uv
 # Set by BuildKit; declared here so that `FROM s6-${TARGETARCH}` can use it.
 ARG TARGETARCH
 
-# --- base: Python and the system packages OCRmyPDF and Docling need -----------------------------
-# libgl1 and libglib2.0-0t64: OpenCV, which Docling loads.
+# --- base: Python and the system packages OCRmyPDF needs ----------------------------------------
 FROM python:3.13.13-slim-trixie AS base
 
 ENV PYTHONUNBUFFERED=1 \
@@ -40,8 +38,6 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y \
         ca-certificates \
         ghostscript \
-        libgl1 \
-        libglib2.0-0t64 \
         pngquant \
         qpdf \
         tesseract-ocr \
@@ -51,8 +47,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # --- deps: the locked dependencies, without the dev group and without Papiq itself --------------
-# One layer for PyTorch and Docling that only a change of the lock file rebuilds; `docling-models`
-# and `app` build on it. The environment's Python is the image's own (same path in `runtime`).
+# One layer that only a change of the lock file rebuilds; `app` builds on it. The environment's
+# Python is the image's own (same path in `runtime`).
 FROM base AS deps
 
 COPY --from=uv /uv /usr/local/bin/
@@ -64,15 +60,6 @@ ENV UV_PYTHON_DOWNLOADS=never \
 WORKDIR /build
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev
-
-# --- docling-models: the models Docling needs, never downloaded at run time ---------------------
-# Downloads the models of exactly the locked Docling version. The target images copy the result.
-FROM deps AS docling-models
-
-# Optional build secret `hf_token` (a Hugging Face token) avoids Hugging Face's rate limit; it
-# does not end up in the image.
-RUN --mount=type=secret,id=hf_token,env=HF_TOKEN \
-    /opt/papiq/venv/bin/docling-tools models download layout tableformer -o /opt/docling-models
 
 # --- app: Papiq itself, installed (not editable) into the environment ---------------------------
 FROM deps AS app
@@ -123,9 +110,6 @@ RUN pnpm build
 
 # --- dev: devcontainer ---------------------------------------------------------------------------
 FROM base AS dev
-
-# Docling models (PAPIQ_DOCLING_MODELS_PATH defaults to this directory).
-COPY --from=docling-models /opt/docling-models /opt/docling-models
 
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
@@ -179,7 +163,6 @@ FROM base AS runtime
 
 COPY --from=s6 /s6/ /
 COPY --from=app /opt/papiq/venv /opt/papiq/venv
-COPY --from=docling-models /opt/docling-models /opt/docling-models
 COPY --from=web /web/build /opt/papiq/ui
 # The s6 services and scripts.
 COPY deploy/image/rootfs/ /

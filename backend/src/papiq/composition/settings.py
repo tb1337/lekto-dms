@@ -158,11 +158,10 @@ class Settings(BaseSettings):
     cleanup_interval: Seconds = timedelta(hours=1)
     retention: Seconds = timedelta(days=7)
 
-    # Processing: OCR (OCRmyPDF, Tesseract language codes joined by `+`) and parsing (Docling).
+    # Processing: OCR (OCRmyPDF, Tesseract language codes joined by `+`); the text is read from
+    # the archive's text layer as it is set (PDFium), which needs no settings.
     ocr_languages: Annotated[str, Field(pattern=r"^[a-z_]+(\+[a-z_]+)*$")] = "deu+eng"
     ocr_timeout: Seconds = timedelta(minutes=10)
-    parse_timeout: Seconds = timedelta(minutes=10)
-    docling_models_path: Path = Path("/opt/docling-models")
 
     # Search: Meilisearch holds the index of full text and vectors.
     meilisearch_url: AnyHttpUrl | None = None

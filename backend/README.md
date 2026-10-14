@@ -333,8 +333,10 @@ without pickle (`classifier/model-<n>.npz`, the latest three are kept) and predi
 alone, so a new scikit-learn version cannot break it. `GET /classifier` tells its state.
 
 **After the update to 0.2.** The search index gets the attribute `confirmed` the neighbours
-filter on: run `python -m papiq.composition reindex` (or `POST /search/reindex`) once; until
-then the neighbours find nothing and abstain. Documents taken over before count as confirmed;
+filter on. The migration raises the version of every confirmed document, so the worker's
+reconciliation at its start writes them again; vectors of unchanged text are kept, so this
+needs no embedding calls and no `reindex` (which would embed every document anew). Until it is
+through, the neighbours find fewer documents. Documents taken over before count as confirmed;
 the first training starts by itself once the worker runs.
 
 **Evaluation.** `python -m papiq.composition evaluate [--fake]` runs the synthetic documents in

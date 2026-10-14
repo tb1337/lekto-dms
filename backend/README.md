@@ -249,7 +249,7 @@ fields node reads the fields of the decided type and the title (`core/services/c
 the rules in `core/domain/verdict.py`).
 
 - **`signal_llm`**: one request to an OpenAI-compatible chat completions endpoint
-  (`adapters/outbound/openai_compat`, `PAPIQ_LLM_*`, prompt `propose-1`) for sender and recipient,
+  (`adapters/outbound/openai_compat`, `PAPIQ_LLM_*`, prompt `propose-2`) for sender and recipient,
   type, tags, date, a title, the language, and the values of the fields of the type it chooses
   and of the global ones, each with the quoted passage. The answer must follow a JSON schema
   (`response_format` `json_schema`, or `json_object` for providers without schema support); an
@@ -286,7 +286,7 @@ and no signal recognised anything.
 The fields node reads the fields of the decided type and the global ones. If the model asked
 for the type the judge decided, its values are taken over; otherwise (after a type correction,
 or for a document from before the signals) it asks the model for the missing ones (prompt
-`extract-2`). Each field is required or optional per type it is assigned to, a global one by its
+`extract-3`). Each field is required or optional per type it is assigned to, a global one by its
 own switch:
 
 | Field | Check | Not passed |

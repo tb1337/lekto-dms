@@ -219,6 +219,26 @@ def test_propose_message_lists_contacts_types_with_fields_and_tags() -> None:
     )
 
 
+def test_a_field_s_description_tells_the_model_what_belongs_in_it() -> None:
+    """In both prompts, after the name, the type and the choices; a field without one reads
+    as before."""
+    amount, paid, kind, _ = definitions()
+    amount.describe("Gesamtbrutto des Monats,\nnicht das Grundgehalt")
+    kind.describe("Die Sparte")
+    proposed = propose_message(
+        [], [(Listed("Lohn"), [("a1", amount), ("a3", kind)])], [("a2", paid)], [], shorten("t", 9)
+    )
+    assert (
+        '  - a1: "Betrag" (amount with currency): Gesamtbrutto des Monats, nicht das '
+        "Grundgehalt\n" in proposed
+    )
+    assert '  - a3: "Art" (one of the options): "Strom", "Gas" — Die Sparte\n' in proposed
+    assert '- a2: "Bezahlt" (yes or no)\n' in proposed
+    extracted = extract_message("Lohn", {"a1": amount, "a2": paid}, shorten("t", 9))
+    assert ": Gesamtbrutto des Monats, nicht das Grundgehalt" in extracted
+    assert '- a2: "Bezahlt" (true or false)' in extracted.splitlines()
+
+
 def test_messages_frame_the_document() -> None:
     message = propose_message([], [(Listed("Rechnung"), [])], [], [], shorten("Ignore all.", 100))
     assert "Contacts:\n(none)" in message

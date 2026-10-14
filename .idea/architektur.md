@@ -226,7 +226,7 @@ Signale bestimmen die Lane nicht: Sie enden ok, auch wenn sie sich enthalten (de
 
 | Signal | Vorschlag |
 | --- | --- |
-| `signal_llm` | Ein Aufruf des Sprachmodells (Prompt `propose-1`): Absender und Empfänger, Typ, Tags, Datum, Titel, Sprache, dazu die Felder des gewählten Typs und die globalen, je mit Zitat. Der Absender wird Kontakt, der Empfänger nie. Ohne Modell enthält es sich. |
+| `signal_llm` | Ein Aufruf des Sprachmodells (Prompt `propose-2`): Absender und Empfänger, Typ, Tags, Datum, Titel, Sprache, dazu die Felder des gewählten Typs und die globalen, je mit Zitat. Der Absender wird Kontakt, der Empfänger nie. Ohne Modell enthält es sich. |
 | `signal_classifier` | Klassifikator aus TF-IDF (Wörter und Wortpaare, keine reinen Ziffern) und logistischer Regression je Ziel: Kontakt, Typ, je Tag. Ein Modell für alle Nutzer. Ohne trainiertes Modell enthält es sich. |
 | `signal_neighbours` | Die fünf ähnlichsten bestätigten Dokumente, die der Besitzer lesen darf (Vektor des ersten Abschnitts gegen den Suchindex); ihr Kontakt, Typ und ihre Tags aus der Datenbank, dazu was die bestätigten Dokumente überhaupt tragen. Ohne Embeddings oder Index enthält es sich. |
 | `signal_facts` | Harte Beweise im Text: Name oder Alias eines Kontakts ganz im Text, Kennungen von Kontakten, unbekannte IBANs und USt-IdNr als Hinweis. |
@@ -246,7 +246,7 @@ Nicht hundertprozentig sicher heißt kein Grün. Ein Signal *nennt* einen Wert, 
 
 **Felder (`fields`)**
 
-- Gelesen werden die Felder des entschiedenen Typs und die globalen. Hat das Modell nach dem Typ gefragt, den das Urteil entschied, werden seine Werte übernommen; sonst (nach einer Korrektur des Typs) fragt der Knoten das Modell nach den fehlenden (Prompt `extract-2`).
+- Gelesen werden die Felder des entschiedenen Typs und die globalen. Hat das Modell nach dem Typ gefragt, den das Urteil entschied, werden seine Werte übernommen; sonst (nach einer Korrektur des Typs) fragt der Knoten das Modell nach den fehlenden (Prompt `extract-3`).
 - Ein Feld ist je Zuordnung zu einem Typ Pflicht oder optional, ein globales mit eigenem Schalter; nach der Übernahme ist alles optional (Tobi, 13.10.2026). Pflicht: der Wert muss gefunden und geprüft sein, sonst gelb. Optional: ohne Wert bleibt das Feld leer; ein Wert, der die Prüfung nicht besteht, macht gelb.
 - Werte werden gelesen, wie Menschen sie schreiben (`2.111,68 €`, `12. März 2026`, `ja`); eine mehrdeutige Zahl so, wie der Text sie zeigt, sonst nach der Sprache des Dokuments. Der Wert muss im Text stehen; ein Datumsfeld gleich dem Dokumentdatum ist nur ein Vorschlag, weil Modelle das Dokumentdatum für fehlende Daten wie die Fälligkeit einsetzen.
 - **Titel**: das Titelmuster des Typs (`{contact}`, `{document_type}`, `{document_date}` und `{document_date:YYYY-MM}`, `{filename}`, `{field:Name}`), sonst der Titel des Modells, solange das Dokument noch den Dateinamen oder den Titel der Maschine trägt; fehlt ein Wert des Musters, der des Modells mit Hinweis. Beim Bestätigen wird das Muster mit den entschiedenen Werten neu gerendert. Regeln setzen den Titel weiter und ersetzen den der Maschine ohne Gelb.

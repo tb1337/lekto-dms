@@ -6,16 +6,16 @@ import { m } from '#lib/paraglide/messages.js';
 import JsonTree from './JsonTree.svelte';
 
 const structure = {
-	schema_name: 'DoclingDocument',
-	pages: { '1': { page_no: 1 } },
-	texts: Array.from({ length: 150 }, (_, index) => ({ text: `Zeile ${index}`, label: 'text' })),
+	parser: 'layout',
+	page: { number: 1 },
+	lines: Array.from({ length: 150 }, (_, index) => ({ text: `Zeile ${index}`, words: [] })),
 	origin: null
 };
 
 describe('JsonTree', () => {
 	it('opens the top and folds the rest with its size', () => {
 		const { container } = render(JsonTree, { value: structure });
-		expect(container.textContent).toMatch(/"schema_name":\s"DoclingDocument"/);
+		expect(container.textContent).toMatch(/"parser":\s"layout"/);
 		expect(screen.getByText(m.json_items({ count: '150' }))).toBeTruthy();
 		expect(screen.getByText(m.json_key())).toBeTruthy();
 		// What is folded is not built.

@@ -8,7 +8,6 @@
 	import { apiFetch } from '#lib/api/fetch.ts';
 	import { apiError, ApiError } from '#lib/api/problem.ts';
 	import JsonTree from '#lib/components/document/JsonTree.svelte';
-	import Markdown from '#lib/components/document/Markdown.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { events } from '#lib/events.svelte.ts';
@@ -16,11 +15,13 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
 
-	// What was read from the document: the text as rendered Markdown, its source, and the
-	// parser's structure (Docling's JSON). The text comes as soon as the document is parsed.
+	// What was read from the document: the text as it is set, in a fixed-pitch font so that its
+	// columns line up, page by page, and its structure (pages, lines and words with boxes). The
+	// text comes as soon as the document is parsed. A document parsed before 0.2 shows Docling's
+	// Markdown as it is until it is read again.
 	let { documentId, filename }: { documentId: string; filename: string } = $props();
 
-	type View = 'text' | 'markdown' | 'json';
+	type View = 'text' | 'json';
 	const PIECE = 20_000;
 	// More than this is not shown (the download has all of it).
 	const MOST_TEXT = 2_000_000;
@@ -137,6 +138,8 @@
 	});
 
 	const ready = $derived(view === 'json' ? structure !== undefined : text !== null);
+	// The pages of the text: a form feed on a line of its own separates them.
+	const pages = $derived((text ?? '').split(/\n?\f\n?/));
 	const problem = $derived(view === 'json' ? structureProblem : textProblem);
 	const stem = $derived(filename.replace(/\.[^.]+$/, '') || 'document');
 
@@ -172,16 +175,15 @@
 				return;
 			}
 		}
-		const url = URL.createObjectURL(new Blob([whole], { type: 'text/markdown;charset=utf-8' }));
+		const url = URL.createObjectURL(new Blob([whole], { type: 'text/plain;charset=utf-8' }));
 		link.href = url;
-		link.download = `${stem}.md`;
+		link.download = `${stem}.txt`;
 		link.click();
 		setTimeout(() => URL.revokeObjectURL(url), 1000);
 	}
 
 	const views: { view: View; label: () => string }[] = [
 		{ view: 'text', label: m.content_text },
-		{ view: 'markdown', label: m.content_markdown },
 		{ view: 'json', label: m.content_json }
 	];
 </script>
@@ -240,11 +242,18 @@
 				{(view === 'json' ? loadingStructure : loading) ? m.loading() : m.text_none()}
 			</p>
 		{:else if view === 'text'}
-			<article class="px-9 py-7">
-				<Markdown source={text ?? ''} />
-			</article>
-		{:else if view === 'markdown'}
-			<pre class="px-7 py-6 font-mono text-[13px] leading-relaxed whitespace-pre-wrap">{text}</pre>
+			<!-- As set: no wrapping, the box scrolls sideways. -->
+			{#each pages as page, index (index)}
+				<section aria-label={m.content_page({ page: index + 1 })} class="px-7 py-6">
+					{#if pages.length > 1}
+						<p class="mb-3 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+							{m.content_page({ page: index + 1 })}
+						</p>
+					{/if}
+					<pre class="font-mono text-[13px] leading-relaxed whitespace-pre">{page}</pre>
+				</section>
+				{#if index < pages.length - 1}<hr class="border-muted" />{/if}
+			{/each}
 		{:else if structureTooLarge}
 			<p class="p-6 text-sm text-muted-foreground">{m.content_json_too_large()}</p>
 		{:else}

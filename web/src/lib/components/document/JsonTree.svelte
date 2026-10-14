@@ -6,7 +6,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 
 	// JSON as a tree: objects and lists fold, with their size; what is folded is not built, so
-	// a large file (Docling's structure of a long document) stays quick. Long lists come in
+	// a large file (the structure of a long document) stays quick. Long lists come in
 	// steps.
 	let {
 		value,

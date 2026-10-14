@@ -603,7 +603,7 @@ export interface paths {
 		head?: never;
 		/**
 		 * Change a field definition
-		 * @description Admins only. Name, choices and scope; the data type stays. Values documents use are never changed: removing a used choice or narrowing the scope past documents with values is a conflict (409).
+		 * @description Admins only. Name, description, choices and scope; the data type stays. Values documents use are never changed: removing a used choice or narrowing the scope past documents with values is a conflict (409).
 		 */
 		patch: operations['change_field_api_v1_fields__id__patch'];
 		trace?: never;
@@ -2648,10 +2648,11 @@ export interface components {
 		 * FieldCreate
 		 * @example {
 		 *       "data_type": "amount",
+		 *       "description": "Gesamtbrutto des Monats, nicht das Grundgehalt",
 		 *       "document_type_ids": [
 		 *         "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b"
 		 *       ],
-		 *       "name": "Amount"
+		 *       "name": "LA_Brutto"
 		 *     }
 		 */
 		FieldCreate: {
@@ -2682,6 +2683,8 @@ export interface components {
 			 * @description A typed field: the document types (of its own) it is required for; for the others it is optional. Extraction must find a required field; an optional one may stay empty, but a value it gives must be shown by the text.
 			 */
 			required_document_type_ids?: string[];
+			/** Description */
+			description?: string | null;
 		};
 		/**
 		 * FieldOut
@@ -2689,6 +2692,7 @@ export interface components {
 		 *       "choices": [],
 		 *       "created_at": "2026-01-10T09:00:00Z",
 		 *       "data_type": "amount",
+		 *       "description": "Gesamtbrutto des Monats, nicht das Grundgehalt",
 		 *       "id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "name": "Amount",
 		 *       "required": false,
@@ -2718,6 +2722,8 @@ export interface components {
 			 * @description A typed field: the document types (of its own) it is required for; for the others it is optional. Extraction must find a required field; an optional one may stay empty, but a value it gives must be shown by the text.
 			 */
 			required_document_type_ids: string[];
+			/** Description */
+			description: string | null;
 			/**
 			 * Created At
 			 * Format: date-time
@@ -2726,7 +2732,8 @@ export interface components {
 		};
 		/**
 		 * FieldPatch
-		 * @description Fields left out stay. The data type cannot change.
+		 * @description Fields left out stay; a `description` of null or empty removes it. The data type
+		 *     cannot change.
 		 * @example {
 		 *       "choices": [
 		 *         "Card",
@@ -2753,6 +2760,8 @@ export interface components {
 			required?: boolean | null;
 			/** Required Document Type Ids */
 			required_document_type_ids?: string[] | null;
+			/** Description */
+			description?: string | null;
 		};
 		/**
 		 * FieldType

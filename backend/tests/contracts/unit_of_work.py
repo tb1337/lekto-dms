@@ -475,6 +475,25 @@ class UnitOfWorkContract:
             assert stored.is_required_for(invoice.id)
             assert not stored.is_required_for(reminder.id)
 
+    async def test_a_field_keeps_its_description(self, uow_factory: UnitOfWorkFactory) -> None:
+        gross = FieldDefinition.create(
+            name="LA_Brutto",
+            data_type=FieldType.AMOUNT,
+            now=NOW,
+            description="Gesamtbrutto des Monats, nicht das Grundgehalt",
+        )
+        async with uow_factory() as uow:
+            await uow.fields.add(gross)
+            await uow.commit()
+        async with uow_factory() as uow:
+            stored = await uow.fields.get(gross.id)
+            assert stored.description == "Gesamtbrutto des Monats, nicht das Grundgehalt"
+            stored.describe("  ")
+            await uow.fields.update(stored)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.fields.get(gross.id)).description is None
+
     # --- documents ------------------------------------------------------------------------------
 
     async def test_document_round_trip_with_all_fields(

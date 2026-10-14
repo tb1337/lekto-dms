@@ -20,7 +20,7 @@ from papiq.core.domain.validation import name_key, require_name, require_utc
 MAX_ALIASES = 100
 """Aliases of one contact."""
 MAX_DESCRIPTION = 300
-"""Characters of a document type's description; it goes into every classification prompt."""
+"""Characters of the description of a document type or a field; it goes into the prompts."""
 
 
 @dataclass(kw_only=True)
@@ -150,7 +150,7 @@ class DocumentType(MasterData):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        self.description = _description(self.description)
+        self.description = checked_description(self.description)
         self.title_pattern = _title_pattern(self.title_pattern)
 
     @classmethod
@@ -171,7 +171,7 @@ class DocumentType(MasterData):
         )
 
     def describe(self, description: str | None) -> None:
-        self.description = _description(description)
+        self.description = checked_description(description)
 
     def set_title_pattern(self, pattern: str | None) -> None:
         self.title_pattern = _title_pattern(pattern)
@@ -239,7 +239,8 @@ def _title_pattern(pattern: str | None) -> str | None:
     return check_pattern(one_line(pattern), with_fields=True)
 
 
-def _description(description: str | None) -> str | None:
+def checked_description(description: str | None) -> str | None:
+    """A description without surrounding space, None if empty; ValidationError if too long."""
     text = (description or "").strip()
     if len(text) > MAX_DESCRIPTION:
         raise ValidationError(f"description must not be longer than {MAX_DESCRIPTION} characters")

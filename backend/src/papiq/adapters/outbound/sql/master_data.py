@@ -142,6 +142,7 @@ class SqlFieldRepository(SqlNamedRepository[FieldId, FieldDefinition]):
                     for s in scopes[row.id]
                     if s.required and not row.is_global
                 ),
+                description=row.description,
                 created_at=row.created_at,
                 version=row.version,
             )
@@ -155,6 +156,7 @@ class SqlFieldRepository(SqlNamedRepository[FieldId, FieldDefinition]):
             "is_global": entity.document_type_ids is None,
             "required": entity.required,
             "choices": list(entity.choices),
+            "description": entity.description,
         }
 
     async def _write_children(self, entity: FieldDefinition) -> None:

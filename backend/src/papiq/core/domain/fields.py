@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.ids import DocumentTypeId, FieldId, new_id
-from papiq.core.domain.master_data import MasterData
+from papiq.core.domain.master_data import MasterData, checked_description
 from papiq.core.domain.validation import require_name
 
 _CURRENCY = re.compile(r"[A-Z]{3}")
@@ -72,6 +72,9 @@ class FieldDefinition(MasterData):
     A field is required or optional where it applies: a global one as `required` says, a
     typed one for the types in `required_types` (a part of its types). Extraction must find
     a required field; an optional one may stay empty.
+
+    `description` tells the language model what belongs in the field (its name is often an
+    internal one no document shows): it goes into the prompts.
     """
 
     id: FieldId
@@ -80,10 +83,12 @@ class FieldDefinition(MasterData):
     choices: tuple[str, ...] = ()
     required: bool = False
     required_types: frozenset[DocumentTypeId] = frozenset()
+    description: str | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
         self.required_types = frozenset(self.required_types)
+        self.description = checked_description(self.description)
         if self.document_type_ids is None:
             if self.required_types:
                 raise ValidationError("a global field is required by `required`, not per type")
@@ -113,6 +118,7 @@ class FieldDefinition(MasterData):
         choices: Collection[str] = (),
         required: bool = False,
         required_types: Collection[DocumentTypeId] = (),
+        description: str | None = None,
     ) -> Self:
         return cls(
             id=FieldId(new_id()),
@@ -122,8 +128,13 @@ class FieldDefinition(MasterData):
             choices=tuple(choices),
             required=required,
             required_types=frozenset(required_types),
+            description=description,
             created_at=now,
         )
+
+    def describe(self, description: str | None) -> None:
+        """What belongs in the field, for the language model; None or empty removes it."""
+        self.description = checked_description(description)
 
     def change_choices(self, choices: Collection[str]) -> frozenset[str]:
         """New choices for a choice field; returns the choices that are gone. Values in

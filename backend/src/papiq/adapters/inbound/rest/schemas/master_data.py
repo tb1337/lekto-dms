@@ -94,6 +94,17 @@ Description = Annotated[
         examples=["Gehaltsabrechnung, Entgeltbescheinigung, Verdienstnachweis"],
     ),
 ]
+FieldDescription = Annotated[
+    str,
+    Field(
+        max_length=MAX_DESCRIPTION,
+        description=(
+            "What belongs in the field, for the language model (the field's name is often an "
+            "internal one no document shows); empty removes it."
+        ),
+        examples=["Gesamtbrutto des Monats, nicht das Grundgehalt; steht als Gesamt-Brutto"],
+    ),
+]
 
 
 TitlePattern = Annotated[
@@ -221,9 +232,10 @@ class FieldCreate(BaseModel):
         json_schema_extra={
             "examples": [
                 {
-                    "name": "Amount",
+                    "name": "LA_Brutto",
                     "data_type": "amount",
                     "document_type_ids": ["01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b"],
+                    "description": "Gesamtbrutto des Monats, nicht das Grundgehalt",
                 }
             ]
         },
@@ -239,10 +251,12 @@ class FieldCreate(BaseModel):
     )
     required: Required = False
     required_document_type_ids: RequiredTypes = Field(default_factory=list)
+    description: FieldDescription | None = None
 
 
 class FieldPatch(BaseModel):
-    """Fields left out stay. The data type cannot change."""
+    """Fields left out stay; a `description` of null or empty removes it. The data type
+    cannot change."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -266,6 +280,7 @@ class FieldPatch(BaseModel):
     )
     required: Required | None = None
     required_document_type_ids: RequiredTypes | None = None
+    description: FieldDescription | None = None
 
 
 class FieldOut(BaseModel):
@@ -280,6 +295,7 @@ class FieldOut(BaseModel):
                     "choices": [],
                     "required": False,
                     "required_document_type_ids": [],
+                    "description": "Gesamtbrutto des Monats, nicht das Grundgehalt",
                     "created_at": "2026-01-10T09:00:00Z",
                 }
             ]
@@ -293,6 +309,7 @@ class FieldOut(BaseModel):
     choices: list[str]
     required: Required
     required_document_type_ids: RequiredTypes
+    description: str | None
     created_at: datetime
 
     @classmethod
@@ -307,5 +324,6 @@ class FieldOut(BaseModel):
             choices=list(item.choices),
             required=item.required,
             required_document_type_ids=sorted(item.required_types),
+            description=item.description,
             created_at=item.created_at,
         )

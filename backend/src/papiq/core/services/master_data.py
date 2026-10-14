@@ -180,9 +180,11 @@ class MasterDataService:
         choices: Collection[str] = (),
         required: bool = False,
         required_document_type_ids: Collection[DocumentTypeId] = (),
+        description: str | None = None,
     ) -> FieldDefinition:
         """`document_type_ids=None` creates a global field; `required` makes it required
-        (global), `required_document_type_ids` for those of its types (typed)."""
+        (global), `required_document_type_ids` for those of its types (typed); `description`
+        tells the language model what belongs in it."""
         definition = FieldDefinition.create(
             name=name,
             data_type=data_type,
@@ -191,6 +193,7 @@ class MasterDataService:
             choices=choices,
             required=required,
             required_types=required_document_type_ids,
+            description=description,
         )
 
         async def check(uow: UnitOfWork) -> None:
@@ -209,8 +212,10 @@ class MasterDataService:
         document_type_ids: Collection[DocumentTypeId] | Unset | None = UNSET,
         required: bool | None = None,
         required_document_type_ids: Collection[DocumentTypeId] | None = None,
+        description: str | Unset | None = UNSET,
     ) -> FieldDefinition:
-        """Admins only. Name (title patterns that use it follow); choices (adding is free,
+        """Admins only. Description (None or empty removes it; UNSET leaves it); name (title
+        patterns that use it follow); choices (adding is free,
         removing only what no document uses); scope (`None`: global; widening is free,
         narrowing only while no document outside the new scope has a value; the types it is
         required for narrow with it); required (global) or the types it is required for. The
@@ -239,6 +244,8 @@ class MasterDataService:
                 ):
                     raise ConflictError("documents outside the new scope have values")
             definition.require(required=required, types=required_document_type_ids)
+            if not isinstance(description, Unset):
+                definition.describe(description)
             await uow.fields.update(definition)
             if choices is not None:
                 fields = {item.id: item for item in await uow.fields.list_all()}

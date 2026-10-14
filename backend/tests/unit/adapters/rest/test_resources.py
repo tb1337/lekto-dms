@@ -360,6 +360,24 @@ async def test_required_fields_and_title_patterns(api: Api) -> None:
     assert response.json()["title_pattern"] is None
 
 
+async def test_a_field_tells_the_model_what_belongs_in_it(api: Api) -> None:
+    a = auth(await api.admin())
+    hint = "Gesamtbrutto des Monats, nicht das Grundgehalt"
+    field = await post(
+        api, "/fields", {"name": "LA_Brutto", "data_type": "amount", "description": hint}, a
+    )
+    assert field["description"] == hint
+    path = f"{PREFIX}/fields/{field['id']}"
+    response = await api.client.patch(path, json={"name": "LA_Gesamtbrutto"}, headers=a)
+    assert response.json()["description"] == hint  # left out: kept
+    response = await api.client.patch(path, json={"description": "x" * 301}, headers=a)
+    assert response.status_code == 422
+    response = await api.client.patch(path, json={"description": None}, headers=a)
+    assert response.json()["description"] is None
+    plain = await post(api, "/fields", {"name": "Notiz", "data_type": "text"}, a)
+    assert plain["description"] is None
+
+
 async def test_contact_aliases_and_type_descriptions(api: Api) -> None:
     a = auth(await api.admin())
     contact = await post(api, "/contacts", {"name": "Nord", "aliases": ["Nord KV"]}, a)

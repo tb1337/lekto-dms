@@ -188,6 +188,7 @@ async def create_field(body: FieldCreate, user: CurrentUser, context: Context) -
         choices=body.choices,
         required=body.required,
         required_document_type_ids=[DocumentTypeId(id) for id in body.required_document_type_ids],
+        description=body.description,
     )
     return FieldOut.of(item)
 
@@ -206,7 +207,8 @@ async def get_field(id: UUID, user: CurrentUser, context: Context) -> FieldOut:
     "/{id}",
     summary="Change a field definition",
     description=(
-        ADMINS_ONLY + " Name, choices and scope; the data type stays. Values documents use are "
+        ADMINS_ONLY + " Name, description, choices and scope; the data type stays. Values "
+        "documents use are "
         "never changed: removing a used choice or narrowing the scope past documents with "
         "values is a conflict (409)."
     ),
@@ -232,6 +234,7 @@ async def change_field(id: UUID, body: FieldPatch, user: CurrentUser, context: C
         required_document_type_ids=(
             None if required_types is None else [DocumentTypeId(id) for id in required_types]
         ),
+        description=body.description if "description" in body.model_fields_set else UNSET,
     )
     return FieldOut.of(item)
 

@@ -171,6 +171,8 @@ field_definitions = Table(
     # Whether a global field is required (typed ones: `field_document_types.required`).
     Column("required", Boolean, nullable=False, server_default=false()),
     Column("choices", json_type(), nullable=False),
+    # What belongs in the field, for the language model.
+    Column("description", Text, nullable=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),
 )

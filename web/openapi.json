@@ -4888,7 +4888,7 @@
           "master data"
         ],
         "summary": "Change a field definition",
-        "description": "Admins only. Name, choices and scope; the data type stays. Values documents use are never changed: removing a used choice or narrowing the scope past documents with values is a conflict (409).",
+        "description": "Admins only. Name, description, choices and scope; the data type stays. Values documents use are never changed: removing a used choice or narrowing the scope past documents with values is a conflict (409).",
         "operationId": "change_field_api_v1_fields__id__patch",
         "parameters": [
           {
@@ -14749,6 +14749,22 @@
             "type": "array",
             "title": "Required Document Type Ids",
             "description": "A typed field: the document types (of its own) it is required for; for the others it is optional. Extraction must find a required field; an optional one may stay empty, but a value it gives must be shown by the text."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "description": "What belongs in the field, for the language model (the field's name is often an internal one no document shows); empty removes it.",
+                "examples": [
+                  "Gesamtbrutto des Monats, nicht das Grundgehalt; steht als Gesamt-Brutto"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
           }
         },
         "additionalProperties": false,
@@ -14761,10 +14777,11 @@
         "examples": [
           {
             "data_type": "amount",
+            "description": "Gesamtbrutto des Monats, nicht das Grundgehalt",
             "document_type_ids": [
               "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b"
             ],
-            "name": "Amount"
+            "name": "LA_Brutto"
           }
         ]
       },
@@ -14818,6 +14835,17 @@
             "title": "Required Document Type Ids",
             "description": "A typed field: the document types (of its own) it is required for; for the others it is optional. Extraction must find a required field; an optional one may stay empty, but a value it gives must be shown by the text."
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -14833,6 +14861,7 @@
           "choices",
           "required",
           "required_document_type_ids",
+          "description",
           "created_at"
         ],
         "title": "FieldOut",
@@ -14841,6 +14870,7 @@
             "choices": [],
             "created_at": "2026-01-10T09:00:00Z",
             "data_type": "amount",
+            "description": "Gesamtbrutto des Monats, nicht das Grundgehalt",
             "id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b",
             "name": "Amount",
             "required": false,
@@ -14927,12 +14957,28 @@
               }
             ],
             "title": "Required Document Type Ids"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "description": "What belongs in the field, for the language model (the field's name is often an internal one no document shows); empty removes it.",
+                "examples": [
+                  "Gesamtbrutto des Monats, nicht das Grundgehalt; steht als Gesamt-Brutto"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "FieldPatch",
-        "description": "Fields left out stay. The data type cannot change.",
+        "description": "Fields left out stay; a `description` of null or empty removes it. The data type\ncannot change.",
         "examples": [
           {
             "choices": [

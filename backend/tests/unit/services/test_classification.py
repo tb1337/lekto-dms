@@ -113,7 +113,7 @@ FIELDS: list[JsonValue] = [
     # Keys by name: a1 Bezahlt, a2 Fällig am, a3 Rechnungsbetrag, a4 Rechnungsnummer.
     {"key": "a2", "value": "15.04.2026", "evidence": "Zahlbar bis 15.04.2026."},
     {"key": "a3", "value": "84,20 €", "evidence": "Gesamtbetrag | 84,20 €"},
-    {"key": "a4", "value": "R-2026-0815", "evidence": None},
+    {"key": "a4", "value": "R-2026-0815", "evidence": "Rechnung Nr. R-2026-0815"},
 ]
 
 
@@ -144,7 +144,7 @@ def extraction(**values: Any) -> JsonObject:
             "value": {"amount": "84.20", "currency": "EUR"},
             "evidence": "Gesamtbetrag | 84,20 €",
         },
-        "a4": {"value": "R-2026-0815", "evidence": None},
+        "a4": {"value": "R-2026-0815", "evidence": "Rechnung Nr. R-2026-0815"},
     }
     return {"fields": defaults | values}
 
@@ -656,7 +656,13 @@ async def test_new_tags_are_only_proposed(world: World) -> None:
 @pytest.mark.parametrize(
     ("value", "evidence", "reason", "suggestion"),
     [
-        ("2026-03-30", None, "the date does not appear in the text", "2026-03-30"),
+        ("2026-03-31", None, "no quoted passage", "2026-03-31"),
+        (
+            "2026-03-30",
+            "Musterstadt, 31.03.2026",
+            "the quoted passage does not show the value",
+            "2026-03-30",
+        ),
         (
             "2026-03-31",
             "31.03.2025",
@@ -687,7 +693,7 @@ async def test_uncertain_dates(
 
 async def test_a_date_written_in_german_is_read(world: World) -> None:
     await seed(world)
-    answer = proposal(document_date={"value": "31. März 2026", "evidence": None})
+    answer = proposal(document_date={"value": "31. März 2026", "evidence": "Stand: 31. März 2026"})
     result = await classify(world, answer, INVOICE + "\nStand: 31. März 2026\n")
     assert result.changes.document_date == date(2026, 3, 31)
 
@@ -794,13 +800,29 @@ async def test_verified_fields_are_applied(world: World) -> None:
     ("answer", "name", "reason", "suggestion"),
     [
         (
-            {"a3": {"value": {"amount": "99.99", "currency": "EUR"}, "evidence": None}},
+            {
+                "a3": {
+                    "value": {"amount": "99.99", "currency": "EUR"},
+                    "evidence": "Gesamtbetrag | 84,20 €",
+                }
+            },
             "Rechnungsbetrag",
-            "'Rechnungsbetrag': the amount does not appear in the text",
+            "'Rechnungsbetrag': the quoted passage does not show the value",
             {"amount": "99.99", "currency": "EUR"},
         ),
         (
-            {"a3": {"value": {"amount": "84.20", "currency": "USD"}, "evidence": None}},
+            {"a3": {"value": {"amount": "84.20", "currency": "EUR"}, "evidence": None}},
+            "Rechnungsbetrag",
+            "'Rechnungsbetrag': no quoted passage",
+            {"amount": "84.20", "currency": "EUR"},
+        ),
+        (
+            {
+                "a3": {
+                    "value": {"amount": "84.20", "currency": "USD"},
+                    "evidence": "Gesamtbetrag | 84,20 €",
+                }
+            },
             "Rechnungsbetrag",
             "'Rechnungsbetrag': the currency USD does not appear in the text",
             {"amount": "84.20", "currency": "USD"},
@@ -818,9 +840,9 @@ async def test_verified_fields_are_applied(world: World) -> None:
             None,
         ),
         (
-            {"a4": {"value": "R-2026-0816", "evidence": None}},
+            {"a4": {"value": "R-2026-0816", "evidence": "Rechnung Nr. R-2026-0815"}},
             "Rechnungsnummer",
-            "'Rechnungsnummer': the text does not appear in the text",
+            "'Rechnungsnummer': the quoted passage does not show the value",
             "R-2026-0816",
         ),
         (
@@ -830,9 +852,9 @@ async def test_verified_fields_are_applied(world: World) -> None:
             "R-2026-0815",
         ),
         (
-            {"a2": {"value": "2026-04-16", "evidence": None}},
+            {"a2": {"value": "2026-04-16", "evidence": "Zahlbar bis 15.04.2026."}},
             "Fällig am",
-            "'Fällig am': the date does not appear in the text",
+            "'Fällig am': the quoted passage does not show the value",
             "2026-04-16",
         ),
         (
@@ -848,13 +870,18 @@ async def test_verified_fields_are_applied(world: World) -> None:
             True,
         ),
         (
-            {"a4": {"value": "R-2026", "evidence": None}},
+            {"a4": {"value": "R-2026", "evidence": "Rechnung Nr. R-2026-0815"}},
             "Rechnungsnummer",
-            "'Rechnungsnummer': the text does not appear in the text",
+            "'Rechnungsnummer': the quoted passage does not show the value",
             "R-2026",
         ),
         (
-            {"a3": {"value": {"amount": "84.20", "currency": "BIS"}, "evidence": None}},
+            {
+                "a3": {
+                    "value": {"amount": "84.20", "currency": "BIS"},
+                    "evidence": "Gesamtbetrag | 84,20 €",
+                }
+            },
             "Rechnungsbetrag",
             "'Rechnungsbetrag': the currency BIS does not appear in the text",
             {"amount": "84.20", "currency": "BIS"},
@@ -893,7 +920,10 @@ async def test_values_are_read_leniently(world: World) -> None:
         world,
         extraction(
             a1={"value": True, "evidence": "Zahlbar bis 15.04.2026."},
-            a3={"value": {"amount": "84,2", "currency": "eur"}, "evidence": None},
+            a3={
+                "value": {"amount": "84,2", "currency": "eur"},
+                "evidence": "Gesamtbetrag | 84,20 €",
+            },
         ),
     )
     fields = seeded.fields
@@ -944,7 +974,7 @@ async def test_an_amount_without_any_currency_in_the_text_is_in_the_default_one(
 ) -> None:
     seeded = await seed(world)
     document = await document_with(world, PAY_SLIP, seeded.types["Rechnung"])
-    answer = extraction(a3={"value": value, "evidence": None})
+    answer = extraction(a3={"value": value, "evidence": "| Nettoverdienst | 2.987,45 |"})
     step = FieldsNode(
         world.uow,
         world.object_store,
@@ -962,6 +992,37 @@ async def test_an_amount_without_any_currency_in_the_text_is_in_the_default_one(
         )
     else:
         assert (check.reason or "").endswith("does not appear in the text")
+
+
+BROKEN_SCAN = """\
+Abrechnung der Brutto-Netto-Bezüge
+Gesamt-Brutto
+
+0020Ausbildungsvergiitung kfm.
+620
+Netto-Verdienst 310,00 EUR
+"""
+
+
+@pytest.mark.parametrize(
+    ("value", "evidence", "reason"),
+    [
+        # The label alone, the value from a fragment ten lines below (a real false green).
+        ("620,00 EUR", "Gesamt-Brutto", "the quoted passage does not show the value"),
+        ("620,00 EUR", "620", "the quoted passage does not show the value"),
+        ("620,00 EUR", None, "no quoted passage"),
+        ("310,00 EUR", "Netto-Verdienst 310,00 EUR", None),
+    ],
+)
+async def test_the_quoted_passage_must_show_the_value(
+    world: World, value: str, evidence: str | None, reason: str | None
+) -> None:
+    seeded, result = await extract(
+        world, extraction(a3={"value": value, "evidence": evidence}), BROKEN_SCAN
+    )
+    check = field_check(seeded, result, "Rechnungsbetrag")
+    assert check.reason == (None if reason is None else f"'Rechnungsbetrag': {reason}")
+    assert check.ok is (reason is None)
 
 
 async def test_values_are_read_as_written_in_german(world: World) -> None:
@@ -1065,9 +1126,12 @@ async def test_after_a_type_correction_the_fields_are_asked_for(world: World) ->
     fake = model(
         {
             "fields": {
-                "a1": {"value": "2026-04-15", "evidence": None},
-                "a2": {"value": {"amount": "84.20", "currency": "EUR"}, "evidence": None},
-                "a3": {"value": "R-2026-0815", "evidence": None},
+                "a1": {"value": "2026-04-15", "evidence": "Zahlbar bis 15.04.2026."},
+                "a2": {
+                    "value": {"amount": "84.20", "currency": "EUR"},
+                    "evidence": "Gesamtbetrag | 84,20 €",
+                },
+                "a3": {"value": "R-2026-0815", "evidence": "Rechnung Nr. R-2026-0815"},
             }
         }
     )
@@ -1294,7 +1358,8 @@ async def test_a_quote_may_lead_to_the_contact_without_naming_it(
 
 async def test_field_quotes_show_amounts_and_dates_but_never_yes_or_no(world: World) -> None:
     paid = {"value": True, "evidence": "Zahlbar bis 15.04.2026."}
-    seeded, result = await extract(world, extraction(a1=paid))
+    number = {"value": "R-2026-0815", "evidence": None}
+    seeded, result = await extract(world, extraction(a1=paid, a4=number))
     assert field_check(seeded, result, "Rechnungsbetrag").quote_shows_value is True
     assert field_check(seeded, result, "Fällig am").quote_shows_value is True
     assert field_check(seeded, result, "Bezahlt").quote_shows_value is False

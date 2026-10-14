@@ -675,7 +675,9 @@ def _check_date(field: str, proposal: Proposal, facts: DocumentText, today: date
         return FieldCheck(
             outcome=Outcome.UNCERTAIN, confidence=0, reason=f"{value} is not plausible", **common
         )
-    return _verified(common, value.isoformat(), proposal, facts, facts.has_date(value), "date")
+    return _verified(
+        common, value.isoformat(), proposal, facts, facts.has_date(value), "date", literal=True
+    )
 
 
 def _check_field(
@@ -738,7 +740,8 @@ def _check_field(
         )
     common["quote_shows_value"] = _quoted(proposal, lambda quote: _literally(value, quote))
     shown, what = _shown(definition, value, proposal, facts, default_currency)
-    check = _verified(common, field_to_json(value), proposal, facts, shown, what)
+    literal = definition.data_type in _LITERAL
+    check = _verified(common, field_to_json(value), proposal, facts, shown, what, literal=literal)
     if check.ok:
         return check
     return FieldCheck(
@@ -751,6 +754,8 @@ def _check_field(
 
 
 _SHORTEST_EVIDENCE = 4  # characters of a quoted passage that alone backs a yes/no or choice
+# Values written as such: their quoted passage must show them (`_verified`).
+_LITERAL = frozenset({FieldType.TEXT, FieldType.NUMBER, FieldType.AMOUNT, FieldType.LINK})
 
 
 def _shown(
@@ -793,7 +798,7 @@ def _literally(value: FieldValue, quote: DocumentText) -> bool:
     never written as such."""
     match value:
         case Money():
-            return quote.has_number(value.amount)
+            return quote.has_amount(value.amount)
         case Decimal():
             return quote.has_number(value)
         case Url():
@@ -815,9 +820,19 @@ def _verified(
     facts: DocumentText,
     shown: bool,
     what: str,
+    *,
+    literal: bool,
 ) -> FieldCheck:
+    """The check of a value read from the text: the quoted passage must appear in it, and the
+    text must show the value (`shown`). A `literal` value (an amount, number, date, text or
+    link) also needs a quoted passage that shows it: elsewhere in the text the same digits
+    may stand for anything, on a broken scan a lone fragment (`620` for 620,00 €)."""
     if proposal.evidence is not None and not facts.contains(proposal.evidence):
         reason = "the quoted passage does not appear in the text"
+    elif literal and common["quote_shows_value"] is None:
+        reason = "no quoted passage"
+    elif literal and not common["quote_shows_value"]:
+        reason = "the quoted passage does not show the value"
     elif not shown:
         reason = f"the {what} does not appear in the text"
     else:

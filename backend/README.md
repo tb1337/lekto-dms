@@ -278,7 +278,7 @@ sources. The judge's rule:
 | Contact | hard evidence (its identifier, or its name or alias in the text) and a signal names it; or the model's sender matches it from `PAPIQ_CONTACT_SUGGEST_THRESHOLD` on and the classifier or the neighbours name it. Never the model's recipient | yellow with ranked candidates; an identifier alone is a suggestion; an unknown sender a new contact (an admin creates it) |
 | Document type | two signals name it, or only the model and no other signal covers it (the classifier was not trained on it, no confirmed document carries it) | yellow; a type outside the list is proposed as new |
 | Tags | set as a type is green | a suggestion; tags never make a document yellow |
-| Document date | a valid date that appears in the text (`31.03.2026`, `31.3.26`, `2026-03-31`, `31. März 2026`, `March 31, 2026`, ...) | suggested |
+| Document date | a valid date that appears in the text, in a quoted passage that shows it (`31.03.2026`, `31.3.26`, `2026-03-31`, `31. März 2026`, `March 31, 2026`, ...) | suggested |
 
 Without the model's proposal the judge is uncertain; it fails (red) only if the model answered
 and no signal recognised anything.
@@ -297,7 +297,11 @@ own switch:
 | Dates | as the document date; a date field must differ from the document date | the date is suggested |
 | Text, link, choice, yes/no | the value, or the quoted passage, appears in the text (`ja`/`nein` read as yes or no) | |
 
-The quoted passage must appear in the text as well. A field's description (up to 300
+The quoted passage must appear in the text as well, and for an amount, number, date, text or
+link it must show the value itself: elsewhere in the text the same digits may stand for
+anything, on a broken scan a lone fragment. An amount counts in the quote only as an amount,
+with decimal places or a currency beside it (`620,00`, `620 €`, `620,-`; a bare `620` is none).
+Without such a quote the value is only suggested. A field's description (up to 300
 characters) goes into both prompts after its name and choices: it tells the model what belongs
 in the field, whose name is often an internal one no document shows (`LA_Brutto`: the month's
 gross total, not the base salary). The model is told to copy the quoted passage exactly as it

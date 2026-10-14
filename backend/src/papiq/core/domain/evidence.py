@@ -133,6 +133,35 @@ def _reading(token: str, decimal_mark: str, groups: str) -> Decimal | None:
         return None
 
 
+def amounts_in(text: str) -> set[Decimal]:
+    """The numbers the normalised `text` writes as amounts: with two decimal places
+    (`620,00`, `1,234.56`), or with a currency or a dash beside them (`620 €`, `eur 620`,
+    `620,-`). A bare number (`620`) is none: on a scan it may be any fragment."""
+    found: set[Decimal] = set()
+    for match in _NUMBER.finditer(text):
+        readings = _readings(match.group())
+        if _beside_currency(text, match.start(), match.end()):
+            found.update(readings)
+        else:
+            found.update(number for number in readings if number.as_tuple().exponent == -2)
+    return found
+
+
+_BEFORE = re.compile(r"(?:[^\W\d_]+\.?|[€$£¥]) ?$")
+_AFTER = re.compile(r" ?(?:[^\W\d_]+\.?|[€$£¥])")
+_DASH_AFTER = re.compile(r"[.,][-\u2013]")
+
+
+def _beside_currency(text: str, start: int, end: int) -> bool:
+    if _DASH_AFTER.match(text, end):
+        return True
+    before = _BEFORE.search(text[max(0, start - 12) : start])
+    after = _AFTER.match(text, end)
+    return any(
+        currencies_in(found.group().strip()) for found in (before, after) if found is not None
+    )
+
+
 # --- currencies -------------------------------------------------------------------------------
 
 _CURRENCY_SIGNS = {
@@ -301,6 +330,10 @@ class DocumentText:
         return numbers_in(self.normalised)
 
     @cached_property
+    def amounts(self) -> set[Decimal]:
+        return amounts_in(self.normalised)
+
+    @cached_property
     def currencies(self) -> set[str]:
         return currencies_in(self.normalised)
 
@@ -312,6 +345,11 @@ class DocumentText:
 
     def has_number(self, value: Decimal) -> bool:
         return abs(value) in self.numbers
+
+    def has_amount(self, value: Decimal) -> bool:
+        """Whether the text writes `value` as an amount (`amounts_in`), not only as a
+        number."""
+        return abs(value) in self.amounts
 
     def has_currency(self, code: str) -> bool:
         return code in self.currencies

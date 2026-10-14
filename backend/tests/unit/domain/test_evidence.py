@@ -5,6 +5,7 @@ import pytest
 
 from papiq.core.domain.evidence import (
     DocumentText,
+    amounts_in,
     contains,
     currencies_in,
     dates_in,
@@ -88,6 +89,30 @@ def test_dates_and_odd_groups_are_no_numbers() -> None:
     found = numbers_in(normalise("31.03.2026 1.23.456 12,3,4"))
     assert Decimal("31.03") not in found
     assert Decimal("123456") not in found
+
+
+@pytest.mark.parametrize(
+    ("written", "amount"),
+    [
+        ("620,00", "620"),
+        ("1.234,56", "1234.56"),
+        ("1,234.56", "1234.56"),
+        ("620 €", "620"),
+        ("€620", "620"),
+        ("EUR 620", "620"),
+        ("620 Euro", "620"),
+        ("620,-", "620"),
+        ("620,\u2013 EUR", "620"),  # en dash
+    ],
+)
+def test_amounts_as_amounts(written: str, amount: str) -> None:
+    assert Decimal(amount) in amounts_in(normalise(f"Gesamt-Brutto {written}"))
+
+
+@pytest.mark.parametrize("written", ["620", "1.234", "Kto.-Nr.: 620", "84,2", "Seite 620"])
+def test_a_bare_number_is_no_amount(written: str) -> None:
+    """On a broken scan a lone fragment like `620` may stand for anything."""
+    assert amounts_in(normalise(f"Gesamt-Brutto\n{written}\nNetto")) == set()
 
 
 @pytest.mark.parametrize(

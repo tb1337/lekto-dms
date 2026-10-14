@@ -139,6 +139,7 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         drawers.router,
         rules.router,
         rules.applications,
+        rules.templates,
         search.router,  # before documents: `/documents/search` is no document id
         classifier.router,
         documents.router,

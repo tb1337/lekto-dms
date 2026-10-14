@@ -837,6 +837,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/templates/preview': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Check a template and render it with a document
+		 * @description For the editors of rules and title patterns: whether a template is valid and which values it uses, and, with a document the caller may read, what it gives for it as the document is now (or which missing value stops it). Nothing is stored. A template the caller may not save is shown as such (`error`), not refused.
+		 */
+		post: operations['preview_template_api_v1_templates_preview_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/search': {
 		parameters: {
 			query?: never;
@@ -3952,6 +3972,53 @@ export interface components {
 			 * @description Whether the words of this piece matched the query.
 			 */
 			match: boolean;
+		};
+		/**
+		 * TemplatePreviewIn
+		 * @example {
+		 *       "document_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "template": "Lohn {{ document_date | date: '%Y-%m' }} {{ field.la_brutto }}"
+		 *     }
+		 */
+		TemplatePreviewIn: {
+			/**
+			 * Template
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `document_date`, `added`, `tags` (a list), `drawer`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional).
+			 */
+			template: string;
+			/**
+			 * Document Id
+			 * @description A document the caller may read, to render the template with.
+			 */
+			document_id?: string | null;
+			/**
+			 * Document Type Id
+			 * @description The type whose fields the template may use (a title pattern's); else the document's type, else every field.
+			 */
+			document_type_id?: string | null;
+		};
+		/** TemplatePreviewOut */
+		TemplatePreviewOut: {
+			/**
+			 * Used
+			 * @description The values the template uses (`field.la_brutto`).
+			 */
+			used: string[];
+			/**
+			 * Rendered
+			 * @description The text for the document, whitespace collapsed as in a title; None without a document, a missing value or an error.
+			 */
+			rendered: string | null;
+			/**
+			 * Missing
+			 * @description The value the document lacks that the template writes: it would set nothing (a title pattern leaves the model's title).
+			 */
+			missing: string | null;
+			/**
+			 * Error
+			 * @description Why the template is invalid (syntax, an unknown value, an old placeholder).
+			 */
+			error: string | null;
 		};
 		/**
 		 * TokenCreate
@@ -11082,6 +11149,132 @@ export interface operations {
 					 *       "title": "Not Found",
 					 *       "status": 404,
 					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	preview_template_api_v1_templates_preview_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['TemplatePreviewIn'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['TemplatePreviewOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

@@ -1,5 +1,7 @@
 """`/rules`: managing rules over the API."""
 
+from typing import Any
+
 from papiq.adapters.inbound.rest import PREFIX
 from tests.api import auth
 from tests.contracts.processing import SAMPLES
@@ -315,3 +317,43 @@ async def test_an_editor_whose_change_files_the_document_away_learns_nothing_mor
     assert response.json() == {"id": id, "access": None}
     assert (await api.client.get(url, headers=auth(editor))).status_code == 404
     assert (await api.client.get(url, headers=o)).json()["drawer_id"] == private["id"]
+
+
+async def test_a_template_is_previewed_with_a_document(api: Api) -> None:
+    admin, user = await api.admin(), await api.user()
+    a, u = auth(admin), auth(user)
+    kind = await post(api, "/document-types", {"name": "Lohn"}, a)
+    await post(
+        api,
+        "/fields",
+        {"name": "LA_Brutto", "data_type": "amount", "document_type_ids": [kind["id"]]},
+        a,
+    )
+    id = await upload(api, u)
+
+    async def preview(body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+        response = await api.client.post(f"{PREFIX}/templates/preview", json=body, headers=headers)
+        assert response.status_code == 200, response.text
+        result: dict[str, Any] = response.json()
+        return result
+
+    title = {"template": "Scan {{ filename }}", "document_id": id}
+    assert await preview(title, u) == {
+        "used": ["filename"],
+        "rendered": "Scan Bill 2026",
+        "missing": None,
+        "error": None,
+    }
+    # Without a type every field counts; the document has no value for this one.
+    gross = {"template": "{{ field.la_brutto }}", "document_id": id}
+    assert (await preview(gross, u))["missing"] == "field.la_brutto"
+    unknown = {"template": "{{ field.netto }}", "document_type_id": kind["id"]}
+    assert (await preview(unknown, u))["error"] == "unknown value field.netto"
+    old = await preview({"template": "{contact}"}, u)
+    assert old["error"] == "{contact} is no longer a placeholder: write {{ contact }}"
+    # Someone else's document is not found.
+    response = await api.client.post(f"{PREFIX}/templates/preview", json=title, headers=a)
+    assert response.status_code == 200  # an admin reads every document
+    other = await api.user()
+    response = await api.client.post(f"{PREFIX}/templates/preview", json=title, headers=auth(other))
+    assert response.status_code == 404

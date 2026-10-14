@@ -11,16 +11,18 @@ Who may do what:
 
 import builtins
 from collections.abc import Iterable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
+from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import (
     ConflictError,
+    MissingValueError,
     NotFoundError,
     PermissionDeniedError,
     ValidationError,
 )
 from papiq.core.domain.fields import FieldDefinition, FieldType
-from papiq.core.domain.ids import RuleId, UserId
+from papiq.core.domain.ids import DocumentId, DocumentTypeId, RuleId, UserId
 from papiq.core.domain.permissions import drawer_access
 from papiq.core.domain.rules import (
     ForceReview,
@@ -35,14 +37,27 @@ from papiq.core.domain.rules import (
 from papiq.core.domain.templates import (
     FIELD,
     NAMES,
+    TemplateValue,
     old_placeholder,
     rename_field_key,
+    template_values,
     unknown_values,
 )
 from papiq.core.domain.templates import uses_field as field_used
 from papiq.core.domain.users import User
 from papiq.core.ports import Clock, TemplateRenderer, UnitOfWork, UnitOfWorkFactory
-from papiq.core.services._access import load_actor
+from papiq.core.services._access import load_actor, readable_document
+
+
+@dataclass(frozen=True)
+class TemplatePreview:
+    """What a template gives for a document: the values it uses, the rendered text
+    (whitespace collapsed, as in a title), or the missing value or the error that stops it."""
+
+    used: tuple[str, ...] = ()
+    rendered: str | None = None
+    missing: str | None = None
+    error: str | None = None
 
 
 class RuleService:
@@ -115,6 +130,48 @@ class RuleService:
             await uow.rules.add(rule)
             await uow.commit()
         return rule
+
+    async def preview_template(
+        self,
+        actor: UserId,
+        template: str,
+        *,
+        document: DocumentId | None = None,
+        document_type: DocumentTypeId | None = None,
+    ) -> TemplatePreview:
+        """`template` checked (syntax, values; the fields of `document_type`, or of the
+        document's type, else all) and rendered with a document the caller may read, as it
+        is. Nothing is stored."""
+        async with self._uow() as uow:
+            user = await load_actor(uow, actor)
+            found = None if document is None else (await readable_document(uow, user, document))[0]
+            kind = document_type or (None if found is None else found.document_type_id)
+            if kind is not None:
+                await uow.document_types.get(kind)
+            fields = await uow.fields.list_all()
+            applying = [item for item in fields if kind is None or item.applies_to(kind)]
+            error = old_placeholder(template)
+            if error is not None:
+                return TemplatePreview(error=error)
+            try:
+                used = self._templates.check(template)
+            except ValidationError as invalid:
+                return TemplatePreview(error=str(invalid))
+            unknown = unknown_values(used, {item.key for item in applying})
+            if unknown:
+                return TemplatePreview(
+                    used=tuple(sorted(used)), error=f"unknown value {unknown[0]}"
+                )
+            if found is None:
+                return TemplatePreview(used=tuple(sorted(used)))
+            values = await document_values(uow, found, kind, applying)
+        try:
+            rendered = " ".join(self._templates.render(template, values).split())
+        except MissingValueError as missing:
+            return TemplatePreview(used=tuple(sorted(used)), missing=missing.path)
+        except ValidationError as invalid:
+            return TemplatePreview(used=tuple(sorted(used)), error=str(invalid))
+        return TemplatePreview(used=tuple(sorted(used)), rendered=rendered)
 
     async def change(self, actor: UserId, id: RuleId, definition: RuleDefinition) -> Rule:
         """A new version; the scope stays."""
@@ -286,3 +343,27 @@ async def _managed_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
 async def _owner(uow: UnitOfWork, rule: Rule) -> User | None:
     """The owner of a user rule, for checking its references; None for a global rule."""
     return None if rule.owner_id is None else await uow.users.get(rule.owner_id)
+
+
+async def document_values(
+    uow: UnitOfWork,
+    document: Document,
+    document_type: DocumentTypeId | None,
+    fields: Iterable[FieldDefinition],
+) -> dict[str, TemplateValue]:
+    """The values a template sees of `document` as it is (`templates.template_values`)."""
+    contact = None if document.contact_id is None else await uow.contacts.find(document.contact_id)
+    kind = None if document_type is None else await uow.document_types.find(document_type)
+    drawer = await uow.drawers.find(document.drawer_id)
+    owner = await uow.users.find(document.owner_id)
+    tags = [tag.name for id in document.tag_ids if (tag := await uow.tags.find(id)) is not None]
+    return template_values(
+        document,
+        contact=None if contact is None else contact.name,
+        document_type=None if kind is None else kind.name,
+        drawer=None if drawer is None else drawer.name,
+        owner=None if owner is None else owner.username,
+        tags=tags,
+        document_date=document.document_date,
+        fields=[(item, document.fields.get(item.id)) for item in fields],
+    )

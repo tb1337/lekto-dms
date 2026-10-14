@@ -299,6 +299,45 @@ class RuleOut(_RuleDefinitionOut):
         )
 
 
+class TemplatePreviewIn(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "template": "Lohn {{ document_date | date: '%Y-%m' }} {{ field.la_brutto }}",
+                    "document_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
+                }
+            ]
+        },
+    )
+
+    template: str = Field(max_length=500, description=TEMPLATE_DESCRIPTION)
+    document_id: UUID | None = Field(
+        default=None, description="A document the caller may read, to render the template with."
+    )
+    document_type_id: UUID | None = Field(
+        default=None,
+        description="The type whose fields the template may use (a title pattern's); else "
+        "the document's type, else every field.",
+    )
+
+
+class TemplatePreviewOut(BaseModel):
+    used: list[str] = Field(description="The values the template uses (`field.la_brutto`).")
+    rendered: str | None = Field(
+        description="The text for the document, whitespace collapsed as in a title; None "
+        "without a document, a missing value or an error."
+    )
+    missing: str | None = Field(
+        description="The value the document lacks that the template writes: it would set "
+        "nothing (a title pattern leaves the model's title)."
+    )
+    error: str | None = Field(
+        description="Why the template is invalid (syntax, an unknown value, an old placeholder)."
+    )
+
+
 class ApplyPreviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", json_schema_extra={"examples": [{"limit": 50}]})
 

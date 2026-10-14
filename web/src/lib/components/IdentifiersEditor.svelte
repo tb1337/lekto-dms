@@ -60,7 +60,8 @@
 			<div class="flex flex-wrap items-center gap-2 rounded-xl border border-dashed px-3 py-1.5">
 				<span
 					class={[
-						'min-w-0 flex-1 truncate text-sm',
+						// Readable whole: on a narrow screen the actions go to the next line.
+						'min-w-60 flex-1 text-sm break-all',
 						item.source === 'rejected' && 'text-muted-foreground line-through'
 					]}
 				>

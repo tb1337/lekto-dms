@@ -4,7 +4,7 @@
 	import { signalSummary } from '#lib/signals.ts';
 
 	// What a signal said in one run: the proposal, best classes, similar documents, names and
-	// identifiers in the text, or why it abstained.
+	// identifiers in the text, or why it abstained; for the OCR, how well it read each page.
 	let { entry, lookup }: { entry: components['schemas']['LogEntry']; lookup: Lookup | null } =
 		$props();
 

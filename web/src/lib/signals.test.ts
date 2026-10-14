@@ -23,6 +23,24 @@ const texts = (rows: ReturnType<typeof signalSummary>) =>
 	rows.map((row) => [row.label, row.items.map((item) => item.text)]);
 
 describe('signalSummary', () => {
+	it('tells how well the OCR read each page it recognised', () => {
+		const readings = [
+			{ page: 1, words: 224, unsure: 23 },
+			{ page: 2, words: 400, unsure: 8 }
+		];
+		const rows = texts(signalSummary(entry('ocr', { readings }), lookup));
+		expect(rows).toEqual([
+			[
+				m.log_reading(),
+				[
+					m.log_reading_page({ page: '1', unsure: '10%', words: '224' }),
+					m.log_reading_page({ page: '2', unsure: '2%', words: '400' })
+				]
+			]
+		]);
+		expect(signalSummary(entry('ocr', { pages: 1 }), lookup)).toEqual([]);
+	});
+
 	it('tells why a signal abstained', () => {
 		const rows = signalSummary(entry('signal_classifier', { abstained: 'no model' }), lookup);
 		expect(texts(rows)).toEqual([[m.signal_abstained(), ['no model']]]);

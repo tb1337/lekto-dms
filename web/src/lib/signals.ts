@@ -1,7 +1,7 @@
 /**
  * What a signal said in a run, for the protocol: the language model's proposal, the
  * classifier's best classes, the similar documents, the names and identifiers in the text, or
- * why it abstained.
+ * why it abstained. For the OCR, how well it read each page it recognised.
  */
 import type { components } from '#lib/api/schema.ts';
 import { documentHref } from '#lib/candidates.ts';
@@ -68,8 +68,27 @@ function row(label: string, items: SummaryItem[]): SummaryRow {
 	return { label, items: items.length > 0 ? items : [{ text: m.signal_none() }] };
 }
 
-/** The rows of a signal's entry; none for other nodes. */
+/** How well the OCR read each page it recognised; none where pages had text of their own. */
+function readings(output: Json): SummaryRow[] {
+	const pages = list(output.readings).map(object);
+	if (pages.length === 0) return [];
+	const items = pages.map((page) => {
+		const words = typeof page.words === 'number' ? page.words : 0;
+		const unsure = typeof page.unsure === 'number' ? page.unsure : 0;
+		return {
+			text: m.log_reading_page({
+				page: String(page.page),
+				unsure: percent(words > 0 ? unsure / words : 0),
+				words: formatNumber(words)
+			})
+		};
+	});
+	return [{ label: m.log_reading(), items }];
+}
+
+/** The rows of a signal's entry, or of the OCR's; none for other nodes. */
 export function signalSummary(entry: LogEntry, lookup: Lookup | null): SummaryRow[] {
+	if (entry.node === 'ocr') return readings(object(entry.output));
 	if (!(SIGNAL_NODES as readonly string[]).includes(entry.node)) return [];
 	const output = object(entry.output);
 	const abstained = text(output.abstained);

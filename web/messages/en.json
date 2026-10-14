@@ -610,6 +610,8 @@
 	"log_tokens": "Tokens",
 	"log_tokens_sum": "input {input} · output {output}",
 	"log_runs": "Runs",
+	"log_reading": "Reading",
+	"log_reading_page": "page {page}: {unsure} of {words} words unsure",
 	"log_from_run": "from run {run}",
 	"log_not_run": "Did not run",
 	"json_items": "{count} items",

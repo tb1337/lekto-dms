@@ -106,6 +106,17 @@ gelernte im Kontaktdialog.
 - **Nachbarn ohne Mindestähnlichkeit:** Die fünf ähnlichsten Dokumente stimmen ab, auch wenn sie
   nur das Formular teilen (Ähnlichkeit um 0,7).
 
+## Entscheidungen (Tobi, 14.10.2026)
+
+- **Nachbarn:** bleiben, wie sie sind (ein Widerspruch ist gelb); wie stark ähnliche Dokumente
+  widersprechen dürfen (Mindestähnlichkeit, gleichförmige Formulare), kalibriert M18 am
+  Rückkopplungsmaß.
+- **Beträge ohne jede Währung im Text:** in der Standardwährung (`PAPIQ_DEFAULT_CURRENCY`, EUR).
+  Umgesetzt; die Lohnabrechnung (384), ab `fields` neu verarbeitet ohne Modellaufruf, ist jetzt
+  grün. Mit Nachbarn stehen damit 2 grün und 8 gelb.
+- **Felder „nur von Hand“** (wie die Archivnummer): als Idee vorgemerkt, Issue #52.
+- **Lernregel der Kennungen:** bleibt.
+
 ## Fertig-Kriterium
 
 „Über neun von zehn Gelb hinaus, ohne ein falsches Grün“: mit Klassifikator ohne Nachbarn erfüllt

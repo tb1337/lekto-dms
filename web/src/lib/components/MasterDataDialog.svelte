@@ -76,7 +76,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[90vh] max-w-lg overflow-y-auto sm:max-w-xl">
+	<Dialog.Content class="max-w-lg sm:max-w-xl">
 		<form class="flex flex-col gap-4" onsubmit={submit} novalidate>
 			<Dialog.Header><Dialog.Title>{title}</Dialog.Title></Dialog.Header>
 			<Field.Field>

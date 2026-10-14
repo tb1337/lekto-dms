@@ -104,7 +104,11 @@ beforeEach(() => {
 	vi.stubGlobal('fetch', fetchMock);
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+	vi.unstubAllGlobals();
+	// A dialog makes the page unclickable until it has closed; the next test must not wait.
+	window.document.body.style.pointerEvents = '';
+});
 
 describe('DocumentLog', () => {
 	it('shows the nodes in rows by level, side by side where they run so', async () => {
@@ -126,16 +130,63 @@ describe('DocumentLog', () => {
 	});
 
 	it('tells the tokens behind the info icon and shows the prompt', async () => {
-		render(DocumentLog, { document, graph, manageable: true, onreprocess: vi.fn() });
+		const { container } = render(DocumentLog, {
+			document,
+			graph,
+			manageable: true,
+			onreprocess: vi.fn()
+		});
 		const info = await screen.findByRole('button', { name: m.tokens_details() });
 		await fireEvent.mouseEnter(info);
 		const tooltip = screen.getByRole('tooltip');
 		expect(within(tooltip).getByText(m.tokens_input())).toBeTruthy();
 		expect(tooltip.textContent).toContain('2,318');
-		await userEvent.click(screen.getByRole('button', { name: m.prompt_open() }));
+		const proposal = container.querySelector('[data-node="signal_llm"]') as HTMLElement;
+		await userEvent.click(within(proposal).getByRole('button', { name: m.prompt_open() }));
 		expect(await screen.findByText('You read one document.')).toBeTruthy();
 		await userEvent.click(screen.getByRole('button', { name: m.prompt_answer() }));
 		expect(screen.getByText('{"contact": null}')).toBeTruthy();
+		await userEvent.keyboard('{Escape}'); // an open dialog keeps the page from clicks
+	});
+
+	it('shows the verdict the prompt of the model answer it worked with, not a person', async () => {
+		const confirmed = { ...judged, outcome: 'ok', reason: null, model_version: 'person' };
+		fetchMock.mockImplementation(async (request) => {
+			const path = new URL(request.url).pathname;
+			if (path.endsWith('/log')) return json([proposed, judged, confirmed]);
+			if (path.endsWith('/exchanges/signal_llm')) {
+				return json([
+					{
+						run: 1,
+						calls: [
+							{
+								system: 'You read one document.',
+								user: 'x',
+								answer: '{}',
+								model: 'qwen3:8b',
+								usage: { prompt_tokens: 10, completion_tokens: 2 }
+							}
+						]
+					}
+				]);
+			}
+			return json([]);
+		});
+		const { container } = render(DocumentLog, {
+			document,
+			graph,
+			manageable: true,
+			onreprocess: vi.fn()
+		});
+		const judge = container.querySelector('[data-node="judge"]') as HTMLElement;
+		// The model's verdict has the button, the person's confirmation none.
+		const buttons = await within(judge).findAllByRole('button', { name: m.prompt_open() });
+		expect(buttons).toHaveLength(1);
+		await userEvent.click(buttons[0]);
+		const title = m.prompt_title({ node: m.node_signal_llm() });
+		expect(await screen.findByRole('heading', { name: title })).toBeTruthy();
+		expect(screen.getByText('You read one document.')).toBeTruthy();
+		await userEvent.keyboard('{Escape}');
 	});
 
 	it('shows one run at a time, the current one first, and keeps what a run did not redo', async () => {

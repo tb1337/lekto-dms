@@ -219,17 +219,39 @@
 
 	const time = (value: string) => formatDate(value, { timeStyle: 'medium' });
 
-	function exchangeOf(entry: LogEntry): Exchange | undefined {
-		return exchanges[entry.node]?.find((exchange) => exchange.run === entry.run);
+	// The nodes that work with the language model's answer when they do not ask it themselves:
+	// the judge always, the fields for the fields the model was asked about.
+	const ANSWERED: readonly Node[] = ['judge', 'fields'];
+	// Entries that are no model's work: a person's, a takeover's.
+	const NOT_THE_MODEL = new Set(['person', 'imported']);
+
+	type Asked = { node: ExchangeNode; exchange: Exchange };
+
+	/** What the language model was asked for an entry: its own node's call in its run, or the
+	 * model's call it worked with (the latest of `signal_llm` up to its run). */
+	function exchangeOf(entry: LogEntry): Asked | undefined {
+		const own = (MODEL_NODES as readonly Node[]).includes(entry.node)
+			? exchanges[entry.node]?.find((exchange) => exchange.run === entry.run)
+			: undefined;
+		if (own) return { node: entry.node as ExchangeNode, exchange: own };
+		if (!ANSWERED.includes(entry.node) || !entry.model_version) return undefined;
+		if (NOT_THE_MODEL.has(entry.model_version)) return undefined;
+		const answer = (exchanges.signal_llm ?? [])
+			.filter((exchange) => exchange.run <= entry.run)
+			.reduce<Exchange | undefined>(
+				(latest, exchange) => (latest && latest.run > exchange.run ? latest : exchange),
+				undefined
+			);
+		return answer ? { node: 'signal_llm', exchange: answer } : undefined;
 	}
 
-	function showPrompt(entry: LogEntry, exchange: Exchange) {
+	function showPrompt(entry: LogEntry, asked: Asked) {
 		prompt = {
-			title: m.prompt_title({ node: NODE_LABELS[entry.node]() }),
-			meta: [entry.model_version, time(entry.started_at), m.log_run({ run: entry.run })]
+			title: m.prompt_title({ node: NODE_LABELS[asked.node]() }),
+			meta: [entry.model_version, time(entry.started_at), m.log_run({ run: asked.exchange.run })]
 				.filter(Boolean)
 				.join(' · '),
-			calls: exchange.calls
+			calls: asked.exchange.calls
 		};
 		promptOpen = true;
 	}

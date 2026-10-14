@@ -20,6 +20,7 @@ from papiq.adapters.outbound.crypto import (
     decode_key,
 )
 from papiq.adapters.outbound.filesystem import FilesystemObjectStore
+from papiq.adapters.outbound.liquid import LiquidTemplateRenderer
 from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.adapters.outbound.memory import (
     FakeCipher,
@@ -67,6 +68,7 @@ from papiq.core.ports import (
     PatternMatcher,
     SearchIndex,
     SecretCipher,
+    TemplateRenderer,
     TextLocator,
     Totp,
     UnitOfWorkFactory,
@@ -282,6 +284,7 @@ class Container:
     webhook_sender: WebhookSender
     totp: Totp
     patterns: PatternMatcher
+    templates: TemplateRenderer
     oidc: OidcProvider | None
     search_index: SearchIndex | None
     language_model: LanguageModel | None
@@ -329,6 +332,7 @@ def build_container(settings: Settings) -> Container:
         webhook_sender=HttpWebhookSender(user_agent=f"Papiq/{__version__}"),
         totp=PyotpTotp(),
         patterns=RegexPatternMatcher(settings.rules_pattern_timeout.total_seconds()),
+        templates=LiquidTemplateRenderer(settings.template_locale),
         oidc=(
             _select("oidc", "authlib", OIDC_PROVIDERS, settings) if settings.oidc_enabled else None
         ),
@@ -373,6 +377,7 @@ def build_memory_container(clock: Clock | None = None) -> Container:
         webhook_sender=FakeWebhookSender(),
         totp=FakeTotp(),
         patterns=RegexPatternMatcher(DEFAULT_PATTERN_TIMEOUT),
+        templates=LiquidTemplateRenderer(),
         oidc=None,
         search_index=MemorySearchIndex(),
         language_model=None,

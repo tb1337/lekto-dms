@@ -74,8 +74,8 @@ changes in `migration/` its checks.
   themselves: what more than one of them needs lives directly in `adapters/inbound`. `lint-imports`
   enforces this; keep it green.
 - Every port gets an in-memory adapter and a contract test suite that every real adapter passes.
-  The pattern matcher is the stated exception: the `regex` adapter needs no service and serves
-  the memory container too.
+  The pattern matcher and the template renderer are the stated exceptions: the `regex` and
+  `liquid` adapters need no service and serve the memory container too.
 - Configuration is environment variables with prefix `PAPIQ_` only, no config file. Secrets also work
   as `PAPIQ_<NAME>_FILE`; both set is an error. See `backend/src/papiq/composition/settings.py`.
 - Async throughout (FastAPI, SQLAlchemy async, async HTTP clients).

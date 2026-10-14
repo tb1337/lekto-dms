@@ -76,15 +76,17 @@ Papiq ist hexagonal aufgebaut: Der fachliche Kern kennt keine Datenbank, kein S3
 | Vorschau | PDFium (erste Seite als WebP) | anderer Renderer |
 | Fundstellen (Zitat → Seite und Box) | PDFium (Textebene des Archiv-PDFs) | anderer Locator |
 | Mustersuche (Regeln) | `regex` mit Zeitlimit | eigener Dienst |
+| Templates (Regeln, Titelmuster) | Liquid (`python-liquid`), mit Grenzen für Schleifen und Ausgabe | andere Template-Sprache |
 | Webhook-Versand | httpx2 | andere HTTP-Bibliothek |
 | Uhr | Systemuhr | feste Uhr in Tests |
 | Passwort-Hash, Geheimnis-Verschlüsselung, TOTP | Argon2id, AES-GCM, pyotp | andere Verfahren |
 
 Webhook-Versand ist ein ausgehender Adapter, der Ereignisse vom Event-Bus abonniert. Jeder Port
-hat einen In-Memory-Adapter für die Kern-Tests. Ausnahme: die Mustersuche. Ihr Vertrag verlangt
-eine Suche, die ein Zeitlimit abbricht und den Event-Loop nicht blockiert; das kann die
-`regex`-Engine, Pythons `re` nicht. Der `regex`-Adapter braucht keinen Dienst und läuft auch im
-Speicher-Container (Tobi, 12.10.2026).
+hat einen In-Memory-Adapter für die Kern-Tests. Ausnahmen: die Mustersuche und die Templates. Der
+Vertrag der Mustersuche verlangt eine Suche, die ein Zeitlimit abbricht und den Event-Loop nicht
+blockiert; das kann die `regex`-Engine, Pythons `re` nicht. Der `regex`-Adapter braucht keinen
+Dienst und läuft auch im Speicher-Container (Tobi, 12.10.2026). Ebenso der `liquid`-Adapter der
+Templates: Ein Nachbau der Sprache im Speicher wäre ein zweiter Interpreter (Tobi, 14.10.2026).
 
 Hexagonal betrifft den inneren Aufbau, nicht die Zahl der Container: Ein Adapter kann lokal laufen oder einen entfernten Dienst ansprechen, ohne dass sich der Kern ändert.
 
@@ -105,6 +107,7 @@ Backend und Worker in Python; ein Container mit s6-overlay als Prozessüberwachu
 | Parsing | Layout-Text aus der Textebene mit PDFium (statt Docling, Tobi 14.10.2026, siehe Ingest-Workflow) | entschieden |
 | LLM | OpenAI-kompatible Schnittstelle (Ollama, Cloud) | entschieden |
 | Klassifikator | scikit-learn, Vorhersage mit numpy | entschieden |
+| Templates | Liquid (`python-liquid` 2.3, mit Babel): Regeln schreiben auch Nutzer, Liquid ist für Templates von Endnutzern gebaut (nur übergebene Daten, Grenzen für Schleifen und Ausgabe), die Syntax gleicht Jinja (Tobi, 14.10.2026; Jinja2 verworfen: Ausbrüche aus der Sandbox 2024/2025, keine Schleifengrenze) | entschieden |
 | LLM-Modell (lokal) | `qwen3:8b` über Ollama mit 8192 Token Kontext (NUC, nur CPU); Bewertung siehe unten | entschieden |
 | Embedding-Modell (lokal) | `snowflake-arctic-embed2` über Ollama, Anfragen mit dem Präfix `query: `; Bewertung unter „Suche“ | entschieden |
 | Jobs | eigene Job-Tabelle über SQLAlchemy | entschieden |

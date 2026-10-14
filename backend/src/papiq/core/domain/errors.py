@@ -116,3 +116,13 @@ class ClassifierUnavailableError(DomainError):
 
 class PatternTimeoutError(DomainError):
     """A regular expression of a rule took longer than its time limit."""
+
+
+class MissingValueError(DomainError):
+    """A template writes a value the document does not have (`path`, e.g. `field.la_brutto`).
+    What the template was for is left as it is; `{% if %}` or `| default` make a part
+    optional."""
+
+    def __init__(self, path: str) -> None:
+        super().__init__(f"{path} has no value")
+        self.path = path

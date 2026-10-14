@@ -11,7 +11,9 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal, get_args
 
+from babel import Locale, UnknownLocaleError
 from pydantic import (
+    AfterValidator,
     AnyHttpUrl,
     BeforeValidator,
     ByteSize,
@@ -58,6 +60,14 @@ def _seconds(value: Any) -> Any:
 
 # A positive duration, configured in seconds.
 Seconds = Annotated[timedelta, BeforeValidator(_seconds), Field(gt=timedelta(0))]
+
+
+def _locale(value: str) -> str:
+    try:
+        Locale.parse(value.replace("-", "_"))
+    except (ValueError, UnknownLocaleError):
+        raise ValueError(f"unknown locale {value!r}") from None
+    return value
 
 
 def _unset_if_none(value: Any) -> Any:
@@ -246,6 +256,9 @@ class Settings(BaseSettings):
     rules_pattern_timeout: Seconds = timedelta(milliseconds=200)
     rules_max_text: Annotated[int, Field(ge=1000, le=10_000_000)] = 200_000
     rules_apply_max_documents: Annotated[int, Field(ge=1, le=100_000)] = 1000
+    # Templates of rules and title patterns write dates and amounts in this locale (`de`,
+    # `en_US`, ...; Babel's names).
+    template_locale: Annotated[str, AfterValidator(_locale)] = "de"
 
     @model_validator(mode="before")
     @classmethod

@@ -30,6 +30,16 @@
 		type Node,
 		type NodeState
 	} from '#lib/pipeline.ts';
+	import {
+		nodeRun,
+		pastStatus,
+		runNumbers,
+		runSpan,
+		runTokens,
+		startedAgain,
+		stateOf,
+		type NodeRun
+	} from '#lib/runs.ts';
 	import { usageOf } from '#lib/usage.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -39,9 +49,11 @@
 	type ExchangeNode = components['schemas']['ExchangeNode'];
 	type Outcome = components['schemas']['Outcome'];
 
-	// The processing of a document: every node of the graph in a row by level (nodes that run
-	// side by side share one), with its state and duration, live with the events; below each
-	// what it did in every run (owner and admins), with the model's token figures and prompt.
+	// The processing of a document in one run, the current one or one chosen beside it: every
+	// node of the graph in a row by level (nodes that run side by side share one), with its
+	// state and duration, live with the events in the current run; below each what it did in
+	// that run (owner and admins), with the model's token figures and prompt. A node the run did
+	// not start again shows what it did in the earlier run the run worked with.
 	let {
 		document,
 		graph,
@@ -124,12 +136,36 @@
 	const rows = $derived(
 		graph.length > 0 ? levels(graph) : document.processing.nodes.map((state) => [state.node])
 	);
-	// The runs of each node, the latest first.
-	const runs = $derived.by(() => {
-		const byNode: Partial<Record<Node, LogEntry[]>> = {};
-		for (const entry of entries ?? []) (byNode[entry.node] ??= []).unshift(entry);
-		return byNode;
-	});
+
+	// The run shown: the current one, unless the viewer chose another while it was current (a
+	// new run, or another document, shows its current run).
+	const currentRun = $derived(document.processing.run);
+	let chosen = $state<{ id: string; current: number; run: number } | null>(null);
+	const shownRun = $derived(
+		chosen !== null && chosen.id === document.id && chosen.current === currentRun
+			? chosen.run
+			: currentRun
+	);
+	const isCurrent = $derived(shownRun === currentRun);
+	const runs = $derived(runNumbers(entries ?? [], currentRun));
+	const again = $derived(startedAgain(entries ?? [], graph, shownRun));
+
+	function choose(run: number) {
+		chosen = { id: document.id, current: currentRun, run };
+	}
+
+	// What a node did in the run shown, and its state: live in the current run (a node waiting
+	// or running there has nothing to keep), by its last entry in a past one (null: it did not
+	// run).
+	function nodeView(node: Node): { done: NodeRun; state: NodeState | null } {
+		const log = entries ?? [];
+		if (isCurrent) {
+			const state = states.get(node) ?? null;
+			return { done: nodeRun(log, node, shownRun, state?.status !== 'done'), state };
+		}
+		const done = nodeRun(log, node, shownRun, again.has(node));
+		return { done, state: stateOf(node, done.entries) };
+	}
 
 	const outcomeLabel: Record<Outcome, () => string> = {
 		ok: m.outcome_ok,
@@ -137,7 +173,8 @@
 		failed: m.outcome_failed
 	};
 
-	function look(state: NodeState) {
+	function look(state: NodeState | null) {
+		if (state === null) return { icon: Circle, label: m.log_not_run(), tone: 'muted', spin: false };
 		if (state.status === 'running')
 			return { icon: LoaderCircle, label: m.node_status_running(), tone: 'running', spin: true };
 		if (state.status === 'skipped')
@@ -174,7 +211,8 @@
 			maximumFractionDigits: digits
 		});
 
-	function duration(state: NodeState): string | null {
+	function duration(state: NodeState | null): string | null {
+		if (state === null) return null;
 		const value = durationSeconds(state, now);
 		return value === null ? null : seconds(value, value < 10 ? 1 : 0);
 	}
@@ -196,41 +234,55 @@
 		promptOpen = true;
 	}
 
-	// The current run at a glance: when it began, how long it took, the model's tokens.
-	const current = $derived(document.processing.nodes);
-	const started = $derived(
-		current
-			.map((state) => state.started_at)
-			.filter((value): value is string => value !== null)
-			.sort()[0] ?? null
-	);
-	const finished = $derived(
-		current
-			.map((state) => state.finished_at)
-			.filter((value): value is string => value !== null)
-			.sort()
-			.at(-1) ?? null
-	);
-	const tokens = $derived.by(() => {
-		let input = 0;
-		let output = 0;
-		let any = false;
-		for (const entry of entries ?? []) {
-			if (entry.run !== document.processing.run) continue;
-			const usage = usageOf(entry.output);
-			if (!usage) continue;
-			any = true;
-			input += usage.input ?? 0;
-			output += usage.output ?? 0;
+	// A run at a glance: how it stands or ended, when it began, when it ended (not while it
+	// runs), by its entries; without the log, the current run by the states of its nodes.
+	type Status = Document['processing']['status'];
+	function about(run: number): { status: Status; started: string | null; finished: string | null } {
+		const current = run === currentRun;
+		const status = current ? document.processing.status : pastStatus(entries ?? [], graph, run);
+		let started: string | null;
+		let finished: string | null;
+		if (entries === null) {
+			const times = (pick: (state: NodeState) => string | null) =>
+				document.processing.nodes
+					.map(pick)
+					.filter((value): value is string => value !== null)
+					.sort();
+			started = times((state) => state.started_at)[0] ?? null;
+			finished = times((state) => state.finished_at).at(-1) ?? null;
+		} else {
+			const span = runSpan(entries, run);
+			const running = current
+				? document.processing.nodes
+						.filter((state) => state.status === 'running')
+						.map((state) => state.started_at)
+				: [];
+			started =
+				[span?.started, ...running]
+					.filter((value): value is string => typeof value === 'string')
+					.sort()[0] ?? null;
+			finished = span?.finished ?? null;
 		}
-		return any ? { input, output } : null;
-	});
-	const statusLabel: Record<Document['processing']['status'], () => string> = {
+		return { status, started, finished: status === 'processing' ? null : finished };
+	}
+	const shown = $derived(about(shownRun));
+	const tokens = $derived(runTokens(entries ?? [], shownRun));
+	const statusLabel: Record<Status, () => string> = {
 		processing: m.lane_running,
 		review: m.lane_yellow,
 		failed: m.outcome_failed,
 		completed: m.lane_green
 	};
+	const statusTone: Record<Status, string> = {
+		processing: 'running',
+		review: 'yellow',
+		failed: 'red',
+		completed: 'green'
+	};
+	const span = (value: { started: string | null; finished: string | null }) =>
+		value.started && value.finished
+			? seconds((new Date(value.finished).getTime() - new Date(value.started).getTime()) / 1000)
+			: null;
 	const canReprocess = $derived(
 		manageable &&
 			document.processing.status !== 'processing' &&
@@ -238,64 +290,152 @@
 	);
 </script>
 
-<div class="flex flex-wrap items-start gap-6">
-	<section aria-labelledby="log-heading" class="flex min-w-0 flex-[999_1_560px] flex-col gap-2.5">
-		<h2
-			id="log-heading"
-			class="text-xs font-semibold tracking-wider text-muted-foreground uppercase"
+<!-- The run box beside the nodes where there is room, above them where not. -->
+<div class="@container flex flex-col gap-2.5">
+	<h2 id="log-heading" class="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+		{m.graph_title()} · {m.log_run({ run: shownRun })}
+	</h2>
+	{#if problem}<p class="text-destructive" role="alert">{problem}</p>{/if}
+	<div class="grid items-start gap-x-6 gap-y-2.5 @4xl:grid-cols-[minmax(0,1fr)_20rem]">
+		<aside
+			aria-labelledby="run-heading"
+			class="flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5 @4xl:order-last"
 		>
-			{m.graph_title()} · {m.log_run({ run: document.processing.run })}
-		</h2>
-		{#if problem}<p class="text-destructive" role="alert">{problem}</p>{/if}
-		<ol class="flex flex-col gap-2.5">
+			{#if runs.length > 1}
+				<h2 id="run-heading" class="font-semibold">{m.log_runs()}</h2>
+				<ul class="-mx-2 -mt-2 flex max-h-80 flex-col gap-0.5 overflow-y-auto">
+					{#each runs as run (run)}
+						{@const glance = run === shownRun ? shown : about(run)}
+						{@const length = span(glance)}
+						<li>
+							<button
+								type="button"
+								aria-pressed={run === shownRun}
+								onclick={() => choose(run)}
+								class={cn(
+									'flex w-full flex-col rounded-lg px-2 py-1.5 text-left text-sm transition-colors',
+									run === shownRun ? 'bg-secondary' : 'hover:bg-secondary/60'
+								)}
+							>
+								<span class="flex flex-wrap items-baseline gap-x-2">
+									<span class="font-medium">{m.log_run({ run })}</span>
+									<span class={texts[statusTone[glance.status]]}>
+										{statusLabel[glance.status]()}
+									</span>
+								</span>
+								{#if glance.started}
+									<span class="text-muted-foreground tabular-nums">
+										{[
+											formatDate(glance.started, { dateStyle: 'short', timeStyle: 'short' }),
+											length
+										]
+											.filter(Boolean)
+											.join(' · ')}
+									</span>
+								{/if}
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<h2 id="run-heading" class="font-semibold">{m.log_run({ run: shownRun })}</h2>
+			{/if}
+			<dl
+				class={cn(
+					'grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm',
+					runs.length > 1 && 'border-t border-muted pt-4'
+				)}
+			>
+				<dt class="text-muted-foreground">{m.log_status()}</dt>
+				<dd>{statusLabel[shown.status]()}</dd>
+				{#if shown.started}
+					<dt class="text-muted-foreground">{m.log_started()}</dt>
+					<dd>{formatDate(shown.started, { dateStyle: 'medium', timeStyle: 'medium' })}</dd>
+				{/if}
+				{#if span(shown)}
+					<dt class="text-muted-foreground">{m.log_duration()}</dt>
+					<dd>{span(shown)}</dd>
+				{/if}
+				{#if tokens}
+					<dt class="text-muted-foreground">{m.log_tokens()}</dt>
+					<dd>
+						{m.log_tokens_sum({
+							input: formatNumber(tokens.input),
+							output: formatNumber(tokens.output)
+						})}
+					</dd>
+				{/if}
+			</dl>
+			{#if canReprocess}
+				<div class="border-t border-muted pt-4">
+					<Button variant="outline" onclick={onreprocess}>
+						<RefreshCw aria-hidden="true" />
+						{m.reprocess_title()}
+					</Button>
+				</div>
+			{/if}
+		</aside>
+
+		<ol aria-labelledby="log-heading" class="flex min-w-0 flex-col gap-2.5">
 			{#each rows as row, rowIndex (rowIndex)}
 				<li class="flex flex-wrap gap-2.5">
 					{#each row as node (node)}
-						{@const state = states.get(node)}
-						{#if state}
-							{@const shown = look(state)}
-							{@const done = runs[node] ?? []}
+						{@const view = nodeView(node)}
+						{#if view.state || !isCurrent}
+							{@const state = view.state}
+							{@const looks = look(state)}
 							<details
-								open={state.outcome === 'uncertain' || state.outcome === 'failed'}
+								open={state?.outcome === 'uncertain' || state?.outcome === 'failed'}
 								data-node={node}
-								data-status={state.status}
+								data-status={state?.status ?? 'not_run'}
 								class={cn(
-									'group @container min-w-[15rem] flex-1 rounded-2xl border px-4 py-3',
-									cards[shown.tone]
+									'group @container min-w-60 flex-1 rounded-2xl border px-4 py-3',
+									cards[looks.tone]
 								)}
 							>
+								<!-- Where the card is narrow, the state goes below the name; the icon, the duration and
+								     the chevron stay with the first line. -->
 								<summary
-									class="flex cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden"
+									class="flex cursor-pointer list-none items-start gap-2.5 [&::-webkit-details-marker]:hidden"
 								>
-									<shown.icon
-										class={cn(
-											'size-[18px] shrink-0',
-											texts[shown.tone],
-											shown.spin && 'animate-spin'
-										)}
-										aria-hidden="true"
-										strokeWidth={2.2}
-									/>
-									<span class="font-semibold">{NODE_LABELS[node]()}</span>
-									<span class={cn('text-sm', texts[shown.tone])}>{shown.label}</span>
+									<span class="flex h-6 shrink-0 items-center">
+										<looks.icon
+											class={cn('size-4.5', texts[looks.tone], looks.spin && 'animate-spin')}
+											aria-hidden="true"
+											strokeWidth={2.2}
+										/>
+									</span>
+									<span class="flex min-w-0 flex-wrap items-baseline gap-x-2.5">
+										<span class="font-semibold">{NODE_LABELS[node]()}</span>
+										<span class="text-sm whitespace-nowrap">
+											<span class={texts[looks.tone]}>{looks.label}</span>
+											{#if view.done.from !== null}
+												<span class="text-muted-foreground">
+													· {m.log_from_run({ run: view.done.from })}
+												</span>
+											{/if}
+										</span>
+									</span>
 									<span
-										class="ml-auto text-sm whitespace-nowrap text-muted-foreground tabular-nums"
+										class="ml-auto text-sm leading-6 whitespace-nowrap text-muted-foreground tabular-nums"
 									>
 										{duration(state) ?? ''}
 									</span>
-									<ChevronDown
-										class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
-										aria-hidden="true"
-									/>
+									<span class="flex h-6 shrink-0 items-center">
+										<ChevronDown
+											class="size-4 text-muted-foreground transition-transform group-open:rotate-180"
+											aria-hidden="true"
+										/>
+									</span>
 								</summary>
 								{#if !manageable}
 									<p class="mt-2 ml-7 text-sm text-muted-foreground">{m.log_owner_only()}</p>
-								{:else if done.length === 0}
+								{:else if view.done.entries.length === 0 && isCurrent}
 									<p class="mt-2 ml-7 text-sm text-muted-foreground">
 										{entries === null ? m.loading() : m.log_none()}
 									</p>
 								{/if}
-								{#each done as entry (`${entry.run}-${entry.started_at}`)}
+								{#each view.done.entries as entry, index (`${entry.run}-${index}`)}
 									{@const usage = usageOf(entry.output)}
 									{@const exchange = exchangeOf(entry)}
 									<div class="mt-2.5 ml-7 flex flex-col gap-1.5 text-sm" data-run={entry.run}>
@@ -310,7 +450,7 @@
 												<TokenInfo
 													{usage}
 													model={entry.model_version}
-													id="tokens-{entry.node}-{entry.run}"
+													id="tokens-{entry.node}-{entry.run}-{index}"
 												/>
 											{/if}
 											{#if exchange}
@@ -345,7 +485,7 @@
 											{/if}
 											{#if entry.reason}
 												<dt class="text-muted-foreground">{m.log_reason()}</dt>
-												<dd class="break-words">{entry.reason}</dd>
+												<dd class="wrap-break-word">{entry.reason}</dd>
 											{/if}
 											<SignalSummary {entry} {lookup} />
 										</dl>
@@ -357,43 +497,7 @@
 				</li>
 			{/each}
 		</ol>
-	</section>
-
-	<aside
-		aria-labelledby="run-heading"
-		class="flex min-w-0 flex-[1_1_18rem] flex-col gap-4 rounded-2xl border bg-card p-5 lg:max-w-sm"
-	>
-		<h2 id="run-heading" class="font-semibold">{m.log_run({ run: document.processing.run })}</h2>
-		<dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
-			<dt class="text-muted-foreground">{m.log_status()}</dt>
-			<dd>{statusLabel[document.processing.status]()}</dd>
-			{#if started}
-				<dt class="text-muted-foreground">{m.log_started()}</dt>
-				<dd>{formatDate(started, { dateStyle: 'medium', timeStyle: 'medium' })}</dd>
-			{/if}
-			{#if started && finished && document.processing.status !== 'processing'}
-				<dt class="text-muted-foreground">{m.log_duration()}</dt>
-				<dd>{seconds((new Date(finished).getTime() - new Date(started).getTime()) / 1000)}</dd>
-			{/if}
-			{#if tokens}
-				<dt class="text-muted-foreground">{m.log_tokens()}</dt>
-				<dd>
-					{m.log_tokens_sum({
-						input: formatNumber(tokens.input),
-						output: formatNumber(tokens.output)
-					})}
-				</dd>
-			{/if}
-		</dl>
-		{#if canReprocess}
-			<div class="border-t border-muted pt-4">
-				<Button variant="outline" onclick={onreprocess}>
-					<RefreshCw aria-hidden="true" />
-					{m.reprocess_title()}
-				</Button>
-			</div>
-		{/if}
-	</aside>
+	</div>
 </div>
 
 {#if prompt}

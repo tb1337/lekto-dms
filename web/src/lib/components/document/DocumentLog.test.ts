@@ -138,6 +138,39 @@ describe('DocumentLog', () => {
 		expect(screen.getByText('{"contact": null}')).toBeTruthy();
 	});
 
+	it('shows one run at a time, the current one first, and keeps what a run did not redo', async () => {
+		// Run 2 started again at the verdict: the model's proposal is the one of run 1.
+		const again = { ...judged, run: 2, reason: 'contact: only one signal names it' };
+		fetchMock.mockImplementation(async (request) =>
+			json(new URL(request.url).pathname.endsWith('/log') ? [proposed, judged, again] : [])
+		);
+		const current = {
+			...document,
+			processing: { ...document.processing, run: 2 }
+		} as unknown as Document;
+		const { container } = render(DocumentLog, {
+			document: current,
+			graph,
+			manageable: true,
+			onreprocess: vi.fn()
+		});
+		const judge = container.querySelector('[data-node="judge"]') as HTMLElement;
+		expect(await within(judge).findByText('contact: only one signal names it')).toBeTruthy();
+		expect(within(judge).queryByText('contact: the name is only similar')).toBeNull();
+		const proposal = container.querySelector('[data-node="signal_llm"]') as HTMLElement;
+		expect(within(proposal).getByText(new RegExp(m.log_from_run({ run: 1 })))).toBeTruthy();
+		expect(screen.getByText(`${m.graph_title()} · ${m.log_run({ run: 2 })}`)).toBeTruthy();
+
+		const first = screen.getByRole('button', { name: new RegExp(m.log_run({ run: 1 })) });
+		expect(first.getAttribute('aria-pressed')).toBe('false');
+		await userEvent.click(first);
+		expect(first.getAttribute('aria-pressed')).toBe('true');
+		expect(screen.getByText(`${m.graph_title()} · ${m.log_run({ run: 1 })}`)).toBeTruthy();
+		expect(within(judge).getByText('contact: the name is only similar')).toBeTruthy();
+		expect(within(judge).queryByText('contact: only one signal names it')).toBeNull();
+		expect(within(proposal).queryByText(new RegExp(m.log_from_run({ run: 1 })))).toBeNull();
+	});
+
 	it('shows only the states to someone who may not read the log', () => {
 		render(DocumentLog, { document, graph, manageable: false, onreprocess: vi.fn() });
 		expect(fetchMock).not.toHaveBeenCalled();

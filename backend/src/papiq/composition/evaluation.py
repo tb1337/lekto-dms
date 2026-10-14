@@ -204,6 +204,7 @@ async def run_evaluation(
             "PAPIQ_LLM_RESPONSE_FORMAT": settings.llm_response_format,
             "PAPIQ_CONFIDENCE_THRESHOLD": settings.confidence_threshold,
             "PAPIQ_CONTACT_SUGGEST_THRESHOLD": settings.contact_suggest_threshold,
+            "PAPIQ_DEFAULT_CURRENCY": settings.default_currency,
             "PAPIQ_CLASSIFIER_THRESHOLD": settings.classifier_threshold,
             "PAPIQ_NEIGHBOURS": settings.neighbours,
         },

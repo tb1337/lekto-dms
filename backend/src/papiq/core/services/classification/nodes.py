@@ -113,13 +113,15 @@ class ClassificationPolicy:
     """`accept`: a field with at least this confidence is applied; `suggest_contact`: an
     existing contact at least this similar is suggested. Texts longer than `input_budget`
     characters are shortened; at most `max_tags` tags and `max_contacts` contacts (those the
-    text names most) are listed in a prompt."""
+    text names most) are listed in a prompt. `default_currency`: the currency of an amount in
+    a text that shows none."""
 
     accept: float = 0.9
     suggest_contact: float = 0.75
     input_budget: int = 12_000
     max_tags: int = 200
     max_contacts: int = 20
+    default_currency: str = "EUR"
 
 
 DEFAULT_POLICY = ClassificationPolicy()
@@ -568,6 +570,7 @@ class FieldsNode(_ModelStep):
                 document.document_date,
                 required=definition.is_required_for(document.document_type_id),
                 language=language,
+                default_currency=self._policy.default_currency,
             )
             for definition in definitions
         ]
@@ -684,6 +687,7 @@ def _check_field(
     *,
     required: bool,
     language: str | None = None,
+    default_currency: str | None = None,
 ) -> FieldCheck:
     """A required field must be found, an optional one may stay empty; a value given must
     pass the checks either way. A date equal to the document date is only suggested: models
@@ -723,7 +727,7 @@ def _check_field(
             **common,
         )
     try:
-        value = _parse_value(definition, proposal.value, facts, language)
+        value = _parse_value(definition, proposal.value, facts, language, default_currency)
     except ValidationError:
         return FieldCheck(
             outcome=Outcome.UNCERTAIN,
@@ -733,7 +737,7 @@ def _check_field(
             **common,
         )
     common["quote_shows_value"] = _quoted(proposal, lambda quote: _literally(value, quote))
-    shown, what = _shown(definition, value, proposal, facts)
+    shown, what = _shown(definition, value, proposal, facts, default_currency)
     check = _verified(common, field_to_json(value), proposal, facts, shown, what)
     if check.ok:
         return check
@@ -750,14 +754,22 @@ _SHORTEST_EVIDENCE = 4  # characters of a quoted passage that alone backs a yes/
 
 
 def _shown(
-    definition: FieldDefinition, value: FieldValue, proposal: Proposal, facts: DocumentText
+    definition: FieldDefinition,
+    value: FieldValue,
+    proposal: Proposal,
+    facts: DocumentText,
+    default_currency: str | None,
 ) -> tuple[bool, str]:
     """Whether the text shows the value, and what was looked for. Yes/no and choice values
-    are not written as such; for them a quoted passage of some length must be in the text."""
+    are not written as such; for them a quoted passage of some length must be in the text. An
+    amount in a text that shows no currency at all (a pay slip's bare numbers) is in the
+    default currency."""
     match value:
         case Money():
             if not facts.has_number(value.amount):
                 return False, "amount"
+            if not facts.currencies and default_currency is not None:
+                return value.currency == default_currency, f"currency {value.currency}"
             return facts.has_currency(value.currency), f"currency {value.currency}"
         case Decimal():
             return facts.has_number(value), "number"
@@ -826,7 +838,11 @@ _YES_NO = {"true": True, "yes": True, "ja": True, "false": False, "no": False, "
 
 
 def _parse_value(
-    definition: FieldDefinition, raw: JsonValue, facts: DocumentText, language: str | None
+    definition: FieldDefinition,
+    raw: JsonValue,
+    facts: DocumentText,
+    language: str | None,
+    default_currency: str | None = None,
 ) -> FieldValue:
     """A proposed value read leniently, as a person writes it (`2.111,68 €`, `12.03.2026`,
     `ja`; an ambiguous number the way the text shows it, else as the document's `language`
@@ -841,7 +857,7 @@ def _parse_value(
                 code = currency.strip().upper() if isinstance(currency, str) else ""
                 value = Money(number, code)
         case FieldType.AMOUNT if isinstance(raw, str):
-            amount = read_amount(raw, facts, language=language)
+            amount = read_amount(raw, facts, language=language, default=default_currency)
             value = None if amount is None else Money(*amount)
         case FieldType.DATE if isinstance(raw, str):
             value = read_date(raw, facts)

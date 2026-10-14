@@ -918,6 +918,52 @@ async def test_an_optional_field_may_stay_empty_but_a_value_must_be_shown(world:
         assert field_check(seeded, result, "Rechnungsnummer").outcome is outcome
 
 
+PAY_SLIP = """\
+# Nordlicht Software AG
+
+Entgeltabrechnung März 2026
+
+| Bezüge | Betrag |
+| --- | --- |
+| Gehalt | 5.166,67 |
+| Nettoverdienst | 2.987,45 |
+"""
+
+
+@pytest.mark.parametrize(
+    ("value", "currency", "outcome"),
+    [
+        ("2.987,45", "EUR", Outcome.OK),  # as the slip prints it
+        ("2.987,45 EUR", "EUR", Outcome.OK),
+        ("2.987,45 USD", "EUR", Outcome.UNCERTAIN),
+        ("2.987,45 EUR", "CHF", Outcome.UNCERTAIN),
+    ],
+)
+async def test_an_amount_without_any_currency_in_the_text_is_in_the_default_one(
+    world: World, value: str, currency: str, outcome: Outcome
+) -> None:
+    seeded = await seed(world)
+    document = await document_with(world, PAY_SLIP, seeded.types["Rechnung"])
+    answer = extraction(a3={"value": value, "evidence": None})
+    step = FieldsNode(
+        world.uow,
+        world.object_store,
+        model(answer),
+        world.clock,
+        ClassificationPolicy(default_currency=currency),
+    )
+    result = await step.run(document)
+    assert isinstance(result, MetadataResult)
+    check = field_check(seeded, result, "Rechnungsbetrag")
+    assert check.outcome is outcome, check.reason
+    if outcome is Outcome.OK:
+        assert result.changes.fields[seeded.fields["Rechnungsbetrag"].id] == Money(
+            Decimal("2987.45"), currency
+        )
+    else:
+        assert (check.reason or "").endswith("does not appear in the text")
+
+
 async def test_values_are_read_as_written_in_german(world: World) -> None:
     seeded, result = await extract(
         world,

@@ -190,3 +190,13 @@ def test_amounts_as_written() -> None:
     assert read_amount("84,20") is None
     assert read_amount("84,20", DocumentText("Summe 84,20 €")) == (Decimal("84.20"), "EUR")
     assert read_amount("120 kr", DocumentText("Pris 120 SEK")) == (Decimal("120"), "SEK")
+
+
+def test_an_amount_in_a_text_without_currency_is_in_the_default_one() -> None:
+    """A pay slip prints bare numbers; where the text shows a currency, that one counts."""
+    bare = DocumentText("Gesamtbrutto 2.111,68 Netto 1.500,00")
+    assert read_amount("2.111,68", bare, default="EUR") == (Decimal("2111.68"), "EUR")
+    assert read_amount("2.111,68", bare) is None
+    assert read_amount("2.111,68 USD", bare, default="EUR") == (Decimal("2111.68"), "USD")
+    shown = DocumentText("Total 2,111.68 USD")
+    assert read_amount("2,111.68", shown, default="EUR") == (Decimal("2111.68"), "USD")

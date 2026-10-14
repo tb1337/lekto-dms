@@ -232,11 +232,16 @@ def read_date(raw: str, facts: "DocumentText | None" = None) -> date | None:
 
 
 def read_amount(
-    raw: str, facts: "DocumentText | None" = None, *, language: str | None = None
+    raw: str,
+    facts: "DocumentText | None" = None,
+    *,
+    language: str | None = None,
+    default: str | None = None,
 ) -> tuple[Decimal, str] | None:
     """The amount and its currency (ISO 4217) in `raw`, read as `read_number` does: `2.111,68
     EUR`, `€ 84,20`. Without a currency in `raw` (or with one standing for several, `kr`),
-    the one currency `facts` shows; None if that does not settle it."""
+    the one currency `facts` shows, or `default` where the text shows none (a pay slip prints
+    bare numbers); None if that does not settle it."""
     number = read_number(raw, facts, language=language)
     if number is None:
         return None
@@ -245,6 +250,8 @@ def read_amount(
         narrowed = codes & facts.currencies if codes else facts.currencies
         if len(narrowed) == 1:
             codes = narrowed
+    if not codes and default is not None and (facts is None or not facts.currencies):
+        codes = {default}
     if len(codes) != 1:
         return None
     return number, next(iter(codes))

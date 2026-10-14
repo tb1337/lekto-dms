@@ -217,6 +217,8 @@ class Settings(BaseSettings):
     # suggested from the second.
     confidence_threshold: Annotated[float, Field(gt=0, le=1)] = 0.9
     contact_suggest_threshold: Annotated[float, Field(gt=0, le=1)] = 0.75
+    # The currency of an amount in a document that shows none (ISO 4217).
+    default_currency: Annotated[str, Field(pattern=r"^[A-Z]{3}$")] = "EUR"
 
     # The classifier, trained from confirmed documents (`none`: no classifier signal): the
     # confirmed documents before the first model, the confirmations since the last one before

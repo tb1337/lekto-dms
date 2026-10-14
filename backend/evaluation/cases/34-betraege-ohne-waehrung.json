@@ -1,0 +1,26 @@
+{
+  "description": "Pay slip that prints its amounts as bare numbers, without any currency. The model reads the net pay as written; with no currency in the text it is in the default currency (PAPIQ_DEFAULT_CURRENCY, EUR).",
+  "expected": {
+    "lane": "green",
+    "contact": "Nordlicht Software AG",
+    "document_type": "Lohnabrechnung",
+    "tags": ["Arbeit"],
+    "document_date": "2026-05-31",
+    "fields": {
+      "Nettolohn": {"amount": "2987.45", "currency": "EUR"}
+    }
+  },
+  "fake": {
+    "classification": {
+      "contact": {"value": "Nordlicht Software AG", "evidence": "Nordlicht Software AG"},
+      "document_type": "Lohnabrechnung",
+      "new_document_type": null,
+      "tags": ["Arbeit"],
+      "new_tags": [],
+      "document_date": {"value": "31.05.2026", "evidence": "erstellt am 31.05.2026"}
+    },
+    "fields": {
+      "Nettolohn": {"value": "2.987,45", "evidence": "Nettoverdienst: 2.987,45"}
+    }
+  }
+}

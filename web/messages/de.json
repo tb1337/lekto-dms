@@ -247,6 +247,8 @@
 	"field_def_type_link": "Link",
 	"field_def_choices": "Optionen",
 	"field_def_choices_hint": "Eine Option je Zeile.",
+	"field_def_description": "Beschreibung für das Modell",
+	"field_def_description_hint": "Was in das Feld gehört und wie es auf Dokumenten heißt, z. B. „Gesamtbrutto des Monats, nicht das Grundgehalt; steht als Gesamt-Brutto“. Der Name des Felds steht meist auf keinem Dokument.",
 	"field_def_scope": "Gilt für",
 	"field_def_scope_global": "Alle Dokumenttypen",
 	"user_new": "Neuer Nutzer",

@@ -247,6 +247,8 @@
 	"field_def_type_link": "Link",
 	"field_def_choices": "Options",
 	"field_def_choices_hint": "One option per line.",
+	"field_def_description": "Description for the model",
+	"field_def_description_hint": "What belongs in the field and how documents call it, e.g. “the month's gross total, not the base salary; printed as Gesamt-Brutto”. The field's name is rarely on a document.",
 	"field_def_scope": "Applies to",
 	"field_def_scope_global": "All document types",
 	"user_new": "New user",

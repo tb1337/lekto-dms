@@ -36,7 +36,8 @@ const lookup = {
 			document_type_ids: [INVOICE],
 			required: false,
 			required_document_type_ids: [INVOICE],
-			choices: []
+			choices: [],
+			description: 'Die Nummer, unter der die Rechnung geführt wird'
 		},
 		{
 			id: NOTE,
@@ -171,6 +172,17 @@ describe('DocumentForm', () => {
 		expect(screen.getByRole('heading', { name: m.group_type({ type: 'Rechnung' }) })).toBeTruthy();
 		const global = screen.getByRole('region', { name: m.group_global() });
 		expect(within(global).getByLabelText('Notiz', { selector: 'input' })).toBeTruthy();
+	});
+
+	it('tells under a field what belongs in it', () => {
+		render(DocumentForm, props());
+		const number = screen.getByRole('group', { name: /Rechnungsnummer/ });
+		expect(number.getAttribute('aria-describedby')).toBeTruthy();
+		expect(
+			within(number).getByText('Die Nummer, unter der die Rechnung geführt wird')
+		).toBeTruthy();
+		const note = screen.getByRole('group', { name: 'Notiz' });
+		expect(note.getAttribute('aria-describedby')).toBeNull();
 	});
 
 	it('shows an open field as a card with reason and quote', () => {

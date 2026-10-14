@@ -37,6 +37,7 @@ beforeEach(() => {
 					choices: [],
 					required: false,
 					required_document_type_ids: [INVOICE],
+					description: 'Die Nummer, unter der die Rechnung geführt wird',
 					created_at: '2026-10-13T12:00:00Z'
 				}
 			]);
@@ -55,6 +56,8 @@ beforeEach(() => {
 afterEach(() => {
 	session.clear();
 	vi.unstubAllGlobals();
+	// A dialog makes the page unclickable until it has closed; the next test must not wait.
+	window.document.body.style.pointerEvents = '';
 });
 
 describe('FieldsPanel', () => {
@@ -81,9 +84,30 @@ describe('FieldsPanel', () => {
 		expect(await post?.json()).toEqual({
 			name: 'Betrag',
 			data_type: 'text',
+			description: null,
 			document_type_ids: [REMINDER],
 			required: false,
 			required_document_type_ids: [REMINDER]
+		});
+	});
+
+	it('shows what belongs in a field and lets an admin change it', async () => {
+		render(FieldsPanel);
+		const hint = 'Die Nummer, unter der die Rechnung geführt wird';
+		expect(await screen.findByText(hint)).toBeTruthy();
+		await userEvent.click(
+			screen.getByRole('button', { name: m.master_rename({ name: 'Rechnungsnummer' }) })
+		);
+		const description = screen.getByLabelText(m.field_def_description()) as HTMLTextAreaElement;
+		expect(description.value).toBe(hint);
+		await userEvent.clear(description);
+		await userEvent.type(description, 'Rechnungsnummer, nicht die Kundennummer');
+		await userEvent.click(screen.getByRole('button', { name: m.save() }));
+		const patch = fetchMock.mock.calls
+			.map((call) => call[0])
+			.find((call) => call.method === 'PATCH');
+		expect(await patch?.json()).toMatchObject({
+			description: 'Rechnungsnummer, nicht die Kundennummer'
 		});
 	});
 });

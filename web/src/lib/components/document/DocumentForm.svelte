@@ -603,6 +603,7 @@
 				applies={applies(key)}
 				active={focused === key || pinned === key}
 				required={required(field)}
+				hint={field.description}
 				onfocus={focus}
 				onjump={jump}
 			>

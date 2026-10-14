@@ -26,6 +26,7 @@
 		applies = true,
 		active = false,
 		required = false,
+		hint = null,
 		onfocus,
 		onjump,
 		onpick,
@@ -43,6 +44,8 @@
 		active?: boolean;
 		/** The field must have a value (a required field of the document's type). */
 		required?: boolean;
+		/** What belongs in the field (its description), under its name. */
+		hint?: string | null;
 		onfocus: (key: string | null) => void;
 		onjump: (key: string, place: Place) => void;
 		/** Take a proposed value for the field. */
@@ -55,6 +58,7 @@
 	const kind = $derived(check ? provenance(check) : null);
 	const places = $derived(applies ? (check?.locations ?? []) : []);
 	const labelId = $derived(`${inputId}-label`);
+	const hintId = $derived(`${inputId}-hint`);
 	const sources = $derived(check && applies ? chosen(check) : []);
 	const pick = $derived(onpick ? (value: unknown) => onpick(key, value) : undefined);
 </script>
@@ -74,6 +78,7 @@
 <div
 	role="group"
 	aria-labelledby={labelId}
+	aria-describedby={hint ? hintId : undefined}
 	data-field={key}
 	onmouseenter={() => onfocus(key)}
 	onmouseleave={() => onfocus(null)}
@@ -148,5 +153,6 @@
 			</span>
 		</div>
 	{/if}
+	{#if hint}<p id={hintId} class="-mt-0.5 text-xs text-muted-foreground">{hint}</p>{/if}
 	{@render children()}
 </div>

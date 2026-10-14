@@ -45,6 +45,8 @@
 	let required = $state(false);
 	let requiredTypes = $state<string[]>([]);
 	let choices = $state('');
+	// What belongs in the field, for the language model (its name is often an internal one).
+	let description = $state('');
 	let error = $state<string | null>(null);
 	let busy = $state(false);
 
@@ -72,6 +74,7 @@
 		required = have?.required ?? false;
 		requiredTypes = have ? [...have.required_document_type_ids] : [];
 		choices = have ? have.choices.join('\n') : '';
+		description = have?.description ?? '';
 	}
 
 	function scopeText(field: FieldDefinition): string {
@@ -110,6 +113,7 @@
 						body: {
 							name: name.trim(),
 							data_type: dataType,
+							description: description.trim() || null,
 							document_type_ids,
 							...requirement,
 							...(dataType === 'choice' ? { choices: list } : {})
@@ -122,6 +126,7 @@
 						params: { path: { id: editing.id } },
 						body: {
 							name: name.trim(),
+							description: description.trim() || null,
 							document_type_ids,
 							...requirement,
 							...(editing.data_type === 'choice' ? { choices: list } : {})
@@ -179,6 +184,11 @@
 							{#if field.choices.length > 0}
 								· {field.choices.join(', ')}{/if}
 						</span>
+						{#if field.description}
+							<span class="line-clamp-2 text-sm text-muted-foreground italic">
+								{field.description}
+							</span>
+						{/if}
 					</div>
 					<Button
 						variant="ghost"
@@ -221,6 +231,11 @@
 					disabled={editing !== 'new'}
 					options={TYPES.map((type) => ({ value: type, label: typeLabel[type]() }))}
 				/>
+			</Field.Field>
+			<Field.Field>
+				<Field.Label for="field-def-description">{m.field_def_description()}</Field.Label>
+				<Textarea id="field-def-description" bind:value={description} rows={3} maxlength={300} />
+				<Field.Description>{m.field_def_description_hint()}</Field.Description>
 			</Field.Field>
 			{#if isChoice}
 				<Field.Field>

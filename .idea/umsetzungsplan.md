@@ -463,6 +463,52 @@ Die Lücke der textbasierten Varianten kommt fast ganz aus dem schlechten Scan (
 
 **Offen:** Die Messung in der Kopie der Devinstanz (Bestand neu auslesen, die zehn Originale und eine Stichprobe ab den Signalen neu verarbeiten, Lanes, Felder und Zitatfehler gegen den Docling-Stand), danach die Entscheidung, den Branch zurück nach `feature/understanding-0.2.0` zu mergen.
 
+### Zwischenschritt: Felder mit Beschreibung
+
+**Anlass (Tobi, 14.10.2026):** Dokumente werden oft gelb, „weil die Namen der Felder im Text nicht gefunden werden“; die Feldnamen (`LA_Brutto`, `LA_Netto`) vergeben wir intern. Gemessen: Gelb machte fast immer das Zitat, nicht der Name. 70 von 74 Feldprüfungen an 37 Lohnabrechnungen scheiterten daran, dass das Modell Beschriftung und Wert aus verschiedenen Stellen zusammensetzte oder Beträge umschrieb. In 59 der 70 Fälle war der Wert trotzdem richtig. Eine gelockerte Prüfung hätte 10 der 11 falschen Werte grün gemacht.
+
+**Entscheidungen (Tobi, 14.10.2026):**
+- Beschreibung als Freitext am Feld (bis 300 Zeichen, in beiden Prompts, in Feldverwaltung und Formular).
+- Prompt schärfen und messen, die Prüfung bleibt streng.
+- Nach dem falschen Grün der Messung zusätzlich:
+  - A: Das Zitat muss den Wert zeigen.
+  - B: Ein Betrag zählt im Zitat nur als Betrag.
+  - D: Werte auf schwach gelesenen Seiten sind nur Vorschläge; die Schwelle steht in `PAPIQ_POOR_READING_THRESHOLD`.
+  - C (die Beschriftung beim Wert) ist Issue #55.
+- Eine fremde OCR-Schicht liest Papiq selbst neu (`--redo-ocr`).
+- Das Modell der Devinstanz ist `anthropic.claude-sonnet-5-5`, mit Testläufen von höchstens 15 Dokumenten.
+
+**Umsetzung (Branch `feature/field-hints-0.2.0`, von `release/0.2.0`):**
+- **Feld und Schema:** `FieldDefinition.description` (Revision 0017), REST `description` an Feldern.
+- **Prompts** `propose-2` und `extract-3`: Beschreibung hinter Name und Optionen, Zitat „wie es dasteht“, bei getrennter Beschriftung die Zeile des Werts.
+- **Weboberfläche:** Textfeld in der Feldverwaltung, Hinweis unter dem Feld im Formular.
+- **Bewertungssatz:** Felder mit Beschreibung, Fall 35 (Grundgehalt und Gesamtbrutto).
+- **Prüfungen A und B:** in `_check_field` und `_check_date` (auch für das Dokumentdatum), dazu `amounts_in`.
+- **D, Lesung je Seite:** Sie kommt aus dem hOCR, das OCRmyPDF mit `--keep-temporary-files` in einem eigenen Arbeitsordner behält (`OcrResult.readings`, Protokoll `readings`). Unsicher ist ein Wort unter 60 % Sicherheit; weniger als 10 Wörter sagen nichts.
+- **D, Wirkung:** Felder-Knoten und Urteil machen einen grünen Wert auf einer schwach gelesenen Seite zum Vorschlag (die Seite des Zitats, ohne Fundstelle jede gelesene).
+- **Fremde OCR:** Ein PDF mit unsichtbarem Text bekommt `--redo-ocr` statt `--skip-text` und `--deskew`; das Protokoll vermerkt `read_again`.
+- **Sonnet 5.5:**
+  - `PAPIQ_LLM_TEMPERATURE=none` lässt die Temperatur weg.
+  - Die Schemas schreiben „eins aus der Liste oder null“ als `anyOf` und haben keine Grenzen für Listen.
+- **Protokoll-Ansicht:** Sie zeigt die Lesung je Seite.
+
+**Messung (`reviews/field-hints.md`, 15 Dokumente):**
+- alter Stand: 0 grün;
+- neuer Prompt mit A und B: 10 grün;
+- dazu eigene OCR und D: 10 grün, die fünf schwach gelesenen gelb;
+- in keinem Lauf ein echtes falsches Grün. Grüne Abweichungen gab es nur bei den Bestätigungen, die Tobi prüft.
+
+**Beobachtungen:**
+- Die Originale der Lohnabrechnungen tragen die OCR von ecoDMS, die bisher ungeprüft blieb.
+- Groqs Tageskontingent reichte für 45 Dokumente, und es teilt sich den Schlüssel mit der Devinstanz.
+- `-k` druckt den Ort der Dateien mitten in die Ausgabe vor den Fehler; der Adapter entfernt die Zeilen.
+
+**Offen:**
+- Tobis eigene Beschreibungen für LA_Brutto und LA_Netto.
+- Die Prüfung der fraglichen Bestätigungen.
+- Der Bestand liest erst nach „ab OCR neu verarbeiten“ neu.
+- Die Kalibrierung der Schwelle (M18).
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

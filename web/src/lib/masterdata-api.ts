@@ -85,16 +85,6 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 	}
 };
 
-/** The placeholders of a title pattern (syntax, not words: the same in every language). */
-export const TITLE_PLACEHOLDERS = [
-	'{contact}',
-	'{document_type}',
-	'{document_date}',
-	'{document_date:YYYY-MM}',
-	'{filename}',
-	'{field:…}'
-] as const;
-
 /** One alias per line; empty lines dropped. */
 export function parseAliases(text: string): string[] {
 	return text

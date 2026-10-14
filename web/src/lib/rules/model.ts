@@ -103,6 +103,11 @@ export function templateValue(name: (typeof TEMPLATE_VALUES)[number]): string {
 	return name === 'tags' ? "{{ tags | join: ', ' }}" : `{{ ${name} }}`;
 }
 
+/** How a field is written into a template, by its key (`FieldOut.key`). */
+export function fieldTemplate(key: string): string {
+	return `{{ field.${key} }}`;
+}
+
 const ALL_OPERATORS: readonly Operator[] = [
 	'is',
 	'in',

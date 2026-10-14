@@ -178,7 +178,13 @@
 			{#each fields as field (field.id)}
 				<li class="flex items-center gap-3 rounded-2xl border bg-card px-4 py-2">
 					<div class="flex min-w-0 flex-1 flex-col">
-						<span class="truncate">{field.name}</span>
+						<span class="flex min-w-0 flex-wrap items-baseline gap-x-2">
+							<span class="truncate">{field.name}</span>
+							<code
+								class="truncate font-mono text-xs text-muted-foreground"
+								title={m.field_def_key_hint()}>{`field.${field.key}`}</code
+							>
+						</span>
 						<span class="truncate text-sm text-muted-foreground">
 							{typeLabel[field.data_type]()} · {scopeText(field)}
 							{#if field.choices.length > 0}

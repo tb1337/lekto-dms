@@ -4,6 +4,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
+	import { page } from '$app/state';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import MasterDataDialog from '#lib/components/MasterDataDialog.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -34,6 +35,15 @@
 			problem = describeError(error);
 		}
 	}
+
+	// A link to a document type (from the rule of its title pattern) opens it.
+	let opened = false;
+	$effect(() => {
+		const wanted = kind === 'document-types' ? page.url.searchParams.get('type') : null;
+		if (opened || !wanted || !items) return;
+		opened = true;
+		editing = items.find((item) => item.id === wanted) ?? null;
+	});
 
 	onMount(() => void load());
 

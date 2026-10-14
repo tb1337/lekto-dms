@@ -2,18 +2,13 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
+	import TemplateField from '#lib/components/TemplateField.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { Textarea } from '#lib/components/ui/textarea/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { changesOf, type IdentifierRow, rowsOf } from '#lib/identifiers.ts';
-	import {
-		type Extra,
-		type Item,
-		parseAliases,
-		TITLE_PLACEHOLDERS,
-		type Values
-	} from '#lib/masterdata-api.ts';
+	import { type Extra, type Item, parseAliases, type Values } from '#lib/masterdata-api.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
 	// Create or change a contact (name, aliases, identifiers), a document type (name,
@@ -102,13 +97,12 @@
 				</Field.Field>
 				<Field.Field>
 					<Field.Label for="master-title-pattern">{m.master_title_pattern()}</Field.Label>
-					<Input id="master-title-pattern" bind:value={titlePattern} maxlength={200} />
-					<Field.Description>
-						{m.master_title_pattern_hint()}
-						{#each TITLE_PLACEHOLDERS as placeholder (placeholder)}
-							<code class="mx-0.5 rounded bg-muted px-1 font-mono text-xs">{placeholder}</code>
-						{/each}
-					</Field.Description>
+					<TemplateField
+						id="master-title-pattern"
+						bind:value={titlePattern}
+						documentType={initial?.id ?? null}
+					/>
+					<Field.Description>{m.master_title_pattern_hint()}</Field.Description>
 				</Field.Field>
 			{/if}
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}

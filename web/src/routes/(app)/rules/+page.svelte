@@ -9,6 +9,7 @@
 	import { BASE } from '#lib/base.ts';
 	import AllUsersToggle from '#lib/components/AllUsersToggle.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import TitlePatternBadge from '#lib/components/rules/TitlePatternBadge.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { Switch } from '#lib/components/ui/switch/index.ts';
@@ -127,6 +128,12 @@
 							</Badge>
 							{#if rule.owner_id && rule.owner_id !== session.user?.id}
 								<Badge variant="outline">{ownerName(rule.owner_id)}</Badge>
+							{/if}
+							{#if rule.managed_by_document_type_id}
+								<TitlePatternBadge
+									documentTypeId={rule.managed_by_document_type_id}
+									name={rule.name}
+								/>
 							{/if}
 							{#if !rule.enabled}<Badge variant="outline">{m.rule_off()}</Badge>{/if}
 						</span>

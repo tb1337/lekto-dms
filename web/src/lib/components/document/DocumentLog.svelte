@@ -260,7 +260,7 @@
 								data-node={node}
 								data-status={state.status}
 								class={cn(
-									'group min-w-[15rem] flex-1 rounded-2xl border px-4 py-3',
+									'group @container min-w-[15rem] flex-1 rounded-2xl border px-4 py-3',
 									cards[shown.tone]
 								)}
 							>
@@ -278,7 +278,9 @@
 									/>
 									<span class="font-semibold">{NODE_LABELS[node]()}</span>
 									<span class={cn('text-sm', texts[shown.tone])}>{shown.label}</span>
-									<span class="ml-auto text-sm text-muted-foreground tabular-nums">
+									<span
+										class="ml-auto text-sm whitespace-nowrap text-muted-foreground tabular-nums"
+									>
 										{duration(state) ?? ''}
 									</span>
 									<ChevronDown
@@ -324,7 +326,10 @@
 												</Button>
 											{/if}
 										</div>
-										<dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5">
+										<!-- Side by side where the card is wide; a label above its value in a narrow one. -->
+										<dl
+											class="grid grid-cols-1 gap-x-3 gap-y-0.5 @sm:grid-cols-[auto_minmax(0,1fr)]"
+										>
 											<dt class="text-muted-foreground">{m.log_outcome()}</dt>
 											<dd>
 												{outcomeLabel[entry.outcome]()} · {seconds(entry.duration_ms / 1000)}

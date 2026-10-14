@@ -13,7 +13,7 @@
 
 {#each rows as row (row.label)}
 	<dt class="text-muted-foreground">{row.label}</dt>
-	<dd class="flex flex-wrap gap-x-3 gap-y-0.5 break-words">
+	<dd class="flex min-w-0 flex-wrap gap-x-3 gap-y-0.5 break-words">
 		{#each row.items as item, index (index)}
 			{#if item.href}
 				<a href={item.href} class="text-brand hover:underline">{item.text}</a>

@@ -119,6 +119,7 @@ def test_classification_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     ("name", "value"),
     [
         ("PAPIQ_LLM_TEMPERATURE", "-1"),
+        ("PAPIQ_LLM_TEMPERATURE", "warm"),
         ("PAPIQ_LLM_RESPONSE_FORMAT", "text"),
         ("PAPIQ_LLM_INPUT_BUDGET", "10"),
         ("PAPIQ_LLM_TIMEOUT", "0"),
@@ -140,6 +141,11 @@ def test_the_suggestion_threshold_is_not_above_acceptance(
         {"PAPIQ_CONFIDENCE_THRESHOLD": "0.7", "PAPIQ_CONTACT_SUGGEST_THRESHOLD": "0.75"},
     )
     assert "PAPIQ_CONTACT_SUGGEST_THRESHOLD must not be above PAPIQ_CONFIDENCE_THRESHOLD" in message
+
+
+def test_none_leaves_the_temperature_to_the_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_env(monkeypatch, {"PAPIQ_LLM_TEMPERATURE": "None"})
+    assert load_settings().llm_temperature is None
 
 
 def test_log_level_is_case_insensitive(monkeypatch: pytest.MonkeyPatch) -> None:

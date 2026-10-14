@@ -60,6 +60,14 @@ def _seconds(value: Any) -> Any:
 Seconds = Annotated[timedelta, BeforeValidator(_seconds), Field(gt=timedelta(0))]
 
 
+def _unset_if_none(value: Any) -> Any:
+    return None if isinstance(value, str) and value.strip().lower() == "none" else value
+
+
+# `none` leaves the temperature to the endpoint: some models reject one (Claude Sonnet 5.5).
+Temperature = Annotated[Annotated[float, Field(ge=0, le=2)] | None, BeforeValidator(_unset_if_none)]
+
+
 class Settings(BaseSettings):
     """All technical settings. Business data (users, drawers, rules, ...) is not configuration."""
 
@@ -192,7 +200,7 @@ class Settings(BaseSettings):
     llm_base_url: AnyHttpUrl | None = None
     llm_model: str | None = None
     llm_api_key: SecretStr | None = None
-    llm_temperature: Annotated[float, Field(ge=0, le=2)] = 0.0
+    llm_temperature: Temperature = 0.0
     llm_seed: int | None = None
     llm_timeout: Seconds = timedelta(minutes=5)
     # `json_object` for providers without JSON Schema support; the answer is checked anyway.

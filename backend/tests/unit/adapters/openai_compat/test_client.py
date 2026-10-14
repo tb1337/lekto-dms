@@ -160,6 +160,12 @@ async def test_json_object_format_and_no_key(endpoint: SimulatedEndpoint) -> Non
     assert "seed" not in body
 
 
+async def test_without_a_temperature_the_endpoint_chooses(endpoint: SimulatedEndpoint) -> None:
+    await language_model(endpoint.transport, temperature=None).complete(REQUEST)
+
+    assert "temperature" not in endpoint.body()
+
+
 async def test_the_answer_is_returned_unchecked(endpoint: SimulatedEndpoint) -> None:
     endpoint.content = "not json at all"
     answer = await language_model(endpoint.transport).complete(REQUEST)

@@ -291,12 +291,8 @@
 </script>
 
 <!-- The run box beside the nodes where there is room, above them where not. -->
-<div class="@container flex flex-col gap-2.5">
-	<h2 id="log-heading" class="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-		{m.graph_title()} · {m.log_run({ run: shownRun })}
-	</h2>
-	{#if problem}<p class="text-destructive" role="alert">{problem}</p>{/if}
-	<div class="grid items-start gap-x-6 gap-y-2.5 @4xl:grid-cols-[minmax(0,1fr)_20rem]">
+<div class="@container">
+	<div class="grid items-start gap-6 @4xl:grid-cols-[minmax(0,1fr)_20rem]">
 		<aside
 			aria-labelledby="run-heading"
 			class="flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5 @4xl:order-last"
@@ -376,127 +372,138 @@
 			{/if}
 		</aside>
 
-		<ol aria-labelledby="log-heading" class="flex min-w-0 flex-col gap-2.5">
-			{#each rows as row, rowIndex (rowIndex)}
-				<li class="flex flex-wrap gap-2.5">
-					{#each row as node (node)}
-						{@const view = nodeView(node)}
-						{#if view.state || !isCurrent}
-							{@const state = view.state}
-							{@const looks = look(state)}
-							<details
-								open={state?.outcome === 'uncertain' || state?.outcome === 'failed'}
-								data-node={node}
-								data-status={state?.status ?? 'not_run'}
-								class={cn(
-									'group @container min-w-60 flex-1 rounded-2xl border px-4 py-3',
-									cards[looks.tone]
-								)}
-							>
-								<!-- Where the card is narrow, the state goes below the name; the icon, the duration and
-								     the chevron stay with the first line. -->
-								<summary
-									class="flex cursor-pointer list-none items-start gap-2.5 [&::-webkit-details-marker]:hidden"
+		<section aria-labelledby="log-heading" class="flex min-w-0 flex-col gap-2.5">
+			<h2
+				id="log-heading"
+				class="text-xs font-semibold tracking-wider text-muted-foreground uppercase"
+			>
+				{m.graph_title()} · {m.log_run({ run: shownRun })}
+			</h2>
+			{#if problem}<p class="text-destructive" role="alert">{problem}</p>{/if}
+			<ol class="flex flex-col gap-2.5">
+				{#each rows as row, rowIndex (rowIndex)}
+					<li class="flex flex-wrap gap-2.5">
+						{#each row as node (node)}
+							{@const view = nodeView(node)}
+							{#if view.state || !isCurrent}
+								{@const state = view.state}
+								{@const looks = look(state)}
+								<details
+									open={state?.outcome === 'uncertain' || state?.outcome === 'failed'}
+									data-node={node}
+									data-status={state?.status ?? 'not_run'}
+									class={cn(
+										'group @container min-w-60 flex-1 rounded-2xl border px-4 py-3',
+										cards[looks.tone]
+									)}
 								>
-									<span class="flex h-6 shrink-0 items-center">
-										<looks.icon
-											class={cn('size-4.5', texts[looks.tone], looks.spin && 'animate-spin')}
-											aria-hidden="true"
-											strokeWidth={2.2}
-										/>
-									</span>
-									<span class="flex min-w-0 flex-wrap items-baseline gap-x-2.5">
-										<span class="font-semibold">{NODE_LABELS[node]()}</span>
-										<span class="text-sm whitespace-nowrap">
-											<span class={texts[looks.tone]}>{looks.label}</span>
-											{#if view.done.from !== null}
-												<span class="text-muted-foreground">
-													· {m.log_from_run({ run: view.done.from })}
-												</span>
-											{/if}
-										</span>
-									</span>
-									<span
-										class="ml-auto text-sm leading-6 whitespace-nowrap text-muted-foreground tabular-nums"
+									<!-- Where the card is narrow, the state goes below the name; the icon, the duration and
+								     the chevron stay with the first line. -->
+									<summary
+										class="flex cursor-pointer list-none items-start gap-2.5 [&::-webkit-details-marker]:hidden"
 									>
-										{duration(state) ?? ''}
-									</span>
-									<span class="flex h-6 shrink-0 items-center">
-										<ChevronDown
-											class="size-4 text-muted-foreground transition-transform group-open:rotate-180"
-											aria-hidden="true"
-										/>
-									</span>
-								</summary>
-								{#if !manageable}
-									<p class="mt-2 ml-7 text-sm text-muted-foreground">{m.log_owner_only()}</p>
-								{:else if view.done.entries.length === 0 && isCurrent}
-									<p class="mt-2 ml-7 text-sm text-muted-foreground">
-										{entries === null ? m.loading() : m.log_none()}
-									</p>
-								{/if}
-								{#each view.done.entries as entry, index (`${entry.run}-${index}`)}
-									{@const usage = usageOf(entry.output)}
-									{@const exchange = exchangeOf(entry)}
-									<div class="mt-2.5 ml-7 flex flex-col gap-1.5 text-sm" data-run={entry.run}>
-										<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
-											<span>
-												{time(entry.started_at)} · {m.log_run({
-													run: entry.run
-												})}{#if entry.model_version}
-													· {entry.model_version}{/if}
+										<span class="flex h-6 shrink-0 items-center">
+											<looks.icon
+												class={cn('size-4.5', texts[looks.tone], looks.spin && 'animate-spin')}
+												aria-hidden="true"
+												strokeWidth={2.2}
+											/>
+										</span>
+										<span class="flex min-w-0 flex-wrap items-baseline gap-x-2.5">
+											<span class="font-semibold">{NODE_LABELS[node]()}</span>
+											<span class="text-sm whitespace-nowrap">
+												<span class={texts[looks.tone]}>{looks.label}</span>
+												{#if view.done.from !== null}
+													<span class="text-muted-foreground">
+														· {m.log_from_run({ run: view.done.from })}
+													</span>
+												{/if}
 											</span>
-											{#if usage}
-												<TokenInfo
-													{usage}
-													model={entry.model_version}
-													id="tokens-{entry.node}-{entry.run}-{index}"
-												/>
-											{/if}
-											{#if exchange}
-												<Button
-													variant="outline"
-													size="sm"
-													class="ml-auto"
-													aria-haspopup="dialog"
-													onclick={() => showPrompt(entry, exchange)}
-												>
-													<MessageSquareCode aria-hidden="true" />
-													{m.prompt_open()}
-												</Button>
-											{/if}
-										</div>
-										<!-- Side by side where the card is wide; a label above its value in a narrow one. -->
-										<dl
-											class="grid grid-cols-1 gap-x-3 gap-y-0.5 @sm:grid-cols-[auto_minmax(0,1fr)]"
+										</span>
+										<span
+											class="ml-auto text-sm leading-6 whitespace-nowrap text-muted-foreground tabular-nums"
 										>
-											<dt class="text-muted-foreground">{m.log_outcome()}</dt>
-											<dd>
-												{outcomeLabel[entry.outcome]()} · {seconds(entry.duration_ms / 1000)}
-											</dd>
-											{#if entry.confidence !== null}
-												<dt class="text-muted-foreground">{m.log_confidence()}</dt>
+											{duration(state) ?? ''}
+										</span>
+										<span class="flex h-6 shrink-0 items-center">
+											<ChevronDown
+												class="size-4 text-muted-foreground transition-transform group-open:rotate-180"
+												aria-hidden="true"
+											/>
+										</span>
+									</summary>
+									{#if !manageable}
+										<p class="mt-2 ml-7 text-sm text-muted-foreground">{m.log_owner_only()}</p>
+									{:else if view.done.entries.length === 0 && isCurrent}
+										<p class="mt-2 ml-7 text-sm text-muted-foreground">
+											{entries === null ? m.loading() : m.log_none()}
+										</p>
+									{/if}
+									{#each view.done.entries as entry, index (`${entry.run}-${index}`)}
+										{@const usage = usageOf(entry.output)}
+										{@const exchange = exchangeOf(entry)}
+										<div class="mt-2.5 ml-7 flex flex-col gap-1.5 text-sm" data-run={entry.run}>
+											<div
+												class="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground"
+											>
+												<span>
+													{time(entry.started_at)} · {m.log_run({
+														run: entry.run
+													})}{#if entry.model_version}
+														· {entry.model_version}{/if}
+												</span>
+												{#if usage}
+													<TokenInfo
+														{usage}
+														model={entry.model_version}
+														id="tokens-{entry.node}-{entry.run}-{index}"
+													/>
+												{/if}
+												{#if exchange}
+													<Button
+														variant="outline"
+														size="sm"
+														class="ml-auto"
+														aria-haspopup="dialog"
+														onclick={() => showPrompt(entry, exchange)}
+													>
+														<MessageSquareCode aria-hidden="true" />
+														{m.prompt_open()}
+													</Button>
+												{/if}
+											</div>
+											<!-- Side by side where the card is wide; a label above its value in a narrow one. -->
+											<dl
+												class="grid grid-cols-1 gap-x-3 gap-y-0.5 @sm:grid-cols-[auto_minmax(0,1fr)]"
+											>
+												<dt class="text-muted-foreground">{m.log_outcome()}</dt>
 												<dd>
-													{formatNumber(entry.confidence, {
-														style: 'percent',
-														maximumFractionDigits: 0
-													})}
+													{outcomeLabel[entry.outcome]()} · {seconds(entry.duration_ms / 1000)}
 												</dd>
-											{/if}
-											{#if entry.reason}
-												<dt class="text-muted-foreground">{m.log_reason()}</dt>
-												<dd class="wrap-break-word">{entry.reason}</dd>
-											{/if}
-											<SignalSummary {entry} {lookup} />
-										</dl>
-									</div>
-								{/each}
-							</details>
-						{/if}
-					{/each}
-				</li>
-			{/each}
-		</ol>
+												{#if entry.confidence !== null}
+													<dt class="text-muted-foreground">{m.log_confidence()}</dt>
+													<dd>
+														{formatNumber(entry.confidence, {
+															style: 'percent',
+															maximumFractionDigits: 0
+														})}
+													</dd>
+												{/if}
+												{#if entry.reason}
+													<dt class="text-muted-foreground">{m.log_reason()}</dt>
+													<dd class="wrap-break-word">{entry.reason}</dd>
+												{/if}
+												<SignalSummary {entry} {lookup} />
+											</dl>
+										</div>
+									{/each}
+								</details>
+							{/if}
+						{/each}
+					</li>
+				{/each}
+			</ol>
+		</section>
 	</div>
 </div>
 

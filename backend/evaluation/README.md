@@ -9,7 +9,7 @@ to check that the checks catch wrong answers.
   its `description`: what belongs in it, for the model);
   optionally `contact_aliases` (other names by contact), `contact_identifiers` (entered by
   hand: `kind` and `value` by contact), `type_descriptions` and `title_patterns` (by document
-  type).
+  type; templates as the rules' titles, `{{ contact }}`).
 - `training/<name>.md` and `.json`: the training corpus, 55 earlier letters of eleven contacts
   of the set with their metadata, in the style of their cases (as a sender's letters look
   alike), with IBANs, VAT IDs, customer numbers and mail domains. The household's IBAN stands

@@ -509,6 +509,53 @@ Die Lücke der textbasierten Varianten kommt fast ganz aus dem schlechten Scan (
 - Der Bestand liest erst nach „ab OCR neu verarbeiten“ neu.
 - Die Kalibrierung der Schwelle (M18).
 
+### Zwischenschritt: Titelmuster als Regel, Liquid als Template-Sprache
+
+**Anlass (Tobi, 14.10.2026):** Ein Titelmuster soll kein eigener Code sein, sondern die Abkürzung für eine vorgefertigte Regel: sichtbar unter Regeln, schreibgeschützt, mit dem Dokumenttyp als verlinktem Eigentümer. Regeln (und Muster) bekommen eine echte Template-Sprache mit allen Dokumentdaten und Feldern (`field.la_brutto`).
+
+**Entscheidungen (Tobi, 14.10.2026):**
+- Liquid (`python-liquid` 2.3, neue Abhängigkeit) statt Jinja2: Regeln schreiben auch Nutzer, Liquid ist dafür gebaut (nur übergebene Daten, Grenzen), die Sandbox von Jinja2 hatte 2024/2025 zwei Ausbrüche und kennt keine Schleifengrenze.
+- Feldschlüssel aus dem Namen; Umbenennen schreibt Templates um.
+- Eine Nutzerregel, die den Titel setzt, hat Vorrang vor der Typ-Regel.
+- Templates in „Titel setzen“, „Feld setzen“ für Textfelder und im Grund von „Prüfung erzwingen“; Bedingungen bleiben ein Baukasten.
+- Locale und Währung der Templates nur aus Einstellungen (`PAPIQ_TEMPLATE_LOCALE`, `PAPIQ_DEFAULT_CURRENCY`), keine Vorgabe im Adapter.
+
+**Umsetzung (Branch `feature/templates-0.2.0`, von `release/0.2.0`):**
+- **Port und Adapter:** Port `TemplateRenderer` (`check`: genutzte Pfade, `render`: Text oder `MissingValueError`), Adapter `adapters/outbound/liquid`.
+  - Ohne `include`/`render`; Grenzen 1.000 Schleifendurchläufe und 10.000 Zeichen.
+  - `FalsyStrictUndefined`: Ein fehlender Wert lässt sich prüfen, wirft aber bei der Ausgabe.
+  - Zahlen als Gleitkommazahl, die ihren genauen Dezimaltext schreibt (Liquids Rechenfilter kennen kein `Decimal`); Beträge als Objekt mit `amount` und `currency`; Daten ohne Zeitzonenverschiebung; Babel-Filter.
+  - Wie `regex` auch im Speicher-Container (Ausnahme in `architektur.md`).
+- **Domäne:** `FieldDefinition.key` (`template_key`) mit Eindeutigkeit.
+- **Engine:** Der Regel-Planer rendert mit dem Renderer, nachdem Typ, Kontakt, Ablage, Felder und Tags aufgelöst sind; die Namen von Tags, Schublade und Besitzer kommen über die Situation dazu. Fehlende Werte erzeugen eine Notiz `skipped`; eine erzwungene Prüfung hält mit dem rohen Grund.
+- **Speichern:** Prüfung von Syntax und Werten, Ablehnung alter Platzhalter mit Hinweis.
+- **Felder:** Umbenennen schreibt Regeln und Muster um; Löschen und Einengen sind gesperrt, solange ein Template das Feld nutzt.
+- **Revisionen:**
+  - 0018 übersetzt gespeicherte Regeln so, dass sie tun, was sie taten (`| default: ''`, `{% raw %}`).
+  - 0019 übersetzt die Typmuster und legt je Muster eine Regel an. Die Zuordnung steht in einer eigenen Tabelle `title_pattern_rules`, weil SQLite eine Spalte mit Fremdschlüssel an `rules` nicht ohne Kopie der Tabelle wieder entfernen kann; die Regelversionen hängen an `rules`.
+- **Typ-Regel:** global, Bedingung „Dokumenttyp ist X“, Aktion „Titel setzen“, Priorität 0, Eingang und Änderung; schreibgeschützt (409), weicht anderen Titeln (`yielded`).
+- **Felder-Knoten und Bestätigen:** Der Felder-Knoten gibt nur den Titel des Modells; Bestätigen rendert kein Muster mehr (die Regeln laufen nach dem Bestätigen ohnehin).
+- **Vorschau und Weboberfläche:**
+  - `POST /templates/preview`.
+  - Ein Template-Feld in Festbreite mit Werten und Feldschlüsseln zum Einfügen und der Vorschau am neuesten Dokument des Typs, im Typ-Dialog und im Regel-Editor.
+  - Abzeichen „Titelmuster von …“ mit Link zum Typ (`?type=` öffnet den Dialog).
+  - Der Feldschlüssel in der Feldverwaltung.
+
+**Prüfung an echten Daten:**
+- Eine Kopie von `papiq_live` (3 Typen mit `{document_date:YYYY/MM}`, keine Regeln) lief auf 0019: drei Muster in Liquid, drei Typ-Regeln.
+- Im Browser (hell, dunkel, Handybreite):
+  - Liste und Detail schreibgeschützt mit Link.
+  - Der Typ-Dialog zeigt die Vorschau am neuesten Dokument, mit deutschem Monatsnamen und Betrag.
+  - Die alte Schreibweise wird mit Hinweis abgelehnt.
+- Die Kopie ist gelöscht.
+
+**Beobachtungen:**
+- Ein Muster in alter Schreibweise ist gültiges Liquid und erschiene wörtlich im Titel; darum lehnt das Speichern es ab.
+- Fehlermeldungen des Servers bleiben englisch wie alle Meldungen der API.
+
+**Offen:**
+- Bestehende Dokumente tragen ihren alten Titel, bis die Regel angewendet wird („auf bestehende Dokumente anwenden“) oder sie neu verarbeitet werden.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

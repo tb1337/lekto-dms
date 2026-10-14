@@ -257,7 +257,8 @@ Nicht hundertprozentig sicher heißt kein Grün. Ein Signal *nennt* einen Wert, 
 - Das Zitat muss wörtlich im Text stehen und den Wert zeigen. Der Prompt verlangt es Zeichen für Zeichen, Zahlen unverändert, ohne Wörter aus verschiedenen Stellen zu verbinden; stehen Beschriftung und Wert getrennt (Tabelle, Formular mit Kästen), die Zeile des Werts. Die Prüfung bleibt streng: Eine gelockerte (die Wörter des Zitats nahe beim Wert) hätte in der Devinstanz zehn von elf falschen Werten grün gemacht (Tobi, 14.10.2026).
 - Ein Wert, der wörtlich dastehen kann (Betrag, Zahl, Datum, Text, Link; auch das Dokumentdatum), braucht ein Zitat, das ihn selbst zeigt; ein Betrag zählt dort nur als Betrag, mit Nachkommastellen oder Währung daneben (`620,00`, `620 €`, nicht eine nackte `620`). Sonst ist er nur ein Vorschlag. Anlass: Auf einem zerfallenen Scan zitierte das Modell nur die Beschriftung und machte aus einer einzelnen Zahl zehn Zeilen tiefer den Wert, und beides bestand die Prüfung (Tobi, 14.10.2026).
 - Schwach gelesene Seiten (Tobi, 14.10.2026): Die OCR schreibt je Seite, die sie selbst liest, die Wörter und die unsicheren (unter 60 % Sicherheit von Tesseract, aus dem hOCR) ins Protokoll. Ab `PAPIQ_POOR_READING_THRESHOLD` (Vorgabe 8 %) unsicheren Wörtern gilt eine Seite als schwach gelesen; ein Wert, dessen Zitat dort steht (ohne Fundstelle: auf irgendeiner gelesenen Seite), ist nur ein Vorschlag. Tesseract ist sich auch bei Fehllesungen sicher, darum zählt die Seite, nicht das Wort. Die Prüfung, ob die Beschriftung beim Wert steht, ist Issue #55.
-- **Titel**: das Titelmuster des Typs (`{contact}`, `{document_type}`, `{document_date}` und `{document_date:YYYY-MM}`, `{filename}`, `{field:Name}`), sonst der Titel des Modells, solange das Dokument noch den Dateinamen oder den Titel der Maschine trägt; fehlt ein Wert des Musters, der des Modells mit Hinweis. Beim Bestätigen wird das Muster mit den entschiedenen Werten neu gerendert. Regeln setzen den Titel weiter und ersetzen den der Maschine ohne Gelb.
+- **Titel**: der Titel des Modells, solange das Dokument noch den Dateinamen oder den Titel der Maschine trägt. Regeln setzen den Titel weiter und ersetzen den der Maschine ohne Gelb.
+- **Titelmuster** (Tobi, 14.10.2026): Ein Titelmuster ist die Abkürzung für eine vorgefertigte Regel. Setzt ein Admin am Typ ein Muster, entsteht im selben Schritt eine globale Regel des Typs: „Dokumenttyp ist X → Titel setzen“, beim Eingang und bei Änderungen (`title_pattern_rules`, `RuleOut.managed_by_document_type_id`). Sie folgt dem Muster (neue Version bei jeder Änderung, gelöscht mit Muster oder Typ, Name = Name des Typs) und ist sonst schreibgeschützt (409); unter Regeln steht sie mit einem Link zum Typ, „auf bestehende Dokumente anwenden“ geht wie bei jeder Regel. Sie ist die einzige globale Regel, die den Titel setzt, und weicht einer anderen Regel, die ihn setzt (Notiz `yielded`, kein Konflikt); hat eine Person den Titel gesetzt, gilt `overruled`. Fehlt ein Wert, den das Muster schreibt, setzt sie nichts: Der Titel des Modells bleibt. Beim Bestätigen laufen die Regeln wieder und rendern das Muster mit den entschiedenen Werten.
 
 **Kontakte: Aliase und Kennungen**
 
@@ -296,6 +297,7 @@ Regeln sind Daten in der Datenbank, keine Code-Änderung; sie werden in der Web-
 | Art | Angelegt von | Wirkt auf | Erlaubte Aktionen |
 | --- | --- | --- | --- |
 | Globale Regel | Admin | alle Dokumente | Tags, Felder, Prüfung erzwingen – nichts, was Sichtbarkeit ändert |
+| Regel eines Titelmusters | entsteht am Dokumenttyp | Dokumente des Typs | nur Titel setzen; schreibgeschützt, folgt dem Muster |
 | Nutzer-Regel | jeder Nutzer | nur eigene Dokumente | alle Aktionen; Schublade nur, wenn der Besitzer der Regel dort schreiben darf (auch wenn ein Admin sie ändert) |
 
 **Aufbau einer Regel**
@@ -306,9 +308,11 @@ Regeln sind Daten in der Datenbank, keine Code-Änderung; sie werden in der Web-
 | Bedingungen | Baum aus UND/ODER-Gruppen, jede Gruppe negierbar; jede Bedingung = Feld + Operator + Wert |
 | Felder | Kontakt, Dokumenttyp, Tags, Eingangskanal (Web, API, Migration; später weitere wie E-Mail), Text, Felder, Dokumentdatum |
 | Operatoren (je nach Datentyp) | ist, ist eines von, enthält, Muster (Regex), größer/kleiner, vorhanden/fehlt |
-| Aktionen | Schublade setzen, Kontakt setzen, Typ setzen, Titel setzen (mit Platzhaltern), Tags hinzufügen/entfernen, Feld setzen, Prüfung erzwingen (→ Posteingang) |
+| Aktionen | Schublade setzen, Kontakt setzen, Typ setzen, Titel setzen (Template), Tags hinzufügen/entfernen, Feld setzen (ein Textfeld als Template), Prüfung erzwingen (→ Posteingang, Grund als Template) |
 
 Gespeichert als JSON, geprüft mit Pydantic; die UI bietet einen Baukasten.
+
+**Templates** (Tobi, 14.10.2026): Titel, Werte von Textfeldern und Gründe erzwungener Prüfungen sind Liquid-Templates (`{{ contact }}`, `{% if field.la_brutto %}…{% endif %}`, Filter mit `|`); die Bedingungen bleiben ein Baukasten. Ein Template sieht `title`, `filename`, `original_filename`, `contact`, `document_type`, `document_date`, `added`, `tags`, `drawer`, `owner`, `channel`, `pages` und `field.<schlüssel>`, wie die Regeln das Dokument hinterlassen (Kontakt, Typ, Schublade, Felder, Tags). Der Schlüssel eines Felds kommt aus seinem Namen (`LA_Brutto` → `la_brutto`, Umlaute als ae/oe/ue), ist eindeutig und steht in der Feldverwaltung; Umbenennen schreibt Muster und Regeln um (neue Version), ein Feld, das ein Template nutzt, lässt sich nicht löschen und nicht aus dem Geltungsbereich eines Typs nehmen, dessen Muster es nutzt. Daten und Beträge schreiben Templates in `PAPIQ_TEMPLATE_LOCALE` (`datetime`, `currency`, `decimal`; ein Betrag als `3.650,00 EUR`). Gibt ein Template einen fehlenden Wert aus, setzt die Aktion nichts (vermerkt, ohne Gelb); eine erzwungene Prüfung hält mit dem Grund, wie er dasteht. Beim Speichern werden Syntax und Werte geprüft, die alte Schreibweise (`{contact}`) mit Hinweis abgelehnt; `POST /templates/preview` zeigt ein Template an einem Dokument.
 
 **Auswertung**
 

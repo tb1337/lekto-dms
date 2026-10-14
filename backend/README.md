@@ -23,7 +23,8 @@ Dependency rules, enforced by `uv run lint-imports`:
 - Only `composition` knows which adapter implements which port.
 
 Every port gets an in-memory adapter for core tests and a contract test suite that every real
-adapter must pass.
+adapter must pass. Two adapters need no service and serve the memory container as well: the
+pattern matcher (`regex`, a search with a time limit) and the template renderer (`liquid`).
 
 ## Core
 
@@ -315,11 +316,13 @@ gross total, not the base salary). The model is told to copy the quoted passage 
 stands, numbers unchanged, and where the label and the value stand apart (a table, a form with
 boxes), the line the value stands on; the check stays strict.
 
-The title comes from the type's title pattern (`{contact}`, `{document_type}`,
-`{document_date}`, `{document_date:YYYY-MM}` with `YYYY YY MM DD`, `{filename}`,
-`{field:Name}`), else from the model, while the document still has its file name or the title
-the machine gave it; a pattern missing a value falls back to the model's title. Confirming in the inbox renders the pattern again with the decided values; a
-rule replaces the machine's title without making the document yellow. Every check with its
+The title is the model's while the document still has its file name or the title the machine
+gave it; a rule replaces the machine's title without making the document yellow. A document
+type's title pattern is such a rule: a template (see Rules) that a global rule of the type
+carries out, made, changed and deleted with the pattern and read-only otherwise
+(`RuleOut.managed_by_document_type_id`, changes 409). It gives way to another rule that sets the
+title (note `yielded`); a value it writes that the document lacks leaves the model's title;
+confirming runs the rules again with the decided values. Every check with its
 candidates and the raw answer is in the processing log (`fields`, `answer`), so a proposal stays
 traceable after a correction; the rules read them with `core.services.inbox.field_checks`.
 
@@ -395,7 +398,7 @@ version; deleting is a soft delete.
   "actions": [
     {"type": "set_drawer", "drawer_id": "<drawer id>"},
     {"type": "add_tags", "tag_ids": ["<tag id>"]},
-    {"type": "set_title", "template": "{contact} {document_date}"}
+    {"type": "set_title", "template": "{{ contact }} {{ document_date | date: '%Y-%m' }}"}
   ]
 }
 ```
@@ -424,9 +427,23 @@ version; deleting is a soft delete.
   pattern that times out does not match and is logged. All patterns of one run on one
   document get two seconds together, a preview page twenty; the patterns left do not match. The text is the parsed text without
   markup, at most `PAPIQ_RULES_MAX_TEXT` characters; it is loaded only if a rule looks at it.
-- **Actions.** `set_drawer`, `set_contact`, `set_document_type`, `set_title` (placeholders
-  `{contact}`, `{document_type}`, `{document_date}`, `{filename}`), `add_tags`, `remove_tags`,
-  `set_field`, `force_review` (with a reason).
+- **Actions.** `set_drawer`, `set_contact`, `set_document_type`, `set_title`, `add_tags`,
+  `remove_tags`, `set_field`, `force_review` (with a reason).
+- **Templates.** A title, the value of a text field and a review's reason are Liquid templates
+  (`python-liquid`, `adapters/outbound/liquid`): `{{ contact }}`, `{% if field.la_brutto %}`,
+  filters with `|`. They see `title`, `filename`, `original_filename`, `contact`,
+  `document_type`, `document_date`, `added`, `tags`, `drawer`, `owner`, `channel`, `pages` and
+  `field.<key>` (`FieldOut.key`, from the name: `LA_Brutto` is `la_brutto`; an amount has
+  `.amount` and `.currency`), as the rules leave the document. `datetime`, `currency` and
+  `decimal` format in `PAPIQ_TEMPLATE_LOCALE`, an amount writes itself as `3.650,00 EUR`. A
+  template sees nothing but these values (no attributes of objects, no `include`), loops stop
+  after 1,000 turns and output after 10,000 characters. Writing a missing value sets nothing
+  (note `skipped`); `| default` and `{% if %}` make a part optional; a forced review holds with
+  its reason as written. Saving checks the syntax and the values (422, `actions[2]: unknown
+  value field.brutto`) and refuses the old placeholders (`{contact}`) with the way to write
+  them. Renaming a field rewrites the templates that use it (a new version); a field a template
+  uses is not deleted (409). `POST /templates/preview` checks a template and renders it with a
+  document the caller may read.
 - **Evaluation.** All conditions see the state before any rule acts; a rule's action never makes
   another rule match in the same run. Contact, type and tags the model set and no person
   confirmed are distrusted: a rule that matches only because of them does not file into a

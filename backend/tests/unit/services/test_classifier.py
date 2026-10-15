@@ -10,6 +10,7 @@ from papiq.adapters.outbound.memory import FakeClassifier
 from papiq.core.domain.classifier import KEPT_MODELS
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
+from papiq.core.domain.events import ClassifierTrained
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import ContactId
 from papiq.core.domain.master_data import Contact
@@ -78,6 +79,8 @@ async def test_training_learns_from_the_confirmed_documents(world: World) -> Non
     model = await classifier.train()
     assert (model.number, model.examples) == (1, 4)
     assert model.examples_until == world.clock.now()
+    trained = [event for event in world.events() if isinstance(event, ClassifierTrained)]
+    assert [(event.number, event.examples) for event in trained] == [(1, 4)]
     assert model.summary["learned_identifiers"] == 1
     assert await world.object_store.get(classifier_key(1))
     async with world.uow() as uow:

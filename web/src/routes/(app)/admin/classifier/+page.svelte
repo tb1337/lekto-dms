@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
@@ -7,6 +7,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
+	import { events } from '#lib/events.svelte.ts';
 	import { formatDate, formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
@@ -29,9 +30,19 @@
 			else problem = describeError(failure);
 		}
 	}
-	onMount(() => {
-		if (session.isAdmin) void load();
+	// Again after a break of the stream: the end of a training may have been missed.
+	$effect(() => {
+		void events.generation;
+		if (session.isAdmin) untrack(() => void load());
 	});
+
+	// A training runs in the background: its model shows once it is stored.
+	onMount(() =>
+		events.on('classifier.trained', (event) => {
+			toast.success(m.classifier_trained({ number: String(event.number) }));
+			void load();
+		})
+	);
 
 	async function train() {
 		if (busy) return;

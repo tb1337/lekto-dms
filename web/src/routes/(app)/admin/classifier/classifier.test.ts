@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { events } from '#lib/events.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
 import Page from './+page.svelte';
@@ -56,6 +57,31 @@ describe('classifier page', () => {
 		await userEvent.click(screen.getByRole('button', { name: m.classifier_train() }));
 		const post = fetchMock.mock.calls.map((call) => call[0]).find((call) => call.method === 'POST');
 		expect(new URL(post!.url).pathname).toBe('/api/v1/classifier/train');
+	});
+
+	it('shows the new model once a training ended', async () => {
+		let emit: ((message: { data: string }) => void) | undefined;
+		events.useFactory(
+			() =>
+				({
+					addEventListener(type: string, handler: (message: { data: string }) => void) {
+						if (type === 'classifier.trained') emit = handler;
+					},
+					close() {}
+				}) as unknown as EventSource
+		);
+		events.start(() => {});
+		let current = trained;
+		fetchMock.mockImplementation(async () => json(200, current));
+		render(Page);
+		expect(await screen.findByText(m.classifier_identifiers({ count: '42' }))).toBeTruthy();
+
+		current = { ...trained, model: { ...trained.model, number: 3, learned_identifiers: 44 } };
+		emit?.({
+			data: JSON.stringify({ type: 'classifier.trained', id: 'e1', occurred_at: '', number: 3 })
+		});
+		expect(await screen.findByText(m.classifier_identifiers({ count: '44' }))).toBeTruthy();
+		events.stop();
 	});
 
 	it('says so when there is no classifier', async () => {

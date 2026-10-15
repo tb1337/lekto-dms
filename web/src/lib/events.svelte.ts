@@ -5,7 +5,8 @@
  */
 import { BASE_API } from '#lib/api/base.ts';
 
-export const EVENT_TYPES = [
+/** The events about a document; webhooks choose from these. */
+export const DOCUMENT_EVENT_TYPES = [
 	'document.received',
 	'document.node_started',
 	'document.node_deferred',
@@ -15,11 +16,15 @@ export const EVENT_TYPES = [
 	'document.updated',
 	'document.deleted'
 ] as const;
-export type EventType = (typeof EVENT_TYPES)[number];
+export type DocumentEventType = (typeof DOCUMENT_EVENT_TYPES)[number];
+
+/** The events without a document, for admins only. */
+export const ADMIN_EVENT_TYPES = ['classifier.trained'] as const;
+export type AdminEventType = (typeof ADMIN_EVENT_TYPES)[number];
 
 /** Events about a node of the graph; the inbox does not change with them. */
 // eslint-disable-next-line svelte/prefer-svelte-reactivity -- never changes
-export const NODE_EVENTS: ReadonlySet<EventType> = new Set<EventType>([
+export const NODE_EVENTS: ReadonlySet<DocumentEventType> = new Set<DocumentEventType>([
 	'document.received',
 	'document.node_started',
 	'document.node_deferred',
@@ -27,14 +32,23 @@ export const NODE_EVENTS: ReadonlySet<EventType> = new Set<EventType>([
 ]);
 
 export interface DocumentEvent {
-	type: EventType;
+	type: DocumentEventType;
 	id: string;
 	occurred_at: string;
 	document_id: string;
 	[key: string]: unknown;
 }
 
+/** `classifier.trained`: `number` and `examples` of the new model. */
+export interface AdminEvent {
+	type: AdminEventType;
+	id: string;
+	occurred_at: string;
+	[key: string]: unknown;
+}
+
 type Handler = (event: DocumentEvent) => void;
+type AdminHandler = (event: AdminEvent) => void;
 
 class EventStream {
 	/** Grows with every reconnect after a break: shown data may be stale. */
@@ -42,6 +56,7 @@ class EventStream {
 	connected = $state(false);
 	#source: EventSource | null = null;
 	#handlers = new Set<Handler>();
+	#adminHandlers = new Set<{ type: AdminEventType; handler: AdminHandler }>();
 	// Whether a stream was open before: every later `onopen` is a reconnect (after a network
 	// break, or after the server closed the stream and the caller started it again).
 	#opened = false;
@@ -56,6 +71,13 @@ class EventStream {
 	subscribe(handler: Handler): () => void {
 		this.#handlers.add(handler);
 		return () => this.#handlers.delete(handler);
+	}
+
+	/** Listen to one of the admins' events; returns the function that stops listening. */
+	on(type: AdminEventType, handler: AdminHandler): () => void {
+		const entry = { type, handler };
+		this.#adminHandlers.add(entry);
+		return () => this.#adminHandlers.delete(entry);
 	}
 
 	/**
@@ -79,14 +101,17 @@ class EventStream {
 				onClosed();
 			}
 		};
-		for (const type of EVENT_TYPES) {
+		for (const type of DOCUMENT_EVENT_TYPES) {
 			source.addEventListener(type, (message) => {
-				try {
-					const event = JSON.parse((message as MessageEvent<string>).data) as DocumentEvent;
-					for (const handler of this.#handlers) handler(event);
-				} catch {
-					// A malformed event is ignored; the next reconnect reloads anyway.
-				}
+				const event = parsed<DocumentEvent>(message);
+				if (event) for (const handler of this.#handlers) handler(event);
+			});
+		}
+		for (const type of ADMIN_EVENT_TYPES) {
+			source.addEventListener(type, (message) => {
+				const event = parsed<AdminEvent>(message);
+				if (!event) return;
+				for (const entry of this.#adminHandlers) if (entry.type === type) entry.handler(event);
 			});
 		}
 	}
@@ -95,6 +120,15 @@ class EventStream {
 		this.#source?.close();
 		this.#source = null;
 		this.connected = false;
+	}
+}
+
+/** The event of a message; null for a malformed one (the next reconnect reloads anyway). */
+function parsed<T>(message: Event): T | null {
+	try {
+		return JSON.parse((message as MessageEvent<string>).data) as T;
+	} catch {
+		return null;
 	}
 }
 

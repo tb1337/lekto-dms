@@ -25,7 +25,7 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.events import EVENT_TYPES
+from papiq.core.domain.events import DOCUMENT_EVENT_TYPES
 from papiq.core.domain.ids import DeliveryId, DocumentId, EventId, UserId, WebhookId, new_id
 from papiq.core.domain.validation import require_name, require_utc
 
@@ -49,7 +49,7 @@ SIGNATURE_HEADER = "webhook-signature"
 
 
 def event_type_names() -> list[str]:
-    return sorted(EVENT_TYPES)
+    return sorted(DOCUMENT_EVENT_TYPES)
 
 
 def validate_url(url: str) -> str:
@@ -81,7 +81,7 @@ def validate_event_types(types: Collection[str]) -> frozenset[str]:
     chosen = frozenset(types)
     if not chosen:
         raise ValidationError("choose at least one event type")
-    unknown = sorted(chosen - EVENT_TYPES.keys() - {ALL_EVENTS})
+    unknown = sorted(chosen - DOCUMENT_EVENT_TYPES.keys() - {ALL_EVENTS})
     if unknown:
         raise ValidationError(
             f"unknown event types: {', '.join(unknown)}; "

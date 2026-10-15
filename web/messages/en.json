@@ -663,6 +663,7 @@
 	"classifier_first": "{confirmed} of {needed} confirmed documents for the first model.",
 	"classifier_train": "Train now",
 	"classifier_train_queued": "Training queued; it runs in the background.",
+	"classifier_trained": "Training done: model {number}.",
 	"node_signal_llm": "Language model",
 	"node_signal_classifier": "Classifier",
 	"node_signal_neighbours": "Similar documents",

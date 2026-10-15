@@ -255,7 +255,8 @@ class DocumentService:
 
     async def active_admins(self, candidates: Collection[UserId]) -> set[UserId]:
         """Those of `candidates` who are active admins: they hear of every document event (SSE),
-        also of a deletion, whose stored readers name only those who had it within reach."""
+        also of a deletion, whose stored readers name only those who had it within reach, and of
+        a training of the classifier."""
         if not candidates:
             return set()
         async with self._uow() as uow:

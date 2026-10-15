@@ -22,6 +22,7 @@ from papiq.core.domain.errors import (
     NotFoundError,
     PermissionDeniedError,
 )
+from papiq.core.domain.events import ClassifierTrained
 from papiq.core.domain.identifiers import (
     IdentifierKind,
     IdentifierSource,
@@ -222,9 +223,9 @@ class ClassifierService:
         examples: int,
         until: datetime | None,
     ) -> tuple[ClassifierModel, int, list[ClassifierModel]]:
-        """Store the model with the next number, the identifiers learned and the pruning in one
-        commit. One training at a time does it (a lock), so two trainings, the worker's and the
-        command's, never take the same number."""
+        """Store the model with the next number, the identifiers learned, the pruning and the
+        event `classifier.trained` in one commit. One training at a time does it (a lock), so two
+        trainings, the worker's and the command's, never take the same number."""
         async with self._uow() as uow:
             await uow.lock(TRAIN_JOB)
             latest = await uow.classifier_models.latest()
@@ -244,9 +245,10 @@ class ClassifierService:
                 "learned_identifiers": learned,
                 "accuracy": accuracy,
             }
+            now = self._clock.now()
             model = ClassifierModel.create(
                 number=number,
-                now=self._clock.now(),
+                now=now,
                 examples=examples,
                 examples_until=until,
                 object_key=key,
@@ -256,6 +258,9 @@ class ClassifierService:
             old = (await uow.classifier_models.list_all())[KEPT_MODELS:]  # newest first
             for item in old:
                 await uow.classifier_models.remove(item.id)
+            await uow.outbox.add(
+                [ClassifierTrained(occurred_at=now, number=number, examples=examples)]
+            )
             await uow.commit()
         return model, learned, old
 

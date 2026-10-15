@@ -592,7 +592,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `drawer_id`), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (owner or admin); undecided fields: `422` with `open_fields` |
 | `GET/POST /rules`, `GET/PUT/PATCH/DELETE /rules/{id}`, `GET /rules/{id}/versions`, `/versions/{number}` | Rules: list (`scope`, `include_disabled`, `all_users` for admins), create, change (new version), enable or disable, delete; see Rules |
 | `POST /rules/{id}/apply/preview`, `POST /rules/{id}/apply`, `GET /rule-applications/{id}` | Apply a rule to existing documents: preview, start (`202`), progress |
-| `GET /events` | Server-sent events of the documents the caller may read; `?document_id=` |
+| `GET /events` | Server-sent events of the documents the caller may read, for admins also `classifier.trained`; `?document_id=` |
 | `GET/POST /webhooks`, `GET/PATCH/DELETE /webhooks/{id}` | Webhooks: the caller's own (admins read everybody's, `?owner=`); create (the answer shows the secret once), change, switch on or off, delete; see Webhooks |
 | `POST /webhooks/{id}/secret`, `POST /webhooks/{id}/test`, `GET /webhooks/{id}/deliveries` | Renew the secret (the old one signs 24 hours longer), send a test request, the delivery log (`before`, `limit`) |
 | `GET /health` | Database, bucket or storage directory and, if configured, the search index reachable; `200` (`ok`, or `degraded` if only the search is down) or `503`, no authentication; not written to the access log |
@@ -621,7 +621,9 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   `PAPIQ_EVENTS_POLL_INTERVAL`. Each event goes to the streams of the users who may read the
   document at that moment (other users once it is green). No replay: after reconnecting,
   clients fetch the state. `document.deleted` goes to the streams of the users who could read the
-  document when it was deleted (the event carries their ids; the stream message does not). One API instance
+  document when it was deleted (the event carries their ids; the stream message does not).
+  `classifier.trained` (a new model: `number`, `examples`) goes to the active admins' streams
+  that do not follow one document; webhooks cannot choose it. One API instance
   is assumed: several would share the `api.sse` subscription. While the API is down, its
   subscription holds back the purge of the outbox.
 - On SIGTERM the event streams end at once, open requests get ten seconds, then the database

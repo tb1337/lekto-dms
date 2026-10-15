@@ -6,6 +6,7 @@ import pytest
 from papiq.adapters.outbound.memory import ManualClock
 from papiq.core.domain.events import (
     EVENT_TYPES,
+    ClassifierTrained,
     DocumentDeleted,
     DocumentFiled,
     DocumentReceived,
@@ -109,6 +110,7 @@ class EventBusContract:
                 occurred_at=NOW,
                 readers=(UserId(new_id()), UserId(new_id())),
             ),
+            ClassifierTrained(occurred_at=NOW, number=3, examples=120),
         ]
         assert {type(event) for event in events} == set(EVENT_TYPES.values())
         await publish(uow_factory, *events)

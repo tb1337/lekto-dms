@@ -5,6 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from papiq.core.domain.events import (
+    ClassifierTrained,
     DocumentDeleted,
     DocumentFiled,
     DocumentReceived,
@@ -60,10 +61,19 @@ def encode(event: DomainEvent) -> JsonObject:
             return {"document_id": str(event.document_id), "drawer_id": str(event.drawer_id)}
         case DocumentUpdated():
             return {"document_id": str(event.document_id), "fields": list(event.fields)}
+        case ClassifierTrained():
+            return {"number": event.number, "examples": event.examples}
     raise ValueError(f"no outbox mapping for event type {event.type!r}")
 
 
 def decode(type: str, id: UUID, occurred_at: datetime, payload: dict[str, Any]) -> DomainEvent:
+    if type == ClassifierTrained.type:
+        return ClassifierTrained(
+            id=EventId(id),
+            occurred_at=occurred_at,
+            number=payload["number"],
+            examples=payload["examples"],
+        )
     common: dict[str, Any] = {
         "id": EventId(id),
         "occurred_at": occurred_at,

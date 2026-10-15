@@ -93,7 +93,17 @@ class DocumentDeleted(DocumentEvent):
     readers: tuple[UserId, ...] = ()
 
 
-EVENT_TYPES: dict[str, type[DomainEvent]] = {
+@dataclass(frozen=True, kw_only=True)
+class ClassifierTrained(DomainEvent):
+    """A new model of the classifier was stored. For the admins (event stream), not for
+    webhooks."""
+
+    type: ClassVar[str] = "classifier.trained"
+    number: int
+    examples: int
+
+
+DOCUMENT_EVENT_TYPES: dict[str, type[DocumentEvent]] = {
     kind.type: kind
     for kind in (
         DocumentReceived,
@@ -105,4 +115,10 @@ EVENT_TYPES: dict[str, type[DomainEvent]] = {
         DocumentUpdated,
         DocumentDeleted,
     )
+}
+"""The events about a document: those webhooks subscribe to."""
+
+EVENT_TYPES: dict[str, type[DomainEvent]] = {
+    **DOCUMENT_EVENT_TYPES,
+    ClassifierTrained.type: ClassifierTrained,
 }

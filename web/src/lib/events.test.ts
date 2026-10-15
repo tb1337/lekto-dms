@@ -47,6 +47,26 @@ describe('event stream', () => {
 		expect(source.closed).toBe(true);
 	});
 
+	it("passes the admins' events to those listening for their type", () => {
+		const documents: string[] = [];
+		const trained: unknown[] = [];
+		const stopDocuments = events.subscribe((event) => documents.push(event.type));
+		const stop = events.on('classifier.trained', (event) => trained.push(event.number));
+		events.start(() => {});
+		FakeSource.last.listeners.get('classifier.trained')?.({
+			data: JSON.stringify({ type: 'classifier.trained', id: 'e1', occurred_at: '', number: 3 })
+		});
+		expect(trained).toEqual([3]);
+		expect(documents).toEqual([]);
+		stop();
+		FakeSource.last.listeners.get('classifier.trained')?.({
+			data: JSON.stringify({ type: 'classifier.trained', id: 'e2', occurred_at: '', number: 4 })
+		});
+		expect(trained).toEqual([3]);
+		stopDocuments();
+		events.stop();
+	});
+
 	it('reports a stream the browser gave up on', () => {
 		const closed = vi.fn();
 		events.start(closed);

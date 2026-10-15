@@ -1,4 +1,5 @@
-"""`GET /events`: server-sent events for the caller's documents."""
+"""`GET /events`: server-sent events for the caller's documents (and for admins, the end of a
+training)."""
 
 from collections.abc import AsyncIterable
 from typing import Annotated
@@ -42,6 +43,8 @@ async def _visible_document(
         "`document.filed`, `document.updated`, `document.deleted`), "
         "only for documents the caller may read at that moment (`document.deleted`: could "
         "read when it was deleted); other users' documents are visible once green. "
+        "Active admins also get `classifier.trained` (a new model, with its `number` and "
+        "`examples`), unless the stream follows one document. "
         "Each event has the event type as `event`, the event id as `id`, and JSON as `data` "
         "(see `EventMessage`). Events are thin: fetch the document for its state. There is "
         "no replay; after reconnecting, fetch the current state. The stream checks every "

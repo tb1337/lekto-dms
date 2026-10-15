@@ -355,6 +355,8 @@ Kein API-Aufruf wartet auf OCR, Parsing oder LLM: Die API nimmt an, quittiert so
 
 `document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`. Weitere Typen kommen bei Bedarf hinzu; Empfänger ignorieren unbekannte Typen.
 
+Ohne Dokument: `classifier.trained` (neues Modell: Nummer, Zahl der Beispiele), geschrieben in derselben Unit of Work wie das Modell. Es geht nur an die Ereignisströme aktiver Admins (nicht an einen Strom für ein Dokument), damit die Klassifikator-Seite das Ende eines Trainings ohne Neuladen zeigt; für Webhooks ist es nicht wählbar, die abonnieren nur Dokumentereignisse (Tobi, 15.10.2026).
+
 **Webhooks (Egress)**
 
 - Webhooks melden Ereignisse an externe Systeme. Eingehende Daten (Ingress) laufen über die normale REST-API mit API-Token, z. B. `POST /documents`.

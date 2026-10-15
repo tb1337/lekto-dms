@@ -4,7 +4,7 @@ from uuid import UUID
 import pytest
 
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.events import EVENT_TYPES
+from papiq.core.domain.events import DOCUMENT_EVENT_TYPES
 from papiq.core.domain.ids import DocumentId, EventId, UserId, new_id
 from papiq.core.domain.webhooks import (
     ALL_EVENTS,
@@ -77,9 +77,11 @@ def test_event_types_must_be_known_and_not_empty() -> None:
         "document.filed",
         "document.deleted",
     }
-    assert validate_event_types(EVENT_TYPES) == frozenset(EVENT_TYPES)
+    assert validate_event_types(DOCUMENT_EVENT_TYPES) == frozenset(DOCUMENT_EVENT_TYPES)
     with pytest.raises(ValidationError):
         validate_event_types([])
+    with pytest.raises(ValidationError, match=r"classifier\.trained"):
+        validate_event_types(["classifier.trained"])
     with pytest.raises(ValidationError, match=r"document\.fild"):
         validate_event_types(["document.fild"])
 

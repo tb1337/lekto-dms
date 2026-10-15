@@ -6,7 +6,7 @@
 	import FieldDialog from '#lib/components/FieldDialog.svelte';
 	import MasterDataDialog from '#lib/components/MasterDataDialog.svelte';
 	import { describeError } from '#lib/errors.ts';
-	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
+	import { type MasterDataRequest, masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import type { FieldDefinition, MasterData } from '#lib/masterdata.svelte.ts';
 	import { type Item, KINDS, type SimpleKind, type Values } from '#lib/masterdata-api.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -25,6 +25,31 @@
 	let ruleId = $state<string | null>(null);
 	let ready = $state(false);
 
+	// What the dialog shows, loaded where only an id is given. It returns before it is assigned:
+	// the effect below must not read the state it sets.
+	async function loaded(wanted: MasterDataRequest) {
+		if (wanted.kind === 'fields') {
+			const kinds = await unwrap(api.GET('/api/v1/document-types'));
+			const definition =
+				typeof wanted.item === 'string'
+					? await unwrap(api.GET('/api/v1/fields/{id}', { params: { path: { id: wanted.item } } }))
+					: (wanted.item as FieldDefinition | null);
+			return { kinds, definition, entry: null, rule: null };
+		}
+		const entry =
+			typeof wanted.item === 'string'
+				? await KINDS[wanted.kind].get(wanted.item)
+				: (wanted.item as Item | null);
+		let rule: string | null = null;
+		if (wanted.kind === 'document-types' && entry && !wanted.fromRule) {
+			const rules = await unwrap(
+				api.GET('/api/v1/rules', { params: { query: { scope: 'global' } } })
+			);
+			rule = rules.find((found) => found.managed_by_document_type_id === entry.id)?.id ?? null;
+		}
+		return { kinds: null, definition: null, entry, rule };
+	}
+
 	$effect(() => {
 		const wanted = request;
 		ready = false;
@@ -33,36 +58,18 @@
 		ruleId = null;
 		if (!wanted) return;
 		let current = true;
-		void (async () => {
-			try {
-				if (wanted.kind === 'fields') {
-					types = await unwrap(api.GET('/api/v1/document-types'));
-					field =
-						typeof wanted.item === 'string'
-							? await unwrap(
-									api.GET('/api/v1/fields/{id}', { params: { path: { id: wanted.item } } })
-								)
-							: (wanted.item as FieldDefinition | null);
-				} else {
-					item =
-						typeof wanted.item === 'string'
-							? await KINDS[wanted.kind].get(wanted.item)
-							: (wanted.item as Item | null);
-					if (wanted.kind === 'document-types' && item && !wanted.fromRule) {
-						const rules = await unwrap(
-							api.GET('/api/v1/rules', { params: { query: { scope: 'global' } } })
-						);
-						const own = item.id;
-						ruleId = rules.find((rule) => rule.managed_by_document_type_id === own)?.id ?? null;
-					}
-				}
-				if (current) ready = true;
-			} catch (failure) {
+		loaded(wanted).then(
+			({ kinds, definition, entry, rule }) => {
+				if (!current) return;
+				if (kinds) types = kinds;
+				[item, field, ruleId, ready] = [entry, definition, rule, true];
+			},
+			(failure) => {
 				if (!current) return;
 				toast.error(describeError(failure));
 				masterDataDialogs.close();
 			}
-		})();
+		);
 		return () => {
 			current = false;
 		};

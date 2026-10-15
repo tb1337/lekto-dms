@@ -61,6 +61,21 @@ describe('MasterDataDialogHost', () => {
 		expect(link.getAttribute('href')).toContain(`/rules/${RULE}`);
 	});
 
+	it('opens a type a list hands over whole, without loading it again', async () => {
+		render(WithDialogs);
+		masterDataDialogs.open('document-types', {
+			id: PAYSLIP,
+			name: 'Lohnabrechnung',
+			description: null,
+			title_pattern: null,
+			created_at: '2026-10-13T12:00:00Z'
+		});
+		expect(await screen.findByDisplayValue('Lohnabrechnung')).toBeTruthy();
+		expect(await screen.findByRole('link', { name: m.master_title_rule() })).toBeTruthy();
+		const paths = fetchMock.mock.calls.map((call) => new URL(call[0].url).pathname);
+		expect(paths).not.toContain(`/api/v1/document-types/${PAYSLIP}`);
+	});
+
 	it('has no link back to the rule it was opened from', async () => {
 		render(WithDialogs);
 		masterDataDialogs.open('document-types', PAYSLIP, { fromRule: RULE });

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Workflow from '@lucide/svelte/icons/workflow';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
@@ -19,6 +20,7 @@
 		extra,
 		initial = null,
 		submitLabel = m.save(),
+		ruleHref = null,
 		onsubmit
 	}: {
 		open?: boolean;
@@ -26,6 +28,8 @@
 		extra: Extra;
 		initial?: Item | null;
 		submitLabel?: string;
+		/** The rule of the type's title pattern, to go to from here. */
+		ruleHref?: string | null;
 		onsubmit: (values: Values) => Promise<void>;
 	} = $props();
 
@@ -102,6 +106,16 @@
 						bind:value={titlePattern}
 						documentType={initial?.id ?? null}
 					/>
+					{#if ruleHref}
+						<a
+							href={ruleHref}
+							class="inline-flex items-center gap-1 self-start text-sm text-brand hover:underline"
+							onclick={() => (open = false)}
+						>
+							<Workflow class="size-3.5" aria-hidden="true" />
+							{m.master_title_rule()}
+						</a>
+					{/if}
 				</Field.Field>
 			{/if}
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}

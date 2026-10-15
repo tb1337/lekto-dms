@@ -1,18 +1,22 @@
 <script lang="ts">
-	import { BASE } from '#lib/base.ts';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
+	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 
-	// The rule of a document type's title pattern: a badge, for admins a link to the type.
-	let { documentTypeId, name }: { documentTypeId: string; name: string } = $props();
+	// The rule of a document type's title pattern: a badge; for admins it opens the type's
+	// dialog right here (it knows it came from the rule).
+	let { documentTypeId, name, ruleId }: { documentTypeId: string; name: string; ruleId: string } =
+		$props();
 </script>
 
 <Badge variant="secondary">
 	{#if session.isAdmin}
-		<a
-			href="{BASE}/admin/master-data?tab=document-types&type={documentTypeId}"
-			class="hover:underline">{m.rule_title_pattern_of({ type: name })}</a
+		<button
+			type="button"
+			class="cursor-pointer hover:underline"
+			onclick={() => masterDataDialogs.open('document-types', documentTypeId, { fromRule: ruleId })}
+			>{m.rule_title_pattern_of({ type: name })}</button
 		>
 	{:else}
 		{m.rule_title_pattern_of({ type: name })}

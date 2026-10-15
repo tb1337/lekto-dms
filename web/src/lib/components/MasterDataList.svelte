@@ -6,10 +6,10 @@
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
-	import MasterDataDialog from '#lib/components/MasterDataDialog.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
-	import { type Item, KINDS, type SimpleKind, type Values } from '#lib/masterdata-api.ts';
+	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
+	import { type Item, KINDS, type SimpleKind } from '#lib/masterdata-api.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
 	// Contacts, document types or tags: a list with add, change and delete.
@@ -18,8 +18,6 @@
 
 	let items = $state<Item[] | null>(null);
 	let problem = $state<string | null>(null);
-	let creating = $state(false);
-	let editing = $state<Item | null>(null);
 	let removing = $state<Item | null>(null);
 
 	/** Identifiers that count: entered and learned. */
@@ -36,28 +34,17 @@
 		}
 	}
 
-	// A link to a document type (from the rule of its title pattern) opens it.
-	let opened = false;
-	$effect(() => {
+	// A link to a document type opens it.
+	onMount(() => {
 		const wanted = kind === 'document-types' ? page.url.searchParams.get('type') : null;
-		if (opened || !wanted || !items) return;
-		opened = true;
-		editing = items.find((item) => item.id === wanted) ?? null;
+		if (wanted) masterDataDialogs.open('document-types', wanted);
 	});
 
-	onMount(() => void load());
-
-	async function create(values: Values) {
-		await ops.create(values);
-		toast.success(m.master_created());
-		await load();
-	}
-	async function change(values: Values) {
-		if (!editing) return;
-		await ops.change(editing.id, values);
-		toast.success(m.master_saved());
-		await load();
-	}
+	// Again after a dialog saved (wherever it was opened).
+	$effect(() => {
+		void masterDataDialogs.changed;
+		void load();
+	});
 	async function remove() {
 		if (!removing) return;
 		await ops.remove(removing.id);
@@ -68,7 +55,7 @@
 
 <div class="flex flex-col gap-4">
 	<div>
-		<Button onclick={() => (creating = true)}>
+		<Button onclick={() => masterDataDialogs.open(kind)}>
 			<Plus aria-hidden="true" />
 			{ops.add()}
 		</Button>
@@ -114,7 +101,7 @@
 						variant="ghost"
 						size="icon"
 						aria-label={m.master_edit({ name: item.name })}
-						onclick={() => (editing = item)}
+						onclick={() => masterDataDialogs.open(kind, item)}
 					>
 						<Pencil aria-hidden="true" />
 					</Button>
@@ -132,20 +119,6 @@
 	{/if}
 </div>
 
-<MasterDataDialog
-	bind:open={creating}
-	title={ops.add()}
-	extra={ops.extra}
-	submitLabel={m.create()}
-	onsubmit={create}
-/>
-<MasterDataDialog
-	bind:open={() => editing !== null, (open) => !open && (editing = null)}
-	title={m.master_edit({ name: editing?.name ?? '' })}
-	extra={ops.extra}
-	initial={editing}
-	onsubmit={change}
-/>
 <ConfirmDialog
 	bind:open={() => removing !== null, (open) => !open && (removing = null)}
 	title={m.master_delete({ name: removing?.name ?? '' })}

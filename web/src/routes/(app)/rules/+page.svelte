@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
@@ -10,6 +10,7 @@
 	import AllUsersToggle from '#lib/components/AllUsersToggle.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import TitlePatternBadge from '#lib/components/rules/TitlePatternBadge.svelte';
+	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { Switch } from '#lib/components/ui/switch/index.ts';
@@ -53,7 +54,11 @@
 		}
 	}
 
-	onMount(() => void load());
+	// Again after a master data dialog saved: a title pattern's rule follows its type.
+	$effect(() => {
+		void masterDataDialogs.changed;
+		untrack(() => void load());
+	});
 
 	async function switchRule(rule: Rule, enabled: boolean) {
 		busy = rule.id;
@@ -133,6 +138,7 @@
 								<TitlePatternBadge
 									documentTypeId={rule.managed_by_document_type_id}
 									name={rule.name}
+									ruleId={rule.id}
 								/>
 							{/if}
 							{#if !rule.enabled}<Badge variant="outline">{m.rule_off()}</Badge>{/if}

@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import AppShell from '#lib/components/AppShell.svelte';
+	import MasterDataDialogHost from '#lib/components/MasterDataDialogHost.svelte';
 	import { events } from '#lib/events.svelte.ts';
 	import { inbox } from '#lib/inbox.svelte.ts';
 	import { loginHref } from '#lib/navigation.ts';
@@ -56,3 +57,4 @@
 <AppShell>
 	{@render children()}
 </AppShell>
+{#if userId}<MasterDataDialogHost />{/if}

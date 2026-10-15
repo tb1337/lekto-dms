@@ -1,5 +1,6 @@
 /** Field values between the API's form and the text a form field holds. */
 import type { components } from '#lib/api/schema.ts';
+import { m } from '#lib/paraglide/messages.js';
 
 export type ApiValue = components['schemas']['DocumentDetails']['fields'][string];
 export type FieldType = components['schemas']['FieldType'];
@@ -7,6 +8,31 @@ export type FieldType = components['schemas']['FieldType'];
 export type InputValue = string | { amount: string; currency: string };
 
 export const DEFAULT_CURRENCY = 'EUR';
+
+/** The data types of a field definition, in the order the field dialog offers them. */
+export const FIELD_TYPES: readonly FieldType[] = [
+	'text',
+	'number',
+	'amount',
+	'date',
+	'boolean',
+	'choice',
+	'link'
+];
+
+const TYPE_LABELS: Record<FieldType, () => string> = {
+	text: m.field_def_type_text,
+	number: m.field_def_type_number,
+	amount: m.field_def_type_amount,
+	date: m.field_def_type_date,
+	boolean: m.field_def_type_boolean,
+	choice: m.field_def_type_choice,
+	link: m.field_def_type_link
+};
+
+export function fieldTypeLabel(type: FieldType): string {
+	return TYPE_LABELS[type]();
+}
 
 export function emptyValue(type: FieldType): InputValue {
 	return type === 'amount' ? { amount: '', currency: DEFAULT_CURRENCY } : '';

@@ -2,53 +2,21 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
-	import * as Dialog from '#lib/components/ui/dialog/index.ts';
-	import * as Field from '#lib/components/ui/field/index.ts';
-	import { Input } from '#lib/components/ui/input/index.ts';
-	import { Textarea } from '#lib/components/ui/textarea/index.ts';
-	import type { components } from '#lib/api/schema.ts';
 	import { describeError } from '#lib/errors.ts';
+	import { fieldTypeLabel } from '#lib/fields.ts';
+	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import type { FieldDefinition, MasterData } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-
-	type DataType = components['schemas']['FieldType'];
-	const TYPES: DataType[] = ['text', 'number', 'amount', 'date', 'boolean', 'choice', 'link'];
-	const typeLabel: Record<DataType, () => string> = {
-		text: m.field_def_type_text,
-		number: m.field_def_type_number,
-		amount: m.field_def_type_amount,
-		date: m.field_def_type_date,
-		boolean: m.field_def_type_boolean,
-		choice: m.field_def_type_choice,
-		link: m.field_def_type_link
-	};
 
 	let fields = $state<FieldDefinition[] | null>(null);
 	let types = $state<MasterData[]>([]);
 	let problem = $state<string | null>(null);
-	let editing = $state<FieldDefinition | 'new' | null>(null);
 	let removing = $state<FieldDefinition | null>(null);
-
-	// The form of the dialog.
-	let name = $state('');
-	let dataType = $state<DataType>('text');
-	let global = $state(true);
-	let scope = $state<string[]>([]);
-	// Required everywhere (global) or for these of its types.
-	let required = $state(false);
-	let requiredTypes = $state<string[]>([]);
-	let choices = $state('');
-	// What belongs in the field, for the language model (its name is often an internal one).
-	let description = $state('');
-	let error = $state<string | null>(null);
-	let busy = $state(false);
 
 	async function load() {
 		try {
@@ -61,21 +29,11 @@
 			problem = describeError(failure);
 		}
 	}
-	onMount(() => void load());
-
-	function open(target: FieldDefinition | 'new') {
-		editing = target;
-		error = null;
-		const have = target === 'new' ? null : target;
-		name = have?.name ?? '';
-		dataType = have?.data_type ?? 'text';
-		global = have ? have.document_type_ids === null : true;
-		scope = have?.document_type_ids ? [...have.document_type_ids] : [];
-		required = have?.required ?? false;
-		requiredTypes = have ? [...have.required_document_type_ids] : [];
-		choices = have ? have.choices.join('\n') : '';
-		description = have?.description ?? '';
-	}
+	// Again after a dialog saved (wherever it was opened).
+	$effect(() => {
+		void masterDataDialogs.changed;
+		void load();
+	});
 
 	function scopeText(field: FieldDefinition): string {
 		if (field.document_type_ids === null) {
@@ -92,73 +50,17 @@
 			.join(', ');
 	}
 
-	async function save(event: SubmitEvent) {
-		event.preventDefault();
-		if (busy || editing === null) return;
-		busy = true;
-		error = null;
-		const list = choices
-			.split('\n')
-			.map((line) => line.trim())
-			.filter(Boolean);
-		const document_type_ids = global ? null : scope;
-		const requirement = {
-			required: global && required,
-			required_document_type_ids: global ? [] : requiredTypes.filter((id) => scope.includes(id))
-		};
-		try {
-			if (editing === 'new') {
-				await unwrap(
-					api.POST('/api/v1/fields', {
-						body: {
-							name: name.trim(),
-							data_type: dataType,
-							description: description.trim() || null,
-							document_type_ids,
-							...requirement,
-							...(dataType === 'choice' ? { choices: list } : {})
-						}
-					})
-				);
-			} else {
-				await unwrap(
-					api.PATCH('/api/v1/fields/{id}', {
-						params: { path: { id: editing.id } },
-						body: {
-							name: name.trim(),
-							description: description.trim() || null,
-							document_type_ids,
-							...requirement,
-							...(editing.data_type === 'choice' ? { choices: list } : {})
-						}
-					})
-				);
-			}
-			toast.success(m.master_saved());
-			editing = null;
-			await load();
-		} catch (failure) {
-			error = describeError(failure);
-		} finally {
-			busy = false;
-		}
-	}
-
 	async function remove() {
 		if (!removing) return;
 		await unwrap(api.DELETE('/api/v1/fields/{id}', { params: { path: { id: removing.id } } }));
 		toast.success(m.master_deleted());
 		await load();
 	}
-
-	const isChoice = $derived(
-		editing === 'new' ? dataType === 'choice' : editing?.data_type === 'choice'
-	);
 </script>
 
 <div class="flex flex-col gap-4">
 	<div>
-		<Button onclick={() => open('new')}>
+		<Button onclick={() => masterDataDialogs.open('fields')}>
 			<Plus aria-hidden="true" />
 			{m.master_add_field()}
 		</Button>
@@ -186,7 +88,7 @@
 							>
 						</span>
 						<span class="truncate text-sm text-muted-foreground">
-							{typeLabel[field.data_type]()} · {scopeText(field)}
+							{fieldTypeLabel(field.data_type)} · {scopeText(field)}
 							{#if field.choices.length > 0}
 								· {field.choices.join(', ')}{/if}
 						</span>
@@ -200,7 +102,7 @@
 						variant="ghost"
 						size="icon"
 						aria-label={m.master_rename({ name: field.name })}
-						onclick={() => open(field)}
+						onclick={() => masterDataDialogs.open('fields', field)}
 					>
 						<Pencil aria-hidden="true" />
 					</Button>
@@ -217,91 +119,6 @@
 		</ul>
 	{/if}
 </div>
-
-<Dialog.Root bind:open={() => editing !== null, (value) => !value && (editing = null)}>
-	<Dialog.Content class="max-w-lg">
-		<form class="flex flex-col gap-4" onsubmit={save} novalidate>
-			<Dialog.Header>
-				<Dialog.Title>{editing === 'new' ? m.master_add_field() : m.field_def_edit()}</Dialog.Title>
-				<Dialog.Description>{m.field_def_hint()}</Dialog.Description>
-			</Dialog.Header>
-			<Field.Field>
-				<Field.Label for="field-def-name">{m.field_name()}</Field.Label>
-				<Input id="field-def-name" bind:value={name} maxlength={200} required />
-			</Field.Field>
-			<Field.Field>
-				<Field.Label for="field-def-type">{m.field_def_type()}</Field.Label>
-				<NativeSelect
-					id="field-def-type"
-					bind:value={dataType as string}
-					disabled={editing !== 'new'}
-					options={TYPES.map((type) => ({ value: type, label: typeLabel[type]() }))}
-				/>
-			</Field.Field>
-			<Field.Field>
-				<Field.Label for="field-def-description">{m.field_def_description()}</Field.Label>
-				<Textarea id="field-def-description" bind:value={description} rows={3} maxlength={300} />
-				<Field.Description>{m.field_def_description_hint()}</Field.Description>
-			</Field.Field>
-			{#if isChoice}
-				<Field.Field>
-					<Field.Label for="field-def-choices">{m.field_def_choices()}</Field.Label>
-					<Textarea id="field-def-choices" bind:value={choices} rows={4} />
-					<Field.Description>{m.field_def_choices_hint()}</Field.Description>
-				</Field.Field>
-			{/if}
-			<fieldset class="flex flex-col gap-2">
-				<legend class="mb-1 text-sm font-medium">{m.field_def_scope()}</legend>
-				<label class="flex items-center gap-2 text-sm">
-					<input type="checkbox" bind:checked={global} class="size-4 accent-primary" />
-					{m.field_def_scope_global()}
-				</label>
-				{#if global}
-					<label class="flex items-center gap-2 pl-6 text-sm">
-						<input type="checkbox" bind:checked={required} class="size-4 accent-primary" />
-						{m.field_def_required_everywhere()}
-					</label>
-				{:else}
-					{#each types as type (type.id)}
-						<div class="flex items-center gap-2 pl-6 text-sm">
-							<label class="flex min-w-0 flex-1 items-center gap-2">
-								<input
-									type="checkbox"
-									value={type.id}
-									bind:group={scope}
-									class="size-4 accent-primary"
-								/>
-								<span class="truncate">{type.name}</span>
-							</label>
-							<label
-								class={[
-									'flex items-center gap-1.5 text-muted-foreground',
-									!scope.includes(type.id) && 'opacity-50'
-								]}
-							>
-								<input
-									type="checkbox"
-									value={type.id}
-									bind:group={requiredTypes}
-									disabled={!scope.includes(type.id)}
-									aria-label={m.field_def_required_for({ type: type.name })}
-									class="size-4 accent-primary"
-								/>
-								{m.field_def_required()}
-							</label>
-						</div>
-					{/each}
-				{/if}
-				<p class="text-sm text-muted-foreground">{m.field_def_required_hint()}</p>
-			</fieldset>
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer>
-				<Button type="button" variant="ghost" onclick={() => (editing = null)}>{m.cancel()}</Button>
-				<Button type="submit" disabled={busy || name.trim() === ''}>{m.save()}</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
 
 <ConfirmDialog
 	bind:open={() => removing !== null, (open) => !open && (removing = null)}

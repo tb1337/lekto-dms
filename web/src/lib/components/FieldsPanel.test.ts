@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
+import WithDialogs from '#lib/testing/WithDialogs.svelte';
 import FieldsPanel from './FieldsPanel.svelte';
 
 const INVOICE = '0199a6c4-0000-7000-8000-0000000000e1';
@@ -68,7 +69,7 @@ describe('FieldsPanel', () => {
 	});
 
 	it('makes a field required for one of its types', async () => {
-		render(FieldsPanel);
+		render(WithDialogs, { component: FieldsPanel });
 		await userEvent.click(await screen.findByRole('button', { name: m.master_add_field() }));
 		await userEvent.type(screen.getByLabelText(m.field_name()), 'Betrag');
 		await userEvent.click(screen.getByLabelText(m.field_def_scope_global()));
@@ -92,7 +93,7 @@ describe('FieldsPanel', () => {
 	});
 
 	it('shows what belongs in a field and lets an admin change it', async () => {
-		render(FieldsPanel);
+		render(WithDialogs, { component: FieldsPanel });
 		const hint = 'Die Nummer, unter der die Rechnung geführt wird';
 		expect(await screen.findByText(hint)).toBeTruthy();
 		await userEvent.click(

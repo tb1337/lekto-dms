@@ -33,6 +33,7 @@ export interface KindOps {
 	add: () => string;
 	extra: Extra;
 	list(): Promise<Item[]>;
+	get(id: string): Promise<Item>;
 	create(values: Values): Promise<unknown>;
 	change(id: string, values: Values): Promise<unknown>;
 	remove(id: string): Promise<unknown>;
@@ -46,6 +47,7 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		add: m.master_add_contact,
 		extra: 'aliases',
 		list: () => unwrap(api.GET('/api/v1/contacts')),
+		get: (id) => unwrap(api.GET('/api/v1/contacts/{id}', path(id))),
 		create: ({ name, aliases, identifiers }) =>
 			unwrap(api.POST('/api/v1/contacts', { body: { name, aliases, identifiers } })),
 		change: (id, { name, aliases, identifiers, rejected_identifiers }) =>
@@ -62,6 +64,7 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		add: m.master_add_type,
 		extra: 'description',
 		list: () => unwrap(api.GET('/api/v1/document-types')),
+		get: (id) => unwrap(api.GET('/api/v1/document-types/{id}', path(id))),
 		create: ({ name, description, title_pattern }) =>
 			unwrap(api.POST('/api/v1/document-types', { body: { name, description, title_pattern } })),
 		change: (id, { name, description, title_pattern }) =>
@@ -78,6 +81,7 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		add: m.master_add_tag,
 		extra: null,
 		list: () => unwrap(api.GET('/api/v1/tags')),
+		get: (id) => unwrap(api.GET('/api/v1/tags/{id}', path(id))),
 		create: ({ name }) => unwrap(api.POST('/api/v1/tags', { body: { name } })),
 		change: (id, { name }) =>
 			unwrap(api.PATCH('/api/v1/tags/{id}', { ...path(id), body: { name } })),

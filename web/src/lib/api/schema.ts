@@ -470,6 +470,26 @@ export interface paths {
 		patch: operations['change_contact_api_v1_contacts__id__patch'];
 		trace?: never;
 	};
+	'/api/v1/contacts/{id}/identifiers': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Attach an identifier to a contact
+		 * @description Admins only. Enters one identifier by hand (as found on a document, see `GET /documents/{id}/facts`); the contact's other identifiers stay as they are. One the contact learned or rejected is then entered by hand; one another contact learned or rejected moves here; 409 if another contact has it entered by hand. Documents use it from their next processing on.
+		 */
+		post: operations['attach_identifier_api_v1_contacts__id__identifiers_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/document-types': {
 		parameters: {
 			query?: never;
@@ -1229,6 +1249,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/{id}/facts': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * What a document shows of its contact
+		 * @description Needs read access. The names of contacts and the identifiers (IBAN, VAT and customer numbers, mail domains) its text shows, each with where it stands (`spans`, characters of `GET /documents/{id}/text`), and the codes on its pages (QR, Data Matrix, Code 128, ...) with what they hold: a GiroCode read as its credit transfer. Found as the facts signal finds them now, so an identifier attached since counts at once. 409 while the document has no text yet.
+		 */
+		get: operations['document_facts_api_v1_documents__id__facts_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/{id}/reading': {
 		parameters: {
 			query?: never;
@@ -1944,6 +1984,37 @@ export interface components {
 			 */
 			code: string;
 		};
+		/** CodeOut */
+		CodeOut: {
+			/**
+			 * Page
+			 * @description From 1.
+			 */
+			page: number;
+			/**
+			 * Format
+			 * @example QR Code
+			 * @example Code 128
+			 * @example Data Matrix
+			 */
+			format: string;
+			/**
+			 * Text
+			 * @description What it holds, as it holds it; someone else's text.
+			 */
+			text: string;
+			/** @description Where it stands on the page of the archive. */
+			box: components['schemas']['BoxOut'];
+			/** @description A GiroCode, read as its credit transfer. */
+			giro: components['schemas']['GiroCodeOut'] | null;
+			/** Identifiers */
+			identifiers: components['schemas']['IdentifierFoundOut'][];
+			/**
+			 * Fields
+			 * @description Amount fields of the document with the GiroCode's amount as their value.
+			 */
+			fields: string[];
+		};
 		/**
 		 * ConditionField
 		 * @enum {string}
@@ -2652,6 +2723,48 @@ export interface components {
 		 */
 		ExchangeNode: 'ocr' | 'signal_llm' | 'fields';
 		/**
+		 * FactsOut
+		 * @example {
+		 *       "codes": [],
+		 *       "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "identifiers": [
+		 *         {
+		 *           "in_code": false,
+		 *           "in_text": true,
+		 *           "kind": "customer_number",
+		 *           "other_contacts": 0,
+		 *           "spans": [
+		 *             {
+		 *               "end": 421,
+		 *               "start": 412
+		 *             }
+		 *           ],
+		 *           "value": "20047718"
+		 *         }
+		 *       ],
+		 *       "named": []
+		 *     }
+		 */
+		FactsOut: {
+			/**
+			 * Contact Id
+			 * @description The document's contact.
+			 */
+			contact_id: string | null;
+			/** Named */
+			named: components['schemas']['NamedContactOut'][];
+			/**
+			 * Identifiers
+			 * @description Those of contacts first, then those of none.
+			 */
+			identifiers: components['schemas']['FoundIdentifierOut'][];
+			/**
+			 * Codes
+			 * @description The codes on the pages; null while they are not read (`read-codes`).
+			 */
+			codes: components['schemas']['CodeOut'][] | null;
+		};
+		/**
 		 * FieldCheckOut
 		 * @description A field the model proposed, and its check.
 		 * @example {
@@ -2866,6 +2979,55 @@ export interface components {
 			 */
 			reason: string;
 		};
+		/** FoundIdentifierOut */
+		FoundIdentifierOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description Normalised, as a contact keeps it.
+			 */
+			value: string;
+			/**
+			 * Contact Id
+			 * @description The contact it is an identifier of (entered or learned); null if none.
+			 */
+			contact_id: string | null;
+			/** In Text */
+			in_text: boolean;
+			/**
+			 * In Code
+			 * @description A code on the pages holds it.
+			 */
+			in_code: boolean;
+			/**
+			 * Spans
+			 * @description Where it stands in the text.
+			 */
+			spans: components['schemas']['SpanOut'][];
+			/**
+			 * Other Contacts
+			 * @description For admins: on the confirmed documents of how many contacts other than the document's it stands (the IBAN of one's own account stands on many); null for others.
+			 */
+			other_contacts: number | null;
+		};
+		/**
+		 * GiroCodeOut
+		 * @description The credit transfer of a GiroCode (EPC QR code).
+		 */
+		GiroCodeOut: {
+			/**
+			 * Name
+			 * @description The payee.
+			 */
+			name: string;
+			/** Iban */
+			iban: string;
+			/** Bic */
+			bic: string | null;
+			amount: components['schemas']['MoneyValue'] | null;
+			/** Purpose */
+			purpose: string | null;
+		};
 		/** GraphNodeOut */
 		GraphNodeOut: {
 			node: components['schemas']['Node'];
@@ -2894,10 +3056,20 @@ export interface components {
 				[key: string]: 'ok' | 'failed';
 			};
 		};
+		/** IdentifierFoundOut */
+		IdentifierFoundOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/** Value */
+			value: string;
+		};
 		/**
 		 * IdentifierIn
 		 * @description Written as in documents; papiq stores it normalised (an IBAN without spaces, a domain
 		 *     without `www.`).
+		 * @example {
+		 *       "kind": "customer_number",
+		 *       "value": "2004-7718"
+		 *     }
 		 */
 		IdentifierIn: {
 			kind: components['schemas']['IdentifierKind'];
@@ -3194,6 +3366,33 @@ export interface components {
 			 * @example ACME Energy
 			 */
 			name: string;
+		};
+		/** NamedContactOut */
+		NamedContactOut: {
+			/**
+			 * Contact Id
+			 * Format: uuid
+			 */
+			contact_id: string;
+			/**
+			 * Name
+			 * @description The contact's name or alias that stands there.
+			 */
+			name: string;
+			/** Alias */
+			alias: boolean;
+			/** In Text */
+			in_text: boolean;
+			/**
+			 * In Code
+			 * @description The payee of a GiroCode on the pages.
+			 */
+			in_code: boolean;
+			/**
+			 * Spans
+			 * @description Where it stands in the text.
+			 */
+			spans: components['schemas']['SpanOut'][];
 		};
 		/**
 		 * Node
@@ -4115,6 +4314,19 @@ export interface components {
 			 * @description Whether the words of this piece matched the query.
 			 */
 			match: boolean;
+		};
+		/** SpanOut */
+		SpanOut: {
+			/**
+			 * Start
+			 * @description First character, from 0.
+			 */
+			start: number;
+			/**
+			 * End
+			 * @description After the last character.
+			 */
+			end: number;
 		};
 		/**
 		 * TemplatePreviewIn
@@ -7563,6 +7775,151 @@ export interface operations {
 		requestBody: {
 			content: {
 				'application/json': components['schemas']['ContactPatch'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ContactOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	attach_identifier_api_v1_contacts__id__identifiers_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['IdentifierIn'];
 			};
 		};
 		responses: {
@@ -13772,6 +14129,113 @@ export interface operations {
 					 *       "title": "Forbidden",
 					 *       "status": 403,
 					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	document_facts_api_v1_documents__id__facts_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['FactsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

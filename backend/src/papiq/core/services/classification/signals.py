@@ -26,7 +26,6 @@ from papiq.core.domain.codes import (
     code_identifiers,
     codes_from_json,
     codes_to_json,
-    giro_code,
 )
 from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import (
@@ -36,11 +35,11 @@ from papiq.core.domain.errors import (
     SearchError,
     ValidationError,
 )
-from papiq.core.domain.identifiers import IdentifierKind, identifiers_in, matches
+from papiq.core.domain.facts import facts_in
+from papiq.core.domain.identifiers import IdentifierKind, identifiers_in
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact
-from papiq.core.domain.names import mentions, name_key
 from papiq.core.domain.permissions import reach_access
 from papiq.core.domain.pipeline import SIGNALS, Node, NodeResult, NodeRun, Outcome
 from papiq.core.domain.search import Visibility
@@ -169,60 +168,38 @@ class FactsResult:
 
 
 def facts_of(text: str, contacts: Sequence[Contact], codes: Sequence[Code] = ()) -> JsonObject:
-    """What `signal_facts` reports for `text` and the `codes` of its pages; what a code holds
-    is marked `in_code`."""
-    text_key = name_key(text)
-    payees = [name_key(giro.name) for code in codes if (giro := giro_code(code.text))]
-    named: list[JsonValue] = []
-    for contact in contacts:
-        own = next((name for name in contact.names() if mentions(text_key, name_key(name))), None)
-        paid = next(
-            (
-                name
-                for name in contact.names()
-                if any(mentions(payee, name_key(name)) for payee in payees)
-            ),
-            None,
-        )
-        if own is not None or paid is not None:
-            name = own if own is not None else paid
-            item: JsonObject = {
-                "contact_id": str(contact.id),
-                "name": name,
-                "alias": name != contact.name,
-            }
-            if paid is not None:
-                item["in_code"] = True
-            named.append(item)
-    in_codes: set[tuple[IdentifierKind, str]] = set()
-    for code in codes:
-        in_codes |= code_identifiers(code)
-    found = identifiers_in(text) | in_codes
-    hits: list[JsonValue] = []
-    known: set[tuple[IdentifierKind, str]] = set()
-    for contact in contacts:
-        for identifier in contact.identifiers:
-            matched = [item for item in found if matches(identifier, item)]
-            known.update(matched)
-            if matched and identifier.counts:
-                hit: JsonObject = {
-                    "contact_id": str(contact.id),
-                    "kind": identifier.kind.value,
-                    "value": identifier.value,
-                }
-                if any(item in in_codes for item in matched):
-                    hit["in_code"] = True
-                hits.append(hit)
-    unknown: list[JsonValue] = []
-    for kind, value in sorted(found - known, key=lambda item: (item[0].value, item[1])):
-        entry: JsonObject = {"kind": kind.value, "value": value}
-        if (kind, value) in in_codes:
-            entry["in_code"] = True
-        unknown.append(entry)
+    """What `signal_facts` reports for `text` and the `codes` of its pages (`domain.facts`);
+    what a code holds is marked `in_code`."""
+    facts = facts_in(text, contacts, codes)
+
+    def marked(item: JsonObject, in_code: bool) -> JsonObject:
+        return {**item, "in_code": True} if in_code else item
+
     return {
-        "named": named[:_MOST],
-        "identifiers": hits[:_MOST],
-        "unknown_identifiers": unknown[:_MOST],
+        "named": [
+            marked(
+                {"contact_id": str(item.contact_id), "name": item.name, "alias": item.alias},
+                item.in_code,
+            )
+            for item in facts.named
+        ],
+        "identifiers": [
+            marked(
+                {
+                    "contact_id": str(item.contact_id),
+                    "kind": item.kind.value,
+                    "value": item.value,
+                },
+                item.in_code,
+            )
+            for item in facts.identifiers
+            if item.contact_id is not None
+        ],
+        "unknown_identifiers": [
+            marked({"kind": item.kind.value, "value": item.value}, item.in_code)
+            for item in facts.identifiers
+            if item.contact_id is None
+        ],
     }
 
 

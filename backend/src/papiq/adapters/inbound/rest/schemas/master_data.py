@@ -47,7 +47,10 @@ class IdentifierIn(BaseModel):
     """Written as in documents; papiq stores it normalised (an IBAN without spaces, a domain
     without `www.`)."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"examples": [{"kind": "customer_number", "value": "2004-7718"}]},
+    )
 
     kind: IdentifierKind
     value: str = Field(min_length=1, max_length=100, examples=["DE89 3704 0044 0532 0130 00"])

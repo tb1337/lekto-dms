@@ -22,11 +22,12 @@ from papiq.adapters.inbound.rest.schemas.master_data import (
     FieldCreate,
     FieldOut,
     FieldPatch,
+    IdentifierIn,
     MasterDataOut,
 )
 from papiq.core.domain.documents import UNSET, Unset
 from papiq.core.domain.identifiers import Identifier, IdentifierKind
-from papiq.core.domain.ids import DocumentTypeId, FieldId
+from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId
 from papiq.core.domain.master_data import MasterData
 
 ADMINS_ONLY = "Admins only."
@@ -140,6 +141,28 @@ contacts = _simple(
     "contacts", "contact", "contacts", "contact", ContactOut, ContactCreate, ContactPatch,
     change="change", arguments=_contact_arguments,
 )  # fmt: skip
+
+
+@contacts.post(
+    "/{id}/identifiers",
+    summary="Attach an identifier to a contact",
+    description=(
+        ADMINS_ONLY + " Enters one identifier by hand (as found on a document, see `GET "
+        "/documents/{id}/facts`); the contact's other identifiers stay as they are. One the "
+        "contact learned or rejected is then entered by hand; one another contact learned or "
+        "rejected moves here; 409 if another contact has it entered by hand. Documents use it "
+        "from their next processing on."
+    ),
+    response_model=ContactOut,
+    responses=problem_responses(401, 403, 404, 409, 422),
+)
+async def attach_identifier(
+    id: UUID, body: IdentifierIn, user: CurrentUser, context: Context
+) -> ContactOut:
+    identifier = Identifier.parse(body.kind, body.value)
+    return ContactOut.of(await context.master_data.add_identifier(user, ContactId(id), identifier))
+
+
 document_types = _simple(
     "document-types",
     "document type",

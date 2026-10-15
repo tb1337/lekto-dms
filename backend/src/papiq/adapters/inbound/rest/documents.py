@@ -42,6 +42,7 @@ from papiq.adapters.inbound.rest.schemas.documents import (
     RunExchangeOut,
     VisibilityOut,
 )
+from papiq.adapters.inbound.rest.schemas.facts import FactsOut
 from papiq.adapters.inbound.rest.schemas.inbox import (
     ConfirmRequest,
     InboxItemOut,
@@ -551,6 +552,24 @@ async def retry(id: UUID, user: CurrentUser, context: Context) -> DocumentDetail
 )
 async def read_with_vision(id: UUID, user: CurrentUser, context: Context) -> DocumentDetails:
     return _details(await context.pipeline.read_with_vision(user, DocumentId(id)))
+
+
+@router.get(
+    "/{id}/facts",
+    summary="What a document shows of its contact",
+    description=(
+        "Needs read access. The names of contacts and the identifiers (IBAN, VAT and customer "
+        "numbers, mail domains) its text shows, each with where it stands (`spans`, characters "
+        "of `GET /documents/{id}/text`), and the codes on its pages (QR, Data Matrix, Code 128, "
+        "...) with what they hold: a GiroCode read as its credit transfer. Found as the facts "
+        "signal finds them now, so an identifier attached since counts at once. 409 while the "
+        "document has no text yet."
+    ),
+    response_model=FactsOut,
+    responses=problem_responses(401, 404, 409, 422),
+)
+async def document_facts(id: UUID, user: CurrentUser, context: Context) -> FactsOut:
+    return FactsOut.of(await context.documents.facts(user, DocumentId(id)))
 
 
 @router.get(

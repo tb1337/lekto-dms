@@ -3374,6 +3374,170 @@
         ]
       }
     },
+    "/api/v1/contacts/{id}/identifiers": {
+      "post": {
+        "tags": [
+          "master data"
+        ],
+        "summary": "Attach an identifier to a contact",
+        "description": "Admins only. Enters one identifier by hand (as found on a document, see `GET /documents/{id}/facts`); the contact's other identifiers stay as they are. One the contact learned or rejected is then entered by hand; one another contact learned or rejected moves here; 409 if another contact has it entered by hand. Documents use it from their next processing on.",
+        "operationId": "attach_identifier_api_v1_contacts__id__identifiers_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentifierIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only the owner controls processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/document-types": {
       "get": {
         "tags": [
@@ -10621,6 +10785,128 @@
         ]
       }
     },
+    "/api/v1/documents/{id}/facts": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "What a document shows of its contact",
+        "description": "Needs read access. The names of contacts and the identifiers (IBAN, VAT and customer numbers, mail domains) its text shows, each with where it stands (`spans`, characters of `GET /documents/{id}/text`), and the codes on its pages (QR, Data Matrix, Code 128, ...) with what they hold: a GiroCode read as its credit transfer. Found as the facts signal finds them now, so an identifier attached since counts at once. 409 while the document has no text yet.",
+        "operationId": "document_facts_api_v1_documents__id__facts_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents/{id}/reading": {
       "get": {
         "tags": [
@@ -13495,6 +13781,71 @@
           }
         ]
       },
+      "CodeOut": {
+        "properties": {
+          "page": {
+            "type": "integer",
+            "title": "Page",
+            "description": "From 1."
+          },
+          "format": {
+            "type": "string",
+            "title": "Format",
+            "examples": [
+              "QR Code",
+              "Code 128",
+              "Data Matrix"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "What it holds, as it holds it; someone else's text."
+          },
+          "box": {
+            "$ref": "#/components/schemas/BoxOut",
+            "description": "Where it stands on the page of the archive."
+          },
+          "giro": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GiroCodeOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A GiroCode, read as its credit transfer."
+          },
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/IdentifierFoundOut"
+            },
+            "type": "array",
+            "title": "Identifiers"
+          },
+          "fields": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Fields",
+            "description": "Amount fields of the document with the GiroCode's amount as their value."
+          }
+        },
+        "type": "object",
+        "required": [
+          "page",
+          "format",
+          "text",
+          "box",
+          "giro",
+          "identifiers",
+          "fields"
+        ],
+        "title": "CodeOut"
+      },
       "ConditionField": {
         "type": "string",
         "enum": [
@@ -14984,6 +15335,83 @@
         ],
         "title": "ExchangeNode"
       },
+      "FactsOut": {
+        "properties": {
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "The document's contact."
+          },
+          "named": {
+            "items": {
+              "$ref": "#/components/schemas/NamedContactOut"
+            },
+            "type": "array",
+            "title": "Named"
+          },
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/FoundIdentifierOut"
+            },
+            "type": "array",
+            "title": "Identifiers",
+            "description": "Those of contacts first, then those of none."
+          },
+          "codes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CodeOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codes",
+            "description": "The codes on the pages; null while they are not read (`read-codes`)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "contact_id",
+          "named",
+          "identifiers",
+          "codes"
+        ],
+        "title": "FactsOut",
+        "examples": [
+          {
+            "codes": [],
+            "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
+            "identifiers": [
+              {
+                "in_code": false,
+                "in_text": true,
+                "kind": "customer_number",
+                "other_contacts": 0,
+                "spans": [
+                  {
+                    "end": 421,
+                    "start": 412
+                  }
+                ],
+                "value": "20047718"
+              }
+            ],
+            "named": []
+          }
+        ]
+      },
       "FieldCheckOut": {
         "properties": {
           "field": {
@@ -15444,6 +15872,126 @@
         ],
         "title": "ForceReviewAction"
       },
+      "FoundIdentifierOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Normalised, as a contact keeps it."
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "The contact it is an identifier of (entered or learned); null if none."
+          },
+          "in_text": {
+            "type": "boolean",
+            "title": "In Text"
+          },
+          "in_code": {
+            "type": "boolean",
+            "title": "In Code",
+            "description": "A code on the pages holds it."
+          },
+          "spans": {
+            "items": {
+              "$ref": "#/components/schemas/SpanOut"
+            },
+            "type": "array",
+            "title": "Spans",
+            "description": "Where it stands in the text."
+          },
+          "other_contacts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Contacts",
+            "description": "For admins: on the confirmed documents of how many contacts other than the document's it stands (the IBAN of one's own account stands on many); null for others."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "contact_id",
+          "in_text",
+          "in_code",
+          "spans",
+          "other_contacts"
+        ],
+        "title": "FoundIdentifierOut"
+      },
+      "GiroCodeOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The payee."
+          },
+          "iban": {
+            "type": "string",
+            "title": "Iban"
+          },
+          "bic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bic"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "iban",
+          "bic",
+          "amount",
+          "purpose"
+        ],
+        "title": "GiroCodeOut",
+        "description": "The credit transfer of a GiroCode (EPC QR code)."
+      },
       "GraphNodeOut": {
         "properties": {
           "node": {
@@ -15502,6 +16050,23 @@
         ],
         "title": "Health"
       },
+      "IdentifierFoundOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IdentifierKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value"
+        ],
+        "title": "IdentifierFoundOut"
+      },
       "IdentifierIn": {
         "properties": {
           "kind": {
@@ -15524,7 +16089,13 @@
           "value"
         ],
         "title": "IdentifierIn",
-        "description": "Written as in documents; papiq stores it normalised (an IBAN without spaces, a domain\nwithout `www.`)."
+        "description": "Written as in documents; papiq stores it normalised (an IBAN without spaces, a domain\nwithout `www.`).",
+        "examples": [
+          {
+            "kind": "customer_number",
+            "value": "2004-7718"
+          }
+        ]
       },
       "IdentifierKind": {
         "type": "string",
@@ -16084,6 +16655,51 @@
             "name": "ACME Energy"
           }
         ]
+      },
+      "NamedContactOut": {
+        "properties": {
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contact Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The contact's name or alias that stands there."
+          },
+          "alias": {
+            "type": "boolean",
+            "title": "Alias"
+          },
+          "in_text": {
+            "type": "boolean",
+            "title": "In Text"
+          },
+          "in_code": {
+            "type": "boolean",
+            "title": "In Code",
+            "description": "The payee of a GiroCode on the pages."
+          },
+          "spans": {
+            "items": {
+              "$ref": "#/components/schemas/SpanOut"
+            },
+            "type": "array",
+            "title": "Spans",
+            "description": "Where it stands in the text."
+          }
+        },
+        "type": "object",
+        "required": [
+          "contact_id",
+          "name",
+          "alias",
+          "in_text",
+          "in_code",
+          "spans"
+        ],
+        "title": "NamedContactOut"
       },
       "Node": {
         "type": "string",
@@ -17897,6 +18513,26 @@
           "match"
         ],
         "title": "SnippetSegment"
+      },
+      "SpanOut": {
+        "properties": {
+          "start": {
+            "type": "integer",
+            "title": "Start",
+            "description": "First character, from 0."
+          },
+          "end": {
+            "type": "integer",
+            "title": "End",
+            "description": "After the last character."
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "SpanOut"
       },
       "TemplatePreviewIn": {
         "properties": {

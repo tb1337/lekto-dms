@@ -7,6 +7,7 @@ from enum import StrEnum
 from pathlib import Path, PurePath
 
 from papiq.core.domain import media_types
+from papiq.core.domain.codes import Code, GiroCode, code_identifiers, codes_from_json, giro_code
 from papiq.core.domain.documents import CONFIRMING, Document, DocumentChanges
 from papiq.core.domain.drawers import Drawer, ShareLevel
 from papiq.core.domain.errors import (
@@ -16,9 +17,13 @@ from papiq.core.domain.errors import (
     ValidationError,
 )
 from papiq.core.domain.exchanges import RunExchange, exchanges_from_json
-from papiq.core.domain.ids import DocumentId, DrawerId, UserId
+from papiq.core.domain.facts import Facts, facts_in
+from papiq.core.domain.fields import FieldType, FieldValue
+from papiq.core.domain.identifiers import IdentifierKind
+from papiq.core.domain.ids import ContactId, DocumentId, DrawerId, FieldId, UserId
 from papiq.core.domain.permissions import (
     can_control_document,
+    can_manage_master_data,
     can_move_document,
     can_read_document,
     document_access,
@@ -40,6 +45,7 @@ from papiq.core.services.maintenance import REMOVE_FILES_JOB
 from papiq.core.services.objects import (
     EXCHANGE_NODES,
     archive_key,
+    codes_key,
     exchanges_key,
     legacy_exchanges_key,
     load_text,
@@ -75,6 +81,42 @@ class DocumentView:
 
     document: Document
     access: ShareLevel
+
+
+@dataclass(frozen=True, kw_only=True)
+class CodeFacts:
+    """A code on the document's pages: a GiroCode read as its credit transfer, the
+    identifiers it holds, and the amount fields of the document with the GiroCode's amount."""
+
+    code: Code
+    giro: GiroCode | None
+    identifiers: tuple[tuple[IdentifierKind, str], ...]
+    fields: tuple[FieldId, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class DocumentFacts:
+    """What the document shows of its contact (`domain.facts`, with spans of the text), the
+    codes on its pages (None while they are not read), and, for admins, on the confirmed
+    documents of how many contacts besides the document's an identifier stands."""
+
+    contact_id: ContactId | None
+    facts: Facts
+    codes: tuple[CodeFacts, ...] | None
+    other_contacts: dict[tuple[IdentifierKind, str], int] | None
+
+
+def _code_facts(code: Code, amounts: dict[FieldId, FieldValue]) -> CodeFacts:
+    giro = giro_code(code.text)
+    fields: tuple[FieldId, ...] = ()
+    if giro is not None and giro.amount is not None:
+        fields = tuple(field for field, value in amounts.items() if value == giro.amount)
+    return CodeFacts(
+        code=code,
+        giro=giro,
+        identifiers=tuple(sorted(code_identifiers(code), key=lambda key: (key[0].value, key[1]))),
+        fields=fields,
+    )
 
 
 @dataclass(frozen=True)
@@ -155,6 +197,56 @@ class DocumentService:
             total_length=len(text),
             next_offset=end if end < len(text) else None,
         )
+
+    async def facts(self, actor: UserId, id: DocumentId) -> DocumentFacts:
+        """The facts of the document's text and codes, as the facts signal finds them now:
+        a contact named or an identifier attached since counts at once. NotFoundError if the
+        caller may not read the document; ConflictError while it has no text yet."""
+        assert self._store is not None, "reading facts needs the object store"
+        async with self._uow() as uow:
+            user = await load_actor(uow, actor)
+            document, _ = await readable_document(uow, user, id)
+            contacts = await uow.contacts.list_all()
+            definitions = {item.id: item for item in await uow.fields.list_all()}
+        try:
+            text = (await load_text(self._store, id)).decode("utf-8", errors="replace")
+        except NotFoundError:
+            raise ConflictError("document has no text yet") from None
+        codes = await self._codes(id)
+        facts = facts_in(text, contacts, codes or (), places=True)
+        amounts = {
+            field: value
+            for field, value in document.fields.items()
+            if field in definitions and definitions[field].data_type is FieldType.AMOUNT
+        }
+        views = None
+        if codes is not None:
+            views = tuple(_code_facts(code, amounts) for code in codes)
+        others = None
+        if can_manage_master_data(user):
+            async with self._uow() as uow:
+                carrying = await uow.document_identifiers.contacts_of(
+                    [item.key for item in facts.identifiers]
+                )
+            others = {
+                key: len(contacts_ - {document.contact_id} if document.contact_id else contacts_)
+                for key, contacts_ in carrying.items()
+            }
+        return DocumentFacts(
+            contact_id=document.contact_id, facts=facts, codes=views, other_contacts=others
+        )
+
+    async def _codes(self, id: DocumentId) -> tuple[Code, ...] | None:
+        """The codes read from the archive's pages, None while they are not (or of an earlier
+        version)."""
+        assert self._store is not None
+        try:
+            return codes_from_json(json.loads(await self._store.get(codes_key(id))))
+        except NotFoundError:
+            return None
+        except (ValueError, ValidationError):
+            log.warning("an unreadable file of codes", extra={"document_id": str(id)})
+            return None
 
     async def read_structure(self, actor: UserId, id: DocumentId) -> bytes:
         """The parsed structure in the parser's JSON format (Docling's, with page and box of

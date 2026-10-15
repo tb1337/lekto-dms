@@ -125,6 +125,26 @@ class MasterDataService:
             index_as="contact" if name is not None else None,
         )
 
+    async def add_identifier(self, actor: UserId, id: ContactId, identifier: Identifier) -> Contact:
+        """Enter one identifier by hand for the contact (admins), from a document that shows
+        it; the others stay as they are. One the contact learned or rejected is then entered;
+        one another contact learned or rejected moves here; one another contact has entered is
+        a conflict."""
+        entered = Identifier(identifier.kind, identifier.value, MANUAL)
+
+        def change(item: Contact) -> None:
+            manual = [e for e in item.identifiers if e.source is MANUAL and e.key != entered.key]
+            rejected = [
+                e
+                for e in item.identifiers
+                if e.source is IdentifierSource.REJECTED and e.key != entered.key
+            ]
+            item.set_identifiers([*manual, entered], rejected)
+
+        return await self._change(
+            actor, _contacts, id, change, check=lambda uow, item: _check_contact(uow, item)
+        )
+
     async def create_document_type(
         self,
         actor: UserId,

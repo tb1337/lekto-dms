@@ -229,6 +229,14 @@ class Settings(BaseSettings):
     # separates it from the text.
     embedding_query_prefix: str | None = None
     embedding_document_prefix: str | None = None
+    # A vision language model that reads a document's pages when a person asks for it (`POST
+    # /documents/{id}/vision`): an OpenAI-compatible endpoint whose model takes images. The page
+    # images go there. Reading a whole document has this time limit; one page at most five
+    # minutes.
+    vlm_base_url: AnyHttpUrl | None = None
+    vlm_model: str | None = None
+    vlm_api_key: SecretStr | None = None
+    vlm_timeout: Seconds = timedelta(minutes=30)
 
     # Classification: a field is accepted (ok) from this confidence on; an existing contact is
     # suggested from the second.
@@ -333,7 +341,7 @@ class Settings(BaseSettings):
                 f"{_env('session_max_age')} must not be shorter than {_env('session_idle_timeout')}"
             )
         problems += self._oidc_problems()
-        for prefix in ("llm", "embedding"):
+        for prefix in ("llm", "embedding", "vlm"):
             url, model = f"{prefix}_base_url", f"{prefix}_model"
             if (getattr(self, url) is None) != (getattr(self, model) is None):
                 problems.append(f"{_env(url)} and {_env(model)} must be set together")

@@ -6,6 +6,7 @@ from collections.abc import Sequence
 import pytest
 
 from papiq.adapters.outbound.memory import (
+    FAKE_VISION,
     BagOfWordsEmbeddings,
     FakeCipher,
     FakeClassifier,
@@ -123,6 +124,11 @@ class TestManualClock(ClockContract):
 @pytest.fixture
 def ocr() -> FakeOcr:
     return FakeOcr()
+
+
+@pytest.fixture
+def vision_ocr() -> FakeOcr:
+    return FakeOcr(vision=FAKE_VISION)
 
 
 @pytest.fixture

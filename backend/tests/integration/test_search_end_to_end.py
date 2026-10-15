@@ -46,7 +46,11 @@ TIMEOUT = 60.0  # seconds a document may take here
 class TextOcr:
     """OCR that keeps the file as it is: the archive holds the text line for the parser."""
 
-    async def make_archive(self, source: Path, target: Path, *, media_type: str) -> OcrResult:
+    vision = None
+
+    async def make_archive(
+        self, source: Path, target: Path, *, media_type: str, vision: bool = False
+    ) -> OcrResult:
         target.write_bytes(source.read_bytes())
         return OcrResult(pages=1, engine="text-ocr 1", pdfa=True)
 

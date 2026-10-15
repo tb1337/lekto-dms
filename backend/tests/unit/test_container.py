@@ -32,6 +32,7 @@ from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.templates import TemplateValue
 from papiq.core.domain.users import Role
+from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.nodes import OcrNode, ParseNode
 from papiq.core.services.pipeline import RetryPolicy
 from tests import builders
@@ -109,7 +110,27 @@ def test_processing_adapters_follow_the_settings(tmp_path: Path) -> None:
     ocr = container.OCR_ENGINES["ocrmypdf"](configured)
     assert isinstance(ocr, OcrmypdfEngine)
     assert (ocr._languages, ocr._timeout) == ("deu+eng+fra", timedelta(minutes=2))
+    assert ocr.vision is None
     assert isinstance(container.PARSERS["layout"](configured), LayoutParser)
+
+
+def test_a_vision_model_reads_pages_when_configured() -> None:
+    configured = settings(
+        vlm_base_url="https://user:pw@chat.example/api",
+        vlm_model="claude-sonnet",
+        vlm_api_key="vlm-key",
+        vlm_timeout="600",
+    )
+    ocr = container.OCR_ENGINES["ocrmypdf"](configured)
+    assert isinstance(ocr, OcrmypdfEngine)
+    assert ocr.vision == VisionModel(model="claude-sonnet", endpoint="chat.example")
+    assert ocr._vision is not None and ocr._vision.api_key == "vlm-key"
+    assert ocr._vision.timeout == timedelta(minutes=5)
+    assert ocr._vision_timeout == timedelta(minutes=10)
+    # Reading a document with the model may take longer than OCR: the lease grows with it.
+    assert container.node_lease(configured) == timedelta(minutes=10) + container.LEASE_MARGIN
+    quick = settings(vlm_base_url="https://chat.example/api", vlm_model="m", vlm_timeout="60")
+    assert container.node_lease(quick) == timedelta(minutes=10) + container.LEASE_MARGIN
 
 
 def test_services_take_their_tuning_from_the_settings() -> None:

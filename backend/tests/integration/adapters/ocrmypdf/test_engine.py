@@ -3,6 +3,7 @@ the programs are not installed (the devcontainer has them)."""
 
 import asyncio
 import shutil
+from collections.abc import Iterator
 from datetime import timedelta
 from pathlib import Path
 
@@ -11,22 +12,41 @@ import pytest
 
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
 from papiq.adapters.outbound.ocrmypdf.engine import UNREADABLE_NOTE
+from papiq.adapters.outbound.ocrmypdf.vision import VisionSettings
 from papiq.adapters.outbound.pdfium import has_hidden_text
 from papiq.adapters.outbound.pdfium.library import unreadable_share
 from papiq.core.domain import media_types
+from papiq.core.domain.errors import LanguageModelError
 from tests.contracts.processing import SAMPLES, OcrContract
+from tests.vision_stub import VisionStub, serve
 
 if not (shutil.which("tesseract") and shutil.which("gs")):
     pytest.skip("Tesseract or Ghostscript not installed", allow_module_level=True)
 
 
-def engine(timeout: timedelta = timedelta(minutes=2)) -> OcrmypdfEngine:
-    return OcrmypdfEngine(languages=["deu", "eng"], timeout=timeout)
+def engine(
+    timeout: timedelta = timedelta(minutes=2), vision: VisionStub | None = None
+) -> OcrmypdfEngine:
+    settings = None
+    if vision is not None:
+        settings = VisionSettings(base_url=vision.url, model=vision.model, api_key="stub-key")
+    return OcrmypdfEngine(languages=["deu", "eng"], timeout=timeout, vision=settings)
 
 
 @pytest.fixture
 def ocr() -> OcrmypdfEngine:
     return engine()
+
+
+@pytest.fixture
+def stub() -> Iterator[VisionStub]:
+    with serve(VisionStub()) as served:
+        yield served
+
+
+@pytest.fixture
+def vision_ocr(stub: VisionStub) -> OcrmypdfEngine:
+    return engine(vision=stub)
 
 
 class TestOcrmypdfEngine(OcrContract):
@@ -130,3 +150,78 @@ async def test_a_signed_pdf_gets_its_archive_without_the_signature(tmp_path: Pat
     assert result.note is not None and "signature" in result.note
     assert "Rechnung Nummer 4711" in " ".join(text_of(target).split())
     assert sorted(path.name for path in tmp_path.iterdir()) == ["archive.pdf"]
+
+
+def char_boxes(pdf: Path, needle: str) -> tuple[float, float]:
+    """Where `needle` starts on the first page: its left and top in fractions of the page."""
+    document = pypdfium2.PdfDocument(pdf)
+    try:
+        page = document[0]
+        width, height = page.get_size()
+        textpage = page.get_textpage()
+        start = textpage.get_text_range().index(needle)
+        left, _, _, top = textpage.get_charbox(start)
+        return left / width, 1 - top / height
+    finally:
+        document.close()
+
+
+async def test_the_vision_model_s_lines_become_the_text_layer(
+    tmp_path: Path, stub: VisionStub
+) -> None:
+    """At the places it gives, also on a scan Tesseract would read itself."""
+    stub.pages = [
+        [
+            ("Rechnung Nummer 4711", (0.1, 0.11, 0.6, 0.14)),
+            ("Betrag 123,45 EUR [unreadable]", (0.1, 0.5, 0.7, 0.53)),
+        ]
+    ]
+    target = tmp_path / "archive.pdf"
+    result = await engine(vision=stub).make_archive(
+        SAMPLES / "scan.pdf", target, media_type=media_types.PDF, vision=True
+    )
+    text = " ".join(text_of(target).split())
+    assert text == "Rechnung Nummer 4711 Betrag 123,45 EUR [unreadable]"
+    left, top = char_boxes(target, "Betrag")
+    assert left == pytest.approx(0.1, abs=0.02)
+    assert top == pytest.approx(0.5, abs=0.02)
+    assert result.pdfa
+    assert "vision language model stub-vlm (read-1)" in result.engine
+    (reading,) = result.readings
+    assert (reading.page, reading.words, reading.unsure) == (1, 7, 1)
+    assert result.vision is not None
+    (call,) = result.vision.calls
+    assert call.model == "stub-vlm"
+    assert call.usage == {"prompt_tokens": 1500, "completion_tokens": 120}
+    assert "[image: page 1," in call.user
+    assert "base64" not in call.user
+    # The page went at no more than about a megapixel, with the key.
+    image = stub.requests[0]["messages"][1]["content"][1]["image_url"]["url"]
+    assert image.startswith("data:image/png;base64,")
+    assert stub.keys == ["stub-key"]
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["archive.pdf"]
+
+
+async def test_every_page_of_a_tiff_is_read(tmp_path: Path, stub: VisionStub) -> None:
+    stub.pages = [
+        [("Seite eins", (0.1, 0.1, 0.4, 0.13))],
+        [("Seite zwei", (0.1, 0.1, 0.4, 0.13))],
+    ]
+    target = tmp_path / "archive.pdf"
+    result = await engine(vision=stub).make_archive(
+        SAMPLES / "pages.tiff", target, media_type=media_types.TIFF, vision=True
+    )
+    assert result.pages == 2
+    assert [reading.page for reading in result.readings] == [1, 2]
+    assert " ".join(text_of(target).split()) == "Seite eins Seite zwei"
+    assert result.vision is not None and len(result.vision.calls) == 2
+
+
+async def test_a_model_that_cannot_read_fails_the_archive(tmp_path: Path, stub: VisionStub) -> None:
+    stub.status = 503
+    target = tmp_path / "archive.pdf"
+    with pytest.raises(LanguageModelError, match="HTTP 503: the stub is down"):
+        await engine(vision=stub).make_archive(
+            SAMPLES / "scan.pdf", target, media_type=media_types.PDF, vision=True
+        )
+    assert list(tmp_path.iterdir()) == []

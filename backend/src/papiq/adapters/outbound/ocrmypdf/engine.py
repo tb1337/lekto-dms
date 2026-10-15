@@ -32,6 +32,15 @@ Images are prepared before OCRmyPDF sees them (`prepare_image`):
 
 OCRmyPDF's exit codes tell permanent problems (damaged or encrypted input) from others.
 
+When a person asks for it (`vision`), the vision language model reads every page instead of
+Tesseract: `--force-ocr --deskew` with the plugin (`PLUGIN`) as OCR engine, so that every page
+is read from its image, text of its own or not, and the archive holds the pages as images under
+the model's text. The plugin runs in OCRmyPDF's process; its configuration goes there in the
+environment, and it leaves a record of each page in a folder of our own: its words, the ones the
+model could not read, and what was sent. Such a run has a time limit of its own
+(`vision_timeout`). A page the model cannot read fails the run (exit code 15) with the plugin's
+reason.
+
 How well a page was read comes from Tesseract's hOCR, which OCRmyPDF keeps in its work folder
 with `--keep-temporary-files` (`*_ocr_hocr.hocr`, one per page it recognised): the words with
 a confidence and how many fall below `UNSURE_BELOW`. The work folder is one of our own
@@ -53,12 +62,20 @@ from pathlib import Path
 
 from PIL import Image, ImageSequence
 
+from papiq.adapters.outbound.ocrmypdf.vision import (
+    PROMPT,
+    PageRecord,
+    VisionSettings,
+    environment,
+    read_records,
+)
+from papiq.adapters.outbound.openai_compat import endpoint_of
 from papiq.adapters.outbound.pdfium import count_pages, has_hidden_text, has_unreadable_text
 from papiq.adapters.outbound.system import Completed, run_process
 from papiq.core.domain import media_types
-from papiq.core.domain.errors import UnprocessableDocumentError
+from papiq.core.domain.errors import LanguageModelError, UnprocessableDocumentError
 from papiq.core.domain.reading import PageReading
-from papiq.core.ports.ocr import OcrResult
+from papiq.core.ports.ocr import OcrResult, VisionModel, VisionReading
 
 log = logging.getLogger(__name__)
 
@@ -102,6 +119,9 @@ _KEPT = re.compile(
     re.M,
 )
 _PDFA_ISSUE = re.compile(r"conversion to PDF/A did not succeed \(issue: (.+?)\)")
+_VISION_ERROR = re.compile(r"^\S*VisionError: (.+)$", re.M)
+PLUGIN = "papiq.adapters.outbound.ocrmypdf.plugin"
+"""The plugin OCRmyPDF loads to read pages with the vision language model."""
 _NOTE_MAX = 300
 
 A4_LONG_EDGE = 11.69  # inches
@@ -115,82 +135,147 @@ class OcrmypdfEngine:
         languages: Sequence[str],
         timeout: timedelta,
         jobs: int = 1,
+        vision: VisionSettings | None = None,
+        vision_timeout: timedelta = timedelta(minutes=30),
     ) -> None:
         """`languages`: Tesseract language codes, e.g. `deu`, `eng`. `jobs`: CPU cores for
-        the pages of one document."""
+        the pages of one document. `vision`: the model that reads pages when asked to, all
+        pages of a document within `vision_timeout`."""
         if not languages:
             raise ValueError("at least one OCR language is needed")
         self._languages = "+".join(languages)
         self._timeout = timeout
         self._jobs = jobs
+        self._vision = vision
+        self._vision_timeout = vision_timeout
         self._engine: str | None = None
 
-    async def make_archive(self, source: Path, target: Path, *, media_type: str) -> OcrResult:
+    @property
+    def vision(self) -> VisionModel | None:
+        if self._vision is None:
+            return None
+        return VisionModel(model=self._vision.model, endpoint=endpoint_of(self._vision.base_url))
+
+    async def make_archive(
+        self, source: Path, target: Path, *, media_type: str, vision: bool = False
+    ) -> OcrResult:
+        if vision and self._vision is None:
+            raise ValueError("no vision language model is configured")
         temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp.pdf")
         prepared = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp.tiff")
         work = target.with_name(f".{target.name}.{uuid.uuid4().hex}.work")
+        records = target.with_name(f".{target.name}.{uuid.uuid4().hex}.vision")
         try:
             extra: list[str] = []
+            env: dict[str, str] = {}
+            timeout = self._timeout
             unreadable = hidden = False
             if media_type != media_types.PDF:
                 source, dpi = await asyncio.to_thread(prepare_image, source, prepared)
                 extra = ["--image-dpi", str(dpi)]
-            else:
+            elif not vision:
                 unreadable = await asyncio.to_thread(has_unreadable_text, source)
                 hidden = not unreadable and await asyncio.to_thread(has_hidden_text, source)
-            if unreadable:
+            if vision:
+                assert self._vision is not None
+                await asyncio.to_thread(records.mkdir)
+                mode = ["--force-ocr", "--deskew", "--plugin", PLUGIN]
+                env = environment(self._vision, records)
+                timeout = self._vision_timeout
+            elif unreadable:
                 mode = ["--force-ocr", "--deskew"]
             elif hidden:
                 mode = ["--redo-ocr"]
             else:
                 mode = ["--skip-text", "--deskew"]
-            pdfa, notes = await self._convert(source, temporary, [*mode, *extra], work)
+            pdfa, notes = await self._convert(
+                source, temporary, [*mode, *extra], work, env=env, timeout=timeout
+            )
             if unreadable:
                 notes = [UNREADABLE_NOTE, *notes]
             pages = await asyncio.to_thread(count_pages, temporary)
-            readings = await asyncio.to_thread(read_hocr, work)
+            read: list[PageRecord] = []
+            if vision:
+                read = await asyncio.to_thread(read_records, records)
+                readings = tuple(
+                    PageReading(page=record.page, words=record.words, unsure=record.unsure)
+                    for record in read
+                )
+            else:
+                readings = await asyncio.to_thread(read_hocr, work)
             await asyncio.to_thread(temporary.replace, target)
         finally:
             for path in (temporary, prepared):
                 await asyncio.to_thread(path.unlink, missing_ok=True)
-            await asyncio.to_thread(shutil.rmtree, work, ignore_errors=True)
+            for folder in (work, records):
+                await asyncio.to_thread(shutil.rmtree, folder, ignore_errors=True)
         if not pdfa:
             log.warning("archive is not PDF/A", extra={"source": str(source), "notes": notes})
+        reading = None
+        if vision:
+            assert self._vision is not None
+            reading = VisionReading(
+                model=self._vision.model,
+                endpoint=endpoint_of(self._vision.base_url),
+                prompt=PROMPT,
+                calls=tuple(call for record in read for call in record.calls),
+            )
         return OcrResult(
             pages=pages,
-            engine=await self._engine_name(),
+            engine=await self._engine_name(vision=vision),
             pdfa=pdfa,
             note=_join(notes),
             readings=readings,
             read_again=unreadable or hidden,
+            vision=reading,
         )
 
     async def _convert(
-        self, source: Path, output: Path, extra: Sequence[str], work: Path
+        self,
+        source: Path,
+        output: Path,
+        extra: Sequence[str],
+        work: Path,
+        *,
+        env: dict[str, str],
+        timeout: timedelta,
     ) -> tuple[bool, list[str]]:
         """Run OCRmyPDF, with a second run where it helps (see the module). Returns whether the
         output is PDF/A, and the notes for the processing log; `work` keeps the files of the
         last run."""
         notes: list[str] = []
         invalidate = False
-        completed = await self._run(source, output, extra, work, pdfa=True, invalidate=False)
+
+        async def run(*, pdfa: bool, invalidate: bool) -> Completed:
+            return await self._run(
+                source,
+                output,
+                extra,
+                work,
+                pdfa=pdfa,
+                invalidate=invalidate,
+                env=env,
+                timeout=timeout,
+            )
+
+        completed = await run(pdfa=True, invalidate=False)
         if completed.returncode == _INPUT_FILE and _SIGNATURE_HINT in completed.stderr:
             invalidate = True
             notes.append(SIGNATURE_NOTE)
-            completed = await self._run(source, output, extra, work, pdfa=True, invalidate=True)
+            completed = await run(pdfa=True, invalidate=True)
         pdfa = True
         if completed.returncode == _BAD_ARGS:
             notes.append(f"not PDF/A: {_error_reason(completed.stderr)}")
             pdfa = False
-            completed = await self._run(
-                source, output, extra, work, pdfa=False, invalidate=invalidate
-            )
+            completed = await run(pdfa=False, invalidate=invalidate)
         code = completed.returncode
         if code in _UNPROCESSABLE:
             raise UnprocessableDocumentError(
                 f"{_UNPROCESSABLE[code]}: {_last_line(completed.stderr)}"
             )
         if code not in (0, _PDFA_CONVERSION_FAILED):
+            if failure := _VISION_ERROR.findall(completed.stderr):
+                raise LanguageModelError(failure[-1].strip())
             raise RuntimeError(
                 f"ocrmypdf failed with exit code {code}: {_last_line(completed.stderr)}"
             )
@@ -208,8 +293,11 @@ class OcrmypdfEngine:
         *,
         pdfa: bool,
         invalidate: bool,
+        env: dict[str, str],
+        timeout: timedelta,
     ) -> Completed:
-        """One run of OCRmyPDF, its work folder kept in an empty `work` (for the hOCR)."""
+        """One run of OCRmyPDF, its work folder kept in an empty `work` (for the hOCR); `env`
+        adds to the environment."""
         await asyncio.to_thread(_empty_folder, work)
         args = [
             sys.executable,
@@ -229,12 +317,12 @@ class OcrmypdfEngine:
         if invalidate:
             args.append("--invalidate-digital-signatures")
         completed = await run_process(
-            [*args, str(source), str(output)], timeout=self._timeout, env={"TMPDIR": str(work)}
+            [*args, str(source), str(output)], timeout=timeout, env={**env, "TMPDIR": str(work)}
         )
         # Where it kept the files is no reason for anything.
         return replace(completed, stderr=_KEPT.sub("", completed.stderr))
 
-    async def _engine_name(self) -> str:
+    async def _engine_name(self, *, vision: bool = False) -> str:
         if self._engine is None:
             tesseract = await run_process(["tesseract", "--version"], timeout=timedelta(seconds=30))
             first = (tesseract.stdout or tesseract.stderr).strip().splitlines()
@@ -242,6 +330,9 @@ class OcrmypdfEngine:
                 f"ocrmypdf {importlib.metadata.version('ocrmypdf')}, "
                 f"{first[0] if first else 'tesseract (unknown version)'}"
             )
+        if vision:
+            assert self._vision is not None
+            return f"{self._engine}, vision language model {self._vision.model} ({PROMPT})"
         return self._engine
 
 

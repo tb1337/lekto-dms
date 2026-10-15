@@ -185,7 +185,7 @@ jobs of the old run are recognised as stale.
   engine version, reason and duration of every run.
 - OCRmyPDF (`adapters/outbound/ocrmypdf`) runs as a child process per document with a time
   limit (`PAPIQ_OCR_TIMEOUT`); on timeout or cancellation the process group is killed. The job
-  lease is the longest limit of a node (OCR, or twice `PAPIQ_LLM_TIMEOUT`) plus two minutes, so a node normally keeps its claim; if it overruns (e.g. a slow S3
+  lease is the longest limit of a node (OCR, reading with the vision model `PAPIQ_VLM_TIMEOUT` if one is configured, or twice `PAPIQ_LLM_TIMEOUT`) plus two minutes, so a node normally keeps its claim; if it overruns (e.g. a slow S3
   transfer), another worker takes the job over and the late result is discarded. A node
   interrupted by a stopping worker is released at once (`JobQueue.release`); that does not
   count against `PAPIQ_NODE_MAX_ATTEMPTS`.
@@ -913,6 +913,10 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_EMBEDDING_DIMENSIONS` | both | unset | Length of the vectors (`snowflake-arctic-embed2`, `bge-m3`: 1024); required with Meilisearch and an embedding endpoint |
 | `PAPIQ_EMBEDDING_QUERY_PREFIX` | API | unset | Put before queries, for models that ask for it (`query:`) |
 | `PAPIQ_EMBEDDING_DOCUMENT_PREFIX` | Worker | unset | Put before document sections, for models that ask for it |
+| `PAPIQ_VLM_BASE_URL` | both | unset | OpenAI-compatible endpoint of a vision language model that reads a document's pages when a person asks for it (`POST /documents/{id}/vision`); the page images go there. Set together with the model or neither; off without. The API names model and endpoint in `GET /pipeline` |
+| `PAPIQ_VLM_MODEL` | both | unset | see above: a model that takes images and gives each line's box in pixels (measured with Claude Sonnet 5.5) |
+| `PAPIQ_VLM_API_KEY` | Worker | unset | *secret* |
+| `PAPIQ_VLM_TIMEOUT` | Worker | `1800` | Seconds for reading a whole document with the model (one page at most 300); the job lease grows with it |
 | `PAPIQ_CONFIDENCE_THRESHOLD` | Worker | `0.9` | A field passes from this confidence on |
 | `PAPIQ_CONTACT_SUGGEST_THRESHOLD` | Worker | `0.75` | An existing contact is suggested from this similarity on; not above the confidence threshold |
 | `PAPIQ_POOR_READING_THRESHOLD` | Worker | `0.08` | Share of unsure words (below 60 % of Tesseract's confidence) from which a page the OCR recognised counts as poorly read: a value on it is only suggested. The default lies between good scans (up to 7 %) and broken ones (from 9 %) of a first sample; calibration in M18 |

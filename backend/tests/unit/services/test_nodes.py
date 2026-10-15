@@ -33,7 +33,9 @@ class NotPdfa(FakeOcr):
         super().__init__()
         self.note = note
 
-    async def make_archive(self, source: Path, target: Path, *, media_type: str) -> OcrResult:
+    async def make_archive(
+        self, source: Path, target: Path, *, media_type: str, vision: bool = False
+    ) -> OcrResult:
         await super().make_archive(source, target, media_type=media_type)
         return OcrResult(pages=1, engine="fake-ocr 1", pdfa=False, note=self.note)
 
@@ -41,7 +43,9 @@ class NotPdfa(FakeOcr):
 class Unsigned(FakeOcr):
     """PDF/A, but the original's signature is not in the archive."""
 
-    async def make_archive(self, source: Path, target: Path, *, media_type: str) -> OcrResult:
+    async def make_archive(
+        self, source: Path, target: Path, *, media_type: str, vision: bool = False
+    ) -> OcrResult:
         await super().make_archive(source, target, media_type=media_type)
         return OcrResult(pages=1, engine="fake-ocr 1", pdfa=True, note="signature not carried")
 

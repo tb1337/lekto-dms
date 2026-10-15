@@ -196,7 +196,7 @@ def test_sqlite_ignores_postgres_parameters(monkeypatch: pytest.MonkeyPatch) -> 
     assert load_settings().db_type == "sqlite"
 
 
-@pytest.mark.parametrize("prefix", ["LLM", "EMBEDDING"])
+@pytest.mark.parametrize("prefix", ["LLM", "EMBEDDING", "VLM"])
 def test_endpoint_and_model_must_be_set_together(
     monkeypatch: pytest.MonkeyPatch, prefix: str
 ) -> None:

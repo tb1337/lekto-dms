@@ -20,7 +20,7 @@ from papiq.core.ports.job_queue import JobQueue
 from papiq.core.ports.llm import LanguageModel, StructuredAnswer, StructuredRequest
 from papiq.core.ports.locator import TextLocator
 from papiq.core.ports.object_store import ObjectStore
-from papiq.core.ports.ocr import Ocr, OcrResult
+from papiq.core.ports.ocr import Ocr, OcrResult, VisionModel, VisionReading
 from papiq.core.ports.pages import PageRenderer
 from papiq.core.ports.parser import DocumentParser, ParseResult
 from papiq.core.ports.patterns import PatternMatcher
@@ -108,6 +108,8 @@ __all__ = [
     "UnitOfWork",
     "UnitOfWorkFactory",
     "UserRepository",
+    "VisionModel",
+    "VisionReading",
     "WebhookRepository",
     "WebhookRequest",
     "WebhookResponse",

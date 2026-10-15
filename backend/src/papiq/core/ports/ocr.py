@@ -2,7 +2,27 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from papiq.core.domain.exchanges import ModelCall
 from papiq.core.domain.reading import PageReading
+
+
+@dataclass(frozen=True, kw_only=True)
+class VisionModel:
+    """The vision language model an OCR engine can read pages with (`PAPIQ_VLM_*`)."""
+
+    model: str
+    endpoint: str  # where the page images go (host and port, no credentials)
+
+
+@dataclass(frozen=True, kw_only=True)
+class VisionReading:
+    """The pages were read by the vision language model: what was sent and received, one or
+    more calls per page in page order (`prompt` is the version of the request)."""
+
+    model: str
+    endpoint: str
+    prompt: str
+    calls: tuple[ModelCall, ...]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -19,6 +39,8 @@ class OcrResult:
     # The text the PDF had was replaced by a reading of its own: the layer another OCR had put
     # over the scan (invisible text), or text that cannot be read.
     read_again: bool = False
+    # Every page was read by the vision language model (`make_archive` with `vision`).
+    vision: VisionReading | None = None
 
 
 class Ocr(Protocol):
@@ -27,12 +49,26 @@ class Ocr(Protocol):
     Recognition runs outside the event loop (adapters use processes) and is limited in time.
     """
 
-    async def make_archive(self, source: Path, target: Path, *, media_type: str) -> OcrResult:
+    @property
+    def vision(self) -> VisionModel | None:
+        """The vision language model pages can be read with; None if none is configured."""
+        ...
+
+    async def make_archive(
+        self, source: Path, target: Path, *, media_type: str, vision: bool = False
+    ) -> OcrResult:
         """Write the archive PDF of `source` (a PDF or an image of `media_type`) to `target`:
         PDF/A with a text layer. Pages that already contain text are not recognised again,
         unless it is the invisible layer another OCR put over a scan, or text that cannot be
         read (a font without a character map): that one is replaced by a reading of its own
         (`read_again`). Images become a PDF.
+
+        With `vision` (a person asked for it), the vision language model reads every page from
+        its image instead, text of its own or not; the text layer is the model's lines at the
+        places it gives, `readings` count the words it could not read as unsure, and `vision`
+        in the result holds what was sent. ValueError if no vision model is configured;
+        LanguageModelError if the model cannot read a page (unreachable, an error, no usable
+        answer), which may be temporary.
 
         A digitally signed original is processed anyway; the archive does not carry the
         signature (the original is never changed) and `note` says so. If PDF/A is not possible

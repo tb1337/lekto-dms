@@ -15,9 +15,10 @@ from pathlib import Path
 
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import UnprocessableDocumentError
+from papiq.core.domain.exchanges import ModelCall
 from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.reading import PageReading
-from papiq.core.ports.ocr import OcrResult
+from papiq.core.ports.ocr import OcrResult, VisionModel, VisionReading
 from papiq.core.ports.pages import PREVIEW_FILE, RenderedPages
 from papiq.core.ports.parser import ParseResult
 
@@ -28,18 +29,57 @@ FAKE_WEBP = b"RIFF\x0c\x00\x00\x00WEBPVP8 "
 FAKE_READING = PageReading(page=1, words=20, unsure=0)
 
 
+FAKE_VISION = VisionModel(model="fake-vlm", endpoint="vlm.example:443")
+
+
 class FakeOcr:
-    """`readings`: what it says it read of a scan or an image, instead of `FAKE_READING`."""
+    """`readings`: what it says it read of a scan or an image, instead of `FAKE_READING`.
+    `vision`: the vision model it reads with when asked to; it reads the page well then, with
+    one call per page (`vision_calls` counts the documents it read so)."""
 
-    def __init__(self, readings: Sequence[PageReading] | None = None) -> None:
+    def __init__(
+        self, readings: Sequence[PageReading] | None = None, vision: VisionModel | None = None
+    ) -> None:
         self.calls: list[Path] = []
+        self.vision_calls: list[Path] = []
         self.readings = (FAKE_READING,) if readings is None else tuple(readings)
+        self._vision = vision
 
-    async def make_archive(self, source: Path, target: Path, *, media_type: str) -> OcrResult:
+    @property
+    def vision(self) -> VisionModel | None:
+        return self._vision
+
+    async def make_archive(
+        self, source: Path, target: Path, *, media_type: str, vision: bool = False
+    ) -> OcrResult:
+        if vision and self._vision is None:
+            raise ValueError("no vision language model is configured")
         self.calls.append(source)
         data = await asyncio.to_thread(source.read_bytes)
         _check(data)
         await asyncio.to_thread(target.write_bytes, FAKE_PDF)
+        if vision:
+            assert self._vision is not None
+            self.vision_calls.append(source)
+            call = ModelCall(
+                system="Transcribe the page.",
+                user="Page 1.\n[image: page 1]",
+                answer='{"lines": []}',
+                model=self._vision.model,
+                usage={"prompt_tokens": 1500, "completion_tokens": 100},
+            )
+            return OcrResult(
+                pages=1,
+                engine=f"fake-ocr 1, vision language model {self._vision.model}",
+                pdfa=True,
+                readings=(FAKE_READING,),
+                vision=VisionReading(
+                    model=self._vision.model,
+                    endpoint=self._vision.endpoint,
+                    prompt="read-fake",
+                    calls=(call,),
+                ),
+            )
         has_text = media_type == media_types.PDF and b"/Font" in data
         readings = () if has_text else self.readings
         return OcrResult(pages=1, engine="fake-ocr 1", pdfa=True, readings=readings)

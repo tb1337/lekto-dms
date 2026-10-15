@@ -29,6 +29,7 @@ from papiq.composition.settings import Settings
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.users import User
 from papiq.core.ports import ObjectStore, OcrResult
+from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.objects import archive_key, preview_key, structure_key, text_key
 from tests import builders
 from tests.api import Stream, auth, issue_token, listen, serving, until
@@ -48,10 +49,16 @@ class Interruptible:
         self.engine = engine
         self.broken = False
 
-    async def make_archive(self, source: Path, target: Path, *, media_type: str) -> OcrResult:
+    @property
+    def vision(self) -> VisionModel | None:
+        return self.engine.vision
+
+    async def make_archive(
+        self, source: Path, target: Path, *, media_type: str, vision: bool = False
+    ) -> OcrResult:
         if self.broken:
             raise TimeoutError("ocrmypdf did not finish within 0.001 s")
-        return await self.engine.make_archive(source, target, media_type=media_type)
+        return await self.engine.make_archive(source, target, media_type=media_type, vision=vision)
 
 
 @dataclass

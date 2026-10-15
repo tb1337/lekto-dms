@@ -39,6 +39,7 @@ from papiq.adapters.outbound.memory import (
     MemoryUnitOfWorkFactory,
 )
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
+from papiq.adapters.outbound.ocrmypdf.vision import VisionSettings
 from papiq.adapters.outbound.oidc import AuthlibOidcProvider
 from papiq.adapters.outbound.openai_compat import OpenAiCompatEmbeddings, OpenAiCompatLanguageModel
 from papiq.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer, PdfiumTextLocator
@@ -217,10 +218,20 @@ def _cores_per_job(settings: Settings) -> int:
 
 
 def ocrmypdf_engine(settings: Settings) -> OcrmypdfEngine:
+    vision = None
+    if settings.vlm_base_url is not None and settings.vlm_model is not None:
+        vision = VisionSettings(
+            base_url=str(settings.vlm_base_url),
+            model=settings.vlm_model,
+            api_key=_secret(settings.vlm_api_key),
+            timeout=min(VISION_REQUEST_TIMEOUT, settings.vlm_timeout),
+        )
     return OcrmypdfEngine(
         languages=settings.ocr_languages.split("+"),
         timeout=settings.ocr_timeout,
         jobs=_cores_per_job(settings),
+        vision=vision,
+        vision_timeout=settings.vlm_timeout,
     )
 
 
@@ -418,6 +429,16 @@ class Services:
 
 # Time a node job may take beyond its time limit: downloads, uploads, preview, bookkeeping.
 LEASE_MARGIN = timedelta(minutes=2)
+VISION_REQUEST_TIMEOUT = timedelta(minutes=5)
+"""How long the vision language model may take for one page."""
+
+
+def node_lease(settings: Settings) -> timedelta:
+    """How long a worker holds the job of a node: longer than any node may take."""
+    longest = max(settings.ocr_timeout, 2 * settings.llm_timeout)
+    if settings.vlm_base_url is not None:
+        longest = max(longest, settings.vlm_timeout)
+    return longest + LEASE_MARGIN
 
 
 def classifier_policy_of(settings: Settings) -> ClassifierPolicy:
@@ -607,8 +628,9 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
                 max_attempts=settings.node_max_attempts, delay=settings.node_retry_delay
             ),
             # Longer than any node may take, so a running node never loses its claim.
-            # A classification node may ask the model twice (once more after an invalid answer).
-            lease=max(settings.ocr_timeout, 2 * settings.llm_timeout) + LEASE_MARGIN,
+            # A classification node may ask the model twice (once more after an invalid answer);
+            # the OCR node may read a document with the vision model.
+            lease=node_lease(settings),
         ),
         maintenance=MaintenanceService(
             uow,

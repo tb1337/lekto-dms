@@ -16,6 +16,7 @@ from papiq.adapters.outbound.memory.language_model import (
 from papiq.adapters.outbound.memory.object_store import MemoryObjectStore
 from papiq.adapters.outbound.memory.oidc import FakeOidcProvider
 from papiq.adapters.outbound.memory.processing import (
+    FAKE_VISION,
     FakeOcr,
     FakePageRenderer,
     FakeParser,
@@ -26,6 +27,7 @@ from papiq.adapters.outbound.memory.unit_of_work import MemoryUnitOfWork, Memory
 from papiq.adapters.outbound.memory.webhook_sender import FakeWebhookSender
 
 __all__ = [
+    "FAKE_VISION",
     "BagOfWordsEmbeddings",
     "FakeCipher",
     "FakeClassifier",

@@ -15,7 +15,8 @@ SAMPLES = Path(__file__).parent.parent / "samples"
 
 
 class OcrContract:
-    """Needs the fixture `ocr`."""
+    """Needs the fixtures `ocr` (without a vision language model) and `vision_ocr` (with one
+    that reads every page)."""
 
     @pytest.mark.parametrize(
         ("sample", "media_type"),
@@ -60,6 +61,41 @@ class OcrContract:
         with pytest.raises(UnprocessableDocumentError):
             await ocr.make_archive(SAMPLES / "damaged.pdf", target, media_type=media_types.PDF)
         assert list(tmp_path.iterdir()) == []
+
+    async def test_without_a_vision_model_it_cannot_read_with_one(
+        self, ocr: Ocr, tmp_path: Path
+    ) -> None:
+        assert ocr.vision is None
+        with pytest.raises(ValueError, match="no vision language model"):
+            await ocr.make_archive(
+                SAMPLES / "scan.pdf",
+                tmp_path / "archive.pdf",
+                media_type=media_types.PDF,
+                vision=True,
+            )
+        assert list(tmp_path.iterdir()) == []
+
+    @pytest.mark.parametrize(
+        ("sample", "media_type"),
+        [("text.pdf", media_types.PDF), ("photo.jpg", media_types.JPEG)],
+    )
+    async def test_the_vision_model_reads_every_page(
+        self, vision_ocr: Ocr, tmp_path: Path, sample: str, media_type: str
+    ) -> None:
+        """Also a page with text of its own: a person asked for the model."""
+        assert vision_ocr.vision is not None
+        target = tmp_path / "archive.pdf"
+        result = await vision_ocr.make_archive(
+            SAMPLES / sample, target, media_type=media_type, vision=True
+        )
+        assert target.read_bytes().startswith(b"%PDF-")
+        assert result.vision is not None
+        assert result.vision.model == vision_ocr.vision.model
+        assert result.vision.endpoint == vision_ocr.vision.endpoint
+        assert result.vision.prompt
+        assert len(result.vision.calls) >= result.pages
+        assert [reading.page for reading in result.readings] == list(range(1, result.pages + 1))
+        assert sorted(path.name for path in tmp_path.iterdir()) == ["archive.pdf"]
 
 
 class ParserContract:

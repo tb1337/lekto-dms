@@ -174,6 +174,22 @@ describe('DocumentForm', () => {
 		expect(within(global).getByLabelText('Notiz', { selector: 'input' })).toBeTruthy();
 	});
 
+	it('links from the contact to the facts of the document, when there are any', () => {
+		const counts = { evidence: 2, unknown: 0, codes: 1 };
+		render(DocumentForm, props({ factCounts: counts, factsHref: '/documents/d/content' }));
+		const card = screen.getByRole('group', { name: m.field_contact() });
+		// Counted in singular and plural; what there is none of is left out.
+		const chip = within(card).getByRole('link', {
+			name: `${m.facts_chip_evidence({ count: 2 })} · ${m.facts_chip_codes_one()}`
+		});
+		expect(chip.getAttribute('href')).toBe('/documents/d/content');
+	});
+
+	it('shows no link to the facts without them', () => {
+		render(DocumentForm, props({ factCounts: { evidence: 0, unknown: 0, codes: 0 } }));
+		expect(screen.queryByRole('link', { name: /Belege|evidence/ })).toBeNull();
+	});
+
 	it('tells under a field what belongs in it', () => {
 		render(DocumentForm, props());
 		const number = screen.getByRole('group', { name: /Rechnungsnummer/ });

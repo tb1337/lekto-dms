@@ -2,6 +2,7 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Globe from '@lucide/svelte/icons/globe';
 	import Layers from '@lucide/svelte/icons/layers';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Shapes from '@lucide/svelte/icons/shapes';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
@@ -64,7 +65,9 @@
 		onsaved,
 		onconfirmed,
 		onmarks,
-		onreveal
+		onreveal,
+		factCounts = null,
+		factsHref = ''
 	}: {
 		document: Document;
 		lookup: Lookup;
@@ -78,7 +81,24 @@
 		onconfirmed: (next: string | null) => void;
 		onmarks: (marks: Mark[]) => void;
 		onreveal: (place: Place) => void;
+		/** What the document shows of its contact, counted; a chip at the contact leads there. */
+		factCounts?: { evidence: number; unknown: number; codes: number } | null;
+		/** Where the facts are: the content. */
+		factsHref?: string;
 	} = $props();
+
+	// The chip's text: what there is, counted; nothing for none.
+	const factsChip = $derived.by(() => {
+		if (!factCounts) return '';
+		const { evidence, unknown, codes } = factCounts;
+		const count = (n: number, one: () => string, many: (args: { count: number }) => string) =>
+			n === 0 ? [] : [n === 1 ? one() : many({ count: n })];
+		return [
+			...count(evidence, m.facts_chip_evidence_one, m.facts_chip_evidence),
+			...count(unknown, m.facts_chip_unknown_one, m.facts_chip_unknown),
+			...count(codes, m.facts_chip_codes_one, m.facts_chip_codes)
+		].join(' · ');
+	});
 
 	let title = $state('');
 	let date = $state('');
@@ -533,6 +553,15 @@
 					disabled={!editable}
 					options={options(lookup.contacts)}
 				/>
+				{#if factsChip}
+					<a
+						href={factsHref}
+						class="mt-1.5 inline-flex w-fit items-center gap-1.5 rounded-full bg-lane-green px-2.5 py-1 text-xs font-medium text-lane-green-foreground hover:underline"
+					>
+						<ListChecks class="size-3.5" aria-hidden="true" />
+						{factsChip}
+					</a>
+				{/if}
 			</FieldShell>
 			<FieldShell
 				key="document_type"

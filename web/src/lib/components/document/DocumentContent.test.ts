@@ -1,5 +1,7 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Facts } from '#lib/facts.ts';
+import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import DocumentContent from './DocumentContent.svelte';
 
@@ -34,5 +36,34 @@ describe('DocumentContent', () => {
 				.getAllByRole('button')
 				.map((button) => button.textContent?.trim())
 		).toEqual([m.content_text(), m.content_json()]);
+	});
+
+	it('marks a fact where it stands in the text', async () => {
+		const scrolled = vi.fn();
+		Element.prototype.scrollIntoView = scrolled;
+		const facts: Facts = {
+			contact_id: null,
+			named: [],
+			identifiers: [
+				{
+					kind: 'customer_number',
+					value: 'EBeschV',
+					contact_id: null,
+					in_text: true,
+					in_code: false,
+					spans: [{ start: 14, end: 21 }],
+					other_contacts: null
+				}
+			],
+			codes: []
+		};
+		const lookup = { contacts: [], fields: [] } as unknown as Lookup;
+		render(DocumentContent, { documentId: 'doc-1', filename: 'payslip.pdf', facts, lookup });
+		await screen.findByRole('region', { name: m.content_page({ page: 1 }) });
+		const panel = screen.getByRole('complementary', { name: m.facts_title() });
+		await fireEvent.click(within(panel).getByRole('button', { name: /EBeschV/ }));
+		const marked = document.querySelector('mark[data-mark]');
+		expect(marked?.textContent).toBe('EBeschV');
+		expect(scrolled).toHaveBeenCalled();
 	});
 });

@@ -1,17 +1,27 @@
 <script lang="ts">
 	import Copy from '@lucide/svelte/icons/copy';
 	import Download from '@lucide/svelte/icons/download';
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import { apiFetch } from '#lib/api/fetch.ts';
 	import { apiError, ApiError } from '#lib/api/problem.ts';
+	import FactsPanel from '#lib/components/document/FactsPanel.svelte';
 	import JsonTree from '#lib/components/document/JsonTree.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { events } from '#lib/events.svelte.ts';
+	import {
+		inUnits,
+		pageRanges,
+		segmentsOf,
+		type CodeFacts,
+		type Facts,
+		type Span
+	} from '#lib/facts.ts';
 	import { formatNumber } from '#lib/i18n.ts';
+	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
 
@@ -22,12 +32,26 @@
 	let {
 		documentId,
 		filename,
-		vision = false
+		vision = false,
+		facts = null,
+		lookup = null,
+		admin = false,
+		onshowcode = () => {},
+		onfactschanged = () => {}
 	}: {
 		documentId: string;
 		filename: string;
 		/** The vision language model read the text (a person asked for it). */
 		vision?: boolean;
+		/** What the document shows of its contact; beside the text when there. */
+		facts?: Facts | null;
+		lookup?: Lookup | null;
+		/** Admins attach identifiers to contacts. */
+		admin?: boolean;
+		/** Show a code where it stands on its page (the details). */
+		onshowcode?: (code: CodeFacts) => void;
+		/** After an identifier was attached: the facts are read again. */
+		onfactschanged?: () => void;
 	} = $props();
 
 	type View = 'text' | 'json';
@@ -37,6 +61,9 @@
 	const MOST_JSON = 50_000_000;
 
 	let view = $state<View>('text');
+	// What the facts mark in the text: spans in characters of the whole text.
+	let marks = $state<Span[]>([]);
+	let textBox = $state<HTMLDivElement | null>(null);
 	let text = $state<string | null>(null);
 	let total = $state(0);
 	let textProblem = $state<string | null>(null);
@@ -149,6 +176,17 @@
 	const ready = $derived(view === 'json' ? structure !== undefined : text !== null);
 	// The pages of the text: a form feed on a line of its own separates them.
 	const pages = $derived((text ?? '').split(/\n?\f\n?/));
+	const ranges = $derived(pageRanges(text ?? ''));
+	const marked = $derived(text === null ? [] : inUnits(text, marks));
+	const withFacts = $derived(view === 'text' && facts !== null);
+
+	/** Mark `spans` in the text; with `reveal`, scroll the first into view. */
+	async function mark(spans: Span[], reveal: boolean) {
+		marks = spans;
+		if (!reveal || spans.length === 0) return;
+		await tick();
+		textBox?.querySelector('[data-mark]')?.scrollIntoView({ block: 'center' });
+	}
 	const problem = $derived(view === 'json' ? structureProblem : textProblem);
 	const stem = $derived(filename.replace(/\.[^.]+$/, '') || 'document');
 
@@ -244,32 +282,58 @@
 		</div>
 	</div>
 
-	<div class="h-[calc(100vh-17rem)] min-h-96 overflow-auto rounded-2xl border bg-card">
-		{#if problem}
-			<p class="p-6 text-destructive" role="alert">{problem}</p>
-		{:else if !ready}
-			<p class="p-6 text-sm text-muted-foreground">
-				{(view === 'json' ? loadingStructure : loading) ? m.loading() : m.text_none()}
-			</p>
-		{:else if view === 'text'}
-			<!-- As set: no wrapping, the box scrolls sideways. -->
-			{#each pages as page, index (index)}
-				<section aria-label={m.content_page({ page: index + 1 })} class="px-7 py-6">
-					{#if pages.length > 1}
-						<p class="mb-3 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-							{m.content_page({ page: index + 1 })}
-						</p>
-					{/if}
-					<pre class="font-mono text-[13px] leading-relaxed whitespace-pre">{page}</pre>
-				</section>
-				{#if index < pages.length - 1}<hr class="border-muted" />{/if}
-			{/each}
-		{:else if structureTooLarge}
-			<p class="p-6 text-sm text-muted-foreground">{m.content_json_too_large()}</p>
-		{:else}
-			<div class="px-5 py-5 font-mono text-[13px] leading-relaxed">
-				<JsonTree value={structure} />
-			</div>
+	<div class={cn('flex flex-col gap-4', withFacts && 'lg:flex-row lg:items-start')}>
+		<div
+			bind:this={textBox}
+			class="h-[calc(100vh-17rem)] min-h-96 min-w-0 flex-1 overflow-auto rounded-2xl border bg-card"
+		>
+			{#if problem}
+				<p class="p-6 text-destructive" role="alert">{problem}</p>
+			{:else if !ready}
+				<p class="p-6 text-sm text-muted-foreground">
+					{(view === 'json' ? loadingStructure : loading) ? m.loading() : m.text_none()}
+				</p>
+			{:else if view === 'text'}
+				<!-- As set: no wrapping, the box scrolls sideways. -->
+				{#each pages as page, index (index)}
+					<section aria-label={m.content_page({ page: index + 1 })} class="px-7 py-6">
+						{#if pages.length > 1}
+							<p class="mb-3 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+								{m.content_page({ page: index + 1 })}
+							</p>
+						{/if}
+						<pre
+							class="font-mono text-[13px] leading-relaxed whitespace-pre">{#if marked.length > 0 && text !== null}{#each segmentsOf(text, ranges[index], marked) as segment, at (at)}{#if segment.marked}<mark
+											data-mark
+											class="rounded-sm bg-primary/20 text-inherit ring-2 ring-primary"
+											>{segment.text}</mark
+										>{:else}{segment.text}{/if}{/each}{:else}{page}{/if}</pre>
+					</section>
+					{#if index < pages.length - 1}<hr class="border-muted" />{/if}
+				{/each}
+			{:else if structureTooLarge}
+				<p class="p-6 text-sm text-muted-foreground">{m.content_json_too_large()}</p>
+			{:else}
+				<div class="px-5 py-5 font-mono text-[13px] leading-relaxed">
+					<JsonTree value={structure} />
+				</div>
+			{/if}
+		</div>
+		{#if withFacts && facts}
+			<aside
+				aria-label={m.facts_title()}
+				class="min-w-0 lg:h-[calc(100vh-17rem)] lg:w-[23rem] lg:shrink-0 lg:overflow-auto"
+			>
+				<FactsPanel
+					{facts}
+					{documentId}
+					{lookup}
+					{admin}
+					onmark={mark}
+					{onshowcode}
+					onchanged={onfactschanged}
+				/>
+			</aside>
 		{/if}
 	</div>
 </section>

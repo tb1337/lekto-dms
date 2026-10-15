@@ -33,6 +33,7 @@
 	import type { GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import { factCounts, type CodeFacts, type Facts } from '#lib/facts.ts';
 	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
@@ -50,6 +51,9 @@
 	let graph = $state<GraphNode[]>([]);
 	let vision = $state<Vision | null>(null);
 	let reading = $state<Reading | null>(null);
+	let facts = $state<Facts | null>(null);
+	// A code shown on its page from the content (`Auf der Seite zeigen`).
+	let codeMarks = $state<Mark[]>([]);
 	let inboxIds = $state<string[] | null>(null);
 	let problem = $state<unknown>(null);
 	let marks = $state<Mark[]>([]);
@@ -85,15 +89,57 @@
 						unwrap(api.GET('/api/v1/documents/{id}/reading', params))
 					])
 				: [null, null];
+			const found = await loadFacts(wanted);
 			if (wanted === id && request === latest) {
 				document = loaded;
 				review = reviewed;
 				reading = read;
+				facts = found;
 				problem = null;
 			}
 		} catch (error) {
 			if (wanted === id && request === latest) problem = error;
 		}
+	}
+
+	/** The facts of the document; none while it has no text. */
+	async function loadFacts(wanted: string): Promise<Facts | null> {
+		try {
+			return await unwrap(
+				api.GET('/api/v1/documents/{id}/facts', { params: { path: { id: wanted } } })
+			);
+		} catch (error) {
+			if (error instanceof ApiError && error.status === 409) return null;
+			throw error;
+		}
+	}
+
+	async function reloadFacts() {
+		const wanted = id;
+		try {
+			const found = await loadFacts(wanted);
+			if (wanted === id) facts = found;
+		} catch (error) {
+			reportError(error);
+		}
+	}
+
+	/** Show a code where it stands: the details with the code marked on its page. */
+	async function showCode(code: CodeFacts) {
+		const place = { page: code.page, boxes: [code.box] };
+		codeMarks = [
+			{
+				key: 'code',
+				label: code.format,
+				page: code.page,
+				boxes: [code.box],
+				derived: false,
+				pinned: true
+			}
+		];
+		await goto(tabHref(page.url, 'details'));
+		// The viewer lays its pages out after it is shown.
+		for (const wait of [300, 900, 1800]) setTimeout(() => viewer?.reveal(place), wait);
 	}
 
 	async function loadInbox() {
@@ -116,7 +162,9 @@
 				document = null;
 				review = null;
 				reading = null;
+				facts = null;
 				marks = [];
+				codeMarks = [];
 			}
 		});
 	});
@@ -240,7 +288,7 @@
 									? [`${base}/archive`]
 									: [`${base}/archive`, `${base}/original`]}
 								label={document.title}
-								marks={archive ? marks : []}
+								marks={archive ? [...marks, ...codeMarks] : []}
 							/>
 						{:else}
 							<PageImages documentId={id} pageCount={document.page_count} label={document.title} />
@@ -259,6 +307,8 @@
 								onsaved={(updated) => (document = updated)}
 								onconfirmed={confirmed}
 								onmarks={(next) => (marks = next)}
+								factCounts={facts ? factCounts(facts) : null}
+								factsHref={tabHref(page.url, 'content')}
 								onreveal={reveal}
 							/>
 						{/key}
@@ -272,6 +322,11 @@
 				documentId={id}
 				filename={document.original_filename}
 				vision={reading?.vision ?? false}
+				{facts}
+				{lookup}
+				admin={session.isAdmin}
+				onshowcode={showCode}
+				onfactschanged={reloadFacts}
 			/>
 		{:else if tab === 'log'}
 			<DocumentLog

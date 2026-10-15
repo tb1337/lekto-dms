@@ -303,7 +303,9 @@ the rules in `core/domain/verdict.py`).
   read, by the vector of the start of the text against the search index; their contact, type
   and tags come from the database. It abstains without embeddings or index.
 - **`signal_facts`**: names and aliases of contacts standing whole in the text, identifiers of
-  contacts (IBAN, VAT ID, customer number, mail domain), unknown IBANs and VAT IDs. It also
+  contacts (IBAN, VAT ID, customer number, personnel number, mail domain), unknown IBANs and
+  VAT IDs. A personnel number stands after its label (`Personalnummer`, `Pers.-Nr.`,
+  `Mitarbeiternummer`, `Employee ID`, ...) and is kept without leading zeros. It also
   reads the bar and QR codes on the archive's pages, once (`documents/<id>/codes.json`; the
   OCR node deletes it with a new archive, a reprocessing from the judge takes it): an
   identifier in a code counts as one in the text, the payee of a GiroCode as a name in the

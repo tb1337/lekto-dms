@@ -50,6 +50,11 @@ def test_an_identifier_is_found_as_it_is_written() -> None:
     assert spanned(TEXT, domain) == ["stadtwerke-muellheim.example"]
     # Not inside a longer value.
     assert identifier_spans("X20047718", IdentifierKind.CUSTOMER_NUMBER, "20047718") == ()
+    # A personnel number is kept without its leading zeros and found with them.
+    printout = "Personalnummer : 00012345   Seite 1"
+    personnel = identifier_spans(printout, IdentifierKind.PERSONNEL_NUMBER, "12345")
+    assert spanned(printout, personnel) == ["00012345"]
+    assert identifier_spans("112345", IdentifierKind.PERSONNEL_NUMBER, "12345") == ()
 
 
 def test_facts_of_text_and_codes_with_their_places() -> None:

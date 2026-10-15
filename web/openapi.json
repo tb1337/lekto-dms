@@ -14017,7 +14017,7 @@
             "type": "array",
             "maxItems": 100,
             "title": "Identifiers",
-            "description": "Values the contact's documents carry: IBAN, VAT number, customer (or contract) number, the domain of its e-mail and web addresses. Unique across contacts; found in a document, they are evidence for the contact. The identifiers entered by hand: a learned one given here becomes one entered by hand."
+            "description": "Values the contact's documents carry: IBAN, VAT number, customer (or contract) number, the personnel number at an employer (without leading zeros), the domain of its e-mail and web addresses. Unique across contacts; found in a document, they are evidence for the contact. The identifiers entered by hand: a learned one given here becomes one entered by hand."
           }
         },
         "additionalProperties": false,
@@ -14137,7 +14137,7 @@
                 },
                 "type": "array",
                 "maxItems": 100,
-                "description": "Values the contact's documents carry: IBAN, VAT number, customer (or contract) number, the domain of its e-mail and web addresses. Unique across contacts; found in a document, they are evidence for the contact. The identifiers entered by hand: a learned one given here becomes one entered by hand."
+                "description": "Values the contact's documents carry: IBAN, VAT number, customer (or contract) number, the personnel number at an employer (without leading zeros), the domain of its e-mail and web addresses. Unique across contacts; found in a document, they are evidence for the contact. The identifiers entered by hand: a learned one given here becomes one entered by hand."
               },
               {
                 "type": "null"
@@ -16103,6 +16103,7 @@
           "iban",
           "vat_id",
           "customer_number",
+          "personnel_number",
           "email_domain"
         ],
         "title": "IdentifierKind"

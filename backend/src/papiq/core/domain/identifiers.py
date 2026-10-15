@@ -1,6 +1,6 @@
 """Identifiers of contacts: values a document of the contact carries and no other contact's does
-(an IBAN, a VAT number, the customer number, the domain of its e-mail addresses). Found in the
-text, they are hard evidence for the contact.
+(an IBAN, a VAT number, the customer number, the personnel number at an employer, the domain of
+its e-mail addresses). Found in the text, they are hard evidence for the contact.
 
 Admins enter identifiers by hand. Training learns more from confirmed documents (see
 `mine_identifiers`): a value that stands in at least two of them, all of one contact. A value
@@ -29,6 +29,7 @@ class IdentifierKind(StrEnum):
     IBAN = "iban"
     VAT_ID = "vat_id"
     CUSTOMER_NUMBER = "customer_number"  # also contract, policy and membership numbers
+    PERSONNEL_NUMBER = "personnel_number"  # an employee's number at the employer
     EMAIL_DOMAIN = "email_domain"  # of e-mail addresses and web addresses
 
 
@@ -68,6 +69,7 @@ class Identifier:
 _IBAN = re.compile(r"[A-Z]{2}\d{2}[A-Z0-9]{11,30}")
 _VAT_ID = re.compile(r"[A-Z]{2,3}(?=[A-Z0-9]*\d{6})[A-Z0-9]{8,12}")
 _CUSTOMER_NUMBER = re.compile(r"(?=[A-Z0-9]*\d)[A-Z0-9]{4,30}")
+_PERSONNEL_NUMBER = re.compile(r"(?=[A-Z0-9]*\d)[A-Z0-9]{3,30}")
 _DOMAIN = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
 _SEPARATORS = re.compile(r"[\s./-]+")
 
@@ -84,9 +86,10 @@ FREE_MAIL = frozenset(
 
 
 def normalise_identifier(kind: IdentifierKind, raw: str) -> str:
-    """The comparable form of an identifier: IBAN, VAT and customer numbers without spaces and
-    separators in upper case (an IBAN with a valid check sum), a domain in lower case without
-    `www.`; ValidationError if `raw` is none of its kind."""
+    """The comparable form of an identifier: IBAN, VAT, customer and personnel numbers without
+    spaces and separators in upper case (an IBAN with a valid check sum, a personnel number
+    without leading zeros), a domain in lower case without `www.`; ValidationError if `raw` is
+    none of its kind."""
     text = raw.strip()
     match kind:
         case IdentifierKind.IBAN:
@@ -102,6 +105,14 @@ def normalise_identifier(kind: IdentifierKind, raw: str) -> str:
             if not _CUSTOMER_NUMBER.fullmatch(value):
                 raise ValidationError(
                     f"'{raw}' is no customer number (4 to 30 letters and digits, one a digit)"
+                )
+        case IdentifierKind.PERSONNEL_NUMBER:
+            # Written with or without leading zeros (`00012345`, `12345`): one number.
+            written = _SEPARATORS.sub("", text).upper()
+            value = written.lstrip("0")
+            if not _PERSONNEL_NUMBER.fullmatch(written) or not value:
+                raise ValidationError(
+                    f"'{raw}' is no personnel number (3 to 30 letters and digits, one a digit)"
                 )
         case IdentifierKind.EMAIL_DOMAIN:
             value = text.lower().removeprefix("mailto:").rpartition("@")[2]
@@ -138,14 +149,19 @@ _CUSTOMER_LABEL = re.compile(
     r"|versicherungs[-\s]*(?:nummer|nr|schein[-\s]*(?:nummer|nr))|mitglieds[-\s]*(?:nummer|nr)"
     r"|customer[-\s]*(?:no|number|id)|account[-\s]*(?:no|number))" + _VALUE
 )
+_PERSONNEL_LABEL = re.compile(
+    r"(?<![a-z])(?:personal[-\s]*(?:nummer|nr)|pers[-.\s]*nr|mitarbeiter[-\s]*(?:nummer|nr)"
+    r"|employee[-\s]*(?:no|number|id)|personnel[-\s]*(?:no|number))" + _VALUE
+)
 _EMAIL = re.compile(r"[a-z0-9._%+-]+@((?:[a-z0-9-]+\.)+[a-z]{2,63})")
 _WEB = re.compile(r"(?<![a-z0-9@.-])(?:https?://(?:www\.)?|www\.)((?:[a-z0-9-]+\.)+[a-z]{2,63})")
 
 
 def identifiers_in(text: str) -> set[tuple[IdentifierKind, str]]:
     """The identifiers `text` shows, normalised: IBANs and German VAT numbers anywhere, other
-    VAT numbers and customer numbers after their label ("USt-IdNr.", "Kundennummer",
-    "Vertragsnummer", ...), the domains of e-mail and web addresses (free mail aside)."""
+    VAT numbers, customer and personnel numbers after their label ("USt-IdNr.", "Kundennummer",
+    "Vertragsnummer", "Personalnummer", ...), the domains of e-mail and web addresses (free
+    mail aside)."""
     normalised = normalise(text)
     found: set[tuple[IdentifierKind, str]] = set()
 
@@ -167,6 +183,8 @@ def identifiers_in(text: str) -> set[tuple[IdentifierKind, str]]:
         add(IdentifierKind.VAT_ID, match.group(1))
     for match in _CUSTOMER_LABEL.finditer(normalised):
         add(IdentifierKind.CUSTOMER_NUMBER, match.group(1))
+    for match in _PERSONNEL_LABEL.finditer(normalised):
+        add(IdentifierKind.PERSONNEL_NUMBER, match.group(1))
     for pattern in (_EMAIL, _WEB):
         for match in pattern.finditer(normalised):
             add(IdentifierKind.EMAIL_DOMAIN, match.group(1))

@@ -137,10 +137,13 @@ def name_spans(text: str, name: str) -> tuple[Span, ...]:
 
 def identifier_spans(text: str, kind: IdentifierKind, value: str) -> tuple[Span, ...]:
     """Where an identifier stands in `text`, as it may be written: separators between its
-    characters (an IBAN, a VAT or customer number), any case."""
+    characters (an IBAN, a VAT, customer or personnel number), any case; a personnel number
+    also with leading zeros."""
     if kind is IdentifierKind.EMAIL_DOMAIN:
         return _spans(rf"(?<![\w-]){re.escape(value)}(?![\w-])", text)
     pattern = r"[\s./-]?".join(re.escape(char) for char in value)
+    if kind is IdentifierKind.PERSONNEL_NUMBER:
+        pattern = rf"(?:0[\s./-]?)*{pattern}"
     return _spans(rf"(?<![A-Za-z0-9]){pattern}(?![A-Za-z0-9])", text)
 
 

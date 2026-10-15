@@ -673,6 +673,7 @@ Die Lücke der textbasierten Varianten kommt fast ganz aus dem schlechten Scan (
 - Die Codes liest das Fakten-Signal; kein neuer Knoten, keine Änderung am Graphen.
 - Anheften vorerst nur Admins.
 - Mit dabei: die Warnung beim eigenen Konto und „wie ‹Betragsfeld›“ am GiroCode.
+- Nachtrag: Die Personalnummer ist eine eigene Kennung (`personnel_number`): hinter ihrer Beschriftung, 3 bis 30 Zeichen, führende Nullen fallen weg. Der Name des Kontakts unter „Belegen“ öffnet für Admins seinen Dialog an Ort und Stelle.
 - Mit dem Plan freigegeben („Okay, baue das.“): Links in QR-Codes nur als Text mit Kopierknopf, nicht anklickbar (der Inhalt ist fremd); eine Kennung aus einem Code zählt im Urteil wie eine im Text; nach dem Anheften keine neue Bewertung des Dokuments.
 
 **Umsetzung (Branch `feature/facts-codes-0.2.0`, von `release/0.2.0`):**
@@ -684,7 +685,7 @@ Die Lücke der textbasierten Varianten kommt fast ganz aus dem schlechten Scan (
 
 **Prüfung:**
 - Unit- und Vertragstests; der zxing-Adapter am Beispiel `codes.pdf` (alle drei Codes, etwa 0,1 s je Seite). Die übrigen Beispiele (Scans, schlechter Scan, Foto) ergeben keine falschen Funde.
-- Evaluation mit festen Antworten: gleich wie auf `release/0.2.0` (73 Fälle, keine falschen Grünen, keine Verstöße).
+- Evaluation mit festen Antworten: gleich wie auf `release/0.2.0` (73 Fälle, keine falschen Grünen, keine Verstöße), auch mit der Personalnummer.
 - Im Browser gegen den Build auf einer leeren Instanz mit einer synthetischen Rechnung (GiroCode, Code 128, Data Matrix): Chip, Markieren, Anheften, Code auf der Seite; hell, dunkel, Handybreite, ohne Konsolenfehler.
 
 **Offen:**

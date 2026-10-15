@@ -11,6 +11,7 @@ export const IDENTIFIER_KINDS: readonly IdentifierKind[] = [
 	'iban',
 	'vat_id',
 	'customer_number',
+	'personnel_number',
 	'email_domain'
 ];
 
@@ -22,6 +23,8 @@ export function kindLabel(kind: IdentifierKind): string {
 			return m.identifier_kind_vat_id();
 		case 'customer_number':
 			return m.identifier_kind_customer_number();
+		case 'personnel_number':
+			return m.identifier_kind_personnel_number();
 		case 'email_domain':
 			return m.identifier_kind_email_domain();
 	}

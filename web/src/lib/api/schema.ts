@@ -2124,7 +2124,7 @@ export interface components {
 			aliases?: string[];
 			/**
 			 * Identifiers
-			 * @description Values the contact's documents carry: IBAN, VAT number, customer (or contract) number, the domain of its e-mail and web addresses. Unique across contacts; found in a document, they are evidence for the contact. The identifiers entered by hand: a learned one given here becomes one entered by hand.
+			 * @description Values the contact's documents carry: IBAN, VAT number, customer (or contract) number, the personnel number at an employer (without leading zeros), the domain of its e-mail and web addresses. Unique across contacts; found in a document, they are evidence for the contact. The identifiers entered by hand: a learned one given here becomes one entered by hand.
 			 */
 			identifiers?: components['schemas']['IdentifierIn'][];
 		};
@@ -3083,7 +3083,7 @@ export interface components {
 		 * IdentifierKind
 		 * @enum {string}
 		 */
-		IdentifierKind: 'iban' | 'vat_id' | 'customer_number' | 'email_domain';
+		IdentifierKind: 'iban' | 'vat_id' | 'customer_number' | 'personnel_number' | 'email_domain';
 		/** IdentifierOut */
 		IdentifierOut: {
 			kind: components['schemas']['IdentifierKind'];

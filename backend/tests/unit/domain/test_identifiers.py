@@ -19,6 +19,7 @@ NOW = datetime(2026, 10, 13, tzinfo=UTC)
 IBAN = IdentifierKind.IBAN
 VAT = IdentifierKind.VAT_ID
 CUSTOMER = IdentifierKind.CUSTOMER_NUMBER
+PERSONNEL = IdentifierKind.PERSONNEL_NUMBER
 DOMAIN = IdentifierKind.EMAIL_DOMAIN
 OWN_IBAN = "DE02120300000000202051"
 THEIR_IBAN = "DE89370400440532013000"
@@ -42,6 +43,10 @@ Ihre Adresse: max.nord@gmail.com
         (VAT, "DE 123 456 789", "DE123456789"),
         (VAT, "ATU12345678", "ATU12345678"),
         (CUSTOMER, "K-778.81/2", "K778812"),
+        (PERSONNEL, "00012345", "12345"),  # one number with or without leading zeros
+        (PERSONNEL, "12-345", "12345"),
+        (PERSONNEL, "0815", "815"),
+        (PERSONNEL, "A-4711", "A4711"),
         (DOMAIN, "Service@Stadtwerke.example", "stadtwerke.example"),
         (DOMAIN, "https://www.stadtwerke.example/kontakt", "stadtwerke.example"),
     ],
@@ -57,6 +62,9 @@ def test_identifiers_are_normalised(kind: IdentifierKind, raw: str, value: str) 
         (VAT, "DE12345"),
         (CUSTOMER, "Musterkunde"),  # no digit
         (CUSTOMER, "12"),
+        (PERSONNEL, "12"),
+        (PERSONNEL, "000"),
+        (PERSONNEL, "Muster"),
         (DOMAIN, "keine domain"),
         (DOMAIN, "gmail.com"),
     ],
@@ -75,6 +83,27 @@ def test_identifiers_in_a_letter() -> None:
         (CUSTOMER, "K77881"),
         (DOMAIN, "stadtwerke-musterstadt.de"),
     }
+
+
+@pytest.mark.parametrize(
+    ("text", "value"),
+    [
+        (" Personalnummer     : 00012345        Druckdatum    : 15.07.2026", "12345"),
+        ("Arbeitnehmerin: Erika Musterfrau · Personalnummer 4711 · Steuerklasse 1", "4711"),
+        ("Pers.-Nr. 0815", "815"),
+        ("PersNr: 123", "123"),
+        ("Personal-Nr. 12-345", "12345"),
+        ("Mitarbeiter-Nr. A-4711", "A4711"),
+        ("Employee ID: 99881", "99881"),
+    ],
+)
+def test_a_personnel_number_after_its_label(text: str, value: str) -> None:
+    assert identifiers_in(text) == {(PERSONNEL, value)}
+
+
+def test_no_personnel_number_without_label_or_value() -> None:
+    assert identifiers_in("Supers Nr 4711, Nummer 12345") == set()
+    assert identifiers_in("Personalnummer: siehe oben; Personalnummer 12") == set()
 
 
 def test_a_domain_stands_for_its_subdomains() -> None:

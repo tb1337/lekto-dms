@@ -72,7 +72,8 @@ Identifiers = Annotated[
         max_length=MAX_IDENTIFIERS,
         description=(
             "Values the contact's documents carry: IBAN, VAT number, customer (or contract) "
-            "number, the domain of its e-mail and web addresses. Unique across contacts; found "
+            "number, the personnel number at an employer (without leading zeros), the domain "
+            "of its e-mail and web addresses. Unique across contacts; found "
             "in a document, they are evidence for the contact. The identifiers entered by "
             "hand: a learned one given here becomes one entered by hand."
         ),

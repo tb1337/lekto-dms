@@ -4,7 +4,8 @@
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { isMoney } from '#lib/fields.ts';
+	import { isMoney, isPeriod } from '#lib/fields.ts';
+	import PeriodInput from '#lib/components/PeriodInput.svelte';
 	import type { Value } from '#lib/rules/model.ts';
 
 	// One value of a field in its JSON form: text, number and date as text, yes/no as a
@@ -38,7 +39,9 @@
 		typeof value === 'string' ? value : typeof value === 'number' ? String(value) : ''
 	);
 	// The date field shows only YYYY-MM-DD; other spellings the API accepts stay visible as text.
-	const dateField = $derived(type === 'date' && (text === '' || /^\d{4}-\d{2}-\d{2}$/.test(text)));
+	const dateField = $derived(
+		(type === 'date' || type === 'period') && (text === '' || /^\d{4}-\d{2}-\d{2}$/.test(text))
+	);
 	const money = $derived(isMoney(value) ? value : { amount: '', currency: 'EUR' });
 	const choices = $derived([
 		{ value: '', label: m.rule_choose() },
@@ -56,6 +59,8 @@
 		{invalid}
 		bind:value={() => text, (next) => onchange(next)}
 	/>
+{:else if type === 'period' && isPeriod(value)}
+	<PeriodInput {id} {label} {invalid} {value} onchange={(next) => onchange(next)} />
 {:else if type === 'boolean'}
 	<NativeSelect
 		{id}

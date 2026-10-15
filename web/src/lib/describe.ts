@@ -1,5 +1,6 @@
 /** Texts for values in a change: ids become names, the rest is shown plainly. */
-import { formatDate, formatMoney } from '#lib/i18n.ts';
+import { isMoney, isPeriod } from '#lib/fields.ts';
+import { formatDate, formatMoney, formatPeriod } from '#lib/i18n.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
@@ -27,13 +28,9 @@ export function describeValue(value: unknown, lookup: Lookup | null): string {
 	if (value === null || value === undefined || value === '') return m.value_unset();
 	if (Array.isArray(value)) return value.map((entry) => describeValue(entry, lookup)).join(', ');
 	if (typeof value === 'boolean') return value ? m.value_yes() : m.value_no();
-	if (typeof value === 'object') {
-		const money = value as { amount?: unknown; currency?: unknown };
-		if (typeof money.amount === 'string' && typeof money.currency === 'string') {
-			return formatMoney(money.amount, money.currency);
-		}
-		return JSON.stringify(value);
-	}
+	if (isMoney(value)) return formatMoney(value.amount, value.currency);
+	if (isPeriod(value)) return formatPeriod(value.start, value.end);
+	if (typeof value === 'object') return JSON.stringify(value);
 	const text = String(value);
 	if (lookup) {
 		const named = [

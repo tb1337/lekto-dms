@@ -28,7 +28,8 @@ export const FIELD_TYPES: readonly FieldType[] = [
 	'date',
 	'boolean',
 	'choice',
-	'link'
+	'link',
+	'period'
 ];
 
 const TYPE_LABELS: Record<FieldType, () => string> = {

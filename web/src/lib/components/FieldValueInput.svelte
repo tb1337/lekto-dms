@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
-	import { type InputValue, isMoney } from '#lib/fields.ts';
+	import { type InputValue, isMoney, isPeriod } from '#lib/fields.ts';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import PeriodInput from '#lib/components/PeriodInput.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -51,6 +52,8 @@
 			class="w-24 uppercase"
 		/>
 	</div>
+{:else if field.data_type === 'period' && isPeriod(value)}
+	<PeriodInput bind:value {id} {disabled} invalid={Boolean(error)} />
 {:else if field.data_type === 'boolean' && typeof value === 'string'}
 	<NativeSelect
 		{id}

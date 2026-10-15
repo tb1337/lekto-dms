@@ -15,6 +15,9 @@ describe('describing changes', () => {
 	it('names ids', () => {
 		expect(describeValue('c1', lookup)).toBe('ACME');
 		expect(describeValue(['t1', 'zz'], lookup)).toBe('Tax, zz');
+		expect(describeValue({ start: '2026-09-01', end: '2026-09-30' }, lookup)).toBe(
+			'September 2026'
+		);
 		expect(describeValue('u1', lookup)).toBe('alice');
 	});
 

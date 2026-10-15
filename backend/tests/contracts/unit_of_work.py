@@ -600,6 +600,43 @@ class UnitOfWorkContract:
                 await uow.documents.add(builders.document(alice, alice_drawer, content="same"))
                 await uow.commit()
 
+    async def test_document_identifiers_tell_the_contacts_that_show_them(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """Only confirmed documents with a contact count."""
+        owner, drawer = await owner_with_drawer(uow_factory)
+        utility, bank = (Contact.create(name=name, now=NOW) for name in ("Stadtwerke", "Bank"))
+        own = (IdentifierKind.IBAN, "DE02120300000000202051")
+        customer = (IdentifierKind.CUSTOMER_NUMBER, "20047718")
+        other = (IdentifierKind.VAT_ID, "DE312456789")
+        documents = [builders.processed(owner, drawer) for _ in range(4)]
+        shows = [{own, customer}, {own}, {other}, {own}]
+        for document, contact in zip(documents, [utility, bank, utility, None], strict=True):
+            document.contact_id = None if contact is None else contact.id
+        for document in (documents[0], documents[1], documents[3]):
+            document.mark_confirmed(NOW)
+        async with uow_factory() as uow:
+            await uow.contacts.add(utility)
+            await uow.contacts.add(bank)
+            for document, identifiers in zip(documents, shows, strict=True):
+                await uow.documents.add(document)
+                await uow.document_identifiers.replace(document.id, identifiers)
+            await uow.commit()
+        unknown = (IdentifierKind.EMAIL_DOMAIN, "example.org")
+        async with uow_factory() as uow:
+            assert await uow.document_identifiers.contacts_of([own, customer, other, unknown]) == {
+                own: frozenset({utility.id, bank.id}),
+                customer: frozenset({utility.id}),
+            }
+            assert await uow.document_identifiers.contacts_of([]) == {}
+            await uow.document_identifiers.replace(documents[0].id, [customer])
+            await uow.documents.remove(documents[1].id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_identifiers.contacts_of([own, customer]) == {
+                customer: frozenset({utility.id})
+            }
+
     async def test_remove_document(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, drawer = await owner_with_drawer(uow_factory)
         document = builders.document(owner, drawer)

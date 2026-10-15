@@ -248,6 +248,22 @@ document_fields = Table(
     Column("value_boolean", Boolean, nullable=True),
 )
 
+# What the facts signal last found a document to show, in its text or its codes (kind and
+# normalised value of an identifier): on how many contacts' confirmed documents a value stands.
+document_identifiers = Table(
+    "document_identifiers",
+    metadata,
+    Column(
+        "document_id",
+        Uuid,
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("kind", Text, primary_key=True),
+    Column("value", Text, primary_key=True),
+    Index(None, "kind", "value"),
+)
+
 processing_log = Table(
     "processing_log",
     metadata,

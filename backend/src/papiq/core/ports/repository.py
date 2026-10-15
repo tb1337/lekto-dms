@@ -22,6 +22,7 @@ from papiq.core.domain.classifier import ClassifierModel
 from papiq.core.domain.documents import Document, Sha256
 from papiq.core.domain.drawers import Drawer
 from papiq.core.domain.fields import FieldDefinition
+from papiq.core.domain.identifiers import IdentifierKind
 from papiq.core.domain.ids import (
     ClassifierModelId,
     ContactId,
@@ -186,6 +187,25 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
     ) -> bool:
         """Whether any document matches all given criteria, regardless of who may read it
         (for checks before deleting what documents refer to). At least one is required."""
+        ...
+
+
+class DocumentIdentifierRepository(Protocol):
+    """The identifiers each document shows, in its text or its codes, as the facts signal last
+    found them: for telling on how many contacts' documents a value stands (the IBAN of the
+    owner's own account stands on many)."""
+
+    async def replace(
+        self, document: DocumentId, identifiers: Collection[tuple[IdentifierKind, str]]
+    ) -> None:
+        """Make `identifiers` (kind and normalised value) those of `document`."""
+        ...
+
+    async def contacts_of(
+        self, identifiers: Collection[tuple[IdentifierKind, str]]
+    ) -> dict[tuple[IdentifierKind, str], frozenset[ContactId]]:
+        """For each of `identifiers`, the contacts of the confirmed documents that show it;
+        one that no confirmed document with a contact shows is left out."""
         ...
 
 

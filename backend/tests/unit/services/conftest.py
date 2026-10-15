@@ -125,6 +125,7 @@ class World:
         executors: Mapping[Node, NodeExecutor] | None = None,
         *,
         vision: VisionModel | None = None,
+        facts: NodeExecutor | None = None,
     ) -> PipelineService:
         return PipelineService(
             self.uow,
@@ -133,6 +134,7 @@ class World:
             {**self.executors, **(executors or {})},
             pipeline_version="test",
             vision=vision,
+            facts=facts,
         )
 
     async def user(self, name: str | None = None, role: Role = Role.USER) -> User:

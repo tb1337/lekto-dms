@@ -49,6 +49,11 @@ def structure_key(document: DocumentId) -> str:
     return f"documents/{document}/content.json"
 
 
+def codes_key(document: DocumentId) -> str:
+    """The codes read from the archive's pages (`domain.codes`); gone with a new archive."""
+    return f"documents/{document}/codes.json"
+
+
 async def load_text(store: ObjectStore, document: DocumentId) -> bytes:
     """The document's text, or the Markdown of one parsed before 0.2. NotFoundError if it has
     neither (it is not parsed yet)."""
@@ -83,6 +88,7 @@ def derivative_keys(document: DocumentId, page_count: int | None = None) -> list
         text_key(document),
         legacy_text_key(document),
         structure_key(document),
+        codes_key(document),
         *(exchanges_key(document, node) for node in EXCHANGE_NODES),
         *(key for key in legacy if key is not None),
         *(page_key(document, number) for number in range(1, (page_count or 0) + 1)),

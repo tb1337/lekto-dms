@@ -36,6 +36,7 @@ from papiq.core.services.classification.prompts import EXTRACT_SYSTEM, PROPOSE_S
 from papiq.core.services.classification.signals import (
     ABSTAINED,
     ClassifierSignal,
+    FactsResult,
     FactsSignal,
     NeighboursSignal,
 )
@@ -228,7 +229,8 @@ async def judge(
         (Node.SIGNAL_FACTS, FactsSignal(world.uow, world.object_store)),
     ]
     for node, signal in signals:
-        result = await signal.run(document)
+        ran = await signal.run(document)
+        result = ran.result if isinstance(ran, FactsResult) else ran
         if result.outcome is Outcome.FAILED:
             return result
         await record(world, document, node, result)

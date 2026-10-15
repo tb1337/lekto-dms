@@ -24,6 +24,7 @@ from papiq.adapters.outbound.sql.classifier_models import SqlClassifierModelRepo
 from papiq.adapters.outbound.sql.database import Database
 from papiq.adapters.outbound.sql.documents import SqlDocumentRepository, SqlProcessingLog
 from papiq.adapters.outbound.sql.drawers import SqlDrawerRepository
+from papiq.adapters.outbound.sql.identifiers import SqlDocumentIdentifierRepository
 from papiq.adapters.outbound.sql.identity import (
     SqlApiTokenRepository,
     SqlCredentialRepository,
@@ -95,6 +96,7 @@ class SqlUnitOfWork:
         self.fields = SqlFieldRepository(self._tx)
         self.documents = SqlDocumentRepository(self._tx)
         self.processing_log = SqlProcessingLog(self._tx)
+        self.document_identifiers = SqlDocumentIdentifierRepository(self._tx)
         self.rules = SqlRuleRepository(self._tx)
         self.rule_applications = SqlRuleApplicationRepository(self._tx)
         self.classifier_models = SqlClassifierModelRepository(self._tx)

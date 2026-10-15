@@ -9,6 +9,7 @@ import asyncio
 import copy
 import dataclasses
 from collections.abc import Collection, Hashable, Iterable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from types import TracebackType
 from typing import Any, Self
@@ -20,6 +21,7 @@ from papiq.adapters.outbound.memory.database import (
     CLASSIFIER_MODELS,
     CONTACTS,
     CREDENTIALS,
+    DOCUMENT_IDENTIFIERS,
     DOCUMENT_TYPES,
     DOCUMENTS,
     DRAWERS,
@@ -53,6 +55,7 @@ from papiq.core.domain.drawers import Drawer
 from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.fields import FieldDefinition
+from papiq.core.domain.identifiers import IdentifierKind
 from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -98,6 +101,7 @@ class MemoryUnitOfWork:
         self.fields = MemoryNamedRepository[FieldId, FieldDefinition](self, FIELDS)
         self.documents = MemoryDocumentRepository(self, DOCUMENTS)
         self.processing_log = MemoryProcessingLog(self)
+        self.document_identifiers = MemoryDocumentIdentifierRepository(self)
         self.rules = MemoryRuleRepository(self, RULES)
         self.rule_applications = MemoryRuleApplicationRepository(self, RULE_APPLICATIONS)
         self.classifier_models = MemoryClassifierModelRepository(self, CLASSIFIER_MODELS)
@@ -379,6 +383,43 @@ class MemoryProcessingLog:
             return []
         entries = [*self._uow._db.processing_log, *self._uow._log]
         return [entry for entry in entries if entry.document_id == document]
+
+
+@dataclass
+class _Shown:
+    """The identifiers one document shows (a row keyed by the document's id)."""
+
+    id: DocumentId
+    identifiers: frozenset[tuple[IdentifierKind, str]]
+    version: int
+
+
+class MemoryDocumentIdentifierRepository:
+    def __init__(self, uow: MemoryUnitOfWork) -> None:
+        self._uow = uow
+
+    async def replace(
+        self, document: DocumentId, identifiers: Collection[tuple[IdentifierKind, str]]
+    ) -> None:
+        self._uow._check_open()
+        current = self._uow._row(DOCUMENT_IDENTIFIERS, document)
+        version = 1 if current is None else current.version + 1
+        row = _Shown(id=document, identifiers=frozenset(identifiers), version=version)
+        self._uow._write(DOCUMENT_IDENTIFIERS, document, row)
+
+    async def contacts_of(
+        self, identifiers: Collection[tuple[IdentifierKind, str]]
+    ) -> dict[tuple[IdentifierKind, str], frozenset[ContactId]]:
+        self._uow._check_open()
+        wanted = set(identifiers)
+        found: dict[tuple[IdentifierKind, str], set[ContactId]] = {}
+        for document in self._uow._rows(DOCUMENTS):
+            if document.confirmed_at is None or document.contact_id is None:
+                continue
+            shown = self._uow._row(DOCUMENT_IDENTIFIERS, document.id)
+            for key in wanted & (set() if shown is None else shown.identifiers):
+                found.setdefault(key, set()).add(document.contact_id)
+        return {key: frozenset(contacts) for key, contacts in found.items()}
 
 
 class MemoryOutbox:

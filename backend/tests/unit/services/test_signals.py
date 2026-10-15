@@ -20,6 +20,7 @@ from papiq.core.ports import EmbeddingResult
 from papiq.core.services.classification.signals import (
     ABSTAINED,
     ClassifierSignal,
+    FactsResult,
     FactsSignal,
     NeighboursPolicy,
     NeighboursSignal,
@@ -41,7 +42,7 @@ DIMENSIONS = 256
 _numbers = itertools.count()
 
 
-def output(result: NodeResult) -> Any:
+def output(result: NodeResult | FactsResult) -> Any:
     return result.output
 
 

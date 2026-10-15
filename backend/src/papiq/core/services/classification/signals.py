@@ -5,21 +5,38 @@ with `output.abstained` naming why (no model trained, no embeddings, ...). Only 
 model's signal fails, when its answers do not fit or it cannot be reached after every retry.
 
 - `signal_facts`: contacts whose name or alias stands whole in the text, and identifiers of
-  contacts (IBAN, VAT number, ...) found in it; evidence, not a proposal of its own.
+  contacts (IBAN, VAT number, ...) found in it; evidence, not a proposal of its own. The codes
+  on the archive's pages count as well (`domain.codes`): their identifiers like those of the
+  text, the payee of a GiroCode like a name in the text.
 - `signal_classifier`: the trained classifier's probabilities for contact, type and tags.
 - `signal_neighbours`: the most similar confirmed documents the owner may read, by vector,
   with their contact, type and tags.
 """
 
+import json
 import logging
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from papiq.core.domain.codes import (
+    Code,
+    code_identifiers,
+    codes_from_json,
+    codes_to_json,
+    giro_code,
+)
 from papiq.core.domain.documents import Document
-from papiq.core.domain.errors import ClassifierError, EmbeddingsError, NotFoundError, SearchError
-from papiq.core.domain.identifiers import identifiers_in, matches
+from papiq.core.domain.errors import (
+    ClassifierError,
+    EmbeddingsError,
+    NotFoundError,
+    SearchError,
+    ValidationError,
+)
+from papiq.core.domain.identifiers import IdentifierKind, identifiers_in, matches
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact
@@ -35,11 +52,19 @@ from papiq.core.domain.verdict import (
     Neighbour,
     Signals,
 )
-from papiq.core.ports import DocumentFilter, Embeddings, ObjectStore, UnitOfWorkFactory
+from papiq.core.ports import (
+    CodeReader,
+    DocumentFilter,
+    Embeddings,
+    ObjectStore,
+    UnitOfWork,
+    UnitOfWorkFactory,
+)
 from papiq.core.ports.search_index import SearchIndex, SimilarQuery
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.indexing import split_sections
-from papiq.core.services.objects import load_text
+from papiq.core.services.nodes import work_directory
+from papiq.core.services.objects import archive_key, codes_key, load_text
 
 log = logging.getLogger(__name__)
 
@@ -62,50 +87,138 @@ async def _text(store: ObjectStore, document: Document) -> str | None:
 
 
 class FactsSignal:
-    """Hard evidence in the text: a contact's name or alias, whole, and identifiers of
-    contacts. A name in the text alone proposes nothing (a bank statement names payees, a pay
-    slip the employee); it backs or contradicts what other signals propose."""
+    """Hard evidence in the text and in the codes on the pages: a contact's name or alias,
+    whole, and identifiers of contacts. A name alone proposes nothing (a bank statement names
+    payees, a pay slip the employee); it backs or contradicts what other signals propose.
 
-    def __init__(self, uow: UnitOfWorkFactory, store: ObjectStore) -> None:
+    The codes are read from the archive once (`codes`, without a reader none) and kept beside
+    the document (`codes_key`); the OCR node drops them with a new archive. A code that cannot
+    be read never fails the signal. The identifiers found are kept for the document
+    (`DocumentIdentifierRepository`), applied with the result."""
+
+    def __init__(
+        self, uow: UnitOfWorkFactory, store: ObjectStore, codes: CodeReader | None = None
+    ) -> None:
         self._uow = uow
         self._store = store
+        self._codes = codes
 
-    async def run(self, document: Document) -> NodeResult:
+    async def run(self, document: Document) -> "NodeResult | FactsResult":
         text = await _text(self._store, document)
         if text is None:
             return abstained("the document has no text", model_version=FACTS)
+        codes = await self.codes(document)
         async with self._uow() as uow:
             contacts = await uow.contacts.list_all()
-        return NodeResult(outcome=Outcome.OK, model_version=FACTS, output=facts_of(text, contacts))
+        output = facts_of(text, contacts, codes or ())
+        if codes is not None:
+            output["codes"] = len(codes)
+        found = identifiers_in(text)
+        for code in codes or ():
+            found |= code_identifiers(code)
+        result = NodeResult(outcome=Outcome.OK, model_version=FACTS, output=output)
+        return FactsResult(result, frozenset(found))
+
+    async def codes(self, document: Document) -> tuple[Code, ...] | None:
+        """The codes on the archive's pages, read before or now; None without a reader, an
+        archive, or when they cannot be read."""
+        if self._codes is None:
+            return None
+        key = codes_key(document.id)
+        try:
+            kept = codes_from_json(json.loads(await self._store.get(key)))
+        except NotFoundError:
+            kept = None
+        except (ValueError, ValidationError):
+            log.warning("reading an unreadable file of codes again", extra={"key": key})
+            kept = None
+        if kept is not None:
+            return kept
+        try:
+            async with work_directory() as work:
+                archive = work / "archive.pdf"
+                await self._store.download(archive_key(document.id), archive)
+                reading = await self._codes.read_codes(archive)
+        except NotFoundError:
+            return None
+        except Exception:
+            log.warning(
+                "the codes were not read", exc_info=True, extra={"document_id": str(document.id)}
+            )
+            return None
+        data = json.dumps(codes_to_json(reading.codes), ensure_ascii=False).encode("utf-8")
+        await self._store.put(key, data, content_type="application/json")
+        return reading.codes
 
 
-def facts_of(text: str, contacts: Sequence[Contact]) -> JsonObject:
-    """What `signal_facts` reports for `text`."""
+@dataclass(frozen=True)
+class FactsResult:
+    """The facts, and the identifiers the document shows: kept for it when the result is
+    recorded."""
+
+    result: NodeResult
+    identifiers: frozenset[tuple[IdentifierKind, str]]
+
+    @property
+    def output(self) -> JsonObject:
+        return self.result.output
+
+    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
+        await uow.document_identifiers.replace(document.id, self.identifiers)
+        return self.result
+
+
+def facts_of(text: str, contacts: Sequence[Contact], codes: Sequence[Code] = ()) -> JsonObject:
+    """What `signal_facts` reports for `text` and the `codes` of its pages; what a code holds
+    is marked `in_code`."""
     text_key = name_key(text)
+    payees = [name_key(giro.name) for code in codes if (giro := giro_code(code.text))]
     named: list[JsonValue] = []
     for contact in contacts:
         own = next((name for name in contact.names() if mentions(text_key, name_key(name))), None)
-        if own is not None:
-            named.append({"contact_id": str(contact.id), "name": own, "alias": own != contact.name})
-    found = identifiers_in(text)
+        paid = next(
+            (
+                name
+                for name in contact.names()
+                if any(mentions(payee, name_key(name)) for payee in payees)
+            ),
+            None,
+        )
+        if own is not None or paid is not None:
+            name = own if own is not None else paid
+            item: JsonObject = {
+                "contact_id": str(contact.id),
+                "name": name,
+                "alias": name != contact.name,
+            }
+            if paid is not None:
+                item["in_code"] = True
+            named.append(item)
+    in_codes: set[tuple[IdentifierKind, str]] = set()
+    for code in codes:
+        in_codes |= code_identifiers(code)
+    found = identifiers_in(text) | in_codes
     hits: list[JsonValue] = []
-    known: set[tuple[object, str]] = set()
+    known: set[tuple[IdentifierKind, str]] = set()
     for contact in contacts:
         for identifier in contact.identifiers:
             matched = [item for item in found if matches(identifier, item)]
             known.update(matched)
             if matched and identifier.counts:
-                hits.append(
-                    {
-                        "contact_id": str(contact.id),
-                        "kind": identifier.kind.value,
-                        "value": identifier.value,
-                    }
-                )
-    unknown: list[JsonValue] = [
-        {"kind": kind.value, "value": value}
-        for kind, value in sorted(found - known, key=lambda item: (item[0].value, item[1]))
-    ]
+                hit: JsonObject = {
+                    "contact_id": str(contact.id),
+                    "kind": identifier.kind.value,
+                    "value": identifier.value,
+                }
+                if any(item in in_codes for item in matched):
+                    hit["in_code"] = True
+                hits.append(hit)
+    unknown: list[JsonValue] = []
+    for kind, value in sorted(found - known, key=lambda item: (item[0].value, item[1])):
+        entry: JsonObject = {"kind": kind.value, "value": value}
+        if (kind, value) in in_codes:
+            entry["in_code"] = True
+        unknown.append(entry)
     return {
         "named": named[:_MOST],
         "identifiers": hits[:_MOST],

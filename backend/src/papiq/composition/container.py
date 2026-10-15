@@ -558,7 +558,8 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
     executors[Node.FIELDS] = ImportedFieldsNode(
         uow, FieldsNode(uow, store, model, clock, policy, locator=locator)
     )
-    executors[Node.SIGNAL_FACTS] = ImportedSignal(uow, FactsSignal(uow, store))
+    facts = FactsSignal(uow, store, container.codes)
+    executors[Node.SIGNAL_FACTS] = ImportedSignal(uow, facts)
     executors[Node.SIGNAL_CLASSIFIER] = ImportedSignal(uow, ClassifierSignal(store, classifier))
     executors[Node.SIGNAL_NEIGHBOURS] = ImportedSignal(
         uow,
@@ -640,6 +641,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             lease=node_lease(settings),
             vision=container.ocr.vision,
             poor_reading=settings.poor_reading_threshold,
+            facts=facts,
         ),
         maintenance=MaintenanceService(
             uow,

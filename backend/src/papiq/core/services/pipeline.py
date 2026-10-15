@@ -87,6 +87,9 @@ NODE_JOB = "pipeline.node"
 """Job kind of a pipeline node; payload: document id, node, processing run."""
 CATCH_UP_JOB = "pipeline.catch_up"
 REPARSE_JOB = "pipeline.reparse"
+FACTS_JOB = "pipeline.facts"
+"""Job kind of reading a document's facts outside processing (`read-codes`): the codes on its
+pages and the identifiers it shows; payload: document id. Processing and log stay as they are."""
 """Job kind of a node skipped in the document's current run that is run afterwards, outside
 processing (`PipelineService.catch_up`); the same payload."""
 
@@ -201,9 +204,11 @@ class PipelineService:
         lease: timedelta = timedelta(minutes=10),
         vision: VisionModel | None = None,
         poor_reading: float = 0.08,
+        facts: NodeExecutor | None = None,
     ) -> None:
         """`vision`: the vision language model the OCR can read pages with, if any;
-        `poor_reading`: the share of unsure words from which a page counts as poorly read."""
+        `poor_reading`: the share of unsure words from which a page counts as poorly read;
+        `facts`: the facts signal for reading facts outside processing (`request_facts`)."""
         missing = set(NODES) - {Node.RECEIVE} - set(executors)
         if missing:
             raise ValueError(f"no executor for nodes: {', '.join(sorted(missing))}")
@@ -216,6 +221,7 @@ class PipelineService:
         self._lease = lease
         self._vision = vision
         self._poor_reading = poor_reading
+        self._facts = facts
 
     @property
     def vision(self) -> VisionModel | None:
@@ -602,6 +608,32 @@ class PipelineService:
             await uow.commit()
         return queued
 
+    async def request_facts(self) -> int:
+        """Queue reading the facts of every document whose text was read and that is not being
+        processed (the command `read-codes`): the codes on its pages and the identifiers it
+        shows, for documents from before codes were read. Returns how many were queued; one
+        queued already is not queued twice."""
+        if self._facts is None:
+            return 0
+        now = self._clock.now()
+        queued = 0
+        async with self._uow() as uow:
+            for document in await uow.documents.list_all():
+                processing = document.processing
+                if processing.status is ProcessingStatus.PROCESSING:
+                    continue
+                if processing.outcome(Node.PARSE) not in (Outcome.OK, Outcome.UNCERTAIN):
+                    continue
+                job = await uow.jobs.enqueue(
+                    FACTS_JOB,
+                    {"document_id": str(document.id)},
+                    run_at=now,
+                    dedup_key=f"{document.id}:facts",
+                )
+                queued += job is not None
+            await uow.commit()
+        return queued
+
     # --- worker ---------------------------------------------------------------------------------
 
     async def run_next_job(self) -> bool:
@@ -626,7 +658,7 @@ class PipelineService:
             job = await uow.jobs.claim(
                 now=self._clock.now(),
                 lease=self._lease,
-                kinds=[NODE_JOB, CATCH_UP_JOB, REPARSE_JOB],
+                kinds=[NODE_JOB, CATCH_UP_JOB, REPARSE_JOB, FACTS_JOB],
             )
             await uow.commit()
         if job is None:
@@ -639,6 +671,9 @@ class PipelineService:
         return True
 
     async def _run_claimed(self, job: Job) -> None:
+        if job.kind == FACTS_JOB:
+            await self._read_facts(job)
+            return
         try:
             document_id, node, run = _parse_payload(job.payload)
         except (KeyError, TypeError, ValueError) as error:
@@ -717,6 +752,50 @@ class PipelineService:
                 if attempt == _RECORD_ATTEMPTS:
                     raise
                 await _backoff(attempt)
+
+    async def _read_facts(self, job: Job) -> None:
+        """Read a document's facts outside processing and keep what they apply (the
+        identifiers it shows); the result itself is not recorded. An attempt that raises runs
+        again later, like a node."""
+        try:
+            document_id = DocumentId(UUID(str(job.payload["document_id"])))
+        except (KeyError, ValueError) as error:
+            await self._finish(job, error=f"invalid payload: {error}")
+            return
+        async with self._uow() as uow:
+            document = await uow.documents.find(document_id)
+        if document is None or self._facts is None:
+            await self._finish(job)
+            return
+        try:
+            outcome = await self._facts.run(document)
+        except Exception as error:
+            reason = f"{type(error).__name__}: {error}"
+            log.warning(
+                "reading the facts failed",
+                extra={"document_id": str(document_id), "attempt": job.tries},
+                exc_info=True,
+            )
+            retry_at = self._retry.next_run(job.tries, self._clock.now())
+            if retry_at is None:
+                await self._finish(job, error=reason)
+                return
+            async with self._uow() as uow:
+                await uow.jobs.reschedule(job, run_at=retry_at, error=reason)
+                await uow.commit()
+            return
+        if isinstance(outcome, NodeResult):
+            await self._finish(job)
+            return
+        try:
+            async with self._uow() as uow:
+                current = await uow.documents.find(document_id)
+                if current is not None:
+                    await outcome.apply(uow, current, self._clock.now())
+                await uow.jobs.complete(job)
+                await uow.commit()
+        except ConcurrencyError:
+            log.warning("lost the claim of a facts job", extra={"job_id": str(job.id)})
 
     async def _reparse(self, job: Job, document_id: DocumentId, run: int) -> None:
         """Read a document's text again (`reparse`) and record the reading beside processing.

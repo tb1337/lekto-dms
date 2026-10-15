@@ -1,5 +1,5 @@
 """`python -m papiq.composition [check | migrate | api | worker | evaluate | evaluate-search |
-reindex | render-pages | reparse | train]`.
+reindex | render-pages | read-codes | reparse | train]`.
 
 - `check` (default): validate the configuration and print it without secrets.
 - `migrate`: validate, then bring the configured database to the newest schema. Run before the
@@ -28,6 +28,9 @@ reindex | render-pages | reparse | train]`.
   with progress. The search keeps working meanwhile. Needs `PAPIQ_MEILISEARCH_URL`.
 - `render-pages`: queue the page images of every document from before the pages node existed
   (its `pages` node is skipped); the worker renders them.
+- `read-codes`: queue reading the facts of every document with a text: the worker reads the
+  codes on its pages and keeps the identifiers it shows (for documents from before codes were
+  read, and for telling on how many contacts' documents an identifier stands).
 - `reparse`: queue reading the text of every document again (after the update to 0.2, which
   reads the text as it is set instead of Docling's Markdown); the worker reads them, and the
   search index takes up the new texts. Train the classifier afterwards (`train`).
@@ -48,6 +51,7 @@ import structlog
 
 from papiq.adapters.inbound.evaluation import EvaluationSetError, Run
 from papiq.composition.api import run_api
+from papiq.composition.codes import run_read_codes
 from papiq.composition.database import check_schema, migrate_database
 from papiq.composition.endpoints import external_endpoints
 from papiq.composition.errors import ConfigurationError
@@ -83,6 +87,7 @@ def main(argv: Sequence[str] = ()) -> int:
             "evaluate-search",
             "reindex",
             "render-pages",
+            "read-codes",
             "reparse",
             "train",
         ],
@@ -162,6 +167,8 @@ def main(argv: Sequence[str] = ()) -> int:
 
     if command == "render-pages":
         return _render_pages(settings)
+    if command == "read-codes":
+        return _read_codes(settings)
     if command == "reparse":
         return _reparse(settings)
     if command == "reindex":
@@ -241,6 +248,17 @@ def _render_pages(settings: Settings) -> int:
         log.exception("queueing the page images failed")
         return 1
     log.info("render-pages queued", documents=queued)
+    return 0
+
+
+def _read_codes(settings: Settings) -> int:
+    log = structlog.get_logger("papiq.composition")
+    try:
+        queued = asyncio.run(run_read_codes(settings))
+    except Exception:
+        log.exception("queueing the facts failed")
+        return 1
+    log.info("read-codes queued", documents=queued)
     return 0
 
 

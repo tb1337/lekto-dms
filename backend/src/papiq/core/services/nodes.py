@@ -27,6 +27,7 @@ from papiq.core.ports.pages import PAGE_MEDIA_TYPE, PREVIEW_FILE
 from papiq.core.services.exchanges import keep_calls
 from papiq.core.services.objects import (
     archive_key,
+    codes_key,
     legacy_text_key,
     original_key,
     page_key,
@@ -78,6 +79,8 @@ class OcrNode:
             await self._store.upload(
                 archive_key(document.id), archive, content_type=media_types.PDF
             )
+        # The codes were read from the archive before: the facts read the new one again.
+        await self._store.delete(codes_key(document.id))
         output: JsonObject = {
             "archive": archive_key(document.id),
             "pages": result.pages,

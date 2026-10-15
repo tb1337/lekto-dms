@@ -199,7 +199,7 @@ receive ─┬─► pages ─────────────────�
 **Drei Ebenen**
 
 1. Technische Pipeline, fest im Code: Empfangen (Hash, Dublette, Objektspeicher) → OCR und Seitenbilder → Parsen.
-   - OCR: Seiten mit eigenem Text bleiben, wie sie sind (`--skip-text`). Eine unsichtbare Textschicht ist aber die einer anderen OCR (Scanner, älteres Archiv wie ecoDMS), womöglich schlecht und ohne Angabe, wie gut sie las: Ein solches PDF liest OCRmyPDF selbst neu (`--redo-ocr`, sichtbarer Text bleibt, ohne `--deskew`, das OCRmyPDF dabei nicht erlaubt; Tobi, 14.10.2026).
+   - OCR: Seiten mit eigenem Text bleiben, wie sie sind (`--skip-text`). Eine unsichtbare Textschicht ist aber die einer anderen OCR (Scanner, älteres Archiv wie ecoDMS), womöglich schlecht und ohne Angabe, wie gut sie las: Ein solches PDF liest OCRmyPDF selbst neu (`--redo-ocr`, sichtbarer Text bleibt, ohne `--deskew`, das OCRmyPDF dabei nicht erlaubt; Tobi, 14.10.2026). Ist der Text eines PDFs nicht lesbar (mindestens 30 % der Zeichen einer Seite stehen für nichts: eine Schrift ohne Zeichentabelle, wie sie der PDF-Drucker von ecoDMS schreibt, liefert Steuerzeichen), erkennt OCRmyPDF jede Seite aus ihrem Bild (`--force-ocr`); das Archiv trägt die Seiten dann als Bilder, das Protokoll nennt den Grund (Tobi, 15.10.2026).
 2. Verstehen: vier Signale schlagen vor, das Urteil entscheidet Kontakt, Typ, Tags und Datum, der Felder-Knoten liest die Felder des entschiedenen Typs und den Titel, dann die Regeln.
 3. Mensch im Ablauf: Posteingang für alles, was nicht grün ist.
 

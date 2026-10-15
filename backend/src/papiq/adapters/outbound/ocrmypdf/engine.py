@@ -4,7 +4,11 @@
 PDF/A. The output is written next to the target and renamed when complete. A PDF with invisible
 text carries the layer of another OCR (a scanner's, an older archive's) that may be poor and
 says nothing of how well it read: it gets `--redo-ocr` instead, which replaces that layer and
-keeps visible text. OCRmyPDF does not deskew then (`--deskew` is not allowed with it).
+keeps visible text. OCRmyPDF does not deskew then (`--deskew` is not allowed with it). A PDF
+whose text cannot be read (a font without a character map: its codes come out as control
+characters) gets `--force-ocr`: `--skip-text` would take such a page as read and `--redo-ocr`
+keeps visible text, so every page is recognised from its image and the archive holds the pages
+as images (`UNREADABLE_NOTE`).
 
 Two things make OCRmyPDF refuse or downgrade a file, and both get a second run:
 
@@ -49,7 +53,7 @@ from pathlib import Path
 
 from PIL import Image, ImageSequence
 
-from papiq.adapters.outbound.pdfium import count_pages, has_hidden_text
+from papiq.adapters.outbound.pdfium import count_pages, has_hidden_text, has_unreadable_text
 from papiq.adapters.outbound.system import Completed, run_process
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import UnprocessableDocumentError
@@ -70,6 +74,10 @@ _UNPROCESSABLE = {
     _ENCRYPTED_PDF: "the PDF is encrypted",
 }
 _SIGNATURE_HINT = "digital signature"
+UNREADABLE_NOTE = (
+    "the text in the PDF cannot be read (a font without a character map); every page was "
+    "recognised from its image"
+)
 SIGNATURE_NOTE = (
     "the original is digitally signed; the archive does not carry the signature "
     "(the original is unchanged)"
@@ -123,14 +131,22 @@ class OcrmypdfEngine:
         work = target.with_name(f".{target.name}.{uuid.uuid4().hex}.work")
         try:
             extra: list[str] = []
-            again = False
+            unreadable = hidden = False
             if media_type != media_types.PDF:
                 source, dpi = await asyncio.to_thread(prepare_image, source, prepared)
                 extra = ["--image-dpi", str(dpi)]
             else:
-                again = await asyncio.to_thread(has_hidden_text, source)
-            mode = ["--redo-ocr"] if again else ["--skip-text", "--deskew"]
+                unreadable = await asyncio.to_thread(has_unreadable_text, source)
+                hidden = not unreadable and await asyncio.to_thread(has_hidden_text, source)
+            if unreadable:
+                mode = ["--force-ocr", "--deskew"]
+            elif hidden:
+                mode = ["--redo-ocr"]
+            else:
+                mode = ["--skip-text", "--deskew"]
             pdfa, notes = await self._convert(source, temporary, [*mode, *extra], work)
+            if unreadable:
+                notes = [UNREADABLE_NOTE, *notes]
             pages = await asyncio.to_thread(count_pages, temporary)
             readings = await asyncio.to_thread(read_hocr, work)
             await asyncio.to_thread(temporary.replace, target)
@@ -146,7 +162,7 @@ class OcrmypdfEngine:
             pdfa=pdfa,
             note=_join(notes),
             readings=readings,
-            read_again=again,
+            read_again=unreadable or hidden,
         )
 
     async def _convert(

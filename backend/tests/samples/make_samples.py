@@ -11,6 +11,9 @@
                   invalidate the signature)
 - printout.pdf    a time sheet printed in Courier, its table drawn with `|` and `-`, below a
                   title in Helvetica
+- unmapped.pdf    scan.pdf's page with visible text over it in a Type3 font without a character
+                  map (`/ToUnicode`), as some PDF printers write it: its codes come out as
+                  control characters, and OCRmyPDF's `--skip-text` takes the page as read
 - damaged.pdf     a PDF header followed by garbage
 - unsupported.docx  an Office file (a ZIP archive), not supported
 """
@@ -18,6 +21,7 @@
 import io
 import random
 import zipfile
+import zlib
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -74,6 +78,35 @@ def text_lines(font: str, size: float, leading: float, x: float, y: float, lines
     return f"BT /{font} {size} Tf {x} {y} Td {shown} ET"
 
 
+def unmapped_pdf(lines: list[str]) -> bytes:
+    """The page of `lines` as an image, and over it text in a Type3 font whose 30 glyphs draw
+    nothing, named only by codes 1 to 30, without a character map."""
+    image = page(lines)
+    data = zlib.compress(image.tobytes()).decode("latin-1")
+    width, height = image.size
+    codes = "".join(f"{code:02x}" for code in range(1, 31)) * 3
+    content = f"q 595 0 0 842 0 0 cm /Im1 Do Q BT /F1 10 Tf 60 80 Td <{codes}> Tj ET"
+    glyph = "500 0 d0"
+    names = " ".join(f"/g{code}" for code in range(1, 31))
+    procs = " ".join(f"/g{code} 6 0 R" for code in range(1, 31))
+    objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+        "/Resources << /Font << /F1 4 0 R >> /XObject << /Im1 7 0 R >> >> /Contents 5 0 R >>",
+        "<< /Type /Font /Subtype /Type3 /FontBBox [0 0 500 700] "
+        f"/FontMatrix [0.001 0 0 0.001 0 0] /CharProcs << {procs} >> "
+        f"/Encoding << /Type /Encoding /Differences [1 {names}] >> "
+        f"/FirstChar 1 /LastChar 30 /Widths [{' '.join(['500'] * 30)}] /Resources << >> >>",
+        f"<< /Length {len(content)} >>\nstream\n{content}\nendstream",
+        f"<< /Length {len(glyph)} >>\nstream\n{glyph}\nendstream",
+        f"<< /Type /XObject /Subtype /Image /Width {width} /Height {height} "
+        "/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode "
+        f"/Length {len(data)} >>\nstream\n{data}\nendstream",
+    ]
+    return serialized(objects)
+
+
 def pdf(content: str, *, fonts: tuple[str, ...] = ("Helvetica",), signed: bool = False) -> bytes:
     """A one-page A4 PDF with the content stream `content`, written by hand; `fonts` (standard
     ones) are `F1`, `F2` and so on."""
@@ -90,6 +123,11 @@ def pdf(content: str, *, fonts: tuple[str, ...] = ("Helvetica",), signed: bool =
         f"<< /Length {len(content)} >>\nstream\n{content}\nendstream",
         *font_objects[1:],
     ]
+    return serialized(objects)
+
+
+def serialized(objects: list[str]) -> bytes:
+    """A PDF of `objects`, numbered from 1 (the catalog), with its cross-reference table."""
     out = io.BytesIO()
     out.write(b"%PDF-1.7\n")
     offsets = []
@@ -111,6 +149,7 @@ def main() -> None:
     (HERE / "text.pdf").write_bytes(text_pdf(LINES))
     (HERE / "signed.pdf").write_bytes(text_pdf(LINES, signed=True))
     (HERE / "printout.pdf").write_bytes(printout_pdf(PRINTOUT_TITLE, PRINTOUT))
+    (HERE / "unmapped.pdf").write_bytes(unmapped_pdf(LINES))
     page(LINES, (1000, 1300)).convert("RGB").save(HERE / "photo.jpg", quality=80)
     page(LINES, (900, 1200)).convert("RGB").save(HERE / "lowres.jpg", quality=80, dpi=(72, 72))
     transparent = Image.new("RGBA", (1000, 600), (255, 255, 255, 0))

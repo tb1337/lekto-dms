@@ -194,7 +194,11 @@ jobs of the old run are recognised as stale.
   text carries the layer of another OCR (a scanner's, an older archive's), which may be poor and
   says nothing of how well it read: it gets `--redo-ocr` instead (that layer is replaced,
   visible text kept, no deskewing, which OCRmyPDF does not allow then), and the log says
-  `read_again`. Documents from before take the new reading when processed again from OCR. Images whose stated resolution gives an implausible page
+  `read_again`. A PDF whose text cannot be read gets `--force-ocr`: at least 30 % of a page's
+  characters map to nothing (a font without a character map, as the ecoDMS PDF printer writes
+  it, gives control characters), `--skip-text` would keep them and `--redo-ocr` keeps visible
+  text. Every page is recognised from its image, the archive holds the pages as images (larger),
+  and the log says why. Documents from before take the new reading when processed again from OCR. Images whose stated resolution gives an implausible page
   size (none, or 72 dpi from a phone) are scaled to the long edge of A4; transparency is put on
   white, CMYK is converted, all pages of a TIFF are kept. OCRmyPDF shares the CPU cores among
   `PAPIQ_WORKER_CONCURRENCY` jobs.

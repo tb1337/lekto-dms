@@ -71,6 +71,7 @@ class Runs:
         self.pages: list[dict[int, str]] = []
         self.calls: list[list[str]] = []
         self.hidden_text = False  # the source carries the invisible layer of another OCR
+        self.unreadable_text = False  # the source has text in a font without a character map
 
     async def __call__(
         self, args: Sequence[str], *, timeout: timedelta, env: dict[str, str] | None = None
@@ -101,6 +102,7 @@ def runs(monkeypatch: pytest.MonkeyPatch) -> Runs:
     monkeypatch.setattr(module, "run_process", runs)
     monkeypatch.setattr(module, "count_pages", lambda path: 1)
     monkeypatch.setattr(module, "has_hidden_text", lambda path: runs.hidden_text)
+    monkeypatch.setattr(module, "has_unreadable_text", lambda path: runs.unreadable_text)
     return runs
 
 
@@ -140,6 +142,18 @@ async def test_another_ocr_s_layer_is_read_again(runs: Runs, tmp_path: Path) -> 
     assert "--skip-text" in first and "--deskew" in first and "--redo-ocr" not in first
     # OCRmyPDF does not allow deskewing when it reads a page again.
     assert "--redo-ocr" in second and "--skip-text" not in second and "--deskew" not in second
+
+
+async def test_text_that_cannot_be_read_is_recognised_from_the_images(
+    runs: Runs, tmp_path: Path
+) -> None:
+    runs.outcomes = [(0, "")]
+    runs.unreadable_text = runs.hidden_text = True
+    result, _ = await convert(runs, tmp_path)
+    assert (result.read_again, result.pdfa, result.note) == (True, True, module.UNREADABLE_NOTE)
+    (call,) = runs.calls
+    assert "--force-ocr" in call and "--deskew" in call
+    assert "--skip-text" not in call and "--redo-ocr" not in call
 
 
 async def test_the_last_run_s_hocr_tells_how_well_each_page_was_read(

@@ -10,7 +10,9 @@ import pypdfium2
 import pytest
 
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
+from papiq.adapters.outbound.ocrmypdf.engine import UNREADABLE_NOTE
 from papiq.adapters.outbound.pdfium import has_hidden_text
+from papiq.adapters.outbound.pdfium.library import unreadable_share
 from papiq.core.domain import media_types
 from tests.contracts.processing import SAMPLES, OcrContract
 
@@ -87,6 +89,22 @@ async def test_another_ocr_s_layer_is_read_again(tmp_path: Path) -> None:
     assert result.read_again
     assert [reading.page for reading in result.readings] == [1]
     assert "Rechnung Nummer 4711" in " ".join(text_of(target).split())
+
+
+async def test_text_in_a_font_without_a_character_map_is_read_from_the_image(
+    tmp_path: Path,
+) -> None:
+    """Its codes come out as control characters; `--skip-text` would keep them."""
+    assert unreadable_share(text_of(SAMPLES / "unmapped.pdf")) == 1.0
+    target = tmp_path / "archive.pdf"
+    result = await engine().make_archive(
+        SAMPLES / "unmapped.pdf", target, media_type=media_types.PDF
+    )
+    assert (result.read_again, result.pdfa, result.note) == (True, True, UNREADABLE_NOTE)
+    text = text_of(target)
+    assert "Rechnung Nummer 4711" in " ".join(text.split())
+    assert unreadable_share(text) == 0.0
+    assert [reading.page for reading in result.readings] == [1]
 
 
 async def test_an_empty_page_has_no_text(tmp_path: Path) -> None:

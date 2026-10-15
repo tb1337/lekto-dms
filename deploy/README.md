@@ -316,6 +316,10 @@ An update that changes what the search index holds says so in its release notes;
 that made the pipeline a graph (0.2.0) added the page images: run `papiq render-pages` after
 it, and the worker renders the pages of the documents from before (a document that is being
 processed at that moment keeps its job; run the command again until it reports 0 queued).
+The same update reads bar and QR codes: run `papiq read-codes` after it (and after a
+`papiq reparse`), and the worker reads the codes of the documents from before and keeps the
+identifiers each one shows; it reads locally, nothing is sent out. A document that is being
+processed at that moment is skipped; run the command again once it is through.
 The same update renamed `PAPIQ_STEP_MAX_ATTEMPTS` and `PAPIQ_STEP_RETRY_DELAY` to
 `PAPIQ_NODE_MAX_ATTEMPTS` and `PAPIQ_NODE_RETRY_DELAY`; a container with an old name refuses
 to start and says so.

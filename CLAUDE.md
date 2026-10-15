@@ -12,7 +12,7 @@ Paperless-ngx. Python backend, hexagonal (ports and adapters); the REST API is t
 | `migration/` | Paperless-ngx migration client: separate uv project `papiq_migration` (`plan`, `run`, `verify`; see `migration/README.md`) |
 | `deploy/` | Runtime image files (s6-overlay services, `image/rootfs`), example Compose stacks (SQLite, Postgres + Garage), `test-image.sh`, `README.md` (operation, backup) |
 | `.devcontainer/` | Devcontainer: Compose services (Postgres, Garage, Meilisearch), dev credentials, the development instance (`README.md`, `live.env.example`, `live-setup.sh`) |
-| `.vscode/tasks.json` | VS Code tasks that run the development instance from the devcontainer (start, stop, migrate, UI, reindex, render-pages, migration) |
+| `.vscode/tasks.json` | VS Code tasks that run the development instance from the devcontainer (start, stop, migrate, UI, reindex, render-pages, read-codes, migration) |
 | `Dockerfile` | Stages `base`, `deps`, `app`, `s6`, `web` (UI build), `dev` (devcontainer) and `runtime` (production image) |
 | `.idea/` | Design documents in German: `architektur.md` (binding), `umsetzungsplan.md` |
 

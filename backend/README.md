@@ -172,7 +172,7 @@ jobs of the old run are recognised as stale.
 | OCR (`OcrNode`) | `originals/<sha256>` | `documents/<id>/archive.pdf` (PDF/A with text layer); in the log, how well each recognised page was read (`readings`: words, unsure words below 60 % of Tesseract's confidence) | uncertain if the archive is not PDF/A, with the reason; OK with a note if the original's digital signature is not in the archive |
 | Pages (`PagesNode`) | `originals/<sha256>` | `documents/<id>/pages/<n>.webp` (every page, 1200 px wide; an image narrower than that keeps its size, each frame of a TIFF is a page), `documents/<id>/preview.webp` (first page, 400 px wide); sets `page_count` | failed if the file cannot be read |
 | Parse (`ParseNode`) | the archive PDF | `documents/<id>/content.txt` (the text as it is set), `documents/<id>/content.json` (its lines and words with boxes) | failed if no text was recognised |
-| Signals (`signal_llm`, `signal_classifier`, `signal_neighbours`, `signal_facts`) | `content.txt`, master data, the classifier's model, the search index | proposals in the log | OK, also when abstaining (`abstained` names why); only `signal_llm` fails, after two unfit answers |
+| Signals (`signal_llm`, `signal_classifier`, `signal_neighbours`, `signal_facts`) | `content.txt`, master data, the classifier's model, the search index; `signal_facts` also the archive PDF | proposals in the log; `signal_facts` also `documents/<id>/codes.json` (the codes on the pages) | OK, also when abstaining (`abstained` names why); only `signal_llm` fails, after two unfit answers |
 | Judge (`JudgeNode`) | the signals' entries in the log, `content.txt` | contact, document type, tags, document date (applied if green) | see Understanding |
 | Fields (`FieldsNode`) | `content.txt`, the fields of the type and the global ones | field values and the title (applied if checked) | see Understanding |
 | Apply rules (`ApplyRulesNode`) | `content.txt` (only if a rule looks at the text), the rules | drawer, contact, type, title, tags, fields | uncertain on conflicts, refused actions and forced reviews; see Rules |
@@ -253,6 +253,12 @@ jobs of the old run are recognised as stale.
   document.
 - Previews: PDFium (pypdfium2) renders, Pillow encodes WebP. PDFium is not thread-safe; all
   its use in a process shares one lock.
+- Codes: `CodeReader` (`adapters/outbound/zxing`) renders each page of the archive in grey at
+  300 dpi (an edge of at most 5000 px, at most 50 pages) and reads every format zxing-cpp knows
+  (QR, Data Matrix, Aztec, PDF417, Code 128/39, EAN, ITF): format, text and box in fractions of
+  the page; invalid and empty results are dropped, the same code on a page counts once. About
+  0.1 to 0.3 s per page. A GiroCode (EPC069-12) is read as a credit transfer: payee, IBAN, BIC,
+  amount, purpose (`core/domain/codes.py`).
 - Quotes on the page: the judge and the fields node look up every quote of the model in
   the text layer of the archive (`TextLocator`, PDFium): case, spacing, line breaks, hyphens at
   line ends and the marks of Markdown do not matter. Each field check keeps up to five places
@@ -297,7 +303,13 @@ the rules in `core/domain/verdict.py`).
   read, by the vector of the start of the text against the search index; their contact, type
   and tags come from the database. It abstains without embeddings or index.
 - **`signal_facts`**: names and aliases of contacts standing whole in the text, identifiers of
-  contacts (IBAN, VAT ID, customer number, mail domain), unknown IBANs and VAT IDs.
+  contacts (IBAN, VAT ID, customer number, mail domain), unknown IBANs and VAT IDs. It also
+  reads the bar and QR codes on the archive's pages, once (`documents/<id>/codes.json`; the
+  OCR node deletes it with a new archive, a reprocessing from the judge takes it): an
+  identifier in a code counts as one in the text, the payee of a GiroCode as a name in the
+  text, which proposes nothing alone. Reading the codes may fail; the signal warns and goes on
+  without them. Which identifiers the document shows goes to `document_identifiers`, which
+  tells on the confirmed documents of how many contacts an identifier stands.
 
 A signal *names* a value it is sure of: the model, a contact whose name or alias its sender
 matches at least `PAPIQ_CONFIDENCE_THRESHOLD` (legal forms and punctuation aside) with no other
@@ -390,7 +402,7 @@ learned); a learned identifier an admin rejected stays rejected. The model is st
 without pickle (`classifier/model-<n>.npz`, the latest three are kept) and predicted with numpy
 alone, so a new scikit-learn version cannot break it. `GET /classifier` tells its state.
 
-**After the update to 0.2.** Two things, in this order:
+**After the update to 0.2.** Three things, in this order:
 
 1. The search index gets the attribute `confirmed` the neighbours filter on. The migration
    raises the version of every confirmed document, so the worker's reconciliation at its start
@@ -404,6 +416,13 @@ alone, so a new scikit-learn version cannot break it. `GET /classifier` tells it
    as they are. The search index then takes up the new texts, which embeds every document anew
    (with an embedding service elsewhere this takes a while: choose the time), and the
    classifier is trained on the new texts afterwards (`train`).
+3. 0.2 reads the bar and QR codes on the pages. `python -m papiq.composition read-codes` has
+   the worker read them for the documents from before and keep the identifiers each document
+   shows (`document_identifiers`), so that the warning when attaching an identifier counts
+   every confirmed document. It reads locally and sends nothing out; nodes, lane and metadata
+   stay as they are. Documents taken over get their codes only this way: the signals abstain
+   for them. Run it once `reparse` is through, which changes the text the identifiers are read
+   from.
 
 **Evaluation.** `python -m papiq.composition evaluate [--fake]` runs the synthetic documents in
 `evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).
@@ -606,6 +625,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /users`, `GET/PATCH/DELETE /users/{id}` | Accounts: list (others see active users' names), role and state, delete (admins) |
 | `POST /users`, `POST /users/{id}/password`, `DELETE /users/{id}/totp`, `DELETE /users/{id}/oidc` | Create with password, reset password, turn TOTP off, remove links (admins, session only, not the own account) |
 | `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409` |
+| `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins); the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |
 | `GET/POST /drawers`, `GET/PATCH/DELETE /drawers/{id}`, `PUT/DELETE /drawers/{id}/shares/{user_id}` | Drawers and shares (owner) |
 | `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `limit`, `offset`, `semantic_ratio`; hits with snippet, `estimated_total`, `next_offset`, `semantic` |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
@@ -616,6 +636,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /documents/{id}/move` | Into another drawer (owner, or an admin without read access) |
 | `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
 | `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit`; `409` while not parsed |
+| `GET /documents/{id}/facts` | What the document shows of its contacts (read access): names and identifiers with the contact they belong to now and their spans in the text (characters, as `/text` counts them); the codes on its pages with format, page, box, text, the GiroCode read, their identifiers and the amount fields of the same value; for admins, on the documents of how many other contacts an identifier stands; `409` while not parsed |
 | `GET /documents/{id}/log` | Processing log (owner or admin) |
 | `POST /documents/{id}/retry` | Repeat the failed nodes (owner or admin) |
 | `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (owner or admin) |

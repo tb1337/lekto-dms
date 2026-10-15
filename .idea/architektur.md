@@ -75,6 +75,7 @@ Papiq ist hexagonal aufgebaut: Der fachliche Kern kennt keine Datenbank, kein S3
 | Identität | nativer Login, OIDC | weitere Anbieter |
 | Vorschau | PDFium (erste Seite als WebP) | anderer Renderer |
 | Fundstellen (Zitat → Seite und Box) | PDFium (Textebene des Archiv-PDFs) | anderer Locator |
+| Codes (Bar- und QR-Codes der Seiten) | zxing-cpp auf den Seiten des Archivs, mit PDFium in 300 dpi gerendert | anderer Leser |
 | Mustersuche (Regeln) | `regex` mit Zeitlimit | eigener Dienst |
 | Templates (Regeln, Titelmuster) | Liquid (`python-liquid`), mit Grenzen für Schleifen und Ausgabe | andere Template-Sprache |
 | Webhook-Versand | httpx2 | andere HTTP-Bibliothek |
@@ -106,6 +107,7 @@ Backend und Worker in Python; ein Container mit s6-overlay als Prozessüberwachu
 | OCR | OCRmyPDF | entschieden |
 | VLM (Seiten lesen) | OpenAI-kompatible Schnittstelle mit Bildern, als Texterkennung in OCRmyPDF; nur auf Wunsch einer Person (Tobi, 15.10.2026); gemessen mit Claude Sonnet 5.5 über Open WebUI | entschieden |
 | Parsing | Layout-Text aus der Textebene mit PDFium (statt Docling, Tobi 14.10.2026, siehe Ingest-Workflow) | entschieden |
+| Codes | `zxing-cpp` 3.1 (Apache-2.0; Pakete für amd64 und arm64, keine Systempakete): QR, Data Matrix, Aztec, PDF417, Code 128/39, EAN, ITF. Verworfen: `pyzbar` (Systempaket `libzbar0`, kein Data Matrix, zuletzt 2022), `pylibdmtx` (nur Data Matrix), OpenCV (groß, kein Data Matrix), `pyzxing` (Java) (Tobi, 15.10.2026) | entschieden |
 | LLM | OpenAI-kompatible Schnittstelle (Ollama, Cloud) | entschieden |
 | Klassifikator | scikit-learn, Vorhersage mit numpy | entschieden |
 | Templates | Liquid (`python-liquid` 2.3, mit Babel): Regeln schreiben auch Nutzer, Liquid ist für Templates von Endnutzern gebaut (nur übergebene Daten, Grenzen für Schleifen und Ausgabe), die Syntax gleicht Jinja (Tobi, 14.10.2026; Jinja2 verworfen: Ausbrüche aus der Sandbox 2024/2025, keine Schleifengrenze) | entschieden |
@@ -134,7 +136,7 @@ Drei Speicher mit klarer Aufgabe: Datenbank für Metadaten, Objektspeicher für 
 - Zwei gleichwertige Adapter: S3 (erster Server: Garage) oder lokales Dateisystem.
 - Papiq nutzt keine Speicher-Events. Ereignisse entstehen ausschließlich in der Outbox; so bleibt der Adapter frei tauschbar (Garage und Dateisystem kennen keine Events).
 - Originale unveränderlich, Objekt-Key = SHA-256 des Inhalts; Dubletten werden darüber erkannt. Eine Datei, die derselbe Besitzer schon hat, wird abgelehnt; ein anderer Nutzer bekommt ein eigenes Dokument zum selben Objekt.
-- Daneben die Derivate: Archiv-PDF mit Textlayer, der ausgelesene Text (`content.txt`, Klartext wie gesetzt) mit seiner Struktur (`content.json`: Seiten, Zeilen und Wörter mit Boxen), Seitenbilder und Vorschau, die Anfragen an das Sprachmodell; dazu die Modelle des Klassifikators (`classifier/model-<n>.npz`).
+- Daneben die Derivate: Archiv-PDF mit Textlayer, der ausgelesene Text (`content.txt`, Klartext wie gesetzt) mit seiner Struktur (`content.json`: Seiten, Zeilen und Wörter mit Boxen), die Codes der Seiten (`codes.json`), Seitenbilder und Vorschau, die Anfragen an das Sprachmodell; dazu die Modelle des Klassifikators (`classifier/model-<n>.npz`).
 
 **Suche (Meilisearch)**
 
@@ -236,7 +238,7 @@ Signale bestimmen die Lane nicht: Sie enden ok, auch wenn sie sich enthalten (de
 | `signal_llm` | Ein Aufruf des Sprachmodells (Prompt `propose-2`): Absender und Empfänger, Typ, Tags, Datum, Titel, Sprache, dazu die Felder des gewählten Typs und die globalen, je mit Zitat. Der Absender wird Kontakt, der Empfänger nie. Ohne Modell enthält es sich. |
 | `signal_classifier` | Klassifikator aus TF-IDF (Wörter und Wortpaare, keine reinen Ziffern) und logistischer Regression je Ziel: Kontakt, Typ, je Tag. Ein Modell für alle Nutzer. Ohne trainiertes Modell enthält es sich. |
 | `signal_neighbours` | Die fünf ähnlichsten bestätigten Dokumente, die der Besitzer lesen darf (Vektor des ersten Abschnitts gegen den Suchindex); ihr Kontakt, Typ und ihre Tags aus der Datenbank, dazu was die bestätigten Dokumente überhaupt tragen. Ohne Embeddings oder Index enthält es sich. |
-| `signal_facts` | Harte Beweise im Text: Name oder Alias eines Kontakts ganz im Text, Kennungen von Kontakten, unbekannte IBANs und USt-IdNr als Hinweis. |
+| `signal_facts` | Harte Beweise in Text und Codes: Name oder Alias eines Kontakts ganz im Text, Kennungen von Kontakten, unbekannte IBANs und USt-IdNr als Hinweis. Es liest die Bar- und QR-Codes der Seiten des Archivs einmal (`codes.json`, die OCR löscht die Datei mit einem neuen Archiv): Eine Kennung aus einem Code zählt wie eine im Text, der Empfänger eines GiroCodes wie ein Name und schlägt allein nichts vor. Welche Kennungen das Dokument zeigt, hält es in `document_identifiers` fest (Tobi, 15.10.2026). |
 
 Übernommene Dokumente (Migration) durchlaufen die Signale ohne Modellaufruf; das Urteil übernimmt die Metadaten aus Paperless.
 
@@ -268,6 +270,7 @@ Nicht hundertprozentig sicher heißt kein Grün. Ein Signal *nennt* einen Wert, 
 
 - Aliase (Tobi, 10.10.2026): weitere Namen eines Kontakts („Nord Krankenversicherung AG“ für „Nord Versicherungsgruppe“), über alle Kontakte eindeutig zusammen mit den Namen. Wählt die Person in der Prüfansicht einen bestehenden Kontakt, wird der gelesene Name dessen Alias, sofern er mit Name oder Alias ein Wort (ab drei Buchstaben) teilt oder so ähnlich ist wie ein Kontaktvorschlag; war er Alias eines anderen Kontakts, wandert er. Ein automatisch grüner Kontakt lernt keinen Alias. Aliase stehen auf einer Zeile (höchstens 100 je Kontakt, gelernte höchstens 100 Zeichen); die Listen im Prompt gelten wie der Text als Daten. Keine Aliase für Tags; Paperless-Match-Regeln werden nicht übernommen.
 - Kennungen (IBAN mit Prüfziffer, USt-IdNr, Kundennummer hinter einer Beschriftung, E-Mail-Domain ohne Freemail), eindeutig über alle Kontakte. Admins pflegen sie von Hand; das Training lernt weitere: eine Kennung, die in mindestens zwei bestätigten Dokumenten steht, alle eines Kontakts (die eigene IBAN steht bei vielen und wird nie gelernt). Eine verworfene gelernte Kennung bleibt gesperrt; eine gelernte kann von Hand übernommen werden.
+- Anheften (Tobi, 15.10.2026): Eine Kennung ohne Kontakt, die ein Dokument zeigt (im Text oder in einem Code), heftet ein Admin in den Fakten des Dokuments an dessen Kontakt oder einen anderen (`POST /contacts/{id}/identifiers`, eine Kennung von Hand; 409, wenn ein anderer Kontakt sie von Hand trägt). Steht sie auch auf bestätigten Dokumenten anderer Kontakte, warnt die Zeile vorher: vermutlich das eigene Konto (`document_identifiers`, nur für Admins gezählt). Das Dokument wird danach nicht neu bewertet; die nächste Verarbeitung nutzt die Kennung.
 - Das Modell sieht eine Vorauswahl von höchstens 20 Kontakten, deren Namen der Text am stärksten zeigt.
 
 **Training und Rückkopplung**
@@ -381,7 +384,7 @@ Die REST-API ist der einzige Zugang; es gibt keine Hintertüren für UI oder Mig
 
 - **REST-API:** OpenAPI-Spezifikation als Vertrag; daraus wird der TypeScript-Client der Web-UI generiert.
 - **MCP-Server:** im API-Prozess, nutzt dieselbe Service-Schicht; HTTP mit Bearer-Token. Tools (Vorschlag): `search`, `get_document`, `get_text`, `update_metadata`, `list_tags`.
-- **Web-UI:** Single-Page-App auf der API, als statische Dateien im Papiq-Container ausgeliefert; Job-Fortschritt per Server-Sent Events; PDF-Anzeige mit PDF.js; Posteingang mit Lanes, Probelauf für Regeln. Die Dialoge zum Anlegen und Ändern von Stammdaten öffnen auf jeder Seite an Ort und Stelle; der Typ-Dialog verlinkt die Regel seines Titelmusters, außer er wurde aus ihr geöffnet (Tobi, 15.10.2026).
+- **Web-UI:** Single-Page-App auf der API, als statische Dateien im Papiq-Container ausgeliefert; Job-Fortschritt per Server-Sent Events; PDF-Anzeige mit PDF.js; Posteingang mit Lanes, Probelauf für Regeln. Die Dialoge zum Anlegen und Ändern von Stammdaten öffnen auf jeder Seite an Ort und Stelle; der Typ-Dialog verlinkt die Regel seines Titelmusters, außer er wurde aus ihr geöffnet (Tobi, 15.10.2026). Im Inhalt stehen neben dem Text die Fakten (was den Kontakt belegt, was zu anderen Kontakten gehört, Kennungen ohne Kontakt) und die Codes der Seiten, ein GiroCode aufgeschlüsselt; Überfahren markiert die Fundstelle im Text, ein Code lässt sich auf seiner Seite zeigen. Unter Details führt nur ein Chip am Kontaktfeld dorthin (Tobi, 15.10.2026: die Spalte unter Details ist schon voll).
 
 ## Betrieb: Papiq-Container mit s6-overlay
 

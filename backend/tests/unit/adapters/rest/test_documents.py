@@ -348,7 +348,7 @@ async def test_the_model_exchanges_are_listed_per_run(api: Api) -> None:
             ],
         }
     ]
-    wrong = await api.client.get(f"{url}/exchanges/ocr", headers=auth(owner))
+    wrong = await api.client.get(f"{url}/exchanges/parse", headers=auth(owner))
     assert wrong.status_code == 422
 
 

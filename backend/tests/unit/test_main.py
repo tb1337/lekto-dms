@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from papiq.adapters.outbound.memory import MemorySearchIndex
+from papiq.adapters.outbound.memory import FakeOcr, FakeParser, MemorySearchIndex
 from papiq.composition import container
 from papiq.composition.__main__ import main
 from tests.builders import PASSWORD, SECRET_KEY, TRUSTED_PROXY
@@ -97,8 +97,8 @@ def test_train_without_confirmed_documents_fails(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
-    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "layout")):
-        monkeypatch.setitem(table, name, lambda _: object())
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
     assert main(["migrate"]) == 0
 
     assert main(["train"]) == 1
@@ -110,8 +110,8 @@ def test_render_pages_queues_the_documents_without_page_images(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
-    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "layout")):
-        monkeypatch.setitem(table, name, lambda _: object())
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
     assert main(["migrate"]) == 0
 
     assert main(["render-pages"]) == 0
@@ -124,8 +124,8 @@ def test_reparse_queues_the_documents_to_read_again(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
-    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "layout")):
-        monkeypatch.setitem(table, name, lambda _: object())
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
     assert main(["migrate"]) == 0
 
     assert main(["reparse"]) == 0
@@ -141,8 +141,8 @@ def test_reindex_rebuilds_the_index(
     monkeypatch.setenv("PAPIQ_MEILISEARCH_URL", "http://meilisearch:7700")
     index = MemorySearchIndex()
     monkeypatch.setitem(container.SEARCH_INDEXES, "meilisearch", lambda _: index)
-    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "layout")):
-        monkeypatch.setitem(table, name, lambda _: object())
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
     assert main(["migrate"]) == 0
 
     assert main(["reindex"]) == 0

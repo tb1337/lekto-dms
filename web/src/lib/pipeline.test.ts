@@ -27,6 +27,7 @@ function processing(
 	return {
 		status,
 		run: 1,
+		vision: false,
 		nodes: GRAPH.map(({ node }) => ({
 			node,
 			status: outcomes[node] ? 'done' : 'waiting',

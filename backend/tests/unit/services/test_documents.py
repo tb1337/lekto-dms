@@ -381,4 +381,4 @@ async def test_only_the_owner_reads_the_model_exchanges(world: World, scene: Sce
     with pytest.raises(NotFoundError):
         await world.documents.exchanges(scene.stranger.id, id, Node.SIGNAL_LLM)
     with pytest.raises(ValidationError, match="does not ask a language model"):
-        await world.documents.exchanges(scene.owner.id, id, Node.OCR)
+        await world.documents.exchanges(scene.owner.id, id, Node.PARSE)

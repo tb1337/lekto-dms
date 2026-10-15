@@ -213,6 +213,8 @@ documents = Table(
     # State of every node in the current run: {node: {status, outcome, started_at, finished_at}}.
     # The default is for the column's addition (revision 0010); every row is written in full.
     Column("processing_nodes", json_type(), nullable=False, server_default="{}"),
+    # The current run reads the pages with the vision language model (`Processing.vision`).
+    Column("processing_vision", Boolean, nullable=False, server_default=false()),
     # Set once the pages node rendered the page images.
     Column("page_count", Integer, nullable=True),
     # When a person last set or confirmed the metadata (see `Document.confirmed_at`).

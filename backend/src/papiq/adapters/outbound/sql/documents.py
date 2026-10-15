@@ -228,6 +228,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
                         Node(node): _node_state(state)
                         for node, state in row.processing_nodes.items()
                     },
+                    vision=row.processing_vision,
                 ),
                 created_at=row.created_at,
                 updated_at=row.updated_at,
@@ -258,6 +259,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             "processing_nodes": {
                 node.value: _node_json(state) for node, state in processing.nodes.items()
             },
+            "processing_vision": processing.vision,
             "created_at": entity.created_at,
             "updated_at": entity.updated_at,
             "version": entity.version,

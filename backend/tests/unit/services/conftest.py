@@ -20,6 +20,7 @@ from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.identity import Credential, check_new_password
 from papiq.core.domain.pipeline import NODES, Node, NodeResult
 from papiq.core.domain.users import Role, User
+from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.auth import AuthService
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.drawers import DrawerService
@@ -119,13 +120,19 @@ class World:
     def webhook_delivery(self, policy: WebhookPolicy | None = None) -> WebhookDeliveryService:
         return WebhookDeliveryService(self.uow, self.clock, self.cipher, self.sender, policy)
 
-    def pipeline(self, executors: Mapping[Node, NodeExecutor] | None = None) -> PipelineService:
+    def pipeline(
+        self,
+        executors: Mapping[Node, NodeExecutor] | None = None,
+        *,
+        vision: VisionModel | None = None,
+    ) -> PipelineService:
         return PipelineService(
             self.uow,
             self.clock,
             self.object_store,
             {**self.executors, **(executors or {})},
             pipeline_version="test",
+            vision=vision,
         )
 
     async def user(self, name: str | None = None, role: Role = Role.USER) -> User:

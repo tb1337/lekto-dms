@@ -17,11 +17,14 @@ from pathlib import Path
 
 from papiq.core.domain import media_types
 from papiq.core.domain.documents import Document
+from papiq.core.domain.exchanges import ModelCall
 from papiq.core.domain.json_value import JsonObject
-from papiq.core.domain.pipeline import NodeResult, Outcome
-from papiq.core.domain.reading import readings_to_json
+from papiq.core.domain.pipeline import Node, NodeResult, Outcome
+from papiq.core.domain.reading import NO_TEXT_REASON, readings_to_json
 from papiq.core.ports import DocumentParser, ObjectStore, Ocr, PageRenderer, UnitOfWork
+from papiq.core.ports.ocr import VisionReading
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE, PREVIEW_FILE
+from papiq.core.services.exchanges import keep_calls
 from papiq.core.services.objects import (
     archive_key,
     legacy_text_key,
@@ -42,21 +45,39 @@ class OcrNode:
     uncertain, with the engine's reason. An archive that is PDF/A but differs from what was
     asked (a signature not carried over) is OK with the engine's note as reason. How well each
     recognised page was read goes into the log (`readings`), and whether another OCR's text
-    layer was replaced (`read_again`); the judge and the fields node read the readings there."""
+    layer was replaced (`read_again`); the judge and the fields node read the readings there.
+
+    In a run a person asked to read with the vision language model (`Processing.vision`), the
+    model reads every page: the log names it, its prompt and its tokens (`vision`), and what
+    was sent is kept beside the document (`exchanges_key`). Without a model configured, the
+    node fails."""
 
     def __init__(self, store: ObjectStore, ocr: Ocr) -> None:
         self._store = store
         self._ocr = ocr
 
     async def run(self, document: Document) -> NodeResult:
+        vision = document.processing.vision
+        input: JsonObject = {"original": original_key(document.sha256)}
+        if vision:
+            input["vision"] = True
+            if self._ocr.vision is None:
+                return NodeResult(
+                    outcome=Outcome.FAILED,
+                    reason=NO_VISION_MODEL,
+                    model_version=None,
+                    input=input,
+                    output={},
+                )
         async with work_directory() as work:
             original, archive = work / "original", work / "archive.pdf"
             await self._store.download(original_key(document.sha256), original)
-            result = await self._ocr.make_archive(original, archive, media_type=document.media_type)
+            result = await self._ocr.make_archive(
+                original, archive, media_type=document.media_type, vision=vision
+            )
             await self._store.upload(
                 archive_key(document.id), archive, content_type=media_types.PDF
             )
-        input: JsonObject = {"original": original_key(document.sha256)}
         output: JsonObject = {
             "archive": archive_key(document.id),
             "pages": result.pages,
@@ -68,24 +89,51 @@ class OcrNode:
             output["readings"] = readings_to_json(result.readings)
         if result.read_again:
             output["read_again"] = True
+        note = result.note
         if not result.pdfa:
-            reason = "the archive could not be made PDF/A"
-            if result.note is not None:
-                reason = f"{reason}: {result.note}"
-            return NodeResult(
-                outcome=Outcome.UNCERTAIN,
-                reason=reason,
-                model_version=result.engine,
-                input=input,
-                output=output,
-            )
+            note = "the archive could not be made PDF/A" + ("" if note is None else f": {note}")
+        if result.vision is not None:
+            output["vision"] = _vision_output(result.vision)
+            note = read_by(result.vision) + ("" if note is None else f"; {note}")
+            await keep_calls(self._store, document, Node.OCR, list(result.vision.calls))
         return NodeResult(
-            outcome=Outcome.OK,
-            reason=result.note,
+            outcome=Outcome.OK if result.pdfa else Outcome.UNCERTAIN,
+            reason=note,
             model_version=result.engine,
             input=input,
             output=output,
         )
+
+
+NO_VISION_MODEL = (
+    "a person asked for the vision language model, but none is configured "
+    "(PAPIQ_VLM_BASE_URL, PAPIQ_VLM_MODEL)"
+)
+
+
+def read_by(vision: VisionReading) -> str:
+    return f"every page was read by the vision language model {vision.model} ({vision.endpoint})"
+
+
+def _vision_output(vision: VisionReading) -> JsonObject:
+    return {
+        "model": vision.model,
+        "endpoint": vision.endpoint,
+        "prompt": vision.prompt,
+        "calls": len(vision.calls),
+        "tokens": _tokens(vision.calls),
+    }
+
+
+def _tokens(calls: tuple[ModelCall, ...]) -> JsonObject:
+    """The input and output tokens of all calls, as far as the endpoint reported them."""
+    totals: JsonObject = {}
+    for name in ("prompt_tokens", "completion_tokens"):
+        counts = [call.usage.get(name) for call in calls]
+        numbers = [count for count in counts if isinstance(count, int)]
+        if numbers:
+            totals[name] = sum(numbers)
+    return totals
 
 
 class PagesNode:
@@ -175,7 +223,7 @@ class ParseNode:
         if not has_text(text):
             return NodeResult(
                 outcome=Outcome.FAILED,
-                reason="no text recognised: the pages are blank or hold only pictures",
+                reason=NO_TEXT_REASON,
                 model_version=result.parser,
                 input=input,
                 output=output,

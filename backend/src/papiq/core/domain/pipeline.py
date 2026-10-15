@@ -246,12 +246,14 @@ class Processing:
 
     `run` counts processing runs; it grows with every retry or reprocessing, so jobs of an
     earlier run are recognised as stale. `nodes` holds the state of every node in the current
-    run.
+    run. `vision`: a person asked that this run read the pages with the vision language model
+    (`Document.read_with_vision`); a retry keeps it, another reprocessing does not.
     """
 
     status: ProcessingStatus
     run: int
     nodes: dict[Node, NodeState]
+    vision: bool = False
 
     def __post_init__(self) -> None:
         missing = [node.value for node in NODES if node not in self.nodes]

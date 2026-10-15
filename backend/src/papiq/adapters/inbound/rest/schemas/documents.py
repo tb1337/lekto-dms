@@ -22,6 +22,7 @@ from papiq.core.domain.pipeline import (
     Outcome,
     ProcessingStatus,
 )
+from papiq.core.domain.reading import DocumentReading, VisionAdvice
 from papiq.core.domain.users import User
 from papiq.core.services.objects import EXCHANGE_NODES
 
@@ -33,7 +34,7 @@ ReprocessNode = StrEnum(  # type: ignore[misc]
 ExchangeNode = StrEnum(  # type: ignore[misc]
     "ExchangeNode", {node.name: node.value for node in EXCHANGE_NODES}
 )
-"""Nodes that ask the language model."""
+"""Nodes that ask a language model (OCR: the vision language model)."""
 
 
 class DocumentAccepted(BaseModel):
@@ -79,6 +80,12 @@ class Processing(BaseModel):
             "node after the nodes it needs."
         )
     )
+    vision: bool = Field(
+        description=(
+            "A person asked that this run read the pages with the vision language model "
+            "(`POST /documents/{id}/vision`): the OCR node sends every page to it."
+        )
+    )
 
 
 class DocumentDetails(BaseModel):
@@ -113,6 +120,7 @@ class DocumentDetails(BaseModel):
                     "processing": {
                         "status": "completed",
                         "run": 1,
+                        "vision": False,
                         "nodes": [
                             {
                                 "node": "receive",
@@ -197,6 +205,7 @@ class DocumentDetails(BaseModel):
                 status=state.status,
                 run=state.run,
                 nodes=[NodeStateOut.of(node, item) for node, item in state.nodes.items()],
+                vision=state.vision,
             ),
             created_at=document.created_at,
             updated_at=document.updated_at,
@@ -440,3 +449,62 @@ class DocumentPreviewOut(BaseModel):
     visibility: VisibilityOut | None = Field(
         description="Who would see the document; null if the caller could not read it then."
     )
+
+
+class PageReadingOut(BaseModel):
+    page: int = Field(description="From 1.")
+    words: int = Field(description="The words recognised on the page.")
+    unsure: int = Field(
+        description=(
+            "Of them, those the reader was unsure of: below 60 % of Tesseract's confidence, "
+            "or what the vision language model could not read."
+        )
+    )
+    poor: bool = Field(
+        description="The page counts as poorly read (`PAPIQ_POOR_READING_THRESHOLD`)."
+    )
+
+
+class ReadingOut(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "vision": False,
+                    "pages": [{"page": 1, "words": 50, "unsure": 6, "poor": True}],
+                    "advice": "poor_page",
+                }
+            ]
+        }
+    )
+
+    vision: bool = Field(description="The archive's text was read by the vision language model.")
+    pages: list[PageReadingOut] = Field(
+        description=(
+            "Each page the reader recognised, by the archive's latest OCR; none for pages "
+            "with text of their own, and for documents read before the readings were logged."
+        )
+    )
+    advice: VisionAdvice | None = Field(
+        description=(
+            "Why reading the document with the vision language model is advised, if it is: "
+            "`no_text`, the OCR found no text (red); `poor_page`, it waits for a person and a "
+            "page was read poorly. None once the model has read it."
+        )
+    )
+
+    @classmethod
+    def of(cls, reading: DocumentReading) -> "ReadingOut":
+        return cls(
+            vision=reading.vision,
+            pages=[
+                PageReadingOut(
+                    page=page.page,
+                    words=page.words,
+                    unsure=page.unsure,
+                    poor=page.page in reading.poor,
+                )
+                for page in reading.pages
+            ],
+            advice=reading.advice,
+        )

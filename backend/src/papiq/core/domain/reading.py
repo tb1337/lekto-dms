@@ -8,12 +8,16 @@ broken scan, and a number read there may be anything.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.json_value import JsonObject, JsonValue
 
 # Fewer words say too little about a page: a blank back side, a page number.
 MIN_WORDS = 10
+
+NO_TEXT_REASON = "no text recognised: the pages are blank or hold only pictures"
+"""Why the parse node fails a document without any text."""
 
 
 @dataclass(frozen=True)
@@ -63,3 +67,41 @@ def readings_from_json(data: object) -> tuple[PageReading, ...]:
             except ValidationError:
                 continue
     return tuple(readings)
+
+
+class VisionAdvice(StrEnum):
+    """Why a person is advised to have the document read by the vision language model: the
+    text recognition made it red or yellow."""
+
+    NO_TEXT = "no_text"  # red: no text was recognised
+    POOR_PAGE = "poor_page"  # yellow or red, with a poorly read page
+
+
+@dataclass(frozen=True, kw_only=True)
+class DocumentReading:
+    """How the text of the document's archive was read (its latest OCR): by the vision
+    language model or not, each recognised page, and the advice to read it with the model."""
+
+    vision: bool
+    pages: tuple[PageReading, ...]
+    poor: tuple[int, ...]  # the pages that count as poorly read
+    advice: VisionAdvice | None
+
+
+def vision_advice(
+    *,
+    vision: bool,
+    poor: Sequence[int],
+    needs_person: bool,
+    no_text: bool,
+) -> VisionAdvice | None:
+    """The advice for a document that waits for a person (`needs_person`: yellow or red, not
+    being processed): its parse found no text, or a page was read poorly. None once the model
+    has read it: reading again would cost and change nothing."""
+    if vision or not needs_person:
+        return None
+    if no_text:
+        return VisionAdvice.NO_TEXT
+    if poor:
+        return VisionAdvice.POOR_PAGE
+    return None

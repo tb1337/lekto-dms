@@ -9,7 +9,7 @@ import pytest
 from papiq.adapters.outbound.crypto import Argon2PasswordHasher, PyotpTotp
 from papiq.adapters.outbound.filesystem import FilesystemObjectStore
 from papiq.adapters.outbound.meilisearch import MeilisearchIndex
-from papiq.adapters.outbound.memory import ManualClock
+from papiq.adapters.outbound.memory import FakeOcr, FakeParser, ManualClock
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
 from papiq.adapters.outbound.oidc import AuthlibOidcProvider
 from papiq.adapters.outbound.openai_compat import OpenAiCompatEmbeddings, OpenAiCompatLanguageModel
@@ -183,10 +183,8 @@ def test_optional_ports_are_only_selected_when_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
-    tables: list[dict[str, Any]] = [container.OCR_ENGINES, container.PARSERS]
-    names = ["ocrmypdf", "layout"]
-    for table, name in zip(tables, names, strict=True):
-        monkeypatch.setitem(table, name, lambda _: object())
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
 
     built = build_container(settings())
     assert built.search_index is None
@@ -205,8 +203,8 @@ def test_optional_ports_are_only_selected_when_configured(
 
 def test_language_model_and_embeddings_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
-    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "layout")):
-        monkeypatch.setitem(table, name, lambda _: object())
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
 
     built = build_container(
         settings(
@@ -239,8 +237,8 @@ def test_templates_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """Dates and amounts of templates in `PAPIQ_TEMPLATE_LOCALE`, the `currency` filter in
     `PAPIQ_DEFAULT_CURRENCY`; the memory container takes the defaults."""
     monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
-    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "layout")):
-        monkeypatch.setitem(table, name, lambda _: object())
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
     values: dict[str, TemplateValue] = {"day": date(2026, 3, 31), "sum": Decimal("12.5")}
     template = "{{ day | datetime: format: 'MMMM' }} {{ sum | currency }}"
     built = build_container(settings(template_locale="en_US", default_currency="CHF"))
@@ -251,8 +249,8 @@ def test_templates_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 
 async def test_search_index_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
-    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "layout")):
-        monkeypatch.setitem(table, name, lambda _: object())
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
 
     built = build_container(
         settings(
@@ -287,8 +285,8 @@ async def test_search_index_from_settings(monkeypatch: pytest.MonkeyPatch) -> No
 
 async def test_search_services_follow_the_search_index(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
-    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "layout")):
-        monkeypatch.setitem(table, name, lambda _: object())
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
 
     without = build_container(settings())
     assert without.search_index is None

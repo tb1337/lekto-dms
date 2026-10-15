@@ -1075,7 +1075,7 @@ async def _stored(database: Database, *, old: bool) -> dict[str, Any]:
             return (await connection.execute(select(table))).one()
 
         definition, scope, value = await one(definitions), await one(types), await one(values)
-        documents = _before_0009(t.documents) if old else t.documents
+        documents = _before_0009(t.documents) if old else _before_0021(t.documents)
         log_table = _before_0009(t.processing_log) if old else t.processing_log
         document, log = await one(documents), await one(log_table)
         rule, job, event = await one(t.rule_versions), await one(t.jobs), await one(t.outbox)
@@ -1097,7 +1097,7 @@ async def _stored(database: Database, *, old: bool) -> dict[str, Any]:
 
 async def _node_names(database: Database, *, old: bool) -> dict[str, Any]:
     """The rows of `test_steps_become_nodes_and_back`, under the old or new names."""
-    documents = _before_0009(t.documents) if old else t.documents
+    documents = _before_0009(t.documents) if old else _before_0021(t.documents)
     log_table = _before_0009(t.processing_log) if old else t.processing_log
     async with database.reading() as connection:
 
@@ -1130,15 +1130,23 @@ async def _node_states(database: Database, ids: dict[str, Any]) -> dict[str, dic
 
 
 async def _document_rows(database: Database, *, old: bool = False) -> list[Any]:
-    table = _before_0010(t.documents) if old else t.documents
+    table = _before_0010(t.documents) if old else _before_0021(t.documents)
     async with database.reading() as connection:
         return list((await connection.execute(select(table).order_by(table.c.sha256))).all())
 
 
+def _before_0021(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0021 had it: no vision reading of the run."""
+    return sa.table(
+        table.name, *(sa.column(c.name, c.type) for c in table.c if c.name != "processing_vision")
+    )
+
+
 def _before_0010(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0010 had it: the current node and the outcomes instead
-    of the state of every node, and no page count (0011) or confirmation (0014)."""
-    later = {"processing_nodes", "page_count", "confirmed_at"}
+    of the state of every node, and no page count (0011), confirmation (0014) or vision
+    reading (0021)."""
+    later = {"processing_nodes", "page_count", "confirmed_at", "processing_vision"}
     columns = [sa.column(c.name, c.type) for c in table.c if c.name not in later]
     if table.name == "documents":
         columns.append(sa.column("processing_node", sa.Text()))

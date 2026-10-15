@@ -10,7 +10,6 @@ document; uncertain ones are only proposed, and the node is uncertain (the docum
 the inbox).
 """
 
-import json
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -40,13 +39,7 @@ from papiq.core.domain.evidence import (
     read_number,
     read_period,
 )
-from papiq.core.domain.exchanges import (
-    ModelCall,
-    RunExchange,
-    exchanges_from_json,
-    exchanges_to_json,
-    with_run,
-)
+from papiq.core.domain.exchanges import ModelCall
 from papiq.core.domain.fields import (
     FieldDefinition,
     FieldType,
@@ -100,8 +93,9 @@ from papiq.core.services.classification.signals import (
     model_proposal,
     signals_of,
 )
+from papiq.core.services.exchanges import keep_calls
 from papiq.core.services.nodes import work_directory
-from papiq.core.services.objects import archive_key, exchanges_key, load_text, text_key
+from papiq.core.services.objects import archive_key, load_text, text_key
 from papiq.core.services.pipeline import MetadataResult
 from papiq.core.services.titles import has_machine_title
 
@@ -208,7 +202,7 @@ class _ModelStep:
             raise _UnfitAnswerError(errors, answers)
         finally:
             if calls:
-                await self._keep(document, node, calls)
+                await keep_calls(self._store, document, node, calls)
 
     async def _locate(self, document: Document, checks: list[FieldCheck]) -> list[FieldCheck]:
         """Each quote's page and boxes in the archive PDF. Without a locator, an archive or a
@@ -235,37 +229,6 @@ class _ModelStep:
             replace(check, locations=found.get((check.evidence or "").strip(), ()))
             for check in checks
         ]
-
-    async def _keep(self, document: Document, node: Node, calls: list[ModelCall]) -> None:
-        """Add the calls of this run to the node's file; a run that is there already (the node
-        ran again within it) is replaced. Keeping them is for people who look into a document:
-        it never fails the node, nor hides why the node failed."""
-        try:
-            await self._write_exchanges(document, node, calls)
-        except Exception:
-            log.warning(
-                "the model exchanges were not kept",
-                exc_info=True,
-                extra={"document_id": str(document.id), "node": node.value},
-            )
-
-    async def _write_exchanges(
-        self, document: Document, node: Node, calls: list[ModelCall]
-    ) -> None:
-        key = exchanges_key(document.id, node)
-        runs: list[RunExchange] = []
-        try:
-            runs = exchanges_from_json(json.loads(await self._store.get(key)))
-        except NotFoundError:
-            pass
-        except (ValueError, ValidationError):
-            log.warning(
-                "replacing an unreadable file of model exchanges",
-                extra={"document_id": str(document.id), "node": node.value},
-            )
-        runs = with_run(runs, RunExchange(run=document.processing.run, calls=tuple(calls)))
-        data = json.dumps(exchanges_to_json(runs), ensure_ascii=False).encode("utf-8")
-        await self._store.put(key, data, content_type="application/json")
 
     def _input(self, document: Document, text: str, sent: Shortened, prompt: str) -> JsonObject:
         assert self._model is not None

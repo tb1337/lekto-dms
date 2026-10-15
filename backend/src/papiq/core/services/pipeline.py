@@ -24,6 +24,7 @@ from papiq.core.domain.errors import (
     ConcurrencyError,
     ConflictError,
     DuplicateDocumentError,
+    InvalidTransitionError,
     NotFoundError,
     OpenFieldsError,
     PermissionDeniedError,
@@ -39,6 +40,7 @@ from papiq.core.domain.permissions import can_control_document, can_file_into
 from papiq.core.domain.pipeline import (
     CHOSEN_DRAWER,
     NODES,
+    Lane,
     Node,
     NodeResult,
     NodeRun,
@@ -46,9 +48,16 @@ from papiq.core.domain.pipeline import (
     Outcome,
     ProcessingStatus,
 )
+from papiq.core.domain.reading import (
+    NO_TEXT_REASON,
+    DocumentReading,
+    readings_from_json,
+    vision_advice,
+)
 from papiq.core.domain.rule_engine import DRAWER, changed_fields
 from papiq.core.domain.users import User
 from papiq.core.ports import Clock, ObjectStore, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports.ocr import VisionModel
 from papiq.core.services._access import (
     check_references,
     load_actor,
@@ -190,7 +199,11 @@ class PipelineService:
         pipeline_version: str,
         retry: RetryPolicy = DEFAULT_RETRY,
         lease: timedelta = timedelta(minutes=10),
+        vision: VisionModel | None = None,
+        poor_reading: float = 0.08,
     ) -> None:
+        """`vision`: the vision language model the OCR can read pages with, if any;
+        `poor_reading`: the share of unsure words from which a page counts as poorly read."""
         missing = set(NODES) - {Node.RECEIVE} - set(executors)
         if missing:
             raise ValueError(f"no executor for nodes: {', '.join(sorted(missing))}")
@@ -201,6 +214,13 @@ class PipelineService:
         self._version = pipeline_version
         self._retry = retry
         self._lease = lease
+        self._vision = vision
+        self._poor_reading = poor_reading
+
+    @property
+    def vision(self) -> VisionModel | None:
+        """The vision language model a person can have documents read with, if any."""
+        return self._vision
 
     # --- ingest ---------------------------------------------------------------------------------
 
@@ -387,6 +407,48 @@ class PipelineService:
             document.reprocess_from(node, self._clock.now())
             await self._restart(uow, document)
         return document
+
+    async def read_with_vision(self, actor: UserId, id: DocumentId) -> Document:
+        """Owner or admin: have the vision language model read every page, and process the
+        document again from OCR (`Document.read_with_vision`). Sending the pages out is a
+        person's decision; nothing else asks for it. InvalidTransitionError without a model,
+        and where reprocessing from OCR is not possible."""
+        if self._vision is None:
+            raise InvalidTransitionError("no vision language model is configured")
+        async with self._uow() as uow:
+            document = await _owned_document(uow, await load_actor(uow, actor), id)
+            document.read_with_vision(self._clock.now())
+            await self._restart(uow, document)
+        return document
+
+    async def reading(self, actor: UserId, id: DocumentId) -> DocumentReading:
+        """Owner or admin, as the log: how the archive's text was read (its latest OCR that
+        made one), and whether reading it with the vision language model is advised: the
+        document waits for a person because no text was found, or with a poorly read page."""
+        async with self._uow() as uow:
+            document = await _owned_document(uow, await load_actor(uow, actor), id)
+            log = await uow.processing_log.list_for(id)
+        ocr = _latest(log, Node.OCR, made=True)
+        parse = _latest(log, Node.PARSE)
+        vision = ocr is not None and "vision" in ocr.result.output
+        pages = () if ocr is None else readings_from_json(ocr.result.output.get("readings"))
+        poor = tuple(page.page for page in pages if page.poor(self._poor_reading))
+        needs_person = document.lane in (Lane.YELLOW, Lane.RED) and (
+            document.processing.status is not ProcessingStatus.PROCESSING
+        )
+        no_text = (
+            parse is not None
+            and parse.result.outcome is Outcome.FAILED
+            and parse.result.reason == NO_TEXT_REASON
+        )
+        return DocumentReading(
+            vision=vision,
+            pages=pages,
+            poor=poor,
+            advice=vision_advice(
+                vision=vision, poor=poor, needs_person=needs_person, no_text=no_text
+            ),
+        )
 
     async def confirm(
         self,
@@ -855,6 +917,17 @@ class PipelineService:
                 duration=now - started,
             )
         )
+
+
+def _latest(log: Iterable[NodeRun], node: Node, *, made: bool = False) -> NodeRun | None:
+    """The latest run of `node` in the log; with `made`, the latest that did not fail (whose
+    result the document still has)."""
+    runs = [
+        entry
+        for entry in log
+        if entry.node is node and not (made and entry.result.outcome is Outcome.FAILED)
+    ]
+    return runs[-1] if runs else None
 
 
 async def _owned_document(uow: UnitOfWork, user: User, id: DocumentId) -> Document:

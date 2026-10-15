@@ -1158,7 +1158,7 @@ export interface paths {
 		};
 		/**
 		 * What a node sent to the language model
-		 * @description The owner and admins, as the log. The messages, the answer and the usage report of every call of `node` to the language model, per processing run, oldest first; empty if it never asked one (also for runs from before the messages were kept).
+		 * @description The owner and admins, as the log. The messages, the answer and the usage report of every call of `node` to the language model, per processing run, oldest first; empty if it never asked one (also for runs from before the messages were kept). For `ocr`, the vision language model's calls, one per page; the page image stands in the message as a placeholder.
 		 */
 		get: operations['model_exchanges_api_v1_documents__id__exchanges__node__get'];
 		put?: never;
@@ -1203,6 +1203,46 @@ export interface paths {
 		 * @description The owner and admins. Processing continues with the following nodes.
 		 */
 		post: operations['retry_api_v1_documents__id__retry_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/{id}/vision': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Read the document with the vision language model
+		 * @description The owner and admins. Sends every page as an image to the vision language model (`PAPIQ_VLM_*`, named in `GET /pipeline`) and processes the document again from `ocr`: the model's text becomes the archive's text layer and is checked like any other OCR. Only a person asks for it; the advice is in `GET /documents/{id}/reading`. 409 without a model, while processing runs, or past a failed node.
+		 */
+		post: operations['read_with_vision_api_v1_documents__id__vision_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/{id}/reading': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * How the text of a document was read
+		 * @description The owner and admins, as the log. Whether the archive's text is the vision language model's, the words and unsure words of each page its latest OCR recognised, and whether reading it with the model is advised.
+		 */
+		get: operations['reading_api_v1_documents__id__reading_get'];
+		put?: never;
+		post?: never;
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -1298,7 +1338,7 @@ export interface paths {
 		};
 		/**
 		 * The processing graph
-		 * @description The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Papiq; `processing.nodes` of a document names the state of each node.
+		 * @description The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Papiq; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured.
 		 */
 		get: operations['pipeline_api_v1_pipeline_get'];
 		put?: never;
@@ -2174,7 +2214,8 @@ export interface components {
 		 *           }
 		 *         ],
 		 *         "run": 1,
-		 *         "status": "completed"
+		 *         "status": "completed",
+		 *         "vision": false
 		 *       },
 		 *       "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
 		 *       "tag_ids": [],
@@ -2305,7 +2346,8 @@ export interface components {
 		 *           }
 		 *         ],
 		 *         "run": 1,
-		 *         "status": "completed"
+		 *         "status": "completed",
+		 *         "vision": false
 		 *       },
 		 *       "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
 		 *       "tag_ids": [],
@@ -2608,7 +2650,7 @@ export interface components {
 		 * ExchangeNode
 		 * @enum {string}
 		 */
-		ExchangeNode: 'signal_llm' | 'fields';
+		ExchangeNode: 'ocr' | 'signal_llm' | 'fields';
 		/**
 		 * FieldCheckOut
 		 * @description A field the model proposed, and its check.
@@ -3253,6 +3295,29 @@ export interface components {
 		 * @enum {string}
 		 */
 		Outcome: 'ok' | 'uncertain' | 'failed';
+		/** PageReadingOut */
+		PageReadingOut: {
+			/**
+			 * Page
+			 * @description From 1.
+			 */
+			page: number;
+			/**
+			 * Words
+			 * @description The words recognised on the page.
+			 */
+			words: number;
+			/**
+			 * Unsure
+			 * @description Of them, those the reader was unsure of: below 60 % of Tesseract's confidence, or what the vision language model could not read.
+			 */
+			unsure: number;
+			/**
+			 * Poor
+			 * @description The page counts as poorly read (`PAPIQ_POOR_READING_THRESHOLD`).
+			 */
+			poor: boolean;
+		};
 		/**
 		 * PasswordChange
 		 * @example {
@@ -3349,7 +3414,11 @@ export interface components {
 		 *             "pages"
 		 *           ]
 		 *         }
-		 *       ]
+		 *       ],
+		 *       "vision": {
+		 *         "endpoint": "chat.example",
+		 *         "model": "claude-sonnet-5-5"
+		 *       }
 		 *     }
 		 */
 		PipelineOut: {
@@ -3358,6 +3427,8 @@ export interface components {
 			 * @description In graph order: every node after its needs.
 			 */
 			nodes: components['schemas']['GraphNodeOut'][];
+			/** @description The vision language model a person can have documents read with (`POST /documents/{id}/vision`); none if it is not configured. */
+			vision: components['schemas']['VisionOut'] | null;
 		};
 		/** Processing */
 		Processing: {
@@ -3373,12 +3444,46 @@ export interface components {
 			 * @description The state of every node of the graph in the current run, in graph order: every node after the nodes it needs.
 			 */
 			nodes: components['schemas']['NodeStateOut'][];
+			/**
+			 * Vision
+			 * @description A person asked that this run read the pages with the vision language model (`POST /documents/{id}/vision`): the OCR node sends every page to it.
+			 */
+			vision: boolean;
 		};
 		/**
 		 * ProcessingStatus
 		 * @enum {string}
 		 */
 		ProcessingStatus: 'processing' | 'completed' | 'failed' | 'review';
+		/**
+		 * ReadingOut
+		 * @example {
+		 *       "advice": "poor_page",
+		 *       "pages": [
+		 *         {
+		 *           "page": 1,
+		 *           "poor": true,
+		 *           "unsure": 6,
+		 *           "words": 50
+		 *         }
+		 *       ],
+		 *       "vision": false
+		 *     }
+		 */
+		ReadingOut: {
+			/**
+			 * Vision
+			 * @description The archive's text was read by the vision language model.
+			 */
+			vision: boolean;
+			/**
+			 * Pages
+			 * @description Each page the reader recognised, by the archive's latest OCR; none for pages with text of their own, and for documents read before the readings were logged.
+			 */
+			pages: components['schemas']['PageReadingOut'][];
+			/** @description Why reading the document with the vision language model is advised, if it is: `no_text`, the OCR found no text (red); `poor_page`, it waits for a person and a page was read poorly. None once the model has read it. */
+			advice: components['schemas']['VisionAdvice'] | null;
+		};
 		/**
 		 * RecoveryCodes
 		 * @description Shown once; each works once instead of a TOTP code.
@@ -4261,6 +4366,23 @@ export interface components {
 			 * @description The drawer's shares, if the document is green and the caller owns the drawer or is an admin; otherwise not shown.
 			 */
 			shares: components['schemas']['ShareOut'][] | null;
+		};
+		/**
+		 * VisionAdvice
+		 * @description Why a person is advised to have the document read by the vision language model: the
+		 *     text recognition made it red or yellow.
+		 * @enum {string}
+		 */
+		VisionAdvice: 'no_text' | 'poor_page';
+		/** VisionOut */
+		VisionOut: {
+			/** Model */
+			model: string;
+			/**
+			 * Endpoint
+			 * @description Where the page images go: host and port.
+			 */
+			endpoint: string;
 		};
 		/**
 		 * WebhookCreate
@@ -13560,6 +13682,237 @@ export interface operations {
 					 *       "title": "Conflict",
 					 *       "status": 409,
 					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	read_with_vision_api_v1_documents__id__vision_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DocumentDetails'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	reading_api_v1_documents__id__reading_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ReadingOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

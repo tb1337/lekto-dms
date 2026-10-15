@@ -37,6 +37,7 @@ from papiq.adapters.inbound.rest.schemas.documents import (
     ImportedMetadataIn,
     LogEntry,
     MoveRequest,
+    ReadingOut,
     ReprocessRequest,
     RunExchangeOut,
     VisibilityOut,
@@ -495,7 +496,9 @@ async def document_structure(id: UUID, user: CurrentUser, context: Context) -> R
     description=(
         "The owner and admins, as the log. The messages, the answer and the usage report of "
         "every call of `node` to the language model, per processing run, oldest first; empty "
-        "if it never asked one (also for runs from before the messages were kept)."
+        "if it never asked one (also for runs from before the messages were kept). For `ocr`, "
+        "the vision language model's calls, one per page; the page image stands in the "
+        "message as a placeholder."
     ),
     response_model=list[RunExchangeOut],
     responses=problem_responses(401, 403, 404, 422),
@@ -530,6 +533,39 @@ async def processing_log(id: UUID, user: CurrentUser, context: Context) -> list[
 )
 async def retry(id: UUID, user: CurrentUser, context: Context) -> DocumentDetails:
     return _details(await context.pipeline.retry(user, DocumentId(id)))
+
+
+@router.post(
+    "/{id}/vision",
+    status_code=202,
+    summary="Read the document with the vision language model",
+    description=(
+        "The owner and admins. Sends every page as an image to the vision language model "
+        "(`PAPIQ_VLM_*`, named in `GET /pipeline`) and processes the document again from "
+        "`ocr`: the model's text becomes the archive's text layer and is checked like any "
+        "other OCR. Only a person asks for it; the advice is in `GET /documents/{id}/reading`. "
+        "409 without a model, while processing runs, or past a failed node."
+    ),
+    response_model=DocumentDetails,
+    responses=problem_responses(401, 403, 404, 409, 422),
+)
+async def read_with_vision(id: UUID, user: CurrentUser, context: Context) -> DocumentDetails:
+    return _details(await context.pipeline.read_with_vision(user, DocumentId(id)))
+
+
+@router.get(
+    "/{id}/reading",
+    summary="How the text of a document was read",
+    description=(
+        "The owner and admins, as the log. Whether the archive's text is the vision language "
+        "model's, the words and unsure words of each page its latest OCR recognised, and "
+        "whether reading it with the model is advised."
+    ),
+    response_model=ReadingOut,
+    responses=problem_responses(401, 403, 404, 422),
+)
+async def reading(id: UUID, user: CurrentUser, context: Context) -> ReadingOut:
+    return ReadingOut.of(await context.pipeline.reading(user, DocumentId(id)))
 
 
 @router.post(

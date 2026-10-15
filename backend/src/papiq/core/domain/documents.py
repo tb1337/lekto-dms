@@ -299,7 +299,16 @@ class Document:
             for signal in node.requires & SIGNALS
             if signal in CURRENT_SIGNALS or processing.nodes[signal].status is NodeStatus.SKIPPED
         }
+        processing.vision = False
         return self._reset({node, *signals}, now)
+
+    def read_with_vision(self, now: datetime) -> tuple[Node, ...]:
+        """A person asked that the vision language model read the pages: process again from
+        OCR, which reads every page with the model in this run and its retries. As
+        `reprocess_from`; returns the nodes that are due now."""
+        due = self.reprocess_from(Node.OCR, now)
+        self.processing.vision = True
+        return due
 
     def confirm(self, resume_at: Node, now: datetime) -> tuple[Node, ...]:
         """The owner has decided what was uncertain or failed (the inbox): the results of the

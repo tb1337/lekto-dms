@@ -5,7 +5,12 @@ from fastapi import APIRouter
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
 from papiq.adapters.inbound.rest.problems import problem_responses
-from papiq.adapters.inbound.rest.schemas.pipeline import GraphNodeOut, PipelineOut, ReparseOut
+from papiq.adapters.inbound.rest.schemas.pipeline import (
+    GraphNodeOut,
+    PipelineOut,
+    ReparseOut,
+    VisionOut,
+)
 from papiq.core.domain.pipeline import NODES
 
 router = APIRouter(tags=["pipeline"], dependencies=PROTECTED)
@@ -18,14 +23,17 @@ router = APIRouter(tags=["pipeline"], dependencies=PROTECTED)
         "The nodes a document goes through and what each one needs, in graph order: every "
         "node after the nodes it needs. Nodes that do not need each other run side by side. "
         "The graph is fixed for a version of Papiq; `processing.nodes` of a document names the "
-        "state of each node."
+        "state of each node. `vision` names the vision language model documents can be read "
+        "with, if one is configured."
     ),
     response_model=PipelineOut,
     responses=problem_responses(401),
 )
-async def pipeline(user: CurrentUser) -> PipelineOut:
+async def pipeline(user: CurrentUser, context: Context) -> PipelineOut:
+    vision = context.pipeline.vision
     return PipelineOut(
-        nodes=[GraphNodeOut(node=node, requires=sorted(node.requires)) for node in NODES]
+        nodes=[GraphNodeOut(node=node, requires=sorted(node.requires)) for node in NODES],
+        vision=None if vision is None else VisionOut(model=vision.model, endpoint=vision.endpoint),
     )
 
 

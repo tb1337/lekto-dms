@@ -14,6 +14,10 @@
 - unmapped.pdf    scan.pdf's page with visible text over it in a Type3 font without a character
                   map (`/ToUnicode`), as some PDF printers write it: its codes come out as
                   control characters, and OCRmyPDF's `--skip-text` takes the page as read
+- poor-scan.pdf   an invoice scanned at 100 dpi with a shadow, noise and strong JPEG: easy to
+                  read, but Tesseract finds no text on it (the vision language model's case)
+- receipt-photo.jpg  a till receipt photographed on a table, at an angle: Tesseract's page
+                  analysis finds no text on it either
 - damaged.pdf     a PDF header followed by garbage
 - unsupported.docx  an Office file (a ZIP archive), not supported
 """
@@ -24,7 +28,7 @@ import zipfile
 import zlib
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = Path(__file__).parent
 
@@ -47,6 +51,24 @@ PRINTOUT = [
 ]
 
 
+INVOICE = [
+    "Stadtwerke Musterstadt GmbH",
+    "Rechnung Nr. R-2026-0815",
+    "Musterstadt, 31.03.2026",
+    "Arbeitspreis 70,76 EUR",
+    "Gesamtbetrag 84,20 EUR",
+    "Zahlbar bis 15.04.2026.",
+]
+RECEIPT = [
+    "BAUMARKT HAMMER",
+    "Kasse 3  Bon 0815",
+    "26.09.2026 14:37",
+    "Farbrolle      4,29",
+    "Schrauben      7,99",
+    "SUMME EUR     12,28",
+]
+
+
 def page(lines: list[str], size: tuple[int, int] = (1240, 1754)) -> Image.Image:
     """An A4 page at 150 dpi with large black text."""
     image = Image.new("L", size, 255)
@@ -55,6 +77,76 @@ def page(lines: list[str], size: tuple[int, int] = (1240, 1754)) -> Image.Image:
     for number, line in enumerate(lines):
         draw.text((120, 200 + number * 110), line, fill=0, font=font)
     return image
+
+
+def poor_scan(lines: list[str]) -> Image.Image:
+    """A letter-size page at 100 dpi: text of a usual size, a shadow from the top, noise and
+    blur. Saved with strong JPEG compression."""
+    rng = random.Random(7)
+    image = Image.new("L", (850, 1100), 235)
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default(size=22)
+    for number, line in enumerate(lines):
+        draw.text((80, 120 + number * 42), line, fill=60, font=font)
+    image = image.rotate(1.2, resample=Image.Resampling.BICUBIC, fillcolor=235)
+    image = image.filter(ImageFilter.GaussianBlur(0.8))
+    pixels = image.load()
+    assert pixels is not None
+    for y in range(image.height):
+        shade = 0.75 + 0.25 * y / image.height
+        for x in range(image.width):
+            value = float(pixels[x, y]) * shade + rng.gauss(0, 12)  # type: ignore[arg-type]
+            pixels[x, y] = max(0, min(255, int(value)))
+    return image
+
+
+def receipt_photo(lines: list[str]) -> Image.Image:
+    """A till receipt on a wooden table, seen at an angle, a little out of focus."""
+    slip = Image.new("RGB", (420, 520), (248, 244, 230))
+    draw = ImageDraw.Draw(slip)
+    font = ImageFont.load_default(size=18)
+    for number, line in enumerate(lines):
+        draw.text((30, 40 + number * 36), line, fill=(50, 50, 50), font=font)
+    table = Image.new("RGB", (1000, 800))
+    wood = table.load()
+    assert wood is not None
+    for y in range(table.height):
+        for x in range(table.width):
+            grain = 8 * ((x // 7 + y // 31) % 3)
+            wood[x, y] = (110 + grain, 80 + grain, 55 + grain)
+    width, height = slip.size
+    corners = [(330, 90), (760, 130), (720, 700), (300, 660)]
+    coefficients = _perspective(corners, [(0, 0), (width, 0), (width, height), (0, height)])
+    warped = slip.transform(
+        table.size, Image.Transform.PERSPECTIVE, coefficients, Image.Resampling.BICUBIC
+    )
+    mask = Image.new("L", slip.size, 255).transform(
+        table.size, Image.Transform.PERSPECTIVE, coefficients, Image.Resampling.BICUBIC
+    )
+    table.paste(warped, (0, 0), mask)
+    table = table.rotate(-4, resample=Image.Resampling.BICUBIC)
+    return table.filter(ImageFilter.GaussianBlur(1.5))
+
+
+def _perspective(target: list[tuple[int, int]], source: list[tuple[int, int]]) -> list[float]:
+    """The coefficients of `Image.transform` that take each point of `target` (output) back to
+    the point of `source` at the same place."""
+    rows, values = [], []
+    for (x, y), (u, v) in zip(target, source, strict=True):
+        rows += [[x, y, 1, 0, 0, 0, -u * x, -u * y], [0, 0, 0, x, y, 1, -v * x, -v * y]]
+        values += [u, v]
+    # Gauss-Jordan elimination of the 8 x 8 system.
+    matrix = [[*map(float, row), float(b)] for row, b in zip(rows, values, strict=True)]
+    for column in range(8):
+        pivot = max(range(column, 8), key=lambda row: abs(matrix[row][column]))
+        matrix[column], matrix[pivot] = matrix[pivot], matrix[column]
+        lead = matrix[column][column]
+        matrix[column] = [value / lead for value in matrix[column]]
+        for row in range(8):
+            if row != column:
+                factor, lead_row = matrix[row][column], matrix[column]
+                matrix[row] = [a - factor * b for a, b in zip(matrix[row], lead_row, strict=True)]
+    return [row[8] for row in matrix]
 
 
 def text_pdf(lines: list[str], *, signed: bool = False) -> bytes:
@@ -171,6 +263,8 @@ def main() -> None:
         compression="group4",
     )
     page([]).save(HERE / "blank.pdf", resolution=150)
+    poor_scan(INVOICE).save(HERE / "poor-scan.pdf", resolution=100, quality=20)
+    receipt_photo(RECEIPT).save(HERE / "receipt-photo.jpg", quality=70)
     (HERE / "damaged.pdf").write_bytes(b"%PDF-1.7\n" + random.Random(4711).randbytes(2000))
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w") as docx:

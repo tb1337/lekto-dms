@@ -560,12 +560,18 @@ class UnitOfWorkContract:
         received = builders.document(owner, drawer)
         in_review = builders.processed(owner, drawer, {Node.JUDGE: UNCERTAIN})
         assert in_review.processing.status is ProcessingStatus.REVIEW
+        # A person asked that the vision language model read it.
+        read_again = builders.processed(owner, drawer, {})
+        read_again.read_with_vision(NOW)
+        read_again.pull_events()
+        assert read_again.processing.vision
+        documents = (failed, received, in_review, read_again)
         async with uow_factory() as uow:
-            for document in (failed, received, in_review):
+            for document in documents:
                 await uow.documents.add(document)
             await uow.commit()
         async with uow_factory() as uow:
-            for document in (failed, received, in_review):
+            for document in documents:
                 assert await uow.documents.get(document.id) == document
 
     async def test_loaded_documents_carry_no_events(self, uow_factory: UnitOfWorkFactory) -> None:

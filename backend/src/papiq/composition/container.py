@@ -631,6 +631,8 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             # A classification node may ask the model twice (once more after an invalid answer);
             # the OCR node may read a document with the vision model.
             lease=node_lease(settings),
+            vision=container.ocr.vision,
+            poor_reading=settings.poor_reading_threshold,
         ),
         maintenance=MaintenanceService(
             uow,

@@ -19,6 +19,7 @@ from papiq.core.domain.ids import (
     new_id,
 )
 from papiq.core.domain.json_value import JsonValue
+from papiq.core.domain.periods import Period
 from papiq.core.domain.pipeline import Outcome
 from papiq.core.domain.rule_engine import (
     DrawerTarget,
@@ -364,8 +365,9 @@ INTERVAL = field(FieldType.CHOICE, "monthly", "yearly", "weekly")
 COUNT = field(FieldType.NUMBER)
 PAID_FLAG = field(FieldType.BOOLEAN)
 PORTAL = field(FieldType.LINK)
+SPAN = field(FieldType.PERIOD)
 DEFINITIONS = {
-    item.id: item for item in (AMOUNT, DUE, REFERENCE, INTERVAL, COUNT, PAID_FLAG, PORTAL)
+    item.id: item for item in (AMOUNT, DUE, REFERENCE, INTERVAL, COUNT, PAID_FLAG, PORTAL, SPAN)
 }
 
 FIELD_FACTS = Facts.of(
@@ -378,6 +380,7 @@ FIELD_FACTS = Facts.of(
             COUNT.id: Decimal("12.50"),
             PAID_FLAG.id: False,
             PORTAL.id: Url("https://portal.example.org/Invoices"),
+            SPAN.id: Period.month(2026, 9),
         }
     ),
     patterns={(str(REFERENCE.id), "^ACME", True): True},
@@ -415,6 +418,16 @@ FIELD_FACTS = Facts.of(
         (PORTAL, Operator.CONTAINS, "invoices", True),
         (AMOUNT, Operator.PRESENT, None, True),
         (AMOUNT, Operator.MISSING, None, False),
+        (SPAN, Operator.IS, {"start": "2026-09-01", "end": "2026-09-30"}, True),
+        (SPAN, Operator.IS, {"start": "2026-09-01", "end": "2026-09-29"}, False),
+        (SPAN, Operator.OVERLAPS, {"start": "2026-09-30", "end": "2026-10-31"}, True),
+        (SPAN, Operator.OVERLAPS, {"start": "2026-01-01", "end": "2026-12-31"}, True),
+        (SPAN, Operator.OVERLAPS, {"start": "2026-10-01", "end": "2026-10-31"}, False),
+        (SPAN, Operator.GT, "2026-08-31", True),  # starts after
+        (SPAN, Operator.GT, "2026-09-01", False),
+        (SPAN, Operator.LT, "2026-10-01", True),  # ends before
+        (SPAN, Operator.LT, "2026-09-30", False),
+        (SPAN, Operator.PRESENT, None, True),
     ],
 )
 def test_field_conditions(

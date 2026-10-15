@@ -123,7 +123,7 @@ export const FIELD_TYPE_OPERATORS: Record<FieldType, readonly Operator[]> = {
 	date: ORDERED,
 	boolean: ['is', 'present', 'missing'],
 	choice: REFERENCE,
-	period: ['present', 'missing']
+	period: ['is', 'overlaps', 'gt', 'lt', 'present', 'missing']
 };
 
 export const ACTION_TYPES: readonly ActionType[] = [
@@ -307,6 +307,8 @@ export function defaultValue(
 	if (conditionField === 'field' && field && op !== 'contains' && op !== 'matches') {
 		if (field.data_type === 'boolean') return true;
 		if (field.data_type === 'amount') return { amount: '', currency: 'EUR' };
+		// A period's `gt` and `lt` compare with a date: it starts after, it ends before.
+		if (field.data_type === 'period' && op !== 'gt' && op !== 'lt') return { start: '', end: '' };
 	}
 	return '';
 }
@@ -576,6 +578,9 @@ function checkValue(
 		case 'document_date':
 			return isDate(value) ? null : { code: 'date' };
 		case 'field':
+			if (field?.data_type === 'period' && (condition.op === 'gt' || condition.op === 'lt')) {
+				return isDate(value) ? null : { code: 'date' };
+			}
 			return field ? checkFieldValue(field, value) : null;
 		default:
 			return null;

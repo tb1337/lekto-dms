@@ -631,6 +631,11 @@ def field_rule(
         (FieldType.CHOICE, Operator.IS, "monthly"),
         (FieldType.CHOICE, Operator.IN, ["monthly", "yearly"]),
         (FieldType.CHOICE, Operator.PRESENT, None),
+        (FieldType.PERIOD, Operator.IS, {"start": "2026-09-01", "end": "2026-09-30"}),
+        (FieldType.PERIOD, Operator.OVERLAPS, {"start": "2026-09-01", "end": "2026-09-30"}),
+        (FieldType.PERIOD, Operator.GT, "2026-01-01"),
+        (FieldType.PERIOD, Operator.LT, "2026-12-31"),
+        (FieldType.PERIOD, Operator.MISSING, None),
     ],
 )
 def test_field_condition_fits_data_type(
@@ -655,6 +660,9 @@ def test_field_condition_fits_data_type(
         (FieldType.CHOICE, Operator.GT, "monthly"),
         (FieldType.TEXT, Operator.GT, "a"),
         (FieldType.LINK, Operator.LT, "https://example.org"),
+        (FieldType.DATE, Operator.OVERLAPS, {"start": "2026-09-01", "end": "2026-09-30"}),
+        (FieldType.PERIOD, Operator.CONTAINS, "2026"),
+        (FieldType.PERIOD, Operator.IN, [{"start": "2026-09-01", "end": "2026-09-30"}]),
     ],
 )
 def test_field_operator_must_fit_data_type(
@@ -679,6 +687,8 @@ def test_field_operator_must_fit_data_type(
         (FieldType.CHOICE, Operator.IS, "weekly"),
         (FieldType.CHOICE, Operator.IN, ["monthly", "weekly"]),
         (FieldType.LINK, Operator.IS, "ftp://example.org"),
+        (FieldType.PERIOD, Operator.IS, "2026-09"),
+        (FieldType.PERIOD, Operator.OVERLAPS, {"start": "2026-09-30", "end": "2026-09-01"}),
     ],
 )
 def test_field_condition_value_must_fit(
@@ -704,6 +714,8 @@ def test_field_condition_value_must_fit(
         (FieldType.CHOICE, "weekly", False),
         (FieldType.BOOLEAN, False, True),
         (FieldType.TEXT, " ", False),
+        (FieldType.PERIOD, {"start": "2026-09-01", "end": "2026-09-30"}, True),
+        (FieldType.PERIOD, "September 2026", False),
     ],
 )
 def test_set_field_value_must_fit(data_type: FieldType, value: JsonValue, fits: bool) -> None:
@@ -988,3 +1000,12 @@ def test_application_selection() -> None:
         application(a, a)
     with pytest.raises(ValidationError, match="among the selected"):
         application(a, accept=frozenset({b}))
+
+
+def test_a_period_starts_after_and_ends_before_a_date() -> None:
+    attr = field(FieldType.PERIOD)
+    with pytest.raises(ValidationError, match="no date"):
+        check_fields(
+            field_rule(attr, Operator.GT, {"start": "2026-09-01", "end": "2026-09-30"}),
+            {attr.id: attr},
+        )

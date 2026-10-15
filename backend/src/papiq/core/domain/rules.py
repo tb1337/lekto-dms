@@ -32,7 +32,7 @@ from uuid import UUID
 
 from papiq.core.domain.documents import Channel
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.fields import FieldDefinition, FieldType, field_from_json
+from papiq.core.domain.fields import FieldDefinition, FieldType, FieldValue, field_from_json
 from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -86,8 +86,9 @@ class Operator(StrEnum):
     IN = "in"  # is one of; for tags: has one of
     CONTAINS = "contains"  # for tags: has this tag
     MATCHES = "matches"  # regular expression
-    GT = "gt"
-    LT = "lt"
+    GT = "gt"  # for a period: starts after the date
+    LT = "lt"  # for a period: ends before the date
+    OVERLAPS = "overlaps"  # a period shares a day with the given one
     PRESENT = "present"
     MISSING = "missing"
 
@@ -135,7 +136,16 @@ FIELD_TYPE_OPERATORS: dict[FieldType, frozenset[Operator]] = {
     FieldType.DATE: _ORDERED,
     FieldType.BOOLEAN: frozenset({Operator.IS, Operator.PRESENT, Operator.MISSING}),
     FieldType.CHOICE: frozenset({Operator.IS, Operator.IN, Operator.PRESENT, Operator.MISSING}),
-    FieldType.PERIOD: frozenset({Operator.PRESENT, Operator.MISSING}),
+    FieldType.PERIOD: frozenset(
+        {
+            Operator.IS,
+            Operator.OVERLAPS,
+            Operator.GT,
+            Operator.LT,
+            Operator.PRESENT,
+            Operator.MISSING,
+        }
+    ),
 }
 
 
@@ -513,11 +523,19 @@ def check_fields(
             if condition.op in (Operator.CONTAINS, Operator.MATCHES):
                 continue
             for value in condition.values:
-                field_from_json(field, value)
+                condition_value(field, condition.op, value)
     for index, action in enumerate(definition.actions):
         if isinstance(action, SetField):
             with _at(f"actions[{index}]"):
                 field_from_json(_field(definitions, action.field_id), action.value)
+
+
+def condition_value(field: FieldDefinition, op: Operator, value: JsonValue) -> FieldValue:
+    """A value a condition on `field` compares with, in the field's type; for a period's `gt`
+    and `lt` a date (it starts after, it ends before). ValidationError if it does not fit."""
+    if field.data_type is FieldType.PERIOD and op in (Operator.GT, Operator.LT):
+        return _date(value)
+    return field_from_json(field, value)
 
 
 def condition_places(group: Group, where: str = "conditions") -> Iterator[tuple[str, Condition]]:

@@ -37,7 +37,9 @@ class ConditionSchema(BaseModel):
     channel: `is`, `in`; text: `contains`, `matches` (regular expression); document_date and
     number, amount, date fields: `is`, `gt`, `lt`, `present`, `missing`; text and link
     fields: `is`, `in`, `contains`, `matches`, `present`, `missing`; choice: `is`, `in`,
-    `present`, `missing`; boolean: `is`, `present`, `missing`."""
+    `present`, `missing`; boolean: `is`, `present`, `missing`; period fields: `is`,
+    `overlaps` (shares a day with the given period), `gt` (starts after the date), `lt` (ends
+    before the date), `present`, `missing`."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -60,8 +62,8 @@ class ConditionSchema(BaseModel):
         default=None,
         description=(
             "None for `present` and `missing`, a list for `in`, otherwise one value: an id, a "
-            "channel, a text or pattern, a date `YYYY-MM-DD`, or a field value as in "
-            "`fields` of a document."
+            "channel, a text or pattern, a date `YYYY-MM-DD` (also for `gt` and `lt` of a "
+            "period field), or a field value as in `fields` of a document."
         ),
     )
     field_id: UUID | None = Field(default=None, description="Only when `field` is `field`.")
@@ -111,9 +113,10 @@ TEMPLATE_DESCRIPTION = (
     "`title`, `filename` (the original's name without extension), `original_filename`, "
     "`contact`, `document_type`, `document_date`, `added`, `tags` (a list), `drawer`, `owner`, "
     "`channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and "
-    "`.currency`). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, "
-    "`decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: "
-    "''` or `{% if %}` make it optional)."
+    "`.currency`, a period `.start` and `.end` and writes itself as `September 2026`, "
+    "`KW 38 2026` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM "
+    "yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets "
+    "nothing (`| default: ''` or `{% if %}` make it optional)."
 )
 
 

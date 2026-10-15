@@ -51,7 +51,8 @@ const FIELDS: FieldInfo[] = [
 	{ id: ID(104), data_type: 'amount', choices: [] },
 	{ id: ID(105), data_type: 'date', choices: [] },
 	{ id: ID(106), data_type: 'boolean', choices: [] },
-	{ id: ID(107), data_type: 'choice', choices: ['monthly', 'yearly'] }
+	{ id: ID(107), data_type: 'choice', choices: ['monthly', 'yearly'] },
+	{ id: ID(108), data_type: 'period', choices: [] }
 ];
 
 /** A condition as the API answers with it. */
@@ -189,6 +190,14 @@ describe('the rule model', () => {
 		expect(FIELD_TYPE_OPERATORS.choice).toEqual(['is', 'in', 'present', 'missing']);
 		expect(FIELD_TYPE_OPERATORS.amount).toEqual(['is', 'gt', 'lt', 'present', 'missing']);
 		expect(FIELD_TYPE_OPERATORS.link).toEqual(FIELD_TYPE_OPERATORS.text);
+		expect(FIELD_TYPE_OPERATORS.period).toEqual([
+			'is',
+			'overlaps',
+			'gt',
+			'lt',
+			'present',
+			'missing'
+		]);
 	});
 });
 
@@ -203,6 +212,11 @@ describe('editing conditions', () => {
 		expect([condition.op, condition.value]).toEqual(['is', true]);
 		changeField(condition, ID(104), FIELDS);
 		expect(condition.value).toEqual({ amount: '', currency: 'EUR' });
+		// A period compares with a period, or with a date for starts after and ends before.
+		changeField(condition, ID(108), FIELDS);
+		expect([condition.op, condition.value]).toEqual(['is', { start: '', end: '' }]);
+		changeOperator(condition, 'gt', FIELDS);
+		expect(condition.value).toBe('');
 	});
 
 	it('keeps a value between one and a list', () => {
@@ -288,7 +302,27 @@ describe('checking a rule', () => {
 			[{ field: 'field', op: 'gt', value: '1e3', fieldId: ID(103) }, undefined],
 			[{ field: 'field', op: 'gt', value: '1_000.5', fieldId: ID(103) }, undefined],
 			[{ field: 'field', op: 'gt', value: 'inf', fieldId: ID(103) }, 'number'],
-			[{ field: 'field', op: 'is', value: 'x'.repeat(600), fieldId: ID(101) }, undefined]
+			[{ field: 'field', op: 'is', value: 'x'.repeat(600), fieldId: ID(101) }, undefined],
+			[
+				{
+					field: 'field',
+					op: 'overlaps',
+					value: { start: '2026-09-30', end: '2026-09-01' },
+					fieldId: ID(108)
+				},
+				'period'
+			],
+			[
+				{
+					field: 'field',
+					op: 'is',
+					value: { start: '2026-09-01', end: '2026-09-30' },
+					fieldId: ID(108)
+				},
+				undefined
+			],
+			[{ field: 'field', op: 'gt', value: { start: '', end: '' }, fieldId: ID(108) }, 'date'],
+			[{ field: 'field', op: 'lt', value: '2026-10-01', fieldId: ID(108) }, undefined]
 		];
 		for (const [change, code] of cases) {
 			const condition = { ...newCondition(), ...change } as ConditionNode;

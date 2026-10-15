@@ -58,7 +58,8 @@ const OPERATORS: Record<Operator, () => string> = {
 	gt: m.rule_op_number_gt,
 	lt: m.rule_op_number_lt,
 	present: m.rule_op_present,
-	missing: m.rule_op_missing
+	missing: m.rule_op_missing,
+	overlaps: m.rule_op_overlaps
 };
 const TAG_OPERATORS: Partial<Record<Operator, () => string>> = {
 	contains: m.rule_op_tags_contains,
@@ -74,6 +75,10 @@ const DATE_OPERATORS: Partial<Record<Operator, () => string>> = {
 const NUMBER_OPERATORS: Partial<Record<Operator, () => string>> = {
 	is: m.rule_op_number_is
 };
+const PERIOD_OPERATORS: Partial<Record<Operator, () => string>> = {
+	gt: m.rule_op_period_gt,
+	lt: m.rule_op_period_lt
+};
 
 /** The operator in the words of the field: tags "has", dates "after", numbers "greater". */
 export function operatorLabel(
@@ -85,6 +90,7 @@ export function operatorLabel(
 	if (field === 'tags') special = TAG_OPERATORS;
 	else if (field === 'document_date' || type === 'date') special = DATE_OPERATORS;
 	else if (type === 'number' || type === 'amount') special = NUMBER_OPERATORS;
+	else if (type === 'period') special = PERIOD_OPERATORS;
 	return (special[op] ?? OPERATORS[op])();
 }
 

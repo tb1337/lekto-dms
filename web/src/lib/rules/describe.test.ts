@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
-import { actionTemplate } from './describe.ts';
+import { actionTemplate, operatorLabel } from './describe.ts';
 
 function textField(id: string, name: string, data_type: string) {
 	return {
@@ -44,5 +44,14 @@ describe('the template of an action', () => {
 		const amount = { amount: '1.00', currency: 'EUR' };
 		expect(actionTemplate({ type: 'set_field', field_id: 'f2', value: amount }, lookup)).toBeNull();
 		expect(actionTemplate({ type: 'add_tags', tag_ids: [] }, lookup)).toBeNull();
+	});
+});
+
+describe('operators in the words of a period', () => {
+	it('starts after, ends before, overlaps', () => {
+		expect(operatorLabel('field', 'gt', 'period')).toBe(m.rule_op_period_gt());
+		expect(operatorLabel('field', 'lt', 'period')).toBe(m.rule_op_period_lt());
+		expect(operatorLabel('field', 'overlaps', 'period')).toBe(m.rule_op_overlaps());
+		expect(operatorLabel('field', 'gt', 'date')).toBe(m.rule_op_date_gt());
 	});
 });

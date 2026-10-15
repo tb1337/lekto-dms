@@ -78,6 +78,7 @@ from papiq.core.domain.rules import (
     SetDrawer,
     SetField,
     SetTitle,
+    condition_value,
 )
 from papiq.core.domain.templates import Render, TemplateValue, template_values
 
@@ -269,10 +270,12 @@ def _field(condition: Condition, definition: FieldDefinition, facts: Facts) -> b
     if op is Operator.CONTAINS:
         return contains(normalise(_text_of(value)), str(condition.value))
     try:
-        wanted = [field_from_json(definition, item) for item in condition.values]
+        wanted = [condition_value(definition, op, item) for item in condition.values]
     except ValidationError:
         return False
     match value:
+        case Period():
+            return _period(op, value, wanted)
         case Money():
             same = [
                 item.amount
@@ -288,6 +291,19 @@ def _field(condition: Condition, definition: FieldDefinition, facts: Facts) -> b
             return _ordered(op, value, [item for item in wanted if isinstance(item, date)])
         case str() if definition.data_type is FieldType.TEXT:
             return value.casefold() in {str(item).casefold() for item in wanted}
+    return value in wanted
+
+
+def _period(op: Operator, value: Period, wanted: list[FieldValue]) -> bool:
+    """`is`: one of the given periods; `overlaps`: shares a day with one; `gt`: starts after
+    the given date; `lt`: ends before it."""
+    match op:
+        case Operator.OVERLAPS:
+            return any(isinstance(item, Period) and value.overlaps(item) for item in wanted)
+        case Operator.GT:
+            return bool(wanted) and isinstance(wanted[0], date) and value.start > wanted[0]
+        case Operator.LT:
+            return bool(wanted) and isinstance(wanted[0], date) and value.end < wanted[0]
     return value in wanted
 
 

@@ -90,7 +90,10 @@ class DocumentOut(BaseModel):
     tags: list[NameRef]
     document_date: date | None
     fields: dict[str, FieldJson] = Field(
-        description="Values by field name; amounts as {amount, currency}, numbers as text."
+        description=(
+            "Values by field name; amounts as {amount, currency}, periods as {start, end} "
+            "(YYYY-MM-DD, both days included), numbers as text."
+        )
     )
     created_at: datetime
     updated_at: datetime
@@ -362,7 +365,8 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
             "field out to keep it; give null to remove contact, document type or date. `tags` "
             "is the complete list and replaces the tags. `fields` maps field names to "
             "values (text, choice, link and date as text, number as text or number, boolean, "
-            "amount as {amount, currency}); null removes a value. Contact, type, tags and "
+            "amount as {amount, currency}, period as {start, end} with YYYY-MM-DD, a single "
+            "day as start = end); null removes a value. Contact, type, tags and "
             "fields must exist (see list_tags). The owner's rules that the change "
             "triggers run, as after a change in the web UI."
         ),

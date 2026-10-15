@@ -7,9 +7,10 @@ from pathlib import Path
 import pytest
 
 from papiq.core.domain import media_types
+from papiq.core.domain.codes import giro_code
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.domain.locations import Location
-from papiq.core.ports import DocumentParser, Ocr, PageRenderer, TextLocator
+from papiq.core.ports import CodeReader, DocumentParser, Ocr, PageRenderer, TextLocator
 
 SAMPLES = Path(__file__).parent.parent / "samples"
 
@@ -199,3 +200,24 @@ class TextLocatorContract:
     async def test_a_damaged_pdf_is_unprocessable(self, text_locator: TextLocator) -> None:
         with pytest.raises(UnprocessableDocumentError):
             await text_locator.locate(SAMPLES / "damaged.pdf", ["Betrag"])
+
+
+class CodeReaderContract:
+    """Needs the fixture `code_reader`, which finds the GiroCode of `codes.pdf`."""
+
+    async def test_reads_a_giro_code_with_its_place(self, code_reader: CodeReader) -> None:
+        reading = await code_reader.read_codes(SAMPLES / "codes.pdf")
+        assert reading.reader
+        assert reading.pages == 1
+        giro = next(code for code in reading.codes if code.text.startswith("BCD"))
+        assert (giro.page, giro.format) == (1, "QR Code")
+        transfer = giro_code(giro.text)
+        assert transfer is not None
+        assert (transfer.name, transfer.iban) == ("Papiq Test GmbH", "DE89370400440532013000")
+        # At the bottom right of the page.
+        assert giro.box.x > 0.5 and giro.box.y > 0.5
+        assert giro.box.width > 0 and giro.box.height > 0
+
+    async def test_a_damaged_pdf_is_unprocessable(self, code_reader: CodeReader) -> None:
+        with pytest.raises(UnprocessableDocumentError):
+            await code_reader.read_codes(SAMPLES / "damaged.pdf")

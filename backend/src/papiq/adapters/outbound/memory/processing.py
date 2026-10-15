@@ -1,5 +1,5 @@
-"""Stand-ins for OCR, parser, page renderer and text locator: fast, deterministic, no
-external programs.
+"""Stand-ins for OCR, parser, page renderer, text locator and code reader: fast,
+deterministic, no external programs.
 
 They follow the contracts without real recognition: the archive is a minimal PDF that names the
 source (a scan or an image counts as read well, a PDF with fonts as not read), the text is a
@@ -14,10 +14,12 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from papiq.core.domain import media_types
+from papiq.core.domain.codes import Code
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.domain.exchanges import ModelCall
 from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.reading import PageReading
+from papiq.core.ports.codes import CodeReading
 from papiq.core.ports.ocr import OcrResult, VisionModel, VisionReading
 from papiq.core.ports.pages import PREVIEW_FILE, RenderedPages
 from papiq.core.ports.parser import ParseResult
@@ -83,6 +85,28 @@ class FakeOcr:
         has_text = media_type == media_types.PDF and b"/Font" in data
         readings = () if has_text else self.readings
         return OcrResult(pages=1, engine="fake-ocr 1", pdfa=True, readings=readings)
+
+
+FAKE_GIRO_CODE = Code(
+    page=1,
+    format="QR Code",
+    text="BCD\n002\n1\nSCT\nMUSTDEM1XXX\nPapiq Test GmbH\nDE89370400440532013000\nEUR123.45\n\n\n"
+    "Rechnung 4711",
+    box=Box(0.74, 0.78, 0.12, 0.085),
+)
+
+
+class FakeCodeReader:
+    """Finds `codes` on every PDF it can read (none unless given)."""
+
+    def __init__(self, codes: Sequence[Code] = ()) -> None:
+        self.codes = tuple(codes)
+        self.calls: list[Path] = []
+
+    async def read_codes(self, source: Path) -> CodeReading:
+        self.calls.append(source)
+        _check(await asyncio.to_thread(source.read_bytes))
+        return CodeReading(codes=self.codes, reader="fake-codes 1", pages=1)
 
 
 class FakeParser:

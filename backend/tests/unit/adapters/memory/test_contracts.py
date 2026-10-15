@@ -6,10 +6,12 @@ from collections.abc import Sequence
 import pytest
 
 from papiq.adapters.outbound.memory import (
+    FAKE_GIRO_CODE,
     FAKE_VISION,
     BagOfWordsEmbeddings,
     FakeCipher,
     FakeClassifier,
+    FakeCodeReader,
     FakeEmbeddings,
     FakeLanguageModel,
     FakeOcr,
@@ -52,6 +54,7 @@ from tests.contracts.job_queue import JobQueueContract
 from tests.contracts.language_model import EmbeddingsContract, LanguageModelContract
 from tests.contracts.object_store import ObjectStoreContract
 from tests.contracts.processing import (
+    CodeReaderContract,
     OcrContract,
     PageRendererContract,
     ParserContract,
@@ -129,6 +132,15 @@ def ocr() -> FakeOcr:
 @pytest.fixture
 def vision_ocr() -> FakeOcr:
     return FakeOcr(vision=FAKE_VISION)
+
+
+@pytest.fixture
+def code_reader() -> FakeCodeReader:
+    return FakeCodeReader([FAKE_GIRO_CODE])
+
+
+class TestFakeCodeReader(CodeReaderContract):
+    pass
 
 
 @pytest.fixture

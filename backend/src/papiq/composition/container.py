@@ -25,6 +25,7 @@ from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.adapters.outbound.memory import (
     FakeCipher,
     FakeClassifier,
+    FakeCodeReader,
     FakeOcr,
     FakePageRenderer,
     FakeParser,
@@ -49,6 +50,7 @@ from papiq.adapters.outbound.sklearn import SklearnClassifier
 from papiq.adapters.outbound.sql import SqlEventBus, SqlUnitOfWorkFactory
 from papiq.adapters.outbound.system import SystemClock
 from papiq.adapters.outbound.webhooks import HttpWebhookSender
+from papiq.adapters.outbound.zxing import ZxingCodeReader
 from papiq.composition.database import open_database
 from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
@@ -56,6 +58,7 @@ from papiq.core.domain.pipeline import NODES, Node
 from papiq.core.ports import (
     Classifier,
     Clock,
+    CodeReader,
     DeliveryRetry,
     DocumentParser,
     Embeddings,
@@ -243,6 +246,7 @@ OCR_ENGINES: dict[str, Factory[Ocr]] = {"ocrmypdf": ocrmypdf_engine}
 PARSERS: dict[str, Factory[DocumentParser]] = {"layout": layout_parser}
 PAGE_RENDERERS: dict[str, Factory[PageRenderer]] = {"pdfium": lambda _: PdfiumPageRenderer()}
 TEXT_LOCATORS: dict[str, Factory[TextLocator]] = {"pdfium": lambda _: PdfiumTextLocator()}
+CODE_READERS: dict[str, Factory[CodeReader]] = {"zxing": lambda _: ZxingCodeReader()}
 CLASSIFIERS: dict[str, Factory[Classifier]] = {"scikit-learn": lambda _: SklearnClassifier()}
 
 
@@ -290,6 +294,7 @@ class Container:
     parser: DocumentParser
     pages: PageRenderer
     locator: TextLocator
+    codes: CodeReader
     password_hasher: PasswordHasher
     cipher: SecretCipher
     webhook_sender: WebhookSender
@@ -338,6 +343,7 @@ def build_container(settings: Settings) -> Container:
         parser=_select("parser", "layout", PARSERS, settings),
         pages=_select("pages", "pdfium", PAGE_RENDERERS, settings),
         locator=_select("locator", "pdfium", TEXT_LOCATORS, settings),
+        codes=_select("codes", "zxing", CODE_READERS, settings),
         password_hasher=Argon2PasswordHasher(),
         cipher=secret_cipher(settings),
         webhook_sender=HttpWebhookSender(user_agent=f"Papiq/{__version__}"),
@@ -390,6 +396,7 @@ def build_memory_container(clock: Clock | None = None) -> Container:
         parser=FakeParser(),
         pages=FakePageRenderer(),
         locator=FakeTextLocator(),
+        codes=FakeCodeReader(),
         password_hasher=FakePasswordHasher(),
         cipher=FakeCipher(),
         webhook_sender=FakeWebhookSender(),

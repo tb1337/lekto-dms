@@ -18,6 +18,8 @@
                   read, but Tesseract finds no text on it (the vision language model's case)
 - receipt-photo.jpg  a till receipt photographed on a table, at an angle: Tesseract's page
                   analysis finds no text on it either
+- codes.pdf       scan.pdf's page with a GiroCode (a QR code of a credit transfer), a Code 128
+                  and a Data Matrix code
 - damaged.pdf     a PDF header followed by garbage
 - unsupported.docx  an Office file (a ZIP archive), not supported
 """
@@ -28,6 +30,8 @@ import zipfile
 import zlib
 from pathlib import Path
 
+import numpy
+import zxingcpp
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = Path(__file__).parent
@@ -76,6 +80,38 @@ def page(lines: list[str], size: tuple[int, int] = (1240, 1754)) -> Image.Image:
     font = ImageFont.load_default(size=56)
     for number, line in enumerate(lines):
         draw.text((120, 200 + number * 110), line, fill=0, font=font)
+    return image
+
+
+GIRO_CODE = "\n".join(
+    [
+        "BCD",
+        "002",
+        "1",
+        "SCT",
+        "MUSTDEM1XXX",
+        "Papiq Test GmbH",
+        "DE89370400440532013000",
+        "EUR123.45",
+        "",
+        "",
+        "Rechnung 4711",
+    ]
+)
+"""The content of the sample's GiroCode (EPC069-12)."""
+
+
+def with_codes(image: Image.Image) -> Image.Image:
+    """`image` with a GiroCode at the bottom right, a Code 128 and a Data Matrix code."""
+    image = image.copy()
+    for content, format, scale, place in [
+        (GIRO_CODE, zxingcpp.BarcodeFormat.QRCode, 4, (900, 1350)),
+        ("K-20047718", zxingcpp.BarcodeFormat.Code128, 3, (120, 600)),
+        ("PAPIQ-DM-0001", zxingcpp.BarcodeFormat.DataMatrix, 5, (1000, 60)),
+    ]:
+        barcode = zxingcpp.create_barcode(content, format)
+        symbol = numpy.asarray(zxingcpp.write_barcode_to_image(barcode, scale=scale))
+        image.paste(Image.fromarray(symbol).convert("L"), place)
     return image
 
 
@@ -263,6 +299,7 @@ def main() -> None:
         compression="group4",
     )
     page([]).save(HERE / "blank.pdf", resolution=150)
+    with_codes(page(LINES)).save(HERE / "codes.pdf", resolution=150)
     poor_scan(INVOICE).save(HERE / "poor-scan.pdf", resolution=100, quality=20)
     receipt_photo(RECEIPT).save(HERE / "receipt-photo.jpg", quality=70)
     (HERE / "damaged.pdf").write_bytes(b"%PDF-1.7\n" + random.Random(4711).randbytes(2000))

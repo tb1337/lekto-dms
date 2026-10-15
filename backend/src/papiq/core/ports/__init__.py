@@ -2,6 +2,7 @@
 
 from papiq.core.ports.classifier import Classifier, Prediction, TrainedModel, TrainingExample
 from papiq.core.ports.clock import Clock
+from papiq.core.ports.codes import CodeReader, CodeReading
 from papiq.core.ports.embeddings import EmbeddingResult, Embeddings
 from papiq.core.ports.event_bus import DeliveryRetry, EventBus, EventHandler, Outbox
 from papiq.core.ports.identity import (
@@ -57,6 +58,8 @@ __all__ = [
     "Classifier",
     "ClassifierModelRepository",
     "Clock",
+    "CodeReader",
+    "CodeReading",
     "ContactRepository",
     "CredentialRepository",
     "DecryptionError",

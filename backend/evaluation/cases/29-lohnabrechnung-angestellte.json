@@ -15,6 +15,10 @@
       "Nettolohn": {
         "amount": "2990.75",
         "currency": "EUR"
+      },
+      "Bezugszeitraum": {
+        "start": "2026-04-01",
+        "end": "2026-04-30"
       }
     }
   },
@@ -39,6 +43,13 @@
       "Nettolohn": {
         "value": "2.990,75 €",
         "evidence": "Nettoverdienst: 2.990,75 €"
+      },
+      "Bezugszeitraum": {
+        "value": {
+          "start": "2026-04-01",
+          "end": "2026-04-30"
+        },
+        "evidence": "Entgeltabrechnung April 2026"
       }
     },
     "lane": "yellow"

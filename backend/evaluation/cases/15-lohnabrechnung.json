@@ -12,6 +12,14 @@
       "Nettolohn": {
         "amount": "2987.45",
         "currency": "EUR"
+      },
+      "Bezugszeitraum": {
+        "start": "2026-03-01",
+        "end": "2026-03-31"
+      },
+      "Bruttolohn": {
+        "amount": "5166.67",
+        "currency": "EUR"
       }
     }
   },
@@ -39,6 +47,20 @@
           "currency": "EUR"
         },
         "evidence": "Nettoverdienst: 2.987,45 €"
+      },
+      "Bezugszeitraum": {
+        "value": {
+          "start": "2026-03-01",
+          "end": "2026-03-31"
+        },
+        "evidence": "Entgeltabrechnung März 2026"
+      },
+      "Bruttolohn": {
+        "value": {
+          "amount": "5166.67",
+          "currency": "EUR"
+        },
+        "evidence": "Gesamtbrutto | 5.166,67 €"
       }
     }
   }

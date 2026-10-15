@@ -16,6 +16,10 @@
       "Bruttolohn": {
         "amount": "3650.00",
         "currency": "EUR"
+      },
+      "Bezugszeitraum": {
+        "start": "2026-04-01",
+        "end": "2026-04-30"
       }
     }
   },
@@ -50,6 +54,13 @@
           "currency": "EUR"
         },
         "evidence": "Gesamtbrutto | 3.650,00 €"
+      },
+      "Bezugszeitraum": {
+        "value": {
+          "start": "2026-04-01",
+          "end": "2026-04-30"
+        },
+        "evidence": "Entgeltabrechnung April 2026"
       }
     }
   }

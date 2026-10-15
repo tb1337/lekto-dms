@@ -30,7 +30,8 @@
     "Gutschrift",
     "Mahnung",
     "Kassenbon",
-    "Mitteilung"
+    "Mitteilung",
+    "Zeitnachweis"
   ],
   "tags": [
     "Strom",
@@ -185,6 +186,18 @@
       "name": "Fällig am",
       "data_type": "date",
       "document_types": null
+    },
+    {
+      "name": "Bezugszeitraum",
+      "data_type": "period",
+      "document_types": [
+        "Lohnabrechnung",
+        "Zeitnachweis"
+      ],
+      "required": [
+        "Zeitnachweis"
+      ],
+      "description": "Der Monat oder Zeitraum, für den das Dokument gilt (Abrechnungsmonat, erfasste Woche), nicht das Erstell- oder Druckdatum"
     }
   ]
 }

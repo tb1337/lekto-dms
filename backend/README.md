@@ -295,7 +295,7 @@ and no signal recognised anything.
 The fields node reads the fields of the decided type and the global ones. If the model asked
 for the type the judge decided, its values are taken over; otherwise (after a type correction,
 or for a document from before the signals) it asks the model for the missing ones (prompt
-`extract-3`). Each field is required or optional per type it is assigned to, a global one by its
+`extract-4`). Each field is required or optional per type it is assigned to, a global one by its
 own switch:
 
 | Field | Check | Not passed |
@@ -304,10 +304,11 @@ own switch:
 | Optional field | no value is fine (left empty); a value given must pass | yellow |
 | Amounts, numbers | read as written (`2.111,68 €`, `1,234.56`, `-12,50`; an ambiguous one as the text shows it, else in the document's language) and found in the text; the currency shown as code, sign or word, or, where the text shows none at all (a pay slip's bare numbers), `PAPIQ_DEFAULT_CURRENCY` | |
 | Dates | as the document date; a date field must differ from the document date | the date is suggested |
+| Periods | read as written (`September 2026`, `09/2026`, `KW 38/2026`, `Q3 2026`, `2025`, `01.09.–30.09.2026`, `1. bis 30. September 2026`, a date as that day) or as `{start, end}`; plausible as a date; the quoted passage shows it as written or by its first and last day; of a value, the reading no other one holds counts (two are none) | without a year (it takes the document date's), or a single day equal to the document date: suggested |
 | Text, link, choice, yes/no | the value, or the quoted passage, appears in the text (`ja`/`nein` read as yes or no) | |
 
-The quoted passage must appear in the text as well, and for an amount, number, date, text or
-link it must show the value itself: elsewhere in the text the same digits may stand for
+The quoted passage must appear in the text as well, and for an amount, number, date, text,
+link or period it must show the value itself: elsewhere in the text the same digits may stand for
 anything, on a broken scan a lone fragment. An amount counts in the quote only as an amount,
 with decimal places or a currency beside it (`620,00`, `620 €`, `620,-`; a bare `620` is none).
 Without such a quote the value is only suggested, and so is a value on a page the OCR read
@@ -424,7 +425,7 @@ version; deleting is a soft delete.
   | `channel` (Eingangskanal: `web`, `api`, `migration`) | `is`, `in` |
   | `text` | `contains` (normalised like the classification checks), `matches` (regular expression) |
   | `document_date` | `is`, `gt`, `lt`, `present`, `missing` |
-  | `field` (with `field_id`) | by data type: text and link `is`, `in`, `contains`, `matches`; number, amount, date `is`, `gt`, `lt`; yes/no `is`; choice `is`, `in`; all `present`, `missing` |
+  | `field` (with `field_id`) | by data type: text and link `is`, `in`, `contains`, `matches`; number, amount, date `is`, `gt`, `lt`; yes/no `is`; choice `is`, `in`; period `is`, `overlaps` (shares a day with a period), `gt` (starts after a date), `lt` (ends before a date); all `present`, `missing` |
 
   `matches` takes `case_sensitive` (default false). Patterns run with the `regex` package
   (`adapters/outbound/regex`) in a thread with a time limit (`PAPIQ_RULES_PATTERN_TIMEOUT`); a
@@ -438,7 +439,9 @@ version; deleting is a soft delete.
   filters with `|`. They see `title`, `filename`, `original_filename`, `contact`,
   `document_type`, `document_date`, `added`, `tags`, `drawer`, `owner`, `channel`, `pages` and
   `field.<key>` (`FieldOut.key`, from the name: `LA_Brutto` is `la_brutto`; an amount has
-  `.amount` and `.currency`), as the rules leave the document. `datetime`, `currency` and
+  `.amount` and `.currency`, a period `.start` and `.end`), as the rules leave the document. A
+  period writes itself as what it is: `September 2026`, `KW 38 2026`, `Q3 2026`, `2026`, a day
+  as a date, else its two days. `datetime`, `currency` and
   `decimal` format in `PAPIQ_TEMPLATE_LOCALE`, an amount writes itself as `3.650,00 EUR`. A
   template sees nothing but these values (no attributes of objects, no `include`), loops stop
   after 1,000 turns and output after 10,000 characters. Writing a missing value sets nothing

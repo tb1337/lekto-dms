@@ -206,6 +206,8 @@ def _written(value: JsonValue) -> JsonValue:
     match value:
         case {"amount": amount, "currency": currency}:
             return f"{amount} {currency}"
+        case {"start": start, "end": end}:
+            return f"{start} bis {end}"
         case bool():
             return "ja" if value else "nein"
         case int() | float():

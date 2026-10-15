@@ -303,6 +303,8 @@ def _median(seconds: list[float]) -> str:
 
 
 def _same(got: JsonValue, expected: JsonValue) -> bool:
+    if isinstance(got, dict) and isinstance(expected, dict) and "start" in expected:
+        return (got.get("start"), got.get("end")) == (expected.get("start"), expected.get("end"))
     if isinstance(got, dict) and isinstance(expected, dict):
         return (
             _decimal(got.get("amount")) == _decimal(expected.get("amount"))

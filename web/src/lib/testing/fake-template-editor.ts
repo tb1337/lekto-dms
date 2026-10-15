@@ -9,8 +9,8 @@ export function mountTemplateEditor(options: EditorOptions): EditorHandle {
 	area.value = options.value;
 	if (options.id) area.id = options.id;
 	if (options.label) area.setAttribute('aria-label', options.label);
-	if (options.describedBy) area.setAttribute('aria-describedby', options.describedBy);
 	if (options.invalid) area.setAttribute('aria-invalid', 'true');
+	if (options.reason) area.setAttribute('aria-description', options.reason);
 	area.maxLength = options.maxlength ?? 500;
 	area.addEventListener('input', () => options.onchange(area.value));
 	options.parent.append(area);
@@ -19,9 +19,11 @@ export function mountTemplateEditor(options: EditorOptions): EditorHandle {
 		setValue(value) {
 			if (area.value !== value) area.value = value;
 		},
-		setInvalid(invalid) {
+		setInvalid(invalid, reason = null) {
 			if (invalid) area.setAttribute('aria-invalid', 'true');
 			else area.removeAttribute('aria-invalid');
+			if (reason) area.setAttribute('aria-description', reason);
+			else area.removeAttribute('aria-description');
 		},
 		edit(change) {
 			const next = change(area.value, area.selectionStart, area.selectionEnd);

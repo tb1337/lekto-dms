@@ -54,16 +54,30 @@ describe('editor', () => {
 			value: '{{ contact }}',
 			onchange: (value) => changes.push(value),
 			completions: lists,
+			id: 'title',
 			label: 'Title'
 		});
-		expect(parent.querySelector('.tpl-variable')?.textContent).toBe('contact');
-		expect(parent.querySelector('[aria-label="Title"]')).not.toBeNull();
+		// In a shadow root, where CodeMirror's styles are a constructed sheet, not a <style>.
+		const root = parent.querySelector('#title')?.shadowRoot;
+		expect(root?.querySelector('.tpl-variable')?.textContent).toBe('contact');
+		expect(root?.querySelector('[aria-label="Title"]')).not.toBeNull();
+		expect(document.head.querySelector('style')).toBeNull();
 		editor.setValue('Lohn ');
 		editor.edit((text) => ({ text: `${text}{{ pages }}`, cursor: 16 }));
 		expect(changes.at(-1)).toBe('Lohn {{ pages }}');
-		editor.setInvalid(true);
-		expect(parent.querySelector('[aria-invalid="true"]')).not.toBeNull();
+		editor.setInvalid(true, 'unknown value field.x');
+		const field = root?.querySelector('[aria-invalid="true"]');
+		expect(field?.getAttribute('aria-description')).toBe('unknown value field.x');
+		// Focus inside the editor is not taken for focus that left a dialog's trap.
+		const seen: EventTarget[] = [];
+		const trap = (event: Event) => seen.push(event.composedPath()[0]);
+		document.addEventListener('focusin', trap, { capture: true });
+		editor.focus();
+		document.removeEventListener('focusin', trap, { capture: true });
+		expect(root?.activeElement?.classList.contains('cm-content')).toBe(true);
+		expect(seen).toEqual([]);
 		editor.destroy();
+		expect(parent.childElementCount).toBe(0);
 		parent.remove();
 	});
 });

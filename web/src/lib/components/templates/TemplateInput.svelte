@@ -68,7 +68,7 @@
 			{id}
 			bind:value
 			{label}
-			describedBy="{id}-error"
+			reason={error}
 			fields={usable}
 			invalid={invalid || error !== null}
 			{maxlength}
@@ -85,7 +85,7 @@
 			<Braces aria-hidden="true" />
 		</Button>
 	</div>
-	<p id="{id}-error" class="text-sm text-destructive" class:hidden={!error} aria-live="polite">
+	<p class="text-sm text-destructive" class:hidden={!error} aria-live="polite">
 		{error ?? ''}
 	</p>
 </div>

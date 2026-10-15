@@ -19,7 +19,8 @@
 
 	// The template editor, from the right: the template large, shown with a reference document;
 	// its values and fields to insert with a click, each with what the document has; filters as
-	// chips; the result below. "Apply" hands the template back, closing it drops the draft.
+	// chips; the result below. "Apply" hands the template back, closing it drops the draft. The
+	// editor takes the focus itself once loaded (the sheet's own would go to the first chip).
 	let {
 		open = $bindable(false),
 		value,
@@ -84,7 +85,11 @@
 </script>
 
 <Sheet.Root bind:open>
-	<Sheet.Content side="right" class="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl">
+	<Sheet.Content
+		side="right"
+		class="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl"
+		onOpenAutoFocus={(event) => event.preventDefault()}
+	>
 		<Sheet.Header class="border-b">
 			<Sheet.Title>{m.template_editor()}</Sheet.Title>
 			{#if label}<Sheet.Description>{label}</Sheet.Description>{/if}

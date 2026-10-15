@@ -13,7 +13,7 @@
 		value = $bindable(''),
 		handle = $bindable(null),
 		label,
-		describedBy,
+		reason = null,
 		fields,
 		invalid = false,
 		large = false,
@@ -25,7 +25,8 @@
 		value?: string;
 		handle?: EditorHandle | null;
 		label?: string;
-		describedBy?: string;
+		/** Why the template is invalid, read with the field. */
+		reason?: string | null;
 		fields: readonly FieldDefinition[];
 		invalid?: boolean;
 		large?: boolean;
@@ -53,8 +54,8 @@
 				}),
 				id,
 				label,
-				describedBy,
 				invalid: untrack(() => invalid),
+				reason: untrack(() => reason),
 				maxlength,
 				autofocus
 			});
@@ -72,7 +73,7 @@
 		handle?.setValue(value);
 	});
 	$effect(() => {
-		handle?.setInvalid(invalid);
+		handle?.setInvalid(invalid, reason);
 	});
 </script>
 

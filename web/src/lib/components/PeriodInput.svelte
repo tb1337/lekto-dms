@@ -47,12 +47,13 @@
 	}
 </script>
 
-<div class="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_auto]">
+<div class="grid grid-cols-2 gap-2">
 	<label class="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
 		{m.field_period_from()}
 		<Input
 			{id}
 			type="date"
+			class="px-2.5"
 			value={value.start}
 			{disabled}
 			aria-invalid={invalid || undefined}
@@ -64,6 +65,7 @@
 		{m.field_period_to()}
 		<Input
 			type="date"
+			class="px-2.5"
 			value={value.end}
 			{disabled}
 			aria-invalid={invalid || undefined}
@@ -71,7 +73,7 @@
 			oninput={(event) => set({ ...value, end: event.currentTarget.value })}
 		/>
 	</label>
-	<label class="col-span-2 flex min-w-0 flex-col gap-1 text-xs text-muted-foreground sm:col-span-1">
+	<label class="col-span-2 flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
 		{m.field_period_month()}
 		<Input
 			type="month"

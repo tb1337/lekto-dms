@@ -84,6 +84,7 @@ environment variable of a container (visible in `docker inspect` of Meilisearch,
 | `PAPIQ_MEILISEARCH_URL`, `_API_KEY(_FILE)` | – | search; without it Papiq works without search |
 | `PAPIQ_LLM_BASE_URL`, `_MODEL` | – | set both or neither; `PAPIQ_LLM_TIMEOUT` (seconds, 300) |
 | `PAPIQ_EMBEDDING_BASE_URL`, `_MODEL`, `_DIMENSIONS`, `_QUERY_PREFIX` | – | with Meilisearch and embeddings the dimensions are required |
+| `PAPIQ_VLM_BASE_URL`, `_MODEL`, `_API_KEY(_FILE)` | – | a vision language model that reads a document's pages when a person asks for it; set both or neither; `PAPIQ_VLM_TIMEOUT` (seconds per document, 1800) |
 | `PAPIQ_COOKIE_SECURE`, `PAPIQ_FORWARDED_ALLOW_IPS`, `PAPIQ_PUBLIC_URL` | `true`, –, – | behind a proxy, see below |
 | `PAPIQ_UPLOAD_MAX_SIZE` | 100 MiB | the proxy's body limit must allow it |
 | `PAPIQ_UI_DIR` | `/opt/papiq/ui` | the web UI's files; unset it to serve the API only |
@@ -106,6 +107,10 @@ with `PAPIQ_LLM_BASE_URL`, `PAPIQ_EMBEDDING_BASE_URL` and the models with `PAPIQ
 or more; it cuts longer prompts silently. On a CPU a document takes minutes (`PAPIQ_LLM_TIMEOUT`
 is 600 in the examples). Document content is sent to these endpoints; at start, a warning names
 every endpoint outside the local network.
+
+A vision language model (`PAPIQ_VLM_*`) reads a document's pages only when a person asks for it
+in the web UI ("Read with VLM"): every page goes there as an image. The model has to take images
+and give each line's box in pixels (measured with Claude Sonnet 5.5 through Open WebUI).
 
 ## Roles
 

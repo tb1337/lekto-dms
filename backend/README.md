@@ -185,10 +185,12 @@ jobs of the old run are recognised as stale.
   engine version, reason and duration of every run.
 - OCRmyPDF (`adapters/outbound/ocrmypdf`) runs as a child process per document with a time
   limit (`PAPIQ_OCR_TIMEOUT`); on timeout or cancellation the process group is killed. The job
-  lease is the longest limit of a node (OCR, reading with the vision model `PAPIQ_VLM_TIMEOUT` if one is configured, or twice `PAPIQ_LLM_TIMEOUT`) plus two minutes, so a node normally keeps its claim; if it overruns (e.g. a slow S3
-  transfer), another worker takes the job over and the late result is discarded. A node
-  interrupted by a stopping worker is released at once (`JobQueue.release`); that does not
-  count against `PAPIQ_NODE_MAX_ATTEMPTS`.
+  lease is the longest limit of a node (OCR, reading with the vision model in
+  `PAPIQ_VLM_TIMEOUT` if one is configured, or twice `PAPIQ_LLM_TIMEOUT`) plus two minutes, so a
+  node normally keeps its claim; if it overruns (e.g. a slow S3 transfer), another worker takes
+  the job over and the late result is discarded. A node interrupted by a stopping worker is
+  released at once (`JobQueue.release`); that does not count against
+  `PAPIQ_NODE_MAX_ATTEMPTS`.
 - OCRmyPDF: `--skip-text` (pages with text are not recognised again), `--deskew`,
   `--rotate-pages`, `--output-type pdfa`, languages `PAPIQ_OCR_LANGUAGES`. A PDF with invisible
   text carries the layer of another OCR (a scanner's, an older archive's), which may be poor and
@@ -202,6 +204,28 @@ jobs of the old run are recognised as stale.
   size (none, or 72 dpi from a phone) are scaled to the long edge of A4; transparency is put on
   white, CMYK is converted, all pages of a TIFF are kept. OCRmyPDF shares the CPU cores among
   `PAPIQ_WORKER_CONCURRENCY` jobs.
+- A vision language model (`PAPIQ_VLM_*`, off without) reads a document only when a person
+  asks for it (`POST /documents/{id}/vision`, owner or admin); nothing asks on its own. The
+  document is processed again from OCR, and OCRmyPDF runs with `--force-ocr --deskew` and the
+  plugin `ocrmypdf/plugin.py` as OCR engine: Tesseract still tells orientation and skew, every
+  page image goes to the model at no more than 1.15 megapixels (so that the service does not
+  scale it again), and the model answers with each line and its box in pixels of that image
+  (prompt `read-1`, JSON schema; once more after an answer that does not fit). The words of a
+  line share its box by their length; OCRmyPDF writes the text layer from the lines. Boxes in
+  thousandths of the image drifted on a dense statement and on a photo, pixel boxes fit every
+  line (issue #53). The archive holds the pages as images under the model's text, and that text
+  counts as OCR: the checks are the usual ones, words the model marks `[unreadable]` count as
+  unsure (`PAPIQ_POOR_READING_THRESHOLD`). The run keeps the request (`processing.vision`,
+  revision 0021), so a retry asks the model again; reprocessing from `parse` and `reparse` keep
+  the model's text (it is the archive's), reprocessing from `ocr` reads with Tesseract. A page
+  the model cannot read fails the node like the language model (`LanguageModelError`: retried,
+  then red). The plugin gets its configuration in the environment of OCRmyPDF's process (the
+  key apart, never logged) and leaves a record per page in a folder of ours. The log names
+  model, endpoint and prompt (`output.vision`) and the tokens per call (`output.tokens`); the calls are kept like those of the
+  language model (`exchanges/ocr.json`, the image as a placeholder). `GET
+  /documents/{id}/reading` gives each recognised page and the advice to read with the model:
+  `no_text` (red, the parse found no text) or `poor_page` (yellow or red, with a poorly read
+  page); none once the model has read it.
 - Two kinds of file get a second OCRmyPDF run. A digitally signed PDF is processed with
   `--invalidate-digital-signatures`: the original keeps its signature (originals never change),
   the archive has none, and the OCR entry of the log says so (outcome OK, `note`). A file whose
@@ -233,8 +257,8 @@ jobs of the old run are recognised as stale.
   (page and one box per line, fractions of the page as shown, its rotation applied) and whether
   the quote shows the value itself or only leads to it (`quote_shows_value`); `/review`
   returns both. Documents processed before this have none until they are processed again.
-- What the model nodes (`signal_llm`, `fields`) send is kept beside the document, one file per
-  node with every run
+- What the model nodes (`signal_llm`, `fields`, and `ocr` when the vision model read) send is
+  kept beside the document, one file per node with every run
   (`documents/{id}/exchanges/<node>.json`: system and user message, the raw answer and the
   endpoint's whole usage report); owner and admins read it through
   `GET /documents/{id}/exchanges/{node}`. The files go with the document's other derivatives.
@@ -593,7 +617,9 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /documents/{id}/log` | Processing log (owner or admin) |
 | `POST /documents/{id}/retry` | Repeat the failed nodes (owner or admin) |
 | `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (owner or admin) |
-| `GET /pipeline` | The graph: every node and what it needs, in graph order |
+| `POST /documents/{id}/vision` | Process again from OCR with the vision language model reading every page (owner or admin); `409` without a model |
+| `GET /documents/{id}/reading` | How the archive's text was read: by the vision model or not, each recognised page, the advice to read with the model (owner or admin) |
+| `GET /pipeline` | The graph: every node and what it needs, in graph order; the vision model, if one is configured |
 | `POST /pipeline/reparse` | Read the text of every document again in the background (admins, after the update to 0.2); `202` with `queued` |
 | `GET /inbox` | The caller's yellow and red documents, newest first, with their open nodes and fields; `limit`, `cursor` |
 | `GET /documents/{id}/review` | What the model proposed and how each field was checked (owner or admin) |

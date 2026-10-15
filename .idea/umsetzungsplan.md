@@ -630,11 +630,45 @@ Die Lücke der textbasierten Varianten kommt fast ganz aus dem schlechten Scan (
 - Filter nach Bezugszeitraum (und Dokumentdatum) in Liste und Suche.
 - In der Telefonrechnung des Sets liest Sonnet „Fällig am“ anders als erwartet; der Text nennt nur eine Abbuchung „frühestens am 12.04.2026“.
 
+### Zwischenschritt: VLM als Texterkennung auf Wunsch (Issue #53)
+
+**Anlass:** Schlechte Scans und Fotos liest Tesseract kaum oder gar nicht (synthetischer Kontoauszug: 17 % der Wörter, das Foto eines Kassenbons: nichts); dort las im Vergleich in `ocr_test` nur ein VLM. Auf der Devinstanz (80 Dokumente, 15.10.2026) hat Tesseract 12 Seiten selbst gelesen, 5 davon schwach (ab 8 % unsicherer Wörter), keine ohne Text.
+
+**Entscheidungen (Tobi, 15.10.2026):**
+- Ein Dokument an ein VLM zu senden, ist immer eine Entscheidung eines Menschen: ein Knopf „Mit VLM lesen“, der immer da ist, wenn ein VLM eingerichtet ist; keine Automatik.
+- Eine neue Schwelle gibt es nicht: Empfohlen ist der Knopf, wo die Texterkennung das Dokument schon rot (kein Text) oder gelb (eine schwach gelesene Seite) macht.
+- Immer das ganze Dokument, keine Seitenauswahl.
+- Liest das VLM, zählt sein Text als OCR und gehört in die Textebene des Archiv-PDFs.
+- Eigene Einstellungen `PAPIQ_VLM_*`, nicht die des Sprachmodells: Seitenbilder gehen nur dorthin, wo es ausdrücklich eingetragen ist.
+- Das Archiv ist der Speicher der Lesung: „Neu verarbeiten ab Parse“ und `reparse` behalten sie, „Neu verarbeiten ab OCR“ liest wieder mit Tesseract (jede Sendung bleibt eine Entscheidung).
+- Kein Werkzeug im MCP-Server.
+
+**Versuch vorab (Sonnet 5.5 über Open WebUI, die fünf synthetischen Seiten aus `ocr_test`, zehn Aufrufe):** Die Zeilen mit ihrer Box in Tausendsteln des Bildes liefen auf dem dichten Kontoauszug ab der Mitte nach unten weg und lagen auf dem Foto bis zu 17 Zeilen daneben. In Pixeln des gesendeten Bildes (höchstens 1,15 Megapixel, damit der Dienst nicht noch einmal skaliert) saß jede Zeile: Überdeckung mit der wahren Lage im Median 0,79 bis 0,91, auf dem Foto 35 von 35 und auf dem Kontoauszug 80 von 80 Zeilen mit mindestens 0,5; Wörter 99 bis 100 %. Je Seite etwa 2.100 Eingabe- und 1.100 bis 2.400 Ausgabe-Tokens, 10 bis 15 s.
+
+**Umsetzung (Branch `feature/vlm-reader-0.2.0`, von `release/0.2.0`):**
+- **OCR-Plugin:** OCRmyPDF 17 nimmt eigene Texterkennungen als Plugin. Mit `vision` läuft es mit `--force-ocr --deskew` und `ocrmypdf/plugin.py`: Drehung und Schräglage bestimmt weiter Tesseract, jedes vorbereitete Seitenbild geht ans VLM (Prompt `read-1`, JSON-Schema, nach einer unpassenden Antwort einmal neu), die Wörter einer Zeile teilen sich ihre Box nach Länge, OCRmyPDF schreibt daraus die Textebene. Die Einstellungen gehen in der Umgebung in OCRmyPDFs Prozess, je Seite bleibt ein Protokoll in einem eigenen Ordner. `[unreadable]` zählt als unsicheres Wort.
+- **Port:** `Ocr.vision` nennt das Modell, `make_archive(vision=True)` liest mit ihm, `OcrResult.vision` hält die Aufrufe. Fake und Vertragstest; der echte Adapter gegen einen Ersatz-Endpunkt.
+- **Einstellungen:** `PAPIQ_VLM_BASE_URL`, `_MODEL`, `_API_KEY(_FILE)`, `_TIMEOUT` (das ganze Dokument, Vorgabe 30 Minuten; eine Seite höchstens 5 Minuten). Die Leasedauer der Jobs wächst damit; beim Start warnt Papiq vor einem VLM außerhalb des lokalen Netzes.
+- **Pipeline:** `POST /documents/{id}/vision` (Besitzer und Admins) verarbeitet ab OCR neu; der Lauf merkt sich die Bitte (`processing.vision`, Revision 0021), ein Wiederholen fragt erneut. Der OCR-Knoten protokolliert Modell, Endpunkt, Prompt und je Aufruf die Tokens (im Token-Tooltip „N Aufrufe“ statt Versuche) und legt die Aufrufe wie die des Sprachmodells ab (`exchanges/ocr.json`, das Bild als Platzhalter); ohne eingerichtetes VLM scheitert er. Ein VLM, das nicht lesen kann, ist ein vorübergehender Fehler (Wiederholung, dann rot).
+- **Empfehlung:** `GET /documents/{id}/reading` mit den Seiten und `advice` (`no_text`, `poor_page`); keine mehr, sobald das VLM gelesen hat. `GET /pipeline` nennt Modell und Endpunkt.
+- **Web:** „Mit VLM lesen“ im Aktionsmenü, bei Empfehlung markiert und als Hinweis unter dem Kopf; ein Dialog nennt Endpunkt und Modell, bevor etwas gesendet wird. Während des Lesens sagt der Kopf es, der Inhalt trägt „vom VLM gelesen“, das Protokoll öffnet den Prompt der OCR. Neu verarbeiten ab OCR warnt, dass die Lesung verloren geht.
+
+**Prüfung:**
+- Neue Beispiele, nur mit Pillow erzeugt: ein Scan mit 100 dpi, Schatten, Rauschen und starkem JPEG sowie ein Kassenbon, schräg auf einem Tisch fotografiert. Beide gut lesbar, Tesseract findet auf beiden keinen Text.
+- Integrationstest mit echtem OCRmyPDF, Ersatz-VLM und Ersatz-Sprachmodell: ohne Bitte rot mit `no_text`, nichts gesendet; mit „Mit VLM lesen“ grün mit Kontakt, Typ, Datum und Pflichtfeld.
+- Im Browser gegen den Build auf einer leeren Instanz mit Ersatz-VLM: Hinweis, Menü, Dialog, Lesung, Inhalt, Prompt, Warnung; hell, dunkel, Handybreite, ohne Konsolenfehler und CSP-Verstöße.
+
+**Offen:**
+- Ein echter Lauf an Scans und Fotos der Devinstanz (Seiten gehen dabei hinaus, nur mit Tobis Zustimmung).
+- Ein lokales Vision-Modell auf dem NUC statt eines entfernten; der Adapter passt für jeden OpenAI-kompatiblen Endpunkt, der Bilder nimmt und Pixel-Boxen liefert.
+- Fotos vorher entzerren (Perspektive), damit Tesseract sie liest; bräuchte OpenCV.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.
 - `DocumentParser` mit Betriebsarten `ocr`, `vlm`, `auto` (`PAPIQ_READ_MODE`); Docling-VLM-Pipeline lokal (`granite-docling-258M`) und entfernt über einen OpenAI-kompatiblen Endpunkt; Qualitätsmaß je Lesung im Protokoll.
 - Hinweis (14.10.2026): Mit dem Layout-Text statt Docling entfällt die Docling-VLM-Pipeline; das VLM als Leser schwer lesbarer Seiten über Open WebUI ist Issue #53.
+- Hinweis (15.10.2026): Das VLM liest auf Wunsch einer Person als Texterkennung (Zwischenschritt oben); eine Betriebsart `auto`, die selbst zum VLM greift, entfällt (Tobi: immer eine Entscheidung eines Menschen).
 - `LanguageModel` mit Bildern in der Anfrage (`PAPIQ_LLM_VISION_MODEL`, `PAPIQ_LLM_PAGES`).
 - Messungen: granite-docling auf dem NUC je Seite; Vision-Modelle über OpenWebUI (Claude, Groq); Bewertungssatz um Seitenbilder erweitert.
 

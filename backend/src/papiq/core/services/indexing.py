@@ -32,7 +32,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -51,7 +51,7 @@ from papiq.core.domain.events import (
     NodeDeferred,
     NodeStarted,
 )
-from papiq.core.domain.fields import FieldValue, Money, Url
+from papiq.core.domain.fields import FieldValue, Money, Period, PeriodKind, Url
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, TagId, UserId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.pipeline import SIGNALS
@@ -555,8 +555,64 @@ def _field_text(value: FieldValue) -> str:
             return value.value
         case str():
             return value
-        case _:  # a date, in both notations
+        case Period():
+            return _period_text(value)
+        case date():  # in both notations
             return f"{value.isoformat()} {value:%d.%m.%Y}"
+
+
+_MONTHS = {
+    "de": [
+        "Januar",
+        "Februar",
+        "März",
+        "April",
+        "Mai",
+        "Juni",
+        "Juli",
+        "August",
+        "September",
+        "Oktober",
+        "November",
+        "Dezember",
+    ],
+    "en": [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ],
+}
+
+
+def _period_text(period: Period) -> str:
+    """A period as it is searched for: its ends in both notations, and what it is (`September
+    2026` in German and English, `KW 38 2026`, `Q3 2026`, `2026`)."""
+    start, end = period.start, period.end
+    words = [f"{start.isoformat()} {start:%d.%m.%Y}"]
+    if end != start:
+        words.append(f"{end.isoformat()} {end:%d.%m.%Y}")
+    match period.kind:
+        case PeriodKind.WEEK:
+            year, week, _ = start.isocalendar()
+            words.append(f"KW {week} {year}")
+        case PeriodKind.MONTH:
+            names = {names[start.month - 1] for names in _MONTHS.values()}
+            words += [f"{name} {start.year}" for name in sorted(names)]
+            words.append(f"{start:%m/%Y} {start:%m.%Y}")
+        case PeriodKind.QUARTER:
+            words.append(f"Q{(start.month - 1) // 3 + 1} {start.year}")
+        case PeriodKind.YEAR:
+            words.append(str(start.year))
+    return " ".join(words)
 
 
 _PARAGRAPH_BREAK = re.compile(r"\n\s*\n")

@@ -1,7 +1,7 @@
 """Documents with their field values, and the processing log."""
 
 from collections.abc import Collection, Sequence
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -12,7 +12,7 @@ from papiq.adapters.outbound.sql.drawers import visible_to
 from papiq.adapters.outbound.sql.repositories import MICROSECOND, SqlRepository, Values
 from papiq.adapters.outbound.sql.transaction import Transaction
 from papiq.core.domain.documents import Channel, Document, Sha256
-from papiq.core.domain.fields import FieldValue, Money, Url
+from papiq.core.domain.fields import FieldValue, Money, Period, Url
 from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -285,6 +285,7 @@ _EMPTY_VALUE: Values = {
     "value_decimal": None,
     "value_currency": None,
     "value_date": None,
+    "value_date_end": None,
     "value_boolean": None,
 }
 
@@ -302,7 +303,9 @@ def _value_columns(value: FieldValue) -> Values:
             columns = {"kind": "url", "value_text": url}
         case str():
             columns = {"kind": "text", "value_text": value}
-        case _:  # date; datetime is no field value
+        case Period(start=start, end=end):
+            columns = {"kind": "period", "value_date": start, "value_date_end": end}
+        case date():  # datetime is no field value
             columns = {"kind": "date", "value_date": value}
     return {**_EMPTY_VALUE, **columns}
 
@@ -321,6 +324,8 @@ def _field_value(row: Row[Any]) -> FieldValue:
             return row.value_text  # type: ignore[no-any-return]
         case "date":
             return row.value_date  # type: ignore[no-any-return]
+        case "period":
+            return Period(row.value_date, row.value_date_end)
     raise ValueError(f"unknown field value kind {row.kind!r}")
 
 

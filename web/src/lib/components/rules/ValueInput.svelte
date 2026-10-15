@@ -4,6 +4,7 @@
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { isMoney } from '#lib/fields.ts';
 	import type { Value } from '#lib/rules/model.ts';
 
 	// One value of a field in its JSON form: text, number and date as text, yes/no as a
@@ -38,11 +39,7 @@
 	);
 	// The date field shows only YYYY-MM-DD; other spellings the API accepts stay visible as text.
 	const dateField = $derived(type === 'date' && (text === '' || /^\d{4}-\d{2}-\d{2}$/.test(text)));
-	const money = $derived(
-		typeof value === 'object' && value !== null && !Array.isArray(value)
-			? value
-			: { amount: '', currency: 'EUR' }
-	);
+	const money = $derived(isMoney(value) ? value : { amount: '', currency: 'EUR' });
 	const choices = $derived([
 		{ value: '', label: m.rule_choose() },
 		...(field?.choices ?? []).map((choice) => ({ value: choice, label: choice })),

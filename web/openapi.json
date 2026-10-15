@@ -13268,6 +13268,9 @@
                 "$ref": "#/components/schemas/MoneyValue"
               },
               {
+                "$ref": "#/components/schemas/PeriodValue"
+              },
+              {
                 "items": {
                   "type": "string"
                 },
@@ -13799,9 +13802,12 @@
                 },
                 {
                   "$ref": "#/components/schemas/MoneyValue"
+                },
+                {
+                  "$ref": "#/components/schemas/PeriodValue"
                 }
               ],
-              "description": "By data type: text, choice and link: string; number: decimal as string; date: `YYYY-MM-DD`; boolean: true/false; amount: `{amount, currency}`."
+              "description": "By data type: text, choice and link: string; number: decimal as string; date: `YYYY-MM-DD`; boolean: true/false; amount: `{amount, currency}`; period: `{start, end}` as `YYYY-MM-DD`, both days included."
             },
             "propertyNames": {
               "format": "uuid"
@@ -14049,9 +14055,12 @@
                 },
                 {
                   "$ref": "#/components/schemas/MoneyValue"
+                },
+                {
+                  "$ref": "#/components/schemas/PeriodValue"
                 }
               ],
-              "description": "By data type: text, choice and link: string; number: decimal as string; date: `YYYY-MM-DD`; boolean: true/false; amount: `{amount, currency}`."
+              "description": "By data type: text, choice and link: string; number: decimal as string; date: `YYYY-MM-DD`; boolean: true/false; amount: `{amount, currency}`; period: `{start, end}` as `YYYY-MM-DD`, both days included."
             },
             "propertyNames": {
               "format": "uuid"
@@ -15142,7 +15151,8 @@
           "date",
           "boolean",
           "choice",
-          "link"
+          "link",
+          "period"
         ],
         "title": "FieldType"
       },
@@ -16124,6 +16134,34 @@
             "revoke_tokens": true
           }
         ]
+      },
+      "PeriodValue": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date",
+            "title": "Start",
+            "description": "First day, included.",
+            "examples": [
+              "2026-09-01"
+            ]
+          },
+          "end": {
+            "type": "string",
+            "format": "date",
+            "title": "End",
+            "description": "Last day, included; a single day has start = end.",
+            "examples": [
+              "2026-09-30"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "PeriodValue"
       },
       "PipelineOut": {
         "properties": {
@@ -17358,6 +17396,9 @@
               },
               {
                 "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "$ref": "#/components/schemas/PeriodValue"
               }
             ],
             "title": "Value",

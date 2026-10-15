@@ -1,5 +1,6 @@
 """Response bodies that more than one inbound adapter (REST, MCP) returns."""
 
+from datetime import date
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -15,21 +16,29 @@ class MoneyValue(BaseModel):
     currency: str = Field(examples=["EUR"], description="ISO 4217 code.")
 
 
+class PeriodValue(BaseModel):
+    start: date = Field(examples=["2026-09-01"], description="First day, included.")
+    end: date = Field(
+        examples=["2026-09-30"], description="Last day, included; a single day has start = end."
+    )
+
+
 FieldJson = Annotated[
-    str | bool | MoneyValue,
+    str | bool | MoneyValue | PeriodValue,
     Field(
         description=(
             "By data type: text, choice and link: string; number: decimal as string; date: "
-            "`YYYY-MM-DD`; boolean: true/false; amount: `{amount, currency}`."
+            "`YYYY-MM-DD`; boolean: true/false; amount: `{amount, currency}`; period: "
+            "`{start, end}` as `YYYY-MM-DD`, both days included."
         )
     ),
 ]
 
 
-_FIELD_JSON: TypeAdapter[str | bool | MoneyValue] = TypeAdapter(FieldJson)
+_FIELD_JSON: TypeAdapter[str | bool | MoneyValue | PeriodValue] = TypeAdapter(FieldJson)
 
 
-def field_json(value: FieldValue) -> str | bool | MoneyValue:
+def field_json(value: FieldValue) -> str | bool | MoneyValue | PeriodValue:
     """A value as the API writes it: its JSON form (`field_to_json`) as the response schema
     has it."""
     return _FIELD_JSON.validate_python(field_to_json(value))

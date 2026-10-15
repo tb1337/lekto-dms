@@ -8,6 +8,8 @@ from papiq.core.domain.fields import (
     FieldDefinition,
     FieldType,
     Money,
+    Period,
+    PeriodKind,
     Url,
     field_from_json,
     field_to_json,
@@ -31,6 +33,7 @@ ACCEPTED: list[tuple[FieldType, object, object]] = [
     (FieldType.BOOLEAN, False, False),
     (FieldType.CHOICE, "monthly", "monthly"),
     (FieldType.LINK, Url("https://example.org/a?b=c"), Url("https://example.org/a?b=c")),
+    (FieldType.PERIOD, Period.month(2026, 9), Period(date(2026, 9, 1), date(2026, 9, 30))),
 ]
 
 REJECTED: list[tuple[FieldType, object]] = [
@@ -50,6 +53,8 @@ REJECTED: list[tuple[FieldType, object]] = [
     (FieldType.CHOICE, "weekly"),
     (FieldType.CHOICE, "Monthly"),
     (FieldType.LINK, "https://example.org"),
+    (FieldType.PERIOD, date(2026, 9, 1)),
+    (FieldType.PERIOD, {"start": "2026-09-01", "end": "2026-09-30"}),
     (FieldType.TEXT, None),
 ]
 
@@ -98,6 +103,57 @@ def test_one_json_form_for_api_rules_and_the_log() -> None:
     with pytest.raises(ValidationError) as caught:
         field_from_json(definition(FieldType.DATE), "x" * 500)
     assert len(str(caught.value)) < 200
+
+
+@pytest.mark.parametrize(
+    ("period", "kind"),
+    [
+        (Period.day(date(2026, 9, 15)), PeriodKind.DAY),
+        (Period.week(2026, 38), PeriodKind.WEEK),
+        (Period(date(2026, 9, 14), date(2026, 9, 20)), PeriodKind.WEEK),  # Monday to Sunday
+        (Period(date(2026, 9, 15), date(2026, 9, 21)), PeriodKind.SPAN),  # Tuesday to Monday
+        (Period.month(2026, 2), PeriodKind.MONTH),
+        (Period.month(2028, 2), PeriodKind.MONTH),  # a leap year
+        (Period.quarter(2026, 3), PeriodKind.QUARTER),
+        (Period(date(2026, 2, 1), date(2026, 4, 30)), PeriodKind.SPAN),  # three months, no quarter
+        (Period.year(2025), PeriodKind.YEAR),
+        (Period(date(2026, 1, 1), date(2027, 12, 31)), PeriodKind.SPAN),
+    ],
+)
+def test_what_a_period_is_follows_from_its_ends(period: Period, kind: PeriodKind) -> None:
+    assert period.kind is kind
+
+
+def test_a_period_has_dates_for_ends_and_does_not_end_before_it_starts() -> None:
+    assert Period.week(2026, 38) == Period(date(2026, 9, 14), date(2026, 9, 20))
+    assert Period.month(2028, 2).end == date(2028, 2, 29)
+    assert Period.quarter(2026, 4) == Period(date(2026, 10, 1), date(2026, 12, 31))
+    with pytest.raises(ValidationError, match="before it starts"):
+        Period(date(2026, 9, 30), date(2026, 9, 1))
+    with pytest.raises(ValidationError, match="dates"):
+        Period(datetime(2026, 9, 1, tzinfo=UTC), date(2026, 9, 30))
+    with pytest.raises(ValidationError):
+        Period.quarter(2026, 5)
+    september = Period.month(2026, 9)
+    assert september.overlaps(Period.day(date(2026, 9, 30)))
+    assert september.overlaps(Period(date(2026, 8, 20), date(2026, 9, 1)))
+    assert not september.overlaps(Period.month(2026, 10))
+
+
+def test_a_period_in_json_is_its_start_and_end() -> None:
+    september = Period.month(2026, 9)
+    assert field_to_json(september) == {"start": "2026-09-01", "end": "2026-09-30"}
+    period = definition(FieldType.PERIOD)
+    assert field_from_json(period, field_to_json(september)) == september
+    for refused in (
+        {"start": "2026-09-30", "end": "2026-09-01"},
+        {"start": "2026-09-01"},
+        {"start": "2026-09-01", "end": "2026-09-30", "kind": "month"},
+        {"start": "September", "end": "2026-09-30"},
+        "2026-09",
+    ):
+        with pytest.raises(ValidationError, match="does not accept"):
+            field_from_json(period, refused)
 
 
 @pytest.mark.parametrize(

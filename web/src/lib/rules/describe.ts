@@ -101,6 +101,7 @@ const PROBLEMS: Record<Problem['code'], (params: Record<string, string | number>
 	date: () => m.rule_error_date(),
 	number: () => m.rule_error_number(),
 	amount: () => m.rule_error_amount(),
+	period: () => m.rule_error_period(),
 	field: () => m.rule_error_field(),
 	operator: () => m.rule_error_operator(),
 	group_empty: () => m.rule_error_group_empty(),

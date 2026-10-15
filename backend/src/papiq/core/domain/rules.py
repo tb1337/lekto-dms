@@ -135,6 +135,7 @@ FIELD_TYPE_OPERATORS: dict[FieldType, frozenset[Operator]] = {
     FieldType.DATE: _ORDERED,
     FieldType.BOOLEAN: frozenset({Operator.IS, Operator.PRESENT, Operator.MISSING}),
     FieldType.CHOICE: frozenset({Operator.IS, Operator.IN, Operator.PRESENT, Operator.MISSING}),
+    FieldType.PERIOD: frozenset({Operator.PRESENT, Operator.MISSING}),
 }
 
 

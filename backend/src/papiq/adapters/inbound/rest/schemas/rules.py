@@ -10,7 +10,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from papiq.adapters.inbound.schemas import FieldJson, MoneyValue, RuleEffectOut, RuleNoteOut
+from papiq.adapters.inbound.schemas import (
+    FieldJson,
+    MoneyValue,
+    PeriodValue,
+    RuleEffectOut,
+    RuleNoteOut,
+)
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.rules import (
     ApplicationStatus,
@@ -50,7 +56,7 @@ class ConditionSchema(BaseModel):
 
     field: ConditionField
     op: Operator
-    value: str | bool | MoneyValue | list[str] | None = Field(
+    value: str | bool | MoneyValue | PeriodValue | list[str] | None = Field(
         default=None,
         description=(
             "None for `present` and `missing`, a list for `in`, otherwise one value: an id, a "

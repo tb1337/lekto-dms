@@ -9,7 +9,7 @@ from decimal import Decimal
 from pathlib import PurePath
 
 from papiq.core.domain.documents import Document
-from papiq.core.domain.fields import FieldDefinition, FieldValue, Money, Url
+from papiq.core.domain.fields import FieldDefinition, FieldValue, Money, Period, Url
 
 type TemplateValue = (
     str
@@ -18,6 +18,7 @@ type TemplateValue = (
     | Decimal
     | date
     | Money
+    | Period
     | Sequence[TemplateValue]
     | Mapping[str, TemplateValue]
 )

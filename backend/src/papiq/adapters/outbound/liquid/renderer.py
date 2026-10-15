@@ -25,7 +25,7 @@ from liquid.exceptions import LiquidError, UndefinedError
 from liquid.extra import Currency, DateTime, Number
 
 from papiq.core.domain.errors import MissingValueError, ValidationError
-from papiq.core.domain.fields import Money
+from papiq.core.domain.fields import Money, Period, PeriodKind
 from papiq.core.domain.templates import TemplateValue
 
 _UNDEFINED = re.compile(r"^'?(?P<path>.+?)'? is undefined$")
@@ -144,6 +144,50 @@ class _Amount(Mapping[str, object]):
         return self._text
 
 
+class _Period(Mapping[str, object]):
+    """A period: `start` and `end` (dates for `date` and `datetime`), written by what it is in
+    the locale: `September 2026`, `KW 38 2026`, `Q3 2026`, `2026`, a day as a date, else its
+    ends joined by an en dash (`01.09.2026` to `14.09.2026`)."""
+
+    def __init__(self, period: Period, locale: str) -> None:
+        self._values: dict[str, object] = {"start": period.start, "end": period.end}
+        self._text = _period_text(period, locale)
+
+    def __getitem__(self, key: str) -> object:
+        return self._values[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._values)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    def __str__(self) -> str:
+        return self._text
+
+
+_WEEK = {"de": "KW {week} {year}"}  # else `week 38 2026`
+
+
+def _period_text(period: Period, locale: str) -> str:
+    start, end = period.start, period.end
+    match period.kind:
+        case PeriodKind.DAY:
+            return format_date(start, "medium", locale=locale)
+        case PeriodKind.WEEK:
+            year, week, _ = start.isocalendar()
+            words = _WEEK.get(Locale.parse(locale).language, "week {week} {year}")
+            return words.format(week=week, year=year)
+        case PeriodKind.MONTH:
+            return format_date(start, "LLLL yyyy", locale=locale)
+        case PeriodKind.QUARTER:
+            return format_date(start, "QQQ yyyy", locale=locale)
+        case PeriodKind.YEAR:
+            return format_date(start, "yyyy", locale=locale)
+    first, last = (format_date(day, "medium", locale=locale) for day in (start, end))
+    return f"{first}\u2013{last}"
+
+
 def _mapping(values: Mapping[str, TemplateValue], locale: str) -> dict[str, object]:
     return {key: _value(value, locale) for key, value in values.items() if value is not None}
 
@@ -156,6 +200,8 @@ def _value(value: TemplateValue, locale: str) -> object:
             return _Number(value)
         case Money():
             return _Amount(value, locale)
+        case Period():
+            return _Period(value, locale)
         case Mapping():
             return _mapping(value, locale)
         case Sequence():

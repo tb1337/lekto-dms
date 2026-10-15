@@ -8,7 +8,7 @@ from papiq.core.domain.classifier import ClassifierModel
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.drawers import Drawer, ShareLevel
 from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
-from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url
+from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Period, Url
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import DocumentId, DrawerId, new_id
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
@@ -520,6 +520,7 @@ class UnitOfWorkContract:
             FieldType.BOOLEAN: False,
             FieldType.CHOICE: "y",
             FieldType.LINK: Url("https://example.org/contract?id=7"),
+            FieldType.PERIOD: Period(date(2026, 9, 1), date(2026, 9, 30)),
         }
         document = builders.document(owner, drawer)
         document.apply_changes(

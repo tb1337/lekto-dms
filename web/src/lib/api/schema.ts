@@ -1937,7 +1937,13 @@ export interface components {
 			 * Value
 			 * @description None for `present` and `missing`, a list for `in`, otherwise one value: an id, a channel, a text or pattern, a date `YYYY-MM-DD`, or a field value as in `fields` of a document.
 			 */
-			value?: string | boolean | components['schemas']['MoneyValue'] | string[] | null;
+			value?:
+				| string
+				| boolean
+				| components['schemas']['MoneyValue']
+				| components['schemas']['PeriodValue']
+				| string[]
+				| null;
 			/**
 			 * Field Id
 			 * @description Only when `field` is `field`.
@@ -2222,7 +2228,11 @@ export interface components {
 			 * @description Values by field id.
 			 */
 			fields: {
-				[key: string]: string | boolean | components['schemas']['MoneyValue'];
+				[key: string]:
+					| string
+					| boolean
+					| components['schemas']['MoneyValue']
+					| components['schemas']['PeriodValue'];
 			};
 			/** @description None while processing runs. */
 			lane: components['schemas']['Lane'] | null;
@@ -2349,7 +2359,11 @@ export interface components {
 			 * @description Values by field id.
 			 */
 			fields: {
-				[key: string]: string | boolean | components['schemas']['MoneyValue'];
+				[key: string]:
+					| string
+					| boolean
+					| components['schemas']['MoneyValue']
+					| components['schemas']['PeriodValue'];
 			};
 			/** @description None while processing runs. */
 			lane: components['schemas']['Lane'] | null;
@@ -2793,7 +2807,7 @@ export interface components {
 		 * FieldType
 		 * @enum {string}
 		 */
-		FieldType: 'text' | 'number' | 'amount' | 'date' | 'boolean' | 'choice' | 'link';
+		FieldType: 'text' | 'number' | 'amount' | 'date' | 'boolean' | 'choice' | 'link' | 'period';
 		/** ForceReviewAction */
 		ForceReviewAction: {
 			/**
@@ -3281,6 +3295,23 @@ export interface components {
 			 * @default false
 			 */
 			revoke_tokens: boolean;
+		};
+		/** PeriodValue */
+		PeriodValue: {
+			/**
+			 * Start
+			 * Format: date
+			 * @description First day, included.
+			 * @example 2026-09-01
+			 */
+			start: string;
+			/**
+			 * End
+			 * Format: date
+			 * @description Last day, included; a single day has start = end.
+			 * @example 2026-09-30
+			 */
+			end: string;
 		};
 		/**
 		 * PipelineOut
@@ -3909,7 +3940,11 @@ export interface components {
 			 * Value
 			 * @description As the field's type has it; for a text field a template, as a title's.
 			 */
-			value: string | boolean | components['schemas']['MoneyValue'];
+			value:
+				| string
+				| boolean
+				| components['schemas']['MoneyValue']
+				| components['schemas']['PeriodValue'];
 		};
 		/** SetTitleAction */
 		SetTitleAction: {

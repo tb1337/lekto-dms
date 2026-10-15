@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emptyValue, sameValue, toApi, toInput } from './fields.ts';
+import { emptyValue, isMoney, isPeriod, sameValue, toApi, toInput } from './fields.ts';
 
 describe('field values', () => {
 	it('keeps text and trims it', () => {
@@ -29,6 +29,34 @@ describe('field values', () => {
 			currency: 'EUR'
 		});
 		expect(emptyValue('amount')).toEqual({ amount: '', currency: 'EUR' });
+	});
+
+	it('writes a period, one date as that day', () => {
+		const september = { start: '2026-09-01', end: '2026-09-30' };
+		expect(toInput('period', september)).toEqual(september);
+		expect(toApi('period', { start: ' 2026-09-01', end: '2026-09-30 ' })).toEqual(september);
+		expect(toApi('period', { start: '2026-09-15', end: '' })).toEqual({
+			start: '2026-09-15',
+			end: '2026-09-15'
+		});
+		expect(toApi('period', emptyValue('period'))).toBeNull();
+		expect(isPeriod(september) && !isMoney(september)).toBe(true);
+		expect(isMoney({ amount: '1', currency: 'EUR' }) && !isPeriod({ amount: '1' })).toBe(true);
+	});
+
+	it('compares objects whatever the order of their keys', () => {
+		expect(
+			sameValue(
+				{ start: '2026-09-01', end: '2026-09-30' },
+				{ end: '2026-09-30', start: '2026-09-01' }
+			)
+		).toBe(true);
+		expect(
+			sameValue(
+				{ start: '2026-09-01', end: '2026-09-30' },
+				{ start: '2026-09-01', end: '2026-09-29' }
+			)
+		).toBe(false);
 	});
 
 	it('compares values', () => {

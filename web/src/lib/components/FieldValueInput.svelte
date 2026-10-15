@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
-	import type { InputValue } from '#lib/fields.ts';
+	import { type InputValue, isMoney } from '#lib/fields.ts';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
@@ -33,7 +33,7 @@
 	]);
 </script>
 
-{#if field.data_type === 'amount' && typeof value === 'object'}
+{#if field.data_type === 'amount' && isMoney(value)}
 	<div class="flex gap-2">
 		<Input
 			{id}

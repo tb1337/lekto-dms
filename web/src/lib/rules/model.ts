@@ -6,6 +6,7 @@
  * The tables and limits mirror `papiq.core.domain.rules`; the API checks everything again.
  */
 import type { components } from '#lib/api/schema.ts';
+import { isMoney, isPeriod } from '#lib/fields.ts';
 
 type Schemas = components['schemas'];
 
@@ -16,7 +17,8 @@ export type Channel = Schemas['Channel'];
 export type Scope = Schemas['RuleScope'];
 export type FieldType = Schemas['FieldType'];
 export type Money = Schemas['MoneyValue'];
-export type Value = string | boolean | Money | string[] | null;
+export type Period = Schemas['PeriodValue'];
+export type Value = string | boolean | Money | Period | string[] | null;
 export type ApiCondition = Schemas['ConditionSchema'];
 export type ApiGroup = Schemas['AllGroup-Output'] | Schemas['AnyGroup-Output'];
 export type ApiAction = Schemas['RuleOut']['actions'][number];
@@ -120,7 +122,8 @@ export const FIELD_TYPE_OPERATORS: Record<FieldType, readonly Operator[]> = {
 	amount: ORDERED,
 	date: ORDERED,
 	boolean: ['is', 'present', 'missing'],
-	choice: REFERENCE
+	choice: REFERENCE,
+	period: ['present', 'missing']
 };
 
 export const ACTION_TYPES: readonly ActionType[] = [
@@ -361,7 +364,8 @@ export function changeOperator(
 function isEmpty(value: Value): boolean {
 	if (value === null || value === '') return true;
 	if (Array.isArray(value)) return value.length === 0;
-	if (typeof value === 'object') return value.amount === '';
+	if (isMoney(value)) return value.amount === '';
+	if (isPeriod(value)) return value.start === '' || value.end === '';
 	return false;
 }
 
@@ -459,6 +463,7 @@ export type ProblemCode =
 	| 'date'
 	| 'number'
 	| 'amount'
+	| 'period'
 	| 'field'
 	| 'operator'
 	| 'group_empty'
@@ -587,13 +592,13 @@ function checkFieldValue(field: FieldInfo, value: Value): Problem | null {
 		case 'boolean':
 			return typeof value === 'boolean' ? null : { code: 'value' };
 		case 'amount':
-			return typeof value === 'object' &&
-				value !== null &&
-				!Array.isArray(value) &&
-				isNumber(value.amount) &&
-				/^[A-Z]{3}$/.test(value.currency)
+			return isMoney(value) && isNumber(value.amount) && /^[A-Z]{3}$/.test(value.currency)
 				? null
 				: { code: 'amount' };
+		case 'period':
+			return isPeriod(value) && isDate(value.start) && isDate(value.end) && value.start <= value.end
+				? null
+				: { code: 'period' };
 		case 'number':
 			return isNumber(value) ? null : { code: 'number' };
 		case 'date':

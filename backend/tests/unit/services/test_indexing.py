@@ -12,7 +12,7 @@ from papiq.adapters.outbound.memory import (
 from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.errors import EmbeddingsError, PermissionDeniedError, SearchIndexError
 from papiq.core.domain.events import NodeCompleted, NodeDeferred, NodeStarted
-from papiq.core.domain.fields import FieldType
+from papiq.core.domain.fields import FieldType, Period
 from papiq.core.domain.ids import DocumentId, new_id
 from papiq.core.domain.jobs import JobStatus
 from papiq.core.domain.pipeline import Lane, Node, Outcome
@@ -117,6 +117,26 @@ async def test_metadata_reaches_the_index_with_names_and_ids(setup: Setup) -> No
     assert entry.fields == ("4711",)
     assert entry.document_date == date(2026, 9, 30)
     assert entry.version == (await setup.world.documents.get(owner.id, document.id)).version
+
+
+async def test_a_period_is_found_as_it_is_written(setup: Setup) -> None:
+    admin, owner = await setup.world.user(role=Role.ADMIN), await setup.world.user()
+    period = await setup.master_data.create_field(admin.id, "Bezugszeitraum", FieldType.PERIOD)
+    document = await setup.document(owner)
+    for value, words in (
+        (Period.month(2026, 9), "September 2026 09/2026 09.2026"),
+        (Period.week(2026, 38), "KW 38 2026"),
+        (Period.quarter(2026, 3), "Q3 2026"),
+        (Period.year(2025), "2025"),
+        (Period.day(date(2026, 9, 15)), "2026-09-15 15.09.2026"),
+    ):
+        await setup.world.documents.update_metadata(
+            owner.id, document.id, DocumentChanges(fields={period.id: value})
+        )
+        await setup.settle()
+        (text,) = setup.entry(document.id).fields
+        assert words in text
+        assert f"{value.start.isoformat()} {value.start:%d.%m.%Y}" in text
 
 
 async def test_a_deleted_document_leaves_the_index(setup: Setup) -> None:

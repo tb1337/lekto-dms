@@ -48,6 +48,7 @@ from papiq.core.domain.fields import (
     FieldType,
     FieldValue,
     Money,
+    Period,
     Url,
     field_from_json,
     field_to_json,
@@ -920,7 +921,7 @@ def _key(value: JsonValue) -> str:
 
 def _field_value(value: object) -> FieldValue | None:
     match value:
-        case str() | bool() | Decimal() | date() | Money() | Url():
+        case str() | bool() | Decimal() | date() | Money() | Url() | Period():
             return value
     return None
 

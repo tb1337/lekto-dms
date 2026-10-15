@@ -237,11 +237,12 @@ document_fields = Table(
     metadata,
     Column("document_id", Uuid, ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
     Column("field_id", Uuid, ForeignKey("field_definitions.id"), primary_key=True),
-    Column("kind", Text, nullable=False),  # text, url, decimal, money, date, boolean
+    Column("kind", Text, nullable=False),  # text, url, decimal, money, date, period, boolean
     Column("value_text", Text, nullable=True),
     Column("value_decimal", ExactDecimal, nullable=True),
     Column("value_currency", String(3), nullable=True),
-    Column("value_date", Date, nullable=True),
+    Column("value_date", Date, nullable=True),  # also a period's start
+    Column("value_date_end", Date, nullable=True),  # a period's end
     Column("value_boolean", Boolean, nullable=True),
 )
 

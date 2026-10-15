@@ -8,6 +8,7 @@
 	import FolderInput from '@lucide/svelte/icons/folder-input';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import ScanEye from '@lucide/svelte/icons/scan-eye';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
@@ -32,6 +33,7 @@
 	import { progress, reprocessable, type GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 	type ReprocessNode = components['schemas']['ReprocessNode'];
@@ -45,6 +47,8 @@
 		archive,
 		inbox,
 		allUsers = false,
+		vision = null,
+		reading = null,
 		onchanged
 	}: {
 		document: Document;
@@ -56,6 +60,10 @@
 		inbox: Neighbours | null;
 		/** The inbox of every user (admins). */
 		allUsers?: boolean;
+		/** The vision language model documents can be read with, if one is configured. */
+		vision?: Vision | null;
+		/** How the document's text was read, and whether the model is advised. */
+		reading?: Reading | null;
 		/** After an action that changed the document. */
 		onchanged: () => void;
 	} = $props();
@@ -63,6 +71,7 @@
 	let confirmDelete = $state(false);
 	let moveOpen = $state(false);
 	let reprocessOpen = $state(false);
+	let visionOpen = $state(false);
 	let target = $state('');
 	let fromNode = $state<ReprocessNode>('ocr');
 	let busy = $state(false);
@@ -88,6 +97,15 @@
 			.map((node) => ({ value: node, label: NODE_LABELS[node]() }))
 	);
 	const inboxHref = (id: string) => inboxDocument(id, allUsers);
+	// Sending the pages to the vision model is the person's decision, here or from the advice.
+	const readable = $derived(manageable && visionAvailable(vision, graph, document.processing));
+	const advice = $derived(adviceText(reading));
+	const visionRunning = $derived(document.processing.vision && running.running.includes('ocr'));
+
+	/** Ask whether the vision model shall read the document (also from the advice). */
+	export function startVision() {
+		if (readable) visionOpen = true;
+	}
 
 	/** Open the reprocessing dialog (also from the log). */
 	export function startReprocess() {
@@ -138,6 +156,14 @@
 			m.reprocess_started()
 		);
 		if (done) reprocessOpen = false;
+	}
+
+	async function readWithVision() {
+		await unwrap(
+			api.POST('/api/v1/documents/{id}/vision', { params: { path: { id: document.id } } })
+		);
+		toast.success(m.vision_started());
+		onchanged();
 	}
 
 	async function move() {
@@ -213,13 +239,15 @@
 			</p>
 			{#if status === 'processing'}
 				<p class="text-sm text-muted-foreground" role="status">
-					{running.running.length > 0
-						? m.doc_processing({
-								node: running.running.map((node) => NODE_LABELS[node]()).join(', '),
-								done: running.done,
-								total: running.total
-							})
-						: m.upload_progress({ done: running.done, total: running.total })}
+					{visionRunning
+						? m.doc_processing_vision({ done: running.done, total: running.total })
+						: running.running.length > 0
+							? m.doc_processing({
+									node: running.running.map((node) => NODE_LABELS[node]()).join(', '),
+									done: running.done,
+									total: running.total
+								})
+							: m.upload_progress({ done: running.done, total: running.total })}
 				</p>
 			{/if}
 		</div>
@@ -275,6 +303,17 @@
 								{m.reprocess_title()}
 							</DropdownMenu.Item>
 						{/if}
+						{#if readable}
+							<DropdownMenu.Item disabled={busy} onSelect={startVision}>
+								<ScanEye aria-hidden="true" />
+								{m.vision_read()}
+								{#if advice}
+									<span class="ml-auto text-xs text-lane-yellow-foreground">
+										{m.vision_recommended()}
+									</span>
+								{/if}
+							</DropdownMenu.Item>
+						{/if}
 						<DropdownMenu.Item variant="destructive" onSelect={() => (confirmDelete = true)}>
 							<Trash2 aria-hidden="true" />
 							{m.delete_title()}
@@ -318,6 +357,19 @@
 	</Dialog.Content>
 </Dialog.Root>
 
+{#if vision}
+	<ConfirmDialog
+		bind:open={visionOpen}
+		title={m.vision_title()}
+		description={[advice, m.vision_hint({ endpoint: vision.endpoint, model: vision.model })]
+			.filter(Boolean)
+			.join(' ')}
+		confirmLabel={m.vision_read()}
+		destructive={false}
+		onconfirm={readWithVision}
+	/>
+{/if}
+
 <Dialog.Root bind:open={reprocessOpen}>
 	<Dialog.Content>
 		<Dialog.Header>
@@ -327,6 +379,9 @@
 		<Field.Field>
 			<Field.Label for="reprocess-node">{m.reprocess_from()}</Field.Label>
 			<NativeSelect id="reprocess-node" bind:value={fromNode} options={nodes} />
+			{#if fromNode === 'ocr' && reading?.vision}
+				<Field.Description>{m.reprocess_vision_lost()}</Field.Description>
+			{/if}
 		</Field.Field>
 		<Dialog.Footer>
 			<Button variant="ghost" onclick={() => (reprocessOpen = false)}>{m.cancel()}</Button>

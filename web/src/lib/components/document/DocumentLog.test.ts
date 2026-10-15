@@ -149,6 +149,46 @@ describe('DocumentLog', () => {
 		await userEvent.keyboard('{Escape}'); // an open dialog keeps the page from clicks
 	});
 
+	it('shows what the vision model was sent for the OCR it read', async () => {
+		const read = {
+			...proposed,
+			node: 'ocr',
+			model_version: 'ocrmypdf 17.13.0, vision language model claude-sonnet (read-1)',
+			output: { vision: { model: 'claude-sonnet', calls: 1 } }
+		};
+		fetchMock.mockImplementation(async (request) => {
+			const path = new URL(request.url).pathname;
+			if (path.endsWith('/log')) return json([read, proposed]);
+			if (path.endsWith('/exchanges/ocr')) {
+				return json([
+					{
+						run: 1,
+						calls: [
+							{
+								system: 'You transcribe one page of a document.',
+								user: 'Page 1.\n[image: page 1, 902 x 1276 pixels, PNG]',
+								answer: '{"lines": []}',
+								model: 'claude-sonnet',
+								usage: { prompt_tokens: 2129, completion_tokens: 1489 }
+							}
+						]
+					}
+				]);
+			}
+			return json([]);
+		});
+		const { container } = render(DocumentLog, {
+			document,
+			graph,
+			manageable: true,
+			onreprocess: vi.fn()
+		});
+		const ocr = container.querySelector('[data-node="ocr"]') as HTMLElement;
+		await userEvent.click(await within(ocr).findByRole('button', { name: m.prompt_open() }));
+		expect(await screen.findByText('You transcribe one page of a document.')).toBeTruthy();
+		await userEvent.keyboard('{Escape}');
+	});
+
 	it('shows the verdict the prompt of the model answer it worked with, not a person', async () => {
 		const confirmed = { ...judged, outcome: 'ok', reason: null, model_version: 'person' };
 		fetchMock.mockImplementation(async (request) => {

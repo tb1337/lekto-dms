@@ -69,8 +69,9 @@
 		onreprocess: () => void;
 	} = $props();
 
-	// The nodes that ask the language model and keep what they sent.
-	const MODEL_NODES: readonly ExchangeNode[] = ['signal_llm', 'fields'];
+	// The nodes that ask a language model and keep what they sent: OCR when the vision model
+	// read the pages.
+	const MODEL_NODES: readonly ExchangeNode[] = ['ocr', 'signal_llm', 'fields'];
 
 	let entries = $state<LogEntry[] | null>(null);
 	let exchanges = $state<Partial<Record<Node, Exchange[]>>>({});

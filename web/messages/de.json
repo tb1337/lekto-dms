@@ -121,6 +121,7 @@
 	"reprocess_hint": "Die Ergebnisse ab dem gewählten Schritt werden verworfen und neu erzeugt.",
 	"reprocess_from": "Ab Schritt",
 	"reprocess_started": "Die Verarbeitung läuft erneut.",
+	"reprocess_vision_lost": "Die Texterkennung liest dann wieder ohne VLM; dessen Text geht verloren.",
 	"delete_title": "Löschen",
 	"delete_confirm": "„{title}“ und seine Dateien werden endgültig gelöscht.",
 	"delete_done": "Dokument gelöscht.",
@@ -603,6 +604,7 @@
 	"doc_uploaded": "hochgeladen am {date}",
 	"doc_pages": "Seiten: {count}",
 	"doc_processing": "Läuft: {node} · Schritt {done} von {total}",
+	"doc_processing_vision": "Das VLM liest die Seiten · Schritt {done} von {total}",
 	"doc_download": "Herunterladen",
 	"doc_more": "Weitere Aktionen",
 	"tabs_label": "Ansicht des Dokuments",
@@ -731,5 +733,13 @@
 	"signal_identifiers": "Kennungen",
 	"signal_unknown_identifiers": "Kennungen ohne Kontakt",
 	"signal_none": "keine",
-	"signal_document": "Dokument {number}"
+	"signal_document": "Dokument {number}",
+	"vision_read": "Mit VLM lesen",
+	"vision_recommended": "empfohlen",
+	"vision_title": "Mit dem VLM lesen",
+	"vision_hint": "Jede Seite geht als Bild an {endpoint} (Modell {model}). Sein Text ersetzt die Texterkennung im Archiv; Klassifizierung, Felder und Regeln laufen danach neu.",
+	"vision_started": "Das VLM liest die Seiten.",
+	"vision_advice_no_text": "Die Texterkennung fand keinen Text. Das VLM kann ihn meist lesen.",
+	"vision_advice_poor_page": "Die Texterkennung war sich unsicher (Seite {pages}). Das VLM liest solche Seiten meist besser.",
+	"vision_read_by": "vom VLM gelesen"
 }

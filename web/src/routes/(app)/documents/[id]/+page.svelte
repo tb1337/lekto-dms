@@ -13,6 +13,7 @@
 	import DocumentHeader from '#lib/components/document/DocumentHeader.svelte';
 	import PageImages from '#lib/components/document/PageImages.svelte';
 	import PdfViewer from '#lib/components/PdfViewer.svelte';
+	import * as Alert from '#lib/components/ui/alert/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import {
 		inboxDocument,
@@ -32,6 +33,7 @@
 	import type { GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 
@@ -46,6 +48,8 @@
 	let review = $state<Review | null>(null);
 	let lookup = $state<Lookup | null>(null);
 	let graph = $state<GraphNode[]>([]);
+	let vision = $state<Vision | null>(null);
+	let reading = $state<Reading | null>(null);
 	let inboxIds = $state<string[] | null>(null);
 	let problem = $state<unknown>(null);
 	let marks = $state<Mark[]>([]);
@@ -74,14 +78,17 @@
 			const loaded = await unwrap(
 				api.GET('/api/v1/documents/{id}', { params: { path: { id: wanted } } })
 			);
-			const reviewed = canManage(loaded, session.user)
-				? await unwrap(
-						api.GET('/api/v1/documents/{id}/review', { params: { path: { id: wanted } } })
-					)
-				: null;
+			const params = { params: { path: { id: wanted } } };
+			const [reviewed, read] = canManage(loaded, session.user)
+				? await Promise.all([
+						unwrap(api.GET('/api/v1/documents/{id}/review', params)),
+						unwrap(api.GET('/api/v1/documents/{id}/reading', params))
+					])
+				: [null, null];
 			if (wanted === id && request === latest) {
 				document = loaded;
 				review = reviewed;
+				reading = read;
 				problem = null;
 			}
 		} catch (error) {
@@ -108,6 +115,7 @@
 			if (document && document.id !== id) {
 				document = null;
 				review = null;
+				reading = null;
 				marks = [];
 			}
 		});
@@ -126,7 +134,10 @@
 
 	onMount(() => {
 		loadLookup().then((value) => (lookup = value), reportError);
-		unwrap(api.GET('/api/v1/pipeline')).then((value) => (graph = value.nodes), reportError);
+		unwrap(api.GET('/api/v1/pipeline')).then((value) => {
+			graph = value.nodes;
+			vision = value.vision;
+		}, reportError);
 		return events.subscribe((event) => {
 			if (event.document_id !== id) return;
 			if (event.type === 'document.deleted')
@@ -155,6 +166,13 @@
 		) ?? false
 	);
 	const notFound = $derived(problem instanceof ApiError && problem.status === 404);
+	// The text recognition made the document red or yellow: reading it with the vision model is
+	// advised, and offered right here.
+	const advice = $derived(
+		document && manageable && visionAvailable(vision, graph, document.processing)
+			? adviceText(reading)
+			: null
+	);
 </script>
 
 <svelte:head><title>{document?.title ?? m.nav_documents()} · p:api:q</title></svelte:head>
@@ -176,8 +194,17 @@
 			{archive}
 			{inbox}
 			{allUsers}
+			{vision}
+			{reading}
 			onchanged={load}
 		/>
+
+		{#if advice}
+			<Alert.Root role="status" class="flex flex-wrap items-center gap-3">
+				<Alert.Description class="min-w-0 flex-1">{advice}</Alert.Description>
+				<Button size="sm" onclick={() => header?.startVision()}>{m.vision_read()}</Button>
+			</Alert.Root>
+		{/if}
 
 		<nav aria-label={m.tabs_label()} class="flex w-fit gap-1 rounded-full bg-secondary p-1">
 			{#each tabs as entry (entry.tab)}
@@ -241,7 +268,11 @@
 				</div>
 			</div>
 		{:else if tab === 'content'}
-			<DocumentContent documentId={id} filename={document.original_filename} />
+			<DocumentContent
+				documentId={id}
+				filename={document.original_filename}
+				vision={reading?.vision ?? false}
+			/>
 		{:else if tab === 'log'}
 			<DocumentLog
 				{document}

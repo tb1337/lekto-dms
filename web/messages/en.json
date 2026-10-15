@@ -121,6 +121,7 @@
 	"reprocess_hint": "Results from the chosen step on are discarded and made anew.",
 	"reprocess_from": "Start at step",
 	"reprocess_started": "Processing started again.",
+	"reprocess_vision_lost": "Text recognition then reads without the VLM again; its text is lost.",
 	"delete_title": "Delete",
 	"delete_confirm": "“{title}” and its files are deleted for good.",
 	"delete_done": "Document deleted.",
@@ -603,6 +604,7 @@
 	"doc_uploaded": "uploaded {date}",
 	"doc_pages": "pages: {count}",
 	"doc_processing": "Running: {node} · step {done} of {total}",
+	"doc_processing_vision": "The VLM is reading the pages · step {done} of {total}",
 	"doc_download": "Download",
 	"doc_more": "More actions",
 	"tabs_label": "Document view",
@@ -731,5 +733,13 @@
 	"signal_identifiers": "Identifiers",
 	"signal_unknown_identifiers": "Identifiers of no contact",
 	"signal_none": "none",
-	"signal_document": "Document {number}"
+	"signal_document": "Document {number}",
+	"vision_read": "Read with VLM",
+	"vision_recommended": "recommended",
+	"vision_title": "Read with the VLM",
+	"vision_hint": "Every page goes as an image to {endpoint} (model {model}). Its text replaces the text recognition in the archive; classification, fields and rules run again afterwards.",
+	"vision_started": "The VLM is reading the pages.",
+	"vision_advice_no_text": "Text recognition found no text. The VLM can usually read it.",
+	"vision_advice_poor_page": "Text recognition was unsure (page {pages}). The VLM usually reads such pages better.",
+	"vision_read_by": "read by the VLM"
 }

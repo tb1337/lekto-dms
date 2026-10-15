@@ -19,7 +19,16 @@
 	// columns line up, page by page, and its structure (pages, lines and words with boxes). The
 	// text comes as soon as the document is parsed. A document parsed before 0.2 shows Docling's
 	// Markdown as it is until it is read again.
-	let { documentId, filename }: { documentId: string; filename: string } = $props();
+	let {
+		documentId,
+		filename,
+		vision = false
+	}: {
+		documentId: string;
+		filename: string;
+		/** The vision language model read the text (a person asked for it). */
+		vision?: boolean;
+	} = $props();
 
 	type View = 'text' | 'json';
 	const PIECE = 20_000;
@@ -220,6 +229,7 @@
 				{/if}
 			{:else if text !== null}
 				{m.text_length({ characters: formatNumber(total) })}
+				{#if vision}· {m.vision_read_by()}{/if}
 			{/if}
 		</span>
 		<div class="ml-auto flex gap-2">

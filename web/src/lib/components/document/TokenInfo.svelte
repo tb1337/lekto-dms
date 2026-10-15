@@ -5,7 +5,13 @@
 	import { speed, type Usage } from '#lib/usage.ts';
 
 	// The token figures of a model call behind an info icon: on hover, on focus, on a tap.
-	let { usage, model, id }: { usage: Usage; model: string | null; id: string } = $props();
+	// `pages`: the calls are one per page (the vision model's OCR), not attempts.
+	let {
+		usage,
+		model,
+		id,
+		pages = false
+	}: { usage: Usage; model: string | null; id: string; pages?: boolean } = $props();
 
 	let open = $state(false);
 
@@ -67,7 +73,8 @@
 			class="absolute top-full left-1/2 z-20 mt-1.5 w-80 -translate-x-1/2 rounded-xl bg-foreground px-3.5 py-3 text-[12.5px] leading-normal text-background shadow-lg"
 		>
 			<p class="mb-1.5 font-semibold">
-				{model ?? ''}{#if usage.attempts > 1}
+				{model ?? ''}{#if pages}
+					· {m.prompt_calls({ count: usage.attempts })}{:else if usage.attempts > 1}
 					· {m.prompt_attempts({ count: usage.attempts })}{/if}
 			</p>
 			<dl class="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 tabular-nums">

@@ -18,7 +18,7 @@ from pathlib import Path
 from papiq.core.domain import media_types
 from papiq.core.domain.documents import Document
 from papiq.core.domain.exchanges import ModelCall
-from papiq.core.domain.json_value import JsonObject
+from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.pipeline import Node, NodeResult, Outcome
 from papiq.core.domain.reading import NO_TEXT_REASON, readings_to_json
 from papiq.core.ports import DocumentParser, ObjectStore, Ocr, PageRenderer, UnitOfWork
@@ -94,6 +94,7 @@ class OcrNode:
             note = "the archive could not be made PDF/A" + ("" if note is None else f": {note}")
         if result.vision is not None:
             output["vision"] = _vision_output(result.vision)
+            output["tokens"] = _tokens(result.vision.calls)
             note = read_by(result.vision) + ("" if note is None else f"; {note}")
             await keep_calls(self._store, document, Node.OCR, list(result.vision.calls))
         return NodeResult(
@@ -121,19 +122,24 @@ def _vision_output(vision: VisionReading) -> JsonObject:
         "endpoint": vision.endpoint,
         "prompt": vision.prompt,
         "calls": len(vision.calls),
-        "tokens": _tokens(vision.calls),
     }
 
 
-def _tokens(calls: tuple[ModelCall, ...]) -> JsonObject:
-    """The input and output tokens of all calls, as far as the endpoint reported them."""
-    totals: JsonObject = {}
-    for name in ("prompt_tokens", "completion_tokens"):
-        counts = [call.usage.get(name) for call in calls]
-        numbers = [count for count in counts if isinstance(count, int)]
-        if numbers:
-            totals[name] = sum(numbers)
-    return totals
+def _tokens(calls: tuple[ModelCall, ...]) -> list[JsonValue]:
+    """Per call (a page, or once more after an answer that did not fit) its tokens and the
+    endpoint's report, as the model nodes log theirs."""
+    return [
+        {
+            "prompt": _count(call.usage.get("prompt_tokens")),
+            "completion": _count(call.usage.get("completion_tokens")),
+            "usage": call.usage,
+        }
+        for call in calls
+    ]
+
+
+def _count(value: JsonValue | None) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 class PagesNode:

@@ -637,6 +637,7 @@
 	"prompt_attempt_choice": "Versuch",
 	"prompt_attempt": "Versuch {number} von {total}",
 	"prompt_attempts": "{count} Versuche",
+	"prompt_calls": "{count} Aufrufe",
 	"prompt_characters": "{characters} Zeichen",
 	"prompt_input": "{characters} Zeichen · ≈ {tokens} Eingabe-Tokens",
 	"prompt_output": "{characters} Zeichen · {tokens} Ausgabe-Tokens",

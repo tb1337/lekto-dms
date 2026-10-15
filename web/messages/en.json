@@ -637,6 +637,7 @@
 	"prompt_attempt_choice": "Attempt",
 	"prompt_attempt": "Attempt {number} of {total}",
 	"prompt_attempts": "{count} attempts",
+	"prompt_calls": "{count} calls",
 	"prompt_characters": "{characters} characters",
 	"prompt_input": "{characters} characters · ≈ {tokens} input tokens",
 	"prompt_output": "{characters} characters · {tokens} output tokens",

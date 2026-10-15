@@ -82,8 +82,15 @@ async def test_the_model_reads_only_when_a_person_asks(world: World) -> None:
             "endpoint": "vlm.example:443",
             "prompt": "read-fake",
             "calls": 1,
-            "tokens": {"prompt_tokens": 1500, "completion_tokens": 100},
         },
+        # Per call, as the model nodes log theirs.
+        "tokens": [
+            {
+                "prompt": 1500,
+                "completion": 100,
+                "usage": {"prompt_tokens": 1500, "completion_tokens": 100},
+            }
+        ],
     }
     assert read.result.reason == (
         "every page was read by the vision language model fake-vlm (vlm.example:443)"

@@ -480,6 +480,7 @@
 														{usage}
 														model={entry.model_version}
 														id="tokens-{entry.node}-{entry.run}-{index}"
+														pages={entry.node === 'ocr'}
 													/>
 												{/if}
 												{#if exchange}

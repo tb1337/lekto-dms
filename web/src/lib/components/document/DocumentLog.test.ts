@@ -154,7 +154,13 @@ describe('DocumentLog', () => {
 			...proposed,
 			node: 'ocr',
 			model_version: 'ocrmypdf 17.13.0, vision language model claude-sonnet (read-1)',
-			output: { vision: { model: 'claude-sonnet', calls: 1 } }
+			output: {
+				vision: { model: 'claude-sonnet', calls: 2 },
+				tokens: [
+					{ prompt: 2129, completion: 1489, usage: {} },
+					{ prompt: 2129, completion: 1203, usage: {} }
+				]
+			}
 		};
 		fetchMock.mockImplementation(async (request) => {
 			const path = new URL(request.url).pathname;
@@ -184,7 +190,14 @@ describe('DocumentLog', () => {
 			onreprocess: vi.fn()
 		});
 		const ocr = container.querySelector('[data-node="ocr"]') as HTMLElement;
-		await userEvent.click(await within(ocr).findByRole('button', { name: m.prompt_open() }));
+		// One call per page, not attempts.
+		await fireEvent.mouseEnter(
+			await within(ocr).findByRole('button', { name: m.tokens_details() })
+		);
+		const tooltip = screen.getByRole('tooltip');
+		expect(tooltip.textContent).toContain(m.prompt_calls({ count: 2 }));
+		expect(tooltip.textContent).toContain('4,258');
+		await userEvent.click(within(ocr).getByRole('button', { name: m.prompt_open() }));
 		expect(await screen.findByText('You transcribe one page of a document.')).toBeTruthy();
 		await userEvent.keyboard('{Escape}');
 	});

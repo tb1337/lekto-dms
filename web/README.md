@@ -4,8 +4,8 @@ Web UI: a single-page app on top of the Papiq REST API, served by the API under 
 the API only (`/api/v1`), through a TypeScript client generated from the API's OpenAPI document.
 
 Stack: SvelteKit 3 (Svelte 5, static adapter, no server-side rendering), Tailwind CSS 4,
-shadcn-svelte (bits-ui), Paraglide JS (English and German), openapi-fetch, Vitest. Fonts (Geist,
-Geist Mono) are part of the build; no CDN.
+shadcn-svelte (bits-ui), Paraglide JS (English and German), openapi-fetch, CodeMirror 6 (templates),
+Vitest. Fonts (Geist, Geist Mono) are part of the build; no CDN.
 
 ## Commands
 
@@ -49,6 +49,17 @@ scripts, style elements and images stay `'self'` only: pdf.js draws on a canvas 
 blob or data URLs, previews come from the API, the TOTP QR code is inline SVG (checked in the
 browser with a PDF holding a JPX image, M13).
 
+## Template editor
+
+Templates of rules and title patterns are edited with CodeMirror (`src/lib/templates/codemirror.ts`),
+loaded with `import()` where a template is shown. The colours, the place of a completion and
+where a value or filter goes are plain functions in `liquid.ts`, which the rule view uses too.
+The editor sits in a shadow root: there CodeMirror adopts a constructed style sheet, which the
+CSP lets through, instead of a `<style>` element, which it blocks. The page's styles do not reach
+in (the editor's theme holds its colours), and bits-ui's focus trap does not see focus inside, so
+a listener keeps `focusin` from the editor away from it. Component tests get a plain text area in
+place of the editor (`tests/setup.ts`); `codemirror.test.ts` runs the real one.
+
 ## Document view
 
 `/ui/documents/{id}` serves the inbox and the document list (`/ui/inbox/{id}` leads there with
@@ -72,15 +83,17 @@ cd web && pnpm gen:api   # writes src/lib/api/schema.ts
 
 ## Layout
 
-| Path                          | Content                                                                       |
-| ----------------------------- | ----------------------------------------------------------------------------- |
-| `src/lib/api`                 | Client, `fetch` with session cookie and CSRF header, problem details          |
-| `src/lib/session.svelte.ts`   | The signed-in user and the CSRF token, in memory                              |
-| `src/lib/components`          | App shell, documents, dialogs, PDF viewer; `ui/` holds the shadcn-svelte ones |
-| `src/lib/components/document` | The document view: head, fields, content (Markdown), log, prompt              |
-| `src/lib/i18n.ts`             | Language switch, date, number and money formats                               |
-| `src/routes`                  | `login`, the app pages in `(app)`; `(app)/dev/components` in development only |
-| `messages/{en,de}.json`       | All texts; a test fails on raw text in markup and on missing keys             |
-| `tests/`                      | Tests across files (messages, raw text); `e2e/` the Playwright smoke test     |
+| Path                           | Content                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------- |
+| `src/lib/api`                  | Client, `fetch` with session cookie and CSRF header, problem details            |
+| `src/lib/session.svelte.ts`    | The signed-in user and the CSRF token, in memory                                |
+| `src/lib/components`           | App shell, documents, dialogs, PDF viewer; `ui/` holds the shadcn-svelte ones   |
+| `src/lib/components/document`  | The document view: head, fields, content (Markdown), log, prompt                |
+| `src/lib/components/templates` | The template field, the template editor (sheet), the reference document picker  |
+| `src/lib/templates`            | Liquid colours and completions, the CodeMirror editor, the values templates see |
+| `src/lib/i18n.ts`              | Language switch, date, number and money formats                                 |
+| `src/routes`                   | `login`, the app pages in `(app)`; `(app)/dev/components` in development only   |
+| `messages/{en,de}.json`        | All texts; a test fails on raw text in markup and on missing keys               |
+| `tests/`                       | Tests across files (messages, raw text); `e2e/` the Playwright smoke test       |
 
 Imports use `#lib/…` (package `imports`) with the file extension.

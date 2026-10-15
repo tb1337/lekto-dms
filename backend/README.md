@@ -443,7 +443,8 @@ version; deleting is a soft delete.
   value field.brutto`); single braces (`{contact}`, as before 0.2.0) are text like any other.
   Renaming a field rewrites the templates that use it (a new version); a field a template uses
   is not deleted (409). `POST /templates/preview` checks a template and renders it with a
-  document the caller may read.
+  document the caller may read, and gives that document's values as a template writes them
+  (`values`, for the template editor's list).
 - **Evaluation.** All conditions see the state before any rule acts; a rule's action never makes
   another rule match in the same run. Contact, type and tags the model set and no person
   confirmed are distrusted: a rule that matches only because of them does not file into a

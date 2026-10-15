@@ -7,7 +7,10 @@ vi.unmock('#lib/templates/codemirror.ts');
 const { completionSource, mountTemplateEditor } = await import('./codemirror.ts');
 
 const lists = () => ({
-	names: [{ name: 'contact', label: 'Contact' }],
+	names: [
+		{ name: 'title', label: 'Title' },
+		{ name: 'contact', label: 'Contact' }
+	],
 	fields: [{ key: 'la_brutto', name: 'LA_Brutto' }]
 });
 
@@ -21,9 +24,13 @@ describe('completion', () => {
 		const result = complete('Lohn {{ ');
 		expect(result?.from).toBe(8);
 		expect(result?.options.map((option) => [option.label, option.apply])).toEqual([
+			['title', 'title }}'],
 			['contact', 'contact }}'],
 			['field.la_brutto', 'field.la_brutto }}']
 		]);
+		// Listed as given, not by the alphabet.
+		const boosts = result?.options.map((option) => option.boost ?? 0) ?? [];
+		expect([...boosts].sort((a, b) => b - a)).toEqual(boosts);
 	});
 
 	it('offers field keys after field., filters after | and tags after {%', () => {

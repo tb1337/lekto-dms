@@ -2,6 +2,8 @@
 	export interface Reference {
 		id: string;
 		title: string;
+		/** Tells documents apart whose titles a pattern made alike ("2026/04"). */
+		filename: string;
 	}
 </script>
 
@@ -29,7 +31,11 @@
 	let recent = $state<Reference[]>([]);
 	let found = $state<Reference[] | null>(null);
 
-	const short = (item: Reference): Reference => ({ id: item.id, title: item.title });
+	const short = (item: { id: string; title: string; original_filename: string }): Reference => ({
+		id: item.id,
+		title: item.title,
+		filename: item.original_filename
+	});
 
 	$effect(() => {
 		const kind = documentType ?? null;
@@ -117,8 +123,13 @@
 					{m.template_reference_empty()}
 				</Command.Empty>
 				{#each shown as item (item.id)}
-					<Command.Item value={item.id} onSelect={() => choose(item)}>
-						<span class="truncate">{item.title}</span>
+					<Command.Item
+						value={item.id}
+						onSelect={() => choose(item)}
+						class="flex-col items-start gap-0"
+					>
+						<span class="max-w-full truncate">{item.title}</span>
+						<span class="max-w-full truncate text-xs text-muted-foreground">{item.filename}</span>
 					</Command.Item>
 				{/each}
 			</Command.List>

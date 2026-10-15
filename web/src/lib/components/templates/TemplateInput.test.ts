@@ -45,7 +45,10 @@ beforeEach(() => {
 		}
 		if (url.pathname === '/api/v1/documents') {
 			listed.push(url);
-			return json({ items: [{ id: 'd1', title: 'Lohn März' }], next_cursor: null });
+			return json({
+				items: [{ id: 'd1', title: 'Lohn März', original_filename: 'lohn-03.pdf' }],
+				next_cursor: null
+			});
 		}
 		if (url.pathname === '/api/v1/templates/preview') {
 			const body = await request.json();

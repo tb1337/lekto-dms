@@ -78,16 +78,16 @@
 
 <div
 	class={cn(
-		'rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30',
+		'rounded-xl border border-input bg-card transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30',
 		invalid &&
 			'border-destructive ring-3 ring-destructive/20 dark:border-destructive/50 dark:ring-destructive/40',
-		large ? 'min-h-40' : 'min-h-10',
+		large ? 'min-h-40' : 'min-h-11',
 		className
 	)}
 	data-slot="template-editor"
 >
 	<div bind:this={host}></div>
 	{#if !handle}
-		<div class="px-3 py-2 text-sm leading-normal"><TemplateText text={value} /></div>
+		<div class="px-4 py-[0.65rem] text-sm leading-normal"><TemplateText text={value} /></div>
 	{/if}
 </div>

@@ -100,8 +100,9 @@ const theme = EditorView.theme({
 	'&': { fontSize: '0.875rem', backgroundColor: 'transparent' },
 	'&.cm-focused': { outline: 'none' },
 	'.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: '1.5' },
-	'.cm-content': { padding: '0.5rem 0', caretColor: 'var(--foreground)' },
-	'.cm-line': { padding: '0 0.75rem' },
+	// As tall as an input (`h-11`) with one line.
+	'.cm-content': { padding: '0.65rem 0', caretColor: 'var(--foreground)' },
+	'.cm-line': { padding: '0 1rem' },
 	'.cm-tooltip': {
 		backgroundColor: 'var(--popover)',
 		color: 'var(--popover-foreground)',
@@ -120,9 +121,9 @@ const theme = EditorView.theme({
 	'.cm-completionDetail': { fontFamily: 'var(--font-sans)', color: 'var(--muted-foreground)' }
 });
 
-/** The completions at the cursor: values and fields in an expression, a field's key after
- * `field.`, filters after `|`, tags after `{%`. A value picked in a `{{` without its `}}` gets
- * it. */
+/** The completions at the cursor: values and fields in an expression (in the order of
+ * `names`, then the fields), a field's key after `field.`, filters after `|`, tags after `{%`. A
+ * value picked in a `{{` without its `}}` gets it. */
 export function completionSource(lists: () => Completions) {
 	return (context: CompletionContext): CompletionResult | null => {
 		const text = context.state.doc.toString();
@@ -154,17 +155,19 @@ export function completionSource(lists: () => Completions) {
 				break;
 			case 'value':
 				options = [
-					...names.map((name) => ({
+					...names.map((name, index) => ({
 						label: name.name,
 						apply: name.name + close,
 						detail: name.label,
-						type: 'variable'
+						type: 'variable',
+						boost: 99 - index
 					})),
 					...fields.map((field) => ({
 						label: `field.${field.key}`,
 						apply: `field.${field.key}${close}`,
 						detail: field.name,
-						type: 'property'
+						type: 'property',
+						boost: 50
 					}))
 				];
 				break;

@@ -273,7 +273,8 @@ function replaced(text: string, from: number, to: number, insert: string): Edit 
 	return { text: text.slice(0, from) + insert + text.slice(to), cursor: from + insert.length };
 }
 
-/** `{{ path }}` (a list joined) at the selection; inside an expression just the path. */
+/** `{{ path }}` (a list joined) at the selection, a space apart from an expression right
+ * before it; inside an expression just the path. */
 export function insertValue(
 	text: string,
 	from: number,
@@ -285,7 +286,8 @@ export function insertValue(
 		const pad = /[\s([{]$/.test(text.slice(0, from)) ? '' : ' ';
 		return replaced(text, from, to, pad + path);
 	}
-	return replaced(text, from, to, list ? `{{ ${path} | join: ', ' }}` : `{{ ${path} }}`);
+	const pad = /[}%]\}$/.test(text.slice(0, from)) ? ' ' : '';
+	return replaced(text, from, to, pad + (list ? `{{ ${path} | join: ', ' }}` : `{{ ${path} }}`));
 }
 
 /** A filter where it belongs: at the cursor inside an expression, or into the expression that

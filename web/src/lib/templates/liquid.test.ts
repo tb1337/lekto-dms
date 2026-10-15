@@ -102,6 +102,7 @@ describe('inserting', () => {
 			cursor: 18
 		});
 		expect(insertValue('', 0, 0, 'tags', true).text).toBe("{{ tags | join: ', ' }}");
+		expect(insertValue('{{ added }}', 11, 11, 'contact').text).toBe('{{ added }} {{ contact }}');
 		expect(insertValue('{% if  %}', 6, 6, 'field.x')).toEqual({
 			text: '{% if field.x %}',
 			cursor: 13

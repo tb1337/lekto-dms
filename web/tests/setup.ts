@@ -1,3 +1,5 @@
+import { vi } from 'vitest';
+
 // jsdom lacks a few browser APIs the components use.
 
 if (!window.matchMedia) {
@@ -25,3 +27,6 @@ if (!window.ResizeObserver) {
 if (!Element.prototype.scrollIntoView) {
 	Element.prototype.scrollIntoView = () => {};
 }
+
+// CodeMirror needs a browser's layout; component tests edit templates in a plain text area.
+vi.mock('#lib/templates/codemirror.ts', () => import('#lib/testing/fake-template-editor.ts'));

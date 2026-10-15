@@ -103,7 +103,7 @@ RUN mkdir /s6 && for archive in /archives/*.tar.xz; do tar -C /s6 -Jxpf "$archiv
 FROM --platform=$BUILDPLATFORM node:24.21.0-trixie-slim AS web
 RUN npm install --global pnpm@12.9.1
 WORKDIR /web
-COPY web/package.json web/pnpm-lock.yaml ./
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY web/ ./
 RUN pnpm build

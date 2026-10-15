@@ -10,7 +10,7 @@ Who may do what:
 """
 
 import builtins
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 
 from papiq.core.domain.documents import Document
@@ -41,6 +41,7 @@ from papiq.core.domain.templates import (
     rename_field_key,
     template_values,
     unknown_values,
+    writing_templates,
 )
 from papiq.core.domain.templates import uses_field as field_used
 from papiq.core.domain.users import User
@@ -51,12 +52,15 @@ from papiq.core.services._access import load_actor, readable_document
 @dataclass(frozen=True)
 class TemplatePreview:
     """What a template gives for a document: the values it uses, the rendered text
-    (whitespace collapsed, as in a title), or the missing value or the error that stops it."""
+    (whitespace collapsed, as in a title), or the missing value or the error that stops it.
+    `values`: what the document has, each value as a template writes it (by its path, such as
+    `field.la_brutto`); None without a document."""
 
     used: tuple[str, ...] = ()
     rendered: str | None = None
     missing: str | None = None
     error: str | None = None
+    values: Mapping[str, str] | None = None
 
 
 class RuleService:
@@ -140,7 +144,7 @@ class RuleService:
     ) -> TemplatePreview:
         """`template` checked (syntax, values; the fields of `document_type`, or of the
         document's type, else all) and rendered with a document the caller may read, as it
-        is. Nothing is stored."""
+        is, with the document's values whatever the template. Nothing is stored."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             found = None if document is None else (await readable_document(uow, user, document))[0]
@@ -149,25 +153,35 @@ class RuleService:
                 await uow.document_types.get(kind)
             fields = await uow.fields.list_all()
             applying = [item for item in fields if kind is None or item.applies_to(kind)]
-            try:
-                used = self._templates.check(template)
-            except ValidationError as invalid:
-                return TemplatePreview(error=str(invalid))
-            unknown = unknown_values(used, {item.key for item in applying})
-            if unknown:
-                return TemplatePreview(
-                    used=tuple(sorted(used)), error=f"unknown value {unknown[0]}"
-                )
-            if found is None:
-                return TemplatePreview(used=tuple(sorted(used)))
-            values = await document_values(uow, found, kind, applying)
+            values = None if found is None else await document_values(uow, found, kind, applying)
+        written = None if values is None else self._written(values)
+        try:
+            used = self._templates.check(template)
+        except ValidationError as invalid:
+            return TemplatePreview(error=str(invalid), values=written)
+        paths = tuple(sorted(used))
+        unknown = unknown_values(used, {item.key for item in applying})
+        if unknown:
+            return TemplatePreview(used=paths, error=f"unknown value {unknown[0]}", values=written)
+        if values is None:
+            return TemplatePreview(used=paths)
         try:
             rendered = " ".join(self._templates.render(template, values).split())
         except MissingValueError as missing:
-            return TemplatePreview(used=tuple(sorted(used)), missing=missing.path)
+            return TemplatePreview(used=paths, missing=missing.path, values=written)
         except ValidationError as invalid:
-            return TemplatePreview(used=tuple(sorted(used)), error=str(invalid))
-        return TemplatePreview(used=tuple(sorted(used)), rendered=rendered)
+            return TemplatePreview(used=paths, error=str(invalid), values=written)
+        return TemplatePreview(used=paths, rendered=rendered, values=written)
+
+    def _written(self, values: Mapping[str, TemplateValue]) -> dict[str, str]:
+        """Each of a document's values as a template writes it."""
+        written: dict[str, str] = {}
+        for path, template in writing_templates(values).items():
+            try:
+                written[path] = self._templates.render(template, values)
+            except (MissingValueError, ValidationError):
+                continue
+        return written
 
     async def change(self, actor: UserId, id: RuleId, definition: RuleDefinition) -> Rule:
         """A new version; the scope stays."""

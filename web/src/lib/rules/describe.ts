@@ -50,16 +50,6 @@ export const ACTION_LABELS: Record<ActionType, () => string> = {
 	force_review: m.rule_action_force_review
 };
 
-export const PLACEHOLDER_LABELS: Record<string, () => string> = {
-	contact: m.field_contact,
-	document_type: m.field_document_type,
-	document_date: m.field_date,
-	filename: m.rule_placeholder_filename,
-	tags: m.field_tags,
-	drawer: m.field_drawer,
-	owner: m.rule_placeholder_owner
-};
-
 const OPERATORS: Record<Operator, () => string> = {
 	is: m.rule_op_is,
 	in: m.rule_op_in,
@@ -165,6 +155,27 @@ function describeConditionValue(
 		if (condition.op === 'contains' || condition.op === 'matches') return value;
 	}
 	return describeValue(value, null);
+}
+
+/** The template of an action (a title, a text field's value, a review's reason) and what
+ * stands before it ("Set field: Note = "); null for an action without one. */
+export function actionTemplate(
+	action: ActionNode | ApiAction,
+	lookup: Lookup | null
+): { lead: string; template: string } | null {
+	const label = ACTION_LABELS[action.type]();
+	switch (action.type) {
+		case 'set_title':
+			return { lead: `${label}: `, template: action.template };
+		case 'force_review':
+			return { lead: `${label}: `, template: action.reason };
+		case 'set_field': {
+			const field = fieldOf(action.field_id, lookup);
+			if (field?.data_type !== 'text' || typeof action.value !== 'string') return null;
+			return { lead: `${label}: ${field.name} = `, template: action.value };
+		}
+	}
+	return null;
 }
 
 /** An action as the user reads it: "Add tags: Tax, Bills". */

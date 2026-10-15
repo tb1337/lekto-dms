@@ -3,7 +3,7 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
-	import TemplateField from '#lib/components/TemplateField.svelte';
+	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { Textarea } from '#lib/components/ui/textarea/index.ts';
@@ -101,9 +101,10 @@
 				</Field.Field>
 				<Field.Field>
 					<Field.Label for="master-title-pattern">{m.master_title_pattern()}</Field.Label>
-					<TemplateField
+					<TemplateInput
 						id="master-title-pattern"
 						bind:value={titlePattern}
+						label={m.master_title_pattern()}
 						documentType={initial?.id ?? null}
 					/>
 					{#if ruleHref}

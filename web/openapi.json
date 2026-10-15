@@ -17583,6 +17583,27 @@
             ],
             "title": "Error",
             "description": "Why the template is invalid (its syntax, or a value templates do not know)."
+          },
+          "values": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Values",
+            "description": "The document's values as a template writes them, by path (`contact`, `field.la_brutto`): each one it has, whatever the template. None without a document.",
+            "examples": [
+              {
+                "contact": "Stadtwerke",
+                "field.la_brutto": "3.650,00 EUR"
+              }
+            ]
           }
         },
         "type": "object",
@@ -17590,7 +17611,8 @@
           "used",
           "rendered",
           "missing",
-          "error"
+          "error",
+          "values"
         ],
         "title": "TemplatePreviewOut"
       },

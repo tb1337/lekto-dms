@@ -137,3 +137,57 @@
 		@apply outline-2 outline-offset-2 outline-ring;
 	}
 }
+
+/*
+ * Templates (Liquid) in rules and title patterns, highlighted the same in the editor and where a
+ * rule is read. Each colour meets 4.5:1 on the card in light and dark.
+ */
+:root {
+	--tpl-delimiter: #5f5c55;
+	--tpl-tag: #6d28d9;
+	--tpl-variable: #0d6b6b;
+	--tpl-property: #1d4ed8;
+	--tpl-filter: #9a3412;
+	--tpl-string: #17652f;
+	--tpl-number: #9d174d;
+}
+
+.dark {
+	--tpl-delimiter: #a2a8a5;
+	--tpl-tag: #c4a7ff;
+	--tpl-variable: #5fd0c6;
+	--tpl-property: #8ab4ff;
+	--tpl-filter: #f2a65a;
+	--tpl-string: #74d396;
+	--tpl-number: #ff8fb8;
+}
+
+@layer components {
+	.tpl-delimiter,
+	.tpl-operator {
+		color: var(--tpl-delimiter);
+	}
+	.tpl-tag {
+		color: var(--tpl-tag);
+		font-weight: 600;
+	}
+	.tpl-variable {
+		color: var(--tpl-variable);
+	}
+	.tpl-property {
+		color: var(--tpl-property);
+	}
+	.tpl-filter {
+		color: var(--tpl-filter);
+	}
+	.tpl-string {
+		color: var(--tpl-string);
+	}
+	.tpl-number {
+		color: var(--tpl-number);
+	}
+	.tpl-comment {
+		color: var(--tpl-delimiter);
+		font-style: italic;
+	}
+}

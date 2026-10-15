@@ -338,17 +338,24 @@ async def test_a_template_is_previewed_with_a_document(api: Api) -> None:
         return result
 
     title = {"template": "Scan {{ filename }}", "document_id": id}
-    assert await preview(title, u) == {
+    shown = await preview(title, u)
+    assert {key: shown[key] for key in ("used", "rendered", "missing", "error")} == {
         "used": ["filename"],
         "rendered": "Scan Bill 2026",
         "missing": None,
         "error": None,
     }
+    # The document's values as a template writes them, for the editor's list.
+    assert (shown["values"]["filename"], shown["values"]["tags"]) == ("Bill 2026", "")
+    assert "contact" not in shown["values"]
+    invalid = await preview({"template": "{{ filename", "document_id": id}, u)
+    assert invalid["error"] and invalid["values"]["filename"] == "Bill 2026"
     # Without a type every field counts; the document has no value for this one.
     gross = {"template": "{{ field.la_brutto }}", "document_id": id}
     assert (await preview(gross, u))["missing"] == "field.la_brutto"
     unknown = {"template": "{{ field.netto }}", "document_type_id": kind["id"]}
     assert (await preview(unknown, u))["error"] == "unknown value field.netto"
+    assert (await preview(unknown, u))["values"] is None  # without a document
     # Single braces are text like any other.
     plain = await preview({"template": "{document_date}", "document_id": id}, u)
     assert (plain["rendered"], plain["error"]) == ("{document_date}", None)

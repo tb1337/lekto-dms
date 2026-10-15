@@ -82,6 +82,25 @@ def _field(value: FieldValue) -> TemplateValue:
     return value.value if isinstance(value, Url) else value
 
 
+def writing_templates(values: Mapping[str, TemplateValue]) -> dict[str, str]:
+    """For each of the `values` (`template_values`), the template that writes it:
+    `{{ contact }}`, `{{ field.la_brutto }}`, a list joined (`{{ tags | join: ', ' }}`)."""
+    paths: list[tuple[str, TemplateValue]] = []
+    for name, value in values.items():
+        if name == FIELD and isinstance(value, Mapping):
+            paths.extend((f"{FIELD}.{key}", item) for key, item in value.items())
+        else:
+            paths.append((name, value))
+    return {
+        path: (
+            f"{{{{ {path} | join: ', ' }}}}"
+            if isinstance(value, Sequence) and not isinstance(value, str)
+            else f"{{{{ {path} }}}}"
+        )
+        for path, value in paths
+    }
+
+
 def unknown_values(paths: Iterable[str], field_keys: Collection[str]) -> list[str]:
     """The paths of a template (`TemplateRenderer.check`) that name nothing a template can
     use: an unknown name, or a field that is not among `field_keys`."""

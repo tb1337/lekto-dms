@@ -292,4 +292,5 @@ async def preview_template(
         rendered=preview.rendered,
         missing=preview.missing,
         error=preview.error,
+        values=None if preview.values is None else dict(preview.values),
     )

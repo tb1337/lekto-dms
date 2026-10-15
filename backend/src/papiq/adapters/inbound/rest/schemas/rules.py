@@ -336,6 +336,11 @@ class TemplatePreviewOut(BaseModel):
     error: str | None = Field(
         description="Why the template is invalid (its syntax, or a value templates do not know)."
     )
+    values: dict[str, str] | None = Field(
+        description="The document's values as a template writes them, by path (`contact`, "
+        "`field.la_brutto`): each one it has, whatever the template. None without a document.",
+        examples=[{"contact": "Stadtwerke", "field.la_brutto": "3.650,00 EUR"}],
+    )
 
 
 class ApplyPreviewRequest(BaseModel):

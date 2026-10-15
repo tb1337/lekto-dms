@@ -5,7 +5,12 @@ import pytest
 
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url, template_key
 from papiq.core.domain.ids import DrawerId, UserId, new_id
-from papiq.core.domain.templates import template_values, unknown_values
+from papiq.core.domain.templates import (
+    TemplateValue,
+    template_values,
+    unknown_values,
+    writing_templates,
+)
 from tests import builders
 
 
@@ -61,6 +66,22 @@ def test_the_values_of_a_document() -> None:
     }
     # Not there, not None: a template tests it, writing it is a missing value.
     assert "document_type" not in values and "pages" not in values
+
+
+def test_the_template_that_writes_each_value() -> None:
+    values: dict[str, TemplateValue] = {
+        "contact": "Stadtwerke",
+        "tags": ["Strom", "Steuer"],
+        "pages": 2,
+        "field": {"la_brutto": Money(Decimal("3650.00"), "EUR"), "notiz": "x"},
+    }
+    assert writing_templates(values) == {
+        "contact": "{{ contact }}",
+        "tags": "{{ tags | join: ', ' }}",
+        "pages": "{{ pages }}",
+        "field.la_brutto": "{{ field.la_brutto }}",
+        "field.notiz": "{{ field.notiz }}",
+    }
 
 
 def test_unknown_values() -> None:

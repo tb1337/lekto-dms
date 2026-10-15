@@ -86,27 +86,6 @@ export const CONDITION_FIELDS: readonly ConditionField[] = [
 	'document_date',
 	'field'
 ];
-/** Values a title template can insert with a click (the template is Liquid; the server checks
- * it). */
-export const TEMPLATE_VALUES = [
-	'contact',
-	'document_type',
-	'document_date',
-	'filename',
-	'tags',
-	'drawer',
-	'owner'
-] as const;
-
-/** How a value is written into a template: a list joined. */
-export function templateValue(name: (typeof TEMPLATE_VALUES)[number]): string {
-	return name === 'tags' ? "{{ tags | join: ', ' }}" : `{{ ${name} }}`;
-}
-
-/** How a field is written into a template, by its key (`FieldOut.key`). */
-export function fieldTemplate(key: string): string {
-	return `{{ field.${key} }}`;
-}
 
 const ALL_OPERATORS: readonly Operator[] = [
 	'is',

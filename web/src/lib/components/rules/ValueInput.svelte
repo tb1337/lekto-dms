@@ -1,5 +1,6 @@
 <script lang="ts">
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -7,7 +8,8 @@
 
 	// One value of a field in its JSON form: text, number and date as text, yes/no as a
 	// boolean, an amount with its currency, a choice from the field's list. `textual` asks for
-	// plain text whatever the type (`contains`, `matches`).
+	// plain text whatever the type (`contains`, `matches`); `template`: a text field's value is a
+	// template (an action's, not a condition's).
 	let {
 		field,
 		value,
@@ -15,7 +17,8 @@
 		label,
 		id,
 		invalid = false,
-		textual = false
+		textual = false,
+		template = false
 	}: {
 		field: FieldDefinition | null;
 		value: Value;
@@ -24,7 +27,10 @@
 		id?: string;
 		invalid?: boolean;
 		textual?: boolean;
+		template?: boolean;
 	} = $props();
+
+	const uid = $props.id();
 
 	const type = $derived(textual ? 'text' : (field?.data_type ?? 'text'));
 	const text = $derived(
@@ -46,7 +52,14 @@
 	]);
 </script>
 
-{#if type === 'boolean'}
+{#if template && type === 'text'}
+	<TemplateInput
+		id={id ?? uid}
+		{label}
+		{invalid}
+		bind:value={() => text, (next) => onchange(next)}
+	/>
+{:else if type === 'boolean'}
 	<NativeSelect
 		{id}
 		aria-label={label}

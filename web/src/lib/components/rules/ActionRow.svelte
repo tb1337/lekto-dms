@@ -3,11 +3,10 @@
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import MultiPicker from '#lib/components/MultiPicker.svelte';
-	import TemplateField from '#lib/components/TemplateField.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import ValueInput from '#lib/components/rules/ValueInput.svelte';
+	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
-	import { Input } from '#lib/components/ui/input/index.ts';
 	import type { Drawer, Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { ACTION_LABELS } from '#lib/rules/describe.ts';
@@ -80,7 +79,7 @@
 					class="h-10"
 				/>
 			{:else if action.type === 'set_title'}
-				<TemplateField id="title-{action.key}" {label} {invalid} bind:value={action.template} />
+				<TemplateInput id="title-{action.key}" {label} {invalid} bind:value={action.template} />
 			{:else if action.type === 'add_tags' || action.type === 'remove_tags'}
 				<MultiPicker
 					{label}
@@ -109,6 +108,8 @@
 					<ValueInput
 						{field}
 						{invalid}
+						template
+						id="value-{action.key}"
 						label={m.rule_condition_value()}
 						value={action.value}
 						onchange={(next) => {
@@ -117,10 +118,10 @@
 					/>
 				{/if}
 			{:else if action.type === 'force_review'}
-				<Input
-					aria-label={m.rule_review_reason()}
-					placeholder={m.rule_review_reason()}
-					aria-invalid={invalid || undefined}
+				<TemplateInput
+					id="reason-{action.key}"
+					label={m.rule_review_reason()}
+					{invalid}
 					bind:value={action.reason}
 				/>
 			{/if}

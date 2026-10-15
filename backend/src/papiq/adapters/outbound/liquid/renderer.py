@@ -25,7 +25,8 @@ from liquid.exceptions import LiquidError, UndefinedError
 from liquid.extra import Currency, DateTime, Number
 
 from papiq.core.domain.errors import MissingValueError, ValidationError
-from papiq.core.domain.fields import Money, Period, PeriodKind
+from papiq.core.domain.fields import Money
+from papiq.core.domain.periods import Period, PeriodKind
 from papiq.core.domain.templates import TemplateValue
 
 _UNDEFINED = re.compile(r"^'?(?P<path>.+?)'? is undefined$")

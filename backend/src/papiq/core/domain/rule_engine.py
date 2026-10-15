@@ -48,7 +48,6 @@ from papiq.core.domain.fields import (
     FieldType,
     FieldValue,
     Money,
-    Period,
     Url,
     field_from_json,
     field_to_json,
@@ -62,6 +61,7 @@ from papiq.core.domain.ids import (
     TagId,
 )
 from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.periods import Period
 from papiq.core.domain.pipeline import Outcome
 from papiq.core.domain.rules import (
     AddTags,

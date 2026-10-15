@@ -11,10 +11,13 @@ from papiq.core.domain.evidence import (
     dates_in,
     normalise,
     numbers_in,
+    periods_in,
     read_amount,
     read_date,
     read_number,
+    read_period,
 )
+from papiq.core.domain.periods import Period
 
 
 def test_normalise() -> None:
@@ -225,3 +228,68 @@ def test_an_amount_in_a_text_without_currency_is_in_the_default_one() -> None:
     assert read_amount("2.111,68 USD", bare, default="EUR") == (Decimal("2111.68"), "USD")
     shown = DocumentText("Total 2,111.68 USD")
     assert read_amount("2,111.68", shown, default="EUR") == (Decimal("2111.68"), "USD")
+
+
+# --- periods ------------------------------------------------------------------------------------
+
+DOCUMENT_DATE = date(2026, 10, 5)
+SEPTEMBER = Period.month(2026, 9)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("September 2026", SEPTEMBER),
+        ("für Sept. 2026", SEPTEMBER),
+        ("09/2026", SEPTEMBER),
+        ("9.2026", SEPTEMBER),
+        ("2026-09", SEPTEMBER),
+        ("KW 38/2026", Period.week(2026, 38)),
+        ("Kalenderwoche 38 2026", Period.week(2026, 38)),
+        ("week 38, 2026", Period.week(2026, 38)),
+        ("38. KW 2026", Period.week(2026, 38)),
+        ("Q3 2026", Period.quarter(2026, 3)),
+        ("3. Quartal 2026", Period.quarter(2026, 3)),
+        ("Lohnsteuerbescheinigung 2025", Period.year(2025)),
+        ("01.09.2026 \u2013 30.09.2026", SEPTEMBER),
+        ("vom 01.09.2026 bis 30.09.2026", SEPTEMBER),
+        ("01.09.-30.09.2026", SEPTEMBER),
+        ("1.-30.09.2026", SEPTEMBER),
+        ("1. bis 30. September 2026", SEPTEMBER),
+        ("Leistungszeitraum 14.09.-18.09.2026", Period(date(2026, 9, 14), date(2026, 9, 18))),
+        ("15. September 2026", Period.day(date(2026, 9, 15))),
+        ("2026-09-30", Period.day(date(2026, 9, 30))),
+    ],
+)
+def test_periods_as_written(raw: str, expected: Period) -> None:
+    assert read_period(raw, DOCUMENT_DATE) == (expected, False)
+
+
+def test_a_period_without_its_year_takes_that_of_the_document_date() -> None:
+    assert read_period("für September", DOCUMENT_DATE) == (SEPTEMBER, True)
+    # After the document date in its year: the year before.
+    assert read_period("November", DOCUMENT_DATE) == (Period.month(2025, 11), True)
+    assert read_period("KW 38", DOCUMENT_DATE) == (Period.week(2026, 38), True)
+    assert read_period("September", None) is None
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["September 2026 und Oktober 2026", "01.09.2026 und 05.09.2026", "30.09.2026 bis 01.09.2026"],
+)
+def test_two_periods_or_none_are_no_reading(raw: str) -> None:
+    found = read_period(raw, DOCUMENT_DATE)
+    assert found is None or found[0] != SEPTEMBER
+
+
+def test_a_text_shows_a_period_as_written_or_by_its_first_and_last_day() -> None:
+    text = DocumentText("Abrechnung September 2026; erfasst vom 01.08.2026 ... bis 31.08.2026")
+    assert text.has_period(SEPTEMBER)
+    assert text.has_period(Period.month(2026, 8))  # its ends, apart
+    assert not text.has_period(Period.month(2026, 10))
+    assert DocumentText("für September").has_period(SEPTEMBER, DOCUMENT_DATE)
+    assert not DocumentText("für September").has_period(SEPTEMBER)
+    # Numbers that only look like a period are none: a customer number, a date's year.
+    assert periods_in(normalise("Kunden-Nr. 2026-0412, Rechnung vom 01.09.2026")) == {
+        Period.day(date(2026, 9, 1))
+    }

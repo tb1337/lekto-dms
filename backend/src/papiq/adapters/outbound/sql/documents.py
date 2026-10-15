@@ -12,7 +12,7 @@ from papiq.adapters.outbound.sql.drawers import visible_to
 from papiq.adapters.outbound.sql.repositories import MICROSECOND, SqlRepository, Values
 from papiq.adapters.outbound.sql.transaction import Transaction
 from papiq.core.domain.documents import Channel, Document, Sha256
-from papiq.core.domain.fields import FieldValue, Money, Period, Url
+from papiq.core.domain.fields import FieldValue, Money, Url
 from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -22,6 +22,7 @@ from papiq.core.domain.ids import (
     TagId,
     UserId,
 )
+from papiq.core.domain.periods import Period
 from papiq.core.domain.pipeline import (
     Lane,
     Node,

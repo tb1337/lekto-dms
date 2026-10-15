@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.master_data import one_line
 
-EXTRACT_PROMPT = "extract-3"
+EXTRACT_PROMPT = "extract-4"
 PROPOSE_PROMPT = "propose-2"
 
 _COMMON_RULES = """\
@@ -78,6 +78,10 @@ _VALUE_FORMS = {
     FieldType.BOOLEAN: "true or false",
     FieldType.CHOICE: "one of the options",
     FieldType.LINK: "absolute http(s) URL as written in the document",
+    FieldType.PERIOD: (
+        "object with start and end (YYYY-MM-DD, both days included): a month from its first "
+        "to its last day, a calendar week from Monday to Sunday, a single day with start = end"
+    ),
 }
 
 
@@ -175,6 +179,7 @@ _WRITTEN_FORMS = {
     FieldType.BOOLEAN: "yes or no",
     FieldType.CHOICE: "one of the options",
     FieldType.LINK: "web address",
+    FieldType.PERIOD: "period: a day, week, month, quarter, year or span, as written",
 }
 
 

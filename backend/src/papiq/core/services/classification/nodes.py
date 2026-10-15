@@ -33,7 +33,13 @@ from papiq.core.domain.errors import (
     UnprocessableDocumentError,
     ValidationError,
 )
-from papiq.core.domain.evidence import DocumentText, read_amount, read_date, read_number
+from papiq.core.domain.evidence import (
+    DocumentText,
+    read_amount,
+    read_date,
+    read_number,
+    read_period,
+)
 from papiq.core.domain.exchanges import (
     ModelCall,
     RunExchange,
@@ -54,6 +60,7 @@ from papiq.core.domain.ids import ContactId, FieldId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.names import mentions, name_key, named_share
+from papiq.core.domain.periods import Period, PeriodKind
 from papiq.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
 from papiq.core.domain.reading import PageReading, readings_from_json
 from papiq.core.domain.verdict import (
@@ -698,6 +705,8 @@ def _check_field(
             reason=f"'{definition.name}' was not found",
             **common,
         )
+    if definition.data_type is FieldType.PERIOD:
+        return _check_period(definition, proposal, facts, today, document_date)
     if definition.data_type is FieldType.DATE:
         check = _check_date(field, proposal, facts, today)
         if check.ok and document_date is not None and check.value == document_date.isoformat():
@@ -749,8 +758,85 @@ _SHORTEST_EVIDENCE = 4  # characters of a quoted passage that alone backs a yes/
 # Values written as such: their quoted passage must show them (`_verified`), and a poorly
 # read page does not back them (`_readable`).
 _LITERAL = frozenset(
-    {FieldType.TEXT, FieldType.NUMBER, FieldType.AMOUNT, FieldType.DATE, FieldType.LINK}
+    {
+        FieldType.TEXT,
+        FieldType.NUMBER,
+        FieldType.AMOUNT,
+        FieldType.DATE,
+        FieldType.LINK,
+        FieldType.PERIOD,
+    }
 )
+
+
+def _check_period(
+    definition: FieldDefinition,
+    proposal: Proposal,
+    facts: DocumentText,
+    today: date,
+    document_date: date | None,
+) -> FieldCheck:
+    """A period as the model gives it: `{start, end}` (extract-4) or as written (propose-2:
+    `September 2026`, `KW 38/2026`, `01.09.-30.09.2026`). Its quoted passage must show it. One
+    without a year takes that of the document date and is only suggested, as is a single day
+    equal to the document date (models put the document date where the text shows none)."""
+    common = _common(field_key(definition.id), proposal)
+    read = _read_period(proposal.value, document_date)
+    if read is None:
+        return FieldCheck(
+            outcome=Outcome.UNCERTAIN,
+            confidence=0,
+            reason=f"'{definition.name}': {proposal.value!r} is not a period",
+            **common,
+        )
+    period, yearless = read
+    evidence = (proposal.evidence or "").strip()
+    shows: bool | None = None
+    if evidence:
+        quote = DocumentText(evidence)
+        shows = quote.has_period(period)
+        if not shows and document_date is not None and quote.has_period(period, document_date):
+            shows, yearless = True, True
+    common["quote_shows_value"] = shows
+    if not (period.start >= _EARLIEST and period.end <= today + _LATEST_AHEAD):
+        return FieldCheck(
+            outcome=Outcome.UNCERTAIN,
+            confidence=0,
+            reason=f"'{definition.name}': {period} is not plausible",
+            **common,
+        )
+    in_text = facts.has_period(period, document_date if yearless else None)
+    check = _verified(
+        common, field_to_json(period), proposal, facts, in_text, "period", literal=True
+    )
+    if check.ok and yearless:
+        reason = "no year given; the year of the document date is assumed"
+    elif check.ok and period.kind is PeriodKind.DAY and period.start == document_date:
+        reason = "the same day as the document date"
+    elif check.ok:
+        return check
+    else:
+        reason = check.reason or "invalid"
+    return replace(
+        check,
+        outcome=Outcome.UNCERTAIN,
+        confidence=0,
+        reason=f"'{definition.name}': {reason}",
+        suggestion=check.value if check.ok else check.suggestion,
+        value=None,
+    )
+
+
+def _read_period(raw: JsonValue, document_date: date | None) -> tuple[Period, bool] | None:
+    """The period of a proposed value, and whether its year was assumed."""
+    if isinstance(raw, dict) and set(raw) == {"start", "end"}:
+        start, end = (
+            read_date(day) if isinstance(day, str) else None for day in (raw["start"], raw["end"])
+        )
+        if start is None or end is None or end < start:
+            return None
+        return Period(start, end), False
+    return read_period(raw, document_date) if isinstance(raw, str) else None
 
 
 def _shown(

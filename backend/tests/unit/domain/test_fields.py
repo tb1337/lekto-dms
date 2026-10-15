@@ -8,13 +8,12 @@ from papiq.core.domain.fields import (
     FieldDefinition,
     FieldType,
     Money,
-    Period,
-    PeriodKind,
     Url,
     field_from_json,
     field_to_json,
 )
 from papiq.core.domain.ids import DocumentTypeId, new_id
+from papiq.core.domain.periods import Period, PeriodKind
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 

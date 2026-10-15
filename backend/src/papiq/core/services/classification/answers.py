@@ -175,6 +175,14 @@ def _value_schema(definition: FieldDefinition) -> JsonObject:
                 "additionalProperties": False,
             }
             return {"anyOf": [amount, {"type": "null"}]}
+        case FieldType.PERIOD:
+            period: JsonObject = {
+                "type": "object",
+                "properties": {"start": {"type": "string"}, "end": {"type": "string"}},
+                "required": ["start", "end"],
+                "additionalProperties": False,
+            }
+            return {"anyOf": [period, {"type": "null"}]}
         case FieldType.BOOLEAN:
             return {"type": ["boolean", "null"]}
         case FieldType.CHOICE:

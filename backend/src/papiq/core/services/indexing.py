@@ -51,9 +51,10 @@ from papiq.core.domain.events import (
     NodeDeferred,
     NodeStarted,
 )
-from papiq.core.domain.fields import FieldValue, Money, Period, PeriodKind, Url
+from papiq.core.domain.fields import FieldValue, Money, Url
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, TagId, UserId
 from papiq.core.domain.jobs import Job
+from papiq.core.domain.periods import Period, PeriodKind
 from papiq.core.domain.pipeline import SIGNALS
 from papiq.core.domain.search import EmbeddingStamp, IndexDocument, IndexState
 from papiq.core.ports import (

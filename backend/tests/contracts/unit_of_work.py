@@ -8,10 +8,11 @@ from papiq.core.domain.classifier import ClassifierModel
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.drawers import Drawer, ShareLevel
 from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
-from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Period, Url
+from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import DocumentId, DrawerId, new_id
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
+from papiq.core.domain.periods import Period
 from papiq.core.domain.permissions import can_read_document
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
 from papiq.core.domain.users import User

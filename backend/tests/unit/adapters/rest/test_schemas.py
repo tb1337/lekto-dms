@@ -6,7 +6,8 @@ from decimal import Decimal
 import pytest
 
 from papiq.adapters.inbound.schemas import MoneyValue, PeriodValue, field_json
-from papiq.core.domain.fields import Money, Period, Url
+from papiq.core.domain.fields import Money, Url
+from papiq.core.domain.periods import Period
 
 
 @pytest.mark.parametrize(

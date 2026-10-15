@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Facts } from '#lib/facts.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
+import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import FactsPanel from './FactsPanel.svelte';
 
@@ -119,7 +120,8 @@ afterEach(() => {
 describe('FactsPanel', () => {
 	it('shows what supports the contact, what has no contact, and the codes', () => {
 		render(FactsPanel, props());
-		expect(screen.getByText(m.facts_own({ contact: 'Stadtwerke Musterstadt GmbH' }))).toBeTruthy();
+		const own = screen.getByRole('heading', { name: /Stadtwerke Musterstadt GmbH/ });
+		expect(own.textContent).toContain(m.facts_own());
 		// The IBAN as a fact, and as the GiroCode's.
 		expect(screen.getAllByText('DE89 3704 0044 0532 0130 00')).toHaveLength(2);
 		expect(screen.getByText(m.facts_unknown())).toBeTruthy();
@@ -176,8 +178,19 @@ describe('FactsPanel', () => {
 		expect(await request.json()).toEqual({ kind: 'customer_number', value: '20047718' });
 	});
 
+	it("opens the contact's dialog from its name, for admins", async () => {
+		const open = vi.spyOn(masterDataDialogs, 'open').mockImplementation(() => {});
+		render(FactsPanel, props());
+		const own = screen.getByRole('heading', { name: /Stadtwerke Musterstadt GmbH/ });
+		await fireEvent.click(within(own).getByRole('button', { name: 'Stadtwerke Musterstadt GmbH' }));
+		expect(open).toHaveBeenCalledWith('contacts', UTILITY);
+		open.mockRestore();
+	});
+
 	it('offers nothing to attach to those who are no admins', () => {
 		render(FactsPanel, props({ admin: false }));
+		const own = screen.getByRole('heading', { name: /Stadtwerke Musterstadt GmbH/ });
+		expect(within(own).queryByRole('button')).toBeNull();
 		expect(screen.queryByRole('button', { name: m.facts_attach() })).toBeNull();
 		expect(screen.getByText(m.facts_attach_admins())).toBeTruthy();
 	});

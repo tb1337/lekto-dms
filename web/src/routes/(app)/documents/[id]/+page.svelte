@@ -28,6 +28,7 @@
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { canEdit, canManage } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import type { GraphNode } from '#lib/pipeline.ts';
@@ -178,6 +179,19 @@
 	$effect(() => {
 		void events.generation;
 		if (fromInbox) untrack(() => void loadInbox());
+	});
+
+	// Again after a master data dialog saved here (a contact opened from its facts): names,
+	// aliases and identifiers decide what the facts show.
+	let savedBefore = masterDataDialogs.changed;
+	$effect(() => {
+		const saved = masterDataDialogs.changed;
+		if (saved === savedBefore) return;
+		savedBefore = saved;
+		untrack(() => {
+			loadLookup().then((value) => (lookup = value), reportError);
+			void reloadFacts();
+		});
 	});
 
 	onMount(() => {

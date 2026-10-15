@@ -26,6 +26,7 @@
 	import { formatMoney } from '#lib/i18n.ts';
 	import { kindLabel } from '#lib/identifiers.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
+	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
 
@@ -281,7 +282,19 @@
 				class="mt-2 flex items-center gap-1.5 px-1 text-xs font-semibold text-lane-green-foreground"
 			>
 				<UserCheck class="size-3.5" aria-hidden="true" />
-				{m.facts_own({ contact: documentContact ?? '' })}
+				{m.facts_own()}
+				<!-- Admins change the contact right here: its dialog opens over the page. -->
+				{#if admin && facts.contact_id}
+					{@const contactId = facts.contact_id}
+					<button
+						type="button"
+						class="cursor-pointer underline-offset-2 hover:underline"
+						title={m.facts_contact_open()}
+						onclick={() => masterDataDialogs.open('contacts', contactId)}>{documentContact}</button
+					>
+				{:else}
+					{documentContact}
+				{/if}
 			</h3>
 			{#each groups.own as entry (entryId(entry))}
 				{@render entryRow(entry, null)}

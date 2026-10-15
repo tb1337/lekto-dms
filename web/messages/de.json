@@ -122,6 +122,8 @@
 	"reprocess_from": "Ab Schritt",
 	"reprocess_started": "Die Verarbeitung läuft erneut.",
 	"reprocess_vision_lost": "Die Texterkennung liest dann wieder ohne VLM; dessen Text geht verloren.",
+	"reprocess_vision_again": "Wieder mit dem VLM lesen, wie beim letzten Mal",
+	"reprocess_with_vision": "Mit VLM neu verarbeiten",
 	"delete_title": "Löschen",
 	"delete_confirm": "„{title}“ und seine Dateien werden endgültig gelöscht.",
 	"delete_done": "Dokument gelöscht.",

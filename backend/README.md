@@ -217,7 +217,9 @@ jobs of the old run are recognised as stale.
   counts as OCR: the checks are the usual ones, words the model marks `[unreadable]` count as
   unsure (`PAPIQ_POOR_READING_THRESHOLD`). The run keeps the request (`processing.vision`,
   revision 0021), so a retry asks the model again; reprocessing from `parse` and `reparse` keep
-  the model's text (it is the archive's), reprocessing from `ocr` reads with Tesseract. A page
+  the model's text (it is the archive's), reprocessing from `ocr` reads with Tesseract (the web UI asks first whether the model shall
+  read again, and then calls `POST /documents/{id}/vision`). The archive's metadata names the
+  reader: `/Creator` and `xmp:CreatorTool` say `Papiq, vision language model <model> (read-1)`. A page
   the model cannot read fails the node like the language model (`LanguageModelError`: retried,
   then red). The plugin gets its configuration in the environment of OCRmyPDF's process (the
   key apart, never logged) and leaves a record per page in a folder of ours. The log names

@@ -22,7 +22,9 @@
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
+	import { Checkbox } from '#lib/components/ui/checkbox/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
+	import { Label } from '#lib/components/ui/label/index.ts';
 	import { inboxDocument, type Neighbours } from '#lib/document-view.ts';
 	import { reportError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
@@ -72,6 +74,8 @@
 	let moveOpen = $state(false);
 	let reprocessOpen = $state(false);
 	let visionOpen = $state(false);
+	// Reprocessing from OCR a document the vision model read: read with it again (asked).
+	let visionAgain = $state(true);
 	let target = $state('');
 	let fromNode = $state<ReprocessNode>('ocr');
 	let busy = $state(false);
@@ -100,6 +104,10 @@
 	// Sending the pages to the vision model is the person's decision, here or from the advice.
 	const readable = $derived(manageable && visionAvailable(vision, graph, document.processing));
 	const advice = $derived(adviceText(reading));
+	// The text recognition runs again on a document the model read last time: ask whether the
+	// model reads it again, chosen by default, where it can.
+	const askVision = $derived(fromNode === 'ocr' && (reading?.vision ?? false));
+	const withVision = $derived(askVision && readable && visionAgain);
 	const visionRunning = $derived(document.processing.vision && running.running.includes('ocr'));
 
 	/** Ask whether the vision model shall read the document (also from the advice). */
@@ -111,6 +119,7 @@
 	export function startReprocess() {
 		if (nodes.length === 0) return;
 		fromNode = nodes[0].value;
+		visionAgain = true;
 		reprocessOpen = true;
 	}
 
@@ -145,15 +154,18 @@
 	}
 
 	async function reprocess() {
+		const params = { params: { path: { id: document.id } } };
 		const done = await act(
 			() =>
-				unwrap(
-					api.POST('/api/v1/documents/{id}/reprocess', {
-						params: { path: { id: document.id } },
-						body: { from_node: fromNode }
-					})
-				),
-			m.reprocess_started()
+				withVision
+					? unwrap(api.POST('/api/v1/documents/{id}/vision', params))
+					: unwrap(
+							api.POST('/api/v1/documents/{id}/reprocess', {
+								...params,
+								body: { from_node: fromNode }
+							})
+						),
+			withVision ? m.vision_started() : m.reprocess_started()
 		);
 		if (done) reprocessOpen = false;
 	}
@@ -379,13 +391,27 @@
 		<Field.Field>
 			<Field.Label for="reprocess-node">{m.reprocess_from()}</Field.Label>
 			<NativeSelect id="reprocess-node" bind:value={fromNode} options={nodes} />
-			{#if fromNode === 'ocr' && reading?.vision}
-				<Field.Description>{m.reprocess_vision_lost()}</Field.Description>
-			{/if}
 		</Field.Field>
+		{#if askVision && readable && vision}
+			<div class="flex flex-col gap-1.5">
+				<div class="flex items-center gap-2">
+					<Checkbox id="reprocess-vision" bind:checked={visionAgain} />
+					<Label for="reprocess-vision">{m.reprocess_vision_again()}</Label>
+				</div>
+				<p class="pl-6 text-sm text-muted-foreground">
+					{visionAgain
+						? m.vision_hint({ endpoint: vision.endpoint, model: vision.model })
+						: m.reprocess_vision_lost()}
+				</p>
+			</div>
+		{:else if askVision}
+			<p class="text-sm text-muted-foreground">{m.reprocess_vision_lost()}</p>
+		{/if}
 		<Dialog.Footer>
 			<Button variant="ghost" onclick={() => (reprocessOpen = false)}>{m.cancel()}</Button>
-			<Button disabled={busy} onclick={reprocess}>{m.reprocess_title()}</Button>
+			<Button disabled={busy} onclick={reprocess}>
+				{withVision ? m.reprocess_with_vision() : m.reprocess_title()}
+			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

@@ -134,11 +134,44 @@ describe('DocumentHeader', () => {
 		expect(within(item).queryByText(m.vision_recommended())).toBeNull();
 	});
 
-	it('warns that reprocessing from OCR loses what the model read', async () => {
-		render(DocumentHeader, props({ document: document(), reading: { ...NO_TEXT, vision: true } }));
-		const user = await openMenu();
-		await user.click(await screen.findByRole('menuitem', { name: m.reprocess_title() }));
-		const dialog = await screen.findByRole('dialog');
-		expect(within(dialog).getByText(m.reprocess_vision_lost())).toBeTruthy();
+	describe('reprocessing from OCR a document the model read', () => {
+		const read = { ...NO_TEXT, vision: true, advice: null };
+
+		async function openReprocess(overrides: Record<string, unknown> = {}) {
+			render(DocumentHeader, props({ document: document(), reading: read, ...overrides }));
+			const user = await openMenu();
+			await user.click(await screen.findByRole('menuitem', { name: m.reprocess_title() }));
+			return { user, dialog: await screen.findByRole('dialog') };
+		}
+
+		it('reads with the model again when the person keeps that, naming where', async () => {
+			const { user, dialog } = await openReprocess();
+			const again = within(dialog).getByRole('checkbox', { name: m.reprocess_vision_again() });
+			expect(again.getAttribute('aria-checked')).toBe('true');
+			expect(dialog.textContent).toContain(
+				m.vision_hint({ endpoint: 'chat.example', model: 'claude-sonnet' })
+			);
+			await user.click(within(dialog).getByRole('button', { name: m.reprocess_with_vision() }));
+			await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+			const [request] = fetchMock.mock.calls[0];
+			expect(new URL(request.url).pathname).toBe('/api/v1/documents/doc-1/vision');
+		});
+
+		it('reads with Tesseract when the person says no, and warns', async () => {
+			const { user, dialog } = await openReprocess();
+			await user.click(within(dialog).getByRole('checkbox', { name: m.reprocess_vision_again() }));
+			expect(within(dialog).getByText(m.reprocess_vision_lost())).toBeTruthy();
+			await user.click(within(dialog).getByRole('button', { name: m.reprocess_title() }));
+			await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+			const [request] = fetchMock.mock.calls[0];
+			expect(new URL(request.url).pathname).toBe('/api/v1/documents/doc-1/reprocess');
+			expect(await request.json()).toEqual({ from_node: 'ocr' });
+		});
+
+		it('only warns without a model', async () => {
+			const { dialog } = await openReprocess({ vision: null });
+			expect(within(dialog).queryByRole('checkbox')).toBeNull();
+			expect(within(dialog).getByText(m.reprocess_vision_lost())).toBeTruthy();
+		});
 	});
 });

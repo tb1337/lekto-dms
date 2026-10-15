@@ -334,7 +334,7 @@ class TemplatePreviewOut(BaseModel):
         "nothing (a title pattern leaves the model's title)."
     )
     error: str | None = Field(
-        description="Why the template is invalid (syntax, an unknown value, an old placeholder)."
+        description="Why the template is invalid (its syntax, or a value templates do not know)."
     )
 
 

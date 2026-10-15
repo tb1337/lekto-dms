@@ -106,19 +106,3 @@ def rename_field_key(template: str, old: str, new: str) -> str:
 def uses_field(paths: Iterable[str], key: str) -> bool:
     """Whether the paths a template uses (`TemplateRenderer.check`) name the field `key`."""
     return any(path == f"{FIELD}.{key}" or path.startswith(f"{FIELD}.{key}.") for path in paths)
-
-
-_OLD_PLACEHOLDER = re.compile(
-    r"(?<!\{)\{(contact|document_type|filename|document_date(?::[^{}]*)?|field:[^{}]*)\}(?!\})"
-)
-
-
-def old_placeholder(template: str) -> str | None:
-    """A placeholder as patterns and rules wrote them before 0.2.0 (`{contact}`), which Liquid
-    would print as it is; the way to write it now in the error."""
-    found = _OLD_PLACEHOLDER.search(template)
-    if found is None:
-        return None
-    name, _, argument = found.group(1).partition(":")
-    now = f"field.{argument.strip()}" if name == FIELD else name
-    return f"{found.group()} is no longer a placeholder: write {{{{ {now} }}}}"

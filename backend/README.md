@@ -440,9 +440,9 @@ version; deleting is a soft delete.
   after 1,000 turns and output after 10,000 characters. Writing a missing value sets nothing
   (note `skipped`); `| default` and `{% if %}` make a part optional; a forced review holds with
   its reason as written. Saving checks the syntax and the values (422, `actions[2]: unknown
-  value field.brutto`) and refuses the old placeholders (`{contact}`) with the way to write
-  them. Renaming a field rewrites the templates that use it (a new version); a field a template
-  uses is not deleted (409). `POST /templates/preview` checks a template and renders it with a
+  value field.brutto`); single braces (`{contact}`, as before 0.2.0) are text like any other.
+  Renaming a field rewrites the templates that use it (a new version); a field a template uses
+  is not deleted (409). `POST /templates/preview` checks a template and renders it with a
   document the caller may read.
 - **Evaluation.** All conditions see the state before any rule acts; a rule's action never makes
   another rule match in the same run. Contact, type and tags the model set and no person

@@ -4016,7 +4016,7 @@ export interface components {
 			missing: string | null;
 			/**
 			 * Error
-			 * @description Why the template is invalid (syntax, an unknown value, an old placeholder).
+			 * @description Why the template is invalid (its syntax, or a value templates do not know).
 			 */
 			error: string | null;
 		};

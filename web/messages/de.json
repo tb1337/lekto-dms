@@ -648,7 +648,6 @@
 	"field_def_required_in": "{scope} (Pflicht)",
 	"field_def_required_hint": "Ein Pflichtfeld muss erkannt werden, sonst wartet das Dokument im Posteingang. Ein optionales darf leer bleiben; ein erkannter Wert muss im Dokument stehen.",
 	"master_title_pattern": "Titelmuster",
-	"master_title_pattern_hint": "Ein Template für den Titel der Dokumente dieses Typs, statt des Vorschlags des Modells: Werte in doppelten geschweiften Klammern, Filter mit |. Papiq führt es als Regel des Typs aus; eine eigene Regel, die den Titel setzt, hat Vorrang. Fehlt ein Wert, bleibt der Titel des Modells.",
 	"nav_classifier": "Klassifikator",
 	"classifier_intro": "Papiq lernt Kontakt, Dokumenttyp und Tags aus den Dokumenten, die eine Person bestätigt hat oder die mit ihren Metadaten übernommen wurden, und schlägt sie für neue vor. Nach genug Bestätigungen trainiert es von selbst neu.",
 	"classifier_not_configured": "Es ist kein Klassifikator eingerichtet (PAPIQ_CLASSIFIER ist none).",

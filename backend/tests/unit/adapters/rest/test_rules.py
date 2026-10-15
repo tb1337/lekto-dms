@@ -349,8 +349,9 @@ async def test_a_template_is_previewed_with_a_document(api: Api) -> None:
     assert (await preview(gross, u))["missing"] == "field.la_brutto"
     unknown = {"template": "{{ field.netto }}", "document_type_id": kind["id"]}
     assert (await preview(unknown, u))["error"] == "unknown value field.netto"
-    old = await preview({"template": "{contact}"}, u)
-    assert old["error"] == "{contact} is no longer a placeholder: write {{ contact }}"
+    # Single braces are text like any other.
+    plain = await preview({"template": "{document_date}", "document_id": id}, u)
+    assert (plain["rendered"], plain["error"]) == ("{document_date}", None)
     # Someone else's document is not found.
     response = await api.client.post(f"{PREFIX}/templates/preview", json=title, headers=a)
     assert response.status_code == 200  # an admin reads every document

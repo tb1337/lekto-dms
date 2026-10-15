@@ -648,7 +648,6 @@
 	"field_def_required_in": "{scope} (required)",
 	"field_def_required_hint": "A required field must be recognised, else the document waits in the inbox. An optional one may stay empty; a value it gets must stand in the document.",
 	"master_title_pattern": "Title pattern",
-	"master_title_pattern_hint": "A template for the title of the type's documents, instead of the model's proposal: values in double curly braces, filters with |. Papiq carries it out as a rule of the type; a rule of your own that sets the title comes first. If a value is missing, the model's title stays.",
 	"nav_classifier": "Classifier",
 	"classifier_intro": "Papiq learns contact, document type and tags from the documents a person confirmed or that were taken over with their metadata, and suggests them for new ones. After enough confirmations it trains again on its own.",
 	"classifier_not_configured": "No classifier is set up (PAPIQ_CLASSIFIER is none).",

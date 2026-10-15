@@ -550,7 +550,7 @@ Die Lücke der textbasierten Varianten kommt fast ganz aus dem schlechten Scan (
 - Die Kopie ist gelöscht.
 
 **Beobachtungen:**
-- Ein Muster in alter Schreibweise ist gültiges Liquid und erschiene wörtlich im Titel; darum lehnt das Speichern es ab.
+- Ein Muster in alter Schreibweise ist gültiges Liquid und erscheint wörtlich im Titel. Eine Ablehnung beim Speichern gab es kurz; Tobi (15.10.2026) will sie nicht: Dann steht eben `{document_date}` da.
 - Fehlermeldungen des Servers bleiben englisch wie alle Meldungen der API.
 
 **Offen:**

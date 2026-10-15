@@ -102,7 +102,6 @@
 						bind:value={titlePattern}
 						documentType={initial?.id ?? null}
 					/>
-					<Field.Description>{m.master_title_pattern_hint()}</Field.Description>
 				</Field.Field>
 			{/if}
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}

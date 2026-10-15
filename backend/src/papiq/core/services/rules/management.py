@@ -38,7 +38,6 @@ from papiq.core.domain.templates import (
     FIELD,
     NAMES,
     TemplateValue,
-    old_placeholder,
     rename_field_key,
     template_values,
     unknown_values,
@@ -150,9 +149,6 @@ class RuleService:
                 await uow.document_types.get(kind)
             fields = await uow.fields.list_all()
             applying = [item for item in fields if kind is None or item.applies_to(kind)]
-            error = old_placeholder(template)
-            if error is not None:
-                return TemplatePreview(error=error)
             try:
                 used = self._templates.check(template)
             except ValidationError as invalid:
@@ -245,9 +241,6 @@ async def check_templates(
     fields = await uow.fields.list_all()
     keys = {field.key for field in fields}
     for index, template in action_templates(definition, fields):
-        old = old_placeholder(template)
-        if old is not None:
-            raise ValidationError(f"actions[{index}]: {old}")
         try:
             used = templates.check(template)
         except ValidationError as error:

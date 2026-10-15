@@ -19,7 +19,7 @@ from papiq.core.domain.names import name_key as match_key
 from papiq.core.domain.names import related
 from papiq.core.domain.permissions import can_manage_master_data
 from papiq.core.domain.rules import References, Rule, RuleScope, definition_to_json, title_rule
-from papiq.core.domain.templates import old_placeholder, rename_field_key, unknown_values
+from papiq.core.domain.templates import rename_field_key, unknown_values
 from papiq.core.domain.templates import uses_field as field_used
 from papiq.core.ports import (
     Clock,
@@ -416,9 +416,6 @@ class MasterDataService:
         """A pattern is a valid template whose fields apply to the type."""
         if document_type.title_pattern is None:
             return
-        old = old_placeholder(document_type.title_pattern)
-        if old is not None:
-            raise ValidationError(f"the title pattern: {old}")
         keys = {
             item.key for item in await uow.fields.list_all() if item.applies_to(document_type.id)
         }

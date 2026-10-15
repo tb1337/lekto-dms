@@ -55,3 +55,11 @@ def test_search_index_content_leaves_the_network() -> None:
     }
     local: dict[str, Any] = {"meilisearch_url": "http://meilisearch:7700"}
     assert external_endpoints(Settings(**local)) == {}
+
+
+def test_page_images_for_the_vision_model_leave_the_network() -> None:
+    """Only when a person asks, but then the pages themselves."""
+    external: dict[str, Any] = {"vlm_base_url": "https://chat.example.com/api", "vlm_model": "v"}
+    assert external_endpoints(Settings(**external)) == {"PAPIQ_VLM_BASE_URL": "chat.example.com"}
+    local: dict[str, Any] = {"vlm_base_url": "http://ollama:11434/v1", "vlm_model": "v"}
+    assert external_endpoints(Settings(**local)) == {}

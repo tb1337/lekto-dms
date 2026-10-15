@@ -1,12 +1,11 @@
 """Response bodies that more than one inbound adapter (REST, MCP) returns."""
 
-from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter
 
-from papiq.core.domain.fields import FieldValue, Money, Url
+from papiq.core.domain.fields import FieldValue, field_to_json
 from papiq.core.domain.rule_engine import RuleReport
 from papiq.core.domain.rules import RuleScope
 
@@ -27,24 +26,13 @@ FieldJson = Annotated[
 ]
 
 
-def decimal_text(value: Decimal) -> str:
-    """A decimal in plain notation (`53350000`, `12.50`), never `5.335E+7`: `str(Decimal)` keeps
-    the exponent a value arrived with."""
-    return format(value, "f")
+_FIELD_JSON: TypeAdapter[str | bool | MoneyValue] = TypeAdapter(FieldJson)
 
 
 def field_json(value: FieldValue) -> str | bool | MoneyValue:
-    match value:
-        case bool() | str():
-            return value
-        case Money(amount=amount, currency=currency):
-            return MoneyValue(amount=decimal_text(amount), currency=currency)
-        case Decimal():
-            return decimal_text(value)
-        case Url(value=url):
-            return url
-        case _:  # date
-            return value.isoformat()
+    """A value as the API writes it: its JSON form (`field_to_json`) as the response schema
+    has it."""
+    return _FIELD_JSON.validate_python(field_to_json(value))
 
 
 class RuleEffectOut(BaseModel):

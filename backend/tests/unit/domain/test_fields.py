@@ -4,7 +4,14 @@ from decimal import Decimal
 import pytest
 
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url
+from papiq.core.domain.fields import (
+    FieldDefinition,
+    FieldType,
+    Money,
+    Url,
+    field_from_json,
+    field_to_json,
+)
 from papiq.core.domain.ids import DocumentTypeId, new_id
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
@@ -63,6 +70,34 @@ def test_value_of_wrong_type_is_rejected(data_type: FieldType, value: object) ->
 def test_every_data_type_is_covered() -> None:
     assert {row[0] for row in ACCEPTED} == set(FieldType)
     assert {row[0] for row in REJECTED} == set(FieldType)
+
+
+def test_one_json_form_for_api_rules_and_the_log() -> None:
+    # Numbers in plain notation, whatever exponent the value arrived with.
+    assert field_to_json(Decimal("5.335E+7")) == "53350000"
+    assert field_to_json(Money(Decimal("5.335E+7"), "EUR")) == {
+        "amount": "53350000",
+        "currency": "EUR",
+    }
+    # A number may also be a JSON number, also as an amount.
+    assert field_from_json(definition(FieldType.NUMBER), 12.5) == Decimal("12.5")
+    amount = field_from_json(definition(FieldType.AMOUNT), {"amount": 7, "currency": "EUR"})
+    assert amount == Money(Decimal("7"), "EUR")
+    # An amount is exactly its amount and currency; a yes/no is no number.
+    for refused in (
+        {"amount": "7", "currency": "EUR", "note": "x"},
+        {"amount": "7"},
+        {"amount": True, "currency": "EUR"},
+        {"amount": "7", "currency": "eu"},
+    ):
+        with pytest.raises(ValidationError, match="does not accept"):
+            field_from_json(definition(FieldType.AMOUNT), refused)
+    with pytest.raises(ValidationError, match="does not accept"):
+        field_from_json(definition(FieldType.NUMBER), True)
+    # What comes from anyone is shortened in the message.
+    with pytest.raises(ValidationError) as caught:
+        field_from_json(definition(FieldType.DATE), "x" * 500)
+    assert len(str(caught.value)) < 200
 
 
 @pytest.mark.parametrize(

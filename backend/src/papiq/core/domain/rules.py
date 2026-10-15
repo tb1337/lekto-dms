@@ -30,10 +30,9 @@ from enum import StrEnum
 from typing import Literal, Self
 from uuid import UUID
 
-from papiq.core.domain.classification import field_from_json
 from papiq.core.domain.documents import Channel
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.fields import FieldDefinition, FieldType
+from papiq.core.domain.fields import FieldDefinition, FieldType, field_from_json
 from papiq.core.domain.ids import (
     ContactId,
     DocumentId,

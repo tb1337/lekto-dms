@@ -34,12 +34,10 @@ from papiq.core.domain.classification import (
     TAGS,
     TITLE,
     FieldCheck,
-    field_from_json,
     field_key,
-    field_to_json,
 )
 from papiq.core.domain.documents import UNSET, Channel, Document, DocumentChanges
-from papiq.core.domain.fields import FieldDefinition
+from papiq.core.domain.fields import FieldDefinition, field_from_json, field_to_json
 from papiq.core.domain.identifiers import Identifier, IdentifierKind
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from papiq.core.domain.imports import ImportedMetadata

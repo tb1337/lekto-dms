@@ -38,9 +38,7 @@ from papiq.core.domain.classification import (
     TAGS,
     TITLE,
     FieldCheck,
-    field_from_json,
     field_key,
-    field_to_json,
 )
 from papiq.core.domain.documents import Channel, Document, DocumentChanges, Unset
 from papiq.core.domain.errors import MissingValueError, ValidationError
@@ -51,6 +49,8 @@ from papiq.core.domain.fields import (
     FieldValue,
     Money,
     Url,
+    field_from_json,
+    field_to_json,
 )
 from papiq.core.domain.ids import (
     ContactId,

@@ -5,10 +5,9 @@ from dataclasses import dataclass, field
 from datetime import date
 from uuid import UUID
 
-from papiq.core.domain.classification import field_from_json, field_to_json
 from papiq.core.domain.documents import UNSET, DocumentChanges
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.fields import FieldDefinition, FieldValue
+from papiq.core.domain.fields import FieldDefinition, FieldValue, field_from_json, field_to_json
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 

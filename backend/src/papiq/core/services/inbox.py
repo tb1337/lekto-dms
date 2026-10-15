@@ -19,12 +19,11 @@ from papiq.core.domain.classification import (
     TAGS,
     FieldCheck,
     checks_from_json,
-    field_from_json,
     field_id_of,
 )
 from papiq.core.domain.documents import Document, DocumentChanges, Unset
 from papiq.core.domain.errors import OpenFieldsError, ValidationError
-from papiq.core.domain.fields import FieldDefinition
+from papiq.core.domain.fields import FieldDefinition, field_from_json
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.pipeline import (

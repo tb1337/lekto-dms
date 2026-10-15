@@ -7,18 +7,9 @@ after a person corrected it; the inbox and the rules (M7) read them from there.
 """
 
 from dataclasses import dataclass
-from datetime import date
-from decimal import Decimal, InvalidOperation
 from typing import Self
 
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.fields import (
-    FieldDefinition,
-    FieldType,
-    FieldValue,
-    Money,
-    Url,
-)
 from papiq.core.domain.ids import FieldId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.locations import Location, locations_from_json, locations_to_json
@@ -257,45 +248,3 @@ def _texts(value: JsonValue) -> tuple[str, ...]:
 
 def _candidates(value: JsonValue) -> tuple[Candidate, ...]:
     return tuple(Candidate.from_json(item) for item in value) if isinstance(value, list) else ()
-
-
-# --- field values as JSON -----------------------------------------------------------------
-
-
-def field_to_json(value: FieldValue) -> JsonValue:
-    """Text, choice and link as text; number as decimal text; amount as `{amount, currency}`;
-    date as ISO text; yes/no as boolean."""
-    match value:
-        case bool() | str():
-            return value
-        case Decimal():
-            return str(value)
-        case Money():
-            return {"amount": str(value.amount), "currency": value.currency}
-        case date():
-            return value.isoformat()
-        case Url():
-            return value.value
-
-
-def field_from_json(definition: FieldDefinition, data: JsonValue) -> FieldValue:
-    """The value of `definition` from its JSON form (as `field_to_json` writes it), checked
-    against the definition. ValidationError if it does not fit."""
-    value: object = data
-    try:
-        match definition.data_type:
-            case FieldType.NUMBER if isinstance(data, str | int) and not isinstance(data, bool):
-                value = Decimal(str(data))
-            case FieldType.AMOUNT if isinstance(data, dict):
-                amount, currency = data.get("amount"), data.get("currency")
-                if isinstance(amount, str | int) and not isinstance(amount, bool):
-                    value = Money(Decimal(str(amount)), str(currency))
-            case FieldType.DATE if isinstance(data, str):
-                value = date.fromisoformat(data)
-            case FieldType.LINK if isinstance(data, str):
-                value = Url(data)
-    except (InvalidOperation, ValueError, ValidationError):
-        raise ValidationError(
-            f"field '{definition.name}' ({definition.data_type}) does not accept {data!r}"
-        ) from None
-    return definition.validate(value)

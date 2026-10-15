@@ -20,12 +20,11 @@ from papiq.core.domain.classification import (
     TAGS,
     TITLE,
     field_key,
-    field_to_json,
 )
 from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import NotFoundError, PatternTimeoutError, ValidationError
 from papiq.core.domain.evidence import DocumentText
-from papiq.core.domain.fields import FieldDefinition
+from papiq.core.domain.fields import FieldDefinition, field_to_json
 from papiq.core.domain.ids import (
     ContactId,
     DocumentTypeId,

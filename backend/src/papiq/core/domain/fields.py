@@ -5,13 +5,14 @@ import unicodedata
 from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import Self
 from urllib.parse import urlsplit
 
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.ids import DocumentTypeId, FieldId, new_id
+from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.master_data import MasterData, checked_description
 from papiq.core.domain.validation import require_name
 
@@ -216,7 +217,67 @@ class FieldDefinition(MasterData):
                 return value
             case FieldType.LINK if isinstance(value, Url):
                 return value
-        raise ValidationError(f"field '{self.name}' ({self.data_type}) does not accept {value!r}")
+        raise self.refusal(value)
+
+    def refusal(self, value: object) -> ValidationError:
+        """The error for a value that does not fit (shortened: it may come from anyone)."""
+        return ValidationError(
+            f"field '{self.name}' ({self.data_type}) does not accept {value!r:.100}"
+        )
+
+
+# --- values as JSON ----------------------------------------------------------------------
+
+
+def decimal_text(value: Decimal) -> str:
+    """A decimal in plain notation (`53350000`, `12.50`), never `5.335E+7`: `str(Decimal)` keeps
+    the exponent a value arrived with."""
+    return format(value, "f")
+
+
+def field_to_json(value: FieldValue) -> JsonValue:
+    """The JSON form of a value, the one the API, rules and the processing log use: text, choice
+    and link as text; number as decimal text; amount as `{amount, currency}`; date as ISO text;
+    yes/no as boolean."""
+    match value:
+        case bool() | str():
+            return value
+        case Decimal():
+            return decimal_text(value)
+        case Money():
+            return {"amount": decimal_text(value.amount), "currency": value.currency}
+        case date():
+            return value.isoformat()
+        case Url():
+            return value.value
+
+
+def field_from_json(definition: FieldDefinition, data: object) -> FieldValue:
+    """The value of `definition` from its JSON form (as `field_to_json` writes it; a number may
+    also be a JSON number), checked against the definition. ValidationError if it does not
+    fit."""
+    value: object = data
+    try:
+        match definition.data_type:
+            case FieldType.NUMBER if _numeric(data):
+                value = Decimal(str(data))
+            case FieldType.AMOUNT if isinstance(data, dict) and set(data) == _AMOUNT_KEYS:
+                if _numeric(data["amount"]):
+                    value = Money(Decimal(str(data["amount"])), data["currency"])
+            case FieldType.DATE if isinstance(data, str):
+                value = date.fromisoformat(data)
+            case FieldType.LINK if isinstance(data, str):
+                value = Url(data)
+    except (InvalidOperation, ValueError, ValidationError):
+        raise definition.refusal(data) from None
+    return definition.validate(value)
+
+
+_AMOUNT_KEYS = {"amount", "currency"}
+
+
+def _numeric(value: object) -> bool:
+    return isinstance(value, int | float | str) and not isinstance(value, bool)
 
 
 _UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue"})

@@ -49,10 +49,10 @@ from papiq.adapters.inbound.rest.schemas.inbox import (
 )
 from papiq.adapters.inbound.rest.upload import FILE_FIELD, read_upload
 from papiq.adapters.inbound.schemas import RuleReportOut
-from papiq.adapters.inbound.values import field_value
 from papiq.core.domain.documents import UNSET, Channel, Document, DocumentChanges
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import ValidationError
+from papiq.core.domain.fields import field_from_json
 from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -668,7 +668,7 @@ async def _changes(body: DocumentPatch, user: UserId, context: Context) -> Docum
         for field_id, value in body.fields.items():
             definition = definitions.get(FieldId(field_id))
             fields[FieldId(field_id)] = (
-                value if definition is None else field_value(definition, value)
+                value if definition is None or value is None else field_from_json(definition, value)
             )
     if "title" in given and body.title is None:
         raise ValidationError("title: must not be null")
@@ -741,7 +741,7 @@ async def _imported(value: str | None, user: UserId, context: Context) -> Import
             raise ValidationError(f"metadata.fields: field {field_id} does not exist")
         if raw is None:
             raise ValidationError(f"metadata.fields.{field_id}: must not be null")
-        fields[FieldId(field_id)] = field_value(definition, raw)
+        fields[FieldId(field_id)] = raw
     try:
         return ImportedMetadata(
             title=body.title,
@@ -751,7 +751,7 @@ async def _imported(value: str | None, user: UserId, context: Context) -> Import
             ),
             tag_ids=frozenset(TagId(tag) for tag in body.tag_ids),
             document_date=body.document_date,
-            fields={key: definitions[key].validate(value) for key, value in fields.items()},
+            fields={key: field_from_json(definitions[key], raw) for key, raw in fields.items()},
         )
     except ValidationError as error:
         raise ValidationError(f"metadata: {error}") from None

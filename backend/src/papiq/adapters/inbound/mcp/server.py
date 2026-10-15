@@ -26,11 +26,10 @@ from starlette.requests import Request
 from papiq import __version__
 from papiq.adapters.inbound.context import ApiContext
 from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
-from papiq.adapters.inbound.values import field_value
 from papiq.core.domain.documents import UNSET, Document, DocumentChanges
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import DomainError, SearchUnavailableError, ValidationError
-from papiq.core.domain.fields import FieldDefinition
+from papiq.core.domain.fields import FieldDefinition, field_from_json
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from papiq.core.ports import DocumentFilter
 from papiq.core.ports.search_index import MAX_HITS
@@ -440,5 +439,5 @@ def _fields(given: dict[str, Any], names: Names) -> dict[FieldId, object]:
     changes: dict[FieldId, object] = {}
     for name, value in given.items():
         definition = names.find_field(name)
-        changes[definition.id] = field_value(definition, value)
+        changes[definition.id] = None if value is None else field_from_json(definition, value)
     return changes

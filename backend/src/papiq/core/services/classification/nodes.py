@@ -24,10 +24,8 @@ from papiq.core.domain.classification import (
     TITLE,
     FieldCheck,
     checks_to_json,
-    field_from_json,
     field_id_of,
     field_key,
-    field_to_json,
 )
 from papiq.core.domain.documents import UNSET, Document, DocumentChanges, Unset
 from papiq.core.domain.errors import (
@@ -49,6 +47,8 @@ from papiq.core.domain.fields import (
     FieldValue,
     Money,
     Url,
+    field_from_json,
+    field_to_json,
 )
 from papiq.core.domain.ids import ContactId, FieldId
 from papiq.core.domain.json_value import JsonObject, JsonValue

@@ -80,5 +80,25 @@ class Period:
                 return PeriodKind.YEAR
         return PeriodKind.SPAN
 
+    @property
+    def notation(self) -> str:
+        """The period in ISO 8601, a quarter as is usual (ISO has no short form for it): `2026`,
+        `2026-Q3`, `2026-09`, `2026-W38`, a day as `2026-09-15`, else its ends,
+        `2026-09-01/2026-09-14`."""
+        start = self.start
+        match self.kind:
+            case PeriodKind.DAY:
+                return start.isoformat()
+            case PeriodKind.WEEK:
+                year, week, _ = start.isocalendar()
+                return f"{year}-W{week:02d}"
+            case PeriodKind.MONTH:
+                return f"{start:%Y-%m}"
+            case PeriodKind.QUARTER:
+                return f"{start.year}-Q{(start.month - 1) // 3 + 1}"
+            case PeriodKind.YEAR:
+                return str(start.year)
+        return str(self)
+
     def overlaps(self, other: "Period") -> bool:
         return self.start <= other.end and other.start <= self.end

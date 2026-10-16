@@ -125,9 +125,9 @@ async def test_a_period_is_found_as_it_is_written(setup: Setup) -> None:
     period = await setup.master_data.create_field(admin.id, "Bezugszeitraum", FieldType.PERIOD)
     document = await setup.document(owner)
     for value, words in (
-        (Period.month(2026, 9), "September 2026 09/2026 09.2026"),
-        (Period.week(2026, 38), "KW 38 2026"),
-        (Period.quarter(2026, 3), "Q3 2026"),
+        (Period.month(2026, 9), "September 2026 09/2026 09.2026 2026-09"),
+        (Period.week(2026, 38), "KW 38 2026 2026-W38"),
+        (Period.quarter(2026, 3), "Q3 2026 2026-Q3"),
         (Period.year(2025), "2025"),
         (Period.day(date(2026, 9, 15)), "2026-09-15 15.09.2026"),
     ):

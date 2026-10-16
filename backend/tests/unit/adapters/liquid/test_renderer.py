@@ -38,31 +38,35 @@ def test_the_settings_shape_dates_and_amounts() -> None:
 
 
 @pytest.mark.parametrize(
-    ("period", "german", "english"),
+    ("period", "written"),
     [
-        (Period.month(2026, 9), "September 2026", "September 2026"),
-        (Period.week(2026, 38), "KW 38 2026", "week 38 2026"),
-        (Period.quarter(2026, 3), "Q3 2026", "Q3 2026"),
-        (Period.year(2025), "2025", "2025"),
-        (Period.day(date(2026, 9, 15)), "15.09.2026", "Sep 15, 2026"),
-        (
-            Period(date(2026, 9, 1), date(2026, 9, 14)),
-            "01.09.2026\u201314.09.2026",
-            "Sep 1, 2026\u2013Sep 14, 2026",
-        ),
+        (Period.month(2026, 9), "2026-09"),
+        (Period.week(2026, 38), "2026-W38"),
+        (Period.week(2026, 1), "2026-W01"),  # starts on 29 December 2025
+        (Period.quarter(2026, 3), "2026-Q3"),
+        (Period.year(2025), "2025"),
+        (Period.day(date(2026, 9, 15)), "2026-09-15"),
+        (Period(date(2026, 9, 1), date(2026, 9, 14)), "2026-09-01/2026-09-14"),
     ],
 )
-def test_a_period_writes_what_it_is(period: Period, german: str, english: str) -> None:
+def test_a_period_writes_what_it_is_in_iso_8601(period: Period, written: str) -> None:
     values: dict[str, TemplateValue] = {"period": period}
-    german_renderer = LiquidTemplateRenderer(locale="de", currency="EUR")
-    assert german_renderer.render("{{ period }}", values) == german
-    assert (
-        LiquidTemplateRenderer(locale="en_US", currency="USD").render("{{ period }}", values)
-        == english
-    )
+    german = LiquidTemplateRenderer(locale="de", currency="EUR")
+    english = LiquidTemplateRenderer(locale="en_US", currency="USD")
+    # In any locale; `datetime` on its ends writes it in words.
+    assert german.render("{{ period }}", values) == english.render("{{ period }}", values)
+    assert german.render("{{ period }}", values) == written
     # Its ends are dates, for `date` and `datetime`.
     template = "{{ period.start | date: '%Y-%m-%d' }}/{{ period.end | date: '%Y-%m-%d' }}"
-    assert german_renderer.render(template, values) == str(period)
+    assert german.render(template, values) == str(period)
+
+
+def test_a_period_in_words_through_its_start() -> None:
+    values: dict[str, TemplateValue] = {"period": Period.month(2026, 9)}
+    german = LiquidTemplateRenderer(locale="de", currency="EUR")
+    assert german.render("{{ period.start | datetime: format: 'MMMM yyyy' }}", values) == (
+        "September 2026"
+    )
 
 
 def test_an_unknown_locale_is_refused() -> None:

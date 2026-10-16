@@ -1,8 +1,9 @@
 /** Texts for values in a change: ids become names, the rest is shown plainly. */
 import { isMoney, isPeriod } from '#lib/fields.ts';
-import { formatDate, formatMoney, formatPeriod } from '#lib/i18n.ts';
+import { formatDate, formatMoney } from '#lib/i18n.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { writePeriod } from '#lib/periods.ts';
 
 const FIELD_LABELS: Record<string, () => string> = {
 	title: m.field_title,
@@ -29,7 +30,7 @@ export function describeValue(value: unknown, lookup: Lookup | null): string {
 	if (Array.isArray(value)) return value.map((entry) => describeValue(entry, lookup)).join(', ');
 	if (typeof value === 'boolean') return value ? m.value_yes() : m.value_no();
 	if (isMoney(value)) return formatMoney(value.amount, value.currency);
-	if (isPeriod(value)) return formatPeriod(value.start, value.end);
+	if (isPeriod(value)) return writePeriod(value.start, value.end);
 	if (typeof value === 'object') return JSON.stringify(value);
 	const text = String(value);
 	if (lookup) {

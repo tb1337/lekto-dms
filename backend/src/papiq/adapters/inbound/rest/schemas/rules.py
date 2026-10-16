@@ -113,8 +113,8 @@ TEMPLATE_DESCRIPTION = (
     "`title`, `filename` (the original's name without extension), `original_filename`, "
     "`contact`, `document_type`, `document_date`, `added`, `tags` (a list), `drawer`, `owner`, "
     "`channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and "
-    "`.currency`, a period `.start` and `.end` and writes itself as `September 2026`, "
-    "`KW 38 2026` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM "
+    "`.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, "
+    "`2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM "
     "yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets "
     "nothing (`| default: ''` or `{% if %}` make it optional)."
 )

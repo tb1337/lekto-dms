@@ -123,6 +123,23 @@ def test_what_a_period_is_follows_from_its_ends(period: Period, kind: PeriodKind
     assert period.kind is kind
 
 
+@pytest.mark.parametrize(
+    ("period", "notation"),
+    [
+        (Period.day(date(2026, 9, 15)), "2026-09-15"),
+        (Period.week(2026, 38), "2026-W38"),
+        (Period.week(2026, 1), "2026-W01"),  # from 29 December 2025
+        (Period.week(2026, 53), "2026-W53"),
+        (Period.month(2026, 9), "2026-09"),
+        (Period.quarter(2026, 3), "2026-Q3"),
+        (Period.year(2025), "2025"),
+        (Period(date(2026, 9, 1), date(2026, 9, 14)), "2026-09-01/2026-09-14"),
+    ],
+)
+def test_a_period_is_written_in_iso_8601(period: Period, notation: str) -> None:
+    assert period.notation == notation
+
+
 def test_a_period_has_dates_for_ends_and_does_not_end_before_it_starts() -> None:
     assert Period.week(2026, 38) == Period(date(2026, 9, 14), date(2026, 9, 20))
     assert Period.month(2028, 2).end == date(2028, 2, 29)

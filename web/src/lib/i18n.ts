@@ -3,7 +3,6 @@
  * stored in this browser, else the browser's language, else English. Texts live in
  * `messages/{de,en}.json`; texts of the API (problem details) stay as the API sends them.
  */
-import { m } from '#lib/paraglide/messages.js';
 import { getLocale, locales, setLocale, type Locale } from '#lib/paraglide/runtime.js';
 
 export { getLocale, locales, type Locale };
@@ -41,70 +40,6 @@ export function formatDate(
 ): string {
 	const date = typeof value === 'string' ? new Date(value) : value;
 	return new Intl.DateTimeFormat(formatLocale(), options).format(date);
-}
-
-/** What a period is, by its ends (as the API's `PeriodKind`). */
-export type PeriodKind = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'span';
-
-const DAY = 86_400_000;
-
-/** A `YYYY-MM-DD` day at midnight UTC, so no time zone moves it. */
-function utcDay(day: string): Date {
-	const [year, month, date] = day.split('-').map(Number);
-	return new Date(Date.UTC(year, month - 1, date));
-}
-
-function lastOfMonth(year: number, month: number): number {
-	return Date.UTC(year, month + 1, 0);
-}
-
-export function periodKind(start: string, end: string): PeriodKind {
-	const first = utcDay(start);
-	const last = utcDay(end).getTime();
-	const [year, month] = [first.getUTCFullYear(), first.getUTCMonth()];
-	if (last === first.getTime()) return 'day';
-	if (first.getUTCDay() === 1 && last === first.getTime() + 6 * DAY) return 'week';
-	if (first.getUTCDate() === 1) {
-		if (last === lastOfMonth(year, month)) return 'month';
-		if (month % 3 === 0 && last === lastOfMonth(year, month + 2)) return 'quarter';
-		if (month === 0 && last === Date.UTC(year, 11, 31)) return 'year';
-	}
-	return 'span';
-}
-
-/** ISO 8601 week and its year: the week with the year's first Thursday is week 1. */
-function isoWeek(day: Date): [number, number] {
-	const thursday = new Date(day.getTime() + (3 - ((day.getUTCDay() + 6) % 7)) * DAY);
-	const year = thursday.getUTCFullYear();
-	return [Math.floor((thursday.getTime() - Date.UTC(year, 0, 1)) / DAY / 7) + 1, year];
-}
-
-/** A period as it is written: `September 2026`, `KW 38 2026`, `Q3 2026`, `2026`, a day, else
- * its ends (`01.–14.09.2026`). */
-export function formatPeriod(start: string, end: string): string {
-	const first = utcDay(start);
-	const last = utcDay(end);
-	const format = (options: Intl.DateTimeFormatOptions) =>
-		new Intl.DateTimeFormat(formatLocale(), { ...options, timeZone: 'UTC' });
-	switch (periodKind(start, end)) {
-		case 'day':
-			return format({ dateStyle: 'medium' }).format(first);
-		case 'week': {
-			const [week, year] = isoWeek(first);
-			return m.period_week({ week: String(week), year: String(year) });
-		}
-		case 'month':
-			return format({ month: 'long', year: 'numeric' }).format(first);
-		case 'quarter':
-			return m.period_quarter({
-				quarter: String(first.getUTCMonth() / 3 + 1),
-				year: String(first.getUTCFullYear())
-			});
-		case 'year':
-			return String(first.getUTCFullYear());
-		case 'span':
-			return format({ dateStyle: 'medium' }).formatRange(first, last);
-	}
 }
 
 /** A number in the user's format. */

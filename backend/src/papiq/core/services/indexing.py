@@ -598,8 +598,9 @@ _MONTHS = {
 
 
 def _period_text(period: Period) -> str:
-    """A period as it is searched for: its ends in both notations, and what it is (`September
-    2026` in German and English, `KW 38 2026`, `Q3 2026`, `2026`)."""
+    """A period as it is searched for: its ends in both notations, what it is in ISO 8601
+    (`2026-09`, `2026-W38`, `2026-Q3`, `2026`) and in words (`September 2026` in German and
+    English, `KW 38 2026`, `Q3 2026`)."""
     start, end = period.start, period.end
     words = [f"{start.isoformat()} {start:%d.%m.%Y}"]
     if end != start:
@@ -614,8 +615,8 @@ def _period_text(period: Period) -> str:
             words.append(f"{start:%m/%Y} {start:%m.%Y}")
         case PeriodKind.QUARTER:
             words.append(f"Q{(start.month - 1) // 3 + 1} {start.year}")
-        case PeriodKind.YEAR:
-            words.append(str(start.year))
+    if period.kind not in (PeriodKind.DAY, PeriodKind.SPAN):
+        words.append(period.notation)
     return " ".join(words)
 
 

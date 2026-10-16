@@ -19,12 +19,14 @@ from papiq.core.domain.master_data import (
     DocumentType,
     MasterData,
     Tag,
+    TagScope,
     one_line,
 )
 from papiq.core.domain.names import name_key as match_key
 from papiq.core.domain.names import related
 from papiq.core.domain.permissions import can_manage_master_data
 from papiq.core.domain.rules import References, Rule, RuleScope, definition_to_json, title_rule
+from papiq.core.domain.tag_tree import TagTree
 from papiq.core.domain.templates import rename_field_key, unknown_values
 from papiq.core.domain.templates import uses_field as field_used
 from papiq.core.ports import (
@@ -74,8 +76,9 @@ class MasterDataService:
         index_renames: bool = False,
     ) -> None:
         """`templates`: reads which fields the templates of rules use. `index_renames`:
-        renaming a contact, type or tag queues a job that brings the search index of the
-        documents that carry it up to date (set when there is a search index)."""
+        renaming a contact, type or tag, nesting a tag elsewhere and changing the groups of a
+        contact or type queue a job that brings the search index of the documents concerned
+        up to date (set when there is a search index)."""
         self._uow = uow
         self._clock = clock
         self._templates = templates
@@ -87,10 +90,17 @@ class MasterDataService:
         name: str,
         aliases: Collection[str] = (),
         identifiers: Collection[Identifier] = (),
+        group_ids: Collection[TagId] = (),
     ) -> Contact:
-        """`identifiers`: entered by hand (see `change_contact`)."""
+        """`identifiers`: entered by hand; `group_ids`: contact groups (see
+        `change_contact`)."""
         item = Contact.create(name=name, now=self._now(), aliases=aliases, identifiers=identifiers)
-        return await self._create(actor, _contacts, item, lambda uow: _check_contact(uow, item))
+
+        async def check(uow: UnitOfWork) -> None:
+            item.set_groups(await _groups(uow, group_ids, TagScope.CONTACT))
+            await _check_contact(uow, item)
+
+        return await self._create(actor, _contacts, item, check)
 
     async def rename_contact(self, actor: UserId, id: ContactId, name: str) -> Contact:
         return await self.change_contact(actor, id, name=name)
@@ -104,12 +114,14 @@ class MasterDataService:
         aliases: Collection[str] | None = None,
         identifiers: Collection[Identifier] | None = None,
         rejected_identifiers: Collection[Identifier] | None = None,
+        group_ids: Collection[TagId] | None = None,
     ) -> Contact:
         """`None` leaves a part as it is. `aliases` replaces all of them; `identifiers`
         replaces those entered by hand (a learned one given is then entered by hand) and
         `rejected_identifiers` the rejected ones (a learned one given no longer counts and is
         not learned again). A value entered here that another contact learned or rejected
-        moves here; one another contact has entered is a conflict."""
+        moves here; one another contact has entered is a conflict. `group_ids` replaces the
+        contact groups (tags of scope `contact`; a child and its parent leave the child)."""
 
         def change(item: Contact) -> None:
             if name is not None:
@@ -122,13 +134,19 @@ class MasterDataService:
                     entered = [entry for entry in item.identifiers if entry.source is MANUAL]
                 item.set_identifiers(entered, rejected_identifiers)
 
+        async def check(uow: UnitOfWork, item: Contact) -> None:
+            if group_ids is not None:
+                item.set_groups(await _groups(uow, group_ids, TagScope.CONTACT))
+            await _check_contact(uow, item)
+
         return await self._change(
             actor,
             _contacts,
             id,
             change,
-            check=lambda uow, item: _check_contact(uow, item),
-            index_as="contact" if name is not None else None,
+            check=check,
+            index_as="contact",
+            indexed=lambda item: (item.name, item.group_ids),
         )
 
     async def add_identifier(self, actor: UserId, id: ContactId, identifier: Identifier) -> Contact:
@@ -157,18 +175,24 @@ class MasterDataService:
         name: str,
         description: str | None = None,
         title_pattern: str | None = None,
+        group_ids: Collection[TagId] = (),
     ) -> DocumentType:
         """`title_pattern` (a template, `domain.templates`) may name global fields only: no
         other field applies to a new type yet. A pattern is carried out by a rule of the type
-        (`rules.title_rule`)."""
+        (`rules.title_rule`). `group_ids`: type groups (tags of scope `document_type`)."""
         item = DocumentType.create(
             name=name, now=self._now(), description=description, title_pattern=title_pattern
         )
+
+        async def check(uow: UnitOfWork) -> None:
+            item.set_groups(await _groups(uow, group_ids, TagScope.DOCUMENT_TYPE))
+            await self._check_title_pattern(uow, item)
+
         return await self._create(
             actor,
             _document_types,
             item,
-            lambda uow: self._check_title_pattern(uow, item),
+            check,
             after=lambda uow: self._keep_title_rule(uow, actor, item),
         )
 
@@ -185,9 +209,11 @@ class MasterDataService:
         name: str | None = None,
         description: str | Unset | None = UNSET,
         title_pattern: str | Unset | None = UNSET,
+        group_ids: Collection[TagId] | None = None,
     ) -> DocumentType:
-        """`None` (name) or UNSET (description, title pattern) leaves it as it is; None
-        removes a description or pattern. A pattern's fields must apply to the type."""
+        """`None` (name, groups) or UNSET (description, title pattern) leaves it as it is;
+        None removes a description or pattern. A pattern's fields must apply to the type.
+        `group_ids` replaces the type groups (tags of scope `document_type`)."""
 
         def change(item: DocumentType) -> None:
             if name is not None:
@@ -197,25 +223,88 @@ class MasterDataService:
             if not isinstance(title_pattern, Unset):
                 item.set_title_pattern(title_pattern)
 
+        async def check(uow: UnitOfWork, item: DocumentType) -> None:
+            if group_ids is not None:
+                item.set_groups(await _groups(uow, group_ids, TagScope.DOCUMENT_TYPE))
+            if not isinstance(title_pattern, Unset):
+                await self._check_title_pattern(uow, item)
+
         return await self._change(
             actor,
             _document_types,
             id,
             change,
-            check=(
-                None
-                if isinstance(title_pattern, Unset)
-                else lambda uow, item: self._check_title_pattern(uow, item)
-            ),
+            check=check,
             after=lambda uow, item: self._keep_title_rule(uow, actor, item),
-            index_as="document_type" if name is not None else None,
+            index_as="document_type",
+            indexed=lambda item: (item.name, item.group_ids),
         )
 
-    async def create_tag(self, actor: UserId, name: str) -> Tag:
-        return await self._create(actor, _tags, Tag.create(name=name, now=self._now()))
+    async def create_tag(
+        self,
+        actor: UserId,
+        name: str,
+        *,
+        scope: TagScope = TagScope.DOCUMENT,
+        parent_id: TagId | None = None,
+        assignment: Assignment | None = None,
+        shown: bool | None = None,
+    ) -> Tag:
+        """A tag of `scope` (fixed from now on), under `parent_id` (a tag of the same scope;
+        at most five levels). `assignment` and `shown` follow the scope unless given: a group
+        is set by hand only (ValidationError for `auto`) and hidden at documents."""
+        tag = Tag.create(
+            name=name,
+            now=self._now(),
+            scope=scope,
+            parent_id=parent_id,
+            assignment=assignment,
+            shown=shown,
+        )
+        async with self._uow() as uow:
+            await _require_admin(uow, actor)
+            TagTree.of(await uow.tags.list_all()).check_parent(tag, parent_id)
+            await _check_tag_name_free(uow, tag)
+            await uow.tags.add(tag)
+            await uow.commit()
+        return tag
+
+    async def change_tag(
+        self,
+        actor: UserId,
+        id: TagId,
+        *,
+        name: str | None = None,
+        parent_id: TagId | Unset | None = UNSET,
+        assignment: Assignment | None = None,
+        shown: bool | None = None,
+    ) -> Tag:
+        """Admins only. `None` (name, assignment, shown) or UNSET (parent) leaves it as it is;
+        a `parent_id` of None makes it a top-level tag. The scope never changes. A new name or
+        parent queues the refresh of the search index of the documents concerned (they hold
+        the tag's ancestors)."""
+        async with self._uow() as uow:
+            await _require_admin(uow, actor)
+            tag = await uow.tags.get(id)
+            before = (tag.name, tag.parent_id)
+            if name is not None:
+                tag.rename(name)
+            if not isinstance(parent_id, Unset):
+                TagTree.of(await uow.tags.list_all()).check_parent(tag, parent_id)
+                tag.move(parent_id)
+            if assignment is not None:
+                tag.assign(assignment)
+            if shown is not None:
+                tag.shown = shown
+            await _check_tag_name_free(uow, tag)
+            await uow.tags.update(tag)
+            if (tag.name, tag.parent_id) != before:
+                await self._refresh(uow, "tag", id)
+            await uow.commit()
+        return tag
 
     async def rename_tag(self, actor: UserId, id: TagId, name: str) -> Tag:
-        return await self._rename(actor, _tags, id, name, index_as="tag")
+        return await self.change_tag(actor, id, name=name)
 
     async def create_field(
         self,
@@ -392,8 +481,10 @@ class MasterDataService:
     async def list_document_types(self, actor: UserId) -> list[DocumentType]:
         return await self._list(actor, _document_types)
 
-    async def list_tags(self, actor: UserId) -> list[Tag]:
-        return await self._list(actor, _tags)
+    async def list_tags(self, actor: UserId, scope: TagScope | None = None) -> list[Tag]:
+        """All tags, or those of `scope`; by name."""
+        tags = await self._list(actor, _tags)
+        return [tag for tag in tags if scope is None or tag.scope is scope]
 
     async def list_fields(self, actor: UserId) -> list[FieldDefinition]:
         return await self._list(actor, _fields)
@@ -445,13 +536,32 @@ class MasterDataService:
         )
 
     async def delete_tag(self, actor: UserId, id: TagId) -> None:
-        await self._delete(
-            actor,
-            _tags,
-            id,
-            lambda uow: uow.documents.exists(tag=id),
-            ("tag", lambda refs: refs.tags),
-        )
+        """Only a tag without tags below it that nothing uses: no document carries it, no
+        contact or type is in it, no rule refers to it (ConflictError naming what does)."""
+
+        async def used(uow: UnitOfWork) -> bool:
+            tag = await uow.tags.get(id)
+            if any(item.parent_id == id for item in await uow.tags.list_all()):
+                raise ConflictError(f"'{tag.name}' has tags below it")
+            if await uow.documents.exists(tag=id):
+                return True
+            for kind, items in (
+                ("contacts", await uow.contacts.list_all()),
+                ("document types", await uow.document_types.list_all()),
+            ):
+                if any(id in item.group_ids for item in items):
+                    raise ConflictError(f"{kind} are in '{tag.name}'")
+            rules = [
+                rule
+                for rule in await uow.rules.list_for(owners=None, include_global=True)
+                if id in rule.definition.references().tags
+            ]
+            if rules:
+                names = ", ".join(sorted(f"'{rule.definition.name}'" for rule in rules))
+                raise ConflictError(f"'{tag.name}' is used by the rules {names}")
+            return False
+
+        await self._delete(actor, _tags, id, used, ("tag", lambda refs: refs.tags))
 
     async def delete_field(self, actor: UserId, id: FieldId) -> None:
         """Not while a document has a value or a template of a rule uses it."""
@@ -612,19 +722,6 @@ class MasterDataService:
             await uow.commit()
         return item
 
-    async def _rename[E: MasterData](
-        self,
-        actor: UserId,
-        repository: Repo[E],
-        id: Any,
-        name: str,
-        *,
-        index_as: str | None = None,
-    ) -> E:
-        return await self._change(
-            actor, repository, id, lambda item: item.rename(name), index_as=index_as
-        )
-
     async def _change[E: MasterData](
         self,
         actor: UserId,
@@ -635,12 +732,15 @@ class MasterDataService:
         check: Callable[[UnitOfWork, E], Awaitable[None]] | None = None,
         after: Callable[[UnitOfWork, E], Awaitable[None]] | None = None,
         index_as: str | None = None,
+        indexed: Callable[[E], object] = lambda item: item.name,
     ) -> E:
         """`after`: what follows from the change, in the same unit of work. `index_as`: the
-        kind whose documents' search index is brought up to date."""
+        kind whose documents' search index is brought up to date when what the index holds of
+        it (`indexed`: the name) changed."""
         async with self._uow() as uow:
             await _require_admin(uow, actor)
             item = await repository(uow).get(id)
+            before = indexed(item)
             change(item)
             await _check_name_free(repository(uow), item)
             if check is not None:
@@ -648,12 +748,18 @@ class MasterDataService:
             await repository(uow).update(item)
             if after is not None:
                 await after(uow, item)
-            if index_as is not None and self._index_renames:
-                await uow.jobs.enqueue(
-                    REFRESH_JOB, {"kind": index_as, "id": str(id)}, run_at=self._clock.now()
-                )
+            if index_as is not None and indexed(item) != before:
+                await self._refresh(uow, index_as, id)
             await uow.commit()
         return item
+
+    async def _refresh(self, uow: UnitOfWork, kind: str, id: Any) -> None:
+        """Queue the refresh of the search index of the documents of the contact, type or tag
+        (`IndexingService`), with a search index."""
+        if self._index_renames:
+            await uow.jobs.enqueue(
+                REFRESH_JOB, {"kind": kind, "id": str(id)}, run_at=self._clock.now()
+            )
 
 
 async def _require_admin(uow: UnitOfWork, actor: UserId) -> None:
@@ -666,6 +772,26 @@ async def _check_name_free[E: MasterData](repository: NamedRepository[Any, E], i
     # Every kind of master data has an `id`; the base class leaves its type to the kinds.
     if existing is not None and getattr(existing, "id") != getattr(item, "id"):  # noqa: B009
         raise ConflictError(f"'{item.name}' already exists")
+
+
+async def _check_tag_name_free(uow: UnitOfWork, tag: Tag) -> None:
+    """Names are unique per scope."""
+    existing = await uow.tags.find_by_name(tag.name, tag.scope)
+    if existing is not None and existing.id != tag.id:
+        raise ConflictError(f"'{tag.name}' already exists")
+
+
+async def _groups(uow: UnitOfWork, ids: Collection[TagId], scope: TagScope) -> frozenset[TagId]:
+    """`ids` as the groups of a contact or a type: tags of `scope` (NotFoundError for one
+    that does not exist, ValidationError for one of another scope), normalised."""
+    if not ids:
+        return frozenset()
+    tree = TagTree.of(await uow.tags.list_all())
+    for id in ids:
+        tag = tree.get(id)
+        if tag.scope is not scope:
+            raise ValidationError(f"'{tag.name}' is no {scope} group")
+    return tree.normalise(ids)
 
 
 async def _check_key_free(uow: UnitOfWork, definition: FieldDefinition) -> None:

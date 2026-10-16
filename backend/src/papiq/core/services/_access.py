@@ -1,8 +1,16 @@
 """Loading entities together with the caller's rights."""
 
+from dataclasses import replace
+
 from papiq.core.domain.documents import Document, DocumentChanges, Unset
-from papiq.core.domain.errors import AuthenticationError, NotFoundError, PermissionDeniedError
+from papiq.core.domain.errors import (
+    AuthenticationError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from papiq.core.domain.ids import DocumentId, SpaceId, UserId
+from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.permissions import (
     can_file_into,
     can_read_document,
@@ -11,6 +19,7 @@ from papiq.core.domain.permissions import (
 )
 from papiq.core.domain.pipeline import space_chooser
 from papiq.core.domain.spaces import Space
+from papiq.core.domain.tag_tree import TagTree
 from papiq.core.domain.users import User
 from papiq.core.ports import UnitOfWork
 
@@ -61,13 +70,19 @@ async def may_file(uow: UnitOfWork, document: Document, space: Space) -> bool:
     return user is not None and user.is_active_admin
 
 
-async def check_references(uow: UnitOfWork, changes: DocumentChanges) -> None:
-    """NotFoundError if a contact, type or tag the change refers to does not exist."""
+async def checked_changes(uow: UnitOfWork, changes: DocumentChanges) -> DocumentChanges:
+    """The change as it is applied: its tags normalised (a child and its parent set together
+    leave the child, `TagTree.normalise`). NotFoundError if a contact, type or tag it refers
+    to does not exist, ValidationError for a tag that does not describe documents (a group)."""
     if not isinstance(changes.contact_id, Unset) and changes.contact_id is not None:
         await uow.contacts.get(changes.contact_id)
     if not isinstance(changes.document_type_id, Unset) and changes.document_type_id is not None:
         await uow.document_types.get(changes.document_type_id)
-    if not isinstance(changes.tag_ids, Unset):
-        for tag in changes.tag_ids:
-            if await uow.tags.find(tag) is None:
-                raise NotFoundError("tag", tag)
+    if isinstance(changes.tag_ids, Unset):
+        return changes
+    tree = TagTree.of(await uow.tags.list_all())
+    for id in changes.tag_ids:
+        tag = tree.get(id)
+        if tag.scope is not TagScope.DOCUMENT:
+            raise ValidationError(f"'{tag.name}' is a {tag.scope} group, not a document tag")
+    return replace(changes, tag_ids=tree.normalise(changes.tag_ids))

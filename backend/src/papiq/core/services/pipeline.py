@@ -60,7 +60,7 @@ from papiq.core.domain.users import User
 from papiq.core.ports import Clock, ObjectStore, UnitOfWork, UnitOfWorkFactory
 from papiq.core.ports.ocr import VisionModel
 from papiq.core.services._access import (
-    check_references,
+    checked_changes,
     load_actor,
     may_file,
     readable_document,
@@ -123,7 +123,7 @@ class MetadataResult:
         if not self.add_tags <= document.tag_ids:
             changes = replace(changes, tag_ids=frozenset(document.tag_ids | self.add_tags))
         try:
-            await check_references(uow, changes)
+            changes = await checked_changes(uow, changes)
             definitions = {item.id: item for item in await uow.fields.list_all()}
             changed = document.apply_changes(changes, definitions, now)
         except (NotFoundError, ValidationError) as error:
@@ -514,7 +514,7 @@ class PipelineService:
                 definitions=definitions,
                 given=() if target is None else (SPACE,),
             )
-            await check_references(uow, decision.changes)
+            decision = replace(decision, changes=await checked_changes(uow, decision.changes))
             before = copy.deepcopy(document)
             document.apply_changes(decision.changes, definitions, now)
             corrected = corrected_fields(before, document)
@@ -1046,7 +1046,7 @@ async def _check_imported(
     changes = replace(imported.classification(), tag_ids=imported.tag_ids)
     changes = replace(changes, fields=dict(imported.fields))
     try:
-        await check_references(uow, changes)
+        changes = await checked_changes(uow, changes)
         definitions = {item.id: item for item in await uow.fields.list_all()}
         scratch = Document.receive(
             owner_id=owner,

@@ -146,6 +146,7 @@ async def test_a_deleted_rule_never_runs_and_its_versions_stay_readable(world: W
 async def test_deleting_master_data_and_spaces_disables_the_rules_that_use_them(
     world: World,
 ) -> None:
+    """Tags are the exception: a tag a rule uses is not deleted (an admin sees every rule)."""
     r = await rule_world(world)
     owner, sharer = await world.user(), await world.user()
     contact = await r.contact("ACME")
@@ -165,14 +166,15 @@ async def test_deleting_master_data_and_spaces_disables_the_rules_that_use_them(
 
     await world.master_data.delete_contact(r.admin.id, contact.id)
     await world.master_data.delete_document_type(r.admin.id, kind.id)
-    await world.master_data.delete_tag(r.admin.id, tag.id)
+    with pytest.raises(ConflictError, match="rules 'G'"):
+        await world.master_data.delete_tag(r.admin.id, tag.id)
+    assert (await r.rules.get(r.admin.id, by_tag.id)).enabled
     await world.spaces.delete(sharer.id, space.id)
     await world.master_data.delete_field(r.admin.id, note.id)
 
     expected = {
         by_contact.id: "contact 'ACME' was deleted",
         by_type.id: "document type 'Invoice' was deleted",
-        by_tag.id: "tag 'tax' was deleted",
         by_space.id: "space 'Shared' was deleted",
         by_field.id: "field 'Note' was deleted",
     }

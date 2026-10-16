@@ -53,7 +53,7 @@ from papiq.core.ports import (
 )
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE
 from papiq.core.services._access import (
-    check_references,
+    checked_changes,
     load_actor,
     readable_document,
     visible_space,
@@ -565,7 +565,7 @@ class DocumentService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             document, _ = await writable_document(uow, user, id)
-            await check_references(uow, changes)
+            changes = await checked_changes(uow, changes)
             definitions = {item.id: item for item in await uow.fields.list_all()}
             now = self._clock.now()
             before = copy.deepcopy(document)

@@ -1,7 +1,8 @@
 """The search index follows the documents: events lead to jobs, jobs write the index."""
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Sequence
 from datetime import date
+from uuid import UUID
 
 import pytest
 
@@ -15,6 +16,7 @@ from papiq.core.domain.events import NodeCompleted, NodeDeferred, NodeStarted
 from papiq.core.domain.fields import FieldType
 from papiq.core.domain.ids import DocumentId, new_id
 from papiq.core.domain.jobs import JobStatus
+from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.periods import Period
 from papiq.core.domain.pipeline import Lane, Node, Outcome
 from papiq.core.domain.search import LAYOUT, IndexDocument
@@ -183,6 +185,55 @@ async def test_renaming_master_data_updates_the_documents_that_carry_it(setup: S
     assert setup.entry(with_contact.id).contact == "Energie AG"
     assert setup.entry(with_tag.id).tags == ("Strom",)
     assert setup.entry(neither.id).version == neither.version
+
+
+async def test_nesting_a_tag_or_changing_groups_refreshes_the_documents_concerned(
+    setup: Setup,
+) -> None:
+    admin, owner = await setup.world.user(role=Role.ADMIN), await setup.world.user()
+    master = setup.master_data
+    insurance = await master.create_tag(admin.id, "Insurance")
+    health = await master.create_tag(admin.id, "Health", parent_id=insurance.id)
+    car = await master.create_tag(admin.id, "Car")
+    insurer = await master.create_tag(admin.id, "Insurer", scope=TagScope.CONTACT)
+    health_insurer = await master.create_tag(
+        admin.id, "Health insurer", scope=TagScope.CONTACT, parent_id=insurer.id
+    )
+    contact = await master.create_contact(admin.id, "Nord", group_ids=[health_insurer.id])
+    with_health, with_contact = await setup.document(owner, "a"), await setup.document(owner, "b")
+    await setup.document(owner, "c")
+    for id, changes in (
+        (with_health.id, DocumentChanges(tag_ids=frozenset({health.id}))),
+        (with_contact.id, DocumentChanges(contact_id=contact.id)),
+    ):
+        await setup.world.documents.update_metadata(owner.id, id, changes)
+    await setup.settle()
+
+    async def refreshed(change: Awaitable[object]) -> set[DocumentId]:
+        await change
+        assert await setup.indexing.run_next_job()  # the refresh queues the documents' jobs
+        queued = {
+            DocumentId(UUID(str(job.payload["document_id"])))
+            for job in index_jobs(setup.world)
+            if job.status.is_active
+        }
+        await setup.settle()
+        return queued
+
+    assert await refreshed(master.change_tag(admin.id, insurance.id, name="Insurances")) == {
+        with_health.id
+    }
+    assert await refreshed(master.change_tag(admin.id, car.id, parent_id=insurance.id)) == set()
+    assert await refreshed(master.change_tag(admin.id, insurer.id, name="Insurers")) == {
+        with_contact.id
+    }
+    assert await refreshed(master.change_contact(admin.id, contact.id, group_ids=[insurer.id])) == {
+        with_contact.id
+    }
+    # Nothing the index holds changed: nothing is refreshed.
+    await master.change_contact(admin.id, contact.id, group_ids=[insurer.id])
+    await master.change_tag(admin.id, insurance.id, shown=False)
+    assert not [job for job in setup.world.database.jobs.values() if job.status.is_active]
 
 
 async def test_renaming_queues_nothing_without_a_search_index(world: World) -> None:

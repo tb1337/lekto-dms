@@ -9,7 +9,18 @@ from papiq.core.domain.errors import (
 )
 from papiq.core.domain.fields import FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from papiq.core.domain.ids import ContactId, DocumentTypeId, new_id
+from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
+from papiq.core.domain.master_data import Assignment, TagScope
+from papiq.core.domain.rules import (
+    AddTags,
+    Condition,
+    ConditionField,
+    Group,
+    Operator,
+    Rule,
+    RuleDefinition,
+    RuleScope,
+)
 from papiq.core.domain.users import Role
 from papiq.core.services.master_data import learn_alias, replace_learned_identifiers
 from tests.builders import incoming
@@ -326,3 +337,146 @@ async def test_field_definitions_change_without_breaking_values(world: World) ->
     assert stored.choices == ("c", "a") and stored.document_type_ids is None
     document_now = await world.documents.get(owner.id, document.id)
     assert document_now.fields == {kind.id: "a"}
+
+
+async def test_tags_nest_within_their_scope(world: World) -> None:
+    admin = await world.user(role=Role.ADMIN)
+    service = world.master_data
+    insurance = await service.create_tag(admin.id, "Insurance")
+    health = await service.create_tag(admin.id, "Health", parent_id=insurance.id)
+    status = await service.create_tag(admin.id, "To pay", assignment=Assignment.MANUAL)
+    group = await service.create_tag(admin.id, "Insurance", scope=TagScope.CONTACT)
+    assert (group.assignment, group.shown) == (Assignment.MANUAL, False)
+    assert (status.assignment, status.shown) == (Assignment.MANUAL, True)
+    with pytest.raises(ConflictError):  # names are unique per scope
+        await service.create_tag(admin.id, "insurance", scope=TagScope.CONTACT)
+    with pytest.raises(ValidationError, match="another scope"):
+        await service.create_tag(admin.id, "Car", parent_id=group.id)
+    with pytest.raises(ValidationError, match="below it"):
+        await service.change_tag(admin.id, insurance.id, parent_id=health.id)
+    with pytest.raises(ValidationError, match="by hand"):
+        await service.change_tag(admin.id, group.id, assignment=Assignment.AUTO)
+    with pytest.raises(NotFoundError):
+        await service.create_tag(admin.id, "Car", parent_id=TagId(new_id()))
+    moved = await service.change_tag(admin.id, status.id, parent_id=insurance.id, shown=False)
+    assert (moved.parent_id, moved.shown, moved.name) == (insurance.id, False, "To pay")
+    top = await service.change_tag(admin.id, moved.id, parent_id=None)
+    assert top.parent_id is None and top.scope is TagScope.DOCUMENT
+    assert [tag.name for tag in await service.list_tags(admin.id, TagScope.CONTACT)] == [
+        "Insurance"
+    ]
+    assert len(await service.list_tags(admin.id)) == 4
+
+
+async def test_contacts_and_types_are_in_groups_of_their_scope(world: World) -> None:
+    admin = await world.user(role=Role.ADMIN)
+    service = world.master_data
+    insurer = await service.create_tag(admin.id, "Insurer", scope=TagScope.CONTACT)
+    health = await service.create_tag(
+        admin.id, "Health insurer", scope=TagScope.CONTACT, parent_id=insurer.id
+    )
+    bills = await service.create_tag(admin.id, "Bills", scope=TagScope.DOCUMENT_TYPE)
+    tag = await service.create_tag(admin.id, "Tax")
+    contact = await service.create_contact(admin.id, "Nord", group_ids=[insurer.id, health.id])
+    assert contact.group_ids == {health.id}  # a child and its parent leave the child
+    with pytest.raises(ValidationError, match="contact group"):
+        await service.change_contact(admin.id, contact.id, group_ids=[bills.id])
+    with pytest.raises(ValidationError):
+        await service.create_contact(admin.id, "Süd", group_ids=[tag.id])
+    with pytest.raises(NotFoundError):
+        await service.create_contact(admin.id, "Süd", group_ids=[TagId(new_id())])
+    changed = await service.change_contact(admin.id, contact.id, group_ids=[insurer.id])
+    assert changed.group_ids == {insurer.id}
+    assert (await service.change_contact(admin.id, contact.id, name="Nord AG")).group_ids == {
+        insurer.id
+    }
+    kind = await service.create_document_type(admin.id, "Invoice", group_ids=[bills.id])
+    assert kind.group_ids == {bills.id}
+    with pytest.raises(ValidationError, match="document_type group"):
+        await service.change_document_type(admin.id, kind.id, group_ids=[insurer.id])
+    assert (await service.change_document_type(admin.id, kind.id, group_ids=[])).group_ids == (
+        frozenset()
+    )
+
+
+async def test_a_tag_is_deleted_only_without_tags_below_it_and_unused(world: World) -> None:
+    admin, owner = await world.user(role=Role.ADMIN), await world.user()
+    service = world.master_data
+    insurance = await service.create_tag(admin.id, "Insurance")
+    health = await service.create_tag(admin.id, "Health", parent_id=insurance.id)
+    insurer = await service.create_tag(admin.id, "Insurer", scope=TagScope.CONTACT)
+    bills = await service.create_tag(admin.id, "Bills", scope=TagScope.DOCUMENT_TYPE)
+    ruled = await service.create_tag(admin.id, "Ruled")
+    used = await service.create_tag(admin.id, "Used")
+    contact = await service.create_contact(admin.id, "Nord", group_ids=[insurer.id])
+    kind = await service.create_document_type(admin.id, "Invoice", group_ids=[bills.id])
+    condition = Condition(field=ConditionField.TAGS, op=Operator.CONTAINS, value=str(ruled.id))
+    rule = Rule.create(
+        scope=RuleScope.GLOBAL,
+        owner_id=None,
+        definition=RuleDefinition(
+            name="Tag it",
+            conditions=Group(mode="all", items=(condition,)),
+            actions=(AddTags(frozenset({health.id})),),
+        ),
+        by=admin.id,
+        now=world.clock.now(),
+    )
+    async with world.uow() as uow:
+        await uow.rules.add(rule)
+        await uow.commit()
+    document = await world.pipeline().receive(owner.id, incoming(b"%PDF-1.7 x"), filename="x.pdf")
+    await world.drain()
+    await world.documents.update_metadata(
+        owner.id, document.id, DocumentChanges(tag_ids=frozenset({used.id}))
+    )
+    for tag, reason in (
+        (insurance, "below it"),
+        (insurer, "contacts are in"),
+        (bills, "document types are in"),
+        (ruled, "rules 'Tag it'"),
+        (health, "rules 'Tag it'"),
+        (used, "in use"),
+    ):
+        with pytest.raises(ConflictError, match=reason):
+            await service.delete_tag(admin.id, tag.id)
+    await service.change_contact(admin.id, contact.id, group_ids=[])
+    await service.delete_document_type(admin.id, kind.id)
+    await service.delete_tag(admin.id, insurer.id)
+    await service.delete_tag(admin.id, bills.id)
+    async with world.uow() as uow:
+        await uow.rules.update(_deleted(await uow.rules.get(rule.id), world))
+        await uow.commit()
+    await service.delete_tag(admin.id, health.id)
+    await service.delete_tag(admin.id, insurance.id)
+    assert {tag.name for tag in await service.list_tags(admin.id)} == {"Ruled", "Used"}
+
+
+def _deleted(rule: Rule, world: World) -> Rule:
+    rule.delete(world.clock.now())
+    return rule
+
+
+async def test_documents_carry_document_tags_normalised(world: World) -> None:
+    admin, owner = await world.user(role=Role.ADMIN), await world.user()
+    service = world.master_data
+    insurance = await service.create_tag(admin.id, "Insurance")
+    health = await service.create_tag(admin.id, "Health", parent_id=insurance.id)
+    paid = await service.create_tag(admin.id, "Paid", assignment=Assignment.MANUAL)
+    group = await service.create_tag(admin.id, "Insurer", scope=TagScope.CONTACT)
+    document = await world.pipeline().receive(owner.id, incoming(b"%PDF-1.7 x"), filename="x.pdf")
+    await world.drain()
+    with pytest.raises(ValidationError, match="not a document tag"):
+        await world.documents.update_metadata(
+            owner.id, document.id, DocumentChanges(tag_ids=frozenset({group.id}))
+        )
+    changed = await world.documents.update_metadata(
+        owner.id,
+        document.id,
+        DocumentChanges(tag_ids=frozenset({insurance.id, health.id, paid.id})),
+    )
+    assert changed.tag_ids == {health.id, paid.id}
+    parent_only = await world.documents.update_metadata(
+        owner.id, document.id, DocumentChanges(tag_ids=frozenset({insurance.id}))
+    )
+    assert parent_only.tag_ids == {insurance.id}

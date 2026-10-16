@@ -19,8 +19,10 @@ into the index. A job is idempotent and may be repeated.
   embedding fails, the document is written at once with the vectors it has (the words must not
   wait for the vectors), the job is repeated, and the last attempt writes without vectors; the
   reconciliation adds them.
-- `search.refresh` follows the renaming of a contact, document type or tag: it queues an index
-  job for every document that carries it.
+- `search.refresh` follows the renaming of a contact, document type or tag, a tag nested
+  elsewhere and the changed groups of a contact or type: it queues an index job for every
+  document concerned (one that carries the tag or a tag below it, or whose contact or type is
+  in such a group).
 - `search.reconcile` (recurring) compares the index with the database, queues jobs for what
   is missing or stale and removes what no longer exists. `search.rebuild` builds a new index from
   scratch next to the active one and swaps it in without an outage of the search.
@@ -57,6 +59,7 @@ from papiq.core.domain.jobs import Job
 from papiq.core.domain.periods import Period, PeriodKind
 from papiq.core.domain.pipeline import SIGNALS
 from papiq.core.domain.search import LAYOUT, EmbeddingStamp, IndexDocument, IndexState
+from papiq.core.domain.tag_tree import TagTree
 from papiq.core.ports import (
     Clock,
     Embeddings,
@@ -74,7 +77,7 @@ SUBSCRIBER = "search.index"
 INDEX_JOB = "search.index"
 """Payload: `document_id`."""
 REFRESH_JOB = "search.refresh"
-"""Payload: `kind` (`contact`, `document_type` or `tag`) and `id` of the renamed item."""
+"""Payload: `kind` (`contact`, `document_type` or `tag`) and `id` of the changed item."""
 RECONCILE_JOB = "search.reconcile"
 REBUILD_JOB = "search.rebuild"
 
@@ -416,10 +419,23 @@ class IndexingService:
     # --- master data renamed --------------------------------------------------------------------
 
     async def _refresh(self, kind: str, item: UUID) -> None:
-        """Queue an index job for every document with the contact, type or tag `item`."""
+        """Queue an index job for every document with the contact, type or tag `item`: for a
+        tag, also with a tag below it, or with a contact or type in it or a group below it."""
         async with self._uow() as uow:
             documents = await uow.documents.list_all()
-        carrying = [document.id for document in documents if _carries(document, kind, item)]
+            if kind in ("contact", "document_type"):
+                carrying = [document.id for document in documents if _carries(document, kind, item)]
+            else:
+                tags = TagTree.of(await uow.tags.list_all()).with_descendants([TagId(item)])
+                contacts = {c.id for c in await uow.contacts.list_all() if c.group_ids & tags}
+                types = {t.id for t in await uow.document_types.list_all() if t.group_ids & tags}
+                carrying = [
+                    document.id
+                    for document in documents
+                    if document.tag_ids & tags
+                    or document.contact_id in contacts
+                    or document.document_type_id in types
+                ]
         await self._queue(carrying)
 
     async def _queue(self, documents: list[DocumentId]) -> None:
@@ -506,13 +522,9 @@ _REFRESH_FIELDS = {"contact", "document_type", "tag"}
 
 
 def _carries(document: Document, kind: str, item: UUID) -> bool:
-    match kind:
-        case "contact":
-            return document.contact_id == ContactId(item)
-        case "document_type":
-            return document.document_type_id == DocumentTypeId(item)
-        case _:
-            return TagId(item) in document.tag_ids
+    if kind == "contact":
+        return document.contact_id == ContactId(item)
+    return document.document_type_id == DocumentTypeId(item)
 
 
 async def _snapshot_of(uow: UnitOfWork, document: Document) -> _Snapshot:

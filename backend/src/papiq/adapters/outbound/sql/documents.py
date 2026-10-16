@@ -1,12 +1,24 @@
 """Documents with their field values, and the processing log."""
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, FromClause, Row, and_, delete, func, insert, or_, select
+from sqlalchemy import (
+    ColumnElement,
+    FromClause,
+    Row,
+    and_,
+    case,
+    delete,
+    distinct,
+    func,
+    insert,
+    or_,
+    select,
+)
 
 from papiq.adapters.outbound.sql import tables as t
 from papiq.adapters.outbound.sql.repositories import MICROSECOND, SqlRepository, Values
@@ -45,6 +57,9 @@ from papiq.core.ports.repository import (
     DocumentPosition,
     SortKey,
 )
+
+_COUNTED = 200
+"""Keys of `count_tagged` per query (a column each)."""
 
 
 class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
@@ -130,6 +145,34 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         rows = (await self._tx.read(statement)).all()
         return {UUID(str(row.key)): int(row.documents) for row in rows}
 
+    async def count_tagged(
+        self, sets: Mapping[UUID, Collection[TagId]], user: UserId | None
+    ) -> dict[UUID, int]:
+        """One query per `_COUNTED` keys: each a count of the distinct documents among the
+        rows of the key's tags."""
+        documents, tags = t.documents, t.document_tags
+        criteria: list[ColumnElement[bool]] = [] if user is None else [visible_to(user)]
+        keys = list(sets)
+        counts: dict[UUID, int] = {}
+        for start in range(0, len(keys), _COUNTED):
+            batch = keys[start : start + _COUNTED]
+            columns = [
+                func.count(
+                    distinct(case((tags.c.tag_id.in_(sorted(sets[key])), tags.c.document_id)))
+                ).label(f"key_{number}")
+                for number, key in enumerate(batch)
+            ]
+            statement = (
+                select(*columns)
+                .select_from(tags.join(documents, documents.c.id == tags.c.document_id))
+                .where(*criteria)
+            )
+            row = (await self._tx.read(statement)).one()
+            counts.update(
+                (key, int(row[number])) for number, key in enumerate(batch) if row[number]
+            )
+        return counts
+
     async def _query(
         self,
         criteria: list[ColumnElement[bool]],
@@ -149,11 +192,24 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             criteria.append(documents.c.document_type_id == filter.document_type)
         if filter.space is not None:
             criteria.append(documents.c.space_id == filter.space)
-        for tag in sorted(filter.tags):
+        for tag_set in filter.tags:
             tags = t.document_tags
             criteria.append(
-                documents.c.id.in_(select(tags.c.document_id).where(tags.c.tag_id == tag))
+                documents.c.id.in_(
+                    select(tags.c.document_id).where(tags.c.tag_id.in_(sorted(tag_set)))
+                )
             )
+        for column, groups, owner in (
+            (documents.c.contact_id, filter.contact_groups, t.contact_groups.c.contact_id),
+            (
+                documents.c.document_type_id,
+                filter.document_type_groups,
+                t.document_type_groups.c.document_type_id,
+            ),
+        ):
+            for group_set in groups:
+                in_groups = owner.table.c.tag_id.in_(sorted(group_set))
+                criteria.append(column.in_(select(owner).where(in_groups)))
         if filter.confirmed is not None:
             confirmed = documents.c.confirmed_at
             criteria.append(confirmed.is_not(None) if filter.confirmed else confirmed.is_(None))

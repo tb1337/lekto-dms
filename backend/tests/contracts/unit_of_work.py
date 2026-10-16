@@ -1,6 +1,8 @@
 import asyncio
+from collections.abc import Collection
 from datetime import date, timedelta
 from decimal import Decimal
+from uuid import UUID
 
 import pytest
 
@@ -9,7 +11,7 @@ from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from papiq.core.domain.ids import DocumentId, SpaceId, new_id
+from papiq.core.domain.ids import DocumentId, SpaceId, TagId, new_id
 from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
 from papiq.core.domain.periods import Period
 from papiq.core.domain.permissions import can_read_document
@@ -26,6 +28,7 @@ from papiq.core.ports import (
     SortKey,
     UnitOfWorkFactory,
 )
+from papiq.core.ports.repository import TagSets
 from tests import builders
 from tests.builders import FAILED, NOW, OK, UNCERTAIN
 
@@ -937,15 +940,17 @@ class UnitOfWorkContract:
             }
             by_type = DocumentFilter(document_type=invoice.id)
             assert set(ids(await query(owner.id, by_type, limit=9))) == {0, 1, 2}
-            both_tags = DocumentFilter(tags=frozenset({tax.id, paid.id}))
+            both_tags = DocumentFilter(tags=(frozenset({tax.id}), frozenset({paid.id})))
             assert set(ids(await query(owner.id, both_tags, limit=9))) == {0, 1}
+            either_tag = DocumentFilter(tags=(frozenset({tax.id, paid.id}),))
+            assert set(ids(await query(owner.id, either_tag, limit=9))) == {0, 1, 2, 3}
             assert set(ids(await query(owner.id, DocumentFilter(space=other.id), limit=9))) == {5}
             yellow = DocumentFilter(lanes=frozenset({Lane.YELLOW}))
             assert set(ids(await query(owner.id, yellow, limit=9))) == {4}
             in_processing = await query(owner.id, DocumentFilter(lanes=frozenset({None})), limit=9)
             assert [d.id for d in in_processing] == [processing.id]
             combined = DocumentFilter(
-                contact=contact.id, document_type=invoice.id, tags=frozenset({paid.id})
+                contact=contact.id, document_type=invoice.id, tags=(frozenset({paid.id}),)
             )
             assert set(ids(await query(owner.id, combined, limit=9))) == {0}
 
@@ -968,6 +973,78 @@ class UnitOfWorkContract:
                 DocumentFilter(space=space.id), after=DocumentPosition(first[-1].id), limit=100
             )
             assert [d.id for d in [*first, *rest]] == in_space
+
+    async def test_query_by_groups_and_counts_of_tag_sets(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner, space = await owner_with_space(uow_factory)
+        stranger = builders.user()
+        await seed(uow_factory, stranger)
+        insurer = Tag.create(name="Insurer", now=NOW, scope=TagScope.CONTACT)
+        employer = Tag.create(name="Employer", now=NOW, scope=TagScope.CONTACT)
+        bills = Tag.create(name="Bills", now=NOW, scope=TagScope.DOCUMENT_TYPE)
+        tax, paid = Tag.create(name="tax", now=NOW), Tag.create(name="paid", now=NOW)
+        nord, sued = Contact.create(name="Nord", now=NOW), Contact.create(name="Süd", now=NOW)
+        nord.set_groups([insurer.id, employer.id])
+        sued.set_groups([employer.id])
+        invoice = DocumentType.create(name="Invoice", now=NOW)
+        invoice.set_groups([bills.id])
+        documents = []
+        for contact, kind, tags in (
+            (nord, invoice, {tax.id, paid.id}),
+            (sued, None, {tax.id}),
+            (None, None, set()),
+        ):
+            document = builders.processed(owner, space)
+            changes = DocumentChanges(
+                contact_id=None if contact is None else contact.id,
+                document_type_id=None if kind is None else kind.id,
+                tag_ids=frozenset(tags),
+            )
+            document.apply_changes(changes, {}, NOW)
+            documents.append(document)
+        async with uow_factory() as uow:
+            for tag in (insurer, employer, bills, tax, paid):
+                await uow.tags.add(tag)
+            await uow.contacts.add(nord)
+            await uow.contacts.add(sued)
+            await uow.document_types.add(invoice)
+            for document in documents:
+                await uow.documents.add(document)
+            await uow.commit()
+        numbers = {document.id: number for number, document in enumerate(documents)}
+
+        async with uow_factory() as uow:
+
+            async def found(
+                contacts: TagSets = (), types: TagSets = (), tags: TagSets = ()
+            ) -> set[int]:
+                filter = DocumentFilter(
+                    contact_groups=contacts, document_type_groups=types, tags=tags
+                )
+                listed = await uow.documents.query(filter, limit=9)
+                assert listed == await uow.documents.query_visible(owner.id, filter, limit=9)
+                return {numbers[document.id] for document in listed}
+
+            assert await found(contacts=(frozenset({insurer.id}),)) == {0}
+            assert await found(contacts=(frozenset({employer.id}),)) == {0, 1}
+            assert await found(contacts=(frozenset({insurer.id, employer.id}),)) == {0, 1}
+            assert await found(contacts=(frozenset({insurer.id}), frozenset({employer.id}))) == {0}
+            assert await found(types=(frozenset({bills.id}),)) == {0}
+            assert await found(
+                contacts=(frozenset({employer.id}),), tags=(frozenset({paid.id}),)
+            ) == {0}
+            assert await found(types=(frozenset({employer.id}),)) == set()
+
+            either, only_paid, none = (TagId(new_id()) for _ in range(3))
+            sets: dict[UUID, Collection[TagId]] = {
+                either: {tax.id, paid.id},
+                only_paid: {paid.id},
+                none: {insurer.id},
+            }
+            assert await uow.documents.count_tagged(sets, None) == {either: 2, only_paid: 1}
+            assert await uow.documents.count_tagged(sets, owner.id) == {either: 2, only_paid: 1}
+            assert await uow.documents.count_tagged(sets, stranger.id) == {}
 
     async def test_query_sorts_by_date_and_title_and_filters_by_field(
         self, uow_factory: UnitOfWorkFactory

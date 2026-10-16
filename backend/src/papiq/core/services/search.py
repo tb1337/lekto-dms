@@ -29,6 +29,7 @@ from papiq.core.ports import (
 )
 from papiq.core.ports.search_index import MAX_HITS, MAX_LIMIT
 from papiq.core.services._access import load_actor
+from papiq.core.services._tags import expanded, group_lookup, matches
 
 log = logging.getLogger(__name__)
 
@@ -106,6 +107,7 @@ class SearchService:
             if all_users and not user.is_active_admin:
                 raise PermissionDeniedError("only admins search the documents of all users")
             spaces = await uow.spaces.list_accessible(actor)
+            filter = await expanded(uow, filter)
         if offset >= MAX_HITS:
             return SearchPage([], 0, None, False)
         limit = min(limit, MAX_HITS - offset)
@@ -129,6 +131,7 @@ class SearchService:
         items = []
         by_id: dict[SpaceId, Space] = {space.id: space for space in spaces}
         async with self._uow() as uow:
+            contacts, types = await group_lookup(uow, filter)
             for hit in result.hits:
                 document = await uow.documents.find(hit.id)
                 if document is None:
@@ -138,7 +141,7 @@ class SearchService:
                 space = by_id[document.space_id]
                 allowed = all_users or reach_access(user, document, space) is not None
                 access = document_access(user, document, space)
-                if not allowed or access is None or not _matches(document, filter):
+                if not allowed or access is None or not matches(document, filter, contacts, types):
                     continue  # the index is behind: a share or a lane has changed
                 items.append(SearchItem(document, access, hit.score, hit.snippet))
         if len(items) < len(result.hits):
@@ -176,14 +179,3 @@ class SearchService:
             )
             return None
         return vector
-
-
-def _matches(document: Document, filter: DocumentFilter) -> bool:
-    """The filter as the repository applies it."""
-    return (
-        (filter.contact is None or document.contact_id == filter.contact)
-        and (filter.document_type is None or document.document_type_id == filter.document_type)
-        and filter.tags <= document.tag_ids
-        and (filter.space is None or document.space_id == filter.space)
-        and (filter.lanes is None or document.lane in filter.lanes)
-    )

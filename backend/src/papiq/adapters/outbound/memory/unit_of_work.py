@@ -337,7 +337,7 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         limit: int,
     ) -> list[Document]:
         visible = await self.list_visible_to(user)
-        return _query(visible, filter, order=order, after=after, limit=limit)
+        return _query(visible, filter, self._groups(), order=order, after=after, limit=limit)
 
     async def query(
         self,
@@ -348,7 +348,27 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         limit: int,
     ) -> list[Document]:
         every = [_copy(row) for row in self._all()]
-        return _query(every, filter, order=order, after=after, limit=limit)
+        return _query(every, filter, self._groups(), order=order, after=after, limit=limit)
+
+    def _groups(self) -> "_Groups":
+        return _Groups(
+            {row.id: row.group_ids for row in self._uow._rows(CONTACTS)},
+            {row.id: row.group_ids for row in self._uow._rows(DOCUMENT_TYPES)},
+        )
+
+    async def count_tagged(
+        self, sets: Mapping[UUID, Collection[TagId]], user: UserId | None
+    ) -> dict[UUID, int]:
+        documents = (
+            [_copy(row) for row in self._all()]
+            if user is None
+            else await self.list_visible_to(user)
+        )
+        counts = {
+            key: sum(bool(document.tag_ids & set(tags)) for document in documents)
+            for key, tags in sets.items()
+        }
+        return {key: count for key, count in counts.items() if count}
 
     async def count_by(self, by: CountBy, user: UserId | None) -> dict[UUID, int]:
         documents = (
@@ -610,9 +630,25 @@ class MemoryUnitOfWorkFactory:
         return MemoryUnitOfWork(self._database)
 
 
+@dataclass(frozen=True)
+class _Groups:
+    """The groups of each contact and document type."""
+
+    contacts: Mapping[UUID, frozenset[TagId]]
+    document_types: Mapping[UUID, frozenset[TagId]]
+
+    def match(self, document: Document, filter: DocumentFilter) -> bool:
+        contact = self.contacts.get(document.contact_id or UUID(int=0), frozenset())
+        kind = self.document_types.get(document.document_type_id or UUID(int=0), frozenset())
+        return all(groups & contact for groups in filter.contact_groups) and all(
+            groups & kind for groups in filter.document_type_groups
+        )
+
+
 def _query(
     documents: list[Document],
     filter: DocumentFilter,
+    groups: _Groups,
     *,
     order: DocumentOrder,
     after: DocumentPosition | None,
@@ -623,7 +659,8 @@ def _query(
         for document in documents
         if (filter.contact is None or document.contact_id == filter.contact)
         and (filter.document_type is None or document.document_type_id == filter.document_type)
-        and filter.tags <= document.tag_ids
+        and all(tags & document.tag_ids for tags in filter.tags)
+        and groups.match(document, filter)
         and (filter.space is None or document.space_id == filter.space)
         and (filter.lanes is None or document.lane in filter.lanes)
         and (filter.confirmed is None or (document.confirmed_at is not None) is filter.confirmed)

@@ -59,6 +59,7 @@ from papiq.core.services._access import (
     visible_space,
     writable_document,
 )
+from papiq.core.services._tags import expanded, tag_counts
 from papiq.core.services.inbox import InboxItem, Review, node_reviews, open_nodes
 from papiq.core.services.maintenance import REMOVE_FILES_JOB
 from papiq.core.services.objects import (
@@ -351,6 +352,7 @@ class DocumentService:
         async with self._uow() as uow:
             user = await _lister(uow, actor, all_users)
             position = await _position(uow, order, after)
+            filter = await expanded(uow, filter)
             if all_users:
                 documents = await uow.documents.query(
                     filter, order=order, after=position, limit=limit
@@ -432,10 +434,15 @@ class DocumentService:
         self, actor: UserId, by: CountBy, *, all_users: bool = False
     ) -> dict[UUID, int]:
         """How many documents within the caller's reach (with `all_users`, admins only: every
-        document) have each contact, type or tag, or a value for each field; one query."""
+        document) have each contact, type or tag, or a value for each field. A tag counts what
+        its filter finds: the documents with it or a tag below it (each once), a group those
+        whose contact or type is in it or a group below it (`_tags.tag_counts`)."""
         async with self._uow() as uow:
             await _lister(uow, actor, all_users)
-            return await uow.documents.count_by(by, None if all_users else actor)
+            user = None if all_users else actor
+            if by is CountBy.TAG:
+                return await tag_counts(uow, user)
+            return await uow.documents.count_by(by, user)
 
     async def list_visible(self, actor: UserId) -> list[Document]:
         async with self._uow() as uow:

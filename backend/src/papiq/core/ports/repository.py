@@ -14,7 +14,7 @@ Common rules for every adapter:
 - `get` raises NotFoundError, `find` returns None.
 """
 
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
@@ -119,20 +119,34 @@ class TagRepository(NamedRepository[TagId, Tag], Protocol):
 class FieldDefinitionRepository(NamedRepository[FieldId, FieldDefinition], Protocol): ...
 
 
+type TagSets = tuple[frozenset[TagId], ...]
+
+
 @dataclass(frozen=True, kw_only=True)
 class DocumentFilter:
-    """Criteria for listing documents; all given ones must match. `tags`: every one of them.
-    `lanes`: one of them, where None stands for documents still in processing. `confirmed`:
-    whether a person set or confirmed the metadata (`Document.confirmed_at`). `field`: a value
-    for it is set."""
+    """Criteria for listing documents; all given ones must match.
+
+    `tags`: sets of tags; the document carries one tag of each set. The core gives a tag with
+    its descendants as one set (`TagTree.with_descendants`), so no adapter walks the tree.
+    `contact_groups`, `document_type_groups` likewise: the document's contact (type) is in one
+    group of each set. `lanes`: one of them, where None stands for documents still in
+    processing. `confirmed`: whether a person set or confirmed the metadata
+    (`Document.confirmed_at`). `field`: a value for it is set."""
 
     contact: ContactId | None = None
     document_type: DocumentTypeId | None = None
-    tags: frozenset[TagId] = frozenset()
+    tags: TagSets = ()
+    contact_groups: TagSets = ()
+    document_type_groups: TagSets = ()
     space: SpaceId | None = None
     lanes: frozenset[Lane | None] | None = None
     confirmed: bool | None = None
     field: FieldId | None = None
+
+    def __post_init__(self) -> None:
+        for sets in (self.tags, self.contact_groups, self.document_type_groups):
+            if any(not tags for tags in sets):
+                raise ValueError("a set of tags in a filter is never empty")
 
 
 class SortKey(StrEnum):
@@ -229,6 +243,14 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
     async def count_by(self, by: CountBy, user: UserId | None) -> dict[UUID, int]:
         """How many documents the user may read (as `list_visible_to`; None: every document)
         have each contact, type or tag, or a value for each field. Only ids with documents."""
+        ...
+
+    async def count_tagged(
+        self, sets: Mapping[UUID, Collection[TagId]], user: UserId | None
+    ) -> dict[UUID, int]:
+        """For each key, how many documents the user may read (as `count_by`) carry a tag of
+        its set, each document once (the core gives a tag with its descendants). Only keys with
+        documents."""
         ...
 
     async def remove(self, id: DocumentId) -> None:

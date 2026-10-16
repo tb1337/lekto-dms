@@ -228,8 +228,13 @@ def _matches_filter(document: IndexDocument, criteria: DocumentFilter) -> bool:
         return False
     if criteria.document_type is not None and document.document_type_id != criteria.document_type:
         return False
-    if not criteria.tags <= set(document.tag_ids):
-        return False
+    for sets, held in (
+        (criteria.tags, document.tag_ids),
+        (criteria.contact_groups, document.contact_group_ids),
+        (criteria.document_type_groups, document.document_type_group_ids),
+    ):
+        if not all(wanted & set(held) for wanted in sets):
+            return False
     if criteria.space is not None and document.space_id != criteria.space:
         return False
     if criteria.confirmed is not None and document.confirmed is not criteria.confirmed:

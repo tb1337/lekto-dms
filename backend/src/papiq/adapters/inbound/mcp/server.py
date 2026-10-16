@@ -30,6 +30,7 @@ from papiq.core.domain.documents import UNSET, Document, DocumentChanges
 from papiq.core.domain.errors import DomainError, SearchUnavailableError, ValidationError
 from papiq.core.domain.fields import FieldDefinition, field_from_json
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
+from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.ports import DocumentFilter
 from papiq.core.ports.search_index import MAX_HITS
@@ -159,7 +160,7 @@ class Names:
         return cls(
             contacts={c.id: c.name for c in await master.list_contacts(user)},
             document_types={t.id: t.name for t in await master.list_document_types(user)},
-            tags={t.id: t.name for t in await master.list_tags(user)},
+            tags={t.id: t.name for t in await master.list_tags(user, TagScope.DOCUMENT)},
             fields={a.id: a for a in await master.list_fields(user)},
         )
 
@@ -292,7 +293,7 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
                 document_type=(
                     None if document_type is None else names.find_document_type(document_type)
                 ),
-                tags=frozenset(names.find_tag(tag) for tag in tags or ()),
+                tags=tuple(frozenset({names.find_tag(tag)}) for tag in tags or ()),
             ),
             offset=offset,
             limit=limit,

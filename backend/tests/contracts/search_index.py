@@ -19,6 +19,7 @@ from papiq.core.domain.ids import (
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.search import EmbeddingStamp, IndexDocument, Visibility
 from papiq.core.ports import DocumentFilter, DocumentOrder, SearchIndex, SearchQuery, SortKey
+from papiq.core.ports.repository import TagSets
 from papiq.core.ports.search_index import SimilarQuery
 from tests.builders import index_document
 
@@ -228,8 +229,9 @@ class SearchIndexContract:
         assert await with_filter() == {both.id, one_tag.id, processing.id}
         assert await with_filter(contact=contact) == {both.id}
         assert await with_filter(document_type=kind) == {both.id}
-        assert await with_filter(tags=frozenset({tag_1})) == {both.id, one_tag.id}
-        assert await with_filter(tags=frozenset({tag_1, tag_2})) == {both.id}
+        assert await with_filter(tags=(frozenset({tag_1}),)) == {both.id, one_tag.id}
+        assert await with_filter(tags=(frozenset({tag_1}), frozenset({tag_2}))) == {both.id}
+        assert await with_filter(tags=(frozenset({tag_2, TagId(new_id())}),)) == {both.id}
         assert await with_filter(space=space_b) == {one_tag.id, processing.id}
         assert await with_filter(lanes=frozenset({Lane.GREEN})) == {both.id}
         assert await with_filter(lanes=frozenset({Lane.GREEN, Lane.YELLOW})) == {
@@ -239,7 +241,7 @@ class SearchIndexContract:
         assert await with_filter(lanes=frozenset({None})) == {processing.id}
         assert await with_filter(lanes=frozenset({None, Lane.RED})) == {processing.id}
         assert await with_filter(
-            tags=frozenset({tag_1}), space=space_b, lanes=frozenset({Lane.YELLOW})
+            tags=(frozenset({tag_1}),), space=space_b, lanes=frozenset({Lane.YELLOW})
         ) == {one_tag.id}
         assert await with_filter(contact=ContactId(new_id())) == set()
 
@@ -260,6 +262,30 @@ class SearchIndexContract:
         for word in ("Versicherungen", "Versorger", "Belege"):
             assert await found(search_index, word, who) == {grouped.id}
         assert await found(search_index, "Schreiben", who) == {grouped.id, other.id}
+
+    async def test_groups_of_contact_and_type(self, search_index: SearchIndex) -> None:
+        owner = UserId(new_id())
+        insurer, employer, bills = (TagId(new_id()) for _ in range(3))
+        both = index_document(
+            owner_id=owner,
+            text="Rechnung",
+            contact_group_ids=(insurer, employer),
+            document_type_group_ids=(bills,),
+        )
+        employed = index_document(owner_id=owner, text="Rechnung", contact_group_ids=(employer,))
+        neither = index_document(owner_id=owner, text="Rechnung")
+        await search_index.upsert([both, employed, neither])
+
+        async def with_filter(contacts: TagSets = (), types: TagSets = ()) -> set[DocumentId]:
+            filter = DocumentFilter(contact_groups=contacts, document_type_groups=types)
+            return await found(search_index, "Rechnung", visibility(owner), filter=filter)
+
+        assert await with_filter(contacts=(frozenset({employer}),)) == {both.id, employed.id}
+        assert await with_filter(contacts=(frozenset({insurer}), frozenset({employer}))) == {
+            both.id
+        }
+        assert await with_filter(types=(frozenset({bills}),)) == {both.id}
+        assert await with_filter(types=(frozenset({insurer}),)) == set()
 
     async def test_a_field_with_a_value(self, search_index: SearchIndex) -> None:
         owner, field = UserId(new_id()), FieldId(new_id())

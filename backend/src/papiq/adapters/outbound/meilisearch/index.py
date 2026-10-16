@@ -473,7 +473,14 @@ def filter_expression(visibility: Visibility, criteria: DocumentFilter) -> str |
         parts.append(f"contact_id = {_quote(criteria.contact)}")
     if criteria.document_type is not None:
         parts.append(f"document_type_id = {_quote(criteria.document_type)}")
-    parts.extend(f"tag_ids = {_quote(tag)}" for tag in sorted(criteria.tags, key=str))
+    for attribute, sets in (
+        ("tag_ids", criteria.tags),
+        ("contact_group_ids", criteria.contact_groups),
+        ("document_type_group_ids", criteria.document_type_groups),
+    ):
+        for tags in sets:
+            listed = ", ".join(_quote(tag) for tag in sorted(tags, key=str))
+            parts.append(f"{attribute} IN [{listed}]")
     if criteria.space is not None:
         parts.append(f"space_id = {_quote(criteria.space)}")
     if criteria.lanes:

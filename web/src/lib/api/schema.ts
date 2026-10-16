@@ -571,13 +571,13 @@ export interface paths {
 		};
 		/**
 		 * List tags
-		 * @description Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach have it (a field: a value for it), counted in one query; admins count every document with `all_users` (others: 403).
+		 * @description Tags of every scope, or of `scope`: document tags, contact groups, type groups. In the order of their trees: each after its parent, siblings by name (scopes in this order). Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach it stands for (`TagOut.document_count`); admins count every document with `all_users` (others: 403).
 		 */
 		get: operations['list_tags_api_v1_tags_get'];
 		put?: never;
 		/**
 		 * Create a tag
-		 * @description Admins only. Names are unique regardless of case.
+		 * @description Admins only. Names are unique per scope, regardless of case.
 		 */
 		post: operations['create_tag_api_v1_tags_post'];
 		delete?: never;
@@ -599,16 +599,16 @@ export interface paths {
 		post?: never;
 		/**
 		 * Delete a tag
-		 * @description Admins only. Only while no document uses it (409).
+		 * @description Admins only. Only a tag without tags below it that nothing uses: no document carries it, no contact or document type is in it, no rule refers to it (409).
 		 */
 		delete: operations['delete_tag_api_v1_tags__id__delete'];
 		options?: never;
 		head?: never;
 		/**
-		 * Rename a tag
-		 * @description Admins only.
+		 * Change a tag
+		 * @description Admins only. Name, parent (of the same scope, not below the tag itself; at most five levels), assignment and whether documents show it. The scope stays. A new name or parent brings the search index of the documents concerned up to date.
 		 */
-		patch: operations['rename_tag_api_v1_tags__id__patch'];
+		patch: operations['change_tag_api_v1_tags__id__patch'];
 		trace?: never;
 	};
 	'/api/v1/fields': {
@@ -2204,6 +2204,11 @@ export interface components {
 			 * @description Values the contact's documents carry: IBAN, VAT number, customer (or contract) number, the personnel number at an employer (without leading zeros), the domain of its e-mail and web addresses. Unique across contacts; found in a document, they are evidence for the contact. The identifiers entered by hand: a learned one given here becomes one entered by hand.
 			 */
 			identifiers?: components['schemas']['IdentifierIn'][];
+			/**
+			 * Group Ids
+			 * @description The contact groups it is in (tags of scope `contact`); its documents inherit them. A group set with one below it leaves the one below.
+			 */
+			group_ids?: string[];
 		};
 		/** ContactOut */
 		ContactOut: {
@@ -2239,6 +2244,11 @@ export interface components {
 			 * @description Entered, learned and rejected identifiers, in this order.
 			 */
 			identifiers: components['schemas']['IdentifierOut'][];
+			/**
+			 * Group Ids
+			 * @description The contact groups it is in.
+			 */
+			group_ids: string[];
 		};
 		/**
 		 * ContactPatch
@@ -2260,6 +2270,8 @@ export interface components {
 			identifiers?: components['schemas']['IdentifierIn'][] | null;
 			/** Rejected Identifiers */
 			rejected_identifiers?: components['schemas']['IdentifierIn'][] | null;
+			/** Group Ids */
+			group_ids?: string[] | null;
 		};
 		/** DeliveryOut */
 		DeliveryOut: {
@@ -2759,6 +2771,11 @@ export interface components {
 			description?: string | null;
 			/** Title Pattern */
 			title_pattern?: string | null;
+			/**
+			 * Group Ids
+			 * @description The document type groups it is in (tags of scope `document_type`); its documents inherit them. A group set with one below it leaves the one below.
+			 */
+			group_ids?: string[];
 		};
 		/** DocumentTypeOut */
 		DocumentTypeOut: {
@@ -2792,6 +2809,11 @@ export interface components {
 			 * @example Lohn {document_date:YYYY-MM}
 			 */
 			title_pattern: string | null;
+			/**
+			 * Group Ids
+			 * @description The document type groups it is in.
+			 */
+			group_ids: string[];
 		};
 		/**
 		 * DocumentTypePatch
@@ -2808,6 +2830,8 @@ export interface components {
 			description?: string | null;
 			/** Title Pattern */
 			title_pattern?: string | null;
+			/** Group Ids */
+			group_ids?: string[] | null;
 		};
 		/**
 		 * ExchangeNode
@@ -3419,29 +3443,6 @@ export interface components {
 			 * @description Instead of `code`: a recovery code.
 			 */
 			recovery_code?: string | null;
-		};
-		/** MasterDataOut */
-		MasterDataOut: {
-			/**
-			 * Id
-			 * Format: uuid
-			 */
-			id: string;
-			/**
-			 * Name
-			 * @example ACME Energy
-			 */
-			name: string;
-			/**
-			 * Created At
-			 * Format: date-time
-			 */
-			created_at: string;
-			/**
-			 * Document Count
-			 * @description With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) have it; for a field, a value for it.
-			 */
-			document_count?: number | null;
 		};
 		/**
 		 * Me
@@ -4600,6 +4601,114 @@ export interface components {
 			/** @description Null if the file cannot be read for it (damaged, encrypted). */
 			metadata: components['schemas']['FileMetadataOut'] | null;
 		};
+		/**
+		 * TagCreate
+		 * @description Names are unique per scope. `parent_id`: a tag of the same scope; at most five levels.
+		 *     `assignment` and `shown` follow the scope unless given.
+		 * @example {
+		 *       "name": "Health insurance",
+		 *       "parent_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b"
+		 *     }
+		 * @example {
+		 *       "name": "Insurer",
+		 *       "scope": "contact"
+		 *     }
+		 */
+		TagCreate: {
+			/**
+			 * Name
+			 * @example ACME Energy
+			 */
+			name: string;
+			/**
+			 * @description `document`: a tag of documents; `contact`: a contact group; `document_type`: a type group. Fixed once the tag exists.
+			 * @default document
+			 */
+			scope: components['schemas']['TagScope'];
+			/** Parent Id */
+			parent_id?: string | null;
+			assignment?: components['schemas']['Assignment'] | null;
+			/** Shown */
+			shown?: boolean | null;
+		};
+		/**
+		 * TagOut
+		 * @example {
+		 *       "assignment": "auto",
+		 *       "created_at": "2026-01-10T09:00:00Z",
+		 *       "id": "01999d5e-2223-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "name": "Health insurance",
+		 *       "parent_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "path": [
+		 *         "Insurance",
+		 *         "Health insurance"
+		 *       ],
+		 *       "scope": "document",
+		 *       "shown": true
+		 *     }
+		 */
+		TagOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/**
+			 * Name
+			 * @example ACME Energy
+			 */
+			name: string;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/**
+			 * Document Count
+			 * @description With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) it stands for: those with it or a tag below it, each once; for a group, those whose contact (type) is in it or a group below it.
+			 */
+			document_count?: number | null;
+			scope: components['schemas']['TagScope'];
+			/** Parent Id */
+			parent_id: string | null;
+			/**
+			 * Path
+			 * @description The names from the top-level tag down to its own; documents show the last, its path tells where it stands.
+			 */
+			path: string[];
+			/** @description `auto`: the classification proposes and sets it (document tags only); `manual`: only a person or a rule sets it (a status such as 'to pay'). Groups are always `manual`. */
+			assignment: components['schemas']['Assignment'];
+			/**
+			 * Shown
+			 * @description Whether documents show it (the chips of lists and the document; filters, search, rules and templates see it either way). Default: on for document tags, off for groups.
+			 */
+			shown: boolean;
+		};
+		/**
+		 * TagPatch
+		 * @description Fields left out stay; a `parent_id` of null makes it a top-level tag. The scope stays.
+		 * @example {
+		 *       "shown": false
+		 *     }
+		 */
+		TagPatch: {
+			/** Name */
+			name?: string | null;
+			/** Parent Id */
+			parent_id?: string | null;
+			assignment?: components['schemas']['Assignment'] | null;
+			/** Shown */
+			shown?: boolean | null;
+		};
+		/**
+		 * TagScope
+		 * @description What a tag describes, fixed when it is made: a document (`document`, as tags were
+		 *     before 0.3), contacts (`contact`: a contact group, "insurance") or document types
+		 *     (`document_type`: a type group, "invoice" over "medical bill"). Names are unique per
+		 *     scope.
+		 * @enum {string}
+		 */
+		TagScope: 'document' | 'contact' | 'document_type';
 		/**
 		 * TemplatePreviewIn
 		 * @example {
@@ -9094,6 +9203,7 @@ export interface operations {
 	list_tags_api_v1_tags_get: {
 		parameters: {
 			query?: {
+				scope?: components['schemas']['TagScope'] | null;
 				/** @description Count the documents of each (`document_count`). */
 				document_counts?: boolean;
 				/** @description Count every user's documents instead of the caller's reach (admins). */
@@ -9111,7 +9221,7 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['MasterDataOut'][];
+					'application/json': components['schemas']['TagOut'][];
 				};
 			};
 			/** @description Unauthorized */
@@ -9193,7 +9303,7 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				'application/json': components['schemas']['NameIn'];
+				'application/json': components['schemas']['TagCreate'];
 			};
 		};
 		responses: {
@@ -9203,7 +9313,7 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['MasterDataOut'];
+					'application/json': components['schemas']['TagOut'];
 				};
 			};
 			/** @description Unauthorized */
@@ -9235,6 +9345,23 @@ export interface operations {
 					 *       "title": "Forbidden",
 					 *       "status": 403,
 					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9327,7 +9454,7 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['MasterDataOut'];
+					'application/json': components['schemas']['TagOut'];
 				};
 			};
 			/** @description Unauthorized */
@@ -9522,7 +9649,7 @@ export interface operations {
 			};
 		};
 	};
-	rename_tag_api_v1_tags__id__patch: {
+	change_tag_api_v1_tags__id__patch: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -9533,7 +9660,7 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				'application/json': components['schemas']['NameIn'];
+				'application/json': components['schemas']['TagPatch'];
 			};
 		};
 		responses: {
@@ -9543,7 +9670,7 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['MasterDataOut'];
+					'application/json': components['schemas']['TagOut'];
 				};
 			};
 			/** @description Unauthorized */

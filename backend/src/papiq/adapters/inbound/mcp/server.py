@@ -32,6 +32,7 @@ from papiq.core.domain.fields import FieldDefinition, field_from_json
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.spaces import ShareLevel
+from papiq.core.domain.tag_tree import TagTree
 from papiq.core.ports import DocumentFilter
 from papiq.core.ports.search_index import MAX_HITS
 from papiq.core.services.auth import Principal
@@ -141,8 +142,21 @@ class UpdateOut(BaseModel):
     )
 
 
+class TagRef(BaseModel):
+    id: UUID
+    name: str
+    scope: TagScope = Field(
+        description="document: a tag of documents (use these in search and update_metadata); "
+        "contact: a contact group; document_type: a document type group."
+    )
+    path: list[str] = Field(
+        description="The names from the top-level tag down to its own: a document with this "
+        "tag is found by each of them."
+    )
+
+
 class TagsOut(BaseModel):
-    tags: list[NameRef]
+    tags: list[TagRef]
 
 
 @dataclass(frozen=True)
@@ -265,7 +279,8 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
         description=(
             "Find documents by words and meaning. Returns the best matches among the documents "
             "you may read, with a snippet of the matching text. Filters (names, any case) "
-            "narrow by contact, document type and tags (all of them)."
+            "narrow by contact, document type and document tags (all of them; a tag matches "
+            "the tags below it too)."
         ),
         annotations=READ_ONLY,
     )
@@ -415,20 +430,32 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
 
     @server.tool(
         name="list_tags",
-        description="All tags with their names; use these names in `search` and `update_metadata`.",
+        description=(
+            "The tags with their scope and path, in the order of their trees. Use the names of "
+            "document tags in `search` (a tag finds the documents with a tag below it too) and "
+            "`update_metadata`; contact and document type groups describe contacts and types."
+        ),
         annotations=READ_ONLY,
     )
     @guarded
-    async def list_tags(ctx: Context) -> TagsOut:
+    async def list_tags(
+        ctx: Context,
+        scope: Annotated[
+            TagScope | None, Field(description="Only tags of this scope; default: all.")
+        ] = None,
+    ) -> TagsOut:
         user = principal_of(ctx).id
-        tags = await context.master_data.list_tags(user)
-        return TagsOut(tags=sorted((NameRef(id=t.id, name=t.name) for t in tags), key=_by_name))
+        tree = TagTree.of(await context.master_data.list_tags(user))
+        scopes = list(TagScope) if scope is None else [scope]
+        return TagsOut(
+            tags=[
+                TagRef(id=tag.id, name=tag.name, scope=tag.scope, path=tree.path(tag.id))
+                for wanted in scopes
+                for tag in tree.of_scope(wanted)
+            ]
+        )
 
     return server
-
-
-def _by_name(ref: NameRef) -> str:
-    return ref.name.casefold()
 
 
 def _reference[T](name: str | None, find: Callable[[str], T]) -> Any:

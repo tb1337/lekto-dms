@@ -22,6 +22,7 @@ from papiq.composition.container import build_memory_container, build_services
 from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.fields import FieldType, Money
 from papiq.core.domain.ids import DocumentId, new_id
+from papiq.core.domain.master_data import TagScope
 from papiq.core.services.objects import text_key
 from tests import builders
 from tests.api import auth, serving
@@ -300,10 +301,20 @@ async def test_a_document_without_text_says_so(api: Api, scene: Scene) -> None:
 
 async def test_list_tags(api: Api, scene: Scene) -> None:
     admin = await api.admin()
-    for name in ("Zeta", "alpha"):
-        await api.services.master_data.create_tag(admin.id, name)
+    master = api.services.master_data
+    zeta = await master.create_tag(admin.id, "Zeta")
+    await master.create_tag(admin.id, "alpha")
+    await master.create_tag(admin.id, "Child", parent_id=zeta.id)
+    await master.create_tag(admin.id, "Insurer", scope=TagScope.CONTACT)
     tags = data(await call(api, scene.headers["read_token"], "list_tags"))["tags"]
-    assert [tag["name"] for tag in tags] == ["alpha", "Zeta"]
+    assert [(tag["name"], tag["scope"], tag["path"]) for tag in tags] == [
+        ("alpha", "document", ["alpha"]),
+        ("Zeta", "document", ["Zeta"]),
+        ("Child", "document", ["Zeta", "Child"]),
+        ("Insurer", "contact", ["Insurer"]),
+    ]
+    groups = data(await call(api, scene.headers["read_token"], "list_tags", scope="contact"))
+    assert [tag["name"] for tag in groups["tags"]] == ["Insurer"]
 
 
 # --- search -------------------------------------------------------------------------------------
@@ -337,7 +348,9 @@ async def test_search_finds_what_the_caller_may_read(api: Api, scene: Scene) -> 
 async def test_search_filters_by_name(api: Api, scene: Scene) -> None:
     admin = await api.admin()
     master = api.services.master_data
-    tag = await master.create_tag(admin.id, "Strom")
+    energy = await master.create_tag(admin.id, "Energie")
+    tag = await master.create_tag(admin.id, "Strom", parent_id=energy.id)
+    await master.create_tag(admin.id, "Gruppe", scope=TagScope.CONTACT)
 
     await api.services.documents.change_metadata(
         scene.owner.id,
@@ -348,8 +361,13 @@ async def test_search_filters_by_name(api: Api, scene: Scene) -> None:
     while await api.services.indexing.run_next_job():  # type: ignore[union-attr]
         pass
     assert await found(api, scene.headers["owner"], tags=["strom"]) == {scene.green}
+    # A tag finds the documents with a tag below it.
+    assert await found(api, scene.headers["owner"], tags=["Energie"]) == {scene.green}
     unknown = await call(api, scene.headers["owner"], "search", query="pdf", tags=["Nope"])
     assert "no tag named 'Nope'" in error(unknown)
+    # Groups are no document tags.
+    group = await call(api, scene.headers["owner"], "search", query="pdf", tags=["Gruppe"])
+    assert "no tag named 'Gruppe'" in error(group)
     unknown = await call(api, scene.headers["owner"], "search", query="pdf", contact="Nope")
     assert "no contact named 'Nope'" in error(unknown)
 

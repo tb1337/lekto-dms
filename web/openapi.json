@@ -4425,9 +4425,25 @@
           "master data"
         ],
         "summary": "List tags",
-        "description": "Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach have it (a field: a value for it), counted in one query; admins count every document with `all_users` (others: 403).",
+        "description": "Tags of every scope, or of `scope`: document tags, contact groups, type groups. In the order of their trees: each after its parent, siblings by name (scopes in this order). Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach it stands for (`TagOut.document_count`); admins count every document with `all_users` (others: 403).",
         "operationId": "list_tags_api_v1_tags_get",
         "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TagScope"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
           {
             "name": "document_counts",
             "in": "query",
@@ -4461,7 +4477,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/MasterDataOut"
+                    "$ref": "#/components/schemas/TagOut"
                   },
                   "title": "Response List Tags Api V1 Tags Get"
                 }
@@ -4547,14 +4563,14 @@
           "master data"
         ],
         "summary": "Create a tag",
-        "description": "Admins only. Names are unique regardless of case.",
+        "description": "Admins only. Names are unique per scope, regardless of case.",
         "operationId": "create_tag_api_v1_tags_post",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NameIn"
+                "$ref": "#/components/schemas/TagCreate"
               }
             }
           }
@@ -4565,7 +4581,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MasterDataOut"
+                  "$ref": "#/components/schemas/TagOut"
                 }
               }
             }
@@ -4598,6 +4614,22 @@
                   "title": "Forbidden",
                   "status": 403,
                   "detail": "only the owner controls processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
                 }
               }
             }
@@ -4702,7 +4734,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MasterDataOut"
+                  "$ref": "#/components/schemas/TagOut"
                 }
               }
             }
@@ -4785,9 +4817,9 @@
         "tags": [
           "master data"
         ],
-        "summary": "Rename a tag",
-        "description": "Admins only.",
-        "operationId": "rename_tag_api_v1_tags__id__patch",
+        "summary": "Change a tag",
+        "description": "Admins only. Name, parent (of the same scope, not below the tag itself; at most five levels), assignment and whether documents show it. The scope stays. A new name or parent brings the search index of the documents concerned up to date.",
+        "operationId": "change_tag_api_v1_tags__id__patch",
         "parameters": [
           {
             "name": "id",
@@ -4805,7 +4837,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NameIn"
+                "$ref": "#/components/schemas/TagPatch"
               }
             }
           }
@@ -4816,7 +4848,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MasterDataOut"
+                  "$ref": "#/components/schemas/TagOut"
                 }
               }
             }
@@ -4948,7 +4980,7 @@
           "master data"
         ],
         "summary": "Delete a tag",
-        "description": "Admins only. Only while no document uses it (409).",
+        "description": "Admins only. Only a tag without tags below it that nothing uses: no document carries it, no contact or document type is in it, no rule refers to it (409).",
         "operationId": "delete_tag_api_v1_tags__id__delete",
         "parameters": [
           {
@@ -14707,6 +14739,16 @@
             "maxItems": 100,
             "title": "Identifiers",
             "description": "Values the contact's documents carry: IBAN, VAT number, customer (or contract) number, the personnel number at an employer (without leading zeros), the domain of its e-mail and web addresses. Unique across contacts; found in a document, they are evidence for the contact. The identifiers entered by hand: a learned one given here becomes one entered by hand."
+          },
+          "group_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Group Ids",
+            "description": "The contact groups it is in (tags of scope `contact`); its documents inherit them. A group set with one below it leaves the one below."
           }
         },
         "additionalProperties": false,
@@ -14774,6 +14816,15 @@
             "type": "array",
             "title": "Identifiers",
             "description": "Entered, learned and rejected identifiers, in this order."
+          },
+          "group_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Group Ids",
+            "description": "The contact groups it is in."
           }
         },
         "type": "object",
@@ -14782,7 +14833,8 @@
           "name",
           "created_at",
           "aliases",
-          "identifiers"
+          "identifiers",
+          "group_ids"
         ],
         "title": "ContactOut"
       },
@@ -14861,6 +14913,23 @@
               }
             ],
             "title": "Rejected Identifiers"
+          },
+          "group_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array",
+                "maxItems": 100,
+                "description": "The contact groups it is in (tags of scope `contact`); its documents inherit them. A group set with one below it leaves the one below."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Ids"
           }
         },
         "additionalProperties": false,
@@ -15892,6 +15961,16 @@
               }
             ],
             "title": "Title Pattern"
+          },
+          "group_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Group Ids",
+            "description": "The document type groups it is in (tags of scope `document_type`); its documents inherit them. A group set with one below it leaves the one below."
           }
         },
         "additionalProperties": false,
@@ -15965,6 +16044,15 @@
             "examples": [
               "Lohn {document_date:YYYY-MM}"
             ]
+          },
+          "group_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Group Ids",
+            "description": "The document type groups it is in."
           }
         },
         "type": "object",
@@ -15973,7 +16061,8 @@
           "name",
           "created_at",
           "description",
-          "title_pattern"
+          "title_pattern",
+          "group_ids"
         ],
         "title": "DocumentTypeOut"
       },
@@ -16026,6 +16115,23 @@
               }
             ],
             "title": "Title Pattern"
+          },
+          "group_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array",
+                "maxItems": 100,
+                "description": "The document type groups it is in (tags of scope `document_type`); its documents inherit them. A group set with one below it leaves the one below."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Ids"
           }
         },
         "additionalProperties": false,
@@ -17331,46 +17437,6 @@
             "username": "alice"
           }
         ]
-      },
-      "MasterDataOut": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name",
-            "examples": [
-              "ACME Energy"
-            ]
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "document_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Document Count",
-            "description": "With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) have it; for a field, a value for it."
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "created_at"
-        ],
-        "title": "MasterDataOut"
       },
       "Me": {
         "properties": {
@@ -19618,6 +19684,242 @@
           "metadata"
         ],
         "title": "StoredFileOut"
+      },
+      "TagCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "examples": [
+              "ACME Energy"
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/TagScope",
+            "description": "`document`: a tag of documents; `contact`: a contact group; `document_type`: a type group. Fixed once the tag exists.",
+            "default": "document"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "assignment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Assignment",
+                "description": "`auto`: the classification proposes and sets it (document tags only); `manual`: only a person or a rule sets it (a status such as 'to pay'). Groups are always `manual`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shown": {
+            "anyOf": [
+              {
+                "type": "boolean",
+                "description": "Whether documents show it (the chips of lists and the document; filters, search, rules and templates see it either way). Default: on for document tags, off for groups."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shown"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "TagCreate",
+        "description": "Names are unique per scope. `parent_id`: a tag of the same scope; at most five levels.\n`assignment` and `shown` follow the scope unless given.",
+        "examples": [
+          {
+            "name": "Health insurance",
+            "parent_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b"
+          },
+          {
+            "name": "Insurer",
+            "scope": "contact"
+          }
+        ]
+      },
+      "TagOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "examples": [
+              "ACME Energy"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "document_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Count",
+            "description": "With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) it stands for: those with it or a tag below it, each once; for a group, those whose contact (type) is in it or a group below it."
+          },
+          "scope": {
+            "$ref": "#/components/schemas/TagScope"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "path": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Path",
+            "description": "The names from the top-level tag down to its own; documents show the last, its path tells where it stands."
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/Assignment",
+            "description": "`auto`: the classification proposes and sets it (document tags only); `manual`: only a person or a rule sets it (a status such as 'to pay'). Groups are always `manual`."
+          },
+          "shown": {
+            "type": "boolean",
+            "title": "Shown",
+            "description": "Whether documents show it (the chips of lists and the document; filters, search, rules and templates see it either way). Default: on for document tags, off for groups."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "scope",
+          "parent_id",
+          "path",
+          "assignment",
+          "shown"
+        ],
+        "title": "TagOut",
+        "examples": [
+          {
+            "assignment": "auto",
+            "created_at": "2026-01-10T09:00:00Z",
+            "id": "01999d5e-2223-7c1e-b6a3-2f4d5e6f7a8b",
+            "name": "Health insurance",
+            "parent_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
+            "path": [
+              "Insurance",
+              "Health insurance"
+            ],
+            "scope": "document",
+            "shown": true
+          }
+        ]
+      },
+      "TagPatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1,
+                "examples": [
+                  "ACME Energy"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "assignment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Assignment",
+                "description": "`auto`: the classification proposes and sets it (document tags only); `manual`: only a person or a rule sets it (a status such as 'to pay'). Groups are always `manual`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shown": {
+            "anyOf": [
+              {
+                "type": "boolean",
+                "description": "Whether documents show it (the chips of lists and the document; filters, search, rules and templates see it either way). Default: on for document tags, off for groups."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shown"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TagPatch",
+        "description": "Fields left out stay; a `parent_id` of null makes it a top-level tag. The scope stays.",
+        "examples": [
+          {
+            "shown": false
+          }
+        ]
+      },
+      "TagScope": {
+        "type": "string",
+        "enum": [
+          "document",
+          "contact",
+          "document_type"
+        ],
+        "title": "TagScope",
+        "description": "What a tag describes, fixed when it is made: a document (`document`, as tags were\nbefore 0.3), contacts (`contact`: a contact group, \"insurance\") or document types\n(`document_type`: a type group, \"invoice\" over \"medical bill\"). Names are unique per\nscope."
       },
       "TemplatePreviewIn": {
         "properties": {

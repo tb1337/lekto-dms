@@ -615,3 +615,99 @@ async def test_bodies_below_the_limit_pass(api: Api) -> None:
     name = "a" * 200
     response = await api.client.post(f"{PREFIX}/spaces", json={"name": name}, headers=auth(user))
     assert response.status_code == 201
+
+
+async def test_tags_with_scopes_trees_and_groups(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    a, o = auth(admin), auth(owner)
+    insurance = await post(api, "/tags", {"name": "Insurance"}, a)
+    health = await post(api, "/tags", {"name": "Health", "parent_id": insurance["id"]}, a)
+    paid = await post(api, "/tags", {"name": "Paid", "assignment": "manual"}, a)
+    insurer = await post(api, "/tags", {"name": "Insurance", "scope": "contact"}, a)
+    bills = await post(api, "/tags", {"name": "Bills", "scope": "document_type"}, a)
+    assert (health["scope"], health["parent_id"], health["path"]) == (
+        "document",
+        insurance["id"],
+        ["Insurance", "Health"],
+    )
+    assert (health["assignment"], health["shown"]) == ("auto", True)
+    assert (paid["assignment"], insurer["assignment"], insurer["shown"]) == (
+        "manual",
+        "manual",
+        False,
+    )
+    for body, status in (
+        ({"name": "insurance"}, 409),  # names are unique per scope
+        ({"name": "X", "scope": "contact", "assignment": "auto"}, 422),
+        ({"name": "X", "parent_id": insurer["id"]}, 422),  # another scope
+        ({"name": "X", "scope": "topic"}, 422),
+        ({"name": "X", "parent_id": str(UUID(int=7))}, 404),
+    ):
+        response = await api.client.post(f"{PREFIX}/tags", json=body, headers=a)
+        assert response.status_code == status, (body, response.text)
+
+    contact = await post(api, "/contacts", {"name": "Nord", "group_ids": [insurer["id"]]}, a)
+    kind = await post(api, "/document-types", {"name": "Invoice", "group_ids": [bills["id"]]}, a)
+    assert (contact["group_ids"], kind["group_ids"]) == ([insurer["id"]], [bills["id"]])
+    wrong = await api.client.patch(
+        f"{PREFIX}/contacts/{contact['id']}", json={"group_ids": [bills["id"]]}, headers=a
+    )
+    assert wrong.status_code == 422, wrong.text
+
+    document = await green_document(api, o)
+    changed = await api.client.patch(
+        f"{PREFIX}/documents/{document}",
+        json={
+            "tag_ids": [insurance["id"], health["id"]],
+            "contact_id": contact["id"],
+            "document_type_id": kind["id"],
+        },
+        headers=o,
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["tag_ids"] == [health["id"]]  # the parent gives way to the child
+    group_tag = await api.client.patch(
+        f"{PREFIX}/documents/{document}", json={"tag_ids": [insurer["id"]]}, headers=o
+    )
+    assert group_tag.status_code == 422, group_tag.text
+
+    async def listed(**params: Any) -> list[str]:
+        response = await api.client.get(f"{PREFIX}/documents", params=params, headers=o)
+        assert response.status_code == 200, response.text
+        return [item["id"] for item in response.json()["items"]]
+
+    assert await listed(tag_id=insurance["id"]) == [document]
+    assert await listed(contact_group_id=insurer["id"]) == [document]
+    assert await listed(document_type_group_id=bills["id"]) == [document]
+    assert await listed(document_type_group_id=insurer["id"]) == []
+
+    # The tree in order, with counts; one scope.
+    response = await api.client.get(f"{PREFIX}/tags", params={"document_counts": True}, headers=o)
+    assert [(tag["name"], tag["scope"], tag["document_count"]) for tag in response.json()] == [
+        ("Insurance", "document", 1),
+        ("Health", "document", 1),
+        ("Paid", "document", 0),
+        ("Insurance", "contact", 1),
+        ("Bills", "document_type", 1),
+    ]
+    groups = await api.client.get(f"{PREFIX}/tags", params={"scope": "contact"}, headers=o)
+    assert [tag["id"] for tag in groups.json()] == [insurer["id"]]
+
+    # Moved to the top, hidden; then deleted once nothing uses it.
+    moved = await api.client.patch(
+        f"{PREFIX}/tags/{health['id']}", json={"parent_id": None, "shown": False}, headers=a
+    )
+    assert moved.status_code == 200, moved.text
+    assert (moved.json()["parent_id"], moved.json()["path"], moved.json()["shown"]) == (
+        None,
+        ["Health"],
+        False,
+    )
+    below = await api.client.patch(
+        f"{PREFIX}/tags/{insurance['id']}", json={"parent_id": insurance["id"]}, headers=a
+    )
+    assert below.status_code == 422
+    used = await api.client.delete(f"{PREFIX}/tags/{insurer['id']}", headers=a)
+    assert used.status_code == 409 and "contacts are in" in used.text
+    gone = await api.client.delete(f"{PREFIX}/tags/{paid['id']}", headers=a)
+    assert gone.status_code == 204

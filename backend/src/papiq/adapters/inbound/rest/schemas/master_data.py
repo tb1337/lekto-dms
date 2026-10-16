@@ -1,4 +1,4 @@
-"""Contacts, document types and fields."""
+"""Contacts, document types, tags and fields."""
 
 from datetime import datetime
 from typing import Annotated
@@ -12,12 +12,16 @@ from papiq.core.domain.identifiers import MAX_IDENTIFIERS, IdentifierKind, Ident
 from papiq.core.domain.master_data import (
     MAX_ALIASES,
     MAX_DESCRIPTION,
+    MAX_GROUPS,
     MAX_TITLE_PATTERN,
     Assignment,
     Contact,
     DocumentType,
     MasterData,
+    Tag,
+    TagScope,
 )
+from papiq.core.domain.tag_tree import TagTree
 
 
 class MasterDataOut(BaseModel):
@@ -135,6 +139,20 @@ TitlePattern = Annotated[
 ]
 
 
+def _groups(scope: str) -> object:
+    return Field(
+        max_length=MAX_GROUPS,
+        description=(
+            f"The {scope} groups it is in (tags of scope `{scope.replace(' ', '_')}`); its "
+            "documents inherit them. A group set with one below it leaves the one below."
+        ),
+    )
+
+
+ContactGroups = Annotated[list[UUID], _groups("contact")]
+TypeGroups = Annotated[list[UUID], _groups("document type")]
+
+
 class ContactCreate(NameIn):
     model_config = ConfigDict(
         extra="forbid",
@@ -143,6 +161,7 @@ class ContactCreate(NameIn):
 
     aliases: Aliases = Field(default_factory=list)
     identifiers: Identifiers = Field(default_factory=list)
+    group_ids: ContactGroups = Field(default_factory=list)
 
 
 class ContactPatch(BaseModel):
@@ -158,6 +177,7 @@ class ContactPatch(BaseModel):
     aliases: Aliases | None = None
     identifiers: Identifiers | None = None
     rejected_identifiers: Rejected | None = None
+    group_ids: ContactGroups | None = None
 
 
 class ContactOut(MasterDataOut):
@@ -165,6 +185,7 @@ class ContactOut(MasterDataOut):
     identifiers: list[IdentifierOut] = Field(
         description="Entered, learned and rejected identifiers, in this order."
     )
+    group_ids: list[UUID] = Field(description="The contact groups it is in.")
 
     @classmethod
     def of(cls, item: MasterData) -> "ContactOut":
@@ -177,6 +198,7 @@ class ContactOut(MasterDataOut):
                 IdentifierOut(kind=entry.kind, value=entry.value, source=entry.source)
                 for entry in item.identifiers
             ],
+            group_ids=sorted(item.group_ids),
             created_at=item.created_at,
         )
 
@@ -191,6 +213,7 @@ class DocumentTypeCreate(NameIn):
 
     description: Description | None = None
     title_pattern: TitlePattern | None = None
+    group_ids: TypeGroups = Field(default_factory=list)
 
 
 class DocumentTypePatch(BaseModel):
@@ -204,11 +227,13 @@ class DocumentTypePatch(BaseModel):
     name: Name | None = None
     description: Description | None = None
     title_pattern: TitlePattern | None = None
+    group_ids: TypeGroups | None = None
 
 
 class DocumentTypeOut(MasterDataOut):
     description: str | None = Field(examples=["Entgeltbescheinigung"])
     title_pattern: str | None = Field(examples=["Lohn {document_date:YYYY-MM}"])
+    group_ids: list[UUID] = Field(description="The document type groups it is in.")
 
     @classmethod
     def of(cls, item: MasterData) -> "DocumentTypeOut":
@@ -218,6 +243,113 @@ class DocumentTypeOut(MasterDataOut):
             name=item.name,
             description=item.description,
             title_pattern=item.title_pattern,
+            group_ids=sorted(item.group_ids),
+            created_at=item.created_at,
+        )
+
+
+TagAssignment = Annotated[
+    Assignment,
+    Field(
+        description="`auto`: the classification proposes and sets it (document tags only); "
+        "`manual`: only a person or a rule sets it (a status such as 'to pay'). Groups are "
+        "always `manual`."
+    ),
+]
+Shown = Annotated[
+    bool,
+    Field(
+        description="Whether documents show it (the chips of lists and the document; filters, "
+        "search, rules and templates see it either way). Default: on for document tags, off "
+        "for groups."
+    ),
+]
+
+
+class TagCreate(NameIn):
+    """Names are unique per scope. `parent_id`: a tag of the same scope; at most five levels.
+    `assignment` and `shown` follow the scope unless given."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {"name": "Health insurance", "parent_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b"},
+                {"name": "Insurer", "scope": "contact"},
+            ]
+        },
+    )
+
+    scope: TagScope = Field(
+        default=TagScope.DOCUMENT,
+        description="`document`: a tag of documents; `contact`: a contact group; "
+        "`document_type`: a type group. Fixed once the tag exists.",
+    )
+    parent_id: UUID | None = None
+    assignment: TagAssignment | None = None
+    shown: Shown | None = None
+
+
+class TagPatch(BaseModel):
+    """Fields left out stay; a `parent_id` of null makes it a top-level tag. The scope stays."""
+
+    model_config = ConfigDict(
+        extra="forbid", json_schema_extra={"examples": [{"parent_id": None, "shown": False}]}
+    )
+
+    name: Name | None = None
+    parent_id: UUID | None = None
+    assignment: TagAssignment | None = None
+    shown: Shown | None = None
+
+
+class TagOut(MasterDataOut):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "id": "01999d5e-2223-7c1e-b6a3-2f4d5e6f7a8b",
+                    "name": "Health insurance",
+                    "scope": "document",
+                    "parent_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
+                    "path": ["Insurance", "Health insurance"],
+                    "assignment": "auto",
+                    "shown": True,
+                    "created_at": "2026-01-10T09:00:00Z",
+                }
+            ]
+        }
+    )
+
+    scope: TagScope
+    parent_id: UUID | None
+    path: list[str] = Field(
+        description="The names from the top-level tag down to its own; documents show the "
+        "last, its path tells where it stands."
+    )
+    assignment: TagAssignment
+    shown: Shown
+    document_count: int | None = Field(
+        default=None,
+        description=(
+            "With `document_counts`: how many documents within the caller's reach (with "
+            "`all_users`, every document) it stands for: those with it or a tag below it, each "
+            "once; for a group, those whose contact (type) is in it or a group below it."
+        ),
+    )
+
+    @classmethod
+    def of(cls, item: MasterData, tree: TagTree | None = None) -> "TagOut":
+        assert isinstance(item, Tag)
+        path = [item.name] if tree is None or item.id not in tree else tree.path(item.id)
+        return cls(
+            id=item.id,
+            name=item.name,
+            scope=item.scope,
+            parent_id=item.parent_id,
+            path=path,
+            assignment=item.assignment,
+            shown=item.shown,
             created_at=item.created_at,
         )
 

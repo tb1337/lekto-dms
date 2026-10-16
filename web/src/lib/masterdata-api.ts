@@ -106,7 +106,7 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		filter: 'tag',
 		list: (options) => unwrap(api.GET('/api/v1/tags', listQuery(options))),
 		get: (id) => unwrap(api.GET('/api/v1/tags/{id}', path(id))),
-		create: ({ name }) => unwrap(api.POST('/api/v1/tags', { body: { name } })),
+		create: ({ name }) => unwrap(api.POST('/api/v1/tags', { body: { name, scope: 'document' } })),
 		change: (id, { name }) =>
 			unwrap(api.PATCH('/api/v1/tags/{id}', { ...path(id), body: { name } })),
 		remove: (id) => unwrap(api.DELETE('/api/v1/tags/{id}', path(id)))

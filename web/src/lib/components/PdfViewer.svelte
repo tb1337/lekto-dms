@@ -160,10 +160,14 @@
 		await layout();
 	}
 
-	/** The page shown in the upper third of the view (the pages are drawn ahead of it). */
+	/** The page shown in the upper third of the view (the pages are drawn ahead of it): the
+	 * viewer's, or the window's where the viewer is as tall as its pages. */
 	function follow() {
 		if (!container) return;
-		const line = container.scrollTop + container.clientHeight / 3;
+		const line =
+			container.scrollHeight > container.clientHeight
+				? container.scrollTop + container.clientHeight / 3
+				: window.innerHeight / 3 - container.getBoundingClientRect().top;
 		let found = 1;
 		for (const node of container.querySelectorAll<HTMLElement>('[data-page]')) {
 			if (node.offsetTop > line) break;
@@ -172,12 +176,19 @@
 		current = found;
 	}
 
-	/** Scroll so that the place stands in the upper third of the view. */
+	/** Scroll so that the place stands in the upper third of the view: the viewer's, or the
+	 * window's where the viewer is as tall as its pages (narrow screens). */
 	export function reveal(place: Place) {
 		const node = container?.querySelector<HTMLElement>(`[data-page="${place.page}"]`);
 		if (!container || !node) return;
-		const y = node.offsetTop + (place.boxes[0]?.y ?? 0) * node.offsetHeight;
-		container.scrollTo({ top: Math.max(0, y - container.clientHeight / 3), behavior: 'smooth' });
+		const offset = (place.boxes[0]?.y ?? 0) * node.offsetHeight;
+		if (container.scrollHeight > container.clientHeight) {
+			const y = node.offsetTop + offset;
+			container.scrollTo({ top: Math.max(0, y - container.clientHeight / 3), behavior: 'smooth' });
+		} else {
+			const y = node.getBoundingClientRect().top + window.scrollY + offset;
+			window.scrollTo({ top: Math.max(0, y - window.innerHeight / 3), behavior: 'smooth' });
+		}
 	}
 
 	function keydown(event: KeyboardEvent) {
@@ -221,6 +232,8 @@
 		void loadingTask?.destroy();
 	});
 </script>
+
+<svelte:window onscroll={follow} />
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-surface">
 	<div class="flex items-center gap-1 border-b bg-card px-3 py-2">

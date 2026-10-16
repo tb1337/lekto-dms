@@ -132,7 +132,7 @@ export function neighbours(ids: readonly string[], id: string): Neighbours {
 	};
 }
 
-/** A document opened from the inbox (of every user, for an admin who chose that). */
-export function inboxDocument(id: string, allUsers = false): string {
-	return `${BASE}/documents/${id}?from=inbox${allUsers ? '&all=1' : ''}`;
+/** A document opened from the inbox: its neighbours are the inbox's. */
+export function inboxDocument(id: string): string {
+	return `${BASE}/documents/${id}?from=inbox`;
 }

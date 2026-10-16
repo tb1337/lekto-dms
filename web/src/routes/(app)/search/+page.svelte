@@ -15,13 +15,10 @@
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { PagedList } from '#lib/paging.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { canListAllUsers } from '#lib/permissions.ts';
-	import { session } from '#lib/session.svelte.ts';
+	import { scope } from '#lib/scope.svelte.ts';
 
 	const query = $derived(page.url.searchParams.get('q')?.trim() ?? '');
-	const filters = $derived(
-		parseFilters(new URLSearchParams(page.url.search), canListAllUsers(session.user))
-	);
+	const filters = $derived(parseFilters(new URLSearchParams(page.url.search)));
 	// The search box follows the URL (back button, links) until the user types.
 	let text = $derived(query);
 	let lookup = $state<Lookup | null>(null);
@@ -30,7 +27,11 @@
 		const data = await unwrap(
 			api.GET('/api/v1/documents/search', {
 				params: {
-					query: { ...apiQuery(filters), q: query, offset: (offset as number | null) ?? 0 }
+					query: {
+						...apiQuery(filters, scope.allUsers),
+						q: query,
+						offset: (offset as number | null) ?? 0
+					}
 				}
 			})
 		);
@@ -41,6 +42,7 @@
 
 	$effect(() => {
 		void page.url.search;
+		void scope.allUsers;
 		if (query === '') {
 			list.items = [];
 			list.loaded = false;

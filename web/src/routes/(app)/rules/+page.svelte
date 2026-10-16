@@ -7,7 +7,6 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
-	import AllUsersToggle from '#lib/components/AllUsersToggle.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import TitlePatternBadge from '#lib/components/rules/TitlePatternBadge.svelte';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
@@ -17,6 +16,7 @@
 	import { describeError, reportError } from '#lib/errors.ts';
 	import type { UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { scope } from '#lib/scope.svelte.ts';
 	import { canChangeRule } from '#lib/permissions.ts';
 	import { TRIGGER_LABELS } from '#lib/rules/describe.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -27,7 +27,6 @@
 	let rules = $state<Rule[] | null>(null);
 	let users = $state<UserName[]>([]);
 	let problem = $state<string | null>(null);
-	let allUsers = $state(false);
 	let removing = $state<Rule | null>(null);
 	let busy = $state<string | null>(null);
 
@@ -41,7 +40,7 @@
 			const [found, names] = await Promise.all([
 				unwrap(
 					api.GET('/api/v1/rules', {
-						params: { query: { include_disabled: true, all_users: allUsers || undefined } }
+						params: { query: { include_disabled: true, all_users: scope.query } }
 					})
 				),
 				users.length > 0 ? users : unwrap(api.GET('/api/v1/users'))
@@ -54,9 +53,11 @@
 		}
 	}
 
-	// Again after a master data dialog saved: a title pattern's rule follows its type.
+	// Again after a master data dialog saved (a title pattern's rule follows its type), and
+	// when the scope setting changes.
 	$effect(() => {
 		void masterDataDialogs.changed;
+		void scope.allUsers;
 		untrack(() => void load());
 	});
 
@@ -92,16 +93,6 @@
 			<Plus aria-hidden="true" />
 			{m.rules_new()}
 		</a>
-	</div>
-
-	<div class="flex flex-wrap gap-2">
-		<AllUsersToggle
-			pressed={allUsers}
-			onchange={(pressed) => {
-				allUsers = pressed;
-				void load();
-			}}
-		/>
 	</div>
 
 	{#if problem}

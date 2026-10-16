@@ -147,6 +147,5 @@ describe('neighbours', () => {
 			next: null
 		});
 		expect(inboxDocument('a')).toBe('/ui/documents/a?from=inbox');
-		expect(inboxDocument('a', true)).toBe('/ui/documents/a?from=inbox&all=1');
 	});
 });

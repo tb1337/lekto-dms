@@ -32,6 +32,7 @@
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { canEdit, canManage } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { scope } from '#lib/scope.svelte.ts';
 	import type { GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
@@ -45,8 +46,6 @@
 	const id = $derived(page.params.id ?? '');
 	const tab = $derived(tabOf(page.url));
 	const fromInbox = $derived(page.url.searchParams.get('from') === 'inbox');
-	// An admin's inbox of every user.
-	const allUsers = $derived(page.url.searchParams.get('all') === '1');
 	let document = $state<Document | null>(null);
 	let review = $state<Review | null>(null);
 	let lookup = $state<Lookup | null>(null);
@@ -145,7 +144,7 @@
 		try {
 			const listed = await unwrap(
 				api.GET('/api/v1/inbox', {
-					params: { query: { limit: 100, all_users: allUsers || undefined } }
+					params: { query: { limit: 100, all_users: scope.query } }
 				})
 			);
 			inboxIds = listed.items.map((item) => item.document.id);
@@ -176,6 +175,7 @@
 
 	$effect(() => {
 		void events.generation;
+		void scope.allUsers;
 		if (fromInbox) untrack(() => void loadInbox());
 	});
 
@@ -212,7 +212,7 @@
 	}
 
 	async function confirmed(next: string | null) {
-		await goto(next ? inboxDocument(next, allUsers) : `${BASE}/inbox`);
+		await goto(next ? inboxDocument(next) : `${BASE}/inbox`);
 	}
 
 	const tabs: { tab: Tab; label: () => string }[] = [
@@ -255,7 +255,6 @@
 			{graph}
 			{archive}
 			{inbox}
-			{allUsers}
 			{vision}
 			{reading}
 			onchanged={load}

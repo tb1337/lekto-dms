@@ -1,6 +1,5 @@
 <script lang="ts">
 	import X from '@lucide/svelte/icons/x';
-	import AllUsersToggle from '#lib/components/AllUsersToggle.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import {
@@ -88,7 +87,6 @@
 		{/key}
 	</div>
 	<div class="flex flex-wrap items-center gap-2">
-		<AllUsersToggle pressed={filters.allUsers} onchange={(allUsers) => set({ allUsers })} />
 		{#each LANE_FILTERS as lane (lane)}
 			<button
 				type="button"
@@ -118,11 +116,7 @@
 			</span>
 		{/each}
 		{#if isFiltered(filters)}
-			<Button
-				variant="ghost"
-				size="sm"
-				onclick={() => onchange({ ...NO_FILTERS, allUsers: filters.allUsers })}
-			>
+			<Button variant="ghost" size="sm" onclick={() => onchange(NO_FILTERS)}>
 				{m.filter_reset()}
 			</Button>
 		{/if}

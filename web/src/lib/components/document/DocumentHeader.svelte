@@ -48,7 +48,6 @@
 		graph,
 		archive,
 		inbox,
-		allUsers = false,
 		vision = null,
 		reading = null,
 		onchanged
@@ -60,8 +59,6 @@
 		archive: boolean;
 		/** Opened from the inbox: the documents before and after this one. */
 		inbox: Neighbours | null;
-		/** The inbox of every user (admins). */
-		allUsers?: boolean;
 		/** The vision language model documents can be read with, if one is configured. */
 		vision?: Vision | null;
 		/** How the document's text was read, and whether the model is advised. */
@@ -100,7 +97,7 @@
 			.filter((node): node is ReprocessNode => node !== 'receive')
 			.map((node) => ({ value: node, label: NODE_LABELS[node]() }))
 	);
-	const inboxHref = (id: string) => inboxDocument(id, allUsers);
+	const inboxHref = (id: string) => inboxDocument(id);
 	// Sending the pages to the vision model is the person's decision, here or from the advice.
 	const readable = $derived(manageable && visionAvailable(vision, graph, document.processing));
 	const advice = $derived(adviceText(reading));

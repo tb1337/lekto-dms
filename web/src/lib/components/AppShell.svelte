@@ -3,6 +3,7 @@
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Menu from '@lucide/svelte/icons/menu';
 	import SearchIcon from '@lucide/svelte/icons/search';
+	import Users from '@lucide/svelte/icons/users';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import HeaderSearch from '#lib/components/HeaderSearch.svelte';
@@ -16,6 +17,8 @@
 	import { home, loginHref } from '#lib/navigation.ts';
 	import { inbox } from '#lib/inbox.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { canListAllUsers } from '#lib/permissions.ts';
+	import { scope } from '#lib/scope.svelte.ts';
 	import {
 		href,
 		isCurrent,
@@ -48,6 +51,15 @@
 		}
 		await goto(loginHref(home()), { replaceState: true });
 	}
+
+	// The inbox counter covers what the scope setting covers.
+	let allBefore = scope.allUsers;
+	$effect(() => {
+		const all = scope.allUsers;
+		if (all === allBefore) return;
+		allBefore = all;
+		void inbox.refresh();
+	});
 </script>
 
 {#snippet pill(section: Section, vertical: boolean)}
@@ -161,13 +173,24 @@
 					<DropdownMenu.Trigger
 						class={cn(
 							buttonVariants({ size: 'icon' }),
-							'font-semibold uppercase [&]:text-[0.95rem]'
+							'relative font-semibold uppercase [&]:text-[0.95rem]'
 						)}
-						aria-label={m.account_menu({ username })}
+						aria-label={scope.allUsers
+							? m.account_menu_all_users({ username })
+							: m.account_menu({ username })}
 					>
 						{username.slice(0, 1)}
+						<!-- An admin who sees all users is told so at a glance. -->
+						{#if scope.allUsers}
+							<span
+								class="absolute -top-0.5 -right-0.5 grid size-4 place-items-center rounded-full border-2 border-card bg-lane-yellow text-lane-yellow-foreground"
+								aria-hidden="true"
+							>
+								<Users class="size-2.5" />
+							</span>
+						{/if}
 					</DropdownMenu.Trigger>
-					<DropdownMenu.Content align="end" class="w-56">
+					<DropdownMenu.Content align="end" class="w-64">
 						<DropdownMenu.Label class="flex flex-col gap-0.5">
 							<span class="font-semibold">{username}</span>
 							<span class="text-xs font-normal text-muted-foreground">
@@ -175,6 +198,20 @@
 							</span>
 						</DropdownMenu.Label>
 						<DropdownMenu.Separator />
+						{#if canListAllUsers(session.user)}
+							<DropdownMenu.CheckboxItem
+								checked={scope.allUsers}
+								onCheckedChange={(checked) => scope.set(checked)}
+								class="items-start"
+							>
+								<Users aria-hidden="true" class="mt-0.5" />
+								<span class="flex flex-col gap-0.5">
+									{m.all_users()}
+									<span class="text-xs text-muted-foreground">{m.all_users_hint()}</span>
+								</span>
+							</DropdownMenu.CheckboxItem>
+							<DropdownMenu.Separator />
+						{/if}
 						<DropdownMenu.Item onSelect={() => goto(href(SETTINGS))}>
 							<SETTINGS.icon aria-hidden="true" />
 							{SETTINGS.label()}

@@ -1,6 +1,7 @@
 /** How many documents wait in the inbox (the counter in the navigation). */
 import { api } from '#lib/api/client.ts';
 import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
+import { scope } from '#lib/scope.svelte.ts';
 
 const LIMIT = 100;
 
@@ -12,7 +13,9 @@ class InboxCount {
 	#stop: (() => void) | null = null;
 
 	async refresh(): Promise<void> {
-		const { data } = await api.GET('/api/v1/inbox', { params: { query: { limit: LIMIT } } });
+		const { data } = await api.GET('/api/v1/inbox', {
+			params: { query: { limit: LIMIT, all_users: scope.query } }
+		});
 		if (!data) return;
 		this.count = data.items.length;
 		this.more = data.next_cursor !== null;

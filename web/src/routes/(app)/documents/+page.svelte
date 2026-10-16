@@ -15,13 +15,10 @@
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { PagedList } from '#lib/paging.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { canListAllUsers } from '#lib/permissions.ts';
-	import { session } from '#lib/session.svelte.ts';
+	import { scope } from '#lib/scope.svelte.ts';
 	import { uploads } from '#lib/upload.svelte.ts';
 
-	const filters = $derived(
-		parseFilters(new URLSearchParams(page.url.search), canListAllUsers(session.user))
-	);
+	const filters = $derived(parseFilters(new URLSearchParams(page.url.search)));
 	let lookup = $state<Lookup | null>(null);
 	let lookupError = $state<string | null>(null);
 	let uploadOpen = $state(false);
@@ -29,7 +26,12 @@
 	const list = new PagedList(async (cursor) => {
 		const data = await unwrap(
 			api.GET('/api/v1/documents', {
-				params: { query: { ...apiQuery(filters), cursor: (cursor as string | null) ?? undefined } }
+				params: {
+					query: {
+						...apiQuery(filters, scope.allUsers),
+						cursor: (cursor as string | null) ?? undefined
+					}
+				}
 			})
 		);
 		return { items: data.items, next: data.next_cursor };
@@ -38,6 +40,7 @@
 	// Reload when the filters change, and after a reconnect of the event stream.
 	$effect(() => {
 		void page.url.search;
+		void scope.allUsers;
 		void events.generation;
 		void list.reload();
 	});

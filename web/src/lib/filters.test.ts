@@ -4,25 +4,24 @@ import { apiQuery, isFiltered, NO_FILTERS, parseFilters, writeFilters } from './
 describe('filters in the URL', () => {
 	it('reads and writes all of them', () => {
 		const params = new URLSearchParams(
-			'contact=c1&type=t1&tag=a&tag=b&drawer=d1&lane=red&lane=bogus&all=1&q=x'
+			'contact=c1&type=t1&tag=a&tag=b&drawer=d1&lane=red&lane=bogus&q=x'
 		);
-		const filters = parseFilters(params, true);
+		const filters = parseFilters(params);
 		expect(filters).toEqual({
 			contact: 'c1',
 			type: 't1',
 			tags: ['a', 'b'],
 			drawer: 'd1',
-			lanes: ['red'],
-			allUsers: true
+			lanes: ['red']
 		});
 		const out = writeFilters(new URLSearchParams('q=x&tag=old'), filters);
 		expect(out.getAll('tag')).toEqual(['a', 'b']);
 		expect(out.get('q')).toBe('x');
 		expect(out.getAll('lane')).toEqual(['red']);
-		expect(out.get('all')).toBe('1');
-		expect(apiQuery(filters).all_users).toBe(true);
-		// Only admins may ask for all users; for others the link shows their own.
-		expect(parseFilters(params).allUsers).toBe(false);
+		// Whom the list covers is a setting, not part of the link.
+		expect(out.has('all')).toBe(false);
+		expect(apiQuery(filters, true).all_users).toBe(true);
+		expect(apiQuery(filters).all_users).toBeUndefined();
 	});
 
 	it('leaves out what is not set', () => {
@@ -37,6 +36,5 @@ describe('filters in the URL', () => {
 		});
 		expect(isFiltered(NO_FILTERS)).toBe(false);
 		expect(isFiltered({ ...NO_FILTERS, tags: ['a'] })).toBe(true);
-		expect(isFiltered({ ...NO_FILTERS, allUsers: true })).toBe(false);
 	});
 });

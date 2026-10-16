@@ -614,6 +614,7 @@
 	"source_none": "Keine Fundstelle im Text",
 	"source_page": "S. {page}",
 	"source_jump": "Zur Fundstelle auf Seite {page}",
+	"source_more": "Weitere {count} Seiten zeigen",
 	"source_without": "ohne Fundstelle",
 	"review_banner_title": "Einige Angaben brauchen Deine Prüfung",
 	"review_banner_hint": "Fahre über ein Feld, um die Fundstelle im Dokument zu sehen.",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	fieldEvidence,
+	byPage,
 	inboxDocument,
 	marksOf,
 	neighbours,
@@ -147,5 +148,21 @@ describe('neighbours', () => {
 			next: null
 		});
 		expect(inboxDocument('a')).toBe('/ui/documents/a?from=inbox');
+	});
+});
+
+describe('places by page', () => {
+	it('makes one place per page with every box on it, in page order', () => {
+		const box = (y: number) => ({ x: 0.1, y, width: 0.2, height: 0.02 });
+		expect(
+			byPage([
+				{ page: 9, boxes: [box(0.1)] },
+				{ page: 1, boxes: [box(0.2)] },
+				{ page: 9, boxes: [box(0.5), box(0.52)] }
+			])
+		).toEqual([
+			{ page: 1, boxes: [box(0.2)] },
+			{ page: 9, boxes: [box(0.1), box(0.5), box(0.52)] }
+		]);
 	});
 });

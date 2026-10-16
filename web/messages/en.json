@@ -614,6 +614,7 @@
 	"source_none": "No source in the text",
 	"source_page": "p. {page}",
 	"source_jump": "Go to the source on page {page}",
+	"source_more": "Show {count} more pages",
 	"source_without": "no source",
 	"review_banner_title": "Some entries need your review",
 	"review_banner_hint": "Hover a field to see its source in the document.",

@@ -136,3 +136,15 @@ export function neighbours(ids: readonly string[], id: string): Neighbours {
 export function inboxDocument(id: string): string {
 	return `${BASE}/documents/${id}?from=inbox`;
 }
+
+/** The places of a quote by page: one per page, with the boxes of every place on it, in
+ * page order (a name printed three times on page 9 is one chip). */
+export function byPage(places: readonly Place[]): Place[] {
+	const pages = new Map<number, Place>();
+	for (const place of places) {
+		const found = pages.get(place.page);
+		if (found) found.boxes = [...found.boxes, ...place.boxes];
+		else pages.set(place.page, { page: place.page, boxes: [...place.boxes] });
+	}
+	return [...pages.values()].sort((a, b) => a.page - b.page);
+}

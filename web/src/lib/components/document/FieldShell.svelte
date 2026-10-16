@@ -7,7 +7,7 @@
 	import SourceChip from '#lib/components/document/SourceChip.svelte';
 	import SourcesInfo from '#lib/components/document/SourcesInfo.svelte';
 	import { describeValue } from '#lib/describe.ts';
-	import { provenance, type FieldEvidence, type Place } from '#lib/document-view.ts';
+	import { byPage, provenance, type FieldEvidence, type Place } from '#lib/document-view.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
@@ -56,7 +56,12 @@
 	const check = $derived(evidence?.check);
 	const card = $derived(review && evidence?.open === true);
 	const kind = $derived(check ? provenance(check) : null);
-	const places = $derived(applies ? (check?.locations ?? []) : []);
+	// One chip per page; beyond `CHIPS` pages the rest behind "+N".
+	const CHIPS = 6;
+	const places = $derived(byPage(applies ? (check?.locations ?? []) : []));
+	let allPages = $state(false);
+	const shownPlaces = $derived(allPages ? places : places.slice(0, CHIPS));
+	const hiddenPlaces = $derived(places.length - shownPlaces.length);
 	const labelId = $derived(`${inputId}-label`);
 	const hintId = $derived(`${inputId}-hint`);
 	const sources = $derived(check && applies ? chosen(check) : []);
@@ -70,9 +75,19 @@
 {/snippet}
 
 {#snippet chips()}
-	{#each places as place, index (index)}
+	{#each shownPlaces as place (place.page)}
 		<SourceChip {place} onjump={(picked) => onjump(key, picked)} />
 	{/each}
+	{#if hiddenPlaces > 0}
+		<button
+			type="button"
+			onclick={() => (allPages = true)}
+			aria-label={m.source_more({ count: hiddenPlaces })}
+			class="shrink-0 rounded-full bg-panel px-2 font-mono text-[11px] leading-5 text-brand hover:underline"
+		>
+			+{hiddenPlaces}
+		</button>
+	{/if}
 {/snippet}
 
 <div
@@ -123,17 +138,22 @@
 				{m.source_none()}
 			</p>
 		{:else}
+			<!-- The quote on its own line, its pages below: many pages never squeeze it. -->
 			<div
 				class={cn(
-					'flex items-baseline gap-2 rounded-lg px-2.5 py-2 text-sm',
+					'flex flex-col gap-1.5 rounded-lg px-2.5 py-2 text-sm',
 					kind === 'derived' ? 'border border-dashed border-input' : 'bg-muted'
 				)}
 			>
-				<span class="shrink-0 text-muted-foreground">
-					{kind === 'derived' ? m.source_derived() : m.review_evidence()}
+				<span class="flex items-baseline gap-2">
+					<span class="shrink-0 text-muted-foreground">
+						{kind === 'derived' ? m.source_derived() : m.review_evidence()}
+					</span>
+					<q class="min-w-0 flex-1 break-words italic">{check.evidence}</q>
 				</span>
-				<q class="min-w-0 flex-1 break-words italic">{check.evidence}</q>
-				{@render chips()}
+				{#if places.length > 0}
+					<span class="flex flex-wrap gap-1">{@render chips()}</span>
+				{/if}
 			</div>
 		{/if}
 	{:else}
@@ -141,7 +161,7 @@
 			<label id={labelId} for={inputId} class="text-sm font-medium text-muted-foreground">
 				{@render labelText()}
 			</label>
-			<span class="ml-auto flex items-center gap-1">
+			<span class="ml-auto flex flex-wrap items-center justify-end gap-1">
 				{#if sources.length > 0}
 					<SourcesInfo candidates={sources} id="{inputId}-sources" />
 				{/if}

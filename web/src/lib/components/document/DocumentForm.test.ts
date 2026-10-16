@@ -190,6 +190,22 @@ describe('DocumentForm', () => {
 		expect(screen.queryByRole('link', { name: /Belege|evidence/ })).toBeNull();
 	});
 
+	it('shows each page of a quote once, and many behind +N', async () => {
+		const pages = [1, 5, 7, 9, 9, 13, 14, 17, 18].map((page) => ({ ...place, page }));
+		const many = structuredClone(review) as unknown as {
+			open: { fields: { locations: unknown }[] }[];
+		};
+		many.open[0].fields[0].locations = pages;
+		render(DocumentForm, props({ review: many as unknown as Review }));
+		const card = screen.getByRole('group', { name: m.field_contact() });
+		const chips = () => within(card).getAllByRole('button', { name: /Seite \d+$|page \d+$/ });
+		// Eight pages (9 twice): six chips, two behind +2.
+		expect(chips()).toHaveLength(6);
+		await userEvent.click(within(card).getByRole('button', { name: m.source_more({ count: 2 }) }));
+		expect(chips()).toHaveLength(8);
+		expect(within(card).getByText('Stadtwerke Musterstadt GmbH', { selector: 'q' })).toBeTruthy();
+	});
+
 	it('tells under a field what belongs in it', () => {
 		render(DocumentForm, props());
 		const number = screen.getByRole('group', { name: /Rechnungsnummer/ });

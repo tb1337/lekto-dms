@@ -10907,6 +10907,112 @@
         ]
       }
     },
+    "/api/v1/documents/{id}/files": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "A document's files and their metadata",
+        "description": "Needs read access. When the document was added and last changed, its original's name and media type, and for the original and the archive (null while there is none) their size, SHA-256 and what they say about themselves: a PDF's version, PDF/A level, pages, document information and XMP; an image's format, size, resolution and EXIF. The files are read for it, so it takes a moment for large ones.",
+        "operationId": "document_files_api_v1_documents__id__files_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentFilesOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents/{id}/reading": {
       "get": {
         "tags": [
@@ -14827,6 +14933,89 @@
           }
         ]
       },
+      "DocumentFilesOut": {
+        "properties": {
+          "added": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Added"
+          },
+          "modified": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Modified"
+          },
+          "original_filename": {
+            "type": "string",
+            "title": "Original Filename"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count"
+          },
+          "original": {
+            "$ref": "#/components/schemas/StoredFileOut"
+          },
+          "archive": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoredFileOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null while there is none."
+          }
+        },
+        "type": "object",
+        "required": [
+          "added",
+          "modified",
+          "original_filename",
+          "media_type",
+          "page_count",
+          "original",
+          "archive"
+        ],
+        "title": "DocumentFilesOut",
+        "examples": [
+          {
+            "added": "2026-07-03T08:40:36Z",
+            "media_type": "application/pdf",
+            "modified": "2026-07-07T10:12:00Z",
+            "original": {
+              "metadata": {
+                "entries": [
+                  {
+                    "key": "Producer",
+                    "source": "info",
+                    "value": "Scanner 2.1"
+                  }
+                ],
+                "format": "PDF",
+                "pages": 2,
+                "pdf_version": "1.4"
+              },
+              "sha256": "60da47f43707a540e24deda1ab809e1e395af4a86351d5784b9158acaafffddc",
+              "size": 10812334
+            },
+            "original_filename": "scan-2026-07-03.pdf",
+            "page_count": 2
+          }
+        ]
+      },
       "DocumentOutOfReach": {
         "properties": {
           "id": {
@@ -15870,6 +16059,114 @@
         ],
         "title": "FieldType"
       },
+      "FileMetadataOut": {
+        "properties": {
+          "format": {
+            "type": "string",
+            "title": "Format",
+            "examples": [
+              "PDF",
+              "JPEG"
+            ]
+          },
+          "pdf_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pdf Version",
+            "examples": [
+              "1.7"
+            ]
+          },
+          "pdfa": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pdfa",
+            "description": "PDF/A part and conformance.",
+            "examples": [
+              "2B"
+            ]
+          },
+          "pages": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pages"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width",
+            "description": "An image's width in pixels."
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height",
+            "description": "An image's height in pixels."
+          },
+          "dpi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dpi",
+            "description": "An image's resolution."
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/MetadataEntryOut"
+            },
+            "type": "array",
+            "title": "Entries",
+            "description": "In the file's order."
+          }
+        },
+        "type": "object",
+        "required": [
+          "format",
+          "pdf_version",
+          "pdfa",
+          "pages",
+          "width",
+          "height",
+          "dpi",
+          "entries"
+        ],
+        "title": "FileMetadataOut"
+      },
       "ForceReviewAction": {
         "properties": {
           "type": {
@@ -16567,6 +16864,42 @@
             }
           }
         ]
+      },
+      "MetadataEntryOut": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/MetadataSource",
+            "description": "`info`: a PDF's document information; `xmp`: its XMP packet (`prefix:name`); `exif`: an image's EXIF tags."
+          },
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "examples": [
+              "xmp:CreatorTool"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "As the file holds it; someone else's text."
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "key",
+          "value"
+        ],
+        "title": "MetadataEntryOut"
+      },
+      "MetadataSource": {
+        "type": "string",
+        "enum": [
+          "info",
+          "xmp",
+          "exif"
+        ],
+        "title": "MetadataSource"
       },
       "ModelCallOut": {
         "properties": {
@@ -18557,6 +18890,37 @@
           "end"
         ],
         "title": "SpanOut"
+      },
+      "StoredFileOut": {
+        "properties": {
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "In bytes."
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileMetadataOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null if the file cannot be read for it (damaged, encrypted)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "size",
+          "sha256",
+          "metadata"
+        ],
+        "title": "StoredFileOut"
       },
       "TemplatePreviewIn": {
         "properties": {

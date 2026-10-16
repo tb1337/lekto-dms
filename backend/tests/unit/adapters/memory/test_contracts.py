@@ -14,6 +14,7 @@ from papiq.adapters.outbound.memory import (
     FakeCodeReader,
     FakeEmbeddings,
     FakeLanguageModel,
+    FakeMetadataReader,
     FakeOcr,
     FakeOidcProvider,
     FakePageRenderer,
@@ -55,6 +56,7 @@ from tests.contracts.language_model import EmbeddingsContract, LanguageModelCont
 from tests.contracts.object_store import ObjectStoreContract
 from tests.contracts.processing import (
     CodeReaderContract,
+    MetadataReaderContract,
     OcrContract,
     PageRendererContract,
     ParserContract,
@@ -140,6 +142,15 @@ def code_reader() -> FakeCodeReader:
 
 
 class TestFakeCodeReader(CodeReaderContract):
+    pass
+
+
+@pytest.fixture
+def metadata_reader() -> FakeMetadataReader:
+    return FakeMetadataReader()
+
+
+class TestFakeMetadataReader(MetadataReaderContract):
     pass
 
 

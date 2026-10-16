@@ -26,6 +26,7 @@ from papiq.adapters.outbound.memory import (
     FakeCipher,
     FakeClassifier,
     FakeCodeReader,
+    FakeMetadataReader,
     FakeOcr,
     FakePageRenderer,
     FakeParser,
@@ -44,6 +45,7 @@ from papiq.adapters.outbound.ocrmypdf.vision import VisionSettings
 from papiq.adapters.outbound.oidc import AuthlibOidcProvider
 from papiq.adapters.outbound.openai_compat import OpenAiCompatEmbeddings, OpenAiCompatLanguageModel
 from papiq.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer, PdfiumTextLocator
+from papiq.adapters.outbound.pikepdf import FileMetadataReader
 from papiq.adapters.outbound.regex import RegexPatternMatcher
 from papiq.adapters.outbound.s3 import S3ObjectStore
 from papiq.adapters.outbound.sklearn import SklearnClassifier
@@ -64,6 +66,7 @@ from papiq.core.ports import (
     Embeddings,
     EventBus,
     LanguageModel,
+    MetadataReader,
     ObjectStore,
     Ocr,
     OidcProvider,
@@ -247,6 +250,7 @@ PARSERS: dict[str, Factory[DocumentParser]] = {"layout": layout_parser}
 PAGE_RENDERERS: dict[str, Factory[PageRenderer]] = {"pdfium": lambda _: PdfiumPageRenderer()}
 TEXT_LOCATORS: dict[str, Factory[TextLocator]] = {"pdfium": lambda _: PdfiumTextLocator()}
 CODE_READERS: dict[str, Factory[CodeReader]] = {"zxing": lambda _: ZxingCodeReader()}
+METADATA_READERS: dict[str, Factory[MetadataReader]] = {"pikepdf": lambda _: FileMetadataReader()}
 CLASSIFIERS: dict[str, Factory[Classifier]] = {"scikit-learn": lambda _: SklearnClassifier()}
 
 
@@ -295,6 +299,7 @@ class Container:
     pages: PageRenderer
     locator: TextLocator
     codes: CodeReader
+    metadata: MetadataReader
     password_hasher: PasswordHasher
     cipher: SecretCipher
     webhook_sender: WebhookSender
@@ -344,6 +349,7 @@ def build_container(settings: Settings) -> Container:
         pages=_select("pages", "pdfium", PAGE_RENDERERS, settings),
         locator=_select("locator", "pdfium", TEXT_LOCATORS, settings),
         codes=_select("codes", "zxing", CODE_READERS, settings),
+        metadata=_select("metadata", "pikepdf", METADATA_READERS, settings),
         password_hasher=Argon2PasswordHasher(),
         cipher=secret_cipher(settings),
         webhook_sender=HttpWebhookSender(user_agent=f"Papiq/{__version__}"),
@@ -397,6 +403,7 @@ def build_memory_container(clock: Clock | None = None) -> Container:
         pages=FakePageRenderer(),
         locator=FakeTextLocator(),
         codes=FakeCodeReader(),
+        metadata=FakeMetadataReader(),
         password_hasher=FakePasswordHasher(),
         cipher=FakeCipher(),
         webhook_sender=FakeWebhookSender(),
@@ -618,6 +625,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             uow,
             clock,
             store,
+            metadata=container.metadata,
             rules=ChangeRules(
                 store,
                 container.patterns,

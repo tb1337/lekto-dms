@@ -20,6 +20,7 @@ from papiq.core.ports.identity import (
 from papiq.core.ports.job_queue import JobQueue
 from papiq.core.ports.llm import LanguageModel, StructuredAnswer, StructuredRequest
 from papiq.core.ports.locator import TextLocator
+from papiq.core.ports.metadata import FileMetadata, MetadataEntry, MetadataReader, MetadataSource
 from papiq.core.ports.object_store import ObjectStore
 from papiq.core.ports.ocr import Ocr, OcrResult, VisionModel, VisionReading
 from papiq.core.ports.pages import PageRenderer
@@ -77,10 +78,14 @@ __all__ = [
     "EventHandler",
     "ExternalIdentityRepository",
     "FieldDefinitionRepository",
+    "FileMetadata",
     "IndexBuild",
     "JobQueue",
     "LanguageModel",
     "LoginFailureRepository",
+    "MetadataEntry",
+    "MetadataReader",
+    "MetadataSource",
     "NamedRepository",
     "ObjectStore",
     "Ocr",

@@ -1269,6 +1269,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/{id}/files': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * A document's files and their metadata
+		 * @description Needs read access. When the document was added and last changed, its original's name and media type, and for the original and the archive (null while there is none) their size, SHA-256 and what they say about themselves: a PDF's version, PDF/A level, pages, document information and XMP; an image's format, size, resolution and EXIF. The files are read for it, so it takes a moment for large ones.
+		 */
+		get: operations['document_files_api_v1_documents__id__files_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/{id}/reading': {
 		parameters: {
 			query?: never;
@@ -2522,6 +2542,53 @@ export interface components {
 			updated_at: string;
 		};
 		/**
+		 * DocumentFilesOut
+		 * @example {
+		 *       "added": "2026-07-03T08:40:36Z",
+		 *       "media_type": "application/pdf",
+		 *       "modified": "2026-07-07T10:12:00Z",
+		 *       "original": {
+		 *         "metadata": {
+		 *           "entries": [
+		 *             {
+		 *               "key": "Producer",
+		 *               "source": "info",
+		 *               "value": "Scanner 2.1"
+		 *             }
+		 *           ],
+		 *           "format": "PDF",
+		 *           "pages": 2,
+		 *           "pdf_version": "1.4"
+		 *         },
+		 *         "sha256": "60da47f43707a540e24deda1ab809e1e395af4a86351d5784b9158acaafffddc",
+		 *         "size": 10812334
+		 *       },
+		 *       "original_filename": "scan-2026-07-03.pdf",
+		 *       "page_count": 2
+		 *     }
+		 */
+		DocumentFilesOut: {
+			/**
+			 * Added
+			 * Format: date-time
+			 */
+			added: string;
+			/**
+			 * Modified
+			 * Format: date-time
+			 */
+			modified: string;
+			/** Original Filename */
+			original_filename: string;
+			/** Media Type */
+			media_type: string;
+			/** Page Count */
+			page_count: number | null;
+			original: components['schemas']['StoredFileOut'];
+			/** @description Null while there is none. */
+			archive: components['schemas']['StoredFileOut'] | null;
+		};
+		/**
 		 * DocumentOutOfReach
 		 * @description After a change by an editor: the owner's rules filed the document where the editor can
 		 *     no longer read it. The change is stored; nothing else about the document is shown.
@@ -2982,6 +3049,48 @@ export interface components {
 		 * @enum {string}
 		 */
 		FieldType: 'text' | 'number' | 'amount' | 'date' | 'boolean' | 'choice' | 'link' | 'period';
+		/** FileMetadataOut */
+		FileMetadataOut: {
+			/**
+			 * Format
+			 * @example PDF
+			 * @example JPEG
+			 */
+			format: string;
+			/**
+			 * Pdf Version
+			 * @example 1.7
+			 */
+			pdf_version: string | null;
+			/**
+			 * Pdfa
+			 * @description PDF/A part and conformance.
+			 * @example 2B
+			 */
+			pdfa: string | null;
+			/** Pages */
+			pages: number | null;
+			/**
+			 * Width
+			 * @description An image's width in pixels.
+			 */
+			width: number | null;
+			/**
+			 * Height
+			 * @description An image's height in pixels.
+			 */
+			height: number | null;
+			/**
+			 * Dpi
+			 * @description An image's resolution.
+			 */
+			dpi: number | null;
+			/**
+			 * Entries
+			 * @description In the file's order.
+			 */
+			entries: components['schemas']['MetadataEntryOut'][];
+		};
 		/** ForceReviewAction */
 		ForceReviewAction: {
 			/**
@@ -3310,6 +3419,26 @@ export interface components {
 			/** Linked Accounts */
 			linked_accounts: components['schemas']['LinkOut'][];
 		};
+		/** MetadataEntryOut */
+		MetadataEntryOut: {
+			/** @description `info`: a PDF's document information; `xmp`: its XMP packet (`prefix:name`); `exif`: an image's EXIF tags. */
+			source: components['schemas']['MetadataSource'];
+			/**
+			 * Key
+			 * @example xmp:CreatorTool
+			 */
+			key: string;
+			/**
+			 * Value
+			 * @description As the file holds it; someone else's text.
+			 */
+			value: string;
+		};
+		/**
+		 * MetadataSource
+		 * @enum {string}
+		 */
+		MetadataSource: 'info' | 'xmp' | 'exif';
 		/**
 		 * ModelCallOut
 		 * @description One request to the language model and its answer.
@@ -4344,6 +4473,18 @@ export interface components {
 			 * @description After the last character.
 			 */
 			end: number;
+		};
+		/** StoredFileOut */
+		StoredFileOut: {
+			/**
+			 * Size
+			 * @description In bytes.
+			 */
+			size: number;
+			/** Sha256 */
+			sha256: string;
+			/** @description Null if the file cannot be read for it (damaged, encrypted). */
+			metadata: components['schemas']['FileMetadataOut'] | null;
 		};
 		/**
 		 * TemplatePreviewIn
@@ -14287,6 +14428,96 @@ export interface operations {
 					 *       "title": "Conflict",
 					 *       "status": 409,
 					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	document_files_api_v1_documents__id__files_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DocumentFilesOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

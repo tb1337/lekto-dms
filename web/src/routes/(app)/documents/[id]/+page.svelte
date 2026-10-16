@@ -8,6 +8,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
 	import DocumentContent from '#lib/components/document/DocumentContent.svelte';
+	import DocumentFiles from '#lib/components/document/DocumentFiles.svelte';
 	import DocumentForm from '#lib/components/document/DocumentForm.svelte';
 	import DocumentLog from '#lib/components/document/DocumentLog.svelte';
 	import DocumentHeader from '#lib/components/document/DocumentHeader.svelte';
@@ -217,6 +218,7 @@
 	const tabs: { tab: Tab; label: () => string }[] = [
 		{ tab: 'details', label: m.tab_details },
 		{ tab: 'content', label: m.tab_content },
+		{ tab: 'metadata', label: m.tab_metadata },
 		{ tab: 'log', label: m.tab_log }
 	];
 	const attention = $derived(
@@ -266,13 +268,16 @@
 			</Alert.Root>
 		{/if}
 
-		<nav aria-label={m.tabs_label()} class="flex w-fit gap-1 rounded-full bg-secondary p-1">
+		<nav
+			aria-label={m.tabs_label()}
+			class="flex w-fit max-w-full gap-1 overflow-x-auto rounded-full bg-secondary p-1"
+		>
 			{#each tabs as entry (entry.tab)}
 				<a
 					href={tabHref(page.url, entry.tab)}
 					aria-current={tab === entry.tab ? 'page' : undefined}
 					class={cn(
-						'inline-flex h-[34px] items-center gap-1.5 rounded-full px-4 text-sm whitespace-nowrap transition-colors',
+						'inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-full px-3 text-sm whitespace-nowrap transition-colors sm:px-4',
 						tab === entry.tab
 							? 'bg-card font-medium text-foreground shadow-sm'
 							: 'text-muted-foreground hover:text-foreground'
@@ -342,6 +347,8 @@
 				onshowcode={showCode}
 				onfactschanged={reloadFacts}
 			/>
+		{:else if tab === 'metadata'}
+			<DocumentFiles documentId={id} />
 		{:else if tab === 'log'}
 			<div class="lg:min-h-0 lg:flex-1">
 				<DocumentLog

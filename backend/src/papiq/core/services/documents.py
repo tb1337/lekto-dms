@@ -1,4 +1,6 @@
+import asyncio
 import copy
+import hashlib
 import json
 import logging
 from collections.abc import Collection, Sequence
@@ -14,6 +16,7 @@ from papiq.core.domain.errors import (
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
+    UnprocessableDocumentError,
     ValidationError,
 )
 from papiq.core.domain.exchanges import RunExchange, exchanges_from_json
@@ -32,7 +35,15 @@ from papiq.core.domain.permissions import (
 )
 from papiq.core.domain.pipeline import Lane, Node, NodeRun
 from papiq.core.domain.users import User
-from papiq.core.ports import Clock, DocumentFilter, ObjectStore, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports import (
+    Clock,
+    DocumentFilter,
+    FileMetadata,
+    MetadataReader,
+    ObjectStore,
+    UnitOfWork,
+    UnitOfWorkFactory,
+)
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE
 from papiq.core.services._access import (
     check_references,
@@ -138,6 +149,25 @@ def _one_code(copies: Sequence[Code], amounts: dict[FieldId, FieldValue]) -> Cod
     )
 
 
+@dataclass(frozen=True, kw_only=True)
+class StoredFile:
+    """A file of a document as it is stored: its size in bytes, its SHA-256, and what it says
+    about itself (None if it cannot be read for that)."""
+
+    size: int
+    sha256: str
+    metadata: FileMetadata | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class DocumentFiles:
+    """A document's files: the original, and the archive once there is one."""
+
+    document: Document
+    original: StoredFile
+    archive: StoredFile | None
+
+
 @dataclass(frozen=True)
 class DocumentText:
     """A piece of the text read from the archive: `offset` and lengths count characters."""
@@ -173,12 +203,15 @@ class DocumentService:
         object_store: ObjectStore | None = None,
         *,
         rules: ChangeRules | None = None,
+        metadata: MetadataReader | None = None,
     ) -> None:
-        """`rules`: run the change rules when a person changes a document's metadata."""
+        """`rules`: run the change rules when a person changes a document's metadata;
+        `metadata` reads what its files say about themselves."""
         self._uow = uow
         self._clock = clock
         self._store = object_store
         self._rules = rules
+        self._metadata = metadata
 
     async def get(self, actor: UserId, id: DocumentId) -> Document:
         async with self._uow() as uow:
@@ -341,6 +374,33 @@ class DocumentService:
             raise NotFoundError(f"{file.value} of document", id)
         await self._store.download(key, target)
         return info
+
+    async def files(self, actor: UserId, id: DocumentId) -> DocumentFiles:
+        """The files of a readable document as they are stored: size, SHA-256 and their
+        metadata (a PDF's document information and XMP, an image's EXIF). NotFoundError if
+        the caller may not read the document."""
+        assert self._store is not None, "reading files needs the object store"
+        async with self._uow() as uow:
+            document, _ = await readable_document(uow, await load_actor(uow, actor), id)
+        original = await self._stored(original_key(document.sha256))
+        archive = None
+        if await self._store.exists(archive_key(id)):
+            archive = await self._stored(archive_key(id))
+        return DocumentFiles(document=document, original=original, archive=archive)
+
+    async def _stored(self, key: str) -> StoredFile:
+        assert self._store is not None
+        data = await self._store.get(key)
+        digest = await asyncio.to_thread(lambda: hashlib.sha256(data).hexdigest())
+        metadata = None
+        if self._metadata is not None:
+            try:
+                metadata = await self._metadata.read_metadata(data)
+            except UnprocessableDocumentError as error:
+                log.warning(
+                    "a file's metadata cannot be read", extra={"key": key, "reason": str(error)}
+                )
+        return StoredFile(size=len(data), sha256=digest, metadata=metadata)
 
     async def list_visible(self, actor: UserId) -> list[Document]:
         async with self._uow() as uow:

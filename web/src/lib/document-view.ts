@@ -11,7 +11,7 @@ export type Review = components['schemas']['ReviewOut'];
 export type Place = components['schemas']['LocationOut'];
 export type Box = components['schemas']['BoxOut'];
 
-export const TABS = ['details', 'content', 'log'] as const;
+export const TABS = ['details', 'content', 'metadata', 'log'] as const;
 export type Tab = (typeof TABS)[number];
 
 /** What the tabs read of a URL (SvelteKit's `page.url` is a read-only one). */

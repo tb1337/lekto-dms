@@ -43,6 +43,7 @@ from papiq.adapters.inbound.rest.schemas.documents import (
     VisibilityOut,
 )
 from papiq.adapters.inbound.rest.schemas.facts import FactsOut
+from papiq.adapters.inbound.rest.schemas.files import DocumentFilesOut
 from papiq.adapters.inbound.rest.schemas.inbox import (
     ConfirmRequest,
     InboxItemOut,
@@ -570,6 +571,23 @@ async def read_with_vision(id: UUID, user: CurrentUser, context: Context) -> Doc
 )
 async def document_facts(id: UUID, user: CurrentUser, context: Context) -> FactsOut:
     return FactsOut.of(await context.documents.facts(user, DocumentId(id)))
+
+
+@router.get(
+    "/{id}/files",
+    summary="A document's files and their metadata",
+    description=(
+        "Needs read access. When the document was added and last changed, its original's "
+        "name and media type, and for the original and the archive (null while there is none) "
+        "their size, SHA-256 and what they say about themselves: a PDF's version, PDF/A level, "
+        "pages, document information and XMP; an image's format, size, resolution and EXIF. "
+        "The files are read for it, so it takes a moment for large ones."
+    ),
+    response_model=DocumentFilesOut,
+    responses=problem_responses(401, 404, 422),
+)
+async def document_files(id: UUID, user: CurrentUser, context: Context) -> DocumentFilesOut:
+    return DocumentFilesOut.of(await context.documents.files(user, DocumentId(id)))
 
 
 @router.get(

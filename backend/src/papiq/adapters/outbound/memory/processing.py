@@ -20,6 +20,7 @@ from papiq.core.domain.exchanges import ModelCall
 from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.reading import PageReading
 from papiq.core.ports.codes import CodeReading
+from papiq.core.ports.metadata import FileMetadata, MetadataEntry, MetadataSource
 from papiq.core.ports.ocr import OcrResult, VisionModel, VisionReading
 from papiq.core.ports.pages import PREVIEW_FILE, RenderedPages
 from papiq.core.ports.parser import ParseResult
@@ -107,6 +108,20 @@ class FakeCodeReader:
         self.calls.append(source)
         _check(await asyncio.to_thread(source.read_bytes))
         return CodeReading(codes=self.codes, reader="fake-codes 1", pages=1)
+
+
+class FakeMetadataReader:
+    """The metadata of any file it can read: a PDF of one page from the fake producer, an
+    image of its kind, one pixel square."""
+
+    async def read_metadata(self, data: bytes) -> FileMetadata:
+        _check(data)
+        kind = media_types.detect(data[: media_types.SNIFF_SIZE])
+        if kind == media_types.PDF:
+            producer = MetadataEntry(MetadataSource.INFO, "Producer", "fake-metadata 1")
+            return FileMetadata(format="PDF", pdf_version="1.7", pages=1, entries=(producer,))
+        name = {media_types.JPEG: "JPEG", media_types.PNG: "PNG", media_types.TIFF: "TIFF"}
+        return FileMetadata(format=name.get(kind or "", "image"), pages=1, width=1, height=1)
 
 
 class FakeParser:

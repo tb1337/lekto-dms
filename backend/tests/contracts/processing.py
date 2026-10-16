@@ -10,7 +10,14 @@ from papiq.core.domain import media_types
 from papiq.core.domain.codes import giro_code
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.domain.locations import Location
-from papiq.core.ports import CodeReader, DocumentParser, Ocr, PageRenderer, TextLocator
+from papiq.core.ports import (
+    CodeReader,
+    DocumentParser,
+    MetadataReader,
+    Ocr,
+    PageRenderer,
+    TextLocator,
+)
 
 SAMPLES = Path(__file__).parent.parent / "samples"
 
@@ -221,3 +228,24 @@ class CodeReaderContract:
     async def test_a_damaged_pdf_is_unprocessable(self, code_reader: CodeReader) -> None:
         with pytest.raises(UnprocessableDocumentError):
             await code_reader.read_codes(SAMPLES / "damaged.pdf")
+
+
+class MetadataReaderContract:
+    """Needs the fixture `metadata_reader`."""
+
+    async def test_reads_a_pdf(self, metadata_reader: MetadataReader) -> None:
+        metadata = await metadata_reader.read_metadata((SAMPLES / "text.pdf").read_bytes())
+        assert (metadata.format, metadata.pages) == ("PDF", 1)
+        assert metadata.pdf_version
+
+    async def test_reads_an_image(self, metadata_reader: MetadataReader) -> None:
+        metadata = await metadata_reader.read_metadata((SAMPLES / "photo.jpg").read_bytes())
+        assert metadata.format == "JPEG"
+        assert metadata.width and metadata.height
+
+    @pytest.mark.parametrize("name", ["damaged.pdf", "unsupported.docx"])
+    async def test_what_it_cannot_read_is_unprocessable(
+        self, metadata_reader: MetadataReader, name: str
+    ) -> None:
+        with pytest.raises(UnprocessableDocumentError):
+            await metadata_reader.read_metadata((SAMPLES / name).read_bytes())

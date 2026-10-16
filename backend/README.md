@@ -415,7 +415,9 @@ alone, so a new scikit-learn version cannot break it. `GET /classifier` tells it
    writes them again; vectors of unchanged text are kept, so this needs no embedding calls and
    no `reindex` (which would embed every document anew). Until it is through, the neighbours
    find fewer documents. Documents taken over before count as confirmed; the first training
-   starts by itself once the worker runs.
+   starts by itself once the worker runs. The same reconciliation writes every entry in the
+   index's layout 2 (fields with a value, the title's sort key, periods in ISO), with the
+   vectors it has.
 2. 0.2 reads the text as it is set instead of Docling's Markdown. A document parsed before
    keeps its Markdown, which is read meanwhile, until `python -m papiq.composition reparse` (or
    `POST /pipeline/reparse`) has the worker read its text again; nodes, lane and metadata stay
@@ -491,8 +493,10 @@ version; deleting is a soft delete.
   `document_type`, `document_date`, `added`, `tags`, `drawer`, `owner`, `channel`, `pages` and
   `field.<key>` (`FieldOut.key`, from the name: `LA_Brutto` is `la_brutto`; an amount has
   `.amount` and `.currency`, a period `.start` and `.end`), as the rules leave the document. A
-  period writes itself as what it is: `September 2026`, `KW 38 2026`, `Q3 2026`, `2026`, a day
-  as a date, else its two days. `datetime`, `currency` and
+  period writes itself in ISO 8601 by what it is (`Period.notation`): `2026-09`, `2026-W38`,
+  `2026-Q3` (ISO has no short form for a quarter), `2026`, a day as `2026-09-15`, else its
+  ends, `2026-09-01/2026-09-14`; `{{ field.x.start | datetime: format: 'MMMM yyyy' }}` writes
+  it in words. `datetime`, `currency` and
   `decimal` format in `PAPIQ_TEMPLATE_LOCALE`, an amount writes itself as `3.650,00 EUR`. A
   template sees nothing but these values (no attributes of objects, no `include`), loops stop
   after 1,000 turns and output after 10,000 characters. Writing a missing value sets nothing
@@ -564,6 +568,14 @@ meaning took part.
   and the job repeats for the new ones. If Meilisearch loses its data, the adapter sets the
   index up again; restart the worker or call `POST /search/reindex` to fill it without waiting
   for the next reconciliation.
+- **Layout of an entry.** Each entry carries the layout it was written in (`LAYOUT` in
+  `core/domain/search.py`). Layout 2 adds the ids of the fields with a value (`field_ids`), the
+  title's sort key and periods in ISO 8601 beside the German words (`2026-W38` and `KW 38 2026`).
+  The reconciliation writes older entries again and keeps their vectors, since the embedded text
+  does not change: no embedding calls.
+- **Sorting.** `sort` comes first among Meilisearch's ranking rules, so relevance breaks ties,
+  also with vectors; document date, arrival and the title's sort key are sortable. Without
+  `sort` (or with `relevance`), the hits come by relevance.
 - **Rebuild at any time.** `POST /search/reindex` (admins) or `python -m papiq.composition
   reindex` builds `<index>-rebuild` from the database and the object store while the active
   index keeps serving, swaps it in and reconciles what changed meanwhile. The index holds no
@@ -630,12 +642,13 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /auth/oidc`, `/auth/oidc/login`, `/auth/oidc/callback`; `POST/DELETE /auth/oidc/link` | OpenID Connect |
 | `GET /users`, `GET/PATCH/DELETE /users/{id}` | Accounts: list (others see active users' names), role and state, delete (admins) |
 | `POST /users`, `POST /users/{id}/password`, `DELETE /users/{id}/totp`, `DELETE /users/{id}/oidc` | Create with password, reset password, turn TOTP off, remove links (admins, session only, not the own account) |
-| `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409` |
+| `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409`. The lists take `document_counts=true` (and `all_users` for admins): each item with `document_count`, the documents in the caller's reach that have it (a field: a value for it), counted in one query |
+| `PUT /document-types/{id}/fields` | The fields of a document type, each required or optional, set from the type in one transaction (admins); answers its fields. A global field is `422`; taking off a field that has values on its documents or that the type's title pattern uses is `409` |
 | `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins); the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |
 | `GET/POST /drawers`, `GET/PATCH/DELETE /drawers/{id}`, `PUT/DELETE /drawers/{id}/shares/{user_id}` | Drawers and shares (owner) |
-| `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `limit`, `offset`, `semantic_ratio`; hits with snippet, `estimated_total`, `next_offset`, `semantic` |
+| `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet, `estimated_total`, `next_offset`, `semantic` |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
-| `GET /documents` | Readable documents, newest first; filters `contact_id`, `document_type_id`, `tag_id`, `drawer_id`, `lane`; `limit`, `cursor` |
+| `GET /documents` | Readable documents; `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), documents without a date last either way; filters `contact_id`, `document_type_id`, `tag_id`, `drawer_id`, `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (the last document's id; its sort value is looked up, `422` if it is gone) |
 | `POST /documents` | Upload (multipart: `file`, optional `drawer_id`, optional `channel=migration`; otherwise the channel is `web` with a session, `api` with a token); `202` with `id`, `status_url` |
 | `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`; change (write access; the answer has the change rules' `rules` report for the owner); delete (owner or admin) |
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result and the differences |

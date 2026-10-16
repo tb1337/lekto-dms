@@ -60,6 +60,19 @@ in (the editor's theme holds its colours), and bits-ui's focus trap does not see
 a listener keeps `focusin` from the editor away from it. Component tests get a plain text area in
 place of the editor (`tests/setup.ts`); `codemirror.test.ts` runs the real one.
 
+## Documents and search
+
+`/ui/documents` lists the documents and, with words in `?q=`, searches them
+(`/documents/search`, with snippets), with the same filters (`lib/filters.ts`: contact, type,
+tag, drawer, lane, a field with a value); there is no search page of its own. The field in the
+header leads there; on narrow screens its icon opens the view with the field focused
+(`#search`). `?sort=` holds the sort: a search by relevance, a list by the newest document date
+unless chosen otherwise; the last choice of each, and grid or list (grid by default), stay in
+this browser (`lib/listing.ts`). An admin's choice to include all users is a setting of the
+user menu (`lib/scope.svelte.ts`), kept in this browser too and shown at the avatar; documents,
+search, the inbox with its counter, rules and the counts at the master data follow it. Every
+`localStorage` access is guarded: without storage the defaults hold.
+
 ## Document view
 
 `/ui/documents/{id}` serves the inbox and the document list (`/ui/inbox/{id}` leads there with
@@ -104,6 +117,9 @@ cd web && pnpm gen:api   # writes src/lib/api/schema.ts
 | `src/lib/components/templates` | The template field, the template editor (sheet), the reference document picker  |
 | `src/lib/templates`            | Liquid colours and completions, the CodeMirror editor, the values templates see |
 | `src/lib/i18n.ts`              | Language switch, date, number and money formats                                 |
+| `src/lib/periods.ts`           | Periods in ISO 8601 (`2026-Q2`, `2026-W17`), read also in German forms          |
+| `src/lib/listing.ts`           | Sort and grid or list of the document view, remembered in this browser          |
+| `src/lib/scope.svelte.ts`      | An admin's choice to include all users, remembered in this browser              |
 | `src/routes`                   | `login`, the app pages in `(app)`; `(app)/dev/components` in development only   |
 | `messages/{en,de}.json`        | All texts; a test fails on raw text in markup and on missing keys               |
 | `tests/`                       | Tests across files (messages, raw text); `e2e/` the Playwright smoke test       |

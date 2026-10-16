@@ -10,7 +10,7 @@ from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundEr
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import DocumentId, SpaceId, new_id
-from papiq.core.domain.master_data import Contact, DocumentType, Tag
+from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag
 from papiq.core.domain.periods import Period
 from papiq.core.domain.permissions import can_read_document
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
@@ -502,6 +502,24 @@ class UnitOfWorkContract:
             await uow.commit()
         async with uow_factory() as uow:
             assert (await uow.fields.get(gross.id)).description is None
+
+    async def test_a_field_keeps_whether_it_is_set_by_hand(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        asn = FieldDefinition.create(
+            name="ASN", data_type=FieldType.NUMBER, now=NOW, assignment=Assignment.MANUAL
+        )
+        async with uow_factory() as uow:
+            await uow.fields.add(asn)
+            await uow.commit()
+        async with uow_factory() as uow:
+            stored = await uow.fields.get(asn.id)
+            assert stored.assignment is Assignment.MANUAL and not stored.is_read
+            stored.assignment = Assignment.AUTO
+            await uow.fields.update(stored)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.fields.get(asn.id)).is_read
 
     # --- documents ------------------------------------------------------------------------------
 

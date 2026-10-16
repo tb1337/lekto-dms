@@ -281,6 +281,7 @@ async def create_field(body: FieldCreate, user: CurrentUser, context: Context) -
         required=body.required,
         required_document_type_ids=[DocumentTypeId(id) for id in body.required_document_type_ids],
         description=body.description,
+        assignment=body.assignment,
     )
     return FieldOut.of(item)
 
@@ -327,6 +328,7 @@ async def change_field(id: UUID, body: FieldPatch, user: CurrentUser, context: C
             None if required_types is None else [DocumentTypeId(id) for id in required_types]
         ),
         description=body.description if "description" in body.model_fields_set else UNSET,
+        assignment=body.assignment,
     )
     return FieldOut.of(item)
 

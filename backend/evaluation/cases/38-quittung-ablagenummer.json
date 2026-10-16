@@ -1,0 +1,39 @@
+{
+  "description": "Receipt with the filing number stamped on the paper copy. The field is set by hand: the model is never asked for it, so even a right answer leaves the document yellow until a person enters the number (issue #52).",
+  "expected": {
+    "lane": "yellow",
+    "contact": "Elektro Krause GmbH",
+    "document_type": "Quittung",
+    "tags": [
+      "Handwerker"
+    ],
+    "document_date": "2026-09-12",
+    "fields": {
+      "Ablagenummer": "4711"
+    }
+  },
+  "fake": {
+    "classification": {
+      "contact": {
+        "value": "Elektro Krause GmbH",
+        "evidence": "Elektro Krause GmbH"
+      },
+      "document_type": "Quittung",
+      "new_document_type": null,
+      "tags": [
+        "Handwerker"
+      ],
+      "new_tags": [],
+      "document_date": {
+        "value": "2026-09-12",
+        "evidence": "Musterstadt, 12.09.2026"
+      }
+    },
+    "fields": {
+      "Ablagenummer": {
+        "value": "4711",
+        "evidence": "Abgelegt unter 4711"
+      }
+    }
+  }
+}

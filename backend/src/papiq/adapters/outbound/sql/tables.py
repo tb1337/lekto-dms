@@ -173,6 +173,8 @@ field_definitions = Table(
     Column("choices", json_type(), nullable=False),
     # What belongs in the field, for the language model.
     Column("description", Text, nullable=True),
+    # `auto` (the language model reads it) or `manual` (set by hand only, `Assignment`).
+    Column("assignment", Text, nullable=False, server_default="auto"),
     Column("created_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),
 )

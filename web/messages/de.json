@@ -285,6 +285,8 @@
 	"field_def_choices_hint": "Eine Option je Zeile.",
 	"field_def_description": "Beschreibung für das Modell",
 	"field_def_description_hint": "Was in das Feld gehört und wie es auf Dokumenten heißt, z. B. „Gesamtbrutto des Monats, nicht das Grundgehalt; steht als Gesamt-Brutto“. Der Name des Felds steht meist auf keinem Dokument.",
+	"field_def_manual": "Nur von Hand",
+	"field_def_manual_hint": "Papiq fragt das Modell nie nach diesem Feld; eine Person oder eine Regel setzt es. Ist es Pflicht, wartet das Dokument im Posteingang, bis jemand es einträgt.",
 	"field_def_key_hint": "So steht das Feld in Templates von Regeln und Titelmustern.",
 	"field_def_scope": "Gilt für",
 	"assignment_required": "Pflicht",

@@ -20,7 +20,7 @@ from papiq.core.domain.exchanges import RunExchange, exchanges_from_json
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.identifiers import Identifier, IdentifierKind
 from papiq.core.domain.json_value import JsonObject, JsonValue
-from papiq.core.domain.master_data import Contact, DocumentType, Tag
+from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
 from papiq.core.domain.reading import PageReading, readings_to_json
 from papiq.core.domain.users import Role
@@ -1158,6 +1158,55 @@ async def test_extraction_prompt_names_type_and_fields(world: World) -> None:
     assert 'The document is of type "Rechnung".' in request.user
     assert '- a3: "Rechnungsbetrag" (object with amount' in request.user
     assert request.schema_name == "fields"
+
+
+async def set_by_hand(world: World, field: FieldDefinition) -> None:
+    async with world.uow() as uow:
+        stored = await uow.fields.get(field.id)
+        stored.assignment = Assignment.MANUAL
+        await uow.fields.update(stored)
+        await uow.commit()
+
+
+async def test_a_field_set_by_hand_is_never_asked_for(world: World) -> None:
+    """Issue #52: neither the signal nor the fields node asks the model for it. Required and
+    without a value, it waits for a person; with a value, it keeps it; optional, it is OK."""
+    seeded = await seed(world)
+    number, paid = seeded.fields["Rechnungsnummer"], seeded.fields["Bezahlt"]
+    await set_by_hand(world, number)
+    await set_by_hand(world, paid)
+    document = await document_with(world, type=seeded.types["Rechnung"])
+    fake = model(proposal())
+    await signal_step(world, fake).run(document)
+    (request,) = fake.requests
+    assert "Rechnungsnummer" not in request.user and "Bezahlt" not in request.user
+
+    given = extraction()["fields"]
+    assert isinstance(given, dict)
+    answer: JsonObject = {"fields": {"a1": given["a2"], "a2": given["a3"]}}  # Fällig, Betrag
+    fake = model(answer)
+    outcome = await fields_step(world, fake).run(document)
+    assert isinstance(outcome, MetadataResult)
+    (request,) = fake.requests
+    assert "Rechnungsnummer" not in request.user and "Bezahlt" not in request.user
+    assert outcome.result.outcome is Outcome.UNCERTAIN
+    check = field_check(seeded, outcome, "Rechnungsnummer")
+    assert check.reason == "'Rechnungsnummer' is set by hand and has no value yet"
+    assert field_check(seeded, outcome, "Bezahlt").ok
+    assert number.id not in outcome.changes.fields and paid.id not in outcome.changes.fields
+
+    async with world.uow() as uow:
+        stored = await uow.documents.get(document.id)
+        stored.fields[number.id] = "R-1"
+        await uow.documents.update(stored)
+        await uow.commit()
+    outcome = await fields_step(world, model(answer)).run(stored)
+    assert isinstance(outcome, MetadataResult)
+    assert outcome.result.outcome is Outcome.OK
+    assert field_check(seeded, outcome, "Rechnungsnummer").reason == (
+        "'Rechnungsnummer' is set by hand"
+    )
+    assert number.id not in outcome.changes.fields
 
 
 async def signalled(

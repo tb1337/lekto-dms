@@ -32,6 +32,7 @@ from typing import Any
 
 from papiq.core.domain.fields import FieldType
 from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.master_data import Assignment
 from papiq.core.domain.pipeline import Lane
 from papiq.core.ports import StructuredRequest
 
@@ -52,7 +53,7 @@ class Run(StrEnum):
 class FieldSpec:
     """`required`: a global field required everywhere; `required_types`: the types a typed
     one is required for (in the JSON, `"required"` is either); `description`: what belongs in
-    it, for the language model."""
+    it, for the language model; `assignment`: `manual` for a field set by hand only."""
 
     name: str
     data_type: FieldType
@@ -61,6 +62,7 @@ class FieldSpec:
     required: bool = False
     required_types: tuple[str, ...] = ()
     description: str | None = None
+    assignment: Assignment = Assignment.AUTO
 
 
 @dataclass(frozen=True)
@@ -240,6 +242,7 @@ def _master_data(data: Any) -> MasterDataSpec:
                     tuple(item["required"]) if isinstance(item.get("required"), list) else ()
                 ),
                 description=item.get("description"),
+                assignment=Assignment(item.get("assignment", "auto")),
             )
             for item in data["fields"]
         )

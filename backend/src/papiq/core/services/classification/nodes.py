@@ -270,7 +270,10 @@ class LlmSignal(_ModelStep):
             contacts = await uow.contacts.list_all()
             types = sorted(await uow.document_types.list_all(), key=lambda item: item.name)
             tags = sorted(await uow.tags.list_all(), key=lambda item: item.name)
-            definitions = sorted(await uow.fields.list_all(), key=lambda item: item.name)
+            definitions = sorted(
+                (item for item in await uow.fields.list_all() if item.is_read),
+                key=lambda item: item.name,
+            )
         facts = DocumentText(text)
         listed = _listed_tags(tags, facts, self._policy.max_tags)
         candidates = _listed_contacts(contacts, facts, self._policy.max_contacts)
@@ -464,7 +467,8 @@ class FieldsNode(_ModelStep):
     document from before the signals) the fields it did not give are asked for. A required
     field the document does not show is uncertain, an optional one stays empty; a value given
     must pass its check either way. Without a model nothing reads the missing ones: the same
-    holds, the required ones say why.
+    holds, the required ones say why. A field set by hand is never asked for and keeps its
+    value; required and empty, it waits for a person.
 
     The title comes from the type's title pattern, or from the model's proposal, as long as
     the document's title is still the file name or the one set here before."""
@@ -494,14 +498,14 @@ class FieldsNode(_ModelStep):
             )
             proposed = proposal.get("fields") or {}
             for definition in definitions:
-                if definition.is_global or same_type:
+                if definition.is_read and (definition.is_global or same_type):
                     written = proposed.get(str(definition.id)) or {}
                     given[definition.id] = Proposal(
                         value=written.get("value"), evidence=written.get("evidence")
                     )
-        missing = [item for item in definitions if item.id not in given]
+        missing = [item for item in definitions if item.is_read and item.id not in given]
         answers: list[StructuredAnswer] = []
-        text = await self._text(document) if definitions else ""
+        text = await self._text(document) if any(item.is_read for item in definitions) else ""
         taken_over = len(given)
         input: JsonObject = {"taken_over": taken_over}
         unread: set[FieldId] = set()
@@ -542,6 +546,12 @@ class FieldsNode(_ModelStep):
                 required=definition.is_required_for(document.document_type_id),
                 language=language,
                 default_currency=self._policy.default_currency,
+            )
+            if definition.is_read
+            else _set_by_hand(
+                definition,
+                document,
+                required=definition.is_required_for(document.document_type_id),
             )
             for definition in definitions
         ]
@@ -639,6 +649,24 @@ def _check_date(field: str, proposal: Proposal, facts: DocumentText, today: date
         )
     return _verified(
         common, value.isoformat(), proposal, facts, facts.has_date(value), "date", literal=True
+    )
+
+
+def _set_by_hand(definition: FieldDefinition, document: Document, *, required: bool) -> FieldCheck:
+    """A field set by hand is never read: its value stays as the document has it. Required and
+    without a value, it waits for a person (issue #52)."""
+    if definition.id in document.fields or not required:
+        return FieldCheck(
+            field=field_key(definition.id),
+            outcome=Outcome.OK,
+            confidence=1,
+            reason=f"'{definition.name}' is set by hand",
+        )
+    return FieldCheck(
+        field=field_key(definition.id),
+        outcome=Outcome.UNCERTAIN,
+        confidence=0,
+        reason=f"'{definition.name}' is set by hand and has no value yet",
     )
 
 

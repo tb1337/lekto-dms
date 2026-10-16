@@ -41,6 +41,8 @@
 	let choices = $state('');
 	// What belongs in the field, for the language model (its name is often an internal one).
 	let description = $state('');
+	// Set by hand only: the language model is never asked for it (issue #52).
+	let manual = $state(false);
 	let error = $state<string | null>(null);
 	let busy = $state(false);
 
@@ -55,6 +57,7 @@
 		requiredTypes = initial ? [...initial.required_document_type_ids] : [];
 		choices = initial ? initial.choices.join('\n') : '';
 		description = initial?.description ?? '';
+		manual = initial?.assignment === 'manual';
 	});
 
 	const isChoice = $derived((initial?.data_type ?? dataType) === 'choice');
@@ -69,6 +72,7 @@
 			.map((line) => line.trim())
 			.filter(Boolean);
 		const document_type_ids = global ? null : scope;
+		const assignment = manual ? ('manual' as const) : ('auto' as const);
 		const requirement = {
 			required: global && required,
 			required_document_type_ids: global ? [] : requiredTypes.filter((id) => scope.includes(id))
@@ -81,6 +85,7 @@
 							name: name.trim(),
 							data_type: dataType,
 							description: description.trim() || null,
+							assignment,
 							document_type_ids,
 							...requirement,
 							...(dataType === 'choice' ? { choices: list } : {})
@@ -94,6 +99,7 @@
 						body: {
 							name: name.trim(),
 							description: description.trim() || null,
+							assignment,
 							document_type_ids,
 							...requirement,
 							...(initial.data_type === 'choice' ? { choices: list } : {})
@@ -136,6 +142,19 @@
 				<Field.Label for="field-def-description">{m.field_def_description()}</Field.Label>
 				<Textarea id="field-def-description" bind:value={description} rows={3} maxlength={300} />
 				<Field.Description>{m.field_def_description_hint()}</Field.Description>
+			</Field.Field>
+			<Field.Field>
+				<label class="flex items-center gap-2 text-sm font-medium">
+					<input
+						type="checkbox"
+						bind:checked={manual}
+						class="size-4 accent-primary"
+						aria-describedby="field-def-manual-hint"
+					/>
+					{m.field_def_manual()}
+				</label>
+				<Field.Description id="field-def-manual-hint">{m.field_def_manual_hint()}</Field.Description
+				>
 			</Field.Field>
 			{#if isChoice}
 				<Field.Field>

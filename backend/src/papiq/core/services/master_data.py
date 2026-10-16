@@ -14,6 +14,7 @@ from papiq.core.domain.identifiers import Identifier, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId, UserId
 from papiq.core.domain.master_data import (
     MAX_ALIASES,
+    Assignment,
     Contact,
     DocumentType,
     MasterData,
@@ -227,10 +228,12 @@ class MasterDataService:
         required: bool = False,
         required_document_type_ids: Collection[DocumentTypeId] = (),
         description: str | None = None,
+        assignment: Assignment = Assignment.AUTO,
     ) -> FieldDefinition:
         """`document_type_ids=None` creates a global field; `required` makes it required
         (global), `required_document_type_ids` for those of its types (typed); `description`
-        tells the language model what belongs in it."""
+        tells the language model what belongs in it; `assignment` whether the model reads it
+        or only a person or a rule sets it."""
         definition = FieldDefinition.create(
             name=name,
             data_type=data_type,
@@ -240,6 +243,7 @@ class MasterDataService:
             required=required,
             required_types=required_document_type_ids,
             description=description,
+            assignment=assignment,
         )
 
         async def check(uow: UnitOfWork) -> None:
@@ -260,8 +264,10 @@ class MasterDataService:
         required: bool | None = None,
         required_document_type_ids: Collection[DocumentTypeId] | None = None,
         description: str | Unset | None = UNSET,
+        assignment: Assignment | None = None,
     ) -> FieldDefinition:
-        """Admins only. Description (None or empty removes it; UNSET leaves it); name (title
+        """Admins only. Description (None or empty removes it; UNSET leaves it); whether the
+        model reads it (`assignment`; None leaves it); name (title
         patterns that use it follow); choices (adding is free,
         removing only what no document uses); scope (`None`: global; widening is free,
         narrowing only while no document outside the new scope has a value; the types it is
@@ -303,6 +309,8 @@ class MasterDataService:
             definition.require(required=required, types=required_document_type_ids)
             if not isinstance(description, Unset):
                 definition.describe(description)
+            if assignment is not None:
+                definition.assignment = assignment
             await uow.fields.update(definition)
             if choices is not None:
                 fields = {item.id: item for item in await uow.fields.list_all()}

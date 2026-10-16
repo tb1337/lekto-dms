@@ -31,7 +31,8 @@
     "Mahnung",
     "Kassenbon",
     "Mitteilung",
-    "Zeitnachweis"
+    "Zeitnachweis",
+    "Quittung"
   ],
   "tags": [
     "Strom",
@@ -198,6 +199,18 @@
         "Zeitnachweis"
       ],
       "description": "Der Monat oder Zeitraum, für den das Dokument gilt (Abrechnungsmonat, erfasste Woche), nicht das Erstell- oder Druckdatum"
+    },
+    {
+      "name": "Ablagenummer",
+      "data_type": "number",
+      "document_types": [
+        "Quittung"
+      ],
+      "required": [
+        "Quittung"
+      ],
+      "assignment": "manual",
+      "description": "Die Nummer, die auf die Papierablage gestempelt ist"
     }
   ]
 }

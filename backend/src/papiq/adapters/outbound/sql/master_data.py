@@ -11,7 +11,7 @@ from papiq.adapters.outbound.sql.repositories import SqlRepository, Values
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId
-from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag
+from papiq.core.domain.master_data import Assignment, Contact, DocumentType, MasterData, Tag
 from papiq.core.domain.validation import name_key
 
 
@@ -143,6 +143,7 @@ class SqlFieldRepository(SqlNamedRepository[FieldId, FieldDefinition]):
                     if s.required and not row.is_global
                 ),
                 description=row.description,
+                assignment=Assignment(row.assignment),
                 created_at=row.created_at,
                 version=row.version,
             )
@@ -157,6 +158,7 @@ class SqlFieldRepository(SqlNamedRepository[FieldId, FieldDefinition]):
             "required": entity.required,
             "choices": list(entity.choices),
             "description": entity.description,
+            "assignment": entity.assignment.value,
         }
 
     async def _write_children(self, entity: FieldDefinition) -> None:

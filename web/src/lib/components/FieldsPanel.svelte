@@ -97,6 +97,8 @@
 						</span>
 						<span class="truncate text-sm text-muted-foreground">
 							{fieldTypeLabel(field.data_type)} · {scopeText(field)}
+							{#if field.assignment === 'manual'}
+								· {m.field_def_manual()}{/if}
 							{#if field.choices.length > 0}
 								· {field.choices.join(', ')}{/if}
 						</span>

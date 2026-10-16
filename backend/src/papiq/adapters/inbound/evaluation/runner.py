@@ -189,6 +189,7 @@ async def _seed(environment: Environment, spec: MasterDataSpec, admin: User) -> 
             required=item.required,
             required_document_type_ids=[type_ids[name] for name in item.required_types],
             description=item.description,
+            assignment=item.assignment,
         )
         for item in spec.fields
     ]

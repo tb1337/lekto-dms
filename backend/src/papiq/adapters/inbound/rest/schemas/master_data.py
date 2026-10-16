@@ -13,6 +13,7 @@ from papiq.core.domain.master_data import (
     MAX_ALIASES,
     MAX_DESCRIPTION,
     MAX_TITLE_PATTERN,
+    Assignment,
     Contact,
     DocumentType,
     MasterData,
@@ -263,6 +264,11 @@ class FieldCreate(BaseModel):
     required: Required = False
     required_document_type_ids: RequiredTypes = Field(default_factory=list)
     description: FieldDescription | None = None
+    assignment: Assignment = Field(
+        default=Assignment.AUTO,
+        description="`auto`: the language model reads it; `manual`: set by hand only, never "
+        "asked of the model (a required one keeps the document open until a person sets it).",
+    )
 
 
 class FieldPatch(BaseModel):
@@ -292,6 +298,11 @@ class FieldPatch(BaseModel):
     required: Required | None = None
     required_document_type_ids: RequiredTypes | None = None
     description: FieldDescription | None = None
+    assignment: Assignment | None = Field(
+        default=None,
+        description="`auto`: the language model reads it; `manual`: set by hand only, never "
+        "asked of the model (a required one keeps the document open until a person sets it).",
+    )
 
 
 class FieldOut(BaseModel):
@@ -308,6 +319,7 @@ class FieldOut(BaseModel):
                     "required": False,
                     "required_document_type_ids": [],
                     "description": "Gesamtbrutto des Monats, nicht das Grundgehalt",
+                    "assignment": "auto",
                     "created_at": "2026-01-10T09:00:00Z",
                 }
             ]
@@ -326,6 +338,10 @@ class FieldOut(BaseModel):
     required: Required
     required_document_type_ids: RequiredTypes
     description: str | None
+    assignment: Assignment = Field(
+        description="`auto`: the language model reads it; `manual`: set by hand only, never "
+        "asked of the model (a required one keeps the document open until a person sets it).",
+    )
     created_at: datetime
     document_count: int | None = Field(
         default=None,
@@ -349,6 +365,7 @@ class FieldOut(BaseModel):
             required=item.required,
             required_document_type_ids=sorted(item.required_types),
             description=item.description,
+            assignment=item.assignment,
             created_at=item.created_at,
         )
 

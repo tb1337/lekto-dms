@@ -473,6 +473,20 @@ async def test_contact_identifiers(api: Api) -> None:
         assert (await api.client.patch(path, json=bad, headers=a)).status_code == 422
 
 
+async def test_a_field_is_set_by_hand(api: Api) -> None:
+    a = auth(await api.admin())
+    asn = await post(
+        api, "/fields", {"name": "ASN", "data_type": "number", "assignment": "manual"}, a
+    )
+    assert asn["assignment"] == "manual"
+    read = await api.client.patch(
+        f"{PREFIX}/fields/{asn['id']}", json={"assignment": "auto"}, headers=a
+    )
+    assert read.json()["assignment"] == "auto"
+    kept = await api.client.patch(f"{PREFIX}/fields/{asn['id']}", json={"name": "AS"}, headers=a)
+    assert kept.json()["assignment"] == "auto"
+
+
 async def test_required_fields_and_title_patterns(api: Api) -> None:
     a = auth(await api.admin())
     payslip = await post(

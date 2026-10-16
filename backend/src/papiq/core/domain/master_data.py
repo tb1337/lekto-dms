@@ -4,6 +4,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import StrEnum
 from typing import Self
 
 from papiq.core.domain.errors import ValidationError
@@ -20,6 +21,15 @@ MAX_ALIASES = 100
 """Aliases of one contact."""
 MAX_DESCRIPTION = 300
 """Characters of the description of a document type or a field; it goes into the prompts."""
+
+
+class Assignment(StrEnum):
+    """Who sets a value: Papiq's classification (`auto`: the signals propose it, the model is
+    asked for it) or only a person or a rule (`manual`: values no document shows, such as the
+    number stamped on the paper copy). Tobi, 16.10.2026."""
+
+    AUTO = "auto"
+    MANUAL = "manual"
 
 
 @dataclass(kw_only=True)

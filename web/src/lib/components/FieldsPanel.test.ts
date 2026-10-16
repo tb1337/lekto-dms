@@ -92,10 +92,21 @@ describe('FieldsPanel', () => {
 			name: 'Betrag',
 			data_type: 'text',
 			description: null,
+			assignment: 'auto',
 			document_type_ids: [REMINDER],
 			required: false,
 			required_document_type_ids: [REMINDER]
 		});
+	});
+
+	it('makes a field one that is set by hand only', async () => {
+		render(WithDialogs, { component: FieldsPanel });
+		await userEvent.click(await screen.findByRole('button', { name: m.master_add_field() }));
+		await userEvent.type(screen.getByLabelText(m.field_name()), 'ASN');
+		await userEvent.click(screen.getByLabelText(m.field_def_manual()));
+		await userEvent.click(screen.getByRole('button', { name: m.save() }));
+		const post = fetchMock.mock.calls.map((call) => call[0]).find((call) => call.method === 'POST');
+		expect(await post?.json()).toMatchObject({ name: 'ASN', assignment: 'manual' });
 	});
 
 	it('shows what belongs in a field and lets an admin change it', async () => {

@@ -1826,6 +1826,14 @@ export interface components {
 			 */
 			accept_conflicts?: string[];
 		};
+		/**
+		 * Assignment
+		 * @description Who sets a value: Papiq's classification (`auto`: the signals propose it, the model is
+		 *     asked for it) or only a person or a rule (`manual`: values no document shows, such as the
+		 *     number stamped on the paper copy). Tobi, 16.10.2026.
+		 * @enum {string}
+		 */
+		Assignment: 'auto' | 'manual';
 		/** AuthorizationUrl */
 		AuthorizationUrl: {
 			/**
@@ -2996,10 +3004,16 @@ export interface components {
 			required_document_type_ids?: string[];
 			/** Description */
 			description?: string | null;
+			/**
+			 * @description `auto`: the language model reads it; `manual`: set by hand only, never asked of the model (a required one keeps the document open until a person sets it).
+			 * @default auto
+			 */
+			assignment: components['schemas']['Assignment'];
 		};
 		/**
 		 * FieldOut
 		 * @example {
+		 *       "assignment": "auto",
 		 *       "choices": [],
 		 *       "created_at": "2026-01-10T09:00:00Z",
 		 *       "data_type": "amount",
@@ -3041,6 +3055,8 @@ export interface components {
 			required_document_type_ids: string[];
 			/** Description */
 			description: string | null;
+			/** @description `auto`: the language model reads it; `manual`: set by hand only, never asked of the model (a required one keeps the document open until a person sets it). */
+			assignment: components['schemas']['Assignment'];
 			/**
 			 * Created At
 			 * Format: date-time
@@ -3084,6 +3100,8 @@ export interface components {
 			required_document_type_ids?: string[] | null;
 			/** Description */
 			description?: string | null;
+			/** @description `auto`: the language model reads it; `manual`: set by hand only, never asked of the model (a required one keeps the document open until a person sets it). */
+			assignment?: components['schemas']['Assignment'] | null;
 		};
 		/**
 		 * FieldType

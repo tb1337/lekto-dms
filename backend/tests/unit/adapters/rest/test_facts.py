@@ -14,6 +14,8 @@ from papiq.adapters.outbound.memory import (
     ManualClock,
 )
 from papiq.composition.container import build_memory_container, build_services
+from papiq.core.domain.codes import Code
+from papiq.core.domain.locations import Box
 from tests import builders
 from tests.api import auth
 from tests.contracts.processing import SAMPLES
@@ -25,6 +27,14 @@ Kundennummer 2004-7718
 IBAN DE89 3704 0044 0532 0130 00
 Lastschrift von DE02 1203 0000 0000 2020 51
 """
+# The GiroCode twice on page 1 and once on page 2, a bar code in between.
+BAR_CODE = Code(page=1, format="Code 128", text="K-20047718", box=Box(0.1, 0.5, 0.27, 0.08))
+CODES = [
+    FAKE_GIRO_CODE,
+    BAR_CODE,
+    dataclasses.replace(FAKE_GIRO_CODE, box=Box(0.1, 0.1, 0.12, 0.085)),
+    dataclasses.replace(FAKE_GIRO_CODE, page=2),
+]
 
 
 @pytest.fixture
@@ -33,7 +43,7 @@ async def facts_api() -> AsyncIterator[Api]:
     container = dataclasses.replace(
         build_memory_container(clock),
         parser=FakeParser(TEXT),
-        codes=FakeCodeReader([FAKE_GIRO_CODE]),
+        codes=FakeCodeReader(CODES),
     )
     services = build_services(container)
     builders.skip_classification(services.pipeline)
@@ -99,8 +109,24 @@ async def test_names_identifiers_and_codes_with_their_places(facts_api: Api) -> 
     assert [TEXT[span["start"] : span["end"]] for span in customer["spans"]] == ["2004-7718"]
     # Only admins learn on how many contacts' documents a value stands.
     assert customer["other_contacts"] is None
-    (code,) = facts["codes"]
-    assert (code["page"], code["format"]) == (1, "QR Code")
+    # Once for its format and text, with every place it stands.
+    code, bar = facts["codes"]
+    assert code["format"] == "QR Code"
+    assert code["places"] == [
+        {
+            "page": 1,
+            "boxes": [
+                {"x": 0.74, "y": 0.78, "width": 0.12, "height": 0.085},
+                {"x": 0.1, "y": 0.1, "width": 0.12, "height": 0.085},
+            ],
+        },
+        {"page": 2, "boxes": [{"x": 0.74, "y": 0.78, "width": 0.12, "height": 0.085}]},
+    ]
+    assert (bar["format"], bar["text"], [place["page"] for place in bar["places"]]) == (
+        "Code 128",
+        "K-20047718",
+        [1],
+    )
     assert code["giro"] == {
         "name": "Papiq Test GmbH",
         "iban": "DE89370400440532013000",

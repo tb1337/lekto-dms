@@ -62,11 +62,19 @@ class GiroCodeOut(BaseModel):
     purpose: str | None
 
 
-class CodeOut(BaseModel):
+class CodePlaceOut(BaseModel):
+    """Where a code stands on a page of the archive."""
+
     page: int = Field(description="From 1.")
+    boxes: list[BoxOut] = Field(description="One per copy of the code on the page.")
+
+
+class CodeOut(BaseModel):
+    """A code once for its format and text, however often the pages show it."""
+
     format: str = Field(examples=["QR Code", "Code 128", "Data Matrix"])
     text: str = Field(description="What it holds, as it holds it; someone else's text.")
-    box: BoxOut = Field(description="Where it stands on the page of the archive.")
+    places: list[CodePlaceOut] = Field(description="The pages it stands on, in order.")
     giro: GiroCodeOut | None = Field(description="A GiroCode, read as its credit transfer.")
     identifiers: list[IdentifierFoundOut]
     fields: list[UUID] = Field(
@@ -88,10 +96,12 @@ class CodeOut(BaseModel):
                 purpose=item.giro.purpose,
             )
         return cls(
-            page=item.code.page,
-            format=item.code.format,
-            text=item.code.text,
-            box=BoxOut.of(item.code.box),
+            format=item.format,
+            text=item.text,
+            places=[
+                CodePlaceOut(page=place.page, boxes=[BoxOut.of(box) for box in place.boxes])
+                for place in item.places
+            ],
             giro=giro,
             identifiers=[
                 IdentifierFoundOut(kind=kind, value=value) for kind, value in item.identifiers

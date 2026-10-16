@@ -17,6 +17,7 @@
 		pageRanges,
 		segmentsOf,
 		type CodeFacts,
+		type CodePlace,
 		type Facts,
 		type Span
 	} from '#lib/facts.ts';
@@ -49,7 +50,7 @@
 		/** Admins attach identifiers to contacts. */
 		admin?: boolean;
 		/** Show a code where it stands on its page (the details). */
-		onshowcode?: (code: CodeFacts) => void;
+		onshowcode?: (code: CodeFacts, place: CodePlace) => void;
 		/** After an identifier was attached: the facts are read again. */
 		onfactschanged?: () => void;
 	} = $props();

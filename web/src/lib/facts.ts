@@ -10,6 +10,7 @@ export type Facts = components['schemas']['FactsOut'];
 export type FoundIdentifier = components['schemas']['FoundIdentifierOut'];
 export type NamedContact = components['schemas']['NamedContactOut'];
 export type CodeFacts = components['schemas']['CodeOut'];
+export type CodePlace = components['schemas']['CodePlaceOut'];
 export type Span = components['schemas']['SpanOut'];
 
 /** A stretch of a page's text, marked or not. */

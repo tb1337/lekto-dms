@@ -1984,13 +1984,11 @@ export interface components {
 			 */
 			code: string;
 		};
-		/** CodeOut */
+		/**
+		 * CodeOut
+		 * @description A code once for its format and text, however often the pages show it.
+		 */
 		CodeOut: {
-			/**
-			 * Page
-			 * @description From 1.
-			 */
-			page: number;
 			/**
 			 * Format
 			 * @example QR Code
@@ -2003,8 +2001,11 @@ export interface components {
 			 * @description What it holds, as it holds it; someone else's text.
 			 */
 			text: string;
-			/** @description Where it stands on the page of the archive. */
-			box: components['schemas']['BoxOut'];
+			/**
+			 * Places
+			 * @description The pages it stands on, in order.
+			 */
+			places: components['schemas']['CodePlaceOut'][];
 			/** @description A GiroCode, read as its credit transfer. */
 			giro: components['schemas']['GiroCodeOut'] | null;
 			/** Identifiers */
@@ -2014,6 +2015,22 @@ export interface components {
 			 * @description Amount fields of the document with the GiroCode's amount as their value.
 			 */
 			fields: string[];
+		};
+		/**
+		 * CodePlaceOut
+		 * @description Where a code stands on a page of the archive.
+		 */
+		CodePlaceOut: {
+			/**
+			 * Page
+			 * @description From 1.
+			 */
+			page: number;
+			/**
+			 * Boxes
+			 * @description One per copy of the code on the page.
+			 */
+			boxes: components['schemas']['BoxOut'][];
 		};
 		/**
 		 * ConditionField

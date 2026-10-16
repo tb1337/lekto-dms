@@ -1,7 +1,7 @@
 import copy
 import json
 import logging
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path, PurePath
@@ -21,6 +21,7 @@ from papiq.core.domain.facts import Facts, facts_in
 from papiq.core.domain.fields import FieldType, FieldValue
 from papiq.core.domain.identifiers import IdentifierKind
 from papiq.core.domain.ids import ContactId, DocumentId, DrawerId, FieldId, UserId
+from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.permissions import (
     can_control_document,
     can_manage_master_data,
@@ -85,10 +86,14 @@ class DocumentView:
 
 @dataclass(frozen=True, kw_only=True)
 class CodeFacts:
-    """A code on the document's pages: a GiroCode read as its credit transfer, the
-    identifiers it holds, and the amount fields of the document with the GiroCode's amount."""
+    """A code on the document's pages, once for its format and text however often it is
+    printed: where it stands (page by page, a box per copy), a GiroCode read as its credit
+    transfer, the identifiers it holds, and the amount fields of the document with the
+    GiroCode's amount."""
 
-    code: Code
+    format: str
+    text: str
+    places: tuple[Location, ...]
     giro: GiroCode | None
     identifiers: tuple[tuple[IdentifierKind, str], ...]
     fields: tuple[FieldId, ...]
@@ -106,13 +111,27 @@ class DocumentFacts:
     other_contacts: dict[tuple[IdentifierKind, str], int] | None
 
 
-def _code_facts(code: Code, amounts: dict[FieldId, FieldValue]) -> CodeFacts:
+def _code_facts(codes: Sequence[Code], amounts: dict[FieldId, FieldValue]) -> tuple[CodeFacts, ...]:
+    """The codes once for each format and text, in the order they first stand."""
+    copies: dict[tuple[str, str], list[Code]] = {}
+    for code in codes:
+        copies.setdefault((code.format, code.text), []).append(code)
+    return tuple(_one_code(found, amounts) for found in copies.values())
+
+
+def _one_code(copies: Sequence[Code], amounts: dict[FieldId, FieldValue]) -> CodeFacts:
+    code = copies[0]
+    boxes: dict[int, list[Box]] = {}
+    for item in copies:
+        boxes.setdefault(item.page, []).append(item.box)
     giro = giro_code(code.text)
     fields: tuple[FieldId, ...] = ()
     if giro is not None and giro.amount is not None:
         fields = tuple(field for field, value in amounts.items() if value == giro.amount)
     return CodeFacts(
-        code=code,
+        format=code.format,
+        text=code.text,
+        places=tuple(Location(page, tuple(found)) for page, found in sorted(boxes.items())),
         giro=giro,
         identifiers=tuple(sorted(code_identifiers(code), key=lambda key: (key[0].value, key[1]))),
         fields=fields,
@@ -221,7 +240,7 @@ class DocumentService:
         }
         views = None
         if codes is not None:
-            views = tuple(_code_facts(code, amounts) for code in codes)
+            views = _code_facts(codes, amounts)
         others = None
         if can_manage_master_data(user):
             async with self._uow() as uow:

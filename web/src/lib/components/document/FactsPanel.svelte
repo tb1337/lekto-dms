@@ -9,6 +9,7 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import CodeThumb from '#lib/components/document/CodeThumb.svelte';
+	import SourceChip from '#lib/components/document/SourceChip.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { reportError } from '#lib/errors.ts';
@@ -18,6 +19,7 @@
 		identifierKey,
 		shown,
 		type CodeFacts,
+		type CodePlace,
 		type Facts,
 		type FoundIdentifier,
 		type NamedContact,
@@ -50,7 +52,8 @@
 		/** The spans to mark in the text, none to mark nothing; `reveal` after a click. */
 		onmark: (spans: Span[], reveal: boolean) => void;
 		/** Show a code where it stands on its page. */
-		onshowcode: (code: CodeFacts) => void;
+		/** Show the code on one of its pages, all its places marked. */
+		onshowcode: (code: CodeFacts, place: CodePlace) => void;
 		/** After an identifier was attached. */
 		onchanged: () => void;
 	} = $props();
@@ -352,12 +355,18 @@
 					<div class="flex min-w-0 flex-1 flex-col gap-1.5">
 						<div class="flex flex-wrap items-center gap-2">
 							<span class="text-sm font-medium">{code.giro ? m.code_giro() : code.format}</span>
-							<span
-								class="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
-							>
-								{code.giro
-									? m.code_giro_badge({ format: code.format })
-									: m.codes_page({ page: code.page })}
+							{#if code.giro}
+								<span
+									class="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+								>
+									{m.code_giro_badge({ format: code.format })}
+								</span>
+							{/if}
+							<!-- One code however often it is printed: a chip per page, as at a field. -->
+							<span class="ml-auto flex flex-wrap justify-end gap-1">
+								{#each code.places as place (place.page)}
+									<SourceChip {place} onjump={() => onshowcode(code, place)} />
+								{/each}
 							</span>
 						</div>
 						{#if code.giro}
@@ -408,13 +417,6 @@
 								</Button>
 							</div>
 						{/if}
-						<button
-							type="button"
-							class="w-fit text-xs text-brand underline-offset-2 hover:underline"
-							onclick={() => onshowcode(code)}
-						>
-							{m.codes_show()}
-						</button>
 					</div>
 				</div>
 			{/each}

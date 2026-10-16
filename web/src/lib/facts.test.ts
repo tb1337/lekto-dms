@@ -55,10 +55,9 @@ const FACTS: Facts = {
 	],
 	codes: [
 		{
-			page: 1,
 			format: 'QR Code',
 			text: 'BCD',
-			box: { x: 0.7, y: 0.8, width: 0.1, height: 0.1 },
+			places: [{ page: 1, boxes: [{ x: 0.7, y: 0.8, width: 0.1, height: 0.1 }] }],
 			giro: {
 				name: 'Papiq Test GmbH',
 				iban: 'DE89370400440532013000',

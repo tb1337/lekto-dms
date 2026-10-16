@@ -66,10 +66,9 @@ const FACTS: Facts = {
 	],
 	codes: [
 		{
-			page: 1,
 			format: 'QR Code',
 			text: 'BCD\n002',
-			box: { x: 0.7, y: 0.8, width: 0.1, height: 0.1 },
+			places: [{ page: 1, boxes: [{ x: 0.7, y: 0.8, width: 0.1, height: 0.1 }] }],
 			giro: {
 				name: 'Stadtwerke Musterstadt GmbH',
 				iban: 'DE89370400440532013000',
@@ -81,10 +80,13 @@ const FACTS: Facts = {
 			fields: [FIELD]
 		},
 		{
-			page: 1,
 			format: 'Data Matrix',
 			text: 'DEA5E12C0001',
-			box: { x: 0.8, y: 0.05, width: 0.1, height: 0.05 },
+			// The same code on two pages: one entry.
+			places: [
+				{ page: 2, boxes: [{ x: 0.8, y: 0.05, width: 0.1, height: 0.05 }] },
+				{ page: 4, boxes: [{ x: 0.8, y: 0.05, width: 0.1, height: 0.05 }] }
+			],
 			giro: null,
 			identifiers: [],
 			fields: []
@@ -146,7 +148,7 @@ describe('FactsPanel', () => {
 		expect(customer.getAttribute('aria-pressed')).toBe('true');
 	});
 
-	it('marks what of a code stands in the text, and shows a code on its page', async () => {
+	it('marks what of a code stands in the text, and shows a code on each of its pages', async () => {
 		const onmark = vi.fn();
 		const onshowcode = vi.fn();
 		render(FactsPanel, props({ onmark, onshowcode }));
@@ -154,8 +156,12 @@ describe('FactsPanel', () => {
 			screen.getByRole('button', { name: m.codes_mark({ format: 'QR Code' }) })
 		);
 		expect(onmark).toHaveBeenLastCalledWith([{ start: 40, end: 67 }], true);
-		await fireEvent.click(screen.getAllByRole('button', { name: m.codes_show() })[0]);
-		expect(onshowcode).toHaveBeenCalledWith(FACTS.codes![0]);
+		await fireEvent.click(screen.getByRole('button', { name: m.source_jump({ page: 1 }) }));
+		expect(onshowcode).toHaveBeenLastCalledWith(FACTS.codes![0], FACTS.codes![0].places[0]);
+		const matrix = FACTS.codes![1];
+		expect(screen.getAllByRole('button', { name: m.source_jump({ page: 2 }) })).toHaveLength(1);
+		await fireEvent.click(screen.getByRole('button', { name: m.source_jump({ page: 4 }) }));
+		expect(onshowcode).toHaveBeenLastCalledWith(matrix, matrix.places[1]);
 	});
 
 	it('lets an admin attach an identifier to the document contact', async () => {

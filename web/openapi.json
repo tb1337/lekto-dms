@@ -13783,11 +13783,6 @@
       },
       "CodeOut": {
         "properties": {
-          "page": {
-            "type": "integer",
-            "title": "Page",
-            "description": "From 1."
-          },
           "format": {
             "type": "string",
             "title": "Format",
@@ -13802,9 +13797,13 @@
             "title": "Text",
             "description": "What it holds, as it holds it; someone else's text."
           },
-          "box": {
-            "$ref": "#/components/schemas/BoxOut",
-            "description": "Where it stands on the page of the archive."
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/CodePlaceOut"
+            },
+            "type": "array",
+            "title": "Places",
+            "description": "The pages it stands on, in order."
           },
           "giro": {
             "anyOf": [
@@ -13836,15 +13835,39 @@
         },
         "type": "object",
         "required": [
-          "page",
           "format",
           "text",
-          "box",
+          "places",
           "giro",
           "identifiers",
           "fields"
         ],
-        "title": "CodeOut"
+        "title": "CodeOut",
+        "description": "A code once for its format and text, however often the pages show it."
+      },
+      "CodePlaceOut": {
+        "properties": {
+          "page": {
+            "type": "integer",
+            "title": "Page",
+            "description": "From 1."
+          },
+          "boxes": {
+            "items": {
+              "$ref": "#/components/schemas/BoxOut"
+            },
+            "type": "array",
+            "title": "Boxes",
+            "description": "One per copy of the code on the page."
+          }
+        },
+        "type": "object",
+        "required": [
+          "page",
+          "boxes"
+        ],
+        "title": "CodePlaceOut",
+        "description": "Where a code stands on a page of the archive."
       },
       "ConditionField": {
         "type": "string",

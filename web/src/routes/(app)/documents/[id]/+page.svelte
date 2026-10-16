@@ -34,7 +34,7 @@
 	import type { GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
-	import { factCounts, type CodeFacts, type Facts } from '#lib/facts.ts';
+	import { factCounts, type CodeFacts, type CodePlace, type Facts } from '#lib/facts.ts';
 	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
@@ -125,19 +125,16 @@
 		}
 	}
 
-	/** Show a code where it stands: the details with the code marked on its page. */
-	async function showCode(code: CodeFacts) {
-		const place = { page: code.page, boxes: [code.box] };
-		codeMarks = [
-			{
-				key: 'code',
-				label: code.format,
-				page: code.page,
-				boxes: [code.box],
-				derived: false,
-				pinned: true
-			}
-		];
+	/** Show a code where it stands: the details on `place`, every place of the code marked. */
+	async function showCode(code: CodeFacts, place: CodePlace) {
+		codeMarks = code.places.map((each) => ({
+			key: `code:${each.page}`,
+			label: code.format,
+			page: each.page,
+			boxes: each.boxes,
+			derived: false,
+			pinned: each.page === place.page
+		}));
 		await goto(tabHref(page.url, 'details'));
 		// The viewer lays its pages out after it is shown.
 		for (const wait of [300, 900, 1800]) setTimeout(() => viewer?.reveal(place), wait);

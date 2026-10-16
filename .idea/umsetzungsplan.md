@@ -837,6 +837,14 @@ PR mit Label `enhancement`, schließt #52.
 
 **Nach dem Merge:** Devinstanz: Revision 0025.
 
+**Umsetzung (Branch `feature/manual-fields-0.3.0`, 16.10.2026, autonom):**
+- `Assignment` (`auto`, `manual`) in `domain/master_data.py`, `FieldDefinition.assignment` und `is_read`, Revision 0025, `assignment` an `FieldCreate`/`FieldPatch`/`FieldOut`; Schalter „Nur von Hand“ im Feld-Dialog, Hinweis in der Feldliste.
+- `signal_llm` und `fields` fragen manuelle Felder nie an (auch nicht mit `extract-4` nach einer Typkorrektur) und lassen ihren Wert, wie er ist.
+- Abweichung vom Plan (im Review gefunden): Ob ein Pflichtfeld „nur von Hand“ einen Wert hat, prüft `apply_rules` nach den Regeln, nicht der Felder-Knoten; sonst blieb ein Dokument gelb, dessen Wert eine Regel im selben Lauf setzte. Bestätigen ohne Wert ist für ein solches Feld keine Entscheidung (422 `open_fields`). Bei einer Typkorrektur behalten Formular und Bewertung den von Hand eingetragenen Wert (er wird nie neu gelesen). Die Prüfkarte sagt „Diesen Wert trägst Du von Hand ein“ statt „Keine Fundstelle im Text“.
+- Bewertung: Typ „Quittung“ mit dem Pflichtfeld „Ablagenummer“ (nur von Hand), Fall 38; der Bericht wertet solche Felder nicht als Leistung des Modells. Die Bewertung führt den Regelknoten nicht aus, Fall 38 ist kalt daher grün (das Gelb prüfen Pipeline-Tests), trainiert gelb wegen des Typs.
+- Prüfung: 3014 Backend-Tests mit Postgres, 534 Vitest, Build; Bewertung mit festen Antworten ohne falsches Grün und ohne Verstöße; Browser gegen den Build (Feld anlegen, Dialog, Prüfkarte mit Eingabe, hell und dunkel). Review durch einen separaten Agenten, die Funde oben behoben.
+- Offen: Die ASN aus Paperless als Feld „nur von Hand“ kommt mit dem Migrationsclient in einem späteren Release.
+
 #### Paket 3 – Tags mit Arten, Hierarchie und Gruppen (`feature/nested-tags-0.3.0`)
 
 PR mit Label `new-feature`. Die Art `topic` kommt erst mit Paket 4.

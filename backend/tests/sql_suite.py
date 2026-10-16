@@ -13,7 +13,6 @@ from typing import Any
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import Connection, insert, inspect, select
@@ -21,7 +20,7 @@ from sqlalchemy import Connection, insert, inspect, select
 from papiq.adapters.outbound.memory import ManualClock, MemoryObjectStore
 from papiq.adapters.outbound.sql import Database, SqlUnitOfWorkFactory, migrate, schema_state
 from papiq.adapters.outbound.sql import tables as t
-from papiq.adapters.outbound.sql.migrations import alembic_config
+from papiq.adapters.outbound.sql.migrations import downgrade
 from papiq.adapters.outbound.sql.types import UtcDateTime, json_type
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.errors import ConflictError, DuplicateDocumentError
@@ -410,7 +409,7 @@ class MigrationSuite:
         )
         assert after["event"] == {"document_id": document, "fields": ["title", "fields"]}
 
-        await _downgrade(empty_database, "0006")
+        await downgrade(empty_database, "0006")
         restored = await _stored(empty_database, old=True)
         # The answer's key stays `fields`: checks were stored under `fields` before as well.
         before["log"][1]["answer"] = {"fields": {"a1": "attributes"}}
@@ -500,7 +499,7 @@ class MigrationSuite:
             "delivery": "document.node_completed",
         }
 
-        await _downgrade(empty_database, "0008")
+        await downgrade(empty_database, "0008")
         assert await _node_names(empty_database, old=True) == before
         assert before["job"][0] == "pipeline.step"
 
@@ -626,7 +625,7 @@ class MigrationSuite:
             )
         documents["a"] = ("processing", "classify", documents["a"][2])
 
-        await _downgrade(empty_database, "0009")
+        await downgrade(empty_database, "0009")
         restored = {
             name: (row.processing_node, row.processing_outcomes)
             for name, row in zip(
@@ -732,7 +731,7 @@ class MigrationSuite:
             ids["title"]: None,
             ids["model"]: None,
         }
-        await _downgrade(empty_database, "0013")
+        await downgrade(empty_database, "0013")
 
     async def test_signals_come_before_the_judge_and_back(self, empty_database: Database) -> None:
         """Revision 0016 renames `classify` and `extract_fields` in the node states, the log,
@@ -830,7 +829,7 @@ class MigrationSuite:
         assert (log, events) == (["judge"], ["fields"])
         assert jobs == sorted(f"{parsed}:1:{signal}" for signal in _SIGNALS)
 
-        await _downgrade(empty_database, "0015")
+        await downgrade(empty_database, "0015")
         nodes, log, jobs, events = await stored()
         assert set(nodes[ids["parsed"]]) == set(graphs["parsed"])
         assert nodes[ids["done"]] == graphs["done"]
@@ -891,7 +890,7 @@ class MigrationSuite:
         assert " ".join(builders.TEMPLATES.render(title, values).split()) == "Lohn 2026-03 (scan)"
         assert builders.TEMPLATES.render(actions[2]["reason"], {}) == "check {{x}}"
 
-        await _downgrade(empty_database, "0017")
+        await downgrade(empty_database, "0017")
         assert await stored() == old_actions
 
     async def test_title_patterns_become_rules_of_their_types_and_back(
@@ -946,7 +945,7 @@ class MigrationSuite:
             loaded = await unit.rules.get(rule["id"])
         assert loaded.managed_by == payslip and loaded.definition.actions[0].type == "set_title"
 
-        await _downgrade(empty_database, "0018")
+        await downgrade(empty_database, "0018")
         async with empty_database.reading() as connection:
             restored = (
                 await connection.execute(
@@ -1004,7 +1003,7 @@ class MigrationSuite:
                 (await connection.execute(select(t.documents.c.id, t.documents.c.title_key))).all()
             )
         assert keys == {ids["letter"]: "arztebrief strasse 5", ids["invoice"]: "invoice"}
-        await _downgrade(empty_database, "0022")
+        await downgrade(empty_database, "0022")
         async with empty_database.reading() as connection:
             assert len((await connection.execute(select(documents.c.id))).all()) == 2
 
@@ -1212,12 +1211,6 @@ def _current_and_outcomes(nodes: dict[str, Any]) -> tuple[str | None, dict[str, 
         if name != "pages" and state["outcome"] is not None
     }
     return (waiting[0] if waiting else None), outcomes
-
-
-async def _downgrade(database: Database, revision: str) -> None:
-    async with database.engine.connect() as connection:
-        await connection.run_sync(lambda sync: command.downgrade(alembic_config(sync), revision))
-        await connection.commit()
 
 
 def _compare(connection: Connection) -> list[Any]:

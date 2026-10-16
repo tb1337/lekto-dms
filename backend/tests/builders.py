@@ -6,14 +6,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from papiq.adapters.outbound.liquid import LiquidTemplateRenderer
 from papiq.core.domain.documents import Document, Sha256
 from papiq.core.domain.drawers import Drawer
 from papiq.core.domain.ids import DocumentId, DrawerId, UserId, new_id
-from papiq.core.domain.pipeline import Lane, Outcome, Step, StepResult
+from papiq.core.domain.pipeline import Lane, Node, NodeResult, Outcome
 from papiq.core.domain.search import IndexDocument
 from papiq.core.domain.users import Role, User
-from papiq.core.services.pipeline import IncomingFile, PipelineService, PlaceholderStep
+from papiq.core.services.pipeline import IncomingFile, PipelineService, PlaceholderNode
 
+# Templates of rules and title patterns, as the memory container renders them.
+TEMPLATES = LiquidTemplateRenderer(locale="de", currency="EUR")
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 
 # PAPIQ_SECRET_KEY for tests (32 bytes, base64); never use it elsewhere.
@@ -22,9 +25,9 @@ PASSWORD = "correct horse battery"
 # PAPIQ_FORWARDED_ALLOW_IPS for tests: required with secure cookies.
 TRUSTED_PROXY = "127.0.0.1"
 
-OK = StepResult(outcome=Outcome.OK)
-UNCERTAIN = StepResult(outcome=Outcome.UNCERTAIN, reason="new contact", confidence=0.4)
-FAILED = StepResult(outcome=Outcome.FAILED, reason="OCR crashed")
+OK = NodeResult(outcome=Outcome.OK)
+UNCERTAIN = NodeResult(outcome=Outcome.UNCERTAIN, reason="new contact", confidence=0.4)
+FAILED = NodeResult(outcome=Outcome.FAILED, reason="OCR crashed")
 
 _counter = 0
 
@@ -76,19 +79,22 @@ def document(
     return document
 
 
-def run_pipeline(document: Document, results: dict[Step, StepResult] | None = None) -> Document:
-    """Run the remaining steps with OK (or the given results) until processing stops."""
+def run_pipeline(document: Document, results: dict[Node, NodeResult] | None = None) -> Document:
+    """Run the due nodes with OK (or the given results), one at a time in graph order, until
+    processing stops."""
     results = results or {}
-    step = document.processing.current_step
-    while step is not None and document.is_awaiting(step, document.processing.run):
-        step = document.record_result(step, document.processing.run, results.get(step, OK), NOW)
-    return document
+    while True:
+        run = document.processing.run
+        due = [node for node in document.processing.due() if document.is_awaiting(node, run)]
+        if not due:
+            return document
+        document.record_result(due[0], run, results.get(due[0], OK), NOW)
 
 
 def processed(
     owner: User,
     in_drawer: Drawer,
-    results: dict[Step, StepResult] | None = None,
+    results: dict[Node, NodeResult] | None = None,
     *,
     content: str | None = None,
 ) -> Document:
@@ -112,8 +118,8 @@ def incoming(data: bytes) -> IncomingFile:
 def skip_classification(pipeline: PipelineService) -> PipelineService:
     """Let classification and field extraction pass as OK, for tests about other things
     (without a language model, they would make every document yellow)."""
-    for step in (Step.CLASSIFY, Step.EXTRACT_FIELDS):
-        pipeline._executors[step] = PlaceholderStep()
+    for node in (Node.JUDGE, Node.FIELDS):
+        pipeline._executors[node] = PlaceholderNode()
     return pipeline
 
 

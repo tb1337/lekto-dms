@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildConfirm, initialValue } from './review.ts';
+import { initialValue } from './review.ts';
 import type { components } from '#lib/api/schema.ts';
 
 type Document = components['schemas']['DocumentDetails'];
@@ -26,35 +26,5 @@ describe('review decisions', () => {
 		expect(initialValue(check('tags', ['t1']), document, fields)).toEqual(['t1']);
 		expect(initialValue(check('field:a1', '2026-03-31'), document, fields)).toBe('2026-03-31');
 		expect(initialValue(check('document_date', null), document, fields)).toBe('');
-	});
-
-	it('decides every open field, empty meaning no value', () => {
-		const confirm = buildConfirm(
-			[check('contact', null), check('document_date', null), check('field:a1', null)],
-			{ contact: '', document_date: '2026-03-31', 'field:a1': '' },
-			document,
-			fields,
-			'd1'
-		);
-		expect(confirm.changes).toEqual({
-			contact_id: null,
-			document_date: '2026-03-31',
-			fields: { a1: null }
-		});
-		expect(confirm.resume_at).toBe('apply_rules');
-		expect(confirm.drawer_id).toBeUndefined();
-	});
-
-	it('extracts fields again after a corrected type, and moves on request', () => {
-		const confirm = buildConfirm(
-			[check('document_type', 'x'), check('drawer', null)],
-			{ document_type: 'type-new' },
-			document,
-			fields,
-			'd2'
-		);
-		expect(confirm.resume_at).toBe('extract_fields');
-		expect(confirm.drawer_id).toBe('d2');
-		expect(confirm.changes).toEqual({ document_type_id: 'type-new' });
 	});
 });

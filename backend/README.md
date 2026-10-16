@@ -23,7 +23,8 @@ Dependency rules, enforced by `uv run lint-imports`:
 - Only `composition` knows which adapter implements which port.
 
 Every port gets an in-memory adapter for core tests and a contract test suite that every real
-adapter must pass.
+adapter must pass. Two adapters need no service and serve the memory container as well: the
+pattern matcher (`regex`, a search with a time limit) and the template renderer (`liquid`).
 
 ## Core
 
@@ -152,54 +153,127 @@ small objects; files of any size go through `upload`/`download`, which work on l
 
 ## Processing
 
-Receive → OCR → parse → classify → extract fields → apply rules → file run as jobs
-(`pipeline.step`).
+A document goes through a graph of nodes (`core/domain/pipeline.py`, `GRAPH`; `GET /pipeline`
+lists it), each node a job (`pipeline.node`): receive → OCR and pages side by side; OCR → parse →
+the four signals side by side → judge → fields → apply rules → file; filing waits for the pages
+too. Nodes that do not
+need each other run as soon as their needs are met, so two workers may process one document at
+once. `processing.nodes` of a document holds the state of every node of the current run
+(`waiting`, `running`, `done` with its outcome, `skipped`) with start and end; the events
+`document.node_started`, `document.node_deferred` (an attempt raised; the node waits for the
+next one) and `document.node_completed` follow it. A node that fails stops the
+document (red): nodes still running finish, nothing new starts. A retry repeats the failed
+nodes, a reprocessing from node X repeats X and every node after it (from the judge also the
+signals that ask no model, so new aliases, identifiers or a new model count); both start a new run, so
+jobs of the old run are recognised as stale.
 
-| Step | Input | Derivatives (object store) | Outcome |
+| Node | Input | Derivatives (object store) | Outcome |
 | --- | --- | --- | --- |
-| OCR (`OcrStep`) | `originals/<sha256>` | `documents/<id>/archive.pdf` (PDF/A with text layer), `documents/<id>/preview.webp` (first page, 400 px wide) | uncertain if the archive is not PDF/A, with the reason; OK with a note if the original's digital signature is not in the archive |
-| Parse (`ParseStep`) | the archive PDF | `documents/<id>/content.md`, `documents/<id>/content.json` (Docling) | failed if no text was recognised; uncertain if the text is the plain text layer because the layout analysis found none |
-| Classify (`ClassifyStep`) | `content.md`, master data | contact, document type, tags, document date (applied if checked) | see below |
-| Extract fields (`ExtractFieldsStep`) | `content.md`, the fields of the type | field values (applied if checked) | see below |
-| Apply rules (`ApplyRulesStep`) | `content.md` (only if a rule looks at the text), the rules | drawer, contact, type, title, tags, fields | uncertain on conflicts, refused actions and forced reviews; see Rules |
-| File (`FileStep`) | the drawer | - | uncertain if the owner may no longer file into the drawer (field `drawer`) |
+| OCR (`OcrNode`) | `originals/<sha256>` | `documents/<id>/archive.pdf` (PDF/A with text layer); in the log, how well each recognised page was read (`readings`: words, unsure words below 60 % of Tesseract's confidence) | uncertain if the archive is not PDF/A, with the reason; OK with a note if the original's digital signature is not in the archive |
+| Pages (`PagesNode`) | `originals/<sha256>` | `documents/<id>/pages/<n>.webp` (every page, 1200 px wide; an image narrower than that keeps its size, each frame of a TIFF is a page), `documents/<id>/preview.webp` (first page, 400 px wide); sets `page_count` | failed if the file cannot be read |
+| Parse (`ParseNode`) | the archive PDF | `documents/<id>/content.txt` (the text as it is set), `documents/<id>/content.json` (its lines and words with boxes) | failed if no text was recognised |
+| Signals (`signal_llm`, `signal_classifier`, `signal_neighbours`, `signal_facts`) | `content.txt`, master data, the classifier's model, the search index; `signal_facts` also the archive PDF | proposals in the log; `signal_facts` also `documents/<id>/codes.json` (the codes on the pages) | OK, also when abstaining (`abstained` names why); only `signal_llm` fails, after two unfit answers |
+| Judge (`JudgeNode`) | the signals' entries in the log, `content.txt` | contact, document type, tags, document date (applied if green) | see Understanding |
+| Fields (`FieldsNode`) | `content.txt`, the fields of the type and the global ones | field values and the title (applied if checked) | see Understanding |
+| Apply rules (`ApplyRulesNode`) | `content.txt` (only if a rule looks at the text), the rules | drawer, contact, type, title, tags, fields | uncertain on conflicts, refused actions and forced reviews; see Rules |
+| File (`FileNode`) | the drawer | - | uncertain if the owner may no longer file into the drawer (field `drawer`) |
 
-- A step that raises is retried (`PAPIQ_STEP_MAX_ATTEMPTS`, delay `PAPIQ_STEP_RETRY_DELAY`,
-  doubling); after the last attempt the document goes red. A damaged or encrypted file
+- A node that raises is retried (`PAPIQ_NODE_MAX_ATTEMPTS`, delay `PAPIQ_NODE_RETRY_DELAY`,
+  doubling); it waits meanwhile (`document.node_deferred`); after the last attempt the
+  document goes red. A damaged or encrypted file
   (`UnprocessableDocumentError`) fails at once. The processing log records input, output,
   engine version, reason and duration of every run.
-- OCRmyPDF (`adapters/outbound/ocrmypdf`) and Docling (`adapters/outbound/docling`) run as
-  child processes per document with a time limit (`PAPIQ_OCR_TIMEOUT`, `PAPIQ_PARSE_TIMEOUT`);
-  on timeout or cancellation the process group is killed. The job lease is the longer limit
-  plus two minutes, so a step normally keeps its claim; if it overruns (e.g. a slow S3
-  transfer), another worker takes the job over and the late result is discarded. A step
-  interrupted by a stopping worker is released at once (`JobQueue.release`); that does not
-  count against `PAPIQ_STEP_MAX_ATTEMPTS`.
-- OCRmyPDF: `--skip-text` (pages with text are not recognised again), `--output-type pdfa`,
-  languages `PAPIQ_OCR_LANGUAGES`. Images whose stated resolution gives an implausible page
+- OCRmyPDF (`adapters/outbound/ocrmypdf`) runs as a child process per document with a time
+  limit (`PAPIQ_OCR_TIMEOUT`); on timeout or cancellation the process group is killed. The job
+  lease is the longest limit of a node (OCR, reading with the vision model in
+  `PAPIQ_VLM_TIMEOUT` if one is configured, or twice `PAPIQ_LLM_TIMEOUT`) plus two minutes, so a
+  node normally keeps its claim; if it overruns (e.g. a slow S3 transfer), another worker takes
+  the job over and the late result is discarded. A node interrupted by a stopping worker is
+  released at once (`JobQueue.release`); that does not count against
+  `PAPIQ_NODE_MAX_ATTEMPTS`.
+- OCRmyPDF: `--skip-text` (pages with text are not recognised again), `--deskew`,
+  `--rotate-pages`, `--output-type pdfa`, languages `PAPIQ_OCR_LANGUAGES`. A PDF with invisible
+  text carries the layer of another OCR (a scanner's, an older archive's), which may be poor and
+  says nothing of how well it read: it gets `--redo-ocr` instead (that layer is replaced,
+  visible text kept, no deskewing, which OCRmyPDF does not allow then), and the log says
+  `read_again`. A PDF whose text cannot be read gets `--force-ocr`: at least 30 % of a page's
+  characters map to nothing (a font without a character map, as the ecoDMS PDF printer writes
+  it, gives control characters), `--skip-text` would keep them and `--redo-ocr` keeps visible
+  text. Every page is recognised from its image, the archive holds the pages as images (larger),
+  and the log says why. Documents from before take the new reading when processed again from OCR. Images whose stated resolution gives an implausible page
   size (none, or 72 dpi from a phone) are scaled to the long edge of A4; transparency is put on
-  white, CMYK is converted, all pages of a TIFF are kept. OCRmyPDF and Docling share the CPU
-  cores among `PAPIQ_WORKER_CONCURRENCY` jobs.
+  white, CMYK is converted, all pages of a TIFF are kept. OCRmyPDF shares the CPU cores among
+  `PAPIQ_WORKER_CONCURRENCY` jobs.
+- A vision language model (`PAPIQ_VLM_*`, off without) reads a document only when a person
+  asks for it (`POST /documents/{id}/vision`, owner or admin); nothing asks on its own. The
+  document is processed again from OCR, and OCRmyPDF runs with `--force-ocr --deskew` and the
+  plugin `ocrmypdf/plugin.py` as OCR engine: Tesseract still tells orientation and skew, every
+  page image goes to the model at no more than 1.15 megapixels (so that the service does not
+  scale it again), and the model answers with each line and its box in pixels of that image
+  (prompt `read-1`, JSON schema; once more after an answer that does not fit). The words of a
+  line share its box by their length; OCRmyPDF writes the text layer from the lines. Boxes in
+  thousandths of the image drifted on a dense statement and on a photo, pixel boxes fit every
+  line (issue #53). The archive holds the pages as images under the model's text, and that text
+  counts as OCR: the checks are the usual ones, words the model marks `[unreadable]` count as
+  unsure (`PAPIQ_POOR_READING_THRESHOLD`). The run keeps the request (`processing.vision`,
+  revision 0021), so a retry asks the model again; reprocessing from `parse` and `reparse` keep
+  the model's text (it is the archive's), reprocessing from `ocr` reads with Tesseract (the web UI asks first whether the model shall
+  read again, and then calls `POST /documents/{id}/vision`). The archive's metadata names the
+  reader: `/Creator` and `xmp:CreatorTool` say `Papiq, vision language model <model> (read-1)`. A page
+  the model cannot read fails the node like the language model (`LanguageModelError`: retried,
+  then red). The plugin gets its configuration in the environment of OCRmyPDF's process (the
+  key apart, never logged) and leaves a record per page in a folder of ours. The log names
+  model, endpoint and prompt (`output.vision`) and the tokens per call (`output.tokens`); the calls are kept like those of the
+  language model (`exchanges/ocr.json`, the image as a placeholder). `GET
+  /documents/{id}/reading` gives each recognised page and the advice to read with the model:
+  `no_text` (red, the parse found no text) or `poor_page` (yellow or red, with a poorly read
+  page); none once the model has read it.
 - Two kinds of file get a second OCRmyPDF run. A digitally signed PDF is processed with
   `--invalidate-digital-signatures`: the original keeps its signature (originals never change),
   the archive has none, and the OCR entry of the log says so (outcome OK, `note`). A file whose
   PDF/A conversion fails outright (OCRmyPDF exit code 1, for example an unusual colour space) is
-  written as a plain PDF (`--output-type pdf`); the step is uncertain with the reason. When
+  written as a plain PDF (`--output-type pdf`); the node is uncertain with the reason. When
   Ghostscript itself refuses a construct of the file (overprint mode, a font with CID 0; exit
   code 10), the archive is a plain PDF as well and the reason comes from Ghostscript's
   messages. Such a document is yellow until its owner confirms it; the file cannot be made
   PDF/A without changing its content.
-- Docling uses the text layer of the archive (no OCR of its own) and the layout and table
-  models in `PAPIQ_DOCLING_MODELS_PATH`; it never downloads models (`HF_HUB_OFFLINE=1`). The
-  layout model sometimes takes a whole scanned page for a picture (a payslip in the M12 run)
-  and returns no text although OCR recognised some: then the plain text layer of the archive
-  becomes the Markdown, one block per page, the structure stays Docling's, and the step is
-  uncertain with that note, so the owner sees the document before it is filed. The
-  image stage `docling-models` downloads the models of the locked Docling version to
-  `/opt/docling-models`; the devcontainer has them. Elsewhere:
-  `uv run docling-tools models download layout tableformer -o <dir>`.
+- The text is read from the archive's text layer as it is set (`adapters/outbound/pdfium/
+  layout.py`, in a thread, milliseconds per page): every line as printed, its words in columns
+  on the page's grid, so a label keeps its amount and columns of figures line up; a printout
+  in a fixed-pitch font keeps its exact columns; a page whose text runs across it (a table
+  printed sideways, a scan OCR read sideways) is read that way, text up the margin along its
+  direction. Words end at the gaps between the characters, not at spaces (some PDFs set none).
+  Pages are separated by a form feed on a line of its own. Headers and footers stay in the
+  text (the identifiers of a letter's footer among them). A document parsed before 0.2 keeps
+  Docling's Markdown (`content.md`) until its text is read again (`reparse`); it is read
+  meanwhile. The structure is Papiq's own JSON:
+  the pages with their size, the lines and words with boxes in fractions of the page as shown.
+  It replaced Docling in 0.2: on the documents compared (`.idea/umsetzungsplan.md`) Docling
+  dropped headers and footers, merged the rows of forms and needed a minute and 2 GB per
+  document.
 - Previews: PDFium (pypdfium2) renders, Pillow encodes WebP. PDFium is not thread-safe; all
   its use in a process shares one lock.
+- Codes: `CodeReader` (`adapters/outbound/zxing`) renders each page of the archive in grey at
+  300 dpi (an edge of at most 5000 px, at most 50 pages) and reads every format zxing-cpp knows
+  (QR, Data Matrix, Aztec, PDF417, Code 128/39, EAN, ITF): format, text and box in fractions of
+  the page; invalid and empty results are dropped, the same code on a page counts once. About
+  0.1 to 0.3 s per page. A GiroCode (EPC069-12) is read as a credit transfer: payee, IBAN, BIC,
+  amount, purpose (`core/domain/codes.py`).
+- File metadata: `MetadataReader` (`adapters/outbound/pikepdf`) reads, on request, a PDF's
+  version, PDF/A level, pages, document information and XMP packet (pikepdf), an image's
+  format, size, resolution and EXIF without how its pixels are stored (Pillow); a damaged or
+  encrypted file has none (`GET /documents/{id}/files`).
+- Quotes on the page: the judge and the fields node look up every quote of the model in
+  the text layer of the archive (`TextLocator`, PDFium): case, spacing, line breaks, hyphens at
+  line ends and the marks of Markdown do not matter. Each field check keeps up to five places
+  (page and one box per line, fractions of the page as shown, its rotation applied) and whether
+  the quote shows the value itself or only leads to it (`quote_shows_value`); `/review`
+  returns both. Documents processed before this have none until they are processed again.
+- What the model nodes (`signal_llm`, `fields`, and `ocr` when the vision model read) send is
+  kept beside the document, one file per node with every run
+  (`documents/{id}/exchanges/<node>.json`: system and user message, the raw answer and the
+  endpoint's whole usage report); owner and admins read it through
+  `GET /documents/{id}/exchanges/{node}`. The files go with the document's other derivatives.
 - Deleting a document queues `documents.remove_files` in the same transaction: the worker
   removes its derivatives and its original, unless a document of any owner still has the same
   file (failures are repeated up to five times, from one minute, doubling). The removal and an
@@ -213,41 +287,106 @@ Receive → OCR → parse → classify → extract fields → apply rules → fi
   the drawer's rights changed meanwhile), the object stays without a document. Removing such
   objects is left to a later cleanup of the object store.
 
-## Classification
+## Understanding
 
-Two requests per document to an OpenAI-compatible chat completions endpoint
-(`adapters/outbound/openai_compat`, `PAPIQ_LLM_*`): one for contact, document type, tags and
-document date, one for the fields of the document type. The answer must follow a JSON schema
-(`response_format` `json_schema`, or `json_object` for providers without schema support); an
-answer that does not fit is asked for once more, then the step fails (red). Without a
-configured model both steps end uncertain (yellow): the owner fills in the fields.
+Four signals propose, the judge decides contact, document type, tags and document date, the
+fields node reads the fields of the decided type and the title (`core/services/classification`,
+the rules in `core/domain/verdict.py`).
 
-The model only chooses and proposes; the core checks every field against facts, and only what
-passes is applied (the same way as a change by the owner):
+- **`signal_llm`**: one request to an OpenAI-compatible chat completions endpoint
+  (`adapters/outbound/openai_compat`, `PAPIQ_LLM_*`, prompt `propose-2`) for sender and recipient,
+  type, tags, date, a title, the language, and the values of the fields of the type it chooses
+  and of the global ones, each with the quoted passage. The answer must follow a JSON schema
+  (`response_format` `json_schema`, or `json_object` for providers without schema support); an
+  answer that does not fit is asked for once more, then the signal fails (red). Without a
+  configured model it abstains, and the owner classifies.
+- **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
+  (contact, type, each tag), trained on the confirmed documents (`PAPIQ_CLASSIFIER`, see
+  Classifier). It abstains without a trained model.
+- **`signal_neighbours`**: the `PAPIQ_NEIGHBOURS` most similar confirmed documents the owner may
+  read, by the vector of the start of the text against the search index; their contact, type
+  and tags come from the database. It abstains without embeddings or index.
+- **`signal_facts`**: names and aliases of contacts standing whole in the text, identifiers of
+  contacts (IBAN, VAT ID, customer number, personnel number, mail domain), unknown IBANs and
+  VAT IDs. A personnel number stands after its label (`Personalnummer`, `Pers.-Nr.`,
+  `Mitarbeiternummer`, `Employee ID`, ...) and is kept without leading zeros. It also
+  reads the bar and QR codes on the archive's pages, once (`documents/<id>/codes.json`; the
+  OCR node deletes it with a new archive, a reprocessing from the judge takes it): an
+  identifier in a code counts as one in the text, the payee of a GiroCode as a name in the
+  text, which proposes nothing alone. Reading the codes may fail; the signal warns and goes on
+  without them. Which identifiers the document shows goes to `document_identifiers`, which
+  tells on the confirmed documents of how many contacts an identifier stands.
+
+A signal *names* a value it is sure of: the model, a contact whose name or alias its sender
+matches at least `PAPIQ_CONFIDENCE_THRESHOLD` (legal forms and punctuation aside) with no other
+close, or a type or tag of the lists; the classifier, its best class from
+`PAPIQ_CLASSIFIER_THRESHOLD` on; the neighbours, a value at least two and more than half of them
+carry, a contact only if no other contact is carried by two of them as well (neighbours split
+between senders are alike by their form, a pay slip's employee for one, and name no sender). A
+signal naming another value contradicts: always yellow, with every candidate and its
+sources. The judge's rule:
+
+| Field | Green (no contradiction) | Otherwise |
+| --- | --- | --- |
+| Contact | hard evidence (its identifier, or its name or alias in the text) and a signal names it; or the model's sender matches it from `PAPIQ_CONTACT_SUGGEST_THRESHOLD` on and the classifier or the neighbours name it. Never the model's recipient | yellow with ranked candidates; an identifier alone is a suggestion; an unknown sender a new contact (an admin creates it) |
+| Document type | two signals name it, or only the model and no other signal covers it (the classifier was not trained on it, no confirmed document carries it) | yellow; a type outside the list is proposed as new |
+| Tags | set as a type is green | a suggestion; tags never make a document yellow |
+| Document date | a valid date that appears in the text, in a quoted passage that shows it (`31.03.2026`, `31.3.26`, `2026-03-31`, `31. März 2026`, `March 31, 2026`, ...) | suggested |
+
+Without the model's proposal the judge is uncertain; it fails (red) only if the model answered
+and no signal recognised anything.
+
+The fields node reads the fields of the decided type and the global ones. If the model asked
+for the type the judge decided, its values are taken over; otherwise (after a type correction,
+or for a document from before the signals) it asks the model for the missing ones (prompt
+`extract-4`). Each field is required or optional per type it is assigned to, a global one by its
+own switch:
 
 | Field | Check | Not passed |
 | --- | --- | --- |
-| Contact | Contacts are not sent; the proposed name is matched against all contacts (legal forms and punctuation ignored). Accepted if similar enough (`PAPIQ_CONFIDENCE_THRESHOLD`), named in the text and not ambiguous | an existing contact is suggested from `PAPIQ_CONTACT_SUGGEST_THRESHOLD` on, otherwise a new contact (only an admin can create it) |
-| Document type | One of the existing types | new type suggested |
-| Tags | Only existing tags are applied; proposed new tags are only logged | - |
-| Document date, date fields | A valid date that appears in the text (`31.03.2026`, `31.3.26`, `2026-03-31`, `31. März 2026`, `March 31, 2026`, ...); a date field must differ from the document date | the date is suggested |
-| Amounts, numbers | The number appears in the text (German or English notation); the currency is shown as code, sign or word | |
-| Text, link, choice, yes/no | The value, or the quoted passage, appears in the text | |
-| Fields of the type | A missing value makes the document yellow (global fields may be missing) | |
+| Required field | its value is found and passes | yellow |
+| Optional field | no value is fine (left empty); a value given must pass | yellow |
+| Amounts, numbers | read as written (`2.111,68 €`, `1,234.56`, `-12,50`; an ambiguous one as the text shows it, else in the document's language) and found in the text; the currency shown as code, sign or word, or, where the text shows none at all (a pay slip's bare numbers), `PAPIQ_DEFAULT_CURRENCY` | |
+| Dates | as the document date; a date field must differ from the document date | the date is suggested |
+| Periods | read as written (`September 2026`, `09/2026`, `KW 38/2026`, `Q3 2026`, `2025`, `01.09.–30.09.2026`, `1. bis 30. September 2026`, a date as that day) or as `{start, end}`; plausible as a date; the quoted passage shows it as written or by its first and last day; of a value, the reading no other one holds counts (two are none) | without a year (it takes the document date's), or a single day equal to the document date: suggested |
+| Text, link, choice, yes/no | the value, or the quoted passage, appears in the text (`ja`/`nein` read as yes or no) | |
 
-The quoted passage must appear in the text as well. Every check and the raw answer are in the
-processing log (`fields`, `answer`), so the proposal stays traceable after a correction; the
-rules read them with `core.services.inbox.field_checks`.
+The quoted passage must appear in the text as well, and for an amount, number, date, text,
+link or period it must show the value itself: elsewhere in the text the same digits may stand for
+anything, on a broken scan a lone fragment. An amount counts in the quote only as an amount,
+with decimal places or a currency beside it (`620,00`, `620 €`, `620,-`; a bare `620` is none).
+Without such a quote the value is only suggested, and so is a value on a page the OCR read
+poorly (`PAPIQ_POOR_READING_THRESHOLD`; the page of its quote, or any recognised page if the
+quote was not found): on a broken scan a number may be anything, however sure Tesseract was of
+it. The document date follows the same rules. A field's description (up to 300
+characters) goes into both prompts after its name and choices: it tells the model what belongs
+in the field, whose name is often an internal one no document shows (`LA_Brutto`: the month's
+gross total, not the base salary). The model is told to copy the quoted passage exactly as it
+stands, numbers unchanged, and where the label and the value stand apart (a table, a form with
+boxes), the line the value stands on; the check stays strict.
+
+The title is the model's while the document still has its file name or the title the machine
+gave it; a rule replaces the machine's title without making the document yellow. A document
+type's title pattern is such a rule: a template (see Rules) that a global rule of the type
+carries out, made, changed and deleted with the pattern and read-only otherwise
+(`RuleOut.managed_by_document_type_id`, changes 409). It gives way to another rule that sets the
+title (note `yielded`); a value it writes that the document lacks leaves the model's title;
+confirming runs the rules again with the decided values. Every check with its
+candidates and the raw answer is in the processing log (`fields`, `answer`), so a proposal stays
+traceable after a correction; the rules read them with `core.services.inbox.field_checks`.
 
 The document text is sent between markers derived from its hash, and the model is told to treat
 it as data. It can only answer with the fixed schema: there is no field for drawers, owners,
 shares or actions, and additional fields make the answer unfit. Long documents are shortened to
-`PAPIQ_LLM_INPUT_BUDGET` characters (beginning and end kept, the middle left out); with many
-tags, at most `PAPIQ_LLM_MAX_TAGS` are listed, those named in the text first.
+`PAPIQ_LLM_INPUT_BUDGET` characters, a run of spaces counted once (the columns of the text as it
+is set cost a model little; beginning and end kept, the middle left out); with many
+tags, at most `PAPIQ_LLM_MAX_TAGS` are listed, those named in the text first; of the contacts,
+the 20 the text names most (with their aliases).
 
-**Privacy.** The shortened document text and the names of document types, tags and fields
-go to the endpoint in `PAPIQ_LLM_BASE_URL`; the file, contacts and users do not. Every log entry
-of the two steps names the endpoint host and the model. At start, a warning names every
+**Privacy.** The shortened document text, the names of document types, tags and fields, the
+descriptions of types and fields, and the names of the contacts the text names go to the
+endpoint in `PAPIQ_LLM_BASE_URL`; the file, other contacts and users do not. Every log entry of the two model nodes names the endpoint host and
+the model. At start, a warning names every
 configured model endpoint outside the local network (not loopback, private, link-local or a
 local name), because document content leaves the system there.
 
@@ -256,8 +395,45 @@ context size over this API and cuts longer prompts silently (often at 4,096 toke
 with `OLLAMA_CONTEXT_LENGTH=8192` or more. Local models on a CPU are slow:
 `PAPIQ_LLM_TIMEOUT` is per request, and the job lease allows twice that (one repeated request).
 
+**Classifier.** One model for all users (`core/services/classifier.py`,
+`adapters/outbound/sklearn`). Training examples are the documents whose metadata a person set or
+confirmed (`confirmed_at`: confirming in the inbox, changing contact, type, tags, date or fields,
+taking a document over); green documents do not train. A recurring job (`classifier.check`,
+every ten minutes) queues the training (`classifier.train`) once `PAPIQ_CLASSIFIER_MIN_EXAMPLES`
+documents are confirmed and no model exists, or `PAPIQ_CLASSIFIER_RETRAIN_AFTER` were confirmed
+since the last one; `python -m papiq.composition train` and `POST /classifier/train` train at
+once. Training also learns identifiers of contacts: one that stands in at least two confirmed
+documents, all of one contact (the household's own IBAN stands on letters of many and is never
+learned); a learned identifier an admin rejected stays rejected. The model is stored as `npz`
+without pickle (`classifier/model-<n>.npz`, the latest three are kept) and predicted with numpy
+alone, so a new scikit-learn version cannot break it. `GET /classifier` tells its state.
+
+**After the update to 0.2.** Three things, in this order:
+
+1. The search index gets the attribute `confirmed` the neighbours filter on. The migration
+   raises the version of every confirmed document, so the worker's reconciliation at its start
+   writes them again; vectors of unchanged text are kept, so this needs no embedding calls and
+   no `reindex` (which would embed every document anew). Until it is through, the neighbours
+   find fewer documents. Documents taken over before count as confirmed; the first training
+   starts by itself once the worker runs. The same reconciliation writes every entry in the
+   index's layout 2 (fields with a value, the title's sort key, periods in ISO), with the
+   vectors it has.
+2. 0.2 reads the text as it is set instead of Docling's Markdown. A document parsed before
+   keeps its Markdown, which is read meanwhile, until `python -m papiq.composition reparse` (or
+   `POST /pipeline/reparse`) has the worker read its text again; nodes, lane and metadata stay
+   as they are. The search index then takes up the new texts, which embeds every document anew
+   (with an embedding service elsewhere this takes a while: choose the time), and the
+   classifier is trained on the new texts afterwards (`train`).
+3. 0.2 reads the bar and QR codes on the pages. `python -m papiq.composition read-codes` has
+   the worker read them for the documents from before and keep the identifiers each document
+   shows (`document_identifiers`), so that the warning when attaching an identifier counts
+   every confirmed document. It reads locally and sends nothing out; nodes, lane and metadata
+   stay as they are. Documents taken over get their codes only this way: the signals abstain
+   for them. Run it once `reparse` is through, which changes the text the identifiers are read
+   from.
+
 **Evaluation.** `python -m papiq.composition evaluate [--fake]` runs the synthetic documents in
-`evaluation/` through both steps and writes a report; see [evaluation/README.md](evaluation/README.md).
+`evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).
 
 ## Rules
 
@@ -280,7 +456,7 @@ version; deleting is a soft delete.
   "actions": [
     {"type": "set_drawer", "drawer_id": "<drawer id>"},
     {"type": "add_tags", "tag_ids": ["<tag id>"]},
-    {"type": "set_title", "template": "{contact} {document_date}"}
+    {"type": "set_title", "template": "{{ contact }} {{ document_date | date: '%Y-%m' }}"}
   ]
 }
 ```
@@ -290,7 +466,7 @@ version; deleting is a soft delete.
   only with `add_tags`, `remove_tags`, `set_field` and `force_review`: nothing that changes
   who sees a document. Everyone reads the global rules; user rules are read by their owner and
   admins (`all_users=true`).
-- **Triggers.** `ingest`: the pipeline step `apply_rules`, when a document arrives. `change`:
+- **Triggers.** `ingest`: the pipeline node `apply_rules`, when a document arrives. `change`:
   a person changed the metadata of a document whose processing is complete.
 - **Conditions.** Groups `all` or `any`, each may be negated with `"not": true`; at most 5 deep
   and 50 conditions. Fields and operators:
@@ -302,16 +478,35 @@ version; deleting is a soft delete.
   | `channel` (Eingangskanal: `web`, `api`, `migration`) | `is`, `in` |
   | `text` | `contains` (normalised like the classification checks), `matches` (regular expression) |
   | `document_date` | `is`, `gt`, `lt`, `present`, `missing` |
-  | `field` (with `field_id`) | by data type: text and link `is`, `in`, `contains`, `matches`; number, amount, date `is`, `gt`, `lt`; yes/no `is`; choice `is`, `in`; all `present`, `missing` |
+  | `field` (with `field_id`) | by data type: text and link `is`, `in`, `contains`, `matches`; number, amount, date `is`, `gt`, `lt`; yes/no `is`; choice `is`, `in`; period `is`, `overlaps` (shares a day with a period), `gt` (starts after a date), `lt` (ends before a date); all `present`, `missing` |
 
   `matches` takes `case_sensitive` (default false). Patterns run with the `regex` package
   (`adapters/outbound/regex`) in a thread with a time limit (`PAPIQ_RULES_PATTERN_TIMEOUT`); a
   pattern that times out does not match and is logged. All patterns of one run on one
-  document get two seconds together, a preview page twenty; the patterns left do not match. The text is the parsed Markdown without
+  document get two seconds together, a preview page twenty; the patterns left do not match. The text is the parsed text without
   markup, at most `PAPIQ_RULES_MAX_TEXT` characters; it is loaded only if a rule looks at it.
-- **Actions.** `set_drawer`, `set_contact`, `set_document_type`, `set_title` (placeholders
-  `{contact}`, `{document_type}`, `{document_date}`, `{filename}`), `add_tags`, `remove_tags`,
-  `set_field`, `force_review` (with a reason).
+- **Actions.** `set_drawer`, `set_contact`, `set_document_type`, `set_title`, `add_tags`,
+  `remove_tags`, `set_field`, `force_review` (with a reason).
+- **Templates.** A title, the value of a text field and a review's reason are Liquid templates
+  (`python-liquid`, `adapters/outbound/liquid`): `{{ contact }}`, `{% if field.la_brutto %}`,
+  filters with `|`. They see `title`, `filename`, `original_filename`, `contact`,
+  `document_type`, `document_date`, `added`, `tags`, `drawer`, `owner`, `channel`, `pages` and
+  `field.<key>` (`FieldOut.key`, from the name: `LA_Brutto` is `la_brutto`; an amount has
+  `.amount` and `.currency`, a period `.start` and `.end`), as the rules leave the document. A
+  period writes itself in ISO 8601 by what it is (`Period.notation`): `2026-09`, `2026-W38`,
+  `2026-Q3` (ISO has no short form for a quarter), `2026`, a day as `2026-09-15`, else its
+  ends, `2026-09-01/2026-09-14`; `{{ field.x.start | datetime: format: 'MMMM yyyy' }}` writes
+  it in words. `datetime`, `currency` and
+  `decimal` format in `PAPIQ_TEMPLATE_LOCALE`, an amount writes itself as `3.650,00 EUR`. A
+  template sees nothing but these values (no attributes of objects, no `include`), loops stop
+  after 1,000 turns and output after 10,000 characters. Writing a missing value sets nothing
+  (note `skipped`); `| default` and `{% if %}` make a part optional; a forced review holds with
+  its reason as written. Saving checks the syntax and the values (422, `actions[2]: unknown
+  value field.brutto`); single braces (`{contact}`, as before 0.2.0) are text like any other.
+  Renaming a field rewrites the templates that use it (a new version); a field a template uses
+  is not deleted (409). `POST /templates/preview` checks a template and renders it with a
+  document the caller may read, and gives that document's values as a template writes them
+  (`values`, for the template editor's list).
 - **Evaluation.** All conditions see the state before any rule acts; a rule's action never makes
   another rule match in the same run. Contact, type and tags the model set and no person
   confirmed are distrusted: a rule that matches only because of them does not file into a
@@ -345,8 +540,8 @@ version; deleting is a soft delete.
   drawers must be writable for the owner (`403`). Deleting one of them, or removing a choice a
   rule uses, disables the rules that use it with a reason; enabling checks again. Deleting a user
   removes their rules.
-- **Log.** Every run is a processing log entry of step `apply_rules` with the rules and versions
-  checked, matches, effects and notes. `model_version`: `rules` (the pipeline step),
+- **Log.** Every run is a processing log entry of node `apply_rules` with the rules and versions
+  checked, matches, effects and notes. `model_version`: `rules` (the pipeline node),
   `rules:change` (after a change; it also records what the person changed), `rules:apply`
   (retroactive), `person` (a confirmation), `person:drawer` (a drawer chosen on upload or by
   moving). Later runs read from the log which values a person
@@ -373,6 +568,14 @@ meaning took part.
   and the job repeats for the new ones. If Meilisearch loses its data, the adapter sets the
   index up again; restart the worker or call `POST /search/reindex` to fill it without waiting
   for the next reconciliation.
+- **Layout of an entry.** Each entry carries the layout it was written in (`LAYOUT` in
+  `core/domain/search.py`). Layout 2 adds the ids of the fields with a value (`field_ids`), the
+  title's sort key and periods in ISO 8601 beside the German words (`2026-W38` and `KW 38 2026`).
+  The reconciliation writes older entries again and keeps their vectors, since the embedded text
+  does not change: no embedding calls.
+- **Sorting.** `sort` comes first among Meilisearch's ranking rules, so relevance breaks ties,
+  also with vectors; document date, arrival and the title's sort key are sortable. Without
+  `sort` (or with `relevance`), the hits come by relevance.
 - **Rebuild at any time.** `POST /search/reindex` (admins) or `python -m papiq.composition
   reindex` builds `<index>-rebuild` from the database and the object store while the active
   index keeps serving, swaps it in and reconciles what changed meanwhile. The index holds no
@@ -439,25 +642,34 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /auth/oidc`, `/auth/oidc/login`, `/auth/oidc/callback`; `POST/DELETE /auth/oidc/link` | OpenID Connect |
 | `GET /users`, `GET/PATCH/DELETE /users/{id}` | Accounts: list (others see active users' names), role and state, delete (admins) |
 | `POST /users`, `POST /users/{id}/password`, `DELETE /users/{id}/totp`, `DELETE /users/{id}/oidc` | Create with password, reset password, turn TOTP off, remove links (admins, session only, not the own account) |
-| `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Fields: name, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409` |
+| `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409`. The lists take `document_counts=true` (and `all_users` for admins): each item with `document_count`, the documents in the caller's reach that have it (a field: a value for it), counted in one query |
+| `PUT /document-types/{id}/fields` | The fields of a document type, each required or optional, set from the type in one transaction (admins); answers its fields. A global field is `422`; taking off a field that has values on its documents or that the type's title pattern uses is `409` |
+| `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins); the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |
 | `GET/POST /drawers`, `GET/PATCH/DELETE /drawers/{id}`, `PUT/DELETE /drawers/{id}/shares/{user_id}` | Drawers and shares (owner) |
-| `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `limit`, `offset`, `semantic_ratio`; hits with snippet, `estimated_total`, `next_offset`, `semantic` |
+| `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet, `estimated_total`, `next_offset`, `semantic` |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
-| `GET /documents` | Readable documents, newest first; filters `contact_id`, `document_type_id`, `tag_id`, `drawer_id`, `lane`; `limit`, `cursor` |
+| `GET /documents` | Readable documents; `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), documents without a date last either way; filters `contact_id`, `document_type_id`, `tag_id`, `drawer_id`, `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (the last document's id; its sort value is looked up, `422` if it is gone) |
 | `POST /documents` | Upload (multipart: `file`, optional `drawer_id`, optional `channel=migration`; otherwise the channel is `web` with a session, `api` with a token); `202` with `id`, `status_url` |
 | `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`; change (write access; the answer has the change rules' `rules` report for the owner); delete (owner or admin) |
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result and the differences |
 | `POST /documents/{id}/move` | Into another drawer (owner, or an admin without read access) |
-| `GET /documents/{id}/original`, `/archive`, `/preview` | Files (read access) |
+| `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
+| `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit`; `409` while not parsed |
+| `GET /documents/{id}/files` | The files as stored (read access): when the document was added and changed, its original's name and type, and for the original and the archive (null while there is none) size, SHA-256 and metadata: a PDF's version, PDF/A level, pages, document information and XMP; an image's format, size, resolution and EXIF |
+| `GET /documents/{id}/facts` | What the document shows of its contacts (read access): names and identifiers with the contact they belong to now and their spans in the text (characters, as `/text` counts them); the codes on its pages, each once for its format and text, with the pages and boxes where it stands (a box per copy), the GiroCode read, their identifiers and the amount fields of the same value; for admins, on the documents of how many other contacts an identifier stands; `409` while not parsed |
 | `GET /documents/{id}/log` | Processing log (owner or admin) |
-| `POST /documents/{id}/retry` | Repeat the failed step (owner or admin) |
-| `POST /documents/{id}/reprocess` | `{"from_step": "ocr"}`: process again from a step (owner or admin) |
-| `GET /inbox` | The caller's yellow and red documents, newest first, with their open steps and fields; `limit`, `cursor` |
+| `POST /documents/{id}/retry` | Repeat the failed nodes (owner or admin) |
+| `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (owner or admin) |
+| `POST /documents/{id}/vision` | Process again from OCR with the vision language model reading every page (owner or admin); `409` without a model |
+| `GET /documents/{id}/reading` | How the archive's text was read: by the vision model or not, each recognised page, the advice to read with the model (owner or admin) |
+| `GET /pipeline` | The graph: every node and what it needs, in graph order; the vision model, if one is configured |
+| `POST /pipeline/reparse` | Read the text of every document again in the background (admins, after the update to 0.2); `202` with `queued` |
+| `GET /inbox` | The caller's yellow and red documents, newest first, with their open nodes and fields; `limit`, `cursor` |
 | `GET /documents/{id}/review` | What the model proposed and how each field was checked (owner or admin) |
-| `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `drawer_id`), then continue from `resume_at` (`apply_rules`, or `extract_fields` after a type change) up to filing (owner or admin); undecided fields: `422` with `open_fields` |
+| `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `drawer_id`), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (owner or admin); undecided fields: `422` with `open_fields` |
 | `GET/POST /rules`, `GET/PUT/PATCH/DELETE /rules/{id}`, `GET /rules/{id}/versions`, `/versions/{number}` | Rules: list (`scope`, `include_disabled`, `all_users` for admins), create, change (new version), enable or disable, delete; see Rules |
 | `POST /rules/{id}/apply/preview`, `POST /rules/{id}/apply`, `GET /rule-applications/{id}` | Apply a rule to existing documents: preview, start (`202`), progress |
-| `GET /events` | Server-sent events of the documents the caller may read; `?document_id=` |
+| `GET /events` | Server-sent events of the documents the caller may read, for admins also `classifier.trained`; `?document_id=` |
 | `GET/POST /webhooks`, `GET/PATCH/DELETE /webhooks/{id}` | Webhooks: the caller's own (admins read everybody's, `?owner=`); create (the answer shows the secret once), change, switch on or off, delete; see Webhooks |
 | `POST /webhooks/{id}/secret`, `POST /webhooks/{id}/test`, `GET /webhooks/{id}/deliveries` | Renew the secret (the old one signs 24 hours longer), send a test request, the delivery log (`before`, `limit`) |
 | `GET /health` | Database, bucket or storage directory and, if configured, the search index reachable; `200` (`ok`, or `degraded` if only the search is down) or `503`, no authentication; not written to the access log |
@@ -486,7 +698,9 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   `PAPIQ_EVENTS_POLL_INTERVAL`. Each event goes to the streams of the users who may read the
   document at that moment (other users once it is green). No replay: after reconnecting,
   clients fetch the state. `document.deleted` goes to the streams of the users who could read the
-  document when it was deleted (the event carries their ids; the stream message does not). One API instance
+  document when it was deleted (the event carries their ids; the stream message does not).
+  `classifier.trained` (a new model: `number`, `examples`) goes to the active admins' streams
+  that do not follow one document; webhooks cannot choose it. One API instance
   is assumed: several would share the `api.sse` subscription. While the API is down, its
   subscription holds back the purge of the outbox.
 - On SIGTERM the event streams end at once, open requests get ten seconds, then the database
@@ -501,20 +715,9 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   `PAPIQ_WORKER_POLL_INTERVAL` when nothing is due. One loop delivers outbox events
   (`EventBus.dispatch`) every `PAPIQ_EVENTS_POLL_INTERVAL`. Postgres `LISTEN/NOTIFY` is not
   used.
-- Memory: every loop may run one Docling process, and Docling needs about 1.1 GB of RAM for a
-  one-page document and 1.8 to 2.0 GB for ten pages (measured on real scans, CPU build of
-  PyTorch; the number of threads changes nothing). OCRmyPDF takes about 150 MB per job, the
-  worker itself about 0.5 GB. A Docling process that the operating system kills for lack of
-  memory ends with exit code -9; the step is repeated and the document goes red after
-  `PAPIQ_STEP_MAX_ATTEMPTS`. Choose `PAPIQ_WORKER_CONCURRENCY` by the RAM of the machine
-  (about 2 GB per loop plus 1 GB; API and worker in one container share it):
-
-  | RAM | `PAPIQ_WORKER_CONCURRENCY` |
-  | --- | --- |
-  | 4 GB | 1 |
-  | 8 GB | 3 (4 was killed in a run of 1500 documents) |
-  | 16 GB | 6 |
-  | 32 GB | 12 |
+- Memory: OCRmyPDF takes about 150 MB per job, the worker itself about 0.5 GB; reading the
+  text needs little. The OCR is bound by the CPU: OCRmyPDF shares the cores among
+  `PAPIQ_WORKER_CONCURRENCY` jobs, so more loops than cores gain nothing.
 - The cleanup (`maintenance.cleanup`, one job with a fixed dedup key; it goes before pipeline
   steps when due) runs every
   `PAPIQ_CLEANUP_INTERVAL` and removes finished jobs and delivered events older than
@@ -523,7 +726,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   (`PAPIQ_WEBHOOK_SECRET_GRACE`) is over. The same loop runs the removal of a deleted
   document's files.
 - Rule applications (`rules.apply`) run 25 documents per job, then queue the next job, so
-  pipeline steps do not wait behind them.
+  pipeline nodes do not wait behind them.
 - `PAPIQ_WEBHOOK_CONCURRENCY` further loops deliver webhooks (see Webhooks); a receiver that
   does not answer holds up deliveries, never the pipeline.
 - SIGTERM or SIGINT: no new jobs; running jobs may finish within
@@ -545,7 +748,7 @@ admin reads includes the target URL (which may be a capability URL) and, in the 
 IDs and event types of that user's deliveries.
 At most `PAPIQ_WEBHOOKS_PER_USER` (20) per user.
 
-**Events.** `document.received`, `document.step_completed`, `document.lane_changed`,
+**Events.** `document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`,
 `document.filed`, `document.updated`, `document.deleted`, or `*` for all, also future ones. A
 webhook only hears of documents its owner may read, as with the event stream: the right is
 checked when the event is queued and again before every attempt, and a user who lost access in
@@ -648,7 +851,7 @@ as in REST: `read` may use every tool but `update_metadata`.
 | --- | --- |
 | `search` | `query`, `limit` (1 to 25), `offset`, optional `contact`, `document_type`, `tags` (names): hits with `id`, `title`, `score`, `snippet` (plain text), contact, type, tags, date, lane, `access`; `next_offset`, `semantic` |
 | `get_document` | `id`: metadata with contact, type, tags and fields by name, lane and processing status |
-| `get_text` | `id`, `offset`, `limit` (characters, at most `PAPIQ_MCP_TEXT_MAX`, 20,000): a piece of the document's text as Markdown, `next_offset` to continue. The text is content from outside; the tool description tells clients not to follow instructions in it |
+| `get_text` | `id`, `offset`, `limit` (characters, at most `PAPIQ_MCP_TEXT_MAX`, 20,000): a piece of the document's text as it is set, `next_offset` to continue. The text is content from outside; the tool description tells clients not to follow instructions in it |
 | `update_metadata` | `id` and any of `title`, `contact`, `document_type` (name; `null` removes), `tags` (the complete list, replaces), `document_date` (`null` removes), `fields` (field name to value; `null` removes). Needs a `read_write` token and write access; the owner's change rules run as for `PATCH /documents/{id}` and the result shows them. If the rules filed the document where the caller can no longer read it, the result has only `id` and `access: null` |
 | `list_tags` | All tags, to name them in the other tools |
 
@@ -739,19 +942,17 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_WEBHOOK_CONCURRENCY` | Worker | `4` | Deliveries at the same time |
 | `PAPIQ_MCP_ENABLED` | API | `true` | Serve MCP at `/api/v1/mcp` |
 | `PAPIQ_MCP_TEXT_MAX` | API | `20000` | Characters one `get_text` call returns at most (1,000 to 1,000,000) |
-| `PAPIQ_WORKER_CONCURRENCY` | Worker | `2` | Jobs at the same time; about 2 GB of RAM each (Docling), see Worker |
+| `PAPIQ_WORKER_CONCURRENCY` | Worker | `2` | Jobs at the same time, see Worker |
 | `PAPIQ_WORKER_POLL_INTERVAL` | Worker | `1` | Seconds between looks for due jobs |
 | `PAPIQ_WORKER_SHUTDOWN_TIMEOUT` | Worker | `30` | Seconds running jobs get to finish on SIGTERM |
-| `PAPIQ_STEP_MAX_ATTEMPTS` | Worker | `3` | Attempts of a pipeline step that raises |
-| `PAPIQ_STEP_RETRY_DELAY` | Worker | `30` | Seconds before the second attempt, doubling after |
+| `PAPIQ_NODE_MAX_ATTEMPTS` | Worker | `3` | Attempts of a pipeline node that raises |
+| `PAPIQ_NODE_RETRY_DELAY` | Worker | `30` | Seconds before the second attempt, doubling after |
 | `PAPIQ_EVENTS_POLL_INTERVAL` | Worker | `1` | Seconds between outbox dispatches |
 | `PAPIQ_EVENTS_MAX_ATTEMPTS` | Worker | `10` | Delivery attempts of an event per subscriber |
 | `PAPIQ_CLEANUP_INTERVAL` | Worker | `3600` | Seconds between cleanups |
 | `PAPIQ_RETENTION` | Worker | `P7D` | Age of finished jobs, delivered events and webhook log rows to remove |
 | `PAPIQ_OCR_LANGUAGES` | Worker | `deu+eng` | Tesseract languages, joined by `+` |
 | `PAPIQ_OCR_TIMEOUT` | Worker | `600` | Seconds per document for OCR |
-| `PAPIQ_PARSE_TIMEOUT` | Worker | `600` | Seconds per document for parsing (Docling) |
-| `PAPIQ_DOCLING_MODELS_PATH` | Worker | `/opt/docling-models` | Docling layout and table models |
 | `PAPIQ_MEILISEARCH_URL` | both | unset | Without it there is no search (the API searches, the worker indexes) |
 | `PAPIQ_MEILISEARCH_API_KEY` | both | unset | *secret*; the master key or a key with access to the index |
 | `PAPIQ_MEILISEARCH_INDEX` | both | `papiq-documents` | The active index; a rebuild fills `<name>-rebuild` and swaps it in |
@@ -768,11 +969,11 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_LLM_BASE_URL` | Worker | unset | OpenAI-compatible endpoint with version path (`http://ollama:11434/v1`); set together with the model or neither |
 | `PAPIQ_LLM_MODEL` | Worker | unset | see above |
 | `PAPIQ_LLM_API_KEY` | Worker | unset | *secret* |
-| `PAPIQ_LLM_TEMPERATURE` | Worker | `0` | 0 to 2; 0 for repeatable answers |
+| `PAPIQ_LLM_TEMPERATURE` | Worker | `0` | 0 to 2; 0 for repeatable answers; `none` sends none (for models that reject one, such as Claude Sonnet 5.5) |
 | `PAPIQ_LLM_SEED` | Worker | unset | Passed to the endpoint, if set |
 | `PAPIQ_LLM_TIMEOUT` | Worker | `300` | Seconds per request (`600` on a CPU) |
 | `PAPIQ_LLM_RESPONSE_FORMAT` | Worker | `json_schema` | `json_object` for providers without JSON schema support |
-| `PAPIQ_LLM_INPUT_BUDGET` | Worker | `12000` | Characters of document text per request |
+| `PAPIQ_LLM_INPUT_BUDGET` | Worker | `12000` | Characters of document text per request (a run of spaces counts once) |
 | `PAPIQ_LLM_MAX_TAGS` | Worker | `200` | Tags listed per request |
 | `PAPIQ_EMBEDDING_BASE_URL` | both | unset | OpenAI-compatible endpoint; set together with the model or neither (the worker embeds sections, the API embeds queries) |
 | `PAPIQ_EMBEDDING_MODEL` | both | unset | see above |
@@ -781,21 +982,31 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_EMBEDDING_DIMENSIONS` | both | unset | Length of the vectors (`snowflake-arctic-embed2`, `bge-m3`: 1024); required with Meilisearch and an embedding endpoint |
 | `PAPIQ_EMBEDDING_QUERY_PREFIX` | API | unset | Put before queries, for models that ask for it (`query:`) |
 | `PAPIQ_EMBEDDING_DOCUMENT_PREFIX` | Worker | unset | Put before document sections, for models that ask for it |
+| `PAPIQ_VLM_BASE_URL` | both | unset | OpenAI-compatible endpoint of a vision language model that reads a document's pages when a person asks for it (`POST /documents/{id}/vision`); the page images go there. Set together with the model or neither; off without. The API names model and endpoint in `GET /pipeline` |
+| `PAPIQ_VLM_MODEL` | both | unset | see above: a model that takes images and gives each line's box in pixels (measured with Claude Sonnet 5.5) |
+| `PAPIQ_VLM_API_KEY` | Worker | unset | *secret* |
+| `PAPIQ_VLM_TIMEOUT` | Worker | `1800` | Seconds for reading a whole document with the model (one page at most 300); the job lease grows with it |
 | `PAPIQ_CONFIDENCE_THRESHOLD` | Worker | `0.9` | A field passes from this confidence on |
 | `PAPIQ_CONTACT_SUGGEST_THRESHOLD` | Worker | `0.75` | An existing contact is suggested from this similarity on; not above the confidence threshold |
+| `PAPIQ_POOR_READING_THRESHOLD` | Worker | `0.08` | Share of unsure words (below 60 % of Tesseract's confidence) from which a page the OCR recognised counts as poorly read: a value on it is only suggested. The default lies between good scans (up to 7 %) and broken ones (from 9 %) of a first sample; calibration in M18 |
+| `PAPIQ_DEFAULT_CURRENCY` | both | `EUR` | The currency of an amount in a document that shows no currency at all (ISO 4217), and of the `currency` filter in templates where they name none |
+| `PAPIQ_CLASSIFIER` | both | `scikit-learn` | The classifier trained from confirmed documents; `none` turns it off |
+| `PAPIQ_CLASSIFIER_MIN_EXAMPLES` | both | `20` | Confirmed documents before the first model is trained |
+| `PAPIQ_CLASSIFIER_RETRAIN_AFTER` | both | `25` | Documents confirmed since the last model before it is trained again |
+| `PAPIQ_CLASSIFIER_THRESHOLD` | Worker | `0.8` | A prediction this sure names its contact, type or tag |
+| `PAPIQ_NEIGHBOURS` | Worker | `5` | Similar confirmed documents that vote on a new one (needs the search index with embeddings); `0` turns them off |
 | `PAPIQ_RULES_PATTERN_TIMEOUT` | both | `0.2` | Seconds a regular expression of a rule may run per text or value (worker: rules; API: previews) |
 | `PAPIQ_RULES_MAX_TEXT` | both | `200000` | Characters of text rules look at (1,000 to 10,000,000) |
 | `PAPIQ_RULES_APPLY_MAX_DOCUMENTS` | both | `1000` | Documents per retroactive rule application (1 to 100,000) |
+| `PAPIQ_TEMPLATE_LOCALE` | both | `de` | Locale in which templates of rules and title patterns write dates and amounts (`datetime`, `currency`, `decimal`, an amount field as `3.650,00 EUR`); Babel's names, such as `de`, `en_US` |
 
 ## Tests
 
 - `tests/unit` (marker `unit`): no external services.
-- `tests/integration` (marker `integration`): need Postgres, Garage or Meilisearch, the OCR
-  programs (Tesseract, Ghostscript) or the Docling models. Which services apply follows the
+- `tests/integration` (marker `integration`): need Postgres, Garage or Meilisearch or the OCR
+  programs (Tesseract, Ghostscript). Which services apply follows the
   `PAPIQ_` variables; a test skips itself if what it needs is not configured or not reachable.
   The devcontainer provides all of them.
-- Marker `docling`: the slow tests that run Docling (models load for every document); leave them
-  out with `-m "not docling"`.
 - Sample files (scan, text PDF, photo, empty page, damaged PDF, Office file) are in
   `tests/samples`, generated by `make_samples.py`.
 

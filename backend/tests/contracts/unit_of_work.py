@@ -4,16 +4,28 @@ from decimal import Decimal
 
 import pytest
 
+from papiq.core.domain.classifier import ClassifierModel
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.drawers import Drawer, ShareLevel
 from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url
+from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import DocumentId, DrawerId, new_id
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
+from papiq.core.domain.periods import Period
 from papiq.core.domain.permissions import can_read_document
-from papiq.core.domain.pipeline import Lane, Outcome, ProcessingStatus, Step, StepResult, StepRun
+from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
 from papiq.core.domain.users import User
-from papiq.core.ports import DocumentFilter, UnitOfWorkFactory
+from papiq.core.domain.verdict import KnownLabels
+from papiq.core.ports import (
+    NEWEST_FIRST,
+    CountBy,
+    DocumentFilter,
+    DocumentOrder,
+    DocumentPosition,
+    SortKey,
+    UnitOfWorkFactory,
+)
 from tests import builders
 from tests.builders import FAILED, NOW, OK, UNCERTAIN
 
@@ -388,18 +400,76 @@ class UnitOfWorkContract:
             await uow.contacts.add(Contact.create(name="New", now=NOW, aliases=["Nord Allgemeine"]))
             await uow.commit()
 
+    async def test_contact_identifiers(self, uow_factory: UnitOfWorkFactory) -> None:
+        """Identifiers keep their source, change with the contact and go with it; kind and
+        value are unique across contacts, also when rejected."""
+        iban = Identifier.parse(IdentifierKind.IBAN, "DE89 3704 0044 0532 0130 00")
+        domain = Identifier.parse(IdentifierKind.EMAIL_DOMAIN, "stadtwerke.example")
+        contact = Contact.create(name="Stadtwerke", now=NOW, identifiers=[iban])
+        contact.set_learned([domain])
+        async with uow_factory() as uow:
+            await uow.contacts.add(contact)
+            await uow.commit()
+        async with uow_factory() as uow:
+            stored = await uow.contacts.get(contact.id)
+            assert stored == contact
+            assert [item.source for item in stored.identifiers] == [
+                IdentifierSource.MANUAL,
+                IdentifierSource.LEARNED,
+            ]
+            stored.set_identifiers([iban], rejected=[domain])
+            await uow.contacts.update(stored)
+            await uow.commit()
+        async with uow_factory() as uow:
+            stored = await uow.contacts.get(contact.id)
+            assert stored.identifiers[1] == Identifier(
+                IdentifierKind.EMAIL_DOMAIN, "stadtwerke.example", IdentifierSource.REJECTED
+            )
+            with pytest.raises(ConflictError):
+                await uow.contacts.add(Contact.create(name="Other", now=NOW, identifiers=[domain]))
+                await uow.commit()
+        other = Contact.create(name="Other", now=NOW)
+        async with uow_factory() as uow:
+            await uow.contacts.add(other)
+            await uow.commit()
+        async with uow_factory() as uow:
+            # A value moves to another contact in one transaction, given up first.
+            source, target = await uow.contacts.get(contact.id), await uow.contacts.get(other.id)
+            source.set_identifiers([])
+            target.set_identifiers([iban])
+            await uow.contacts.update(source)
+            await uow.contacts.update(target)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.contacts.get(other.id)).identifiers == [iban]
+            await uow.contacts.remove(contact.id)
+            await uow.contacts.remove(other.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            await uow.contacts.add(Contact.create(name="New", now=NOW, identifiers=[iban, domain]))
+            await uow.commit()
+
     async def test_field_definition_round_trip(self, uow_factory: UnitOfWorkFactory) -> None:
-        invoice = DocumentType.create(name="Invoice", now=NOW)
+        """Scope and choices; a field required for some of its types or, global, everywhere.
+        A document type keeps its title pattern."""
+        invoice = DocumentType.create(
+            name="Invoice", now=NOW, title_pattern="{document_date:YYYY} {field:Number}"
+        )
+        reminder = DocumentType.create(name="Reminder", now=NOW)
         bound = FieldDefinition.create(
             name="Billing period",
             data_type=FieldType.CHOICE,
             now=NOW,
-            document_type_ids=[invoice.id],
+            document_type_ids=[invoice.id, reminder.id],
             choices=["monthly", "yearly"],
+            required_types=[invoice.id],
         )
-        global_ = FieldDefinition.create(name="Note", data_type=FieldType.TEXT, now=NOW)
+        global_ = FieldDefinition.create(
+            name="Note", data_type=FieldType.TEXT, now=NOW, required=True
+        )
         async with uow_factory() as uow:
             await uow.document_types.add(invoice)
+            await uow.document_types.add(reminder)
             await uow.fields.add(bound)
             await uow.fields.add(global_)
             await uow.commit()
@@ -407,6 +477,31 @@ class UnitOfWorkContract:
             assert await uow.fields.get(bound.id) == bound
             assert await uow.fields.get(global_.id) == global_
             assert await uow.fields.find_by_name("NOTE") == global_
+            assert (await uow.document_types.get(invoice.id)).title_pattern == (
+                "{document_date:YYYY} {field:Number}"
+            )
+            stored = await uow.fields.get(bound.id)
+            assert stored.is_required_for(invoice.id)
+            assert not stored.is_required_for(reminder.id)
+
+    async def test_a_field_keeps_its_description(self, uow_factory: UnitOfWorkFactory) -> None:
+        gross = FieldDefinition.create(
+            name="LA_Brutto",
+            data_type=FieldType.AMOUNT,
+            now=NOW,
+            description="Gesamtbrutto des Monats, nicht das Grundgehalt",
+        )
+        async with uow_factory() as uow:
+            await uow.fields.add(gross)
+            await uow.commit()
+        async with uow_factory() as uow:
+            stored = await uow.fields.get(gross.id)
+            assert stored.description == "Gesamtbrutto des Monats, nicht das Grundgehalt"
+            stored.describe("  ")
+            await uow.fields.update(stored)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.fields.get(gross.id)).description is None
 
     # --- documents ------------------------------------------------------------------------------
 
@@ -434,6 +529,7 @@ class UnitOfWorkContract:
             FieldType.BOOLEAN: False,
             FieldType.CHOICE: "y",
             FieldType.LINK: Url("https://example.org/contract?id=7"),
+            FieldType.PERIOD: Period(date(2026, 9, 1), date(2026, 9, 30)),
         }
         document = builders.document(owner, drawer)
         document.apply_changes(
@@ -448,7 +544,7 @@ class UnitOfWorkContract:
             {d.id: d for d in definitions},
             NOW,
         )
-        builders.run_pipeline(document, {Step.CLASSIFY: UNCERTAIN})
+        builders.run_pipeline(document, {Node.JUDGE: UNCERTAIN})
         document.pull_events()
         async with uow_factory() as uow:
             await uow.contacts.add(contact)
@@ -466,18 +562,24 @@ class UnitOfWorkContract:
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
         owner, drawer = await owner_with_drawer(uow_factory)
-        failed = builders.processed(owner, drawer, {Step.PARSE: FAILED})
+        failed = builders.processed(owner, drawer, {Node.PARSE: FAILED})
         failed.retry(NOW)
         failed.pull_events()
         received = builders.document(owner, drawer)
-        in_review = builders.processed(owner, drawer, {Step.CLASSIFY: UNCERTAIN})
+        in_review = builders.processed(owner, drawer, {Node.JUDGE: UNCERTAIN})
         assert in_review.processing.status is ProcessingStatus.REVIEW
+        # A person asked that the vision language model read it.
+        read_again = builders.processed(owner, drawer, {})
+        read_again.read_with_vision(NOW)
+        read_again.pull_events()
+        assert read_again.processing.vision
+        documents = (failed, received, in_review, read_again)
         async with uow_factory() as uow:
-            for document in (failed, received, in_review):
+            for document in documents:
                 await uow.documents.add(document)
             await uow.commit()
         async with uow_factory() as uow:
-            for document in (failed, received, in_review):
+            for document in documents:
                 assert await uow.documents.get(document.id) == document
 
     async def test_loaded_documents_carry_no_events(self, uow_factory: UnitOfWorkFactory) -> None:
@@ -506,6 +608,43 @@ class UnitOfWorkContract:
                 await uow.documents.add(builders.document(alice, alice_drawer, content="same"))
                 await uow.commit()
 
+    async def test_document_identifiers_tell_the_contacts_that_show_them(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """Only confirmed documents with a contact count."""
+        owner, drawer = await owner_with_drawer(uow_factory)
+        utility, bank = (Contact.create(name=name, now=NOW) for name in ("Stadtwerke", "Bank"))
+        own = (IdentifierKind.IBAN, "DE02120300000000202051")
+        customer = (IdentifierKind.CUSTOMER_NUMBER, "20047718")
+        other = (IdentifierKind.VAT_ID, "DE312456789")
+        documents = [builders.processed(owner, drawer) for _ in range(4)]
+        shows = [{own, customer}, {own}, {other}, {own}]
+        for document, contact in zip(documents, [utility, bank, utility, None], strict=True):
+            document.contact_id = None if contact is None else contact.id
+        for document in (documents[0], documents[1], documents[3]):
+            document.mark_confirmed(NOW)
+        async with uow_factory() as uow:
+            await uow.contacts.add(utility)
+            await uow.contacts.add(bank)
+            for document, identifiers in zip(documents, shows, strict=True):
+                await uow.documents.add(document)
+                await uow.document_identifiers.replace(document.id, identifiers)
+            await uow.commit()
+        unknown = (IdentifierKind.EMAIL_DOMAIN, "example.org")
+        async with uow_factory() as uow:
+            assert await uow.document_identifiers.contacts_of([own, customer, other, unknown]) == {
+                own: frozenset({utility.id, bank.id}),
+                customer: frozenset({utility.id}),
+            }
+            assert await uow.document_identifiers.contacts_of([]) == {}
+            await uow.document_identifiers.replace(documents[0].id, [customer])
+            await uow.documents.remove(documents[1].id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.document_identifiers.contacts_of([own, customer]) == {
+                customer: frozenset({utility.id})
+            }
+
     async def test_remove_document(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, drawer = await owner_with_drawer(uow_factory)
         document = builders.document(owner, drawer)
@@ -533,11 +672,11 @@ class UnitOfWorkContract:
         documents = [
             builders.processed(owner, private),
             builders.processed(owner, shared),
-            builders.processed(owner, shared, {Step.CLASSIFY: UNCERTAIN}),
-            builders.processed(owner, shared, {Step.OCR: FAILED}),
+            builders.processed(owner, shared, {Node.JUDGE: UNCERTAIN}),
+            builders.processed(owner, shared, {Node.OCR: FAILED}),
             builders.document(owner, shared),
             builders.processed(reader, shared),
-            builders.processed(reader, shared, {Step.CLASSIFY: UNCERTAIN}),
+            builders.processed(reader, shared, {Node.JUDGE: UNCERTAIN}),
             builders.processed(reader, reader_default),
         ]
         async with uow_factory() as uow:
@@ -568,6 +707,102 @@ class UnitOfWorkContract:
             yellow_ids = {d.id for d in await uow.documents.query(yellow, limit=100)}
             assert yellow_ids == {d.id for d in documents if d.lane is Lane.YELLOW}
 
+    async def test_confirmed_documents(self, uow_factory: UnitOfWorkFactory) -> None:
+        """The time a person confirmed the metadata is kept; documents filter and count by it."""
+        owner, drawer = await owner_with_drawer(uow_factory)
+        early, late, never = (builders.processed(owner, drawer) for _ in range(3))
+        early.mark_confirmed(NOW)
+        late.mark_confirmed(NOW + timedelta(hours=1))
+        async with uow_factory() as uow:
+            for document in (early, late, never):
+                await uow.documents.add(document)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.documents.get(late.id)).confirmed_at == NOW + timedelta(hours=1)
+            assert (await uow.documents.get(never.id)).confirmed_at is None
+            confirmed = await uow.documents.query(DocumentFilter(confirmed=True), limit=9)
+            assert {document.id for document in confirmed} == {early.id, late.id}
+            open_ = await uow.documents.query(DocumentFilter(confirmed=False), limit=9)
+            assert [document.id for document in open_] == [never.id]
+            assert await uow.documents.count_confirmed() == 2
+            assert await uow.documents.count_confirmed(after=NOW) == 1
+
+    async def test_confirmed_labels(self, uow_factory: UnitOfWorkFactory) -> None:
+        """What the confirmed documents a user may read carry; not what the open ones do, nor
+        another owner's."""
+        owner, drawer = await owner_with_drawer(uow_factory)
+        stranger, elsewhere = await owner_with_drawer(uow_factory)
+        known, other, foreign = (
+            Contact.create(name=name, now=NOW) for name in ("Known", "Other", "Foreign")
+        )
+        kind = DocumentType.create(name="Invoice", now=NOW)
+        tag, untouched = (Tag.create(name=name, now=NOW) for name in ("Energy", "Unused"))
+        confirmed, open_ = builders.processed(owner, drawer), builders.processed(owner, drawer)
+        theirs = builders.processed(stranger, elsewhere)
+        confirmed.apply_changes(
+            DocumentChanges(
+                contact_id=known.id, document_type_id=kind.id, tag_ids=frozenset({tag.id})
+            ),
+            {},
+            NOW,
+        )
+        open_.apply_changes(
+            DocumentChanges(contact_id=other.id, tag_ids=frozenset({untouched.id})), {}, NOW
+        )
+        theirs.apply_changes(DocumentChanges(contact_id=foreign.id), {}, NOW)
+        for document in (confirmed, theirs):
+            document.mark_confirmed(NOW)
+        async with uow_factory() as uow:
+            for contact in (known, other, foreign):
+                await uow.contacts.add(contact)
+            await uow.document_types.add(kind)
+            for label in (tag, untouched):
+                await uow.tags.add(label)
+            for document in (confirmed, open_, theirs):
+                await uow.documents.add(document)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.documents.confirmed_labels(owner.id) == KnownLabels(
+                contacts=frozenset({known.id}),
+                document_types=frozenset({kind.id}),
+                tags=frozenset({tag.id}),
+            )
+            assert await uow.documents.confirmed_labels(stranger.id) == KnownLabels(
+                contacts=frozenset({foreign.id})
+            )
+
+    async def test_classifier_models(self, uow_factory: UnitOfWorkFactory) -> None:
+        """Newest first by number; a number is used once."""
+        first, second = (
+            ClassifierModel.create(
+                number=number,
+                now=NOW,
+                examples=40 * number,
+                examples_until=None if number == 1 else NOW,
+                object_key=f"classifier/model-{number}.npz",
+                summary={"classes": {"contact": number}},
+            )
+            for number in (1, 2)
+        )
+        async with uow_factory() as uow:
+            assert await uow.classifier_models.latest() is None
+            await uow.classifier_models.add(first)
+            await uow.classifier_models.add(second)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.classifier_models.latest() == second
+            assert await uow.classifier_models.list_all() == [second, first]
+            await uow.classifier_models.remove(first.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.classifier_models.list_all() == [second]
+            with pytest.raises(ConflictError):
+                again = ClassifierModel.create(
+                    number=2, now=NOW, examples=1, examples_until=None, object_key="x", summary={}
+                )
+                await uow.classifier_models.add(again)
+                await uow.commit()
+
     async def test_query_filters_and_pages(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, drawer = await owner_with_drawer(uow_factory)
         other = builders.drawer(owner, "Other")
@@ -580,7 +815,7 @@ class UnitOfWorkContract:
             document = builders.processed(
                 owner,
                 other if number == 5 else drawer,
-                {Step.CLASSIFY: UNCERTAIN} if number == 4 else None,
+                {Node.JUDGE: UNCERTAIN} if number == 4 else None,
             )
             tags = frozenset({tax.id, paid.id} if number < 2 else {tax.id} if number < 4 else set())
             document.apply_changes(
@@ -632,11 +867,11 @@ class UnitOfWorkContract:
 
             # Pages of two, following the last id.
             pages: list[DocumentId] = []
-            before = None
-            while page := await query(owner.id, DocumentFilter(), before=before, limit=2):
+            after = None
+            while page := await query(owner.id, DocumentFilter(), after=after, limit=2):
                 assert len(page) <= 2
                 pages += [d.id for d in page]
-                before = page[-1].id
+                after = DocumentPosition(page[-1].id)
             assert pages == [d.id for d in everything]
 
             # Over every document: the same filters and paging.
@@ -646,18 +881,128 @@ class UnitOfWorkContract:
             in_drawer = [d.id for d in everything if d.drawer_id == drawer.id]
             first = await uow.documents.query(DocumentFilter(drawer=drawer.id), limit=2)
             rest = await uow.documents.query(
-                DocumentFilter(drawer=drawer.id), before=first[-1].id, limit=100
+                DocumentFilter(drawer=drawer.id), after=DocumentPosition(first[-1].id), limit=100
             )
             assert [d.id for d in [*first, *rest]] == in_drawer
+
+    async def test_query_sorts_by_date_and_title_and_filters_by_field(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner, drawer = await owner_with_drawer(uow_factory)
+        note = FieldDefinition.create(name="Note", data_type=FieldType.TEXT, now=NOW)
+        rows = [  # title, document date, note; in the order they come in
+            ("Ärztebrief", date(2026, 3, 1), "a"),
+            ("arzt", date(2026, 3, 1), None),
+            ("Zahnarzt", None, "z"),
+            ("bank", date(2025, 12, 24), None),
+            ("Abrechnung", None, None),
+        ]
+        documents = []
+        for title, day, value in rows:
+            document = builders.processed(owner, drawer)
+            values = {note.id: value} if value else {}
+            changes = DocumentChanges(title=title, document_date=day, fields=values)
+            document.apply_changes(changes, {note.id: note}, NOW)
+            documents.append(document)
+        async with uow_factory() as uow:
+            await uow.fields.add(note)
+            for document in documents:
+                await uow.documents.add(document)
+            await uow.commit()
+        titles = {document.id: document.title for document in documents}
+
+        async def paged(order: DocumentOrder, filter: DocumentFilter | None = None) -> list[str]:
+            found: list[Document] = []
+            after = None
+            async with uow_factory() as uow:
+                while page := await uow.documents.query_visible(
+                    owner.id, filter or DocumentFilter(), order=order, after=after, limit=2
+                ):
+                    found += page
+                    after = DocumentPosition.of(page[-1], order)
+            return [titles[document.id] for document in found]
+
+        def by_id(*names: str, descending: bool = False) -> list[str]:
+            ids = {title: id for id, title in titles.items()}
+            return sorted(names, key=lambda name: ids[name], reverse=descending)
+
+        # By date, ties by id the same way; without a date last in both directions.
+        newest = await paged(DocumentOrder(SortKey.DOCUMENT_DATE))
+        assert newest == [
+            *by_id("arzt", "Ärztebrief", descending=True),
+            "bank",
+            *by_id("Abrechnung", "Zahnarzt", descending=True),
+        ], newest
+        oldest = await paged(DocumentOrder(SortKey.DOCUMENT_DATE, ascending=True))
+        assert oldest == [
+            "bank",
+            *by_id("arzt", "Ärztebrief"),
+            *by_id("Abrechnung", "Zahnarzt"),
+        ], oldest
+        # By title: case and accents aside.
+        by_title = ["Abrechnung", "arzt", "Ärztebrief", "bank", "Zahnarzt"]
+        assert await paged(DocumentOrder(SortKey.TITLE, ascending=True)) == by_title
+        assert await paged(DocumentOrder(SortKey.TITLE)) == by_title[::-1]
+        assert await paged(DocumentOrder(SortKey.CREATED, ascending=True)) == by_id(
+            *(title for title, _, _ in rows)
+        )
+        # Documents with a value for the field.
+        with_note = DocumentFilter(field=note.id)
+        assert await paged(NEWEST_FIRST, with_note) == by_id(
+            "Zahnarzt", "Ärztebrief", descending=True
+        )
+        async with uow_factory() as uow:
+            assert len(await uow.documents.query(with_note, limit=9)) == 2
+
+    async def test_documents_are_counted_by_master_data(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner, drawer = await owner_with_drawer(uow_factory)
+        stranger, theirs = await owner_with_drawer(uow_factory)
+        contact = Contact.create(name="ACME", now=NOW)
+        invoice = DocumentType.create(name="Invoice", now=NOW)
+        tax = Tag.create(name="tax", now=NOW)
+        note = FieldDefinition.create(name="Note", data_type=FieldType.TEXT, now=NOW)
+        documents = []
+        for number, (user, place) in enumerate(
+            [(owner, drawer), (owner, drawer), (stranger, theirs)]
+        ):
+            document = builders.processed(user, place)
+            changes = DocumentChanges(
+                contact_id=contact.id,
+                document_type_id=invoice.id if number == 0 else None,
+                tag_ids=frozenset({tax.id}),
+                fields={note.id: "x"} if number != 1 else {},
+            )
+            document.apply_changes(changes, {note.id: note}, NOW)
+            documents.append(document)
+        async with uow_factory() as uow:
+            for item in (contact, invoice, tax):
+                await getattr(uow, _repository_of(item)).add(item)
+            await uow.fields.add(note)
+            for document in documents:
+                await uow.documents.add(document)
+            await uow.commit()
+
+        async with uow_factory() as uow:
+            count = uow.documents.count_by
+            # Within the owner's reach: their own two (the stranger's drawer is not shared).
+            assert await count(CountBy.CONTACT, owner.id) == {contact.id: 2}
+            assert await count(CountBy.DOCUMENT_TYPE, owner.id) == {invoice.id: 1}
+            assert await count(CountBy.TAG, owner.id) == {tax.id: 2}
+            assert await count(CountBy.FIELD, owner.id) == {note.id: 1}
+            # Every document.
+            assert await count(CountBy.CONTACT, None) == {contact.id: 3}
+            assert await count(CountBy.FIELD, None) == {note.id: 2}
 
     async def test_removing_a_document_removes_its_processing_log(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
         owner, drawer = await owner_with_drawer(uow_factory)
         document = builders.document(owner, drawer)
-        entry = StepRun(
+        entry = NodeRun(
             document_id=document.id,
-            step=Step.RECEIVE,
+            node=Node.RECEIVE,
             run=1,
             result=OK,
             pipeline_version="0.1.0",
@@ -681,20 +1026,20 @@ class UnitOfWorkContract:
         owner, drawer = await owner_with_drawer(uow_factory)
         document, other = builders.document(owner, drawer), builders.document(owner, drawer)
         entries = [
-            StepRun(
+            NodeRun(
                 document_id=document.id,
-                step=step,
+                node=node,
                 run=1,
                 result=result,
                 pipeline_version="0.1.0",
                 started_at=NOW,
                 duration=timedelta(milliseconds=250),
             )
-            for step, result in [
-                (Step.RECEIVE, OK),
+            for node, result in [
+                (Node.RECEIVE, OK),
                 (
-                    Step.OCR,
-                    StepResult(
+                    Node.OCR,
+                    NodeResult(
                         outcome=Outcome.UNCERTAIN,
                         reason="low quality scan",
                         confidence=0.25,
@@ -703,7 +1048,7 @@ class UnitOfWorkContract:
                         output={"languages": ["deu", "eng"], "ratio": 0.5, "ok": None},
                     ),
                 ),
-                (Step.PARSE, FAILED),
+                (Node.PARSE, FAILED),
             ]
         ]
         async with uow_factory() as uow:

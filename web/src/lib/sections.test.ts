@@ -6,6 +6,7 @@ describe('visibleSections', () => {
 		const paths = visibleSections(false).map((section) => section.path);
 		expect(paths).not.toContain('/admin/users');
 		expect(paths).not.toContain('/admin/master-data');
+		expect(paths).not.toContain('/admin/classifier');
 		expect(paths).toContain('/documents');
 	});
 
@@ -14,8 +15,17 @@ describe('visibleSections', () => {
 	});
 });
 
+describe('SECTIONS', () => {
+	it('starts with the inbox, the search is not among them', () => {
+		const paths = SECTIONS.map((section) => section.path);
+		expect(paths.slice(0, 2)).toEqual(['/inbox', '/documents']);
+		expect(paths).not.toContain('/search');
+		expect(paths.slice(-3)).toEqual(['/admin/master-data', '/admin/users', '/admin/classifier']);
+	});
+});
+
 describe('isCurrent', () => {
-	const documents = SECTIONS[0];
+	const documents = SECTIONS.find((section) => section.path === '/documents')!;
 
 	it('matches the section and pages below it', () => {
 		expect(href(documents)).toBe('/ui/documents');

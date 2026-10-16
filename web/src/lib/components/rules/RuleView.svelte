@@ -1,7 +1,13 @@
 <script lang="ts">
+	import TemplateText from '#lib/components/templates/TemplateText.svelte';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { TRIGGER_LABELS, describeAction, describeCondition } from '#lib/rules/describe.ts';
+	import {
+		TRIGGER_LABELS,
+		actionTemplate,
+		describeAction,
+		describeCondition
+	} from '#lib/rules/describe.ts';
 	import { fromApi, type ApiDefinition, type GroupNode } from '#lib/rules/model.ts';
 
 	// A rule (or one of its versions) to read: when it runs, its conditions and actions.
@@ -41,7 +47,17 @@
 	<dd>
 		<ul class="flex flex-col gap-1.5">
 			{#each model.actions as action (action.key)}
-				<li>{describeAction(action, lookup)}</li>
+				{@const template = actionTemplate(action, lookup)}
+				<li>
+					{#if template}
+						{template.lead}<TemplateText
+							text={template.template}
+							class="rounded bg-muted px-1 py-0.5 text-[0.8125rem]"
+						/>
+					{:else}
+						{describeAction(action, lookup)}
+					{/if}
+				</li>
 			{/each}
 		</ul>
 	</dd>

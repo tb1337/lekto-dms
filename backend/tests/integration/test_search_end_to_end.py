@@ -46,7 +46,11 @@ TIMEOUT = 60.0  # seconds a document may take here
 class TextOcr:
     """OCR that keeps the file as it is: the archive holds the text line for the parser."""
 
-    async def make_archive(self, source: Path, target: Path, *, media_type: str) -> OcrResult:
+    vision = None
+
+    async def make_archive(
+        self, source: Path, target: Path, *, media_type: str, vision: bool = False
+    ) -> OcrResult:
         target.write_bytes(source.read_bytes())
         return OcrResult(pages=1, engine="text-ocr 1", pdfa=True)
 
@@ -54,15 +58,15 @@ class TextOcr:
 class TextParser:
     """A parser that takes the text of a document from a line of the file: `%text: …`."""
 
-    async def parse(self, source: Path, *, markdown: Path, structure: Path) -> ParseResult:
+    async def parse(self, source: Path, *, text: Path, structure: Path) -> ParseResult:
         data = source.read_bytes()
-        text = next(
+        content = next(
             line.removeprefix(b"%text: ").decode()
             for line in data.splitlines()
             if line.startswith(b"%text: ")
         )
-        markdown.write_text(text, encoding="utf-8")
-        structure.write_text(json.dumps({"text": text}), encoding="utf-8")
+        text.write_text(content, encoding="utf-8")
+        structure.write_text(json.dumps({"text": content}), encoding="utf-8")
         return ParseResult(pages=1, parser="text-parser 1")
 
 
@@ -140,6 +144,16 @@ class System:
             return not await active()
 
         await self.eventually(idle, "the worker is idle")
+
+    async def processed(self, user: User, id: str) -> None:
+        """Wait until the pipeline is done with the document: the search finds it earlier, and
+        a change while nodes still run meets their writes (409)."""
+
+        async def done() -> bool:
+            response = await self.client.get(f"{DOCUMENTS}/{id}", headers=auth(user))
+            return bool(response.json()["processing"]["status"] != "processing")
+
+        await self.eventually(done, f"{id} processed")
 
     async def found(self, user: User, text: str, expected: set[str], **params: Any) -> None:
         """Wait until the search finds exactly `expected` (the index follows a moment later)."""
@@ -240,6 +254,7 @@ async def test_documents_are_found_by_those_who_may_read_them(system: System) ->
     assert any(piece["match"] for piece in hit["snippet"])
 
     # Changes reach the index.
+    await system.processed(owner, lease)
     patched = await system.client.patch(
         f"{DOCUMENTS}/{lease}", json={"title": "Wohnungsvertrag Hamburg"}, headers=auth(owner)
     )

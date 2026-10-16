@@ -12,8 +12,8 @@ Paperless-ngx. Python backend, hexagonal (ports and adapters); the REST API is t
 | `migration/` | Paperless-ngx migration client: separate uv project `papiq_migration` (`plan`, `run`, `verify`; see `migration/README.md`) |
 | `deploy/` | Runtime image files (s6-overlay services, `image/rootfs`), example Compose stacks (SQLite, Postgres + Garage), `test-image.sh`, `README.md` (operation, backup) |
 | `.devcontainer/` | Devcontainer: Compose services (Postgres, Garage, Meilisearch), dev credentials, the development instance (`README.md`, `live.env.example`, `live-setup.sh`) |
-| `.vscode/tasks.json` | VS Code tasks that run the development instance from the devcontainer (start, stop, migrate, UI, reindex, migration) |
-| `Dockerfile` | Stages `base`, `deps`, `docling-models`, `app`, `s6`, `web` (UI build), `dev` (devcontainer) and `runtime` (production image) |
+| `.vscode/tasks.json` | VS Code tasks that run the development instance from the devcontainer (start, stop, migrate, UI, reindex, render-pages, read-codes, migration) |
+| `Dockerfile` | Stages `base`, `deps`, `app`, `s6`, `web` (UI build), `dev` (devcontainer) and `runtime` (production image) |
 | `.idea/` | Design documents in German: `architektur.md` (binding), `umsetzungsplan.md` |
 
 ## Commands
@@ -27,8 +27,7 @@ uv run mypy
 uv run lint-imports
 uv run pytest                    # all tests; integration tests skip if a service is unreachable
 uv run pytest -m unit            # no external services
-uv run pytest -m integration     # needs Postgres, Garage, Meilisearch, OCR programs, Docling models
-uv run pytest -m "not docling"   # without the slow Docling tests
+uv run pytest -m integration     # needs Postgres, Garage, Meilisearch, OCR programs
 uv run pytest -n auto            # in parallel (pytest-xdist), as CI does
 uv run python -m papiq.composition   # validate PAPIQ_ configuration
 uv run python -m papiq.composition migrate   # bring the configured database to the newest schema
@@ -75,8 +74,8 @@ changes in `migration/` its checks.
   themselves: what more than one of them needs lives directly in `adapters/inbound`. `lint-imports`
   enforces this; keep it green.
 - Every port gets an in-memory adapter and a contract test suite that every real adapter passes.
-  The pattern matcher is the stated exception: the `regex` adapter needs no service and serves
-  the memory container too.
+  The pattern matcher and the template renderer are the stated exceptions: the `regex` and
+  `liquid` adapters need no service and serve the memory container too.
 - Configuration is environment variables with prefix `PAPIQ_` only, no config file. Secrets also work
   as `PAPIQ_<NAME>_FILE`; both set is an error. See `backend/src/papiq/composition/settings.py`.
 - Async throughout (FastAPI, SQLAlchemy async, async HTTP clients).

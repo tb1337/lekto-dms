@@ -14,10 +14,12 @@ from starlette.routing import BaseRoute
 from papiq import __version__
 from papiq.adapters.inbound.rest import (
     account,
+    classifier,
     documents,
     drawers,
     health,
     master_data,
+    pipeline,
     problems,
     rules,
     search,
@@ -137,9 +139,12 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         drawers.router,
         rules.router,
         rules.applications,
+        rules.templates,
         search.router,  # before documents: `/documents/search` is no document id
+        classifier.router,
         documents.router,
         documents.inbox,
+        pipeline.router,
         streams.router,
         webhooks.router,
         health.router,

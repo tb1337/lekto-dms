@@ -4,8 +4,8 @@ Web UI: a single-page app on top of the Papiq REST API, served by the API under 
 the API only (`/api/v1`), through a TypeScript client generated from the API's OpenAPI document.
 
 Stack: SvelteKit 3 (Svelte 5, static adapter, no server-side rendering), Tailwind CSS 4,
-shadcn-svelte (bits-ui), Paraglide JS (English and German), openapi-fetch, Vitest. Fonts (Geist,
-Geist Mono) are part of the build; no CDN.
+shadcn-svelte (bits-ui), Paraglide JS (English and German), openapi-fetch, CodeMirror 6 (templates),
+Vitest. Fonts (Geist, Geist Mono) are part of the build; no CDN.
 
 ## Commands
 
@@ -49,6 +49,53 @@ scripts, style elements and images stay `'self'` only: pdf.js draws on a canvas 
 blob or data URLs, previews come from the API, the TOTP QR code is inline SVG (checked in the
 browser with a PDF holding a JPX image, M13).
 
+## Template editor
+
+Templates of rules and title patterns are edited with CodeMirror (`src/lib/templates/codemirror.ts`),
+loaded with `import()` where a template is shown. The colours, the place of a completion and
+where a value or filter goes are plain functions in `liquid.ts`, which the rule view uses too.
+The editor sits in a shadow root: there CodeMirror adopts a constructed style sheet, which the
+CSP lets through, instead of a `<style>` element, which it blocks. The page's styles do not reach
+in (the editor's theme holds its colours), and bits-ui's focus trap does not see focus inside, so
+a listener keeps `focusin` from the editor away from it. Component tests get a plain text area in
+place of the editor (`tests/setup.ts`); `codemirror.test.ts` runs the real one.
+
+## Documents and search
+
+`/ui/documents` lists the documents and, with words in `?q=`, searches them
+(`/documents/search`, with snippets), with the same filters (`lib/filters.ts`: contact, type,
+tag, drawer, lane, a field with a value); there is no search page of its own. The field in the
+header leads there; on narrow screens its icon opens the view with the field focused
+(`#search`). `?sort=` holds the sort: a search by relevance, a list by the newest document date
+unless chosen otherwise; the last choice of each, and grid or list (grid by default), stay in
+this browser (`lib/listing.ts`). An admin's choice to include all users is a setting of the
+user menu (`lib/scope.svelte.ts`), kept in this browser too and shown at the avatar; documents,
+search, the inbox with its counter, rules and the counts at the master data follow it. Every
+`localStorage` access is guarded: without storage the defaults hold.
+
+## Document view
+
+`/ui/documents/{id}` serves the inbox and the document list (`/ui/inbox/{id}` leads there with
+`?from=inbox`, which keeps the place among the inbox's documents) with the tabs details,
+content, metadata and log (`?tab=`). From the desktop width on (`lg`) the view fills the window
+and only its cards scroll; on narrow screens the page scrolls.
+
+- **Details:** the archive PDF with PDF.js; until the archive exists (the text is still being
+  recognised), the page images from the API stand in. Both are shown by `PageViewer`: the
+  pages side by side, wrapping into rows, their width following the zoom (100 % is a page's
+  printed size), so the zoom decides how many stand in a row. The layouts one page, two pages
+  (the start; one on a narrow screen) and overview (four in a row, as far out as the zoom
+  goes) are buttons, marked once zooming reaches them (`lib/viewer/zoom.ts`). Ctrl or ⌘ with
+  the wheel, a pinch on a trackpad, Safari's gestures and two fingers zoom around the pointer
+  (`lib/viewer/gestures.ts`); a double click enlarges a page and goes back; the keys + − 0.
+  Pages are scaled while the zoom moves and drawn anew once it rests. A field with a quote
+  marks it on the page while hovered or focused (the places come from `/review`, owner and
+  admins), a click on its page jumps there; so does a code from the content tab.
+- **Content:** the text as it is set, page by page, and beside it the facts and codes
+  (`FactsPanel`, from `/facts`).
+- **Metadata:** the files from `/files`: size, SHA-256, a PDF's information and XMP, an
+  image's EXIF.
+
 ## API client
 
 `openapi.json` is the API's document, checked in; a backend unit test fails while it differs from
@@ -61,14 +108,20 @@ cd web && pnpm gen:api   # writes src/lib/api/schema.ts
 
 ## Layout
 
-| Path                        | Content                                                                       |
-| --------------------------- | ----------------------------------------------------------------------------- |
-| `src/lib/api`               | Client, `fetch` with session cookie and CSRF header, problem details          |
-| `src/lib/session.svelte.ts` | The signed-in user and the CSRF token, in memory                              |
-| `src/lib/components`        | App shell, documents, dialogs, PDF viewer; `ui/` holds the shadcn-svelte ones |
-| `src/lib/i18n.ts`           | Language switch, date, number and money formats                               |
-| `src/routes`                | `login`, the app pages in `(app)`; `(app)/dev/components` in development only |
-| `messages/{en,de}.json`     | All texts; a test fails on raw text in markup and on missing keys             |
-| `tests/`                    | Tests across files (messages, raw text); `e2e/` the Playwright smoke test     |
+| Path                           | Content                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------- |
+| `src/lib/api`                  | Client, `fetch` with session cookie and CSRF header, problem details            |
+| `src/lib/session.svelte.ts`    | The signed-in user and the CSRF token, in memory                                |
+| `src/lib/components`           | App shell, documents, dialogs, PDF viewer; `ui/` holds the shadcn-svelte ones   |
+| `src/lib/components/document`  | The document view: head, fields, content (Markdown), log, prompt                |
+| `src/lib/components/templates` | The template field, the template editor (sheet), the reference document picker  |
+| `src/lib/templates`            | Liquid colours and completions, the CodeMirror editor, the values templates see |
+| `src/lib/i18n.ts`              | Language switch, date, number and money formats                                 |
+| `src/lib/periods.ts`           | Periods in ISO 8601 (`2026-Q2`, `2026-W17`), read also in German forms          |
+| `src/lib/listing.ts`           | Sort and grid or list of the document view, remembered in this browser          |
+| `src/lib/scope.svelte.ts`      | An admin's choice to include all users, remembered in this browser              |
+| `src/routes`                   | `login`, the app pages in `(app)`; `(app)/dev/components` in development only   |
+| `messages/{en,de}.json`        | All texts; a test fails on raw text in markup and on missing keys               |
+| `tests/`                       | Tests across files (messages, raw text); `e2e/` the Playwright smoke test       |
 
 Imports use `#lib/…` (package `imports`) with the file extension.

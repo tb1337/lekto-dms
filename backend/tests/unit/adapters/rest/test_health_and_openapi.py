@@ -126,6 +126,14 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         ]
     }
     assert {(path, method) for path, item in paths.items() for method in item} == {
+        (f"{PREFIX}/pipeline", "get"),
+        (f"{PREFIX}/pipeline/reparse", "post"),
+        (f"{PREFIX}/contacts/{{id}}/identifiers", "post"),
+        (f"{PREFIX}/document-types/{{id}}/fields", "put"),
+        (f"{PREFIX}/documents/{{id}}/pages/{{number}}", "get"),
+        (f"{PREFIX}/documents/{{id}}/text", "get"),
+        (f"{PREFIX}/documents/{{id}}/structure", "get"),
+        (f"{PREFIX}/documents/{{id}}/exchanges/{{node}}", "get"),
         (f"{PREFIX}/auth/login", "post"),
         (f"{PREFIX}/auth/logout", "post"),
         (f"{PREFIX}/auth/me", "get"),
@@ -170,6 +178,7 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/rules/{{id}}/apply/preview", "post"),
         (f"{PREFIX}/rules/{{id}}/apply", "post"),
         (f"{PREFIX}/rule-applications/{{id}}", "get"),
+        (f"{PREFIX}/templates/preview", "post"),
         (f"{PREFIX}/webhooks", "get"),
         (f"{PREFIX}/webhooks", "post"),
         (f"{PREFIX}/webhooks/{{id}}", "get"),
@@ -182,6 +191,8 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/documents", "post"),
         (f"{PREFIX}/documents/search", "get"),
         (f"{PREFIX}/search/reindex", "post"),
+        (f"{PREFIX}/classifier", "get"),
+        (f"{PREFIX}/classifier/train", "post"),
         (f"{PREFIX}/documents/{{id}}", "get"),
         (f"{PREFIX}/documents/{{id}}", "patch"),
         (f"{PREFIX}/documents/{{id}}", "delete"),
@@ -192,6 +203,10 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/documents/{{id}}/log", "get"),
         (f"{PREFIX}/documents/{{id}}/retry", "post"),
         (f"{PREFIX}/documents/{{id}}/reprocess", "post"),
+        (f"{PREFIX}/documents/{{id}}/vision", "post"),
+        (f"{PREFIX}/documents/{{id}}/reading", "get"),
+        (f"{PREFIX}/documents/{{id}}/facts", "get"),
+        (f"{PREFIX}/documents/{{id}}/files", "get"),
         (f"{PREFIX}/documents/{{id}}/review", "get"),
         (f"{PREFIX}/documents/{{id}}/confirm", "post"),
         (f"{PREFIX}/documents/{{id}}/dry-run", "post"),
@@ -240,12 +255,12 @@ async def test_schemas_of_status_log_and_events(api: Api) -> None:
     assert {"DocumentDetails", "DocumentAccepted", "LogEntry", "EventMessage", "Health"} <= set(
         schemas
     )
-    reprocess = schemas["ReprocessRequest"]["properties"]["from_step"]
-    step = schemas[reprocess["$ref"].rsplit("/", 1)[1]]
-    assert "receive" not in step["enum"]
+    reprocess = schemas["ReprocessRequest"]["properties"]["from_node"]
+    node = schemas[reprocess["$ref"].rsplit("/", 1)[1]]
+    assert "receive" not in node["enum"]
     resume = schemas["ConfirmRequest"]["properties"]["resume_at"]
     resume_at = schemas[resume["$ref"].rsplit("/", 1)[1]]
-    assert resume_at["enum"] == ["extract_fields", "apply_rules"]
+    assert resume_at["enum"] == ["fields", "apply_rules"]
     events = schema["paths"][f"{PREFIX}/events"]["get"]["responses"]["200"]["content"]
     stream = events["text/event-stream"]
     assert stream["schema"]["type"] == "string"

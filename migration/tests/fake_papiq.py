@@ -224,7 +224,7 @@ class FakePapiq:
             "document_date": metadata.get("document_date"),
             "fields": metadata.get("fields", {}),
             "lane": None,
-            "processing": {"status": "processing", "current_step": "ocr", "run": 1, "outcomes": {}},
+            "processing": {"status": "processing", "run": 1, "nodes": _nodes({"receive": "ok"})},
             "_lane": self.lanes.get(filename, "green"),
             "_log": [],
         }
@@ -238,33 +238,55 @@ class FakePapiq:
         if self.ticks >= 0 and self._polls[id] > self.ticks:
             lane = document["_lane"]
             document["lane"] = lane
-            steps = [
-                "receive",
-                "ocr",
-                "parse",
-                "classify",
-                "extract_fields",
-                "apply_rules",
-                "file",
-            ]
             if lane == "green":
                 document["processing"] = {
                     "status": "completed",
-                    "current_step": None,
                     "run": 1,
-                    "outcomes": {step: "ok" for step in steps},
+                    "nodes": _nodes(dict.fromkeys(NODES, "ok")),
                 }
             else:
                 document["processing"] = {
                     "status": "failed",
-                    "current_step": "parse",
                     "run": 1,
-                    "outcomes": {"receive": "ok", "ocr": "ok"},
+                    "nodes": _nodes(
+                        {"receive": "ok", "ocr": "ok", "pages": "ok", "parse": "failed"}
+                    ),
                 }
                 document["_log"] = [
-                    {"step": "parse", "outcome": "failed", "reason": "no text recognised"}
+                    {"node": "parse", "outcome": "failed", "reason": "no text recognised"}
                 ]
         return {key: value for key, value in document.items() if not key.startswith("_")}
+
+
+NODES = (
+    "receive",
+    "ocr",
+    "pages",
+    "parse",
+    "signal_llm",
+    "signal_classifier",
+    "signal_neighbours",
+    "signal_facts",
+    "judge",
+    "fields",
+    "apply_rules",
+    "file",
+)
+
+
+def _nodes(outcomes: dict[str, str]) -> list[dict[str, Any]]:
+    """`processing.nodes` as the API answers it: done nodes with their outcome, the rest
+    waiting."""
+    return [
+        {
+            "node": node,
+            "status": "done" if node in outcomes else "waiting",
+            "outcome": outcomes.get(node),
+            "started_at": None,
+            "finished_at": None,
+        }
+        for node in NODES
+    ]
 
 
 def _problem(status: int, detail: str) -> httpx2.Response:

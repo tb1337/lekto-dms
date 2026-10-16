@@ -1,7 +1,6 @@
 """Milestone M3 end to end: documents arrive through the REST API, the worker processes them
-with OCRmyPDF and Docling, progress arrives as server-sent events. Real API server (Uvicorn)
-and worker, in two set-ups: SQLite with the filesystem, Postgres with S3 (Garage).
-Marker `docling` (slow)."""
+with OCRmyPDF and the layout text, progress arrives as server-sent events. Real API server
+(Uvicorn) and worker, in two set-ups: SQLite with the filesystem, Postgres with S3 (Garage)."""
 
 import asyncio
 import shutil
@@ -16,9 +15,8 @@ import pytest
 
 from papiq.adapters.inbound.rest import PREFIX
 from papiq.adapters.inbound.worker import Worker
-from papiq.adapters.outbound.docling import DoclingParser
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
-from papiq.adapters.outbound.pdfium import PdfiumPreviewRenderer
+from papiq.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer
 from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory
 from papiq.composition.api import build_app
 from papiq.composition.container import (
@@ -31,12 +29,11 @@ from papiq.composition.settings import Settings
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.users import User
 from papiq.core.ports import ObjectStore, OcrResult
-from papiq.core.services.objects import archive_key, markdown_key, preview_key, structure_key
+from papiq.core.ports.ocr import VisionModel
+from papiq.core.services.objects import archive_key, preview_key, structure_key, text_key
 from tests import builders
 from tests.api import Stream, auth, issue_token, listen, serving, until
 from tests.contracts.processing import SAMPLES
-
-pytestmark = pytest.mark.docling
 
 if not (shutil.which("tesseract") and shutil.which("gs")):
     pytest.skip("Tesseract or Ghostscript not installed", allow_module_level=True)
@@ -46,16 +43,22 @@ PROCESSING = 180.0  # seconds a document may take here
 
 
 class Interruptible:
-    """OCR that can be made to time out, to break a step on purpose."""
+    """OCR that can be made to time out, to break a node on purpose."""
 
     def __init__(self, engine: OcrmypdfEngine) -> None:
         self.engine = engine
         self.broken = False
 
-    async def make_archive(self, source: Path, target: Path, *, media_type: str) -> OcrResult:
+    @property
+    def vision(self) -> VisionModel | None:
+        return self.engine.vision
+
+    async def make_archive(
+        self, source: Path, target: Path, *, media_type: str, vision: bool = False
+    ) -> OcrResult:
         if self.broken:
             raise TimeoutError("ocrmypdf did not finish within 0.001 s")
-        return await self.engine.make_archive(source, target, media_type=media_type)
+        return await self.engine.make_archive(source, target, media_type=media_type, vision=vision)
 
 
 @dataclass
@@ -94,8 +97,6 @@ class System:
 
 @pytest.fixture
 async def system(stores: tuple[Database, ObjectStore], settings: Settings) -> AsyncIterator[System]:
-    if not settings.docling_models_path.is_dir():
-        pytest.skip(f"Docling models not found in {settings.docling_models_path}")
     database, object_store = stores
     ocr = Interruptible(OcrmypdfEngine(languages=["deu", "eng"], timeout=timedelta(minutes=5)))
     container = replace(
@@ -104,11 +105,11 @@ async def system(stores: tuple[Database, ObjectStore], settings: Settings) -> As
         event_bus=SqlEventBus(database),
         object_store=object_store,
         ocr=ocr,
-        parser=DoclingParser(models=settings.docling_models_path, timeout=timedelta(minutes=5)),
-        previews=PdfiumPreviewRenderer(),
+        parser=LayoutParser(),
+        pages=PdfiumPageRenderer(),
     )
     tuning = Settings.model_construct(
-        step_max_attempts=1,  # a broken step fails at once
+        node_max_attempts=1,  # a broken node fails at once
         worker_concurrency=2,
         events_poll_interval=timedelta(milliseconds=50),
     )
@@ -160,7 +161,7 @@ async def test_documents_go_through_the_api(system: System, object_store: Object
         assert status["lane"] == "green", (name, status)
         assert await object_store.get(archive_key(key))
         assert (await object_store.get(preview_key(key)))[8:12] == b"WEBP"
-        text = " ".join((await object_store.get(markdown_key(key))).decode().split())
+        text = " ".join((await object_store.get(text_key(key))).decode().split())
         assert "Rechnung Nummer 4711" in text, name
         assert await object_store.exists(structure_key(key))
 
@@ -181,31 +182,39 @@ async def test_documents_go_through_the_api(system: System, object_store: Object
     assert "document.received" not in shared_stream.types()  # hidden while processing
     assert streams[stranger.id].events == []
 
-    # A step broken on purpose fails, is retried alone, and reprocessing works.
+    # A node broken on purpose fails, is retried alone, and reprocessing works.
     system.ocr.broken = True
     born_digital = await system.upload(owner, "text.pdf")
     url, id = born_digital.json()["status_url"], born_digital.json()["id"]
     failed = await system.settled(owner, id)
-    assert (failed["lane"], failed["processing"]["current_step"]) == ("red", "ocr")
+    outcomes = {n["node"]: n["outcome"] for n in failed["processing"]["nodes"]}
+    assert (failed["lane"], outcomes["ocr"]) == ("red", "failed")
     system.ocr.broken = False
     retried = await system.client.post(f"{url}/retry", headers=auth(owner))
     assert retried.status_code == 202
     assert (await system.settled(owner, id))["lane"] == "green"
     reprocess = await system.client.post(
-        f"{url}/reprocess", json={"from_step": "parse"}, headers=auth(owner)
+        f"{url}/reprocess", json={"from_node": "parse"}, headers=auth(owner)
     )
     assert reprocess.status_code == 202
     assert (await system.settled(owner, id))["lane"] == "green"
     log = (await system.client.get(f"{url}/log", headers=auth(owner))).json()
-    runs = [(entry["step"], entry["run"], entry["outcome"]) for entry in log][:5]
-    assert runs == [
+    runs = [(entry["node"], entry["run"], entry["outcome"]) for entry in log]
+    # The pages run beside the OCR: in the first run if they got there before it failed, else
+    # after the retry, before or after the OCR. Their place in the log is a matter of timing.
+    # The signals, too, run side by side; the judge comes after all of them.
+    chain = [run for run in runs if run[0] != "pages"]
+    assert chain[:4] == [
         ("receive", 1, "ok"),
         ("ocr", 1, "failed"),
         ("ocr", 2, "ok"),
         ("parse", 2, "ok"),
-        ("classify", 2, "ok"),
     ]
-    assert ("parse", 3, "ok") in [(entry["step"], entry["run"], entry["outcome"]) for entry in log]
+    signals = {"signal_llm", "signal_classifier", "signal_neighbours", "signal_facts"}
+    assert {node for node, _, _ in chain[4:8]} == signals
+    assert chain[8] == ("judge", 2, "ok")
+    assert [outcome for node, _, outcome in runs if node == "pages"][:1] == ["ok"]
+    assert ("parse", 3, "ok") in runs
 
     health = await system.client.get(f"{PREFIX}/health")
     assert health.json()["status"] == "ok"

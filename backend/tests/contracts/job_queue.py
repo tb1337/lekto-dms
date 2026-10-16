@@ -46,18 +46,18 @@ class JobQueueContract:
     async def test_enqueued_job_is_stored(self, uow_factory: UnitOfWorkFactory) -> None:
         async with uow_factory() as uow:
             id = await uow.jobs.enqueue(
-                "pipeline.step",
-                {"document_id": "x", "step": "ocr", "run": 1, "extra": [1.5, None, {"a": True}]},
+                "pipeline.node",
+                {"document_id": "x", "node": "ocr", "run": 1, "extra": [1.5, None, {"a": True}]},
                 run_at=NOW,
                 dedup_key="x:1:ocr",
             )
             assert id is not None
             await uow.commit()
         job = await get(uow_factory, id)
-        assert job.kind == "pipeline.step"
+        assert job.kind == "pipeline.node"
         assert job.payload == {
             "document_id": "x",
-            "step": "ocr",
+            "node": "ocr",
             "run": 1,
             "extra": [1.5, None, {"a": True}],
         }
@@ -112,10 +112,10 @@ class JobQueueContract:
 
     async def test_claim_filters_by_kind(self, uow_factory: UnitOfWorkFactory) -> None:
         await enqueue(uow_factory, "index")
-        step = await enqueue(uow_factory, "pipeline.step", run_at=timedelta(seconds=1))
-        job = await claim(uow_factory, at=timedelta(seconds=1), kinds=["pipeline.step"])
-        assert job is not None and job.id == step
-        assert await claim(uow_factory, at=timedelta(seconds=1), kinds=["pipeline.step"]) is None
+        node = await enqueue(uow_factory, "pipeline.node", run_at=timedelta(seconds=1))
+        job = await claim(uow_factory, at=timedelta(seconds=1), kinds=["pipeline.node"])
+        assert job is not None and job.id == node
+        assert await claim(uow_factory, at=timedelta(seconds=1), kinds=["pipeline.node"]) is None
 
     async def test_claim_without_commit_is_undone(self, uow_factory: UnitOfWorkFactory) -> None:
         id = await enqueue(uow_factory)

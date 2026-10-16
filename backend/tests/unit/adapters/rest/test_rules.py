@@ -1,5 +1,7 @@
 """`/rules`: managing rules over the API."""
 
+from typing import Any
+
 from papiq.adapters.inbound.rest import PREFIX
 from tests.api import auth
 from tests.contracts.processing import SAMPLES
@@ -61,6 +63,22 @@ async def test_global_rules_are_for_admins_and_only_tag(api: Api) -> None:
     assert [item["id"] for item in listed.json()] == [rule["id"]]
 
 
+async def test_a_template_that_does_not_fit_is_refused(api: Api) -> None:
+    user = await api.user()
+    body = {
+        "name": "Title",
+        "conditions": {"all": [{"field": "channel", "op": "is", "value": "api"}]},
+        "actions": [{"type": "set_title", "template": "{{ sender }}"}],
+    }
+    response = await api.client.post(f"{PREFIX}/rules", json=body, headers=auth(user))
+    assert response.status_code == 422, response.text
+    assert "actions[0]: unknown value sender" in response.text
+    body["actions"] = [{"type": "set_title", "template": "{{ contact"}]
+    response = await api.client.post(f"{PREFIX}/rules", json=body, headers=auth(user))
+    assert response.status_code == 422, response.text
+    assert "invalid template" in response.text
+
+
 async def test_deleting_a_contact_disables_the_rules_that_use_it(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
     contact = await post(api, "/contacts", {"name": "ACME"}, auth(admin))
@@ -104,7 +122,7 @@ async def test_rules_act_on_arrival_and_conflicts_wait_in_the_inbox(api: Api) ->
             "conditions": api_channel,
             "actions": [
                 {"type": "add_tags", "tag_ids": [tax["id"]]},
-                {"type": "set_title", "template": "Scan {filename}"},
+                {"type": "set_title", "template": "Scan {{ filename }}"},
                 {"type": "set_drawer", "drawer_id": drawer["id"]},
             ],
         },
@@ -132,7 +150,7 @@ async def test_rules_act_on_arrival_and_conflicts_wait_in_the_inbox(api: Api) ->
     document = (await api.client.get(f"{PREFIX}/documents/{id}", headers=o)).json()
     assert document["lane"] == "yellow", document
     review = (await api.client.get(f"{PREFIX}/documents/{id}/review", headers=o)).json()
-    fields = [field["field"] for step in review["open"] for field in step["fields"]]
+    fields = [field["field"] for node in review["open"] for field in node["fields"]]
     assert fields == ["drawer"]
     response = await api.client.post(
         f"{PREFIX}/documents/{id}/confirm", json={"drawer_id": other["id"]}, headers=o
@@ -198,7 +216,7 @@ async def test_a_rule_is_applied_to_existing_documents(api: Api) -> None:
             "conditions": {"all": [{"field": "channel", "op": "is", "value": "api"}]},
             "actions": [
                 {"type": "add_tags", "tag_ids": [tax["id"]]},
-                {"type": "set_title", "template": "Tax {filename}"},
+                {"type": "set_title", "template": "Tax {{ filename }}"},
             ],
         },
         o,
@@ -299,3 +317,51 @@ async def test_an_editor_whose_change_files_the_document_away_learns_nothing_mor
     assert response.json() == {"id": id, "access": None}
     assert (await api.client.get(url, headers=auth(editor))).status_code == 404
     assert (await api.client.get(url, headers=o)).json()["drawer_id"] == private["id"]
+
+
+async def test_a_template_is_previewed_with_a_document(api: Api) -> None:
+    admin, user = await api.admin(), await api.user()
+    a, u = auth(admin), auth(user)
+    kind = await post(api, "/document-types", {"name": "Lohn"}, a)
+    await post(
+        api,
+        "/fields",
+        {"name": "LA_Brutto", "data_type": "amount", "document_type_ids": [kind["id"]]},
+        a,
+    )
+    id = await upload(api, u)
+
+    async def preview(body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+        response = await api.client.post(f"{PREFIX}/templates/preview", json=body, headers=headers)
+        assert response.status_code == 200, response.text
+        result: dict[str, Any] = response.json()
+        return result
+
+    title = {"template": "Scan {{ filename }}", "document_id": id}
+    shown = await preview(title, u)
+    assert {key: shown[key] for key in ("used", "rendered", "missing", "error")} == {
+        "used": ["filename"],
+        "rendered": "Scan Bill 2026",
+        "missing": None,
+        "error": None,
+    }
+    # The document's values as a template writes them, for the editor's list.
+    assert (shown["values"]["filename"], shown["values"]["tags"]) == ("Bill 2026", "")
+    assert "contact" not in shown["values"]
+    invalid = await preview({"template": "{{ filename", "document_id": id}, u)
+    assert invalid["error"] and invalid["values"]["filename"] == "Bill 2026"
+    # Without a type every field counts; the document has no value for this one.
+    gross = {"template": "{{ field.la_brutto }}", "document_id": id}
+    assert (await preview(gross, u))["missing"] == "field.la_brutto"
+    unknown = {"template": "{{ field.netto }}", "document_type_id": kind["id"]}
+    assert (await preview(unknown, u))["error"] == "unknown value field.netto"
+    assert (await preview(unknown, u))["values"] is None  # without a document
+    # Single braces are text like any other.
+    plain = await preview({"template": "{document_date}", "document_id": id}, u)
+    assert (plain["rendered"], plain["error"]) == ("{document_date}", None)
+    # Someone else's document is not found.
+    response = await api.client.post(f"{PREFIX}/templates/preview", json=title, headers=a)
+    assert response.status_code == 200  # an admin reads every document
+    other = await api.user()
+    response = await api.client.post(f"{PREFIX}/templates/preview", json=title, headers=auth(other))
+    assert response.status_code == 404

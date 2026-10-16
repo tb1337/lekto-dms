@@ -8,7 +8,7 @@
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { describeError } from '#lib/errors.ts';
-	import { EVENT_TYPES, type EventType } from '#lib/events.svelte.ts';
+	import { DOCUMENT_EVENT_TYPES, type DocumentEventType } from '#lib/events.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
 	type Webhook = components['schemas']['WebhookOut'];
@@ -35,9 +35,11 @@
 	let error = $state<string | null>(null);
 	let busy = $state(false);
 
-	const labels: Record<EventType, () => string> = {
+	const labels: Record<DocumentEventType, () => string> = {
 		'document.received': m.event_received,
-		'document.step_completed': m.event_step_completed,
+		'document.node_started': m.event_node_started,
+		'document.node_deferred': m.event_node_deferred,
+		'document.node_completed': m.event_node_completed,
 		'document.lane_changed': m.event_lane_changed,
 		'document.filed': m.event_filed,
 		'document.updated': m.event_updated,
@@ -110,7 +112,7 @@
 					{m.webhook_events_all()}
 				</label>
 				{#if !all}
-					{#each EVENT_TYPES as type (type)}
+					{#each DOCUMENT_EVENT_TYPES as type (type)}
 						<label class="flex items-center gap-2 pl-6 text-sm">
 							<input
 								type="checkbox"

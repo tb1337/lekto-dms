@@ -1,4 +1,4 @@
-// TOTP codes (RFC 6238: SHA-1, 6 digits, 30-second steps) with Web Crypto, for the smoke test.
+// TOTP codes (RFC 6238: SHA-1, 6 digits, 30-second nodes) with Web Crypto, for the smoke test.
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 

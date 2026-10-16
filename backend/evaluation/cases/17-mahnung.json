@@ -1,5 +1,5 @@
 {
-  "description": "Payment reminder: open amount plus fee, the total is expected.",
+  "description": "Payment reminder: open amount plus fee, the total is expected. Trained, the mail-order company's earlier letters are invoices: the signals name that type, a contradiction.",
   "expected": {
     "lane": "green",
     "contact": "Versandhaus Bergmann GmbH",
@@ -16,6 +16,9 @@
       "Rechnungsnummer": "VB-889911",
       "Kundennummer": "88 77 66",
       "Fällig am": "2026-06-24"
+    },
+    "lanes": {
+      "trained": "yellow"
     }
   },
   "fake": {

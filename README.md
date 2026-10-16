@@ -15,7 +15,7 @@ three lanes: green (done), yellow (confirm), red (intervene).
 - **Multi-user.** Native logins with optional TOTP, optional OpenID Connect. Permissions are
   attached to drawers (filing units that can be shared), never to single documents; admins see
   and manage everything.
-- **Explainable ingest.** Receive → OCR (OCRmyPDF, PDF/A) → parse (Docling) → classify
+- **Explainable ingest.** Receive → OCR (OCRmyPDF, PDF/A) → read the text as it is set → classify
   (language model, OpenAI-compatible: Ollama or cloud) → extract fields → apply rules → file.
   Every step is logged with input, result, confidence, model version and duration, and can be
   repeated. A value the model proposes counts only if it occurs in the text; an unknown contact
@@ -91,8 +91,8 @@ migration from Paperless: [.devcontainer/README.md](.devcontainer/README.md).
 
 ## Development
 
-Everything runs in the devcontainer (Python 3.13, uv, Node.js, pnpm, OCRmyPDF, Docling models,
-Postgres, Garage, Meilisearch). The checks, in `backend/`:
+Everything runs in the devcontainer (Python 3.13, uv, Node.js, pnpm, OCRmyPDF, Postgres,
+Garage, Meilisearch). The checks, in `backend/`:
 
 ```sh
 uv run ruff check . && uv run ruff format --check .

@@ -1,15 +1,13 @@
 /**
- * The decisions of a review: what each open field holds in the form, and the confirmation the API
- * wants from them (`POST /documents/{id}/confirm`).
+ * The decisions of a review: what each open field holds in the form. The confirmation itself
+ * (`POST /documents/{id}/confirm`) is built by the document form.
  */
 import type { components } from '#lib/api/schema.ts';
-import { emptyValue, toApi, toInput, type ApiValue, type InputValue } from '#lib/fields.ts';
+import { emptyValue, toInput, type ApiValue, type InputValue } from '#lib/fields.ts';
 import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 
 type Document = components['schemas']['DocumentDetails'];
 type Check = components['schemas']['FieldCheckOut'];
-type Patch = components['schemas']['DocumentPatch'];
-export type Confirm = components['schemas']['ConfirmRequest'];
 
 /** What a form field holds: text (ids, dates), a list of ids (tags) or a field value. */
 export type ReviewValue = string | string[] | InputValue;
@@ -58,41 +56,4 @@ export function initialValue(
 		default:
 			return '';
 	}
-}
-
-/**
- * The confirmation for the decisions: every open field with its value (empty = no value), the
- * drawer if it changed, and the step to continue at: after a corrected document type the
- * fields of the new type are extracted again.
- */
-export function buildConfirm(
-	checks: readonly Check[],
-	values: Readonly<Record<string, ReviewValue>>,
-	document: Document,
-	fields: readonly FieldDefinition[],
-	drawerId: string
-): Confirm {
-	const changes: Patch = {};
-	const fieldChanges: Record<string, ApiValue | null> = {};
-	for (const check of checks) {
-		if (isRuleField(check.field)) continue;
-		const value = values[check.field];
-		const id = fieldId(check.field);
-		if (id !== null) {
-			const type = fields.find((field) => field.id === id)?.data_type ?? 'text';
-			fieldChanges[id] = toApi(type, value as InputValue);
-		} else if (check.field === 'contact') changes.contact_id = (value as string) || null;
-		else if (check.field === 'document_type') changes.document_type_id = (value as string) || null;
-		else if (check.field === 'document_date') changes.document_date = (value as string) || null;
-		else if (check.field === 'tags') changes.tag_ids = value as string[];
-	}
-	if (Object.keys(fieldChanges).length > 0) changes.fields = fieldChanges;
-	const typeChanged =
-		'document_type_id' in changes && changes.document_type_id !== document.document_type_id;
-	return {
-		changes,
-		accept_suggestions: false,
-		resume_at: typeChanged ? 'extract_fields' : 'apply_rules',
-		...(drawerId && drawerId !== document.drawer_id ? { drawer_id: drawerId } : {})
-	};
 }

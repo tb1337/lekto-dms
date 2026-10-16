@@ -1,4 +1,5 @@
-"""`GET /events`: server-sent events for the caller's documents."""
+"""`GET /events`: server-sent events for the caller's documents (and for admins, the end of a
+training)."""
 
 from collections.abc import AsyncIterable
 from typing import Annotated
@@ -37,10 +38,13 @@ async def _visible_document(
     "/events",
     summary="Progress of documents (server-sent events)",
     description=(
-        "A stream of document events (`document.received`, `document.step_completed`, "
-        "`document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), "
+        "A stream of document events (`document.received`, `document.node_started`, "
+        "`document.node_deferred`, `document.node_completed`, `document.lane_changed`, "
+        "`document.filed`, `document.updated`, `document.deleted`), "
         "only for documents the caller may read at that moment (`document.deleted`: could "
         "read when it was deleted); other users' documents are visible once green. "
+        "Active admins also get `classifier.trained` (a new model, with its `number` and "
+        "`examples`), unless the stream follows one document. "
         "Each event has the event type as `event`, the event id as `id`, and JSON as `data` "
         "(see `EventMessage`). Events are thin: fetch the document for its state. There is "
         "no replay; after reconnecting, fetch the current state. The stream checks every "
@@ -53,13 +57,13 @@ async def _visible_document(
             "content": {
                 "text/event-stream": {
                     "example": (
-                        "event: document.step_completed\n"
+                        "event: document.node_completed\n"
                         "id: 01999d5f-1b2c-7d3e-8f40-5a6b7c8d9e0f\n"
-                        'data: {"type": "document.step_completed", '
+                        'data: {"type": "document.node_completed", '
                         '"id": "01999d5f-1b2c-7d3e-8f40-5a6b7c8d9e0f", '
                         '"occurred_at": "2026-10-07T08:00:00Z", '
                         '"document_id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b", '
-                        '"step": "ocr", "run": 1, "outcome": "ok"}\n\n'
+                        '"node": "ocr", "run": 1, "outcome": "ok"}\n\n'
                     ),
                 }
             },

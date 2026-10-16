@@ -18,14 +18,17 @@ from papiq.adapters.inbound.rest.schemas.rules import (
     RuleOut,
     RulePatch,
     RuleVersionOut,
+    TemplatePreviewIn,
+    TemplatePreviewOut,
 )
 from papiq.adapters.inbound.schemas import RuleEffectOut, RuleNoteOut
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.ids import DocumentId, RuleApplicationId, RuleId
+from papiq.core.domain.ids import DocumentId, DocumentTypeId, RuleApplicationId, RuleId
 from papiq.core.domain.rule_engine import Note
 from papiq.core.domain.rules import RuleScope, definition_from_json
 
 router = APIRouter(prefix="/rules", tags=["rules"], dependencies=PROTECTED)
+templates = APIRouter(prefix="/templates", tags=["rules"], dependencies=PROTECTED)
 
 WHO_CHANGES = (
     "A user rule: its owner and admins (its references are checked for its owner). A global "
@@ -259,3 +262,35 @@ def _cursor(value: str | None) -> DocumentId | None:
         return DocumentId(UUID(value.strip()))
     except ValueError:
         raise ValidationError(f"cursor: not a valid cursor: {value!r}") from None
+
+
+@templates.post(
+    "/preview",
+    summary="Check a template and render it with a document",
+    description=(
+        "For the editors of rules and title patterns: whether a template is valid and which "
+        "values it uses, and, with a document the caller may read, what it gives for it as "
+        "the document is now (or which missing value stops it). Nothing is stored. A "
+        "template the caller may not save is shown as such (`error`), not refused."
+    ),
+    response_model=TemplatePreviewOut,
+    responses=problem_responses(401, 404, 422),
+)
+async def preview_template(
+    body: TemplatePreviewIn, user: CurrentUser, context: Context
+) -> TemplatePreviewOut:
+    preview = await context.rules.preview_template(
+        user,
+        body.template,
+        document=None if body.document_id is None else DocumentId(body.document_id),
+        document_type=(
+            None if body.document_type_id is None else DocumentTypeId(body.document_type_id)
+        ),
+    )
+    return TemplatePreviewOut(
+        used=list(preview.used),
+        rendered=preview.rendered,
+        missing=preview.missing,
+        error=preview.error,
+        values=None if preview.values is None else dict(preview.values),
+    )

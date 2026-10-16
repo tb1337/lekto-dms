@@ -14,10 +14,9 @@ Outside the Papiq container: Postgres (if used), Garage (if S3 is used), Meilise
 language model, an identity provider. With SQLite and the file system, the database and the files
 live on one volume of the Papiq container.
 
-Image: Debian slim, Python 3.13, OCRmyPDF with Tesseract (German, English), Docling with the CPU
-build of PyTorch and its models (never downloaded at run time), s6-overlay 3.2.3.2, the built web
-UI in `/opt/papiq/ui` (static files; no Node.js in the image). For `amd64` and `arm64`. About 3 GB
-(`docker image inspect`). Nothing secret is part of the image.
+Image: Debian slim, Python 3.13, OCRmyPDF with Tesseract (German, English), s6-overlay 3.2.3.2,
+the built web UI in `/opt/papiq/ui` (static files; no Node.js in the image). For `amd64` and
+`arm64`. About 1.4 GB (`docker image inspect`; with Docling, before 0.2, it was 4.6 GB). Nothing secret is part of the image.
 
 ```sh
 docker build --target runtime -t papiq:local .     # in the repository root
@@ -85,10 +84,11 @@ environment variable of a container (visible in `docker inspect` of Meilisearch,
 | `PAPIQ_MEILISEARCH_URL`, `_API_KEY(_FILE)` | – | search; without it Papiq works without search |
 | `PAPIQ_LLM_BASE_URL`, `_MODEL` | – | set both or neither; `PAPIQ_LLM_TIMEOUT` (seconds, 300) |
 | `PAPIQ_EMBEDDING_BASE_URL`, `_MODEL`, `_DIMENSIONS`, `_QUERY_PREFIX` | – | with Meilisearch and embeddings the dimensions are required |
+| `PAPIQ_VLM_BASE_URL`, `_MODEL`, `_API_KEY(_FILE)` | – | a vision language model that reads a document's pages when a person asks for it; set both or neither; `PAPIQ_VLM_TIMEOUT` (seconds per document, 1800) |
 | `PAPIQ_COOKIE_SECURE`, `PAPIQ_FORWARDED_ALLOW_IPS`, `PAPIQ_PUBLIC_URL` | `true`, –, – | behind a proxy, see below |
 | `PAPIQ_UPLOAD_MAX_SIZE` | 100 MiB | the proxy's body limit must allow it |
 | `PAPIQ_UI_DIR` | `/opt/papiq/ui` | the web UI's files; unset it to serve the API only |
-| `PAPIQ_WORKER_CONCURRENCY`, `PAPIQ_WORKER_SHUTDOWN_TIMEOUT` | 2, 30 s | about 2 GB of RAM per job for Docling, plus 1 GB: 1 on 4 GB, 3 on 8 GB, 6 on 16 GB; see [Stopping](#stopping) |
+| `PAPIQ_WORKER_CONCURRENCY`, `PAPIQ_WORKER_SHUTDOWN_TIMEOUT` | 2, 30 s | jobs at the same time (OCR shares the CPU cores among them); see [Stopping](#stopping) |
 | `PAPIQ_MCP_ENABLED`, `PAPIQ_MCP_TEXT_MAX` | `true`, 20000 | the MCP endpoint and the characters one `get_text` returns |
 | `PAPIQ_WEBHOOKS_PER_USER` | 20 | webhooks per user |
 | `PAPIQ_WEBHOOK_TIMEOUT`, `_MAX_ATTEMPTS`, `_RETRY_DELAY` | 10 s, 10, 30 s | per attempt; attempts per event; first delay, doubling up to one hour |
@@ -107,6 +107,10 @@ with `PAPIQ_LLM_BASE_URL`, `PAPIQ_EMBEDDING_BASE_URL` and the models with `PAPIQ
 or more; it cuts longer prompts silently. On a CPU a document takes minutes (`PAPIQ_LLM_TIMEOUT`
 is 600 in the examples). Document content is sent to these endpoints; at start, a warning names
 every endpoint outside the local network.
+
+A vision language model (`PAPIQ_VLM_*`) reads a document's pages only when a person asks for it
+in the web UI ("Read with VLM"): every page goes there as an image. The model has to take images
+and give each line's box in pixels (measured with Claude Sonnet 5.5 through Open WebUI).
 
 ## Roles
 
@@ -128,7 +132,7 @@ streams assume it.
 ## User and volumes
 
 s6 starts as root. Every Papiq process (configuration check, migration, API, worker and the OCR
-and Docling processes they start) runs as `PUID`:`PGID` (default `1000:1000`), never as root;
+processes they start) runs as `PUID`:`PGID` (default `1000:1000`), never as root;
 `0` is refused. `init-papiq` makes that user the owner of `/data` (and of the paths you set with
 `PAPIQ_DB_SQLITE_PATH` and `PAPIQ_STORAGE_PATH`): recursively only if the folder itself belongs to
 someone else, otherwise only the database files, so a large object store is not walked at each start.
@@ -237,9 +241,9 @@ derivatives). **Not** Meilisearch: the index is derived; after a restore `papiq 
 it. Keep the secrets (`PAPIQ_SECRET_KEY` above all) in your password manager, not only in the
 backup. Back up the database first, then the objects: the originals never change (their key is the SHA-256
 of the content), so objects that came in after the database copy are only unused files, while the
-other order could leave documents without a file. The derivatives (archive PDF, text, preview) are
-written again when a document is processed again; a copy of an older state is still usable, and
-reprocessing the document renews it.
+other order could leave documents without a file. The derivatives (archive PDF, text, preview,
+page images) are written again when a document is processed again; a copy of an older state is
+still usable, and reprocessing the document renews it.
 
 ### SQLite and file system
 
@@ -308,4 +312,14 @@ update the API container first: a worker that starts waits for the schema, and a
 newer image migrated is refused by an older one.
 
 An update that changes what the search index holds says so in its release notes; run
-`papiq reindex` after it (the update that renamed attributes to fields is one).
+`papiq reindex` after it (the update that renamed attributes to fields is one). The update
+that made the pipeline a graph (0.2.0) added the page images: run `papiq render-pages` after
+it, and the worker renders the pages of the documents from before (a document that is being
+processed at that moment keeps its job; run the command again until it reports 0 queued).
+The same update reads bar and QR codes: run `papiq read-codes` after it (and after a
+`papiq reparse`), and the worker reads the codes of the documents from before and keeps the
+identifiers each one shows; it reads locally, nothing is sent out. A document that is being
+processed at that moment is skipped; run the command again once it is through.
+The same update renamed `PAPIQ_STEP_MAX_ATTEMPTS` and `PAPIQ_STEP_RETRY_DELAY` to
+`PAPIQ_NODE_MAX_ATTEMPTS` and `PAPIQ_NODE_RETRY_DELAY`; a container with an old name refuses
+to start and says so.

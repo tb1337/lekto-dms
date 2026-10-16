@@ -1,11 +1,14 @@
-"""The evaluation set: synthetic documents with expected metadata, run through the
-classification steps to compare models (`python -m papiq.composition evaluate`)."""
+"""The evaluation set: synthetic documents with expected metadata and a training corpus, run
+through the signals, the judge and the fields node to compare models, cold and trained
+(`python -m papiq.composition evaluate`)."""
 
 from papiq.adapters.inbound.evaluation.cases import (
     Case,
     EvaluationSet,
     EvaluationSetError,
     FakeAnswer,
+    Run,
+    TrainingDocument,
     load_set,
 )
 from papiq.adapters.inbound.evaluation.report import RunInfo, Summary, render, summarise
@@ -32,11 +35,13 @@ __all__ = [
     "FakeAnswer",
     "ModelResult",
     "QuerySet",
+    "Run",
     "RunInfo",
     "SearchRun",
     "SearchRunInfo",
     "SearchServices",
     "Summary",
+    "TrainingDocument",
     "evaluate",
     "evaluate_search",
     "load_queries",

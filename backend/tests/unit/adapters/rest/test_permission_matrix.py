@@ -24,7 +24,7 @@ import pytest
 from papiq.adapters.inbound.rest import PREFIX
 from papiq.core.domain.drawers import Drawer, ShareLevel
 from papiq.core.domain.identity import TokenScope
-from papiq.core.domain.pipeline import Step
+from papiq.core.domain.pipeline import Node
 from papiq.core.domain.users import User
 from papiq.core.services.objects import archive_key, preview_key
 from tests.api import auth, bearer
@@ -88,11 +88,11 @@ async def build_scene(api: Api) -> Scene:
 
     green = await upload("green.pdf")
     yellow = await upload("yellow.pdf")
-    await api.services.pipeline.reprocess_from(owner.id, UUID(yellow), Step.CLASSIFY)  # type: ignore[arg-type]
+    await api.services.pipeline.reprocess_from(owner.id, UUID(yellow), Node.JUDGE)  # type: ignore[arg-type]
     pipeline = api.services.pipeline
-    pipeline._executors[Step.CLASSIFY] = _Returns()  # yellow: the classification is uncertain
+    pipeline._executors[Node.JUDGE] = _Returns()  # yellow: the classification is uncertain
     await api.drain()
-    pipeline._executors.pop(Step.CLASSIFY)
+    pipeline._executors.pop(Node.JUDGE)
     processing = await upload_without_processing(api, owner, shared)
     for id in (green, yellow):
         await api.container.object_store.put(archive_key(UUID(id)), b"%PDF", content_type="x")  # type: ignore[arg-type]
@@ -212,6 +212,42 @@ GREEN: dict[str, tuple[Call, dict[str, int]]] = {
             **DENIED,
         },
     ),
+    "text": (
+        doc("GET", "/text"),
+        {
+            "owner": 200,
+            "reader": 200,
+            "writer": 200,
+            "read_token": 200,
+            "admin": 200,
+            **HIDDEN,
+            **DENIED,
+        },
+    ),
+    "structure": (
+        doc("GET", "/structure"),
+        {
+            "owner": 200,
+            "reader": 200,
+            "writer": 200,
+            "read_token": 200,
+            "admin": 200,
+            **HIDDEN,
+            **DENIED,
+        },
+    ),
+    "page": (
+        doc("GET", "/pages/1"),
+        {
+            "owner": 200,
+            "reader": 200,
+            "writer": 200,
+            "read_token": 200,
+            "admin": 200,
+            **HIDDEN,
+            **DENIED,
+        },
+    ),
     "change": (
         doc("PATCH", body={"title": "Changed"}),
         {
@@ -260,6 +296,18 @@ GREEN: dict[str, tuple[Call, dict[str, int]]] = {
             **DENIED,
         },
     ),
+    "exchanges": (
+        doc("GET", "/exchanges/signal_llm"),
+        {
+            "owner": 200,
+            "reader": 403,
+            "writer": 403,
+            "read_token": 200,
+            "admin": 200,
+            **HIDDEN,
+            **DENIED,
+        },
+    ),
     "retry": (
         doc("POST", "/retry"),
         {
@@ -273,7 +321,7 @@ GREEN: dict[str, tuple[Call, dict[str, int]]] = {
         },
     ),
     "reprocess": (
-        doc("POST", "/reprocess", {"from_step": "parse"}),
+        doc("POST", "/reprocess", {"from_node": "parse"}),
         {
             "owner": 202,
             "reader": 403,
@@ -332,9 +380,13 @@ HIDDEN_FROM_SHARES = [
     "original",
     "archive",
     "preview",
+    "text",
+    "structure",
+    "page",
     "change",
     "delete",
     "log",
+    "exchanges",
     "review",
 ]
 
@@ -352,8 +404,10 @@ async def test_yellow_and_processing_documents_are_the_owners_and_admins(
         assert response.json()["detail"] == f"document {scene.document(which)} not found"
     for actor in ("owner", "admin"):
         response = await call(scene, api.client, scene.headers[actor], which)
-        if which == "processing" and operation in {"archive", "preview"}:
+        if which == "processing" and operation in {"archive", "preview", "page"}:
             assert response.status_code == 404  # not made yet
+        elif which == "processing" and operation in {"text", "structure"}:
+            assert response.status_code == 409  # not parsed yet
         else:
             assert response.status_code in {200, 204}, (actor, response.text)
         if operation == "delete":

@@ -4,7 +4,7 @@ The index is derived data and lags a little behind: a document event creates a j
 reads the current state of the document from the database and the object store and writes it
 into the index. A job is idempotent and may be repeated.
 
-- Every event of a document (`received`, `step_completed`, `lane_changed`, `filed`, `updated`,
+- Every event of a document (`received`, `node_completed`, `lane_changed`, `filed`, `updated`,
   `deleted`) leads to a `search.index` job, without a dedup key: a key would also count a job
   that is running and has read its state already, and lose the change that arrived since.
 - A job that finds the document gone removes it from the index.
@@ -32,7 +32,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -44,11 +44,19 @@ from papiq.core.domain.errors import (
     PermissionDeniedError,
     SearchIndexError,
 )
-from papiq.core.domain.events import DocumentEvent, DomainEvent
+from papiq.core.domain.events import (
+    DocumentEvent,
+    DomainEvent,
+    NodeCompleted,
+    NodeDeferred,
+    NodeStarted,
+)
 from papiq.core.domain.fields import FieldValue, Money, Url
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, TagId, UserId
 from papiq.core.domain.jobs import Job
-from papiq.core.domain.search import EmbeddingStamp, IndexDocument, IndexState
+from papiq.core.domain.periods import Period, PeriodKind
+from papiq.core.domain.pipeline import SIGNALS
+from papiq.core.domain.search import LAYOUT, EmbeddingStamp, IndexDocument, IndexState
 from papiq.core.ports import (
     Clock,
     Embeddings,
@@ -58,7 +66,7 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
 )
 from papiq.core.services._access import load_actor
-from papiq.core.services.objects import markdown_key
+from papiq.core.services.objects import load_text
 
 log = logging.getLogger(__name__)
 
@@ -142,8 +150,12 @@ class IndexingService:
     # --- events and jobs ------------------------------------------------------------------------
 
     async def on_event(self, event: DomainEvent) -> None:
-        """The event bus subscriber: queue an index job for the document of the event."""
-        if not isinstance(event, DocumentEvent):
+        """The event bus subscriber: queue an index job for the document of the event. A node
+        starting or waiting for its next attempt changes nothing the index holds, nor does a
+        signal: they only propose, the judge decides."""
+        if not isinstance(event, DocumentEvent) or isinstance(event, NodeStarted | NodeDeferred):
+            return
+        if isinstance(event, NodeCompleted) and event.node in SIGNALS:
             return
         async with self._uow() as uow:
             await uow.jobs.enqueue(
@@ -320,7 +332,7 @@ class IndexingService:
 
     async def _read_text(self, id: DocumentId) -> str:
         try:
-            data = await self._store.get(markdown_key(id))
+            data = await load_text(self._store, id)
         except NotFoundError:
             return ""  # not parsed yet
         return data.decode("utf-8", errors="replace")[: self._policy.max_text]
@@ -375,8 +387,10 @@ class IndexingService:
             tag_ids=tuple(tag for tag, _ in snapshot.tags),
             tags=tuple(name for _, name in snapshot.tags),
             fields=_field_texts(document),
+            field_ids=tuple(document.fields),
             document_date=document.document_date,
             created_at=document.created_at,
+            confirmed=document.confirmed_at is not None,
             vectors=vectors,
             embedding=stamp,
         )
@@ -422,7 +436,8 @@ class IndexingService:
     async def reconcile(self, also: Collection[DocumentId] = ()) -> Reconciled:
         """Queue index jobs for documents that are missing or stale in the index and remove
         entries of documents that are gone. A stale document has another version than the
-        database, or (with embeddings) vectors of no or another model. `also`: documents to
+        database, an older layout (`LAYOUT`), or (with embeddings) vectors of no or another
+        model. `also`: documents to
         queue in any case."""
         indexed = {state.id: state async for state in self._index.states()}
         async with self._uow() as uow:
@@ -436,6 +451,7 @@ class IndexingService:
                 document.id in queue
                 or state is None
                 or state.version != document.version
+                or state.layout != LAYOUT
                 or (
                     model is not None
                     and (state.embedding is None or state.embedding.model != model)
@@ -543,8 +559,65 @@ def _field_text(value: FieldValue) -> str:
             return value.value
         case str():
             return value
-        case _:  # a date, in both notations
+        case Period():
+            return _period_text(value)
+        case date():  # in both notations
             return f"{value.isoformat()} {value:%d.%m.%Y}"
+
+
+_MONTHS = {
+    "de": [
+        "Januar",
+        "Februar",
+        "März",
+        "April",
+        "Mai",
+        "Juni",
+        "Juli",
+        "August",
+        "September",
+        "Oktober",
+        "November",
+        "Dezember",
+    ],
+    "en": [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ],
+}
+
+
+def _period_text(period: Period) -> str:
+    """A period as it is searched for: its ends in both notations, what it is in ISO 8601
+    (`2026-09`, `2026-W38`, `2026-Q3`, `2026`) and in words (`September 2026` in German and
+    English, `KW 38 2026`, `Q3 2026`)."""
+    start, end = period.start, period.end
+    words = [f"{start.isoformat()} {start:%d.%m.%Y}"]
+    if end != start:
+        words.append(f"{end.isoformat()} {end:%d.%m.%Y}")
+    match period.kind:
+        case PeriodKind.WEEK:
+            year, week, _ = start.isocalendar()
+            words.append(f"KW {week} {year}")
+        case PeriodKind.MONTH:
+            names = {names[start.month - 1] for names in _MONTHS.values()}
+            words += [f"{name} {start.year}" for name in sorted(names)]
+            words.append(f"{start:%m/%Y} {start:%m.%Y}")
+        case PeriodKind.QUARTER:
+            words.append(f"Q{(start.month - 1) // 3 + 1} {start.year}")
+    if period.kind not in (PeriodKind.DAY, PeriodKind.SPAN):
+        words.append(period.notation)
+    return " ".join(words)
 
 
 _PARAGRAPH_BREAK = re.compile(r"\n\s*\n")

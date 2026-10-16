@@ -7,7 +7,7 @@
 # Starts the image with SQLite and the filesystem and checks: configuration from secret files,
 # migration, health, the user of the Papiq processes (PUID/PGID, never root), the web UI below
 # /ui (files, page fallback, cache headers, the API's paths untouched), PAPIQ_ROLE, a PDF
-# through OCR and Docling up to its lane (no language model: classification is uncertain, so
+# through OCR and parsing up to its lane (no language model: classification is uncertain, so
 # the lane is yellow), invalid configuration and a clean `docker stop`. Needs docker, curl and
 # python3 on the host; takes a few minutes. No language model, no other service.
 set -euo pipefail
@@ -157,7 +157,7 @@ check "an unknown API path is still a 404 problem" test \
   "$(curl -s -o /dev/null -w '%{http_code} %{content_type}' "$(url all)/does-not-exist")" = \
   "404 application/problem+json"
 
-step "a PDF through OCR and Docling up to its lane"
+step "a PDF through OCR and parsing up to its lane"
 jar=$work/cookies
 token=$(curl -fsS -c "$jar" -H 'Content-Type: application/json' \
   -d "{\"username\": \"admin\", \"password\": \"$(cat "$work/admin_password")\"}" \
@@ -168,7 +168,7 @@ document() { curl -fsS -b "$jar" "$(url all)/documents/$id"; }
 lane() { document | python3 -c 'import json, sys; print(json.load(sys.stdin).get("lane") or "")'; }
 has_lane() { [ -n "$(lane)" ]; }
 if wait_for 300 "the document reaches a lane" has_lane; then
-  outcomes=$(document | python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin)["processing"]["outcomes"]))')
+  outcomes=$(document | python3 -c 'import json, sys; nodes = json.load(sys.stdin)["processing"]["nodes"]; print(json.dumps({n["node"]: n["outcome"] for n in nodes if n["outcome"]}))')
   echo "   lane: $(lane), outcomes: $outcomes"
   check "lane yellow (no language model: classification is uncertain)" test "$(lane)" = yellow
   check "OCR and parsing succeeded" python3 -c "

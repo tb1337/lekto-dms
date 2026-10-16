@@ -66,8 +66,7 @@
 	<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_settings()}</h1>
 
 	{#if linkError}
-		<Alert.Root variant="destructive"><Alert.Description>{linkError}</Alert.Description></Alert.Root
-		>
+		<Alert.Root variant="caution"><Alert.Description>{linkError}</Alert.Description></Alert.Root>
 	{/if}
 
 	{#if problem}

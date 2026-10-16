@@ -15,15 +15,16 @@ from uuid import UUID
 
 from papiq.core.domain.classification import (
     CONTACT,
+    DOCUMENT_DATE,
     DOCUMENT_TYPE,
     TAGS,
+    TITLE,
     field_key,
-    field_to_json,
 )
 from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import NotFoundError, PatternTimeoutError, ValidationError
 from papiq.core.domain.evidence import DocumentText
-from papiq.core.domain.fields import FieldDefinition
+from papiq.core.domain.fields import FieldDefinition, field_to_json
 from papiq.core.domain.ids import (
     ContactId,
     DocumentTypeId,
@@ -41,10 +42,10 @@ from papiq.core.domain.pipeline import (
     PERSON_DRAWER,
     RULES,
     RULES_CHANGE,
+    Node,
+    NodeResult,
+    NodeRun,
     Outcome,
-    Step,
-    StepResult,
-    StepRun,
 )
 from papiq.core.domain.rule_engine import (
     DRAWER,
@@ -61,9 +62,10 @@ from papiq.core.domain.rule_engine import (
 )
 from papiq.core.domain.rules import Rule, SetDrawer, Trigger
 from papiq.core.domain.users import User
-from papiq.core.ports import ObjectStore, PatternMatcher, UnitOfWork
-from papiq.core.services.inbox import MODEL_STEPS, field_checks, latest_entries
-from papiq.core.services.objects import markdown_key
+from papiq.core.ports import ObjectStore, PatternMatcher, TemplateRenderer, UnitOfWork
+from papiq.core.services.inbox import MODEL_NODES, field_checks, latest_entries
+from papiq.core.services.objects import load_text
+from papiq.core.services.titles import machine_title
 
 log = logging.getLogger(__name__)
 
@@ -127,10 +129,10 @@ async def prepare(
     """Load the text if a rule looks at it and run the rules' patterns on it."""
     if not any(rule.definition.uses_text for rule in rules):
         return Prepared()
-    if document.processing.outcomes.get(Step.PARSE) not in (Outcome.OK, Outcome.UNCERTAIN):
+    if document.processing.outcome(Node.PARSE) not in (Outcome.OK, Outcome.UNCERTAIN):
         return Prepared()
     try:
-        markdown = (await store.get(markdown_key(document.id))).decode("utf-8")
+        markdown = (await load_text(store, document.id)).decode("utf-8")
     except NotFoundError:
         return Prepared()
     text = pattern_text(markdown, max_text)
@@ -178,6 +180,9 @@ class Provenance:
 
     - `model_values`: single fields (contact, type, date, fields) whose value the model set
       in its latest run and no person has decided since, as JSON.
+    - `machine_title`: the title the machine gave (`titles.machine_title`), if the document
+      still has it and no person decided the title; applied to existing documents, rules
+      replace it as they replace the file name.
     - `model_tags`: tags the model set that no person has decided on since.
     - `person`: fields a person decided (confirming in the inbox, or changing the document)
       since the model's latest run; `tags_added` and `tags_removed` by a person likewise.
@@ -190,15 +195,16 @@ class Provenance:
     reviewed: frozenset[RuleId]
     tags_added: frozenset[TagId] = frozenset()
     tags_removed: frozenset[TagId] = frozenset()
+    machine_title: str | None = None
 
     @property
     def unverified(self) -> frozenset[str]:
         return frozenset(name for name in (CONTACT, DOCUMENT_TYPE) if name in self.model_values)
 
 
-def provenance(log: Sequence[StepRun], document: Document) -> Provenance:
+def provenance(log: Sequence[NodeRun], document: Document) -> Provenance:
     latest = latest_entries(log, by_model=True)
-    model_run = max((latest[step].run for step in MODEL_STEPS if step in latest), default=0)
+    model_run = max((latest[node].run for node in MODEL_NODES if node in latest), default=0)
     person: set[str] = set()
     added: set[TagId] = set()
     removed: set[TagId] = set()
@@ -235,6 +241,7 @@ def provenance(log: Sequence[StepRun], document: Document) -> Provenance:
             open_reviews = _reviewing(entry.result.output)
         elif entry.result.model_version == PERSON and entry.run == run:
             reviewed |= open_reviews
+    given = machine_title(log)
     return Provenance(
         model_values,
         model_tags,
@@ -242,6 +249,7 @@ def provenance(log: Sequence[StepRun], document: Document) -> Provenance:
         frozenset(reviewed),
         frozenset(added),
         frozenset(removed),
+        machine_title=given if TITLE not in person and document.title == given else None,
     )
 
 
@@ -270,27 +278,49 @@ def person_record(
     changed: Iterable[str],
     tags_before: Collection[TagId],
     tags_after: Collection[TagId],
+    corrected: Iterable[str] = (),
 ) -> dict[str, JsonValue]:
-    """What a person changed, for a log entry `provenance` reads: the fields, and the tags they
-    added and removed."""
+    """What a person changed, for a log entry `provenance` reads: the fields they set, the
+    tags they added and removed, and (`corrected`) the fields whose values they really
+    altered, for the share of automatic values corrected later."""
     added = sorted(str(tag) for tag in set(tags_after) - set(tags_before))
     removed = sorted(str(tag) for tag in set(tags_before) - set(tags_after))
     return {
         "changed": list[JsonValue](sorted(changed)),
         "tags_added": list[JsonValue](added),
         "tags_removed": list[JsonValue](removed),
+        "corrected": list[JsonValue](sorted(corrected)),
     }
 
 
+def corrected_fields(before: Document, after: Document) -> frozenset[str]:
+    """The values that differ between two states of a document, named as in field checks."""
+    names = {
+        name
+        for name, attribute in (
+            (TITLE, "title"),
+            (CONTACT, "contact_id"),
+            (DOCUMENT_TYPE, "document_type_id"),
+            (TAGS, "tag_ids"),
+            (DOCUMENT_DATE, "document_date"),
+        )
+        if getattr(before, attribute) != getattr(after, attribute)
+    }
+    for field_id in set(before.fields) | set(after.fields):
+        if before.fields.get(field_id) != after.fields.get(field_id):
+            names.add(field_key(field_id))
+    return frozenset(names)
+
+
 def drawer_choice(
-    document: Document, *, step: Step, actor: UserId, trigger: str, version: str, now: datetime
-) -> StepRun:
+    document: Document, *, node: Node, actor: UserId, trigger: str, version: str, now: datetime
+) -> NodeRun:
     """The log entry of a person choosing the document's drawer outside the inbox."""
-    return StepRun(
+    return NodeRun(
         document_id=document.id,
-        step=step,
+        node=node,
         run=document.processing.run,
-        result=StepResult(
+        result=NodeResult(
             outcome=Outcome.OK,
             model_version=PERSON_DRAWER,
             input={
@@ -350,6 +380,7 @@ async def situation(
     rules: Iterable[Rule],
     definitions: Mapping[FieldId, FieldDefinition],
     origin: Provenance,
+    templates: TemplateRenderer,
     locked: Collection[str] = (),
     person_added_tags: frozenset[TagId] = frozenset(),
     person_removed_tags: frozenset[TagId] = frozenset(),
@@ -376,9 +407,11 @@ async def situation(
         if document_type is not None:
             existing.add(type_id)
             names[type_id] = document_type.name
-    for tag_id in {id for refs in references for id in refs.tags}:
-        if await uow.tags.find(tag_id) is not None:
+    for tag_id in {id for refs in references for id in refs.tags} | set(document.tag_ids):
+        tag = await uow.tags.find(tag_id)
+        if tag is not None:
             existing.add(tag_id)
+            names[tag_id] = tag.name
     drawers: dict[DrawerId, DrawerTarget] = {}
     for rule in rules:
         for action in rule.definition.actions:
@@ -390,16 +423,24 @@ async def situation(
                         writable=can_file_into(owner, drawer),
                         shared=drawer.owner_id != owner.id or bool(drawer.shares),
                     )
+    for drawer_id in {*drawers, document.drawer_id}:
+        if drawer_id in drawers:
+            names[drawer_id] = drawers[drawer_id].name
+        elif (current := await uow.drawers.find(drawer_id)) is not None:
+            names[drawer_id] = current.name
     default = await uow.drawers.get_default(owner.id)
     return Situation(
         mode=mode,
         document=document,
         default_drawer=default.id,
         definitions=definitions,
+        render=templates.render,
+        owner_name=owner.username,
         drawers=drawers,
         existing=frozenset(existing),
         names=names,
         model_values=origin.model_values,
+        machine_title=origin.machine_title,
         locked=frozenset(locked),
         person_added_tags=person_added_tags,
         person_removed_tags=person_removed_tags,
@@ -433,6 +474,7 @@ class RuleRun:
 async def run_rules(
     uow: UnitOfWork,
     matcher: PatternMatcher,
+    templates: TemplateRenderer,
     *,
     mode: Mode,
     document: Document,
@@ -462,6 +504,7 @@ async def run_rules(
         rules=[match.rule for match in matched],
         definitions=definitions,
         origin=origin,
+        templates=templates,
         locked=locked,
         person_added_tags=origin.tags_added,
         person_removed_tags=origin.tags_removed,

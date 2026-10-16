@@ -11,7 +11,9 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal, get_args
 
+from babel import Locale, UnknownLocaleError
 from pydantic import (
+    AfterValidator,
     AnyHttpUrl,
     BeforeValidator,
     ByteSize,
@@ -58,6 +60,22 @@ def _seconds(value: Any) -> Any:
 
 # A positive duration, configured in seconds.
 Seconds = Annotated[timedelta, BeforeValidator(_seconds), Field(gt=timedelta(0))]
+
+
+def _locale(value: str) -> str:
+    try:
+        Locale.parse(value.replace("-", "_"))
+    except (ValueError, UnknownLocaleError):
+        raise ValueError(f"unknown locale {value!r}") from None
+    return value
+
+
+def _unset_if_none(value: Any) -> Any:
+    return None if isinstance(value, str) and value.strip().lower() == "none" else value
+
+
+# `none` leaves the temperature to the endpoint: some models reject one (Claude Sonnet 5.5).
+Temperature = Annotated[Annotated[float, Field(ge=0, le=2)] | None, BeforeValidator(_unset_if_none)]
 
 
 class Settings(BaseSettings):
@@ -151,18 +169,17 @@ class Settings(BaseSettings):
     worker_concurrency: Annotated[int, Field(ge=1, le=64)] = 2
     worker_poll_interval: Seconds = timedelta(seconds=1)
     worker_shutdown_timeout: Seconds = timedelta(seconds=30)
-    step_max_attempts: Annotated[int, Field(ge=1, le=20)] = 3
-    step_retry_delay: Seconds = timedelta(seconds=30)
+    node_max_attempts: Annotated[int, Field(ge=1, le=20)] = 3
+    node_retry_delay: Seconds = timedelta(seconds=30)
     events_poll_interval: Seconds = timedelta(seconds=1)
     events_max_attempts: Annotated[int, Field(ge=1, le=100)] = 10
     cleanup_interval: Seconds = timedelta(hours=1)
     retention: Seconds = timedelta(days=7)
 
-    # Processing: OCR (OCRmyPDF, Tesseract language codes joined by `+`) and parsing (Docling).
+    # Processing: OCR (OCRmyPDF, Tesseract language codes joined by `+`); the text is read from
+    # the archive's text layer as it is set (PDFium), which needs no settings.
     ocr_languages: Annotated[str, Field(pattern=r"^[a-z_]+(\+[a-z_]+)*$")] = "deu+eng"
     ocr_timeout: Seconds = timedelta(minutes=10)
-    parse_timeout: Seconds = timedelta(minutes=10)
-    docling_models_path: Path = Path("/opt/docling-models")
 
     # Search: Meilisearch holds the index of full text and vectors.
     meilisearch_url: AnyHttpUrl | None = None
@@ -193,7 +210,7 @@ class Settings(BaseSettings):
     llm_base_url: AnyHttpUrl | None = None
     llm_model: str | None = None
     llm_api_key: SecretStr | None = None
-    llm_temperature: Annotated[float, Field(ge=0, le=2)] = 0.0
+    llm_temperature: Temperature = 0.0
     llm_seed: int | None = None
     llm_timeout: Seconds = timedelta(minutes=5)
     # `json_object` for providers without JSON Schema support; the answer is checked anyway.
@@ -212,17 +229,44 @@ class Settings(BaseSettings):
     # separates it from the text.
     embedding_query_prefix: str | None = None
     embedding_document_prefix: str | None = None
+    # A vision language model that reads a document's pages when a person asks for it (`POST
+    # /documents/{id}/vision`): an OpenAI-compatible endpoint whose model takes images. The page
+    # images go there. Reading a whole document has this time limit; one page at most five
+    # minutes.
+    vlm_base_url: AnyHttpUrl | None = None
+    vlm_model: str | None = None
+    vlm_api_key: SecretStr | None = None
+    vlm_timeout: Seconds = timedelta(minutes=30)
 
     # Classification: a field is accepted (ok) from this confidence on; an existing contact is
     # suggested from the second.
     confidence_threshold: Annotated[float, Field(gt=0, le=1)] = 0.9
     contact_suggest_threshold: Annotated[float, Field(gt=0, le=1)] = 0.75
+    # Share of unsure words from which a recognised page counts as poorly read: a value on it
+    # is only suggested. 0.08 lies between good scans (up to 7 %) and broken ones (from 9 %).
+    poor_reading_threshold: Annotated[float, Field(gt=0, le=1)] = 0.08
+    # The currency of an amount in a document that shows none (ISO 4217).
+    default_currency: Annotated[str, Field(pattern=r"^[A-Z]{3}$")] = "EUR"
+
+    # The classifier, trained from confirmed documents (`none`: no classifier signal): the
+    # confirmed documents before the first model, the confirmations since the last one before
+    # another, and how sure a prediction must be to name its class.
+    classifier: Literal["scikit-learn", "none"] = "scikit-learn"
+    classifier_min_examples: Annotated[int, Field(ge=2, le=1_000_000)] = 20
+    classifier_retrain_after: Annotated[int, Field(ge=1, le=1_000_000)] = 25
+    classifier_threshold: Annotated[float, Field(gt=0, le=1)] = 0.8
+    # Similar confirmed documents that vote on a new one's contact, type and tags (needs the
+    # search index with embeddings); 0 turns them off.
+    neighbours: Annotated[int, Field(ge=0, le=20)] = 5
 
     # Rules: the time limit of one regular expression, the characters of document text that
     # text conditions see, and the documents one retroactive application may cover.
     rules_pattern_timeout: Seconds = timedelta(milliseconds=200)
     rules_max_text: Annotated[int, Field(ge=1000, le=10_000_000)] = 200_000
     rules_apply_max_documents: Annotated[int, Field(ge=1, le=100_000)] = 1000
+    # Templates of rules and title patterns write dates and amounts in this locale (`de`,
+    # `en_US`, ...; Babel's names).
+    template_locale: Annotated[str, AfterValidator(_locale)] = "de"
 
     @model_validator(mode="before")
     @classmethod
@@ -297,7 +341,7 @@ class Settings(BaseSettings):
                 f"{_env('session_max_age')} must not be shorter than {_env('session_idle_timeout')}"
             )
         problems += self._oidc_problems()
-        for prefix in ("llm", "embedding"):
+        for prefix in ("llm", "embedding", "vlm"):
             url, model = f"{prefix}_base_url", f"{prefix}_model"
             if (getattr(self, url) is None) != (getattr(self, model) is None):
                 problems.append(f"{_env(url)} and {_env(model)} must be set together")
@@ -444,11 +488,23 @@ def find_unknown_variables(environ: Mapping[str, str] | None = None) -> list[str
     )
 
 
-def load_settings() -> Settings:
+RENAMED: dict[str, str] = {
+    "PAPIQ_STEP_MAX_ATTEMPTS": "PAPIQ_NODE_MAX_ATTEMPTS",
+    "PAPIQ_STEP_RETRY_DELAY": "PAPIQ_NODE_RETRY_DELAY",
+}
+"""Variables of earlier versions and their names now; setting an old one is an error, so a
+value does not fall back to the default unnoticed."""
+
+
+def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     """Read and validate the configuration from the environment.
 
     Raises ConfigurationError with a message that names the offending variables.
     """
+    environ = os.environ if environ is None else environ
+    renamed = [f"{old} was renamed to {new}" for old, new in RENAMED.items() if old in environ]
+    if renamed:
+        raise ConfigurationError("; ".join(renamed))
     try:
         return Settings()
     except ValidationError as error:

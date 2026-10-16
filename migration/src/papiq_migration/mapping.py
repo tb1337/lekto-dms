@@ -29,7 +29,7 @@ class FieldSpec:
 
     key: str  # "field:<id>", "asn", "notes"
     name: str
-    data_type: str  # Papiq: text, number, amount, date, boolean, choice, link
+    data_type: str  # Papiq: text, number, amount, date, boolean, choice, link, period
     choices: tuple[str, ...] = ()
 
 

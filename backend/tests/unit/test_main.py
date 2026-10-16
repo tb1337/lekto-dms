@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from papiq.adapters.outbound.memory import MemorySearchIndex
+from papiq.adapters.outbound.memory import FakeOcr, FakeParser, MemorySearchIndex
 from papiq.composition import container
 from papiq.composition.__main__ import main
 from tests.builders import PASSWORD, SECRET_KEY, TRUSTED_PROXY
@@ -85,6 +85,69 @@ def test_reindex_needs_a_search_index(capsys: pytest.CaptureFixture[str]) -> Non
     assert "PAPIQ_MEILISEARCH_URL is not set" in capsys.readouterr().err
 
 
+def test_train_needs_a_classifier(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("PAPIQ_CLASSIFIER", "none")
+    assert main(["train"]) == 1
+    assert "PAPIQ_CLASSIFIER is none" in capsys.readouterr().err
+
+
+def test_train_without_confirmed_documents_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
+    assert main(["migrate"]) == 0
+
+    assert main(["train"]) == 1
+    events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
+    assert "training the classifier failed" in [event["event"] for event in events]
+
+
+def test_render_pages_queues_the_documents_without_page_images(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
+    assert main(["migrate"]) == 0
+
+    assert main(["render-pages"]) == 0
+
+    events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
+    assert [e["documents"] for e in events if e["event"] == "render-pages queued"] == [0]
+
+
+def test_read_codes_queues_the_documents_to_read_the_facts_of(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
+    assert main(["migrate"]) == 0
+
+    assert main(["read-codes"]) == 0
+
+    events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
+    assert [e["documents"] for e in events if e["event"] == "read-codes queued"] == [0]
+
+
+def test_reparse_queues_the_documents_to_read_again(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
+    assert main(["migrate"]) == 0
+
+    assert main(["reparse"]) == 0
+
+    events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
+    assert [e["documents"] for e in events if e["event"] == "reparse queued"] == [0]
+
+
 def test_reindex_rebuilds_the_index(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
@@ -92,8 +155,8 @@ def test_reindex_rebuilds_the_index(
     monkeypatch.setenv("PAPIQ_MEILISEARCH_URL", "http://meilisearch:7700")
     index = MemorySearchIndex()
     monkeypatch.setitem(container.SEARCH_INDEXES, "meilisearch", lambda _: index)
-    for table, name in ((container.OCR_ENGINES, "ocrmypdf"), (container.PARSERS, "docling")):
-        monkeypatch.setitem(table, name, lambda _: object())
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
     assert main(["migrate"]) == 0
 
     assert main(["reindex"]) == 0

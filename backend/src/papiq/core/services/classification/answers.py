@@ -1,11 +1,12 @@
 """JSON Schemas of the model's answers, and checking an answer's structure.
 
 The schemas are built per document from the master data (lists as `enum`); every property is
-required, nothing else is allowed, "not found" is `null`. The check is strict about structure
-(an answer with a missing or an extra field is invalid, since an extra field may be an
-instruction from the document at work) and lenient about values: a document type outside the
-list counts as a proposed new type, unknown tags as proposed new tags, and a value that cannot
-be read makes only its field uncertain.
+required, nothing else is allowed, "not found" is `null`. They keep to what strict validators
+accept (Claude's too): one of a list or null as `anyOf`, no limits on arrays. The check is
+strict about structure (an answer with a missing or an extra field is invalid, since an extra
+field may be an instruction from the document at work) and lenient about values: a document
+type outside the list counts as a proposed new type, unknown tags as proposed new tags, and a
+value that cannot be read makes only its field uncertain.
 """
 
 import json
@@ -15,6 +16,7 @@ from dataclasses import dataclass
 
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.master_data import one_line
 
 _EVIDENCE_LENGTH = 500  # characters of a quoted passage that are kept
 _FENCE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL)
@@ -34,58 +36,102 @@ class Proposal:
     evidence: str | None
 
 
+# --- the proposal (`signal_llm`) --------------------------------------------------------------
+
+
 @dataclass(frozen=True, kw_only=True)
-class ClassifyAnswer:
-    contact: Proposal  # value: the name, or None
+class ProposeAnswer:
+    sender: Proposal  # value: the name, or None
+    recipient: str | None
     document_type: str | None
     new_document_type: str | None
     tags: list[str]
     new_tags: list[str]
-    document_date: Proposal  # value: ISO date text, or None
+    document_date: Proposal  # value: the date as written, or None
+    title: str | None
+    language: str | None
+    fields: dict[str, Proposal]  # by key; only the fields the model gave
     raw: JsonObject
 
 
-# --- classification ---------------------------------------------------------------------------
-
-_CLASSIFY_FIELDS = (
-    "contact",
+_PROPOSE_FIELDS = (
+    "sender",
+    "recipient",
     "document_type",
     "new_document_type",
     "tags",
     "new_tags",
     "document_date",
+    "title",
+    "language",
+    "fields",
 )
+_TITLE_LENGTH = 200
+_FIELD_ENTRY = ("key", "value", "evidence")
 
 
-def classify_schema(document_types: Sequence[str], tags: Sequence[str]) -> JsonObject:
+def propose_schema(
+    document_types: Sequence[str], tags: Sequence[str], keys: Sequence[str]
+) -> JsonObject:
+    """Every field value is text, as written in the document; the fields come as a list of
+    the keys the document shows (the model leaves the others out)."""
+    # Without tags or fields to list, anything given is left out or proposed as new.
     tag_items: JsonObject = {"type": "string"}
     if tags:
         tag_items["enum"] = list(tags)
-    tag_list: JsonObject = {"type": "array", "items": tag_items}
-    if not tags:
-        tag_list["maxItems"] = 0
+    key: JsonObject = {"type": "string"}
+    if keys:
+        key["enum"] = list(keys)
+    entry = _object({"key": key, "value": dict(_TEXT_OR_NULL), "evidence": dict(_TEXT_OR_NULL)})
     return _object(
         {
-            "contact": _proposal({"type": ["string", "null"]}),
-            "document_type": {"type": ["string", "null"], "enum": [*document_types, None]},
-            "new_document_type": _TEXT_OR_NULL,
-            "tags": tag_list,
+            "sender": _proposal(dict(_TEXT_OR_NULL)),
+            "recipient": dict(_TEXT_OR_NULL),
+            "document_type": _one_of_or_null(document_types),
+            "new_document_type": dict(_TEXT_OR_NULL),
+            "tags": {"type": "array", "items": tag_items},
             "new_tags": {"type": "array", "items": {"type": "string"}},
-            "document_date": _proposal(_TEXT_OR_NULL),
+            "document_date": _proposal(dict(_TEXT_OR_NULL)),
+            "title": dict(_TEXT_OR_NULL),
+            "language": dict(_TEXT_OR_NULL),
+            "fields": {"type": "array", "items": entry},
         }
     )
 
 
-def parse_classify(content: str) -> ClassifyAnswer:
+def parse_propose(content: str, keys: Sequence[str]) -> ProposeAnswer:
+    """Strict about the structure; a field entry with a key that is not listed is left out,
+    and of two entries for one key the first counts."""
     data = _load(content)
-    _require_fields(data, _CLASSIFY_FIELDS, "the answer")
-    return ClassifyAnswer(
-        contact=_parse_proposal(data["contact"], "contact", text=True),
+    _require_fields(data, _PROPOSE_FIELDS, "the answer")
+    entries = data["fields"]
+    if not isinstance(entries, list):
+        raise AnswerError("fields: expected a list")
+    fields: dict[str, Proposal] = {}
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise AnswerError(f"fields[{index}]: expected an object")
+        _require_fields(entry, _FIELD_ENTRY, f"fields[{index}]")
+        key = entry["key"]
+        if isinstance(key, str) and key in keys and key not in fields:
+            proposal = _parse_proposal(
+                {"value": entry["value"], "evidence": entry["evidence"]}, f"fields[{index}]"
+            )
+            fields[key] = proposal
+    # The title becomes the document's: on one line, without control characters, not too long.
+    title = _text_or_null(data["title"], "title")
+    title = one_line(title)[:_TITLE_LENGTH].strip() or None if title else None
+    return ProposeAnswer(
+        sender=_parse_proposal(data["sender"], "sender", text=True),
+        recipient=_text_or_null(data["recipient"], "recipient"),
         document_type=_text_or_null(data["document_type"], "document_type"),
         new_document_type=_text_or_null(data["new_document_type"], "new_document_type"),
         tags=_texts(data["tags"], "tags"),
         new_tags=_texts(data["new_tags"], "new_tags"),
         document_date=_parse_proposal(data["document_date"], "document_date", text=True),
+        title=title,
+        language=_text_or_null(data["language"], "language"),
+        fields=fields,
         raw=data,
     )
 
@@ -129,10 +175,18 @@ def _value_schema(definition: FieldDefinition) -> JsonObject:
                 "additionalProperties": False,
             }
             return {"anyOf": [amount, {"type": "null"}]}
+        case FieldType.PERIOD:
+            period: JsonObject = {
+                "type": "object",
+                "properties": {"start": {"type": "string"}, "end": {"type": "string"}},
+                "required": ["start", "end"],
+                "additionalProperties": False,
+            }
+            return {"anyOf": [period, {"type": "null"}]}
         case FieldType.BOOLEAN:
             return {"type": ["boolean", "null"]}
         case FieldType.CHOICE:
-            return {"type": ["string", "null"], "enum": [*definition.choices, None]}
+            return _one_of_or_null(definition.choices)
         case _:
             return dict(_TEXT_OR_NULL)
 
@@ -147,6 +201,13 @@ def _object(properties: JsonObject) -> JsonObject:
         "required": list(properties),
         "additionalProperties": False,
     }
+
+
+def _one_of_or_null(names: Sequence[str]) -> JsonObject:
+    """One of `names`, or null; any text without names."""
+    if not names:
+        return dict(_TEXT_OR_NULL)
+    return {"anyOf": [{"type": "string", "enum": list(names)}, {"type": "null"}]}
 
 
 def _proposal(value: JsonObject) -> JsonObject:

@@ -21,6 +21,7 @@ from papiq.core.domain.permissions import document_access, reach_access
 from papiq.core.domain.search import Segment, Visibility
 from papiq.core.ports import (
     DocumentFilter,
+    DocumentOrder,
     Embeddings,
     SearchIndex,
     SearchQuery,
@@ -82,10 +83,11 @@ class SearchService:
         offset: int = 0,
         limit: int = 20,
         semantic_ratio: float | None = None,
+        order: DocumentOrder | None = None,
         all_users: bool = False,
     ) -> SearchPage:
-        """Documents within the caller's reach that match `text` (and `filter`); with
-        `all_users` (admins only), any document.
+        """Documents within the caller's reach that match `text` (and `filter`), by relevance
+        or in `order`; with `all_users` (admins only), any document.
 
         ValidationError for an empty text or a paging outside the limits, AuthenticationError
         for a deactivated caller, PermissionDeniedError for `all_users` without being an admin,
@@ -118,6 +120,7 @@ class SearchService:
                 filter=filter,
                 vector=vector,
                 semantic_ratio=ratio,
+                order=order,
                 offset=offset,
                 limit=limit,
             )

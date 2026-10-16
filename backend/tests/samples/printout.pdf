@@ -1,0 +1,36 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 6 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 972 >>
+stream
+BT /F1 14 Tf 60 790 Td (Zeitnachweis) Tj 0 -0 Td ET BT /F2 9.5 Tf 60 750 Td ( Mitarbeiter        : Erika Musterfrau          Seite         : 1) Tj 0 -13.5 Td ( Personalnummer     : 00012345                  Druckdatum    : 15.07.2026) Tj 0 -13.5 Td ( Kostenstelle       : 4711) Tj 0 -13.5 Td () Tj 0 -13.5 Td (-----------------------------------------------------------------) Tj 0 -13.5 Td (|Tag Text           |Kommen Gehen Std.|TAZPL |Sollz.|Rahmz.|GLZ  |) Tj 0 -13.5 Td (-----------------------------------------------------------------) Tj 0 -13.5 Td (|01  Mo             |07:31 12:34 5.03 |      |      |      |     |) Tj 0 -13.5 Td (|                   |13:18 15:53 2.35 |760   |  7.36| 7.38 | 0.02|) Tj 0 -13.5 Td (|02  Di             |07:47 16:04 7.47 |760   |  7.36| 7.47 | 0.11|) Tj 0 -13.5 Td (|Wochen-Summation   |                 |      | 14.72|14.85 | 0.13|) Tj 0 -13.5 Td (-----------------------------------------------------------------) Tj 0 -13.5 Td ET
+endstream
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000251 00000 n 
+0000000321 00000 n 
+0000001344 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+1412
+%%EOF

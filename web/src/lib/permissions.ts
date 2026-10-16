@@ -82,8 +82,13 @@ export function canManageWebhook(webhook: Owned, user: Actor): boolean {
 	return owns(webhook, user) || isAdmin(user);
 }
 
-/** Change, enable, disable and delete a rule: a user rule's owner, and admins (any rule). */
-export function canChangeRule(rule: Owned & { scope: string }, user: Actor): boolean {
+/** Change, enable, disable and delete a rule: a user rule's owner, and admins (any rule); the
+ * rule of a document type's title pattern nobody (it follows the type). */
+export function canChangeRule(
+	rule: Owned & { scope: string; managed_by_document_type_id?: string | null },
+	user: Actor
+): boolean {
+	if (rule.managed_by_document_type_id) return false;
 	if (isAdmin(user)) return true;
 	return rule.scope === 'user' && owns(rule, user);
 }

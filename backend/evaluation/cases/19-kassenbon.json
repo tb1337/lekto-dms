@@ -1,5 +1,5 @@
 {
-  "description": "Till receipt with a two-digit year.",
+  "description": "Till receipt with a two-digit year. Trained, the similar documents name a contact and type of the corpus for this new contact: a contradiction.",
   "expected": {
     "lane": "green",
     "contact": "Frischmarkt KG",
@@ -14,6 +14,9 @@
         "currency": "EUR"
       },
       "Zahlungsart": "Karte"
+    },
+    "lanes": {
+      "trained": "yellow"
     }
   },
   "fake": {

@@ -12,7 +12,9 @@ from papiq.core.ports.identity import (
 )
 from papiq.core.ports.job_queue import JobQueue
 from papiq.core.ports.repository import (
+    ClassifierModelRepository,
     ContactRepository,
+    DocumentIdentifierRepository,
     DocumentRepository,
     DocumentTypeRepository,
     DrawerRepository,
@@ -61,9 +63,13 @@ class UnitOfWork(Protocol):
     @property
     def processing_log(self) -> ProcessingLog: ...
     @property
+    def document_identifiers(self) -> DocumentIdentifierRepository: ...
+    @property
     def rules(self) -> RuleRepository: ...
     @property
     def rule_applications(self) -> RuleApplicationRepository: ...
+    @property
+    def classifier_models(self) -> ClassifierModelRepository: ...
     @property
     def webhooks(self) -> WebhookRepository: ...
     @property

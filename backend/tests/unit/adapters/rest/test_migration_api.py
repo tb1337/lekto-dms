@@ -12,10 +12,10 @@ from papiq.adapters.inbound.rest import PREFIX
 from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.domain.identity import TokenScope
-from papiq.core.domain.pipeline import Step, StepResult
+from papiq.core.domain.pipeline import SIGNALS, Node, NodeResult
 from papiq.core.domain.users import User
-from papiq.core.services.imports import ImportedClassifyStep, ImportedExtractStep
-from papiq.core.services.pipeline import DeferredResult, PlaceholderStep, StepExecutor
+from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
+from papiq.core.services.pipeline import DeferredResult, NodeExecutor, PlaceholderNode
 from tests.api import auth, bearer
 from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.rest.conftest import Api
@@ -25,12 +25,14 @@ DOCUMENTS = f"{PREFIX}/documents"
 
 @pytest.fixture(autouse=True)
 def imported_steps(api: Api) -> None:
-    """The classification steps as the container builds them, around steps that do nothing
-    (there is no language model)."""
+    """The signals, the judge and the fields node as the container builds them, around nodes
+    that do nothing (there is no language model)."""
     uow = api.container.unit_of_work
     executors = api.services.pipeline._executors
-    executors[Step.CLASSIFY] = ImportedClassifyStep(uow, PlaceholderStep())
-    executors[Step.EXTRACT_FIELDS] = ImportedExtractStep(uow, PlaceholderStep())
+    for signal in SIGNALS:
+        executors[signal] = ImportedSignal(uow, PlaceholderNode())
+    executors[Node.JUDGE] = ImportedJudgeNode(uow, PlaceholderNode())
+    executors[Node.FIELDS] = ImportedFieldsNode(uow, PlaceholderNode())
 
 
 def file(name: str = "scan.pdf") -> dict[str, tuple[str, bytes, str]]:
@@ -108,13 +110,11 @@ async def test_an_admin_uploads_for_another_owner_with_the_metadata(api: Api) ->
     receive = log[0]
     assert receive["output"]["uploaded_by"] == str(admin.id)
     assert receive["output"]["imported"]["title"] == "Electricity March"
-    applied = {
-        entry["step"]: entry for entry in log if entry["step"] in ("classify", "extract_fields")
-    }
-    assert applied["classify"]["outcome"] == "ok"
-    assert applied["classify"]["reason"] == "taken over from the source system"
-    assert applied["classify"]["model_version"] == "imported"
-    assert applied["extract_fields"]["model_version"] == "imported"
+    applied = {entry["node"]: entry for entry in log if entry["node"] in ("judge", "fields")}
+    assert applied["judge"]["outcome"] == "ok"
+    assert applied["judge"]["reason"] == "taken over from the source system"
+    assert applied["judge"]["model_version"] == "imported"
+    assert applied["fields"]["model_version"] == "imported"
     # The admin does not own it.
     other = await api.client.get(f"{DOCUMENTS}?limit=50", headers=auth(admin))
     assert other.json()["items"] == []
@@ -123,11 +123,11 @@ async def test_an_admin_uploads_for_another_owner_with_the_metadata(api: Api) ->
 class FailsOnce:
     """An OCR that cannot process the first document it sees (red at once), then works."""
 
-    def __init__(self, inner: StepExecutor) -> None:
+    def __init__(self, inner: NodeExecutor) -> None:
         self.inner = inner
         self.calls = 0
 
-    async def run(self, document: Document) -> StepResult | DeferredResult:
+    async def run(self, document: Document) -> NodeResult | DeferredResult:
         self.calls += 1
         if self.calls == 1:
             raise UnprocessableDocumentError("the file is damaged or not a valid document")
@@ -135,10 +135,10 @@ class FailsOnce:
 
 
 async def test_a_red_document_keeps_the_metadata_and_gets_them_when_retried(api: Api) -> None:
-    """The metadata is applied by the classification steps, so a document whose OCR fails is
+    """The metadata is applied by the classification nodes, so a document whose OCR fails is
     red without it; the receive entry keeps it, and a retry applies it (decision 8, M13)."""
     executors = api.services.pipeline._executors
-    executors[Step.OCR] = FailsOnce(executors[Step.OCR])
+    executors[Node.OCR] = FailsOnce(executors[Node.OCR])
     admin, owner = await api.admin(), await api.user()
     data = await master_data(api, admin)
     response = await upload(
@@ -148,7 +148,8 @@ async def test_a_red_document_keeps_the_metadata_and_gets_them_when_retried(api:
     await api.drain()
     url = response.json()["status_url"]
     document = (await api.client.get(url, headers=auth(owner))).json()
-    assert (document["lane"], document["processing"]["current_step"]) == ("red", "ocr")
+    failed = [n["node"] for n in document["processing"]["nodes"] if n["outcome"] == "failed"]
+    assert (document["lane"], failed) == ("red", ["ocr"])
     assert (document["title"], document["contact_id"], document["fields"]) == (
         "scan",
         None,
@@ -317,7 +318,7 @@ async def test_reprocessing_applies_the_metadata_again(api: Api) -> None:
     url = response.json()["status_url"]
     await api.client.patch(url, json={"title": "Changed", "tag_ids": []}, headers=auth(owner))
     reprocess = await api.client.post(
-        f"{url}/reprocess", json={"from_step": "classify"}, headers=auth(owner)
+        f"{url}/reprocess", json={"from_node": "judge"}, headers=auth(owner)
     )
     assert reprocess.status_code == 202, reprocess.text
     await api.drain()

@@ -1,32 +1,61 @@
 # Evaluation set
 
 Synthetic German documents (no real personal data) with the metadata expected of them. They run
-through the same classification and field extraction steps as the pipeline, to compare
-language models and to check that the checks catch wrong answers.
+through the same signals, judge and fields node as the pipeline, to compare language models and
+to check that the checks catch wrong answers.
 
 - `master_data.json`: contacts, document types, tags and fields the documents are matched
-  against; optionally `contact_aliases` (other names by contact) and `type_descriptions`
-  (by document type).
+  against (a field's `required`: true for a global one, else the types it is required for;
+  its `description`: what belongs in it, for the model);
+  optionally `contact_aliases` (other names by contact), `contact_identifiers` (entered by
+  hand: `kind` and `value` by contact), `type_descriptions` and `title_patterns` (by document
+  type; templates as the rules' titles, `{{ contact }}`).
+- `training/<name>.md` and `.json`: the training corpus, 55 earlier letters of eleven contacts
+  of the set with their metadata, in the style of their cases (as a sender's letters look
+  alike), with IBANs, VAT IDs, customer numbers and mail domains. The household's IBAN stands
+  on letters of several contacts and the utility's also on the bank statements: training must
+  learn neither.
 - `cases/<name>.md`: the document text, as the parse step would produce it (OCR and parsing are
   not part of the evaluation).
 - `cases/<name>.json`: `expected` (lane and fields) and `fake`, a fixed answer for runs without a
   model. Some fixed answers are wrong on purpose (`fake.lane` then names the lane they must lead
-  to); two cases carry instructions to the model in the text (`injection`).
+  to); two cases carry instructions to the model in the text (`injection`). `lanes` gives a lane
+  by run where the runs differ; `runs` limits a case to some (the pay slip whose employee the
+  model takes for the sender belongs to the trained run: before training nothing could catch
+  it).
+
+Every case runs twice, each time on a fresh installation in memory:
+
+- **cold**: no classifier, no similar documents; the language model and the facts in the text
+  decide, the rule from before the signals.
+- **trained**: the corpus is taken over first as from Paperless (it counts as confirmed),
+  indexed with bag-of-words vectors and trained on with scikit-learn, so the classifier, the
+  similar documents and the learned identifiers take part.
+
+After each case a simulated person sets the expected values, confirming a yellow document in the
+inbox or changing a green one; the log's `corrected` tells which automatic values they changed.
 
 Run it from `backend/`:
 
 ```sh
-uv run python -m papiq.composition evaluate --fake       # fixed answers, as in CI
+uv run python -m papiq.composition evaluate --fake       # fixed answers, both runs, as in CI
 uv run python -m papiq.composition evaluate              # the model in PAPIQ_LLM_*
-uv run python -m papiq.composition evaluate --cases DIR --output FILE
+uv run python -m papiq.composition evaluate --runs cold --cases DIR --output FILE
 ```
 
 A real run needs `PAPIQ_LLM_BASE_URL` and `PAPIQ_LLM_MODEL`, and a configuration that is valid
-otherwise (e.g. `PAPIQ_ROLE=worker`). The report goes to `reports/<date>-<model>.md`: hit rate
-per field, tag precision and recall, lanes expected against lanes got, documents that came out
-green although they should not have, run time per document, and what the instructions in the
-text achieved. The command exits with status 1 if any document came out green that should not
-have or with a wrong value, or a field changed without a passed check.
+otherwise (e.g. `PAPIQ_ROLE=worker`). The report goes to `reports/<date>-<model>.md`, the runs
+side by side: documents that came out green although they should not have, or with a wrong
+value, lanes as expected, run time; per field the hit rate, the values applied without a
+person and the share of those the person corrected afterwards (the feedback measure); tag
+precision and recall; and per run the lanes expected against lanes got, what the instructions
+in the text achieved, and each case. The command exits with status 1 if any document came out
+green that should not have or with a wrong value, or a field changed without a passed check.
+
+The bag-of-words vectors stand in for an embedding model: the similar documents they find show
+that the flow works, not how good real neighbours are. With so small a corpus the trained run
+is also strict: a new contact or a type the corpus does not have meets similar documents that
+name another value, a contradiction, so yellow.
 
 ## Search
 

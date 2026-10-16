@@ -1,5 +1,5 @@
 {
-  "description": "Vehicle tax assessment.",
+  "description": "Vehicle tax assessment. Trained, the similar documents name a contact of the corpus for this new one: a contradiction.",
   "expected": {
     "lane": "green",
     "contact": "Hauptzollamt Musterstadt",
@@ -16,6 +16,9 @@
         "currency": "EUR"
       },
       "Fällig am": "2026-03-16"
+    },
+    "lanes": {
+      "trained": "yellow"
     }
   },
   "fake": {

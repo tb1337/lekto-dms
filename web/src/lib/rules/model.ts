@@ -6,6 +6,7 @@
  * The tables and limits mirror `papiq.core.domain.rules`; the API checks everything again.
  */
 import type { components } from '#lib/api/schema.ts';
+import { isMoney, isPeriod } from '#lib/fields.ts';
 
 type Schemas = components['schemas'];
 
@@ -16,7 +17,8 @@ export type Channel = Schemas['Channel'];
 export type Scope = Schemas['RuleScope'];
 export type FieldType = Schemas['FieldType'];
 export type Money = Schemas['MoneyValue'];
-export type Value = string | boolean | Money | string[] | null;
+export type Period = Schemas['PeriodValue'];
+export type Value = string | boolean | Money | Period | string[] | null;
 export type ApiCondition = Schemas['ConditionSchema'];
 export type ApiGroup = Schemas['AllGroup-Output'] | Schemas['AnyGroup-Output'];
 export type ApiAction = Schemas['RuleOut']['actions'][number];
@@ -86,12 +88,6 @@ export const CONDITION_FIELDS: readonly ConditionField[] = [
 	'document_date',
 	'field'
 ];
-export const TITLE_PLACEHOLDERS = [
-	'contact',
-	'document_type',
-	'document_date',
-	'filename'
-] as const;
 
 const ALL_OPERATORS: readonly Operator[] = [
 	'is',
@@ -126,7 +122,8 @@ export const FIELD_TYPE_OPERATORS: Record<FieldType, readonly Operator[]> = {
 	amount: ORDERED,
 	date: ORDERED,
 	boolean: ['is', 'present', 'missing'],
-	choice: REFERENCE
+	choice: REFERENCE,
+	period: ['is', 'overlaps', 'gt', 'lt', 'present', 'missing']
 };
 
 export const ACTION_TYPES: readonly ActionType[] = [
@@ -310,6 +307,8 @@ export function defaultValue(
 	if (conditionField === 'field' && field && op !== 'contains' && op !== 'matches') {
 		if (field.data_type === 'boolean') return true;
 		if (field.data_type === 'amount') return { amount: '', currency: 'EUR' };
+		// A period's `gt` and `lt` compare with a date: it starts after, it ends before.
+		if (field.data_type === 'period' && op !== 'gt' && op !== 'lt') return { start: '', end: '' };
 	}
 	return '';
 }
@@ -367,7 +366,8 @@ export function changeOperator(
 function isEmpty(value: Value): boolean {
 	if (value === null || value === '') return true;
 	if (Array.isArray(value)) return value.length === 0;
-	if (typeof value === 'object') return value.amount === '';
+	if (isMoney(value)) return value.amount === '';
+	if (isPeriod(value)) return value.start === '' || value.end === '';
 	return false;
 }
 
@@ -465,6 +465,7 @@ export type ProblemCode =
 	| 'date'
 	| 'number'
 	| 'amount'
+	| 'period'
 	| 'field'
 	| 'operator'
 	| 'group_empty'
@@ -473,8 +474,7 @@ export type ProblemCode =
 	| 'actions_none'
 	| 'actions_many'
 	| 'twice'
-	| 'scope'
-	| 'placeholder';
+	| 'scope';
 
 export interface Problem {
 	code: ProblemCode;
@@ -578,6 +578,9 @@ function checkValue(
 		case 'document_date':
 			return isDate(value) ? null : { code: 'date' };
 		case 'field':
+			if (field?.data_type === 'period' && (condition.op === 'gt' || condition.op === 'lt')) {
+				return isDate(value) ? null : { code: 'date' };
+			}
 			return field ? checkFieldValue(field, value) : null;
 		default:
 			return null;
@@ -594,13 +597,13 @@ function checkFieldValue(field: FieldInfo, value: Value): Problem | null {
 		case 'boolean':
 			return typeof value === 'boolean' ? null : { code: 'value' };
 		case 'amount':
-			return typeof value === 'object' &&
-				value !== null &&
-				!Array.isArray(value) &&
-				isNumber(value.amount) &&
-				/^[A-Z]{3}$/.test(value.currency)
+			return isMoney(value) && isNumber(value.amount) && /^[A-Z]{3}$/.test(value.currency)
 				? null
 				: { code: 'amount' };
+		case 'period':
+			return isPeriod(value) && isDate(value.start) && isDate(value.end) && value.start <= value.end
+				? null
+				: { code: 'period' };
 		case 'number':
 			return isNumber(value) ? null : { code: 'number' };
 		case 'date':
@@ -641,7 +644,7 @@ function checkAction(
 		case 'set_document_type':
 			return action.document_type_id ? null : { code: 'choose' };
 		case 'set_title':
-			return checkTemplate(action.template);
+			return checkText(action.template, LIMITS.text);
 		case 'add_tags':
 		case 'remove_tags':
 			if (action.tag_ids.length === 0) return { code: 'list' };
@@ -656,15 +659,4 @@ function checkAction(
 		case 'force_review':
 			return checkText(action.reason, LIMITS.text);
 	}
-}
-
-function checkTemplate(template: string): Problem | null {
-	const problem = checkText(template, LIMITS.text);
-	if (problem) return problem;
-	for (const [, name] of template.matchAll(/\{([^{}]*)\}/g)) {
-		if (!(TITLE_PLACEHOLDERS as readonly string[]).includes(name)) {
-			return { code: 'placeholder', params: { name: `{${name}}` } };
-		}
-	}
-	return null;
 }

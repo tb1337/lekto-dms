@@ -1,8 +1,10 @@
 """Upload, status, processing log, retry and reprocessing over HTTP."""
 
+import json
 import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import httpx2
@@ -13,14 +15,17 @@ from papiq.composition.container import build_memory_container, build_services
 from papiq.core.domain.documents import Sha256
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import UnprocessableDocumentError
-from papiq.core.domain.pipeline import Step
-from papiq.core.services.objects import original_key
+from papiq.core.domain.exchanges import ModelCall, RunExchange, exchanges_to_json
+from papiq.core.domain.ids import DocumentId
+from papiq.core.domain.pipeline import Node
+from papiq.core.services.objects import exchanges_key, original_key
 from tests.api import auth, issue_token
 from tests.builders import PASSWORD
 from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.rest.conftest import MAX_UPLOAD, Api, make_app
 
 DOCUMENTS = f"{PREFIX}/documents"
+SIGNALS = ("signal_llm", "signal_classifier", "signal_neighbours", "signal_facts")
 PROBLEM = "application/problem+json"
 
 
@@ -39,20 +44,49 @@ async def test_upload_is_accepted_and_processed(api: Api) -> None:
     assert status["media_type"] == "application/pdf"
     assert status["original_filename"] == "scan.pdf"
     assert status["lane"] is None
-    assert status["processing"] == {
-        "status": "processing",
-        "current_step": "ocr",
-        "run": 1,
-        "outcomes": {"receive": "ok"},
+    processing = status["processing"]
+    assert (processing["status"], processing["run"]) == ("processing", 1)
+    assert [node["node"] for node in processing["nodes"]] == [
+        "receive",
+        "ocr",
+        "pages",
+        "parse",
+        "signal_llm",
+        "signal_classifier",
+        "signal_neighbours",
+        "signal_facts",
+        "judge",
+        "fields",
+        "apply_rules",
+        "file",
+    ]
+    assert processing["nodes"][0] == {
+        "node": "receive",
+        "status": "done",
+        "outcome": "ok",
+        "started_at": "2026-10-06T12:00:00Z",
+        "finished_at": "2026-10-06T12:00:00Z",
+    }
+    assert processing["nodes"][1] == {
+        "node": "ocr",
+        "status": "waiting",
+        "outcome": None,
+        "started_at": None,
+        "finished_at": None,
     }
 
     await api.drain()
     status = (await api.client.get(f"{DOCUMENTS}/{id}", headers=auth(owner))).json()
     assert (status["lane"], status["processing"]["status"]) == ("green", "completed")
     log = (await api.client.get(f"{DOCUMENTS}/{id}/log", headers=auth(owner))).json()
-    assert [entry["step"] for entry in log][:3] == ["receive", "ocr", "parse"]
+    assert [entry["node"] for entry in log][:3] in (
+        ["receive", "ocr", "pages"],
+        ["receive", "pages", "ocr"],
+        ["receive", "ocr", "parse"],
+    )
     assert log[0]["output"]["sha256"]
-    assert log[1]["model_version"] == "fake-ocr 1"
+    ocr = next(entry for entry in log if entry["node"] == "ocr")
+    assert ocr["model_version"] == "fake-ocr 1"
 
 
 async def test_a_duplicate_of_the_same_owner_is_rejected(api: Api) -> None:
@@ -243,6 +277,99 @@ async def test_others_see_a_document_only_through_a_share_once_green(api: Api) -
         assert missing.headers["content-type"] == PROBLEM
 
 
+async def test_the_text_is_read_in_pieces(api: Api) -> None:
+    owner = await api.user()
+    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    url = response.json()["status_url"]
+    assert (await api.client.get(f"{url}/text", headers=auth(owner))).status_code == 409
+    await api.drain()
+    whole = (await api.client.get(f"{url}/text", headers=auth(owner))).json()
+    text = whole["text"]
+    assert text and whole == {
+        "text": text,
+        "offset": 0,
+        "total_length": len(text),
+        "next_offset": None,
+    }
+    piece = await api.client.get(f"{url}/text?offset=2&limit=3", headers=auth(owner))
+    assert piece.json() == {
+        "text": text[2:5],
+        "offset": 2,
+        "total_length": len(text),
+        "next_offset": 5 if len(text) > 5 else None,
+    }
+    assert (await api.client.get(f"{url}/text?limit=0", headers=auth(owner))).status_code == 422
+    assert (await api.client.get(f"{url}/text")).status_code == 401
+    other = await api.user()
+    assert (await api.client.get(f"{url}/text", headers=auth(other))).status_code == 404
+
+
+async def test_the_structure_is_served_as_stored(api: Api) -> None:
+    owner = await api.user()
+    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    url = response.json()["status_url"]
+    assert (await api.client.get(f"{url}/structure", headers=auth(owner))).status_code == 409
+    await api.drain()
+    structure = await api.client.get(f"{url}/structure", headers=auth(owner))
+    assert structure.status_code == 200
+    assert structure.headers["content-type"] == "application/json"
+    assert structure.headers["x-content-type-options"] == "nosniff"
+    assert "text" in structure.json()  # what the fake parser writes
+
+
+async def test_the_model_exchanges_are_listed_per_run(api: Api) -> None:
+    owner = await api.user()
+    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    url = response.json()["status_url"]
+    await api.drain()
+    # Without a language model nothing was sent.
+    listed = await api.client.get(f"{url}/exchanges/signal_llm", headers=auth(owner))
+    assert (listed.status_code, listed.json()) == (200, [])
+    id = DocumentId(UUID(url.rsplit("/", 1)[-1]))
+    call = ModelCall(system="s", user="u", answer="{}", model="m", usage={"total_tokens": 9})
+    runs = [RunExchange(run=1, calls=(call,))]
+    await api.container.object_store.put(
+        exchanges_key(id, Node.SIGNAL_LLM),
+        json.dumps(exchanges_to_json(runs)).encode(),
+        content_type="application/json",
+    )
+    listed = await api.client.get(f"{url}/exchanges/signal_llm", headers=auth(owner))
+    assert listed.json() == [
+        {
+            "run": 1,
+            "calls": [
+                {
+                    "system": "s",
+                    "user": "u",
+                    "answer": "{}",
+                    "model": "m",
+                    "usage": {"total_tokens": 9},
+                }
+            ],
+        }
+    ]
+    wrong = await api.client.get(f"{url}/exchanges/parse", headers=auth(owner))
+    assert wrong.status_code == 422
+
+
+async def test_page_images_are_served_by_number(api: Api) -> None:
+    owner = await api.user()
+    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    url = response.json()["status_url"]
+    assert (await api.client.get(f"{url}/pages/1", headers=auth(owner))).status_code == 404
+    await api.drain()
+    document = (await api.client.get(url, headers=auth(owner))).json()
+    assert document["page_count"] == 1
+    page = await api.client.get(f"{url}/pages/1", headers=auth(owner))
+    assert page.status_code == 200
+    assert page.headers["content-type"] == "image/webp"
+    assert page.headers["content-disposition"].startswith("inline")
+    assert page.content[:4] == b"RIFF"
+    assert (await api.client.get(f"{url}/pages/2", headers=auth(owner))).status_code == 404
+    assert (await api.client.get(f"{url}/pages/0", headers=auth(owner))).status_code == 422
+    assert (await api.client.get(f"{url}/pages/1")).status_code == 401
+
+
 async def test_retry_and_reprocess(api: Api) -> None:
     class Broken:
         async def run(self, document: object) -> object:
@@ -250,28 +377,29 @@ async def test_retry_and_reprocess(api: Api) -> None:
 
     owner = await api.user()
     executors = api.services.pipeline._executors
-    working = executors[Step.OCR]
-    executors[Step.OCR] = Broken()  # type: ignore[assignment]
+    working = executors[Node.OCR]
+    executors[Node.OCR] = Broken()  # type: ignore[assignment]
     response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
     url = response.json()["status_url"]
     await api.drain()
     failed = (await api.client.get(url, headers=auth(owner))).json()
     assert (failed["lane"], failed["processing"]["status"]) == ("red", "failed")
 
-    # Reprocessing must not skip the failed step.
+    # Reprocessing must not skip the failed node.
     skip = await api.client.post(
-        f"{url}/reprocess", json={"from_step": "parse"}, headers=auth(owner)
+        f"{url}/reprocess", json={"from_node": "parse"}, headers=auth(owner)
     )
     assert skip.status_code == 409
 
-    executors[Step.OCR] = working
+    executors[Node.OCR] = working
     retried = await api.client.post(f"{url}/retry", headers=auth(owner))
     assert retried.status_code == 202
-    assert retried.json()["processing"] == {
-        "status": "processing",
-        "current_step": "ocr",
-        "run": 2,
-        "outcomes": {"receive": "ok"},
+    processing = retried.json()["processing"]
+    assert (processing["status"], processing["run"]) == ("processing", 2)
+    assert nodes(processing) == {
+        "receive": "done",
+        "pages": nodes(failed["processing"])["pages"],  # done or dropped: the branches race
+        **waiting("ocr", "parse", *SIGNALS, "judge", "fields", "apply_rules", "file"),
     }
     again = await api.client.post(f"{url}/retry", headers=auth(owner))
     assert again.status_code == 409  # running, not failed
@@ -279,13 +407,14 @@ async def test_retry_and_reprocess(api: Api) -> None:
     assert (await api.client.get(url, headers=auth(owner))).json()["lane"] == "green"
 
     reprocessed = await api.client.post(
-        f"{url}/reprocess", json={"from_step": "parse"}, headers=auth(owner)
+        f"{url}/reprocess", json={"from_node": "parse"}, headers=auth(owner)
     )
     assert reprocessed.status_code == 202
-    assert reprocessed.json()["processing"]["current_step"] == "parse"
+    assert nodes(reprocessed.json()["processing"])["parse"] == "waiting"
+    assert nodes(reprocessed.json()["processing"])["ocr"] == "done"
     await api.drain()
     log = (await api.client.get(f"{url}/log", headers=auth(owner))).json()
-    runs = [(entry["step"], entry["run"]) for entry in log if entry["step"] in ("ocr", "parse")]
+    runs = [(entry["node"], entry["run"]) for entry in log if entry["node"] in ("ocr", "parse")]
     assert runs == [("ocr", 1), ("ocr", 2), ("parse", 2), ("parse", 3)]
 
 
@@ -294,11 +423,11 @@ async def test_reprocess_validates_the_step(api: Api) -> None:
     response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
     url = response.json()["status_url"]
     await api.drain()
-    for body in ({"from_step": "receive"}, {"from_step": "nope"}, {}):
+    for body in ({"from_node": "receive"}, {"from_node": "nope"}, {}):
         invalid = await api.client.post(f"{url}/reprocess", json=body, headers=auth(owner))
         assert invalid.status_code == 422, body
         assert invalid.headers["content-type"] == PROBLEM
-        assert "from_step" in invalid.json()["detail"]
+        assert "from_node" in invalid.json()["detail"]
 
 
 async def test_only_the_owner_controls_processing(api: Api) -> None:
@@ -311,7 +440,7 @@ async def test_only_the_owner_controls_processing(api: Api) -> None:
     url = response.json()["status_url"]
     await api.drain()
     denied = await api.client.post(
-        f"{url}/reprocess", json={"from_step": "ocr"}, headers=auth(writer)
+        f"{url}/reprocess", json={"from_node": "ocr"}, headers=auth(writer)
     )
     assert denied.status_code == 403
     missing = await api.client.post(f"{DOCUMENTS}/{UUID(int=0)}/retry", headers=auth(owner))
@@ -382,3 +511,12 @@ async def test_uploads_have_their_own_limit() -> None:
         files = {"file": ("big.pdf", content, "application/pdf")}
         response = await client.post(DOCUMENTS, files=files, headers=auth(owner))
     assert response.status_code == 202, response.text
+
+
+def nodes(processing: dict[str, Any]) -> dict[str, str]:
+    """The status of each node, by node."""
+    return {node["node"]: node["status"] for node in processing["nodes"]}
+
+
+def waiting(*names: str) -> dict[str, str]:
+    return dict.fromkeys(names, "waiting")

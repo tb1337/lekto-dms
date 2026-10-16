@@ -11,14 +11,30 @@ from papiq.adapters.inbound.rest.schemas.drawers import ShareOut
 from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
 from papiq.core.domain.documents import Channel, Document
 from papiq.core.domain.drawers import Drawer, ShareLevel
+from papiq.core.domain.exchanges import ModelCall, RunExchange
 from papiq.core.domain.permissions import can_manage_drawer
-from papiq.core.domain.pipeline import PIPELINE, Lane, Outcome, ProcessingStatus, Step, StepRun
-from papiq.core.domain.users import User
-
-ReprocessStep = StrEnum(  # type: ignore[misc]
-    "ReprocessStep", {step.name: step.value for step in PIPELINE[1:]}
+from papiq.core.domain.pipeline import (
+    Lane,
+    Node,
+    NodeRun,
+    NodeState,
+    NodeStatus,
+    Outcome,
+    ProcessingStatus,
 )
-"""Steps processing can restart from; receiving cannot be repeated."""
+from papiq.core.domain.reading import DocumentReading, VisionAdvice
+from papiq.core.domain.users import User
+from papiq.core.services.objects import EXCHANGE_NODES
+
+ReprocessNode = StrEnum(  # type: ignore[misc]
+    "ReprocessNode", {node.name: node.value for node in Node if node is not Node.RECEIVE}
+)
+"""Nodes processing can restart from; receiving cannot be repeated."""
+
+ExchangeNode = StrEnum(  # type: ignore[misc]
+    "ExchangeNode", {node.name: node.value for node in EXCHANGE_NODES}
+)
+"""Nodes that ask a language model (OCR: the vision language model)."""
 
 
 class DocumentAccepted(BaseModel):
@@ -26,16 +42,50 @@ class DocumentAccepted(BaseModel):
     status_url: str = Field(description="Where to follow the processing.")
 
 
+class NodeStateOut(BaseModel):
+    node: Node
+    status: NodeStatus = Field(
+        description=(
+            "`waiting`: not run yet (it runs once the nodes it needs are done); `running`: a "
+            "worker is at it; `done`: has an outcome; `skipped`: left out in this run."
+        )
+    )
+    outcome: Outcome | None = Field(description="Set once the node is done.")
+    started_at: datetime | None
+    finished_at: datetime | None
+
+    @classmethod
+    def of(cls, node: Node, state: NodeState) -> "NodeStateOut":
+        return cls(
+            node=node,
+            status=state.status,
+            outcome=state.outcome,
+            started_at=state.started_at,
+            finished_at=state.finished_at,
+        )
+
+
 class Processing(BaseModel):
     status: ProcessingStatus = Field(
         description=(
-            "`processing`: `current_step` is due; `review`: stopped before `current_step` until "
-            "the uncertain fields are confirmed; `completed`; `failed` at `current_step`."
+            "`processing`: nodes are due or running; `review`: stopped before filing until the "
+            "uncertain fields are confirmed; `completed`; `failed`: a node failed (nodes still "
+            "running finish, nothing new starts)."
         )
     )
-    current_step: Step | None
     run: int = Field(description="Grows with every retry or reprocessing.")
-    outcomes: dict[Step, Outcome] = Field(description="Results of the current run.")
+    nodes: list[NodeStateOut] = Field(
+        description=(
+            "The state of every node of the graph in the current run, in graph order: every "
+            "node after the nodes it needs."
+        )
+    )
+    vision: bool = Field(
+        description=(
+            "A person asked that this run read the pages with the vision language model "
+            "(`POST /documents/{id}/vision`): the OCR node sends every page to it."
+        )
+    )
 
 
 class DocumentDetails(BaseModel):
@@ -65,11 +115,28 @@ class DocumentDetails(BaseModel):
                         }
                     },
                     "lane": "green",
+                    "page_count": 2,
+                    "confirmed_at": None,
                     "processing": {
                         "status": "completed",
-                        "current_step": None,
                         "run": 1,
-                        "outcomes": {"ocr": "ok", "classify": "ok"},
+                        "vision": False,
+                        "nodes": [
+                            {
+                                "node": "receive",
+                                "status": "done",
+                                "outcome": "ok",
+                                "started_at": "2026-04-02T08:15:00Z",
+                                "finished_at": "2026-04-02T08:15:00Z",
+                            },
+                            {
+                                "node": "ocr",
+                                "status": "done",
+                                "outcome": "ok",
+                                "started_at": "2026-04-02T08:15:01Z",
+                                "finished_at": "2026-04-02T08:15:40Z",
+                            },
+                        ],
                     },
                     "created_at": "2026-04-02T08:15:00Z",
                     "updated_at": "2026-04-02T08:16:10Z",
@@ -98,6 +165,17 @@ class DocumentDetails(BaseModel):
     document_date: date | None
     fields: dict[UUID, FieldJson] = Field(description="Values by field id.")
     lane: Lane | None = Field(description="None while processing runs.")
+    page_count: int | None = Field(
+        description="Pages of the document, once its page images are rendered (`pages` node)."
+    )
+    confirmed_at: datetime | None = Field(
+        description=(
+            "When a person last set or confirmed the metadata (in the inbox, or by changing "
+            "contact, type, tags, date or fields), or it was taken over with the source "
+            "system's; null while it is the pipeline's own. Confirmed documents train the "
+            "classifier."
+        )
+    )
     processing: Processing
     created_at: datetime
     updated_at: datetime
@@ -121,11 +199,13 @@ class DocumentDetails(BaseModel):
             document_date=document.document_date,
             fields={key: field_json(value) for key, value in sorted(document.fields.items())},
             lane=document.lane,
+            page_count=document.page_count,
+            confirmed_at=document.confirmed_at,
             processing=Processing(
                 status=state.status,
-                current_step=state.current_step,
                 run=state.run,
-                outcomes=dict(state.outcomes),
+                nodes=[NodeStateOut.of(node, item) for node, item in state.nodes.items()],
+                vision=state.vision,
             ),
             created_at=document.created_at,
             updated_at=document.updated_at,
@@ -211,14 +291,28 @@ class MoveRequest(BaseModel):
     drawer_id: UUID
 
 
-class LogEntry(BaseModel):
-    """One execution of one step."""
+class DocumentTextOut(BaseModel):
+    """A piece of the text read from the archive; offsets and lengths count characters."""
 
-    step: Step
+    text: str
+    offset: int
+    total_length: int
+    next_offset: int | None = Field(description="Where the next piece starts; null at the end.")
+
+
+class LogEntry(BaseModel):
+    """One execution of one node."""
+
+    node: Node
     run: int
     outcome: Outcome
     reason: str | None
-    confidence: float | None
+    confidence: float | None = Field(
+        description=(
+            "The judge's and the fields node's summary of their checks, not a probability: the "
+            "lowest of their fields' (`FieldCheckOut.confidence`)."
+        )
+    )
     model_version: str | None = Field(examples=["ocrmypdf 17.13.0, tesseract 5.5.0"])
     input: dict[str, Any]
     output: dict[str, Any]
@@ -227,10 +321,10 @@ class LogEntry(BaseModel):
     duration_ms: float
 
     @classmethod
-    def of(cls, run: StepRun) -> "LogEntry":
+    def of(cls, run: NodeRun) -> "LogEntry":
         result = run.result
         return cls(
-            step=run.step,
+            node=run.node,
             run=run.run,
             outcome=result.outcome,
             reason=result.reason,
@@ -244,11 +338,50 @@ class LogEntry(BaseModel):
         )
 
 
-class ReprocessRequest(BaseModel):
-    model_config = ConfigDict(json_schema_extra={"examples": [{"from_step": "classify"}]})
+class ModelCallOut(BaseModel):
+    """One request to the language model and its answer."""
 
-    from_step: ReprocessStep = Field(
-        description="Discard the results from this step on and process again from there."
+    system: str = Field(description="The system message.")
+    user: str = Field(description="The user message, with the document's text.")
+    answer: str = Field(description="The model's text as it came.")
+    model: str = Field(examples=["qwen3:8b"])
+    usage: dict[str, Any] = Field(
+        description=(
+            "The endpoint's usage report as it sent it: `prompt_tokens`, `completion_tokens`, "
+            "with some endpoints (Ollama through OpenWebUI) durations and speeds; empty if "
+            "none."
+        )
+    )
+
+    @classmethod
+    def of(cls, call: ModelCall) -> "ModelCallOut":
+        return cls(
+            system=call.system,
+            user=call.user,
+            answer=call.answer,
+            model=call.model,
+            usage=dict(call.usage),
+        )
+
+
+class RunExchangeOut(BaseModel):
+    """What a node sent to the language model in one processing run."""
+
+    run: int
+    calls: list[ModelCallOut] = Field(
+        description="One call, or two after an answer that did not fit the schema."
+    )
+
+    @classmethod
+    def of(cls, exchange: RunExchange) -> "RunExchangeOut":
+        return cls(run=exchange.run, calls=[ModelCallOut.of(call) for call in exchange.calls])
+
+
+class ReprocessRequest(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"examples": [{"from_node": "judge"}]})
+
+    from_node: ReprocessNode = Field(
+        description="Discard the results from this node on and process again from there."
     )
 
 
@@ -316,3 +449,62 @@ class DocumentPreviewOut(BaseModel):
     visibility: VisibilityOut | None = Field(
         description="Who would see the document; null if the caller could not read it then."
     )
+
+
+class PageReadingOut(BaseModel):
+    page: int = Field(description="From 1.")
+    words: int = Field(description="The words recognised on the page.")
+    unsure: int = Field(
+        description=(
+            "Of them, those the reader was unsure of: below 60 % of Tesseract's confidence, "
+            "or what the vision language model could not read."
+        )
+    )
+    poor: bool = Field(
+        description="The page counts as poorly read (`PAPIQ_POOR_READING_THRESHOLD`)."
+    )
+
+
+class ReadingOut(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "vision": False,
+                    "pages": [{"page": 1, "words": 50, "unsure": 6, "poor": True}],
+                    "advice": "poor_page",
+                }
+            ]
+        }
+    )
+
+    vision: bool = Field(description="The archive's text was read by the vision language model.")
+    pages: list[PageReadingOut] = Field(
+        description=(
+            "Each page the reader recognised, by the archive's latest OCR; none for pages "
+            "with text of their own, and for documents read before the readings were logged."
+        )
+    )
+    advice: VisionAdvice | None = Field(
+        description=(
+            "Why reading the document with the vision language model is advised, if it is: "
+            "`no_text`, the OCR found no text (red); `poor_page`, it waits for a person and a "
+            "page was read poorly. None once the model has read it."
+        )
+    )
+
+    @classmethod
+    def of(cls, reading: DocumentReading) -> "ReadingOut":
+        return cls(
+            vision=reading.vision,
+            pages=[
+                PageReadingOut(
+                    page=page.page,
+                    words=page.words,
+                    unsure=page.unsure,
+                    poor=page.page in reading.poor,
+                )
+                for page in reading.pages
+            ],
+            advice=reading.advice,
+        )

@@ -10,11 +10,11 @@ from papiq.core.domain.events import (
     DocumentFiled,
     DocumentReceived,
     DocumentUpdated,
-    StepCompleted,
+    NodeCompleted,
 )
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
-from papiq.core.domain.pipeline import Step
+from papiq.core.domain.pipeline import Node
 from tests import builders
 from tests.builders import FAILED, NOW, OK, UNCERTAIN
 
@@ -42,9 +42,9 @@ def test_receive_records_received_and_step_completed() -> None:
     )
     assert document.title == "2026-10 Invoice"
     events = document.pull_events()
-    assert [type(event) for event in events] == [DocumentReceived, StepCompleted]
-    assert isinstance(events[1], StepCompleted)
-    assert events[1].step is Step.RECEIVE
+    assert [type(event) for event in events] == [DocumentReceived, NodeCompleted]
+    assert isinstance(events[1], NodeCompleted)
+    assert events[1].node is Node.RECEIVE
 
 
 def test_receive_cannot_fail() -> None:

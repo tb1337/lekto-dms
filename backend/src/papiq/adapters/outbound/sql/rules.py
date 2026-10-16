@@ -1,5 +1,6 @@
 """Rule repositories on SQL tables: `rules` with the current version number, every version in
-`rule_versions` (JSON definitions), applications in `rule_applications`."""
+`rule_versions` (JSON definitions), the rules of title patterns in `title_pattern_rules`,
+applications in `rule_applications`."""
 
 from collections.abc import Collection, Sequence
 from typing import Any
@@ -10,7 +11,7 @@ from sqlalchemy import Row, and_, delete, insert, or_, select, tuple_
 from papiq.adapters.outbound.sql import tables as t
 from papiq.adapters.outbound.sql.repositories import SqlRepository, Values
 from papiq.core.domain.errors import NotFoundError
-from papiq.core.domain.ids import DocumentId, RuleApplicationId, RuleId, UserId
+from papiq.core.domain.ids import DocumentId, DocumentTypeId, RuleApplicationId, RuleId, UserId
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.rules import (
     ApplicationStatus,
@@ -30,10 +31,21 @@ class SqlRuleRepository(SqlRepository[RuleId, Rule]):
     async def add(self, rule: Rule) -> None:
         await super().add(rule)
         await self._store_version(rule.current)
+        await self._store_managed(rule)
 
     async def update(self, rule: Rule) -> None:
         await super().update(rule)
         await self._store_version(rule.current)
+        await self._store_managed(rule)
+
+    async def _store_managed(self, rule: Rule) -> None:
+        """The link to the document type whose title pattern the rule is, while it lives."""
+        links = t.title_pattern_rules
+        await self._tx.write(delete(links).where(links.c.rule_id == rule.id))
+        if rule.managed_by is not None and rule.deleted_at is None:
+            await self._tx.write(
+                insert(links).values(document_type_id=rule.managed_by, rule_id=rule.id)
+            )
 
     async def list_for(
         self, *, owners: Collection[UserId] | None, include_global: bool
@@ -92,6 +104,15 @@ class SqlRuleRepository(SqlRepository[RuleId, Rule]):
                 )
             ).all()
         }
+        links = t.title_pattern_rules
+        managed = {
+            link.rule_id: DocumentTypeId(link.document_type_id)
+            for link in (
+                await self._tx.read(
+                    select(links).where(links.c.rule_id.in_([row.id for row in rows]))
+                )
+            ).all()
+        }
         return [
             Rule(
                 id=RuleId(row.id),
@@ -103,6 +124,7 @@ class SqlRuleRepository(SqlRepository[RuleId, Rule]):
                 deleted_at=row.deleted_at,
                 created_at=row.created_at,
                 updated_at=row.updated_at,
+                managed_by=managed.get(row.id),
                 version=row.version,
             )
             for row in rows

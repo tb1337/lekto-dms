@@ -5,12 +5,12 @@
 	import MultiPicker from '#lib/components/MultiPicker.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import ValueInput from '#lib/components/rules/ValueInput.svelte';
+	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
-	import { Input } from '#lib/components/ui/input/index.ts';
 	import type { Drawer, Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { ACTION_LABELS, PLACEHOLDER_LABELS } from '#lib/rules/describe.ts';
-	import { TITLE_PLACEHOLDERS, defaultValue, type ActionNode } from '#lib/rules/model.ts';
+	import { ACTION_LABELS } from '#lib/rules/describe.ts';
+	import { defaultValue, type ActionNode } from '#lib/rules/model.ts';
 
 	// One action. `drawers` are the ones the rule's owner may file into.
 	let {
@@ -33,7 +33,6 @@
 
 	const invalid = $derived(Boolean(error));
 	const label = $derived(ACTION_LABELS[action.type]());
-	let titleInput = $state<HTMLInputElement | null>(null);
 
 	function options(list: readonly { id: string; name: string }[], value: string) {
 		const known = value === '' || list.some((entry) => entry.id === value);
@@ -49,20 +48,6 @@
 			? (lookup.fields.find((entry) => entry.id === action.field_id) ?? null)
 			: null
 	);
-
-	/** Put `{name}` where the cursor is in the title template. */
-	function insert(name: string) {
-		if (action.type !== 'set_title') return;
-		const text = `{${name}}`;
-		const at = titleInput?.selectionStart ?? action.template.length;
-		const end = titleInput?.selectionEnd ?? at;
-		action.template = action.template.slice(0, at) + text + action.template.slice(end);
-		const cursor = at + text.length;
-		requestAnimationFrame(() => {
-			titleInput?.focus();
-			titleInput?.setSelectionRange(cursor, cursor);
-		});
-	}
 </script>
 
 <div class="flex flex-col gap-2 rounded-xl border bg-background p-3" data-key={action.key}>
@@ -94,20 +79,7 @@
 					class="h-10"
 				/>
 			{:else if action.type === 'set_title'}
-				<Input
-					aria-label={label}
-					aria-invalid={invalid || undefined}
-					bind:ref={titleInput}
-					bind:value={action.template}
-				/>
-				<div class="flex flex-wrap items-center gap-1.5 text-sm">
-					<span class="text-muted-foreground">{m.rule_insert()}</span>
-					{#each TITLE_PLACEHOLDERS as name (name)}
-						<Button variant="outline" size="sm" class="h-7" onclick={() => insert(name)}>
-							{PLACEHOLDER_LABELS[name]()}
-						</Button>
-					{/each}
-				</div>
+				<TemplateInput id="title-{action.key}" {label} {invalid} bind:value={action.template} />
 			{:else if action.type === 'add_tags' || action.type === 'remove_tags'}
 				<MultiPicker
 					{label}
@@ -136,6 +108,8 @@
 					<ValueInput
 						{field}
 						{invalid}
+						template
+						id="value-{action.key}"
 						label={m.rule_condition_value()}
 						value={action.value}
 						onchange={(next) => {
@@ -144,10 +118,10 @@
 					/>
 				{/if}
 			{:else if action.type === 'force_review'}
-				<Input
-					aria-label={m.rule_review_reason()}
-					placeholder={m.rule_review_reason()}
-					aria-invalid={invalid || undefined}
+				<TemplateInput
+					id="reason-{action.key}"
+					label={m.rule_review_reason()}
+					{invalid}
 					bind:value={action.reason}
 				/>
 			{/if}

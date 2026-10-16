@@ -1,5 +1,5 @@
 {
-  "description": "Tenancy agreement; signing date and start date differ.",
+  "description": "Tenancy agreement; signing date and start date differ. Trained, most of the cooperative's earlier letters are notices: the similar documents name that type, a contradiction.",
   "expected": {
     "lane": "green",
     "contact": "Wohnbau Musterstadt eG",
@@ -10,6 +10,9 @@
     "document_date": "2026-03-15",
     "fields": {
       "Vertragsbeginn": "2026-05-01"
+    },
+    "lanes": {
+      "trained": "yellow"
     }
   },
   "fake": {

@@ -34,7 +34,7 @@ class OpenFieldsError(ValidationError):
 
 
 class InvalidTransitionError(DomainError):
-    """The processing state does not allow the requested step or action."""
+    """The processing state does not allow the requested node or action."""
 
 
 class ConflictError(DomainError):
@@ -55,7 +55,7 @@ class ConcurrencyError(ConflictError):
 
 class UnprocessableDocumentError(DomainError):
     """The file cannot be processed, e.g. because it is damaged or encrypted. Repeating the
-    step would not help."""
+    node would not help."""
 
 
 class UnsupportedMediaTypeError(ValidationError):
@@ -85,7 +85,7 @@ class IdentityProviderError(DomainError):
 
 class LanguageModelError(DomainError):
     """The language model could not be reached or answered with an error (HTTP status, time
-    out, unusable response). Usually temporary, so the step is retried."""
+    out, unusable response). Usually temporary, so the node is retried."""
 
 
 class EmbeddingsError(DomainError):
@@ -105,5 +105,24 @@ class SearchIndexError(SearchError):
     """The search index refused a request or a task failed (e.g. vectors of the wrong length)."""
 
 
+class ClassifierError(DomainError):
+    """The classifier cannot learn from the examples (too few, no text) or cannot read a model
+    (damaged, or written in another format)."""
+
+
+class ClassifierUnavailableError(DomainError):
+    """No classifier is configured (`PAPIQ_CLASSIFIER=none`)."""
+
+
 class PatternTimeoutError(DomainError):
     """A regular expression of a rule took longer than its time limit."""
+
+
+class MissingValueError(DomainError):
+    """A template writes a value the document does not have (`path`, e.g. `field.la_brutto`).
+    What the template was for is left as it is; `{% if %}` or `| default` make a part
+    optional."""
+
+    def __init__(self, path: str) -> None:
+        super().__init__(f"{path} has no value")
+        self.path = path

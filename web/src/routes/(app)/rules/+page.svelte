@@ -1,20 +1,22 @@
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
-	import AllUsersToggle from '#lib/components/AllUsersToggle.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import TitlePatternBadge from '#lib/components/rules/TitlePatternBadge.svelte';
+	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { Switch } from '#lib/components/ui/switch/index.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
 	import type { UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { scope } from '#lib/scope.svelte.ts';
 	import { canChangeRule } from '#lib/permissions.ts';
 	import { TRIGGER_LABELS } from '#lib/rules/describe.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -25,7 +27,6 @@
 	let rules = $state<Rule[] | null>(null);
 	let users = $state<UserName[]>([]);
 	let problem = $state<string | null>(null);
-	let allUsers = $state(false);
 	let removing = $state<Rule | null>(null);
 	let busy = $state<string | null>(null);
 
@@ -39,7 +40,7 @@
 			const [found, names] = await Promise.all([
 				unwrap(
 					api.GET('/api/v1/rules', {
-						params: { query: { include_disabled: true, all_users: allUsers || undefined } }
+						params: { query: { include_disabled: true, all_users: scope.query } }
 					})
 				),
 				users.length > 0 ? users : unwrap(api.GET('/api/v1/users'))
@@ -52,7 +53,13 @@
 		}
 	}
 
-	onMount(() => void load());
+	// Again after a master data dialog saved (a title pattern's rule follows its type), and
+	// when the scope setting changes.
+	$effect(() => {
+		void masterDataDialogs.changed;
+		void scope.allUsers;
+		untrack(() => void load());
+	});
 
 	async function switchRule(rule: Rule, enabled: boolean) {
 		busy = rule.id;
@@ -88,16 +95,6 @@
 		</a>
 	</div>
 
-	<div class="flex flex-wrap gap-2">
-		<AllUsersToggle
-			pressed={allUsers}
-			onchange={(pressed) => {
-				allUsers = pressed;
-				void load();
-			}}
-		/>
-	</div>
-
 	{#if problem}
 		<div class="flex flex-col items-start gap-3" role="alert">
 			<p class="text-destructive">{problem}</p>
@@ -127,6 +124,13 @@
 							</Badge>
 							{#if rule.owner_id && rule.owner_id !== session.user?.id}
 								<Badge variant="outline">{ownerName(rule.owner_id)}</Badge>
+							{/if}
+							{#if rule.managed_by_document_type_id}
+								<TitlePatternBadge
+									documentTypeId={rule.managed_by_document_type_id}
+									name={rule.name}
+									ruleId={rule.id}
+								/>
 							{/if}
 							{#if !rule.enabled}<Badge variant="outline">{m.rule_off()}</Badge>{/if}
 						</span>

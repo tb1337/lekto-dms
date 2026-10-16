@@ -7,13 +7,18 @@ from papiq.core.domain.classification import (
     FieldCheck,
     checks_from_json,
     checks_to_json,
-    field_from_json,
     field_id_of,
     field_key,
-    field_to_json,
 )
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url
+from papiq.core.domain.fields import (
+    FieldDefinition,
+    FieldType,
+    Money,
+    Url,
+    field_from_json,
+    field_to_json,
+)
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.pipeline import Outcome
 from tests.builders import NOW

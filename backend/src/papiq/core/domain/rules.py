@@ -6,7 +6,7 @@ A rule has a scope, triggers, a tree of conditions and actions:
   fields and reviews (nothing that changes who sees a document). A user rule is made by any
   user and acts on that user's own documents with all actions; it files only into drawers its
   owner may write to.
-- Triggers: a document arriving (`ingest`, the pipeline step `apply_rules`) and a document being
+- Triggers: a document arriving (`ingest`, the pipeline node `apply_rules`) and a document being
   changed by a person (`change`).
 - Conditions: groups of `all` (and) or `any` (or), each may be negated; a condition is field,
   operator and value.
@@ -30,10 +30,9 @@ from enum import StrEnum
 from typing import Literal, Self
 from uuid import UUID
 
-from papiq.core.domain.classification import field_from_json
 from papiq.core.domain.documents import Channel
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.fields import FieldDefinition, FieldType
+from papiq.core.domain.fields import FieldDefinition, FieldType, FieldValue, field_from_json
 from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -47,6 +46,7 @@ from papiq.core.domain.ids import (
     new_id,
 )
 from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.master_data import DocumentType
 from papiq.core.domain.validation import require_name, require_utc
 
 DEFAULT_PRIORITY = 100
@@ -59,8 +59,6 @@ MAX_NAME = 200
 MAX_TEXT = 500
 MAX_PATTERN = 200
 MAX_LIST = 100
-TITLE_PLACEHOLDERS = ("contact", "document_type", "document_date", "filename")
-_PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
 
 
 class RuleScope(StrEnum):
@@ -69,7 +67,7 @@ class RuleScope(StrEnum):
 
 
 class Trigger(StrEnum):
-    INGEST = "ingest"  # the pipeline step `apply_rules`
+    INGEST = "ingest"  # the pipeline node `apply_rules`
     CHANGE = "change"  # a person changed the document's metadata
 
 
@@ -88,8 +86,9 @@ class Operator(StrEnum):
     IN = "in"  # is one of; for tags: has one of
     CONTAINS = "contains"  # for tags: has this tag
     MATCHES = "matches"  # regular expression
-    GT = "gt"
-    LT = "lt"
+    GT = "gt"  # for a period: starts after the date
+    LT = "lt"  # for a period: ends before the date
+    OVERLAPS = "overlaps"  # a period shares a day with the given one
     PRESENT = "present"
     MISSING = "missing"
 
@@ -137,6 +136,16 @@ FIELD_TYPE_OPERATORS: dict[FieldType, frozenset[Operator]] = {
     FieldType.DATE: _ORDERED,
     FieldType.BOOLEAN: frozenset({Operator.IS, Operator.PRESENT, Operator.MISSING}),
     FieldType.CHOICE: frozenset({Operator.IS, Operator.IN, Operator.PRESENT, Operator.MISSING}),
+    FieldType.PERIOD: frozenset(
+        {
+            Operator.IS,
+            Operator.OVERLAPS,
+            Operator.GT,
+            Operator.LT,
+            Operator.PRESENT,
+            Operator.MISSING,
+        }
+    ),
 }
 
 
@@ -266,20 +275,15 @@ class SetDocumentType:
 
 @dataclass(frozen=True)
 class SetTitle:
-    """The title from a template; placeholders `{contact}`, `{document_type}`,
-    `{document_date}` (ISO) and `{filename}` (the original's name without extension)."""
+    """The title from a template (Liquid, `domain.templates`): `{{ contact }} {{ document_date
+    | date: '%Y-%m' }}`. Its syntax and values are checked where the rule is saved (the
+    template renderer is a port)."""
 
     template: str
     type: Literal["set_title"] = "set_title"
 
     def __post_init__(self) -> None:
         _text(self.template, MAX_TEXT)
-        for name in _PLACEHOLDER.findall(self.template):
-            if name not in TITLE_PLACEHOLDERS:
-                raise ValidationError(
-                    f"unknown placeholder {{{name}}}; known: "
-                    + ", ".join(f"{{{item}}}" for item in TITLE_PLACEHOLDERS)
-                )
 
 
 @dataclass(frozen=True)
@@ -302,7 +306,8 @@ class RemoveTags:
 
 @dataclass(frozen=True)
 class SetField:
-    """`value` in the JSON form of the field's type (`field_to_json`)."""
+    """`value` in the JSON form of the field's type (`field_to_json`); for a text field a
+    template, as the title's."""
 
     field_id: FieldId
     value: JsonValue
@@ -315,7 +320,8 @@ class SetField:
 
 @dataclass(frozen=True)
 class ForceReview:
-    """The document waits in the inbox with this reason (when it arrives)."""
+    """The document waits in the inbox with this reason (when it arrives), a template as the
+    title's; the review holds even where the reason cannot be rendered."""
 
     reason: str
     type: Literal["force_review"] = "force_review"
@@ -468,15 +474,34 @@ def _single_key(action: Action) -> str | None:
     return action.type
 
 
-def check_scope(definition: RuleDefinition, scope: RuleScope) -> None:
-    """A global rule may only tag, set fields and force a review."""
+def check_scope(definition: RuleDefinition, scope: RuleScope, *, managed: bool = False) -> None:
+    """A global rule may only tag, set fields and force a review; the rule of a document
+    type's title pattern (`managed`) sets the title as well."""
+    allowed = (*GLOBAL_ACTIONS, SetTitle) if managed else GLOBAL_ACTIONS
     if scope is RuleScope.GLOBAL:
         for index, action in enumerate(definition.actions):
-            if not isinstance(action, GLOBAL_ACTIONS):
+            if not isinstance(action, allowed):
                 raise ValidationError(
                     f"actions[{index}]: a global rule cannot {action.type}: global rules only "
                     "add or remove tags, set fields and force a review"
                 )
+
+
+def title_rule(document_type: DocumentType) -> RuleDefinition:
+    """The rule of a type's title pattern (`Rule.managed_by`): "document type is X → set the
+    title", on arrival and on a change."""
+    if document_type.title_pattern is None:
+        raise ValidationError(f"'{document_type.name}' has no title pattern")
+    condition = Condition(
+        field=ConditionField.DOCUMENT_TYPE, op=Operator.IS, value=str(document_type.id)
+    )
+    return RuleDefinition(
+        name=document_type.name,
+        conditions=Group(mode="all", items=(condition,)),
+        actions=(SetTitle(document_type.title_pattern),),
+        priority=0,
+        triggers=frozenset({Trigger.INGEST, Trigger.CHANGE}),
+    )
 
 
 def check_fields(
@@ -498,11 +523,19 @@ def check_fields(
             if condition.op in (Operator.CONTAINS, Operator.MATCHES):
                 continue
             for value in condition.values:
-                field_from_json(field, value)
+                condition_value(field, condition.op, value)
     for index, action in enumerate(definition.actions):
         if isinstance(action, SetField):
             with _at(f"actions[{index}]"):
                 field_from_json(_field(definitions, action.field_id), action.value)
+
+
+def condition_value(field: FieldDefinition, op: Operator, value: JsonValue) -> FieldValue:
+    """A value a condition on `field` compares with, in the field's type; for a period's `gt`
+    and `lt` a date (it starts after, it ends before). ValidationError if it does not fit."""
+    if field.data_type is FieldType.PERIOD and op in (Operator.GT, Operator.LT):
+        return _date(value)
+    return field_from_json(field, value)
 
 
 def condition_places(group: Group, where: str = "conditions") -> Iterator[tuple[str, Condition]]:
@@ -554,7 +587,10 @@ class Rule:
 
     `disabled_reason` says why the rule was disabled automatically (e.g. a contact it refers to
     was deleted); None if a person disabled it or it is enabled. A deleted rule stays stored
-    for its versions; it never runs and is not listed."""
+    for its versions; it never runs and is not listed.
+
+    `managed_by`: the document type whose title pattern this rule is (global, it sets the
+    title). The type keeps it as the pattern says; nobody changes it otherwise."""
 
     id: RuleId
     scope: RuleScope
@@ -565,14 +601,18 @@ class Rule:
     enabled: bool = True
     disabled_reason: str | None = None
     deleted_at: datetime | None = None
+    managed_by: DocumentTypeId | None = None
     version: int = 1
 
     def __post_init__(self) -> None:
         if (self.scope is RuleScope.GLOBAL) != (self.owner_id is None):
             raise ValidationError("global rules have no owner, user rules have one")
+        if self.managed_by is not None and self.scope is not RuleScope.GLOBAL:
+            raise ValidationError("the rule of a title pattern is global")
         if self.current.rule_id != self.id:
             raise ValidationError("the current version belongs to another rule")
-        check_scope(self.current.definition, self.scope)
+        if self.deleted_at is None:  # a deleted rule never runs, and is no type's rule any more
+            check_scope(self.current.definition, self.scope, managed=self.managed_by is not None)
         self.created_at = require_utc(self.created_at, "created_at")
         self.updated_at = require_utc(self.updated_at, "updated_at")
 
@@ -585,6 +625,7 @@ class Rule:
         definition: RuleDefinition,
         by: UserId,
         now: datetime,
+        managed_by: DocumentTypeId | None = None,
     ) -> Self:
         id = RuleId(new_id())
         return cls(
@@ -596,6 +637,7 @@ class Rule:
             ),
             created_at=now,
             updated_at=now,
+            managed_by=managed_by,
         )
 
     @property
@@ -609,7 +651,7 @@ class Rule:
     def change(self, definition: RuleDefinition, by: UserId, now: datetime) -> RuleVersion:
         """A new version with `definition`."""
         self._check_not_deleted()
-        check_scope(definition, self.scope)
+        check_scope(definition, self.scope, managed=self.managed_by is not None)
         self.current = RuleVersion(
             rule_id=self.id,
             number=self.current.number + 1,
@@ -631,8 +673,10 @@ class Rule:
         self.updated_at = require_utc(now, "updated_at")
 
     def delete(self, now: datetime) -> None:
+        """A deleted rule is no document type's rule any more: the type may get another."""
         self._check_not_deleted()
         self.enabled = False
+        self.managed_by = None
         self.deleted_at = self.updated_at = require_utc(now, "deleted_at")
 
     def _check_not_deleted(self) -> None:

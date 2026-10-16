@@ -1,0 +1,4 @@
+# Transitive packages held at releases at least two weeks old (CodeMirror, 15.10.2026).
+overrides:
+  '@codemirror/language': 6.12.4
+  '@lezer/lr': 1.4.10

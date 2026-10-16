@@ -8,6 +8,7 @@ from pathlib import Path
 
 from papiq.core.ports import EventBus
 from papiq.core.services.auth import AuthService
+from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.drawers import DrawerService
 from papiq.core.services.indexing import IndexingService
@@ -45,6 +46,8 @@ class ApiContext:
     # Both with a search index; without, the search endpoints answer 503.
     search: SearchService | None = None
     indexing: IndexingService | None = None
+    # With a classifier; without, its endpoints answer 503.
+    classifier: ClassifierService | None = None
     events_poll_interval: timedelta = timedelta(seconds=1)
     # `False` only for development over plain HTTP: cookies without `Secure`.
     cookie_secure: bool = True

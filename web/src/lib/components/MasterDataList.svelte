@@ -4,12 +4,16 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
+	import { page } from '$app/state';
+	import { BASE } from '#lib/base.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
-	import MasterDataDialog from '#lib/components/MasterDataDialog.svelte';
+	import DocumentCount from '#lib/components/DocumentCount.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
-	import { type Item, KINDS, type SimpleKind, type Values } from '#lib/masterdata-api.ts';
+	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
+	import { type Item, KINDS, type SimpleKind } from '#lib/masterdata-api.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { scope } from '#lib/scope.svelte.ts';
 
 	// Contacts, document types or tags: a list with add, change and delete.
 	let { kind }: { kind: SimpleKind } = $props();
@@ -17,32 +21,34 @@
 
 	let items = $state<Item[] | null>(null);
 	let problem = $state<string | null>(null);
-	let creating = $state(false);
-	let editing = $state<Item | null>(null);
 	let removing = $state<Item | null>(null);
+
+	/** Identifiers that count: entered and learned. */
+	function counted(item: Item): number {
+		return (item.identifiers ?? []).filter((entry) => entry.source !== 'rejected').length;
+	}
 
 	async function load() {
 		try {
-			items = await ops.list();
+			items = await ops.list({ counts: true, allUsers: scope.allUsers });
 			problem = null;
 		} catch (error) {
 			problem = describeError(error);
 		}
 	}
 
-	onMount(() => void load());
+	// A link to a document type opens it.
+	onMount(() => {
+		const wanted = kind === 'document-types' ? page.url.searchParams.get('type') : null;
+		if (wanted) masterDataDialogs.open('document-types', wanted);
+	});
 
-	async function create(values: Values) {
-		await ops.create(values);
-		toast.success(m.master_created());
-		await load();
-	}
-	async function change(values: Values) {
-		if (!editing) return;
-		await ops.change(editing.id, values);
-		toast.success(m.master_saved());
-		await load();
-	}
+	// Again after a dialog saved (wherever it was opened), and with another scope.
+	$effect(() => {
+		void masterDataDialogs.changed;
+		void scope.allUsers;
+		void load();
+	});
 	async function remove() {
 		if (!removing) return;
 		await ops.remove(removing.id);
@@ -53,7 +59,7 @@
 
 <div class="flex flex-col gap-4">
 	<div>
-		<Button onclick={() => (creating = true)}>
+		<Button onclick={() => masterDataDialogs.open(kind)}>
 			<Plus aria-hidden="true" />
 			{ops.add()}
 		</Button>
@@ -78,15 +84,32 @@
 							<span class="truncate text-sm text-muted-foreground">
 								{m.master_aliases_list({ aliases: item.aliases.join(', ') })}
 							</span>
-						{:else if item.description}
+						{/if}
+						{#if counted(item) > 0}
+							<span class="truncate text-sm text-muted-foreground">
+								{counted(item) === 1
+									? m.master_identifier_one()
+									: m.master_identifiers_many({ count: counted(item) })}
+							</span>
+						{/if}
+						{#if !item.aliases?.length && item.description}
 							<span class="truncate text-sm text-muted-foreground">{item.description}</span>
 						{/if}
+						{#if item.title_pattern}
+							<span class="truncate font-mono text-xs text-muted-foreground">
+								{item.title_pattern}
+							</span>
+						{/if}
 					</div>
+					<DocumentCount
+						count={item.document_count}
+						href="{BASE}/documents?{ops.filter}={item.id}"
+					/>
 					<Button
 						variant="ghost"
 						size="icon"
 						aria-label={m.master_edit({ name: item.name })}
-						onclick={() => (editing = item)}
+						onclick={() => masterDataDialogs.open(kind, item)}
 					>
 						<Pencil aria-hidden="true" />
 					</Button>
@@ -104,20 +127,6 @@
 	{/if}
 </div>
 
-<MasterDataDialog
-	bind:open={creating}
-	title={ops.add()}
-	extra={ops.extra}
-	submitLabel={m.create()}
-	onsubmit={create}
-/>
-<MasterDataDialog
-	bind:open={() => editing !== null, (open) => !open && (editing = null)}
-	title={m.master_edit({ name: editing?.name ?? '' })}
-	extra={ops.extra}
-	initial={editing}
-	onsubmit={change}
-/>
 <ConfirmDialog
 	bind:open={() => removing !== null, (open) => !open && (removing = null)}
 	title={m.master_delete({ name: removing?.name ?? '' })}

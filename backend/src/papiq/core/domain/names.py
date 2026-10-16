@@ -79,7 +79,16 @@ def best_match[T](name: str, candidates: Iterable[tuple[T, str]]) -> NameMatch[T
     return NameMatch(best=scored[0][2], score=scored[0][0], runner_up=runner_up)
 
 
-_SHORTEST_WORD = 3  # letters of a word that counts for `named_share`
+_SHORTEST_WORD = 3  # letters of a word that counts for `named_share` and `related`
+RELATED = 0.75  # similarity of two names that are related without sharing a word
+
+
+def related(a: str, b: str) -> bool:
+    """Whether two name keys belong together: they share a word of at least three letters, or
+    are at least `RELATED` similar (the model read "Nord Krankenversicherung AG" for "Nord
+    Versicherungsgruppe"; "Max Mustermann" is something else)."""
+    words = {word for word in a.split() if len(word) >= _SHORTEST_WORD}
+    return bool(words & set(b.split())) or similarity(a, b) >= RELATED
 
 
 def named_share(text_key: str, text_words: Collection[str], key: str) -> float:

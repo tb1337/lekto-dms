@@ -2,21 +2,20 @@
 	import { onMount } from 'svelte';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
-	import { BASE } from '#lib/base.ts';
-	import AllUsersToggle from '#lib/components/AllUsersToggle.svelte';
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
+	import { inboxDocument } from '#lib/document-view.ts';
 	import { describeError } from '#lib/errors.ts';
-	import { events } from '#lib/events.svelte.ts';
+	import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { PagedList } from '#lib/paging.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { scope } from '#lib/scope.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 
 	type Lane = 'yellow' | 'red';
 	let lookup = $state<Lookup | null>(null);
 	let lane = $state<Lane | null>(null);
-	let allUsers = $state(false);
 
 	const list = new PagedList(async (cursor) => {
 		const data = await unwrap(
@@ -24,7 +23,7 @@
 				params: {
 					query: {
 						cursor: (cursor as string | null) ?? undefined,
-						all_users: allUsers || undefined
+						all_users: scope.query
 					}
 				}
 			})
@@ -36,7 +35,7 @@
 
 	$effect(() => {
 		void events.generation;
-		void allUsers;
+		void scope.allUsers;
 		void list.reload();
 	});
 
@@ -47,7 +46,7 @@
 		);
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const stop = events.subscribe((event) => {
-			if (event.type === 'document.received' || event.type === 'document.step_completed') return;
+			if (NODE_EVENTS.has(event.type)) return;
 			clearTimeout(timer);
 			timer = setTimeout(() => void list.refresh(), 400);
 		});
@@ -70,7 +69,6 @@
 	<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_inbox()}</h1>
 
 	<div class="flex flex-wrap gap-2">
-		<AllUsersToggle pressed={allUsers} onchange={(pressed) => (allUsers = pressed)} />
 		{#each tabs as tab (tab.lane)}
 			<button
 				type="button"
@@ -103,7 +101,7 @@
 		<ul class="flex flex-col gap-2" aria-busy={list.loading}>
 			{#each shown as item (item.document.id)}
 				<li>
-					<DocumentRow document={item.document} {lookup} href="{BASE}/inbox/{item.document.id}">
+					<DocumentRow document={item.document} {lookup} href={inboxDocument(item.document.id)}>
 						<span class="truncate text-sm">
 							{item.open[0]?.reason ?? m.inbox_open_fields({ count: item.open.length })}
 						</span>

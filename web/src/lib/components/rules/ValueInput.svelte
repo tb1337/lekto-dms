@@ -1,13 +1,17 @@
 <script lang="ts">
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { isMoney, isPeriod } from '#lib/fields.ts';
+	import PeriodInput from '#lib/components/PeriodInput.svelte';
 	import type { Value } from '#lib/rules/model.ts';
 
 	// One value of a field in its JSON form: text, number and date as text, yes/no as a
 	// boolean, an amount with its currency, a choice from the field's list. `textual` asks for
-	// plain text whatever the type (`contains`, `matches`).
+	// plain text whatever the type (`contains`, `matches`); `template`: a text field's value is a
+	// template (an action's, not a condition's).
 	let {
 		field,
 		value,
@@ -15,7 +19,8 @@
 		label,
 		id,
 		invalid = false,
-		textual = false
+		textual = false,
+		template = false
 	}: {
 		field: FieldDefinition | null;
 		value: Value;
@@ -24,19 +29,20 @@
 		id?: string;
 		invalid?: boolean;
 		textual?: boolean;
+		template?: boolean;
 	} = $props();
+
+	const uid = $props.id();
 
 	const type = $derived(textual ? 'text' : (field?.data_type ?? 'text'));
 	const text = $derived(
 		typeof value === 'string' ? value : typeof value === 'number' ? String(value) : ''
 	);
 	// The date field shows only YYYY-MM-DD; other spellings the API accepts stay visible as text.
-	const dateField = $derived(type === 'date' && (text === '' || /^\d{4}-\d{2}-\d{2}$/.test(text)));
-	const money = $derived(
-		typeof value === 'object' && value !== null && !Array.isArray(value)
-			? value
-			: { amount: '', currency: 'EUR' }
+	const dateField = $derived(
+		(type === 'date' || type === 'period') && (text === '' || /^\d{4}-\d{2}-\d{2}$/.test(text))
 	);
+	const money = $derived(isMoney(value) ? value : { amount: '', currency: 'EUR' });
 	const choices = $derived([
 		{ value: '', label: m.rule_choose() },
 		...(field?.choices ?? []).map((choice) => ({ value: choice, label: choice })),
@@ -46,7 +52,16 @@
 	]);
 </script>
 
-{#if type === 'boolean'}
+{#if template && type === 'text'}
+	<TemplateInput
+		id={id ?? uid}
+		{label}
+		{invalid}
+		bind:value={() => text, (next) => onchange(next)}
+	/>
+{:else if type === 'period' && isPeriod(value)}
+	<PeriodInput {id} {label} {invalid} {value} onchange={(next) => onchange(next)} />
+{:else if type === 'boolean'}
 	<NativeSelect
 		{id}
 		aria-label={label}

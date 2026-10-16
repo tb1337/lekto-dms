@@ -51,7 +51,8 @@ const FIELDS: FieldInfo[] = [
 	{ id: ID(104), data_type: 'amount', choices: [] },
 	{ id: ID(105), data_type: 'date', choices: [] },
 	{ id: ID(106), data_type: 'boolean', choices: [] },
-	{ id: ID(107), data_type: 'choice', choices: ['monthly', 'yearly'] }
+	{ id: ID(107), data_type: 'choice', choices: ['monthly', 'yearly'] },
+	{ id: ID(108), data_type: 'period', choices: [] }
 ];
 
 /** A condition as the API answers with it. */
@@ -105,7 +106,10 @@ const EVERY_ACTION: ApiDefinition['actions'] = [
 	{ type: 'set_drawer', drawer_id: ID(10) },
 	{ type: 'set_contact', contact_id: ID(1) },
 	{ type: 'set_document_type', document_type_id: ID(3) },
-	{ type: 'set_title', template: '{contact} {document_type} {document_date} {filename}' },
+	{
+		type: 'set_title',
+		template: "{{ contact }} {{ document_type }} {{ document_date | date: '%Y' }} {{ filename }}"
+	},
 	{ type: 'add_tags', tag_ids: [ID(4), ID(5)] },
 	{ type: 'remove_tags', tag_ids: [ID(6)] },
 	{ type: 'set_field', field_id: ID(104), value: { amount: '12.50', currency: 'EUR' } },
@@ -186,6 +190,14 @@ describe('the rule model', () => {
 		expect(FIELD_TYPE_OPERATORS.choice).toEqual(['is', 'in', 'present', 'missing']);
 		expect(FIELD_TYPE_OPERATORS.amount).toEqual(['is', 'gt', 'lt', 'present', 'missing']);
 		expect(FIELD_TYPE_OPERATORS.link).toEqual(FIELD_TYPE_OPERATORS.text);
+		expect(FIELD_TYPE_OPERATORS.period).toEqual([
+			'is',
+			'overlaps',
+			'gt',
+			'lt',
+			'present',
+			'missing'
+		]);
 	});
 });
 
@@ -200,6 +212,11 @@ describe('editing conditions', () => {
 		expect([condition.op, condition.value]).toEqual(['is', true]);
 		changeField(condition, ID(104), FIELDS);
 		expect(condition.value).toEqual({ amount: '', currency: 'EUR' });
+		// A period compares with a period, or with a date for starts after and ends before.
+		changeField(condition, ID(108), FIELDS);
+		expect([condition.op, condition.value]).toEqual(['is', { start: '', end: '' }]);
+		changeOperator(condition, 'gt', FIELDS);
+		expect(condition.value).toBe('');
 	});
 
 	it('keeps a value between one and a list', () => {
@@ -285,7 +302,27 @@ describe('checking a rule', () => {
 			[{ field: 'field', op: 'gt', value: '1e3', fieldId: ID(103) }, undefined],
 			[{ field: 'field', op: 'gt', value: '1_000.5', fieldId: ID(103) }, undefined],
 			[{ field: 'field', op: 'gt', value: 'inf', fieldId: ID(103) }, 'number'],
-			[{ field: 'field', op: 'is', value: 'x'.repeat(600), fieldId: ID(101) }, undefined]
+			[{ field: 'field', op: 'is', value: 'x'.repeat(600), fieldId: ID(101) }, undefined],
+			[
+				{
+					field: 'field',
+					op: 'overlaps',
+					value: { start: '2026-09-30', end: '2026-09-01' },
+					fieldId: ID(108)
+				},
+				'period'
+			],
+			[
+				{
+					field: 'field',
+					op: 'is',
+					value: { start: '2026-09-01', end: '2026-09-30' },
+					fieldId: ID(108)
+				},
+				undefined
+			],
+			[{ field: 'field', op: 'gt', value: { start: '', end: '' }, fieldId: ID(108) }, 'date'],
+			[{ field: 'field', op: 'lt', value: '2026-10-01', fieldId: ID(108) }, undefined]
 		];
 		for (const [change, code] of cases) {
 			const condition = { ...newCondition(), ...change } as ConditionNode;
@@ -304,7 +341,7 @@ describe('checking a rule', () => {
 		} as never as RuleModel['actions'][number];
 		const title = {
 			...newAction('set_title'),
-			template: '{contact} {owner}'
+			template: ''
 		} as never as RuleModel['actions'][number];
 		const first = {
 			...newAction('set_contact'),
@@ -317,7 +354,7 @@ describe('checking a rule', () => {
 		const tags = newAction('add_tags');
 		model.actions = [drawer, title, first, second, tags];
 		expect(problems(model)).toEqual({
-			[title.key]: 'placeholder',
+			[title.key]: 'value',
 			[second.key]: 'twice',
 			[tags.key]: 'list'
 		});
@@ -368,9 +405,9 @@ describe('errors of saving', () => {
 			general: null
 		});
 		// A message with "; " in it stays whole.
-		const placeholder = failed(422, 'actions[0]: unknown placeholder {x}; known: {contact}');
-		expect(saveErrors(placeholder, model).byKey).toEqual({
-			[model.actions[0].key]: 'unknown placeholder {x}; known: {contact}'
+		const unknown = failed(422, 'actions[0]: unknown value x; templates know contact; and more');
+		expect(saveErrors(unknown, model).byKey).toEqual({
+			[model.actions[0].key]: 'unknown value x; templates know contact; and more'
 		});
 	});
 

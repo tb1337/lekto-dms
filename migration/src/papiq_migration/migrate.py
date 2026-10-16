@@ -656,7 +656,7 @@ class Migration:
         except ApiError:
             return "not green (the log could not be read)"
         reasons = [
-            f"{entry['step']}: {entry['reason']}"
+            f"{entry['node']}: {entry['reason']}"
             for entry in log
             if entry["outcome"] != "ok" and entry.get("reason")
         ]

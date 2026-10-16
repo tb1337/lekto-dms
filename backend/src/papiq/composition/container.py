@@ -19,15 +19,19 @@ from papiq.adapters.outbound.crypto import (
     PyotpTotp,
     decode_key,
 )
-from papiq.adapters.outbound.docling import DoclingParser
 from papiq.adapters.outbound.filesystem import FilesystemObjectStore
+from papiq.adapters.outbound.liquid import LiquidTemplateRenderer
 from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.adapters.outbound.memory import (
     FakeCipher,
+    FakeClassifier,
+    FakeCodeReader,
+    FakeMetadataReader,
     FakeOcr,
+    FakePageRenderer,
     FakeParser,
     FakePasswordHasher,
-    FakePreviewRenderer,
+    FakeTextLocator,
     FakeTotp,
     FakeWebhookSender,
     MemoryDatabase,
@@ -37,57 +41,74 @@ from papiq.adapters.outbound.memory import (
     MemoryUnitOfWorkFactory,
 )
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
+from papiq.adapters.outbound.ocrmypdf.vision import VisionSettings
 from papiq.adapters.outbound.oidc import AuthlibOidcProvider
 from papiq.adapters.outbound.openai_compat import OpenAiCompatEmbeddings, OpenAiCompatLanguageModel
-from papiq.adapters.outbound.pdfium import PdfiumPreviewRenderer
+from papiq.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer, PdfiumTextLocator
+from papiq.adapters.outbound.pikepdf import FileMetadataReader
 from papiq.adapters.outbound.regex import RegexPatternMatcher
 from papiq.adapters.outbound.s3 import S3ObjectStore
+from papiq.adapters.outbound.sklearn import SklearnClassifier
 from papiq.adapters.outbound.sql import SqlEventBus, SqlUnitOfWorkFactory
 from papiq.adapters.outbound.system import SystemClock
 from papiq.adapters.outbound.webhooks import HttpWebhookSender
+from papiq.adapters.outbound.zxing import ZxingCodeReader
 from papiq.composition.database import open_database
 from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
-from papiq.core.domain.pipeline import PIPELINE, Step
+from papiq.core.domain.pipeline import NODES, Node
 from papiq.core.ports import (
+    Classifier,
     Clock,
+    CodeReader,
     DeliveryRetry,
     DocumentParser,
     Embeddings,
     EventBus,
     LanguageModel,
+    MetadataReader,
     ObjectStore,
     Ocr,
     OidcProvider,
+    PageRenderer,
     PasswordHasher,
     PatternMatcher,
-    PreviewRenderer,
     SearchIndex,
     SecretCipher,
+    TemplateRenderer,
+    TextLocator,
     Totp,
     UnitOfWorkFactory,
     WebhookSender,
 )
 from papiq.core.services.auth import AuthService, SessionPolicy
-from papiq.core.services.classification.steps import (
+from papiq.core.services.classification.nodes import (
     ClassificationPolicy,
-    ClassifyStep,
-    ExtractFieldsStep,
+    FieldsNode,
+    JudgeNode,
+    LlmSignal,
 )
+from papiq.core.services.classification.signals import (
+    ClassifierSignal,
+    FactsSignal,
+    NeighboursPolicy,
+    NeighboursSignal,
+)
+from papiq.core.services.classifier import ClassifierPolicy, ClassifierService
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.drawers import DrawerService
-from papiq.core.services.imports import ImportedClassifyStep, ImportedExtractStep
+from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from papiq.core.services.indexing import IndexingPolicy, IndexingService
 from papiq.core.services.maintenance import MaintenanceService
 from papiq.core.services.master_data import MasterDataService
+from papiq.core.services.nodes import OcrNode, PagesNode, ParseNode
 from papiq.core.services.oidc import OidcService
-from papiq.core.services.pipeline import PipelineService, PlaceholderStep, RetryPolicy, StepExecutor
+from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode, RetryPolicy
 from papiq.core.services.rules import RuleService
 from papiq.core.services.rules.changes import ChangeRules
+from papiq.core.services.rules.nodes import ApplyRulesNode, FileNode
 from papiq.core.services.rules.retroactive import RuleApplicationService
-from papiq.core.services.rules.steps import ApplyRulesStep, FileStep
 from papiq.core.services.search import SearchPolicy, SearchService
-from papiq.core.services.steps import OcrStep, ParseStep
 from papiq.core.services.users import UserService
 from papiq.core.services.webhooks import (
     WebhookDeliveryService,
@@ -203,26 +224,34 @@ def _cores_per_job(settings: Settings) -> int:
 
 
 def ocrmypdf_engine(settings: Settings) -> OcrmypdfEngine:
+    vision = None
+    if settings.vlm_base_url is not None and settings.vlm_model is not None:
+        vision = VisionSettings(
+            base_url=str(settings.vlm_base_url),
+            model=settings.vlm_model,
+            api_key=_secret(settings.vlm_api_key),
+            timeout=min(VISION_REQUEST_TIMEOUT, settings.vlm_timeout),
+        )
     return OcrmypdfEngine(
         languages=settings.ocr_languages.split("+"),
         timeout=settings.ocr_timeout,
         jobs=_cores_per_job(settings),
+        vision=vision,
+        vision_timeout=settings.vlm_timeout,
     )
 
 
-def docling_parser(settings: Settings) -> DoclingParser:
-    return DoclingParser(
-        models=settings.docling_models_path,
-        timeout=settings.parse_timeout,
-        threads=_cores_per_job(settings),
-    )
+def layout_parser(settings: Settings) -> LayoutParser:
+    return LayoutParser()
 
 
 OCR_ENGINES: dict[str, Factory[Ocr]] = {"ocrmypdf": ocrmypdf_engine}
-PARSERS: dict[str, Factory[DocumentParser]] = {"docling": docling_parser}
-PREVIEW_RENDERERS: dict[str, Factory[PreviewRenderer]] = {
-    "pdfium": lambda _: PdfiumPreviewRenderer()
-}
+PARSERS: dict[str, Factory[DocumentParser]] = {"layout": layout_parser}
+PAGE_RENDERERS: dict[str, Factory[PageRenderer]] = {"pdfium": lambda _: PdfiumPageRenderer()}
+TEXT_LOCATORS: dict[str, Factory[TextLocator]] = {"pdfium": lambda _: PdfiumTextLocator()}
+CODE_READERS: dict[str, Factory[CodeReader]] = {"zxing": lambda _: ZxingCodeReader()}
+METADATA_READERS: dict[str, Factory[MetadataReader]] = {"pikepdf": lambda _: FileMetadataReader()}
+CLASSIFIERS: dict[str, Factory[Classifier]] = {"scikit-learn": lambda _: SklearnClassifier()}
 
 
 def redirect_uri(settings: Settings) -> str:
@@ -267,16 +296,21 @@ class Container:
     clock: Clock
     ocr: Ocr
     parser: DocumentParser
-    previews: PreviewRenderer
+    pages: PageRenderer
+    locator: TextLocator
+    codes: CodeReader
+    metadata: MetadataReader
     password_hasher: PasswordHasher
     cipher: SecretCipher
     webhook_sender: WebhookSender
     totp: Totp
     patterns: PatternMatcher
+    templates: TemplateRenderer
     oidc: OidcProvider | None
     search_index: SearchIndex | None
     language_model: LanguageModel | None
     embeddings: Embeddings | None
+    classifier: Classifier | None
     closers: tuple[Closer, ...] = field(default=(), repr=False)
 
     async def aclose(self) -> None:
@@ -311,13 +345,19 @@ def build_container(settings: Settings) -> Container:
         clock=SystemClock(),
         object_store=object_store,
         ocr=_select("ocr", "ocrmypdf", OCR_ENGINES, settings),
-        parser=_select("parser", "docling", PARSERS, settings),
-        previews=_select("previews", "pdfium", PREVIEW_RENDERERS, settings),
+        parser=_select("parser", "layout", PARSERS, settings),
+        pages=_select("pages", "pdfium", PAGE_RENDERERS, settings),
+        locator=_select("locator", "pdfium", TEXT_LOCATORS, settings),
+        codes=_select("codes", "zxing", CODE_READERS, settings),
+        metadata=_select("metadata", "pikepdf", METADATA_READERS, settings),
         password_hasher=Argon2PasswordHasher(),
         cipher=secret_cipher(settings),
         webhook_sender=HttpWebhookSender(user_agent=f"Papiq/{__version__}"),
         totp=PyotpTotp(),
         patterns=RegexPatternMatcher(settings.rules_pattern_timeout.total_seconds()),
+        templates=LiquidTemplateRenderer(
+            locale=settings.template_locale, currency=settings.default_currency
+        ),
         oidc=(
             _select("oidc", "authlib", OIDC_PROVIDERS, settings) if settings.oidc_enabled else None
         ),
@@ -332,12 +372,22 @@ def build_container(settings: Settings) -> Container:
             if settings.embedding_base_url is not None
             else None
         ),
+        classifier=(
+            None
+            if settings.classifier == "none"
+            else _select("classifier", settings.classifier, CLASSIFIERS, settings)
+        ),
         closers=tuple(closers),
     )
 
 
 # Seconds; as `PAPIQ_RULES_PATTERN_TIMEOUT` by default.
 DEFAULT_PATTERN_TIMEOUT = 0.2
+
+
+def _default(setting: str) -> str:
+    """The default of a setting, for the memory container, which reads no environment."""
+    return str(Settings.model_fields[setting].default)
 
 
 def build_memory_container(clock: Clock | None = None) -> Container:
@@ -350,16 +400,23 @@ def build_memory_container(clock: Clock | None = None) -> Container:
         clock=clock or SystemClock(),
         ocr=FakeOcr(),
         parser=FakeParser(),
-        previews=FakePreviewRenderer(),
+        pages=FakePageRenderer(),
+        locator=FakeTextLocator(),
+        codes=FakeCodeReader(),
+        metadata=FakeMetadataReader(),
         password_hasher=FakePasswordHasher(),
         cipher=FakeCipher(),
         webhook_sender=FakeWebhookSender(),
         totp=FakeTotp(),
         patterns=RegexPatternMatcher(DEFAULT_PATTERN_TIMEOUT),
+        templates=LiquidTemplateRenderer(
+            locale=_default("template_locale"), currency=_default("default_currency")
+        ),
         oidc=None,
         search_index=MemorySearchIndex(),
         language_model=None,
         embeddings=None,
+        classifier=FakeClassifier(),
     )
 
 
@@ -381,10 +438,30 @@ class Services:
     maintenance: MaintenanceService
     indexing: IndexingService | None  # with a search index
     search: SearchService | None  # with a search index
+    classifier: ClassifierService | None  # with a classifier
 
 
-# Time a step job may take beyond its time limit: downloads, uploads, preview, bookkeeping.
+# Time a node job may take beyond its time limit: downloads, uploads, preview, bookkeeping.
 LEASE_MARGIN = timedelta(minutes=2)
+VISION_REQUEST_TIMEOUT = timedelta(minutes=5)
+"""How long the vision language model may take for one page."""
+
+
+def node_lease(settings: Settings) -> timedelta:
+    """How long a worker holds the job of a node: longer than any node may take."""
+    longest = max(settings.ocr_timeout, 2 * settings.llm_timeout)
+    if settings.vlm_base_url is not None:
+        longest = max(longest, settings.vlm_timeout)
+    return longest + LEASE_MARGIN
+
+
+def classifier_policy_of(settings: Settings) -> ClassifierPolicy:
+    return ClassifierPolicy(
+        min_examples=settings.classifier_min_examples,
+        retrain_after=settings.classifier_retrain_after,
+        threshold=settings.classifier_threshold,
+        text_limit=settings.llm_input_budget,
+    )
 
 
 def policy_of(settings: Settings) -> ClassificationPolicy:
@@ -394,6 +471,8 @@ def policy_of(settings: Settings) -> ClassificationPolicy:
         suggest_contact=settings.contact_suggest_threshold,
         input_budget=settings.llm_input_budget,
         max_tags=settings.llm_max_tags,
+        default_currency=settings.default_currency,
+        poor_reading=settings.poor_reading_threshold,
     )
 
 
@@ -410,6 +489,16 @@ def webhook_policy_of(settings: Settings) -> WebhookPolicy:
 
 def _prefix(value: str | None) -> str:
     return "" if not value else value + " "
+
+
+def neighbours_policy_of(settings: Settings) -> NeighboursPolicy:
+    """The neighbours' vector is made as the index makes the first section's."""
+    return NeighboursPolicy(
+        count=settings.neighbours,
+        chunk_size=settings.search_chunk_size,
+        document_prefix=_prefix(settings.embedding_document_prefix),
+        dimensions=settings.embedding_dimensions,
+    )
 
 
 def indexing_policy_of(settings: Settings) -> IndexingPolicy:
@@ -444,22 +533,49 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
     """
     settings = settings or Settings.model_construct()
     uow, clock, store = container.unit_of_work, container.clock, container.object_store
+    classifier = (
+        None
+        if container.classifier is None
+        else ClassifierService(
+            uow, store, clock, container.classifier, classifier_policy_of(settings)
+        )
+    )
     index, embeddings = container.search_index, container.embeddings
-    executors: dict[Step, StepExecutor] = {step: PlaceholderStep() for step in PIPELINE[1:]}
-    executors[Step.OCR] = OcrStep(store, container.ocr, container.previews)
-    executors[Step.PARSE] = ParseStep(store, container.parser)
+    executors: dict[Node, NodeExecutor] = {
+        node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE
+    }
+    executors[Node.OCR] = OcrNode(store, container.ocr)
+    executors[Node.PAGES] = PagesNode(store, container.pages)
+    executors[Node.PARSE] = ParseNode(store, container.parser)
     policy = policy_of(settings)
     model = container.language_model
-    executors[Step.CLASSIFY] = ImportedClassifyStep(
-        uow, ClassifyStep(uow, store, model, clock, policy)
+    locator = container.locator
+    executors[Node.SIGNAL_LLM] = ImportedSignal(uow, LlmSignal(uow, store, model, clock, policy))
+    executors[Node.JUDGE] = ImportedJudgeNode(
+        uow,
+        JudgeNode(
+            uow,
+            store,
+            clock,
+            policy,
+            locator=locator,
+            classifier_threshold=settings.classifier_threshold,
+        ),
     )
-    executors[Step.EXTRACT_FIELDS] = ImportedExtractStep(
-        uow, ExtractFieldsStep(uow, store, model, clock, policy)
+    executors[Node.FIELDS] = ImportedFieldsNode(
+        uow, FieldsNode(uow, store, model, clock, policy, locator=locator)
     )
-    executors[Step.APPLY_RULES] = ApplyRulesStep(
-        uow, store, container.patterns, max_text=settings.rules_max_text
+    facts = FactsSignal(uow, store, container.codes)
+    executors[Node.SIGNAL_FACTS] = ImportedSignal(uow, facts)
+    executors[Node.SIGNAL_CLASSIFIER] = ImportedSignal(uow, ClassifierSignal(store, classifier))
+    executors[Node.SIGNAL_NEIGHBOURS] = ImportedSignal(
+        uow,
+        NeighboursSignal(uow, store, index, embeddings, neighbours_policy_of(settings)),
     )
-    executors[Step.FILE] = FileStep()
+    executors[Node.APPLY_RULES] = ApplyRulesNode(
+        uow, store, container.patterns, container.templates, max_text=settings.rules_max_text
+    )
+    executors[Node.FILE] = FileNode()
     auth = AuthService(
         uow,
         clock,
@@ -487,8 +603,10 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         ),
         users=UserService(uow, clock, container.password_hasher),
         drawers=DrawerService(uow, clock),
-        master_data=MasterDataService(uow, clock, index_renames=index is not None),
-        rules=RuleService(uow, clock),
+        master_data=MasterDataService(
+            uow, clock, container.templates, index_renames=index is not None
+        ),
+        rules=RuleService(uow, clock, container.templates),
         webhooks=WebhookService(uow, clock, container.cipher, webhook_policy_of(settings)),
         webhook_delivery=WebhookDeliveryService(
             uow, clock, container.cipher, container.webhook_sender, webhook_policy_of(settings)
@@ -498,6 +616,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             clock,
             store,
             container.patterns,
+            container.templates,
             max_text=settings.rules_max_text,
             max_documents=settings.rules_apply_max_documents,
             pipeline_version=__version__,
@@ -506,9 +625,11 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             uow,
             clock,
             store,
+            metadata=container.metadata,
             rules=ChangeRules(
                 store,
                 container.patterns,
+                container.templates,
                 max_text=settings.rules_max_text,
                 pipeline_version=__version__,
             ),
@@ -520,12 +641,15 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             executors,
             pipeline_version=__version__,
             retry=RetryPolicy(
-                max_attempts=settings.step_max_attempts, delay=settings.step_retry_delay
+                max_attempts=settings.node_max_attempts, delay=settings.node_retry_delay
             ),
-            # Longer than any step may take, so a running step never loses its claim.
-            # A classification step may ask the model twice (once more after an invalid answer).
-            lease=max(settings.ocr_timeout, settings.parse_timeout, 2 * settings.llm_timeout)
-            + LEASE_MARGIN,
+            # Longer than any node may take, so a running node never loses its claim.
+            # A classification node may ask the model twice (once more after an invalid answer);
+            # the OCR node may read a document with the vision model.
+            lease=node_lease(settings),
+            vision=container.ocr.vision,
+            poor_reading=settings.poor_reading_threshold,
+            facts=facts,
         ),
         maintenance=MaintenanceService(
             uow,
@@ -546,6 +670,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             if index is None
             else SearchService(uow, index, embeddings, search_policy_of(settings))
         ),
+        classifier=classifier,
     )
 
 

@@ -82,6 +82,9 @@ describe('rules', () => {
 		expect(canChangeRule(mine, admin)).toBe(true);
 		expect(canChangeRule(global, owner)).toBe(false);
 		expect(canChangeRule(global, admin)).toBe(true);
+		// The rule of a title pattern follows its document type: nobody changes it here.
+		const pattern = { ...global, managed_by_document_type_id: 'type' };
+		expect(canChangeRule(pattern, admin)).toBe(false);
 	});
 
 	it('lets anyone apply a global rule, a user rule its owner and admins', () => {

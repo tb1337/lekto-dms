@@ -29,6 +29,7 @@ import httpx2
 from papiq.core.domain.errors import SearchIndexError, SearchUnavailableError
 from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.search import (
+    LAYOUT,
     EmbeddingStamp,
     IndexDocument,
     IndexState,
@@ -36,11 +37,14 @@ from papiq.core.domain.search import (
     Visibility,
     lane_value,
 )
+from papiq.core.domain.sorting import sort_key
+from papiq.core.ports.repository import DocumentFilter, SortKey
 from papiq.core.ports.search_index import (
     IndexBuild,
     SearchHit,
     SearchQuery,
     SearchResult,
+    SimilarQuery,
 )
 
 log = logging.getLogger(__name__)
@@ -53,9 +57,26 @@ FETCH_PAGE = 1000
 _EXCERPT = 300  # characters of an error message from Meilisearch
 
 SEARCHABLE = ["title", "contact", "document_type", "tags", "fields", "filename", "text"]
-FILTERABLE = ["owner_id", "drawer_id", "lane", "contact_id", "document_type_id", "tag_ids"]
-SORTABLE = ["document_date", "created_at"]
-STATE_FIELDS = ["id", "version", "embedding_model", "embedding_digest"]
+FILTERABLE = [
+    "owner_id",
+    "drawer_id",
+    "lane",
+    "contact_id",
+    "document_type_id",
+    "tag_ids",
+    "confirmed",
+    "field_ids",
+]
+SORTABLE = ["document_date", "created_at", "title_key"]
+# Sorting comes first: without `sort` in a query it does nothing, with it the hits are in its
+# order and relevance only breaks ties.
+RANKING_RULES = ["sort", "words", "typo", "proximity", "attribute", "exactness"]
+SORTED_BY = {
+    SortKey.CREATED: "created_at",
+    SortKey.DOCUMENT_DATE: "document_date",
+    SortKey.TITLE: "title_key",
+}
+STATE_FIELDS = ["id", "version", "embedding_model", "embedding_digest", "layout"]
 MAX_TOTAL_HITS = 1000
 READY_FOR = 30.0  # seconds an index counts as set up before its settings are looked at again
 _UNORDERED = {"filterableAttributes", "sortableAttributes"}
@@ -146,8 +167,11 @@ class MeilisearchIndex:
             "highlightPostTag": HIGHLIGHT_END,
             "showRankingScore": True,
         }
-        if (expression := filter_expression(query)) is not None:
+        if (expression := filter_expression(query.visibility, query.filter)) is not None:
             body["filter"] = expression
+        if query.order is not None:
+            direction = "asc" if query.order.ascending else "desc"
+            body["sort"] = [f"{SORTED_BY[query.order.key]}:{direction}"]
         semantic = query.vector is not None and query.semantic_ratio > 0
         if semantic:
             if self._dimensions is None:
@@ -172,6 +196,30 @@ class MeilisearchIndex:
         return SearchResult(
             hits=hits, estimated_total=max(total, query.offset + len(hits)), semantic=semantic
         )
+
+    async def similar(self, query: SimilarQuery) -> list[SearchHit]:
+        await self._ensure_ready()
+        if self._dimensions is None:
+            raise SearchIndexError("the index has no embedder, so it takes no vectors")
+        if query.filter.lanes is not None and not query.filter.lanes:
+            return []
+        # One more, in case the document itself is among them (`id` is not filterable).
+        body: dict[str, Any] = {
+            "q": "",
+            "vector": list(query.vector),
+            "hybrid": {"embedder": EMBEDDER, "semanticRatio": 1.0},
+            "limit": query.limit + 1,
+            "attributesToRetrieve": ["id", "version"],
+            "showRankingScore": True,
+        }
+        if (expression := filter_expression(query.visibility, query.filter)) is not None:
+            body["filter"] = expression
+        data = await self._request("POST", f"/indexes/{self._index}/search", json=body)
+        try:
+            hits = [_hit_of(item) for item in data["hits"]]
+        except (KeyError, TypeError, ValueError):
+            raise SearchIndexError("Meilisearch sent an unusable search result") from None
+        return [hit for hit in hits if hit.id != query.exclude][: query.limit]
 
     async def begin_rebuild(self) -> IndexBuild:
         await self._ensure_ready()
@@ -287,6 +335,7 @@ class MeilisearchIndex:
             "searchableAttributes": SEARCHABLE,
             "filterableAttributes": FILTERABLE,
             "sortableAttributes": SORTABLE,
+            "rankingRules": RANKING_RULES,
             "localizedAttributes": [{"locales": self._locales, "attributePatterns": ["*"]}],
             "pagination": {"maxTotalHits": MAX_TOTAL_HITS},
         }
@@ -304,6 +353,7 @@ class MeilisearchIndex:
             "drawer_id": str(document.drawer_id),
             "lane": document.lane_value,
             "title": document.title,
+            "title_key": sort_key(document.title),
             "filename": document.filename,
             "text": _unmarked(document.text),
             "contact_id": _text(document.contact_id),
@@ -313,10 +363,13 @@ class MeilisearchIndex:
             "tag_ids": [str(tag) for tag in document.tag_ids],
             "tags": list(document.tags),
             "fields": list(document.fields),
+            "field_ids": [str(field) for field in document.field_ids],
             "document_date": None
             if document.document_date is None
             else int(datetime.combine(document.document_date, time(), UTC).timestamp()),
             "created_at": int(document.created_at.timestamp()),
+            "confirmed": document.confirmed,
+            "layout": LAYOUT,
         }
         if document.vectors is not None:
             payload["embedding_model"] = _stamp(document, "model")
@@ -394,12 +447,12 @@ class _MeilisearchBuild:
         await self._index._delete_index(self._index._build_index)
 
 
-def filter_expression(query: SearchQuery) -> str | None:
-    """The Meilisearch filter for the rights of the user and the criteria of the query; None if
+def filter_expression(visibility: Visibility, criteria: DocumentFilter) -> str | None:
+    """The Meilisearch filter for the rights of the user and the criteria of a query; None if
     nothing is filtered (an admin's search over everything without criteria). Only ids and lane
-    names go in, both quoted."""
-    parts = [] if query.visibility.everything else [_visibility_filter(query.visibility)]
-    criteria = query.filter
+    names go in, both quoted. A document indexed before `confirmed` existed counts as not
+    confirmed."""
+    parts = [] if visibility.everything else [_visibility_filter(visibility)]
     if criteria.contact is not None:
         parts.append(f"contact_id = {_quote(criteria.contact)}")
     if criteria.document_type is not None:
@@ -410,6 +463,10 @@ def filter_expression(query: SearchQuery) -> str | None:
     if criteria.lanes:
         lanes = sorted(lane_value(lane) for lane in criteria.lanes)
         parts.append(f"lane IN [{', '.join(_quote(lane) for lane in lanes)}]")
+    if criteria.confirmed is not None:
+        parts.append("confirmed = true" if criteria.confirmed else "NOT confirmed = true")
+    if criteria.field is not None:
+        parts.append(f"field_ids = {_quote(criteria.field)}")
     return " AND ".join(parts) or None
 
 
@@ -489,6 +546,7 @@ def _state_of(item: Mapping[str, Any]) -> IndexState:
             id=DocumentId(_uuid(item["id"])),
             version=int(item["version"]),
             embedding=EmbeddingStamp(str(model), str(digest)) if model and digest else None,
+            layout=int(item.get("layout") or 1),
         )
     except (KeyError, TypeError, ValueError):
         raise SearchIndexError("Meilisearch sent an unusable document") from None

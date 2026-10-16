@@ -14,9 +14,9 @@ from papiq_migration.config import Config
 from papiq_migration.fake_paperless import FakePaperless, sample_archive
 
 from papiq.adapters.inbound.rest import PREFIX
-from papiq.core.domain.pipeline import Step
-from papiq.core.services.imports import ImportedClassifyStep, ImportedExtractStep
-from papiq.core.services.pipeline import PlaceholderStep
+from papiq.core.domain.pipeline import SIGNALS, Node
+from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
+from papiq.core.services.pipeline import PlaceholderNode
 from tests import api as helpers
 from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.rest.conftest import Api
@@ -67,12 +67,15 @@ class Migrating:
 
 @asynccontextmanager
 async def migrating(api: Api, directory: Path) -> AsyncIterator[Migrating]:
-    """The API with its worker running, an admin to migrate with, and the real classification
-    steps around steps that do nothing (there is no language model)."""
+    """The API with its worker running, an admin to migrate with, and the real signals, judge
+    and fields node of a migration around nodes that do nothing (there is no language
+    model)."""
     uow = api.container.unit_of_work
     executors = api.services.pipeline._executors
-    executors[Step.CLASSIFY] = ImportedClassifyStep(uow, PlaceholderStep())
-    executors[Step.EXTRACT_FIELDS] = ImportedExtractStep(uow, PlaceholderStep())
+    for signal in SIGNALS:
+        executors[signal] = ImportedSignal(uow, PlaceholderNode())
+    executors[Node.JUDGE] = ImportedJudgeNode(uow, PlaceholderNode())
+    executors[Node.FIELDS] = ImportedFieldsNode(uow, PlaceholderNode())
     admin = await api.admin()
 
     async def work() -> None:
@@ -134,8 +137,12 @@ async def test_the_whole_migration_runs_against_the_api(api: Api, tmp_path: Path
                 headers=helpers.auth(m.admin),
             )
         ).json()
-        imported = {e["step"]: e for e in log if e["model_version"] == "imported"}
-        assert set(imported) == {"classify", "extract_fields"}
+        imported = {e["node"]: e for e in log if e["model_version"] == "imported"}
+        # Taken over, the document's signals propose nothing and its judge applies the metadata.
+        signals = {"signal_llm", "signal_classifier", "signal_neighbours", "signal_facts"}
+        assert set(imported) == {"judge", "fields", *signals}
+        for signal in signals:  # nothing to propose: they abstain
+            assert imported[signal]["output"] == {"abstained": "taken over from the source system"}
 
         assert await m.run("verify") == 0, m.messages
         assert await m.run("verify", rehash=True) == 0

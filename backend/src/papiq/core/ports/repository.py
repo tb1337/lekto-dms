@@ -15,13 +15,18 @@ Common rules for every adapter:
 
 from collections.abc import Collection
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from enum import StrEnum
 from typing import Protocol
+from uuid import UUID
 
+from papiq.core.domain.classifier import ClassifierModel
 from papiq.core.domain.documents import Document, Sha256
 from papiq.core.domain.drawers import Drawer
 from papiq.core.domain.fields import FieldDefinition
+from papiq.core.domain.identifiers import IdentifierKind
 from papiq.core.domain.ids import (
+    ClassifierModelId,
     ContactId,
     DeliveryId,
     DocumentId,
@@ -35,9 +40,11 @@ from papiq.core.domain.ids import (
     WebhookId,
 )
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
-from papiq.core.domain.pipeline import Lane, StepRun
+from papiq.core.domain.pipeline import Lane, NodeRun
 from papiq.core.domain.rules import Rule, RuleApplication, RuleVersion
+from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.users import User
+from papiq.core.domain.verdict import KnownLabels
 from papiq.core.domain.webhooks import Webhook, WebhookDelivery
 
 
@@ -106,13 +113,63 @@ class FieldDefinitionRepository(NamedRepository[FieldId, FieldDefinition], Proto
 @dataclass(frozen=True, kw_only=True)
 class DocumentFilter:
     """Criteria for listing documents; all given ones must match. `tags`: every one of them.
-    `lanes`: one of them, where None stands for documents still in processing."""
+    `lanes`: one of them, where None stands for documents still in processing. `confirmed`:
+    whether a person set or confirmed the metadata (`Document.confirmed_at`). `field`: a value
+    for it is set."""
 
     contact: ContactId | None = None
     document_type: DocumentTypeId | None = None
     tags: frozenset[TagId] = frozenset()
     drawer: DrawerId | None = None
     lanes: frozenset[Lane | None] | None = None
+    confirmed: bool | None = None
+    field: FieldId | None = None
+
+
+class SortKey(StrEnum):
+    CREATED = "created_at"  # the order documents came in, which is their ids'
+    DOCUMENT_DATE = "document_date"
+    TITLE = "title"  # by `sort_key` of the title
+
+
+@dataclass(frozen=True)
+class DocumentOrder:
+    """How a list of documents is sorted: by `key`, descending unless `ascending`, ties by id
+    the same way. Documents without a document date come last either way."""
+
+    key: SortKey = SortKey.CREATED
+    ascending: bool = False
+
+
+NEWEST_FIRST = DocumentOrder()
+
+
+class CountBy(StrEnum):
+    """What documents are counted by: their contact, type, each tag, each field with a value."""
+
+    CONTACT = "contact"
+    DOCUMENT_TYPE = "document_type"
+    TAG = "tag"
+    FIELD = "field"
+
+
+@dataclass(frozen=True)
+class DocumentPosition:
+    """Where a page of a sorted list ended: its last document, and that document's value of
+    the sort key (none for `CREATED`, which sorts by id)."""
+
+    id: DocumentId
+    value: date | str | None = None
+
+    @classmethod
+    def of(cls, document: Document, order: DocumentOrder) -> "DocumentPosition":
+        match order.key:
+            case SortKey.CREATED:
+                return cls(document.id)
+            case SortKey.DOCUMENT_DATE:
+                return cls(document.id, document.document_date)
+            case SortKey.TITLE:
+                return cls(document.id, sort_key(document.title))
 
 
 class DocumentRepository(Repository[DocumentId, Document], Protocol):
@@ -141,21 +198,42 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         user: UserId,
         filter: DocumentFilter,
         *,
-        before: DocumentId | None = None,
+        order: DocumentOrder = NEWEST_FIRST,
+        after: DocumentPosition | None = None,
         limit: int,
     ) -> list[Document]:
-        """Documents the user may read (as `list_visible_to`) that match `filter`, newest first
-        (by id, descending), only those with an id below `before`, at most `limit`."""
+        """Documents the user may read (as `list_visible_to`) that match `filter`, in `order`,
+        only those after `after` in it, at most `limit`."""
         ...
 
     async def query(
-        self, filter: DocumentFilter, *, before: DocumentId | None = None, limit: int
+        self,
+        filter: DocumentFilter,
+        *,
+        order: DocumentOrder = NEWEST_FIRST,
+        after: DocumentPosition | None = None,
+        limit: int,
     ) -> list[Document]:
         """As `query_visible`, over every document (for admins)."""
         ...
 
+    async def count_by(self, by: CountBy, user: UserId | None) -> dict[UUID, int]:
+        """How many documents the user may read (as `list_visible_to`; None: every document)
+        have each contact, type or tag, or a value for each field. Only ids with documents."""
+        ...
+
     async def remove(self, id: DocumentId) -> None:
         """Delete the document and its processing log; NotFoundError if it does not exist."""
+        ...
+
+    async def count_confirmed(self, *, after: datetime | None = None) -> int:
+        """Documents a person set or confirmed the metadata of, after `after` if given (the
+        confirmations since the classifier was trained)."""
+        ...
+
+    async def confirmed_labels(self, reader: UserId) -> KnownLabels:
+        """The contacts, document types and tags the confirmed documents `reader` may read
+        carry: what a document similar to one of theirs can name."""
         ...
 
     async def exists(
@@ -174,12 +252,31 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         ...
 
 
+class DocumentIdentifierRepository(Protocol):
+    """The identifiers each document shows, in its text or its codes, as the facts signal last
+    found them: for telling on how many contacts' documents a value stands (the IBAN of the
+    owner's own account stands on many)."""
+
+    async def replace(
+        self, document: DocumentId, identifiers: Collection[tuple[IdentifierKind, str]]
+    ) -> None:
+        """Make `identifiers` (kind and normalised value) those of `document`."""
+        ...
+
+    async def contacts_of(
+        self, identifiers: Collection[tuple[IdentifierKind, str]]
+    ) -> dict[tuple[IdentifierKind, str], frozenset[ContactId]]:
+        """For each of `identifiers`, the contacts of the confirmed documents that show it;
+        one that no confirmed document with a contact shows is left out."""
+        ...
+
+
 class ProcessingLog(Protocol):
-    """Append-only log of step executions."""
+    """Append-only log of node executions."""
 
-    async def append(self, run: StepRun) -> None: ...
+    async def append(self, run: NodeRun) -> None: ...
 
-    async def list_for(self, document: DocumentId) -> list[StepRun]:
+    async def list_for(self, document: DocumentId) -> list[NodeRun]:
         """All entries of the document in the order they were appended."""
         ...
 
@@ -231,6 +328,22 @@ class RuleApplicationRepository(Protocol):
     async def add(self, application: RuleApplication) -> None: ...
 
     async def update(self, application: RuleApplication) -> None: ...
+
+
+class ClassifierModelRepository(Protocol):
+    """The trained classifiers (their files are in the object store)."""
+
+    async def add(self, model: ClassifierModel) -> None: ...
+
+    async def latest(self) -> ClassifierModel | None:
+        """The model with the highest number."""
+        ...
+
+    async def list_all(self) -> list[ClassifierModel]:
+        """Newest first."""
+        ...
+
+    async def remove(self, id: ClassifierModelId) -> None: ...
 
 
 class WebhookRepository(Protocol):

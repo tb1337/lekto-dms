@@ -50,13 +50,6 @@ export const ACTION_LABELS: Record<ActionType, () => string> = {
 	force_review: m.rule_action_force_review
 };
 
-export const PLACEHOLDER_LABELS: Record<string, () => string> = {
-	contact: m.field_contact,
-	document_type: m.field_document_type,
-	document_date: m.field_date,
-	filename: m.rule_placeholder_filename
-};
-
 const OPERATORS: Record<Operator, () => string> = {
 	is: m.rule_op_is,
 	in: m.rule_op_in,
@@ -65,7 +58,8 @@ const OPERATORS: Record<Operator, () => string> = {
 	gt: m.rule_op_number_gt,
 	lt: m.rule_op_number_lt,
 	present: m.rule_op_present,
-	missing: m.rule_op_missing
+	missing: m.rule_op_missing,
+	overlaps: m.rule_op_overlaps
 };
 const TAG_OPERATORS: Partial<Record<Operator, () => string>> = {
 	contains: m.rule_op_tags_contains,
@@ -81,6 +75,10 @@ const DATE_OPERATORS: Partial<Record<Operator, () => string>> = {
 const NUMBER_OPERATORS: Partial<Record<Operator, () => string>> = {
 	is: m.rule_op_number_is
 };
+const PERIOD_OPERATORS: Partial<Record<Operator, () => string>> = {
+	gt: m.rule_op_period_gt,
+	lt: m.rule_op_period_lt
+};
 
 /** The operator in the words of the field: tags "has", dates "after", numbers "greater". */
 export function operatorLabel(
@@ -92,6 +90,7 @@ export function operatorLabel(
 	if (field === 'tags') special = TAG_OPERATORS;
 	else if (field === 'document_date' || type === 'date') special = DATE_OPERATORS;
 	else if (type === 'number' || type === 'amount') special = NUMBER_OPERATORS;
+	else if (type === 'period') special = PERIOD_OPERATORS;
 	return (special[op] ?? OPERATORS[op])();
 }
 
@@ -108,6 +107,7 @@ const PROBLEMS: Record<Problem['code'], (params: Record<string, string | number>
 	date: () => m.rule_error_date(),
 	number: () => m.rule_error_number(),
 	amount: () => m.rule_error_amount(),
+	period: () => m.rule_error_period(),
 	field: () => m.rule_error_field(),
 	operator: () => m.rule_error_operator(),
 	group_empty: () => m.rule_error_group_empty(),
@@ -116,8 +116,7 @@ const PROBLEMS: Record<Problem['code'], (params: Record<string, string | number>
 	actions_none: () => m.rule_error_actions_none(),
 	actions_many: (params) => m.rule_error_actions_many({ max: params.max }),
 	twice: () => m.rule_error_twice(),
-	scope: () => m.rule_error_scope(),
-	placeholder: (params) => m.rule_error_placeholder({ name: params.name })
+	scope: () => m.rule_error_scope()
 };
 
 export function problemText(problem: Problem): string {
@@ -163,6 +162,27 @@ function describeConditionValue(
 		if (condition.op === 'contains' || condition.op === 'matches') return value;
 	}
 	return describeValue(value, null);
+}
+
+/** The template of an action (a title, a text field's value, a review's reason) and what
+ * stands before it ("Set field: Note = "); null for an action without one. */
+export function actionTemplate(
+	action: ActionNode | ApiAction,
+	lookup: Lookup | null
+): { lead: string; template: string } | null {
+	const label = ACTION_LABELS[action.type]();
+	switch (action.type) {
+		case 'set_title':
+			return { lead: `${label}: `, template: action.template };
+		case 'force_review':
+			return { lead: `${label}: `, template: action.reason };
+		case 'set_field': {
+			const field = fieldOf(action.field_id, lookup);
+			if (field?.data_type !== 'text' || typeof action.value !== 'string') return null;
+			return { lead: `${label}: ${field.name} = `, template: action.value };
+		}
+	}
+	return null;
 }
 
 /** An action as the user reads it: "Add tags: Tax, Bills". */

@@ -1,12 +1,5 @@
 <script lang="ts">
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-	import Download from '@lucide/svelte/icons/download';
-	import FolderInput from '@lucide/svelte/icons/folder-input';
-	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
-	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
-	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { onMount, untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '#lib/api/client.ts';
@@ -14,105 +7,163 @@
 	import { ApiError } from '#lib/api/problem.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
-	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
-	import DocumentEditor from '#lib/components/DocumentEditor.svelte';
-	import LaneBadge from '#lib/components/LaneBadge.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import DocumentContent from '#lib/components/document/DocumentContent.svelte';
+	import DocumentFiles from '#lib/components/document/DocumentFiles.svelte';
+	import DocumentForm from '#lib/components/document/DocumentForm.svelte';
+	import DocumentLog from '#lib/components/document/DocumentLog.svelte';
+	import DocumentHeader from '#lib/components/document/DocumentHeader.svelte';
+	import PageImages from '#lib/components/document/PageImages.svelte';
 	import PdfViewer from '#lib/components/PdfViewer.svelte';
-	import ProcessingLog from '#lib/components/ProcessingLog.svelte';
-	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
-	import * as Dialog from '#lib/components/ui/dialog/index.ts';
-	import * as Field from '#lib/components/ui/field/index.ts';
+	import * as Alert from '#lib/components/ui/alert/index.ts';
+	import { Button } from '#lib/components/ui/button/index.ts';
+	import {
+		inboxDocument,
+		neighbours,
+		tabHref,
+		tabOf,
+		type Mark,
+		type Place,
+		type Review,
+		type Tab
+	} from '#lib/document-view.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
-	import { events } from '#lib/events.svelte.ts';
-	import { formatDate } from '#lib/i18n.ts';
-	import { drawerLabel, loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
-	import { canEdit, canManage, canMove, writableDrawers } from '#lib/permissions.ts';
+	import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
+	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
+	import { canEdit, canManage } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { scope } from '#lib/scope.svelte.ts';
+	import type { GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
+	import { factCounts, type CodeFacts, type CodePlace, type Facts } from '#lib/facts.ts';
+	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
-	type ReprocessStep = components['schemas']['ReprocessStep'];
 
+	// One view for every document, from the inbox and from the list: the pages and the fields
+	// (details), the recognised text and structure (content), and the processing (log).
 	const id = $derived(page.params.id ?? '');
+	const tab = $derived(tabOf(page.url));
+	const fromInbox = $derived(page.url.searchParams.get('from') === 'inbox');
 	let document = $state<Document | null>(null);
+	let review = $state<Review | null>(null);
 	let lookup = $state<Lookup | null>(null);
+	let graph = $state<GraphNode[]>([]);
+	let vision = $state<Vision | null>(null);
+	let reading = $state<Reading | null>(null);
+	let facts = $state<Facts | null>(null);
+	// A code shown on its page from the content (`Auf der Seite zeigen`).
+	let codeMarks = $state<Mark[]>([]);
+	let inboxIds = $state<string[] | null>(null);
 	let problem = $state<unknown>(null);
-	let loadedSource = $state<string | null>(null);
-	let confirmDelete = $state(false);
-	let moveOpen = $state(false);
-	let reprocessOpen = $state(false);
-	let target = $state('');
-	let fromStep = $state<ReprocessStep>('ocr');
-	let busy = $state(false);
+	let marks = $state<Mark[]>([]);
+	let viewer = $state<PdfViewer | null>(null);
+	let header = $state<DocumentHeader | null>(null);
 
-	const base = $derived(`/api/v1/documents/${id}`);
-	const sources = $derived(
-		document?.media_type === 'application/pdf'
-			? [`${base}/archive`, `${base}/original`]
-			: [`${base}/archive`]
-	);
 	const user = $derived(session.user);
 	const editable = $derived(document !== null && canEdit(document, user));
 	const manageable = $derived(document !== null && canManage(document, user));
-	const movable = $derived(document !== null && canMove(document, user));
-	const status = $derived(document?.processing.status);
-	const drawers = $derived(
-		writableDrawers(lookup?.drawers ?? [], user).filter(
-			(drawer) => drawer.id !== document?.drawer_id
-		)
+	const base = $derived(`/api/v1/documents/${id}`);
+	// The archive exists once the text is recognised; until then the page images stand in.
+	const archive = $derived(
+		document?.processing.nodes.some(
+			(state) => state.node === 'ocr' && state.status === 'done' && state.outcome !== 'failed'
+		) ?? false
 	);
-	const drawerName = $derived(
-		lookup?.drawers.find((drawer) => drawer.id === document?.drawer_id)?.name ?? null
-	);
+	const inbox = $derived(fromInbox && inboxIds ? neighbours(inboxIds, id) : null);
 
-	// Steps a reprocessing may start from: not past a failed step, not `file` while fields wait.
-	const STEPS: ReprocessStep[] = [
-		'ocr',
-		'parse',
-		'classify',
-		'extract_fields',
-		'apply_rules',
-		'file'
-	];
-	const stepLabel: Record<ReprocessStep, () => string> = {
-		ocr: m.step_ocr,
-		parse: m.step_parse,
-		classify: m.step_classify,
-		extract_fields: m.step_extract_fields,
-		apply_rules: m.step_apply_rules,
-		file: m.step_file
-	};
-	const steps = $derived.by(() => {
-		const failedAt =
-			document?.processing.status === 'failed' ? document.processing.current_step : null;
-		return STEPS.filter((step) => {
-			if (document?.processing.status === 'review' && step === 'file') return false;
-			return failedAt === null || STEPS.indexOf(step) <= STEPS.indexOf(failedAt as ReprocessStep);
-		}).map((step) => ({ value: step, label: stepLabel[step]() }));
-	});
-
-	// An answer for a document the page has left behind must not replace the current one.
+	// An answer for a document the page has left behind, or one overtaken by a later request
+	// (several events arrive at once), must not replace the current state.
+	let latest = 0;
 	async function load() {
 		const wanted = id;
+		const request = ++latest;
 		try {
 			const loaded = await unwrap(
 				api.GET('/api/v1/documents/{id}', { params: { path: { id: wanted } } })
 			);
-			if (wanted === id) {
+			const params = { params: { path: { id: wanted } } };
+			const [reviewed, read] = canManage(loaded, session.user)
+				? await Promise.all([
+						unwrap(api.GET('/api/v1/documents/{id}/review', params)),
+						unwrap(api.GET('/api/v1/documents/{id}/reading', params))
+					])
+				: [null, null];
+			const found = await loadFacts(wanted);
+			if (wanted === id && request === latest) {
 				document = loaded;
+				review = reviewed;
+				reading = read;
+				facts = found;
 				problem = null;
 			}
 		} catch (error) {
-			if (wanted === id) problem = error;
+			if (wanted === id && request === latest) problem = error;
+		}
+	}
+
+	/** The facts of the document; none while it has no text. */
+	async function loadFacts(wanted: string): Promise<Facts | null> {
+		try {
+			return await unwrap(
+				api.GET('/api/v1/documents/{id}/facts', { params: { path: { id: wanted } } })
+			);
+		} catch (error) {
+			if (error instanceof ApiError && error.status === 409) return null;
+			throw error;
+		}
+	}
+
+	async function reloadFacts() {
+		const wanted = id;
+		try {
+			const found = await loadFacts(wanted);
+			if (wanted === id) facts = found;
+		} catch (error) {
+			reportError(error);
+		}
+	}
+
+	/** Show a code where it stands: the details on `place`, every place of the code marked. */
+	async function showCode(code: CodeFacts, place: CodePlace) {
+		codeMarks = code.places.map((each) => ({
+			key: `code:${each.page}`,
+			label: code.format,
+			page: each.page,
+			boxes: each.boxes,
+			derived: false,
+			pinned: each.page === place.page
+		}));
+		await goto(tabHref(page.url, 'details'));
+		// The viewer lays its pages out after it is shown.
+		for (const wait of [300, 900, 1800]) setTimeout(() => viewer?.reveal(place), wait);
+	}
+
+	async function loadInbox() {
+		try {
+			const listed = await unwrap(
+				api.GET('/api/v1/inbox', {
+					params: { query: { limit: 100, all_users: scope.query } }
+				})
+			);
+			inboxIds = listed.items.map((item) => item.document.id);
+		} catch (error) {
+			reportError(error);
 		}
 	}
 
 	$effect(() => {
 		void id;
 		untrack(() => {
-			if (document && document.id !== id) document = null;
+			if (document && document.id !== id) {
+				document = null;
+				review = null;
+				reading = null;
+				facts = null;
+				marks = [];
+				codeMarks = [];
+			}
 		});
 	});
 
@@ -122,90 +173,73 @@
 		void load();
 	});
 
-	onMount(() => {
-		loadLookup().then((value) => (lookup = value), reportError);
-		return events.subscribe((event) => {
-			if (event.document_id !== id) return;
-			if (event.type === 'document.deleted') void goto(`${BASE}/documents`);
-			else void load();
+	$effect(() => {
+		void events.generation;
+		void scope.allUsers;
+		if (fromInbox) untrack(() => void loadInbox());
+	});
+
+	// Again after a master data dialog saved here (a contact opened from its facts): names,
+	// aliases and identifiers decide what the facts show.
+	let savedBefore = masterDataDialogs.changed;
+	$effect(() => {
+		const saved = masterDataDialogs.changed;
+		if (saved === savedBefore) return;
+		savedBefore = saved;
+		untrack(() => {
+			loadLookup().then((value) => (lookup = value), reportError);
+			void reloadFacts();
 		});
 	});
 
-	async function act(action: () => Promise<unknown>, done: string) {
-		busy = true;
-		try {
-			await action();
-			toast.success(done);
-			await load();
-			return true;
-		} catch (error) {
-			reportError(error);
-			return false;
-		} finally {
-			busy = false;
-		}
+	onMount(() => {
+		loadLookup().then((value) => (lookup = value), reportError);
+		unwrap(api.GET('/api/v1/pipeline')).then((value) => {
+			graph = value.nodes;
+			vision = value.vision;
+		}, reportError);
+		return events.subscribe((event) => {
+			if (event.document_id !== id) return;
+			if (event.type === 'document.deleted')
+				void goto(fromInbox ? `${BASE}/inbox` : `${BASE}/documents`);
+			else void load();
+			if (fromInbox && !NODE_EVENTS.has(event.type)) void loadInbox();
+		});
+	});
+
+	function reveal(place: Place) {
+		viewer?.reveal(place);
 	}
 
-	async function retry() {
-		await act(
-			() => unwrap(api.POST('/api/v1/documents/{id}/retry', { params: { path: { id } } })),
-			m.retry_started()
-		);
+	async function confirmed(next: string | null) {
+		await goto(next ? inboxDocument(next) : `${BASE}/inbox`);
 	}
 
-	async function reprocess() {
-		if (
-			await act(
-				() =>
-					unwrap(
-						api.POST('/api/v1/documents/{id}/reprocess', {
-							params: { path: { id } },
-							body: { from_step: fromStep }
-						})
-					),
-				m.reprocess_started()
-			)
-		)
-			reprocessOpen = false;
-	}
-
-	async function move() {
-		if (!target) return;
-		if (
-			await act(
-				() =>
-					unwrap(
-						api.POST('/api/v1/documents/{id}/move', {
-							params: { path: { id } },
-							body: { drawer_id: target }
-						})
-					),
-				m.move_done()
-			)
-		)
-			moveOpen = false;
-	}
-
-	async function remove() {
-		await unwrap(api.DELETE('/api/v1/documents/{id}', { params: { path: { id } } }));
-		toast.success(m.delete_done());
-		await goto(`${BASE}/documents`);
-	}
-
+	const tabs: { tab: Tab; label: () => string }[] = [
+		{ tab: 'details', label: m.tab_details },
+		{ tab: 'content', label: m.tab_content },
+		{ tab: 'metadata', label: m.tab_metadata },
+		{ tab: 'log', label: m.tab_log }
+	];
+	const attention = $derived(
+		document?.processing.nodes.some(
+			(state) => state.outcome === 'uncertain' || state.outcome === 'failed'
+		) ?? false
+	);
 	const notFound = $derived(problem instanceof ApiError && problem.status === 404);
+	// The text recognition made the document red or yellow: reading it with the vision model is
+	// advised, and offered right here.
+	const advice = $derived(
+		document && manageable && visionAvailable(vision, graph, document.processing)
+			? adviceText(reading)
+			: null
+	);
 </script>
 
 <svelte:head><title>{document?.title ?? m.nav_documents()} · p:api:q</title></svelte:head>
 
-<div class="flex flex-col gap-6">
-	<a
-		href="{BASE}/documents"
-		class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-	>
-		<ArrowLeft class="size-4" aria-hidden="true" />
-		{m.nav_documents()}
-	</a>
-
+<!-- From the desktop width on the view fills the window; only its cards scroll. -->
+<div class="flex flex-col gap-4 lg:h-full lg:min-h-0" data-wide>
 	{#if problem}
 		<div class="flex flex-col items-start gap-3" role="alert">
 			<p class="text-destructive">{notFound ? m.document_not_found() : describeError(problem)}</p>
@@ -214,151 +248,116 @@
 	{:else if !document}
 		<p class="text-muted-foreground">{m.loading()}</p>
 	{:else}
-		<header class="flex flex-wrap items-start justify-between gap-3">
-			<div class="flex min-w-0 flex-col gap-2">
-				<h1 class="text-[1.75rem] font-semibold tracking-tight break-words">{document.title}</h1>
-				<p class="text-sm text-muted-foreground">
-					{document.original_filename} · {formatDate(document.created_at)}
-					{#if drawerName}
-						· {drawerName}{/if}
-				</p>
-			</div>
-			<LaneBadge lane={document.lane} />
-		</header>
+		<DocumentHeader
+			bind:this={header}
+			{document}
+			{lookup}
+			{graph}
+			{archive}
+			{inbox}
+			{vision}
+			{reading}
+			onchanged={load}
+		/>
 
-		{#if status === 'failed' || status === 'review'}
-			<p class="rounded-xl border bg-card px-4 py-3 text-sm" role="status">
-				{status === 'failed' ? m.processing_failed() : m.processing_review()}
-			</p>
+		{#if advice}
+			<Alert.Root variant="tip" role="status" class="flex flex-wrap items-center gap-3">
+				<Alert.Description class="min-w-0 flex-1">{advice}</Alert.Description>
+				<Button size="sm" onclick={() => header?.startVision()}>{m.vision_read()}</Button>
+			</Alert.Root>
 		{/if}
 
-		<div class="flex flex-wrap gap-2">
-			<a href="{base}/original" download class={cn(buttonVariants({ variant: 'outline' }))}>
-				<Download aria-hidden="true" />
-				{m.download_original()}
-			</a>
-			{#if loadedSource === `${base}/archive`}
-				<a href="{base}/archive" download class={cn(buttonVariants({ variant: 'outline' }))}>
-					<Download aria-hidden="true" />
-					{m.download_archive()}
+		<nav
+			aria-label={m.tabs_label()}
+			class="flex w-fit max-w-full gap-1 overflow-x-auto rounded-full bg-secondary p-1"
+		>
+			{#each tabs as entry (entry.tab)}
+				<a
+					href={tabHref(page.url, entry.tab)}
+					aria-current={tab === entry.tab ? 'page' : undefined}
+					class={cn(
+						'inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-full px-3 text-sm whitespace-nowrap transition-colors sm:px-4',
+						tab === entry.tab
+							? 'bg-card font-medium text-foreground shadow-sm'
+							: 'text-muted-foreground hover:text-foreground'
+					)}
+				>
+					{entry.label()}
+					{#if entry.tab === 'log' && attention}
+						<span class="size-[7px] rounded-full bg-lane-yellow-foreground" aria-hidden="true"
+						></span>
+						<span class="sr-only">{m.tab_log_attention()}</span>
+					{/if}
 				</a>
-			{/if}
-			{#if movable}
-				<Button
-					variant="outline"
-					onclick={() => {
-						target = drawers[0]?.id ?? '';
-						moveOpen = true;
-					}}
-					disabled={drawers.length === 0}
-				>
-					<FolderInput aria-hidden="true" />
-					{m.move_title()}
-				</Button>
-			{/if}
-			{#if manageable && status === 'failed'}
-				<Button variant="outline" disabled={busy} onclick={retry}>
-					<RotateCcw aria-hidden="true" />
-					{m.retry_step()}
-				</Button>
-			{/if}
-			{#if manageable && status !== 'processing' && steps.length > 0}
-				<Button
-					variant="outline"
-					disabled={busy}
-					onclick={() => {
-						fromStep = steps[0].value;
-						reprocessOpen = true;
-					}}
-				>
-					<RefreshCw aria-hidden="true" />
-					{m.reprocess_title()}
-				</Button>
-			{/if}
-			{#if manageable}
-				<Button variant="destructive" onclick={() => (confirmDelete = true)}>
-					<Trash2 aria-hidden="true" />
-					{m.delete_title()}
-				</Button>
-			{/if}
-		</div>
+			{/each}
+		</nav>
 
-		<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
-			<div class="flex min-h-[32rem] flex-col lg:h-[calc(100vh-14rem)]">
-				{#key id}
-					<PdfViewer
-						{sources}
-						label={document.title}
-						onsource={(source) => (loadedSource = source)}
-					/>
-				{/key}
+		{#if tab === 'details'}
+			<div
+				class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_28rem] lg:grid-rows-[minmax(0,1fr)]"
+			>
+				<div class="flex min-h-[32rem] flex-col lg:min-h-0">
+					<!-- Anew once the archive exists: the marks belong to it, not to the original. -->
+					{#key `${id}:${archive}`}
+						{#if archive || !document.page_count}
+							<PdfViewer
+								bind:this={viewer}
+								sources={archive || document.media_type !== 'application/pdf'
+									? [`${base}/archive`]
+									: [`${base}/archive`, `${base}/original`]}
+								label={document.title}
+								marks={archive ? [...marks, ...codeMarks] : []}
+							/>
+						{:else}
+							<PageImages documentId={id} pageCount={document.page_count} label={document.title} />
+						{/if}
+					{/key}
+				</div>
+				<div class="flex min-h-[32rem] flex-col lg:min-h-0">
+					{#if lookup}
+						{#key id}
+							<DocumentForm
+								{document}
+								{lookup}
+								{review}
+								{editable}
+								next={inbox?.next ?? null}
+								onsaved={(updated) => (document = updated)}
+								onconfirmed={confirmed}
+								onmarks={(next) => (marks = next)}
+								factCounts={facts ? factCounts(facts) : null}
+								factsHref={tabHref(page.url, 'content')}
+								onreveal={reveal}
+							/>
+						{/key}
+					{:else}
+						<p class="text-muted-foreground">{m.loading()}</p>
+					{/if}
+				</div>
 			</div>
-			<div class="flex flex-col gap-6">
-				{#if editable && lookup}
-					<section class="flex flex-col gap-3" aria-labelledby="edit-heading">
-						<h2 id="edit-heading" class="text-lg font-semibold">{m.edit_title()}</h2>
-						<DocumentEditor {document} {lookup} onsaved={(updated) => (document = updated)} />
-					</section>
-				{:else if !editable}
-					<p class="text-sm text-muted-foreground">{m.edit_read_only()}</p>
-				{/if}
+		{:else if tab === 'content'}
+			<DocumentContent
+				documentId={id}
+				filename={document.original_filename}
+				vision={reading?.vision ?? false}
+				{facts}
+				{lookup}
+				admin={session.isAdmin}
+				onshowcode={showCode}
+				onfactschanged={reloadFacts}
+			/>
+		{:else if tab === 'metadata'}
+			<DocumentFiles documentId={id} />
+		{:else if tab === 'log'}
+			<div class="lg:min-h-0 lg:flex-1">
+				<DocumentLog
+					{document}
+					{graph}
+					{manageable}
+					{lookup}
+					onreprocess={() => header?.startReprocess()}
+				/>
 			</div>
-		</div>
-
-		{#if manageable}
-			<section class="flex flex-col gap-3" aria-labelledby="log-heading">
-				<h2 id="log-heading" class="text-lg font-semibold">{m.log_title()}</h2>
-				<ProcessingLog documentId={id} />
-			</section>
 		{/if}
 	{/if}
 </div>
-
-<ConfirmDialog
-	bind:open={confirmDelete}
-	title={m.delete_title()}
-	description={m.delete_confirm({ title: document?.title ?? '' })}
-	confirmLabel={m.delete_title()}
-	onconfirm={remove}
-/>
-
-<Dialog.Root bind:open={moveOpen}>
-	<Dialog.Content>
-		<Dialog.Header>
-			<Dialog.Title>{m.move_title()}</Dialog.Title>
-			<Dialog.Description>{m.move_hint()}</Dialog.Description>
-		</Dialog.Header>
-		<Field.Field>
-			<Field.Label for="move-drawer">{m.field_drawer()}</Field.Label>
-			<NativeSelect
-				id="move-drawer"
-				bind:value={target}
-				options={drawers.map((drawer) => ({
-					value: drawer.id,
-					label: drawerLabel(drawer, lookup?.users ?? [], user?.id)
-				}))}
-			/>
-		</Field.Field>
-		<Dialog.Footer>
-			<Button variant="ghost" onclick={() => (moveOpen = false)}>{m.cancel()}</Button>
-			<Button disabled={busy || !target} onclick={move}>{m.move_title()}</Button>
-		</Dialog.Footer>
-	</Dialog.Content>
-</Dialog.Root>
-
-<Dialog.Root bind:open={reprocessOpen}>
-	<Dialog.Content>
-		<Dialog.Header>
-			<Dialog.Title>{m.reprocess_title()}</Dialog.Title>
-			<Dialog.Description>{m.reprocess_hint()}</Dialog.Description>
-		</Dialog.Header>
-		<Field.Field>
-			<Field.Label for="reprocess-step">{m.reprocess_from()}</Field.Label>
-			<NativeSelect id="reprocess-step" bind:value={fromStep} options={steps} />
-		</Field.Field>
-		<Dialog.Footer>
-			<Button variant="ghost" onclick={() => (reprocessOpen = false)}>{m.cancel()}</Button>
-			<Button disabled={busy} onclick={reprocess}>{m.reprocess_title()}</Button>
-		</Dialog.Footer>
-	</Dialog.Content>
-</Dialog.Root>

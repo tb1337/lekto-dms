@@ -1,27 +1,28 @@
 """Classification and field extraction for documents taken over from another system.
 
 A document received with metadata (channel `migration`, see `PipelineService.receive`) keeps
-what the source system knew: these steps apply it instead of asking the language model. Every
-other document goes to the step they wrap. The applied values are not model output, so rules
+what the source system knew: these nodes apply it instead of asking the language model. Every
+other document goes to the node they wrap. The applied values are not model output, so rules
 trust them (they have no field checks in the log, see `rules.running.provenance`).
 """
 
 from papiq.core.domain.documents import Channel, Document, DocumentChanges
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.imports import IMPORTED, ImportedMetadata
-from papiq.core.domain.pipeline import Outcome, Step, StepResult
+from papiq.core.domain.pipeline import Node, NodeResult, Outcome
 from papiq.core.ports import UnitOfWorkFactory
-from papiq.core.services.pipeline import DeferredResult, MetadataResult, StepExecutor
+from papiq.core.services.classification.signals import abstained
+from papiq.core.services.pipeline import DeferredResult, MetadataResult, NodeExecutor
 
 REASON = "taken over from the source system"
 
 
 class _ImportedStep:
-    def __init__(self, uow: UnitOfWorkFactory, inner: StepExecutor) -> None:
+    def __init__(self, uow: UnitOfWorkFactory, inner: NodeExecutor) -> None:
         self._uow = uow
         self._inner = inner
 
-    async def run(self, document: Document) -> StepResult | DeferredResult:
+    async def run(self, document: Document) -> NodeResult | DeferredResult:
         if document.channel is not Channel.MIGRATION:
             return await self._inner.run(document)
         async with self._uow() as uow:
@@ -31,7 +32,7 @@ class _ImportedStep:
             (
                 entry.result.output[IMPORTED]
                 for entry in entries
-                if entry.step is Step.RECEIVE and IMPORTED in entry.result.output
+                if entry.node is Node.RECEIVE and IMPORTED in entry.result.output
             ),
             None,
         )
@@ -40,33 +41,41 @@ class _ImportedStep:
         try:
             return self._apply(ImportedMetadata.from_json(stored, definitions))
         except ValidationError as error:
-            return StepResult(
+            return NodeResult(
                 outcome=Outcome.UNCERTAIN,
                 reason=f"the metadata of the source system no longer fits: {error}",
             )
 
-    def _apply(self, imported: ImportedMetadata) -> StepResult | DeferredResult:
+    def _apply(self, imported: ImportedMetadata) -> NodeResult | DeferredResult:
         raise NotImplementedError
 
 
-class ImportedClassifyStep(_ImportedStep):
+class ImportedSignal(_ImportedStep):
+    """Nothing to propose: the source system's metadata is applied as it is. The signal
+    abstains, as one without its service does."""
+
+    def _apply(self, imported: ImportedMetadata) -> NodeResult:
+        return abstained(REASON, model_version=IMPORTED)
+
+
+class ImportedJudgeNode(_ImportedStep):
     """Title, contact, document type, tags and document date from the source system."""
 
     def _apply(self, imported: ImportedMetadata) -> MetadataResult:
-        result = StepResult(
+        result = NodeResult(
             outcome=Outcome.OK,
             reason=REASON,
             model_version=IMPORTED,
             output={IMPORTED: imported.to_json()},
         )
-        return MetadataResult(result, imported.classification(), imported.tag_ids)
+        return MetadataResult(result, imported.classification(), imported.tag_ids, confirms=True)
 
 
-class ImportedExtractStep(_ImportedStep):
+class ImportedFieldsNode(_ImportedStep):
     """Field values from the source system."""
 
     def _apply(self, imported: ImportedMetadata) -> MetadataResult:
-        result = StepResult(
+        result = NodeResult(
             outcome=Outcome.OK,
             reason=REASON,
             model_version=IMPORTED,

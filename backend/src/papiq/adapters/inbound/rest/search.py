@@ -1,13 +1,13 @@
 """Search: `GET /documents/search` (words and meaning in one call) and `POST /search/reindex`."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Response
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
-from papiq.adapters.inbound.rest.documents import LaneFilter, document_filter
+from papiq.adapters.inbound.rest.documents import DocumentSort, LaneFilter, document_filter
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails
 from papiq.adapters.inbound.rest.schemas.search import (
@@ -31,7 +31,8 @@ router = APIRouter(tags=["search"], dependencies=PROTECTED)
         "document with `all_users` (others: 403). Each hit is checked "
         "against the permissions once more before it is returned. The index follows the "
         "documents a moment later, so a new document may take a few seconds to turn up. "
-        "Pages are by `offset`; at most 1000 hits can be reached."
+        "Pages are by `offset`; at most 1000 hits can be reached. `sort`: by relevance (the "
+        "default), or by a key as in `GET /documents`, relevance breaking ties."
     ),
     response_model=SearchResultPage,
     responses=problem_responses(401, 403, 422, 503),
@@ -45,6 +46,10 @@ async def search_documents(
     tag_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
     drawer_id: UUID | None = None,
     lane: Annotated[list[LaneFilter] | None, Query(max_length=4)] = None,
+    field_id: UUID | None = None,
+    sort: Annotated[
+        DocumentSort | Literal["relevance"], Query(description="`relevance` or a key.")
+    ] = "relevance",
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 20,
     offset: Annotated[int, Query(ge=0, le=MAX_HITS)] = 0,
     semantic_ratio: Annotated[
@@ -65,10 +70,11 @@ async def search_documents(
     page = await context.search.search(
         user,
         q,
-        document_filter(contact_id, document_type_id, tag_id, drawer_id, lane),
+        document_filter(contact_id, document_type_id, tag_id, drawer_id, lane, field_id),
         offset=offset,
         limit=limit,
         semantic_ratio=semantic_ratio,
+        order=None if sort == "relevance" else sort.order,
         all_users=all_users,
     )
     return SearchResultPage(

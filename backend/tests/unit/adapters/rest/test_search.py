@@ -10,7 +10,7 @@ from papiq.adapters.inbound.rest import PREFIX
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import SearchUnavailableError
 from papiq.core.domain.ids import DocumentId
-from papiq.core.domain.pipeline import Step
+from papiq.core.domain.pipeline import Node
 from tests.api import auth
 from tests.unit.adapters.rest.conftest import Api
 from tests.unit.adapters.rest.test_permission_matrix import ACTORS, DENIED, Scene, build_scene
@@ -91,7 +91,7 @@ async def test_a_withdrawn_share_ends_the_search_at_once(api: Api) -> None:
 async def test_a_lane_that_changed_before_the_index_heard_of_it(api: Api) -> None:
     scene = await indexed_scene(api)
     pipeline = api.services.pipeline
-    await pipeline.reprocess_from(scene.owner.id, DocumentId(UUID(scene.green)), Step.CLASSIFY)
+    await pipeline.reprocess_from(scene.owner.id, DocumentId(UUID(scene.green)), Node.JUDGE)
     assert await found(scene, "reader") == set()  # in processing again; the index says green
     assert await found(scene, "owner") >= {scene.green}
 
@@ -189,3 +189,21 @@ async def test_only_admins_rebuild_the_index(api: Api) -> None:
     assert await indexing.run_next_job()
     assert not await indexing.run_next_job()
     assert await found(scene, "owner") == {scene.green, scene.yellow, scene.processing}
+
+
+async def test_hits_by_relevance_or_sorted(api: Api) -> None:
+    scene = await indexed_scene(api)
+    by_title = await scene.api.client.get(
+        SEARCH, params={"q": "pdf", "sort": "title", "limit": 50}, headers=scene.headers["admin"]
+    )
+    assert by_title.status_code == 200, by_title.text
+    titles = [item["document"]["title"].casefold() for item in by_title.json()["items"]]
+    assert titles == sorted(titles)
+    relevance = await scene.api.client.get(
+        SEARCH, params={"q": "pdf", "sort": "relevance"}, headers=scene.headers["admin"]
+    )
+    assert relevance.status_code == 200
+    bad = await scene.api.client.get(
+        SEARCH, params={"q": "pdf", "sort": "size"}, headers=scene.headers["admin"]
+    )
+    assert bad.status_code == 422

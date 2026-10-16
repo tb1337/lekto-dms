@@ -15,7 +15,7 @@ from papiq.core.domain.identity import ApiToken, ExternalIdentity, Session
 from papiq.core.domain.ids import EventId, JobId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.master_data import Contact, MasterData
-from papiq.core.domain.pipeline import StepRun
+from papiq.core.domain.pipeline import NodeRun
 from papiq.core.domain.users import User
 from papiq.core.domain.validation import name_key
 
@@ -44,7 +44,11 @@ def _name_keys(item: MasterData) -> Iterable[Hashable]:
 
 
 def _contact_keys(contact: Contact) -> Iterable[Hashable]:
-    return [*_name_keys(contact), *(("alias", name_key(alias)) for alias in contact.aliases)]
+    return [
+        *_name_keys(contact),
+        *(("alias", name_key(alias)) for alias in contact.aliases),
+        *(("identifier", *item.key) for item in contact.identifiers),
+    ]
 
 
 def _field_keys(item: FieldDefinition) -> Iterable[Hashable]:
@@ -86,6 +90,8 @@ LOGIN_FAILURES = Table("login failures", _no_keys)
 RULES = Table("rule", _no_keys)
 RULE_VERSIONS = Table("rule version", _no_keys)
 RULE_APPLICATIONS = Table("rule application", _no_keys)
+DOCUMENT_IDENTIFIERS = Table("document identifiers", _no_keys)
+CLASSIFIER_MODELS = Table("classifier model", lambda model: [("number", model.number)])
 WEBHOOKS = Table("webhook", _no_keys)
 WEBHOOK_DELIVERIES = Table("webhook delivery", _no_keys)
 
@@ -112,7 +118,7 @@ class MemoryDatabase:
     """What has been committed. Rows are private copies; insertion order is creation order."""
 
     tables: dict[str, dict[UUID, Any]] = field(default_factory=dict)
-    processing_log: list[StepRun] = field(default_factory=list)
+    processing_log: list[NodeRun] = field(default_factory=list)
     outbox: list[DomainEvent] = field(default_factory=list)
     recorded_at: dict[EventId, datetime] = field(default_factory=dict)  # when committed
     purged: set[int] = field(default_factory=set)  # outbox positions removed by `purge`

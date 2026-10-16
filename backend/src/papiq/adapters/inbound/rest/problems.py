@@ -19,6 +19,7 @@ from papiq.adapters.inbound.problems import (
 from papiq.adapters.inbound.rest.upload import MalformedUploadError, UploadTooLargeError
 from papiq.core.domain.errors import (
     AuthenticationError,
+    ClassifierUnavailableError,
     ConflictError,
     DuplicateDocumentError,
     IdentityProviderError,
@@ -99,4 +100,5 @@ _STATUSES: list[tuple[type[Exception], int]] = [
     (UploadTooLargeError, 413),
     (MalformedUploadError, 400),
     (SearchError, 503),
+    (ClassifierUnavailableError, 503),
 ]

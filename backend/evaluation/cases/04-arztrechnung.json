@@ -1,5 +1,5 @@
 {
-  "description": "Private medical invoice; treatment date and invoice date differ.",
+  "description": "Private medical invoice; treatment date and invoice date differ. Trained, the similar documents (and the classifier) name a contact of the corpus for this new one: a contradiction, so yellow.",
   "expected": {
     "lane": "green",
     "contact": "Dr. med. Anna Beispiel",
@@ -15,6 +15,9 @@
       },
       "Rechnungsnummer": "2026/0042",
       "Fällig am": "2026-02-19"
+    },
+    "lanes": {
+      "trained": "yellow"
     }
   },
   "fake": {

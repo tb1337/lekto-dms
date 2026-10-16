@@ -1,23 +1,26 @@
 <script lang="ts">
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
-	import type { InputValue } from '#lib/fields.ts';
+	import { type InputValue, isMoney, isPeriod } from '#lib/fields.ts';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import PeriodInput from '#lib/components/PeriodInput.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
-	// The input for one field, by its data type. An empty field removes the value.
+	// The input for one field, by its data type; the caller labels it (`id`). An empty field
+	// removes the value.
 	let {
 		field,
 		value = $bindable(),
 		error,
-		id
+		id,
+		disabled = false
 	}: {
 		field: FieldDefinition;
-		// A review holds lists too (tags); a field never gets one.
-		value: InputValue | string[];
+		value: InputValue;
 		error?: string;
 		id: string;
+		disabled?: boolean;
 	} = $props();
 
 	const yesNo = $derived([
@@ -31,36 +34,50 @@
 	]);
 </script>
 
-<Field.Field>
-	<Field.Label for={id}>{field.name}</Field.Label>
-	{#if field.data_type === 'amount' && typeof value === 'object' && !Array.isArray(value)}
-		<div class="flex gap-2">
-			<Input
-				{id}
-				inputmode="decimal"
-				bind:value={value.amount}
-				aria-invalid={error ? true : undefined}
-				class="flex-1"
-			/>
-			<Input
-				bind:value={value.currency}
-				maxlength={3}
-				aria-label={m.field_currency()}
-				class="w-24 uppercase"
-			/>
-		</div>
-	{:else if field.data_type === 'boolean' && typeof value === 'string'}
-		<NativeSelect {id} bind:value options={yesNo} aria-invalid={error ? true : undefined} />
-	{:else if field.data_type === 'choice' && typeof value === 'string'}
-		<NativeSelect {id} bind:value options={choices} aria-invalid={error ? true : undefined} />
-	{:else if typeof value === 'string'}
+{#if field.data_type === 'amount' && isMoney(value)}
+	<div class="flex gap-2">
 		<Input
 			{id}
-			bind:value
-			type={field.data_type === 'date' ? 'date' : field.data_type === 'link' ? 'url' : 'text'}
-			inputmode={field.data_type === 'number' ? 'decimal' : undefined}
+			inputmode="decimal"
+			bind:value={value.amount}
+			{disabled}
 			aria-invalid={error ? true : undefined}
+			class="flex-1"
 		/>
-	{/if}
-	{#if error}<Field.Error>{error}</Field.Error>{/if}
-</Field.Field>
+		<Input
+			bind:value={value.currency}
+			maxlength={3}
+			{disabled}
+			aria-label={m.field_currency()}
+			class="w-24 uppercase"
+		/>
+	</div>
+{:else if field.data_type === 'period' && isPeriod(value)}
+	<PeriodInput bind:value {id} {disabled} invalid={Boolean(error)} />
+{:else if field.data_type === 'boolean' && typeof value === 'string'}
+	<NativeSelect
+		{id}
+		bind:value
+		{disabled}
+		options={yesNo}
+		aria-invalid={error ? true : undefined}
+	/>
+{:else if field.data_type === 'choice' && typeof value === 'string'}
+	<NativeSelect
+		{id}
+		bind:value
+		{disabled}
+		options={choices}
+		aria-invalid={error ? true : undefined}
+	/>
+{:else if typeof value === 'string'}
+	<Input
+		{id}
+		bind:value
+		{disabled}
+		type={field.data_type === 'date' ? 'date' : field.data_type === 'link' ? 'url' : 'text'}
+		inputmode={field.data_type === 'number' ? 'decimal' : undefined}
+		aria-invalid={error ? true : undefined}
+	/>
+{/if}
+{#if error}<Field.Error>{error}</Field.Error>{/if}

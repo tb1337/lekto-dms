@@ -457,17 +457,17 @@ async def test_the_rebuild_swaps_and_removes_the_old_index() -> None:
     build = await index.begin_rebuild()
     await build.add([index_document()])
     await build.finish()
-    steps = [
+    nodes = [
         (request.method, request.url.path)
         for request in sim.requests
         if request.url.path != "/tasks/1"
     ]
-    assert ("DELETE", "/indexes/papiq-test-rebuild") in steps
-    assert ("PUT", "/indexes/papiq-test-rebuild/documents") in steps
+    assert ("DELETE", "/indexes/papiq-test-rebuild") in nodes
+    assert ("PUT", "/indexes/papiq-test-rebuild/documents") in nodes
     swap = [request for request in sim.requests if request.url.path == "/swap-indexes"]
     assert sim.body(swap[0]) == [{"indexes": ["papiq-test", "papiq-test-rebuild"]}]
-    assert steps[-1] == ("DELETE", "/indexes/papiq-test-rebuild")
-    assert steps.index(("POST", "/swap-indexes")) < len(steps) - 1
+    assert nodes[-1] == ("DELETE", "/indexes/papiq-test-rebuild")
+    assert nodes.index(("POST", "/swap-indexes")) < len(nodes) - 1
 
 
 async def test_the_rebuild_goes_on_when_there_is_no_old_build_index() -> None:
@@ -516,7 +516,7 @@ def _query(**fields: Any) -> SearchQuery:
 
 
 def test_the_filter_for_a_user_without_drawers() -> None:
-    assert filter_expression(_query()) == f'(owner_id = "{uid(100)}")'
+    assert filter_expression(_query().visibility, _query().filter) == f'(owner_id = "{uid(100)}")'
 
 
 def test_the_filter_for_a_user_with_drawers_and_criteria() -> None:
@@ -532,7 +532,7 @@ def test_the_filter_for_a_user_with_drawers_and_criteria() -> None:
             lanes=frozenset({Lane.GREEN, None}),
         ),
     )
-    assert filter_expression(query) == (
+    assert filter_expression(query.visibility, query.filter) == (
         f'(owner_id = "{uid(100)}" OR (lane = "green" AND drawer_id IN '
         f'["{uid(1)}", "{uid(2)}"])) '
         f'AND contact_id = "{uid(3)}" AND document_type_id = "{uid(4)}" '
@@ -543,11 +543,20 @@ def test_the_filter_for_a_user_with_drawers_and_criteria() -> None:
 
 def test_the_filter_of_a_search_over_everything() -> None:
     everything = Visibility(UserId(uid(100)), frozenset(), everything=True)
-    assert filter_expression(SearchQuery(text="x", visibility=everything)) is None
+    assert filter_expression(everything, DocumentFilter()) is None
     query = SearchQuery(
         text="x", visibility=everything, filter=DocumentFilter(contact=ContactId(uid(3)))
     )
-    assert filter_expression(query) == f'contact_id = "{uid(3)}"'
+    assert filter_expression(query.visibility, query.filter) == f'contact_id = "{uid(3)}"'
+
+
+def test_the_filter_for_confirmed_documents() -> None:
+    """A document indexed before the attribute existed counts as not confirmed."""
+    everything = Visibility(UserId(uid(100)), frozenset(), everything=True)
+    assert filter_expression(everything, DocumentFilter(confirmed=True)) == "confirmed = true"
+    assert filter_expression(everything, DocumentFilter(confirmed=False)) == (
+        "NOT confirmed = true"
+    )
 
 
 def test_segments() -> None:

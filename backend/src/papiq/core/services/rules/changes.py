@@ -1,7 +1,7 @@
 """Rules with trigger `change`: when a person changes a document's metadata.
 
 - Only on documents whose processing is complete; while processing runs (or waits in the
-  inbox), the step `apply_rules` sees the change anyway.
+  inbox), the node `apply_rules` sees the change anyway.
 - Edge, not state: a rule acts only if it holds after the change and did not hold before. A
   title change does not apply every rule again, and a new rule does not act silently on old
   documents.
@@ -17,29 +17,30 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime
 
-from papiq.core.domain.classification import TAGS
+from papiq.core.domain.classification import TAGS, TITLE
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.ids import FieldId
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.pipeline import (
     RULES_CHANGE,
+    Node,
+    NodeResult,
+    NodeRun,
     Outcome,
     ProcessingStatus,
-    Step,
-    StepResult,
-    StepRun,
 )
 from papiq.core.domain.rule_engine import Mode, changed_fields
 from papiq.core.domain.rules import Rule, Trigger
 from papiq.core.domain.users import User
-from papiq.core.ports import ObjectStore, PatternMatcher, UnitOfWork
+from papiq.core.ports import ObjectStore, PatternMatcher, TemplateRenderer, UnitOfWork
 from papiq.core.services.rules.running import (
     Prepared,
     RuleRun,
     active_rules,
     apply_plan,
     checked_rules,
+    corrected_fields,
     drawer_choice,
     field_patterns,
     person_record,
@@ -56,12 +57,14 @@ class ChangeRules:
         self,
         store: ObjectStore,
         matcher: PatternMatcher,
+        templates: TemplateRenderer,
         *,
         max_text: int,
         pipeline_version: str,
     ) -> None:
         self._store = store
         self._matcher = matcher
+        self._templates = templates
         self._max_text = max_text
         self._version = pipeline_version
 
@@ -76,11 +79,11 @@ class ChangeRules:
         """Outside a transaction: the text and its patterns, if a rule needs them."""
         return await prepare(self._store, self._matcher, rules, document, max_text=self._max_text)
 
-    def drawer_chosen(self, document: Document, *, actor: User, now: datetime) -> StepRun:
+    def drawer_chosen(self, document: Document, *, actor: User, now: datetime) -> NodeRun:
         """The log entry of a person moving the document: rules leave the drawer then."""
         return drawer_choice(
             document,
-            step=Step.APPLY_RULES,
+            node=Node.APPLY_RULES,
             actor=actor.id,
             trigger="move",
             version=self._version,
@@ -105,7 +108,10 @@ class ChangeRules:
         evaluated."""
         changed = changed_fields(changes)
         record = person_record(
-            changed=changed, tags_before=before.tag_ids, tags_after=document.tag_ids
+            changed=changed,
+            tags_before=before.tag_ids,
+            tags_after=document.tag_ids,
+            corrected=corrected_fields(before, document),
         )
         input: dict[str, JsonValue] = {
             "trigger": Trigger.CHANGE.value,
@@ -128,6 +134,7 @@ class ChangeRules:
                     if name not in changed
                 },
                 model_tags=frozenset() if TAGS in changed else origin.model_tags,
+                machine_title=None if TITLE in changed else origin.machine_title,
                 tags_added=(origin.tags_added & document.tag_ids)
                 | (document.tag_ids - before.tag_ids),
                 tags_removed=(origin.tags_removed - document.tag_ids)
@@ -137,6 +144,7 @@ class ChangeRules:
             run = await run_rules(
                 uow,
                 self._matcher,
+                self._templates,
                 mode=Mode.CHANGE,
                 document=document,
                 owner=owner,
@@ -154,11 +162,11 @@ class ChangeRules:
                 output["problem"] = reason
         if log:
             await uow.processing_log.append(
-                StepRun(
+                NodeRun(
                     document_id=document.id,
-                    step=Step.APPLY_RULES,
+                    node=Node.APPLY_RULES,
                     run=document.processing.run,
-                    result=StepResult(
+                    result=NodeResult(
                         outcome=Outcome.OK, model_version=RULES_CHANGE, input=input, output=output
                     ),
                     pipeline_version=self._version,

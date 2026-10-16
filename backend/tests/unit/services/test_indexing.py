@@ -11,10 +11,13 @@ from papiq.adapters.outbound.memory import (
 )
 from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.errors import EmbeddingsError, PermissionDeniedError, SearchIndexError
+from papiq.core.domain.events import NodeCompleted, NodeDeferred, NodeStarted
 from papiq.core.domain.fields import FieldType
+from papiq.core.domain.ids import DocumentId, new_id
 from papiq.core.domain.jobs import JobStatus
-from papiq.core.domain.pipeline import Lane, Step
-from papiq.core.domain.search import IndexDocument
+from papiq.core.domain.periods import Period
+from papiq.core.domain.pipeline import Lane, Node, Outcome
+from papiq.core.domain.search import LAYOUT, IndexDocument
 from papiq.core.domain.users import Role
 from papiq.core.services.indexing import (
     INDEX_JOB,
@@ -23,7 +26,7 @@ from papiq.core.services.indexing import (
     IndexingPolicy,
     split_sections,
 )
-from tests.builders import UNCERTAIN, incoming, index_document
+from tests.builders import NOW, UNCERTAIN, incoming, index_document
 from tests.unit.services.conftest import Returns, World
 from tests.unit.services.search_support import (
     HOUR,
@@ -34,6 +37,8 @@ from tests.unit.services.search_support import (
     index_jobs,
     run_due,
 )
+
+OK = Outcome.OK
 
 
 @pytest.fixture
@@ -55,13 +60,30 @@ async def test_a_document_in_processing_is_indexed_for_its_owner(setup: Setup) -
     assert entry.filename == "a.pdf"
 
 
+async def test_starts_deferrals_and_signals_queue_no_index_job(setup: Setup) -> None:
+    document = DocumentId(new_id())
+    for event in (
+        NodeStarted(document_id=document, occurred_at=NOW, node=Node.OCR, run=1),
+        NodeDeferred(document_id=document, occurred_at=NOW, node=Node.OCR, run=1, retry_at=NOW),
+        NodeCompleted(
+            document_id=document, occurred_at=NOW, node=Node.SIGNAL_LLM, run=1, outcome=OK
+        ),
+    ):
+        await setup.indexing.on_event(event)
+    assert index_jobs(setup.world) == []
+    await setup.indexing.on_event(
+        NodeCompleted(document_id=document, occurred_at=NOW, node=Node.JUDGE, run=1, outcome=OK)
+    )
+    assert len(index_jobs(setup.world)) == 1
+
+
 async def test_the_lane_follows_the_pipeline(setup: Setup) -> None:
     owner = await setup.world.user()
     document = await setup.document(owner)
     assert (setup.entry(document.id).lane_value, document.lane) == ("green", Lane.GREEN)
 
-    await setup.world.pipeline().reprocess_from(owner.id, document.id, Step.CLASSIFY)
-    await setup.settle(pipeline_service=setup.world.pipeline({Step.CLASSIFY: Returns(UNCERTAIN)}))
+    await setup.world.pipeline().reprocess_from(owner.id, document.id, Node.JUDGE)
+    await setup.settle(pipeline_service=setup.world.pipeline({Node.JUDGE: Returns(UNCERTAIN)}))
     assert setup.entry(document.id).lane_value == "yellow"
 
 
@@ -96,6 +118,26 @@ async def test_metadata_reaches_the_index_with_names_and_ids(setup: Setup) -> No
     assert entry.fields == ("4711",)
     assert entry.document_date == date(2026, 9, 30)
     assert entry.version == (await setup.world.documents.get(owner.id, document.id)).version
+
+
+async def test_a_period_is_found_as_it_is_written(setup: Setup) -> None:
+    admin, owner = await setup.world.user(role=Role.ADMIN), await setup.world.user()
+    period = await setup.master_data.create_field(admin.id, "Bezugszeitraum", FieldType.PERIOD)
+    document = await setup.document(owner)
+    for value, words in (
+        (Period.month(2026, 9), "September 2026 09/2026 09.2026 2026-09"),
+        (Period.week(2026, 38), "KW 38 2026 2026-W38"),
+        (Period.quarter(2026, 3), "Q3 2026 2026-Q3"),
+        (Period.year(2025), "2025"),
+        (Period.day(date(2026, 9, 15)), "2026-09-15 15.09.2026"),
+    ):
+        await setup.world.documents.update_metadata(
+            owner.id, document.id, DocumentChanges(fields={period.id: value})
+        )
+        await setup.settle()
+        (text,) = setup.entry(document.id).fields
+        assert words in text
+        assert f"{value.start.isoformat()} {value.start:%d.%m.%Y}" in text
 
 
 async def test_a_deleted_document_leaves_the_index(setup: Setup) -> None:
@@ -211,7 +253,7 @@ async def test_a_failing_embedding_service_is_waited_for(world: World) -> None:
     await setup.put_text(received.id, "Text")
     await setup.bus.dispatch()
     indexing = setup.indexing
-    assert await run_due(indexing) == 2  # the events `received` and `step_completed`
+    assert await run_due(indexing) == 2  # the events `received` and `node_completed`
     assert setup.entry(received.id).vectors == ()  # found by its words, the vectors follow
     jobs = index_jobs(world)
     assert [job.status for job in jobs] == [JobStatus.QUEUED] * 2
@@ -378,6 +420,16 @@ async def test_the_reconciliation_notices_vectors_of_another_model(world: World)
     await second.settle(pipeline=False)
     assert (await first.index.state(document.id)).embedding.model == "new"  # type: ignore[union-attr]
     assert (await second.indexing.reconcile()).queued == 0
+
+
+async def test_the_reconciliation_writes_entries_of_an_older_layout_anew(setup: Setup) -> None:
+    owner = await setup.world.user()
+    document = await setup.document(owner, "old layout")
+    setup.index.layouts[document.id] = LAYOUT - 1
+    assert (await setup.indexing.reconcile()).queued == 1
+    await setup.settle(pipeline=False)
+    assert setup.index.layouts[document.id] == LAYOUT
+    assert (await setup.indexing.reconcile()).queued == 0
 
 
 async def test_the_reconciliation_repeats_itself(setup: Setup) -> None:

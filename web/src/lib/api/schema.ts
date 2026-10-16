@@ -431,7 +431,10 @@ export interface paths {
 			path?: never;
 			cookie?: never;
 		};
-		/** List contacts */
+		/**
+		 * List contacts
+		 * @description Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach have it (a field: a value for it), counted in one query; admins count every document with `all_users` (others: 403).
+		 */
 		get: operations['list_contacts_api_v1_contacts_get'];
 		put?: never;
 		/**
@@ -470,6 +473,26 @@ export interface paths {
 		patch: operations['change_contact_api_v1_contacts__id__patch'];
 		trace?: never;
 	};
+	'/api/v1/contacts/{id}/identifiers': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Attach an identifier to a contact
+		 * @description Admins only. Enters one identifier by hand (as found on a document, see `GET /documents/{id}/facts`); the contact's other identifiers stay as they are. One the contact learned or rejected is then entered by hand; one another contact learned or rejected moves here; 409 if another contact has it entered by hand. Documents use it from their next processing on.
+		 */
+		post: operations['attach_identifier_api_v1_contacts__id__identifiers_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/document-types': {
 		parameters: {
 			query?: never;
@@ -477,7 +500,10 @@ export interface paths {
 			path?: never;
 			cookie?: never;
 		};
-		/** List document types */
+		/**
+		 * List document types
+		 * @description Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach have it (a field: a value for it), counted in one query; admins count every document with `all_users` (others: 403).
+		 */
 		get: operations['list_document_types_api_v1_document_types_get'];
 		put?: never;
 		/**
@@ -516,6 +542,26 @@ export interface paths {
 		patch: operations['change_document_type_api_v1_document_types__id__patch'];
 		trace?: never;
 	};
+	'/api/v1/document-types/{id}/fields': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/**
+		 * Set the fields of a document type
+		 * @description Admins only. Exactly these fields belong to the type besides the global ones, each required or optional; in one transaction. A field taken off is no longer for the type: 409 while documents of the type have a value for it or the type's title pattern uses it; 422 for a field of no other type, or a global one. Returns the fields of the type, global ones aside.
+		 */
+		put: operations['assign_fields_api_v1_document_types__id__fields_put'];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/tags': {
 		parameters: {
 			query?: never;
@@ -523,7 +569,10 @@ export interface paths {
 			path?: never;
 			cookie?: never;
 		};
-		/** List tags */
+		/**
+		 * List tags
+		 * @description Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach have it (a field: a value for it), counted in one query; admins count every document with `all_users` (others: 403).
+		 */
 		get: operations['list_tags_api_v1_tags_get'];
 		put?: never;
 		/**
@@ -569,7 +618,10 @@ export interface paths {
 			path?: never;
 			cookie?: never;
 		};
-		/** List field definitions */
+		/**
+		 * List field definitions
+		 * @description Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach have it (a field: a value for it), counted in one query; admins count every document with `all_users` (others: 403).
+		 */
 		get: operations['list_fields_api_v1_fields_get'];
 		put?: never;
 		/**
@@ -603,7 +655,7 @@ export interface paths {
 		head?: never;
 		/**
 		 * Change a field definition
-		 * @description Admins only. Name, choices and scope; the data type stays. Values documents use are never changed: removing a used choice or narrowing the scope past documents with values is a conflict (409).
+		 * @description Admins only. Name, description, choices and scope; the data type stays. Values documents use are never changed: removing a used choice or narrowing the scope past documents with values is a conflict (409).
 		 */
 		patch: operations['change_field_api_v1_fields__id__patch'];
 		trace?: never;
@@ -837,6 +889,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/templates/preview': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Check a template and render it with a document
+		 * @description For the editors of rules and title patterns: whether a template is valid and which values it uses, and, with a document the caller may read, what it gives for it as the document is now (or which missing value stops it). Nothing is stored. A template the caller may not save is shown as such (`error`), not refused.
+		 */
+		post: operations['preview_template_api_v1_templates_preview_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/search': {
 		parameters: {
 			query?: never;
@@ -846,7 +918,7 @@ export interface paths {
 		};
 		/**
 		 * Search documents
-		 * @description Full text and, if the installation has embeddings, meaning in one call. Finds the documents within the caller's reach, the same ones as `GET /documents` lists, with the same filters (they combine; `tag_id` and `lane` may repeat); admins search every document with `all_users` (others: 403). Each hit is checked against the permissions once more before it is returned. The index follows the documents a moment later, so a new document may take a few seconds to turn up. Pages are by `offset`; at most 1000 hits can be reached.
+		 * @description Full text and, if the installation has embeddings, meaning in one call. Finds the documents within the caller's reach, the same ones as `GET /documents` lists, with the same filters (they combine; `tag_id` and `lane` may repeat); admins search every document with `all_users` (others: 403). Each hit is checked against the permissions once more before it is returned. The index follows the documents a moment later, so a new document may take a few seconds to turn up. Pages are by `offset`; at most 1000 hits can be reached. `sort`: by relevance (the default), or by a key as in `GET /documents`, relevance breaking ties.
 		 */
 		get: operations['search_documents_api_v1_documents_search_get'];
 		put?: never;
@@ -877,6 +949,46 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/classifier': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The classifier's status
+		 * @description Admins only. The latest model (trained from the documents a person confirmed or that were taken over with metadata) and the confirmations since. 503 without a classifier.
+		 */
+		get: operations['status_api_v1_classifier_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/classifier/train': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Train the classifier
+		 * @description Admins only. Trains a new model in the background (it also happens on its own after enough confirmations); one that is queued or running is not queued twice. 409 with fewer confirmed documents than the first model needs, 503 without a classifier.
+		 */
+		post: operations['train_api_v1_classifier_train_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents': {
 		parameters: {
 			query?: never;
@@ -886,7 +998,7 @@ export interface paths {
 		};
 		/**
 		 * List documents
-		 * @description The documents within the caller's reach, newest first: their own, and green documents in drawers they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id` and `lane` may repeat (all tags, any lane; `processing`: no lane yet). To search by words and meaning use `GET /documents/search`.
+		 * @description The documents within the caller's reach, newest first: their own, and green documents in drawers they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id` and `lane` may repeat (all tags, any lane; `processing`: no lane yet); `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. To search by words and meaning use `GET /documents/search`.
 		 */
 		get: operations['list_documents_api_v1_documents_get'];
 		put?: never;
@@ -1029,6 +1141,86 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/{id}/pages/{number}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The image of one page
+		 * @description Needs read access. Pages are numbered from 1 up to `page_count`; 404 while the page images do not exist (yet) or for a number the document does not have.
+		 */
+		get: operations['get_document_page_api_v1_documents__id__pages__number__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/{id}/text': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The recognised text of a document
+		 * @description Needs read access. The text read from the archive, plain text as it is set (the pages apart by a form feed on a line of its own; a document parsed before 0.2 has Markdown until it is read again), in pieces of at most 20000 characters; continue with `next_offset`. 409 while the document has no text yet (it is not parsed).
+		 */
+		get: operations['document_text_api_v1_documents__id__text_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/{id}/structure': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The parsed structure of a document
+		 * @description Needs read access. The structure of the text: `pages` with `number`, `width` and `height` (points), their `lines` with `text`, `box` and `words` (each with `text` and `box`); a box is `[x1, y1, x2, y2]` in fractions of the page as shown, from its top left. A document parsed before 0.2 has Docling's JSON until it is read again. Can be large. 409 while the document is not parsed.
+		 */
+		get: operations['document_structure_api_v1_documents__id__structure_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/{id}/exchanges/{node}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * What a node sent to the language model
+		 * @description The owner and admins, as the log. The messages, the answer and the usage report of every call of `node` to the language model, per processing run, oldest first; empty if it never asked one (also for runs from before the messages were kept). For `ocr`, the vision language model's calls, one per page; the page image stands in the message as a placeholder.
+		 */
+		get: operations['model_exchanges_api_v1_documents__id__exchanges__node__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/{id}/log': {
 		parameters: {
 			query?: never;
@@ -1038,7 +1230,7 @@ export interface paths {
 		};
 		/**
 		 * Processing log of a document
-		 * @description The owner and admins. Every execution of every step, oldest first.
+		 * @description The owner and admins. Every execution of every node, oldest first.
 		 */
 		get: operations['processing_log_api_v1_documents__id__log_get'];
 		put?: never;
@@ -1059,10 +1251,90 @@ export interface paths {
 		get?: never;
 		put?: never;
 		/**
-		 * Repeat the failed step
-		 * @description The owner and admins. Processing continues with the following steps.
+		 * Repeat the failed node
+		 * @description The owner and admins. Processing continues with the following nodes.
 		 */
 		post: operations['retry_api_v1_documents__id__retry_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/{id}/vision': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Read the document with the vision language model
+		 * @description The owner and admins. Sends every page as an image to the vision language model (`PAPIQ_VLM_*`, named in `GET /pipeline`) and processes the document again from `ocr`: the model's text becomes the archive's text layer and is checked like any other OCR. Only a person asks for it; the advice is in `GET /documents/{id}/reading`. 409 without a model, while processing runs, or past a failed node.
+		 */
+		post: operations['read_with_vision_api_v1_documents__id__vision_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/{id}/facts': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * What a document shows of its contact
+		 * @description Needs read access. The names of contacts and the identifiers (IBAN, VAT and customer numbers, mail domains) its text shows, each with where it stands (`spans`, characters of `GET /documents/{id}/text`), and the codes on its pages (QR, Data Matrix, Code 128, ...) with what they hold: a GiroCode read as its credit transfer. Found as the facts signal finds them now, so an identifier attached since counts at once. 409 while the document has no text yet.
+		 */
+		get: operations['document_facts_api_v1_documents__id__facts_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/{id}/files': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * A document's files and their metadata
+		 * @description Needs read access. When the document was added and last changed, its original's name and media type, and for the original and the archive (null while there is none) their size, SHA-256 and what they say about themselves: a PDF's version, PDF/A level, pages, document information and XMP; an image's format, size, resolution and EXIF. The files are read for it, so it takes a moment for large ones.
+		 */
+		get: operations['document_files_api_v1_documents__id__files_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/documents/{id}/reading': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * How the text of a document was read
+		 * @description The owner and admins, as the log. Whether the archive's text is the vision language model's, the words and unsure words of each page its latest OCR recognised, and whether reading it with the model is advised.
+		 */
+		get: operations['reading_api_v1_documents__id__reading_get'];
+		put?: never;
+		post?: never;
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -1079,8 +1351,8 @@ export interface paths {
 		get?: never;
 		put?: never;
 		/**
-		 * Process again from a step
-		 * @description The owner and admins. Discards the results from `from_step` on, e.g. after a model change. Not while processing runs, not past a failed step, and not from `file` while uncertain fields wait for confirmation.
+		 * Process again from a node
+		 * @description The owner and admins. Discards the results from `from_node` on, e.g. after a model change. Not while processing runs, not past a failed node, and not from `file` while uncertain fields wait for confirmation.
 		 */
 		post: operations['reprocess_api_v1_documents__id__reprocess_post'];
 		delete?: never;
@@ -1098,7 +1370,7 @@ export interface paths {
 		};
 		/**
 		 * What the model proposed for a document
-		 * @description The owner and admins. The open steps and fields, and the latest classification and field extraction by the model: each field as proposed, checked and applied.
+		 * @description The owner and admins. The open nodes and fields, and the latest classification and field extraction by the model: each field as proposed, checked and applied.
 		 */
 		get: operations['review_api_v1_documents__id__review_get'];
 		put?: never;
@@ -1120,7 +1392,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Confirm a document from the inbox
-		 * @description The owner and admins, for yellow and red documents that are not being processed. `drawer_id` must be a drawer the owner may write to; an admin chooses any drawer. Every open field of the steps before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `drawer`, `title` and `review` always have a value: confirming keeps it, `drawer_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the owner decided or changed as it is. From `extract_fields` on, the extracted fields replace the ones the document has.
+		 * @description The owner and admins, for yellow and red documents that are not being processed. `drawer_id` must be a drawer the owner may write to; an admin chooses any drawer. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `drawer`, `title` and `review` always have a value: confirming keeps it, `drawer_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the owner decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's).
 		 */
 		post: operations['confirm_api_v1_documents__id__confirm_post'];
 		delete?: never;
@@ -1138,11 +1410,51 @@ export interface paths {
 		};
 		/**
 		 * The caller's inbox
-		 * @description The caller's yellow and red documents, newest first, each with its open steps and fields; with `all_users` (admins, others: 403) those of every user. Confirm them with `POST /documents/{id}/confirm`, or repeat a failed step with `retry`.
+		 * @description The caller's yellow and red documents, newest first, each with its open nodes and fields; with `all_users` (admins, others: 403) those of every user. Confirm them with `POST /documents/{id}/confirm`, or repeat a failed node with `retry`.
 		 */
 		get: operations['list_inbox_api_v1_inbox_get'];
 		put?: never;
 		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/pipeline': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * The processing graph
+		 * @description The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Papiq; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured.
+		 */
+		get: operations['pipeline_api_v1_pipeline_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/pipeline/reparse': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Read the text of every document again
+		 * @description Admins only. After an update of the parser (0.2 reads the text as it is set instead of Docling's Markdown): the worker reads the text of every document again whose text was read in its current run and that is not being processed. Nodes, lane and metadata stay as they are; the processing log gets the new reading (`input.reparse`), the search index takes up the new text (with embeddings, one per document). Train the classifier afterwards (`POST /classifier/train`). A document queued already is not queued twice.
+		 */
+		post: operations['reparse_api_v1_pipeline_reparse_post'];
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -1158,7 +1470,7 @@ export interface paths {
 		};
 		/**
 		 * Progress of documents (server-sent events)
-		 * @description A stream of document events (`document.received`, `document.step_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream checks every 30 seconds that its session or token is still valid and ends otherwise.
+		 * @description A stream of document events (`document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`, `document.filed`, `document.updated`, `document.deleted`), only for documents the caller may read at that moment (`document.deleted`: could read when it was deleted); other users' documents are visible once green. Active admins also get `classifier.trained` (a new model, with its `number` and `examples`), unless the stream follows one document. Each event has the event type as `event`, the event id as `id`, and JSON as `data` (see `EventMessage`). Events are thin: fetch the document for its state. There is no replay; after reconnecting, fetch the current state. The stream checks every 30 seconds that its session or token is still valid and ends otherwise.
 		 */
 		get: operations['events_api_v1_events_get'];
 		put?: never;
@@ -1325,6 +1637,24 @@ export interface components {
 			totp_enabled: boolean;
 			/** Linked Accounts */
 			linked_accounts: components['schemas']['LinkOut'][];
+		};
+		/** AccuracyOut */
+		AccuracyOut: {
+			/**
+			 * Tested
+			 * @description Examples held out (a fifth) to measure the model.
+			 */
+			tested: number;
+			/**
+			 * Contact
+			 * @description Share of them whose contact it named first.
+			 */
+			contact: number | null;
+			/**
+			 * Document Type
+			 * @description Share whose type it named first.
+			 */
+			document_type: number | null;
 		};
 		/** AddTagsAction */
 		AddTagsAction: {
@@ -1505,11 +1835,194 @@ export interface components {
 			authorization_url: string;
 		};
 		/**
+		 * BoxOut
+		 * @description A rectangle on the page as shown (rotation applied), in fractions of its width and
+		 *     height from the top left corner.
+		 */
+		BoxOut: {
+			/** X */
+			x: number;
+			/** Y */
+			y: number;
+			/** Width */
+			width: number;
+			/** Height */
+			height: number;
+		};
+		/**
+		 * CandidateOut
+		 * @description A value the signals proposed for a field.
+		 */
+		CandidateOut: {
+			/**
+			 * Value
+			 * @description As the check's value (a contact, type or tag id); null for a name that does not exist yet.
+			 */
+			value: unknown;
+			/**
+			 * Label
+			 * @description The contact's, type's or tag's name, or the name read.
+			 */
+			label: string;
+			/** Sources */
+			sources: components['schemas']['CandidateSourceOut'][];
+			/**
+			 * Contradicted
+			 * @description A signal named another value against it.
+			 */
+			contradicted: boolean;
+		};
+		/**
+		 * CandidateSourceOut
+		 * @description What one signal says about a candidate.
+		 */
+		CandidateSourceOut: {
+			signal: components['schemas']['Signal'];
+			/**
+			 * Names
+			 * @description Sure enough to name the value: it counts for the judge's rule.
+			 */
+			names: boolean;
+			/**
+			 * Score
+			 * @description `signal_llm`: how well the name the model read matches the contact (the model gives no probability of its own); `signal_classifier`: the probability; `signal_neighbours`: the share of the similar documents that carry the value.
+			 */
+			score?: number | null;
+			/**
+			 * Threshold
+			 * @description The score from which the signal names a value (`signal_llm`: `PAPIQ_CONFIDENCE_THRESHOLD`; `signal_classifier`: `PAPIQ_CLASSIFIER_THRESHOLD`). The similar documents name a value by their votes instead.
+			 */
+			threshold?: number | null;
+			/**
+			 * Similarity
+			 * @description `signal_neighbours`: the highest similarity of the similar documents that carry the value, as the search index measures it.
+			 */
+			similarity?: number | null;
+			/**
+			 * Votes
+			 * @description `signal_neighbours`: similar documents that carry it.
+			 */
+			votes?: number | null;
+			/**
+			 * Found
+			 * @description `signal_neighbours`: similar documents found.
+			 */
+			found?: number | null;
+			/**
+			 * Quote
+			 * @description `signal_llm`: the quoted passage.
+			 */
+			quote?: string | null;
+			/**
+			 * Identifiers
+			 * @description `signal_facts`: kinds of the contact's identifiers found in the text.
+			 */
+			identifiers?: string[];
+			/**
+			 * Documents
+			 * @description `signal_neighbours`: the similar documents that carry the value.
+			 */
+			documents?: string[];
+			/**
+			 * Named In Text
+			 * @description `signal_facts`: the contact's name or an alias stands in the text.
+			 * @default false
+			 */
+			named_in_text: boolean;
+		};
+		/**
 		 * Channel
 		 * @description How a document came in (its intake channel). Further connectors (mail, folder) follow.
 		 * @enum {string}
 		 */
 		Channel: 'web' | 'api' | 'migration';
+		/** ClassesOut */
+		ClassesOut: {
+			/**
+			 * Contact
+			 * @description Contacts it can name.
+			 * @default 0
+			 */
+			contact: number;
+			/**
+			 * Document Type
+			 * @description Document types it can name.
+			 * @default 0
+			 */
+			document_type: number;
+			/**
+			 * Tags
+			 * @description Tags it can name.
+			 * @default 0
+			 */
+			tags: number;
+		};
+		/** ClassifierModelOut */
+		ClassifierModelOut: {
+			/**
+			 * Number
+			 * @description Counts the trainings: the first model is 1.
+			 */
+			number: number;
+			/**
+			 * Trained At
+			 * Format: date-time
+			 */
+			trained_at: string;
+			/**
+			 * Examples
+			 * @description Confirmed documents it learned from.
+			 */
+			examples: number;
+			/**
+			 * Examples Until
+			 * @description When the latest of them was confirmed; later confirmations count towards the next training.
+			 */
+			examples_until: string | null;
+			classes: components['schemas']['ClassesOut'];
+			/**
+			 * Learned Identifiers
+			 * @description Identifiers of contacts training learned from the same documents.
+			 */
+			learned_identifiers: number;
+			/** @description Measured from 50 examples on: trained on four fifths, tested on the rest. */
+			accuracy: components['schemas']['AccuracyOut'] | null;
+			/**
+			 * Method
+			 * @example scikit-learn 1.9.1 papiq-tfidf-logreg/1
+			 */
+			method: string | null;
+		};
+		/** ClassifierStatusOut */
+		ClassifierStatusOut: {
+			/** @description The latest model; null before any. */
+			model: components['schemas']['ClassifierModelOut'] | null;
+			/**
+			 * Confirmed
+			 * @description Documents a person confirmed (the training examples).
+			 */
+			confirmed: number;
+			/**
+			 * Since
+			 * @description Of them, confirmed after the latest model's examples.
+			 */
+			since: number;
+			/**
+			 * Min Examples
+			 * @description Confirmed documents the first model needs.
+			 */
+			min_examples: number;
+			/**
+			 * Retrain After
+			 * @description Confirmations after which it is trained again.
+			 */
+			retrain_after: number;
+			/**
+			 * Threshold
+			 * @description How sure a prediction must be to name its class.
+			 */
+			threshold: number;
+		};
 		/**
 		 * CodeIn
 		 * @example {
@@ -1524,6 +2037,54 @@ export interface components {
 			code: string;
 		};
 		/**
+		 * CodeOut
+		 * @description A code once for its format and text, however often the pages show it.
+		 */
+		CodeOut: {
+			/**
+			 * Format
+			 * @example QR Code
+			 * @example Code 128
+			 * @example Data Matrix
+			 */
+			format: string;
+			/**
+			 * Text
+			 * @description What it holds, as it holds it; someone else's text.
+			 */
+			text: string;
+			/**
+			 * Places
+			 * @description The pages it stands on, in order.
+			 */
+			places: components['schemas']['CodePlaceOut'][];
+			/** @description A GiroCode, read as its credit transfer. */
+			giro: components['schemas']['GiroCodeOut'] | null;
+			/** Identifiers */
+			identifiers: components['schemas']['IdentifierFoundOut'][];
+			/**
+			 * Fields
+			 * @description Amount fields of the document with the GiroCode's amount as their value.
+			 */
+			fields: string[];
+		};
+		/**
+		 * CodePlaceOut
+		 * @description Where a code stands on a page of the archive.
+		 */
+		CodePlaceOut: {
+			/**
+			 * Page
+			 * @description From 1.
+			 */
+			page: number;
+			/**
+			 * Boxes
+			 * @description One per copy of the code on the page.
+			 */
+			boxes: components['schemas']['BoxOut'][];
+		};
+		/**
 		 * ConditionField
 		 * @enum {string}
 		 */
@@ -1536,7 +2097,9 @@ export interface components {
 		 *     channel: `is`, `in`; text: `contains`, `matches` (regular expression); document_date and
 		 *     number, amount, date fields: `is`, `gt`, `lt`, `present`, `missing`; text and link
 		 *     fields: `is`, `in`, `contains`, `matches`, `present`, `missing`; choice: `is`, `in`,
-		 *     `present`, `missing`; boolean: `is`, `present`, `missing`.
+		 *     `present`, `missing`; boolean: `is`, `present`, `missing`; period fields: `is`,
+		 *     `overlaps` (shares a day with the given period), `gt` (starts after the date), `lt` (ends
+		 *     before the date), `present`, `missing`.
 		 * @example {
 		 *       "field": "contact",
 		 *       "op": "is",
@@ -1554,9 +2117,15 @@ export interface components {
 			op: components['schemas']['Operator'];
 			/**
 			 * Value
-			 * @description None for `present` and `missing`, a list for `in`, otherwise one value: an id, a channel, a text or pattern, a date `YYYY-MM-DD`, or a field value as in `fields` of a document.
+			 * @description None for `present` and `missing`, a list for `in`, otherwise one value: an id, a channel, a text or pattern, a date `YYYY-MM-DD` (also for `gt` and `lt` of a period field), or a field value as in `fields` of a document.
 			 */
-			value?: string | boolean | components['schemas']['MoneyValue'] | string[] | null;
+			value?:
+				| string
+				| boolean
+				| components['schemas']['MoneyValue']
+				| components['schemas']['PeriodValue']
+				| string[]
+				| null;
 			/**
 			 * Field Id
 			 * @description Only when `field` is `field`.
@@ -1589,10 +2158,10 @@ export interface components {
 			 */
 			accept_suggestions: boolean;
 			/**
-			 * @description `extract_fields` after correcting the document type, so the fields of the new type are extracted.
+			 * @description `fields` after correcting the document type, so the fields of the new type are read.
 			 * @default apply_rules
 			 */
-			resume_at: components['schemas']['ResumeStep'];
+			resume_at: components['schemas']['ResumeNode'];
 			/**
 			 * Drawer Id
 			 * @description Move the document into this drawer (one the owner may write to); decides the rules' open field `drawer`. Default: it stays where it is.
@@ -1622,6 +2191,11 @@ export interface components {
 			 *     ]
 			 */
 			aliases?: string[];
+			/**
+			 * Identifiers
+			 * @description Values the contact's documents carry: IBAN, VAT number, customer (or contract) number, the personnel number at an employer (without leading zeros), the domain of its e-mail and web addresses. Unique across contacts; found in a document, they are evidence for the contact. The identifiers entered by hand: a learned one given here becomes one entered by hand.
+			 */
+			identifiers?: components['schemas']['IdentifierIn'][];
 		};
 		/** ContactOut */
 		ContactOut: {
@@ -1641,16 +2215,28 @@ export interface components {
 			 */
 			created_at: string;
 			/**
+			 * Document Count
+			 * @description With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) have it; for a field, a value for it.
+			 */
+			document_count?: number | null;
+			/**
 			 * Aliases
 			 * @example [
 			 *       "ACME Strom"
 			 *     ]
 			 */
 			aliases: string[];
+			/**
+			 * Identifiers
+			 * @description Entered, learned and rejected identifiers, in this order.
+			 */
+			identifiers: components['schemas']['IdentifierOut'][];
 		};
 		/**
 		 * ContactPatch
-		 * @description Fields left out stay; `aliases` replaces all aliases.
+		 * @description Fields left out stay; `aliases` replaces all aliases, `identifiers` those entered by
+		 *     hand and `rejected_identifiers` the rejected ones. A value another contact learned or
+		 *     rejected moves here; one another contact entered by hand is a conflict (409).
 		 * @example {
 		 *       "aliases": [
 		 *         "ACME Strom"
@@ -1662,6 +2248,10 @@ export interface components {
 			name?: string | null;
 			/** Aliases */
 			aliases?: string[] | null;
+			/** Identifiers */
+			identifiers?: components['schemas']['IdentifierIn'][] | null;
+			/** Rejected Identifiers */
+			rejected_identifiers?: components['schemas']['IdentifierIn'][] | null;
 		};
 		/** DeliveryOut */
 		DeliveryOut: {
@@ -1750,13 +2340,27 @@ export interface components {
 		 *       "media_type": "application/pdf",
 		 *       "original_filename": "scan_0042.pdf",
 		 *       "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "page_count": 2,
 		 *       "processing": {
-		 *         "outcomes": {
-		 *           "classify": "ok",
-		 *           "ocr": "ok"
-		 *         },
+		 *         "nodes": [
+		 *           {
+		 *             "finished_at": "2026-04-02T08:15:00Z",
+		 *             "node": "receive",
+		 *             "outcome": "ok",
+		 *             "started_at": "2026-04-02T08:15:00Z",
+		 *             "status": "done"
+		 *           },
+		 *           {
+		 *             "finished_at": "2026-04-02T08:15:40Z",
+		 *             "node": "ocr",
+		 *             "outcome": "ok",
+		 *             "started_at": "2026-04-02T08:15:01Z",
+		 *             "status": "done"
+		 *           }
+		 *         ],
 		 *         "run": 1,
-		 *         "status": "completed"
+		 *         "status": "completed",
+		 *         "vision": false
 		 *       },
 		 *       "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
 		 *       "tag_ids": [],
@@ -1812,10 +2416,24 @@ export interface components {
 			 * @description Values by field id.
 			 */
 			fields: {
-				[key: string]: string | boolean | components['schemas']['MoneyValue'];
+				[key: string]:
+					| string
+					| boolean
+					| components['schemas']['MoneyValue']
+					| components['schemas']['PeriodValue'];
 			};
 			/** @description None while processing runs. */
 			lane: components['schemas']['Lane'] | null;
+			/**
+			 * Page Count
+			 * @description Pages of the document, once its page images are rendered (`pages` node).
+			 */
+			page_count: number | null;
+			/**
+			 * Confirmed At
+			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, tags, date or fields), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
+			 */
+			confirmed_at: string | null;
 			processing: components['schemas']['Processing'];
 			/**
 			 * Created At
@@ -1854,13 +2472,27 @@ export interface components {
 		 *       "media_type": "application/pdf",
 		 *       "original_filename": "scan_0042.pdf",
 		 *       "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "page_count": 2,
 		 *       "processing": {
-		 *         "outcomes": {
-		 *           "classify": "ok",
-		 *           "ocr": "ok"
-		 *         },
+		 *         "nodes": [
+		 *           {
+		 *             "finished_at": "2026-04-02T08:15:00Z",
+		 *             "node": "receive",
+		 *             "outcome": "ok",
+		 *             "started_at": "2026-04-02T08:15:00Z",
+		 *             "status": "done"
+		 *           },
+		 *           {
+		 *             "finished_at": "2026-04-02T08:15:40Z",
+		 *             "node": "ocr",
+		 *             "outcome": "ok",
+		 *             "started_at": "2026-04-02T08:15:01Z",
+		 *             "status": "done"
+		 *           }
+		 *         ],
 		 *         "run": 1,
-		 *         "status": "completed"
+		 *         "status": "completed",
+		 *         "vision": false
 		 *       },
 		 *       "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
 		 *       "tag_ids": [],
@@ -1916,10 +2548,24 @@ export interface components {
 			 * @description Values by field id.
 			 */
 			fields: {
-				[key: string]: string | boolean | components['schemas']['MoneyValue'];
+				[key: string]:
+					| string
+					| boolean
+					| components['schemas']['MoneyValue']
+					| components['schemas']['PeriodValue'];
 			};
 			/** @description None while processing runs. */
 			lane: components['schemas']['Lane'] | null;
+			/**
+			 * Page Count
+			 * @description Pages of the document, once its page images are rendered (`pages` node).
+			 */
+			page_count: number | null;
+			/**
+			 * Confirmed At
+			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, tags, date or fields), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
+			 */
+			confirmed_at: string | null;
 			processing: components['schemas']['Processing'];
 			/**
 			 * Created At
@@ -1931,6 +2577,53 @@ export interface components {
 			 * Format: date-time
 			 */
 			updated_at: string;
+		};
+		/**
+		 * DocumentFilesOut
+		 * @example {
+		 *       "added": "2026-07-03T08:40:36Z",
+		 *       "media_type": "application/pdf",
+		 *       "modified": "2026-07-07T10:12:00Z",
+		 *       "original": {
+		 *         "metadata": {
+		 *           "entries": [
+		 *             {
+		 *               "key": "Producer",
+		 *               "source": "info",
+		 *               "value": "Scanner 2.1"
+		 *             }
+		 *           ],
+		 *           "format": "PDF",
+		 *           "pages": 2,
+		 *           "pdf_version": "1.4"
+		 *         },
+		 *         "sha256": "60da47f43707a540e24deda1ab809e1e395af4a86351d5784b9158acaafffddc",
+		 *         "size": 10812334
+		 *       },
+		 *       "original_filename": "scan-2026-07-03.pdf",
+		 *       "page_count": 2
+		 *     }
+		 */
+		DocumentFilesOut: {
+			/**
+			 * Added
+			 * Format: date-time
+			 */
+			added: string;
+			/**
+			 * Modified
+			 * Format: date-time
+			 */
+			modified: string;
+			/** Original Filename */
+			original_filename: string;
+			/** Media Type */
+			media_type: string;
+			/** Page Count */
+			page_count: number | null;
+			original: components['schemas']['StoredFileOut'];
+			/** @description Null while there is none. */
+			archive: components['schemas']['StoredFileOut'] | null;
 		};
 		/**
 		 * DocumentOutOfReach
@@ -2017,6 +2710,31 @@ export interface components {
 			visibility: components['schemas']['VisibilityOut'] | null;
 		};
 		/**
+		 * DocumentSort
+		 * @description A key to sort by, descending with a `-` before it. Documents without a date come last
+		 *     either way.
+		 * @enum {string}
+		 */
+		DocumentSort:
+			'created_at' | '-created_at' | 'document_date' | '-document_date' | 'title' | '-title';
+		/**
+		 * DocumentTextOut
+		 * @description A piece of the text read from the archive; offsets and lengths count characters.
+		 */
+		DocumentTextOut: {
+			/** Text */
+			text: string;
+			/** Offset */
+			offset: number;
+			/** Total Length */
+			total_length: number;
+			/**
+			 * Next Offset
+			 * @description Where the next piece starts; null at the end.
+			 */
+			next_offset: number | null;
+		};
+		/**
 		 * DocumentTypeCreate
 		 * @example {
 		 *       "description": "Entgeltbescheinigung",
@@ -2031,6 +2749,8 @@ export interface components {
 			name: string;
 			/** Description */
 			description?: string | null;
+			/** Title Pattern */
+			title_pattern?: string | null;
 		};
 		/** DocumentTypeOut */
 		DocumentTypeOut: {
@@ -2050,14 +2770,25 @@ export interface components {
 			 */
 			created_at: string;
 			/**
+			 * Document Count
+			 * @description With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) have it; for a field, a value for it.
+			 */
+			document_count?: number | null;
+			/**
 			 * Description
 			 * @example Entgeltbescheinigung
 			 */
 			description: string | null;
+			/**
+			 * Title Pattern
+			 * @example Lohn {document_date:YYYY-MM}
+			 */
+			title_pattern: string | null;
 		};
 		/**
 		 * DocumentTypePatch
-		 * @description Fields left out stay; a `description` of null or empty removes it.
+		 * @description Fields left out stay; a `description` or `title_pattern` of null or empty removes
+		 *     it.
 		 * @example {
 		 *       "description": "Entgeltbescheinigung"
 		 *     }
@@ -2067,6 +2798,8 @@ export interface components {
 			name?: string | null;
 			/** Description */
 			description?: string | null;
+			/** Title Pattern */
+			title_pattern?: string | null;
 		};
 		/**
 		 * DrawerCreate
@@ -2119,6 +2852,89 @@ export interface components {
 			created_at: string;
 		};
 		/**
+		 * ExchangeNode
+		 * @enum {string}
+		 */
+		ExchangeNode: 'ocr' | 'signal_llm' | 'fields';
+		/**
+		 * FactsOut
+		 * @example {
+		 *       "codes": [],
+		 *       "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "identifiers": [
+		 *         {
+		 *           "in_code": false,
+		 *           "in_text": true,
+		 *           "kind": "customer_number",
+		 *           "other_contacts": 0,
+		 *           "spans": [
+		 *             {
+		 *               "end": 421,
+		 *               "start": 412
+		 *             }
+		 *           ],
+		 *           "value": "20047718"
+		 *         }
+		 *       ],
+		 *       "named": []
+		 *     }
+		 */
+		FactsOut: {
+			/**
+			 * Contact Id
+			 * @description The document's contact.
+			 */
+			contact_id: string | null;
+			/** Named */
+			named: components['schemas']['NamedContactOut'][];
+			/**
+			 * Identifiers
+			 * @description Those of contacts first, then those of none.
+			 */
+			identifiers: components['schemas']['FoundIdentifierOut'][];
+			/**
+			 * Codes
+			 * @description The codes on the pages; null while they are not read (`read-codes`).
+			 */
+			codes: components['schemas']['CodeOut'][] | null;
+		};
+		/**
+		 * FieldAssignmentIn
+		 * @description A field of a document type, from the type.
+		 */
+		FieldAssignmentIn: {
+			/**
+			 * Field Id
+			 * Format: uuid
+			 */
+			field_id: string;
+			/**
+			 * Required
+			 * @default false
+			 */
+			required: boolean;
+		};
+		/**
+		 * FieldAssignmentsIn
+		 * @description The fields of a document type, global ones aside.
+		 * @example {
+		 *       "fields": [
+		 *         {
+		 *           "field_id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b",
+		 *           "required": true
+		 *         },
+		 *         {
+		 *           "field_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
+		 *           "required": false
+		 *         }
+		 *       ]
+		 *     }
+		 */
+		FieldAssignmentsIn: {
+			/** Fields */
+			fields: components['schemas']['FieldAssignmentIn'][];
+		};
+		/**
 		 * FieldCheckOut
 		 * @description A field the model proposed, and its check.
 		 * @example {
@@ -2140,7 +2956,7 @@ export interface components {
 			outcome: components['schemas']['Outcome'];
 			/**
 			 * Confidence
-			 * @description 0 to 1, from checks against the text.
+			 * @description 0 to 1, the rule's summary, not a probability: 1 for a value the judge or the checks accept, at most 0.89 for an uncertain one. The measured values are in `candidates` (their `sources`).
 			 */
 			confidence: number;
 			/**
@@ -2173,15 +2989,31 @@ export interface components {
 			 * @description A contact or document type that does not exist; an admin can create it.
 			 */
 			new_name: string | null;
+			/**
+			 * Quote Shows Value
+			 * @description Whether the quote itself shows the proposed value (the contact's name, the date, the amount); false if it only leads to it (a customer number for the contact); null without a quote.
+			 */
+			quote_shows_value?: boolean | null;
+			/**
+			 * Locations
+			 * @description Where the quote stands in the archive PDF: at most a few places, in page order; empty if it was not found there or the check is older than this.
+			 */
+			locations?: components['schemas']['LocationOut'][];
+			/**
+			 * Candidates
+			 * @description Contact, document type and tags: the values the signals proposed, best first, with what each signal said; empty for other fields and older checks.
+			 */
+			candidates?: components['schemas']['CandidateOut'][];
 		};
 		/**
 		 * FieldCreate
 		 * @example {
 		 *       "data_type": "amount",
+		 *       "description": "Gesamtbrutto des Monats, nicht das Grundgehalt",
 		 *       "document_type_ids": [
 		 *         "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b"
 		 *       ],
-		 *       "name": "Amount"
+		 *       "name": "LA_Brutto"
 		 *     }
 		 */
 		FieldCreate: {
@@ -2201,6 +3033,19 @@ export interface components {
 			 * @description For `choice` only.
 			 */
 			choices?: string[];
+			/**
+			 * Required
+			 * @description A global field: whether extraction must find it in every document.
+			 * @default false
+			 */
+			required: boolean;
+			/**
+			 * Required Document Type Ids
+			 * @description A typed field: the document types (of its own) it is required for; for the others it is optional. Extraction must find a required field; an optional one may stay empty, but a value it gives must be shown by the text.
+			 */
+			required_document_type_ids?: string[];
+			/** Description */
+			description?: string | null;
 		};
 		/**
 		 * FieldOut
@@ -2208,8 +3053,12 @@ export interface components {
 		 *       "choices": [],
 		 *       "created_at": "2026-01-10T09:00:00Z",
 		 *       "data_type": "amount",
+		 *       "description": "Gesamtbrutto des Monats, nicht das Grundgehalt",
 		 *       "id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b",
-		 *       "name": "Amount"
+		 *       "key": "amount",
+		 *       "name": "Amount",
+		 *       "required": false,
+		 *       "required_document_type_ids": []
 		 *     }
 		 */
 		FieldOut: {
@@ -2220,20 +3069,43 @@ export interface components {
 			id: string;
 			/** Name */
 			name: string;
+			/**
+			 * Key
+			 * @description The field in templates of rules and title patterns: `field.<key>`, from the name (lower case, umlauts as ae/oe/ue, anything else `_`)
+			 */
+			key: string;
 			data_type: components['schemas']['FieldType'];
 			/** Document Type Ids */
 			document_type_ids: string[] | null;
 			/** Choices */
 			choices: string[];
 			/**
+			 * Required
+			 * @description A global field: whether extraction must find it in every document.
+			 */
+			required: boolean;
+			/**
+			 * Required Document Type Ids
+			 * @description A typed field: the document types (of its own) it is required for; for the others it is optional. Extraction must find a required field; an optional one may stay empty, but a value it gives must be shown by the text.
+			 */
+			required_document_type_ids: string[];
+			/** Description */
+			description: string | null;
+			/**
 			 * Created At
 			 * Format: date-time
 			 */
 			created_at: string;
+			/**
+			 * Document Count
+			 * @description With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) have it; for a field, a value for it.
+			 */
+			document_count?: number | null;
 		};
 		/**
 		 * FieldPatch
-		 * @description Fields left out stay. The data type cannot change.
+		 * @description Fields left out stay; a `description` of null or empty removes it. The data type
+		 *     cannot change.
 		 * @example {
 		 *       "choices": [
 		 *         "Card",
@@ -2253,15 +3125,63 @@ export interface components {
 			choices?: string[] | null;
 			/**
 			 * Document Type Ids
-			 * @description null: global. Narrowing is a conflict (409) while documents outside the new scope have values.
+			 * @description null: global. Narrowing is a conflict (409) while documents outside the new scope have values; the types it is required for narrow with it.
 			 */
 			document_type_ids?: string[] | null;
+			/** Required */
+			required?: boolean | null;
+			/** Required Document Type Ids */
+			required_document_type_ids?: string[] | null;
+			/** Description */
+			description?: string | null;
 		};
 		/**
 		 * FieldType
 		 * @enum {string}
 		 */
-		FieldType: 'text' | 'number' | 'amount' | 'date' | 'boolean' | 'choice' | 'link';
+		FieldType: 'text' | 'number' | 'amount' | 'date' | 'boolean' | 'choice' | 'link' | 'period';
+		/** FileMetadataOut */
+		FileMetadataOut: {
+			/**
+			 * Format
+			 * @example PDF
+			 * @example JPEG
+			 */
+			format: string;
+			/**
+			 * Pdf Version
+			 * @example 1.7
+			 */
+			pdf_version: string | null;
+			/**
+			 * Pdfa
+			 * @description PDF/A part and conformance.
+			 * @example 2B
+			 */
+			pdfa: string | null;
+			/** Pages */
+			pages: number | null;
+			/**
+			 * Width
+			 * @description An image's width in pixels.
+			 */
+			width: number | null;
+			/**
+			 * Height
+			 * @description An image's height in pixels.
+			 */
+			height: number | null;
+			/**
+			 * Dpi
+			 * @description An image's resolution.
+			 */
+			dpi: number | null;
+			/**
+			 * Entries
+			 * @description In the file's order.
+			 */
+			entries: components['schemas']['MetadataEntryOut'][];
+		};
 		/** ForceReviewAction */
 		ForceReviewAction: {
 			/**
@@ -2271,9 +3191,68 @@ export interface components {
 			type: 'force_review';
 			/**
 			 * Reason
-			 * @example check the contract term
+			 * @description A template, as a title's; the review holds where it cannot be rendered.
+			 * @example check the contract term of {{ contact }}
 			 */
 			reason: string;
+		};
+		/** FoundIdentifierOut */
+		FoundIdentifierOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @description Normalised, as a contact keeps it.
+			 */
+			value: string;
+			/**
+			 * Contact Id
+			 * @description The contact it is an identifier of (entered or learned); null if none.
+			 */
+			contact_id: string | null;
+			/** In Text */
+			in_text: boolean;
+			/**
+			 * In Code
+			 * @description A code on the pages holds it.
+			 */
+			in_code: boolean;
+			/**
+			 * Spans
+			 * @description Where it stands in the text.
+			 */
+			spans: components['schemas']['SpanOut'][];
+			/**
+			 * Other Contacts
+			 * @description For admins: on the confirmed documents of how many contacts other than the document's it stands (the IBAN of one's own account stands on many); null for others.
+			 */
+			other_contacts: number | null;
+		};
+		/**
+		 * GiroCodeOut
+		 * @description The credit transfer of a GiroCode (EPC QR code).
+		 */
+		GiroCodeOut: {
+			/**
+			 * Name
+			 * @description The payee.
+			 */
+			name: string;
+			/** Iban */
+			iban: string;
+			/** Bic */
+			bic: string | null;
+			amount: components['schemas']['MoneyValue'] | null;
+			/** Purpose */
+			purpose: string | null;
+		};
+		/** GraphNodeOut */
+		GraphNodeOut: {
+			node: components['schemas']['Node'];
+			/**
+			 * Requires
+			 * @description The nodes whose results this node needs.
+			 */
+			requires: components['schemas']['Node'][];
 		};
 		/** Health */
 		Health: {
@@ -2294,11 +3273,55 @@ export interface components {
 				[key: string]: 'ok' | 'failed';
 			};
 		};
+		/** IdentifierFoundOut */
+		IdentifierFoundOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/** Value */
+			value: string;
+		};
+		/**
+		 * IdentifierIn
+		 * @description Written as in documents; papiq stores it normalised (an IBAN without spaces, a domain
+		 *     without `www.`).
+		 * @example {
+		 *       "kind": "customer_number",
+		 *       "value": "2004-7718"
+		 *     }
+		 */
+		IdentifierIn: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @example DE89 3704 0044 0532 0130 00
+			 */
+			value: string;
+		};
+		/**
+		 * IdentifierKind
+		 * @enum {string}
+		 */
+		IdentifierKind: 'iban' | 'vat_id' | 'customer_number' | 'personnel_number' | 'email_domain';
+		/** IdentifierOut */
+		IdentifierOut: {
+			kind: components['schemas']['IdentifierKind'];
+			/**
+			 * Value
+			 * @example DE89370400440532013000
+			 */
+			value: string;
+			/** @description `manual`: entered by an admin; `learned`: found by training in confirmed documents of only this contact; `rejected`: learned, then rejected by an admin (does not count, and training does not learn it again). */
+			source: components['schemas']['IdentifierSource'];
+		};
+		/**
+		 * IdentifierSource
+		 * @enum {string}
+		 */
+		IdentifierSource: 'manual' | 'learned' | 'rejected';
 		/** InboxItemOut */
 		InboxItemOut: {
 			document: components['schemas']['DocumentDetails'];
 			/** Open */
-			open: components['schemas']['OpenStepOut'][];
+			open: components['schemas']['OpenNodeOut'][];
 		};
 		/** InboxPage */
 		InboxPage: {
@@ -2339,17 +3362,36 @@ export interface components {
 			created_at: string;
 		};
 		/**
+		 * LocationOut
+		 * @description Where a quote stands in the archive PDF.
+		 */
+		LocationOut: {
+			/**
+			 * Page
+			 * @description From 1.
+			 */
+			page: number;
+			/**
+			 * Boxes
+			 * @description One per line the quote covers.
+			 */
+			boxes: components['schemas']['BoxOut'][];
+		};
+		/**
 		 * LogEntry
-		 * @description One execution of one step.
+		 * @description One execution of one node.
 		 */
 		LogEntry: {
-			step: components['schemas']['Step'];
+			node: components['schemas']['Node'];
 			/** Run */
 			run: number;
 			outcome: components['schemas']['Outcome'];
 			/** Reason */
 			reason: string | null;
-			/** Confidence */
+			/**
+			 * Confidence
+			 * @description The judge's and the fields node's summary of their checks, not a probability: the lowest of their fields' (`FieldCheckOut.confidence`).
+			 */
 			confidence: number | null;
 			/**
 			 * Model Version
@@ -2427,6 +3469,11 @@ export interface components {
 			 * Format: date-time
 			 */
 			created_at: string;
+			/**
+			 * Document Count
+			 * @description With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) have it; for a field, a value for it.
+			 */
+			document_count?: number | null;
 		};
 		/**
 		 * Me
@@ -2467,6 +3514,59 @@ export interface components {
 			totp_enabled: boolean;
 			/** Linked Accounts */
 			linked_accounts: components['schemas']['LinkOut'][];
+		};
+		/** MetadataEntryOut */
+		MetadataEntryOut: {
+			/** @description `info`: a PDF's document information; `xmp`: its XMP packet (`prefix:name`); `exif`: an image's EXIF tags. */
+			source: components['schemas']['MetadataSource'];
+			/**
+			 * Key
+			 * @example xmp:CreatorTool
+			 */
+			key: string;
+			/**
+			 * Value
+			 * @description As the file holds it; someone else's text.
+			 */
+			value: string;
+		};
+		/**
+		 * MetadataSource
+		 * @enum {string}
+		 */
+		MetadataSource: 'info' | 'xmp' | 'exif';
+		/**
+		 * ModelCallOut
+		 * @description One request to the language model and its answer.
+		 */
+		ModelCallOut: {
+			/**
+			 * System
+			 * @description The system message.
+			 */
+			system: string;
+			/**
+			 * User
+			 * @description The user message, with the document's text.
+			 */
+			user: string;
+			/**
+			 * Answer
+			 * @description The model's text as it came.
+			 */
+			answer: string;
+			/**
+			 * Model
+			 * @example qwen3:8b
+			 */
+			model: string;
+			/**
+			 * Usage
+			 * @description The endpoint's usage report as it sent it: `prompt_tokens`, `completion_tokens`, with some endpoints (Ollama through OpenWebUI) durations and speeds; empty if none.
+			 */
+			usage: {
+				[key: string]: unknown;
+			};
 		};
 		/** MoneyValue */
 		MoneyValue: {
@@ -2509,6 +3609,97 @@ export interface components {
 			 */
 			name: string;
 		};
+		/** NamedContactOut */
+		NamedContactOut: {
+			/**
+			 * Contact Id
+			 * Format: uuid
+			 */
+			contact_id: string;
+			/**
+			 * Name
+			 * @description The contact's name or alias that stands there.
+			 */
+			name: string;
+			/** Alias */
+			alias: boolean;
+			/** In Text */
+			in_text: boolean;
+			/**
+			 * In Code
+			 * @description The payee of a GiroCode on the pages.
+			 */
+			in_code: boolean;
+			/**
+			 * Spans
+			 * @description Where it stands in the text.
+			 */
+			spans: components['schemas']['SpanOut'][];
+		};
+		/**
+		 * Node
+		 * @description The nodes of the ingest graph, in a topological order: every node comes after the nodes
+		 *     it needs (`GRAPH`). Nodes that do not need each other run side by side.
+		 *
+		 *     The signals each propose metadata from one source: the language model, the trained
+		 *     classifier, similar confirmed documents, facts in the text (names, identifiers). `judge`
+		 *     decides from all of them, `fields` reads the fields of the decided type.
+		 * @enum {string}
+		 */
+		Node:
+			| 'receive'
+			| 'ocr'
+			| 'pages'
+			| 'parse'
+			| 'signal_llm'
+			| 'signal_classifier'
+			| 'signal_neighbours'
+			| 'signal_facts'
+			| 'judge'
+			| 'fields'
+			| 'apply_rules'
+			| 'file';
+		/**
+		 * NodeReviewOut
+		 * @description The latest run of classification or field extraction by the model.
+		 */
+		NodeReviewOut: {
+			node: components['schemas']['Node'];
+			/** Run */
+			run: number;
+			outcome: components['schemas']['Outcome'];
+			/** Reason */
+			reason: string | null;
+			/**
+			 * Model Version
+			 * @example qwen3:8b
+			 */
+			model_version: string | null;
+			/**
+			 * Truncated
+			 * @description Whether a part of the text was left out.
+			 */
+			truncated: boolean | null;
+			/** Fields */
+			fields: components['schemas']['FieldCheckOut'][];
+		};
+		/** NodeStateOut */
+		NodeStateOut: {
+			node: components['schemas']['Node'];
+			/** @description `waiting`: not run yet (it runs once the nodes it needs are done); `running`: a worker is at it; `done`: has an outcome; `skipped`: left out in this run. */
+			status: components['schemas']['NodeStatus'];
+			/** @description Set once the node is done. */
+			outcome: components['schemas']['Outcome'] | null;
+			/** Started At */
+			started_at: string | null;
+			/** Finished At */
+			finished_at: string | null;
+		};
+		/**
+		 * NodeStatus
+		 * @enum {string}
+		 */
+		NodeStatus: 'waiting' | 'running' | 'done' | 'skipped';
 		/** OidcInfo */
 		OidcInfo: {
 			/** Enabled */
@@ -2520,11 +3711,11 @@ export interface components {
 			display_name: string | null;
 		};
 		/**
-		 * OpenStepOut
-		 * @description A step that was uncertain or failed, with the fields left to decide.
+		 * OpenNodeOut
+		 * @description A node that was uncertain or failed, with the fields left to decide.
 		 */
-		OpenStepOut: {
-			step: components['schemas']['Step'];
+		OpenNodeOut: {
+			node: components['schemas']['Node'];
 			outcome: components['schemas']['Outcome'];
 			/** Reason */
 			reason: string | null;
@@ -2538,12 +3729,36 @@ export interface components {
 		 * Operator
 		 * @enum {string}
 		 */
-		Operator: 'is' | 'in' | 'contains' | 'matches' | 'gt' | 'lt' | 'present' | 'missing';
+		Operator:
+			'is' | 'in' | 'contains' | 'matches' | 'gt' | 'lt' | 'overlaps' | 'present' | 'missing';
 		/**
 		 * Outcome
 		 * @enum {string}
 		 */
 		Outcome: 'ok' | 'uncertain' | 'failed';
+		/** PageReadingOut */
+		PageReadingOut: {
+			/**
+			 * Page
+			 * @description From 1.
+			 */
+			page: number;
+			/**
+			 * Words
+			 * @description The words recognised on the page.
+			 */
+			words: number;
+			/**
+			 * Unsure
+			 * @description Of them, those the reader was unsure of: below 60 % of Tesseract's confidence, or what the vision language model could not read.
+			 */
+			unsure: number;
+			/**
+			 * Poor
+			 * @description The page counts as poorly read (`PAPIQ_POOR_READING_THRESHOLD`).
+			 */
+			poor: boolean;
+		};
 		/**
 		 * PasswordChange
 		 * @example {
@@ -2590,29 +3805,126 @@ export interface components {
 			 */
 			revoke_tokens: boolean;
 		};
+		/** PeriodValue */
+		PeriodValue: {
+			/**
+			 * Start
+			 * Format: date
+			 * @description First day, included.
+			 * @example 2026-09-01
+			 */
+			start: string;
+			/**
+			 * End
+			 * Format: date
+			 * @description Last day, included; a single day has start = end.
+			 * @example 2026-09-30
+			 */
+			end: string;
+		};
+		/**
+		 * PipelineOut
+		 * @example {
+		 *       "nodes": [
+		 *         {
+		 *           "node": "receive",
+		 *           "requires": []
+		 *         },
+		 *         {
+		 *           "node": "ocr",
+		 *           "requires": [
+		 *             "receive"
+		 *           ]
+		 *         },
+		 *         {
+		 *           "node": "pages",
+		 *           "requires": [
+		 *             "receive"
+		 *           ]
+		 *         },
+		 *         {
+		 *           "node": "parse",
+		 *           "requires": [
+		 *             "ocr"
+		 *           ]
+		 *         },
+		 *         {
+		 *           "node": "file",
+		 *           "requires": [
+		 *             "apply_rules",
+		 *             "pages"
+		 *           ]
+		 *         }
+		 *       ],
+		 *       "vision": {
+		 *         "endpoint": "chat.example",
+		 *         "model": "claude-sonnet-5-5"
+		 *       }
+		 *     }
+		 */
+		PipelineOut: {
+			/**
+			 * Nodes
+			 * @description In graph order: every node after its needs.
+			 */
+			nodes: components['schemas']['GraphNodeOut'][];
+			/** @description The vision language model a person can have documents read with (`POST /documents/{id}/vision`); none if it is not configured. */
+			vision: components['schemas']['VisionOut'] | null;
+		};
 		/** Processing */
 		Processing: {
-			/** @description `processing`: `current_step` is due; `review`: stopped before `current_step` until the uncertain fields are confirmed; `completed`; `failed` at `current_step`. */
+			/** @description `processing`: nodes are due or running; `review`: stopped before filing until the uncertain fields are confirmed; `completed`; `failed`: a node failed (nodes still running finish, nothing new starts). */
 			status: components['schemas']['ProcessingStatus'];
-			current_step: components['schemas']['Step'] | null;
 			/**
 			 * Run
 			 * @description Grows with every retry or reprocessing.
 			 */
 			run: number;
 			/**
-			 * Outcomes
-			 * @description Results of the current run.
+			 * Nodes
+			 * @description The state of every node of the graph in the current run, in graph order: every node after the nodes it needs.
 			 */
-			outcomes: {
-				[key: string]: components['schemas']['Outcome'];
-			};
+			nodes: components['schemas']['NodeStateOut'][];
+			/**
+			 * Vision
+			 * @description A person asked that this run read the pages with the vision language model (`POST /documents/{id}/vision`): the OCR node sends every page to it.
+			 */
+			vision: boolean;
 		};
 		/**
 		 * ProcessingStatus
 		 * @enum {string}
 		 */
 		ProcessingStatus: 'processing' | 'completed' | 'failed' | 'review';
+		/**
+		 * ReadingOut
+		 * @example {
+		 *       "advice": "poor_page",
+		 *       "pages": [
+		 *         {
+		 *           "page": 1,
+		 *           "poor": true,
+		 *           "unsure": 6,
+		 *           "words": 50
+		 *         }
+		 *       ],
+		 *       "vision": false
+		 *     }
+		 */
+		ReadingOut: {
+			/**
+			 * Vision
+			 * @description The archive's text was read by the vision language model.
+			 */
+			vision: boolean;
+			/**
+			 * Pages
+			 * @description Each page the reader recognised, by the archive's latest OCR; none for pages with text of their own, and for documents read before the readings were logged.
+			 */
+			pages: components['schemas']['PageReadingOut'][];
+			/** @description Why reading the document with the vision language model is advised, if it is: `no_text`, the OCR found no text (red); `poor_page`, it waits for a person and a page was read poorly. None once the model has read it. */
+			advice: components['schemas']['VisionAdvice'] | null;
+		};
 		/**
 		 * RecoveryCodes
 		 * @description Shown once; each works once instead of a TOTP code.
@@ -2641,33 +3953,52 @@ export interface components {
 			/** Removed */
 			removed: number;
 		};
+		/** ReparseOut */
+		ReparseOut: {
+			/**
+			 * Queued
+			 * @description Documents whose text is read again (not those queued already).
+			 */
+			queued: number;
+		};
+		/**
+		 * ReprocessNode
+		 * @enum {string}
+		 */
+		ReprocessNode:
+			| 'ocr'
+			| 'pages'
+			| 'parse'
+			| 'signal_llm'
+			| 'signal_classifier'
+			| 'signal_neighbours'
+			| 'signal_facts'
+			| 'judge'
+			| 'fields'
+			| 'apply_rules'
+			| 'file';
 		/**
 		 * ReprocessRequest
 		 * @example {
-		 *       "from_step": "classify"
+		 *       "from_node": "judge"
 		 *     }
 		 */
 		ReprocessRequest: {
-			/** @description Discard the results from this step on and process again from there. */
-			from_step: components['schemas']['ReprocessStep'];
+			/** @description Discard the results from this node on and process again from there. */
+			from_node: components['schemas']['ReprocessNode'];
 		};
 		/**
-		 * ReprocessStep
+		 * ResumeNode
 		 * @enum {string}
 		 */
-		ReprocessStep: 'ocr' | 'parse' | 'classify' | 'extract_fields' | 'apply_rules' | 'file';
-		/**
-		 * ResumeStep
-		 * @enum {string}
-		 */
-		ResumeStep: 'extract_fields' | 'apply_rules';
+		ResumeNode: 'fields' | 'apply_rules';
 		/** ReviewOut */
 		ReviewOut: {
 			document: components['schemas']['DocumentDetails'];
 			/** Open */
-			open: components['schemas']['OpenStepOut'][];
-			/** Steps */
-			steps: components['schemas']['StepReviewOut'][];
+			open: components['schemas']['OpenNodeOut'][];
+			/** Nodes */
+			nodes: components['schemas']['NodeReviewOut'][];
 		};
 		/**
 		 * Role
@@ -2882,10 +4213,10 @@ export interface components {
 			field: string;
 			/**
 			 * Kind
-			 * @description `overruled`: a person decided the field; `refused`: not allowed (rights, scope, unconfirmed values); `conflict`: rules or values disagree; `skipped`: something it refers to is gone or does not apply; `review`: the rule holds the document for a review.
+			 * @description `overruled`: a person decided the field; `refused`: not allowed (rights, scope, unconfirmed values); `conflict`: rules or values disagree; `skipped`: something it refers to is gone or does not apply, or a template writes a missing value; `review`: the rule holds the document for a review; `yielded`: a document type's title pattern gave way to another rule that sets the title.
 			 * @enum {string}
 			 */
-			kind: 'skipped' | 'overruled' | 'refused' | 'conflict' | 'review';
+			kind: 'skipped' | 'overruled' | 'refused' | 'conflict' | 'review' | 'yielded';
 			/** Reason */
 			reason: string;
 		};
@@ -2934,6 +4265,11 @@ export interface components {
 			 * @description Why the rule was disabled automatically, e.g. a contact it uses was deleted.
 			 */
 			disabled_reason: string | null;
+			/**
+			 * Managed By Document Type Id
+			 * @description The document type whose title pattern this rule is: it follows the type and is read-only (changing, switching or deleting it is 409); None for other rules.
+			 */
+			managed_by_document_type_id: string | null;
 			/**
 			 * Created At
 			 * Format: date-time
@@ -3022,6 +4358,19 @@ export interface components {
 			created_at: string;
 			/** Created By */
 			created_by: string | null;
+		};
+		/**
+		 * RunExchangeOut
+		 * @description What a node sent to the language model in one processing run.
+		 */
+		RunExchangeOut: {
+			/** Run */
+			run: number;
+			/**
+			 * Calls
+			 * @description One call, or two after an answer that did not fit the schema.
+			 */
+			calls: components['schemas']['ModelCallOut'][];
 		};
 		/** SearchResultItem */
 		SearchResultItem: {
@@ -3138,9 +4487,13 @@ export interface components {
 			field_id: string;
 			/**
 			 * Value
-			 * @description By data type: text, choice and link: string; number: decimal as string; date: `YYYY-MM-DD`; boolean: true/false; amount: `{amount, currency}`.
+			 * @description As the field's type has it; for a text field a template, as a title's.
 			 */
-			value: string | boolean | components['schemas']['MoneyValue'];
+			value:
+				| string
+				| boolean
+				| components['schemas']['MoneyValue']
+				| components['schemas']['PeriodValue'];
 		};
 		/** SetTitleAction */
 		SetTitleAction: {
@@ -3151,8 +4504,8 @@ export interface components {
 			type: 'set_title';
 			/**
 			 * Template
-			 * @description Placeholders: `{contact}`, `{document_type}`, `{document_date}` (YYYY-MM-DD), `{filename}` (the original's name without extension); empty when unknown.
-			 * @example {contact} {document_type} {document_date}
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `document_date`, `added`, `tags` (a list), `drawer`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional).
+			 * @example {{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}
 			 */
 			template: string;
 		};
@@ -3179,6 +4532,11 @@ export interface components {
 			user_id: string;
 			level: components['schemas']['ShareLevel'];
 		};
+		/**
+		 * Signal
+		 * @enum {string}
+		 */
+		Signal: 'signal_llm' | 'signal_classifier' | 'signal_neighbours' | 'signal_facts';
 		/** SkippedOut */
 		SkippedOut: {
 			/**
@@ -3199,35 +4557,88 @@ export interface components {
 			 */
 			match: boolean;
 		};
-		/**
-		 * Step
-		 * @description Pipeline steps in their fixed order.
-		 * @enum {string}
-		 */
-		Step: 'receive' | 'ocr' | 'parse' | 'classify' | 'extract_fields' | 'apply_rules' | 'file';
-		/**
-		 * StepReviewOut
-		 * @description The latest run of classification or field extraction by the model.
-		 */
-		StepReviewOut: {
-			step: components['schemas']['Step'];
-			/** Run */
-			run: number;
-			outcome: components['schemas']['Outcome'];
-			/** Reason */
-			reason: string | null;
+		/** SpanOut */
+		SpanOut: {
 			/**
-			 * Model Version
-			 * @example qwen3:8b
+			 * Start
+			 * @description First character, from 0.
 			 */
-			model_version: string | null;
+			start: number;
 			/**
-			 * Truncated
-			 * @description Whether a part of the text was left out.
+			 * End
+			 * @description After the last character.
 			 */
-			truncated: boolean | null;
-			/** Fields */
-			fields: components['schemas']['FieldCheckOut'][];
+			end: number;
+		};
+		/** StoredFileOut */
+		StoredFileOut: {
+			/**
+			 * Size
+			 * @description In bytes.
+			 */
+			size: number;
+			/** Sha256 */
+			sha256: string;
+			/** @description Null if the file cannot be read for it (damaged, encrypted). */
+			metadata: components['schemas']['FileMetadataOut'] | null;
+		};
+		/**
+		 * TemplatePreviewIn
+		 * @example {
+		 *       "document_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "template": "Lohn {{ document_date | date: '%Y-%m' }} {{ field.la_brutto }}"
+		 *     }
+		 */
+		TemplatePreviewIn: {
+			/**
+			 * Template
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `document_date`, `added`, `tags` (a list), `drawer`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional).
+			 */
+			template: string;
+			/**
+			 * Document Id
+			 * @description A document the caller may read, to render the template with.
+			 */
+			document_id?: string | null;
+			/**
+			 * Document Type Id
+			 * @description The type whose fields the template may use (a title pattern's); else the document's type, else every field.
+			 */
+			document_type_id?: string | null;
+		};
+		/** TemplatePreviewOut */
+		TemplatePreviewOut: {
+			/**
+			 * Used
+			 * @description The values the template uses (`field.la_brutto`).
+			 */
+			used: string[];
+			/**
+			 * Rendered
+			 * @description The text for the document, whitespace collapsed as in a title; None without a document, a missing value or an error.
+			 */
+			rendered: string | null;
+			/**
+			 * Missing
+			 * @description The value the document lacks that the template writes: it would set nothing (a title pattern leaves the model's title).
+			 */
+			missing: string | null;
+			/**
+			 * Error
+			 * @description Why the template is invalid (its syntax, or a value templates do not know).
+			 */
+			error: string | null;
+			/**
+			 * Values
+			 * @description The document's values as a template writes them, by path (`contact`, `field.la_brutto`): each one it has, whatever the template. None without a document.
+			 * @example {
+			 *       "contact": "Stadtwerke",
+			 *       "field.la_brutto": "3.650,00 EUR"
+			 *     }
+			 */
+			values: {
+				[key: string]: string;
+			} | null;
 		};
 		/**
 		 * TokenCreate
@@ -3423,6 +4834,23 @@ export interface components {
 			shares: components['schemas']['ShareOut'][] | null;
 		};
 		/**
+		 * VisionAdvice
+		 * @description Why a person is advised to have the document read by the vision language model: the
+		 *     text recognition made it red or yellow.
+		 * @enum {string}
+		 */
+		VisionAdvice: 'no_text' | 'poor_page';
+		/** VisionOut */
+		VisionOut: {
+			/** Model */
+			model: string;
+			/**
+			 * Endpoint
+			 * @description Where the page images go: host and port.
+			 */
+			endpoint: string;
+		};
+		/**
 		 * WebhookCreate
 		 * @example {
 		 *       "event_types": [
@@ -3446,7 +4874,7 @@ export interface components {
 			url: string;
 			/**
 			 * Event Types
-			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.received`, `document.step_completed`, `document.updated`, or `*` for all, also future ones.
+			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones.
 			 */
 			event_types: string[];
 			/**
@@ -3567,7 +4995,7 @@ export interface components {
 			url?: string | null;
 			/**
 			 * Event Types
-			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.received`, `document.step_completed`, `document.updated`, or `*` for all, also future ones.
+			 * @description Event types: `document.deleted`, `document.filed`, `document.lane_changed`, `document.node_completed`, `document.node_deferred`, `document.node_started`, `document.received`, `document.updated`, or `*` for all, also future ones.
 			 */
 			event_types?: string[] | null;
 			/**
@@ -3579,12 +5007,13 @@ export interface components {
 		/**
 		 * EventMessage
 		 * @description A domain event, thin: fetch the document for details. Fields beyond `type`, `id`,
-		 *     `occurred_at` and `document_id` depend on the type.
+		 *     `occurred_at` and `document_id` depend on the type (`classifier.trained`: `number` and
+		 *     `examples` of the new model).
 		 */
 		EventMessage: {
 			/**
 			 * Type
-			 * @example document.step_completed
+			 * @example document.node_completed
 			 */
 			type: string;
 			/**
@@ -3599,9 +5028,10 @@ export interface components {
 			occurred_at: string;
 			/**
 			 * Document Id
-			 * Format: uuid
+			 * @description The document; absent from `classifier.trained`.
+			 * @default null
 			 */
-			document_id: string;
+			document_id: string | null;
 		} & {
 			[key: string]: unknown;
 		};
@@ -3745,7 +5175,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -3871,7 +5301,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -3961,7 +5391,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -4193,7 +5623,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -4495,7 +5925,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -4619,7 +6049,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -4762,7 +6192,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -4959,7 +6389,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5064,7 +6494,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5172,7 +6602,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5474,7 +6904,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5565,7 +6995,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5687,7 +7117,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5832,7 +7262,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5958,7 +7388,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6063,7 +7493,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6170,7 +7600,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6197,7 +7627,12 @@ export interface operations {
 	};
 	list_contacts_api_v1_contacts_get: {
 		parameters: {
-			query?: never;
+			query?: {
+				/** @description Count the documents of each (`document_count`). */
+				document_counts?: boolean;
+				/** @description Count every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+			};
 			header?: never;
 			path?: never;
 			cookie?: never;
@@ -6225,6 +7660,40 @@ export interface operations {
 					 *       "title": "Unauthorized",
 					 *       "status": 401,
 					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6350,7 +7819,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6440,7 +7909,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6562,7 +8031,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6707,7 +8176,152 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	attach_identifier_api_v1_contacts__id__identifiers_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['IdentifierIn'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ContactOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6734,7 +8348,12 @@ export interface operations {
 	};
 	list_document_types_api_v1_document_types_get: {
 		parameters: {
-			query?: never;
+			query?: {
+				/** @description Count the documents of each (`document_count`). */
+				document_counts?: boolean;
+				/** @description Count every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+			};
 			header?: never;
 			path?: never;
 			cookie?: never;
@@ -6762,6 +8381,40 @@ export interface operations {
 					 *       "title": "Unauthorized",
 					 *       "status": 401,
 					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6887,7 +8540,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6977,7 +8630,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7099,7 +8752,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7244,7 +8897,152 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	assign_fields_api_v1_document_types__id__fields_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['FieldAssignmentsIn'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['FieldOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7271,7 +9069,12 @@ export interface operations {
 	};
 	list_tags_api_v1_tags_get: {
 		parameters: {
-			query?: never;
+			query?: {
+				/** @description Count the documents of each (`document_count`). */
+				document_counts?: boolean;
+				/** @description Count every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+			};
 			header?: never;
 			path?: never;
 			cookie?: never;
@@ -7299,6 +9102,40 @@ export interface operations {
 					 *       "title": "Unauthorized",
 					 *       "status": 401,
 					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7424,7 +9261,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7514,7 +9351,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7636,7 +9473,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7781,7 +9618,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7808,7 +9645,12 @@ export interface operations {
 	};
 	list_fields_api_v1_fields_get: {
 		parameters: {
-			query?: never;
+			query?: {
+				/** @description Count the documents of each (`document_count`). */
+				document_counts?: boolean;
+				/** @description Count every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+			};
 			header?: never;
 			path?: never;
 			cookie?: never;
@@ -7836,6 +9678,40 @@ export interface operations {
 					 *       "title": "Unauthorized",
 					 *       "status": 401,
 					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7978,7 +9854,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8068,7 +9944,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8190,7 +10066,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8335,7 +10211,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8532,7 +10408,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8622,7 +10498,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8744,7 +10620,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8889,7 +10765,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9018,7 +10894,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9126,7 +11002,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9219,7 +11095,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9345,7 +11221,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9435,7 +11311,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9580,7 +11456,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9702,7 +11578,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9847,7 +11723,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9937,7 +11813,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10028,7 +11904,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10156,7 +12032,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10284,7 +12160,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10374,7 +12250,133 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	preview_template_api_v1_templates_preview_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['TemplatePreviewIn'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['TemplatePreviewOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10409,6 +12411,9 @@ export interface operations {
 				tag_id?: string[] | null;
 				drawer_id?: string | null;
 				lane?: components['schemas']['LaneFilter'][] | null;
+				field_id?: string | null;
+				/** @description `relevance` or a key. */
+				sort?: components['schemas']['DocumentSort'] | 'relevance';
 				limit?: number;
 				offset?: number;
 				/** @description Weight of the meaning against the words: 0 words only, 1 meaning only. Default: the installation's setting. */
@@ -10476,7 +12481,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10604,6 +12609,197 @@ export interface operations {
 			};
 		};
 	};
+	status_api_v1_classifier_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ClassifierStatusOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	train_api_v1_classifier_train_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Queued. */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
 	list_documents_api_v1_documents_get: {
 		parameters: {
 			query?: {
@@ -10612,6 +12808,8 @@ export interface operations {
 				tag_id?: string[] | null;
 				drawer_id?: string | null;
 				lane?: components['schemas']['LaneFilter'][] | null;
+				field_id?: string | null;
+				sort?: components['schemas']['DocumentSort'];
 				limit?: number;
 				/** @description `next_cursor`. */
 				cursor?: string | null;
@@ -10678,7 +12876,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10733,7 +12931,7 @@ export interface operations {
 					 * @description Admins only: the active user who owns the document. Default: the caller. The duplicate check, the default drawer and the write access to `drawer_id` are the owner's.
 					 */
 					owner?: string;
-					/** @description Admins only, with `channel=migration`: JSON of the metadata the document comes with (up to 48 KiB), as `ImportedMetadataIn`. Classification and field extraction apply it instead of asking the language model; the other steps and the rules run as usual. */
+					/** @description Admins only, with `channel=migration`: JSON of the metadata the document comes with (up to 48 KiB), as `ImportedMetadataIn`. Classification and field extraction apply it instead of asking the language model; the other nodes and the rules run as usual. */
 					metadata?: string;
 				};
 			};
@@ -10886,7 +13084,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10976,7 +13174,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11081,7 +13279,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11227,7 +13425,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11372,7 +13570,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11498,7 +13696,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11588,7 +13786,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11678,7 +13876,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11768,7 +13966,425 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	get_document_page_api_v1_documents__id__pages__number__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+				number: number;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'image/webp': string;
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	document_text_api_v1_documents__id__text_get: {
+		parameters: {
+			query?: {
+				/** @description First character. */
+				offset?: number;
+				/** @description Characters. */
+				limit?: number;
+			};
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DocumentTextOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	document_structure_api_v1_documents__id__structure_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': Record<string, never>;
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	model_exchanges_api_v1_documents__id__exchanges__node__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+				node: components['schemas']['ExchangeNode'];
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['RunExchangeOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11875,7 +14491,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11999,7 +14615,435 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	read_with_vision_api_v1_documents__id__vision_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DocumentDetails'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	document_facts_api_v1_documents__id__facts_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['FactsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	document_files_api_v1_documents__id__files_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DocumentFilesOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	reading_api_v1_documents__id__reading_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ReadingOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12144,7 +15188,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12251,7 +15295,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12396,7 +15440,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12490,7 +15534,132 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	pipeline_api_v1_pipeline_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PipelineOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	reparse_api_v1_pipeline_reparse_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ReparseOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12534,9 +15703,9 @@ export interface operations {
 				};
 				content: {
 					/**
-					 * @example event: document.step_completed
+					 * @example event: document.node_completed
 					 *     id: 01999d5f-1b2c-7d3e-8f40-5a6b7c8d9e0f
-					 *     data: {"type": "document.step_completed", "id": "01999d5f-1b2c-7d3e-8f40-5a6b7c8d9e0f", "occurred_at": "2026-10-07T08:00:00Z", "document_id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b", "step": "ocr", "run": 1, "outcome": "ok"}
+					 *     data: {"type": "document.node_completed", "id": "01999d5f-1b2c-7d3e-8f40-5a6b7c8d9e0f", "occurred_at": "2026-10-07T08:00:00Z", "document_id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b", "node": "ocr", "run": 1, "outcome": "ok"}
 					 */
 					'text/event-stream': string;
 				};
@@ -12586,7 +15755,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12660,7 +15829,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12786,7 +15955,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12876,7 +16045,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12981,7 +16150,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13126,7 +16295,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13233,7 +16402,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13327,7 +16496,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13434,7 +16603,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Unprocessable Content",
 					 *       "status": 422,
-					 *       "detail": "from_step: Input should be 'ocr', 'parse', ..."
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

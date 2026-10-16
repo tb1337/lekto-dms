@@ -251,7 +251,7 @@ async def verify(
         if actual.get("lane") in ("yellow", "red"):
             reason = row.reason or ""
             if not applied:
-                reason += " (the metadata from Paperless is applied after a retry of the step)"
+                reason += " (the metadata from Paperless is applied after a retry of the node)"
             findings.append(
                 {
                     "id": document_id,
@@ -294,8 +294,10 @@ def _compare(
     """Compare a document with what it should be; False if its pipeline stopped before the
     metadata was applied (then there is nothing to compare: the document is a finding)."""
     id, meta = item.id, item.metadata
-    outcomes = (actual.get("processing") or {}).get("outcomes") or {}
-    classified, extracted = "classify" in outcomes, "extract_fields" in outcomes
+    outcomes = _outcomes(actual)
+    # Papiq 0.2 calls the nodes `judge` and `fields`, 0.1 `classify` and `extract_fields`.
+    classified = "judge" in outcomes or "classify" in outcomes
+    extracted = "fields" in outcomes or "extract_fields" in outcomes
     if classified:
         if actual["title"] != meta["title"]:
             deviation("document", id, "title differs", meta["title"], actual["title"])
@@ -407,3 +409,13 @@ def _show(value: Any) -> str | None:
         return None
     text = value if isinstance(value, str) else repr(value)
     return text if len(text) <= 200 else text[:197] + "..."
+
+
+def _outcomes(document: dict[str, Any]) -> dict[str, str]:
+    """The outcome of each done node of the document's current processing run, by node."""
+    nodes = (document.get("processing") or {}).get("nodes") or []
+    return {
+        node["node"]: node["outcome"]
+        for node in nodes
+        if isinstance(node, dict) and node.get("outcome") is not None
+    }

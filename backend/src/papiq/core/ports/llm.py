@@ -5,7 +5,7 @@ returned as text; checking it against the schema is the core's job, because prov
 schemas with different reliability.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from papiq.core.domain.json_value import JsonObject
@@ -28,6 +28,9 @@ class StructuredAnswer:
     fingerprint: str | None = None  # the endpoint's system fingerprint, if any
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    # The endpoint's usage report as it sent it: the token counts, and with some endpoints
+    # (Ollama through OpenWebUI) durations and speeds; empty if it sent none.
+    usage: JsonObject = field(default_factory=dict)
 
 
 class LanguageModel(Protocol):

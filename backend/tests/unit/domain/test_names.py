@@ -69,3 +69,7 @@ def test_mentions_whole_words() -> None:
     assert mentions(text, "stadtwerke musterstadt")
     assert not mentions(text, "werke muster")
     assert not mentions(text, "")
+
+
+def test_entities_do_not_hide_a_name() -> None:
+    assert mentions(name_key("Brief von Müller &amp; Söhne GmbH"), name_key("Müller & Söhne"))

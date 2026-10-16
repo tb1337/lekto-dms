@@ -9,15 +9,19 @@ import asyncio
 import copy
 import dataclasses
 from collections.abc import Collection, Hashable, Iterable, Mapping
-from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
 from types import TracebackType
 from typing import Any, Self
 from uuid import UUID
 
+from papiq.adapters.outbound.memory.classifier_models import MemoryClassifierModelRepository
 from papiq.adapters.outbound.memory.database import (
     API_TOKENS,
+    CLASSIFIER_MODELS,
     CONTACTS,
     CREDENTIALS,
+    DOCUMENT_IDENTIFIERS,
     DOCUMENT_TYPES,
     DOCUMENTS,
     DRAWERS,
@@ -51,6 +55,7 @@ from papiq.core.domain.drawers import Drawer
 from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.fields import FieldDefinition
+from papiq.core.domain.identifiers import IdentifierKind
 from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -65,10 +70,18 @@ from papiq.core.domain.ids import (
 from papiq.core.domain.jobs import Job, JobStatus
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag
-from papiq.core.domain.pipeline import Lane, StepRun
+from papiq.core.domain.pipeline import Lane, NodeRun
 from papiq.core.domain.users import User
 from papiq.core.domain.validation import name_key, require_utc
-from papiq.core.ports.repository import DocumentFilter
+from papiq.core.domain.verdict import KnownLabels
+from papiq.core.ports.repository import (
+    NEWEST_FIRST,
+    CountBy,
+    DocumentFilter,
+    DocumentOrder,
+    DocumentPosition,
+    SortKey,
+)
 
 
 class MemoryUnitOfWork:
@@ -78,7 +91,7 @@ class MemoryUnitOfWork:
         self._writes: dict[str, dict[UUID, Any]] = {}
         self._tables: dict[str, Table] = {}
         self._base_versions: dict[tuple[str, UUID], int | None] = {}
-        self._log: list[StepRun] = []
+        self._log: list[NodeRun] = []
         self._events: list[DomainEvent] = []
         self._jobs: dict[JobId, Job] = {}
         self._job_base: dict[JobId, Job | None] = {}
@@ -95,8 +108,10 @@ class MemoryUnitOfWork:
         self.fields = MemoryNamedRepository[FieldId, FieldDefinition](self, FIELDS)
         self.documents = MemoryDocumentRepository(self, DOCUMENTS)
         self.processing_log = MemoryProcessingLog(self)
+        self.document_identifiers = MemoryDocumentIdentifierRepository(self)
         self.rules = MemoryRuleRepository(self, RULES)
         self.rule_applications = MemoryRuleApplicationRepository(self, RULE_APPLICATIONS)
+        self.classifier_models = MemoryClassifierModelRepository(self, CLASSIFIER_MODELS)
         self.webhooks = MemoryWebhookRepository(self, WEBHOOKS)
         self.outbox = MemoryOutbox(self)
         self.jobs = MemoryJobQueue(self)
@@ -308,15 +323,61 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         user: UserId,
         filter: DocumentFilter,
         *,
-        before: DocumentId | None = None,
+        order: DocumentOrder = NEWEST_FIRST,
+        after: DocumentPosition | None = None,
         limit: int,
     ) -> list[Document]:
-        return _query(await self.list_visible_to(user), filter, before=before, limit=limit)
+        visible = await self.list_visible_to(user)
+        return _query(visible, filter, order=order, after=after, limit=limit)
 
     async def query(
-        self, filter: DocumentFilter, *, before: DocumentId | None = None, limit: int
+        self,
+        filter: DocumentFilter,
+        *,
+        order: DocumentOrder = NEWEST_FIRST,
+        after: DocumentPosition | None = None,
+        limit: int,
     ) -> list[Document]:
-        return _query([_copy(row) for row in self._all()], filter, before=before, limit=limit)
+        every = [_copy(row) for row in self._all()]
+        return _query(every, filter, order=order, after=after, limit=limit)
+
+    async def count_by(self, by: CountBy, user: UserId | None) -> dict[UUID, int]:
+        documents = (
+            [_copy(row) for row in self._all()]
+            if user is None
+            else await self.list_visible_to(user)
+        )
+        counts: dict[UUID, int] = {}
+        for document in documents:
+            match by:
+                case CountBy.CONTACT:
+                    keys: Collection[UUID] = [document.contact_id] if document.contact_id else []
+                case CountBy.DOCUMENT_TYPE:
+                    keys = [document.document_type_id] if document.document_type_id else []
+                case CountBy.TAG:
+                    keys = document.tag_ids
+                case CountBy.FIELD:
+                    keys = document.fields.keys()
+            for key in keys:
+                counts[key] = counts.get(key, 0) + 1
+        return counts
+
+    async def count_confirmed(self, *, after: datetime | None = None) -> int:
+        return sum(
+            row.confirmed_at is not None and (after is None or row.confirmed_at > after)
+            for row in self._all()
+        )
+
+    async def confirmed_labels(self, reader: UserId) -> KnownLabels:
+        readable = await self.list_visible_to(reader)
+        confirmed = [row for row in readable if row.confirmed_at is not None]
+        return KnownLabels(
+            contacts=frozenset(row.contact_id for row in confirmed if row.contact_id is not None),
+            document_types=frozenset(
+                row.document_type_id for row in confirmed if row.document_type_id is not None
+            ),
+            tags=frozenset(tag for row in confirmed for tag in row.tag_ids),
+        )
 
     async def exists(
         self,
@@ -348,16 +409,53 @@ class MemoryProcessingLog:
     def __init__(self, uow: MemoryUnitOfWork) -> None:
         self._uow = uow
 
-    async def append(self, run: StepRun) -> None:
+    async def append(self, run: NodeRun) -> None:
         self._uow._check_open()
         self._uow._log.append(run)
 
-    async def list_for(self, document: DocumentId) -> list[StepRun]:
+    async def list_for(self, document: DocumentId) -> list[NodeRun]:
         self._uow._check_open()
         if self._uow._row(DOCUMENTS, document) is _REMOVED:
             return []
         entries = [*self._uow._db.processing_log, *self._uow._log]
         return [entry for entry in entries if entry.document_id == document]
+
+
+@dataclass
+class _Shown:
+    """The identifiers one document shows (a row keyed by the document's id)."""
+
+    id: DocumentId
+    identifiers: frozenset[tuple[IdentifierKind, str]]
+    version: int
+
+
+class MemoryDocumentIdentifierRepository:
+    def __init__(self, uow: MemoryUnitOfWork) -> None:
+        self._uow = uow
+
+    async def replace(
+        self, document: DocumentId, identifiers: Collection[tuple[IdentifierKind, str]]
+    ) -> None:
+        self._uow._check_open()
+        current = self._uow._row(DOCUMENT_IDENTIFIERS, document)
+        version = 1 if current is None else current.version + 1
+        row = _Shown(id=document, identifiers=frozenset(identifiers), version=version)
+        self._uow._write(DOCUMENT_IDENTIFIERS, document, row)
+
+    async def contacts_of(
+        self, identifiers: Collection[tuple[IdentifierKind, str]]
+    ) -> dict[tuple[IdentifierKind, str], frozenset[ContactId]]:
+        self._uow._check_open()
+        wanted = set(identifiers)
+        found: dict[tuple[IdentifierKind, str], set[ContactId]] = {}
+        for document in self._uow._rows(DOCUMENTS):
+            if document.confirmed_at is None or document.contact_id is None:
+                continue
+            shown = self._uow._row(DOCUMENT_IDENTIFIERS, document.id)
+            for key in wanted & (set() if shown is None else shown.identifiers):
+                found.setdefault(key, set()).add(document.contact_id)
+        return {key: frozenset(contacts) for key, contacts in found.items()}
 
 
 class MemoryOutbox:
@@ -504,16 +602,50 @@ class MemoryUnitOfWorkFactory:
 
 
 def _query(
-    documents: list[Document], filter: DocumentFilter, *, before: DocumentId | None, limit: int
+    documents: list[Document],
+    filter: DocumentFilter,
+    *,
+    order: DocumentOrder,
+    after: DocumentPosition | None,
+    limit: int,
 ) -> list[Document]:
     matching = [
         document
         for document in documents
-        if (before is None or document.id < before)
-        and (filter.contact is None or document.contact_id == filter.contact)
+        if (filter.contact is None or document.contact_id == filter.contact)
         and (filter.document_type is None or document.document_type_id == filter.document_type)
         and filter.tags <= document.tag_ids
         and (filter.drawer is None or document.drawer_id == filter.drawer)
         and (filter.lanes is None or document.lane in filter.lanes)
+        and (filter.confirmed is None or (document.confirmed_at is not None) is filter.confirmed)
+        and (filter.field is None or filter.field in document.fields)
     ]
-    return sorted(matching, key=lambda document: document.id, reverse=True)[:limit]
+    ranked = sorted(matching, key=lambda document: _rank(document, order))
+    if after is not None:
+        # The documents after `after`: its rank is the one it had (the cursor's value).
+        mark = _rank_of(after, order)
+        ranked = [document for document in ranked if _rank(document, order) > mark]
+    return ranked[:limit]
+
+
+def _rank(document: Document, order: DocumentOrder) -> tuple[Any, ...]:
+    return _rank_of(DocumentPosition.of(document, order), order)
+
+
+def _rank_of(position: DocumentPosition, order: DocumentOrder) -> tuple[Any, ...]:
+    """A key that sorts ascending as `order` sorts: documents without a date last."""
+    sign = 1 if order.ascending else -1
+    id_ = sign * position.id.int
+    match order.key:
+        case SortKey.CREATED:
+            return (id_,)
+        case SortKey.DOCUMENT_DATE:
+            day = position.value
+            if not isinstance(day, date):
+                return (1, 0, id_)
+            return (0, sign * day.toordinal(), id_)
+        case SortKey.TITLE:
+            title = str(position.value)
+            # Text cannot be negated: descending compares the code points negated.
+            letters = tuple(ord(char) for char in title)
+            return (letters if order.ascending else (*(-code for code in letters), 1), id_)

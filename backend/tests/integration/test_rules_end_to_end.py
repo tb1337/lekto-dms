@@ -37,7 +37,11 @@ TIMEOUT = 60.0  # seconds a document may take here
 class TextOcr:
     """OCR that keeps the file as it is: the archive holds the text line for the parser."""
 
-    async def make_archive(self, source: Path, target: Path, *, media_type: str) -> OcrResult:
+    vision = None
+
+    async def make_archive(
+        self, source: Path, target: Path, *, media_type: str, vision: bool = False
+    ) -> OcrResult:
         target.write_bytes(source.read_bytes())
         return OcrResult(pages=1, engine="text-ocr 1", pdfa=True)
 
@@ -45,15 +49,15 @@ class TextOcr:
 class TextParser:
     """A parser that takes the text of a document from a line of the file: `%text: …`."""
 
-    async def parse(self, source: Path, *, markdown: Path, structure: Path) -> ParseResult:
+    async def parse(self, source: Path, *, text: Path, structure: Path) -> ParseResult:
         data = source.read_bytes()
-        text = next(
+        content = next(
             line.removeprefix(b"%text: ").decode()
             for line in data.splitlines()
             if line.startswith(b"%text: ")
         )
-        markdown.write_text(text, encoding="utf-8")
-        structure.write_text(json.dumps({"text": text}), encoding="utf-8")
+        text.write_text(content, encoding="utf-8")
+        structure.write_text(json.dumps({"text": content}), encoding="utf-8")
         return ParseResult(pages=1, parser="text-parser 1")
 
 
@@ -100,10 +104,10 @@ class System:
                 await asyncio.sleep(0.2)
 
     async def rules_entry(self, user: User, id: str) -> dict[str, Any]:
-        """The log entry of the step `apply_rules`."""
+        """The log entry of the node `apply_rules`."""
         response = await self.client.get(f"{DOCUMENTS}/{id}/log", headers=auth(user))
         assert response.status_code == 200, response.text
-        (entry,) = [item for item in response.json() if item["step"] == "apply_rules"]
+        (entry,) = [item for item in response.json() if item["node"] == "apply_rules"]
         found: dict[str, Any] = entry
         return found
 
@@ -171,9 +175,9 @@ async def test_a_user_rule_files_and_tags_arriving_documents(system: System) -> 
     filed = await system.settled(owner, bill)
     assert filed["lane"] == "green", filed
     assert filed["processing"]["status"] == "completed"
-    assert filed["processing"]["current_step"] is None
-    assert filed["processing"]["outcomes"]["apply_rules"] == "ok"
-    assert filed["processing"]["outcomes"]["file"] == "ok"
+    outcomes = {n["node"]: n["outcome"] for n in filed["processing"]["nodes"]}
+    assert outcomes["apply_rules"] == "ok"
+    assert outcomes["file"] == "ok"
     assert filed["drawer_id"] == drawer["id"]
     assert filed["tag_ids"] == [energy["id"]]
     entry = await system.rules_entry(owner, bill)

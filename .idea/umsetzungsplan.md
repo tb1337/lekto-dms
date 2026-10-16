@@ -47,6 +47,11 @@ flowchart LR
 | M11 | Web-UI-Funktionen | Sonnet 5.5 | medium (Regel-Baukasten: Opus 5.5 · high) |
 | M12 | Migration aus Paperless-ngx | Sonnet 5.5 | high |
 | M13 | Härtung und Release 0.1 | Fable 5.1 | high |
+| M14 | Ingest-Graph: Knoten, Zustand je Knoten, Ereignisse, Sichtbarkeit in der UI (`ingest-v2.md`) | Opus 5.5 | high |
+| M15 | Verstehen: Kennungen, Klassifikator, Nachbarn, Urteil, Titelmuster | Opus 5.5 | high |
+| M16 | Lesen: Seitenbilder, VLM-Lesung, Bilder im Modellaufruf | Sonnet 5.5 | high |
+| M17 | Grounding in der Prüfansicht (vorgezogen mit der neuen Dokumentansicht) | Sonnet 5.5 | medium |
+| M18 | Eskalation und Kalibrierung | Opus 5.5 | high |
 
 **Faustregel für die Modellwahl**
 
@@ -395,9 +400,414 @@ Vier Phasen, je ein Pull Request, jeder vor der nächsten Phase gemergt:
 - Weitergetragen aus M6–M11b (unverändert, keins vom Review als Risiko eingestuft): Schwelle der hybriden Suche, Neuaufbau-Leihe, Modellwechsel braucht Neuaufbau, `PAPIQ_SEARCH_LOCALES` nur formal geprüft, quadratisches Schreiben in `RuleApplication`, Zeitfenster bei Textregeln, keine Obergrenze für Regeln je Nutzer, englische Konfliktgründe mit rohen IDs, Regelliste nicht live, Fenster beim Anlegen einer Regel, Suche über alle Nutzer nur in der CI geprüft, Baustein `checkbox`, kein Byte-Fortschritt beim Upload, Worker-Healthcheck erkennt keinen hängenden Worker, Update von Image zu Image mit getrennten Containern nicht geprüft.
 - Veröffentlichen des Images (Registry, Mehrarchitektur-Manifest, Beispiel-Compose auf das veröffentlichte Image), Migrations-CLI im Release (heute nur im Repo), Release-Drafter-Konfiguration auf die neuen `semver-increment`-Schlüssel umstellen, `backup`-Befehl (Entscheidung 7: nur Doku), ein Update-Test mit neuer Alembic-Revision über die Tasks.
 - Idee: DocLang als Strukturformat (Tobi, 09.10.2026). DocLang ist kein Parser oder Dienst, sondern eine offene Spezifikation für ein KI-taugliches Dokumentformat (eingeschränktes XML mit Struktur und Seitenlayout, Beispiel `*.dclg.xml`), seit 06/2026 Arbeitsgruppe bei LF AI & Data (IBM, NVIDIA, Red Hat, ABBYY, HumanSignal), baut auf Docling auf; Docling soll es ausgeben können. Spezifikation noch in Arbeit. Bezug zu Papiq: `DocumentParser` legt neben dem Markdown das verlustfreie Docling-JSON ab (`docling/convert.py`, `export_to_dict()`); intern liest es niemand, Klassifizierung und Suche nutzen das Markdown. DocLang könnte dieses Strukturformat ersetzen oder ergänzen, damit Fremdwerkzeuge es lesen. Kein Ersatz für Docling und ohne Einfluss auf die Idee „Docling als eigener Dienst“. Erst sinnvoll, wenn die Spezifikation stabil ist. Quellen: https://doclang.ai/, https://lfaidata.foundation/press-release/2026/06/09/lf-ai-data-foundation-launches-doclang-specification-working-group-to-advance-an-open-standard-for-ai-native-documents/
-- Idee: Live-Verarbeitungsstand beim Upload (Tobi, 10.10.2026): Fortschrittsbalken und Anzeige „wartet auf Verarbeitung“. Heute vorhanden: SSE `GET /events` (`document.received`, `document.step_completed`, `document.lane_changed`, `document.filed`), vom UI abonniert (`web/src/lib/events.svelte.ts`); `GET /documents/{id}` mit `processing.status`, `current_step`, `outcomes`; sieben feste Schritte. Das Upload-Fenster (`web/src/lib/upload.svelte.ts`) zeigt nur „wartet“ (Browser-Warteschlange), „lädt hoch“, „wird verarbeitet“ und dann die Lane; Schritt-Events nutzt es nicht. Teil 1, nur UI: Balken nach Schritten (n/7) aus `step_completed` und Dokumentzustand; Upload-Fortschritt in Bytes per `XMLHttpRequest` (`fetch` meldet keinen Upload-Fortschritt), keine neue Abhängigkeit. Teil 2, Backend: „wartet“ und „läuft“ sind heute beide `status=processing` mit `current_step`; ob der Job in der Warteschlange liegt oder ein Worker ihn hält, steht nur in der Job-Queue. Nötig wären ein Feld am Dokument (z. B. `waiting`/`running`, ggf. Position in der Warteschlange) und ein Event „Schritt gestartet“; das ändert den Port `JobQueue` (Abfrage nach Dokument) samt Vertragstests, also nur nach Absprache. Grenzen: kein Fortschritt innerhalb eines Schritts (z. B. OCR-Seiten), der Balken springt; SSE ohne Wiederholung und für eine API-Instanz (nach Reconnect lädt das UI den Stand neu, `recheck()`). WebSocket oder Polling sind nicht nötig.
+- Idee: Live-Verarbeitungsstand beim Upload (Tobi, 10.10.2026): Fortschrittsbalken und Anzeige „wartet auf Verarbeitung“. Heute vorhanden: SSE `GET /events` (`document.received`, `document.node_completed`, `document.lane_changed`, `document.filed`), vom UI abonniert (`web/src/lib/events.svelte.ts`); `GET /documents/{id}` mit `processing.status`, `current_node`, `outcomes`; sieben feste Schritte. Das Upload-Fenster (`web/src/lib/upload.svelte.ts`) zeigt nur „wartet“ (Browser-Warteschlange), „lädt hoch“, „wird verarbeitet“ und dann die Lane; Schritt-Events nutzt es nicht. Teil 1, nur UI: Balken nach Schritten (n/7) aus `step_completed` und Dokumentzustand; Upload-Fortschritt in Bytes per `XMLHttpRequest` (`fetch` meldet keinen Upload-Fortschritt), keine neue Abhängigkeit. Teil 2, Backend: „wartet“ und „läuft“ sind heute beide `status=processing` mit `current_node`; ob der Job in der Warteschlange liegt oder ein Worker ihn hält, steht nur in der Job-Queue. Nötig wären ein Feld am Dokument (z. B. `waiting`/`running`, ggf. Position in der Warteschlange) und ein Event „Schritt gestartet“; das ändert den Port `JobQueue` (Abfrage nach Dokument) samt Vertragstests, also nur nach Absprache. Grenzen: kein Fortschritt innerhalb eines Schritts (z. B. OCR-Seiten), der Balken springt; SSE ohne Wiederholung und für eine API-Instanz (nach Reconnect lädt das UI den Stand neu, `recheck()`). WebSocket oder Polling sind nicht nötig.
 
 **Unscharfe Zuordnung (nach 0.1, Tobi 10.10.2026):** Plan und Entscheidungen in `/mnt/project-files/plan/unscharfe-zuordnung-plan.md`. Aliase je Kontakt (Tabelle `contact_aliases`, Revision 0008), automatisch gelernt beim Bestätigen in der Prüfansicht (`learned_alias` im Protokoll), Beschreibung je Dokumenttyp, Vorauswahl von 20 Kontakten im Prompt (`classify-2`, `contacts_listed` im Protokoll). Offen: Aliase für Tags (vorerst nein), Paperless-Match-Regeln bei der Migration (vorerst nein), ähnliche bestätigte Dokumente über die Suche als zweites Signal, Wirkung im Echtlauf messen (M13: Kontakt 2 von 10 richtig). Aus dem Review offen (niedrig): `PATCH /contacts` hat keine Versionsprüfung; speichert ein Admin den Dialog, während ein Alias gelernt wird, geht der gelernte verloren.
+
+### M14 – Ingest-Graph
+
+Zielbild und Entscheidungen: `ingest-v2.md` (Tobi, 12.10.2026). Die sieben Schritte werden Knoten eines Graphen, ohne neue Logik; das Verhalten bleibt, der Bewertungssatz muss dieselben Lanes liefern.
+
+- Kern: `Node` mit Kanten statt `Step` in fester Reihenfolge; `Processing` mit Zustand je Knoten (wartet, läuft, ok, unsicher, fehlgeschlagen, Dauer); „ab Knoten X neu“ setzt X und die Nachfolger zurück; Lanes unverändert; Protokoll je Knoten.
+- Jobs: ein Job je Knoten, Knoten ohne gegenseitige Abhängigkeit parallel; `pages` und `archive` laufen nebeneinander, `read` wartet auf beide. Leihe, Wiederholung und Idempotenz wie heute.
+- Ereignisse `document.node_started` und `document.node_completed`; `GET /documents/{id}` mit dem Zustand je Knoten; die Idee „Live-Verarbeitungsstand beim Upload“ geht hier auf.
+- Web-UI: Graph mit Zustand je Knoten in der Dokumentansicht, Text sofort nach `read`, Hochladefenster nach Knoten. Jedes Zwischenergebnis sichtbar, sobald es vorliegt (Tobi, 12.10.2026).
+- Migration des Zustands bestehender Dokumente (Schritt → Knoten) per Alembic-Revision.
+
+**Fertig, wenn:** Bewertungssatz und Echtlauf liefern dieselben Lanes wie 0.1; die UI zeigt den Graphen live; Neuverarbeitung ab jedem Knoten funktioniert.
+
+**Modell:** Opus 5.5 · high.
+
+**Umsetzung (Branch `feature/smart-pipeline-0.2.0`, Tobis Entscheidungen vom 12.10.2026):** Die Schritte heißen in Code, API, Ereignissen, Datenbank und UI-Schlüsseln `Node`/`node` (Revision 0009 benennt Spalten, Job-Art, Nutzlast-Schlüssel und Ereignistyp um); die Texte für Nutzer sagen weiter „Schritt“. Graph `GRAPH` in `core/domain/pipeline.py`: `receive` → `ocr` und `pages` nebeneinander, `ocr` → `parse` → `classify` → `extract_fields` → `apply_rules` → `file`; `file` wartet auch auf `pages`. `Processing` hält je Knoten `status` (`waiting`, `running`, `done`, `skipped`), `outcome`, Start und Ende; `current_node` und `outcomes` entfallen (Revision 0010 übernimmt die Zeiten aus dem Protokoll, `pages` ist für Bestandsdokumente übersprungen; Spalten werden in place gelöscht, nie durch Neuanlegen der Tabelle, weil SQLite bei Fremdschlüsseln sonst Protokoll, Tags und Felder mitlöscht). Scheitert ein Knoten, enden laufende Zweige, nichts Neues startet; `retry` wiederholt alle gescheiterten Knoten, Neuverarbeitung ab X setzt X und seine Nachfolger zurück, Bestätigen übernimmt, was nicht erneut läuft, und lässt nie gelaufene, nicht benötigte Knoten (die Seiten nach gescheiterter OCR) nachlaufen. Der Worker markiert den Knoten beim Beanspruchen als laufend (eigene Transaktion, Ereignis `document.node_started`) und reiht nach einem Ergebnis alle neu fälligen Knoten ein; zwei Knoten eines Dokuments gleichzeitig fängt die optimistische Sperre mit drei Schreibversuchen. `pages`: alle Seiten als WebP 1200 px breit (Bilder behalten kleinere Größen, jede TIFF-Seite ist eine Seite) plus die 400-px-Vorschau, die vorher die OCR aus dem Archiv zog; Port `PageRenderer` statt `PreviewRenderer`, PDFium für PDF, Pillow für Bilder; `page_count` am Dokument (Revision 0011). Bestandsdokumente: Befehl `render-pages` reiht je Dokument einen Nachhol-Job ein (`pipeline.catch_up`), der den übersprungenen Knoten außerhalb der Verarbeitung ausführt und weder Status noch Lane ändert (kein erneutes `document.filed`, kein Rot für Seitenbilder). API: `processing` ist `{status, run, nodes[]}`, neu `GET /pipeline`, `GET /documents/{id}/pages/{n}`, `GET /documents/{id}/text` (wie das MCP-Tool `get_text`), Ereignis `document.node_started`. Web-UI: Graph als Zeilen je Ebene mit Zustand und Dauer (laufende Uhr), Text sobald `parse` fertig ist, Hochladefenster mit Fortschritt „Schritt n von N“ und laufendem Knoten, Protokoll nach Knoten gruppiert; die Neuverarbeitung folgt dem Graphen aus `GET /pipeline`. Der Migrationsclient liest `nodes`. Nicht geprüft in dieser Sitzung (keine Dienste im Container): Integrationstests auf Postgres, Garage und Docling; der Bewertungssatz lief nicht. Das Review durch einen separaten Agenten (12.10.2026) fand keine Rechte-Lücke an `/pipeline`, `/pages/{n}` und `/text` und keine Verletzung der Architekturregeln; behoben vor dem PR: `processing.nodes` kam auf Postgres in JSONB-Schlüsselordnung statt Graphordnung; späte Antworten der UI konnten einen neueren Zustand überschreiben; ein gescheiterter Nachhol-Lauf der Seiten blockierte jede Neuverarbeitung (der Knoten bleibt jetzt übersprungen); Bestätigen bei noch laufendem Knoten hätte dessen Ergebnis über die Entscheidung geschrieben (jetzt 409); ein Knoten, dessen Versuch eine Ausnahme warf, erschien in der Wartezeit als laufend (neues Ereignis `document.node_deferred`); `deploy/test-image.sh` las noch `outcomes`; die TOTP-Zeitschritte und der Anmelde-Assistent waren mit umbenannt; umbenannte Variablen `PAPIQ_STEP_*` werden mit dem neuen Namen abgewiesen statt stillschweigend ignoriert; der Downgrade von 0010 verlor laufende Knoten. Offen gelassen: `catch_up()` lädt alle Dokumente in den Speicher (bei größerem Bestand eine streamende Abfrage).
+
+### M15 – Verstehen
+
+- Kennungen je Kontakt (IBAN, USt-IdNr, Kundennummer, E-Mail-Domain) als Stammdaten mit API und UI; Signal `facts` mit Namen, Aliasen und Kennungen.
+- Port `Classifier` mit In-Memory-Adapter und Vertragstest; Adapter auf scikit-learn (neue Abhängigkeit, Entscheidung 2); Job `train` nach N Bestätigungen, Modell versioniert im Objektspeicher; Trainingsbeispiele sind von Personen gesetzte oder bestätigte Metadaten, die Übernahme eingeschlossen (Entscheidung 3).
+- Signal `neighbours` über ähnliche Dokumente im Suchindex (`SearchIndex` um die Vektorsuche erweitert, Meilisearch `/similar`).
+- Signal `llm`: ein Aufruf mit Kontakt samt Rolle, Typ, Tags, Datum, Titel, Sprache, Zitaten; Felder des Typs gleich mit, wenn der Typ sicher ist.
+- `judge` mit der Grün-Regel aus `ingest-v2.md`; Kandidaten mit Quellen und Begründung in Protokoll und Prüfansicht.
+- Felder nur, wenn der Typ sie führt (Entscheidung 5); Normalisierung deutscher Zahlen und Daten; Titelmuster je Dokumenttyp (Entscheidung 7); keine Schublade aus dem Klassifikator (Entscheidung 6).
+- Bericht: Lanes je Feld, Trefferquote gegen Paperless, Rückkopplungsmaß (automatisch grün, später korrigiert).
+
+**Fertig, wenn:** Der Echtlauf mit den zehn Originalen aus M13 kommt mit trainiertem Klassifikator über neun von zehn Gelb hinaus, ohne ein falsches Grün; der Bewertungssatz läuft mit und ohne Modell.
+
+**Modell:** Opus 5.5 · high.
+
+**Umsetzung (Branch `feature/understanding-0.2.0`, Tobis Entscheidungen vom 13.10.2026):** Lesarten 3, 4 und 7 bestätigt; Lesart 5 ersetzt: Felder sind je Zuordnung zu einem Typ Pflicht oder optional, globale mit eigenem Schalter, nach der Übernahme alle optional (Revision 0013); Pflicht muss gefunden und geprüft sein, ein optionales Feld darf leer bleiben, ein genannter Wert muss die Prüfung bestehen. Tags machen nie gelb. Kennungen von Hand und beim Training gewonnen (in mindestens zwei bestätigten Dokumenten, alle eines Kontakts); eine verworfene bleibt gesperrt, eine gelernte kann von Hand übernommen werden (Revision 0012). Ein Klassifikator für alle Nutzer. Die Knoten heißen `judge` und `fields`, davor `signal_llm`, `signal_classifier`, `signal_neighbours`, `signal_facts` (Revision 0016 benennt in Zustand, Protokoll, Jobs und Outbox um und gibt Bestandsdokumenten übersprungene, laufenden wartende Signale); die Dateien der Modellanfragen heißen `signal_llm.json` und `fields.json`, die alten `classify.json` und `extract_fields.json` gelten beim Lesen weiter. `confirmed_at` am Dokument (Revision 0014, nachgefüllt aus dem Protokoll) macht ein Dokument zum Trainingsbeispiel: Bestätigen, Änderung von Kontakt, Typ, Tags, Datum oder Feldern durch eine Person, die Übernahme; ändert die Verarbeitung Kontakt, Typ oder Tags, fällt es weg. Klassifikator: TF-IDF (Wörter und Wortpaare, `sublinear_tf`, `min_df` 2, `max_df` 0,5) und logistische Regression mit `class_weight=balanced`, Ablage als `npz` ohne Pickle, Vorhersage mit numpy (ein Paritätstest gegen `predict_proba`); Tabelle `classifier_models` (Revision 0015), Prüfjob alle zehn Minuten, `train`, `GET /classifier`, `POST /classifier/train`, Verwaltungsseite. Nachbarn: `SearchIndex.similar` (Meilisearch `/search` mit `vector` und `semanticRatio` 1, gefiltert auf `confirmed` und die Sichtbarkeit des Besitzers), jeder Treffer in der Datenbank nachgeprüft; nach dem Update nimmt der Abgleich beim Start des Workers die Dokumente neu auf (`v0014` erhöht die Version der bestätigten) und behält die Vektoren unveränderten Texts, ohne `reindex`. Ein Modellaufruf je Dokument (Prompt `propose-1`); der Felder-Knoten fragt nur nach Feldern außerhalb dessen, wonach das Modell gefragt hat (nach einer Typkorrektur, Prompt `extract-2`). Beim Bauen entschieden: Ein Signal, das einen anderen Wert nennt, widerspricht immer, auch einem Wert, den es nicht kennt (sonst bliebe der Lohnnachweis grün, dessen Angestellten das Modell für den Absender hält); „abdecken“ entscheidet nur, ob das Modell allein reicht, und die Nachbarn decken nur Werte ab, die ein bestätigtes Dokument trägt (`DocumentRepository.confirmed_labels`), nicht schon, sobald einer gefunden wurde. Ohne Vorschlag des Modells ist das Urteil unsicher statt rot. Titel: Muster des Typs, sonst der des Modells, solange der Titel der Dateiname oder der der Maschine ist; Bestätigen rendert das Muster mit den entschiedenen Werten neu; eine Regel ersetzt den Titel der Maschine ohne Gelb. Prüfansicht mit gereihten Kandidaten und Quellen-Chips (Klick übernimmt), Quellen grüner Werte hinter einem Info-Symbol, Zusammenfassung je Signal im Protokoll, Pflichtfelder markiert. Rückkopplungsmaß: `corrected` im Protokolleintrag jeder Korrektur, auch beim Bestätigen im Posteingang. Bewertungssatz: Trainingskorpus mit 55 Briefen von elf Kontakten im Stil ihrer Fälle, zwei Läufe (kalt und trainiert) mit einer simulierten Person, Bericht nebeneinander; neue Fälle 29–33 (Lohnnachweis mit Angestellter, Kontoauszug mit fremden Kontakten, Absender nur über Kennungen, `2.111,68`, Unsinn im optionalen Feld). Mit Fake-Antworten: kein falsches Grün in beiden Läufen; trainiert werden neue Kontakte und Typen, die der kleine Korpus nicht hat, gelb, weil Nachbarn oder Klassifikator einen anderen Wert nennen (die Nachbarn haben noch keine Mindestähnlichkeit; das gehört zur Kalibrierung in M18). Das Review durch einen separaten Agenten (13.10.2026) fand keine Rechte-Lücke an `/classifier`, an den Kennungen und an den Kandidaten in `/review` und keine Verletzung der Architekturregeln; behoben vor dem PR: Klassen eines Modells, das vor dem Löschen eines Kontakts oder Typs trainiert wurde (zwei zusammengeführt), ließen das Urteil scheitern (rot) oder widersprachen dem richtigen Wert; die Nachbarn deckten Werte aus den bestätigten Dokumenten aller Besitzer ab statt aus denen, die der Besitzer lesen darf; eine Neuverarbeitung ab `judge` las die alten Fakten, Vorhersagen und Nachbarn (jetzt laufen die Signale ohne Modellaufruf mit, `CURRENT_SIGNALS`), sodass ein neuer Alias oder eine neue Kennung nicht wirkte; ein Versionskonflikt beim Speichern des Trainings galt als verlorener Job und blockierte ihn für die Leihe, zwei Trainings zugleich konnten dieselbe Nummer nehmen (jetzt unter Sperre, mit Wiederholung); ohne Sprachmodell war der Felder-Knoten auch bei nur optionalen Feldern unsicher; die Signale übernommener Dokumente enthielten sich nicht; ein Absender, der zwei Kontakten gleich ähnlich ist, machte mit dem Klassifikator einen davon grün; der Titel des Modells kam mit Zeilenumbrüchen; das Zitat hinter einem Quellen-Chip war nur per Maus erreichbar; zwei API-Beschreibungen nannten noch `extract_fields`. Offen gelassen: Bestätigte Dokumente ohne Text zählen für die Schwellen des Trainings mit, bei sehr kleinem Bestand scheitert der Trainingsjob dann alle zehn Minuten mit „zu wenige“; Klassifikator und Nachbarn schreiben je Lauf ihre bekannten Klassen ins Protokoll (bei Hunderten Kontakten einige zehn KB je Dokument). Echtlauf (14.10.2026, `reviews/M15-lanes.md`, Kopie der Devinstanz mit 1516 bestätigten Dokumenten, Groq `qwen/qwen3.8-27b`): mit Klassifikator ohne Nachbarn 3 grün, 7 gelb; mit Klassifikator und Nachbarn 1 grün, 9 gelb (M13: 1 grün, 9 gelb); in keinem Durchgang ein falsches Grün (die vier grünen Datumsabweichungen sind Ausstellungsdaten gegen Paperless' Zeitraumsende oder Zuwendungstag). Der Kontakt ist zehnmal richtig (M13: zweimal). Die Nachbarn widersprechen dreimal dem Modell (einmal falsch: gleichförmige Formulare eines anderen Absenders, zweimal Paperless' uneinheitliche Typen), daher ist das Fertig-Kriterium nur ohne Nachbarn erfüllt; Tobi (14.10.2026): die Nachbarn bleiben, wie sie sind (Kalibrierung in M18); Beträge ohne jede Währung im Text gelten in `PAPIQ_DEFAULT_CURRENCY` (EUR, umgesetzt, die Lohnabrechnung wird damit grün: mit Nachbarn 2 grün, 8 gelb); Felder „nur von Hand“ als Idee in Issue #52. Die Lernregel der Kennungen bleibt (eine Anteilsregel hätte bei den zehn nur richtige Belege gestrichen). Beim Lauf gefunden und behoben: die UI-Komponenten fragten Attribute ab, die bits-ui nicht setzt (Reiter der Stammdaten, Zustände), das Suchfeld verdeckte den dritten Admin-Eintrag, gelernte Kennungen und Protokollkarten auf schmalen Schirmen. Offen: der Worker bedient die Indexierung vor der Pipeline, nach einem großen Abgleich warten neue Uploads.
+
+### Zwischenschritt: Layout-Text statt Docling
+
+**Anlass:** Im Test des M15-Stands las das Modell auf einer Lohnabrechnung das Grundgehalt statt des Gesamtbruttos, und sein Zitat zum Netto stand nicht im Text. Ursache war Docling: Es nahm die Seite für eine zweispaltige Tabelle, legte mehrere Zeilen in eine Zelle und ließ die letzte Zeile als Fußzeile weg. Tobis Frage (14.10.2026), ob es Docling überhaupt braucht, führte zu einem Vergleich.
+
+**Vergleich (`ocr_test`, lokal, nicht im Repository):** Sechs Varianten an vier echten Dokumenten (Lohnabrechnung, Versicherungsrechnung, Arztrechnung, Zeitnachweis) und fünf synthetischen mit bekanntem Text (Brief mit Seitenleiste, derselbe gescannt, Rechnung gescannt, schlechter Scan eines Kontoauszugs, Handyfoto eines Kassenbons).
+
+| | Wörter (synthetisch, Mittel) | Werte (Beträge, Daten, IBAN, USt-IdNr) | Betrag bei seiner Beschriftung | Dauer je Dokument |
+| --- | --- | --- | --- | --- |
+| Textebene von OCRmyPDF | 62 % | 53 von 81 | 12 von 27 | 1 bis 6 s (OCR) |
+| Docling (bisher) | 48 % | 45 von 81 | 8 von 27 | 6 bis 72 s |
+| Docling mit eigener OCR | 46 % | 41 von 81 | 7 von 27 | 7 bis 71 s |
+| MarkItDown | 62 % | 53 von 81 | 7 von 27 | 1 bis 2 s |
+| Layout-Text (PDFium) | 62 % | 53 von 81 | 12 von 27 | unter 0,1 s |
+| VLM (`anthropic.claude-sonnet-5-5` über Open WebUI) | 99 % | 81 von 81 | 26 von 27 | 4 bis 37 s, 2.400 Eingabe-Token je Seite |
+
+Die Lücke der textbasierten Varianten kommt fast ganz aus dem schlechten Scan (Tesseract las 17 % der Wörter, `55,08 S` wurde `55,088`) und dem Foto (Tesseracts Seitenanalyse fand gar keinen Text); auf lesbaren Seiten las der Layout-Text alles. Docling ließ Kopf- und Fußzeilen weg: In einer Stichprobe von 250 Dokumenten der Devinstanz standen bei 89 Kennungen (USt-IdNr, IBAN, Mail-Domain) nur dort. Seine gepolsterten Tabellen füllten das Eingabebudget (die Lohnabrechnung: 11.445 Zeichen, ohne Leerzeichen 3.510; im Prompt fehlten 5.718). MarkItDown verklebte die Wörter eines Arztbriefs, dessen PDF keine Leerzeichen setzt. Das VLM las auch Text in Logos, schrieb aber auf der echten Lohnabrechnung einmal falsch, ließ eine Angabe aus und kommentierte in seiner Ausgabe.
+
+**Entscheidungen (Tobi, 14.10.2026):** Docling ganz entfernen; der Text wird als Klartext gespeichert und in Festbreite gezeigt; `GET /documents/{id}/structure` liefert eine eigene Struktur (Seiten, Zeilen, Wörter mit Boxen); der Bestand wird von Hand neu ausgelesen (`reparse`). Das VLM als Leser schwer lesbarer Seiten ist Issue #53.
+
+**Umsetzung (Branch `feature/layout-parser`, von `feature/understanding-0.2.0`):** Parser `adapters/outbound/pdfium/layout.py` auf den Zeichen und Zeilen von `chars.py` (aus dem Festbreiten-Modul gelöst): Wortgrenzen an den Lücken der Zeichenboxen, Spalten auf dem Raster der üblichen Zeichenbreite, Festbreiten-Blöcke mit ihrem eigenen Raster, eine Seite, deren Text überwiegend quer läuft, in dieser Richtung gelesen (`reading_turn`; hilft auch, wenn OCRmyPDF eine Seite wegen zu geringer Sicherheit nicht dreht), schräger Text am Rand in seiner Richtung. Docling, PyTorch, die Modelle, die Image-Stufe `docling-models`, die CI-Schritte und der Marker `docling` entfallen, ebenso `PAPIQ_PARSE_TIMEOUT` und `PAPIQ_DOCLING_MODELS_PATH`; das Image schrumpft von 4,6 auf 1,4 GB. Der Text heißt `content.txt` (`text/plain`); Leser nehmen `content.md` eines alten Dokuments, bis es neu ausgelesen ist. Ohne Docling fällt kein Parser mehr zurück: `ParseResult.note` und der unsichere Ausgang des Parse-Knotens entfallen (leere Seiten machen nichts gelb). Das Eingabebudget zählt einen Lauf von Leerzeichen einmal. `reparse` (Befehl und `POST /pipeline/reparse`) reiht je Dokument einen Job ein, der den Parse-Knoten neben der Verarbeitung ausführt und protokolliert (`input.reparse`). Der Inhalt-Tab zeigt den Text seitenweise in Festbreite; die Markdown-Ansicht und `marked` entfallen.
+
+**Beobachtungen:** Ein seitlich liegender Scan wurde von OCRmyPDF nicht gedreht (Sicherheit der Ausrichtung 11,4 unter der Schwelle 14); bei 90° und 180° las Tesseract dann nichts Brauchbares, bei 270° liest der Layout-Text die Seite richtig. `test_api_end_to_end` (bisher nur mit dem Marker `docling`) scheiterte zweimal unter Volllast an seiner Frist von 10 s für die SSE-Ereignisse und lief danach dreimal grün. `deploy/test-image.sh` läuft im Devcontainer nicht (docker-outside-of-docker bindet die Temp-Dateien nicht ein); ein Rauchtest des Images über die API lief: OCR ok, Parsen ok mit `layout 1`.
+
+**Uneinige Nachbarn (Tobi, 14.10.2026):** In der neuen, leeren Devinstanz wurde die erste Lohnabrechnung eines neuen Arbeitgebers gelb: Modell und Name im Text nannten ihn, die fünf ähnlichsten bestätigten Dokumente waren Abrechnungen früherer Arbeitgeber (drei des einen, zwei des anderen), und drei von fünf galten als Widerspruch. Neu: Bekommt unter den Nachbarn ein zweiter Kontakt ebenfalls zwei Stimmen, nennen sie keinen Kontakt. Ein Kontoauszug, auf dem das Modell einen Zahlungsempfänger als Absender nimmt, bleibt gelb (dort sind sich die Nachbarn einig). Die angezeigte Konfidenz von 89 % war die Obergrenze unsicherer Felder (`_UNSURE`), keine Messung.
+
+**Offen:** Die Messung in der Kopie der Devinstanz (Bestand neu auslesen, die zehn Originale und eine Stichprobe ab den Signalen neu verarbeiten, Lanes, Felder und Zitatfehler gegen den Docling-Stand), danach die Entscheidung, den Branch zurück nach `feature/understanding-0.2.0` zu mergen.
+
+### Zwischenschritt: Felder mit Beschreibung
+
+**Anlass (Tobi, 14.10.2026):** Dokumente werden oft gelb, „weil die Namen der Felder im Text nicht gefunden werden“; die Feldnamen (`LA_Brutto`, `LA_Netto`) vergeben wir intern. Gemessen: Gelb machte fast immer das Zitat, nicht der Name. 70 von 74 Feldprüfungen an 37 Lohnabrechnungen scheiterten daran, dass das Modell Beschriftung und Wert aus verschiedenen Stellen zusammensetzte oder Beträge umschrieb. In 59 der 70 Fälle war der Wert trotzdem richtig. Eine gelockerte Prüfung hätte 10 der 11 falschen Werte grün gemacht.
+
+**Entscheidungen (Tobi, 14.10.2026):**
+- Beschreibung als Freitext am Feld (bis 300 Zeichen, in beiden Prompts, in Feldverwaltung und Formular).
+- Prompt schärfen und messen, die Prüfung bleibt streng.
+- Nach dem falschen Grün der Messung zusätzlich:
+  - A: Das Zitat muss den Wert zeigen.
+  - B: Ein Betrag zählt im Zitat nur als Betrag.
+  - D: Werte auf schwach gelesenen Seiten sind nur Vorschläge; die Schwelle steht in `PAPIQ_POOR_READING_THRESHOLD`.
+  - C (die Beschriftung beim Wert) ist Issue #55.
+- Eine fremde OCR-Schicht liest Papiq selbst neu (`--redo-ocr`).
+- Das Modell der Devinstanz ist `anthropic.claude-sonnet-5-5`, mit Testläufen von höchstens 15 Dokumenten.
+
+**Umsetzung (Branch `feature/field-hints-0.2.0`, von `release/0.2.0`):**
+- **Feld und Schema:** `FieldDefinition.description` (Revision 0017), REST `description` an Feldern.
+- **Prompts** `propose-2` und `extract-3`: Beschreibung hinter Name und Optionen, Zitat „wie es dasteht“, bei getrennter Beschriftung die Zeile des Werts.
+- **Weboberfläche:** Textfeld in der Feldverwaltung, Hinweis unter dem Feld im Formular.
+- **Bewertungssatz:** Felder mit Beschreibung, Fall 35 (Grundgehalt und Gesamtbrutto).
+- **Prüfungen A und B:** in `_check_field` und `_check_date` (auch für das Dokumentdatum), dazu `amounts_in`.
+- **D, Lesung je Seite:** Sie kommt aus dem hOCR, das OCRmyPDF mit `--keep-temporary-files` in einem eigenen Arbeitsordner behält (`OcrResult.readings`, Protokoll `readings`). Unsicher ist ein Wort unter 60 % Sicherheit; weniger als 10 Wörter sagen nichts.
+- **D, Wirkung:** Felder-Knoten und Urteil machen einen grünen Wert auf einer schwach gelesenen Seite zum Vorschlag (die Seite des Zitats, ohne Fundstelle jede gelesene).
+- **Fremde OCR:** Ein PDF mit unsichtbarem Text bekommt `--redo-ocr` statt `--skip-text` und `--deskew`; das Protokoll vermerkt `read_again`.
+- **Sonnet 5.5:**
+  - `PAPIQ_LLM_TEMPERATURE=none` lässt die Temperatur weg.
+  - Die Schemas schreiben „eins aus der Liste oder null“ als `anyOf` und haben keine Grenzen für Listen.
+- **Protokoll-Ansicht:** Sie zeigt die Lesung je Seite.
+
+**Messung (`reviews/field-hints.md`, 15 Dokumente):**
+- alter Stand: 0 grün;
+- neuer Prompt mit A und B: 10 grün;
+- dazu eigene OCR und D: 10 grün, die fünf schwach gelesenen gelb;
+- in keinem Lauf ein echtes falsches Grün. Grüne Abweichungen gab es nur bei den Bestätigungen, die Tobi prüft.
+
+**Beobachtungen:**
+- Die Originale der Lohnabrechnungen tragen die OCR von ecoDMS, die bisher ungeprüft blieb.
+- Groqs Tageskontingent reichte für 45 Dokumente, und es teilt sich den Schlüssel mit der Devinstanz.
+- `-k` druckt den Ort der Dateien mitten in die Ausgabe vor den Fehler; der Adapter entfernt die Zeilen.
+
+**Offen:**
+- Tobis eigene Beschreibungen für LA_Brutto und LA_Netto.
+- Die Prüfung der fraglichen Bestätigungen.
+- Der Bestand liest erst nach „ab OCR neu verarbeiten“ neu.
+- Die Kalibrierung der Schwelle (M18).
+
+### Zwischenschritt: Titelmuster als Regel, Liquid als Template-Sprache
+
+**Anlass (Tobi, 14.10.2026):** Ein Titelmuster soll kein eigener Code sein, sondern die Abkürzung für eine vorgefertigte Regel: sichtbar unter Regeln, schreibgeschützt, mit dem Dokumenttyp als verlinktem Eigentümer. Regeln (und Muster) bekommen eine echte Template-Sprache mit allen Dokumentdaten und Feldern (`field.la_brutto`).
+
+**Entscheidungen (Tobi, 14.10.2026):**
+- Liquid (`python-liquid` 2.3, neue Abhängigkeit) statt Jinja2: Regeln schreiben auch Nutzer, Liquid ist dafür gebaut (nur übergebene Daten, Grenzen), die Sandbox von Jinja2 hatte 2024/2025 zwei Ausbrüche und kennt keine Schleifengrenze.
+- Feldschlüssel aus dem Namen; Umbenennen schreibt Templates um.
+- Eine Nutzerregel, die den Titel setzt, hat Vorrang vor der Typ-Regel.
+- Templates in „Titel setzen“, „Feld setzen“ für Textfelder und im Grund von „Prüfung erzwingen“; Bedingungen bleiben ein Baukasten.
+- Locale und Währung der Templates nur aus Einstellungen (`PAPIQ_TEMPLATE_LOCALE`, `PAPIQ_DEFAULT_CURRENCY`), keine Vorgabe im Adapter.
+
+**Umsetzung (Branch `feature/templates-0.2.0`, von `release/0.2.0`):**
+- **Port und Adapter:** Port `TemplateRenderer` (`check`: genutzte Pfade, `render`: Text oder `MissingValueError`), Adapter `adapters/outbound/liquid`.
+  - Ohne `include`/`render`; Grenzen 1.000 Schleifendurchläufe und 10.000 Zeichen.
+  - `FalsyStrictUndefined`: Ein fehlender Wert lässt sich prüfen, wirft aber bei der Ausgabe.
+  - Zahlen als Gleitkommazahl, die ihren genauen Dezimaltext schreibt (Liquids Rechenfilter kennen kein `Decimal`); Beträge als Objekt mit `amount` und `currency`; Daten ohne Zeitzonenverschiebung; Babel-Filter.
+  - Wie `regex` auch im Speicher-Container (Ausnahme in `architektur.md`).
+- **Domäne:** `FieldDefinition.key` (`template_key`) mit Eindeutigkeit.
+- **Engine:** Der Regel-Planer rendert mit dem Renderer, nachdem Typ, Kontakt, Ablage, Felder und Tags aufgelöst sind; die Namen von Tags, Schublade und Besitzer kommen über die Situation dazu. Fehlende Werte erzeugen eine Notiz `skipped`; eine erzwungene Prüfung hält mit dem rohen Grund.
+- **Speichern:** Prüfung von Syntax und Werten, Ablehnung alter Platzhalter mit Hinweis.
+- **Felder:** Umbenennen schreibt Regeln und Muster um; Löschen und Einengen sind gesperrt, solange ein Template das Feld nutzt.
+- **Revisionen:**
+  - 0018 übersetzt gespeicherte Regeln so, dass sie tun, was sie taten (`| default: ''`, `{% raw %}`).
+  - 0019 übersetzt die Typmuster und legt je Muster eine Regel an. Die Zuordnung steht in einer eigenen Tabelle `title_pattern_rules`, weil SQLite eine Spalte mit Fremdschlüssel an `rules` nicht ohne Kopie der Tabelle wieder entfernen kann; die Regelversionen hängen an `rules`.
+- **Typ-Regel:** global, Bedingung „Dokumenttyp ist X“, Aktion „Titel setzen“, Priorität 0, Eingang und Änderung; schreibgeschützt (409), weicht anderen Titeln (`yielded`).
+- **Felder-Knoten und Bestätigen:** Der Felder-Knoten gibt nur den Titel des Modells; Bestätigen rendert kein Muster mehr (die Regeln laufen nach dem Bestätigen ohnehin).
+- **Vorschau und Weboberfläche:**
+  - `POST /templates/preview`.
+  - Ein Template-Feld in Festbreite mit Werten und Feldschlüsseln zum Einfügen und der Vorschau am neuesten Dokument des Typs, im Typ-Dialog und im Regel-Editor.
+  - Abzeichen „Titelmuster von …“ mit Link zum Typ (`?type=` öffnet den Dialog).
+  - Der Feldschlüssel in der Feldverwaltung.
+
+**Prüfung an echten Daten:**
+- Eine Kopie von `papiq_live` (3 Typen mit `{document_date:YYYY/MM}`, keine Regeln) lief auf 0019: drei Muster in Liquid, drei Typ-Regeln.
+- Im Browser (hell, dunkel, Handybreite):
+  - Liste und Detail schreibgeschützt mit Link.
+  - Der Typ-Dialog zeigt die Vorschau am neuesten Dokument, mit deutschem Monatsnamen und Betrag.
+  - Die alte Schreibweise wird mit Hinweis abgelehnt.
+- Die Kopie ist gelöscht.
+
+**Beobachtungen:**
+- Ein Muster in alter Schreibweise ist gültiges Liquid und erscheint wörtlich im Titel. Eine Ablehnung beim Speichern gab es kurz; Tobi (15.10.2026) will sie nicht: Dann steht eben `{document_date}` da.
+- Fehlermeldungen des Servers bleiben englisch wie alle Meldungen der API.
+
+**Offen:**
+- Bestehende Dokumente tragen ihren alten Titel, bis die Regel angewendet wird („auf bestehende Dokumente anwenden“) oder sie neu verarbeitet werden.
+
+### Zwischenschritt: Template-Editor, Stammdaten-Dialoge überall, Trainingsende als Ereignis
+
+**Anlass (Tobi, 15.10.2026):** Der Test der Titelmuster ergab neun Punkte: die alte Schreibweise nicht mehr prüfen, kleinere Einfüge-Chips, den langen Hinweis entfernen; Stammdaten-Dialoge überall an Ort und Stelle, auch aus der Regel, mit einem Ausstieg zur Regel; die Klassifikator-Seite nach einem Training ohne Neuladen aktualisieren; ein Template-Editor von rechts mit Referenzdokument und Syntaxfarben für alle Template-Stellen. Punkt 6 (Autor „unbekannt“ bei Version 1) entfiel: Das Verhalten passt.
+
+**Entscheidungen (Tobi, 15.10.2026):**
+- Die alte Schreibweise wird nicht geprüft; rot ist nur ein ungültiges Template.
+- Template-Editor mit CodeMirror 6 (neue Abhängigkeit) und eigener Liquid-Färbung.
+- Das Ende eines Trainings ist ein Ereignis, kein Abfragen.
+- CodeMirrors Styles im Shadow Root statt einer gelockerten CSP.
+
+**Umsetzung (Branch `feature/template-editor-0.2.0`, von `release/0.2.0`):**
+- **Alte Platzhalter:** `old_placeholder` und seine Prüfungen entfallen; `{document_date}` ist Text. Issue #58: eine Template-Dokumentation aus den Editoren verlinken.
+- **Stammdaten-Dialoge:**
+  - Ein Store (`masterdata-dialog.svelte.ts`) und ein Host im App-Layout öffnen Kontakte, Typen, Tags und Felder von jeder Seite.
+  - Der Felder-Dialog ist aus der Feldverwaltung gelöst (`FieldDialog.svelte`).
+  - Listen laden nach dem Speichern neu (`changed`).
+  - Das Abzeichen „Titelmuster von …“ öffnet den Typ für Admins an Ort und Stelle. Der Typ-Dialog verlinkt die Regel, außer er kam aus ihr.
+- **Trainingsende:** Domänenereignis `classifier.trained` (Nummer, Beispiele) in derselben Unit of Work wie das Modell. Der Ereignisstrom gibt es an aktive Admins (nicht an einen Strom für ein Dokument), Webhooks wählen weiter nur Dokumentereignisse. Die Klassifikator-Seite lädt bei dem Ereignis und nach einer Unterbrechung des Stroms neu.
+- **Template-Editor:**
+  - `lib/templates/liquid.ts` färbt, findet die Stelle für Vervollständigungen und fügt Werte und Filter passend ein (reine Funktionen, auch für die statische Ansicht).
+  - `lib/templates/codemirror.ts` ist der Editor (Dekorationen statt Grammatik, Vervollständigung, Undo), nachgeladen; ein Chunk von etwa 97 KB gzip. Zwei junge transitive Pakete (`@codemirror/language` 6.13.1, `@lezer/lr` 1.4.11, acht Tage alt) sind per `pnpm-workspace.yaml` auf ältere Releases gesetzt; das Dockerfile kopiert die Datei mit.
+  - `TemplateInput` (klein) und `TemplateEditor` (Sheet, `popover`- und `command`-Wrapper aus shadcn-svelte für das Referenzdokument) ersetzen das Template-Feld im Typ-Dialog, in „Titel setzen“, im Wert eines Textfelds und im Grund von „Prüfung erzwingen“.
+  - `TemplatePreviewOut.values`: die Werte des Dokuments, wie ein Template sie schreibt, für die Liste im Editor.
+  - Die Regelansicht färbt Templates statisch (`TemplateText`).
+  - Tests ersetzen den Editor durch ein Textfeld (`tests/setup.ts`); die Grammatik, die Vervollständigung und der echte Editor in jsdom sind eigens getestet.
+
+**Prüfung an echten Daten:**
+- Eine Kopie von `papiq_live` lief mit der API auf Port 8001, ohne Worker; Browser hell, dunkel und in Handybreite, erst am Dev-Server, dann am Build. Geprüft:
+  - Typ-Dialog aus den Stammdaten mit Link zur Regel, aus dem Abzeichen ohne.
+  - Färbung, Vervollständigung, Fehler nur bei ungültigem Template.
+  - Editor mit Referenzdokument, Werten, Suche, Einfügen, Filter-Chips, Übernehmen und Abbrechen.
+  - Regelansicht eingefärbt.
+- Das Trainingsende ohne echtes Training: Die Kopie teilt den S3-Bucket mit `papiq_live`, ein Training hätte dort ein Modell geschrieben und das älteste gelöscht. Stattdessen standen eine Modellzeile und das Ereignis in der Outbox der Kopie; die Seite zeigte das neue Modell ohne Neuladen, mit Toast.
+- Die Kopie ist gelöscht.
+
+**Beobachtungen:**
+- Der Host der Stammdaten-Dialoge las in seinem Effekt den Eintrag, den er gerade gesetzt hatte, wenn eine Liste ihn ganz übergab: Endlosschleife, die Seite fiel auf die Fehlerseite. Die Tests hatten nur mit IDs geöffnet; jetzt lädt er in lokale Variablen, ein Test öffnet mit dem ganzen Eintrag.
+- Im Build sperrte die CSP CodeMirrors `<style>`-Element; der Dev-Server sendet keine CSP. Im Shadow Root nahm die Fokusfalle von bits-ui den Fokus im Editor für entwichen (`Node.contains` sieht nicht in Shadow Roots) und holte ihn zurück; ein Listener am Fenster hält `focusin` aus dem Editor von ihr fern.
+- Vorschläge im Typ-Dialog wurden am Rand des Dialogs abgeschnitten; sie öffnen jetzt innerhalb des Dialogs, nach oben, wo unten kein Platz ist.
+
+**Offen:**
+- Die Template-Dokumentation (#58).
+
+### Zwischenschritt: Bezugszeitraum als Feld-Datentyp „Zeitraum“
+
+**Anlass (Tobi, 15.10.2026):** Viele Dokumente beziehen sich auf einen Zeitraum, der nicht ihr Datum ist: Ein Zeitnachweis vom Oktober zeigt den September, eine Lohnabrechnung ihren Monat, eine Rechnung einen Leistungszeitraum. Solche Zeitfenster sollen standardmäßig erkannt werden.
+
+**Entscheidungen (Tobi, 15.10.2026):**
+- Bezeichnung „Bezugszeitraum“.
+- Kein eingebautes Feld am Dokument, sondern ein Feld-Datentyp „Zeitraum“: pro Typ zuordenbar, Pflicht oder optional, die Beschreibung als Hinweis an das Modell. Die Bedeutung trägt der Typ, nicht der Name.
+- Die Feldregeln gelten unverändert (ein durchgefallener Wert macht gelb).
+- Ohne Jahr nur ein Vorschlag mit dem Jahr des Dokumentdatums.
+- Regel-Operatoren: ist, überschneidet, beginnt nach, endet vor, vorhanden, fehlt.
+- Filter in Liste und Suche später.
+
+**Umsetzung (Branch `feature/period-0.2.0`, von `release/0.2.0`):**
+- **Ein Codec für Feldwerte** (Tobis Hinweis): Die JSON-Form eines Feldwerts wurde zweimal geschrieben und zweimal gelesen (Domäne und API), die Kopien waren auseinandergelaufen (`5.335E+7` gegen `53350000`). `field_to_json` und `field_from_json` stehen jetzt bei den Feldtypen und dienen API, MCP, Regeln, Übernahme und Protokoll; `values.py` entfällt.
+- **Domäne:** `Period(start, end)` in einem eigenen Modul (`core/domain/periods.py`), die Art aus den Enden (`PeriodKind`), JSON `{start, end}`.
+- **SQL:** Revision 0020, `document_fields.value_date_end`. Der Downgrade macht Zeiträume zu Daten (ihrem Anfang). Wo Unbekanntes bisher als Datum durchrutschte (`case _`), steht das Datum jetzt ausdrücklich.
+- **Lesen:** `evidence.py` liest Zeiträume mit ihrer Stelle im Text. Von einem Wert gilt die Lesung, die in keiner anderen liegt (die Tage einer Spanne, das Jahr eines Monats zählen nicht); zwei sind keine. Ein Text zeigt einen Zeitraum, wie er dasteht, oder mit erstem und letztem Tag.
+- **Prompts:** `extract-4` fragt nach `{start, end}`, `propose-2` nimmt den Zeitraum wie geschrieben; das Antwortschema ist Claude-verträglich.
+- **Prüfung:** wie ein Datum; ohne Jahr oder als Tag gleich dem Dokumentdatum ein Vorschlag; schwach gelesene Seiten wie bei allen wörtlichen Werten.
+- **Regeln:** Operator `overlaps`; `gt` und `lt` vergleichen den Anfang bzw. das Ende mit einem Datum (`condition_value`). Templates: `.start`, `.end`; ausgegeben als „September 2026“, „KW 38 2026“, „Q3 2026“. Suchindex: der Zeitraum in beiden Schreibweisen und als Wort.
+- **Web:** Typ im Felddialog; Eingabe Von/Bis und ein Monatswähler (`PeriodInput`), auch in Regeln; Anzeige `formatPeriod` (in UTC). Die Stellen, die „Objekt = Betrag“ annahmen, prüfen ausdrücklich `isMoney`/`isPeriod`; `sameValue` vergleicht unabhängig von der Reihenfolge der Schlüssel.
+
+**Prüfung:**
+- Evaluation: Feld „Bezugszeitraum“ für Lohnabrechnung und Zeitnachweis (neuer Typ), die vier Lohnabrechnungen mit ihrem Monat, zwei neue Fälle (Zeitnachweis „Abrechnungsmonat: September 2026“, Wochenbericht „KW 38/2026“). Feste Antworten: kein falsches Grün, keine Verstöße.
+- Sonnet 5.5, kalt, zehn Dokumente: Bezugszeitraum 5 von 5 richtig und ohne Person übernommen. Dabei zeigte sich eine Lücke im Set: Zwei Lohnabrechnungen zeigen ein Gesamtbrutto, das ihre Erwartung nicht kannte (das Feld kam später); nachgetragen, danach richtig.
+- Trainiert kommen die Zeitnachweise gelb: Die Lohnabrechnungen desselben Arbeitgebers im Korpus nennen einen anderen Typ, ein Widerspruch (`lanes`).
+
+**Offen:**
+- Filter nach Bezugszeitraum (und Dokumentdatum) in Liste und Suche.
+- In der Telefonrechnung des Sets liest Sonnet „Fällig am“ anders als erwartet; der Text nennt nur eine Abbuchung „frühestens am 12.04.2026“.
+
+### Zwischenschritt: VLM als Texterkennung auf Wunsch (Issue #53)
+
+**Anlass:** Schlechte Scans und Fotos liest Tesseract kaum oder gar nicht (synthetischer Kontoauszug: 17 % der Wörter, das Foto eines Kassenbons: nichts); dort las im Vergleich in `ocr_test` nur ein VLM. Auf der Devinstanz (80 Dokumente, 15.10.2026) hat Tesseract 12 Seiten selbst gelesen, 5 davon schwach (ab 8 % unsicherer Wörter), keine ohne Text.
+
+**Entscheidungen (Tobi, 15.10.2026):**
+- Ein Dokument an ein VLM zu senden, ist immer eine Entscheidung eines Menschen: ein Knopf „Mit VLM lesen“, der immer da ist, wenn ein VLM eingerichtet ist; keine Automatik.
+- Eine neue Schwelle gibt es nicht: Empfohlen ist der Knopf, wo die Texterkennung das Dokument schon rot (kein Text) oder gelb (eine schwach gelesene Seite) macht.
+- Immer das ganze Dokument, keine Seitenauswahl.
+- Liest das VLM, zählt sein Text als OCR und gehört in die Textebene des Archiv-PDFs.
+- Eigene Einstellungen `PAPIQ_VLM_*`, nicht die des Sprachmodells: Seitenbilder gehen nur dorthin, wo es ausdrücklich eingetragen ist.
+- Das Archiv ist der Speicher der Lesung: „Neu verarbeiten ab Parse“ und `reparse` behalten sie. „Neu verarbeiten ab OCR“ fragt bei einem Dokument, das zuletzt das VLM las, ob wieder das VLM liest, vorausgewählt (jede Sendung bleibt eine Entscheidung; Tobi, 15.10.2026, nach dem ersten Stand, der dann wortlos mit Tesseract las). Woran man es erkennt: das Protokoll der OCR und die Metadaten des Archivs (`/Creator`, `xmp:CreatorTool`: „Papiq, vision language model … (read-1)“).
+- Kein Werkzeug im MCP-Server.
+
+**Versuch vorab (Sonnet 5.5 über Open WebUI, die fünf synthetischen Seiten aus `ocr_test`, zehn Aufrufe):** Die Zeilen mit ihrer Box in Tausendsteln des Bildes liefen auf dem dichten Kontoauszug ab der Mitte nach unten weg und lagen auf dem Foto bis zu 17 Zeilen daneben. In Pixeln des gesendeten Bildes (höchstens 1,15 Megapixel, damit der Dienst nicht noch einmal skaliert) saß jede Zeile: Überdeckung mit der wahren Lage im Median 0,79 bis 0,91, auf dem Foto 35 von 35 und auf dem Kontoauszug 80 von 80 Zeilen mit mindestens 0,5; Wörter 99 bis 100 %. Je Seite etwa 2.100 Eingabe- und 1.100 bis 2.400 Ausgabe-Tokens, 10 bis 15 s.
+
+**Umsetzung (Branch `feature/vlm-reader-0.2.0`, von `release/0.2.0`):**
+- **OCR-Plugin:** OCRmyPDF 17 nimmt eigene Texterkennungen als Plugin. Mit `vision` läuft es mit `--force-ocr --deskew` und `ocrmypdf/plugin.py`: Drehung und Schräglage bestimmt weiter Tesseract, jedes vorbereitete Seitenbild geht ans VLM (Prompt `read-1`, JSON-Schema, nach einer unpassenden Antwort einmal neu), die Wörter einer Zeile teilen sich ihre Box nach Länge, OCRmyPDF schreibt daraus die Textebene. Die Einstellungen gehen in der Umgebung in OCRmyPDFs Prozess, je Seite bleibt ein Protokoll in einem eigenen Ordner. `[unreadable]` zählt als unsicheres Wort.
+- **Port:** `Ocr.vision` nennt das Modell, `make_archive(vision=True)` liest mit ihm, `OcrResult.vision` hält die Aufrufe. Fake und Vertragstest; der echte Adapter gegen einen Ersatz-Endpunkt.
+- **Einstellungen:** `PAPIQ_VLM_BASE_URL`, `_MODEL`, `_API_KEY(_FILE)`, `_TIMEOUT` (das ganze Dokument, Vorgabe 30 Minuten; eine Seite höchstens 5 Minuten). Die Leasedauer der Jobs wächst damit; beim Start warnt Papiq vor einem VLM außerhalb des lokalen Netzes.
+- **Pipeline:** `POST /documents/{id}/vision` (Besitzer und Admins) verarbeitet ab OCR neu; der Lauf merkt sich die Bitte (`processing.vision`, Revision 0021), ein Wiederholen fragt erneut. Der OCR-Knoten protokolliert Modell, Endpunkt, Prompt und je Aufruf die Tokens (im Token-Tooltip „N Aufrufe“ statt Versuche) und legt die Aufrufe wie die des Sprachmodells ab (`exchanges/ocr.json`, das Bild als Platzhalter); ohne eingerichtetes VLM scheitert er. Ein VLM, das nicht lesen kann, ist ein vorübergehender Fehler (Wiederholung, dann rot).
+- **Empfehlung:** `GET /documents/{id}/reading` mit den Seiten und `advice` (`no_text`, `poor_page`); keine mehr, sobald das VLM gelesen hat. `GET /pipeline` nennt Modell und Endpunkt.
+- **Web:** „Mit VLM lesen“ im Aktionsmenü, bei Empfehlung markiert und als Hinweis unter dem Kopf; ein Dialog nennt Endpunkt und Modell, bevor etwas gesendet wird. Während des Lesens sagt der Kopf es, der Inhalt trägt „vom VLM gelesen“, das Protokoll öffnet den Prompt der OCR. Neu verarbeiten ab OCR fragt nach einer VLM-Lesung „Wieder mit dem VLM lesen, wie beim letzten Mal“ (vorausgewählt, mit Endpunkt und Modell; der Knopf heißt dann „Mit VLM neu verarbeiten“ und ruft `POST /documents/{id}/vision`); abgewählt oder ohne VLM warnt er, dass die Lesung verloren geht.
+
+**Prüfung:**
+- Neue Beispiele, nur mit Pillow erzeugt: ein Scan mit 100 dpi, Schatten, Rauschen und starkem JPEG sowie ein Kassenbon, schräg auf einem Tisch fotografiert. Beide gut lesbar, Tesseract findet auf beiden keinen Text.
+- Integrationstest mit echtem OCRmyPDF, Ersatz-VLM und Ersatz-Sprachmodell: ohne Bitte rot mit `no_text`, nichts gesendet; mit „Mit VLM lesen“ grün mit Kontakt, Typ, Datum und Pflichtfeld.
+- Im Browser gegen den Build auf einer leeren Instanz mit Ersatz-VLM: Hinweis, Menü, Dialog, Lesung, Inhalt, Prompt, Warnung; hell, dunkel, Handybreite, ohne Konsolenfehler und CSP-Verstöße.
+
+**Offen:**
+- Ein echter Lauf an Scans und Fotos der Devinstanz (Seiten gehen dabei hinaus, nur mit Tobis Zustimmung).
+- Ein lokales Vision-Modell auf dem NUC statt eines entfernten; der Adapter passt für jeden OpenAI-kompatiblen Endpunkt, der Bilder nimmt und Pixel-Boxen liefert.
+- Fotos vorher entzerren (Perspektive), damit Tesseract sie liest; bräuchte OpenCV.
+
+### Zwischenschritt: Fakten und Codes am Dokument
+
+**Anlass (Tobi, 15.10.2026):** Papiq liest „Fakten“ auf dem Dokument (Namen und Kennungen von Kontakten) und ordnet sie Kontakten zu; zu sehen waren sie nur am Kontakt. Tobi wollte sie am Dokument sehen, mit der Fundstelle, dazu eine Erkennung von Bar- und QR-Codes, und Kennungen per Klick an den Kontakt heften.
+
+**Entscheidungen (Tobi, 15.10.2026):**
+- Ort: Inhalt › Text (Variante B des Entwurfs). Die Textbox wird schmaler, rechts „Fakten“, darunter „Codes“. Unter Details nur ein Chip am Kontaktfeld, der zum Inhalt führt; die Spalte unter Details ist schon voll. Variante A (ein Umschalter „Angaben“ / „Fakten und Codes“ in dieser Spalte) verworfen.
+- Erkennung mit `zxing-cpp` (neue Abhängigkeit). Eine Python-Lösung ohne Systempakete und mit Data Matrix gibt es nicht: `pyzbar` braucht `libzbar0` und liest kein Data Matrix, `pylibdmtx` nur Data Matrix, OpenCV ist groß, `pyzxing` braucht Java.
+- Die Codes liest das Fakten-Signal; kein neuer Knoten, keine Änderung am Graphen.
+- Anheften vorerst nur Admins.
+- Mit dabei: die Warnung beim eigenen Konto und „wie ‹Betragsfeld›“ am GiroCode.
+- Nachtrag: Die Personalnummer ist eine eigene Kennung (`personnel_number`): hinter ihrer Beschriftung, 3 bis 30 Zeichen, führende Nullen fallen weg. Der Name des Kontakts unter „Belegen“ öffnet für Admins seinen Dialog an Ort und Stelle. Codes mit gleichem Format und Inhalt (derselbe Link auf jeder Seite eines Briefs) stehen einmal, mit einem Chip je Seite wie die Fundstellen der Felder; `codes.json` hält weiter jeden Abdruck.
+- Mit dem Plan freigegeben („Okay, baue das.“): Links in QR-Codes nur als Text mit Kopierknopf, nicht anklickbar (der Inhalt ist fremd); eine Kennung aus einem Code zählt im Urteil wie eine im Text; nach dem Anheften keine neue Bewertung des Dokuments.
+
+**Umsetzung (Branch `feature/facts-codes-0.2.0`, von `release/0.2.0`):**
+- **Codes lesen:** Port `CodeReader` (`read_codes(pdf) → CodeReading`), Adapter `adapters/outbound/zxing`: PDFium rendert jede Seite des Archivs in Graustufen mit 300 dpi (Kante höchstens 5000 px, höchstens 50 Seiten, unter der Sperre von PDFium), zxing-cpp liest alle Formate. Ungültige und leere Funde fallen weg, gleiche je Seite zählen einmal; die Box steht in Bruchteilen der Seite. Fake und Vertragstest. Domäne `codes.py`: der GiroCode (EPC069-12) mit Empfänger, IBAN, BIC, Betrag und Zweck; Kennungen im Inhalt findet dieselbe Erkennung wie im Text, dazu die IBAN des GiroCodes. Das Beispiel `codes.pdf` (GiroCode, Code 128, Data Matrix) erzeugt `make_samples.py` mit zxing-cpp.
+- **Fakten:** `signal_facts` liest die Codes einmal und legt sie als `codes.json` ab (mit der Version des Lesers); die OCR löscht die Datei mit einem neuen Archiv, eine neue Bewertung nimmt sie. Scheitert das Lesen, warnt das Signal und läuft ohne Codes. Revision 0022: `document_identifiers` (Dokument, Art, Wert), gefüllt vom Signal; daraus zählt `contacts_of` die Kontakte bestätigter Dokumente. Die Fakten stehen einmal in `domain/facts.py`, für Signal und Ansicht, mit Spannen im Text: Namen über Satzzeichen und Umlaut-Schreibweisen hinweg, Kennungen über Trennzeichen.
+- **Bestand:** `read-codes` (Befehl, VS-Code-Task „Papiq: Codes nachholen“) reiht für jedes Dokument mit gelesenem Text, das nicht in Verarbeitung ist, einen Job `pipeline.facts` ein: Codes lesen und `document_identifiers` füllen, ohne Protokoll und ohne neue Bewertung. Übernommene Dokumente bekommen ihre Codes nur so, weil sich das Signal bei ihnen enthält.
+- **API:** `GET /documents/{id}/facts` (Leserecht, 409 ohne Text): Namen und Kennungen mit dem Kontakt, dem sie heute gehören, und ihren Spannen im Text (Zeichen wie bei `/text`); die Codes einmal je Format und Inhalt, mit ihren Seiten und Boxen (eine je Abdruck), GiroCode, Kennungen und den Betragsfeldern gleichen Werts; `other_contacts` nur für Admins. `POST /contacts/{id}/identifiers` (Admins) heftet genau eine Kennung von Hand an; `PATCH` ersetzt die ganze Liste ohne Versionsprüfung.
+- **Web:** `FactsPanel` neben dem Text, auf schmalen Schirmen darunter: „Belegen ‹Kontakt›“, „Andere Kontakte“, „Keinem Kontakt zugeordnet“. Überfahren markiert die Fundstelle im Text, ein Klick hält die Markierung und scrollt dorthin; ein Code markiert, was von seinem Inhalt auch im Text steht. Je Code ein Ausschnitt des Seitenbilds (`CodeThumb`, per CSS), der GiroCode als Überweisung mit „wie ‹Feld›“, anderer Inhalt roh mit Kopierknopf; je Seite ein Chip wie an den Feldern, der Details auf dieser Seite öffnet, alle Fundstellen des Codes markiert. Anheften an den Kontakt des Dokuments (vorausgewählt) oder einen anderen, die Warnung schon an der Zeile. Der Chip unter dem Kontaktfeld zählt Belege, Kennungen ohne Kontakt und Codes.
+
+**Prüfung:**
+- Unit- und Vertragstests; der zxing-Adapter am Beispiel `codes.pdf` (alle drei Codes, etwa 0,1 s je Seite). Die übrigen Beispiele (Scans, schlechter Scan, Foto) ergeben keine falschen Funde.
+- Evaluation mit festen Antworten: gleich wie auf `release/0.2.0` (73 Fälle, keine falschen Grünen, keine Verstöße), auch mit der Personalnummer.
+- Im Browser gegen den Build auf einer leeren Instanz mit einer synthetischen Rechnung (GiroCode, Code 128, Data Matrix): Chip, Markieren, Anheften, Code auf der Seite; hell, dunkel, Handybreite, ohne Konsolenfehler.
+
+**Offen:**
+- Tesseract liest in IBANs gern „O“ statt „0“ (die synthetische Rechnung: „DEO2 …“), die Kennung fehlt dann. Die Erkennung könnte in IBANs „O“ als „0“ lesen, wenn die Prüfziffer dann stimmt.
+- Fundstellen von Namen und Kennungen auch auf der Seite (Box im Archiv), nicht nur im Text.
+- Anheften auch für Besitzer.
+- Nach dem Merge auf der Devinstanz: Revision 0022 und `read-codes`.
+
+### Zwischenschritt: Dokumentansicht – ganze Höhe, Seiten nebeneinander, Metadaten
+
+**Anlass (Tobi, 16.10.2026):** Die Dokumentansicht scrollte als Ganzes, Inhalt und Details sahen verschieden aus, die Ansicht der Seiten zeigte eine Seite je Reihe und zoomte nur mit Knöpfen; der Text hatte noch die JSON-Ansicht aus der Docling-Zeit, und anders als in Paperless-ngx fehlten die Metadaten der Dateien.
+
+**Entscheidungen (Tobi, 16.10.2026):**
+- Ab Desktop-Breite passt die Ansicht ins Fenster, gescrollt wird nur in ihren Karten; am Handy scrollt die Seite.
+- Inhalt in den Karten und Spalten von Details, der Text ohne inneren Rahmen.
+- Die JSON-Ansicht fällt weg; `/structure` und `content.json` bleiben im Backend.
+- Seiten nebeneinander, die Aufteilung folgt dem Zoom; „1 Seite“, „2 Seiten“ (Vorgabe), „Übersicht“ (vier je Reihe). Herauszoomen hält bei der Übersicht; eine Aufteilung, die der Zoom erreicht, ist markiert (nach einem klickbaren Muster). Zoom mit Strg/⌘ und Mausrad, Pinch und zwei Fingern.
+- Ein Tab „Metadaten“ wie in Paperless-ngx; `pikepdf` wird direkte Abhängigkeit.
+
+**Umsetzung (Branch `feature/document-view-0.2.0`, von `release/0.2.0`):**
+- **Layout:** Die App-Hülle füllt ab `lg` mit einer `data-wide`-Seite das Fenster; die Tabs Details, Inhalt, Metadaten und Protokoll füllen den Rest, ihre Karten scrollen in sich (im Protokoll Knoten und Laufkasten getrennt). Unsichtbare Texte für Screenreader sind absolut positioniert; die Scrollbereiche sind ihr Bezugsrahmen, sonst ragten sie hinaus und das Fenster scrollte.
+- **Inhalt:** links eine Karte mit Leiste (Zeichen, „vom VLM gelesen“, Kopieren, Herunterladen) und dem Text, rechts die Fakten und Codes auf der Innenfläche; der JSON-Baum und sein Abruf sind entfernt.
+- **Seiten:** `PageViewer` für PDF und Seitenbilder: die Seiten in umbrechenden Reihen, 100 % ist die gedruckte Größe. Reine Funktionen in `lib/viewer/zoom.ts` (Aufteilungen, Grenzen, Anker unter dem Zeiger, Reihe der Seitenanzeige „Seite 1–2 von 3“) und `lib/viewer/gestures.ts` (Mausrad mit Strg/⌘, Safaris Gesten, zwei Finger). Während der Zoom läuft, werden die Seiten nur skaliert; ruht er, zeichnet PDF.js die sichtbaren neu, daneben und dann auf einmal kopiert, damit keine Seite leer steht. Doppelklick vergrößert eine Seite und zurück.
+- **Metadaten:** Port `MetadataReader`, Adapter `adapters/outbound/pikepdf` (PDF-Infos, XMP, PDF/A; Bilder mit Pillow, EXIF ohne die Angaben zur Speicherung der Pixel), Fake und Vertragstest; `GET /documents/{id}/files` (Leserecht) mit Größe und SHA-256 von Original und Archiv. Der Pfad heißt `files`, nicht `metadata`, weil „Metadaten“ in Papiq sonst Titel, Kontakt, Typ und Felder sind.
+
+**Prüfung:**
+- Vitest für Zoom und Gesten, Komponententests für Inhalt und Metadaten; Backend: Adapter an einem erzeugten PDF/A mit XMP, verschlüsselt, an einem JPEG mit EXIF und am TIFF; Endpunkt mit Leserecht.
+- Browser gegen den Build mit synthetischen Dokumenten: am Desktop scrollt das Fenster in keinem Tab (1400×900 und 1100×760), am Handy die Seite ohne seitlichen Überstand; Strg + Mausrad hält bei der Übersicht, beim Hineinzoomen wird „2 Seiten“ markiert; Doppelklick, Zwei-Finger-Pinch, Sprung zu Codes; hell, dunkel, ohne Konsolenfehler.
+
+**Offen:**
+- Die Daten der PDF-Infos stehen roh da (`D:2026…`), wie die Datei sie hält.
+
+### Zwischenschritt: UI-Verbesserungen – eine Ansicht für Dokumente und Suche, Zahlen an den Stammdaten, Zeiträume in ISO
+
+**Anlass (Tobi, 16.10.2026):** Zehn Punkte aus dem Test der Oberfläche: Die Stammdaten zeigten nicht, wie viele Dokumente sie haben; Felder ließen sich nur vom Feld aus Typen zuordnen, mit einer langen Liste von Schaltern; das Titelmuster hatte keinen Hinweis; der Fortschritt war eine Textzeile; der Zeitraum hatte nur ein Monatsfeld; ein Zitat mit vielen Fundstellen brach Buchstabe für Buchstabe um („S. 9 S. 9“); die Hinweisbox für das VLM war kaum zu sehen; Dokumente und Suche waren zwei Seiten mit denselben Filtern, ohne Sortierung; Dokumente gab es nur als Liste.
+
+**Entscheidungen (Tobi, 16.10.2026):**
+- **Bereich „Alle Nutzer“:** eine Sitzungseinstellung im Benutzermenü, nur für Admins, im Browser gemerkt. Sie gilt für Dokumente, Suche, Posteingang mit seiner Zahl, Regeln und die Zahlen an den Stammdaten. `all=1` verschwindet aus den URLs; die API behält `all_users` und prüft wie bisher.
+- **Zahlen an den Stammdaten:** auf Wunsch über `?document_counts=true` an den vier Listen. Es zählen die Dokumente im Bereich, bei Feldern nur die mit Wert. Die Zahl ist ein Link zur gefilterten Ansicht.
+- **Zuordnung Feld ↔ Typ:** eine Liste mit Suche zum Hinzufügen, in beiden Dialogen. Der Typ-Dialog speichert über einen eigenen Endpunkt; globale Felder stehen dort nur zur Info.
+- **Titelmuster:** ein kurzer Hinweis.
+- **Fortschritt:** Abschnitte je Knoten, im Kopf und klein in Raster, Liste und Posteingang.
+- **Zeitraum nach ISO 8601, erweitert um `JJJJ-Qn`:** im Eingabefeld, in den Anzeigen von Zeiträumen und in Templates. Die deutsche Schreibweise ist nicht genormt („KW 38“ zählt nur die ISO-Woche). „Die ISO reicht erstmal nur für das Zeitraum Feld und die Templates“: Einfache Datumsangaben bleiben.
+- **Fundstellen:** ein Chip je Seite, das Zitat in eigener Zeile, ab sieben Seiten „+N“.
+- **Hinweisboxen:** Varianten der vorhandenen Alert-Komponente mit den gebräuchlichen Namen und Farben: `note` (blau), `tip` (grün, Glühbirne), `warning` (gelb), `caution` (rot). Die VLM-Empfehlung wird `tip`.
+- **Dokumente und Suche:** eine Ansicht unter `/documents`, `/search` entfällt ganz, ohne Umleitung (0.2.0 ist noch nicht veröffentlicht). Sortierung über `?sort=`, je für Liste und Suche im Browser gemerkt: Suche nach Relevanz, Liste nach Dokumentdatum absteigend, Dokumente ohne Datum am Ende.
+- **Darstellung:** Raster oder Liste, Raster als Vorgabe, gemerkt.
+
+**Umsetzung (Branch `feature/ui-improvements-0.2.0`, von `release/0.2.0`):**
+- **Bereich:** `lib/scope.svelte.ts` hält die Wahl (`localStorage`, abgesichert) und gilt nur, solange der Nutzer Admin ist; der Schalter steht im Benutzermenü, ein Abzeichen am Avatar zeigt ihn an. `AllUsersToggle` und `all` in den Filtern sind entfernt.
+- **Sortierung:** `DocumentOrder` (Schlüssel und Richtung) im Port; die Liste blättert weiter mit der ID des letzten Dokuments, der Service liest dessen Wert des Schlüssels nach (fehlt das Dokument, 422). Revision 0023: `title_key` (NFKD ohne Akzente, casefold) mit den Indizes für Datum und Titel; SQLite verträgt dafür kein Batch-Umschreiben der Tabelle, es löschte abhängige Zeilen. In Meilisearch steht `sort` vor den übrigen Ranking-Regeln; sortierbar sind Dokumentdatum, Eingang und Titelschlüssel.
+- **Feldfilter:** `field_id` an Liste und Suche (Dokumente mit Wert für das Feld); der Index hält die IDs der Felder mit Wert. Einträge des älteren Aufbaus (Layout 1) schreibt der Abgleich neu, mit ihren Vektoren.
+- **Eine Ansicht:** `routes/(app)/documents` mit eigenem Suchfeld (× beendet die Suche), Filtern, Sortierung und dem Umschalter Raster/Liste (`lib/listing.ts`); `DocumentCard` zeigt die erste Seite. Route und Menüpunkt der Suche sind entfernt, das Suchfeld im Kopf führt nach `/documents?q=`.
+- **Zahlen:** `DocumentRepository.count_by(CountBy, user)` zählt in einer gruppierten Abfrage; `document_count` an Kontakten, Typen, Tags und Feldern, wenn `document_counts=true`. `DocumentCount` verlinkt auf `/documents?contact=…` (ebenso `type`, `tag`, `field`).
+- **Zuordnung:** `MasterDataService.assign_fields` und `PUT /document-types/{id}/fields` (Felder mit Pflicht, in einer Transaktion; ein globales Feld oder eines mit Werten außerhalb, das ein Muster nutzt, wird abgelehnt). `AssignmentList` in Feld- und Typ-Dialog.
+- **Hinweisboxen:** Tokens `--note` hell und dunkel; die Alert-Varianten setzen ihr Icon selbst.
+- **Fortschritt:** `ProcessingProgress` mit `role="progressbar"`, Tooltip je Abschnitt; im Kopf ein Link ins Protokoll.
+- **Fundstellen:** `byPage` fasst die Boxen je Seite zusammen; `FieldShell` zeigt höchstens sechs Chips und „+N“.
+- **Zeitraum:** `Period.notation` im Kern schreibt ISO, der Liquid-Renderer und der Suchindex nutzen sie (der Index zusätzlich zu den deutschen Formen). Im Web liest und schreibt `lib/periods.ts`; `PeriodInput` hat statt des Monatsfelds das Feld „Zeitraum“, das Getipptes bis zum Verlassen stehen lässt und meldet, was es nicht lesen kann.
+
+**Prüfung:**
+- Vertragstests für Sortierung, Blättern, Zählen und Feldfilter auf Speicher, SQLite und Postgres; Suchindex-Verträge für Feldfilter und Sortierung (Meilisearch, auch hybrid); REST für Sortierung, Zahlen und Typ-Zuordnung; Renderer und Index für Zeiträume.
+- Vitest für Bereich, Sortierung und Darstellung, Zuordnungsliste, Fortschritt, Chips und das Lesen und Schreiben von Zeiträumen.
+- Im Browser gegen den Build auf einer leeren Instanz mit synthetischen Dokumenten: Bereichsschalter, Suche in der Ansicht, Sortierung mit Zurück-Knopf, Raster und Liste, Zahlen-Links, beide Dialoge, Fortschritt, Hinweisbox, Zeitraum-Eingabe; hell, dunkel, Handybreite, ohne Konsolenfehler.
+- Der lokale Smoke-Test `areas.spec.ts` öffnet die Suche jetzt unter `/documents?q=` und wartet nach der Anmeldung auf den Posteingang, die Startseite; grün gegen die Prüfinstanz.
+
+**Offen:**
+- Nach dem Merge auf der Devinstanz: Revision 0023, Neustart; der Abgleich schreibt die Index-Einträge neu (Layout 2), ohne Embeddings.
+- Neue Titel aus Titelmustern mit Zeitraum sehen anders aus als ältere (`2026-W38` statt „KW 38 2026“).
+- Filter nach Zeitraum in Liste und Suche.
+- Der lokale Playwright-Test `rules.spec.ts` passt schon vor diesem Schritt nicht mehr zum Regel-Baukasten (Beschriftungen der Bedingungen, Start im Posteingang).
+
+### M16 – Lesen
+
+- `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.
+- `DocumentParser` mit Betriebsarten `ocr`, `vlm`, `auto` (`PAPIQ_READ_MODE`); Docling-VLM-Pipeline lokal (`granite-docling-258M`) und entfernt über einen OpenAI-kompatiblen Endpunkt; Qualitätsmaß je Lesung im Protokoll.
+- Hinweis (14.10.2026): Mit dem Layout-Text statt Docling entfällt die Docling-VLM-Pipeline; das VLM als Leser schwer lesbarer Seiten über Open WebUI ist Issue #53.
+- Hinweis (15.10.2026): Das VLM liest auf Wunsch einer Person als Texterkennung (Zwischenschritt oben); eine Betriebsart `auto`, die selbst zum VLM greift, entfällt (Tobi: immer eine Entscheidung eines Menschen).
+- `LanguageModel` mit Bildern in der Anfrage (`PAPIQ_LLM_VISION_MODEL`, `PAPIQ_LLM_PAGES`).
+- Messungen: granite-docling auf dem NUC je Seite; Vision-Modelle über OpenWebUI (Claude, Groq); Bewertungssatz um Seitenbilder erweitert.
+
+**Fertig, wenn:** Ein Scan ohne Textschicht und ein Formular aus dem Bewertungssatz werden in `vlm` gelesen; `auto` wählt die VLM-Lesung nur bei schwacher Tesseract-Lesung; die Laufzeiten stehen im Bericht.
+
+**Modell:** Sonnet 5.5 · high.
+
+### M17 – Grounding
+
+- Zitate der Signale und Felder auf Seite und Box abgebildet (Docling-Provenienz); Prüfansicht zeigt die Seite mit Hervorhebung je Wert.
+- Seitenansicht aus den WebP-Derivaten, PDF.js bleibt für das Archiv.
+
+**Fertig, wenn:** In der Prüfansicht führt jeder Wert mit Zitat zur Stelle auf der Seite.
+
+**Modell:** Sonnet 5.5 · medium.
+
+**Vorgezogen mit der neuen Dokumentansicht (Tobi, 13.10.2026; Branch `feature/document-view-0.2.0`, ein PR):** Entwurf als Design-Fläche „Papiq Dokumentansicht“ (Artifact, privat). Entscheidungen:
+
+- Fundstellen aus der Textebene des Archiv-PDFs mit PDFium statt aus der Docling-Provenienz: Docling kennt nur Boxen je Textblock, PDFium die Zeichen des Zitats. Neuer Port `TextLocator` mit In-Memory-Adapter und Vertragstest; Klassifizierung und Felder legen je Zitat Seite und Boxen im Ergebnis ab (`/review`, Protokoll), Bestandsdokumente erst nach Neuverarbeitung. Zu jedem Zitat die Angabe, ob es den Wert selbst zeigt; die UI unterscheidet Zitat, Abgeleitet und Kein Beleg.
+- Seitenansicht: PDF.js auf dem Archiv mit Overlay; bis das Archiv da ist, die WebP-Seitenbilder ohne Markierung. Grund: OCRmyPDF dreht und entzerrt Seiten (`--rotate-pages`, `--deskew`), die WebP-Bilder entstehen aus dem Original, Boxen des Archivs passen auf sie nicht.
+- Eine Dokumentansicht für Posteingang und Dokumente (`/documents/{id}`, `/inbox/{id}` leitet weiter) mit den Tabs Details, Inhalt, Protokoll. Details: Seiten links, rechts Grunddaten, Globale Felder und „Felder für ‹Typ›“ als getrennte Gruppen; zu prüfende Felder als große Karten; Überfahren markiert die Fundstelle, ein Klick auf die Quellenangabe springt hin. Bestätigen im Posteingang mit „danach das nächste Dokument öffnen“. In den Stammdaten bleibt „Felder“ mit „Gilt für“, kein neuer Oberbegriff.
+- Inhalt: Text (Markdown gerendert mit `marked`, nur der Lexer, Ausgabe ohne `{@html}`), Markdown-Quelle, Docling-JSON über neu `GET /documents/{id}/structure`.
+- Protokoll: Graph und Protokoll in einer Liste je Schritt, Uhrzeit vorne; Info-Icon mit allen Token-Angaben des Anbieters (`StructuredAnswer` übernimmt das ganze `usage`); Fenster „Prompt“ mit System, Nachricht und Antwort, Tokens hinter der Zeichenzahl (Eingabe-Tokens je Teil geschätzt). Die Prompts liegen je Knoten und Lauf im Objektspeicher (`documents/{id}/exchanges/<knoten>.json`, alle Läufe), neu `GET /documents/{id}/exchanges/{node}`.
+- Menü: Posteingang, Dokumente, Schubladen, Regeln, Webhooks | Stammdaten, Nutzer; Suche als Feld oben rechts (`/`), Startseite Posteingang.
+- Behoben: Der PDF-Viewer zeichnete nur die erste Seite (der Observer nutzte den Callback der ersten Seite für alle).
+
+**Umsetzung und Review (13.10.2026, Branch `feature/document-view-0.2.0`):** Backend: `StructuredAnswer.usage` mit dem ganzen Bericht des Anbieters (je Versuch in `output.tokens`); Prompts je Knoten und Lauf unter `documents/{id}/exchanges/<knoten>.json` (in `derivative_keys`, Fehler beim Ablegen lassen den Knoten nie scheitern), `GET /documents/{id}/exchanges/{node}` (Besitzer und Admins), `GET /documents/{id}/structure` (Leserecht, 409 vor dem Auslesen); Port `TextLocator` mit PDFium-Adapter (Abgleich erst mit angeglichenem Leerraum, Trennstrichen am Zeilenende und Groß- und Kleinschreibung, dann nur auf Buchstaben und Ziffern; höchstens fünf Stellen je Zitat; Wortboxen der OCR-Textebene zu einer Box je Zeile zusammengefasst; Seitendreh beachtet; unlesbare Seiten übersprungen), Fake und Vertragstest; `FieldCheck.locations` und `quote_shows_value` (gleiche Prüfung wie gegen den Text, nur gegen das Zitat; Ja/Nein zeigt nie den Wert). Web-UI: Menü und Suchfeld (`/`), Startseite Posteingang, eine Dokumentansicht mit Tabs, Prüfkarten mit den drei Belegfällen, Markieren und Springen, Bestätigen mit „danach das nächste Dokument“ (auch im Posteingang aller Nutzer), Inhalt mit `marked` 18.0.14 (neue Abhängigkeit, nur der Lexer), Protokoll mit Token-Tooltip und Prompt-Fenster, Token `--surface`. Tests: 2260 Backend-Unit-Tests, 352 Vitest; Integrationstests ohne Docling 228 grün. Im Browser geprüft (Chromium über Playwright gegen eine eigene API auf Port 8001 mit den Entwicklungsdaten und einem Ersatz-Modell): ein gescannter Zweiseiter durch Texterkennung, Docling und PDFium, Markieren, Springen auf Seite 2, abgeleitetes Zitat gestrichelt, Inhalt, Protokoll, Prompt, Bestätigen mit Wechsel zum nächsten Dokument, Dark Mode, Handybreite; keine Konsolenfehler, keine CSP-Verstöße. Das Review durch einen separaten Agenten fand und behoben vor dem PR: Bestätigen fehlte bei gelben oder roten Dokumenten mit Status `completed` (Ablage wartet auf die Schublade), ein fehlgeschlagenes Dokument ohne offene Felder ließ sich nicht mehr ändern; nach einer Größenänderung zeichnete der Viewer keine Seiten mehr; das Protokoll lud bei jedem Ereignis neu; doppelte Token-Schlüssel bei zwei Versuchen; nach einem korrigierten Typ gingen Vorschläge als Werte des Besitzers mit; Markierungen konnten auf dem Original statt dem Archiv liegen; Admins mit „Alle Nutzer“ landeten nach dem Bestätigen bei einem fremden Dokument; das Ablegen der Prompts und das Suchen der Stellen konnten den Knoten scheitern lassen.
+
+Nach Tobis Review (13.10.2026): Tabellen der Textansicht in voller Breite; Markdown ohne HTML-Entities (Entscheidung B und C): Docling exportiert mit `escape_html=False`; Textprüfung (`normalise`, damit auch Namensabgleich und Textbedingungen der Regeln) und Fundstellen lösen Entities älterer Texte auf, ohne Neuverarbeitung. Ein `|` in der Zelle einer von Docling erkannten Tabelle bleibt Doclings `&#124;` (die Leser des Texts lösen es auf); das Ersetzen im Markdown-Text (`\|`) ist verworfen.
+
+Text in fester Zeichenbreite (Tobi, 13.10.2026, Variante 2): Ausdrucke aus Fachprogrammen (Zeitnachweis, Liste) richten Spalten mit Leerzeichen aus und zeichnen Tabellen aus `|` und `-`; Docling las sie als Absätze und Tabellen mit verschobenen Zellen. Jetzt setzt der Docling-Kindprozess solche Stellen aus den Zeichen der Textebene neu zusammen (PDFium, `adapters/outbound/pdfium/fixed_pitch.py`): mindestens drei aufeinanderfolgende Zeilen, deren Zeichen alle in Schriften fester Breite mit gleichem Vorschub stehen, werden ein Block; jedes Zeichen kommt in seine Spalte, ein weiter Zeilenabstand wird eine Leerzeile. Feste Breite ist gemessen (gleicher Vorschub über mindestens fünf verschiedene Buchstaben), sonst entscheidet das FixedPitch-Flag der Schrift; ein Testdokument hatte Courier ohne Flag. Im DoclingDocument ersetzt je Block ein Code-Element die Elemente, die ganz im Block liegen (`adapters/outbound/docling/fixed_pitch.py`); das Markdown hat dort einen Codeblock, JSON und Markdown bleiben gleich. Ragt ein Element nur teilweise hinein (eine Tabelle mit Kopf in anderer Schrift), bleibt Doclings Lesung der Stelle ganz erhalten. Nicht betroffen: Scans (die OCR-Textebene ist proportional gesetzt), gedrehte Seiten, Tabellen in Proportionalschrift. In der Textansicht ist Code wörtlich (keine Entities aufgelöst). Neues Beispiel `tests/samples/printout.pdf`; geprüft an Tobis Zeitnachweis (beide Seiten spaltengenau) und an den 20 Dokumenten des M13-Probelaufs (zwei weitere Treffer, einer davon bleibt bei Doclings guter Tabelle).
+
+Behoben auf diesem Branch (Tests aus M14, auf `release/0.2.0` ebenso rot): `TestPostgresMigrations::test_attributes_become_fields_and_back` las die Knotenzustände in JSONB-Schlüsselordnung statt Graphordnung; `test_api_end_to_end.py` erwartete die Läufe ohne den Knoten `pages`, der neben der Texterkennung läuft; `test_search_end_to_end.py` änderte ein Dokument, während noch Knoten liefen (gelegentlich 409). Alle 240 Integrationstests grün, mit Docling, auf SQLite und Postgres. Bestandsdokumente bekommen Stellen, Prompts und den ganzen Token-Bericht erst mit einer Neuverarbeitung (kein Nachhol-Befehl). Die Eingabe-Tokens je Teil des Prompts sind nach Zeichen geschätzt. Überfahren scrollt nicht zu einer Stelle außerhalb der Sicht (nur der Klick auf die Seite). Gründe der Prüfungen kommen weiter englisch aus der API.
+
+### M18 – Eskalation und Kalibrierung
+
+Aus dem M15-Echtlauf (`reviews/M15-lanes.md`): wie stark ähnliche Dokumente widersprechen dürfen. Gleichförmige Formulare (Lohnsteuerbescheinigungen verschiedener Arbeitgeber) stimmen einstimmig für einen anderen Absender; eine Mindestähnlichkeit oder ein geringeres Gewicht der Nachbarn gegen Namen und Kennungen im Text ist am Rückkopplungsmaß zu kalibrieren (Tobi, 14.10.2026).
+
+- Bei Widerspruch zwischen Signalen ein zweiter Aufruf mit den Kandidaten an ein stärkeres Modell (konfigurierbar, optional).
+- Schwellen des Klassifikators und des Namensabgleichs am Rückkopplungsmaß kalibriert; Bericht über mehrere Läufe.
+
+**Fertig, wenn:** Das Rückkopplungsmaß je Feld liegt im Echtlauf unter der festgelegten Grenze, und der Anteil Gelb sinkt gegenüber M15 messbar.
+
+**Modell:** Opus 5.5 · high.
 
 ## Devcontainer
 

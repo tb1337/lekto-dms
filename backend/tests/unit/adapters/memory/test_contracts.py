@@ -6,15 +6,21 @@ from collections.abc import Sequence
 import pytest
 
 from papiq.adapters.outbound.memory import (
+    FAKE_GIRO_CODE,
+    FAKE_VISION,
     BagOfWordsEmbeddings,
     FakeCipher,
+    FakeClassifier,
+    FakeCodeReader,
     FakeEmbeddings,
     FakeLanguageModel,
+    FakeMetadataReader,
     FakeOcr,
     FakeOidcProvider,
+    FakePageRenderer,
     FakeParser,
     FakePasswordHasher,
-    FakePreviewRenderer,
+    FakeTextLocator,
     FakeTotp,
     ManualClock,
     MemoryDatabase,
@@ -34,6 +40,7 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
 )
 from papiq.core.ports.event_bus import DEFAULT_DELIVERY_RETRY
+from tests.contracts.classifier import ClassifierContract
 from tests.contracts.clock import ClockContract
 from tests.contracts.event_bus import EventBusContract, EventBusFactory
 from tests.contracts.identity import (
@@ -47,7 +54,14 @@ from tests.contracts.identity import (
 from tests.contracts.job_queue import JobQueueContract
 from tests.contracts.language_model import EmbeddingsContract, LanguageModelContract
 from tests.contracts.object_store import ObjectStoreContract
-from tests.contracts.processing import OcrContract, ParserContract, PreviewRendererContract
+from tests.contracts.processing import (
+    CodeReaderContract,
+    MetadataReaderContract,
+    OcrContract,
+    PageRendererContract,
+    ParserContract,
+    TextLocatorContract,
+)
 from tests.contracts.rules import RuleRepositoriesContract
 from tests.contracts.search_index import DIMENSIONS, SearchIndexContract
 from tests.contracts.unit_of_work import UnitOfWorkContract
@@ -118,13 +132,36 @@ def ocr() -> FakeOcr:
 
 
 @pytest.fixture
+def vision_ocr() -> FakeOcr:
+    return FakeOcr(vision=FAKE_VISION)
+
+
+@pytest.fixture
+def code_reader() -> FakeCodeReader:
+    return FakeCodeReader([FAKE_GIRO_CODE])
+
+
+class TestFakeCodeReader(CodeReaderContract):
+    pass
+
+
+@pytest.fixture
+def metadata_reader() -> FakeMetadataReader:
+    return FakeMetadataReader()
+
+
+class TestFakeMetadataReader(MetadataReaderContract):
+    pass
+
+
+@pytest.fixture
 def parser() -> FakeParser:
     return FakeParser()
 
 
 @pytest.fixture
-def preview_renderer() -> FakePreviewRenderer:
-    return FakePreviewRenderer()
+def page_renderer() -> FakePageRenderer:
+    return FakePageRenderer()
 
 
 class TestFakeOcr(OcrContract):
@@ -135,7 +172,16 @@ class TestFakeParser(ParserContract):
     pass
 
 
-class TestFakePreviewRenderer(PreviewRendererContract):
+@pytest.fixture
+def text_locator() -> FakeTextLocator:
+    return FakeTextLocator(["Rechnung Nummer 4711\nPapiq Testdokument\nBetrag 123,45 EUR"])
+
+
+class TestFakeTextLocator(TextLocatorContract):
+    pass
+
+
+class TestFakePageRenderer(PageRendererContract):
     pass
 
 
@@ -257,4 +303,13 @@ def search_index() -> MemorySearchIndex:
 
 
 class TestMemorySearchIndex(SearchIndexContract):
+    pass
+
+
+@pytest.fixture
+def classifier() -> FakeClassifier:
+    return FakeClassifier()
+
+
+class TestFakeClassifier(ClassifierContract):
     pass

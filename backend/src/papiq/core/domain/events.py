@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import ClassVar
 
 from papiq.core.domain.ids import DocumentId, DrawerId, EventId, UserId, new_id
-from papiq.core.domain.pipeline import Lane, Outcome, Step
+from papiq.core.domain.pipeline import Lane, Node, Outcome
 from papiq.core.domain.validation import require_utc
 
 
@@ -31,9 +31,33 @@ class DocumentReceived(DocumentEvent):
 
 
 @dataclass(frozen=True, kw_only=True)
-class StepCompleted(DocumentEvent):
-    type: ClassVar[str] = "document.step_completed"
-    step: Step
+class NodeStarted(DocumentEvent):
+    """A worker took the node up; again after a lost lease."""
+
+    type: ClassVar[str] = "document.node_started"
+    node: Node
+    run: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class NodeDeferred(DocumentEvent):
+    """An attempt of the node failed with an error; the node waits and runs again at
+    `retry_at`."""
+
+    type: ClassVar[str] = "document.node_deferred"
+    node: Node
+    run: int
+    retry_at: datetime
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        object.__setattr__(self, "retry_at", require_utc(self.retry_at, "retry_at"))
+
+
+@dataclass(frozen=True, kw_only=True)
+class NodeCompleted(DocumentEvent):
+    type: ClassVar[str] = "document.node_completed"
+    node: Node
     run: int
     outcome: Outcome
 
@@ -69,14 +93,32 @@ class DocumentDeleted(DocumentEvent):
     readers: tuple[UserId, ...] = ()
 
 
-EVENT_TYPES: dict[str, type[DomainEvent]] = {
+@dataclass(frozen=True, kw_only=True)
+class ClassifierTrained(DomainEvent):
+    """A new model of the classifier was stored. For the admins (event stream), not for
+    webhooks."""
+
+    type: ClassVar[str] = "classifier.trained"
+    number: int
+    examples: int
+
+
+DOCUMENT_EVENT_TYPES: dict[str, type[DocumentEvent]] = {
     kind.type: kind
     for kind in (
         DocumentReceived,
-        StepCompleted,
+        NodeStarted,
+        NodeDeferred,
+        NodeCompleted,
         LaneChanged,
         DocumentFiled,
         DocumentUpdated,
         DocumentDeleted,
     )
+}
+"""The events about a document: those webhooks subscribe to."""
+
+EVENT_TYPES: dict[str, type[DomainEvent]] = {
+    **DOCUMENT_EVENT_TYPES,
+    ClassifierTrained.type: ClassifierTrained,
 }

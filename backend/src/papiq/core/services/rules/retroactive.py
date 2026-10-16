@@ -31,15 +31,17 @@ from papiq.core.domain.ids import DocumentId, RuleApplicationId, RuleId, UserId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.permissions import can_write_document
-from papiq.core.domain.pipeline import RULES_APPLY, Lane, Outcome, Step, StepResult, StepRun
+from papiq.core.domain.pipeline import RULES_APPLY, Lane, Node, NodeResult, NodeRun, Outcome
 from papiq.core.domain.rule_engine import Effect, Mode, Note
 from papiq.core.domain.rules import Rule, RuleApplication, RuleScope
 from papiq.core.domain.users import User
 from papiq.core.ports import (
     Clock,
     DocumentFilter,
+    DocumentPosition,
     ObjectStore,
     PatternMatcher,
+    TemplateRenderer,
     UnitOfWork,
     UnitOfWorkFactory,
 )
@@ -94,6 +96,7 @@ class RuleApplicationService:
         clock: Clock,
         store: ObjectStore,
         matcher: PatternMatcher,
+        templates: TemplateRenderer,
         *,
         max_text: int,
         max_documents: int,
@@ -104,6 +107,7 @@ class RuleApplicationService:
         self._clock = clock
         self._store = store
         self._matcher = matcher
+        self._templates = templates
         self._max_text = max_text
         self._max_documents = max_documents
         self._version = pipeline_version
@@ -127,11 +131,11 @@ class RuleApplicationService:
             rule = await _applicable_rule(uow, user, id)
             if user.is_active_admin:
                 documents = await uow.documents.query(
-                    DocumentFilter(lanes=_LANES), before=before, limit=SCAN
+                    DocumentFilter(lanes=_LANES), after=_position(before), limit=SCAN
                 )
             else:
                 documents = await uow.documents.query_visible(
-                    actor, DocumentFilter(lanes=_LANES), before=before, limit=SCAN
+                    actor, DocumentFilter(lanes=_LANES), after=_position(before), limit=SCAN
                 )
         items: list[PreviewItem] = []
         next_cursor = documents[-1].id if len(documents) == SCAN else None
@@ -329,11 +333,11 @@ class RuleApplicationService:
         if problem is not None:
             return problem
         await uow.processing_log.append(
-            StepRun(
+            NodeRun(
                 document_id=document.id,
-                step=Step.APPLY_RULES,
+                node=Node.APPLY_RULES,
                 run=document.processing.run,
-                result=StepResult(
+                result=NodeResult(
                     outcome=Outcome.OK,
                     model_version=RULES_APPLY,
                     input={
@@ -368,6 +372,7 @@ class RuleApplicationService:
         run = await run_rules(
             uow,
             self._matcher,
+            self._templates,
             mode=Mode.RETROACTIVE,
             document=document,
             owner=owner,
@@ -412,3 +417,7 @@ async def _candidate(uow: UnitOfWork, user: User, rule: Rule, document: Document
 async def _enqueue(uow: UnitOfWork, id: RuleApplicationId, now: datetime) -> None:
     payload: dict[str, JsonValue] = {"application_id": str(id)}
     await uow.jobs.enqueue(APPLY_JOB, payload, run_at=now, dedup_key=f"{APPLY_JOB}:{id}")
+
+
+def _position(before: DocumentId | None) -> DocumentPosition | None:
+    return None if before is None else DocumentPosition(before)

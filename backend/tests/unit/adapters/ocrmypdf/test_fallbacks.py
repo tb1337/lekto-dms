@@ -13,6 +13,7 @@ from papiq.adapters.outbound.ocrmypdf.engine import SIGNATURE_NOTE, OcrmypdfEngi
 from papiq.adapters.outbound.system import Completed
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import UnprocessableDocumentError
+from papiq.core.domain.reading import PageReading
 from papiq.core.ports.ocr import OcrResult
 
 SIGNATURE = (
@@ -49,23 +50,49 @@ GHOSTSCRIPT = "\n".join(
 )
 
 
+def hocr(*confidences: int) -> str:
+    """A page of Tesseract's hOCR with a word of each confidence, and an empty one."""
+    words = "".join(
+        f"<span class='ocrx_word' id='word_1_{n}' title='bbox 1 2 3 4; x_wconf {c}'>"
+        f"<strong>w{n}</strong></span>"
+        for n, c in enumerate(confidences)
+    )
+    empty = "<span class='ocrx_word' id='word_1_x' title='bbox 1 2 3 4; x_wconf 5'> </span>"
+    return f"<div class='ocr_page' id='page_1'><span class='ocr_line'>{words}{empty}</span></div>"
+
+
 class Runs:
     """Scripted outcomes of `run_process`: one (exit code, stderr) per OCRmyPDF run; the output
-    file is written when the run succeeds (0 or 10)."""
+    file is written when the run succeeds (0 or 10). `pages`: the hOCR per page a run keeps in
+    its work folder, one mapping per run (none: no page recognised)."""
 
     def __init__(self, *outcomes: tuple[int, str]) -> None:
         self.outcomes = list(outcomes)
+        self.pages: list[dict[int, str]] = []
         self.calls: list[list[str]] = []
+        self.hidden_text = False  # the source carries the invisible layer of another OCR
+        self.unreadable_text = False  # the source has text in a font without a character map
 
     async def __call__(
-        self, args: Sequence[str], *, timeout: timedelta, env: object = None
+        self, args: Sequence[str], *, timeout: timedelta, env: dict[str, str] | None = None
     ) -> Completed:
         if args[0] == "tesseract":
             return Completed(returncode=0, stdout="tesseract 5.5.0\n", stderr="")
         self.calls.append(list(args))
         code, stderr = self.outcomes.pop(0)
+        assert env is not None and "--keep-temporary-files" in args
+        kept = Path(env["TMPDIR"]) / "ocrmypdf.io.test"
+        kept.mkdir()
+        for page, content in (self.pages.pop(0) if self.pages else {}).items():
+            (kept / f"{page:06d}_ocr_hocr.hocr").write_text(content)
         if code in (0, 10):
             Path(args[-1]).write_bytes(b"%PDF-1.7\n%%EOF\n")
+        # As OCRmyPDF prints it: before the error, in a container with a line more.
+        stderr = (
+            f"Temporary working files retained at:\n{kept}\n"
+            "OCRmyPDF is running in a Docker container, so the files will be inside the "
+            "container.\n" + stderr
+        )
         return Completed(returncode=code, stdout="", stderr=stderr)
 
 
@@ -74,6 +101,8 @@ def runs(monkeypatch: pytest.MonkeyPatch) -> Runs:
     runs = Runs()
     monkeypatch.setattr(module, "run_process", runs)
     monkeypatch.setattr(module, "count_pages", lambda path: 1)
+    monkeypatch.setattr(module, "has_hidden_text", lambda path: runs.hidden_text)
+    monkeypatch.setattr(module, "has_unreadable_text", lambda path: runs.unreadable_text)
     return runs
 
 
@@ -100,6 +129,52 @@ async def test_a_clean_run_is_pdfa_without_a_note(runs: Runs, tmp_path: Path) ->
     assert (result.pdfa, result.note, result.pages) == (True, None, 1)
     assert [options(call) for call in runs.calls] == [("pdfa", False)]
     assert target.exists() and [p.name for p in tmp_path.iterdir()] == ["archive.pdf"]
+
+
+async def test_another_ocr_s_layer_is_read_again(runs: Runs, tmp_path: Path) -> None:
+    runs.outcomes = [(0, ""), (0, "")]
+    result, _ = await convert(runs, tmp_path)
+    assert not result.read_again
+    runs.hidden_text = True
+    again, _ = await convert(runs, tmp_path)
+    assert again.read_again
+    first, second = runs.calls
+    assert "--skip-text" in first and "--deskew" in first and "--redo-ocr" not in first
+    # OCRmyPDF does not allow deskewing when it reads a page again.
+    assert "--redo-ocr" in second and "--skip-text" not in second and "--deskew" not in second
+
+
+async def test_text_that_cannot_be_read_is_recognised_from_the_images(
+    runs: Runs, tmp_path: Path
+) -> None:
+    runs.outcomes = [(0, "")]
+    runs.unreadable_text = runs.hidden_text = True
+    result, _ = await convert(runs, tmp_path)
+    assert (result.read_again, result.pdfa, result.note) == (True, True, module.UNREADABLE_NOTE)
+    (call,) = runs.calls
+    assert "--force-ocr" in call and "--deskew" in call
+    assert "--skip-text" not in call and "--redo-ocr" not in call
+
+
+async def test_the_last_run_s_hocr_tells_how_well_each_page_was_read(
+    runs: Runs, tmp_path: Path
+) -> None:
+    runs.outcomes = [(2, SIGNATURE), (0, "")]
+    runs.pages = [{1: hocr(10)}, {1: hocr(96, 41, 90), 3: hocr(59, 60)}]
+    result, _ = await convert(runs, tmp_path)
+    assert result.readings == (
+        PageReading(page=1, words=3, unsure=1),
+        PageReading(page=3, words=2, unsure=1),
+    )
+    assert [p.name for p in tmp_path.iterdir()] == ["archive.pdf"]
+
+
+async def test_where_the_files_were_kept_is_no_reason(runs: Runs, tmp_path: Path) -> None:
+    runs.outcomes = [(15, "")]
+    with pytest.raises(RuntimeError) as raised:
+        await convert(runs, tmp_path)
+    assert "retained" not in str(raised.value) and "container" not in str(raised.value)
+    assert list(tmp_path.iterdir()) == []
 
 
 async def test_a_signed_pdf_is_processed_again_without_its_signature(

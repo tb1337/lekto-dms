@@ -2,8 +2,12 @@
 	import type { Snippet } from 'svelte';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Menu from '@lucide/svelte/icons/menu';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import Users from '@lucide/svelte/icons/users';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { BASE } from '#lib/base.ts';
+	import HeaderSearch from '#lib/components/HeaderSearch.svelte';
 	import LanguageMenu from '#lib/components/LanguageMenu.svelte';
 	import Logo from '#lib/components/Logo.svelte';
 	import ThemeMenu from '#lib/components/ThemeMenu.svelte';
@@ -14,6 +18,8 @@
 	import { home, loginHref } from '#lib/navigation.ts';
 	import { inbox } from '#lib/inbox.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { canListAllUsers } from '#lib/permissions.ts';
+	import { scope } from '#lib/scope.svelte.ts';
 	import { href, isCurrent, SETTINGS, visibleSections, type Section } from '#lib/sections.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
@@ -25,6 +31,10 @@
 	const adminSections = $derived(sections.filter((section) => section.admin));
 	const username = $derived(session.user?.username ?? '');
 	let menuOpen = $state(false);
+	// A document opened from the inbox belongs to the inbox.
+	const currentPath = $derived(
+		page.url.searchParams.get('from') === 'inbox' ? `${home()}inbox` : page.url.pathname
+	);
 
 	async function signOut() {
 		try {
@@ -35,10 +45,19 @@
 		}
 		await goto(loginHref(home()), { replaceState: true });
 	}
+
+	// The inbox counter covers what the scope setting covers.
+	let allBefore = scope.allUsers;
+	$effect(() => {
+		const all = scope.allUsers;
+		if (all === allBefore) return;
+		allBefore = all;
+		void inbox.refresh();
+	});
 </script>
 
 {#snippet pill(section: Section, vertical: boolean)}
-	{@const current = isCurrent(section, page.url.pathname)}
+	{@const current = isCurrent(section, currentPath)}
 	<a
 		href={href(section)}
 		aria-current={current ? 'page' : undefined}
@@ -68,12 +87,17 @@
 	>{m.skip_to_content()}</a
 >
 
-<div class="flex min-h-screen flex-col">
+<!-- A page that needs the room (the document view) marks itself `data-wide`: from the desktop
+	width on it fills the window, and only its own areas scroll. -->
+<div class="flex min-h-screen flex-col lg:has-[[data-wide]]:h-dvh">
 	<header class="sticky top-0 z-40 border-b bg-card">
 		<div class="flex h-16 items-center gap-4 px-4 sm:px-8 lg:gap-7">
 			<Sheet.Root bind:open={menuOpen}>
 				<Sheet.Trigger
-					class={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'lg:hidden')}
+					class={cn(
+						buttonVariants({ variant: 'ghost', size: 'icon' }),
+						adminSections.length ? 'xl:hidden' : 'lg:hidden'
+					)}
 					aria-label={m.nav_open()}
 				>
 					<Menu aria-hidden="true" />
@@ -98,7 +122,14 @@
 
 			<a href={home()} class="rounded-md text-lg"><Logo /></a>
 
-			<nav aria-label={m.nav_main()} class="hidden min-w-0 flex-1 items-center gap-1 lg:flex">
+			<!-- The menu in the header where it fits: from lg, from xl with the admin's entries. -->
+			<nav
+				aria-label={m.nav_main()}
+				class={cn(
+					'hidden min-w-0 flex-1 items-center gap-1',
+					adminSections.length ? 'xl:flex' : 'lg:flex'
+				)}
+			>
 				{#each userSections as section (section.path)}
 					{@render pill(section, false)}
 				{/each}
@@ -111,19 +142,49 @@
 			</nav>
 
 			<div class="ml-auto flex items-center gap-2">
+				<!-- The field where there is room: instead of the menu from md, beside it from xl
+				     (the admin's menu from xl, the field beside it from 2xl). -->
+				<HeaderSearch
+					class={cn(
+						'hidden w-64 md:flex',
+						adminSections.length ? 'xl:hidden 2xl:flex 2xl:w-80' : 'lg:hidden xl:flex xl:w-80'
+					)}
+				/>
+				<a
+					href="{BASE}/documents#search"
+					class={cn(
+						buttonVariants({ variant: 'ghost', size: 'icon' }),
+						'md:hidden',
+						adminSections.length ? 'xl:inline-flex 2xl:hidden' : 'lg:inline-flex xl:hidden'
+					)}
+					aria-label={m.header_search_label()}
+				>
+					<SearchIcon aria-hidden="true" />
+				</a>
 				<LanguageMenu />
 				<ThemeMenu />
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger
 						class={cn(
 							buttonVariants({ size: 'icon' }),
-							'font-semibold uppercase [&]:text-[0.95rem]'
+							'relative font-semibold uppercase [&]:text-[0.95rem]'
 						)}
-						aria-label={m.account_menu({ username })}
+						aria-label={scope.allUsers
+							? m.account_menu_all_users({ username })
+							: m.account_menu({ username })}
 					>
 						{username.slice(0, 1)}
+						<!-- An admin who sees all users is told so at a glance. -->
+						{#if scope.allUsers}
+							<span
+								class="absolute -top-0.5 -right-0.5 grid size-4 place-items-center rounded-full border-2 border-card bg-lane-yellow text-lane-yellow-foreground"
+								aria-hidden="true"
+							>
+								<Users class="size-2.5" />
+							</span>
+						{/if}
 					</DropdownMenu.Trigger>
-					<DropdownMenu.Content align="end" class="w-56">
+					<DropdownMenu.Content align="end" class="w-64">
 						<DropdownMenu.Label class="flex flex-col gap-0.5">
 							<span class="font-semibold">{username}</span>
 							<span class="text-xs font-normal text-muted-foreground">
@@ -131,6 +192,20 @@
 							</span>
 						</DropdownMenu.Label>
 						<DropdownMenu.Separator />
+						{#if canListAllUsers(session.user)}
+							<DropdownMenu.CheckboxItem
+								checked={scope.allUsers}
+								onCheckedChange={(checked) => scope.set(checked)}
+								class="items-start"
+							>
+								<Users aria-hidden="true" class="mt-0.5" />
+								<span class="flex flex-col gap-0.5">
+									{m.all_users()}
+									<span class="text-xs text-muted-foreground">{m.all_users_hint()}</span>
+								</span>
+							</DropdownMenu.CheckboxItem>
+							<DropdownMenu.Separator />
+						{/if}
 						<DropdownMenu.Item onSelect={() => goto(href(SETTINGS))}>
 							<SETTINGS.icon aria-hidden="true" />
 							{SETTINGS.label()}
@@ -145,8 +220,14 @@
 		</div>
 	</header>
 
-	<main id="main" tabindex="-1" class="flex flex-1 justify-center px-4 py-8 outline-none sm:px-8">
-		<div class="w-full max-w-[1040px]">
+	<main
+		id="main"
+		tabindex="-1"
+		class="flex flex-1 justify-center px-4 py-8 outline-none sm:px-8 lg:has-[[data-wide]]:min-h-0 lg:has-[[data-wide]]:py-6"
+	>
+		<div
+			class="w-full max-w-[1040px] has-[[data-wide]]:max-w-[1600px] lg:has-[[data-wide]]:min-h-0"
+		>
 			{@render children()}
 		</div>
 	</main>

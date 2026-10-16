@@ -1,8 +1,10 @@
-"""Server-sent events: progress of the documents a user may see.
+"""Server-sent events: progress of the documents a user may see, and for admins the end of a
+training of the classifier.
 
 `EventHub` subscribes to the event bus (subscriber `api.sse`, dispatched by the API process)
 and hands each document event to the open streams of the users who may read the document at
-that moment. Events are pushed only to connected clients; there is no replay, so a client that
+that moment, and `classifier.trained` to the streams of the active admins that do not follow
+one document. Events are pushed only to connected clients; there is no replay, so a client that
 reconnects fetches the current state. One API instance is assumed: several instances would
 share the subscription and each would see only part of the events (a broker is the way out).
 
@@ -22,7 +24,12 @@ from typing import Any
 
 from fastapi.encoders import jsonable_encoder
 
-from papiq.core.domain.events import DocumentDeleted, DocumentEvent, DomainEvent
+from papiq.core.domain.events import (
+    ClassifierTrained,
+    DocumentDeleted,
+    DocumentEvent,
+    DomainEvent,
+)
 from papiq.core.domain.ids import DocumentId, UserId
 from papiq.core.ports import EventBus
 from papiq.core.services.documents import DocumentService
@@ -48,7 +55,7 @@ class Listener:
         self,
         still_allowed: Callable[[], Awaitable[bool]] | None = None,
         every: timedelta = timedelta(seconds=30),
-    ) -> AsyncIterator[DocumentEvent]:
+    ) -> AsyncIterator[DomainEvent]:
         """The events for this listener until the hub closes or the client falls behind.
 
         With `still_allowed`, the stream asks it at least every `every` (also while no event
@@ -72,7 +79,7 @@ class Listener:
                     continue
             if item is _CLOSED:
                 return
-            assert isinstance(item, DocumentEvent)
+            assert isinstance(item, DomainEvent)
             yield item
 
     def offer(self, item: object) -> None:
@@ -99,6 +106,9 @@ class EventHub:
         bus.subscribe(SUBSCRIBER, self.handle)
 
     async def handle(self, event: DomainEvent) -> None:
+        if isinstance(event, ClassifierTrained):
+            await self._to_admins(event)
+            return
         if not isinstance(event, DocumentEvent):
             return
         listeners = [
@@ -117,6 +127,15 @@ class EventHub:
             )
         for listener in listeners:
             if listener.user in readers:
+                listener.offer(event)
+
+    async def _to_admins(self, event: DomainEvent) -> None:
+        listeners = [listener for listener in self._listeners if listener.document is None]
+        if not listeners:
+            return
+        admins = await self._documents.active_admins({listener.user for listener in listeners})
+        for listener in listeners:
+            if listener.user in admins:
                 listener.offer(event)
 
     @asynccontextmanager
@@ -139,7 +158,7 @@ class EventHub:
             listener._close_now()
 
 
-def message(event: DocumentEvent) -> dict[str, Any]:
+def message(event: DomainEvent) -> dict[str, Any]:
     """The JSON payload of an event."""
     fields = {
         field.name: getattr(event, field.name)

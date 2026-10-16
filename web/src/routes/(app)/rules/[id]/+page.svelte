@@ -13,6 +13,8 @@
 	import { BASE } from '#lib/base.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import RuleView from '#lib/components/rules/RuleView.svelte';
+	import TitlePatternBadge from '#lib/components/rules/TitlePatternBadge.svelte';
+	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { Switch } from '#lib/components/ui/switch/index.ts';
@@ -38,9 +40,11 @@
 	const userName = (user: string | null) =>
 		lookup?.users.find((entry) => entry.id === user)?.username ?? m.rule_unknown();
 
+	// Again after a master data dialog saved: a title pattern's rule follows its type.
 	$effect(() => {
 		const wanted = id;
-		rule = null;
+		void masterDataDialogs.changed;
+		if (untrack(() => rule)?.id !== wanted) rule = null;
 		Promise.all([
 			unwrap(api.GET('/api/v1/rules/{id}', { params: { path: { id: wanted } } })),
 			unwrap(api.GET('/api/v1/rules/{id}/versions', { params: { path: { id: wanted } } })),
@@ -104,6 +108,13 @@
 					{#if rule.owner_id && rule.owner_id !== session.user?.id}
 						<Badge variant="outline">{userName(rule.owner_id)}</Badge>
 					{/if}
+					{#if rule.managed_by_document_type_id}
+						<TitlePatternBadge
+							documentTypeId={rule.managed_by_document_type_id}
+							name={rule.name}
+							ruleId={rule.id}
+						/>
+					{/if}
 					<Badge variant={rule.enabled ? 'secondary' : 'outline'}>
 						{rule.enabled ? m.rule_on() : m.rule_off()}
 					</Badge>
@@ -113,6 +124,11 @@
 					<span class="text-sm text-destructive">
 						{m.rule_disabled_reason({ reason: rule.disabled_reason })}
 					</span>
+				{/if}
+				{#if rule.managed_by_document_type_id}
+					<p class="max-w-prose text-sm text-muted-foreground">
+						{m.rule_title_pattern_hint({ type: rule.name })}
+					</p>
 				{/if}
 			</div>
 			<div class="flex flex-wrap items-center gap-2">

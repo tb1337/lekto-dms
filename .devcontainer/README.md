@@ -8,7 +8,7 @@ HTTP on `localhost`.
 
 | Service (`compose.yml`) | Purpose |
 | --- | --- |
-| `dev` | The workspace: target `dev` of the `Dockerfile` (the system packages of the runtime image, Python 3.13 with uv, Node.js with pnpm, Docling models, Git, GitHub CLI, Claude Code) |
+| `dev` | The workspace: target `dev` of the `Dockerfile` (the system packages of the runtime image, Python 3.13 with uv, Node.js with pnpm, Git, GitHub CLI, Claude Code) |
 | `postgres` | Databases `papiq` (development), `papiq_test_*` (integration tests, created and dropped per test) and `papiq_live` (the development instance) |
 | `garage` | S3 object store; `garage-init` creates the key and the buckets `papiq` (development, tests below `tests/`) and `papiq-live` (the development instance) at every start |
 | `meilisearch` | Search; indexes `papiq-documents` (development), `papiq-test-*` (tests) and `papiq-live-documents` (the development instance) |
@@ -63,6 +63,8 @@ in your password manager, not only in `live.env`.
 | Papiq: UI bauen | `pnpm build` in `web/`; the API serves `web/build` below `/ui` (`PAPIQ_UI_DIR`) |
 | Papiq: UI dev | Vite on <http://localhost:5173/ui/> with `/api` proxied to the API, for UI work with hot reload |
 | Papiq: Suche neu aufbauen | `reindex`: rebuild the search index from database and bucket (after a restore, a model change, or to add vectors) |
+| Papiq: Seitenbilder nachholen | `render-pages`: queue the page images of documents from before the pages node; the worker renders them |
+| Papiq: Codes nachholen | `read-codes`: queue reading the bar and QR codes of documents from before code reading; the worker reads them and keeps the identifiers each document shows |
 | Migration: plan, run, verify | The Paperless migration client with the `PAPIQ_MIGRATION_*` variables of `live.env` (see below) |
 
 Nothing starts when the container opens. After **Papiq starten**, open
@@ -95,12 +97,10 @@ endpoint outside the local network.
 
 ## Memory
 
-Docling needs about 1.1 GB of RAM for a one-page document and up to 2 GB for ten pages, per
-job; `live.env.example` sets `PAPIQ_WORKER_CONCURRENCY=3` for a machine with 8 GB (Docker
-Desktop or OrbStack: the memory of the VM, not of the Mac). A Docling process killed for lack
-of memory ends with exit code -9 in the processing log; the step is repeated, and the document
-goes red after three attempts. The table in
-[backend/README.md](../backend/README.md#worker) gives the value per RAM.
+A job needs little memory (OCRmyPDF about 150 MB, the worker about 0.5 GB); the OCR is bound
+by the CPU. `live.env.example` sets `PAPIQ_WORKER_CONCURRENCY=3`; more jobs than the VM has
+cores gain nothing (Docker Desktop or OrbStack: the cores of the VM, not of the Mac). See
+[backend/README.md](../backend/README.md#worker).
 
 ## Migration from Paperless-ngx
 
@@ -114,8 +114,9 @@ instance:
    container restarts; recreate the files then.
 2. **Migration: plan** reads Paperless and writes nothing; the report in
    `migration/migration-reports/` lists what would happen.
-3. **Migration: run** takes everything over (about 12 s per document with OCR and Docling on
-   the CPU, no language model: 1500 documents take about 4.5 hours). Ctrl-C in the terminal
+3. **Migration: run** takes everything over (with OCR and Docling on the CPU and no
+   language model it took about 12 s per document, 1500 documents in about 4.5 hours; reading
+   the text as it is set takes milliseconds of that now). Ctrl-C in the terminal
    stops cleanly; running the task again continues. The state is in
    `migration/migration-state.sqlite`.
 4. **Migration: verify** compares Paperless and Papiq object by object.

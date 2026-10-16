@@ -16,6 +16,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response
+from fastapi import Path as FastApiPath
 from fastapi.responses import FileResponse
 from pydantic import ValidationError as PydanticValidationError
 from starlette.background import BackgroundTask
@@ -31,12 +32,18 @@ from papiq.adapters.inbound.rest.schemas.documents import (
     DocumentPage,
     DocumentPatch,
     DocumentPreviewOut,
+    DocumentTextOut,
+    ExchangeNode,
     ImportedMetadataIn,
     LogEntry,
     MoveRequest,
+    ReadingOut,
     ReprocessRequest,
+    RunExchangeOut,
     VisibilityOut,
 )
+from papiq.adapters.inbound.rest.schemas.facts import FactsOut
+from papiq.adapters.inbound.rest.schemas.files import DocumentFilesOut
 from papiq.adapters.inbound.rest.schemas.inbox import (
     ConfirmRequest,
     InboxItemOut,
@@ -45,10 +52,10 @@ from papiq.adapters.inbound.rest.schemas.inbox import (
 )
 from papiq.adapters.inbound.rest.upload import FILE_FIELD, read_upload
 from papiq.adapters.inbound.schemas import RuleReportOut
-from papiq.adapters.inbound.values import field_value
 from papiq.core.domain.documents import UNSET, Channel, Document, DocumentChanges
 from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import ValidationError
+from papiq.core.domain.fields import field_from_json
 from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -59,8 +66,8 @@ from papiq.core.domain.ids import (
     UserId,
 )
 from papiq.core.domain.imports import ImportedMetadata
-from papiq.core.domain.pipeline import Lane, Step
-from papiq.core.ports import DocumentFilter
+from papiq.core.domain.pipeline import Lane, Node
+from papiq.core.ports import DocumentFilter, DocumentOrder, SortKey
 from papiq.core.services.documents import MAX_PAGE, DocumentFile, MetadataChange
 
 router = APIRouter(prefix="/documents", tags=["documents"], dependencies=PROTECTED)
@@ -81,6 +88,23 @@ _LANES: dict[LaneFilter, Lane | None] = {
     LaneFilter.PROCESSING: None,
 }
 
+
+class DocumentSort(StrEnum):
+    """A key to sort by, descending with a `-` before it. Documents without a date come last
+    either way."""
+
+    CREATED = "created_at"
+    CREATED_DESC = "-created_at"
+    DOCUMENT_DATE = "document_date"
+    DOCUMENT_DATE_DESC = "-document_date"
+    TITLE = "title"
+    TITLE_DESC = "-title"
+
+    @property
+    def order(self) -> DocumentOrder:
+        return DocumentOrder(SortKey(self.value.lstrip("-")), ascending=not self.startswith("-"))
+
+
 DRAWER_FIELD = "drawer_id"
 CHANNEL_FIELD = "channel"
 OWNER_FIELD = "owner"
@@ -94,6 +118,7 @@ def document_filter(
     tag_id: list[UUID] | None,
     drawer_id: UUID | None,
     lane: list[LaneFilter] | None,
+    field_id: UUID | None = None,
 ) -> DocumentFilter:
     """The query parameters of the document list as a filter (also used by the search)."""
     return DocumentFilter(
@@ -102,6 +127,7 @@ def document_filter(
         tags=frozenset(TagId(tag) for tag in tag_id or ()),
         drawer=None if drawer_id is None else DrawerId(drawer_id),
         lanes=None if not lane else frozenset(_LANES[item] for item in lane),
+        field=None if field_id is None else FieldId(field_id),
     )
 
 
@@ -148,7 +174,7 @@ _UPLOAD_BODY: dict[str, Any] = {
                                 "Admins only, with `channel=migration`: JSON of the metadata "
                                 "the document comes with (up to 48 KiB), as `ImportedMetadataIn`. "
                                 "Classification and field extraction apply it instead of "
-                                "asking the language model; the other steps and the rules run "
+                                "asking the language model; the other nodes and the rules run "
                                 "as usual."
                             ),
                         },
@@ -229,8 +255,10 @@ async def upload(
         "The documents within the caller's reach, newest first: their own, and green "
         "documents in drawers they own or that are shared with them. Admins may read every "
         "document and list them all with `all_users` (others: 403). Filters combine; `tag_id` "
-        "and `lane` may repeat (all tags, any lane; `processing`: no lane yet). To search by "
-        "words and meaning use `GET /documents/search`."
+        "and `lane` may repeat (all tags, any lane; `processing`: no lane yet); `field_id`: a "
+        "value for the field is set. `sort` orders by arrival (the default, newest first), "
+        "document date or title; documents without a date come last. To search by words and "
+        "meaning use `GET /documents/search`."
     ),
     response_model=DocumentPage,
     responses=problem_responses(401, 403, 422),
@@ -243,15 +271,22 @@ async def list_documents(
     tag_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
     drawer_id: UUID | None = None,
     lane: Annotated[list[LaneFilter] | None, Query(max_length=4)] = None,
+    field_id: UUID | None = None,
+    sort: DocumentSort = DocumentSort.CREATED_DESC,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     cursor: Annotated[str | None, Query(max_length=64, description="`next_cursor`.")] = None,
     all_users: Annotated[
         bool, Query(description="Every user's documents instead of the caller's reach (admins).")
     ] = False,
 ) -> DocumentPage:
-    filter = document_filter(contact_id, document_type_id, tag_id, drawer_id, lane)
+    filter = document_filter(contact_id, document_type_id, tag_id, drawer_id, lane, field_id)
     views = await context.documents.query(
-        user, filter, before=_decode_cursor(cursor), limit=limit, all_users=all_users
+        user,
+        filter,
+        order=sort.order,
+        after=_decode_cursor(cursor),
+        limit=limit,
+        all_users=all_users,
     )
     next_cursor = _encode_cursor(views[-1].document.id) if len(views) == limit else None
     return DocumentPage(
@@ -376,14 +411,39 @@ _file_route(
 _file_route(DocumentFile.PREVIEW, "The preview image of the first page", "image/webp", "inline")
 
 
+@router.get(
+    "/{id}/pages/{number}",
+    summary="The image of one page",
+    description=(
+        "Needs read access. Pages are numbered from 1 up to `page_count`; 404 while the page "
+        "images do not exist (yet) or for a number the document does not have."
+    ),
+    response_class=FileResponse,
+    responses={
+        200: {"content": {"image/webp": {"schema": {"type": "string", "format": "binary"}}}},
+        **problem_responses(401, 404, 422),
+    },
+)
+async def get_document_page(
+    id: UUID, number: Annotated[int, FastApiPath(ge=1)], user: CurrentUser, context: Context
+) -> FileResponse:
+    return await _download(context, user, DocumentId(id), DocumentFile.PAGE, "inline", page=number)
+
+
 async def _download(
-    context: Context, user: UserId, id: DocumentId, file: DocumentFile, disposition: str
+    context: Context,
+    user: UserId,
+    id: DocumentId,
+    file: DocumentFile,
+    disposition: str,
+    *,
+    page: int = 1,
 ) -> FileResponse:
     descriptor, name = await asyncio.to_thread(tempfile.mkstemp, prefix="papiq-download-")
     os.close(descriptor)
     path = Path(name)
     try:
-        info = await context.documents.download(user, id, file, path)
+        info = await context.documents.download(user, id, file, path, page=page)
     except BaseException:
         await asyncio.shield(asyncio.to_thread(path.unlink, missing_ok=True))
         raise
@@ -402,10 +462,88 @@ async def _download(
     )
 
 
+TEXT_MAX = 20_000
+"""Characters of text one answer holds at most."""
+
+
+@router.get(
+    "/{id}/text",
+    summary="The recognised text of a document",
+    description=(
+        "Needs read access. The text read from the archive, plain text as it is set (the "
+        "pages apart by a form feed on a line of its own; a document parsed before 0.2 has "
+        "Markdown until it is read again), in pieces of at most "
+        f"{TEXT_MAX} characters; continue with `next_offset`. 409 while the document has no "
+        "text yet (it is not parsed)."
+    ),
+    response_model=DocumentTextOut,
+    responses=problem_responses(401, 404, 409, 422),
+)
+async def document_text(
+    id: UUID,
+    user: CurrentUser,
+    context: Context,
+    offset: Annotated[int, Query(ge=0, description="First character.")] = 0,
+    limit: Annotated[int, Query(ge=1, le=TEXT_MAX, description="Characters.")] = TEXT_MAX,
+) -> DocumentTextOut:
+    piece = await context.documents.read_text(user, DocumentId(id), offset=offset, limit=limit)
+    return DocumentTextOut(
+        text=piece.text,
+        offset=piece.offset,
+        total_length=piece.total_length,
+        next_offset=piece.next_offset,
+    )
+
+
+@router.get(
+    "/{id}/structure",
+    summary="The parsed structure of a document",
+    description=(
+        "Needs read access. The structure of the text: `pages` with `number`, `width` and "
+        "`height` (points), their `lines` with `text`, `box` and `words` (each with `text` and "
+        "`box`); a box is `[x1, y1, x2, y2]` in fractions of the page as shown, from its top "
+        "left. A document parsed before 0.2 has Docling's JSON until it is read again. Can be "
+        "large. 409 while the document is not parsed."
+    ),
+    response_class=Response,
+    responses={
+        200: {"content": {"application/json": {"schema": {"type": "object"}}}},
+        **problem_responses(401, 404, 409, 422),
+    },
+)
+async def document_structure(id: UUID, user: CurrentUser, context: Context) -> Response:
+    data = await context.documents.read_structure(user, DocumentId(id))
+    return Response(
+        data,
+        media_type="application/json",
+        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
+    )
+
+
+@router.get(
+    "/{id}/exchanges/{node}",
+    summary="What a node sent to the language model",
+    description=(
+        "The owner and admins, as the log. The messages, the answer and the usage report of "
+        "every call of `node` to the language model, per processing run, oldest first; empty "
+        "if it never asked one (also for runs from before the messages were kept). For `ocr`, "
+        "the vision language model's calls, one per page; the page image stands in the "
+        "message as a placeholder."
+    ),
+    response_model=list[RunExchangeOut],
+    responses=problem_responses(401, 403, 404, 422),
+)
+async def model_exchanges(
+    id: UUID, node: ExchangeNode, user: CurrentUser, context: Context
+) -> list[RunExchangeOut]:
+    exchanges = await context.documents.exchanges(user, DocumentId(id), Node(node.value))
+    return [RunExchangeOut.of(exchange) for exchange in exchanges]
+
+
 @router.get(
     "/{id}/log",
     summary="Processing log of a document",
-    description="The owner and admins. Every execution of every step, oldest first.",
+    description="The owner and admins. Every execution of every node, oldest first.",
     response_model=list[LogEntry],
     responses=problem_responses(401, 403, 404, 422),
 )
@@ -418,8 +556,8 @@ async def processing_log(id: UUID, user: CurrentUser, context: Context) -> list[
 @router.post(
     "/{id}/retry",
     status_code=202,
-    summary="Repeat the failed step",
-    description="The owner and admins. Processing continues with the following steps.",
+    summary="Repeat the failed node",
+    description="The owner and admins. Processing continues with the following nodes.",
     response_model=DocumentDetails,
     responses=problem_responses(401, 403, 404, 409, 422),
 )
@@ -428,12 +566,80 @@ async def retry(id: UUID, user: CurrentUser, context: Context) -> DocumentDetail
 
 
 @router.post(
+    "/{id}/vision",
+    status_code=202,
+    summary="Read the document with the vision language model",
+    description=(
+        "The owner and admins. Sends every page as an image to the vision language model "
+        "(`PAPIQ_VLM_*`, named in `GET /pipeline`) and processes the document again from "
+        "`ocr`: the model's text becomes the archive's text layer and is checked like any "
+        "other OCR. Only a person asks for it; the advice is in `GET /documents/{id}/reading`. "
+        "409 without a model, while processing runs, or past a failed node."
+    ),
+    response_model=DocumentDetails,
+    responses=problem_responses(401, 403, 404, 409, 422),
+)
+async def read_with_vision(id: UUID, user: CurrentUser, context: Context) -> DocumentDetails:
+    return _details(await context.pipeline.read_with_vision(user, DocumentId(id)))
+
+
+@router.get(
+    "/{id}/facts",
+    summary="What a document shows of its contact",
+    description=(
+        "Needs read access. The names of contacts and the identifiers (IBAN, VAT and customer "
+        "numbers, mail domains) its text shows, each with where it stands (`spans`, characters "
+        "of `GET /documents/{id}/text`), and the codes on its pages (QR, Data Matrix, Code 128, "
+        "...) with what they hold: a GiroCode read as its credit transfer. Found as the facts "
+        "signal finds them now, so an identifier attached since counts at once. 409 while the "
+        "document has no text yet."
+    ),
+    response_model=FactsOut,
+    responses=problem_responses(401, 404, 409, 422),
+)
+async def document_facts(id: UUID, user: CurrentUser, context: Context) -> FactsOut:
+    return FactsOut.of(await context.documents.facts(user, DocumentId(id)))
+
+
+@router.get(
+    "/{id}/files",
+    summary="A document's files and their metadata",
+    description=(
+        "Needs read access. When the document was added and last changed, its original's "
+        "name and media type, and for the original and the archive (null while there is none) "
+        "their size, SHA-256 and what they say about themselves: a PDF's version, PDF/A level, "
+        "pages, document information and XMP; an image's format, size, resolution and EXIF. "
+        "The files are read for it, so it takes a moment for large ones."
+    ),
+    response_model=DocumentFilesOut,
+    responses=problem_responses(401, 404, 422),
+)
+async def document_files(id: UUID, user: CurrentUser, context: Context) -> DocumentFilesOut:
+    return DocumentFilesOut.of(await context.documents.files(user, DocumentId(id)))
+
+
+@router.get(
+    "/{id}/reading",
+    summary="How the text of a document was read",
+    description=(
+        "The owner and admins, as the log. Whether the archive's text is the vision language "
+        "model's, the words and unsure words of each page its latest OCR recognised, and "
+        "whether reading it with the model is advised."
+    ),
+    response_model=ReadingOut,
+    responses=problem_responses(401, 403, 404, 422),
+)
+async def reading(id: UUID, user: CurrentUser, context: Context) -> ReadingOut:
+    return ReadingOut.of(await context.pipeline.reading(user, DocumentId(id)))
+
+
+@router.post(
     "/{id}/reprocess",
     status_code=202,
-    summary="Process again from a step",
+    summary="Process again from a node",
     description=(
-        "The owner and admins. Discards the results from `from_step` on, e.g. after a model "
-        "change. Not while processing runs, not past a failed step, and not from `file` while "
+        "The owner and admins. Discards the results from `from_node` on, e.g. after a model "
+        "change. Not while processing runs, not past a failed node, and not from `file` while "
         "uncertain fields wait for confirmation."
     ),
     response_model=DocumentDetails,
@@ -442,15 +648,15 @@ async def retry(id: UUID, user: CurrentUser, context: Context) -> DocumentDetail
 async def reprocess(
     id: UUID, body: ReprocessRequest, user: CurrentUser, context: Context
 ) -> DocumentDetails:
-    step = Step(body.from_step.value)
-    return _details(await context.pipeline.reprocess_from(user, DocumentId(id), step))
+    node = Node(body.from_node.value)
+    return _details(await context.pipeline.reprocess_from(user, DocumentId(id), node))
 
 
 @router.get(
     "/{id}/review",
     summary="What the model proposed for a document",
     description=(
-        "The owner and admins. The open steps and fields, and the latest classification and "
+        "The owner and admins. The open nodes and fields, and the latest classification and "
         "field extraction by the model: each field as proposed, checked and applied."
     ),
     response_model=ReviewOut,
@@ -467,14 +673,16 @@ async def review(id: UUID, user: CurrentUser, context: Context) -> ReviewOut:
     description=(
         "The owner and admins, for yellow and red documents that are not being processed. "
         "`drawer_id` must be a drawer the owner may write to; an admin chooses any drawer. "
-        "Every open field of the steps before `resume_at` (and of `apply_rules` when processing "
+        "Every open field of the nodes before `resume_at` (and of `apply_rules` when processing "
         "resumes with it) needs a decision: a value or null in `changes`, a value the document "
         "already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 "
         "lists the open fields in `open_fields`. The rules' fields `drawer`, `title` and "
         "`review` always have a value: confirming keeps it, `drawer_id` moves the document. The "
         "results before `resume_at` count as confirmed; processing continues from there up to "
         "filing, and the rules leave what the owner decided or changed as it is. From "
-        "`extract_fields` on, the extracted fields replace the ones the document has."
+        "`fields` on, the fields read again replace the ones the document has; otherwise the "
+        "type's title pattern is rendered with the decided values (while the title is the "
+        "machine's)."
     ),
     response_model=DocumentDetails,
     responses=problem_responses(401, 403, 404, 409, 422),
@@ -488,7 +696,7 @@ async def confirm(
         DocumentId(id),
         changes,
         accept_suggestions=body.accept_suggestions,
-        resume_at=Step(body.resume_at.value),
+        resume_at=Node(body.resume_at.value),
         drawer=None if body.drawer_id is None else DrawerId(body.drawer_id),
     )
     return _details(document)
@@ -498,9 +706,9 @@ async def confirm(
     "",
     summary="The caller's inbox",
     description=(
-        "The caller's yellow and red documents, newest first, each with its open steps and "
+        "The caller's yellow and red documents, newest first, each with its open nodes and "
         "fields; with `all_users` (admins, others: 403) those of every user. Confirm them with "
-        "`POST /documents/{id}/confirm`, or repeat a failed step with `retry`."
+        "`POST /documents/{id}/confirm`, or repeat a failed node with `retry`."
     ),
     response_model=InboxPage,
     responses=problem_responses(401, 403, 422),
@@ -561,7 +769,7 @@ async def _changes(body: DocumentPatch, user: UserId, context: Context) -> Docum
         for field_id, value in body.fields.items():
             definition = definitions.get(FieldId(field_id))
             fields[FieldId(field_id)] = (
-                value if definition is None else field_value(definition, value)
+                value if definition is None or value is None else field_from_json(definition, value)
             )
     if "title" in given and body.title is None:
         raise ValidationError("title: must not be null")
@@ -634,7 +842,7 @@ async def _imported(value: str | None, user: UserId, context: Context) -> Import
             raise ValidationError(f"metadata.fields: field {field_id} does not exist")
         if raw is None:
             raise ValidationError(f"metadata.fields.{field_id}: must not be null")
-        fields[FieldId(field_id)] = field_value(definition, raw)
+        fields[FieldId(field_id)] = raw
     try:
         return ImportedMetadata(
             title=body.title,
@@ -644,7 +852,7 @@ async def _imported(value: str | None, user: UserId, context: Context) -> Import
             ),
             tag_ids=frozenset(TagId(tag) for tag in body.tag_ids),
             document_date=body.document_date,
-            fields={key: definitions[key].validate(value) for key, value in fields.items()},
+            fields={key: field_from_json(definitions[key], raw) for key, raw in fields.items()},
         )
     except ValidationError as error:
         raise ValidationError(f"metadata: {error}") from None

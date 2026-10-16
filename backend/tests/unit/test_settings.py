@@ -119,6 +119,7 @@ def test_classification_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     ("name", "value"),
     [
         ("PAPIQ_LLM_TEMPERATURE", "-1"),
+        ("PAPIQ_LLM_TEMPERATURE", "warm"),
         ("PAPIQ_LLM_RESPONSE_FORMAT", "text"),
         ("PAPIQ_LLM_INPUT_BUDGET", "10"),
         ("PAPIQ_LLM_TIMEOUT", "0"),
@@ -140,6 +141,11 @@ def test_the_suggestion_threshold_is_not_above_acceptance(
         {"PAPIQ_CONFIDENCE_THRESHOLD": "0.7", "PAPIQ_CONTACT_SUGGEST_THRESHOLD": "0.75"},
     )
     assert "PAPIQ_CONTACT_SUGGEST_THRESHOLD must not be above PAPIQ_CONFIDENCE_THRESHOLD" in message
+
+
+def test_none_leaves_the_temperature_to_the_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_env(monkeypatch, {"PAPIQ_LLM_TEMPERATURE": "None"})
+    assert load_settings().llm_temperature is None
 
 
 def test_log_level_is_case_insensitive(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -190,7 +196,7 @@ def test_sqlite_ignores_postgres_parameters(monkeypatch: pytest.MonkeyPatch) -> 
     assert load_settings().db_type == "sqlite"
 
 
-@pytest.mark.parametrize("prefix", ["LLM", "EMBEDDING"])
+@pytest.mark.parametrize("prefix", ["LLM", "EMBEDDING", "VLM"])
 def test_endpoint_and_model_must_be_set_together(
     monkeypatch: pytest.MonkeyPatch, prefix: str
 ) -> None:
@@ -393,11 +399,10 @@ def test_mcp_defaults() -> None:
 def test_worker_and_processing_defaults() -> None:
     settings = load_settings()
     assert settings.worker_concurrency == 2
-    assert settings.step_max_attempts == 3
-    assert settings.step_retry_delay == timedelta(seconds=30)
+    assert settings.node_max_attempts == 3
+    assert settings.node_retry_delay == timedelta(seconds=30)
     assert settings.ocr_languages == "deu+eng"
-    assert settings.ocr_timeout == settings.parse_timeout == timedelta(minutes=10)
-    assert settings.docling_models_path == Path("/opt/docling-models")
+    assert settings.ocr_timeout == timedelta(minutes=10)
     assert settings.retention == timedelta(days=7)
 
 
@@ -706,3 +711,8 @@ def test_every_setting_is_documented_with_its_role() -> None:
         f"unknown in README: {sorted(set(names) - set(expected))}"
     )
     assert len(names) == len(set(names)), "a variable is documented twice"
+
+
+def test_renamed_variables_are_refused_with_their_new_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    message = error_message(monkeypatch, {"PAPIQ_STEP_MAX_ATTEMPTS": "5"})
+    assert message == "PAPIQ_STEP_MAX_ATTEMPTS was renamed to PAPIQ_NODE_MAX_ATTEMPTS"

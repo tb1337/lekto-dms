@@ -11,7 +11,7 @@ from typing import Protocol
 
 from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.search import IndexDocument, IndexState, Segment, Visibility
-from papiq.core.ports.repository import DocumentFilter
+from papiq.core.ports.repository import DocumentFilter, DocumentOrder
 
 MAX_LIMIT = 100
 MAX_HITS = 1000
@@ -23,7 +23,8 @@ class SearchQuery:
     """`visibility` has no default: a query cannot be built without the rights filter.
 
     `vector`: the embedding of `text`; without it the search is plain full text. With it,
-    `semantic_ratio` (0 to 1) weighs the vectors against the words.
+    `semantic_ratio` (0 to 1) weighs the vectors against the words. `order`: sorted by it
+    instead of by relevance (ties by relevance); documents without a date come last.
     """
 
     text: str
@@ -31,6 +32,7 @@ class SearchQuery:
     filter: DocumentFilter = field(default_factory=DocumentFilter)
     vector: tuple[float, ...] | None = None
     semantic_ratio: float = 0.5
+    order: DocumentOrder | None = None
     offset: int = 0
     limit: int = 20
 
@@ -43,6 +45,24 @@ class SearchQuery:
             raise ValueError(f"offset must be 0 or more and limit between 1 and {MAX_LIMIT}")
         if self.offset + self.limit > MAX_HITS:
             raise ValueError(f"offset + limit may not exceed {MAX_HITS}")
+
+
+@dataclass(frozen=True, kw_only=True)
+class SimilarQuery:
+    """The documents nearest to `vector` (by their nearest section): a new document's
+    neighbours. Rights and criteria as in `SearchQuery`; `exclude` is the document itself."""
+
+    vector: tuple[float, ...]
+    visibility: Visibility
+    filter: DocumentFilter = field(default_factory=DocumentFilter)
+    exclude: DocumentId | None = None
+    limit: int = 5
+
+    def __post_init__(self) -> None:
+        if not self.vector:
+            raise ValueError("the vector is empty")
+        if not 1 <= self.limit <= MAX_LIMIT:
+            raise ValueError(f"limit must be between 1 and {MAX_LIMIT}")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -96,6 +116,12 @@ class SearchIndex(Protocol):
     async def search(self, query: SearchQuery) -> SearchResult:
         """Documents that match the text and the filter and that `query.visibility` allows,
         best first, from `offset` on, at most `limit`."""
+        ...
+
+    async def similar(self, query: SimilarQuery) -> list[SearchHit]:
+        """Documents with vectors that `query.visibility` allows and the filter matches,
+        nearest first, at most `limit`, without snippets. SearchIndexError if the index holds
+        no vectors (it has no embedder)."""
         ...
 
     async def begin_rebuild(self) -> IndexBuild:

@@ -5,8 +5,9 @@ from decimal import Decimal
 
 import pytest
 
-from papiq.adapters.inbound.schemas import MoneyValue, field_json
+from papiq.adapters.inbound.schemas import MoneyValue, PeriodValue, field_json
 from papiq.core.domain.fields import Money, Url
+from papiq.core.domain.periods import Period
 
 
 @pytest.mark.parametrize(
@@ -35,3 +36,9 @@ def test_other_types_keep_their_form() -> None:
     assert field_json(True) is True
     assert field_json(Url("https://example.org/x")) == "https://example.org/x"
     assert field_json(date(2026, 3, 31)) == "2026-03-31"
+
+
+def test_periods_are_their_start_and_end() -> None:
+    assert field_json(Period.month(2026, 9)) == PeriodValue(
+        start=date(2026, 9, 1), end=date(2026, 9, 30)
+    )

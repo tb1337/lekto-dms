@@ -25,6 +25,7 @@ from sqlalchemy import (
     Table,
     Text,
     Uuid,
+    false,
     true,
 )
 
@@ -101,7 +102,12 @@ def _master_data(name: str, *columns: Column[Any]) -> Table:
 
 
 contacts = _master_data("contacts")
-document_types = _master_data("document_types", Column("description", Text, nullable=True))
+document_types = _master_data(
+    "document_types",
+    Column("description", Text, nullable=True),
+    # A pattern the title of the type's documents is rendered from (see `domain.titles`).
+    Column("title_pattern", Text, nullable=True),
+)
 tags = _master_data("tags")
 
 # Other names of a contact; unique across contacts. That no alias is another contact's name is
@@ -122,6 +128,37 @@ contact_aliases = Table(
     Column("position", Integer, nullable=False),
 )
 
+# Values a contact's documents carry (IBAN, VAT number, ...); kind and value are unique across
+# contacts. `source`: entered by hand, learned by training, or learned and rejected.
+# The trained classifiers; the models themselves are files in the object store.
+classifier_models = Table(
+    "classifier_models",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("number", Integer, nullable=False, unique=True),
+    Column("trained_at", UtcDateTime, nullable=False),
+    Column("examples", Integer, nullable=False),
+    Column("examples_until", UtcDateTime, nullable=True),
+    Column("object_key", Text, nullable=False),
+    Column("summary", json_type(), nullable=False),
+    Column("version", Integer, nullable=False),
+)
+
+contact_identifiers = Table(
+    "contact_identifiers",
+    metadata,
+    Column(
+        "contact_id",
+        Uuid,
+        ForeignKey("contacts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    ),
+    Column("kind", Text, primary_key=True),
+    Column("value", Text, primary_key=True),
+    Column("source", Text, nullable=False),
+)
+
 field_definitions = Table(
     "field_definitions",
     metadata,
@@ -131,7 +168,11 @@ field_definitions = Table(
     Column("data_type", Text, nullable=False),
     # False: the field applies to the types in `field_document_types` only (maybe none).
     Column("is_global", Boolean, nullable=False),
+    # Whether a global field is required (typed ones: `field_document_types.required`).
+    Column("required", Boolean, nullable=False, server_default=false()),
     Column("choices", json_type(), nullable=False),
+    # What belongs in the field, for the language model.
+    Column("description", Text, nullable=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),
 )
@@ -146,6 +187,9 @@ field_document_types = Table(
         primary_key=True,
     ),
     Column("document_type_id", Uuid, ForeignKey("document_types.id"), primary_key=True),
+    # Whether the field is required for documents of the type; assignments made before
+    # revision 0013 were.
+    Column("required", Boolean, nullable=False, server_default=true()),
 )
 
 documents = Table(
@@ -156,6 +200,8 @@ documents = Table(
     Column("drawer_id", Uuid, ForeignKey("drawers.id"), nullable=False, index=True),
     Column("sha256", String(64), nullable=False),
     Column("title", Text, nullable=False),
+    # The title as lists sort it (`sort_key`): case and accents aside.
+    Column("title_key", Text, nullable=False, server_default=""),
     Column("original_filename", Text, nullable=False),
     Column("media_type", Text, nullable=False),
     Column("contact_id", Uuid, ForeignKey("contacts.id"), nullable=True),
@@ -165,15 +211,24 @@ documents = Table(
     Column("channel", Text, nullable=False, server_default="api"),
     Column("lane", Text, nullable=True),
     Column("processing_status", Text, nullable=False),
-    Column("processing_step", Text, nullable=True),
     Column("processing_run", Integer, nullable=False),
-    # Outcomes of the current run: {step: outcome}.
-    Column("processing_outcomes", json_type(), nullable=False),
+    # State of every node in the current run: {node: {status, outcome, started_at, finished_at}}.
+    # The default is for the column's addition (revision 0010); every row is written in full.
+    Column("processing_nodes", json_type(), nullable=False, server_default="{}"),
+    # The current run reads the pages with the vision language model (`Processing.vision`).
+    Column("processing_vision", Boolean, nullable=False, server_default=false()),
+    # Set once the pages node rendered the page images.
+    Column("page_count", Integer, nullable=True),
+    # When a person last set or confirmed the metadata (see `Document.confirmed_at`).
+    Column("confirmed_at", UtcDateTime, nullable=True, index=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("updated_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),
     # The original is unique per owner, also against concurrent uploads.
     Index(None, "owner_id", "sha256", unique=True),
+    # Lists sorted by date or title page by these and the id.
+    Index(None, "document_date", "id"),
+    Index(None, "title_key", "id"),
 )
 
 document_tags = Table(
@@ -189,12 +244,29 @@ document_fields = Table(
     metadata,
     Column("document_id", Uuid, ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
     Column("field_id", Uuid, ForeignKey("field_definitions.id"), primary_key=True),
-    Column("kind", Text, nullable=False),  # text, url, decimal, money, date, boolean
+    Column("kind", Text, nullable=False),  # text, url, decimal, money, date, period, boolean
     Column("value_text", Text, nullable=True),
     Column("value_decimal", ExactDecimal, nullable=True),
     Column("value_currency", String(3), nullable=True),
-    Column("value_date", Date, nullable=True),
+    Column("value_date", Date, nullable=True),  # also a period's start
+    Column("value_date_end", Date, nullable=True),  # a period's end
     Column("value_boolean", Boolean, nullable=True),
+)
+
+# What the facts signal last found a document to show, in its text or its codes (kind and
+# normalised value of an identifier): on how many contacts' confirmed documents a value stands.
+document_identifiers = Table(
+    "document_identifiers",
+    metadata,
+    Column(
+        "document_id",
+        Uuid,
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("kind", Text, primary_key=True),
+    Column("value", Text, primary_key=True),
+    Index(None, "kind", "value"),
 )
 
 processing_log = Table(
@@ -208,7 +280,7 @@ processing_log = Table(
         nullable=False,
         index=True,
     ),
-    Column("step", Text, nullable=False),
+    Column("node", Text, nullable=False),
     Column("run", Integer, nullable=False),
     Column("outcome", Text, nullable=False),
     Column("reason", Text, nullable=True),
@@ -253,6 +325,25 @@ rule_versions = Table(
     Column("actions", json_type(), nullable=False),
     Column("created_at", UtcDateTime, nullable=False),
     Column("created_by", Uuid, nullable=True),
+)
+
+# The rule of a document type's title pattern (`Rule.managed_by`), while it is not deleted.
+title_pattern_rules = Table(
+    "title_pattern_rules",
+    metadata,
+    Column(
+        "document_type_id",
+        Uuid,
+        ForeignKey("document_types.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "rule_id",
+        Uuid,
+        ForeignKey("rules.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    ),
 )
 
 rule_applications = Table(

@@ -5,17 +5,20 @@ from typing import Any
 from uuid import UUID
 
 from papiq.core.domain.events import (
+    ClassifierTrained,
     DocumentDeleted,
     DocumentFiled,
     DocumentReceived,
     DocumentUpdated,
     DomainEvent,
     LaneChanged,
-    StepCompleted,
+    NodeCompleted,
+    NodeDeferred,
+    NodeStarted,
 )
 from papiq.core.domain.ids import DocumentId, DrawerId, EventId, UserId
 from papiq.core.domain.json_value import JsonObject
-from papiq.core.domain.pipeline import Lane, Outcome, Step
+from papiq.core.domain.pipeline import Lane, Node, Outcome
 
 
 def encode(event: DomainEvent) -> JsonObject:
@@ -28,10 +31,23 @@ def encode(event: DomainEvent) -> JsonObject:
                 "document_id": str(event.document_id),
                 "readers": [str(reader) for reader in event.readers],
             }
-        case StepCompleted():
+        case NodeStarted():
             return {
                 "document_id": str(event.document_id),
-                "step": event.step.value,
+                "node": event.node.value,
+                "run": event.run,
+            }
+        case NodeDeferred():
+            return {
+                "document_id": str(event.document_id),
+                "node": event.node.value,
+                "run": event.run,
+                "retry_at": event.retry_at.isoformat(),
+            }
+        case NodeCompleted():
+            return {
+                "document_id": str(event.document_id),
+                "node": event.node.value,
                 "run": event.run,
                 "outcome": event.outcome.value,
             }
@@ -45,10 +61,19 @@ def encode(event: DomainEvent) -> JsonObject:
             return {"document_id": str(event.document_id), "drawer_id": str(event.drawer_id)}
         case DocumentUpdated():
             return {"document_id": str(event.document_id), "fields": list(event.fields)}
+        case ClassifierTrained():
+            return {"number": event.number, "examples": event.examples}
     raise ValueError(f"no outbox mapping for event type {event.type!r}")
 
 
 def decode(type: str, id: UUID, occurred_at: datetime, payload: dict[str, Any]) -> DomainEvent:
+    if type == ClassifierTrained.type:
+        return ClassifierTrained(
+            id=EventId(id),
+            occurred_at=occurred_at,
+            number=payload["number"],
+            examples=payload["examples"],
+        )
     common: dict[str, Any] = {
         "id": EventId(id),
         "occurred_at": occurred_at,
@@ -60,10 +85,19 @@ def decode(type: str, id: UUID, occurred_at: datetime, payload: dict[str, Any]) 
         case DocumentDeleted.type:
             readers = tuple(UserId(UUID(reader)) for reader in payload.get("readers", ()))
             return DocumentDeleted(**common, readers=readers)
-        case StepCompleted.type:
-            return StepCompleted(
+        case NodeStarted.type:
+            return NodeStarted(**common, node=Node(payload["node"]), run=payload["run"])
+        case NodeDeferred.type:
+            return NodeDeferred(
                 **common,
-                step=Step(payload["step"]),
+                node=Node(payload["node"]),
+                run=payload["run"],
+                retry_at=datetime.fromisoformat(payload["retry_at"]),
+            )
+        case NodeCompleted.type:
+            return NodeCompleted(
+                **common,
+                node=Node(payload["node"]),
                 run=payload["run"],
                 outcome=Outcome(payload["outcome"]),
             )

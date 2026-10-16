@@ -5,15 +5,15 @@ builders for rule definitions."""
 import re
 import uuid
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from papiq.core.domain.classification import FieldCheck, checks_to_json
 from papiq.core.domain.documents import Channel, Document, DocumentChanges
 from papiq.core.domain.errors import PatternTimeoutError
-from papiq.core.domain.ids import ContactId, DrawerId, TagId
+from papiq.core.domain.ids import ContactId, DocumentTypeId, DrawerId, TagId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact, Tag
-from papiq.core.domain.pipeline import Outcome, Step, StepResult, StepRun
+from papiq.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
 from papiq.core.domain.rules import (
     Action,
     AddTags,
@@ -28,18 +28,18 @@ from papiq.core.domain.rules import (
 )
 from papiq.core.domain.users import Role, User
 from papiq.core.services.documents import DocumentService
-from papiq.core.services.objects import markdown_key
+from papiq.core.services.objects import text_key
 from papiq.core.services.pipeline import (
     IncomingFile,
     MetadataResult,
+    NodeExecutor,
     PipelineService,
-    StepExecutor,
 )
 from papiq.core.services.rules import RuleService
 from papiq.core.services.rules.changes import ChangeRules
+from papiq.core.services.rules.nodes import ApplyRulesNode, FileNode
 from papiq.core.services.rules.retroactive import RuleApplicationService
-from papiq.core.services.rules.steps import ApplyRulesStep, FileStep
-from tests.builders import incoming
+from tests.builders import TEMPLATES, incoming
 from tests.unit.services.conftest import World
 
 MAX_TEXT = 10_000
@@ -64,9 +64,16 @@ class FakeMatcher:
 class Classifies:
     """Classification that sets a contact and tags as the model does: applied, unconfirmed."""
 
-    def __init__(self, *, contact: ContactId | None = None, tags: Iterable[TagId] = ()) -> None:
+    def __init__(
+        self,
+        *,
+        contact: ContactId | None = None,
+        tags: Iterable[TagId] = (),
+        document_type: DocumentTypeId | None = None,
+    ) -> None:
         self.contact = contact
         self.tags = frozenset(tags)
+        self.document_type = document_type
 
     async def run(self, document: Document) -> MetadataResult:
         checks: list[FieldCheck] = []
@@ -78,14 +85,40 @@ class Classifies:
                 )
             )
             changes = DocumentChanges(contact_id=self.contact)
+        if self.document_type is not None:
+            checks.append(
+                FieldCheck(
+                    field="document_type",
+                    outcome=Outcome.OK,
+                    confidence=0.9,
+                    value=str(self.document_type),
+                )
+            )
+            changes = replace(changes, document_type_id=self.document_type)
         tags: list[JsonValue] = [str(tag) for tag in sorted(self.tags)]
         checks.append(FieldCheck(field="tags", outcome=Outcome.OK, confidence=0.9, value=tags))
-        result = StepResult(
+        result = NodeResult(
             outcome=Outcome.OK,
             model_version="fake-llm 1",
             output={"fields": checks_to_json(checks)},
         )
         return MetadataResult(result, changes, add_tags=self.tags)
+
+
+class Titles:
+    """The fields node giving the document a title, as the machine does."""
+
+    def __init__(self, title: str) -> None:
+        self.title = title
+
+    async def run(self, document: Document) -> MetadataResult:
+        check = FieldCheck(field="title", outcome=Outcome.OK, confidence=1, value=self.title)
+        result = NodeResult(
+            outcome=Outcome.OK,
+            model_version="fake-llm 1",
+            output={"fields": checks_to_json([check])},
+        )
+        return MetadataResult(result, DocumentChanges(title=self.title))
 
 
 # --- rule definitions ---------------------------------------------------------------------------
@@ -146,7 +179,7 @@ class RuleWorld:
 
     @property
     def rules(self) -> RuleService:
-        return RuleService(self.world.uow, self.world.clock)
+        return RuleService(self.world.uow, self.world.clock, TEMPLATES)
 
     @property
     def applications(self) -> RuleApplicationService:
@@ -155,6 +188,7 @@ class RuleWorld:
             self.world.clock,
             self.world.object_store,
             self.matcher,
+            TEMPLATES,
             max_text=MAX_TEXT,
             max_documents=MAX_DOCUMENTS,
             pipeline_version="test",
@@ -163,21 +197,33 @@ class RuleWorld:
     @property
     def documents(self) -> DocumentService:
         change_rules = ChangeRules(
-            self.world.object_store, self.matcher, max_text=MAX_TEXT, pipeline_version="test"
+            self.world.object_store,
+            self.matcher,
+            TEMPLATES,
+            max_text=MAX_TEXT,
+            pipeline_version="test",
         )
         return DocumentService(
             self.world.uow, self.world.clock, self.world.object_store, rules=change_rules
         )
 
-    def pipeline(self, classify: StepExecutor | None = None) -> PipelineService:
-        executors: dict[Step, StepExecutor] = {
-            Step.APPLY_RULES: ApplyRulesStep(
-                self.world.uow, self.world.object_store, self.matcher, max_text=MAX_TEXT
+    def pipeline(
+        self, classify: NodeExecutor | None = None, fields: NodeExecutor | None = None
+    ) -> PipelineService:
+        executors: dict[Node, NodeExecutor] = {
+            Node.APPLY_RULES: ApplyRulesNode(
+                self.world.uow,
+                self.world.object_store,
+                self.matcher,
+                TEMPLATES,
+                max_text=MAX_TEXT,
             ),
-            Step.FILE: FileStep(),
+            Node.FILE: FileNode(),
         }
         if classify is not None:
-            executors[Step.CLASSIFY] = classify
+            executors[Node.JUDGE] = classify
+        if fields is not None:
+            executors[Node.FIELDS] = fields
         return self.world.pipeline(executors)
 
     # --- seeding ---------------------------------------------------------------------------------
@@ -200,18 +246,19 @@ class RuleWorld:
         *,
         drawer: DrawerId | None = None,
         text: str | None = None,
-        classify: StepExecutor | None = None,
+        classify: NodeExecutor | None = None,
+        fields: NodeExecutor | None = None,
         filename: str = "scan.pdf",
     ) -> Document:
         """Upload a document, give it `text` as its parsed Markdown, process it; the stored
         document."""
-        pipeline = self.pipeline(classify)
+        pipeline = self.pipeline(classify, fields)
         received = await pipeline.receive(
             owner.id, incoming_pdf(), filename=filename, drawer=drawer
         )
         if text is not None:
             await self.world.object_store.put(
-                markdown_key(received.id), text.encode(), content_type="text/markdown"
+                text_key(received.id), text.encode(), content_type="text/markdown"
             )
         await self.world.drain(pipeline)
         return await self.stored(received)
@@ -220,15 +267,15 @@ class RuleWorld:
         async with self.world.uow() as uow:
             return await uow.documents.get(document.id)
 
-    async def log(self, document: Document) -> list[StepRun]:
+    async def log(self, document: Document) -> list[NodeRun]:
         async with self.world.uow() as uow:
             return await uow.processing_log.list_for(document.id)
 
-    async def rule_entries(self, document: Document, model_version: str) -> list[StepRun]:
+    async def rule_entries(self, document: Document, model_version: str) -> list[NodeRun]:
         return [
             entry
             for entry in await self.log(document)
-            if entry.step is Step.APPLY_RULES and entry.result.model_version == model_version
+            if entry.node is Node.APPLY_RULES and entry.result.model_version == model_version
         ]
 
     async def deactivate(self, user: User) -> None:

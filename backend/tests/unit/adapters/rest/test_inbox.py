@@ -1,9 +1,16 @@
 """Inbox, review and confirmation over HTTP."""
 
+from uuid import UUID
+
 from papiq.adapters.inbound.rest import PREFIX
-from papiq.core.domain.classification import FieldCheck, checks_to_json
+from papiq.core.domain.classification import (
+    Candidate,
+    CandidateSource,
+    FieldCheck,
+    checks_to_json,
+)
 from papiq.core.domain.master_data import Contact
-from papiq.core.domain.pipeline import Outcome, Step, StepResult
+from papiq.core.domain.pipeline import Node, NodeResult, Outcome
 from tests.api import auth
 from tests.builders import NOW
 from tests.unit.adapters.rest.conftest import Api
@@ -11,9 +18,10 @@ from tests.unit.adapters.rest.test_documents import pdf
 from tests.unit.services.conftest import Returns
 
 PROBLEM = "application/problem+json"
+NEIGHBOUR = UUID("01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b")
 
 
-def uncertain(contact: Contact) -> StepResult:
+def uncertain(contact: Contact) -> NodeResult:
     checks = [
         FieldCheck(
             field="contact",
@@ -22,6 +30,26 @@ def uncertain(contact: Contact) -> StepResult:
             reason="'Stadtwerk' is similar to the contact 'Stadtwerke'",
             proposed="Stadtwerk",
             suggestion=str(contact.id),
+            candidates=(
+                Candidate(
+                    value=str(contact.id),
+                    label="Stadtwerke",
+                    sources=(
+                        CandidateSource(signal="signal_llm", score=0.8, quote="Stadtwerk"),
+                        CandidateSource(
+                            signal="signal_neighbours",
+                            names=True,
+                            score=2 / 3,
+                            votes=2,
+                            of=3,
+                            documents=(str(NEIGHBOUR), str(NEIGHBOUR)),
+                        ),
+                        CandidateSource(
+                            signal="signal_facts", identifiers=("iban",), named_in_text=True
+                        ),
+                    ),
+                ),
+            ),
         ),
         FieldCheck(
             field="document_date",
@@ -31,7 +59,7 @@ def uncertain(contact: Contact) -> StepResult:
             proposed="2026-03-31",
         ),
     ]
-    return StepResult(
+    return NodeResult(
         outcome=Outcome.UNCERTAIN,
         reason="contact, document_date",
         model_version="fake-llm 1",
@@ -46,7 +74,7 @@ async def test_confirm_from_the_inbox(api: Api) -> None:
     async with api.container.unit_of_work() as uow:
         await uow.contacts.add(contact)
         await uow.commit()
-    api.services.pipeline._executors[Step.CLASSIFY] = Returns(uncertain(contact))
+    api.services.pipeline._executors[Node.JUDGE] = Returns(uncertain(contact))
     response = await api.client.post(f"{PREFIX}/documents", files=pdf(), headers=auth(owner))
     url = response.json()["status_url"]
     await api.drain()
@@ -57,12 +85,25 @@ async def test_confirm_from_the_inbox(api: Api) -> None:
     assert item["document"]["lane"] == "yellow"
     assert item["document"]["processing"]["status"] == "review"
     (open,) = item["open"]
-    assert (open["step"], open["outcome"]) == ("classify", "uncertain")
+    assert (open["node"], open["outcome"]) == ("judge", "uncertain")
     assert [field["field"] for field in open["fields"]] == ["contact", "document_date"]
     assert open["fields"][0]["suggestion"] == str(contact.id)
+    (candidate,) = open["fields"][0]["candidates"]
+    assert (candidate["label"], candidate["contradicted"]) == ("Stadtwerke", False)
+    llm, neighbours, facts = candidate["sources"]
+    assert (llm["signal"], llm["names"], llm["score"], llm["quote"]) == (
+        "signal_llm",
+        False,
+        0.8,
+        "Stadtwerk",
+    )
+    assert (neighbours["votes"], neighbours["found"], neighbours["score"]) == (2, 3, 0.6667)
+    assert neighbours["documents"] == [str(NEIGHBOUR)] * 2
+    assert (facts["identifiers"], facts["named_in_text"]) == (["iban"], True)
+    assert open["fields"][1]["candidates"] == []
 
     review = (await api.client.get(f"{url}/review", headers=auth(owner))).json()
-    (classify,) = [step for step in review["steps"] if step["step"] == "classify"]
+    (classify,) = [node for node in review["nodes"] if node["node"] == "judge"]
     assert (classify["model_version"], classify["truncated"]) == ("fake-llm 1", False)
     assert classify["fields"][1]["proposed"] == "2026-03-31"
 
@@ -83,7 +124,8 @@ async def test_confirm_from_the_inbox(api: Api) -> None:
         headers=auth(owner),
     )
     assert confirmed.status_code == 202, confirmed.text
-    assert confirmed.json()["processing"]["current_step"] == "apply_rules"
+    nodes = {node["node"]: node["status"] for node in confirmed.json()["processing"]["nodes"]}
+    assert (nodes["fields"], nodes["apply_rules"]) == ("done", "waiting")
     await api.drain()
     document = (await api.client.get(url, headers=auth(owner))).json()
     assert document["lane"] == "green"

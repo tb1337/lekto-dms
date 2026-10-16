@@ -5,7 +5,7 @@ base URL includes the version path; `/chat/completions` and `/embeddings` are ap
 
 - Structured output: `response_format` `json_schema` (strict) by default; `json_object` for
   providers that only promise JSON. The answer is not checked here (see the port).
-- No retries of its own: failures raise, and the pipeline's retry policy repeats the step.
+- No retries of its own: failures raise, and the pipeline's retry policy repeats the node.
 - Neither the API key nor document content is logged; errors carry the HTTP status and a short
   excerpt of the provider's message.
 """
@@ -35,13 +35,14 @@ class OpenAiCompatLanguageModel:
         base_url: str,
         model: str,
         api_key: str | None = None,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         seed: int | None = None,
         timeout: float = 300.0,
         response_format: ResponseFormat = "json_schema",
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
-        """`transport` replaces the network in tests."""
+        """`temperature` None leaves it to the endpoint (some models reject one). `transport`
+        replaces the network in tests."""
         self._url = base_url.rstrip("/") + "/chat/completions"
         self._model = model
         self._headers = _headers(api_key)
@@ -67,10 +68,11 @@ class OpenAiCompatLanguageModel:
                 {"role": "system", "content": request.system},
                 {"role": "user", "content": request.user},
             ],
-            "temperature": self._temperature,
             "stream": False,
             "response_format": self._response_format(request),
         }
+        if self._temperature is not None:
+            body["temperature"] = self._temperature
         if self._seed is not None:
             body["seed"] = self._seed
         data = await _post(
@@ -79,13 +81,15 @@ class OpenAiCompatLanguageModel:
         try:
             choice = data["choices"][0]
             content = choice["message"].get("content")
-            usage = data.get("usage") or {}
+            usage = data.get("usage")
+            usage = usage if isinstance(usage, dict) else {}
             return StructuredAnswer(
                 content=content if isinstance(content, str) else "",
                 model=str(data.get("model") or self._model),
                 fingerprint=_optional_text(data.get("system_fingerprint")),
                 prompt_tokens=_optional_int(usage.get("prompt_tokens")),
                 completion_tokens=_optional_int(usage.get("completion_tokens")),
+                usage=usage,
             )
         except (KeyError, IndexError, TypeError, AttributeError):
             raise LanguageModelError("the language model sent an unusable response") from None

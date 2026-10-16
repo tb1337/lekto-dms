@@ -10,7 +10,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from papiq.adapters.inbound.schemas import FieldJson, MoneyValue, RuleEffectOut, RuleNoteOut
+from papiq.adapters.inbound.schemas import (
+    FieldJson,
+    MoneyValue,
+    PeriodValue,
+    RuleEffectOut,
+    RuleNoteOut,
+)
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.rules import (
     ApplicationStatus,
@@ -31,7 +37,9 @@ class ConditionSchema(BaseModel):
     channel: `is`, `in`; text: `contains`, `matches` (regular expression); document_date and
     number, amount, date fields: `is`, `gt`, `lt`, `present`, `missing`; text and link
     fields: `is`, `in`, `contains`, `matches`, `present`, `missing`; choice: `is`, `in`,
-    `present`, `missing`; boolean: `is`, `present`, `missing`."""
+    `present`, `missing`; boolean: `is`, `present`, `missing`; period fields: `is`,
+    `overlaps` (shares a day with the given period), `gt` (starts after the date), `lt` (ends
+    before the date), `present`, `missing`."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -50,12 +58,12 @@ class ConditionSchema(BaseModel):
 
     field: ConditionField
     op: Operator
-    value: str | bool | MoneyValue | list[str] | None = Field(
+    value: str | bool | MoneyValue | PeriodValue | list[str] | None = Field(
         default=None,
         description=(
             "None for `present` and `missing`, a list for `in`, otherwise one value: an id, a "
-            "channel, a text or pattern, a date `YYYY-MM-DD`, or a field value as in "
-            "`fields` of a document."
+            "channel, a text or pattern, a date `YYYY-MM-DD` (also for `gt` and `lt` of a "
+            "period field), or a field value as in `fields` of a document."
         ),
     )
     field_id: UUID | None = Field(default=None, description="Only when `field` is `field`.")
@@ -100,16 +108,25 @@ class SetDocumentTypeAction(BaseModel):
     document_type_id: UUID
 
 
+TEMPLATE_DESCRIPTION = (
+    "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: "
+    "`title`, `filename` (the original's name without extension), `original_filename`, "
+    "`contact`, `document_type`, `document_date`, `added`, `tags` (a list), `drawer`, `owner`, "
+    "`channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and "
+    "`.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, "
+    "`2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM "
+    "yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets "
+    "nothing (`| default: ''` or `{% if %}` make it optional)."
+)
+
+
 class SetTitleAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["set_title"]
     template: str = Field(
         max_length=500,
-        examples=["{contact} {document_type} {document_date}"],
-        description=(
-            "Placeholders: `{contact}`, `{document_type}`, `{document_date}` (YYYY-MM-DD), "
-            "`{filename}` (the original's name without extension); empty when unknown."
-        ),
+        examples=["{{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}"],
+        description=TEMPLATE_DESCRIPTION,
     )
 
 
@@ -129,13 +146,19 @@ class SetFieldAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["set_field"]
     field_id: UUID
-    value: FieldJson
+    value: FieldJson = Field(
+        description="As the field's type has it; for a text field a template, as a title's."
+    )
 
 
 class ForceReviewAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["force_review"]
-    reason: str = Field(max_length=500, examples=["check the contract term"])
+    reason: str = Field(
+        max_length=500,
+        examples=["check the contract term of {{ contact }}"],
+        description="A template, as a title's; the review holds where it cannot be rendered.",
+    )
 
 
 ActionSchema = Annotated[
@@ -260,6 +283,10 @@ class RuleOut(_RuleDefinitionOut):
     disabled_reason: str | None = Field(
         description="Why the rule was disabled automatically, e.g. a contact it uses was deleted."
     )
+    managed_by_document_type_id: UUID | None = Field(
+        description="The document type whose title pattern this rule is: it follows the type "
+        "and is read-only (changing, switching or deleting it is 409); None for other rules."
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -274,10 +301,55 @@ class RuleOut(_RuleDefinitionOut):
                 "version": rule.current.number,
                 "enabled": rule.enabled,
                 "disabled_reason": rule.disabled_reason,
+                "managed_by_document_type_id": rule.managed_by,
                 "created_at": rule.created_at,
                 "updated_at": rule.updated_at,
             }
         )
+
+
+class TemplatePreviewIn(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "template": "Lohn {{ document_date | date: '%Y-%m' }} {{ field.la_brutto }}",
+                    "document_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
+                }
+            ]
+        },
+    )
+
+    template: str = Field(max_length=500, description=TEMPLATE_DESCRIPTION)
+    document_id: UUID | None = Field(
+        default=None, description="A document the caller may read, to render the template with."
+    )
+    document_type_id: UUID | None = Field(
+        default=None,
+        description="The type whose fields the template may use (a title pattern's); else "
+        "the document's type, else every field.",
+    )
+
+
+class TemplatePreviewOut(BaseModel):
+    used: list[str] = Field(description="The values the template uses (`field.la_brutto`).")
+    rendered: str | None = Field(
+        description="The text for the document, whitespace collapsed as in a title; None "
+        "without a document, a missing value or an error."
+    )
+    missing: str | None = Field(
+        description="The value the document lacks that the template writes: it would set "
+        "nothing (a title pattern leaves the model's title)."
+    )
+    error: str | None = Field(
+        description="Why the template is invalid (its syntax, or a value templates do not know)."
+    )
+    values: dict[str, str] | None = Field(
+        description="The document's values as a template writes them, by path (`contact`, "
+        "`field.la_brutto`): each one it has, whatever the template. None without a document.",
+        examples=[{"contact": "Stadtwerke", "field.la_brutto": "3.650,00 EUR"}],
+    )
 
 
 class ApplyPreviewRequest(BaseModel):

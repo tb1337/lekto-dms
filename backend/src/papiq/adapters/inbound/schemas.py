@@ -1,12 +1,12 @@
 """Response bodies that more than one inbound adapter (REST, MCP) returns."""
 
-from decimal import Decimal
+from datetime import date
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter
 
-from papiq.core.domain.fields import FieldValue, Money, Url
+from papiq.core.domain.fields import FieldValue, field_to_json
 from papiq.core.domain.rule_engine import RuleReport
 from papiq.core.domain.rules import RuleScope
 
@@ -16,35 +16,32 @@ class MoneyValue(BaseModel):
     currency: str = Field(examples=["EUR"], description="ISO 4217 code.")
 
 
+class PeriodValue(BaseModel):
+    start: date = Field(examples=["2026-09-01"], description="First day, included.")
+    end: date = Field(
+        examples=["2026-09-30"], description="Last day, included; a single day has start = end."
+    )
+
+
 FieldJson = Annotated[
-    str | bool | MoneyValue,
+    str | bool | MoneyValue | PeriodValue,
     Field(
         description=(
             "By data type: text, choice and link: string; number: decimal as string; date: "
-            "`YYYY-MM-DD`; boolean: true/false; amount: `{amount, currency}`."
+            "`YYYY-MM-DD`; boolean: true/false; amount: `{amount, currency}`; period: "
+            "`{start, end}` as `YYYY-MM-DD`, both days included."
         )
     ),
 ]
 
 
-def decimal_text(value: Decimal) -> str:
-    """A decimal in plain notation (`53350000`, `12.50`), never `5.335E+7`: `str(Decimal)` keeps
-    the exponent a value arrived with."""
-    return format(value, "f")
+_FIELD_JSON: TypeAdapter[str | bool | MoneyValue | PeriodValue] = TypeAdapter(FieldJson)
 
 
-def field_json(value: FieldValue) -> str | bool | MoneyValue:
-    match value:
-        case bool() | str():
-            return value
-        case Money(amount=amount, currency=currency):
-            return MoneyValue(amount=decimal_text(amount), currency=currency)
-        case Decimal():
-            return decimal_text(value)
-        case Url(value=url):
-            return url
-        case _:  # date
-            return value.isoformat()
+def field_json(value: FieldValue) -> str | bool | MoneyValue | PeriodValue:
+    """A value as the API writes it: its JSON form (`field_to_json`) as the response schema
+    has it."""
+    return _FIELD_JSON.validate_python(field_to_json(value))
 
 
 class RuleEffectOut(BaseModel):
@@ -55,12 +52,13 @@ class RuleEffectOut(BaseModel):
 
 class RuleNoteOut(BaseModel):
     field: str
-    kind: Literal["skipped", "overruled", "refused", "conflict", "review"] = Field(
+    kind: Literal["skipped", "overruled", "refused", "conflict", "review", "yielded"] = Field(
         description=(
             "`overruled`: a person decided the field; `refused`: not allowed (rights, scope, "
             "unconfirmed values); `conflict`: rules or values disagree; `skipped`: something "
-            "it refers to is gone or does not apply; `review`: the rule holds the document for "
-            "a review."
+            "it refers to is gone or does not apply, or a template writes a missing value; "
+            "`review`: the rule holds the document for a review; `yielded`: a document type's "
+            "title pattern gave way to another rule that sets the title."
         )
     )
     reason: str

@@ -32,7 +32,7 @@ async function call(method: 'post' | 'patch' | 'delete', path: string, data?: ob
 
 test.beforeAll(async ({ playwright, baseURL }) => {
 	test.skip(!ADMIN_PASSWORD, 'PAPIQ_ADMIN_PASSWORD is not set');
-	// Without OCR programs the document turns red only after the step's retries.
+	// Without OCR programs the document turns red only after the node's retries.
 	test.setTimeout(240_000);
 	api = await playwright.request.newContext({ baseURL });
 	const login = await api.post('/api/v1/auth/login', {

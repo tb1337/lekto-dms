@@ -104,6 +104,20 @@
 			"problemMatcher": []
 		},
 		{
+			"label": "Papiq: Seitenbilder nachholen",
+			"detail": "Queue the page images of documents from before the pages node (render-pages)",
+			"type": "shell",
+			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m papiq.composition render-pages",
+			"problemMatcher": []
+		},
+		{
+			"label": "Papiq: Codes nachholen",
+			"detail": "Queue reading the bar and QR codes of documents from before code reading (read-codes)",
+			"type": "shell",
+			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m papiq.composition read-codes",
+			"problemMatcher": []
+		},
+		{
 			"label": "Migration: plan",
 			"detail": "Trial run against Paperless: reads, writes nothing",
 			"type": "shell",

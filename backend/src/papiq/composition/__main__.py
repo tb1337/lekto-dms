@@ -1,5 +1,5 @@
 """`python -m papiq.composition [check | migrate | api | worker | evaluate | evaluate-search |
-reindex]`.
+reindex | render-pages | read-codes | reparse | train]`.
 
 - `check` (default): validate the configuration and print it without secrets.
 - `migrate`: validate, then bring the configured database to the newest schema. Run before the
@@ -11,10 +11,12 @@ reindex]`.
 - `api`: serve the REST API until SIGTERM or SIGINT. Only with `PAPIQ_ROLE` `all` or `api`.
 - `worker`: run the worker service until SIGTERM or SIGINT. Only with `PAPIQ_ROLE` `all` or
   `worker`.
-- `evaluate [--fake] [--cases DIR] [--output FILE]`: run the evaluation set (default
-  `evaluation`) against the configured language model, or with `--fake` against the set's fixed
-  answers, and write a Markdown report. Exits with status 1 if a document came out green that
-  should not have or with a wrong value, or a field changed without a passed check.
+- `evaluate [--fake] [--runs cold,trained] [--cases DIR] [--output FILE]`: run the evaluation
+  set (default `evaluation`) against the configured language model, or with `--fake` against
+  the set's fixed answers, cold and trained (after taking over its training corpus and
+  training the classifier on it), or only the runs given, and write a Markdown report. Exits
+  with status 1 if a document came out green that should not have or with a wrong value, or a
+  field changed without a passed check.
 - `evaluate-search [--fake] [--models A,B] [--ratios 0,0.5,1] [--queries FILE] [--cases DIR]
   [--output FILE]`: index the documents of the evaluation set with each embedding model (default
   `PAPIQ_EMBEDDING_MODEL`) in a temporary Meilisearch index, run the queries (default
@@ -24,6 +26,16 @@ reindex]`.
   value; the real length is measured) as the configuration is checked first.
 - `reindex`: rebuild the search index from the database and the object store, in the foreground,
   with progress. The search keeps working meanwhile. Needs `PAPIQ_MEILISEARCH_URL`.
+- `render-pages`: queue the page images of every document from before the pages node existed
+  (its `pages` node is skipped); the worker renders them.
+- `read-codes`: queue reading the facts of every document with a text: the worker reads the
+  codes on its pages and keeps the identifiers it shows (for documents from before codes were
+  read, and for telling on how many contacts' documents an identifier stands).
+- `reparse`: queue reading the text of every document again (after the update to 0.2, which
+  reads the text as it is set instead of Docling's Markdown); the worker reads them, and the
+  search index takes up the new texts. Train the classifier afterwards (`train`).
+- `train`: train the classifier from the confirmed documents now, in the foreground, and learn
+  identifiers of contacts from them (the worker does it on its own after enough confirmations).
 
 Exits with status 1 and a readable message when the configuration is invalid, the command does
 not fit `PAPIQ_ROLE`, or the migration or the service fails.
@@ -37,20 +49,24 @@ from pathlib import Path
 
 import structlog
 
-from papiq.adapters.inbound.evaluation import EvaluationSetError
+from papiq.adapters.inbound.evaluation import EvaluationSetError, Run
 from papiq.composition.api import run_api
+from papiq.composition.codes import run_read_codes
 from papiq.composition.database import check_schema, migrate_database
 from papiq.composition.endpoints import external_endpoints
 from papiq.composition.errors import ConfigurationError
 from papiq.composition.evaluation import run_evaluation
 from papiq.composition.logging_setup import configure_logging
+from papiq.composition.pages import run_render_pages
 from papiq.composition.reindex import run_reindex
+from papiq.composition.reparse import run_reparse
 from papiq.composition.search_evaluation import (
     DEFAULT_RATIOS,
     parse_ratios,
     run_search_evaluation,
 )
 from papiq.composition.settings import Settings, find_unknown_variables, load_settings
+from papiq.composition.train import run_training
 from papiq.composition.worker import run_worker
 
 # Services and the roles that run them.
@@ -70,6 +86,10 @@ def main(argv: Sequence[str] = ()) -> int:
             "evaluate",
             "evaluate-search",
             "reindex",
+            "render-pages",
+            "read-codes",
+            "reparse",
+            "train",
         ],
         default="check",
     )
@@ -83,6 +103,7 @@ def main(argv: Sequence[str] = ()) -> int:
     )
     parser.add_argument("--wait", type=float, help="check-schema: seconds to wait (default: 0)")
     parser.add_argument("--output", type=Path, help="where to write the report")
+    parser.add_argument("--runs", help="evaluate: cold, trained or both (default), comma separated")
     parser.add_argument("--models", help="evaluate-search: embedding models, comma separated")
     parser.add_argument("--ratios", help="evaluate-search: semantic ratios (default: 0,0.5,1)")
     parser.add_argument("--queries", type=Path, help="evaluate-search: the queries file")
@@ -96,6 +117,12 @@ def main(argv: Sequence[str] = ()) -> int:
         parser.error("--wait only goes with check-schema")
     if command != "evaluate-search" and (arguments.models or arguments.ratios or arguments.queries):
         parser.error("--models, --ratios and --queries only go with evaluate-search")
+    if command != "evaluate" and arguments.runs:
+        parser.error("--runs only goes with evaluate")
+    runs = _names(arguments.runs) or [run.value for run in Run]
+    if unknown := set(runs) - {run.value for run in Run}:
+        parser.error(f"--runs: unknown {', '.join(sorted(unknown))}")
+    arguments.runs = [Run(run) for run in dict.fromkeys(runs)]
 
     try:
         settings = load_settings()
@@ -138,8 +165,16 @@ def main(argv: Sequence[str] = ()) -> int:
     if command == "evaluate-search":
         return _evaluate_search(settings, arguments)
 
+    if command == "render-pages":
+        return _render_pages(settings)
+    if command == "read-codes":
+        return _read_codes(settings)
+    if command == "reparse":
+        return _reparse(settings)
     if command == "reindex":
         return _reindex(settings)
+    if command == "train":
+        return _train(settings)
 
     if command == "check-schema":
         return _check_schema(settings, wait=arguments.wait or 0)
@@ -186,6 +221,58 @@ def _reindex(settings: Settings) -> int:
     return 0
 
 
+def _train(settings: Settings) -> int:
+    log = structlog.get_logger("papiq.composition")
+    try:
+        model = asyncio.run(run_training(settings))
+    except ConfigurationError as error:
+        print(error, file=sys.stderr)
+        return 1
+    except Exception:
+        log.exception("training the classifier failed")
+        return 1
+    log.info(
+        "classifier trained",
+        number=model.number,
+        examples=model.examples,
+        summary=model.summary,
+    )
+    return 0
+
+
+def _render_pages(settings: Settings) -> int:
+    log = structlog.get_logger("papiq.composition")
+    try:
+        queued = asyncio.run(run_render_pages(settings))
+    except Exception:
+        log.exception("queueing the page images failed")
+        return 1
+    log.info("render-pages queued", documents=queued)
+    return 0
+
+
+def _read_codes(settings: Settings) -> int:
+    log = structlog.get_logger("papiq.composition")
+    try:
+        queued = asyncio.run(run_read_codes(settings))
+    except Exception:
+        log.exception("queueing the facts failed")
+        return 1
+    log.info("read-codes queued", documents=queued)
+    return 0
+
+
+def _reparse(settings: Settings) -> int:
+    log = structlog.get_logger("papiq.composition")
+    try:
+        queued = asyncio.run(run_reparse(settings))
+    except Exception:
+        log.exception("queueing the texts to read again failed")
+        return 1
+    log.info("reparse queued", documents=queued)
+    return 0
+
+
 def _evaluate(settings: Settings, arguments: argparse.Namespace) -> int:
     log = structlog.get_logger("papiq.composition")
     try:
@@ -196,6 +283,7 @@ def _evaluate(settings: Settings, arguments: argparse.Namespace) -> int:
                 fake=arguments.fake,
                 output=arguments.output,
                 progress=True,
+                runs=arguments.runs,
             )
         )
     except (ConfigurationError, EvaluationSetError) as error:

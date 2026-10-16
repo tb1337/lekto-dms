@@ -22,7 +22,7 @@ from papiq.composition.container import build_memory_container, build_services
 from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.fields import FieldType, Money
 from papiq.core.domain.ids import DocumentId, new_id
-from papiq.core.services.objects import markdown_key
+from papiq.core.services.objects import text_key
 from tests import builders
 from tests.api import auth, serving
 from tests.contracts.processing import SAMPLES
@@ -101,7 +101,7 @@ async def scene(api: Api) -> Scene:
     scene = await indexed_scene(api)
     for which in (scene.green, scene.yellow):
         await api.container.object_store.put(
-            markdown_key(DocumentId(UUID(which))),
+            text_key(DocumentId(UUID(which))),
             TEXT.encode(),
             content_type="text/markdown",
         )
@@ -293,7 +293,7 @@ async def test_get_text_reads_in_pieces_and_only_for_readers(api: Api, scene: Sc
 
 
 async def test_a_document_without_text_says_so(api: Api, scene: Scene) -> None:
-    await api.container.object_store.delete(markdown_key(DocumentId(UUID(scene.green))))
+    await api.container.object_store.delete(text_key(DocumentId(UUID(scene.green))))
     result = await call(api, scene.headers["owner"], "get_text", id=scene.green)
     assert "no text yet" in error(result)
 

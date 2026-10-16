@@ -1,16 +1,23 @@
 """Finding values in a document's text: the facts behind a classification's confidence.
 
 A value counts as found only if the text shows it, in one of the usual ways of writing it:
-dates in German, English and ISO notation, numbers with German or English separators,
-currencies as code, symbol or word. Everything works on a normalised text (see `normalise`).
+dates in German, English and ISO notation, periods (a month, a calendar week, a quarter, a
+year, a span of dates), numbers with German or English separators, currencies as code, symbol
+or word. Everything works on a normalised text (see `normalise`).
 """
 
+import html
 import re
 import unicodedata
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from functools import cached_property
+from itertools import pairwise
+
+from papiq.core.domain.errors import ValidationError
+from papiq.core.domain.periods import Period
 
 # Markdown markup that may sit inside a value (`**84,20 €**`, table pipes).
 _MARKUP = re.compile(r"[*_#|`>~]+")
@@ -21,9 +28,10 @@ _UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue"})
 
 
 def normalise(text: str) -> str:
-    """Compatibility forms unified (NFKC), lower case (case folding, so `ß` is `ss`),
+    """HTML entities as characters (texts parsed before 0.2.0 have `&amp;` and `&#124;`),
+    compatibility forms unified (NFKC), lower case (case folding, so `ß` is `ss`),
     hyphenation at line ends and Markdown markup removed, whitespace collapsed."""
-    text = unicodedata.normalize("NFKC", text).replace("­", "")
+    text = unicodedata.normalize("NFKC", html.unescape(text)).replace("­", "")
     text = _HYPHENATION.sub("", text)
     text = _MARKUP.sub(" ", text)
     return _WHITESPACE.sub(" ", text.casefold()).strip()
@@ -81,6 +89,192 @@ def dates_in(text: str) -> set[date]:
     return found
 
 
+def _dated(text: str) -> Iterator[tuple[int, int, date]]:
+    """The dates of `dates_in` with where they stand in `text`."""
+    for pattern, order in _DATE_PATTERNS:
+        for match in pattern.finditer(text):
+            parts = dict(zip(order, match.groups(), strict=True))
+            month = int(parts["m"]) if parts["m"].isdigit() else _MONTHS[parts["m"]]
+            year = _year(parts["y"])
+            try:
+                yield match.start(), match.end(), date(year, month, int(parts["d"]))
+            except ValueError:
+                continue
+
+
+def _year(text: str) -> int:
+    year = int(text)
+    if len(text) == 2:
+        year += 2000 if year < 70 else 1900
+    return year
+
+
+# --- periods ------------------------------------------------------------------------------------
+
+# Between the ends of a span: `01.09.2026 - 30.09.2026`, `1. bis 30. September 2026`.
+_TO = r"\s*(?:-|\u2013|\u2014|bis(?: zum| einschl(?:ießlich|\.)?)?|to|until|through)\s*"
+_YEAR = r"((?:19|20)\d{2})"
+_WEEK_WORD = r"(?:kw|kalenderwoche|calendar week|week|wk)\.?"
+# A month, week or quarter with its year, or without one (`für September`, `KW 38`).
+_PERIOD_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # September 2026, Sept. 2026, september, 2026
+    (re.compile(rf"(?<![\d.]\s)(?<![\d.]){_MONTH}(?:,?\s*{_YEAR})?(?![\d])"), "month name"),
+    # 09/2026, 9.2026 (not inside a date: 01.09.2026)
+    (re.compile(rf"(?<![\d./-])(\d{{1,2}})[./]{_YEAR}(?![\d./])"), "month number"),
+    # 2026-09 (not a date: 2026-09-30)
+    (re.compile(rf"(?<![\d./-]){_YEAR}-(\d{{1,2}})(?![\d]|[-/]\d)"), "iso month"),
+    # KW 38/2026, KW 38 2026, Kalenderwoche 38, week 38, 2026
+    (re.compile(rf"\b{_WEEK_WORD}\s*(\d{{1,2}})(?:\s*[/,]?\s*{_YEAR})?(?![\d])"), "week"),
+    # 38. KW 2026
+    (re.compile(rf"(?<![\d.])(\d{{1,2}})\.\s*{_WEEK_WORD}(?:\s*[/,]?\s*{_YEAR})?(?![\d])"), "week"),
+    # Q3 2026, Q3/2026, 3. Quartal 2026, quarter 3 2026
+    (re.compile(rf"\bq([1-4])(?:\s*[/ ]?\s*{_YEAR})?(?![\d])"), "quarter"),
+    (re.compile(rf"(?<![\d.])([1-4])\.\s*quartal(?:\s*{_YEAR})?(?![\d])"), "quarter"),
+    (re.compile(rf"\b(?:quarter|quartal)\s*([1-4])(?:\s*[/,]?\s*{_YEAR})?(?![\d])"), "quarter"),
+    # a year on its own: Lohnsteuerbescheinigung 2025 (not inside a date or a number)
+    (re.compile(rf"(?<![\d.,/-]){_YEAR}(?![\d]|[.,/-]\d)"), "year"),
+)
+# Spans whose start leaves out what the end gives: `01.09.-30.09.2026`, `1.-30.09.2026`,
+# `1. bis 30. September 2026`.
+_SPAN_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        rf"(?<![\d.])(\d{{1,2}})\.(\d{{1,2}})\.?{_TO}(\d{{1,2}})\.(\d{{1,2}})\.(\d{{4}}|\d{{2}})(?!\d)"
+    ),
+    re.compile(rf"(?<![\d.])(\d{{1,2}})\.?{_TO}(\d{{1,2}})\.(\d{{1,2}})\.(\d{{4}}|\d{{2}})(?!\d)"),
+    re.compile(rf"(?<![\d.])(\d{{1,2}})\.?{_TO}(\d{{1,2}})\.?\s*{_MONTH}\s*(\d{{4}})(?!\d)"),
+)
+_GAP = re.compile(_TO)
+
+
+@dataclass(frozen=True)
+class _Found:
+    """A period written in a text, where it stands, and whether its year was assumed."""
+
+    start: int
+    end: int
+    period: Period
+    yearless: bool = False
+
+    @property
+    def length(self) -> int:
+        return self.end - self.start
+
+
+def _periods(text: str, reference: date | None = None) -> list[_Found]:
+    """The periods written in the normalised `text`: spans of dates, months, calendar weeks,
+    quarters, years, single dates as days. One without a year takes that of `reference` (the
+    year before if it would lie after it); without `reference` it is left out."""
+    found: list[_Found] = []
+    dates = sorted(_dated(text))
+    for start, end, day in dates:
+        found.append(_Found(start, end, Period.day(day)))
+    for first, second in pairwise(dates):
+        if _GAP.fullmatch(text[first[1] : second[0]]) and first[2] <= second[2]:
+            found.append(_Found(first[0], second[1], Period(first[2], second[2])))
+    for pattern in _SPAN_PATTERNS:
+        for match in pattern.finditer(text):
+            span = _span(match.groups())
+            if span is not None:
+                found.append(_Found(match.start(), match.end(), span))
+    for pattern, kind in _PERIOD_PATTERNS:
+        for match in pattern.finditer(text):
+            item = _period(kind, match.groups(), reference)
+            if item is not None:
+                found.append(_Found(match.start(), match.end(), *item))
+    return found
+
+
+def _span(groups: tuple[str | None, ...]) -> Period | None:
+    """A span from `_SPAN_PATTERNS`: the start takes the month and year of the end it leaves
+    out."""
+    parts = [part for part in groups if part is not None]
+    try:
+        if len(parts) == 5:  # d.m. - d.m.y
+            day, month, end_day, end_month, year = parts
+        elif parts[-2].isdigit():  # d. - d.m.y
+            day, end_day, end_month, year = parts
+            month = end_month
+        else:  # d. - d. month y
+            day, end_day, name, year = parts
+            month = end_month = str(_MONTHS[name])
+        span = Period(
+            date(_year(year), int(month), int(day)),
+            date(_year(year), int(end_month), int(end_day)),
+        )
+    except (ValueError, ValidationError, KeyError):
+        return None
+    return span
+
+
+def _period(
+    kind: str, groups: tuple[str | None, ...], reference: date | None
+) -> tuple[Period, bool] | None:
+    try:
+        match kind:
+            case "month name":
+                name, year = groups
+                return _dated_by(lambda y: Period.month(y, _MONTHS[str(name)]), year, reference)
+            case "month number":
+                month, year = groups
+                return Period.month(int(str(year)), int(str(month))), False
+            case "iso month":
+                year, month = groups
+                return Period.month(int(str(year)), int(str(month))), False
+            case "week":
+                week, year = groups
+                return _dated_by(lambda y: Period.week(y, int(str(week))), year, reference)
+            case "quarter":
+                quarter, year = groups
+                return _dated_by(lambda y: Period.quarter(y, int(str(quarter))), year, reference)
+            case "year":
+                (year,) = groups
+                return Period.year(int(str(year))), False
+    except (ValueError, ValidationError, KeyError):
+        return None
+    return None
+
+
+def _dated_by(
+    make: Callable[[int], Period], year: str | None, reference: date | None
+) -> tuple[Period, bool] | None:
+    """The period of `year`; without one, that of `reference`'s year, or the year before if
+    it would start after `reference`."""
+    if year is not None:
+        return make(int(year)), False
+    if reference is None:
+        return None
+    period = make(reference.year)
+    if period.start > reference:
+        period = make(reference.year - 1)
+    return period, True
+
+
+def periods_in(text: str) -> set[Period]:
+    """All periods written in the normalised `text`, each with its year."""
+    return {item.period for item in _periods(text) if not item.yearless}
+
+
+def read_period(raw: str, reference: date | None = None) -> tuple[Period, bool] | None:
+    """The period `raw` writes (`September 2026`, `KW 38/2026`, `Q3 2026`, `2025`,
+    `01.09.-30.09.2026`, `1. bis 30. September 2026`, one date as that day), and whether its
+    year was assumed: a month, week or quarter without one takes the year of `reference` (the
+    document date). Readings inside another one do not count (the days of a span, the year of
+    a month); None if there is none, or more than one is left."""
+    found = _periods(normalise(raw), reference)
+    outer = {
+        (item.period, item.yearless)
+        for item in found
+        if not any(
+            other is not item
+            and other.start <= item.start
+            and item.end <= other.end
+            and other.length > item.length
+            for other in found
+        )
+    }
+    return next(iter(outer)) if len(outer) == 1 else None
+
+
 # --- numbers ----------------------------------------------------------------------------------
 
 # Digits with separators between them: `1.234,56`, `1,234.56`, `1 234,56`, `1'234.56`, `84,20`.
@@ -129,6 +323,35 @@ def _reading(token: str, decimal_mark: str, groups: str) -> Decimal | None:
         return Decimal("".join(parts) + ("." + fraction if mark else ""))
     except InvalidOperation:
         return None
+
+
+def amounts_in(text: str) -> set[Decimal]:
+    """The numbers the normalised `text` writes as amounts: with two decimal places
+    (`620,00`, `1,234.56`), or with a currency or a dash beside them (`620 €`, `eur 620`,
+    `620,-`). A bare number (`620`) is none: on a scan it may be any fragment."""
+    found: set[Decimal] = set()
+    for match in _NUMBER.finditer(text):
+        readings = _readings(match.group())
+        if _beside_currency(text, match.start(), match.end()):
+            found.update(readings)
+        else:
+            found.update(number for number in readings if number.as_tuple().exponent == -2)
+    return found
+
+
+_BEFORE = re.compile(r"(?:[^\W\d_]+\.?|[€$£¥]) ?$")
+_AFTER = re.compile(r" ?(?:[^\W\d_]+\.?|[€$£¥])")
+_DASH_AFTER = re.compile(r"[.,][-\u2013]")
+
+
+def _beside_currency(text: str, start: int, end: int) -> bool:
+    if _DASH_AFTER.match(text, end):
+        return True
+    before = _BEFORE.search(text[max(0, start - 12) : start])
+    after = _AFTER.match(text, end)
+    return any(
+        currencies_in(found.group().strip()) for found in (before, after) if found is not None
+    )
 
 
 # --- currencies -------------------------------------------------------------------------------
@@ -184,6 +407,77 @@ def currencies_in(text: str) -> set[str]:
     return found
 
 
+# --- values as a person or a model writes them ------------------------------------------------
+
+_SIGNS = "-\u2212\u2013"  # hyphen-minus, minus sign, en dash
+# A minus standing on its own before or after the number (`-12,50`, `€ -5`, `12,50-`), not
+# joined to a word (`R-2026`).
+_SIGN_BEFORE = re.compile(rf"(?:^|[\s(:€$£¥])[{_SIGNS}]\s*$")
+_SIGN_AFTER = re.compile(rf"\s*[{_SIGNS}](?:$|[\s)€$£¥])")
+
+
+def read_number(
+    raw: str, facts: "DocumentText | None" = None, *, language: str | None = None
+) -> Decimal | None:
+    """The one number in `raw`, as written: `2.111,68`, `1,234.56`, `84,20`, `-12,50`,
+    `12,50-`, `1 234`. None unless `raw` holds exactly one. An ambiguous notation (`1.234`) is
+    read the way `facts` shows it; where the text shows both readings (or no text is given),
+    the German one, unless `language` is English."""
+    text = normalise(raw)
+    tokens = list(_NUMBER.finditer(text))
+    if len(tokens) != 1:
+        return None
+    token = tokens[0]
+    german = _reading(token.group(), ",", ".' ")
+    english = _reading(token.group(), ".", ",' ")
+    if german is None or english is None or german == english:
+        number = german if german is not None else english
+        if number is None:
+            return None
+    elif facts is not None and facts.has_number(german) != facts.has_number(english):
+        number = german if facts.has_number(german) else english
+    else:
+        number = english if language == "en" else german
+    if _SIGN_BEFORE.search(text[: token.start()]) or _SIGN_AFTER.match(text[token.end() :]):
+        number = -number
+    return number
+
+
+def read_date(raw: str, facts: "DocumentText | None" = None) -> date | None:
+    """The one date in `raw`, in any notation `dates_in` reads (`2026-03-12`, `12.03.2026`,
+    `12. März 2026`). Of several, the one `facts` shows, if it is just one; else None."""
+    found = dates_in(normalise(raw))
+    if len(found) > 1 and facts is not None:
+        found = {value for value in found if facts.has_date(value)}
+    return next(iter(found)) if len(found) == 1 else None
+
+
+def read_amount(
+    raw: str,
+    facts: "DocumentText | None" = None,
+    *,
+    language: str | None = None,
+    default: str | None = None,
+) -> tuple[Decimal, str] | None:
+    """The amount and its currency (ISO 4217) in `raw`, read as `read_number` does: `2.111,68
+    EUR`, `€ 84,20`. Without a currency in `raw` (or with one standing for several, `kr`),
+    the one currency `facts` shows, or `default` where the text shows none (a pay slip prints
+    bare numbers); None if that does not settle it."""
+    number = read_number(raw, facts, language=language)
+    if number is None:
+        return None
+    codes = currencies_in(normalise(raw))
+    if len(codes) != 1 and facts is not None:
+        narrowed = codes & facts.currencies if codes else facts.currencies
+        if len(narrowed) == 1:
+            codes = narrowed
+    if not codes and default is not None and (facts is None or not facts.currencies):
+        codes = {default}
+    if len(codes) != 1:
+        return None
+    return number, next(iter(codes))
+
+
 # --- text -------------------------------------------------------------------------------------
 
 _SHORTEST_SPACELESS = 8  # characters; shorter values compared without spaces match too easily
@@ -224,8 +518,16 @@ class DocumentText:
         return dates_in(self.normalised)
 
     @cached_property
+    def periods(self) -> set[Period]:
+        return periods_in(self.normalised)
+
+    @cached_property
     def numbers(self) -> set[Decimal]:
         return numbers_in(self.normalised)
+
+    @cached_property
+    def amounts(self) -> set[Decimal]:
+        return amounts_in(self.normalised)
 
     @cached_property
     def currencies(self) -> set[str]:
@@ -237,8 +539,22 @@ class DocumentText:
     def has_date(self, value: date) -> bool:
         return value in self.dates
 
+    def has_period(self, value: Period, reference: date | None = None) -> bool:
+        """Whether the text writes the period (`September 2026`, `01.09.-30.09.2026`; with
+        `reference`, also without its year), or shows its first and last day as dates."""
+        if value in self.periods or (self.has_date(value.start) and self.has_date(value.end)):
+            return True
+        return reference is not None and any(
+            item.period == value for item in _periods(self.normalised, reference)
+        )
+
     def has_number(self, value: Decimal) -> bool:
         return abs(value) in self.numbers
+
+    def has_amount(self, value: Decimal) -> bool:
+        """Whether the text writes `value` as an amount (`amounts_in`), not only as a
+        number."""
+        return abs(value) in self.amounts
 
     def has_currency(self, code: str) -> bool:
         return code in self.currencies

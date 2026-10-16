@@ -7,7 +7,7 @@ Test modules subclass the suites and provide the fixtures `database` (migrated, 
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -19,7 +19,7 @@ from alembic.migration import MigrationContext
 from sqlalchemy import Connection, insert, inspect, select
 
 from papiq.adapters.outbound.memory import ManualClock, MemoryObjectStore
-from papiq.adapters.outbound.sql import Database, migrate, schema_state
+from papiq.adapters.outbound.sql import Database, SqlUnitOfWorkFactory, migrate, schema_state
 from papiq.adapters.outbound.sql import tables as t
 from papiq.adapters.outbound.sql.migrations import alembic_config
 from papiq.adapters.outbound.sql.types import UtcDateTime, json_type
@@ -29,10 +29,10 @@ from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.ids import new_id
 from papiq.core.domain.jobs import Job
-from papiq.core.domain.pipeline import PIPELINE
+from papiq.core.domain.pipeline import NODES, Node
 from papiq.core.domain.users import User
 from papiq.core.ports import DeliveryRetry, EventBus, UnitOfWorkFactory
-from papiq.core.services.pipeline import PipelineService, PlaceholderStep
+from papiq.core.services.pipeline import PipelineService, PlaceholderNode
 from tests import builders
 from tests.builders import NOW, incoming
 from tests.contracts.event_bus import EventBusFactory, Recorder, publish, received
@@ -161,7 +161,7 @@ class SqlAdapterSuite:
             uow_factory,
             ManualClock(NOW),
             MemoryObjectStore(),
-            {step: PlaceholderStep() for step in PIPELINE[1:]},
+            {node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE},
             pipeline_version="test",
         )
 
@@ -324,18 +324,18 @@ class MigrationSuite:
             (_OLD["definitions"], {"id": ids["field"], "name": "Due", "name_key": "due"}),
             (_OLD["types"], {"attribute_id": ids["field"], "document_type_id": ids["type"]}),
             (
-                t.documents,
+                _before_0009(t.documents),
                 {
                     "id": ids["document"],
                     "owner_id": ids["user"],
                     "drawer_id": ids["drawer"],
-                    "processing_step": "extract_attributes",
-                    "processing_outcomes": {"classify": "ok", "extract_attributes": "ok"},
+                    "processing_step": "apply_rules",
+                    "processing_outcomes": {**_OK_UP_TO_CLASSIFY, "extract_attributes": "ok"},
                 },
             ),
             (_OLD["values"], {"document_id": ids["document"], "attribute_id": ids["field"]}),
             (
-                t.processing_log,
+                _before_0009(t.processing_log),
                 {
                     "document_id": ids["document"],
                     "step": "extract_attributes",
@@ -381,12 +381,12 @@ class MigrationSuite:
                 await connection.execute(insert(table).values({**defaults, **values}))
         before = await _stored(empty_database, old=True)
 
-        await migrate(empty_database)
+        await migrate(empty_database, "0015")  # 0016 renames the nodes it reads
         after = await _stored(empty_database, old=False)
         assert after["definition"] == (ids["field"], "Due", "date")
         assert after["scope"] == (ids["field"], ids["type"])
         assert after["value"] == (ids["document"], ids["field"], "text", "Monday")
-        assert after["document"] == ("extract_fields", {"classify": "ok", "extract_fields": "ok"})
+        assert after["document"] == ("apply_rules", {**_OK_UP_TO_CLASSIFY, "extract_fields": "ok"})
         assert after["log"] == (
             "extract_fields",
             {
@@ -405,7 +405,7 @@ class MigrationSuite:
             ],
         )
         assert after["job"] == (
-            {"document_id": document, "step": "extract_fields", "run": 1},
+            {"document_id": document, "node": "extract_fields", "run": 1},
             f"{document}:1:extract_fields",
         )
         assert after["event"] == {"document_id": document, "fields": ["title", "fields"]}
@@ -415,6 +415,598 @@ class MigrationSuite:
         # The answer's key stays `fields`: checks were stored under `fields` before as well.
         before["log"][1]["answer"] = {"fields": {"a1": "attributes"}}
         assert restored == before
+
+    async def test_steps_become_nodes_and_back(self, empty_database: Database) -> None:
+        """Revision 0009 renames the columns, the job kind, the payload keys and the event type
+        `document.step_completed` wherever it is stored; the downgrade restores them."""
+        await migrate(empty_database, "0008")
+        ids = {name: new_id() for name in ("user", "drawer", "document", "webhook")}
+        document = str(ids["document"])
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
+            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+            (
+                _before_0009(t.documents),
+                {
+                    "id": ids["document"],
+                    "owner_id": ids["user"],
+                    "drawer_id": ids["drawer"],
+                    "processing_step": "ocr",
+                    "processing_outcomes": {"receive": "ok"},
+                },
+            ),
+            (
+                _before_0009(t.processing_log),
+                {"document_id": ids["document"], "step": "receive", "input": {}, "output": {}},
+            ),
+            (
+                t.jobs,
+                {
+                    "id": new_id(),
+                    "kind": "pipeline.step",
+                    "payload": {"document_id": document, "step": "ocr", "run": 1},
+                    "dedup_key": f"{document}:1:ocr",
+                },
+            ),
+            (
+                t.outbox,
+                {
+                    "event_id": new_id(),
+                    "type": "document.step_completed",
+                    "payload": {"document_id": document, "step": "receive", "run": 1},
+                },
+            ),
+            (
+                t.webhooks,
+                {
+                    "id": ids["webhook"],
+                    "owner_id": ids["user"],
+                    "url": "https://example.org/hook",
+                    "event_types": ["document.step_completed", "document.filed"],
+                    "secret": b"s",
+                    "active": True,
+                    "failed_streak": 0,
+                },
+            ),
+            (
+                t.webhook_deliveries,
+                {
+                    "id": new_id(),
+                    "webhook_id": ids["webhook"],
+                    "event_id": new_id(),
+                    "event_type": "document.step_completed",
+                    "attempt": 1,
+                    "duration_ms": 1,
+                },
+            ),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+        before = await _node_names(empty_database, old=True)
+
+        await migrate(empty_database)
+        after = await _node_names(empty_database, old=False)
+        assert after == {
+            "document": "ocr",
+            "log": "receive",
+            "job": ("pipeline.node", {"document_id": document, "node": "ocr", "run": 1}),
+            "event": (
+                "document.node_completed",
+                {"document_id": document, "node": "receive", "run": 1},
+            ),
+            "webhook": ["document.node_completed", "document.filed"],
+            "delivery": "document.node_completed",
+        }
+
+        await _downgrade(empty_database, "0008")
+        assert await _node_names(empty_database, old=True) == before
+        assert before["job"][0] == "pipeline.step"
+
+    async def test_the_current_node_and_the_outcomes_become_node_states_and_back(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0010 turns the current node and the outcomes into the state of every node,
+        with the times of the latest log entry; `pages` is skipped. The downgrade derives the
+        current node and the outcomes again."""
+        await migrate(empty_database, "0009")
+        ids = {name: new_id() for name in ("user", "drawer", "a", "b", "c", "d")}
+        second, third = NOW + timedelta(seconds=1), NOW + timedelta(seconds=3)
+        rules_ok = {**_OK_UP_TO_CLASSIFY, "extract_fields": "ok", "apply_rules": "ok"}
+        documents = {
+            "a": ("processing", "parse", {"receive": "ok", "ocr": "ok"}),
+            "b": ("failed", "ocr", {"receive": "ok", "ocr": "failed"}),
+            "c": ("review", "file", {**rules_ok, "classify": "uncertain"}),
+            "d": ("completed", None, {**rules_ok, "file": "ok"}),
+        }
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
+            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+        ]
+        for name, (status, current, outcomes) in documents.items():
+            rows.append(
+                (
+                    _before_0010(t.documents),
+                    {
+                        "id": ids[name],
+                        "owner_id": ids["user"],
+                        "drawer_id": ids["drawer"],
+                        "sha256": name * 64,
+                        "processing_status": status,
+                        "processing_node": current,
+                        "processing_outcomes": outcomes,
+                        "updated_at": third,
+                    },
+                )
+            )
+        log = {
+            "document_id": ids["a"],
+            "input": {},
+            "output": {},
+            "started_at": NOW,
+            "duration_us": 1_000_000,
+        }
+        rows += [
+            (t.processing_log, {**log, "node": "receive"}),
+            (t.processing_log, {**log, "node": "ocr", "run": 1, "started_at": NOW}),
+            (t.processing_log, {**log, "node": "ocr", "run": 2, "started_at": second}),
+            (
+                t.processing_log,
+                {**log, "node": "ocr", "run": 3, "model_version": "person", "started_at": third},
+            ),
+            (t.processing_log, {**log, "document_id": ids["d"], "node": "apply_rules"}),
+            (
+                t.processing_log,
+                {
+                    **log,
+                    "document_id": ids["d"],
+                    "node": "apply_rules",
+                    "model_version": "rules:apply",
+                    "started_at": third,
+                },
+            ),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+
+        await migrate(empty_database, "0015")  # 0016 renames the nodes it reads
+
+        def done(outcome: str, started: datetime, finished: datetime) -> dict[str, Any]:
+            return {
+                "status": "done",
+                "outcome": outcome,
+                "started_at": started.isoformat(),
+                "finished_at": finished.isoformat(),
+            }
+
+        waiting = {"status": "waiting", "outcome": None, "started_at": None, "finished_at": None}
+        skipped = {**waiting, "status": "skipped"}
+        states = await _node_states(empty_database, ids)
+        assert states["a"] == {
+            "receive": done("ok", NOW, second),
+            "ocr": done(
+                "ok", second, second + timedelta(seconds=1)
+            ),  # the latest run, not the person
+            "pages": skipped,
+            **dict.fromkeys(
+                ("parse", "classify", "extract_fields", "apply_rules", "file"), waiting
+            ),
+        }
+        assert states["b"] == {
+            "receive": done("ok", third, third),  # no log entry: the document's updated_at
+            "ocr": done("failed", third, third),
+            "pages": skipped,
+            **dict.fromkeys(
+                ("parse", "classify", "extract_fields", "apply_rules", "file"), waiting
+            ),
+        }
+        assert states["c"]["classify"] == done("uncertain", third, third)
+        assert (states["c"]["file"], states["c"]["pages"]) == (waiting, skipped)
+        assert states["d"]["file"] == done("ok", third, third)
+        assert states["d"]["apply_rules"] == done("ok", NOW, second)  # not the rule applied later
+        assert states["d"]["pages"] == skipped
+        assert all(state["status"] != "waiting" for state in states["d"].values())
+        assert [row.processing_status for row in await _document_rows(empty_database)] == [
+            "processing",
+            "failed",
+            "review",
+            "completed",
+        ]
+
+        # A node a worker is at becomes the current node of the old schema.
+        running = {**states["a"]["classify"], "status": "running", "started_at": third.isoformat()}
+        async with empty_database.writing() as connection:
+            await connection.execute(
+                t.documents.update()
+                .where(t.documents.c.id == ids["a"])
+                .values(processing_nodes={**states["a"], "classify": running})
+            )
+        documents["a"] = ("processing", "classify", documents["a"][2])
+
+        await _downgrade(empty_database, "0009")
+        restored = {
+            name: (row.processing_node, row.processing_outcomes)
+            for name, row in zip(
+                documents, await _document_rows(empty_database, old=True), strict=True
+            )
+        }
+        assert restored == {
+            name: (current, outcomes) for name, (_, current, outcomes) in documents.items()
+        }
+
+    async def test_the_confirmation_is_read_from_the_log(self, empty_database: Database) -> None:
+        """Revision 0014 takes the latest confirmation by a person (in the inbox, or a change
+        beyond the title) or the source system; a later model run at `classify` undoes it."""
+        await migrate(empty_database, "0013")
+        ids = {name: new_id() for name in ("user", "drawer", "inbox", "change", "title", "model")}
+        later = NOW + timedelta(minutes=5)
+        documents = sa.table(
+            "documents",
+            *(sa.column(c.name, c.type) for c in t.documents.c if c.name != "confirmed_at"),
+        )
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
+            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+        ]
+        for number, name in enumerate(("inbox", "change", "title", "model")):
+            values = {
+                "id": ids[name],
+                "owner_id": ids["user"],
+                "drawer_id": ids["drawer"],
+                "sha256": str(number) * 64,
+                "processing_nodes": {},
+            }
+            rows.append((documents, values))
+        log = {"input": {}, "output": {}, "started_at": NOW}
+        change = {"changed": ["contact"], "tags_added": [], "tags_removed": []}
+        rows += [
+            (t.processing_log, {**log, "document_id": ids["inbox"], "node": "classify"}),
+            (
+                t.processing_log,
+                {
+                    **log,
+                    "document_id": ids["inbox"],
+                    "node": "classify",
+                    "model_version": "person",
+                    "started_at": later,
+                },
+            ),
+            (
+                t.processing_log,
+                {
+                    **log,
+                    "document_id": ids["change"],
+                    "node": "apply_rules",
+                    "model_version": "rules:change",
+                    "input": change,
+                },
+            ),
+            (
+                t.processing_log,
+                {
+                    **log,
+                    "document_id": ids["title"],
+                    "node": "apply_rules",
+                    "model_version": "rules:change",
+                    "input": {**change, "changed": ["title"]},
+                },
+            ),
+            (
+                t.processing_log,
+                {
+                    **log,
+                    "document_id": ids["model"],
+                    "node": "classify",
+                    "model_version": "imported",
+                },
+            ),
+            (
+                t.processing_log,
+                {
+                    **log,
+                    "document_id": ids["model"],
+                    "node": "classify",
+                    "model_version": "qwen3:8b",
+                    "started_at": later,
+                },
+            ),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+
+        await migrate(empty_database)
+        async with empty_database.reading() as connection:
+            found = dict(
+                (
+                    await connection.execute(select(t.documents.c.id, t.documents.c.confirmed_at))
+                ).all()
+            )
+        assert found == {
+            ids["inbox"]: later,
+            ids["change"]: NOW,
+            ids["title"]: None,
+            ids["model"]: None,
+        }
+        await _downgrade(empty_database, "0013")
+
+    async def test_signals_come_before_the_judge_and_back(self, empty_database: Database) -> None:
+        """Revision 0016 renames `classify` and `extract_fields` in the node states, the log,
+        the jobs and the events; the signals are skipped where the judge ran, waiting where it
+        waits, with jobs once the text is parsed. The downgrade restores the old graph."""
+        await migrate(empty_database, "0015")
+        ids = {name: new_id() for name in ("user", "drawer", "done", "parsed", "early")}
+
+        def state(status: str, outcome: str | None = None) -> dict[str, Any]:
+            return {"status": status, "outcome": outcome, "started_at": None, "finished_at": None}
+
+        ok = state("done", "ok")
+        before = ("receive", "ocr", "pages", "parse")
+        after = ("classify", "extract_fields", "apply_rules", "file")
+        graphs = {
+            "done": {**dict.fromkeys(before, ok), **dict.fromkeys(after, ok)},
+            "parsed": {**dict.fromkeys(before, ok), **dict.fromkeys(after, state("waiting"))},
+            "early": {
+                "receive": ok,
+                "pages": ok,
+                **dict.fromkeys(("ocr", "parse", *after), state("waiting")),
+            },
+        }
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
+            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+        ]
+        for number, (name, graph) in enumerate(graphs.items()):
+            values = {
+                "id": ids[name],
+                "owner_id": ids["user"],
+                "drawer_id": ids["drawer"],
+                "sha256": str(number) * 64,
+                "processing_nodes": graph,
+            }
+            rows.append((t.documents, values))
+        parsed = str(ids["parsed"])
+        rows += [
+            (
+                t.processing_log,
+                {"document_id": ids["done"], "node": "classify", "input": {}, "output": {}},
+            ),
+            (
+                t.jobs,
+                {
+                    "id": new_id(),
+                    "kind": "pipeline.node",
+                    "payload": {"document_id": parsed, "node": "classify", "run": 1},
+                    "dedup_key": f"{parsed}:1:classify",
+                    "status": "queued",
+                },
+            ),
+            (
+                t.outbox,
+                {
+                    "event_id": new_id(),
+                    "type": "document.node_completed",
+                    "payload": {"document_id": parsed, "node": "extract_fields", "run": 1},
+                },
+            ),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+
+        async def stored() -> tuple[dict[Any, Any], list[Any], list[Any], list[Any]]:
+            async with empty_database.reading() as connection:
+                documents = (
+                    await connection.execute(
+                        select(t.documents.c.id, t.documents.c.processing_nodes)
+                    )
+                ).all()
+                log = (await connection.execute(select(t.processing_log.c.node))).all()
+                jobs = (
+                    await connection.execute(
+                        select(t.jobs.c.dedup_key).where(t.jobs.c.status == "queued")
+                    )
+                ).all()
+                events = (await connection.execute(select(t.outbox.c.payload))).all()
+            return (
+                {id: nodes for id, nodes in documents},
+                [row[0] for row in log],
+                sorted(row[0] for row in jobs),
+                [row[0]["node"] for row in events],
+            )
+
+        await migrate(empty_database)
+        nodes, log, jobs, events = await stored()
+        assert nodes[ids["done"]]["judge"] == ok and nodes[ids["done"]]["fields"] == ok
+        assert {nodes[ids["done"]][signal]["status"] for signal in _SIGNALS} == {"skipped"}
+        assert {nodes[ids["parsed"]][signal]["status"] for signal in _SIGNALS} == {"waiting"}
+        assert {nodes[ids["early"]][signal]["status"] for signal in _SIGNALS} == {"waiting"}
+        assert "classify" not in nodes[ids["parsed"]]
+        assert (log, events) == (["judge"], ["fields"])
+        assert jobs == sorted(f"{parsed}:1:{signal}" for signal in _SIGNALS)
+
+        await _downgrade(empty_database, "0015")
+        nodes, log, jobs, events = await stored()
+        assert set(nodes[ids["parsed"]]) == set(graphs["parsed"])
+        assert nodes[ids["done"]] == graphs["done"]
+        assert (log, events, jobs) == (["classify"], ["extract_fields"], [f"{parsed}:1:classify"])
+
+    async def test_rule_templates_become_liquid_and_back(self, empty_database: Database) -> None:
+        """Revision 0018 writes the placeholders of title templates in Liquid, doing what they
+        did, and keeps text values and reasons that would read as templates as written; the
+        downgrade turns them back."""
+        await migrate(empty_database, "0017")
+        user, rule, text, day = new_id(), new_id(), new_id(), new_id()
+        old_actions: list[Any] = [
+            {
+                "type": "set_title",
+                "template": "{contact} Lohn {document_date:YYYY-MM} ({filename})",
+            },
+            {"type": "set_title", "template": "100% {document_type}"},
+            {"type": "force_review", "reason": "check {{x}}"},
+            {"type": "set_field", "field_id": str(text), "value": "Nr. {% 1 %}"},
+            {"type": "set_field", "field_id": str(day), "value": "2026-01-01"},
+            {"type": "add_tags", "tag_ids": []},
+        ]
+        rows: list[tuple[sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": user, "username": "a", "username_key": "a", "role": "admin"}),
+            (
+                t.field_definitions,
+                {"id": text, "name": "Nr", "name_key": "nr", "data_type": "text"},
+            ),
+            (t.field_definitions, {"id": day, "name": "Tag", "name_key": "tag"}),
+            (t.rules, {"id": rule, "scope": "user", "owner_id": user, "current_version": 1}),
+            (
+                t.rule_versions,
+                {"rule_id": rule, "number": 1, "conditions": {"all": []}, "actions": old_actions},
+            ),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+
+        async def stored() -> list[Any]:
+            async with empty_database.reading() as connection:
+                return list((await connection.execute(select(t.rule_versions.c.actions))).one()[0])
+
+        await migrate(empty_database)
+        actions = await stored()
+        title = actions[0]["template"]
+        assert title == (
+            "{{ contact | default: '' }} Lohn "
+            "{% if document_date %}{{ document_date | date: '%Y-%m' }}{% endif %} ({{ filename }})"
+        )
+        assert actions[1]["template"] == "100% {{ document_type | default: '' }}"
+        assert actions[2]["reason"] == "{% raw %}check {{x}}{% endraw %}"
+        assert actions[3]["value"] == "{% raw %}Nr. {% 1 %}{% endraw %}"
+        assert actions[4:] == old_actions[4:]
+        # As before: a missing value leaves its gap, the date is written as it was.
+        values = {"filename": "scan", "document_date": date(2026, 3, 31)}
+        assert " ".join(builders.TEMPLATES.render(title, values).split()) == "Lohn 2026-03 (scan)"
+        assert builders.TEMPLATES.render(actions[2]["reason"], {}) == "check {{x}}"
+
+        await _downgrade(empty_database, "0017")
+        assert await stored() == old_actions
+
+    async def test_title_patterns_become_rules_of_their_types_and_back(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0019 writes title patterns in Liquid (a field by its key) and gives each
+        type with one a global rule that sets the title; the downgrade removes the rules and
+        writes the old placeholders again."""
+        await migrate(empty_database, "0018")
+        payslip, letter, field = new_id(), new_id(), new_id()
+        old = "Lohn {contact} {document_date:YYYY-MM} {field:LA Brutto}"
+        rows: list[tuple[sa.Table, dict[str, Any]]] = [
+            (
+                t.document_types,
+                {"id": payslip, "name": "Lohn", "name_key": "lohn", "title_pattern": old},
+            ),
+            (t.document_types, {"id": letter, "name": "Brief", "name_key": "brief"}),
+            (
+                t.field_definitions,
+                {"id": field, "name": "LA Brutto", "name_key": "la brutto", "data_type": "amount"},
+            ),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+
+        await migrate(empty_database)
+        async with empty_database.reading() as connection:
+            patterns = dict(
+                (
+                    await connection.execute(
+                        select(t.document_types.c.id, t.document_types.c.title_pattern)
+                    )
+                ).all()
+            )
+            (link,) = (await connection.execute(select(t.title_pattern_rules))).all()
+            (version,) = (await connection.execute(select(t.rule_versions))).mappings().all()
+            (rule,) = (await connection.execute(select(t.rules))).mappings().all()
+        new = "Lohn {{ contact }} {{ document_date | date: '%Y-%m' }} {{ field.la_brutto }}"
+        assert patterns == {payslip: new, letter: None}
+        assert link.document_type_id == payslip and link.rule_id == rule["id"]
+        assert (rule["scope"], rule["owner_id"], rule["enabled"]) == ("global", None, True)
+        assert version["name"] == "Lohn" and version["actions"] == [
+            {"type": "set_title", "template": new}
+        ]
+        assert version["conditions"] == {
+            "all": [{"field": "document_type", "op": "is", "value": str(payslip)}]
+        }
+        uow = SqlUnitOfWorkFactory(empty_database)
+        async with uow() as unit:
+            loaded = await unit.rules.get(rule["id"])
+        assert loaded.managed_by == payslip and loaded.definition.actions[0].type == "set_title"
+
+        await _downgrade(empty_database, "0018")
+        async with empty_database.reading() as connection:
+            restored = (
+                await connection.execute(
+                    select(t.document_types.c.title_pattern).where(t.document_types.c.id == payslip)
+                )
+            ).scalar_one()
+            remaining = (
+                await connection.execute(select(sa.func.count()).select_from(t.rules))
+            ).scalar_one()
+        assert (restored, remaining) == (old, 0)
+
+    async def test_two_fields_with_one_key_stop_revision_0019(
+        self, empty_database: Database
+    ) -> None:
+        await migrate(empty_database, "0018")
+        async with empty_database.writing() as connection:
+            for name in ("LA Brutto", "LA_Brutto"):
+                values = {"id": new_id(), "name": name, "name_key": name.casefold()}
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in t.field_definitions.c}
+                await connection.execute(insert(t.field_definitions).values({**defaults, **values}))
+        with pytest.raises(RuntimeError, match=r"would both be field\.la_brutto"):
+            await migrate(empty_database)
+
+    async def test_titles_get_their_sort_key_and_back(self, empty_database: Database) -> None:
+        """Revision 0023 fills the sort key of every title, case and accents aside."""
+        await migrate(empty_database, "0022")
+        ids = {name: new_id() for name in ("user", "drawer", "letter", "invoice")}
+        documents = _before_0021(t.documents)
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
+            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+        ]
+        for number, (name, title) in enumerate(
+            (("letter", "Ärztebrief Straße 5"), ("invoice", " INVOICE "))
+        ):
+            values = {
+                "id": ids[name],
+                "owner_id": ids["user"],
+                "drawer_id": ids["drawer"],
+                "sha256": str(number) * 64,
+                "title": title,
+                "processing_nodes": {},
+                "processing_vision": False,
+            }
+            rows.append((documents, values))
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                columns = {k: v for k, v in {**defaults, **values}.items() if k in table.c}
+                await connection.execute(insert(table).values(columns))
+
+        await migrate(empty_database)
+        async with empty_database.reading() as connection:
+            keys = dict(
+                (await connection.execute(select(t.documents.c.id, t.documents.c.title_key))).all()
+            )
+        assert keys == {ids["letter"]: "arztebrief strasse 5", ids["invoice"]: "invoice"}
+        await _downgrade(empty_database, "0022")
+        async with empty_database.reading() as connection:
+            assert len((await connection.execute(select(documents.c.id))).all()) == 2
 
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
@@ -458,6 +1050,9 @@ _OLD = {
         sa.column("value_text", sa.Text()),
     ),
 }
+_SIGNALS = ("signal_llm", "signal_classifier", "signal_neighbours", "signal_facts")
+_OK_UP_TO_CLASSIFY = {"receive": "ok", "ocr": "ok", "parse": "ok", "classify": "ok"}
+
 _DEFAULTS: dict[str, Any] = {
     "created_at": NOW,
     "updated_at": NOW,
@@ -477,7 +1072,7 @@ _DEFAULTS: dict[str, Any] = {
     "original_filename": "t.pdf",
     "media_type": "application/pdf",
     "channel": "api",
-    "processing_status": "running",
+    "processing_status": "processing",
     "processing_run": 1,
     "processing_outcomes": {},
     "run": 1,
@@ -518,18 +1113,105 @@ async def _stored(database: Database, *, old: bool) -> dict[str, Any]:
             return (await connection.execute(select(table))).one()
 
         definition, scope, value = await one(definitions), await one(types), await one(values)
-        document, log = await one(t.documents), await one(t.processing_log)
+        documents = _before_0009(t.documents) if old else _before_0021(t.documents)
+        log_table = _before_0009(t.processing_log) if old else t.processing_log
+        document, log = await one(documents), await one(log_table)
         rule, job, event = await one(t.rule_versions), await one(t.jobs), await one(t.outbox)
     return {
         "definition": tuple(definition),
         "scope": tuple(scope),
         "value": tuple(value),
-        "document": (document.processing_step, document.processing_outcomes),
-        "log": (log.step, log.output),
+        "document": (
+            (document.processing_step, document.processing_outcomes)
+            if old
+            else _current_and_outcomes(document.processing_nodes)
+        ),
+        "log": (log.step if old else log.node, log.output),
         "rule": (rule.conditions, rule.actions),
         "job": (job.payload, job.dedup_key),
         "event": event.payload,
     }
+
+
+async def _node_names(database: Database, *, old: bool) -> dict[str, Any]:
+    """The rows of `test_steps_become_nodes_and_back`, under the old or new names."""
+    documents = _before_0009(t.documents) if old else _before_0021(t.documents)
+    log_table = _before_0009(t.processing_log) if old else t.processing_log
+    async with database.reading() as connection:
+
+        async def one(table: Any) -> Any:
+            return (await connection.execute(select(table))).one()
+
+        document, log = await one(documents), await one(log_table)
+        job, event = await one(t.jobs), await one(t.outbox)
+        webhook, delivery = await one(t.webhooks), await one(t.webhook_deliveries)
+    return {
+        "document": (
+            document.processing_step if old else _current_and_outcomes(document.processing_nodes)[0]
+        ),
+        "log": log.step if old else log.node,
+        "job": (job.kind, job.payload),
+        "event": (event.type, event.payload),
+        "webhook": webhook.event_types,
+        "delivery": delivery.event_type,
+    }
+
+
+async def _node_states(database: Database, ids: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """`processing_nodes` of the documents of `ids`, by name."""
+    by_id = {id: name for name, id in ids.items()}
+    return {
+        by_id[row.id]: row.processing_nodes
+        for row in await _document_rows(database)
+        if row.id in by_id
+    }
+
+
+async def _document_rows(database: Database, *, old: bool = False) -> list[Any]:
+    table = _before_0010(t.documents) if old else _before_0021(t.documents)
+    async with database.reading() as connection:
+        return list((await connection.execute(select(table).order_by(table.c.sha256))).all())
+
+
+def _before_0021(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0021 had it: no vision reading of the run, and no sort
+    key of the title (0023)."""
+    later = {"processing_vision", "title_key"}
+    return sa.table(
+        table.name, *(sa.column(c.name, c.type) for c in table.c if c.name not in later)
+    )
+
+
+def _before_0010(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0010 had it: the current node and the outcomes instead
+    of the state of every node, and no page count (0011), confirmation (0014), vision reading
+    (0021) or sort key of the title (0023)."""
+    later = {"processing_nodes", "page_count", "confirmed_at", "processing_vision", "title_key"}
+    columns = [sa.column(c.name, c.type) for c in table.c if c.name not in later]
+    if table.name == "documents":
+        columns.append(sa.column("processing_node", sa.Text()))
+        columns.append(sa.column("processing_outcomes", json_type()))
+    return sa.table(table.name, *columns)
+
+
+def _before_0009(table: sa.Table) -> sa.TableClause:
+    """`table` as the revisions before 0009 had it: the node columns under their old names."""
+    old = {"processing_node": "processing_step", "node": "step"}
+    before = _before_0010(table)
+    return sa.table(table.name, *(sa.column(old.get(c.name, c.name), c.type) for c in before.c))
+
+
+def _current_and_outcomes(nodes: dict[str, Any]) -> tuple[str | None, dict[str, str]]:
+    """The current node and the outcomes as the revisions before 0010 stored them, derived
+    from the state of every node (the way the downgrade does it). In graph order: Postgres
+    keeps the keys of a JSONB object shortest first, not as they were written."""
+    waiting = [node.value for node in NODES if nodes.get(node.value, {}).get("status") == "waiting"]
+    outcomes = {
+        name: state["outcome"]
+        for name, state in nodes.items()
+        if name != "pages" and state["outcome"] is not None
+    }
+    return (waiting[0] if waiting else None), outcomes
 
 
 async def _downgrade(database: Database, revision: str) -> None:

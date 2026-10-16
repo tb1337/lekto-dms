@@ -1,0 +1,30 @@
+{
+  "description": "Phone bill without a customer number. A model that leaves the optional global field empty files it green; the fixed answer puts in something the text does not show, so the field and the document are uncertain.",
+  "expected": {
+    "lane": "green",
+    "contact": "FernNetz Telekommunikation GmbH",
+    "document_type": "Rechnung",
+    "tags": ["Telefon", "Internet"],
+    "document_date": "2026-02-03",
+    "fields": {
+      "Betrag": {"amount": "44.99", "currency": "EUR"},
+      "Rechnungsnummer": "702118845"
+    }
+  },
+  "fake": {
+    "classification": {
+      "contact": {"value": "FernNetz Telekommunikation GmbH", "evidence": "FernNetz Telekommunikation GmbH"},
+      "document_type": "Rechnung",
+      "new_document_type": null,
+      "tags": ["Telefon", "Internet"],
+      "new_tags": [],
+      "document_date": {"value": "2026-02-03", "evidence": "Rechnungsdatum: 03.02.2026"}
+    },
+    "fields": {
+      "Betrag": {"value": "44,99 €", "evidence": "Rechnungsbetrag | 44,99 €"},
+      "Rechnungsnummer": {"value": "702118845", "evidence": "Rechnungsnummer: 702118845"},
+      "Kundennummer": {"value": "siehe Rückseite", "evidence": null}
+    },
+    "lane": "yellow"
+  }
+}

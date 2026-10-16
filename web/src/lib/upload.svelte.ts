@@ -1,12 +1,14 @@
 /**
  * Upload of documents: several files, a few at a time, one call per file. The state of each file
- * follows its document from the answer of the API to its lane, through the event stream.
+ * follows its document from the answer of the API through its nodes to its lane, through the
+ * event stream.
  */
 import { api } from '#lib/api/client.ts';
 import { apiError } from '#lib/api/problem.ts';
 import type { components } from '#lib/api/schema.ts';
 import { describeError } from '#lib/errors.ts';
-import { events } from '#lib/events.svelte.ts';
+import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
+import type { Processing } from '#lib/pipeline.ts';
 
 type Lane = components['schemas']['Lane'];
 export type UploadState = 'waiting' | 'uploading' | 'processing' | 'done' | 'failed';
@@ -17,6 +19,8 @@ export interface Upload {
 	state: UploadState;
 	documentId: string | null;
 	lane: Lane | null;
+	/** Where processing stands, from the answer of the API onwards. */
+	processing: Processing | null;
 	message: string | null;
 }
 
@@ -27,6 +31,9 @@ export class Uploads {
 	#queue: { upload: Upload; file: File; drawerId: string | null }[] = [];
 	#running = 0;
 	#next = 1;
+	// The latest request per item: an answer overtaken by a later one is dropped.
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping, not shown
+	#requests = new Map<number, number>();
 	#stop: (() => void) | null = null;
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	#settled = new Set<() => void>();
@@ -48,6 +55,8 @@ export class Uploads {
 			if (!item || item.state !== 'processing') return;
 			if (event.type === 'document.lane_changed' || event.type === 'document.filed') {
 				void this.#refreshLane(item).then(() => this.#settled.forEach((handler) => handler()));
+			} else if (NODE_EVENTS.has(event.type)) {
+				void this.#refreshLane(item);
 			}
 		});
 	}
@@ -61,6 +70,7 @@ export class Uploads {
 				state: 'waiting',
 				documentId: null,
 				lane: null,
+				processing: null,
 				message: null
 			};
 			this.items.push(upload);
@@ -125,11 +135,14 @@ export class Uploads {
 
 	async #refreshLane(upload: Upload): Promise<void> {
 		if (!upload.documentId) return;
+		const request = (this.#requests.get(upload.key) ?? 0) + 1;
+		this.#requests.set(upload.key, request);
 		const { data } = await api.GET('/api/v1/documents/{id}', {
 			params: { path: { id: upload.documentId } }
 		});
-		if (!data) return;
+		if (!data || this.#requests.get(upload.key) !== request) return;
 		upload.lane = data.lane;
+		upload.processing = data.processing;
 		if (data.lane !== null) upload.state = 'done';
 	}
 }

@@ -6,16 +6,19 @@ import pytest
 from papiq.adapters.outbound.memory import ManualClock
 from papiq.core.domain.events import (
     EVENT_TYPES,
+    ClassifierTrained,
     DocumentDeleted,
     DocumentFiled,
     DocumentReceived,
     DocumentUpdated,
     DomainEvent,
     LaneChanged,
-    StepCompleted,
+    NodeCompleted,
+    NodeDeferred,
+    NodeStarted,
 )
 from papiq.core.domain.ids import DocumentId, DrawerId, UserId, new_id
-from papiq.core.domain.pipeline import Lane, Outcome, Step
+from papiq.core.domain.pipeline import Lane, Node, Outcome
 from papiq.core.ports import Clock, DeliveryRetry, EventBus, UnitOfWorkFactory
 from papiq.core.ports.event_bus import DEFAULT_DELIVERY_RETRY
 from tests.builders import NOW
@@ -86,8 +89,16 @@ class EventBusContract:
         document = DocumentId(new_id())
         events: list[DomainEvent] = [
             DocumentReceived(document_id=document, occurred_at=NOW),
-            StepCompleted(
-                document_id=document, occurred_at=NOW, step=Step.OCR, run=2, outcome=Outcome.OK
+            NodeStarted(document_id=document, occurred_at=NOW, node=Node.OCR, run=2),
+            NodeDeferred(
+                document_id=document,
+                occurred_at=NOW,
+                node=Node.OCR,
+                run=2,
+                retry_at=NOW + timedelta(seconds=30),
+            ),
+            NodeCompleted(
+                document_id=document, occurred_at=NOW, node=Node.OCR, run=2, outcome=Outcome.OK
             ),
             LaneChanged(document_id=document, occurred_at=NOW, old=None, new=Lane.YELLOW),
             LaneChanged(document_id=document, occurred_at=NOW, old=Lane.RED, new=None),
@@ -99,6 +110,7 @@ class EventBusContract:
                 occurred_at=NOW,
                 readers=(UserId(new_id()), UserId(new_id())),
             ),
+            ClassifierTrained(occurred_at=NOW, number=3, examples=120),
         ]
         assert {type(event) for event in events} == set(EVENT_TYPES.values())
         await publish(uow_factory, *events)

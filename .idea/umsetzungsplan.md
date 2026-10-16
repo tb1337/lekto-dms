@@ -52,6 +52,7 @@ flowchart LR
 | M16 | Lesen: Seitenbilder, VLM-Lesung, Bilder im Modellaufruf | Sonnet 5.5 | high |
 | M17 | Grounding in der Prüfansicht (vorgezogen mit der neuen Dokumentansicht) | Sonnet 5.5 | medium |
 | M18 | Eskalation und Kalibrierung | Opus 5.5 | high |
+| 0.3.0 | Tags mit Arten, Gruppen, Themen, Spaces, Icons und Logos (fünf Pakete, siehe dort) | je Paket | high |
 
 **Faustregel für die Modellwahl**
 
@@ -757,6 +758,187 @@ Die Lücke der textbasierten Varianten kommt fast ganz aus dem schlechten Scan (
 - Neue Titel aus Titelmustern mit Zeitraum sehen anders aus als ältere (`2026-W38` statt „KW 38 2026“).
 - Filter nach Zeitraum in Liste und Suche.
 - Der lokale Playwright-Test `rules.spec.ts` passt schon vor diesem Schritt nicht mehr zum Regel-Baukasten (Beschriftungen der Bedingungen, Start im Posteingang).
+
+### Release 0.3.0 – Tags mit Arten, Gruppen, Themen, Spaces
+
+**Anlass (Tobi, 16.10.2026):** Tags waren nur Namen, flach, und jeder Tag war ein Ziel der Klassifizierung. Es fehlten eine Struktur um die Kontakte (Gruppen darüber, Themen darunter), eine Hierarchie, die Trennung zwischen Merkmalen, die Papiq ermittelt, und solchen, die nur ein Mensch festlegt, und ein Aussehen (Icons, Farben, Logos). Beispiel: Eine Versicherungsgruppe ist zugleich Arbeitgeberin und Versicherer für Haftpflicht, Krankenversicherung und Lebensversicherung; ihre Dokumente gehören je in eines dieser Themen, und Fakten wie Personal- oder Versicherungsscheinnummer zeigen, in welches.
+
+**Entscheidungen (Tobi, 16.10.2026, in sechs Runden; Ergebnis in `architektur.md`: Datenmodell, „Tags, Gruppen und Themen“, Urteil, Felder, Kontakte, Suche, Regel-Engine, Schnittstellen):**
+- **Klassifizierungsmerkmal oder Menschenmerkmal:** ein Schalter `auto`/`manual` an Tags und Feldern; Regeln dürfen manuelle Merkmale setzen. Issue #52 kommt mit: Ein Pflichtfeld „nur von Hand“ hält das Dokument gelb, bis eine Person es setzt.
+- **Ein Tag-Modell mit Arten** `document`, `contact` (Kontaktgruppe), `document_type` (Typgruppe), `topic` (Thema). Kontakte und Typen in beliebig vielen Gruppen; Gruppen sind statisch (immer `manual`) und werden vom Dokument über Kontakt und Typ geerbt. Personen-Tags nein (Personen sollen Nutzer werden); Status-Tags sind manuelle Dokument-Tags.
+- **Hierarchie:** gespeichert wird nur der gesetzte Tag, Vorfahren sind abgeleitet; Filter und Regelbedingungen treffen Nachfahren mit; keine Zyklen, höchstens fünf Ebenen; Namen eindeutig je Art; Elterntags dürfen gesetzt werden, Kind und Elternteil zugleich wird zum Kind.
+- **Thema** (englisch `topic`, verworfen: „Schublade“, das mit dem Ablage-Möbel kollidiert, und „Sachgebiet“): globaler Katalog, am Kontakt freigeschaltet (Variante B; verworfen A: ein Thema je Kontakt, ohne Sicht über Kontakte hinweg). Höchstens ein Thema je Dokument, eines, das sein Kontakt führt. Eine Kennung gehört einem Kontakt und zeigt optional auf eines seiner Themen; das Training gibt einer gelernten Kennung ein Thema nur, wenn alle ihre Dokumente es tragen. Freischalten im Kontaktdialog oder, als Admin, durch die Wahl am Dokument. Urteil: gesetzt nur bei grünem Kontakt und Kennung plus Signal oder zwei Signalen; sonst Vorschlag, nie gelb, ein Widerspruch lässt es leer.
+- **Anzeige:** je Tag „am Dokument zeigen“, Vorgabe nach Art; am Dokument das Blatt, der Pfad im Tooltip (Variante a).
+- **Aussehen:** Icons aus Lucide (bleibt; eine Auswahl von 170, die übrigen nachgeladen aus dem eigenen Build; Vorschau „Papiq Icon-Auswahl“, Artifact, privat), zwölf Hauptfarben plus eigene Farbe für Tags, Logos für Kontakte per Upload und, auf Wunsch (`PAPIQ_LOGO_FETCH`), von der eigenen Website des Kontakts. Logo-Dienste Dritter nein.
+- **Space statt Schublade** in Code, API, Datenbank, Templates und Oberfläche, auf Deutsch und Englisch „Space“ (verworfen: Aktenschrank/Cabinet, Vault). Der Bruch der API ist gewollt; die Version bleibt 0.3.0, der PR trägt `refactor` und nennt den Bruch im Titel. Der Umbau der Rechte kommt später (Tobi steuert ihn ein).
+- **Migrationsclient:** nur, was die API erzwingt; ASN, Tag-Hierarchie und Farben aus Paperless in einem späteren Release.
+- **Schnitt:** fünf Pakete, je eine Branch von `release/0.3.0` und ein PR mit eigenem Label, in dieser Reihenfolge (3 vor 4, weil Themen das Tag-Modell brauchen). Jede Branch beginnt mit einem Plan im Plan-Modus und endet mit einem Review durch einen separaten Agenten.
+
+| # | Branch | Inhalt | Label | Revision | Modell |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `refactor/spaces-0.3.0` | Schublade wird Space | `refactor` | 0024 | Sonnet 5.5 · high (Revision im Review) |
+| 2 | `feature/manual-fields-0.3.0` | Felder „nur von Hand“ (#52) | `enhancement` | 0025 | Sonnet 5.5 · medium |
+| 3 | `feature/nested-tags-0.3.0` | Tag-Modell mit Arten, Hierarchie, Gruppen, auto/manuell, Anzeige | `new-feature` | 0026 | Opus 5.5 · high |
+| 4 | `feature/topics-0.3.0` | Themen an Kontakt, Dokument und Kennung, im Urteil | `new-feature` | 0027 | Opus 5.5 · high |
+| 5 | `feature/master-data-looks-0.3.0` | Icons, Farben, Logos | `new-feature` | 0028 | Sonnet 5.5 · high (Schutz vor SSRF im Review mit Fable 5.1 · high) |
+
+#### Paket 1 – Space statt Schublade (`refactor/spaces-0.3.0`)
+
+PR mit Label `refactor`, der Bruch im Titel, etwa „Rename drawers to spaces (breaking: /api/v1/spaces, space_id, {{ space }})“. Kein Verhalten ändert sich; der Name `space` ersetzt `drawer` überall, auch in gespeicherten Daten. Bestand vor dem Umbau: 197 Dateien nennen „drawer“ oder „Schublade“ (Backend, Web, Migrationsclient, Doku).
+
+**Umsetzung:**
+- **Kern:** `domain/drawers.py` wird `domain/spaces.py` (`Space`, `SpaceId`, `ShareLevel` bleibt, `DEFAULT_SPACE_NAME` behält den Wert „Default“); `Document.space_id` und `move_to`; `DocumentFiled.space_id` (der Ereignistyp `document.filed` bleibt); `permissions.py` (`space_access`, `reach_space_access`, `can_file_into`, `can_manage_space`); Regeln `SetSpace` mit `type: "set_space"`, `References.spaces`, im Regelwerk `SPACE = "space"`, `SpaceTarget`, `RulePlan.space`; Pipeline `PERSON_SPACE = "person:space"`, `CHOSEN_SPACE = "space_id"`; Template-Variable `space` statt `drawer`; Suche `IndexDocument.space_id`, `Visibility.spaces`; Port `SpaceRepository`, `DocumentFilter.space`, `exists(space=)`; `SpaceService`; alle Meldungen („no write access to space“ …).
+- **Revision 0024 (`v0024_spaces`):** Tabellen `drawers` → `spaces`, `drawer_shares` → `space_shares`, Spalten `documents.drawer_id` und `space_shares.drawer_id` → `space_id`; Schlüssel und Indizes nach der Namenskonvention (`pk_spaces`, `uq_spaces_default_owner_id`, `ix_documents_space_id` …). Umbenannt wird in place (`ALTER TABLE … RENAME`), nie durch Neuanlegen der Tabelle: SQLite löschte dabei abhängige Zeilen (Lehre aus 0010 und 0023). Ob der Abgleich-Test zwischen `tables.py` und Revisionen die Namen von Fremdschlüsseln unter SQLite vergleicht, klärt der Plan der Branch; neu angelegt wird trotzdem nichts. Dieselbe Revision schreibt die gespeicherten Daten um:
+  - `rule_versions.actions`: `{"type": "set_drawer", "drawer_id"}` → `{"type": "set_space", "space_id"}`;
+  - Templates in Regeln (Titel, Textfelder, Gründe) und `document_types.title_pattern`: die Variable `drawer` → `space`, nur in Ausdrücken (`{{ … }}`, `{% … %}`) und als ganzes Wort, über den Lexer von python-liquid, nie im übrigen Text;
+  - `outbox.payload` von `document.filed`: `drawer_id` → `space_id`;
+  - `processing_log`: `model_version` `person:drawer` → `person:space`, der Schlüssel `drawer_id` in Ein- und Ausgabe, das Feld `drawer` in geänderten Feldern, Prüfungen und offenen Feldern → `space`; der Plan der Branch prüft, ob es auch in `documents.processing_nodes` steht.
+  - Die Rückrichtung stellt alles wieder her.
+- **API:** `/api/v1/spaces` (Tag `spaces`) mit denselben Routen; `SpaceCreate`, `SpaceOut`; `space_id` in `DocumentDetails`, `MoveRequest`, `VisibilityOut` (`space_owner_id`), `ConfirmRequest`, im Upload-Feld und als Filter von Liste und Suche; Regelaktion `set_space`; MCP `DocumentOut.space_id`. Die Web-UI erkennt den Fehler „kein Schreibrecht“ heute am Text (`web/src/lib/rules/errors.ts:74`, `/drawer/`): Das Problem-Detail bekommt einen festen Code, die UI prüft ihn statt des Texts.
+- **Suche:** Feld `space_id` im Index, `LAYOUT = 3`; der Abgleich schreibt die Einträge neu und behält die Vektoren.
+- **Web:** Route `/spaces`, Menüpunkt, `SpaceShares.svelte`, `lib/permissions.ts`, `lib/masterdata.svelte.ts`, `lib/filters.ts` (`?space=`), Upload, Regel-Baukasten (`set_space`), Prüf- und Template-Werte; 22 Schlüssel je Sprache umbenannt (`nav_spaces`, `space_new` …), drei weitere Texte angepasst; deutsch „Space“, „Spaces“, „Standard-Space“, „Mit mir geteilt“.
+- **Migrationsclient:** `/spaces`, `space_id`, Berichtsart `space`; Tests und Fake.
+- **Doku:** `README.md` (Glossar), `backend/README.md` (Knoten, Endpunkte, `set_space`, Template-Variablen, `person:space`), `web/README.md`, `migration/README.md`, Bewertungsfälle 27 und 28.
+- **Tests:** umbenannt mit (`test_users_and_spaces.py`, Builder `space()`, `default_space()`, `in_space`); Unit-of-Work-, Suchindex-, Regel- und Ereignis-Verträge.
+
+**Prüfung:**
+- Alle Prüfungen in `backend/`, `web/` und `migration/`; `openapi.json` und `schema.ts` neu erzeugt.
+- Revision 0024 hin und zurück auf SQLite und Postgres mit Daten: Regel mit `set_drawer` und `{{ drawer }}` im Titel und Grund, Titelmuster mit `{{ drawer }}`, ein Wort „drawer“ im Text des Templates (bleibt), ein offenes Ereignis `document.filed`, Protokoll mit `person:drawer`.
+- Nach dem Umbau nennt nur noch Geschichte „drawer“: frühere Revisionen, diese Revision, `.idea/` (Suche als Test im Review).
+- Browser gegen den Build: Spaces anlegen, teilen, umbenennen, löschen; Hochladen in einen Space; Verschieben; Regel mit „Space setzen“ und Fehler „kein Schreibrecht“; hell, dunkel, Handybreite, ohne Konsolenfehler.
+
+**Nach dem Merge:** Devinstanz: Revision 0024, Neustart (der Abgleich schreibt den Index neu, ohne Embeddings).
+
+#### Paket 2 – Felder „nur von Hand“ (`feature/manual-fields-0.3.0`, Issue #52)
+
+PR mit Label `enhancement`, schließt #52.
+
+**Umsetzung:**
+- **Kern:** `Assignment` (`auto`, `manual`) als gemeinsamer Begriff für Felder und später Tags (`domain/master_data.py`); `FieldDefinition.assignment`, Vorgabe `auto`.
+- **Revision 0025:** `field_definitions.assignment` (Text, nicht leer, Vorgabe `auto`).
+- **`signal_llm`:** fragt nur Felder mit `auto` an (`nodes.py`, bevor die Felder je Typ gruppiert werden); der Prompt bleibt `propose-2`, nur die Liste ändert sich.
+- **`fields`:** fragt manuelle Felder nie an (auch nicht mit `extract-4` nach einer Korrektur des Typs) und lässt ihren Wert, wie er ist. Ein optionales manuelles Feld ist immer in Ordnung. Ein Pflichtfeld ohne Wert ist eine unsichere Prüfung mit dem Grund „is set by hand“, ohne Vorschlag: Das Dokument wird gelb; die Person setzt den Wert in der Prüfansicht (`decide` nimmt ihn wie jeden anderen). Hat das Dokument schon einen Wert (von einer Person, einer Regel oder der Übernahme), ist die Prüfung in Ordnung.
+- **Regeln:** setzen manuelle Felder wie bisher.
+- **API:** `assignment` in `FieldCreate`, `FieldPatch`, `FieldOut`.
+- **Web:** Schalter „Nur von Hand“ im Feld-Dialog mit Hinweis („Papiq fragt das Modell nie nach diesem Feld“), ein Abzeichen in der Feldliste; in der Prüfansicht der Grund statt eines Zitats.
+- **Doku:** `backend/README.md` (Felder), Bewertungsfall mit einem manuellen Pflichtfeld.
+
+**Prüfung:**
+- Unit: Signal und Felder-Knoten ohne manuelle Felder im Prompt (die abgelegte Anfrage enthält sie nicht), Pflicht ohne Wert gelb, mit Wert grün, optional immer grün; Vertragstest der Feldspalte auf Speicher, SQLite und Postgres; Revision hin und zurück.
+- Evaluation mit festen Antworten: wie auf `release/0.3.0`, dazu der neue Fall (gelb mit Grund, das Modell nie gefragt).
+- Browser: Feld anlegen und umschalten, Dokument mit manuellem Pflichtfeld in der Prüfansicht setzen und bestätigen.
+
+**Nach dem Merge:** Devinstanz: Revision 0025.
+
+#### Paket 3 – Tags mit Arten, Hierarchie und Gruppen (`feature/nested-tags-0.3.0`)
+
+PR mit Label `new-feature`. Die Art `topic` kommt erst mit Paket 4.
+
+**Umsetzung:**
+- **Kern:**
+  - `TagScope` (`document`, `contact`, `document_type`); `Tag.scope`, `Tag.parent_id`, `Tag.assignment` (Gruppen immer `manual`), `Tag.shown` (Vorgabe: Gruppen aus, Dokument-Tags an).
+  - `domain/tag_tree.py`, rein: `TagTree` mit `ancestors`, `descendants`, `path`, `check_parent` (gleiche Art, kein Zyklus, mit dem Teilbaum höchstens fünf Ebenen) und `normalise` (streicht Vorfahren anderer gesetzter Tags).
+  - `Contact.group_ids` (Art `contact`), `DocumentType.group_ids` (Art `document_type`); am Dokument nur Tags der Art `document`, beim Setzen normalisiert.
+  - `MasterDataService`: Anlegen und Ändern mit Art, Elterntag, Ermittlung und Anzeige; die Art eines Tags ist fest. Löschen nur ohne Kinder und ohne Gebrauch (Dokumente, Kontakte, Typen, Regeln). Neuer Elterntag, geänderte Gruppen an Kontakt oder Typ und Umbenennung reihen `search.refresh` für die betroffenen Dokumente ein.
+  - Filter: Der Kern erweitert jeden gewünschten Tag um seine Nachfahren und gibt dem Port Mengen („eines davon“, je Menge UND); ebenso für Kontakt- und Typgruppen über Kontakt und Typ des Dokuments. So braucht weder SQLite noch Postgres eine rekursive Abfrage; die Bäume sind klein. Zahlen an Elterntags zählen jedes Dokument einmal, das den Tag oder einen Nachfahren trägt.
+- **Revision 0026:** `tags.scope` (Vorgabe `document`), `tags.parent_id` (Fremdschlüssel auf `tags`, Index), `tags.assignment` (Vorgabe `auto`), `tags.shown` (Vorgabe wahr); eindeutig `(scope, name_key)` statt `name_key`; Tabellen `contact_groups` (Kontakt mit CASCADE, Tag) und `document_type_groups` (Typ mit CASCADE, Tag). Risiko: `uq_tags_name_key` steht unter SQLite im `CREATE TABLE`; sie zu ändern verlangt ein Neuanlegen der Tabelle, das mit eingeschalteten Fremdschlüsseln abhängige Zeilen verlieren kann. Der Plan der Branch wählt zwischen dem Verfahren von SQLite (Fremdschlüssel aus, neu anlegen, `foreign_key_check`) und einem Schlüssel, der die Art enthält; ein Test belegt, dass `document_tags` vollständig bleibt.
+- **Klassifizierung:** Ziele sind nur Tags der Art `document` mit `auto`: `signal_llm` listet nur sie (der Prompt bleibt `propose-2`), der Klassifikator trainiert nur sie, die Nachbarn stimmen nur über sie ab, das Urteil schlägt keine manuellen vor und normalisiert, was es hinzufügt. Behoben nebenbei: Vorschläge des Urteils für Tags sind Namen, `inbox._suggested` liest sie als IDs (`judge_tags` liefert künftig IDs).
+- **Bestätigung (Vorschlag, nicht besprochen):** Eine Änderung nur an manuellen Tags bestätigt das Dokument nicht; ein Status-Tag sagt nichts über Kontakt und Typ. Bleibt es bei der heutigen Regel, bestätigt jede Änderung an Tags.
+- **Regeln:** Bedingungen auf Tags treffen Nachfahren mit; neue Felder `contact_group` und `document_type_group` (enthält, eines von, vorhanden, fehlt) über die Gruppen von Kontakt und Typ samt Vorfahren, unter Misstrauen „unbekannt“, wenn Kontakt oder Typ vom Modell und unbestätigt sind. „Tags hinzufügen/entfernen“ nur mit Tags der Art `document`, manuelle eingeschlossen.
+- **Templates:** `contact_groups`, `document_type_groups` (die zugeordneten Namen, sortiert); `tags` bleiben die gesetzten.
+- **Suche:** Der Eintrag hält Tags mit Vorfahren (IDs und Namen) und die Gruppen von Kontakt und Typ mit Vorfahren; der Filter in Meilisearch braucht daher keine Erweiterung. `LAYOUT = 4`.
+- **API:** `TagOut` (Art, Elterntag, Pfad, Ermittlung, Anzeige, Zahl), `TagCreate` (Art mit Vorgabe `document`), `TagPatch`; `GET /tags?scope=`; `group_ids` an Kontakten und Typen; Filter `contact_group_id` und `document_type_group_id` an Liste und Suche (wiederholbar wie `tag_id`). MCP: `list_tags` mit Art und Pfad, `search` und `update_metadata` mit Dokument-Tags.
+- **Web:**
+  - Stammdaten: der Reiter Tags wird drei Reiter (Dokument-Tags, Kontaktgruppen, Typgruppen) mit Baum (ein- und ausklappen, Zahl je Zeile); Dialog mit Elterntag (gleiche Art, ohne eigene Nachfahren), „Ermittlung: automatisch / nur von Hand“ (nicht bei Gruppen) und „am Dokument zeigen“.
+  - Kontakt- und Typ-Dialog: Gruppen auswählen.
+  - `TagsInput`: Auswahl mit Pfaden, die Suche trifft auch Elternnamen; Chips zeigen das Blatt, den Pfad im Tooltip und beim Tippen.
+  - Chips auch in Liste, Raster und Kopf des Dokuments (heute zeigt nur das Formular Tags); eingeblendete Gruppen bei Kontakt und Typ.
+  - Filter für Gruppen; Regel-Baukasten mit den neuen Feldern; Template-Werte.
+- **Migrationsclient:** gleicht Namen nur mit `GET /tags?scope=document` ab (sonst träfe er eine gleichnamige Gruppe).
+- **Doku:** `backend/README.md` (Tags, Filter, Regeln, Templates).
+
+**Prüfung:**
+- Unit: `TagTree` (Zyklus, Tiefe mit Teilbaum, fremde Art, Normalisieren), Löschen und Neuindizieren im Service, Urteil ohne manuelle Tags, Regelwerk mit Nachfahren, Gruppen und Misstrauen.
+- Verträge auf Speicher, SQLite und Postgres: Filter mit Mengen, Gruppen, Zahlen an Elterntags, Eindeutigkeit je Art; Suchindex mit Vorfahren. Revision hin und zurück mit Daten.
+- Evaluation mit festen Antworten: unverändert gegenüber Paket 2.
+- Vitest: Baum, Auswahl mit Pfaden, Chips. Browser gegen den Build: Bäume anlegen und umhängen, Gruppen an Kontakt und Typ, Filter über einen Elterntag und eine Gruppe, Chips in Liste, Raster und Kopf; hell, dunkel, Handybreite.
+
+**Nach dem Merge:** Devinstanz: Revision 0026, Neustart (Index Layout 4).
+
+#### Paket 4 – Themen (`feature/topics-0.3.0`)
+
+PR mit Label `new-feature`.
+
+**Umsetzung:**
+- **Kern:**
+  - `TagScope.TOPIC`.
+  - `Contact.topic_ids` (die freigeschalteten Themen); `Identifier.topic_id`, die Regel „Thema der Kennung ∈ Themen des Kontakts“ im Kontakt.
+  - Freischaltung entfernen: abgelehnt, solange Dokumente des Kontakts das Thema tragen (Service); Kennungen verlieren das Thema.
+  - `Document.topic_id`: nur ein Thema, das der Kontakt führt (Service). Wechselt der Kontakt, bleibt es, wenn der neue es führt, sonst fällt es weg. Wählt ein Admin ein Thema, das der Kontakt nicht führt, wird es in derselben Transaktion freigeschaltet; andere bekommen 422.
+  - `topic_id` gehört zu `CONFIRMING` und `CLASSIFIER_LABELS`.
+- **Kennungen:** `mine_identifiers` bekommt je bestätigtem Dokument Kontakt, Thema und Kennungen; eine gelernte Kennung bekommt das Thema, wenn alle ihre Dokumente es tragen, sonst keines. `facts_in` liefert zur Kennung das Thema, `FactsView` die Paare aus Kontakt und Thema.
+- **Revision 0027:** `contact_topics` (Kontakt mit CASCADE, Tag), `contact_identifiers.topic_id` (leer erlaubt), `documents.topic_id` (Fremdschlüssel, Index).
+- **Signale und Urteil:**
+  - `signal_llm` mit Prompt `propose-3`: zu den vorausgewählten Kontakten ihre Themen, die Antwort nennt ein Thema aus dieser Liste.
+  - Klassifikator: ein Modell über Themen wie beim Typ (mindestens zwei Dokumente je Klasse); das Urteil wertet nur die Themen des entschiedenen Kontakts.
+  - Nachbarn: Stimmen für das Thema; `KnownLabels` mit Themen.
+  - Fakten: eine Kennung mit Thema ist harter Beweis für das Paar.
+  - `judge_topic` nach `judge_contact`: gesetzt, wenn der Kontakt grün ist und (Kennung des Paares und ein Signal) oder zwei Signale das Thema nennen; sonst Vorschlag; verschiedene Themen genannt → leer mit allen Kandidaten und Quellen; nie unsicher. `MetadataResult` setzt es und räumt ein Thema ab, das der neue Kontakt nicht führt.
+- **Regeln:** Feld `topic` (ist, eines von, vorhanden, fehlt; mit Nachfahren), Aktion „Thema setzen“ in Nutzer-Regeln wie Kontakt und Typ (führt der Kontakt das Thema nicht, wird es nicht gesetzt und vermerkt); zwei Regeln mit verschiedenen Themen sind ein Konflikt wie bei jedem Einzelfeld; unter Misstrauen „unbekannt“, wenn das Modell das Thema gesetzt hat.
+- **Templates:** `topic`.
+- **Suche:** Thema mit Vorfahren (ID und Name) im Eintrag und im Kopf des ersten Abschnitts; Filter `topic_id`; `LAYOUT = 5`.
+- **API:** `GET /tags?scope=topic`; `topic_ids` an Kontakten; `topic_id` an `IdentifierIn`/`IdentifierOut` und an `POST /contacts/{id}/identifiers`; `topic_id` in `DocumentPatch`, `DocumentDetails`, als Filter von Liste und Suche, in der Prüfansicht (Kandidaten) und in `decide`; MCP `get_document` und `update_metadata` mit Thema (beim Namen).
+- **Web:**
+  - Stammdaten: Reiter „Themen“ mit Baum.
+  - Kontaktdialog: Themen freischalten; im Kennungs-Editor je Zeile das Thema.
+  - Fakten: Anheften mit Thema, vorbelegt mit dem Thema des Dokuments.
+  - Dokument: Feld „Thema“ mit den Themen des Kontakts (Admins: alle, mit Hinweis „wird am Kontakt freigeschaltet“), Karte in der Prüfansicht mit Kandidaten, eckiger Chip in Liste, Raster und Kopf.
+  - Filter, Regel-Baukasten, Template-Werte.
+- **Evaluation:** Trainingskorpus mit Themen an zwei Kontakten; neue Fälle: Lohnabrechnung mit Personalnummer → „Arbeit“ grün; Brief desselben Kontakts mit Versicherungsscheinnummer → „Krankenversicherung“; zwei Kennungen verschiedener Themen → leer mit Vorschlägen; gelber Kontakt → Thema nur Vorschlag.
+- **Doku:** `backend/README.md` (Themen, Kennungen, Urteil, Prompt `propose-3`).
+
+**Prüfung:**
+- Unit: Regeln am Kontakt (Kennung mit fremdem Thema, Freischaltung entfernen), Themenwechsel beim Kontaktwechsel, Freischalten durch Admins, Lernregel, `judge_topic` in allen Fällen oben, Regelwerk.
+- Verträge auf Speicher, SQLite und Postgres; Revision hin und zurück mit Daten.
+- Evaluation mit festen Antworten: keine falschen Grünen, die neuen Fälle wie erwartet, die übrigen unverändert.
+- Browser: Thema freischalten, Kennung mit Thema, Anheften, Dokument mit Themenwahl und Kontaktwechsel, Prüfkarte, Filter.
+
+**Nach dem Merge:** Devinstanz: Revision 0027, Neustart (Index Layout 5). Themen und Kennungen pflegt Tobi; das Training lernt Themen der Kennungen mit dem nächsten Lauf.
+
+#### Paket 5 – Icons, Farben und Logos (`feature/master-data-looks-0.3.0`)
+
+PR mit Label `new-feature`.
+
+**Umsetzung:**
+- **Kern:** `Tag.icon` und `DocumentType.icon` (Name eines Lucide-Icons, Kleinbuchstaben, Ziffern und Bindestriche, höchstens 64 Zeichen, optional); `Tag.color`: einer der zwölf Namen (`gray`, `red`, `orange`, `amber`, `lime`, `green`, `teal`, `sky`, `blue`, `violet`, `fuchsia`, `pink`) oder `#rrggbb`. `Contact.logo`: Herkunft (hochgeladen, abgerufen), Domain, Zeitpunkt; die Datei liegt unter `contacts/{id}/logo.webp` (Schlüssel in `services/objects.py`).
+- **Revision 0028:** `tags.icon`, `tags.color`, `document_types.icon`, die Angaben zum Logo an `contacts`.
+- **Bilder:** Port `ImageNormaliser` (PNG, JPEG, WebP, ICO lesen; Grenze gegen Bilder, die beim Entpacken riesig werden; auf 128 px als WebP mit Transparenz), Adapter mit Pillow, Fake und Vertragstest. SVG wird abgelehnt.
+- **Abruf:** Port `LogoFetcher` (`fetch(domain)`), Adapter mit `httpx2`, Fake und Vertragstest:
+  - Schutz vor SSRF, den es in Papiq noch nicht gibt: Der Name wird aufgelöst, jede Adresse muss öffentlich sein (`is_global`; abgewiesen werden auch 100.64.0.0/10, ULA und auf IPv6 abgebildete private IPv4), verbunden wird mit der geprüften Adresse und dem Namen für SNI und Host (gegen DNS-Rebinding).
+  - Nur HTTPS, höchstens drei Weiterleitungen, jede neu geprüft; höchstens 1 MB, 10 s; Inhaltstyp geprüft; ohne Cookies, `trust_env=False`.
+  - Gelesen werden `apple-touch-icon`, `<link rel="icon">` mit Größen, das Web-App-Manifest und `/favicon.ico`, mit `html.parser` der Standardbibliothek; gewählt wird das größte Rasterbild ab 64 px.
+- **Ablauf:** Einstellung `PAPIQ_LOGO_FETCH` (Vorgabe aus). Job `contacts.logo`, eingereiht, wenn ein Kontakt ohne hochgeladenes Logo eine Domain als Kennung bekommt (von Hand, gelernt, angeheftet); dazu der Knopf (`POST /contacts/{id}/logo/fetch`, 202) und der Befehl `fetch-logos` mit VS-Code-Task. Ein gescheiterter Abruf wird mit der Domain vermerkt und erst nach neuer Domain oder auf Knopfdruck wiederholt. Ein hochgeladenes Logo wird nie überschrieben.
+- **API:** `PUT /contacts/{id}/logo` (Upload, Admins, 1 MB, 415 bei anderem Typ), `DELETE /contacts/{id}/logo`, `GET /contacts/{id}/logo` (angemeldete Nutzer; die Stammdaten sind global) mit `Cache-Control: private, max-age=86400` und der Version in der URL, als Ausnahme vom `no-store` der API, damit Listen die Logos nicht neu laden; `ContactOut.logo`; die API meldet, ob der Abruf eingeschaltet ist. `icon` und `color` an Tags und Typen.
+- **Web:**
+  - `IconPicker`: die 170 Icons der Auswahl nach Bereichen, die Suche über alle; die Liste der Namen kommt aus `import.meta.glob`, geladen wird ein Icon erst, wenn es zu sehen ist (eigene Dateien mit Hash im Build). Bereiche und Suchwörter in beiden Sprachen.
+  - `ColorPicker`: zwölf Felder, „Mehr Farben“ mit Farbwähler und Hex-Feld.
+  - `TagChip` (Icon, Farbe; eine eigene Farbe mit Hintergrund und Schrift gemischt, wie in der Vorschau), `TypeIcon`, `ContactAvatar` (Logo oder Initialen) in Liste, Raster, Kopf, Formular, Prüfansicht und Stammdaten.
+  - Kontaktdialog: Logo hochladen, entfernen, abrufen (nur wenn eingeschaltet), mit Herkunft.
+  - Die zwölf Farben als Tokens in `app.css`, hell und dunkel, Text mit WCAG AA.
+- **Doku:** `backend/README.md` (Logos, `PAPIQ_LOGO_FETCH`, Endpunkte), `deploy/README.md` (ausgehende Anfragen), `.devcontainer/live.env.example`.
+
+**Prüfung:**
+- Unit: Schutz vor SSRF mit festem Resolver (privat, Loopback, Link-Local, CGNAT, ULA, abgebildete IPv4, Weiterleitung auf eine private Adresse, zu groß, zu langsam), Wahl des Icons aus HTML und Manifest, Normalisieren (riesiges Bild, ICO, Transparenz), Auslöser des Jobs, Vorrang des Uploads.
+- REST: Größe, Typen, SVG abgelehnt, Header des Logos; Vertrag der Spalten.
+- Vitest: Auswahl, Farben, Kontrast eigener Farben, Avatar.
+- Browser gegen den Build: Icons und Farben an Tags und Typen, eigene Farbe hell und dunkel, Logo hochladen und entfernen, Initialen; Größe des Builds vorher und nachher im PR. Kein echter Abruf in Tests; den ersten auf der Devinstanz nur auf Tobis Zuruf.
+
+**Nach dem Merge:** Devinstanz: Revision 0028, `PAPIQ_LOGO_FETCH=true` in `live.env`, `fetch-logos` auf Zuruf.
+
+#### Abschluss des Release
+
+- `release/0.3.0` → `main` als PR mit `skip-changelog` (die Pakete tragen die Release Notes), Merge-Commit; Tobi veröffentlicht 0.3.0.
+- Offen für spätere Releases: Umbau der Rechte; Migrationsclient mit ASN, Tag-Hierarchie und Farben aus Paperless; Personen als Nutzer, die ein Dokument betrifft.
 
 ### M16 – Lesen
 

@@ -7,6 +7,7 @@ from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path, PurePath
+from uuid import UUID
 
 from papiq.core.domain import media_types
 from papiq.core.domain.codes import Code, GiroCode, code_identifiers, codes_from_json, giro_code
@@ -38,6 +39,7 @@ from papiq.core.domain.users import User
 from papiq.core.ports import (
     NEWEST_FIRST,
     Clock,
+    CountBy,
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
@@ -424,6 +426,15 @@ class DocumentService:
                     "a file's metadata cannot be read", extra={"key": key, "reason": str(error)}
                 )
         return StoredFile(size=len(data), sha256=digest, metadata=metadata)
+
+    async def document_counts(
+        self, actor: UserId, by: CountBy, *, all_users: bool = False
+    ) -> dict[UUID, int]:
+        """How many documents within the caller's reach (with `all_users`, admins only: every
+        document) have each contact, type or tag, or a value for each field; one query."""
+        async with self._uow() as uow:
+            await _lister(uow, actor, all_users)
+            return await uow.documents.count_by(by, None if all_users else actor)
 
     async def list_visible(self, actor: UserId) -> list[Document]:
         async with self._uow() as uow:

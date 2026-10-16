@@ -23,6 +23,13 @@ class MasterDataOut(BaseModel):
     id: UUID
     name: str = Field(examples=["ACME Energy"])
     created_at: datetime
+    document_count: int | None = Field(
+        default=None,
+        description=(
+            "With `document_counts`: how many documents within the caller's reach (with "
+            "`all_users`, every document) have it; for a field, a value for it."
+        ),
+    )
 
     @classmethod
     def of(cls, item: MasterData) -> "MasterDataOut":
@@ -320,6 +327,13 @@ class FieldOut(BaseModel):
     required_document_type_ids: RequiredTypes
     description: str | None
     created_at: datetime
+    document_count: int | None = Field(
+        default=None,
+        description=(
+            "With `document_counts`: how many documents within the caller's reach (with "
+            "`all_users`, every document) have it; for a field, a value for it."
+        ),
+    )
 
     @classmethod
     def of(cls, item: FieldDefinition) -> "FieldOut":
@@ -337,3 +351,32 @@ class FieldOut(BaseModel):
             description=item.description,
             created_at=item.created_at,
         )
+
+
+class FieldAssignmentIn(BaseModel):
+    """A field of a document type, from the type."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    field_id: UUID
+    required: bool = False
+
+
+class FieldAssignmentsIn(BaseModel):
+    """The fields of a document type, global ones aside."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "fields": [
+                        {"field_id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b", "required": True},
+                        {"field_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b", "required": False},
+                    ]
+                }
+            ]
+        },
+    )
+
+    fields: list[FieldAssignmentIn] = Field(max_length=500)

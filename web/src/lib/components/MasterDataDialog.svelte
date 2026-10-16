@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Workflow from '@lucide/svelte/icons/workflow';
+	import AssignmentList, { type Assignment } from '#lib/components/AssignmentList.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
@@ -10,10 +11,12 @@
 	import { describeError } from '#lib/errors.ts';
 	import { changesOf, type IdentifierRow, rowsOf } from '#lib/identifiers.ts';
 	import { type Extra, type Item, parseAliases, type Values } from '#lib/masterdata-api.ts';
+	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
 	// Create or change a contact (name, aliases, identifiers), a document type (name,
-	// description) or a tag (name). The API decides what is valid; its answer (e.g. 409 for a taken name) shows below.
+	// description, title pattern, fields) or a tag (name). The API decides what is valid; its
+	// answer (e.g. 409 for a taken name) shows below.
 	let {
 		open = $bindable(false),
 		title,
@@ -21,6 +24,7 @@
 		initial = null,
 		submitLabel = m.save(),
 		ruleHref = null,
+		fields = null,
 		onsubmit
 	}: {
 		open?: boolean;
@@ -30,6 +34,8 @@
 		submitLabel?: string;
 		/** The rule of the type's title pattern, to go to from here. */
 		ruleHref?: string | null;
+		/** Every field, for a document type's: those of the type are assigned there. */
+		fields?: readonly FieldDefinition[] | null;
 		onsubmit: (values: Values) => Promise<void>;
 	} = $props();
 
@@ -38,7 +44,10 @@
 	let identifiers = $state<IdentifierRow[]>([]);
 	let description = $state('');
 	let titlePattern = $state('');
+	let assigned = $state<Assignment[]>([]);
 	let error = $state<string | null>(null);
+	const typed = $derived((fields ?? []).filter((field) => field.document_type_ids !== null));
+	const everywhere = $derived((fields ?? []).filter((field) => field.document_type_ids === null));
 	let busy = $state(false);
 
 	$effect(() => {
@@ -48,6 +57,15 @@
 			identifiers = rowsOf(initial?.identifiers);
 			description = initial?.description ?? '';
 			titlePattern = initial?.title_pattern ?? '';
+			const id = initial?.id;
+			assigned = id
+				? typed
+						.filter((field) => field.document_type_ids?.includes(id))
+						.map((field) => ({
+							id: field.id,
+							required: field.required_document_type_ids.includes(id)
+						}))
+				: [];
 			error = null;
 		}
 	});
@@ -63,7 +81,8 @@
 				aliases: parseAliases(aliases),
 				...changesOf(identifiers),
 				description: description.trim() || null,
-				title_pattern: titlePattern.trim() || null
+				title_pattern: titlePattern.trim() || null,
+				fields: extra === 'description' && fields ? assigned : null
 			});
 			open = false;
 		} catch (problem) {
@@ -107,6 +126,7 @@
 						label={m.master_title_pattern()}
 						documentType={initial?.id ?? null}
 					/>
+					<Field.Description>{m.master_title_pattern_hint()}</Field.Description>
 					{#if ruleHref}
 						<a
 							href={ruleHref}
@@ -118,6 +138,30 @@
 						</a>
 					{/if}
 				</Field.Field>
+				{#if fields}
+					<Field.Field>
+						<Field.Label>{m.master_type_fields()}</Field.Label>
+						<AssignmentList
+							{assigned}
+							candidates={typed.map((field) => ({
+								id: field.id,
+								name: field.name,
+								hint: `field.${field.key}`
+							}))}
+							label={m.master_type_fields()}
+							addLabel={m.master_type_add_field()}
+							emptyLabel={m.master_type_no_fields()}
+							onchange={(items) => (assigned = items)}
+						/>
+						{#if everywhere.length > 0}
+							<Field.Description>
+								{m.master_type_global_fields({
+									fields: everywhere.map((field) => field.name).join(', ')
+								})}
+							</Field.Description>
+						{/if}
+					</Field.Field>
+				{/if}
 			{/if}
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
 			<Dialog.Footer>

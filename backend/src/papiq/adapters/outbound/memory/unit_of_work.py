@@ -76,6 +76,7 @@ from papiq.core.domain.validation import name_key, require_utc
 from papiq.core.domain.verdict import KnownLabels
 from papiq.core.ports.repository import (
     NEWEST_FIRST,
+    CountBy,
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
@@ -339,6 +340,27 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
     ) -> list[Document]:
         every = [_copy(row) for row in self._all()]
         return _query(every, filter, order=order, after=after, limit=limit)
+
+    async def count_by(self, by: CountBy, user: UserId | None) -> dict[UUID, int]:
+        documents = (
+            [_copy(row) for row in self._all()]
+            if user is None
+            else await self.list_visible_to(user)
+        )
+        counts: dict[UUID, int] = {}
+        for document in documents:
+            match by:
+                case CountBy.CONTACT:
+                    keys: Collection[UUID] = [document.contact_id] if document.contact_id else []
+                case CountBy.DOCUMENT_TYPE:
+                    keys = [document.document_type_id] if document.document_type_id else []
+                case CountBy.TAG:
+                    keys = document.tag_ids
+                case CountBy.FIELD:
+                    keys = document.fields.keys()
+            for key in keys:
+                counts[key] = counts.get(key, 0) + 1
+        return counts
 
     async def count_confirmed(self, *, after: datetime | None = None) -> int:
         return sum(

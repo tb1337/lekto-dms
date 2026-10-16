@@ -5,12 +5,15 @@
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
+	import { BASE } from '#lib/base.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import DocumentCount from '#lib/components/DocumentCount.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { type Item, KINDS, type SimpleKind } from '#lib/masterdata-api.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { scope } from '#lib/scope.svelte.ts';
 
 	// Contacts, document types or tags: a list with add, change and delete.
 	let { kind }: { kind: SimpleKind } = $props();
@@ -27,7 +30,7 @@
 
 	async function load() {
 		try {
-			items = await ops.list();
+			items = await ops.list({ counts: true, allUsers: scope.allUsers });
 			problem = null;
 		} catch (error) {
 			problem = describeError(error);
@@ -40,9 +43,10 @@
 		if (wanted) masterDataDialogs.open('document-types', wanted);
 	});
 
-	// Again after a dialog saved (wherever it was opened).
+	// Again after a dialog saved (wherever it was opened), and with another scope.
 	$effect(() => {
 		void masterDataDialogs.changed;
+		void scope.allUsers;
 		void load();
 	});
 	async function remove() {
@@ -97,6 +101,10 @@
 							</span>
 						{/if}
 					</div>
+					<DocumentCount
+						count={item.document_count}
+						href="{BASE}/documents?{ops.filter}={item.id}"
+					/>
 					<Button
 						variant="ghost"
 						size="icon"

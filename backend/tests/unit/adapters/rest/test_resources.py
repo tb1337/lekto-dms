@@ -175,6 +175,91 @@ async def test_listing_sorts_by_date_and_title_and_filters_by_field(api: Api) ->
     assert bad.status_code == 422
 
 
+async def test_master_data_with_their_document_counts(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    contact = await post(api, "/contacts", {"name": "ACME"}, auth(admin))
+    unused = await post(api, "/contacts", {"name": "Nobody"}, auth(admin))
+    definition = {"name": "Note", "data_type": "text", "document_type_ids": None}
+    note = await post(api, "/fields", definition, auth(admin))
+    document = await green_document(api, auth(owner))
+    changed = await api.client.patch(
+        f"{PREFIX}/documents/{document}",
+        json={"contact_id": contact["id"], "fields": {note["id"]: "x"}},
+        headers=auth(owner),
+    )
+    assert changed.status_code == 200, changed.text
+
+    async def counts(path: str, headers: dict[str, str], **params: Any) -> dict[str, Any]:
+        response = await api.client.get(f"{PREFIX}{path}", params=params, headers=headers)
+        assert response.status_code == 200, response.text
+        return {item["id"]: item["document_count"] for item in response.json()}
+
+    # Only when asked for; within the caller's reach, an admin's reach or every document.
+    assert set((await counts("/contacts", auth(owner))).values()) == {None}
+    mine = await counts("/contacts", auth(owner), document_counts=True)
+    assert (mine[contact["id"]], mine[unused["id"]]) == (1, 0)
+    assert (await counts("/contacts", auth(admin), document_counts=True))[contact["id"]] == 0
+    every = await counts("/contacts", auth(admin), document_counts=True, all_users=True)
+    assert every[contact["id"]] == 1
+    assert (await counts("/fields", auth(owner), document_counts=True))[note["id"]] == 1
+    denied = await api.client.get(
+        f"{PREFIX}/tags", params={"document_counts": True, "all_users": True}, headers=auth(owner)
+    )
+    assert denied.status_code == 403
+
+
+async def test_the_fields_of_a_document_type_from_the_type(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    invoice = await post(api, "/document-types", {"name": "Invoice"}, auth(admin))
+    letter = await post(api, "/document-types", {"name": "Letter"}, auth(admin))
+
+    def field(name: str, types: list[str] | None) -> dict[str, Any]:
+        return {"name": name, "data_type": "text", "document_type_ids": types}
+
+    amount = await post(api, "/fields", field("Amount", [letter["id"]]), auth(admin))
+    number = await post(api, "/fields", field("Number", [invoice["id"], letter["id"]]), auth(admin))
+    only = await post(api, "/fields", field("Only", [invoice["id"]]), auth(admin))
+    global_ = await post(api, "/fields", field("Note", None), auth(admin))
+    url = f"{PREFIX}/document-types/{invoice['id']}/fields"
+
+    async def assign(body: list[dict[str, Any]], headers: dict[str, str]) -> Any:
+        return await api.client.put(url, json={"fields": body}, headers=headers)
+
+    # Amount comes in (required), Number stays optional, Only stays as it is.
+    response = await assign(
+        [
+            {"field_id": amount["id"], "required": True},
+            {"field_id": number["id"]},
+            {"field_id": only["id"]},
+        ],
+        auth(admin),
+    )
+    assert response.status_code == 200, response.text
+    by_name = {item["name"]: item for item in response.json()}
+    assert set(by_name) == {"Amount", "Number", "Only"}
+    assert invoice["id"] in by_name["Amount"]["required_document_type_ids"]
+    assert set(by_name["Amount"]["document_type_ids"]) == {invoice["id"], letter["id"]}
+    # Number is taken off: it stays for the letter.
+    response = await assign(
+        [{"field_id": amount["id"], "required": True}, {"field_id": only["id"]}], auth(admin)
+    )
+    assert response.status_code == 200, response.text
+    assert {item["name"] for item in response.json()} == {"Amount", "Only"}
+    # Only the invoice has Only; a global field belongs to every type; admins only.
+    assert (await assign([{"field_id": amount["id"]}], auth(admin))).status_code == 422
+    assert (await assign([{"field_id": global_["id"]}], auth(admin))).status_code == 422
+    assert (await assign([], auth(owner))).status_code == 403
+    # A document of the invoice with a value for Amount keeps it there.
+    document = await green_document(api, auth(owner))
+    changed = await api.client.patch(
+        f"{PREFIX}/documents/{document}",
+        json={"document_type_id": invoice["id"], "fields": {amount["id"]: "12"}},
+        headers=auth(owner),
+    )
+    assert changed.status_code == 200, changed.text
+    assert (await assign([{"field_id": only["id"]}], auth(admin))).status_code == 409
+
+
 def _pdf(number: int) -> bytes:
     return (SAMPLES / "scan.pdf").read_bytes().rstrip() + f"\n%{number}\n%%EOF\n".encode()
 

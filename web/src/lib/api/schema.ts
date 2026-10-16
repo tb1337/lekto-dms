@@ -431,7 +431,10 @@ export interface paths {
 			path?: never;
 			cookie?: never;
 		};
-		/** List contacts */
+		/**
+		 * List contacts
+		 * @description Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach have it (a field: a value for it), counted in one query; admins count every document with `all_users` (others: 403).
+		 */
 		get: operations['list_contacts_api_v1_contacts_get'];
 		put?: never;
 		/**
@@ -497,7 +500,10 @@ export interface paths {
 			path?: never;
 			cookie?: never;
 		};
-		/** List document types */
+		/**
+		 * List document types
+		 * @description Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach have it (a field: a value for it), counted in one query; admins count every document with `all_users` (others: 403).
+		 */
 		get: operations['list_document_types_api_v1_document_types_get'];
 		put?: never;
 		/**
@@ -536,6 +542,26 @@ export interface paths {
 		patch: operations['change_document_type_api_v1_document_types__id__patch'];
 		trace?: never;
 	};
+	'/api/v1/document-types/{id}/fields': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/**
+		 * Set the fields of a document type
+		 * @description Admins only. Exactly these fields belong to the type besides the global ones, each required or optional; in one transaction. A field taken off is no longer for the type: 409 while documents of the type have a value for it or the type's title pattern uses it; 422 for a field of no other type, or a global one. Returns the fields of the type, global ones aside.
+		 */
+		put: operations['assign_fields_api_v1_document_types__id__fields_put'];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/tags': {
 		parameters: {
 			query?: never;
@@ -543,7 +569,10 @@ export interface paths {
 			path?: never;
 			cookie?: never;
 		};
-		/** List tags */
+		/**
+		 * List tags
+		 * @description Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach have it (a field: a value for it), counted in one query; admins count every document with `all_users` (others: 403).
+		 */
 		get: operations['list_tags_api_v1_tags_get'];
 		put?: never;
 		/**
@@ -589,7 +618,10 @@ export interface paths {
 			path?: never;
 			cookie?: never;
 		};
-		/** List field definitions */
+		/**
+		 * List field definitions
+		 * @description Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach have it (a field: a value for it), counted in one query; admins count every document with `all_users` (others: 403).
+		 */
 		get: operations['list_fields_api_v1_fields_get'];
 		put?: never;
 		/**
@@ -2183,6 +2215,11 @@ export interface components {
 			 */
 			created_at: string;
 			/**
+			 * Document Count
+			 * @description With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) have it; for a field, a value for it.
+			 */
+			document_count?: number | null;
+			/**
 			 * Aliases
 			 * @example [
 			 *       "ACME Strom"
@@ -2733,6 +2770,11 @@ export interface components {
 			 */
 			created_at: string;
 			/**
+			 * Document Count
+			 * @description With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) have it; for a field, a value for it.
+			 */
+			document_count?: number | null;
+			/**
 			 * Description
 			 * @example Entgeltbescheinigung
 			 */
@@ -2855,6 +2897,42 @@ export interface components {
 			 * @description The codes on the pages; null while they are not read (`read-codes`).
 			 */
 			codes: components['schemas']['CodeOut'][] | null;
+		};
+		/**
+		 * FieldAssignmentIn
+		 * @description A field of a document type, from the type.
+		 */
+		FieldAssignmentIn: {
+			/**
+			 * Field Id
+			 * Format: uuid
+			 */
+			field_id: string;
+			/**
+			 * Required
+			 * @default false
+			 */
+			required: boolean;
+		};
+		/**
+		 * FieldAssignmentsIn
+		 * @description The fields of a document type, global ones aside.
+		 * @example {
+		 *       "fields": [
+		 *         {
+		 *           "field_id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b",
+		 *           "required": true
+		 *         },
+		 *         {
+		 *           "field_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
+		 *           "required": false
+		 *         }
+		 *       ]
+		 *     }
+		 */
+		FieldAssignmentsIn: {
+			/** Fields */
+			fields: components['schemas']['FieldAssignmentIn'][];
 		};
 		/**
 		 * FieldCheckOut
@@ -3018,6 +3096,11 @@ export interface components {
 			 * Format: date-time
 			 */
 			created_at: string;
+			/**
+			 * Document Count
+			 * @description With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) have it; for a field, a value for it.
+			 */
+			document_count?: number | null;
 		};
 		/**
 		 * FieldPatch
@@ -3386,6 +3469,11 @@ export interface components {
 			 * Format: date-time
 			 */
 			created_at: string;
+			/**
+			 * Document Count
+			 * @description With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) have it; for a field, a value for it.
+			 */
+			document_count?: number | null;
 		};
 		/**
 		 * Me
@@ -7539,7 +7627,12 @@ export interface operations {
 	};
 	list_contacts_api_v1_contacts_get: {
 		parameters: {
-			query?: never;
+			query?: {
+				/** @description Count the documents of each (`document_count`). */
+				document_counts?: boolean;
+				/** @description Count every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+			};
 			header?: never;
 			path?: never;
 			cookie?: never;
@@ -7567,6 +7660,40 @@ export interface operations {
 					 *       "title": "Unauthorized",
 					 *       "status": 401,
 					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8221,7 +8348,12 @@ export interface operations {
 	};
 	list_document_types_api_v1_document_types_get: {
 		parameters: {
-			query?: never;
+			query?: {
+				/** @description Count the documents of each (`document_count`). */
+				document_counts?: boolean;
+				/** @description Count every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+			};
 			header?: never;
 			path?: never;
 			cookie?: never;
@@ -8249,6 +8381,40 @@ export interface operations {
 					 *       "title": "Unauthorized",
 					 *       "status": 401,
 					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8756,9 +8922,159 @@ export interface operations {
 			};
 		};
 	};
-	list_tags_api_v1_tags_get: {
+	assign_fields_api_v1_document_types__id__fields_put: {
 		parameters: {
 			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['FieldAssignmentsIn'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['FieldOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	list_tags_api_v1_tags_get: {
+		parameters: {
+			query?: {
+				/** @description Count the documents of each (`document_count`). */
+				document_counts?: boolean;
+				/** @description Count every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+			};
 			header?: never;
 			path?: never;
 			cookie?: never;
@@ -8786,6 +9102,40 @@ export interface operations {
 					 *       "title": "Unauthorized",
 					 *       "status": 401,
 					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9295,7 +9645,12 @@ export interface operations {
 	};
 	list_fields_api_v1_fields_get: {
 		parameters: {
-			query?: never;
+			query?: {
+				/** @description Count the documents of each (`document_count`). */
+				document_counts?: boolean;
+				/** @description Count every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+			};
 			header?: never;
 			path?: never;
 			cookie?: never;
@@ -9323,6 +9678,40 @@ export interface operations {
 					 *       "title": "Unauthorized",
 					 *       "status": 401,
 					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

@@ -3,7 +3,12 @@ from datetime import datetime
 from typing import Any
 
 from papiq.core.domain.documents import UNSET, Unset
-from papiq.core.domain.errors import ConflictError, PermissionDeniedError, ValidationError
+from papiq.core.domain.errors import (
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId, UserId
@@ -313,6 +318,63 @@ class MasterDataService:
 
     async def rename_field(self, actor: UserId, id: FieldId, name: str) -> FieldDefinition:
         return await self.change_field(actor, id, name=name)
+
+    async def assign_fields(
+        self, actor: UserId, id: DocumentTypeId, fields: Mapping[FieldId, bool]
+    ) -> list[FieldDefinition]:
+        """Admins only. The fields of a document type, from the type: exactly `fields` belong
+        to it besides the global ones, each required (True) or optional. A field taken off
+        narrows its scope as `change_field` does: ConflictError while documents of the type
+        have a value for it or the type's title pattern uses it; ValidationError for a field
+        of no other type (it would belong nowhere) or a global one (it belongs to every type).
+        One transaction; returns the fields that changed."""
+        async with self._uow() as uow:
+            await _require_admin(uow, actor)
+            document_type = await uow.document_types.get(id)
+            definitions = {item.id: item for item in await uow.fields.list_all()}
+            for field in fields:
+                if field not in definitions:
+                    raise NotFoundError("field", field)
+                if definitions[field].document_type_ids is None:
+                    name = definitions[field].name
+                    raise ValidationError(f"'{name}' is global: it belongs to every type")
+            pattern = document_type.title_pattern
+            changed: list[FieldDefinition] = []
+            for definition in definitions.values():
+                scope = definition.document_type_ids
+                if scope is None:
+                    continue
+                required = set(definition.required_types)
+                if definition.id in fields:
+                    new_scope = scope | {id}
+                    required = required | {id} if fields[definition.id] else required - {id}
+                elif id in scope:
+                    new_scope, required = scope - {id}, required - {id}
+                    if not new_scope:
+                        raise ValidationError(
+                            f"'{definition.name}' belongs to no other type: give it one or "
+                            "delete it in its own dialog"
+                        )
+                    if await uow.documents.field_in_use(definition.id, outside_types=new_scope):
+                        raise ConflictError(
+                            f"documents of '{document_type.name}' have values for "
+                            f"'{definition.name}'"
+                        )
+                    if pattern and field_used(self._templates.check(pattern), definition.key):
+                        raise ConflictError(
+                            f"the title pattern of '{document_type.name}' uses "
+                            f"field.{definition.key}"
+                        )
+                else:
+                    continue
+                if new_scope == scope and required == definition.required_types:
+                    continue
+                definition.change_scope(new_scope)
+                definition.require(types=required)
+                await uow.fields.update(definition)
+                changed.append(definition)
+            await uow.commit()
+        return changed
 
     # --- reading (every signed-in user) ----------------------------------------------------------
 

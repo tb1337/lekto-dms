@@ -2785,17 +2785,44 @@
           "master data"
         ],
         "summary": "List contacts",
+        "description": "Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach have it (a field: a value for it), counted in one query; admins count every document with `all_users` (others: 403).",
         "operationId": "list_contacts_api_v1_contacts_get",
+        "parameters": [
+          {
+            "name": "document_counts",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Count the documents of each (`document_count`).",
+              "default": false,
+              "title": "Document Counts"
+            },
+            "description": "Count the documents of each (`document_count`)."
+          },
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Count every user's documents instead of the caller's reach (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Count every user's documents instead of the caller's reach (admins)."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/ContactOut"
                   },
-                  "type": "array",
                   "title": "Response List Contacts Api V1 Contacts Get"
                 }
               }
@@ -2813,6 +2840,38 @@
                   "title": "Unauthorized",
                   "status": 401,
                   "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only the owner controls processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -2851,14 +2910,14 @@
         "description": "Admins only. Names are unique regardless of case.",
         "operationId": "create_contact_api_v1_contacts_post",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ContactCreate"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -3544,17 +3603,44 @@
           "master data"
         ],
         "summary": "List document types",
+        "description": "Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach have it (a field: a value for it), counted in one query; admins count every document with `all_users` (others: 403).",
         "operationId": "list_document_types_api_v1_document_types_get",
+        "parameters": [
+          {
+            "name": "document_counts",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Count the documents of each (`document_count`).",
+              "default": false,
+              "title": "Document Counts"
+            },
+            "description": "Count the documents of each (`document_count`)."
+          },
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Count every user's documents instead of the caller's reach (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Count every user's documents instead of the caller's reach (admins)."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/DocumentTypeOut"
                   },
-                  "type": "array",
                   "title": "Response List Document Types Api V1 Document Types Get"
                 }
               }
@@ -3572,6 +3658,38 @@
                   "title": "Unauthorized",
                   "status": 401,
                   "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only the owner controls processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -3610,14 +3728,14 @@
         "description": "Admins only. Names are unique regardless of case.",
         "operationId": "create_document_type_api_v1_document_types_post",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DocumentTypeCreate"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -4133,23 +4251,218 @@
         ]
       }
     },
-    "/api/v1/tags": {
-      "get": {
+    "/api/v1/document-types/{id}/fields": {
+      "put": {
         "tags": [
           "master data"
         ],
-        "summary": "List tags",
-        "operationId": "list_tags_api_v1_tags_get",
+        "summary": "Set the fields of a document type",
+        "description": "Admins only. Exactly these fields belong to the type besides the global ones, each required or optional; in one transaction. A field taken off is no longer for the type: 409 while documents of the type have a value for it or the type's title pattern uses it; 422 for a field of no other type, or a global one. Returns the fields of the type, global ones aside.",
+        "operationId": "assign_fields_api_v1_document_types__id__fields_put",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FieldAssignmentsIn"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FieldOut"
+                  },
+                  "title": "Response Assign Fields Api V1 Document Types  Id  Fields Put"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only the owner controls processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "the request body is larger than 1048576 bytes"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tags": {
+      "get": {
+        "tags": [
+          "master data"
+        ],
+        "summary": "List tags",
+        "description": "Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach have it (a field: a value for it), counted in one query; admins count every document with `all_users` (others: 403).",
+        "operationId": "list_tags_api_v1_tags_get",
+        "parameters": [
+          {
+            "name": "document_counts",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Count the documents of each (`document_count`).",
+              "default": false,
+              "title": "Document Counts"
+            },
+            "description": "Count the documents of each (`document_count`)."
+          },
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Count every user's documents instead of the caller's reach (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Count every user's documents instead of the caller's reach (admins)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/MasterDataOut"
                   },
-                  "type": "array",
                   "title": "Response List Tags Api V1 Tags Get"
                 }
               }
@@ -4167,6 +4480,38 @@
                   "title": "Unauthorized",
                   "status": 401,
                   "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only the owner controls processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -4205,14 +4550,14 @@
         "description": "Admins only. Names are unique regardless of case.",
         "operationId": "create_tag_api_v1_tags_post",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/NameIn"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -4734,17 +5079,44 @@
           "master data"
         ],
         "summary": "List field definitions",
+        "description": "Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach have it (a field: a value for it), counted in one query; admins count every document with `all_users` (others: 403).",
         "operationId": "list_fields_api_v1_fields_get",
+        "parameters": [
+          {
+            "name": "document_counts",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Count the documents of each (`document_count`).",
+              "default": false,
+              "title": "Document Counts"
+            },
+            "description": "Count the documents of each (`document_count`)."
+          },
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Count every user's documents instead of the caller's reach (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Count every user's documents instead of the caller's reach (admins)."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/FieldOut"
                   },
-                  "type": "array",
                   "title": "Response List Fields Api V1 Fields Get"
                 }
               }
@@ -4762,6 +5134,38 @@
                   "title": "Unauthorized",
                   "status": 401,
                   "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only the owner controls processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
                 }
               }
             }
@@ -4800,14 +5204,14 @@
         "description": "Admins only. Global (`document_type_ids` null) or for some document types; `choice` needs `choices`.",
         "operationId": "create_field_api_v1_fields_post",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/FieldCreate"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -14246,6 +14650,18 @@
             "format": "date-time",
             "title": "Created At"
           },
+          "document_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Count",
+            "description": "With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) have it; for a field, a value for it."
+          },
           "aliases": {
             "items": {
               "type": "string"
@@ -15417,6 +15833,18 @@
             "format": "date-time",
             "title": "Created At"
           },
+          "document_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Count",
+            "description": "With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) have it; for a field, a value for it."
+          },
           "description": {
             "anyOf": [
               {
@@ -15700,6 +16128,60 @@
           }
         ]
       },
+      "FieldAssignmentIn": {
+        "properties": {
+          "field_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Field Id"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field_id"
+        ],
+        "title": "FieldAssignmentIn",
+        "description": "A field of a document type, from the type."
+      },
+      "FieldAssignmentsIn": {
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldAssignmentIn"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Fields"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "fields"
+        ],
+        "title": "FieldAssignmentsIn",
+        "description": "The fields of a document type, global ones aside.",
+        "examples": [
+          {
+            "fields": [
+              {
+                "field_id": "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b",
+                "required": true
+              },
+              {
+                "field_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
+                "required": false
+              }
+            ]
+          }
+        ]
+      },
       "FieldCheckOut": {
         "properties": {
           "field": {
@@ -15979,6 +16461,18 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "document_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Count",
+            "description": "With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) have it; for a field, a value for it."
           }
         },
         "type": "object",
@@ -16838,6 +17332,18 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "document_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Count",
+            "description": "With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) have it; for a field, a value for it."
           }
         },
         "type": "object",

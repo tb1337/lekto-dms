@@ -19,6 +19,7 @@ from papiq.core.domain.users import User
 from papiq.core.domain.verdict import KnownLabels
 from papiq.core.ports import (
     NEWEST_FIRST,
+    CountBy,
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
@@ -952,6 +953,47 @@ class UnitOfWorkContract:
         )
         async with uow_factory() as uow:
             assert len(await uow.documents.query(with_note, limit=9)) == 2
+
+    async def test_documents_are_counted_by_master_data(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner, drawer = await owner_with_drawer(uow_factory)
+        stranger, theirs = await owner_with_drawer(uow_factory)
+        contact = Contact.create(name="ACME", now=NOW)
+        invoice = DocumentType.create(name="Invoice", now=NOW)
+        tax = Tag.create(name="tax", now=NOW)
+        note = FieldDefinition.create(name="Note", data_type=FieldType.TEXT, now=NOW)
+        documents = []
+        for number, (user, place) in enumerate(
+            [(owner, drawer), (owner, drawer), (stranger, theirs)]
+        ):
+            document = builders.processed(user, place)
+            changes = DocumentChanges(
+                contact_id=contact.id,
+                document_type_id=invoice.id if number == 0 else None,
+                tag_ids=frozenset({tax.id}),
+                fields={note.id: "x"} if number != 1 else {},
+            )
+            document.apply_changes(changes, {note.id: note}, NOW)
+            documents.append(document)
+        async with uow_factory() as uow:
+            for item in (contact, invoice, tax):
+                await getattr(uow, _repository_of(item)).add(item)
+            await uow.fields.add(note)
+            for document in documents:
+                await uow.documents.add(document)
+            await uow.commit()
+
+        async with uow_factory() as uow:
+            count = uow.documents.count_by
+            # Within the owner's reach: their own two (the stranger's drawer is not shared).
+            assert await count(CountBy.CONTACT, owner.id) == {contact.id: 2}
+            assert await count(CountBy.DOCUMENT_TYPE, owner.id) == {invoice.id: 1}
+            assert await count(CountBy.TAG, owner.id) == {tax.id: 2}
+            assert await count(CountBy.FIELD, owner.id) == {note.id: 1}
+            # Every document.
+            assert await count(CountBy.CONTACT, None) == {contact.id: 3}
+            assert await count(CountBy.FIELD, None) == {note.id: 2}
 
     async def test_removing_a_document_removes_its_processing_log(
         self, uow_factory: UnitOfWorkFactory

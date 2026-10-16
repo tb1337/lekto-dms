@@ -16,7 +16,24 @@ export type Item = MasterData & {
 	identifiers?: IdentifierOut[];
 	description?: string | null;
 	title_pattern?: string | null;
+	/** With `ListOptions.counts`: how many documents (in the scope) have it. */
+	document_count?: number | null;
 };
+
+/** A list may count the documents of each item, within the caller's reach or of all users. */
+export interface ListOptions {
+	counts?: boolean;
+	allUsers?: boolean;
+}
+
+const listQuery = (options: ListOptions = {}) => ({
+	params: {
+		query: {
+			document_counts: options.counts || undefined,
+			all_users: options.allUsers || undefined
+		}
+	}
+});
 
 /** What a dialog edits: the name and, by kind, aliases and identifiers or a description. */
 export interface Values {
@@ -26,15 +43,19 @@ export interface Values {
 	rejected_identifiers: IdentifierIn[];
 	description: string | null;
 	title_pattern: string | null;
+	/** A document type's fields, global ones aside; null where they do not change. */
+	fields: { id: string; required: boolean }[] | null;
 }
 
 export interface KindOps {
 	title: () => string;
 	add: () => string;
 	extra: Extra;
-	list(): Promise<Item[]>;
+	/** The parameter of the document view that filters by an item. */
+	filter: 'contact' | 'type' | 'tag';
+	list(options?: ListOptions): Promise<Item[]>;
 	get(id: string): Promise<Item>;
-	create(values: Values): Promise<unknown>;
+	create(values: Values): Promise<Item>;
 	change(id: string, values: Values): Promise<unknown>;
 	remove(id: string): Promise<unknown>;
 }
@@ -46,7 +67,8 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		title: m.master_contacts,
 		add: m.master_add_contact,
 		extra: 'aliases',
-		list: () => unwrap(api.GET('/api/v1/contacts')),
+		filter: 'contact',
+		list: (options) => unwrap(api.GET('/api/v1/contacts', listQuery(options))),
 		get: (id) => unwrap(api.GET('/api/v1/contacts/{id}', path(id))),
 		create: ({ name, aliases, identifiers }) =>
 			unwrap(api.POST('/api/v1/contacts', { body: { name, aliases, identifiers } })),
@@ -63,7 +85,8 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		title: m.master_types,
 		add: m.master_add_type,
 		extra: 'description',
-		list: () => unwrap(api.GET('/api/v1/document-types')),
+		filter: 'type',
+		list: (options) => unwrap(api.GET('/api/v1/document-types', listQuery(options))),
 		get: (id) => unwrap(api.GET('/api/v1/document-types/{id}', path(id))),
 		create: ({ name, description, title_pattern }) =>
 			unwrap(api.POST('/api/v1/document-types', { body: { name, description, title_pattern } })),
@@ -80,7 +103,8 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		title: m.master_tags,
 		add: m.master_add_tag,
 		extra: null,
-		list: () => unwrap(api.GET('/api/v1/tags')),
+		filter: 'tag',
+		list: (options) => unwrap(api.GET('/api/v1/tags', listQuery(options))),
 		get: (id) => unwrap(api.GET('/api/v1/tags/{id}', path(id))),
 		create: ({ name }) => unwrap(api.POST('/api/v1/tags', { body: { name } })),
 		change: (id, { name }) =>

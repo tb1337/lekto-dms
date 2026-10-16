@@ -23,6 +23,7 @@
 	let field = $state<FieldDefinition | null>(null);
 	let types = $state<MasterData[]>([]);
 	let ruleId = $state<string | null>(null);
+	let fields = $state<FieldDefinition[] | null>(null);
 	let ready = $state(false);
 
 	// What the dialog shows, loaded where only an id is given. It returns before it is assigned:
@@ -34,7 +35,7 @@
 				typeof wanted.item === 'string'
 					? await unwrap(api.GET('/api/v1/fields/{id}', { params: { path: { id: wanted.item } } }))
 					: (wanted.item as FieldDefinition | null);
-			return { kinds, definition, entry: null, rule: null };
+			return { kinds, definition, entry: null, rule: null, all: null };
 		}
 		const entry =
 			typeof wanted.item === 'string'
@@ -47,7 +48,9 @@
 			);
 			rule = rules.find((found) => found.managed_by_document_type_id === entry.id)?.id ?? null;
 		}
-		return { kinds: null, definition: null, entry, rule };
+		// A document type shows its fields.
+		const all = wanted.kind === 'document-types' ? await unwrap(api.GET('/api/v1/fields')) : null;
+		return { kinds: null, definition: null, entry, rule, all };
 	}
 
 	$effect(() => {
@@ -56,13 +59,14 @@
 		item = null;
 		field = null;
 		ruleId = null;
+		fields = null;
 		if (!wanted) return;
 		let current = true;
 		loaded(wanted).then(
-			({ kinds, definition, entry, rule }) => {
+			({ kinds, definition, entry, rule, all }) => {
 				if (!current) return;
 				if (kinds) types = kinds;
-				[item, field, ruleId, ready] = [entry, definition, rule, true];
+				[item, field, ruleId, fields, ready] = [entry, definition, rule, all, true];
 			},
 			(failure) => {
 				if (!current) return;
@@ -78,13 +82,19 @@
 	async function submit(values: Values) {
 		if (!simple) return;
 		const ops = KINDS[simple];
-		if (item) {
-			await ops.change(item.id, values);
-			toast.success(m.master_saved());
-		} else {
-			await ops.create(values);
-			toast.success(m.master_created());
+		const id = item ? item.id : null;
+		if (id) await ops.change(id, values);
+		const saved = id ?? (await ops.create(values)).id;
+		// A document type's fields, after the type: a new one needs its id first.
+		if (values.fields) {
+			await unwrap(
+				api.PUT('/api/v1/document-types/{id}/fields', {
+					params: { path: { id: saved } },
+					body: { fields: values.fields.map(({ id, required }) => ({ field_id: id, required })) }
+				})
+			);
 		}
+		toast.success(id ? m.master_saved() : m.master_created());
 		masterDataDialogs.saved();
 	}
 </script>
@@ -97,6 +107,7 @@
 		initial={item}
 		submitLabel={item ? m.save() : m.create()}
 		ruleHref={ruleId ? `${BASE}/rules/${ruleId}` : null}
+		{fields}
 		onsubmit={submit}
 	/>
 {:else if request?.kind === 'fields'}

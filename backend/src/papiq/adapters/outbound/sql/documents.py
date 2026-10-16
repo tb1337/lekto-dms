@@ -4,8 +4,9 @@ from collections.abc import Collection, Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
-from sqlalchemy import ColumnElement, Row, and_, delete, func, insert, or_, select
+from sqlalchemy import ColumnElement, FromClause, Row, and_, delete, func, insert, or_, select
 
 from papiq.adapters.outbound.sql import tables as t
 from papiq.adapters.outbound.sql.drawers import visible_to
@@ -38,6 +39,7 @@ from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.verdict import KnownLabels
 from papiq.core.ports.repository import (
     NEWEST_FIRST,
+    CountBy,
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
@@ -103,6 +105,30 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         limit: int,
     ) -> list[Document]:
         return await self._query([], filter, order=order, after=after, limit=limit)
+
+    async def count_by(self, by: CountBy, user: UserId | None) -> dict[UUID, int]:
+        documents = t.documents
+        criteria: list[ColumnElement[bool]] = [] if user is None else [visible_to(user)]
+        column: ColumnElement[Any]
+        source: FromClause
+        if by in (CountBy.TAG, CountBy.FIELD):
+            table = t.document_tags if by is CountBy.TAG else t.document_fields
+            column = table.c.tag_id if by is CountBy.TAG else table.c.field_id
+            source = table.join(documents, documents.c.id == table.c.document_id)
+        else:
+            source = documents
+            column = documents.c.contact_id
+            if by is CountBy.DOCUMENT_TYPE:
+                column = documents.c.document_type_id
+            criteria.append(column.is_not(None))
+        statement = (
+            select(column.label("key"), func.count().label("documents"))
+            .select_from(source)
+            .where(*criteria)
+            .group_by(column)
+        )
+        rows = (await self._tx.read(statement)).all()
+        return {UUID(str(row.key)): int(row.documents) for row in rows}
 
     async def _query(
         self,

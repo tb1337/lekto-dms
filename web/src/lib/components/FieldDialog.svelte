@@ -3,6 +3,7 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
+	import AssignmentList from '#lib/components/AssignmentList.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
@@ -155,35 +156,17 @@
 						{m.field_def_required_everywhere()}
 					</label>
 				{:else}
-					{#each types as type (type.id)}
-						<div class="flex items-center gap-2 pl-6 text-sm">
-							<label class="flex min-w-0 flex-1 items-center gap-2">
-								<input
-									type="checkbox"
-									value={type.id}
-									bind:group={scope}
-									class="size-4 accent-primary"
-								/>
-								<span class="truncate">{type.name}</span>
-							</label>
-							<label
-								class={[
-									'flex items-center gap-1.5 text-muted-foreground',
-									!scope.includes(type.id) && 'opacity-50'
-								]}
-							>
-								<input
-									type="checkbox"
-									value={type.id}
-									bind:group={requiredTypes}
-									disabled={!scope.includes(type.id)}
-									aria-label={m.field_def_required_for({ type: type.name })}
-									class="size-4 accent-primary"
-								/>
-								{m.field_def_required()}
-							</label>
-						</div>
-					{/each}
+					<AssignmentList
+						assigned={scope.map((id) => ({ id, required: requiredTypes.includes(id) }))}
+						candidates={types}
+						label={m.field_def_scope()}
+						addLabel={m.field_def_add_type()}
+						emptyLabel={m.field_def_no_type()}
+						onchange={(items) => {
+							scope = items.map((item) => item.id);
+							requiredTypes = items.filter((item) => item.required).map((item) => item.id);
+						}}
+					/>
 				{/if}
 				<p class="text-sm text-muted-foreground">{m.field_def_required_hint()}</p>
 			</fieldset>

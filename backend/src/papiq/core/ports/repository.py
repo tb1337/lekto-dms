@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
 from typing import Protocol
+from uuid import UUID
 
 from papiq.core.domain.classifier import ClassifierModel
 from papiq.core.domain.documents import Document, Sha256
@@ -143,6 +144,15 @@ class DocumentOrder:
 NEWEST_FIRST = DocumentOrder()
 
 
+class CountBy(StrEnum):
+    """What documents are counted by: their contact, type, each tag, each field with a value."""
+
+    CONTACT = "contact"
+    DOCUMENT_TYPE = "document_type"
+    TAG = "tag"
+    FIELD = "field"
+
+
 @dataclass(frozen=True)
 class DocumentPosition:
     """Where a page of a sorted list ended: its last document, and that document's value of
@@ -205,6 +215,11 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         limit: int,
     ) -> list[Document]:
         """As `query_visible`, over every document (for admins)."""
+        ...
+
+    async def count_by(self, by: CountBy, user: UserId | None) -> dict[UUID, int]:
+        """How many documents the user may read (as `list_visible_to`; None: every document)
+        have each contact, type or tag, or a value for each field. Only ids with documents."""
         ...
 
     async def remove(self, id: DocumentId) -> None:

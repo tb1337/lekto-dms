@@ -73,13 +73,19 @@ describe('FieldsPanel', () => {
 		await userEvent.click(await screen.findByRole('button', { name: m.master_add_field() }));
 		await userEvent.type(screen.getByLabelText(m.field_name()), 'Betrag');
 		await userEvent.click(screen.getByLabelText(m.field_def_scope_global()));
-		await userEvent.click(screen.getByLabelText('Mahnung'));
-		const forReminder = screen.getByLabelText(m.field_def_required_for({ type: 'Mahnung' }));
-		expect(
-			(screen.getByLabelText(m.field_def_required_for({ type: 'Rechnung' })) as HTMLInputElement)
-				.disabled
-		).toBe(true);
-		await userEvent.click(forReminder);
+		expect(screen.getByText(m.field_def_no_type())).toBeTruthy();
+		// The types come from a search, each then required or not.
+		await userEvent.click(screen.getByRole('button', { name: m.field_def_add_type() }));
+		// The popover is placed by measuring, which jsdom does not: its options are found by text.
+		await userEvent.click(
+			(await screen.findByText('Mahnung', { selector: '[role="option"] span' })).closest(
+				'[role="option"]'
+			)!
+		);
+		await userEvent.click(
+			screen.getByRole('switch', { name: m.assignment_required_for({ name: 'Mahnung' }) })
+		);
+		expect(screen.queryByRole('switch', { name: /Rechnung/ })).toBeNull();
 		await userEvent.click(screen.getByRole('button', { name: m.save() }));
 		const post = fetchMock.mock.calls.map((call) => call[0]).find((call) => call.method === 'POST');
 		expect(await post?.json()).toEqual({

@@ -4,6 +4,8 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
+	import { BASE } from '#lib/base.ts';
+	import DocumentCount from '#lib/components/DocumentCount.svelte';
 	import { unwrap } from '#lib/api/call.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -12,6 +14,7 @@
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import type { FieldDefinition, MasterData } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { scope } from '#lib/scope.svelte.ts';
 
 	let fields = $state<FieldDefinition[] | null>(null);
 	let types = $state<MasterData[]>([]);
@@ -21,7 +24,11 @@
 	async function load() {
 		try {
 			[fields, types] = await Promise.all([
-				unwrap(api.GET('/api/v1/fields')),
+				unwrap(
+					api.GET('/api/v1/fields', {
+						params: { query: { document_counts: true, all_users: scope.query } }
+					})
+				),
 				unwrap(api.GET('/api/v1/document-types'))
 			]);
 			problem = null;
@@ -29,9 +36,10 @@
 			problem = describeError(failure);
 		}
 	}
-	// Again after a dialog saved (wherever it was opened).
+	// Again after a dialog saved (wherever it was opened), and with another scope.
 	$effect(() => {
 		void masterDataDialogs.changed;
+		void scope.allUsers;
 		void load();
 	});
 
@@ -98,6 +106,7 @@
 							</span>
 						{/if}
 					</div>
+					<DocumentCount count={field.document_count} href="{BASE}/documents?field={field.id}" />
 					<Button
 						variant="ghost"
 						size="icon"

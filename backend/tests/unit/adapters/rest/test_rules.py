@@ -63,6 +63,24 @@ async def test_global_rules_are_for_admins_and_only_tag(api: Api) -> None:
     assert [item["id"] for item in listed.json()] == [rule["id"]]
 
 
+async def test_a_rule_does_not_file_into_a_space_its_owner_only_reads(api: Api) -> None:
+    owner, reader = await api.user(), await api.user()
+    space = await post(api, "/spaces", {"name": "Household"}, auth(owner))
+    await api.client.put(
+        f"{PREFIX}/spaces/{space['id']}/shares/{reader.id}",
+        json={"level": "read"},
+        headers=auth(owner),
+    )
+    body = {
+        "name": "File",
+        "conditions": {"all": [{"field": "channel", "op": "is", "value": "api"}]},
+        "actions": [{"type": "set_space", "space_id": space["id"]}],
+    }
+    response = await api.client.post(f"{PREFIX}/rules", json=body, headers=auth(reader))
+    assert response.status_code == 403
+    assert response.json()["space_id"] == space["id"]
+
+
 async def test_a_template_that_does_not_fit_is_refused(api: Api) -> None:
     user = await api.user()
     body = {

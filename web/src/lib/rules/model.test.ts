@@ -27,7 +27,7 @@ import {
 	type RuleModel
 } from './model.ts';
 
-const failed = (status: number, detail: string) =>
+const failed = (status: number, detail: string, spaceId: string | null = null) =>
 	new ApiError(
 		status,
 		{
@@ -36,6 +36,7 @@ const failed = (status: number, detail: string) =>
 			status,
 			detail,
 			existing_document_id: null,
+			space_id: spaceId,
 			open_fields: null,
 			second_factor_required: null
 		},
@@ -422,8 +423,10 @@ describe('errors of saving', () => {
 			group.items[0].key,
 			model.actions[0].key
 		]);
-		const forbidden = failed(403, "no write access to space 'Office'");
+		const forbidden = failed(403, "no write access to space 'Office'", ID(8));
 		expect(Object.keys(saveErrors(forbidden, model).byKey)).toEqual([model.actions[1].key]);
+		const elsewhere = failed(403, 'only admins change global rules');
+		expect(saveErrors(elsewhere, model).byKey).toEqual({});
 		const typed = fromApi(
 			definition({ all: [cond('channel', 'is', 'web')], not: false }, [
 				{ type: 'set_document_type', document_type_id: ID(9) }

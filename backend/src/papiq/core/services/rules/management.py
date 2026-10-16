@@ -19,6 +19,7 @@ from papiq.core.domain.errors import (
     MissingValueError,
     NotFoundError,
     PermissionDeniedError,
+    SpaceWriteDeniedError,
     ValidationError,
 )
 from papiq.core.domain.fields import FieldDefinition, FieldType
@@ -244,7 +245,7 @@ async def check_references(
         if space is None or access is None:
             raise NotFoundError("space", space_id)
         if not access.can_write:
-            raise PermissionDeniedError(f"no write access to space '{space.name}'")
+            raise SpaceWriteDeniedError(space.id, f"'{space.name}'")
 
 
 async def check_templates(

@@ -29,6 +29,7 @@ from papiq.core.domain.errors import (
     PermissionDeniedError,
     SearchError,
     SecondFactorRequiredError,
+    SpaceWriteDeniedError,
     TooManyAttemptsError,
     UnsupportedMediaTypeError,
     ValidationError,
@@ -51,6 +52,8 @@ def install(app: FastAPI) -> None:
     async def domain_error(request: Request, error: Exception) -> JSONResponse:
         if isinstance(error, DuplicateDocumentError):
             return problem(409, str(error), existing_document_id=error.existing)
+        if isinstance(error, SpaceWriteDeniedError):
+            return problem(403, str(error), space_id=error.space_id)
         if isinstance(error, OpenFieldsError):
             return problem(422, str(error), open_fields=list(error.fields))
         if isinstance(error, SecondFactorRequiredError):

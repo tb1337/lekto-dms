@@ -28,6 +28,7 @@ from papiq.core.domain.errors import (
     NotFoundError,
     OpenFieldsError,
     PermissionDeniedError,
+    SpaceWriteDeniedError,
     UnprocessableDocumentError,
     UnsupportedMediaTypeError,
     ValidationError,
@@ -392,7 +393,7 @@ class PipelineService:
             return (await uow.spaces.get_default(actor)).id
         target = await visible_space(uow, user, space)
         if not can_file_into(user, target):
-            raise PermissionDeniedError(f"no write access to space {space}")
+            raise SpaceWriteDeniedError(space, str(space))
         return target.id
 
     # --- retry and reprocess --------------------------------------------------------------------
@@ -495,7 +496,7 @@ class PipelineService:
             ]
             target = None if space is None else await visible_space(uow, user, space)
             if target is not None and not (user.is_active_admin or can_file_into(user, target)):
-                raise PermissionDeniedError(f"no write access to space '{target.name}'")
+                raise SpaceWriteDeniedError(target.id, f"'{target.name}'")
             if target is None and not await may_file(
                 uow, document, await uow.spaces.get(document.space_id)
             ):

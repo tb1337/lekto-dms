@@ -71,7 +71,7 @@ export function saveErrors(error: unknown, model: RuleModel): SaveErrors {
 		for (const key of blocks) result.byKey[key] = m.rule_error_missing();
 		if (blocks.length > 0) return result;
 	}
-	if (error instanceof ApiError && error.status === 403 && /space/.test(detail)) {
+	if (error instanceof ApiError && error.status === 403 && error.problem?.space_id) {
 		const space = model.actions.find((action) => action.type === 'set_space');
 		if (space) {
 			result.byKey[space.key] = describeError(error);

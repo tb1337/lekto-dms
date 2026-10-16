@@ -5068,6 +5068,12 @@ export interface components {
 			 */
 			existing_document_id: string | null;
 			/**
+			 * Space Id
+			 * @description Filing or moving refused: the space the caller may not write to.
+			 * @default null
+			 */
+			space_id: string | null;
+			/**
 			 * Open Fields
 			 * @description Confirming a document: the fields that need a decision.
 			 * @default null

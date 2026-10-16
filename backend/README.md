@@ -679,6 +679,8 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   content (PDF, JPEG, PNG, TIFF; otherwise `415`). A file the owner already has: `409` with
   `existing_document_id`.
 - Errors are problem details (RFC 9457, `application/problem+json`) and documented per endpoint.
+  Filing into a space without write access (upload, move, confirm, a rule that sets the space)
+  is `403` with `space_id`, the space that was refused.
 - Documents and spaces the caller may not see are `404` with the same answer as missing ones;
   lists, filters and pages only ever contain readable documents (the repository query follows
   the permission rule, and the service checks every result again). Yellow, red and unfinished

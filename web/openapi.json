@@ -20461,6 +20461,20 @@
             "description": "For a duplicate: the document that has the same file.",
             "title": "Existing Document Id"
           },
+          "space_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Filing or moving refused: the space the caller may not write to.",
+            "title": "Space Id"
+          },
           "open_fields": {
             "anyOf": [
               {

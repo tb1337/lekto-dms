@@ -16,6 +16,7 @@ from papiq.core.domain.errors import (
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
+    SpaceWriteDeniedError,
     UnprocessableDocumentError,
     ValidationError,
 )
@@ -601,7 +602,7 @@ class DocumentService:
                 raise PermissionDeniedError(f"only the owner moves document {id}")
             target = await visible_space(uow, user, space)
             if not can_move_document(user, document, target):
-                raise PermissionDeniedError(f"no write access to space {space}")
+                raise SpaceWriteDeniedError(space, str(space))
             now = self._clock.now()
             document.move_to(target.id, now)
             if self._rules is not None:

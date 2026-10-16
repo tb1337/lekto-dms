@@ -213,6 +213,7 @@ async def test_upload_into_a_space(api: Api) -> None:
     assert status.json()["space_id"] == str(shared.id)
     denied = await api.client.post(DOCUMENTS, files=pdf(), data=data, headers=auth(reader))
     assert denied.status_code == 403
+    assert denied.json()["space_id"] == str(shared.id)
     stranger = await api.user()
     hidden = await api.client.post(DOCUMENTS, files=pdf(), data=data, headers=auth(stranger))
     assert hidden.status_code == 404

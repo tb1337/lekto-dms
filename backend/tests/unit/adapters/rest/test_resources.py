@@ -304,6 +304,22 @@ async def test_moving_and_deleting(api: Api) -> None:
     assert gone.status_code == 404
 
 
+async def test_moving_into_a_space_one_only_reads_names_it(api: Api) -> None:
+    owner, friend = await api.user(), await api.user()
+    document = await green_document(api, auth(friend))
+    space = await post(api, "/spaces", {"name": "Household"}, auth(owner))
+    await api.client.put(
+        f"{PREFIX}/spaces/{space['id']}/shares/{friend.id}",
+        json={"level": "read"},
+        headers=auth(owner),
+    )
+    refused = await api.client.post(
+        f"{PREFIX}/documents/{document}/move", json={"space_id": space["id"]}, headers=auth(friend)
+    )
+    assert refused.status_code == 403
+    assert refused.json()["space_id"] == space["id"]
+
+
 async def test_spaces_and_shares(api: Api) -> None:
     owner, friend = await api.user(), await api.user("friend")
     space = await post(api, "/spaces", {"name": "Household"}, auth(owner))

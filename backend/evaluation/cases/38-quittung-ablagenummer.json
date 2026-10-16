@@ -1,7 +1,7 @@
 {
-  "description": "Receipt with the filing number stamped on the paper copy. The field is set by hand: the model is never asked for it, so even a right answer leaves the document yellow until a person enters the number (issue #52).",
+  "description": "Receipt with the filing number stamped on the paper copy. The field is set by hand: the model is never asked for it, and it is not scored. That a required one keeps the document yellow until a person enters it is the rules node's check, which the evaluation does not run. Trained, the classifier names another type: yellow.",
   "expected": {
-    "lane": "yellow",
+    "lane": "green",
     "contact": "Elektro Krause GmbH",
     "document_type": "Quittung",
     "tags": [
@@ -10,6 +10,9 @@
     "document_date": "2026-09-12",
     "fields": {
       "Ablagenummer": "4711"
+    },
+    "lanes": {
+      "trained": "yellow"
     }
   },
   "fake": {

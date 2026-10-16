@@ -105,9 +105,8 @@ def summarise(results: Sequence[CaseResult], *, fake: bool) -> Summary:
             "document_date": expected.document_date,
         }
         # The title is no field of the set: nothing is expected of it.
-        fields = set(expected.fields) | {
-            name for name in result.checks if name not in (*FIELDS, "tags", "title")
-        }
+        checked = {name for name in result.checks if name not in (*FIELDS, "tags", "title")}
+        fields = (set(expected.fields) | checked) - result.by_hand
         wanted |= {name: expected.fields.get(name) for name in fields}
         wrong = []
         for name, value in wanted.items():

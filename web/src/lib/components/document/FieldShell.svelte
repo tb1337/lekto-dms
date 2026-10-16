@@ -26,6 +26,7 @@
 		applies = true,
 		active = false,
 		required = false,
+		byHand = false,
 		hint = null,
 		onfocus,
 		onjump,
@@ -44,6 +45,8 @@
 		active?: boolean;
 		/** The field must have a value (a required field of the document's type). */
 		required?: boolean;
+		/** Set by hand only: never read from the document, so it has no quote. */
+		byHand?: boolean;
 		/** What belongs in the field (its description), under its name. */
 		hint?: string | null;
 		onfocus: (key: string | null) => void;
@@ -130,7 +133,9 @@
 				{describeValue(check.proposed, lookup)}
 			</p>
 		{/if}
-		{#if kind === 'none'}
+		{#if byHand}
+			<p class="text-sm text-muted-foreground">{m.review_by_hand()}</p>
+		{:else if kind === 'none'}
 			<p
 				class="flex items-center gap-2 rounded-lg bg-muted px-2.5 py-2 text-sm text-muted-foreground"
 			>

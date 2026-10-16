@@ -180,7 +180,10 @@ def decide(
             field_id = _field_id(check.field)
             if field_id is not None and field_id not in definitions:
                 continue
-            if check.field in given or _given(changes, check.field, field_id):
+            if _left_empty_by_hand(check, field_id, changes, definitions):
+                # A required field set by hand needs its value; none is no decision.
+                undecided.append(_label(check.field, field_id, definitions))
+            elif check.field in given or _given(changes, check.field, field_id):
                 entered.setdefault(item.node, []).append(check.field)
             elif _has_value(document, check.field, field_id):
                 kept.setdefault(item.node, []).append(check.field)
@@ -282,6 +285,18 @@ def _given(changes: DocumentChanges, field: str, field_id: FieldId | None) -> bo
         return field_id in changes.fields
     name = _CHANGE_FIELDS.get(field)
     return name is not None and not isinstance(getattr(changes, name), Unset)
+
+
+def _left_empty_by_hand(
+    check: FieldCheck,
+    field_id: FieldId | None,
+    changes: DocumentChanges,
+    definitions: Mapping[FieldId, FieldDefinition],
+) -> bool:
+    """Whether `check` is a field set by hand that `changes` leaves empty."""
+    if field_id is None or field_id not in changes.fields or changes.fields[field_id] is not None:
+        return False
+    return not definitions[field_id].is_read
 
 
 def _has_value(document: Document, field: str, field_id: FieldId | None) -> bool:

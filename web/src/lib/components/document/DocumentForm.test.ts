@@ -470,4 +470,50 @@ describe('DocumentForm', () => {
 			resume_at: 'fields'
 		});
 	});
+
+	it('keeps a value entered by hand when the type is corrected', async () => {
+		fetchMock.mockResolvedValue(
+			new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+		);
+		const OTHER = '0199a6c4-0000-7000-8000-0000000000e2';
+		const ASN = '0199a6c4-0000-7000-8000-0000000000f9';
+		const asn = {
+			id: ASN,
+			name: 'Ablagenummer',
+			data_type: 'text',
+			document_type_ids: null,
+			required: true,
+			required_document_type_ids: [],
+			choices: [],
+			assignment: 'manual'
+		};
+		const typed = {
+			document: {},
+			open: [
+				{
+					node: 'apply_rules',
+					outcome: 'uncertain',
+					reason: 'set by hand',
+					fields: [check(`field:${ASN}`, { outcome: 'uncertain', reason: 'set by hand' })]
+				}
+			],
+			nodes: []
+		} as unknown as Review;
+		const withOther = {
+			...lookup,
+			documentTypes: [...lookup.documentTypes, named(OTHER, 'Vertrag')],
+			fields: [...lookup.fields, asn]
+		} as unknown as Lookup;
+		render(DocumentForm, props({ review: typed, lookup: withOther, next: null }));
+		expect(screen.getByText(m.review_by_hand())).toBeTruthy();
+		await userEvent.type(document.getElementById(`field-${ASN}`) as HTMLInputElement, 'A-17');
+		await userEvent.selectOptions(
+			screen.getByLabelText(m.field_document_type(), { selector: 'select' }),
+			OTHER
+		);
+		await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
+		const sent = await fetchMock.mock.calls[0][0].json();
+		expect(sent.changes.fields).toEqual({ [ASN]: 'A-17' });
+		expect(sent.resume_at).toBe('fields');
+	});
 });

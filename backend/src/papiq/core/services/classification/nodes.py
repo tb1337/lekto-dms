@@ -468,7 +468,7 @@ class FieldsNode(_ModelStep):
     field the document does not show is uncertain, an optional one stays empty; a value given
     must pass its check either way. Without a model nothing reads the missing ones: the same
     holds, the required ones say why. A field set by hand is never asked for and keeps its
-    value; required and empty, it waits for a person.
+    value (the rules node checks that a required one has one).
 
     The title comes from the type's title pattern, or from the model's proposal, as long as
     the document's title is still the file name or the one set here before."""
@@ -548,11 +548,7 @@ class FieldsNode(_ModelStep):
                 default_currency=self._policy.default_currency,
             )
             if definition.is_read
-            else _set_by_hand(
-                definition,
-                document,
-                required=definition.is_required_for(document.document_type_id),
-            )
+            else _set_by_hand(definition)
             for definition in definitions
         ]
         checks = [
@@ -652,21 +648,14 @@ def _check_date(field: str, proposal: Proposal, facts: DocumentText, today: date
     )
 
 
-def _set_by_hand(definition: FieldDefinition, document: Document, *, required: bool) -> FieldCheck:
-    """A field set by hand is never read: its value stays as the document has it. Required and
-    without a value, it waits for a person (issue #52)."""
-    if definition.id in document.fields or not required:
-        return FieldCheck(
-            field=field_key(definition.id),
-            outcome=Outcome.OK,
-            confidence=1,
-            reason=f"'{definition.name}' is set by hand",
-        )
+def _set_by_hand(definition: FieldDefinition) -> FieldCheck:
+    """A field set by hand is never read: its value stays as the document has it. Whether a
+    required one has a value is checked after the rules, which may set it (`ApplyRulesNode`)."""
     return FieldCheck(
         field=field_key(definition.id),
-        outcome=Outcome.UNCERTAIN,
-        confidence=0,
-        reason=f"'{definition.name}' is set by hand and has no value yet",
+        outcome=Outcome.OK,
+        confidence=1,
+        reason=f"'{definition.name}' is set by hand",
     )
 
 

@@ -1,12 +1,14 @@
 """The rules on arrival: the nodes `apply_rules` and `file`, and confirming in the inbox."""
 
 import logging
+from decimal import Decimal
 
 import pytest
 
 from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.errors import OpenFieldsError
 from papiq.core.domain.fields import FieldType
+from papiq.core.domain.master_data import Assignment
 from papiq.core.domain.pipeline import PERSON, RULES, Lane, Node, Outcome, ProcessingStatus
 from papiq.core.domain.rules import (
     ForceReview,
@@ -119,6 +121,49 @@ async def test_conflicting_rules_wait_in_the_inbox_until_the_owner_decides(world
     assert again.result.outcome is Outcome.OK
     assert notes(again.result.output) == [("contact", "conflict"), ("contact", "conflict")]
     assert again.result.output["fields"] == []
+
+
+async def test_a_required_field_set_by_hand_waits_for_a_person(world: World) -> None:
+    """Issue #52: after the rules, a required field set by hand without a value keeps the
+    document yellow; confirming without a value is no decision, with one it files."""
+    r = await rule_world(world)
+    owner = await world.user()
+    asn = await world.master_data.create_field(
+        r.admin.id, "ASN", FieldType.NUMBER, required=True, assignment=Assignment.MANUAL
+    )
+
+    document = await r.arrive(owner)
+
+    assert document.lane is Lane.YELLOW
+    (item,) = await r.documents.inbox(owner.id)
+    (open,) = item.open
+    assert open.node is Node.APPLY_RULES
+    (check,) = open.fields
+    assert check.reason == "'ASN' is set by hand and has no value yet"
+    with pytest.raises(OpenFieldsError, match="ASN"):
+        await r.pipeline().confirm(owner.id, document.id, DocumentChanges(fields={asn.id: None}))
+    await r.pipeline().confirm(
+        owner.id, document.id, DocumentChanges(fields={asn.id: Decimal(4711)})
+    )
+    await world.drain(r.pipeline())
+
+    document = await r.stored(document)
+    assert document.lane is Lane.GREEN
+    assert document.fields == {asn.id: Decimal(4711)}
+
+
+async def test_a_rule_gives_a_field_set_by_hand_its_value(world: World) -> None:
+    r = await rule_world(world)
+    owner = await world.user()
+    asn = await world.master_data.create_field(
+        r.admin.id, "ASN", FieldType.TEXT, required=True, assignment=Assignment.MANUAL
+    )
+    await r.user_rule(owner, definition("ASN", channel_api(), SetField(asn.id, "A-1")))
+
+    document = await r.arrive(owner)
+
+    assert document.lane is Lane.GREEN
+    assert document.fields == {asn.id: "A-1"}
 
 
 async def test_a_rule_replaces_the_machines_title(world: World) -> None:

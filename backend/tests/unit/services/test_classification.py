@@ -1169,8 +1169,8 @@ async def set_by_hand(world: World, field: FieldDefinition) -> None:
 
 
 async def test_a_field_set_by_hand_is_never_asked_for(world: World) -> None:
-    """Issue #52: neither the signal nor the fields node asks the model for it. Required and
-    without a value, it waits for a person; with a value, it keeps it; optional, it is OK."""
+    """Issue #52: neither the signal nor the fields node asks the model for it, and the fields
+    node leaves its value as it is (whether a required one has one is the rules node's check)."""
     seeded = await seed(world)
     number, paid = seeded.fields["Rechnungsnummer"], seeded.fields["Bezahlt"]
     await set_by_hand(world, number)
@@ -1189,24 +1189,10 @@ async def test_a_field_set_by_hand_is_never_asked_for(world: World) -> None:
     assert isinstance(outcome, MetadataResult)
     (request,) = fake.requests
     assert "Rechnungsnummer" not in request.user and "Bezahlt" not in request.user
-    assert outcome.result.outcome is Outcome.UNCERTAIN
-    check = field_check(seeded, outcome, "Rechnungsnummer")
-    assert check.reason == "'Rechnungsnummer' is set by hand and has no value yet"
-    assert field_check(seeded, outcome, "Bezahlt").ok
-    assert number.id not in outcome.changes.fields and paid.id not in outcome.changes.fields
-
-    async with world.uow() as uow:
-        stored = await uow.documents.get(document.id)
-        stored.fields[number.id] = "R-1"
-        await uow.documents.update(stored)
-        await uow.commit()
-    outcome = await fields_step(world, model(answer)).run(stored)
-    assert isinstance(outcome, MetadataResult)
     assert outcome.result.outcome is Outcome.OK
-    assert field_check(seeded, outcome, "Rechnungsnummer").reason == (
-        "'Rechnungsnummer' is set by hand"
-    )
-    assert number.id not in outcome.changes.fields
+    check = field_check(seeded, outcome, "Rechnungsnummer")
+    assert check.ok and check.reason == "'Rechnungsnummer' is set by hand"
+    assert number.id not in outcome.changes.fields and paid.id not in outcome.changes.fields
 
 
 async def signalled(

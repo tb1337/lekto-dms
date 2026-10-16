@@ -1830,7 +1830,7 @@ export interface components {
 		 * Assignment
 		 * @description Who sets a value: Papiq's classification (`auto`: the signals propose it, the model is
 		 *     asked for it) or only a person or a rule (`manual`: values no document shows, such as the
-		 *     number stamped on the paper copy). Tobi, 16.10.2026.
+		 *     number stamped on the paper copy).
 		 * @enum {string}
 		 */
 		Assignment: 'auto' | 'manual';
@@ -2993,7 +2993,7 @@ export interface components {
 			choices?: string[];
 			/**
 			 * Required
-			 * @description A global field: whether extraction must find it in every document.
+			 * @description A global field: whether every document needs a value (read by the model, or entered by hand for a field set by hand).
 			 * @default false
 			 */
 			required: boolean;
@@ -3045,7 +3045,7 @@ export interface components {
 			choices: string[];
 			/**
 			 * Required
-			 * @description A global field: whether extraction must find it in every document.
+			 * @description A global field: whether every document needs a value (read by the model, or entered by hand for a field set by hand).
 			 */
 			required: boolean;
 			/**

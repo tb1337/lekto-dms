@@ -114,6 +114,7 @@ class CaseResult:
     run: Run = Run.COLD
     automatic: frozenset[str] = frozenset()  # fields set without a person, by name as `checks`
     corrected: frozenset[str] = frozenset()  # fields the person changed afterwards, likewise
+    by_hand: frozenset[str] = frozenset()  # fields set by hand only: no model checks, not scored
 
 
 async def evaluate(
@@ -313,8 +314,11 @@ async def _corrected(
         resume = Node.APPLY_RULES
         if changes.document_type_id is not UNSET:
             # As the web UI does: the fields of the corrected type are read again, so no
-            # value is given for them.
-            changes, resume = replace(changes, fields={}), Node.FIELDS
+            # value is given for them, except those set by hand (never read).
+            kept = {
+                id: value for id, value in changes.fields.items() if not master.fields[id].is_read
+            }
+            changes, resume = replace(changes, fields=kept), Node.FIELDS
         await pipeline.confirm(owner.id, id, changes, resume_at=resume)
         await _drain(pipeline)
     else:
@@ -382,7 +386,12 @@ def _result(
     master: MasterData,
     seconds: float,
 ) -> CaseResult:
-    checks = {_field_label(field, master): check for field, check in field_checks(log).items()}
+    by_hand = {field_key(item.id) for item in master.fields.values() if not item.is_read}
+    checks = {
+        _field_label(field, master): check
+        for field, check in field_checks(log).items()
+        if field not in by_hand
+    }
     truncated = any(
         entry.result.input.get("truncated") is True
         for entry in log
@@ -409,6 +418,7 @@ def _result(
         seconds=seconds,
         violations=_violations(before, after, field_checks(log)),
         truncated=truncated,
+        by_hand=frozenset(item.name for item in master.fields.values() if not item.is_read),
     )
 
 

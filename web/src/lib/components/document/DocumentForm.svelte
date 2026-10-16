@@ -261,7 +261,8 @@
 			if (id !== null) {
 				const field = lookup.fields.find((entry) => entry.id === id);
 				// Extracted again for the new type: a suggestion must not count as the owner's.
-				if (typeChanged) delete fields[id];
+				// A field set by hand is never extracted: what the owner entered stays.
+				if (typeChanged && field?.assignment !== 'manual') delete fields[id];
 				else if (field) fields[id] = toApi(field.data_type, values[id]);
 			} else if (check.field === 'contact') changes.contact_id = contact || null;
 			else if (check.field === 'document_type') changes.document_type_id = documentType || null;
@@ -632,6 +633,7 @@
 				applies={applies(key)}
 				active={focused === key || pinned === key}
 				required={required(field)}
+				byHand={field.assignment === 'manual'}
 				hint={field.description}
 				onfocus={focus}
 				onjump={jump}

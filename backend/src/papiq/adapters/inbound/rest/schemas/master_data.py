@@ -224,7 +224,10 @@ class DocumentTypeOut(MasterDataOut):
 
 Required = Annotated[
     bool,
-    Field(description="A global field: whether extraction must find it in every document."),
+    Field(
+        description="A global field: whether every document needs a value (read by the model, "
+        "or entered by hand for a field set by hand)."
+    ),
 ]
 RequiredTypes = Annotated[
     list[UUID],

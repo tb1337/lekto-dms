@@ -287,6 +287,7 @@
 	"field_def_description_hint": "What belongs in the field and how documents call it, e.g. “the month's gross total, not the base salary; printed as Gesamt-Brutto”. The field's name is rarely on a document.",
 	"field_def_manual": "Set by hand only",
 	"field_def_manual_hint": "Papiq never asks the model for this field; a person or a rule sets it. If it is required, the document waits in the inbox until someone enters it.",
+	"review_by_hand": "You enter this value by hand: Papiq does not read the field from the document.",
 	"field_def_key_hint": "How templates of rules and title patterns write the field.",
 	"field_def_scope": "Applies to",
 	"assignment_required": "Required",

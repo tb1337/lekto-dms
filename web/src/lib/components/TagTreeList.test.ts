@@ -45,8 +45,12 @@ describe('TagTreeList', () => {
 		render(TagTreeList, { kind: 'tags' });
 		expect(await screen.findByText('Health')).toBeTruthy();
 		expect(screen.getByText(`${m.tag_assignment_manual()} · ${m.tag_hidden()}`)).toBeTruthy();
-		const count = screen.getByRole('link', { name: m.master_documents({ count: '3' }) });
-		expect(count.getAttribute('href')).toContain('/documents?tag=t1');
+		// Once under the name for a phone, once beside it from the small width on.
+		const counts = screen.getAllByRole('link', { name: m.master_documents({ count: '3' }) });
+		expect(counts.map((link) => link.getAttribute('href'))).toEqual([
+			'/ui/documents?tag=t1',
+			'/ui/documents?tag=t1'
+		]);
 		const collapse = screen.getByRole('button', { name: m.tree_collapse({ name: 'Insurance' }) });
 		expect(collapse.getAttribute('aria-expanded')).toBe('true');
 		await fireEvent.click(collapse);

@@ -28,8 +28,8 @@
 	let problem = $state<string | null>(null);
 	let removing = $state<Item | null>(null);
 	const collapsed = new SvelteSet<string>();
-	// Each level further in; the fifth, the deepest, at most.
-	const INDENT = ['pl-2', 'pl-6', 'pl-10', 'pl-14', 'pl-18'];
+	// Each level further in (less so on a phone); the fifth, the deepest, at most.
+	const INDENT = ['pl-2', 'pl-6 sm:pl-9', 'pl-10 sm:pl-16', 'pl-14 sm:pl-23', 'pl-18 sm:pl-30'];
 	const rows = $derived(items ? visibleRows(items, collapsed) : []);
 
 	async function load() {
@@ -47,6 +47,20 @@
 		void scope.allUsers;
 		void load();
 	});
+
+	/** How a tag is set and whether documents show it, where it is not the default. */
+	function marks(tag: Tag): string {
+		return [
+			tag.scope === 'document' && tag.assignment === 'manual' ? m.tag_assignment_manual() : null,
+			tag.shown ? null : m.tag_hidden()
+		]
+			.filter(Boolean)
+			.join(' · ');
+	}
+
+	function filterHref(tag: Tag): string {
+		return `${BASE}/documents?${ops.filter}=${tag.id}`;
+	}
 
 	function toggle(id: string) {
 		if (collapsed.has(id)) collapsed.delete(id);
@@ -107,22 +121,19 @@
 					{:else}
 						<span class="size-8 shrink-0" aria-hidden="true"></span>
 					{/if}
-					<div class="flex min-w-0 flex-1 flex-col">
-						<span class="truncate">{tag.name}</span>
-						{#if (tag.scope === 'document' && tag.assignment === 'manual') || !tag.shown}
-							<span class="truncate text-sm text-muted-foreground">
-								{[
-									tag.scope === 'document' && tag.assignment === 'manual'
-										? m.tag_assignment_manual()
-										: null,
-									tag.shown ? null : m.tag_hidden()
-								]
-									.filter(Boolean)
-									.join(' · ')}
-							</span>
+					<div class="flex min-w-0 flex-1 flex-col items-start">
+						<span class="max-w-full truncate">{tag.name}</span>
+						{#if marks(tag)}
+							<span class="max-w-full truncate text-sm text-muted-foreground">{marks(tag)}</span>
 						{/if}
+						<!-- On a phone the count goes under the name: the row is too narrow for both. -->
+						<span class="-ml-2.5 sm:hidden">
+							<DocumentCount count={tag.document_count} href={filterHref(tag)} />
+						</span>
 					</div>
-					<DocumentCount count={tag.document_count} href="{BASE}/documents?{ops.filter}={tag.id}" />
+					<span class="hidden sm:inline-flex">
+						<DocumentCount count={tag.document_count} href={filterHref(tag)} />
+					</span>
 					<Button
 						variant="ghost"
 						size="icon"

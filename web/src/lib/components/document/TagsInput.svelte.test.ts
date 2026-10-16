@@ -54,4 +54,13 @@ describe('TagsInput', () => {
 		await user.click(screen.getByText('Health'));
 		expect(props.tags).toEqual(['t2']); // the parent gives way to the child
 	});
+
+	it('does not offer the tags above one set', async () => {
+		const user = userEvent.setup();
+		render(TagsInput, { tags: ['t2'], all: ALL, id: 'tags' });
+		await user.click(screen.getByRole('button', { name: m.field_tag_add() }));
+		await screen.findByLabelText(m.assignment_search());
+		expect(screen.getByText('Paid')).toBeTruthy();
+		expect(screen.queryByRole('option', { name: 'Insurance' })).toBeNull();
+	});
 });

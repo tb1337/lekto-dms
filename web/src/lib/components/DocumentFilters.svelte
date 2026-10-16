@@ -120,7 +120,7 @@
 						value=""
 						options={[{ value: '', label: pick.label }, ...options]}
 						onchange={(value) => value && set({ [pick.key]: [...filters[pick.key], value] })}
-						class="h-10 w-48"
+						class="h-10 w-auto max-w-full min-w-48"
 					/>
 				{/key}
 			{/if}
@@ -144,7 +144,10 @@
 		{/each}
 		{#each chips as chip (`${chip.key}:${chip.id}`)}
 			<span
-				class="inline-flex h-8 max-w-full items-center gap-1 rounded-full bg-secondary pr-1 pl-3 text-sm"
+				class={cn(
+					'inline-flex h-8 max-w-full items-center gap-1 rounded-full pr-1 pl-3 text-sm',
+					chip.key === 'tags' ? 'bg-secondary' : 'border bg-background'
+				)}
 			>
 				<span class="truncate">{chip.name}</span>
 				<button

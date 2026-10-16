@@ -94,16 +94,8 @@ export function visibleRows<T extends TagLike>(
 /** `ids` without the tags above others among them: a child and its parent set together leave
  * the child, as the API keeps them. */
 export function normalise(tags: readonly TagLike[], ids: readonly string[]): string[] {
-	const parentOf = new Map(tags.map((tag) => [tag.id, tag.parent_id]));
-	const above = new Set<string>();
-	for (const id of ids) {
-		let parent = parentOf.get(id) ?? null;
-		while (parent !== null && !above.has(parent)) {
-			above.add(parent);
-			parent = parentOf.get(parent) ?? null;
-		}
-	}
-	return ids.filter((id, index) => !above.has(id) && ids.indexOf(id) === index);
+	const higher = above(tags, ids);
+	return ids.filter((id, index) => !higher.has(id) && ids.indexOf(id) === index);
 }
 
 /** The chips of `ids`: for each, the nearest shown tag on its way up (itself, else a tag above
@@ -124,4 +116,18 @@ export function shownChips<T extends TagLike & Pick<Tag, 'shown'>>(
 		if (tag?.shown) found.set(tag.id, tag);
 	}
 	return [...found.values()].sort((a, b) => pathLabel(a).localeCompare(pathLabel(b)));
+}
+
+/** The ids of the tags above those of `ids`. */
+export function above(tags: readonly TagLike[], ids: readonly string[]): Set<string> {
+	const parentOf = new Map(tags.map((tag) => [tag.id, tag.parent_id]));
+	const found = new Set<string>();
+	for (const id of ids) {
+		let parent = parentOf.get(id) ?? null;
+		while (parent !== null && !found.has(parent)) {
+			found.add(parent);
+			parent = parentOf.get(parent) ?? null;
+		}
+	}
+	return found;
 }

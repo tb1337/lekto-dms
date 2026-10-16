@@ -265,7 +265,7 @@
 	"tag_parent": "Parent tag",
 	"tag_parent_group": "Parent group",
 	"tag_parent_none": "None (top level)",
-	"tag_assignment": "Determined",
+	"tag_assignment": "How it is set",
 	"tag_assignment_auto": "Automatically",
 	"tag_assignment_manual": "By hand only",
 	"tag_assignment_hint": "Papiq proposes and sets an automatic tag; a tag set by hand only a person or a rule sets, such as a status like “to pay”.",

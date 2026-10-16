@@ -6,13 +6,13 @@
 	import * as Popover from '#lib/components/ui/popover/index.ts';
 	import type { Tag } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { matchesQuery, normalise, ofScope, pathLabel } from '#lib/tags.ts';
+	import { above, matchesQuery, normalise, ofScope, pathLabel } from '#lib/tags.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// The tags of a document: chips (the tag's own name, its path as tooltip and on a tap) to
 	// remove, and a search to add a document tag, which finds a tag by the name of a tag above
-	// it too. A tag added with its parent leaves the parent out, as the API keeps them. `id`
-	// labels the button that adds.
+	// it too. A tag added below one set replaces it, as the API keeps them; tags above one set
+	// are not offered. `id` labels the button that adds.
 	let {
 		tags = $bindable(),
 		all,
@@ -23,7 +23,11 @@
 	let open = $state(false);
 	let query = $state('');
 	const byId = $derived(new Map(all.map((tag) => [tag.id, tag])));
-	const free = $derived(ofScope(all, 'document').filter((tag) => !tags.includes(tag.id)));
+	// Neither the tags set nor those above them (the tag set says more).
+	const free = $derived.by(() => {
+		const higher = above(all, tags);
+		return ofScope(all, 'document').filter((tag) => !tags.includes(tag.id) && !higher.has(tag.id));
+	});
 	const found = $derived(free.filter((tag) => matchesQuery(tag, query)));
 
 	function chip(id: string): Pick<Tag, 'id' | 'name' | 'path'> {
@@ -51,7 +55,11 @@
 {/if}
 {#if !disabled && free.length > 0}
 	<Popover.Root bind:open>
-		<Popover.Trigger {id} class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'w-fit')}>
+		<Popover.Trigger
+			{id}
+			class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'w-fit')}
+			aria-label={m.field_tag_add()}
+		>
 			<Plus aria-hidden="true" />
 			{m.field_tag_add()}
 		</Popover.Trigger>

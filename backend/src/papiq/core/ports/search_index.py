@@ -11,7 +11,7 @@ from typing import Protocol
 
 from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.search import IndexDocument, IndexState, Segment, Visibility
-from papiq.core.ports.repository import DocumentFilter
+from papiq.core.ports.repository import DocumentFilter, DocumentOrder
 
 MAX_LIMIT = 100
 MAX_HITS = 1000
@@ -23,7 +23,8 @@ class SearchQuery:
     """`visibility` has no default: a query cannot be built without the rights filter.
 
     `vector`: the embedding of `text`; without it the search is plain full text. With it,
-    `semantic_ratio` (0 to 1) weighs the vectors against the words.
+    `semantic_ratio` (0 to 1) weighs the vectors against the words. `order`: sorted by it
+    instead of by relevance (ties by relevance); documents without a date come last.
     """
 
     text: str
@@ -31,6 +32,7 @@ class SearchQuery:
     filter: DocumentFilter = field(default_factory=DocumentFilter)
     vector: tuple[float, ...] | None = None
     semantic_ratio: float = 0.5
+    order: DocumentOrder | None = None
     offset: int = 0
     limit: int = 20
 

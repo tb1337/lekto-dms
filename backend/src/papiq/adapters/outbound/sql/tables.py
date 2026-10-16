@@ -200,6 +200,8 @@ documents = Table(
     Column("drawer_id", Uuid, ForeignKey("drawers.id"), nullable=False, index=True),
     Column("sha256", String(64), nullable=False),
     Column("title", Text, nullable=False),
+    # The title as lists sort it (`sort_key`): case and accents aside.
+    Column("title_key", Text, nullable=False, server_default=""),
     Column("original_filename", Text, nullable=False),
     Column("media_type", Text, nullable=False),
     Column("contact_id", Uuid, ForeignKey("contacts.id"), nullable=True),
@@ -224,6 +226,9 @@ documents = Table(
     Column("version", Integer, nullable=False),
     # The original is unique per owner, also against concurrent uploads.
     Index(None, "owner_id", "sha256", unique=True),
+    # Lists sorted by date or title page by these and the id.
+    Index(None, "document_date", "id"),
+    Index(None, "title_key", "id"),
 )
 
 document_tags = Table(

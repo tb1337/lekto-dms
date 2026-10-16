@@ -56,7 +56,7 @@ from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, TagId, 
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.periods import Period, PeriodKind
 from papiq.core.domain.pipeline import SIGNALS
-from papiq.core.domain.search import EmbeddingStamp, IndexDocument, IndexState
+from papiq.core.domain.search import LAYOUT, EmbeddingStamp, IndexDocument, IndexState
 from papiq.core.ports import (
     Clock,
     Embeddings,
@@ -387,6 +387,7 @@ class IndexingService:
             tag_ids=tuple(tag for tag, _ in snapshot.tags),
             tags=tuple(name for _, name in snapshot.tags),
             fields=_field_texts(document),
+            field_ids=tuple(document.fields),
             document_date=document.document_date,
             created_at=document.created_at,
             confirmed=document.confirmed_at is not None,
@@ -435,7 +436,8 @@ class IndexingService:
     async def reconcile(self, also: Collection[DocumentId] = ()) -> Reconciled:
         """Queue index jobs for documents that are missing or stale in the index and remove
         entries of documents that are gone. A stale document has another version than the
-        database, or (with embeddings) vectors of no or another model. `also`: documents to
+        database, an older layout (`LAYOUT`), or (with embeddings) vectors of no or another
+        model. `also`: documents to
         queue in any case."""
         indexed = {state.id: state async for state in self._index.states()}
         async with self._uow() as uow:
@@ -449,6 +451,7 @@ class IndexingService:
                 document.id in queue
                 or state is None
                 or state.version != document.version
+                or state.layout != LAYOUT
                 or (
                     model is not None
                     and (state.embedding is None or state.embedding.model != model)

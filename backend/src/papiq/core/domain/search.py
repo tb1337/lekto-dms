@@ -13,12 +13,16 @@ from papiq.core.domain.ids import (
     DocumentId,
     DocumentTypeId,
     DrawerId,
+    FieldId,
     TagId,
     UserId,
 )
 from papiq.core.domain.pipeline import Lane
 
 PROCESSING = "processing"
+LAYOUT = 2
+"""The shape of what the index holds of a document. An entry of an older layout is written
+anew by the reconciliation (2: the ids of the fields with a value, and the title's sort key)."""
 """The lane value of a document that has none yet."""
 
 
@@ -60,6 +64,7 @@ class IndexDocument:
     tag_ids: tuple[TagId, ...] = ()
     tags: tuple[str, ...] = ()
     fields: tuple[str, ...] = ()
+    field_ids: tuple[FieldId, ...] = ()  # the fields with a value, for the filter
     document_date: date | None = None
     created_at: datetime
     # A person set or confirmed its metadata (`Document.confirmed_at`): it may vote as a
@@ -92,6 +97,7 @@ class IndexState:
     id: DocumentId
     version: int
     embedding: EmbeddingStamp | None
+    layout: int = LAYOUT
 
 
 @dataclass(frozen=True)

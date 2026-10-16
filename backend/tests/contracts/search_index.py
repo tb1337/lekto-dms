@@ -1,6 +1,8 @@
 """Contract of the search index. Needs the fixture `search_index`: an empty index that takes
 vectors of three numbers (`DIMENSIONS`)."""
 
+from datetime import date
+
 import pytest
 
 from papiq.core.domain.errors import SearchIndexError
@@ -9,13 +11,14 @@ from papiq.core.domain.ids import (
     DocumentId,
     DocumentTypeId,
     DrawerId,
+    FieldId,
     TagId,
     UserId,
     new_id,
 )
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.search import EmbeddingStamp, IndexDocument, Visibility
-from papiq.core.ports import DocumentFilter, SearchIndex, SearchQuery
+from papiq.core.ports import DocumentFilter, DocumentOrder, SearchIndex, SearchQuery, SortKey
 from papiq.core.ports.search_index import SimilarQuery
 from tests.builders import index_document
 
@@ -239,6 +242,47 @@ class SearchIndexContract:
             tags=frozenset({tag_1}), drawer=drawer_b, lanes=frozenset({Lane.YELLOW})
         ) == {one_tag.id}
         assert await with_filter(contact=ContactId(new_id())) == set()
+
+    async def test_a_field_with_a_value(self, search_index: SearchIndex) -> None:
+        owner, field = UserId(new_id()), FieldId(new_id())
+        with_value = index_document(owner_id=owner, text="Rechnung", field_ids=(field,))
+        without = index_document(owner_id=owner, text="Rechnung")
+        await search_index.upsert([with_value, without])
+        assert await found(
+            search_index, "Rechnung", visibility(owner), filter=DocumentFilter(field=field)
+        ) == {with_value.id}
+
+    async def test_sorted_by_date_and_title_without_a_date_last(
+        self, search_index: SearchIndex
+    ) -> None:
+        owner = UserId(new_id())
+        march = index_document(
+            owner_id=owner, title="Ärztebrief", text="Rechnung", document_date=date(2026, 3, 1)
+        )
+        december = index_document(
+            owner_id=owner, title="bank", text="Rechnung", document_date=date(2025, 12, 24)
+        )
+        undated = index_document(owner_id=owner, title="Abrechnung", text="Rechnung")
+        await search_index.upsert([march, december, undated])
+        who = visibility(owner)
+
+        async def ordered(order: DocumentOrder, **fields: object) -> list[DocumentId]:
+            result = await search_index.search(query("Rechnung", who, order=order, **fields))
+            return [hit.id for hit in result.hits]
+
+        newest = DocumentOrder(SortKey.DOCUMENT_DATE)
+        assert await ordered(newest) == [march.id, december.id, undated.id]
+        oldest = DocumentOrder(SortKey.DOCUMENT_DATE, ascending=True)
+        assert await ordered(oldest) == [december.id, march.id, undated.id]
+        by_title = DocumentOrder(SortKey.TITLE, ascending=True)
+        assert await ordered(by_title) == [undated.id, march.id, december.id]
+        # Words and meaning together keep the order.
+        if (await search_index.search(query("Rechnung", who, vector=(1.0, 0.0, 0.0)))).semantic:
+            assert await ordered(newest, vector=(1.0, 0.0, 0.0), semantic_ratio=0.5) == [
+                march.id,
+                december.id,
+                undated.id,
+            ]
 
     # --- rights ---------------------------------------------------------------------------------
 

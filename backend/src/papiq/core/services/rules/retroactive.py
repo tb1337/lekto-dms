@@ -38,6 +38,7 @@ from papiq.core.domain.users import User
 from papiq.core.ports import (
     Clock,
     DocumentFilter,
+    DocumentPosition,
     ObjectStore,
     PatternMatcher,
     TemplateRenderer,
@@ -130,11 +131,11 @@ class RuleApplicationService:
             rule = await _applicable_rule(uow, user, id)
             if user.is_active_admin:
                 documents = await uow.documents.query(
-                    DocumentFilter(lanes=_LANES), before=before, limit=SCAN
+                    DocumentFilter(lanes=_LANES), after=_position(before), limit=SCAN
                 )
             else:
                 documents = await uow.documents.query_visible(
-                    actor, DocumentFilter(lanes=_LANES), before=before, limit=SCAN
+                    actor, DocumentFilter(lanes=_LANES), after=_position(before), limit=SCAN
                 )
         items: list[PreviewItem] = []
         next_cursor = documents[-1].id if len(documents) == SCAN else None
@@ -416,3 +417,7 @@ async def _candidate(uow: UnitOfWork, user: User, rule: Rule, document: Document
 async def _enqueue(uow: UnitOfWork, id: RuleApplicationId, now: datetime) -> None:
     payload: dict[str, JsonValue] = {"application_id": str(id)}
     await uow.jobs.enqueue(APPLY_JOB, payload, run_at=now, dedup_key=f"{APPLY_JOB}:{id}")
+
+
+def _position(before: DocumentId | None) -> DocumentPosition | None:
+    return None if before is None else DocumentPosition(before)

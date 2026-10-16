@@ -17,7 +17,7 @@ from papiq.core.domain.ids import DocumentId, new_id
 from papiq.core.domain.jobs import JobStatus
 from papiq.core.domain.periods import Period
 from papiq.core.domain.pipeline import Lane, Node, Outcome
-from papiq.core.domain.search import IndexDocument
+from papiq.core.domain.search import LAYOUT, IndexDocument
 from papiq.core.domain.users import Role
 from papiq.core.services.indexing import (
     INDEX_JOB,
@@ -420,6 +420,16 @@ async def test_the_reconciliation_notices_vectors_of_another_model(world: World)
     await second.settle(pipeline=False)
     assert (await first.index.state(document.id)).embedding.model == "new"  # type: ignore[union-attr]
     assert (await second.indexing.reconcile()).queued == 0
+
+
+async def test_the_reconciliation_writes_entries_of_an_older_layout_anew(setup: Setup) -> None:
+    owner = await setup.world.user()
+    document = await setup.document(owner, "old layout")
+    setup.index.layouts[document.id] = LAYOUT - 1
+    assert (await setup.indexing.reconcile()).queued == 1
+    await setup.settle(pipeline=False)
+    assert setup.index.layouts[document.id] == LAYOUT
+    assert (await setup.indexing.reconcile()).queued == 0
 
 
 async def test_the_reconciliation_repeats_itself(setup: Setup) -> None:

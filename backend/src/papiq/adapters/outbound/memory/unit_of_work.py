@@ -10,7 +10,7 @@ import copy
 import dataclasses
 from collections.abc import Collection, Hashable, Iterable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from types import TracebackType
 from typing import Any, Self
 from uuid import UUID
@@ -74,7 +74,13 @@ from papiq.core.domain.pipeline import Lane, NodeRun
 from papiq.core.domain.users import User
 from papiq.core.domain.validation import name_key, require_utc
 from papiq.core.domain.verdict import KnownLabels
-from papiq.core.ports.repository import DocumentFilter
+from papiq.core.ports.repository import (
+    NEWEST_FIRST,
+    DocumentFilter,
+    DocumentOrder,
+    DocumentPosition,
+    SortKey,
+)
 
 
 class MemoryUnitOfWork:
@@ -316,15 +322,23 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         user: UserId,
         filter: DocumentFilter,
         *,
-        before: DocumentId | None = None,
+        order: DocumentOrder = NEWEST_FIRST,
+        after: DocumentPosition | None = None,
         limit: int,
     ) -> list[Document]:
-        return _query(await self.list_visible_to(user), filter, before=before, limit=limit)
+        visible = await self.list_visible_to(user)
+        return _query(visible, filter, order=order, after=after, limit=limit)
 
     async def query(
-        self, filter: DocumentFilter, *, before: DocumentId | None = None, limit: int
+        self,
+        filter: DocumentFilter,
+        *,
+        order: DocumentOrder = NEWEST_FIRST,
+        after: DocumentPosition | None = None,
+        limit: int,
     ) -> list[Document]:
-        return _query([_copy(row) for row in self._all()], filter, before=before, limit=limit)
+        every = [_copy(row) for row in self._all()]
+        return _query(every, filter, order=order, after=after, limit=limit)
 
     async def count_confirmed(self, *, after: datetime | None = None) -> int:
         return sum(
@@ -566,17 +580,50 @@ class MemoryUnitOfWorkFactory:
 
 
 def _query(
-    documents: list[Document], filter: DocumentFilter, *, before: DocumentId | None, limit: int
+    documents: list[Document],
+    filter: DocumentFilter,
+    *,
+    order: DocumentOrder,
+    after: DocumentPosition | None,
+    limit: int,
 ) -> list[Document]:
     matching = [
         document
         for document in documents
-        if (before is None or document.id < before)
-        and (filter.contact is None or document.contact_id == filter.contact)
+        if (filter.contact is None or document.contact_id == filter.contact)
         and (filter.document_type is None or document.document_type_id == filter.document_type)
         and filter.tags <= document.tag_ids
         and (filter.drawer is None or document.drawer_id == filter.drawer)
         and (filter.lanes is None or document.lane in filter.lanes)
         and (filter.confirmed is None or (document.confirmed_at is not None) is filter.confirmed)
+        and (filter.field is None or filter.field in document.fields)
     ]
-    return sorted(matching, key=lambda document: document.id, reverse=True)[:limit]
+    ranked = sorted(matching, key=lambda document: _rank(document, order))
+    if after is not None:
+        # The documents after `after`: its rank is the one it had (the cursor's value).
+        mark = _rank_of(after, order)
+        ranked = [document for document in ranked if _rank(document, order) > mark]
+    return ranked[:limit]
+
+
+def _rank(document: Document, order: DocumentOrder) -> tuple[Any, ...]:
+    return _rank_of(DocumentPosition.of(document, order), order)
+
+
+def _rank_of(position: DocumentPosition, order: DocumentOrder) -> tuple[Any, ...]:
+    """A key that sorts ascending as `order` sorts: documents without a date last."""
+    sign = 1 if order.ascending else -1
+    id_ = sign * position.id.int
+    match order.key:
+        case SortKey.CREATED:
+            return (id_,)
+        case SortKey.DOCUMENT_DATE:
+            day = position.value
+            if not isinstance(day, date):
+                return (1, 0, id_)
+            return (0, sign * day.toordinal(), id_)
+        case SortKey.TITLE:
+            title = str(position.value)
+            # Text cannot be negated: descending compares the code points negated.
+            letters = tuple(ord(char) for char in title)
+            return (letters if order.ascending else (*(-code for code in letters), 1), id_)

@@ -886,7 +886,7 @@ export interface paths {
 		};
 		/**
 		 * Search documents
-		 * @description Full text and, if the installation has embeddings, meaning in one call. Finds the documents within the caller's reach, the same ones as `GET /documents` lists, with the same filters (they combine; `tag_id` and `lane` may repeat); admins search every document with `all_users` (others: 403). Each hit is checked against the permissions once more before it is returned. The index follows the documents a moment later, so a new document may take a few seconds to turn up. Pages are by `offset`; at most 1000 hits can be reached.
+		 * @description Full text and, if the installation has embeddings, meaning in one call. Finds the documents within the caller's reach, the same ones as `GET /documents` lists, with the same filters (they combine; `tag_id` and `lane` may repeat); admins search every document with `all_users` (others: 403). Each hit is checked against the permissions once more before it is returned. The index follows the documents a moment later, so a new document may take a few seconds to turn up. Pages are by `offset`; at most 1000 hits can be reached. `sort`: by relevance (the default), or by a key as in `GET /documents`, relevance breaking ties.
 		 */
 		get: operations['search_documents_api_v1_documents_search_get'];
 		put?: never;
@@ -966,7 +966,7 @@ export interface paths {
 		};
 		/**
 		 * List documents
-		 * @description The documents within the caller's reach, newest first: their own, and green documents in drawers they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id` and `lane` may repeat (all tags, any lane; `processing`: no lane yet). To search by words and meaning use `GET /documents/search`.
+		 * @description The documents within the caller's reach, newest first: their own, and green documents in drawers they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id` and `lane` may repeat (all tags, any lane; `processing`: no lane yet); `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. To search by words and meaning use `GET /documents/search`.
 		 */
 		get: operations['list_documents_api_v1_documents_get'];
 		put?: never;
@@ -2672,6 +2672,14 @@ export interface components {
 			/** @description Who would see the document; null if the caller could not read it then. */
 			visibility: components['schemas']['VisibilityOut'] | null;
 		};
+		/**
+		 * DocumentSort
+		 * @description A key to sort by, descending with a `-` before it. Documents without a date come last
+		 *     either way.
+		 * @enum {string}
+		 */
+		DocumentSort:
+			'created_at' | '-created_at' | 'document_date' | '-document_date' | 'title' | '-title';
 		/**
 		 * DocumentTextOut
 		 * @description A piece of the text read from the archive; offsets and lengths count characters.
@@ -12014,6 +12022,9 @@ export interface operations {
 				tag_id?: string[] | null;
 				drawer_id?: string | null;
 				lane?: components['schemas']['LaneFilter'][] | null;
+				field_id?: string | null;
+				/** @description `relevance` or a key. */
+				sort?: components['schemas']['DocumentSort'] | 'relevance';
 				limit?: number;
 				offset?: number;
 				/** @description Weight of the meaning against the words: 0 words only, 1 meaning only. Default: the installation's setting. */
@@ -12408,6 +12419,8 @@ export interface operations {
 				tag_id?: string[] | null;
 				drawer_id?: string | null;
 				lane?: components['schemas']['LaneFilter'][] | null;
+				field_id?: string | null;
+				sort?: components['schemas']['DocumentSort'];
 				limit?: number;
 				/** @description `next_cursor`. */
 				cursor?: string | null;

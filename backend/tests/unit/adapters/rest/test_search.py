@@ -189,3 +189,21 @@ async def test_only_admins_rebuild_the_index(api: Api) -> None:
     assert await indexing.run_next_job()
     assert not await indexing.run_next_job()
     assert await found(scene, "owner") == {scene.green, scene.yellow, scene.processing}
+
+
+async def test_hits_by_relevance_or_sorted(api: Api) -> None:
+    scene = await indexed_scene(api)
+    by_title = await scene.api.client.get(
+        SEARCH, params={"q": "pdf", "sort": "title", "limit": 50}, headers=scene.headers["admin"]
+    )
+    assert by_title.status_code == 200, by_title.text
+    titles = [item["document"]["title"].casefold() for item in by_title.json()["items"]]
+    assert titles == sorted(titles)
+    relevance = await scene.api.client.get(
+        SEARCH, params={"q": "pdf", "sort": "relevance"}, headers=scene.headers["admin"]
+    )
+    assert relevance.status_code == 200
+    bad = await scene.api.client.get(
+        SEARCH, params={"q": "pdf", "sort": "size"}, headers=scene.headers["admin"]
+    )
+    assert bad.status_code == 422

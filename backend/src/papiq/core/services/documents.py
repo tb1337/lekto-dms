@@ -36,11 +36,15 @@ from papiq.core.domain.permissions import (
 from papiq.core.domain.pipeline import Lane, Node, NodeRun
 from papiq.core.domain.users import User
 from papiq.core.ports import (
+    NEWEST_FIRST,
     Clock,
     DocumentFilter,
+    DocumentOrder,
+    DocumentPosition,
     FileMetadata,
     MetadataReader,
     ObjectStore,
+    SortKey,
     UnitOfWork,
     UnitOfWorkFactory,
 )
@@ -120,6 +124,20 @@ class DocumentFacts:
     facts: Facts
     codes: tuple[CodeFacts, ...] | None
     other_contacts: dict[tuple[IdentifierKind, str], int] | None
+
+
+async def _position(
+    uow: UnitOfWork, order: DocumentOrder, after: DocumentId | None
+) -> DocumentPosition | None:
+    """Where a page ended: by the last document's id, and its value of the sort key."""
+    if after is None:
+        return None
+    if order.key is SortKey.CREATED:
+        return DocumentPosition(after)
+    last = await uow.documents.find(after)
+    if last is None:
+        raise ValidationError("cursor: its document is gone; start from the first page")
+    return DocumentPosition.of(last, order)
 
 
 def _code_facts(codes: Sequence[Code], amounts: dict[FieldId, FieldValue]) -> tuple[CodeFacts, ...]:
@@ -317,21 +335,26 @@ class DocumentService:
         actor: UserId,
         filter: DocumentFilter,
         *,
-        before: DocumentId | None = None,
+        order: DocumentOrder = NEWEST_FIRST,
+        after: DocumentId | None = None,
         limit: int = 50,
         all_users: bool = False,
     ) -> list[DocumentView]:
-        """Documents within the caller's reach matching `filter`, newest first, after the page
-        ending at `before`; with `all_users` (admins only), every document. Each is checked
-        against the permission rules once more."""
+        """Documents within the caller's reach matching `filter`, in `order` (newest first),
+        after the page ending at the document `after`; with `all_users` (admins only), every
+        document. Each is checked against the permission rules once more. ValidationError if
+        `after` is gone while the list sorts by another key than the order of arrival."""
         limit = max(1, min(limit, MAX_PAGE))
         async with self._uow() as uow:
             user = await _lister(uow, actor, all_users)
+            position = await _position(uow, order, after)
             if all_users:
-                documents = await uow.documents.query(filter, before=before, limit=limit)
+                documents = await uow.documents.query(
+                    filter, order=order, after=position, limit=limit
+                )
             else:
                 documents = await uow.documents.query_visible(
-                    actor, filter, before=before, limit=limit
+                    actor, filter, order=order, after=position, limit=limit
                 )
             drawers: dict[DrawerId, Drawer] = {}
             views = []
@@ -483,11 +506,12 @@ class DocumentService:
         waiting = DocumentFilter(lanes=frozenset({Lane.YELLOW, Lane.RED}))
         async with self._uow() as uow:
             await _lister(uow, actor, all_users)
+            after = None if before is None else DocumentPosition(before)
             if all_users:
-                documents = await uow.documents.query(waiting, before=before, limit=limit)
+                documents = await uow.documents.query(waiting, after=after, limit=limit)
             else:
                 documents = await uow.documents.query_visible(
-                    actor, waiting, before=before, limit=limit
+                    actor, waiting, after=after, limit=limit
                 )
             items = []
             for document in documents:

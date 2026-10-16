@@ -279,7 +279,7 @@ async def test_query_pages_newest_first(world: World, scene: Scene) -> None:
     assert len(everything) == 5
     first = await world.documents.query(scene.owner.id, DocumentFilter(), limit=2)
     rest = await world.documents.query(
-        scene.owner.id, DocumentFilter(), before=first[-1].document.id, limit=200
+        scene.owner.id, DocumentFilter(), after=first[-1].document.id, limit=200
     )
     assert [v.document.id for v in [*first, *rest]] == [v.document.id for v in everything]
     # Documents in processing are the owner's only.

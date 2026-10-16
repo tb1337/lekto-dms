@@ -27,10 +27,13 @@ from papiq.core.ports.pages import PageRenderer
 from papiq.core.ports.parser import DocumentParser, ParseResult
 from papiq.core.ports.patterns import PatternMatcher
 from papiq.core.ports.repository import (
+    NEWEST_FIRST,
     ClassifierModelRepository,
     ContactRepository,
     DocumentFilter,
     DocumentIdentifierRepository,
+    DocumentOrder,
+    DocumentPosition,
     DocumentRepository,
     DocumentTypeRepository,
     DrawerRepository,
@@ -40,6 +43,7 @@ from papiq.core.ports.repository import (
     Repository,
     RuleApplicationRepository,
     RuleRepository,
+    SortKey,
     TagRepository,
     UserRepository,
     WebhookRepository,
@@ -56,6 +60,7 @@ from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.ports.webhook_sender import WebhookRequest, WebhookResponse, WebhookSender
 
 __all__ = [
+    "NEWEST_FIRST",
     "ApiTokenRepository",
     "Classifier",
     "ClassifierModelRepository",
@@ -68,7 +73,9 @@ __all__ = [
     "DeliveryRetry",
     "DocumentFilter",
     "DocumentIdentifierRepository",
+    "DocumentOrder",
     "DocumentParser",
+    "DocumentPosition",
     "DocumentRepository",
     "DocumentTypeRepository",
     "DrawerRepository",
@@ -107,6 +114,7 @@ __all__ = [
     "SearchResult",
     "SecretCipher",
     "SessionRepository",
+    "SortKey",
     "StructuredAnswer",
     "StructuredRequest",
     "TagRepository",

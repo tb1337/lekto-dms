@@ -15,7 +15,8 @@ Common rules for every adapter:
 
 from collections.abc import Collection
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from enum import StrEnum
 from typing import Protocol
 
 from papiq.core.domain.classifier import ClassifierModel
@@ -40,6 +41,7 @@ from papiq.core.domain.ids import (
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.pipeline import Lane, NodeRun
 from papiq.core.domain.rules import Rule, RuleApplication, RuleVersion
+from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.users import User
 from papiq.core.domain.verdict import KnownLabels
 from papiq.core.domain.webhooks import Webhook, WebhookDelivery
@@ -111,7 +113,8 @@ class FieldDefinitionRepository(NamedRepository[FieldId, FieldDefinition], Proto
 class DocumentFilter:
     """Criteria for listing documents; all given ones must match. `tags`: every one of them.
     `lanes`: one of them, where None stands for documents still in processing. `confirmed`:
-    whether a person set or confirmed the metadata (`Document.confirmed_at`)."""
+    whether a person set or confirmed the metadata (`Document.confirmed_at`). `field`: a value
+    for it is set."""
 
     contact: ContactId | None = None
     document_type: DocumentTypeId | None = None
@@ -119,6 +122,44 @@ class DocumentFilter:
     drawer: DrawerId | None = None
     lanes: frozenset[Lane | None] | None = None
     confirmed: bool | None = None
+    field: FieldId | None = None
+
+
+class SortKey(StrEnum):
+    CREATED = "created_at"  # the order documents came in, which is their ids'
+    DOCUMENT_DATE = "document_date"
+    TITLE = "title"  # by `sort_key` of the title
+
+
+@dataclass(frozen=True)
+class DocumentOrder:
+    """How a list of documents is sorted: by `key`, descending unless `ascending`, ties by id
+    the same way. Documents without a document date come last either way."""
+
+    key: SortKey = SortKey.CREATED
+    ascending: bool = False
+
+
+NEWEST_FIRST = DocumentOrder()
+
+
+@dataclass(frozen=True)
+class DocumentPosition:
+    """Where a page of a sorted list ended: its last document, and that document's value of
+    the sort key (none for `CREATED`, which sorts by id)."""
+
+    id: DocumentId
+    value: date | str | None = None
+
+    @classmethod
+    def of(cls, document: Document, order: DocumentOrder) -> "DocumentPosition":
+        match order.key:
+            case SortKey.CREATED:
+                return cls(document.id)
+            case SortKey.DOCUMENT_DATE:
+                return cls(document.id, document.document_date)
+            case SortKey.TITLE:
+                return cls(document.id, sort_key(document.title))
 
 
 class DocumentRepository(Repository[DocumentId, Document], Protocol):
@@ -147,15 +188,21 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         user: UserId,
         filter: DocumentFilter,
         *,
-        before: DocumentId | None = None,
+        order: DocumentOrder = NEWEST_FIRST,
+        after: DocumentPosition | None = None,
         limit: int,
     ) -> list[Document]:
-        """Documents the user may read (as `list_visible_to`) that match `filter`, newest first
-        (by id, descending), only those with an id below `before`, at most `limit`."""
+        """Documents the user may read (as `list_visible_to`) that match `filter`, in `order`,
+        only those after `after` in it, at most `limit`."""
         ...
 
     async def query(
-        self, filter: DocumentFilter, *, before: DocumentId | None = None, limit: int
+        self,
+        filter: DocumentFilter,
+        *,
+        order: DocumentOrder = NEWEST_FIRST,
+        after: DocumentPosition | None = None,
+        limit: int,
     ) -> list[Document]:
         """As `query_visible`, over every document (for admins)."""
         ...

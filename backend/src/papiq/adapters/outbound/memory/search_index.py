@@ -11,8 +11,9 @@ from dataclasses import replace
 
 from papiq.core.domain.errors import SearchIndexError
 from papiq.core.domain.ids import DocumentId
-from papiq.core.domain.search import IndexDocument, IndexState, Segment
-from papiq.core.ports.repository import DocumentFilter
+from papiq.core.domain.search import LAYOUT, IndexDocument, IndexState, Segment
+from papiq.core.domain.sorting import sort_key
+from papiq.core.ports.repository import DocumentFilter, DocumentOrder, SortKey
 from papiq.core.ports.search_index import (
     IndexBuild,
     SearchHit,
@@ -33,6 +34,8 @@ class MemorySearchIndex:
         """`dimensions`: refuse vectors of another length, as a real index does."""
         self._dimensions = dimensions
         self._documents: dict[DocumentId, IndexDocument] = {}
+        # The layout each entry was written in (`LAYOUT`); a test may set an older one.
+        self.layouts: dict[DocumentId, int] = {}
 
     async def upsert(self, documents: Sequence[IndexDocument]) -> None:
         _check(documents, self._dimensions)
@@ -40,17 +43,27 @@ class MemorySearchIndex:
             self._documents[document.id] = _keeping_vectors(
                 document, self._documents.get(document.id)
             )
+            self.layouts[document.id] = LAYOUT
 
     async def remove(self, id: DocumentId) -> None:
         self._documents.pop(id, None)
+        self.layouts.pop(id, None)
 
     async def state(self, id: DocumentId) -> IndexState | None:
         document = self._documents.get(id)
-        return None if document is None else _state(document)
+        return None if document is None else self._state(document)
 
     async def states(self) -> AsyncIterator[IndexState]:
         for document in list(self._documents.values()):
-            yield _state(document)
+            yield self._state(document)
+
+    def _state(self, document: IndexDocument) -> IndexState:
+        return IndexState(
+            id=document.id,
+            version=document.version,
+            embedding=document.embedding,
+            layout=self.layouts.get(document.id, LAYOUT),
+        )
 
     async def search(self, query: SearchQuery) -> SearchResult:
         terms = [word.casefold() for word in _WORD.findall(query.text)]
@@ -71,6 +84,9 @@ class MemorySearchIndex:
                 score = words
             scored.append((score, document))
         scored.sort(key=lambda item: (-item[0], str(item[1].id)))
+        if query.order is not None:
+            # In the order asked for; relevance breaks ties (the sort above is stable).
+            scored = _ordered(scored, query.order)
         page = scored[query.offset : query.offset + query.limit]
         hits = [
             SearchHit(
@@ -108,6 +124,7 @@ class MemorySearchIndex:
 
     def replace_all(self, documents: dict[DocumentId, IndexDocument]) -> None:
         self._documents = documents
+        self.layouts = dict.fromkeys(documents, LAYOUT)
 
     @property
     def documents(self) -> dict[DocumentId, IndexDocument]:
@@ -159,10 +176,6 @@ def _check(documents: Sequence[IndexDocument], dimensions: int | None) -> None:
                     f"document {document.id}: vector of length {len(vector)}, "
                     f"the index needs {dimensions}"
                 )
-
-
-def _state(document: IndexDocument) -> IndexState:
-    return IndexState(id=document.id, version=document.version, embedding=document.embedding)
 
 
 def _fields(document: IndexDocument) -> list[str]:
@@ -221,7 +234,29 @@ def _matches_filter(document: IndexDocument, criteria: DocumentFilter) -> bool:
         return False
     if criteria.confirmed is not None and document.confirmed is not criteria.confirmed:
         return False
+    if criteria.field is not None and criteria.field not in document.field_ids:
+        return False
     return criteria.lanes is None or document.lane in criteria.lanes
+
+
+def _ordered(
+    scored: list[tuple[float, IndexDocument]], order: DocumentOrder
+) -> list[tuple[float, IndexDocument]]:
+    """`scored` in `order`, as Meilisearch sorts: documents without the value last."""
+
+    def value(document: IndexDocument) -> object:
+        match order.key:
+            case SortKey.CREATED:
+                return document.created_at
+            case SortKey.DOCUMENT_DATE:
+                return document.document_date
+            case SortKey.TITLE:
+                return sort_key(document.title)
+
+    present = [item for item in scored if value(item[1]) is not None]
+    missing = [item for item in scored if value(item[1]) is None]
+    present.sort(key=lambda item: value(item[1]), reverse=not order.ascending)  # type: ignore[arg-type, return-value]
+    return present + missing
 
 
 def _snippet(text: str, terms: list[str]) -> tuple[Segment, ...]:

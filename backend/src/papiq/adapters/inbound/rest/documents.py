@@ -67,7 +67,7 @@ from papiq.core.domain.ids import (
 )
 from papiq.core.domain.imports import ImportedMetadata
 from papiq.core.domain.pipeline import Lane, Node
-from papiq.core.ports import DocumentFilter
+from papiq.core.ports import DocumentFilter, DocumentOrder, SortKey
 from papiq.core.services.documents import MAX_PAGE, DocumentFile, MetadataChange
 
 router = APIRouter(prefix="/documents", tags=["documents"], dependencies=PROTECTED)
@@ -88,6 +88,23 @@ _LANES: dict[LaneFilter, Lane | None] = {
     LaneFilter.PROCESSING: None,
 }
 
+
+class DocumentSort(StrEnum):
+    """A key to sort by, descending with a `-` before it. Documents without a date come last
+    either way."""
+
+    CREATED = "created_at"
+    CREATED_DESC = "-created_at"
+    DOCUMENT_DATE = "document_date"
+    DOCUMENT_DATE_DESC = "-document_date"
+    TITLE = "title"
+    TITLE_DESC = "-title"
+
+    @property
+    def order(self) -> DocumentOrder:
+        return DocumentOrder(SortKey(self.value.lstrip("-")), ascending=not self.startswith("-"))
+
+
 DRAWER_FIELD = "drawer_id"
 CHANNEL_FIELD = "channel"
 OWNER_FIELD = "owner"
@@ -101,6 +118,7 @@ def document_filter(
     tag_id: list[UUID] | None,
     drawer_id: UUID | None,
     lane: list[LaneFilter] | None,
+    field_id: UUID | None = None,
 ) -> DocumentFilter:
     """The query parameters of the document list as a filter (also used by the search)."""
     return DocumentFilter(
@@ -109,6 +127,7 @@ def document_filter(
         tags=frozenset(TagId(tag) for tag in tag_id or ()),
         drawer=None if drawer_id is None else DrawerId(drawer_id),
         lanes=None if not lane else frozenset(_LANES[item] for item in lane),
+        field=None if field_id is None else FieldId(field_id),
     )
 
 
@@ -236,8 +255,10 @@ async def upload(
         "The documents within the caller's reach, newest first: their own, and green "
         "documents in drawers they own or that are shared with them. Admins may read every "
         "document and list them all with `all_users` (others: 403). Filters combine; `tag_id` "
-        "and `lane` may repeat (all tags, any lane; `processing`: no lane yet). To search by "
-        "words and meaning use `GET /documents/search`."
+        "and `lane` may repeat (all tags, any lane; `processing`: no lane yet); `field_id`: a "
+        "value for the field is set. `sort` orders by arrival (the default, newest first), "
+        "document date or title; documents without a date come last. To search by words and "
+        "meaning use `GET /documents/search`."
     ),
     response_model=DocumentPage,
     responses=problem_responses(401, 403, 422),
@@ -250,15 +271,22 @@ async def list_documents(
     tag_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
     drawer_id: UUID | None = None,
     lane: Annotated[list[LaneFilter] | None, Query(max_length=4)] = None,
+    field_id: UUID | None = None,
+    sort: DocumentSort = DocumentSort.CREATED_DESC,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     cursor: Annotated[str | None, Query(max_length=64, description="`next_cursor`.")] = None,
     all_users: Annotated[
         bool, Query(description="Every user's documents instead of the caller's reach (admins).")
     ] = False,
 ) -> DocumentPage:
-    filter = document_filter(contact_id, document_type_id, tag_id, drawer_id, lane)
+    filter = document_filter(contact_id, document_type_id, tag_id, drawer_id, lane, field_id)
     views = await context.documents.query(
-        user, filter, before=_decode_cursor(cursor), limit=limit, all_users=all_users
+        user,
+        filter,
+        order=sort.order,
+        after=_decode_cursor(cursor),
+        limit=limit,
+        all_users=all_users,
     )
     next_cursor = _encode_cursor(views[-1].document.id) if len(views) == limit else None
     return DocumentPage(

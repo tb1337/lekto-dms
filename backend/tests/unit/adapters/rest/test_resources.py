@@ -133,6 +133,48 @@ async def test_listing_filters_and_pages(api: Api) -> None:
         assert response.status_code == 422, bad
 
 
+async def test_listing_sorts_by_date_and_title_and_filters_by_field(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    definition = {"name": "Note", "data_type": "text", "document_type_ids": None}
+    note = await post(api, "/fields", definition, auth(admin))
+    ids = []
+    for number in range(3):
+        files = {"file": (f"{number}.pdf", _pdf(10 + number), "x/y")}
+        response = await api.client.post(f"{PREFIX}/documents", files=files, headers=auth(owner))
+        ids.append(response.json()["id"])
+    await api.drain()
+    changes = [
+        {"title": "Zahnarzt", "document_date": "2026-03-01", "fields": {note["id"]: "x"}},
+        {"title": "arzt", "document_date": "2025-01-01"},
+        {"title": "Ärztebrief", "document_date": None},
+    ]
+    for id, change in zip(ids, changes, strict=True):
+        response = await api.client.patch(
+            f"{PREFIX}/documents/{id}", json=change, headers=auth(owner)
+        )
+        assert response.status_code == 200, response.text
+
+    async def listed(**params: Any) -> list[str]:
+        found: list[str] = []
+        cursor = None
+        while True:
+            query = {**params, "limit": 1, **({"cursor": cursor} if cursor else {})}
+            page = await api.client.get(f"{PREFIX}/documents", params=query, headers=auth(owner))
+            assert page.status_code == 200, page.text
+            found += [item["id"] for item in page.json()["items"]]
+            if (cursor := page.json()["next_cursor"]) is None:
+                return found
+
+    # Newest document date first, a page at a time; without a date last.
+    assert await listed(sort="-document_date") == [ids[0], ids[1], ids[2]]
+    assert await listed(sort="document_date") == [ids[1], ids[0], ids[2]]
+    # By title, case and accents aside.
+    assert await listed(sort="title") == [ids[1], ids[2], ids[0]]
+    assert await listed(field_id=note["id"]) == [ids[0]]
+    bad = await api.client.get(f"{PREFIX}/documents", params={"sort": "size"}, headers=auth(owner))
+    assert bad.status_code == 422
+
+
 def _pdf(number: int) -> bytes:
     return (SAMPLES / "scan.pdf").read_bytes().rstrip() + f"\n%{number}\n%%EOF\n".encode()
 

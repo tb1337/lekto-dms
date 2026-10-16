@@ -7839,7 +7839,7 @@
           "search"
         ],
         "summary": "Search documents",
-        "description": "Full text and, if the installation has embeddings, meaning in one call. Finds the documents within the caller's reach, the same ones as `GET /documents` lists, with the same filters (they combine; `tag_id` and `lane` may repeat); admins search every document with `all_users` (others: 403). Each hit is checked against the permissions once more before it is returned. The index follows the documents a moment later, so a new document may take a few seconds to turn up. Pages are by `offset`; at most 1000 hits can be reached.",
+        "description": "Full text and, if the installation has embeddings, meaning in one call. Finds the documents within the caller's reach, the same ones as `GET /documents` lists, with the same filters (they combine; `tag_id` and `lane` may repeat); admins search every document with `all_users` (others: 403). Each hit is checked against the permissions once more before it is returned. The index follows the documents a moment later, so a new document may take a few seconds to turn up. Pages are by `offset`; at most 1000 hits can be reached. `sort`: by relevance (the default), or by a key as in `GET /documents`, relevance breaking ties.",
         "operationId": "search_documents_api_v1_documents_search_get",
         "parameters": [
           {
@@ -7946,6 +7946,43 @@
               ],
               "title": "Lane"
             }
+          },
+          {
+            "name": "field_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field Id"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DocumentSort"
+                },
+                {
+                  "const": "relevance",
+                  "type": "string"
+                }
+              ],
+              "description": "`relevance` or a key.",
+              "default": "relevance",
+              "title": "Sort"
+            },
+            "description": "`relevance` or a key."
           },
           {
             "name": "limit",
@@ -8621,7 +8658,7 @@
           "documents"
         ],
         "summary": "List documents",
-        "description": "The documents within the caller's reach, newest first: their own, and green documents in drawers they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id` and `lane` may repeat (all tags, any lane; `processing`: no lane yet). To search by words and meaning use `GET /documents/search`.",
+        "description": "The documents within the caller's reach, newest first: their own, and green documents in drawers they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id` and `lane` may repeat (all tags, any lane; `processing`: no lane yet); `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. To search by words and meaning use `GET /documents/search`.",
         "operationId": "list_documents_api_v1_documents_get",
         "parameters": [
           {
@@ -8714,6 +8751,32 @@
                 }
               ],
               "title": "Lane"
+            }
+          },
+          {
+            "name": "field_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field Id"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentSort",
+              "default": "-created_at"
             }
           },
           {
@@ -15227,6 +15290,19 @@
         ],
         "title": "DocumentPreviewOut",
         "description": "What a change would do; nothing is stored."
+      },
+      "DocumentSort": {
+        "type": "string",
+        "enum": [
+          "created_at",
+          "-created_at",
+          "document_date",
+          "-document_date",
+          "title",
+          "-title"
+        ],
+        "title": "DocumentSort",
+        "description": "A key to sort by, descending with a `-` before it. Documents without a date come last\neither way."
       },
       "DocumentTextOut": {
         "properties": {

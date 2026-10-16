@@ -970,6 +970,44 @@ class MigrationSuite:
         with pytest.raises(RuntimeError, match=r"would both be field\.la_brutto"):
             await migrate(empty_database)
 
+    async def test_titles_get_their_sort_key_and_back(self, empty_database: Database) -> None:
+        """Revision 0023 fills the sort key of every title, case and accents aside."""
+        await migrate(empty_database, "0022")
+        ids = {name: new_id() for name in ("user", "drawer", "letter", "invoice")}
+        documents = _before_0021(t.documents)
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
+            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+        ]
+        for number, (name, title) in enumerate(
+            (("letter", "Ärztebrief Straße 5"), ("invoice", " INVOICE "))
+        ):
+            values = {
+                "id": ids[name],
+                "owner_id": ids["user"],
+                "drawer_id": ids["drawer"],
+                "sha256": str(number) * 64,
+                "title": title,
+                "processing_nodes": {},
+                "processing_vision": False,
+            }
+            rows.append((documents, values))
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                columns = {k: v for k, v in {**defaults, **values}.items() if k in table.c}
+                await connection.execute(insert(table).values(columns))
+
+        await migrate(empty_database)
+        async with empty_database.reading() as connection:
+            keys = dict(
+                (await connection.execute(select(t.documents.c.id, t.documents.c.title_key))).all()
+            )
+        assert keys == {ids["letter"]: "arztebrief strasse 5", ids["invoice"]: "invoice"}
+        await _downgrade(empty_database, "0022")
+        async with empty_database.reading() as connection:
+            assert len((await connection.execute(select(documents.c.id))).all()) == 2
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -1136,17 +1174,19 @@ async def _document_rows(database: Database, *, old: bool = False) -> list[Any]:
 
 
 def _before_0021(table: sa.Table) -> sa.TableClause:
-    """`table` as the revisions before 0021 had it: no vision reading of the run."""
+    """`table` as the revisions before 0021 had it: no vision reading of the run, and no sort
+    key of the title (0023)."""
+    later = {"processing_vision", "title_key"}
     return sa.table(
-        table.name, *(sa.column(c.name, c.type) for c in table.c if c.name != "processing_vision")
+        table.name, *(sa.column(c.name, c.type) for c in table.c if c.name not in later)
     )
 
 
 def _before_0010(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0010 had it: the current node and the outcomes instead
-    of the state of every node, and no page count (0011), confirmation (0014) or vision
-    reading (0021)."""
-    later = {"processing_nodes", "page_count", "confirmed_at", "processing_vision"}
+    of the state of every node, and no page count (0011), confirmation (0014), vision reading
+    (0021) or sort key of the title (0023)."""
+    later = {"processing_nodes", "page_count", "confirmed_at", "processing_vision", "title_key"}
     columns = [sa.column(c.name, c.type) for c in table.c if c.name not in later]
     if table.name == "documents":
         columns.append(sa.column("processing_node", sa.Text()))

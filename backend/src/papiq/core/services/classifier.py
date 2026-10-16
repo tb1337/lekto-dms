@@ -29,13 +29,14 @@ from papiq.core.domain.identifiers import (
     identifiers_in,
     mine_identifiers,
 )
-from papiq.core.domain.ids import ClassifierModelId, ContactId, DocumentId, UserId
+from papiq.core.domain.ids import ClassifierModelId, ContactId, UserId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.ports import (
     Classifier,
     Clock,
     DocumentFilter,
+    DocumentPosition,
     ObjectStore,
     Prediction,
     TrainedModel,
@@ -267,16 +268,16 @@ class ClassifierService:
     async def _examples(self) -> list[_Example]:
         """The confirmed documents with their texts (one without a text yet is left out)."""
         documents: list[Document] = []
-        before: DocumentId | None = None
+        after: DocumentPosition | None = None
         while True:
             async with self._uow() as uow:
                 page = await uow.documents.query(
-                    DocumentFilter(confirmed=True), before=before, limit=_PAGE
+                    DocumentFilter(confirmed=True), after=after, limit=_PAGE
                 )
             documents.extend(page)
             if len(page) < _PAGE:
                 break
-            before = page[-1].id
+            after = DocumentPosition(page[-1].id)
         examples = []
         for document in documents:
             try:

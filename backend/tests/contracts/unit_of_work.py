@@ -17,7 +17,14 @@ from papiq.core.domain.permissions import can_read_document
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
 from papiq.core.domain.users import User
 from papiq.core.domain.verdict import KnownLabels
-from papiq.core.ports import DocumentFilter, UnitOfWorkFactory
+from papiq.core.ports import (
+    NEWEST_FIRST,
+    DocumentFilter,
+    DocumentOrder,
+    DocumentPosition,
+    SortKey,
+    UnitOfWorkFactory,
+)
 from tests import builders
 from tests.builders import FAILED, NOW, OK, UNCERTAIN
 
@@ -859,11 +866,11 @@ class UnitOfWorkContract:
 
             # Pages of two, following the last id.
             pages: list[DocumentId] = []
-            before = None
-            while page := await query(owner.id, DocumentFilter(), before=before, limit=2):
+            after = None
+            while page := await query(owner.id, DocumentFilter(), after=after, limit=2):
                 assert len(page) <= 2
                 pages += [d.id for d in page]
-                before = page[-1].id
+                after = DocumentPosition(page[-1].id)
             assert pages == [d.id for d in everything]
 
             # Over every document: the same filters and paging.
@@ -873,9 +880,78 @@ class UnitOfWorkContract:
             in_drawer = [d.id for d in everything if d.drawer_id == drawer.id]
             first = await uow.documents.query(DocumentFilter(drawer=drawer.id), limit=2)
             rest = await uow.documents.query(
-                DocumentFilter(drawer=drawer.id), before=first[-1].id, limit=100
+                DocumentFilter(drawer=drawer.id), after=DocumentPosition(first[-1].id), limit=100
             )
             assert [d.id for d in [*first, *rest]] == in_drawer
+
+    async def test_query_sorts_by_date_and_title_and_filters_by_field(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner, drawer = await owner_with_drawer(uow_factory)
+        note = FieldDefinition.create(name="Note", data_type=FieldType.TEXT, now=NOW)
+        rows = [  # title, document date, note; in the order they come in
+            ("Ärztebrief", date(2026, 3, 1), "a"),
+            ("arzt", date(2026, 3, 1), None),
+            ("Zahnarzt", None, "z"),
+            ("bank", date(2025, 12, 24), None),
+            ("Abrechnung", None, None),
+        ]
+        documents = []
+        for title, day, value in rows:
+            document = builders.processed(owner, drawer)
+            values = {note.id: value} if value else {}
+            changes = DocumentChanges(title=title, document_date=day, fields=values)
+            document.apply_changes(changes, {note.id: note}, NOW)
+            documents.append(document)
+        async with uow_factory() as uow:
+            await uow.fields.add(note)
+            for document in documents:
+                await uow.documents.add(document)
+            await uow.commit()
+        titles = {document.id: document.title for document in documents}
+
+        async def paged(order: DocumentOrder, filter: DocumentFilter | None = None) -> list[str]:
+            found: list[Document] = []
+            after = None
+            async with uow_factory() as uow:
+                while page := await uow.documents.query_visible(
+                    owner.id, filter or DocumentFilter(), order=order, after=after, limit=2
+                ):
+                    found += page
+                    after = DocumentPosition.of(page[-1], order)
+            return [titles[document.id] for document in found]
+
+        def by_id(*names: str, descending: bool = False) -> list[str]:
+            ids = {title: id for id, title in titles.items()}
+            return sorted(names, key=lambda name: ids[name], reverse=descending)
+
+        # By date, ties by id the same way; without a date last in both directions.
+        newest = await paged(DocumentOrder(SortKey.DOCUMENT_DATE))
+        assert newest == [
+            *by_id("arzt", "Ärztebrief", descending=True),
+            "bank",
+            *by_id("Abrechnung", "Zahnarzt", descending=True),
+        ], newest
+        oldest = await paged(DocumentOrder(SortKey.DOCUMENT_DATE, ascending=True))
+        assert oldest == [
+            "bank",
+            *by_id("arzt", "Ärztebrief"),
+            *by_id("Abrechnung", "Zahnarzt"),
+        ], oldest
+        # By title: case and accents aside.
+        by_title = ["Abrechnung", "arzt", "Ärztebrief", "bank", "Zahnarzt"]
+        assert await paged(DocumentOrder(SortKey.TITLE, ascending=True)) == by_title
+        assert await paged(DocumentOrder(SortKey.TITLE)) == by_title[::-1]
+        assert await paged(DocumentOrder(SortKey.CREATED, ascending=True)) == by_id(
+            *(title for title, _, _ in rows)
+        )
+        # Documents with a value for the field.
+        with_note = DocumentFilter(field=note.id)
+        assert await paged(NEWEST_FIRST, with_note) == by_id(
+            "Zahnarzt", "Ärztebrief", descending=True
+        )
+        async with uow_factory() as uow:
+            assert len(await uow.documents.query(with_note, limit=9)) == 2
 
     async def test_removing_a_document_removes_its_processing_log(
         self, uow_factory: UnitOfWorkFactory

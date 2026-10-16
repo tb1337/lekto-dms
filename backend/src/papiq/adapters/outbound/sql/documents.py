@@ -34,8 +34,15 @@ from papiq.core.domain.pipeline import (
     Processing,
     ProcessingStatus,
 )
+from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.verdict import KnownLabels
-from papiq.core.ports.repository import DocumentFilter
+from papiq.core.ports.repository import (
+    NEWEST_FIRST,
+    DocumentFilter,
+    DocumentOrder,
+    DocumentPosition,
+    SortKey,
+)
 
 
 class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
@@ -81,27 +88,35 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         user: UserId,
         filter: DocumentFilter,
         *,
-        before: DocumentId | None = None,
+        order: DocumentOrder = NEWEST_FIRST,
+        after: DocumentPosition | None = None,
         limit: int,
     ) -> list[Document]:
-        return await self._query([visible_to(user)], filter, before=before, limit=limit)
+        return await self._query([visible_to(user)], filter, order=order, after=after, limit=limit)
 
     async def query(
-        self, filter: DocumentFilter, *, before: DocumentId | None = None, limit: int
+        self,
+        filter: DocumentFilter,
+        *,
+        order: DocumentOrder = NEWEST_FIRST,
+        after: DocumentPosition | None = None,
+        limit: int,
     ) -> list[Document]:
-        return await self._query([], filter, before=before, limit=limit)
+        return await self._query([], filter, order=order, after=after, limit=limit)
 
     async def _query(
         self,
         criteria: list[ColumnElement[bool]],
         filter: DocumentFilter,
         *,
-        before: DocumentId | None,
+        order: DocumentOrder,
+        after: DocumentPosition | None,
         limit: int,
     ) -> list[Document]:
         documents = t.documents
-        if before is not None:
-            criteria.append(documents.c.id < before)
+        sorting, behind = _sorting(order, after)
+        if behind is not None:
+            criteria.append(behind)
         if filter.contact is not None:
             criteria.append(documents.c.contact_id == filter.contact)
         if filter.document_type is not None:
@@ -122,10 +137,15 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             if None in filter.lanes:
                 lane_criteria.append(documents.c.lane.is_(None))
             criteria.append(or_(*lane_criteria))
-        rows = (
-            await self._tx.read(
-                select(documents).where(*criteria).order_by(documents.c.id.desc()).limit(limit)
+        if filter.field is not None:
+            fields = t.document_fields
+            criteria.append(
+                documents.c.id.in_(
+                    select(fields.c.document_id).where(fields.c.field_id == filter.field)
+                )
             )
+        rows = (
+            await self._tx.read(select(documents).where(*criteria).order_by(*sorting).limit(limit))
         ).all()
         return await self._entities(rows)
 
@@ -245,6 +265,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             "drawer_id": entity.drawer_id,
             "sha256": entity.sha256.hex,
             "title": entity.title,
+            "title_key": sort_key(entity.title),
             "original_filename": entity.original_filename,
             "media_type": entity.media_type,
             "contact_id": entity.contact_id,
@@ -407,3 +428,45 @@ def _iso(value: datetime | None) -> str | None:
 
 def _from_iso(value: str | None) -> datetime | None:
     return None if value is None else datetime.fromisoformat(value)
+
+
+def _sorting(
+    order: DocumentOrder, after: DocumentPosition | None
+) -> tuple[list[ColumnElement[Any]], ColumnElement[bool] | None]:
+    """The ORDER BY of `order`, and the criterion for the rows after `after` in it. Ties go
+    by id; documents without a date come last in both directions, so the criterion for a
+    position with a date also takes every row without one."""
+    documents = t.documents
+    id_ = documents.c.id
+    ascending = order.ascending
+
+    def beyond(column: ColumnElement[Any], value: object) -> ColumnElement[bool]:
+        return column > value if ascending else column < value
+
+    def direction(column: ColumnElement[Any]) -> ColumnElement[Any]:
+        return column.asc() if ascending else column.desc()
+
+    match order.key:
+        case SortKey.CREATED:
+            behind = None if after is None else beyond(id_, after.id)
+            return [direction(id_)], behind
+        case SortKey.TITLE:
+            key = documents.c.title_key
+            behind = None
+            if after is not None:
+                behind = or_(
+                    beyond(key, after.value), and_(key == after.value, beyond(id_, after.id))
+                )
+            return [direction(key), direction(id_)], behind
+        case SortKey.DOCUMENT_DATE:
+            day = documents.c.document_date
+            behind = None
+            if after is not None and after.value is None:
+                behind = and_(day.is_(None), beyond(id_, after.id))
+            elif after is not None:
+                behind = or_(
+                    beyond(day, after.value),
+                    and_(day == after.value, beyond(id_, after.id)),
+                    day.is_(None),
+                )
+            return [day.is_(None).asc(), direction(day), direction(id_)], behind

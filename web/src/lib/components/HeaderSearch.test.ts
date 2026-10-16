@@ -21,21 +21,21 @@ beforeEach(() => {
 });
 
 describe('HeaderSearch', () => {
-	it('opens the search page with the words', async () => {
+	it('searches the documents with the words', async () => {
 		render(HeaderSearch);
 		const field = screen.getByRole('searchbox', { name: m.header_search_label() });
 		await userEvent.type(field, ' Stromrechnung März {Enter}');
-		expect(goto).toHaveBeenCalledWith('/ui/search?q=Stromrechnung+M%C3%A4rz');
+		expect(goto).toHaveBeenCalledWith('/ui/documents?q=Stromrechnung+M%C3%A4rz');
 	});
 
-	it('keeps the filters of the search page', async () => {
-		state.url = new URL('http://papiq/ui/search?q=alt&tag=7');
+	it('keeps the filters of the document view, the sort goes with the search', async () => {
+		state.url = new URL('http://papiq/ui/documents?q=alt&tag=7&sort=title');
 		render(HeaderSearch);
 		const field = screen.getByRole('searchbox', { name: m.header_search_label() });
 		expect((field as HTMLInputElement).value).toBe('alt');
 		await userEvent.clear(field);
 		await userEvent.type(field, 'neu{Enter}');
-		expect(goto).toHaveBeenCalledWith('/ui/search?q=neu&tag=7');
+		expect(goto).toHaveBeenCalledWith('/ui/documents?q=neu&tag=7');
 	});
 
 	it('takes the focus on / unless one types elsewhere', async () => {

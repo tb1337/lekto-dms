@@ -3,7 +3,6 @@ import Archive from '@lucide/svelte/icons/archive';
 import BrainCircuit from '@lucide/svelte/icons/brain-circuit';
 import FileText from '@lucide/svelte/icons/file-text';
 import Inbox from '@lucide/svelte/icons/inbox';
-import Search from '@lucide/svelte/icons/search';
 import Settings from '@lucide/svelte/icons/settings';
 import Tags from '@lucide/svelte/icons/tags';
 import Users from '@lucide/svelte/icons/users';
@@ -20,7 +19,8 @@ export interface Section {
 	admin: boolean;
 }
 
-// The search is the field in the header, not an area of its own (Tobi, 13.10.2026).
+// The search is the field in the header and in the document view, not an area of its own
+// (Tobi, 13.10.2026; one view with the documents since 16.10.2026).
 export const SECTIONS: readonly Section[] = [
 	{ path: '/inbox', label: m.nav_inbox, icon: Inbox, admin: false },
 	{ path: '/documents', label: m.nav_documents, icon: FileText, admin: false },
@@ -31,14 +31,6 @@ export const SECTIONS: readonly Section[] = [
 	{ path: '/admin/users', label: m.nav_users, icon: Users, admin: true },
 	{ path: '/admin/classifier', label: m.nav_classifier, icon: BrainCircuit, admin: true }
 ];
-
-/** The search page, opened from the field in the header. */
-export const SEARCH: Section = {
-	path: '/search',
-	label: m.nav_search,
-	icon: Search,
-	admin: false
-};
 
 export const SETTINGS: Section = {
 	path: '/settings',

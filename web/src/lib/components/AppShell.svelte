@@ -6,6 +6,7 @@
 	import Users from '@lucide/svelte/icons/users';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { BASE } from '#lib/base.ts';
 	import HeaderSearch from '#lib/components/HeaderSearch.svelte';
 	import LanguageMenu from '#lib/components/LanguageMenu.svelte';
 	import Logo from '#lib/components/Logo.svelte';
@@ -19,14 +20,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { canListAllUsers } from '#lib/permissions.ts';
 	import { scope } from '#lib/scope.svelte.ts';
-	import {
-		href,
-		isCurrent,
-		SEARCH,
-		SETTINGS,
-		visibleSections,
-		type Section
-	} from '#lib/sections.ts';
+	import { href, isCurrent, SETTINGS, visibleSections, type Section } from '#lib/sections.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -157,7 +151,7 @@
 					)}
 				/>
 				<a
-					href={href(SEARCH)}
+					href="{BASE}/documents#search"
 					class={cn(
 						buttonVariants({ variant: 'ghost', size: 'icon' }),
 						'md:hidden',

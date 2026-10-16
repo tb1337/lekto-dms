@@ -4,7 +4,7 @@ import { apiQuery, isFiltered, NO_FILTERS, parseFilters, writeFilters } from './
 describe('filters in the URL', () => {
 	it('reads and writes all of them', () => {
 		const params = new URLSearchParams(
-			'contact=c1&type=t1&tag=a&tag=b&drawer=d1&lane=red&lane=bogus&q=x'
+			'contact=c1&type=t1&tag=a&tag=b&drawer=d1&lane=red&lane=bogus&field=f1&q=x'
 		);
 		const filters = parseFilters(params);
 		expect(filters).toEqual({
@@ -12,7 +12,8 @@ describe('filters in the URL', () => {
 			type: 't1',
 			tags: ['a', 'b'],
 			drawer: 'd1',
-			lanes: ['red']
+			lanes: ['red'],
+			field: 'f1'
 		});
 		const out = writeFilters(new URLSearchParams('q=x&tag=old'), filters);
 		expect(out.getAll('tag')).toEqual(['a', 'b']);
@@ -32,9 +33,11 @@ describe('filters in the URL', () => {
 			tag_id: undefined,
 			drawer_id: undefined,
 			lane: undefined,
+			field_id: undefined,
 			all_users: undefined
 		});
 		expect(isFiltered(NO_FILTERS)).toBe(false);
 		expect(isFiltered({ ...NO_FILTERS, tags: ['a'] })).toBe(true);
+		expect(isFiltered({ ...NO_FILTERS, field: 'f1' })).toBe(true);
 	});
 });

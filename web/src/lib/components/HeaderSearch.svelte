@@ -3,28 +3,31 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { m } from '#lib/paraglide/messages.js';
-	import { href, SEARCH } from '#lib/sections.ts';
+	import { BASE } from '#lib/base.ts';
 	import { cn } from '#lib/utils.ts';
 
-	// The search field of the header: Enter opens the search page with the words (and, there,
-	// the filters already set); `/` jumps here from anywhere but a field one types into.
+	// The search field of the header: Enter searches the documents with the words (and, in the
+	// document view, the filters already set); `/` jumps here from anywhere but a field one
+	// types into.
 	let { class: className = '' }: { class?: string } = $props();
 
 	let input = $state<HTMLInputElement | null>(null);
-	const onSearchPage = $derived(page.url.pathname === href(SEARCH));
-	// On the search page the field shows what was searched for, until the user types.
-	let text = $derived(onSearchPage ? (page.url.searchParams.get('q') ?? '') : '');
+	const DOCUMENTS = `${BASE}/documents`;
+	const inDocuments = $derived(page.url.pathname === DOCUMENTS);
+	// In the document view the field shows what is searched for, until the user types.
+	let text = $derived(inDocuments ? (page.url.searchParams.get('q') ?? '') : '');
 
 	function submit(event: SubmitEvent) {
 		event.preventDefault();
 		// Built and read at once, nothing reacts to it.
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const params = new URLSearchParams(onSearchPage ? page.url.search : '');
+		const params = new URLSearchParams(inDocuments ? page.url.search : '');
 		const term = text.trim();
 		if (term) params.set('q', term);
 		else params.delete('q');
+		params.delete('sort'); // a search sorts as the last search did
 		const query = params.toString();
-		void goto(query ? `${href(SEARCH)}?${query}` : href(SEARCH));
+		void goto(query ? `${DOCUMENTS}?${query}` : DOCUMENTS);
 	}
 
 	function keydown(event: KeyboardEvent) {

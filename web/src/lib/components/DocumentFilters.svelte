@@ -76,6 +76,13 @@
 			onchange={(value) => set({ drawer: value || null })}
 			class="h-10 w-48"
 		/>
+		<NativeSelect
+			aria-label={m.filter_field()}
+			value={filters.field ?? ''}
+			options={all(m.filter_field(), lookup.fields)}
+			onchange={(value) => set({ field: value || null })}
+			class="h-10 w-48"
+		/>
 		{#key filters.tags.length}
 			<NativeSelect
 				aria-label={m.filter_tag_add()}

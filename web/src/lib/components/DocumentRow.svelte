@@ -4,6 +4,7 @@
 	import { BASE } from '#lib/base.ts';
 	import DocumentThumb from '#lib/components/DocumentThumb.svelte';
 	import LaneBadge from '#lib/components/LaneBadge.svelte';
+	import ProcessingProgress from '#lib/components/ProcessingProgress.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
@@ -50,6 +51,9 @@
 			{#if owner}<Badge variant="outline" class="shrink-0">{owner}</Badge>{/if}
 		</span>
 		<span class="truncate text-sm text-muted-foreground">{line}</span>
+		{#if document.processing.status === 'processing'}
+			<ProcessingProgress processing={document.processing} compact class="mt-1 max-w-48" />
+		{/if}
 		{@render children?.()}
 	</div>
 	<LaneBadge lane={document.lane} />

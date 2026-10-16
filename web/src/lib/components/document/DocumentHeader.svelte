@@ -12,6 +12,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
@@ -19,13 +20,14 @@
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import LaneBadge from '#lib/components/LaneBadge.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import ProcessingProgress from '#lib/components/ProcessingProgress.svelte';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
 	import { Checkbox } from '#lib/components/ui/checkbox/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Label } from '#lib/components/ui/label/index.ts';
-	import { inboxDocument, type Neighbours } from '#lib/document-view.ts';
+	import { inboxDocument, tabHref, type Neighbours } from '#lib/document-view.ts';
 	import { reportError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import { drawerLabel, type Lookup } from '#lib/masterdata.svelte.ts';
@@ -247,17 +249,17 @@
 				{#if document.page_count}· {m.doc_pages({ count: document.page_count })}{/if}
 			</p>
 			{#if status === 'processing'}
-				<p class="text-sm text-muted-foreground" role="status">
-					{visionRunning
-						? m.doc_processing_vision({ done: running.done, total: running.total })
-						: running.running.length > 0
-							? m.doc_processing({
-									node: running.running.map((node) => NODE_LABELS[node]()).join(', '),
-									done: running.done,
-									total: running.total
-								})
-							: m.upload_progress({ done: running.done, total: running.total })}
-				</p>
+				{#if visionRunning}
+					<p class="text-sm text-muted-foreground" role="status">
+						{m.doc_processing_vision({ done: running.done, total: running.total })}
+					</p>
+				{/if}
+				<ProcessingProgress
+					processing={document.processing}
+					href={tabHref(page.url, 'log')}
+					compact={visionRunning}
+					class="max-w-md"
+				/>
 			{/if}
 		</div>
 		<div class="flex flex-wrap gap-2">

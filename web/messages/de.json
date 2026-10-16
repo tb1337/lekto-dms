@@ -637,6 +637,7 @@
 	"doc_uploaded": "hochgeladen am {date}",
 	"doc_pages": "Seiten: {count}",
 	"doc_processing": "Läuft: {node} · Schritt {done} von {total}",
+	"processing_progress": "Fortschritt der Verarbeitung",
 	"doc_processing_vision": "Das VLM liest die Seiten · Schritt {done} von {total}",
 	"doc_download": "Herunterladen",
 	"doc_more": "Weitere Aktionen",

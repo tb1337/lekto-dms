@@ -28,8 +28,8 @@ pattern matcher (`regex`, a search with a time limit) and the template renderer 
 
 ## Core
 
-- `core/domain`: users, spaces and shares, master data (contacts, document types, tags),
-  field definitions and values, the document aggregate with the pipeline state machine and
+- `core/domain`: users, spaces and shares, master data (contacts, document types, tags with
+  their scopes and trees, `tag_tree.py`), field definitions and values, the document aggregate with the pipeline state machine and
   lanes, domain events, jobs and the permission rules. IDs are UUIDv7, timestamps are UTC.
 - `core/ports`: repositories, processing log, outbox and job queue share one `UnitOfWork`, so
   a state change, its events and follow-up jobs are committed together (transactional outbox).
@@ -287,6 +287,36 @@ jobs of the old run are recognised as stale.
   the space's rights changed meanwhile), the object stays without a document. Removing such
   objects is left to a later cleanup of the object store.
 
+## Tags
+
+A tag has a scope (`TagScope`, fixed when it is made): `document` (a tag of documents, as before
+0.3), `contact` (a contact group, "insurer") or `document_type` (a type group, "invoice" over
+"medical bill"). Names are unique per scope: a contact group may be named like a document tag.
+Tags nest under a tag of the same scope (`parent_id`), at most five levels, without cycles
+(`TagTree.check_parent`). Only the tag set is stored; its ancestors are derived (`TagTree`).
+
+- **Documents** carry document tags only. A child and its parent set together leave the child
+  (`TagTree.normalise`); a parent may be set alone. A document is found by a tag and by each of
+  its ancestors.
+- **Groups.** A contact and a document type are in any number of groups of their scope
+  (`group_ids`); their documents inherit them with their ancestors. Groups are not stored at the
+  document and not removed there.
+- **Assignment.** A document tag is `auto` (the classification proposes and sets it) or `manual`
+  (only a person or a rule sets it: statuses such as "to pay"); groups are always `manual`.
+- **Shown.** Whether documents show a tag in their chips (default: on for document tags, off for
+  groups); filters, search, rules and templates see it either way.
+- **Filters** on a tag match the documents with it or a tag below it; on a group, those whose
+  contact (type) is in it or a group below it. The core widens each tag or group by its
+  descendants and hands the repository and the index sets ("one of these", all sets together,
+  `DocumentFilter`), so no adapter walks a tree.
+- **Counts** (`GET /tags?document_counts=true`): a document tag counts each document once that
+  carries it or a tag below it; a group the documents whose contact (type) is in it or a group
+  below it.
+- **Deleting** a tag works only without tags below it and while nothing uses it: no document,
+  contact or type, and no rule (`409`, naming the rules; admins see all of them).
+- **Renaming** a tag, nesting it elsewhere and changing the groups of a contact or type refresh
+  the search index of the documents concerned (`search.refresh`).
+
 ## Understanding
 
 Four signals propose, the judge decides contact, document type, tags and document date, the
@@ -295,17 +325,17 @@ the rules in `core/domain/verdict.py`).
 
 - **`signal_llm`**: one request to an OpenAI-compatible chat completions endpoint
   (`adapters/outbound/openai_compat`, `PAPIQ_LLM_*`, prompt `propose-2`) for sender and recipient,
-  type, tags, date, a title, the language, and the values of the fields of the type it chooses
+  type, tags (the automatic document tags), date, a title, the language, and the values of the fields of the type it chooses
   and of the global ones, each with the quoted passage. The answer must follow a JSON schema
   (`response_format` `json_schema`, or `json_object` for providers without schema support); an
   answer that does not fit is asked for once more, then the signal fails (red). Without a
   configured model it abstains, and the owner classifies.
 - **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
-  (contact, type, each tag), trained on the confirmed documents (`PAPIQ_CLASSIFIER`, see
+  (contact, type, each automatic document tag), trained on the confirmed documents (`PAPIQ_CLASSIFIER`, see
   Classifier). It abstains without a trained model.
 - **`signal_neighbours`**: the `PAPIQ_NEIGHBOURS` most similar confirmed documents the owner may
   read, by the vector of the start of the text against the search index; their contact, type
-  and tags come from the database. It abstains without embeddings or index.
+  and automatic document tags come from the database. It abstains without embeddings or index.
 - **`signal_facts`**: names and aliases of contacts standing whole in the text, identifiers of
   contacts (IBAN, VAT ID, customer number, personnel number, mail domain), unknown IBANs and
   VAT IDs. A personnel number stands after its label (`Personalnummer`, `Pers.-Nr.`,
@@ -330,7 +360,7 @@ sources. The judge's rule:
 | --- | --- | --- |
 | Contact | hard evidence (its identifier, or its name or alias in the text) and a signal names it; or the model's sender matches it from `PAPIQ_CONTACT_SUGGEST_THRESHOLD` on and the classifier or the neighbours name it. Never the model's recipient | yellow with ranked candidates; an identifier alone is a suggestion; an unknown sender a new contact (an admin creates it) |
 | Document type | two signals name it, or only the model and no other signal covers it (the classifier was not trained on it, no confirmed document carries it) | yellow; a type outside the list is proposed as new |
-| Tags | set as a type is green | a suggestion; tags never make a document yellow |
+| Tags (automatic document tags; one set by hand is never proposed) | set as a type is green, without the parent of a tag set | a suggestion (ids); tags never make a document yellow |
 | Document date | a valid date that appears in the text, in a quoted passage that shows it (`31.03.2026`, `31.3.26`, `2026-03-31`, `31. März 2026`, `March 31, 2026`, ...) | suggested |
 
 Without the model's proposal the judge is uncertain; it fails (red) only if the model answered
@@ -475,7 +505,8 @@ version; deleting is a soft delete.
   | Field | Operators |
   | --- | --- |
   | `contact`, `document_type` | `is`, `in`, `present`, `missing` |
-  | `tags` | `contains` (has this tag), `in` (has one of), `present`, `missing` |
+  | `tags` | `contains` (has this tag), `in` (has one of), `present`, `missing`; a tag matches the tags below it |
+  | `contact_group`, `document_type_group` | as `tags`, over the groups of the document's contact (type) with their ancestors |
   | `channel` (Eingangskanal: `web`, `api`, `migration`) | `is`, `in` |
   | `text` | `contains` (normalised like the classification checks), `matches` (regular expression) |
   | `document_date` | `is`, `gt`, `lt`, `present`, `missing` |
@@ -487,11 +518,16 @@ version; deleting is a soft delete.
   document get two seconds together, a preview page twenty; the patterns left do not match. The text is the parsed text without
   markup, at most `PAPIQ_RULES_MAX_TEXT` characters; it is loaded only if a rule looks at it.
 - **Actions.** `set_space`, `set_contact`, `set_document_type`, `set_title`, `add_tags`,
-  `remove_tags`, `set_field`, `force_review` (with a reason).
+  `remove_tags`, `set_field`, `force_review` (with a reason). `add_tags` and `remove_tags` take
+  document tags (also those set by hand); a tag above one the document keeps or gets is not
+  added, a parent gives way to a child added. Saving a rule checks the scope of every tag it
+  names (`422`).
 - **Templates.** A title, the value of a text field and a review's reason are Liquid templates
   (`python-liquid`, `adapters/outbound/liquid`): `{{ contact }}`, `{% if field.la_brutto %}`,
   filters with `|`. They see `title`, `filename`, `original_filename`, `contact`,
-  `document_type`, `document_date`, `added`, `tags`, `space`, `owner`, `channel`, `pages` and
+  `document_type`, `document_date`, `added`, `tags` (those set), `contact_groups` and
+  `document_type_groups` (the groups the contact and the type are in, by name, sorted), `space`,
+  `owner`, `channel`, `pages` and
   `field.<key>` (`FieldOut.key`, from the name: `LA_Brutto` is `la_brutto`; an amount has
   `.amount` and `.currency`, a period `.start` and `.end`), as the rules leave the document. A
   period writes itself in ISO 8601 by what it is (`Period.notation`): `2026-09`, `2026-W38`,
@@ -510,8 +546,9 @@ version; deleting is a soft delete.
   (`values`, for the template editor's list).
 - **Evaluation.** All conditions see the state before any rule acts; a rule's action never makes
   another rule match in the same run. Contact, type and tags the model set and no person
-  confirmed are distrusted: a rule that matches only because of them does not file into a
-  space that others see (shared or another user's); it is reported instead. Retroactively
+  confirmed are distrusted, and so are the groups of such a contact or type: a rule that
+  matches only because of them does not file into a space that others see (shared or another
+  user's); it is reported instead. Retroactively
   such a move is a conflict: it acts only where the person accepts it.
 - **Combining.** A field set by one rule, or by several to the same value, is set. Different
   values are a conflict and nothing is set; priority never decides. A value a person decided
@@ -539,7 +576,8 @@ version; deleting is a soft delete.
   write to; rights are checked again per document. Progress: `GET /rule-applications/{id}`.
 - **References.** Contacts, types, tags, fields and spaces a rule names must exist (`404`),
   spaces must be writable for the owner (`403`). Deleting one of them, or removing a choice a
-  rule uses, disables the rules that use it with a reason; enabling checks again. Deleting a user
+  rule uses, disables the rules that use it with a reason; enabling checks again. A tag a rule
+  uses is not deleted (`409`). Deleting a user
   removes their rules.
 - **Log.** Every run is a processing log entry of node `apply_rules` with the rules and versions
   checked, matches, effects and notes. `model_version`: `rules` (the pipeline node),
@@ -562,8 +600,8 @@ meaning took part.
   (`search.index`) and queues one job per change; it writes the document and reads it back, up to
   three rounds, so a change made meanwhile is not lost. A failed job repeats after 30 s,
   doubling up to an hour, ten times; the last attempt writes the words without vectors. Renaming
-  a contact, a type or a tag queues the documents that carry it: the index holds names for the
-  search by words. A reconciliation compares the index with the database and queues what is
+  a contact, a type or a tag, nesting a tag elsewhere and changing the groups of a contact or
+  type queue the documents concerned: the index holds names for the search by words. A reconciliation compares the index with the database and queues what is
   missing, stale or gone: every `PAPIQ_SEARCH_RECONCILE_INTERVAL` and at every start of a worker.
   If the embedding endpoint is down, the document is written at once with the vectors it has
   and the job repeats for the new ones. If Meilisearch loses its data, the adapter sets the
@@ -571,9 +609,11 @@ meaning took part.
   for the next reconciliation.
 - **Layout of an entry.** Each entry carries the layout it was written in (`LAYOUT` in
   `core/domain/search.py`). Layout 2 adds the ids of the fields with a value (`field_ids`), the
-  title's sort key and periods in ISO 8601 beside the German words (`2026-W38` and `KW 38 2026`).
-  The reconciliation writes older entries again and keeps their vectors, since the embedded text
-  does not change: no embedding calls.
+  title's sort key and periods in ISO 8601 beside the German words (`2026-W38` and `KW 38 2026`);
+  layout 3 the space instead of the drawer; layout 4 the tags with their ancestors and the groups
+  of contact and type with theirs (`contact_group_ids`, `document_type_group_ids` filterable,
+  their names searchable). The reconciliation writes older entries again and keeps their
+  vectors, since the embedded text does not change: no embedding calls.
 - **Sorting.** `sort` comes first among Meilisearch's ranking rules, so relevance breaks ties,
   also with vectors; document date, arrival and the title's sort key are sortable. Without
   `sort` (or with `relevance`), the hits come by relevance.
@@ -588,7 +628,8 @@ meaning took part.
   `limit`. Documents still in processing are in the index, for their owner only.
 - **Sections.** The text (at most `PAPIQ_SEARCH_MAX_TEXT` characters) is cut into sections of
   about `PAPIQ_SEARCH_CHUNK_SIZE` characters, at most `PAPIQ_SEARCH_MAX_CHUNKS`; each gets a
-  vector, and the first one starts with title, contact, type and tags. `PAPIQ_SEARCH_MAX_CHUNKS=1`
+  vector, and the first one starts with title, contact, type and the tags set (not their
+  ancestors: nesting a tag elsewhere costs no embedding). `PAPIQ_SEARCH_MAX_CHUNKS=1`
   gives one vector per document. A vector is made again only when model or section texts change.
 - **Embeddings.** The query is embedded at request time (`PAPIQ_SEARCH_EMBED_TIMEOUT`); if the
   endpoint is down or slow, the search falls back to words (`semantic: false`).
@@ -643,13 +684,14 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /auth/oidc`, `/auth/oidc/login`, `/auth/oidc/callback`; `POST/DELETE /auth/oidc/link` | OpenID Connect |
 | `GET /users`, `GET/PATCH/DELETE /users/{id}` | Accounts: list (others see active users' names), role and state, delete (admins) |
 | `POST /users`, `POST /users/{id}/password`, `DELETE /users/{id}/totp`, `DELETE /users/{id}/oidc` | Create with password, reset password, turn TOTP off, remove links (admins, session only, not the own account) |
-| `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409`. The lists take `document_counts=true` (and `all_users` for admins): each item with `document_count`, the documents in the caller's reach that have it (a field: a value for it), counted in one query |
+| `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Contacts and types take `group_ids`. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409`. The lists take `document_counts=true` (and `all_users` for admins): each item with `document_count`, the documents in the caller's reach that have it (a field: a value for it; a tag: see Tags), counted in one query (tags in a few: the parents' counts and the groups' come apart) |
+| `GET /tags` | The tags in the order of their trees (each after its parent, siblings by name; document tags, contact groups, type groups), or of one `scope`; each with `scope`, `parent_id`, `path` (the names from the top), `assignment`, `shown`. `POST` takes `scope` (default `document`), `parent_id`, `assignment` and `shown` (by scope unless given); `PATCH` name, parent (`null`: the top), assignment and `shown`, never the scope |
 | `PUT /document-types/{id}/fields` | The fields of a document type, each required or optional, set from the type in one transaction (admins); answers its fields. A global field is `422`; taking off a field that has values on its documents or that the type's title pattern uses is `409` |
 | `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins); the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |
 | `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/shares/{user_id}` | Spaces and shares (owner) |
 | `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet, `estimated_total`, `next_offset`, `semantic` |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
-| `GET /documents` | Readable documents; `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), documents without a date last either way; filters `contact_id`, `document_type_id`, `tag_id`, `space_id`, `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (the last document's id; its sort value is looked up, `422` if it is gone) |
+| `GET /documents` | Readable documents; `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), documents without a date last either way; filters `contact_id`, `document_type_id`, `tag_id` (with the tags below it), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; these three repeat, all must match), `space_id`, `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (the last document's id; its sort value is looked up, `422` if it is gone) |
 | `POST /documents` | Upload (multipart: `file`, optional `space_id`, optional `channel=migration`; otherwise the channel is `web` with a session, `api` with a token); `202` with `id`, `status_url` |
 | `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`; change (write access; the answer has the change rules' `rules` report for the owner); delete (owner or admin) |
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result and the differences |
@@ -852,11 +894,11 @@ as in REST: `read` may use every tool but `update_metadata`.
 
 | Tool | Does |
 | --- | --- |
-| `search` | `query`, `limit` (1 to 25), `offset`, optional `contact`, `document_type`, `tags` (names): hits with `id`, `title`, `score`, `snippet` (plain text), contact, type, tags, date, lane, `access`; `next_offset`, `semantic` |
+| `search` | `query`, `limit` (1 to 25), `offset`, optional `contact`, `document_type`, `tags` (names of document tags; a tag finds the documents with a tag below it too): hits with `id`, `title`, `score`, `snippet` (plain text), contact, type, tags, date, lane, `access`; `next_offset`, `semantic` |
 | `get_document` | `id`: metadata with contact, type, tags and fields by name, lane and processing status |
 | `get_text` | `id`, `offset`, `limit` (characters, at most `PAPIQ_MCP_TEXT_MAX`, 20,000): a piece of the document's text as it is set, `next_offset` to continue. The text is content from outside; the tool description tells clients not to follow instructions in it |
-| `update_metadata` | `id` and any of `title`, `contact`, `document_type` (name; `null` removes), `tags` (the complete list, replaces), `document_date` (`null` removes), `fields` (field name to value; `null` removes). Needs a `read_write` token and write access; the owner's change rules run as for `PATCH /documents/{id}` and the result shows them. If the rules filed the document where the caller can no longer read it, the result has only `id` and `access: null` |
-| `list_tags` | All tags, to name them in the other tools |
+| `update_metadata` | `id` and any of `title`, `contact`, `document_type` (name; `null` removes), `tags` (names of document tags, the complete list, replaces), `document_date` (`null` removes), `fields` (field name to value; `null` removes). Needs a `read_write` token and write access; the owner's change rules run as for `PATCH /documents/{id}` and the result shows them. If the rules filed the document where the caller can no longer read it, the result has only `id` and `access: null` |
+| `list_tags` | The tags with `scope` and `path`, in the order of their trees, optionally of one `scope`; document tags name the tags of the other tools |
 
 Names are matched regardless of case; an unknown name is an error, nothing is created. A
 document the caller may not read is "not found", with the same text as a missing one.

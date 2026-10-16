@@ -3,7 +3,16 @@ from datetime import UTC, datetime
 import pytest
 
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.master_data import MAX_ALIASES, MAX_DESCRIPTION, Contact, DocumentType, Tag
+from papiq.core.domain.master_data import (
+    MAX_ALIASES,
+    MAX_DESCRIPTION,
+    MAX_GROUPS,
+    Assignment,
+    Contact,
+    DocumentType,
+    Tag,
+    TagScope,
+)
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 
@@ -41,3 +50,42 @@ def test_document_type_description() -> None:
     assert kind.description == "Entgeltbescheinigung"
     with pytest.raises(ValidationError):
         kind.describe("x" * (MAX_DESCRIPTION + 1))
+
+
+def test_a_tag_has_a_fixed_scope_and_defaults_by_scope() -> None:
+    document = Tag.create(name="Paid", now=NOW)
+    assert (document.scope, document.assignment, document.shown) == (
+        TagScope.DOCUMENT,
+        Assignment.AUTO,
+        True,
+    )
+    assert document.is_target
+    status = Tag.create(name="To pay", now=NOW, assignment=Assignment.MANUAL)
+    assert not status.is_target
+    group = Tag.create(name="Insurance", now=NOW, scope=TagScope.CONTACT)
+    assert (group.assignment, group.shown, group.is_target) == (Assignment.MANUAL, False, False)
+    shown = Tag.create(name="Invoice", now=NOW, scope=TagScope.DOCUMENT_TYPE, shown=True)
+    assert shown.shown
+
+
+def test_groups_are_set_by_hand_and_no_tag_is_its_own_parent() -> None:
+    with pytest.raises(ValidationError, match="by hand"):
+        Tag.create(name="Insurance", now=NOW, scope=TagScope.CONTACT, assignment=Assignment.AUTO)
+    group = Tag.create(name="Insurance", now=NOW, scope=TagScope.CONTACT)
+    with pytest.raises(ValidationError, match="by hand"):
+        group.assign(Assignment.AUTO)
+    with pytest.raises(ValidationError, match="own parent"):
+        group.move(group.id)
+
+
+def test_contacts_and_types_are_in_groups() -> None:
+    group = Tag.create(name="Insurance", now=NOW, scope=TagScope.CONTACT)
+    contact = Contact.create(name="Nord", now=NOW)
+    assert contact.group_ids == frozenset()
+    contact.set_groups([group.id, group.id])
+    assert contact.group_ids == {group.id}
+    kind = DocumentType.create(name="Invoice", now=NOW)
+    kind.set_groups([group.id])
+    assert kind.group_ids == {group.id}
+    with pytest.raises(ValidationError, match="groups"):
+        kind.set_groups(Tag.create(name=str(n), now=NOW).id for n in range(MAX_GROUPS + 1))

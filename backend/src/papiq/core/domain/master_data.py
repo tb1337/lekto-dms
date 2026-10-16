@@ -1,4 +1,9 @@
-"""Master data: contacts, document types and tags. Global, no owner; only admins change them."""
+"""Master data: contacts, document types and tags. Global, no owner; only admins change them.
+
+A tag has a scope (`TagScope`): it describes a document, or groups contacts or document types.
+Tags nest (`parent_id`, a tag of the same scope); only the tag set is stored, its ancestors
+are derived (`tag_tree.TagTree`). A contact and a document type are in any number of groups
+(`group_ids`), which their documents inherit."""
 
 import re
 from collections.abc import Iterable
@@ -21,6 +26,8 @@ MAX_ALIASES = 100
 """Aliases of one contact."""
 MAX_DESCRIPTION = 300
 """Characters of the description of a document type or a field; it goes into the prompts."""
+MAX_GROUPS = 100
+"""Groups of one contact or document type."""
 
 
 class Assignment(StrEnum):
@@ -30,6 +37,34 @@ class Assignment(StrEnum):
 
     AUTO = "auto"
     MANUAL = "manual"
+
+
+class TagScope(StrEnum):
+    """What a tag describes, fixed when it is made: a document (`document`, as tags were
+    before 0.3), contacts (`contact`: a contact group, "insurance") or document types
+    (`document_type`: a type group, "invoice" over "medical bill"). Names are unique per
+    scope."""
+
+    DOCUMENT = "document"
+    CONTACT = "contact"
+    DOCUMENT_TYPE = "document_type"
+
+    @property
+    def is_group(self) -> bool:
+        """Whether its tags group contacts or document types: static, set by hand only, and
+        inherited by documents through their contact and type."""
+        return self in (TagScope.CONTACT, TagScope.DOCUMENT_TYPE)
+
+    @property
+    def assignment(self) -> Assignment:
+        """The assignment a new tag of the scope gets unless another is given."""
+        return Assignment.MANUAL if self.is_group else Assignment.AUTO
+
+    @property
+    def shown(self) -> bool:
+        """Whether a new tag of the scope is shown at documents unless told otherwise: groups
+        are not, document tags are."""
+        return not self.is_group
 
 
 @dataclass(kw_only=True)
@@ -48,6 +83,13 @@ class MasterData:
         self.name = require_name(name)
 
 
+def _groups(group_ids: Iterable[TagId]) -> frozenset[TagId]:
+    groups = frozenset(group_ids)
+    if len(groups) > MAX_GROUPS:
+        raise ValidationError(f"at most {MAX_GROUPS} groups")
+    return groups
+
+
 @dataclass(kw_only=True)
 class Contact(MasterData):
     """The other party of a document (Paperless-ngx: correspondent).
@@ -58,16 +100,21 @@ class Contact(MasterData):
     unique too (see `MasterDataService`).
 
     `identifiers` are values its documents carry (see `identifiers`): entered by hand, learned
-    by training, or learned and rejected. Each value belongs to one contact at most."""
+    by training, or learned and rejected. Each value belongs to one contact at most.
+
+    `group_ids`: the contact groups it is in (tags of scope `contact`; the service checks
+    them)."""
 
     id: ContactId
     aliases: list[str] = field(default_factory=list)
     identifiers: list[Identifier] = field(default_factory=list)
+    group_ids: frozenset[TagId] = frozenset()
 
     def __post_init__(self) -> None:
         super().__post_init__()
         self.aliases = _aliases(self.name, self.aliases)
         self.identifiers = _identifiers(self.identifiers)
+        self.group_ids = _groups(self.group_ids)
 
     @classmethod
     def create(
@@ -90,6 +137,9 @@ class Contact(MasterData):
 
     def set_aliases(self, aliases: Iterable[str]) -> None:
         self.aliases = _aliases(self.name, aliases)
+
+    def set_groups(self, group_ids: Iterable[TagId]) -> None:
+        self.group_ids = _groups(group_ids)
 
     def names(self) -> list[str]:
         """The name and the aliases."""
@@ -152,16 +202,19 @@ class DocumentType(MasterData):
     language model what belongs to the type ("pay slips, Entgeltbescheinigung, ...").
     `title_pattern`: a template (Liquid, `domain.templates`) for the title of its documents,
     carried out by a rule the type keeps (`rules.title_rule`); its syntax and fields are the
-    service's to check."""
+    service's to check. `group_ids`: the type groups it is in (tags of scope
+    `document_type`)."""
 
     id: DocumentTypeId
     description: str | None = None
     title_pattern: str | None = None
+    group_ids: frozenset[TagId] = frozenset()
 
     def __post_init__(self) -> None:
         super().__post_init__()
         self.description = checked_description(self.description)
         self.title_pattern = _title_pattern(self.title_pattern)
+        self.group_ids = _groups(self.group_ids)
 
     @classmethod
     def create(
@@ -186,16 +239,73 @@ class DocumentType(MasterData):
     def set_title_pattern(self, pattern: str | None) -> None:
         self.title_pattern = _title_pattern(pattern)
 
+    def set_groups(self, group_ids: Iterable[TagId]) -> None:
+        self.group_ids = _groups(group_ids)
+
 
 @dataclass(kw_only=True)
 class Tag(MasterData):
-    """A label; tags carry no permissions."""
+    """A label; tags carry no permissions.
+
+    `scope` never changes. `parent_id`: the tag it is nested under, of the same scope (the
+    tree's rules, no cycle and at most five levels, are `TagTree.check_parent`'s).
+    `assignment`: whether the classification proposes and sets it (`auto`, document tags
+    only) or only a person or a rule does (`manual`: status tags such as "to pay"; groups
+    always). `shown`: whether documents show it (in their chips; filters, search, rules and
+    templates see it either way)."""
 
     id: TagId
+    scope: TagScope = TagScope.DOCUMENT
+    parent_id: TagId | None = None
+    assignment: Assignment = Assignment.AUTO
+    shown: bool = True
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self._check()
 
     @classmethod
-    def create(cls, *, name: str, now: datetime) -> Self:
-        return cls(id=TagId(new_id()), name=name, created_at=now)
+    def create(
+        cls,
+        *,
+        name: str,
+        now: datetime,
+        scope: TagScope = TagScope.DOCUMENT,
+        parent_id: TagId | None = None,
+        assignment: Assignment | None = None,
+        shown: bool | None = None,
+    ) -> Self:
+        """`assignment` and `shown` follow the scope unless given (`TagScope.assignment`,
+        `TagScope.shown`)."""
+        return cls(
+            id=TagId(new_id()),
+            name=name,
+            created_at=now,
+            scope=scope,
+            parent_id=parent_id,
+            assignment=scope.assignment if assignment is None else assignment,
+            shown=scope.shown if shown is None else shown,
+        )
+
+    def move(self, parent_id: TagId | None) -> None:
+        """Nest it under `parent_id` (None: a top-level tag); the caller checks the tree."""
+        self.parent_id = parent_id
+        self._check()
+
+    def assign(self, assignment: Assignment) -> None:
+        self.assignment = assignment
+        self._check()
+
+    @property
+    def is_target(self) -> bool:
+        """Whether the classification proposes and sets it: a document tag set `auto`."""
+        return self.scope is TagScope.DOCUMENT and self.assignment is Assignment.AUTO
+
+    def _check(self) -> None:
+        if self.parent_id == self.id:
+            raise ValidationError("a tag cannot be its own parent")
+        if self.scope.is_group and self.assignment is not Assignment.MANUAL:
+            raise ValidationError("groups are set by hand only (assignment 'manual')")
 
 
 _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")

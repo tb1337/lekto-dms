@@ -45,7 +45,7 @@ def field_json(value: FieldValue) -> str | bool | MoneyValue | PeriodValue:
 
 
 class RuleEffectOut(BaseModel):
-    field: str = Field(description="`drawer`, `contact`, `document_type`, `title`, `tags`, ...")
+    field: str = Field(description="`space`, `contact`, `document_type`, `title`, `tags`, ...")
     old: Any
     new: Any
 

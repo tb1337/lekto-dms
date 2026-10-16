@@ -11,7 +11,7 @@ const FIELD_LABELS: Record<string, () => string> = {
 	document_type: m.field_document_type,
 	tags: m.field_tags,
 	document_date: m.field_date,
-	drawer: m.field_drawer,
+	space: m.field_space,
 	correspondent: m.field_contact
 };
 
@@ -38,7 +38,7 @@ export function describeValue(value: unknown, lookup: Lookup | null): string {
 			...lookup.contacts,
 			...lookup.documentTypes,
 			...lookup.tags,
-			...lookup.drawers
+			...lookup.spaces
 		].find((entry) => entry.id === text);
 		if (named) return named.name;
 		const user = lookup.users.find((entry) => entry.id === text);

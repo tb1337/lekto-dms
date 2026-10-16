@@ -10,9 +10,9 @@ from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
     DocumentTypeId,
-    DrawerId,
     FieldId,
     RuleId,
+    SpaceId,
     TagId,
     UserId,
     new_id,
@@ -44,8 +44,8 @@ from papiq.core.domain.rules import (
     RuleVersion,
     SetContact,
     SetDocumentType,
-    SetDrawer,
     SetField,
+    SetSpace,
     SetTitle,
     Trigger,
     action_from_json,
@@ -66,7 +66,7 @@ OTHER_CONTACT = ContactId(new_id())
 TYPE = DocumentTypeId(new_id())
 TAG = TagId(new_id())
 OTHER_TAG = TagId(new_id())
-DRAWER = DrawerId(new_id())
+SPACE = SpaceId(new_id())
 FIELD = FieldId(new_id())
 ID = str(new_id())
 
@@ -142,7 +142,7 @@ def full_definition() -> RuleDefinition:
             ),
         ),
         actions=(
-            SetDrawer(DRAWER),
+            SetSpace(SPACE),
             SetContact(CONTACT),
             SetDocumentType(TYPE),
             SetTitle("{contact} {document_date}"),
@@ -193,7 +193,7 @@ def test_definition_json_shape() -> None:
     actions = data["actions"]
     assert isinstance(actions, list)
     assert [action["type"] for action in actions if isinstance(action, dict)] == [
-        "set_drawer",
+        "set_space",
         "set_contact",
         "set_document_type",
         "set_title",
@@ -494,7 +494,7 @@ def test_definition_needs_triggers_and_actions() -> None:
     "actions",
     [
         (SetContact(CONTACT), SetContact(OTHER_CONTACT)),
-        (SetDrawer(DRAWER), SetDrawer(DrawerId(new_id()))),
+        (SetSpace(SPACE), SetSpace(SpaceId(new_id()))),
         (SetTitle("a"), SetTitle("b")),
         (SetField(FIELD, "a"), SetField(FIELD, "b")),
     ],
@@ -566,7 +566,7 @@ def test_action_values() -> None:
 
 @pytest.mark.parametrize(
     "action",
-    [SetDrawer(DRAWER), SetContact(CONTACT), SetDocumentType(TYPE), SetTitle("{contact}")],
+    [SetSpace(SPACE), SetContact(CONTACT), SetDocumentType(TYPE), SetTitle("{contact}")],
 )
 def test_global_rules_cannot_change_who_sees_or_files(action: Action) -> None:
     with pytest.raises(ValidationError, match=f"a global rule cannot {action.type}"):
@@ -586,11 +586,11 @@ def test_global_actions() -> None:
 
 
 def test_global_rule_is_created_and_changed_with_global_actions_only() -> None:
-    with pytest.raises(ValidationError, match="a global rule cannot set_drawer"):
+    with pytest.raises(ValidationError, match="a global rule cannot set_space"):
         Rule.create(
             scope=RuleScope.GLOBAL,
             owner_id=None,
-            definition=definition(SetDrawer(DRAWER)),
+            definition=definition(SetSpace(SPACE)),
             by=ADMIN,
             now=NOW,
         )
@@ -756,9 +756,9 @@ def test_errors_of_stored_data_and_scope_name_the_place() -> None:
     fitting = definition(SetField(number.id, "seven"), AddTags(frozenset({TAG})))
     with pytest.raises(ValidationError, match=r"^actions\[0\]: .*does not accept"):
         check_fields(fitting, {number.id: number})
-    with pytest.raises(ValidationError, match=r"^actions\[1\]: a global rule cannot set_drawer"):
+    with pytest.raises(ValidationError, match=r"^actions\[1\]: a global rule cannot set_space"):
         check_scope(
-            definition(AddTags(frozenset({TAG})), SetDrawer(DrawerId(new_id()))),
+            definition(AddTags(frozenset({TAG})), SetSpace(SpaceId(new_id()))),
             RuleScope.GLOBAL,
         )
     with pytest.raises(ValidationError, match=r"^actions\[2\]: an action sets the same field"):
@@ -774,7 +774,7 @@ def test_references() -> None:
     tags = [TagId(new_id()) for _ in range(3)]
     attr = FieldId(new_id())
     rule = definition(
-        SetDrawer(DRAWER),
+        SetSpace(SPACE),
         SetContact(CONTACT),
         SetDocumentType(TYPE),
         AddTags(frozenset({tags[2]})),
@@ -803,7 +803,7 @@ def test_references() -> None:
         document_types=frozenset({type_in_condition, TYPE}),
         tags=frozenset({*tags, OTHER_TAG}),
         fields=frozenset({attr, FIELD}),
-        drawers=frozenset({DRAWER}),
+        spaces=frozenset({SPACE}),
     )
 
 
@@ -969,10 +969,10 @@ def test_application_progress() -> None:
 
     run.record(a, "applied")
     run.record(b, "unchanged")
-    run.record(c, "the drawer is read-only")
+    run.record(c, "the space is read-only")
 
     assert (run.position, run.applied, run.unchanged) == (3, 1, 1)
-    assert run.skipped == [(c, "the drawer is read-only")]
+    assert run.skipped == [(c, "the space is read-only")]
     assert (run.status, run.remaining) == (ApplicationStatus.RUNNING, (d,))
 
     run.record(d, "applied")

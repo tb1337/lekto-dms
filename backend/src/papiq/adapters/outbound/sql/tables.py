@@ -58,8 +58,8 @@ users = Table(
     Column("version", Integer, nullable=False),
 )
 
-drawers = Table(
-    "drawers",
+spaces = Table(
+    "spaces",
     metadata,
     Column("id", Uuid, primary_key=True),
     Column("owner_id", Uuid, ForeignKey("users.id"), nullable=False),
@@ -70,19 +70,19 @@ drawers = Table(
     Column("version", Integer, nullable=False),
     Index(None, "owner_id", "name_key", unique=True),
 )
-# One default drawer per owner.
+# One default space per owner.
 Index(
-    "uq_drawers_default_owner_id",
-    drawers.c.owner_id,
+    "uq_spaces_default_owner_id",
+    spaces.c.owner_id,
     unique=True,
-    sqlite_where=drawers.c.is_default,
-    postgresql_where=drawers.c.is_default,
+    sqlite_where=spaces.c.is_default,
+    postgresql_where=spaces.c.is_default,
 )
 
-drawer_shares = Table(
-    "drawer_shares",
+space_shares = Table(
+    "space_shares",
     metadata,
-    Column("drawer_id", Uuid, ForeignKey("drawers.id", ondelete="CASCADE"), primary_key=True),
+    Column("space_id", Uuid, ForeignKey("spaces.id", ondelete="CASCADE"), primary_key=True),
     Column("user_id", Uuid, ForeignKey("users.id"), primary_key=True, index=True),
     Column("level", Text, nullable=False),
 )
@@ -197,7 +197,7 @@ documents = Table(
     metadata,
     Column("id", Uuid, primary_key=True),
     Column("owner_id", Uuid, ForeignKey("users.id"), nullable=False),
-    Column("drawer_id", Uuid, ForeignKey("drawers.id"), nullable=False, index=True),
+    Column("space_id", Uuid, ForeignKey("spaces.id"), nullable=False, index=True),
     Column("sha256", String(64), nullable=False),
     Column("title", Text, nullable=False),
     # The title as lists sort it (`sort_key`): case and accents aside.

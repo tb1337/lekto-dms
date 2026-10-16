@@ -9,8 +9,8 @@ from uuid import UUID
 from sqlalchemy import ColumnElement, FromClause, Row, and_, delete, func, insert, or_, select
 
 from papiq.adapters.outbound.sql import tables as t
-from papiq.adapters.outbound.sql.drawers import visible_to
 from papiq.adapters.outbound.sql.repositories import MICROSECOND, SqlRepository, Values
+from papiq.adapters.outbound.sql.spaces import visible_to
 from papiq.adapters.outbound.sql.transaction import Transaction
 from papiq.core.domain.documents import Channel, Document, Sha256
 from papiq.core.domain.fields import FieldValue, Money, Url
@@ -18,8 +18,8 @@ from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
     DocumentTypeId,
-    DrawerId,
     FieldId,
+    SpaceId,
     TagId,
     UserId,
 )
@@ -147,8 +147,8 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             criteria.append(documents.c.contact_id == filter.contact)
         if filter.document_type is not None:
             criteria.append(documents.c.document_type_id == filter.document_type)
-        if filter.drawer is not None:
-            criteria.append(documents.c.drawer_id == filter.drawer)
+        if filter.space is not None:
+            criteria.append(documents.c.space_id == filter.space)
         for tag in sorted(filter.tags):
             tags = t.document_tags
             criteria.append(
@@ -209,7 +209,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         self,
         *,
         owner: UserId | None = None,
-        drawer: DrawerId | None = None,
+        space: SpaceId | None = None,
         contact: ContactId | None = None,
         document_type: DocumentTypeId | None = None,
         tag: TagId | None = None,
@@ -220,8 +220,8 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         criteria: list[ColumnElement[bool]] = []
         if owner is not None:
             criteria.append(documents.c.owner_id == owner)
-        if drawer is not None:
-            criteria.append(documents.c.drawer_id == drawer)
+        if space is not None:
+            criteria.append(documents.c.space_id == space)
         if contact is not None:
             criteria.append(documents.c.contact_id == contact)
         if document_type is not None:
@@ -251,7 +251,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             Document(
                 id=DocumentId(row.id),
                 owner_id=UserId(row.owner_id),
-                drawer_id=DrawerId(row.drawer_id),
+                space_id=SpaceId(row.space_id),
                 sha256=Sha256(row.sha256),
                 title=row.title,
                 original_filename=row.original_filename,
@@ -288,7 +288,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         return {
             "id": entity.id,
             "owner_id": entity.owner_id,
-            "drawer_id": entity.drawer_id,
+            "space_id": entity.space_id,
             "sha256": entity.sha256.hex,
             "title": entity.title,
             "title_key": sort_key(entity.title),

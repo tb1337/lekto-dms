@@ -4,7 +4,7 @@ Who may do what:
 
 - A user rule belongs to its owner, who changes it. Admins read and change every rule (Tobi,
   08.10.2026); the references of a user rule are checked for its owner, also when an admin
-  changes it (it files only into drawers its owner may write to). Other users do not learn that
+  changes it (it files only into spaces its owner may write to). Other users do not learn that
   someone else's rule exists (NotFoundError).
 - Global rules are read by everyone and changed by admins only.
 """
@@ -23,7 +23,7 @@ from papiq.core.domain.errors import (
 )
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.ids import DocumentId, DocumentTypeId, RuleId, UserId
-from papiq.core.domain.permissions import drawer_access
+from papiq.core.domain.permissions import space_access
 from papiq.core.domain.rules import (
     ForceReview,
     Rule,
@@ -224,7 +224,7 @@ async def check_references(
 ) -> None:
     """Everything the definition refers to exists (NotFoundError otherwise), field
     conditions and values fit their field (ValidationError), and the `owner` of a user
-    rule may file into its drawer (PermissionDeniedError; checked again whenever it runs)."""
+    rule may file into its space (PermissionDeniedError; checked again whenever it runs)."""
     references = definition.references()
     for contact in references.contacts:
         await uow.contacts.get(contact)
@@ -238,13 +238,13 @@ async def check_references(
             if field_id not in fields:
                 raise NotFoundError("field", field_id)
         check_fields(definition, fields)
-    for drawer_id in references.drawers:
-        drawer = await uow.drawers.find(drawer_id)
-        access = None if drawer is None or owner is None else drawer_access(owner, drawer)
-        if drawer is None or access is None:
-            raise NotFoundError("drawer", drawer_id)
+    for space_id in references.spaces:
+        space = await uow.spaces.find(space_id)
+        access = None if space is None or owner is None else space_access(owner, space)
+        if space is None or access is None:
+            raise NotFoundError("space", space_id)
         if not access.can_write:
-            raise PermissionDeniedError(f"no write access to drawer '{drawer.name}'")
+            raise PermissionDeniedError(f"no write access to space '{space.name}'")
 
 
 async def check_templates(
@@ -361,14 +361,14 @@ async def document_values(
     """The values a template sees of `document` as it is (`templates.template_values`)."""
     contact = None if document.contact_id is None else await uow.contacts.find(document.contact_id)
     kind = None if document_type is None else await uow.document_types.find(document_type)
-    drawer = await uow.drawers.find(document.drawer_id)
+    space = await uow.spaces.find(document.space_id)
     owner = await uow.users.find(document.owner_id)
     tags = [tag.name for id in document.tag_ids if (tag := await uow.tags.find(id)) is not None]
     return template_values(
         document,
         contact=None if contact is None else contact.name,
         document_type=None if kind is None else kind.name,
-        drawer=None if drawer is None else drawer.name,
+        space=None if space is None else space.name,
         owner=None if owner is None else owner.username,
         tags=tags,
         document_date=document.document_date,

@@ -327,7 +327,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Create a user
-		 * @description Admins only. Creates the user's private default drawer, too. A user with the role `user` and no password can be created with an admin's API token (`read_write`), e.g. by a migration; a password or the role `admin` needs a session, as for `/auth/*`.
+		 * @description Admins only. Creates the user's private default space, too. A user with the role `user` and no password can be created with an admin's API token (`read_write`), e.g. by a migration; a password or the role `admin` needs a session, as for `/auth/*`.
 		 */
 		post: operations['create_user_api_v1_users_post'];
 		delete?: never;
@@ -352,7 +352,7 @@ export interface paths {
 		post?: never;
 		/**
 		 * Delete a user
-		 * @description Admins only. Only a user who owns no documents and whose drawers are empty (409); removes their drawers, the shares to them and their sign-in data.
+		 * @description Admins only. Only a user who owns no documents and whose spaces are empty (409); removes their spaces, the shares to them and their sign-in data.
 		 */
 		delete: operations['delete_user_api_v1_users__id__delete'];
 		options?: never;
@@ -660,7 +660,7 @@ export interface paths {
 		patch: operations['change_field_api_v1_fields__id__patch'];
 		trace?: never;
 	};
-	'/api/v1/drawers': {
+	'/api/v1/spaces': {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -668,48 +668,48 @@ export interface paths {
 			cookie?: never;
 		};
 		/**
-		 * List drawers
-		 * @description The drawers the caller owns or that are shared with them; every drawer for admins.
+		 * List spaces
+		 * @description The spaces the caller owns or that are shared with them; every space for admins.
 		 */
-		get: operations['list_drawers_api_v1_drawers_get'];
+		get: operations['list_spaces_api_v1_spaces_get'];
 		put?: never;
 		/**
-		 * Create a drawer
-		 * @description Names are unique per owner regardless of case. The caller owns the drawer; admins may give `owner_id` to create one for another active user (others: 403, an unknown or deactivated user: 404).
+		 * Create a space
+		 * @description Names are unique per owner regardless of case. The caller owns the space; admins may give `owner_id` to create one for another active user (others: 403, an unknown or deactivated user: 404).
 		 */
-		post: operations['create_drawer_api_v1_drawers_post'];
+		post: operations['create_space_api_v1_spaces_post'];
 		delete?: never;
 		options?: never;
 		head?: never;
 		patch?: never;
 		trace?: never;
 	};
-	'/api/v1/drawers/{id}': {
+	'/api/v1/spaces/{id}': {
 		parameters: {
 			query?: never;
 			header?: never;
 			path?: never;
 			cookie?: never;
 		};
-		/** A drawer */
-		get: operations['get_drawer_api_v1_drawers__id__get'];
+		/** A space */
+		get: operations['get_space_api_v1_spaces__id__get'];
 		put?: never;
 		post?: never;
 		/**
-		 * Delete a drawer
-		 * @description The owner and admins. Not the default drawer, and only while it is empty (409).
+		 * Delete a space
+		 * @description The owner and admins. Not the default space, and only while it is empty (409).
 		 */
-		delete: operations['delete_drawer_api_v1_drawers__id__delete'];
+		delete: operations['delete_space_api_v1_spaces__id__delete'];
 		options?: never;
 		head?: never;
 		/**
-		 * Rename a drawer
+		 * Rename a space
 		 * @description The owner and admins.
 		 */
-		patch: operations['rename_drawer_api_v1_drawers__id__patch'];
+		patch: operations['rename_space_api_v1_spaces__id__patch'];
 		trace?: never;
 	};
-	'/api/v1/drawers/{id}/shares/{user_id}': {
+	'/api/v1/spaces/{id}/shares/{user_id}': {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -718,16 +718,16 @@ export interface paths {
 		};
 		get?: never;
 		/**
-		 * Share a drawer
-		 * @description The owner and admins. Sets the user's access: `read` or `read_write`. The default drawer cannot be shared (422); an unknown or deactivated user is not found (404). Other users see documents in it once they are green.
+		 * Share a space
+		 * @description The owner and admins. Sets the user's access: `read` or `read_write`. The default space cannot be shared (422); an unknown or deactivated user is not found (404). Other users see documents in it once they are green.
 		 */
-		put: operations['share_drawer_api_v1_drawers__id__shares__user_id__put'];
+		put: operations['share_space_api_v1_spaces__id__shares__user_id__put'];
 		post?: never;
 		/**
-		 * Stop sharing a drawer with a user
+		 * Stop sharing a space with a user
 		 * @description The owner and admins.
 		 */
-		delete: operations['unshare_drawer_api_v1_drawers__id__shares__user_id__delete'];
+		delete: operations['unshare_space_api_v1_spaces__id__shares__user_id__delete'];
 		options?: never;
 		head?: never;
 		patch?: never;
@@ -748,7 +748,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Create a rule
-		 * @description Global rules: admins only (403). The content is checked: operators fit the field and the field's data type, patterns compile, a global rule only tags, sets fields and forces reviews (422, the message names the place, such as `conditions.all[1].any[0]` or `actions[2]`); contacts, types, tags, fields and drawers exist (404); a user rule files only into drawers its owner may write to (403).
+		 * @description Global rules: admins only (403). The content is checked: operators fit the field and the field's data type, patterns compile, a global rule only tags, sets fields and forces reviews (422, the message names the place, such as `conditions.all[1].any[0]` or `actions[2]`); contacts, types, tags, fields and spaces exist (404); a user rule files only into spaces its owner may write to (403).
 		 */
 		post: operations['create_rule_api_v1_rules_post'];
 		delete?: never;
@@ -771,7 +771,7 @@ export interface paths {
 		get: operations['get_rule_api_v1_rules__id__get'];
 		/**
 		 * Change a rule
-		 * @description Makes a new version; earlier ones stay readable. A user rule: its owner and admins (its references are checked for its owner). A global rule: admins. The content is checked: operators fit the field and the field's data type, patterns compile, a global rule only tags, sets fields and forces reviews (422, the message names the place, such as `conditions.all[1].any[0]` or `actions[2]`); contacts, types, tags, fields and drawers exist (404); a user rule files only into drawers its owner may write to (403).
+		 * @description Makes a new version; earlier ones stay readable. A user rule: its owner and admins (its references are checked for its owner). A global rule: admins. The content is checked: operators fit the field and the field's data type, patterns compile, a global rule only tags, sets fields and forces reviews (422, the message names the place, such as `conditions.all[1].any[0]` or `actions[2]`); contacts, types, tags, fields and spaces exist (404); a user rule files only into spaces its owner may write to (403).
 		 */
 		put: operations['change_rule_api_v1_rules__id__put'];
 		post?: never;
@@ -998,7 +998,7 @@ export interface paths {
 		};
 		/**
 		 * List documents
-		 * @description The documents within the caller's reach, newest first: their own, and green documents in drawers they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id` and `lane` may repeat (all tags, any lane; `processing`: no lane yet); `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. To search by words and meaning use `GET /documents/search`.
+		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id` and `lane` may repeat (all tags, any lane; `processing`: no lane yet); `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. To search by words and meaning use `GET /documents/search`.
 		 */
 		get: operations['list_documents_api_v1_documents_get'];
 		put?: never;
@@ -1071,8 +1071,8 @@ export interface paths {
 		get?: never;
 		put?: never;
 		/**
-		 * Move a document to another drawer
-		 * @description The owner moves into drawers they may write to; an admin moves any document into any drawer. Shares do not allow moving.
+		 * Move a document to another space
+		 * @description The owner moves into spaces they may write to; an admin moves any document into any space. Shares do not allow moving.
 		 */
 		post: operations['move_document_api_v1_documents__id__move_post'];
 		delete?: never;
@@ -1392,7 +1392,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Confirm a document from the inbox
-		 * @description The owner and admins, for yellow and red documents that are not being processed. `drawer_id` must be a drawer the owner may write to; an admin chooses any drawer. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `drawer`, `title` and `review` always have a value: confirming keeps it, `drawer_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the owner decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's).
+		 * @description The owner and admins, for yellow and red documents that are not being processed. `space_id` must be a space the owner may write to; an admin chooses any space. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `space`, `title` and `review` always have a value: confirming keeps it, `space_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the owner decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's).
 		 */
 		post: operations['confirm_api_v1_documents__id__confirm_post'];
 		delete?: never;
@@ -1496,7 +1496,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Create a webhook
-		 * @description Papiq sends a signed request to the URL for each event of the chosen types on documents within the owner's reach: their own, and green ones in drawers they own or that are shared with them (an admin's webhooks too; the rights of an admin do not widen them). The answer holds the secret, shown only once. At most 20 webhooks per user (409).
+		 * @description Papiq sends a signed request to the URL for each event of the chosen types on documents within the owner's reach: their own, and green ones in spaces they own or that are shared with them (an admin's webhooks too; the rights of an admin do not widen them). The answer holds the secret, shown only once. At most 20 webhooks per user (409).
 		 */
 		post: operations['create_webhook_api_v1_webhooks_post'];
 		delete?: never;
@@ -2163,10 +2163,10 @@ export interface components {
 			 */
 			resume_at: components['schemas']['ResumeNode'];
 			/**
-			 * Drawer Id
-			 * @description Move the document into this drawer (one the owner may write to); decides the rules' open field `drawer`. Default: it stays where it is.
+			 * Space Id
+			 * @description Move the document into this space (one the owner may write to); decides the rules' open field `space`. Default: it stays where it is.
 			 */
-			drawer_id?: string | null;
+			space_id?: string | null;
 		};
 		/**
 		 * ContactCreate
@@ -2328,7 +2328,6 @@ export interface components {
 		 *       "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "created_at": "2026-04-02T08:15:00Z",
 		 *       "document_date": "2026-03-31",
-		 *       "drawer_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "fields": {
 		 *         "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b": {
 		 *           "amount": "84.20",
@@ -2363,6 +2362,7 @@ export interface components {
 		 *         "vision": false
 		 *       },
 		 *       "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+		 *       "space_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "tag_ids": [],
 		 *       "title": "Electricity bill March",
 		 *       "updated_at": "2026-04-02T08:16:10Z"
@@ -2397,10 +2397,10 @@ export interface components {
 			 */
 			owner_id: string;
 			/**
-			 * Drawer Id
+			 * Space Id
 			 * Format: uuid
 			 */
-			drawer_id: string;
+			space_id: string;
 			/** @description What the caller may do: read, or read and write. */
 			access: components['schemas']['ShareLevel'];
 			/** Contact Id */
@@ -2460,7 +2460,6 @@ export interface components {
 		 *       "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "created_at": "2026-04-02T08:15:00Z",
 		 *       "document_date": "2026-03-31",
-		 *       "drawer_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "fields": {
 		 *         "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b": {
 		 *           "amount": "84.20",
@@ -2495,6 +2494,7 @@ export interface components {
 		 *         "vision": false
 		 *       },
 		 *       "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+		 *       "space_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "tag_ids": [],
 		 *       "title": "Electricity bill March",
 		 *       "updated_at": "2026-04-02T08:16:10Z"
@@ -2529,10 +2529,10 @@ export interface components {
 			 */
 			owner_id: string;
 			/**
-			 * Drawer Id
+			 * Space Id
 			 * Format: uuid
 			 */
-			drawer_id: string;
+			space_id: string;
 			/** @description What the caller may do: read, or read and write. */
 			access: components['schemas']['ShareLevel'];
 			/** Contact Id */
@@ -2698,7 +2698,7 @@ export interface components {
 			document: components['schemas']['DocumentDetails'] | null;
 			/**
 			 * Changed
-			 * @description Fields that would change: `title`, `contact`, `document_type`, `tags`, `document_date`, `field:<id>`, `drawer`.
+			 * @description Fields that would change: `title`, `contact`, `document_type`, `tags`, `document_date`, `field:<id>`, `space`.
 			 */
 			changed: string[];
 			/**
@@ -2800,56 +2800,6 @@ export interface components {
 			description?: string | null;
 			/** Title Pattern */
 			title_pattern?: string | null;
-		};
-		/**
-		 * DrawerCreate
-		 * @example {
-		 *       "name": "Household"
-		 *     }
-		 */
-		DrawerCreate: {
-			/**
-			 * Name
-			 * @example ACME Energy
-			 */
-			name: string;
-			/**
-			 * Owner Id
-			 * @description Admins only: the user who will own the drawer. Default: the caller.
-			 */
-			owner_id?: string | null;
-		};
-		/** DrawerOut */
-		DrawerOut: {
-			/**
-			 * Id
-			 * Format: uuid
-			 */
-			id: string;
-			/**
-			 * Name
-			 * @example Household
-			 */
-			name: string;
-			/**
-			 * Owner Id
-			 * Format: uuid
-			 */
-			owner_id: string;
-			/** Is Default */
-			is_default: boolean;
-			/** @description The caller's access: owner and admins (read_write), or the share. */
-			access: components['schemas']['ShareLevel'];
-			/**
-			 * Shares
-			 * @description Only for the owner and admins.
-			 */
-			shares: components['schemas']['ShareOut'][] | null;
-			/**
-			 * Created At
-			 * Format: date-time
-			 */
-			created_at: string;
 		};
 		/**
 		 * ExchangeNode
@@ -3586,15 +3536,15 @@ export interface components {
 		/**
 		 * MoveRequest
 		 * @example {
-		 *       "drawer_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b"
+		 *       "space_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b"
 		 *     }
 		 */
 		MoveRequest: {
 			/**
-			 * Drawer Id
+			 * Space Id
 			 * Format: uuid
 			 */
-			drawer_id: string;
+			space_id: string;
 		};
 		/**
 		 * NameIn
@@ -3721,7 +3671,7 @@ export interface components {
 			reason: string | null;
 			/**
 			 * Fields
-			 * @description Uncertain fields of classification, field extraction and the rules (also `drawer`, `title`, `review`), and of filing (`drawer`).
+			 * @description Uncertain fields of classification, field extraction and the rules (also `space`, `title`, `review`), and of filing (`space`).
 			 */
 			fields: components['schemas']['FieldCheckOut'][];
 		};
@@ -4057,8 +4007,8 @@ export interface components {
 		 * @example {
 		 *       "actions": [
 		 *         {
-		 *           "drawer_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
-		 *           "type": "set_drawer"
+		 *           "space_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
+		 *           "type": "set_space"
 		 *         },
 		 *         {
 		 *           "tag_ids": [
@@ -4111,7 +4061,7 @@ export interface components {
 			conditions: components['schemas']['AllGroup-Input'] | components['schemas']['AnyGroup-Input'];
 			/** Actions */
 			actions: (
-				| components['schemas']['SetDrawerAction']
+				| components['schemas']['SetSpaceAction']
 				| components['schemas']['SetContactAction']
 				| components['schemas']['SetDocumentTypeAction']
 				| components['schemas']['SetTitleAction']
@@ -4132,8 +4082,8 @@ export interface components {
 		 * @example {
 		 *       "actions": [
 		 *         {
-		 *           "drawer_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
-		 *           "type": "set_drawer"
+		 *           "space_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b",
+		 *           "type": "set_space"
 		 *         },
 		 *         {
 		 *           "tag_ids": [
@@ -4185,7 +4135,7 @@ export interface components {
 			conditions: components['schemas']['AllGroup-Input'] | components['schemas']['AnyGroup-Input'];
 			/** Actions */
 			actions: (
-				| components['schemas']['SetDrawerAction']
+				| components['schemas']['SetSpaceAction']
 				| components['schemas']['SetContactAction']
 				| components['schemas']['SetDocumentTypeAction']
 				| components['schemas']['SetTitleAction']
@@ -4199,7 +4149,7 @@ export interface components {
 		RuleEffectOut: {
 			/**
 			 * Field
-			 * @description `drawer`, `contact`, `document_type`, `title`, `tags`, ...
+			 * @description `space`, `contact`, `document_type`, `title`, `tags`, ...
 			 */
 			field: string;
 			/** Old */
@@ -4233,7 +4183,7 @@ export interface components {
 				components['schemas']['AllGroup-Output'] | components['schemas']['AnyGroup-Output'];
 			/** Actions */
 			actions: (
-				| components['schemas']['SetDrawerAction']
+				| components['schemas']['SetSpaceAction']
 				| components['schemas']['SetContactAction']
 				| components['schemas']['SetDocumentTypeAction']
 				| components['schemas']['SetTitleAction']
@@ -4332,7 +4282,7 @@ export interface components {
 				components['schemas']['AllGroup-Output'] | components['schemas']['AnyGroup-Output'];
 			/** Actions */
 			actions: (
-				| components['schemas']['SetDrawerAction']
+				| components['schemas']['SetSpaceAction']
 				| components['schemas']['SetContactAction']
 				| components['schemas']['SetDocumentTypeAction']
 				| components['schemas']['SetTitleAction']
@@ -4459,20 +4409,6 @@ export interface components {
 			 */
 			document_type_id: string;
 		};
-		/** SetDrawerAction */
-		SetDrawerAction: {
-			/**
-			 * @description discriminator enum property added by openapi-typescript
-			 * @enum {string}
-			 */
-			type: 'set_drawer';
-			/**
-			 * Drawer Id
-			 * Format: uuid
-			 * @description A drawer the rule's owner may write to (user rules).
-			 */
-			drawer_id: string;
-		};
 		/** SetFieldAction */
 		SetFieldAction: {
 			/**
@@ -4495,6 +4431,20 @@ export interface components {
 				| components['schemas']['MoneyValue']
 				| components['schemas']['PeriodValue'];
 		};
+		/** SetSpaceAction */
+		SetSpaceAction: {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			type: 'set_space';
+			/**
+			 * Space Id
+			 * Format: uuid
+			 * @description A space the rule's owner may write to (user rules).
+			 */
+			space_id: string;
+		};
 		/** SetTitleAction */
 		SetTitleAction: {
 			/**
@@ -4504,7 +4454,7 @@ export interface components {
 			type: 'set_title';
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `document_date`, `added`, `tags` (a list), `drawer`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional).
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `document_date`, `added`, `tags` (a list), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional).
 			 * @example {{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}
 			 */
 			template: string;
@@ -4557,6 +4507,56 @@ export interface components {
 			 */
 			match: boolean;
 		};
+		/**
+		 * SpaceCreate
+		 * @example {
+		 *       "name": "Household"
+		 *     }
+		 */
+		SpaceCreate: {
+			/**
+			 * Name
+			 * @example ACME Energy
+			 */
+			name: string;
+			/**
+			 * Owner Id
+			 * @description Admins only: the user who will own the space. Default: the caller.
+			 */
+			owner_id?: string | null;
+		};
+		/** SpaceOut */
+		SpaceOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/**
+			 * Name
+			 * @example Household
+			 */
+			name: string;
+			/**
+			 * Owner Id
+			 * Format: uuid
+			 */
+			owner_id: string;
+			/** Is Default */
+			is_default: boolean;
+			/** @description The caller's access: owner and admins (read_write), or the share. */
+			access: components['schemas']['ShareLevel'];
+			/**
+			 * Shares
+			 * @description Only for the owner and admins.
+			 */
+			shares: components['schemas']['ShareOut'][] | null;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+		};
 		/** SpanOut */
 		SpanOut: {
 			/**
@@ -4592,7 +4592,7 @@ export interface components {
 		TemplatePreviewIn: {
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `document_date`, `added`, `tags` (a list), `drawer`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional).
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `document_date`, `added`, `tags` (a list), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional).
 			 */
 			template: string;
 			/**
@@ -4807,8 +4807,8 @@ export interface components {
 		};
 		/**
 		 * VisibilityOut
-		 * @description Who sees the document. Its owner always; while it is green also the drawer's owner and
-		 *     the users the drawer is shared with.
+		 * @description Who sees the document. Its owner always; while it is green also the space's owner and
+		 *     the users the space is shared with.
 		 */
 		VisibilityOut: {
 			/**
@@ -4818,18 +4818,18 @@ export interface components {
 			 */
 			owner_id: string;
 			/**
-			 * Drawer Id
+			 * Space Id
 			 * Format: uuid
 			 */
-			drawer_id: string;
+			space_id: string;
 			/**
-			 * Drawer Owner Id
+			 * Space Owner Id
 			 * @description None unless the document is green.
 			 */
-			drawer_owner_id: string | null;
+			space_owner_id: string | null;
 			/**
 			 * Shares
-			 * @description The drawer's shares, if the document is green and the caller owns the drawer or is an admin; otherwise not shown.
+			 * @description The space's shares, if the document is green and the caller owns the space or is an admin; otherwise not shown.
 			 */
 			shares: components['schemas']['ShareOut'][] | null;
 		};
@@ -10236,7 +10236,7 @@ export interface operations {
 			};
 		};
 	};
-	list_drawers_api_v1_drawers_get: {
+	list_spaces_api_v1_spaces_get: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -10251,7 +10251,7 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['DrawerOut'][];
+					'application/json': components['schemas']['SpaceOut'][];
 				};
 			};
 			/** @description Unauthorized */
@@ -10290,7 +10290,7 @@ export interface operations {
 			};
 		};
 	};
-	create_drawer_api_v1_drawers_post: {
+	create_space_api_v1_spaces_post: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -10299,7 +10299,7 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				'application/json': components['schemas']['DrawerCreate'];
+				'application/json': components['schemas']['SpaceCreate'];
 			};
 		};
 		responses: {
@@ -10309,7 +10309,7 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['DrawerOut'];
+					'application/json': components['schemas']['SpaceOut'];
 				};
 			};
 			/** @description Unauthorized */
@@ -10433,7 +10433,7 @@ export interface operations {
 			};
 		};
 	};
-	get_drawer_api_v1_drawers__id__get: {
+	get_space_api_v1_spaces__id__get: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -10450,7 +10450,7 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['DrawerOut'];
+					'application/json': components['schemas']['SpaceOut'];
 				};
 			};
 			/** @description Unauthorized */
@@ -10523,7 +10523,7 @@ export interface operations {
 			};
 		};
 	};
-	delete_drawer_api_v1_drawers__id__delete: {
+	delete_space_api_v1_spaces__id__delete: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -10645,7 +10645,7 @@ export interface operations {
 			};
 		};
 	};
-	rename_drawer_api_v1_drawers__id__patch: {
+	rename_space_api_v1_spaces__id__patch: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -10666,7 +10666,7 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['DrawerOut'];
+					'application/json': components['schemas']['SpaceOut'];
 				};
 			};
 			/** @description Unauthorized */
@@ -10790,7 +10790,7 @@ export interface operations {
 			};
 		};
 	};
-	share_drawer_api_v1_drawers__id__shares__user_id__put: {
+	share_space_api_v1_spaces__id__shares__user_id__put: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -10812,7 +10812,7 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['DrawerOut'];
+					'application/json': components['schemas']['SpaceOut'];
 				};
 			};
 			/** @description Unauthorized */
@@ -10919,7 +10919,7 @@ export interface operations {
 			};
 		};
 	};
-	unshare_drawer_api_v1_drawers__id__shares__user_id__delete: {
+	unshare_space_api_v1_spaces__id__shares__user_id__delete: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -10937,7 +10937,7 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['DrawerOut'];
+					'application/json': components['schemas']['SpaceOut'];
 				};
 			};
 			/** @description Unauthorized */
@@ -12409,7 +12409,7 @@ export interface operations {
 				contact_id?: string | null;
 				document_type_id?: string | null;
 				tag_id?: string[] | null;
-				drawer_id?: string | null;
+				space_id?: string | null;
 				lane?: components['schemas']['LaneFilter'][] | null;
 				field_id?: string | null;
 				/** @description `relevance` or a key. */
@@ -12806,7 +12806,7 @@ export interface operations {
 				contact_id?: string | null;
 				document_type_id?: string | null;
 				tag_id?: string[] | null;
-				drawer_id?: string | null;
+				space_id?: string | null;
 				lane?: components['schemas']['LaneFilter'][] | null;
 				field_id?: string | null;
 				sort?: components['schemas']['DocumentSort'];
@@ -12918,9 +12918,9 @@ export interface operations {
 					file: string;
 					/**
 					 * Format: uuid
-					 * @description Target drawer; default: the owner's default drawer.
+					 * @description Target space; default: the owner's default space.
 					 */
-					drawer_id?: string;
+					space_id?: string;
 					/**
 					 * @description The intake channel, for rules. Default: `web` with a session, `api` with an API token; `migration` for imports from another system.
 					 * @enum {string}
@@ -12928,7 +12928,7 @@ export interface operations {
 					channel?: 'migration';
 					/**
 					 * Format: uuid
-					 * @description Admins only: the active user who owns the document. Default: the caller. The duplicate check, the default drawer and the write access to `drawer_id` are the owner's.
+					 * @description Admins only: the active user who owns the document. Default: the caller. The duplicate check, the default space and the write access to `space_id` are the owner's.
 					 */
 					owner?: string;
 					/** @description Admins only, with `channel=migration`: JSON of the metadata the document comes with (up to 48 KiB), as `ImportedMetadataIn`. Classification and field extraction apply it instead of asking the language model; the other nodes and the rules run as usual. */

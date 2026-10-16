@@ -1,13 +1,13 @@
 """The rights matrix over HTTP: every actor against every endpoint that touches a document,
-a drawer or master data. Each case runs on a fresh scene.
+a space or master data. Each case runs on a fresh scene.
 
 Actors: the owner; a share `read`; a share `read_write`; a stranger; an admin (no share); the
 owner's `read` token; an expired token; a revoked token; a deactivated user who had a share; a
 deactivated admin.
 
-Documents in the shared drawer: green (others may see it), yellow and in processing (owner
+Documents in the shared space: green (others may see it), yellow and in processing (owner
 and admins only). Admins have every right and see everything (Tobi, 08.10.2026); lists show
-their reach unless they ask for all users. Hidden documents and drawers are "not found" (404),
+their reach unless they ask for all users. Hidden documents and spaces are "not found" (404),
 exactly as missing ones.
 """
 
@@ -22,9 +22,9 @@ import httpx2
 import pytest
 
 from papiq.adapters.inbound.rest import PREFIX
-from papiq.core.domain.drawers import Drawer, ShareLevel
 from papiq.core.domain.identity import TokenScope
 from papiq.core.domain.pipeline import Node
+from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import User
 from papiq.core.services.objects import archive_key, preview_key
 from tests.api import auth, bearer
@@ -51,8 +51,8 @@ class Scene:
     api: Api
     headers: dict[str, dict[str, str]]
     owner: User
-    shared: Drawer
-    own_drawer: Drawer  # another drawer of the owner, target for moving
+    shared: Space
+    own_space: Space  # another space of the owner, target for moving
     green: str
     yellow: str
     processing: str
@@ -67,19 +67,19 @@ async def build_scene(api: Api) -> Scene:
     stranger, admin = await api.user("stranger"), await api.admin("admin")
     gone = await api.user("deactivated")
     retired = await api.admin("retired")
-    drawers = api.services.drawers
-    shared = await drawers.create(owner.id, "Shared")
+    spaces = api.services.spaces
+    shared = await spaces.create(owner.id, "Shared")
     for user, level in [(reader, ShareLevel.READ), (writer, ShareLevel.READ_WRITE)]:
-        await drawers.share(owner.id, shared.id, user.id, level)
-    await drawers.share(owner.id, shared.id, gone.id, ShareLevel.READ_WRITE)
-    own_drawer = await drawers.create(owner.id, "Private")
+        await spaces.share(owner.id, shared.id, user.id, level)
+    await spaces.share(owner.id, shared.id, gone.id, ShareLevel.READ_WRITE)
+    own_space = await spaces.create(owner.id, "Private")
 
     async def upload(name: str) -> str:
         files = {"file": (name, unique_pdf(name), "x/y")}
         response = await api.client.post(
             f"{PREFIX}/documents",
             files=files,
-            data={"drawer_id": str(shared.id)},
+            data={"space_id": str(shared.id)},
             headers=auth(owner),
         )
         assert response.status_code == 202, response.text
@@ -122,9 +122,7 @@ async def build_scene(api: Api) -> Scene:
         "deactivated": auth(gone),
         "deactivated_admin": auth(retired),
     }
-    return Scene(
-        api, headers, owner, shared, own_drawer, green, yellow, processing, str(contact.id)
-    )
+    return Scene(api, headers, owner, shared, own_space, green, yellow, processing, str(contact.id))
 
 
 def unique_pdf(name: str) -> bytes:
@@ -137,10 +135,10 @@ class _Returns:
         return UNCERTAIN
 
 
-async def upload_without_processing(api: Api, owner: User, drawer: Drawer) -> str:
+async def upload_without_processing(api: Api, owner: User, space: Space) -> str:
     files = {"file": ("new.pdf", unique_pdf("new"), "x/y")}
     response = await api.client.post(
-        f"{PREFIX}/documents", files=files, data={"drawer_id": str(drawer.id)}, headers=auth(owner)
+        f"{PREFIX}/documents", files=files, data={"space_id": str(space.id)}, headers=auth(owner)
     )
     return str(response.json()["id"])
 
@@ -162,7 +160,7 @@ def doc(method: str, suffix: str = "", body: Any = None) -> Call:
 DENIED = {"expired_token": 401, "revoked_token": 401, "deactivated": 401, "deactivated_admin": 401}
 HIDDEN = {"stranger": 404}
 
-# For the green document in the shared drawer.
+# For the green document in the shared space.
 GREEN: dict[str, tuple[Call, dict[str, int]]] = {
     "read": (
         doc("GET"),
@@ -261,13 +259,13 @@ GREEN: dict[str, tuple[Call, dict[str, int]]] = {
         },
     ),
     "move": (
-        doc("POST", "/move", lambda scene: {"drawer_id": str(scene.own_drawer.id)}),
+        doc("POST", "/move", lambda scene: {"space_id": str(scene.own_space.id)}),
         {
             "owner": 204,
             "reader": 403,
             "writer": 403,
             "stranger": 404,
-            "admin": 204,  # admins move any document into any drawer
+            "admin": 204,  # admins move any document into any space
             "read_token": 403,
             **DENIED,
         },
@@ -486,10 +484,10 @@ async def test_lists_show_only_readable_documents(api: Api) -> None:
         assert await listed(scene, actor) == {scene.green}
         assert await listed(scene, actor, lane="yellow") == set()
         assert await listed(scene, actor, lane="processing") == set()
-        assert await listed(scene, actor, drawer_id=str(scene.shared.id)) == {scene.green}
+        assert await listed(scene, actor, space_id=str(scene.shared.id)) == {scene.green}
     for actor in ("stranger", "admin"):
         assert await listed(scene, actor) == set()
-        assert await listed(scene, actor, drawer_id=str(scene.shared.id)) == set()
+        assert await listed(scene, actor, space_id=str(scene.shared.id)) == set()
         assert await listed(scene, actor, contact_id=scene.contact) == set()
     # Admins see every document when they ask for all users; nobody else may ask.
     assert await listed(scene, "admin", all_users=True) == everything
@@ -545,26 +543,26 @@ async def test_event_streams_of_one_document(
     assert response.status_code == expected
 
 
-# --- drawers ------------------------------------------------------------------------------------
+# --- spaces ------------------------------------------------------------------------------------
 
 
-async def test_drawers(api: Api) -> None:
+async def test_spaces(api: Api) -> None:
     scene = await build_scene(api)
-    url = f"{PREFIX}/drawers/{scene.shared.id}"
+    url = f"{PREFIX}/spaces/{scene.shared.id}"
     owner_view = await api.client.get(url, headers=scene.headers["owner"])
     assert owner_view.status_code == 200
     assert {s["level"] for s in owner_view.json()["shares"]} == {"read", "read_write"}
     reader_view = (await api.client.get(url, headers=scene.headers["reader"])).json()
     assert reader_view["access"] == "read" and reader_view["shares"] is None
     assert (await api.client.get(url, headers=scene.headers["stranger"])).status_code == 404
-    listed = (await api.client.get(f"{PREFIX}/drawers", headers=scene.headers["stranger"])).json()
+    listed = (await api.client.get(f"{PREFIX}/spaces", headers=scene.headers["stranger"])).json()
     assert str(scene.shared.id) not in str(listed)
-    # Admins see and manage every drawer (Tobi, 08.10.2026).
+    # Admins see and manage every space (Tobi, 08.10.2026).
     admin_view = (await api.client.get(url, headers=scene.headers["admin"])).json()
     assert admin_view["access"] == "read_write"
     assert {s["level"] for s in admin_view["shares"]} == {"read", "read_write"}
-    every = (await api.client.get(f"{PREFIX}/drawers", headers=scene.headers["admin"])).json()
-    assert {str(scene.shared.id), str(scene.own_drawer.id)} <= {d["id"] for d in every}
+    every = (await api.client.get(f"{PREFIX}/spaces", headers=scene.headers["admin"])).json()
+    assert {str(scene.shared.id), str(scene.own_space.id)} <= {d["id"] for d in every}
     changes = [
         ("PATCH", url, {"name": "Renamed"}),
         ("PUT", f"{url}/shares/{UUID(int=1)}", {"level": "read"}),

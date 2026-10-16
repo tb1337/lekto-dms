@@ -59,7 +59,7 @@ _EXCERPT = 300  # characters of an error message from Meilisearch
 SEARCHABLE = ["title", "contact", "document_type", "tags", "fields", "filename", "text"]
 FILTERABLE = [
     "owner_id",
-    "drawer_id",
+    "space_id",
     "lane",
     "contact_id",
     "document_type_id",
@@ -350,7 +350,7 @@ class MeilisearchIndex:
             "id": str(document.id),
             "version": document.version,
             "owner_id": str(document.owner_id),
-            "drawer_id": str(document.drawer_id),
+            "space_id": str(document.space_id),
             "lane": document.lane_value,
             "title": document.title,
             "title_key": sort_key(document.title),
@@ -458,8 +458,8 @@ def filter_expression(visibility: Visibility, criteria: DocumentFilter) -> str |
     if criteria.document_type is not None:
         parts.append(f"document_type_id = {_quote(criteria.document_type)}")
     parts.extend(f"tag_ids = {_quote(tag)}" for tag in sorted(criteria.tags, key=str))
-    if criteria.drawer is not None:
-        parts.append(f"drawer_id = {_quote(criteria.drawer)}")
+    if criteria.space is not None:
+        parts.append(f"space_id = {_quote(criteria.space)}")
     if criteria.lanes:
         lanes = sorted(lane_value(lane) for lane in criteria.lanes)
         parts.append(f"lane IN [{', '.join(_quote(lane) for lane in lanes)}]")
@@ -472,10 +472,10 @@ def filter_expression(visibility: Visibility, criteria: DocumentFilter) -> str |
 
 def _visibility_filter(visibility: Visibility) -> str:
     own = f"owner_id = {_quote(visibility.user)}"
-    if not visibility.drawers:
+    if not visibility.spaces:
         return f"({own})"
-    drawers = ", ".join(_quote(drawer) for drawer in sorted(visibility.drawers, key=str))
-    return f'({own} OR (lane = "green" AND drawer_id IN [{drawers}]))'
+    spaces = ", ".join(_quote(space) for space in sorted(visibility.spaces, key=str))
+    return f'({own} OR (lane = "green" AND space_id IN [{spaces}]))'
 
 
 def _normalised(key: str, setting: Any) -> Any:

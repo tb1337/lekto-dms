@@ -10,7 +10,7 @@ from dataclasses import dataclass, field, replace
 from papiq.core.domain.classification import FieldCheck, checks_to_json
 from papiq.core.domain.documents import Channel, Document, DocumentChanges
 from papiq.core.domain.errors import PatternTimeoutError
-from papiq.core.domain.ids import ContactId, DocumentTypeId, DrawerId, TagId
+from papiq.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact, Tag
 from papiq.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
@@ -244,7 +244,7 @@ class RuleWorld:
         self,
         owner: User,
         *,
-        drawer: DrawerId | None = None,
+        space: SpaceId | None = None,
         text: str | None = None,
         classify: NodeExecutor | None = None,
         fields: NodeExecutor | None = None,
@@ -253,9 +253,7 @@ class RuleWorld:
         """Upload a document, give it `text` as its parsed Markdown, process it; the stored
         document."""
         pipeline = self.pipeline(classify, fields)
-        received = await pipeline.receive(
-            owner.id, incoming_pdf(), filename=filename, drawer=drawer
-        )
+        received = await pipeline.receive(owner.id, incoming_pdf(), filename=filename, space=space)
         if text is not None:
             await self.world.object_store.put(
                 text_key(received.id), text.encode(), content_type="text/markdown"

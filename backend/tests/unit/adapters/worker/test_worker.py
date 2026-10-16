@@ -59,7 +59,7 @@ async def owner(container: Container) -> User:
     user = builders.user()
     async with container.unit_of_work() as uow:
         await uow.users.add(user)
-        await uow.drawers.add(builders.default_drawer(user))
+        await uow.spaces.add(builders.default_space(user))
         await uow.commit()
     return user
 

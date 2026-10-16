@@ -40,7 +40,7 @@ export const CHANNEL_LABELS: Record<Channel, () => string> = {
 };
 
 export const ACTION_LABELS: Record<ActionType, () => string> = {
-	set_drawer: m.rule_action_set_drawer,
+	set_space: m.rule_action_set_space,
 	set_contact: m.rule_action_set_contact,
 	set_document_type: m.rule_action_set_document_type,
 	set_title: m.rule_action_set_title,
@@ -189,8 +189,8 @@ export function actionTemplate(
 export function describeAction(action: ActionNode | ApiAction, lookup: Lookup | null): string {
 	const label = ACTION_LABELS[action.type]();
 	switch (action.type) {
-		case 'set_drawer':
-			return `${label}: ${nameOf(action.drawer_id, lookup?.drawers ?? [])}`;
+		case 'set_space':
+			return `${label}: ${nameOf(action.space_id, lookup?.spaces ?? [])}`;
 		case 'set_contact':
 			return `${label}: ${nameOf(action.contact_id, lookup?.contacts ?? [])}`;
 		case 'set_document_type':

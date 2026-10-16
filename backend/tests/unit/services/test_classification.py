@@ -167,7 +167,7 @@ async def document_with(
     world: World, text: str = INVOICE, type: DocumentType | None = None
 ) -> Document:
     owner = await world.user()
-    document = builders.document(owner, await world.default_drawer(owner))
+    document = builders.document(owner, await world.default_space(owner))
     document.document_type_id = None if type is None else type.id
     async with world.uow() as uow:
         await uow.documents.add(document)
@@ -330,11 +330,11 @@ async def test_an_unfit_answer_is_asked_again(world: World) -> None:
 
 async def test_two_unfit_answers_fail_the_signal(world: World) -> None:
     await seed(world)
-    injected = proposal() | {"drawer": "Shared", "owner": "mallory"}
+    injected = proposal() | {"space": "Shared", "owner": "mallory"}
     result = await signal_step(world, model(injected)).run(await document_with(world))
     assert result.outcome is Outcome.FAILED
     assert result.reason == (
-        "the model's answer does not fit the schema: the answer: unexpected drawer, owner"
+        "the model's answer does not fit the schema: the answer: unexpected owner, space"
     )
     assert output(result)["attempts"] == 2
     assert len(output(result)["answers"]) == 2

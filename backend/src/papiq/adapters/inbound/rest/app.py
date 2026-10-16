@@ -16,13 +16,13 @@ from papiq.adapters.inbound.rest import (
     account,
     classifier,
     documents,
-    drawers,
     health,
     master_data,
     pipeline,
     problems,
     rules,
     search,
+    spaces,
     streams,
     users,
     webhooks,
@@ -53,7 +53,7 @@ endpoint needs one of them (401 without), except health and the sign-in endpoint
 /auth/login` and, below `/auth/oidc`, information, start and callback. A `read` token may only
 read (403). The own sign-in (password, sessions, TOTP, API tokens, provider links) and
 creating users or resetting their sign-in need a session; a token gets 403 there. Documents
-and drawers the caller may not see are "not found" (404), the same as ones that do not exist.
+and spaces the caller may not see are "not found" (404), the same as ones that do not exist.
 
 The same services are available to AI clients over MCP (Streamable HTTP, stateless) at
 `/api/v1/mcp`, with the same API tokens as bearer; it is not part of this OpenAPI document.
@@ -136,7 +136,7 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         account.router,
         users.router,
         *master_data.ROUTERS,
-        drawers.router,
+        spaces.router,
         rules.router,
         rules.applications,
         rules.templates,

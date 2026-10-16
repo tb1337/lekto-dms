@@ -35,12 +35,12 @@
 	import { describeError, fieldErrors as fieldMessages } from '#lib/errors.ts';
 	import { sameValue, toApi, toInput, type ApiValue, type InputValue } from '#lib/fields.ts';
 	import {
-		drawerLabel,
+		spaceLabel,
 		fieldsFor,
 		type FieldDefinition,
 		type Lookup
 	} from '#lib/masterdata.svelte.ts';
-	import { writableDrawers } from '#lib/permissions.ts';
+	import { writableSpaces } from '#lib/permissions.ts';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { fieldId, initialValue, isRuleField, type ReviewValue } from '#lib/review.ts';
@@ -106,7 +106,7 @@
 	let documentType = $state('');
 	let tags = $state<string[]>([]);
 	let values = $state<Record<string, InputValue>>({});
-	let drawerId = $state('');
+	let spaceId = $state('');
 	let openNext = $state(true);
 	let busy = $state(false);
 	let preview = $state<Preview | null>(null);
@@ -133,15 +133,15 @@
 	const nodeNotes = $derived(
 		review?.open.filter((node) => node.outcome === 'uncertain' && node.fields.length === 0) ?? []
 	);
-	const hasDrawer = $derived(reviewing && openChecks.some((check) => check.field === 'drawer'));
+	const hasSpace = $derived(reviewing && openChecks.some((check) => check.field === 'space'));
 	// Something to confirm. A failed node alone is repeated, not confirmed; its document can
 	// still be changed (dry run and save).
-	const confirming = $derived(reviewing && (!failedNode || decisions.length > 0 || hasDrawer));
-	// The owner confirms into drawers they may write to; an admin into any drawer.
-	const drawers = $derived(writableDrawers(lookup.drawers, session.user));
+	const confirming = $derived(reviewing && (!failedNode || decisions.length > 0 || hasSpace));
+	// The owner confirms into spaces they may write to; an admin into any space.
+	const spaces = $derived(writableSpaces(lookup.spaces, session.user));
 
 	const snapshot = () =>
-		JSON.stringify([title, date, contact, documentType, tags, values, drawerId]);
+		JSON.stringify([title, date, contact, documentType, tags, values, spaceId]);
 	let baseline: { id: string; form: string; reviewing: boolean } | null = null;
 
 	function assign(key: string, value: ReviewValue) {
@@ -165,7 +165,7 @@
 		values = Object.fromEntries(
 			lookup.fields.map((field) => [field.id, toInput(field.data_type, document.fields[field.id])])
 		);
-		drawerId = document.drawer_id;
+		spaceId = document.space_id;
 		if (reviewing) {
 			for (const check of decisions)
 				assign(check.field, initialValue(check, document, lookup.fields));
@@ -274,7 +274,7 @@
 			changes,
 			accept_suggestions: false,
 			resume_at: typeChanged ? 'fields' : 'apply_rules',
-			...(hasDrawer && drawerId && drawerId !== document.drawer_id ? { drawer_id: drawerId } : {})
+			...(hasSpace && spaceId && spaceId !== document.space_id ? { space_id: spaceId } : {})
 		};
 	}
 
@@ -597,23 +597,23 @@
 			>
 				<TagsInput bind:tags all={lookup.tags} id="doc-tags" disabled={!editable} />
 			</FieldShell>
-			{#if hasDrawer}
+			{#if hasSpace}
 				<FieldShell
-					key="drawer"
-					label={m.field_drawer()}
-					inputId="doc-drawer"
+					key="space"
+					label={m.field_space()}
+					inputId="doc-space"
 					{lookup}
-					active={focused === 'drawer'}
+					active={focused === 'space'}
 					onfocus={focus}
 					onjump={jump}
 				>
 					<NativeSelect
-						id="doc-drawer"
-						bind:value={drawerId}
+						id="doc-space"
+						bind:value={spaceId}
 						disabled={!editable}
-						options={drawers.map((drawer) => ({
-							value: drawer.id,
-							label: drawerLabel(drawer, lookup.users, session.user?.id)
+						options={spaces.map((space) => ({
+							value: space.id,
+							label: spaceLabel(space, lookup.users, session.user?.id)
 						}))}
 					/>
 				</FieldShell>
@@ -677,7 +677,7 @@
 			</FieldGroup>
 		{/if}
 
-		{#if reviewing && decisions.length === 0 && !failedNode && ruleNotes.length === 0 && nodeNotes.length === 0 && !hasDrawer}
+		{#if reviewing && decisions.length === 0 && !failedNode && ruleNotes.length === 0 && nodeNotes.length === 0 && !hasSpace}
 			<p class="px-1 text-sm text-muted-foreground">{m.review_nothing_open()}</p>
 		{/if}
 	</div>
@@ -746,13 +746,13 @@
 					<section>
 						<h3 class="mb-1 font-medium">{m.dryrun_visible()}</h3>
 						<p>
-							{m.dryrun_drawer({ drawer: describeValue(preview.visibility.drawer_id, lookup) })}
+							{m.dryrun_space({ space: describeValue(preview.visibility.space_id, lookup) })}
 						</p>
 						<p class="text-muted-foreground">
 							{[
 								describeValue(preview.visibility.owner_id, lookup),
-								preview.visibility.drawer_owner_id
-									? describeValue(preview.visibility.drawer_owner_id, lookup)
+								preview.visibility.space_owner_id
+									? describeValue(preview.visibility.space_owner_id, lookup)
 									: null,
 								...(preview.visibility.shares ?? []).map((share) =>
 									describeValue(share.user_id, lookup)

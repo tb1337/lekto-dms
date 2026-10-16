@@ -103,7 +103,7 @@ const EVERY_CONDITION: ApiCondition[] = [
 ];
 
 const EVERY_ACTION: ApiDefinition['actions'] = [
-	{ type: 'set_drawer', drawer_id: ID(10) },
+	{ type: 'set_space', space_id: ID(10) },
 	{ type: 'set_contact', contact_id: ID(1) },
 	{ type: 'set_document_type', document_type_id: ID(3) },
 	{
@@ -335,9 +335,9 @@ describe('checking a rule', () => {
 		const model = newModel();
 		model.name = 'x';
 		model.conditions.items = [{ ...newCondition('channel'), value: 'web' }];
-		const drawer = {
-			...newAction('set_drawer'),
-			drawer_id: ID(10)
+		const space = {
+			...newAction('set_space'),
+			space_id: ID(10)
 		} as never as RuleModel['actions'][number];
 		const title = {
 			...newAction('set_title'),
@@ -352,13 +352,13 @@ describe('checking a rule', () => {
 			contact_id: ID(2)
 		} as never as RuleModel['actions'][number];
 		const tags = newAction('add_tags');
-		model.actions = [drawer, title, first, second, tags];
+		model.actions = [space, title, first, second, tags];
 		expect(problems(model)).toEqual({
 			[title.key]: 'value',
 			[second.key]: 'twice',
 			[tags.key]: 'list'
 		});
-		expect(problems(model, 'global')[drawer.key]).toBe('scope');
+		expect(problems(model, 'global')[space.key]).toBe('scope');
 	});
 });
 
@@ -374,7 +374,7 @@ describe('errors of saving', () => {
 			},
 			[
 				{ type: 'add_tags', tag_ids: [ID(4)] },
-				{ type: 'set_drawer', drawer_id: ID(10) }
+				{ type: 'set_space', space_id: ID(10) }
 			]
 		)
 	);
@@ -422,7 +422,7 @@ describe('errors of saving', () => {
 			group.items[0].key,
 			model.actions[0].key
 		]);
-		const forbidden = failed(403, "no write access to drawer 'Office'");
+		const forbidden = failed(403, "no write access to space 'Office'");
 		expect(Object.keys(saveErrors(forbidden, model).byKey)).toEqual([model.actions[1].key]);
 		const typed = fromApi(
 			definition({ all: [cond('channel', 'is', 'web')], not: false }, [

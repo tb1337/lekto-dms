@@ -10,7 +10,6 @@ from papiq.core.ports import EventBus
 from papiq.core.services.auth import AuthService
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.documents import DocumentService
-from papiq.core.services.drawers import DrawerService
 from papiq.core.services.indexing import IndexingService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.oidc import OidcService
@@ -18,6 +17,7 @@ from papiq.core.services.pipeline import PipelineService
 from papiq.core.services.rules import RuleService
 from papiq.core.services.rules.retroactive import RuleApplicationService
 from papiq.core.services.search import SearchService
+from papiq.core.services.spaces import SpaceService
 from papiq.core.services.users import UserService
 from papiq.core.services.webhooks import WebhookDeliveryService, WebhookService
 
@@ -28,7 +28,7 @@ type HealthCheck = Callable[[], Awaitable[None]]
 class ApiContext:
     auth: AuthService
     users: UserService
-    drawers: DrawerService
+    spaces: SpaceService
     master_data: MasterDataService
     pipeline: PipelineService
     documents: DocumentService

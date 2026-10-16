@@ -12,8 +12,8 @@ from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from papiq.core.domain.ids import (
     ContactId,
     DocumentTypeId,
-    DrawerId,
     FieldId,
+    SpaceId,
     TagId,
     UserId,
     new_id,
@@ -22,7 +22,6 @@ from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.periods import Period
 from papiq.core.domain.pipeline import Outcome
 from papiq.core.domain.rule_engine import (
-    DrawerTarget,
     Effect,
     Facts,
     Match,
@@ -30,6 +29,7 @@ from papiq.core.domain.rule_engine import (
     Note,
     RulePlan,
     Situation,
+    SpaceTarget,
     Truth,
     changed_fields,
     evaluate,
@@ -53,8 +53,8 @@ from papiq.core.domain.rules import (
     RuleVersion,
     SetContact,
     SetDocumentType,
-    SetDrawer,
     SetField,
+    SetSpace,
     SetTitle,
 )
 from tests import builders
@@ -68,14 +68,14 @@ def _fixed(number: int) -> UUID:
 
 OWNER = UserId(_fixed(1))
 STRANGER = UserId(_fixed(2))
-DEFAULT = DrawerId(_fixed(3))
-OWN = DrawerId(_fixed(4))  # the owner's own, not shared
-SHARED = DrawerId(_fixed(5))  # others see documents in it
-READ_ONLY = DrawerId(_fixed(6))
-DRAWERS = {
-    OWN: DrawerTarget("Taxes", writable=True, shared=False),
-    SHARED: DrawerTarget("Family", writable=True, shared=True),
-    READ_ONLY: DrawerTarget("Boss", writable=False, shared=True),
+DEFAULT = SpaceId(_fixed(3))
+OWN = SpaceId(_fixed(4))  # the owner's own, not shared
+SHARED = SpaceId(_fixed(5))  # others see documents in it
+READ_ONLY = SpaceId(_fixed(6))
+SPACES = {
+    OWN: SpaceTarget("Taxes", writable=True, shared=False),
+    SHARED: SpaceTarget("Family", writable=True, shared=True),
+    READ_ONLY: SpaceTarget("Boss", writable=False, shared=True),
 }
 ACME, BETA = ContactId(_fixed(7)), ContactId(_fixed(8))
 INVOICE, LETTER = DocumentTypeId(_fixed(9)), DocumentTypeId(_fixed(10))
@@ -136,7 +136,7 @@ def rule(
 
 
 def doc(**fields: Any) -> Document:
-    """A document of OWNER in their default drawer, from `Rechnung 2026.pdf`, via the API."""
+    """A document of OWNER in their default space, from `Rechnung 2026.pdf`, via the API."""
     document = builders.document(OWNER, DEFAULT, filename="Rechnung 2026.pdf")
     for name, value in fields.items():
         setattr(document, name, value)
@@ -145,9 +145,9 @@ def doc(**fields: Any) -> Document:
 
 def situation(document: Document, mode: Mode = Mode.INGEST, **fields: Any) -> Situation:
     values: dict[str, Any] = {
-        "default_drawer": DEFAULT,
+        "default_space": DEFAULT,
         "definitions": {},
-        "drawers": DRAWERS,
+        "spaces": SPACES,
         "existing": EXISTING,
         "names": NAMES,
         "render": builders.TEMPLATES.render,
@@ -664,22 +664,22 @@ def test_tags_already_as_wanted_change_nothing() -> None:
     assert result.effects == []
 
 
-# --- drawers and distrust ---------------------------------------------------------------------
+# --- spaces and distrust ---------------------------------------------------------------------
 
 
 def distrusted(document: Document) -> Facts:
     return Facts.of(document, unverified=frozenset({"contact"}))
 
 
-def test_unconfirmed_contact_does_not_file_into_a_shared_drawer() -> None:
+def test_unconfirmed_contact_does_not_file_into_a_shared_space() -> None:
     document = doc(contact_id=ACME)
 
     result = run(
-        [rule(SetDrawer(SHARED), when=FROM_ACME)], situation(document), facts=distrusted(document)
+        [rule(SetSpace(SHARED), when=FROM_ACME)], situation(document), facts=distrusted(document)
     )
 
-    assert result.drawer is None
-    assert notes(result) == [("drawer", "refused")]
+    assert result.space is None
+    assert notes(result) == [("space", "refused")]
     assert "only with a confirmed contact" in result.reports[0].notes[0].reason
     contact = check(result, "contact")
     assert contact.outcome is Outcome.UNCERTAIN
@@ -687,43 +687,43 @@ def test_unconfirmed_contact_does_not_file_into_a_shared_drawer() -> None:
     assert result.uncertain
 
 
-def test_unconfirmed_contact_may_file_into_the_owners_own_drawer() -> None:
+def test_unconfirmed_contact_may_file_into_the_owners_own_space() -> None:
     document = doc(contact_id=ACME)
 
     result = run(
-        [rule(SetDrawer(OWN), when=FROM_ACME)], situation(document), facts=distrusted(document)
+        [rule(SetSpace(OWN), when=FROM_ACME)], situation(document), facts=distrusted(document)
     )
 
-    assert result.drawer == OWN
-    assert result.reports[0].applied == [Effect("drawer", str(DEFAULT), str(OWN))]
+    assert result.space == OWN
+    assert result.reports[0].applied == [Effect("space", str(DEFAULT), str(OWN))]
     assert not result.uncertain
 
 
-def test_confirmed_contact_files_into_a_shared_drawer() -> None:
-    result = run([rule(SetDrawer(SHARED), when=FROM_ACME)], situation(doc(contact_id=ACME)))
+def test_confirmed_contact_files_into_a_shared_space() -> None:
+    result = run([rule(SetSpace(SHARED), when=FROM_ACME)], situation(doc(contact_id=ACME)))
 
-    assert result.drawer == SHARED
+    assert result.space == SHARED
 
 
 def test_unconfirmed_contact_on_change_is_reported_only() -> None:
     document = doc(contact_id=ACME)
 
     result = run(
-        [rule(SetDrawer(SHARED), when=FROM_ACME)],
+        [rule(SetSpace(SHARED), when=FROM_ACME)],
         situation(document, Mode.CHANGE),
         facts=distrusted(document),
     )
 
-    assert result.drawer is None
-    assert notes(result) == [("drawer", "refused")]
+    assert result.space is None
+    assert notes(result) == [("space", "refused")]
     assert not result.uncertain
 
 
 def test_retroactive_filing_on_unconfirmed_values_is_a_conflict() -> None:
-    """Applied to existing documents, filing into a shared drawer on an unconfirmed contact is
+    """Applied to existing documents, filing into a shared space on an unconfirmed contact is
     a conflict: it acts only where the person accepted it."""
     document = doc(contact_id=ACME)
-    rules = [rule(SetDrawer(SHARED), when=FROM_ACME)]
+    rules = [rule(SetSpace(SHARED), when=FROM_ACME)]
 
     refused = run(rules, situation(document, Mode.RETROACTIVE), facts=distrusted(document))
     accepted = run(
@@ -732,41 +732,41 @@ def test_retroactive_filing_on_unconfirmed_values_is_a_conflict() -> None:
         facts=distrusted(document),
     )
 
-    assert refused.drawer is None
-    assert notes(refused) == [("drawer", "conflict")]
-    assert accepted.drawer == SHARED
+    assert refused.space is None
+    assert notes(refused) == [("space", "conflict")]
+    assert accepted.space == SHARED
 
 
-def test_no_write_access_to_the_drawer() -> None:
-    ingest = run([rule(SetDrawer(READ_ONLY))], situation(doc()))
-    change = run([rule(SetDrawer(READ_ONLY))], situation(doc(), Mode.CHANGE))
+def test_no_write_access_to_the_space() -> None:
+    ingest = run([rule(SetSpace(READ_ONLY))], situation(doc()))
+    change = run([rule(SetSpace(READ_ONLY))], situation(doc(), Mode.CHANGE))
 
-    assert ingest.drawer is None and change.drawer is None
-    assert notes(ingest) == notes(change) == [("drawer", "refused")]
-    assert check(ingest, "drawer").outcome is Outcome.UNCERTAIN
+    assert ingest.space is None and change.space is None
+    assert notes(ingest) == notes(change) == [("space", "refused")]
+    assert check(ingest, "space").outcome is Outcome.UNCERTAIN
     assert not change.uncertain
 
 
-def test_drawer_of_a_rule_of_another_user_is_refused() -> None:
-    result = run([rule(SetDrawer(OWN), owner=STRANGER)], situation(doc()))
+def test_space_of_a_rule_of_another_user_is_refused() -> None:
+    result = run([rule(SetSpace(OWN), owner=STRANGER)], situation(doc()))
 
-    assert result.drawer is None
-    assert notes(result) == [("drawer", "refused")]
+    assert result.space is None
+    assert notes(result) == [("space", "refused")]
 
 
-def test_deleted_drawer_is_skipped() -> None:
-    result = run([rule(SetDrawer(DrawerId(new_id())))], situation(doc()))
+def test_deleted_space_is_skipped() -> None:
+    result = run([rule(SetSpace(SpaceId(new_id())))], situation(doc()))
 
-    assert result.drawer is None
-    assert notes(result) == [("drawer", "skipped")]
+    assert result.space is None
+    assert notes(result) == [("space", "skipped")]
     assert not result.uncertain
 
 
-def test_rules_filing_into_different_drawers_conflict() -> None:
-    result = run([rule(SetDrawer(OWN)), rule(SetDrawer(SHARED))], situation(doc()))
+def test_rules_filing_into_different_spaces_conflict() -> None:
+    result = run([rule(SetSpace(OWN)), rule(SetSpace(SHARED))], situation(doc()))
 
-    assert result.drawer is None
-    assert check(result, "drawer").outcome is Outcome.UNCERTAIN
+    assert result.space is None
+    assert check(result, "space").outcome is Outcome.UNCERTAIN
 
 
 # --- global rules -----------------------------------------------------------------------------
@@ -786,11 +786,11 @@ def global_rule_storing(*actions: Action) -> Rule:
     return found
 
 
-def test_global_rule_cannot_change_drawer_or_visibility() -> None:
+def test_global_rule_cannot_change_space_or_visibility() -> None:
     result = run(
         [
             global_rule_storing(
-                SetDrawer(OWN),
+                SetSpace(OWN),
                 SetContact(ACME),
                 SetDocumentType(INVOICE),
                 SetTitle("{contact}"),
@@ -800,12 +800,12 @@ def test_global_rule_cannot_change_drawer_or_visibility() -> None:
         situation(doc(contact_id=ACME)),
     )
 
-    assert result.drawer is None
+    assert result.space is None
     assert result.changes == DocumentChanges(tag_ids=frozenset({PAID}))
     assert sorted(notes(result)) == [
         ("contact", "refused"),
         ("document_type", "refused"),
-        ("drawer", "refused"),
+        ("space", "refused"),
         ("title", "refused"),
     ]
 
@@ -930,18 +930,18 @@ def test_retroactive_conflict_with_an_existing_value() -> None:
     assert not refused.uncertain and refused.checks == []
 
 
-def test_retroactive_default_drawer_and_file_name_title_count_as_empty() -> None:
-    actions = (SetDrawer(OWN), SetTitle("{{ contact }} invoice"))
+def test_retroactive_default_space_and_file_name_title_count_as_empty() -> None:
+    actions = (SetSpace(OWN), SetTitle("{{ contact }} invoice"))
     fresh = run([rule(*actions)], situation(doc(contact_id=ACME), Mode.RETROACTIVE))
     filed = run(
         [rule(*actions)],
-        situation(doc(contact_id=ACME, drawer_id=SHARED, title="Mine"), Mode.RETROACTIVE),
+        situation(doc(contact_id=ACME, space_id=SHARED, title="Mine"), Mode.RETROACTIVE),
     )
 
-    assert fresh.drawer == OWN
+    assert fresh.space == OWN
     assert fresh.changes.title == "ACME GmbH invoice"
-    assert filed.drawer is None and filed.changes.title is UNSET
-    assert notes(filed) == [("drawer", "conflict"), ("title", "conflict")]
+    assert filed.space is None and filed.changes.title is UNSET
+    assert notes(filed) == [("space", "conflict"), ("title", "conflict")]
 
 
 def test_retroactive_the_machines_title_counts_as_empty() -> None:
@@ -1001,8 +1001,8 @@ def test_empty_title_is_skipped() -> None:
     assert notes(result) == [("title", "skipped")]
 
 
-def test_the_title_sees_fields_tags_drawer_and_owner() -> None:
-    template = "{{ field.amount }} {{ tags | join: '+' }} {{ drawer }} {{ owner }}"
+def test_the_title_sees_fields_tags_space_and_owner() -> None:
+    template = "{{ field.amount }} {{ tags | join: '+' }} {{ space }} {{ owner }}"
     document = doc(fields={AMOUNT.id: Money(Decimal("99.90"), "EUR")}, tag_ids={PAID})
     names = {**NAMES, PAID: "paid", URGENT: "urgent", DEFAULT: "Inbox"}
     result = run(

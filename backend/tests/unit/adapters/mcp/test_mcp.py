@@ -479,15 +479,15 @@ async def test_an_editor_whose_change_files_the_document_away_learns_nothing_mor
     admin, owner, editor = await api.admin(), await api.user(), await api.user()
     o = auth(owner)
     acme = await post(api, "/contacts", {"name": "ACME"}, auth(admin))
-    shared = await post(api, "/drawers", {"name": "Shared"}, o)
-    private = await post(api, "/drawers", {"name": "Private"}, o)
+    shared = await post(api, "/spaces", {"name": "Shared"}, o)
+    private = await post(api, "/spaces", {"name": "Private"}, o)
     response = await api.client.put(
-        f"{PREFIX}/drawers/{shared['id']}/shares/{editor.id}",
+        f"{PREFIX}/spaces/{shared['id']}/shares/{editor.id}",
         json={"level": "read_write"},
         headers=o,
     )
     assert response.status_code < 300, response.text
-    for name, triggers, condition, drawer in (
+    for name, triggers, condition, space in (
         ("Shared", ["ingest"], {"field": "channel", "op": "is", "value": "api"}, shared),
         ("Private", ["change"], {"field": "contact", "op": "is", "value": acme["id"]}, private),
     ):
@@ -498,7 +498,7 @@ async def test_an_editor_whose_change_files_the_document_away_learns_nothing_mor
                 "name": name,
                 "triggers": triggers,
                 "conditions": {"all": [condition]},
-                "actions": [{"type": "set_drawer", "drawer_id": drawer["id"]}],
+                "actions": [{"type": "set_space", "space_id": space["id"]}],
             },
             o,
         )
@@ -509,5 +509,5 @@ async def test_an_editor_whose_change_files_the_document_away_learns_nothing_mor
     assert data(result) == {"id": id, "access": None, "document": None, "rules": None}
     assert "not found" in error(await call(api, auth(editor), "get_document", id=id))
     owners = data(await call(api, o, "update_metadata", id=id, title="Seen by the owner"))
-    assert owners["document"]["drawer_id"] == private["id"]
+    assert owners["document"]["space_id"] == private["id"]
     assert [rule["name"] for rule in owners["rules"] or []] == []  # no change that triggers it

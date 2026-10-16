@@ -1,4 +1,4 @@
-"""Drawers and their shares."""
+"""Spaces and their shares."""
 
 from datetime import datetime
 from uuid import UUID
@@ -6,12 +6,12 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from papiq.adapters.inbound.rest.schemas.common import NameIn
-from papiq.core.domain.drawers import Drawer, ShareLevel
-from papiq.core.domain.permissions import can_manage_drawer, drawer_access
+from papiq.core.domain.permissions import can_manage_space, space_access
+from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import User
 
 
-class DrawerCreate(NameIn):
+class SpaceCreate(NameIn):
     model_config = ConfigDict(
         extra="forbid",
         json_schema_extra={"examples": [{"name": "Household"}]},
@@ -19,7 +19,7 @@ class DrawerCreate(NameIn):
 
     owner_id: UUID | None = Field(
         default=None,
-        description="Admins only: the user who will own the drawer. Default: the caller.",
+        description="Admins only: the user who will own the space. Default: the caller.",
     )
 
 
@@ -28,7 +28,7 @@ class ShareOut(BaseModel):
     level: ShareLevel
 
 
-class DrawerOut(BaseModel):
+class SpaceOut(BaseModel):
     id: UUID
     name: str = Field(examples=["Household"])
     owner_id: UUID
@@ -40,20 +40,20 @@ class DrawerOut(BaseModel):
     created_at: datetime
 
     @classmethod
-    def of(cls, drawer: Drawer, viewer: User) -> "DrawerOut":
+    def of(cls, space: Space, viewer: User) -> "SpaceOut":
         """As `viewer` sees it, who owns it, has a share or is an admin."""
-        access = drawer_access(viewer, drawer)
-        assert access is not None  # the service returns visible drawers only
-        manager = can_manage_drawer(viewer, drawer)
-        shares = sorted(drawer.shares.items())
+        access = space_access(viewer, space)
+        assert access is not None  # the service returns visible spaces only
+        manager = can_manage_space(viewer, space)
+        shares = sorted(space.shares.items())
         return cls(
-            id=drawer.id,
-            name=drawer.name,
-            owner_id=drawer.owner_id,
-            is_default=drawer.is_default,
+            id=space.id,
+            name=space.name,
+            owner_id=space.owner_id,
+            is_default=space.is_default,
             access=access,
             shares=[ShareOut(user_id=u, level=level) for u, level in shares] if manager else None,
-            created_at=drawer.created_at,
+            created_at=space.created_at,
         )
 
 

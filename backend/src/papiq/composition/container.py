@@ -96,7 +96,6 @@ from papiq.core.services.classification.signals import (
 )
 from papiq.core.services.classifier import ClassifierPolicy, ClassifierService
 from papiq.core.services.documents import DocumentService
-from papiq.core.services.drawers import DrawerService
 from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from papiq.core.services.indexing import IndexingPolicy, IndexingService
 from papiq.core.services.maintenance import MaintenanceService
@@ -109,6 +108,7 @@ from papiq.core.services.rules.changes import ChangeRules
 from papiq.core.services.rules.nodes import ApplyRulesNode, FileNode
 from papiq.core.services.rules.retroactive import RuleApplicationService
 from papiq.core.services.search import SearchPolicy, SearchService
+from papiq.core.services.spaces import SpaceService
 from papiq.core.services.users import UserService
 from papiq.core.services.webhooks import (
     WebhookDeliveryService,
@@ -427,7 +427,7 @@ class Services:
     auth: AuthService
     oidc: OidcService | None  # with a configured provider
     users: UserService
-    drawers: DrawerService
+    spaces: SpaceService
     master_data: MasterDataService
     rules: RuleService
     rule_applications: RuleApplicationService
@@ -602,7 +602,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             )
         ),
         users=UserService(uow, clock, container.password_hasher),
-        drawers=DrawerService(uow, clock),
+        spaces=SpaceService(uow, clock),
         master_data=MasterDataService(
             uow, clock, container.templates, index_renames=index is not None
         ),

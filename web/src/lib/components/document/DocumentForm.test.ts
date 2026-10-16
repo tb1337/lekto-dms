@@ -14,7 +14,7 @@ type Document = components['schemas']['DocumentDetails'];
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 
 const OWNER = '0199a6c4-0000-7000-8000-000000000001';
-const DRAWER = '0199a6c4-0000-7000-8000-0000000000d1';
+const SPACE = '0199a6c4-0000-7000-8000-0000000000d1';
 const CONTACT = '0199a6c4-0000-7000-8000-0000000000c1';
 const BANK = '0199a6c4-0000-7000-8000-0000000000c2';
 const SIMILAR = '0199a6c4-0000-7000-8000-0000000000a1';
@@ -49,7 +49,7 @@ const lookup = {
 			choices: []
 		}
 	],
-	drawers: [{ id: DRAWER, name: 'Haushalt', owner_id: OWNER, access: 'read_write' }],
+	spaces: [{ id: SPACE, name: 'Haushalt', owner_id: OWNER, access: 'read_write' }],
 	users: []
 } as unknown as Lookup;
 
@@ -59,7 +59,7 @@ function documentOf(status: string, lane: string | null = 'yellow'): Document {
 		id: 'doc-1',
 		title: 'Stromrechnung März 2026',
 		owner_id: OWNER,
-		drawer_id: DRAWER,
+		space_id: SPACE,
 		access: 'read_write',
 		contact_id: null,
 		document_type_id: INVOICE,
@@ -397,7 +397,7 @@ describe('DocumentForm', () => {
 		expect((button as HTMLButtonElement).disabled).toBe(false);
 	});
 
-	it('confirms a filed document that waits for its drawer, with the drawer to file into', async () => {
+	it('confirms a filed document that waits for its space, with the space to file into', async () => {
 		fetchMock.mockResolvedValue(
 			new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
 		);
@@ -407,14 +407,14 @@ describe('DocumentForm', () => {
 				{
 					node: 'file',
 					outcome: 'uncertain',
-					reason: 'drawer',
-					fields: [check('drawer', { outcome: 'uncertain', reason: 'no write access' })]
+					reason: 'space',
+					fields: [check('space', { outcome: 'uncertain', reason: 'no write access' })]
 				}
 			],
 			nodes: []
 		} as unknown as Review;
 		render(DocumentForm, props({ document: documentOf('completed'), review: waiting, next: null }));
-		expect(screen.getByLabelText(m.field_drawer(), { selector: 'select' })).toBeTruthy();
+		expect(screen.getByLabelText(m.field_space(), { selector: 'select' })).toBeTruthy();
 		await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
 		expect(await fetchMock.mock.calls[0][0].json()).toEqual({
 			changes: {},

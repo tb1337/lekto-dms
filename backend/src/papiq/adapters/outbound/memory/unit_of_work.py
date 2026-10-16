@@ -24,13 +24,13 @@ from papiq.adapters.outbound.memory.database import (
     DOCUMENT_IDENTIFIERS,
     DOCUMENT_TYPES,
     DOCUMENTS,
-    DRAWERS,
     EXTERNAL_IDENTITIES,
     FIELDS,
     LOGIN_FAILURES,
     RULE_APPLICATIONS,
     RULES,
     SESSIONS,
+    SPACES,
     TAGS,
     USERS,
     WEBHOOKS,
@@ -51,7 +51,6 @@ from papiq.adapters.outbound.memory.rules import (
 )
 from papiq.adapters.outbound.memory.webhooks import MemoryWebhookRepository
 from papiq.core.domain.documents import Document, Sha256
-from papiq.core.domain.drawers import Drawer
 from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.fields import FieldDefinition
@@ -60,9 +59,9 @@ from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
     DocumentTypeId,
-    DrawerId,
     FieldId,
     JobId,
+    SpaceId,
     TagId,
     UserId,
     new_id,
@@ -71,6 +70,7 @@ from papiq.core.domain.jobs import Job, JobStatus
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag
 from papiq.core.domain.pipeline import Lane, NodeRun
+from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import User
 from papiq.core.domain.validation import name_key, require_utc
 from papiq.core.domain.verdict import KnownLabels
@@ -99,7 +99,7 @@ class MemoryUnitOfWork:
         self._held: asyncio.Lock | None = None
 
         self.users = MemoryUserRepository(self, USERS)
-        self.drawers = MemoryDrawerRepository(self, DRAWERS)
+        self.spaces = MemorySpaceRepository(self, SPACES)
         self.contacts = MemoryNamedRepository[ContactId, Contact](self, CONTACTS)
         self.document_types = MemoryNamedRepository[DocumentTypeId, DocumentType](
             self, DOCUMENT_TYPES
@@ -269,17 +269,17 @@ class MemoryUserRepository(MemoryRepository[UserId, User]):
         self._uow._write(self._table, id, _REMOVED)
 
 
-class MemoryDrawerRepository(MemoryRepository[DrawerId, Drawer]):
-    async def get_default(self, owner: UserId) -> Drawer:
+class MemorySpaceRepository(MemoryRepository[SpaceId, Space]):
+    async def get_default(self, owner: UserId) -> Space:
         for row in self._all():
             if row.owner_id == owner and row.is_default:
                 return _copy(row)
-        raise NotFoundError("default drawer of user", owner)
+        raise NotFoundError("default space of user", owner)
 
-    async def list_accessible(self, user: UserId) -> list[Drawer]:
+    async def list_accessible(self, user: UserId) -> list[Space]:
         return [_copy(row) for row in self._all() if row.owner_id == user or user in row.shares]
 
-    async def remove(self, id: DrawerId) -> None:
+    async def remove(self, id: SpaceId) -> None:
         await self.get(id)
         self._uow._write(self._table, id, _REMOVED)
 
@@ -292,11 +292,11 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         return None
 
     async def list_visible_to(self, user: UserId) -> list[Document]:
-        readable = {drawer.id for drawer in await self._uow.drawers.list_accessible(user)}
+        readable = {space.id for space in await self._uow.spaces.list_accessible(user)}
         return [
             _copy(row)
             for row in self._all()
-            if row.owner_id == user or (row.lane is Lane.GREEN and row.drawer_id in readable)
+            if row.owner_id == user or (row.lane is Lane.GREEN and row.space_id in readable)
         ]
 
     async def remove(self, id: DocumentId) -> None:
@@ -383,19 +383,19 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         self,
         *,
         owner: UserId | None = None,
-        drawer: DrawerId | None = None,
+        space: SpaceId | None = None,
         contact: ContactId | None = None,
         document_type: DocumentTypeId | None = None,
         tag: TagId | None = None,
         field: FieldId | None = None,
         sha256: Sha256 | None = None,
     ) -> bool:
-        criteria = (owner, drawer, contact, document_type, tag, field, sha256)
+        criteria = (owner, space, contact, document_type, tag, field, sha256)
         if all(value is None for value in criteria):
             raise ValueError("exists needs at least one criterion")
         return any(
             (owner is None or row.owner_id == owner)
-            and (drawer is None or row.drawer_id == drawer)
+            and (space is None or row.space_id == space)
             and (contact is None or row.contact_id == contact)
             and (document_type is None or row.document_type_id == document_type)
             and (tag is None or tag in row.tag_ids)
@@ -615,7 +615,7 @@ def _query(
         if (filter.contact is None or document.contact_id == filter.contact)
         and (filter.document_type is None or document.document_type_id == filter.document_type)
         and filter.tags <= document.tag_ids
-        and (filter.drawer is None or document.drawer_id == filter.drawer)
+        and (filter.space is None or document.space_id == filter.space)
         and (filter.lanes is None or document.lane in filter.lanes)
         and (filter.confirmed is None or (document.confirmed_at is not None) is filter.confirmed)
         and (filter.field is None or filter.field in document.fields)

@@ -9,20 +9,20 @@
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { reportError } from '#lib/errors.ts';
-	import type { Drawer, UserName } from '#lib/masterdata.svelte.ts';
+	import type { Space, UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
 	type Level = components['schemas']['ShareLevel'];
 
-	// Who may use a drawer: "read" shows its green documents, "read and write" also files into it.
+	// Who may use a space: "read" shows its green documents, "read and write" also files into it.
 	let {
 		open = $bindable(false),
-		drawer,
+		space,
 		users,
 		onchanged
 	}: {
 		open?: boolean;
-		drawer: Drawer;
+		space: Space;
 		users: readonly UserName[];
 		onchanged: () => void;
 	} = $props();
@@ -31,11 +31,11 @@
 	let level = $state<Level>('read');
 	let busy = $state(false);
 
-	const shares = $derived(drawer.shares ?? []);
+	const shares = $derived(space.shares ?? []);
 	const name = (id: string) => users.find((user) => user.id === id)?.username ?? id;
 	const candidates = $derived(
 		users.filter(
-			(user) => user.id !== drawer.owner_id && !shares.some((share) => share.user_id === user.id)
+			(user) => user.id !== space.owner_id && !shares.some((share) => share.user_id === user.id)
 		)
 	);
 	const levels = $derived([
@@ -47,8 +47,8 @@
 		busy = true;
 		try {
 			await unwrap(
-				api.PUT('/api/v1/drawers/{id}/shares/{user_id}', {
-					params: { path: { id: drawer.id, user_id: id } },
+				api.PUT('/api/v1/spaces/{id}/shares/{user_id}', {
+					params: { path: { id: space.id, user_id: id } },
 					body: { level: next }
 				})
 			);
@@ -66,8 +66,8 @@
 		busy = true;
 		try {
 			await unwrap(
-				api.DELETE('/api/v1/drawers/{id}/shares/{user_id}', {
-					params: { path: { id: drawer.id, user_id: id } }
+				api.DELETE('/api/v1/spaces/{id}/shares/{user_id}', {
+					params: { path: { id: space.id, user_id: id } }
 				})
 			);
 			toast.success(m.share_removed());
@@ -83,7 +83,7 @@
 <Dialog.Root bind:open>
 	<Dialog.Content class="max-w-lg">
 		<Dialog.Header>
-			<Dialog.Title>{m.share_title({ name: drawer.name })}</Dialog.Title>
+			<Dialog.Title>{m.share_title({ name: space.name })}</Dialog.Title>
 			<Dialog.Description>{m.share_hint()}</Dialog.Description>
 		</Dialog.Header>
 

@@ -9,7 +9,6 @@ import pytest
 
 from papiq.core.domain.classification import FieldCheck, checks_to_json, field_key
 from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import (
     InvalidTransitionError,
     NotFoundError,
@@ -18,9 +17,10 @@ from papiq.core.domain.errors import (
     ValidationError,
 )
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
-from papiq.core.domain.ids import ContactId, DrawerId, UserId
+from papiq.core.domain.ids import ContactId, SpaceId, UserId
 from papiq.core.domain.master_data import Contact
 from papiq.core.domain.pipeline import PERSON, Lane, Node, NodeResult, Outcome, ProcessingStatus
+from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import User
 from papiq.core.services.inbox import OpenNode, decide, field_checks
 from papiq.core.services.pipeline import MetadataResult, PipelineService
@@ -29,7 +29,7 @@ from tests.unit.services.conftest import Returns, World
 
 UNSURE = "not shown in the text"
 OK = NodeResult(outcome=Outcome.OK)
-DOCUMENT = document(UserId(UUID(int=1)), DrawerId(UUID(int=2)))
+DOCUMENT = document(UserId(UUID(int=1)), SpaceId(UUID(int=2)))
 
 
 @dataclass
@@ -402,13 +402,13 @@ async def test_the_inbox_is_the_owners(world: World) -> None:
     with pytest.raises(NotFoundError):
         await s.pipeline.confirm(stranger.id, s.document.id, DocumentChanges())
 
-    # A green document in a shared drawer: readable, but the review is the owner's.
+    # A green document in a shared space: readable, but the review is the owner's.
     reader = await world.user()
-    drawer = await world.drawers.create(s.owner.id, "Shared")
-    await world.drawers.share(s.owner.id, drawer.id, reader.id, ShareLevel.READ_WRITE)
+    space = await world.spaces.create(s.owner.id, "Shared")
+    await world.spaces.share(s.owner.id, space.id, reader.id, ShareLevel.READ_WRITE)
     pipeline = world.pipeline()
     green = await pipeline.receive(
-        s.owner.id, incoming(b"%PDF-1.7 green\n"), filename="b.pdf", drawer=drawer.id
+        s.owner.id, incoming(b"%PDF-1.7 green\n"), filename="b.pdf", space=space.id
     )
     await world.drain(pipeline)
     with pytest.raises(PermissionDeniedError):
@@ -417,13 +417,13 @@ async def test_the_inbox_is_the_owners(world: World) -> None:
         await pipeline.confirm(reader.id, green.id, DocumentChanges())
 
 
-async def test_a_confirmed_document_becomes_visible_to_the_drawers_readers(world: World) -> None:
+async def test_a_confirmed_document_becomes_visible_to_the_spaces_readers(world: World) -> None:
     s = await scene(world)
     reader = await world.user()
-    drawer = await world.drawers.create(s.owner.id, "Shared")
-    await world.drawers.share(s.owner.id, drawer.id, reader.id, ShareLevel.READ)
+    space = await world.spaces.create(s.owner.id, "Shared")
+    await world.spaces.share(s.owner.id, space.id, reader.id, ShareLevel.READ)
     document = await s.pipeline.receive(
-        s.owner.id, incoming(b"%PDF-1.7 shared\n"), filename="b.pdf", drawer=drawer.id
+        s.owner.id, incoming(b"%PDF-1.7 shared\n"), filename="b.pdf", space=space.id
     )
     await world.drain(s.pipeline)
     assert await world.documents.list_visible(reader.id) == []  # yellow: the owner's

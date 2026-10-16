@@ -8,9 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails, DocumentPatch
 from papiq.core.domain.classification import Candidate, CandidateSource, FieldCheck
-from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.pipeline import Node, Outcome
+from papiq.core.domain.spaces import ShareLevel
 from papiq.core.services.inbox import InboxItem, NodeReview, OpenNode, Review
 
 ResumeNode = StrEnum(  # type: ignore[misc]
@@ -238,7 +238,7 @@ class OpenNodeOut(BaseModel):
     fields: list[FieldCheckOut] = Field(
         description=(
             "Uncertain fields of classification, field extraction and the rules (also "
-            "`drawer`, `title`, `review`), and of filing (`drawer`)."
+            "`space`, `title`, `review`), and of filing (`space`)."
         )
     )
 
@@ -340,10 +340,10 @@ class ConfirmRequest(BaseModel):
             "`fields` after correcting the document type, so the fields of the new type are read."
         ),
     )
-    drawer_id: UUID | None = Field(
+    space_id: UUID | None = Field(
         default=None,
         description=(
-            "Move the document into this drawer (one the owner may write to); decides the "
-            "rules' open field `drawer`. Default: it stays where it is."
+            "Move the document into this space (one the owner may write to); decides the "
+            "rules' open field `space`. Default: it stays where it is."
         ),
     )

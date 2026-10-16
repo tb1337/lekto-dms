@@ -1,5 +1,5 @@
 """What every rule run needs: the rules that apply to a document, its text and pattern results,
-where its values came from (model, person), and the facts about drawers and master data.
+where its values came from (model, person), and the facts about spaces and master data.
 
 Loading the text and running the regular expressions on it happens before the unit of work that
 stores the result (`prepare`), so no transaction waits for a slow pattern. Patterns on field
@@ -28,18 +28,18 @@ from papiq.core.domain.fields import FieldDefinition, field_to_json
 from papiq.core.domain.ids import (
     ContactId,
     DocumentTypeId,
-    DrawerId,
     FieldId,
     RuleId,
+    SpaceId,
     TagId,
     UserId,
 )
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.permissions import can_file_into
 from papiq.core.domain.pipeline import (
-    CHOSEN_DRAWER,
+    CHOSEN_SPACE,
     PERSON,
-    PERSON_DRAWER,
+    PERSON_SPACE,
     RULES,
     RULES_CHANGE,
     Node,
@@ -48,19 +48,19 @@ from papiq.core.domain.pipeline import (
     Outcome,
 )
 from papiq.core.domain.rule_engine import (
-    DRAWER,
+    SPACE,
     TEXT_TARGET,
-    DrawerTarget,
     Facts,
     Mode,
     RulePlan,
     Situation,
+    SpaceTarget,
     matches,
     pattern_subjects,
     pattern_text,
     plan,
 )
-from papiq.core.domain.rules import Rule, SetDrawer, Trigger
+from papiq.core.domain.rules import Rule, SetSpace, Trigger
 from papiq.core.domain.users import User
 from papiq.core.ports import ObjectStore, PatternMatcher, TemplateRenderer, UnitOfWork
 from papiq.core.services.inbox import MODEL_NODES, field_checks, latest_entries
@@ -171,7 +171,7 @@ async def _search(
 # --- where values came from -------------------------------------------------------------------
 
 _DECISIONS = ("accepted", "entered", "kept", "changed")
-_PERSON_ENTRIES = (PERSON, RULES_CHANGE, PERSON_DRAWER)
+_PERSON_ENTRIES = (PERSON, RULES_CHANGE, PERSON_SPACE)
 
 
 @dataclass(frozen=True)
@@ -312,24 +312,24 @@ def corrected_fields(before: Document, after: Document) -> frozenset[str]:
     return frozenset(names)
 
 
-def drawer_choice(
+def space_choice(
     document: Document, *, node: Node, actor: UserId, trigger: str, version: str, now: datetime
 ) -> NodeRun:
-    """The log entry of a person choosing the document's drawer outside the inbox."""
+    """The log entry of a person choosing the document's space outside the inbox."""
     return NodeRun(
         document_id=document.id,
         node=node,
         run=document.processing.run,
         result=NodeResult(
             outcome=Outcome.OK,
-            model_version=PERSON_DRAWER,
+            model_version=PERSON_SPACE,
             input={
                 "trigger": trigger,
                 "actor": str(actor),
-                CHOSEN_DRAWER: str(document.drawer_id),
+                CHOSEN_SPACE: str(document.space_id),
             },
             output=person_record(
-                changed=[DRAWER], tags_before=document.tag_ids, tags_after=document.tag_ids
+                changed=[SPACE], tags_before=document.tag_ids, tags_after=document.tag_ids
             ),
         ),
         pipeline_version=version,
@@ -412,31 +412,31 @@ async def situation(
         if tag is not None:
             existing.add(tag_id)
             names[tag_id] = tag.name
-    drawers: dict[DrawerId, DrawerTarget] = {}
+    spaces: dict[SpaceId, SpaceTarget] = {}
     for rule in rules:
         for action in rule.definition.actions:
-            if isinstance(action, SetDrawer) and action.drawer_id not in drawers:
-                drawer = await uow.drawers.find(action.drawer_id)
-                if drawer is not None:
-                    drawers[drawer.id] = DrawerTarget(
-                        name=drawer.name,
-                        writable=can_file_into(owner, drawer),
-                        shared=drawer.owner_id != owner.id or bool(drawer.shares),
+            if isinstance(action, SetSpace) and action.space_id not in spaces:
+                space = await uow.spaces.find(action.space_id)
+                if space is not None:
+                    spaces[space.id] = SpaceTarget(
+                        name=space.name,
+                        writable=can_file_into(owner, space),
+                        shared=space.owner_id != owner.id or bool(space.shares),
                     )
-    for drawer_id in {*drawers, document.drawer_id}:
-        if drawer_id in drawers:
-            names[drawer_id] = drawers[drawer_id].name
-        elif (current := await uow.drawers.find(drawer_id)) is not None:
-            names[drawer_id] = current.name
-    default = await uow.drawers.get_default(owner.id)
+    for space_id in {*spaces, document.space_id}:
+        if space_id in spaces:
+            names[space_id] = spaces[space_id].name
+        elif (current := await uow.spaces.find(space_id)) is not None:
+            names[space_id] = current.name
+    default = await uow.spaces.get_default(owner.id)
     return Situation(
         mode=mode,
         document=document,
-        default_drawer=default.id,
+        default_space=default.id,
         definitions=definitions,
         render=templates.render,
         owner_name=owner.username,
-        drawers=drawers,
+        spaces=spaces,
         existing=frozenset(existing),
         names=names,
         model_values=origin.model_values,
@@ -519,12 +519,12 @@ def apply_plan(
     definitions: Mapping[FieldId, FieldDefinition],
     now: datetime,
 ) -> str | None:
-    """Apply the planned change and drawer; the reason if the change no longer fits (nothing
+    """Apply the planned change and space; the reason if the change no longer fits (nothing
     is applied then)."""
     try:
         document.apply_changes(rule_plan.changes, definitions, now)
     except ValidationError as error:
         return f"the rules' change does not fit: {error}"
-    if rule_plan.drawer is not None:
-        document.move_to(rule_plan.drawer, now)
+    if rule_plan.space is not None:
+        document.move_to(rule_plan.space, now)
     return None

@@ -35,7 +35,7 @@ from papiq.core.services.pipeline import PipelineService, PlaceholderNode
 from tests import builders
 from tests.builders import NOW, incoming
 from tests.contracts.event_bus import EventBusFactory, Recorder, publish, received
-from tests.contracts.unit_of_work import owner_with_drawer
+from tests.contracts.unit_of_work import owner_with_space
 
 LEASE = timedelta(minutes=5)
 
@@ -46,12 +46,12 @@ class SqlAdapterSuite:
     async def test_decimals_keep_their_exact_value_and_scale(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
-        owner, drawer = await owner_with_drawer(uow_factory)
+        owner, space = await owner_with_space(uow_factory)
         number = FieldDefinition.create(name="n", data_type=FieldType.NUMBER, now=NOW)
         amount = FieldDefinition.create(name="a", data_type=FieldType.AMOUNT, now=NOW)
         precise = Decimal("12345678901234567890.123456789012345678")
         money = Money(Decimal("0.10"), "EUR")
-        document = builders.document(owner, drawer)
+        document = builders.document(owner, space)
         document.apply_changes(
             DocumentChanges(fields={number.id: precise, amount.id: money}),
             {number.id: number, amount.id: amount},
@@ -135,11 +135,11 @@ class SqlAdapterSuite:
     ) -> None:
         """Both units find no duplicate, then both add the same original: the unique index
         rejects one of them."""
-        owner, drawer = await owner_with_drawer(uow_factory)
+        owner, space = await owner_with_space(uow_factory)
         both_checked = asyncio.Barrier(2)
 
         async def add() -> Document:
-            document = builders.document(owner, drawer, content="same")
+            document = builders.document(owner, space, content="same")
             async with uow_factory() as uow:
                 assert await uow.documents.find_by_sha256(owner.id, document.sha256) is None
                 async with asyncio.timeout(10):
@@ -155,7 +155,7 @@ class SqlAdapterSuite:
     async def test_concurrent_uploads_of_the_same_file_create_one_document(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
-        owner, _ = await owner_with_drawer(uow_factory)
+        owner, _ = await owner_with_space(uow_factory)
         pipeline = PipelineService(
             uow_factory,
             ManualClock(NOW),
@@ -311,23 +311,23 @@ class MigrationSuite:
         """Revision 0007 moves definitions, their types and values and renames stored names by
         their place; text a person wrote stays. The downgrade restores them."""
         await migrate(empty_database, "0006")
-        ids = {name: new_id() for name in ("user", "drawer", "document", "field", "type", "rule")}
+        ids = {name: new_id() for name in ("user", "space", "document", "field", "type", "rule")}
         field, document = str(ids["field"]), str(ids["document"])
         check = {"field": f"attribute:{field}", "outcome": "ok", "reason": "attribute"}
         condition = {"field": "attribute", "op": "is", "value": "x", "attribute_id": field}
         text = {"field": "text", "op": "contains", "value": "attribute"}
         rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
             (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
-            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+            (_OLD["drawers"], {"id": ids["space"], "owner_id": ids["user"], "name_key": "d"}),
             (t.document_types, {"id": ids["type"], "name": "Invoice", "name_key": "invoice"}),
             (_OLD["definitions"], {"id": ids["field"], "name": "Due", "name_key": "due"}),
             (_OLD["types"], {"attribute_id": ids["field"], "document_type_id": ids["type"]}),
             (
-                _before_0009(t.documents),
+                _drawer(_before_0009(t.documents)),
                 {
                     "id": ids["document"],
                     "owner_id": ids["user"],
-                    "drawer_id": ids["drawer"],
+                    "drawer_id": ids["space"],
                     "processing_step": "apply_rules",
                     "processing_outcomes": {**_OK_UP_TO_CLASSIFY, "extract_attributes": "ok"},
                 },
@@ -419,17 +419,17 @@ class MigrationSuite:
         """Revision 0009 renames the columns, the job kind, the payload keys and the event type
         `document.step_completed` wherever it is stored; the downgrade restores them."""
         await migrate(empty_database, "0008")
-        ids = {name: new_id() for name in ("user", "drawer", "document", "webhook")}
+        ids = {name: new_id() for name in ("user", "space", "document", "webhook")}
         document = str(ids["document"])
         rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
             (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
-            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+            (_OLD["drawers"], {"id": ids["space"], "owner_id": ids["user"], "name_key": "d"}),
             (
-                _before_0009(t.documents),
+                _drawer(_before_0009(t.documents)),
                 {
                     "id": ids["document"],
                     "owner_id": ids["user"],
-                    "drawer_id": ids["drawer"],
+                    "drawer_id": ids["space"],
                     "processing_step": "ocr",
                     "processing_outcomes": {"receive": "ok"},
                 },
@@ -510,7 +510,7 @@ class MigrationSuite:
         with the times of the latest log entry; `pages` is skipped. The downgrade derives the
         current node and the outcomes again."""
         await migrate(empty_database, "0009")
-        ids = {name: new_id() for name in ("user", "drawer", "a", "b", "c", "d")}
+        ids = {name: new_id() for name in ("user", "space", "a", "b", "c", "d")}
         second, third = NOW + timedelta(seconds=1), NOW + timedelta(seconds=3)
         rules_ok = {**_OK_UP_TO_CLASSIFY, "extract_fields": "ok", "apply_rules": "ok"}
         documents = {
@@ -521,16 +521,16 @@ class MigrationSuite:
         }
         rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
             (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
-            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+            (_OLD["drawers"], {"id": ids["space"], "owner_id": ids["user"], "name_key": "d"}),
         ]
         for name, (status, current, outcomes) in documents.items():
             rows.append(
                 (
-                    _before_0010(t.documents),
+                    _drawer(_before_0010(t.documents)),
                     {
                         "id": ids[name],
                         "owner_id": ids["user"],
-                        "drawer_id": ids["drawer"],
+                        "drawer_id": ids["space"],
                         "sha256": name * 64,
                         "processing_status": status,
                         "processing_node": current,
@@ -640,21 +640,26 @@ class MigrationSuite:
         """Revision 0014 takes the latest confirmation by a person (in the inbox, or a change
         beyond the title) or the source system; a later model run at `classify` undoes it."""
         await migrate(empty_database, "0013")
-        ids = {name: new_id() for name in ("user", "drawer", "inbox", "change", "title", "model")}
+        ids = {name: new_id() for name in ("user", "space", "inbox", "change", "title", "model")}
         later = NOW + timedelta(minutes=5)
         documents = sa.table(
             "documents",
-            *(sa.column(c.name, c.type) for c in t.documents.c if c.name != "confirmed_at"),
+            *(
+                sa.column(c.name, c.type)
+                for c in t.documents.c
+                if c.name not in {"confirmed_at", "space_id"}
+            ),
+            sa.column("drawer_id", sa.Uuid()),
         )
         rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
             (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
-            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+            (_OLD["drawers"], {"id": ids["space"], "owner_id": ids["user"], "name_key": "d"}),
         ]
         for number, name in enumerate(("inbox", "change", "title", "model")):
             values = {
                 "id": ids[name],
                 "owner_id": ids["user"],
-                "drawer_id": ids["drawer"],
+                "drawer_id": ids["space"],
                 "sha256": str(number) * 64,
                 "processing_nodes": {},
             }
@@ -738,7 +743,7 @@ class MigrationSuite:
         the jobs and the events; the signals are skipped where the judge ran, waiting where it
         waits, with jobs once the text is parsed. The downgrade restores the old graph."""
         await migrate(empty_database, "0015")
-        ids = {name: new_id() for name in ("user", "drawer", "done", "parsed", "early")}
+        ids = {name: new_id() for name in ("user", "space", "done", "parsed", "early")}
 
         def state(status: str, outcome: str | None = None) -> dict[str, Any]:
             return {"status": status, "outcome": outcome, "started_at": None, "finished_at": None}
@@ -757,17 +762,17 @@ class MigrationSuite:
         }
         rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
             (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
-            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+            (_OLD["drawers"], {"id": ids["space"], "owner_id": ids["user"], "name_key": "d"}),
         ]
         for number, (name, graph) in enumerate(graphs.items()):
             values = {
                 "id": ids[name],
                 "owner_id": ids["user"],
-                "drawer_id": ids["drawer"],
+                "drawer_id": ids["space"],
                 "sha256": str(number) * 64,
                 "processing_nodes": graph,
             }
-            rows.append((t.documents, values))
+            rows.append((_drawer(_before_0021(t.documents)), values))
         parsed = str(ids["parsed"])
         rows += [
             (
@@ -972,11 +977,11 @@ class MigrationSuite:
     async def test_titles_get_their_sort_key_and_back(self, empty_database: Database) -> None:
         """Revision 0023 fills the sort key of every title, case and accents aside."""
         await migrate(empty_database, "0022")
-        ids = {name: new_id() for name in ("user", "drawer", "letter", "invoice")}
+        ids = {name: new_id() for name in ("user", "space", "letter", "invoice")}
         documents = _before_0021(t.documents)
         rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
             (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
-            (t.drawers, {"id": ids["drawer"], "owner_id": ids["user"], "name_key": "d"}),
+            (_OLD["drawers"], {"id": ids["space"], "owner_id": ids["user"], "name_key": "d"}),
         ]
         for number, (name, title) in enumerate(
             (("letter", "Ärztebrief Straße 5"), ("invoice", " INVOICE "))
@@ -984,13 +989,13 @@ class MigrationSuite:
             values = {
                 "id": ids[name],
                 "owner_id": ids["user"],
-                "drawer_id": ids["drawer"],
+                "drawer_id": ids["space"],
                 "sha256": str(number) * 64,
                 "title": title,
                 "processing_nodes": {},
                 "processing_vision": False,
             }
-            rows.append((documents, values))
+            rows.append((_drawer(documents), values))
         async with empty_database.writing() as connection:
             for table, values in rows:
                 defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
@@ -1006,6 +1011,235 @@ class MigrationSuite:
         await downgrade(empty_database, "0022")
         async with empty_database.reading() as connection:
             assert len((await connection.execute(select(documents.c.id))).all()) == 2
+
+    async def test_drawers_become_spaces_and_back(self, empty_database: Database) -> None:
+        """Revision 0024 renames the tables and the names Papiq stores; the rows that refer to
+        a document stay, and so does text a person wrote. The downgrade restores all of it."""
+        await migrate(empty_database, "0023")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        ids = {
+            name: new_id()
+            for name in ("user", "other", "default", "shared", "document", "type", "rule")
+        }
+        ids |= {name: new_id() for name in ("text", "number", "tag")}
+        user, shared, document = str(ids["user"]), str(ids["shared"]), str(ids["document"])
+        template = (
+            "{{ drawer }}: drawer {% if drawer %}{{ drawer | upcase }}{% endif %}"
+            " {% raw %}{{ drawer }}{% endraw %} {{ 'drawer' }} {{ field.drawer }}"
+        )
+        renamed = (
+            "{{ space }}: drawer {% if space %}{{ space | upcase }}{% endif %}"
+            " {% raw %}{{ drawer }}{% endraw %} {{ 'drawer' }} {{ field.drawer }}"
+        )
+        actions = [
+            {"type": "set_drawer", "drawer_id": shared},
+            {"type": "set_title", "template": template},
+            {"type": "set_field", "field_id": str(ids["text"]), "value": "{{ drawer }}"},
+            {"type": "set_field", "field_id": str(ids["number"]), "value": "{{ drawer }}"},
+            {"type": "force_review", "reason": "Check {{ drawer }}"},
+        ]
+        log: dict[str, tuple[str | None, dict[str, Any], dict[str, Any]]] = {
+            "person:drawer": (
+                "person:drawer",
+                {"trigger": "change", "actor": user, "drawer_id": shared},
+                {"changed": ["drawer"]},
+            ),
+            "person": (
+                "person",
+                {"actor": user},
+                {
+                    "drawer_id": shared,
+                    "changed": ["drawer", "title"],
+                    "accepted": ["drawer"],
+                    "entered": [],
+                    "kept": ["drawer"],
+                },
+            ),
+            "file": (None, {}, {"fields": [{"field": "drawer", "reason": "the drawer stays"}]}),
+            "apply_rules": (
+                None,
+                {},
+                {
+                    "fields": [{"field": "drawer", "outcome": "ok"}],
+                    "rules": [
+                        {
+                            "applied": [{"field": "drawer", "value": shared}],
+                            "notes": [{"field": "drawer", "message": "drawer 'x' is gone"}],
+                        }
+                    ],
+                },
+            ),
+        }
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
+            (t.users, {"id": ids["other"], "username": "b", "username_key": "b", "role": "user"}),
+            (_OLD["drawers"], {"id": ids["default"], "owner_id": ids["user"], "name_key": "d"}),
+            (
+                _OLD["drawers"],
+                {
+                    "id": ids["shared"],
+                    "owner_id": ids["user"],
+                    "name": "Shared",
+                    "name_key": "shared",
+                    "is_default": False,
+                },
+            ),
+            (
+                _OLD["shares"],
+                {"drawer_id": ids["shared"], "user_id": ids["other"], "level": "read"},
+            ),
+            (
+                _drawer(_before_0021(t.documents)),
+                {"id": ids["document"], "owner_id": ids["user"], "drawer_id": ids["shared"]},
+            ),
+            (t.tags, {"id": ids["tag"], "name": "T", "name_key": "t"}),
+            (t.document_tags, {"document_id": ids["document"], "tag_id": ids["tag"]}),
+            (
+                t.field_definitions,
+                {"id": ids["text"], "name": "A", "name_key": "a", "data_type": "text"},
+            ),
+            (
+                t.field_definitions,
+                {"id": ids["number"], "name": "B", "name_key": "b", "data_type": "number"},
+            ),
+            (
+                t.document_fields,
+                {"document_id": ids["document"], "field_id": ids["text"], "kind": "text"},
+            ),
+            (
+                t.document_types,
+                {"id": ids["type"], "name": "L", "name_key": "l", "title_pattern": template},
+            ),
+            (
+                t.rules,
+                {"id": ids["rule"], "scope": "user", "owner_id": ids["user"], "current_version": 1},
+            ),
+            (
+                t.rule_versions,
+                {"rule_id": ids["rule"], "number": 1, "conditions": {}, "actions": actions},
+            ),
+            (
+                t.outbox,
+                {
+                    "event_id": new_id(),
+                    "type": "document.filed",
+                    "payload": {"document_id": document, "drawer_id": shared},
+                },
+            ),
+        ]
+        rows += [
+            (
+                t.processing_log,
+                {
+                    "document_id": ids["document"],
+                    "node": node,
+                    "model_version": version,
+                    "input": input_,
+                    "output": output,
+                },
+            )
+            for node, (version, input_, output) in log.items()
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+
+        async def stored(old: bool) -> dict[str, Any]:
+            spaces = _OLD["drawers"] if old else t.spaces
+            shares = _OLD["shares"] if old else t.space_shares
+            documents = _drawer(_before_0021(t.documents)) if old else t.documents
+            space_column = documents.c.drawer_id if old else documents.c.space_id
+            async with empty_database.reading() as connection:
+
+                async def all_(query: Any) -> list[Any]:
+                    return [tuple(row) for row in (await connection.execute(query)).all()]
+
+                return {
+                    "spaces": sorted(await all_(select(spaces.c.id, spaces.c.is_default))),
+                    "shares": await all_(select(shares)),
+                    "document": await all_(select(documents.c.id, space_column)),
+                    "tags": await all_(select(t.document_tags)),
+                    "fields": await all_(select(t.document_fields.c.field_id)),
+                    "pattern": await all_(select(t.document_types.c.title_pattern)),
+                    "actions": await all_(select(t.rule_versions.c.actions)),
+                    "event": await all_(select(t.outbox.c.payload)),
+                    "log": {
+                        row.node: (row.model_version, row.input, row.output)
+                        for row in (await connection.execute(select(t.processing_log))).all()
+                    },
+                }
+
+        before = await stored(old=True)
+        await migrate(empty_database)
+        after = await stored(old=False)
+        assert after["spaces"] == before["spaces"]
+        assert after["shares"] == [(ids["shared"], ids["other"], "read")]
+        assert after["document"] == [(ids["document"], ids["shared"])]
+        assert (after["tags"], after["fields"]) == (before["tags"], before["fields"])
+        assert after["pattern"] == [(renamed,)]
+        assert after["actions"] == [
+            (
+                [
+                    {"type": "set_space", "space_id": shared},
+                    {"type": "set_title", "template": renamed},
+                    {"type": "set_field", "field_id": str(ids["text"]), "value": "{{ space }}"},
+                    {"type": "set_field", "field_id": str(ids["number"]), "value": "{{ drawer }}"},
+                    {"type": "force_review", "reason": "Check {{ space }}"},
+                ],
+            )
+        ]
+        assert after["event"] == [({"document_id": document, "space_id": shared},)]
+        assert after["log"] == {
+            "person:drawer": (
+                "person:space",
+                {"trigger": "change", "actor": user, "space_id": shared},
+                {"changed": ["space"]},
+            ),
+            "person": (
+                "person",
+                {"actor": user},
+                {
+                    "space_id": shared,
+                    "changed": ["space", "title"],
+                    "accepted": ["space"],
+                    "entered": [],
+                    "kept": ["space"],
+                },
+            ),
+            "file": (None, {}, {"fields": [{"field": "space", "reason": "the drawer stays"}]}),
+            "apply_rules": (
+                None,
+                {},
+                {
+                    "fields": [{"field": "space", "outcome": "ok"}],
+                    "rules": [
+                        {
+                            "applied": [{"field": "space", "value": shared}],
+                            "notes": [{"field": "space", "message": "drawer 'x' is gone"}],
+                        }
+                    ],
+                },
+            ),
+        }
+
+        await downgrade(empty_database, "0023")
+        assert await stored(old=True) == before
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+
+    async def test_a_template_that_uses_space_stops_revision_0024(
+        self, empty_database: Database
+    ) -> None:
+        await migrate(empty_database, "0023")
+        pattern = "{% for space in tags %}{{ drawer }}{% endfor %}"
+        async with empty_database.writing() as connection:
+            values = {"id": new_id(), "name": "L", "name_key": "l", "title_pattern": pattern}
+            defaults = {k: v for k, v in _DEFAULTS.items() if k in t.document_types.c}
+            await connection.execute(insert(t.document_types).values({**defaults, **values}))
+        with pytest.raises(RuntimeError, match=r"uses 'space' already"):
+            await migrate(empty_database)
 
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
@@ -1025,6 +1259,22 @@ class MigrationSuite:
 
 
 _OLD = {
+    "drawers": sa.table(
+        "drawers",
+        sa.column("id", sa.Uuid()),
+        sa.column("owner_id", sa.Uuid()),
+        sa.column("name", sa.Text()),
+        sa.column("name_key", sa.Text()),
+        sa.column("is_default", sa.Boolean()),
+        sa.column("created_at", UtcDateTime()),
+        sa.column("version", sa.Integer()),
+    ),
+    "shares": sa.table(
+        "drawer_shares",
+        sa.column("drawer_id", sa.Uuid()),
+        sa.column("user_id", sa.Uuid()),
+        sa.column("level", sa.Text()),
+    ),
     "definitions": sa.table(
         "attribute_definitions",
         sa.column("id", sa.Uuid()),
@@ -1172,10 +1422,17 @@ async def _document_rows(database: Database, *, old: bool = False) -> list[Any]:
         return list((await connection.execute(select(table).order_by(table.c.sha256))).all())
 
 
+def _drawer(table: sa.TableClause) -> sa.TableClause:
+    """`table` (documents) with the space column as the revisions before 0024 named it, for
+    rows written there; the other helpers leave the column out, so they read at any revision."""
+    columns = [sa.column(c.name, c.type) for c in table.c]
+    return sa.table(table.name, *columns, sa.column("drawer_id", sa.Uuid()))
+
+
 def _before_0021(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0021 had it: no vision reading of the run, and no sort
-    key of the title (0023)."""
-    later = {"processing_vision", "title_key"}
+    key of the title (0023); without the space column (see `_drawer`)."""
+    later = {"processing_vision", "title_key", "space_id"}
     return sa.table(
         table.name, *(sa.column(c.name, c.type) for c in table.c if c.name not in later)
     )
@@ -1184,8 +1441,15 @@ def _before_0021(table: sa.Table) -> sa.TableClause:
 def _before_0010(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0010 had it: the current node and the outcomes instead
     of the state of every node, and no page count (0011), confirmation (0014), vision reading
-    (0021) or sort key of the title (0023)."""
-    later = {"processing_nodes", "page_count", "confirmed_at", "processing_vision", "title_key"}
+    (0021) or sort key of the title (0023); without the space column (see `_drawer`)."""
+    later = {
+        "processing_nodes",
+        "page_count",
+        "confirmed_at",
+        "processing_vision",
+        "title_key",
+        "space_id",
+    }
     columns = [sa.column(c.name, c.type) for c in table.c if c.name not in later]
     if table.name == "documents":
         columns.append(sa.column("processing_node", sa.Text()))

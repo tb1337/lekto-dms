@@ -15,18 +15,18 @@ from papiq.adapters.outbound.memory import (
     MemoryUnitOfWorkFactory,
 )
 from papiq.core.domain.documents import Document
-from papiq.core.domain.drawers import Drawer
 from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.identity import Credential, check_new_password
 from papiq.core.domain.pipeline import NODES, Node, NodeResult
+from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import Role, User
 from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.auth import AuthService
 from papiq.core.services.documents import DocumentService
-from papiq.core.services.drawers import DrawerService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.oidc import OidcService
 from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode
+from papiq.core.services.spaces import SpaceService
 from papiq.core.services.users import UserService
 from papiq.core.services.webhooks import WebhookDeliveryService, WebhookPolicy, WebhookService
 from tests import builders
@@ -102,8 +102,8 @@ class World:
         )
 
     @property
-    def drawers(self) -> DrawerService:
-        return DrawerService(self.uow, self.clock)
+    def spaces(self) -> SpaceService:
+        return SpaceService(self.uow, self.clock)
 
     @property
     def master_data(self) -> MasterDataService:
@@ -138,18 +138,18 @@ class World:
         )
 
     async def user(self, name: str | None = None, role: Role = Role.USER) -> User:
-        """A user with their default drawer, seeded directly."""
+        """A user with their default space, seeded directly."""
         user = builders.user(name, role=role)
         async with self.uow() as uow:
             await uow.users.add(user)
-            await uow.drawers.add(builders.default_drawer(user))
+            await uow.spaces.add(builders.default_space(user))
             await uow.commit()
         return user
 
     async def account(
         self, name: str | None = None, role: Role = Role.USER, password: str = builders.PASSWORD
     ) -> User:
-        """A user with default drawer and password."""
+        """A user with default space and password."""
         user = await self.user(name, role)
         async with self.uow() as uow:
             await uow.credentials.add(
@@ -161,9 +161,9 @@ class World:
             await uow.commit()
         return user
 
-    async def default_drawer(self, user: User) -> Drawer:
+    async def default_space(self, user: User) -> Space:
         async with self.uow() as uow:
-            return await uow.drawers.get_default(user.id)
+            return await uow.spaces.get_default(user.id)
 
     async def drain(self, pipeline: PipelineService | None = None) -> int:
         """Run due jobs until none is left; returns how many ran."""

@@ -291,8 +291,8 @@ class NeighboursSignal:
             return abstained("the text's vector does not fit the index")
         async with self._uow() as uow:
             owner = await uow.users.get(document.owner_id)
-            drawers = await uow.drawers.list_accessible(owner.id)
-        visibility = Visibility(owner.id, frozenset(drawer.id for drawer in drawers))
+            spaces = await uow.spaces.list_accessible(owner.id)
+        visibility = Visibility(owner.id, frozenset(space.id for space in spaces))
         try:
             hits = await self._index.similar(
                 SimilarQuery(
@@ -312,8 +312,8 @@ class NeighboursSignal:
                 found = await uow.documents.find(hit.id)
                 if found is None or found.confirmed_at is None:
                     continue  # the index is behind
-                drawer = await uow.drawers.find(found.drawer_id)
-                if drawer is None or reach_access(owner, found, drawer) is None:
+                space = await uow.spaces.find(found.space_id)
+                if space is None or reach_access(owner, found, space) is None:
                     continue
                 neighbours.append(
                     {

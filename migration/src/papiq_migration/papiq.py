@@ -132,12 +132,12 @@ class Papiq:
     async def set_choices(self, id: str, choices: list[str]) -> dict[str, Any]:
         return await self._object("PATCH", f"/fields/{id}", json={"choices": choices})
 
-    async def create_drawer(self, name: str, owner_id: str) -> dict[str, Any]:
-        return await self._object("POST", "/drawers", json={"name": name, "owner_id": owner_id})
+    async def create_space(self, name: str, owner_id: str) -> dict[str, Any]:
+        return await self._object("POST", "/spaces", json={"name": name, "owner_id": owner_id})
 
-    async def share(self, drawer_id: str, user_id: str, level: str) -> dict[str, Any]:
+    async def share(self, space_id: str, user_id: str, level: str) -> dict[str, Any]:
         return await self._object(
-            "PUT", f"/drawers/{drawer_id}/shares/{user_id}", json={"level": level}
+            "PUT", f"/spaces/{space_id}/shares/{user_id}", json={"level": level}
         )
 
     async def upload(self, path: Path, filename: str, fields: dict[str, str]) -> dict[str, Any]:

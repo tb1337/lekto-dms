@@ -1,8 +1,8 @@
 """Rules whose references go away.
 
-Deleting a contact, type, tag, field or drawer is not blocked by rules that refer to it: the
+Deleting a contact, type, tag, field or space is not blocked by rules that refer to it: the
 person deleting it would have to change rules they may not see or should not have to look after
-(a drawer owner does not see the rules of users who may file into the drawer). Instead the
+(a space owner does not see the rules of users who may file into the space). Instead the
 affected rules are disabled, with the reason, in the same unit of work. Enabling such a rule
 checks its references again.
 """

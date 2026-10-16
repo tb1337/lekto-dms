@@ -127,7 +127,7 @@ export const FIELD_TYPE_OPERATORS: Record<FieldType, readonly Operator[]> = {
 };
 
 export const ACTION_TYPES: readonly ActionType[] = [
-	'set_drawer',
+	'set_space',
 	'set_contact',
 	'set_document_type',
 	'set_title',
@@ -261,8 +261,8 @@ export function newCondition(field: ConditionField = 'contact'): ConditionNode {
 export function newAction(type: ActionType): ActionNode {
 	const key = nextKey();
 	switch (type) {
-		case 'set_drawer':
-			return { key, type, drawer_id: '' };
+		case 'set_space':
+			return { key, type, space_id: '' };
 		case 'set_contact':
 			return { key, type, contact_id: '' };
 		case 'set_document_type':
@@ -434,8 +434,8 @@ export function referencedIds(node: ConditionNode | ActionNode): string[] {
 	}
 	const action = node as ActionNode;
 	switch (action.type) {
-		case 'set_drawer':
-			return [action.drawer_id];
+		case 'set_space':
+			return [action.space_id];
 		case 'set_contact':
 			return [action.contact_id];
 		case 'set_document_type':
@@ -637,8 +637,8 @@ function checkAction(
 ): Problem | null {
 	if (!actionTypesFor(scope).includes(action.type)) return { code: 'scope' };
 	switch (action.type) {
-		case 'set_drawer':
-			return action.drawer_id ? null : { code: 'choose' };
+		case 'set_space':
+			return action.space_id ? null : { code: 'choose' };
 		case 'set_contact':
 			return action.contact_id ? null : { code: 'choose' };
 		case 'set_document_type':

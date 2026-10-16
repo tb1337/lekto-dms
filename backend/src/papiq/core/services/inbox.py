@@ -36,7 +36,7 @@ from papiq.core.domain.pipeline import (
     Outcome,
 )
 
-ALWAYS_SET = frozenset({"drawer", "title", "review"})
+ALWAYS_SET = frozenset({"space", "title", "review"})
 """Open fields of the rules that always have a value: confirming keeps it."""
 
 MODEL_NODES = (Node.JUDGE, Node.FIELDS)
@@ -164,10 +164,10 @@ def decide(
     given: Collection[str] = (),
 ) -> Decision:
     """Every open field needs a decision: a value (or None) in `changes` (or named in `given`,
-    such as the drawer), a value the document has (its owner set it meanwhile; it is kept), or,
+    such as the space), a value the document has (its owner set it meanwhile; it is kept), or,
     with `accept_suggestions`, a suggestion that can be taken as it is. Suggestions never
     replace a value. OpenFieldsError lists the fields without a decision. Fields whose definition
-    no longer exists need none. The rules' drawer, title and review always have a value:
+    no longer exists need none. The rules' space, title and review always have a value:
     confirming keeps them."""
     accepted: dict[Node, list[str]] = {}
     entered: dict[Node, list[str]] = {}

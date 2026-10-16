@@ -90,10 +90,10 @@ class AnyGroup(BaseModel):
     negate: bool = Field(default=False, alias="not")
 
 
-class SetDrawerAction(BaseModel):
+class SetSpaceAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    type: Literal["set_drawer"]
-    drawer_id: UUID = Field(description="A drawer the rule's owner may write to (user rules).")
+    type: Literal["set_space"]
+    space_id: UUID = Field(description="A space the rule's owner may write to (user rules).")
 
 
 class SetContactAction(BaseModel):
@@ -111,7 +111,7 @@ class SetDocumentTypeAction(BaseModel):
 TEMPLATE_DESCRIPTION = (
     "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: "
     "`title`, `filename` (the original's name without extension), `original_filename`, "
-    "`contact`, `document_type`, `document_date`, `added`, `tags` (a list), `drawer`, `owner`, "
+    "`contact`, `document_type`, `document_date`, `added`, `tags` (a list), `space`, `owner`, "
     "`channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and "
     "`.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, "
     "`2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM "
@@ -162,7 +162,7 @@ class ForceReviewAction(BaseModel):
 
 
 ActionSchema = Annotated[
-    SetDrawerAction
+    SetSpaceAction
     | SetContactAction
     | SetDocumentTypeAction
     | SetTitleAction
@@ -185,7 +185,7 @@ _RULE_EXAMPLE: dict[str, Any] = {
         ]
     },
     "actions": [
-        {"type": "set_drawer", "drawer_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b"},
+        {"type": "set_space", "space_id": "01999d5e-5555-7c1e-b6a3-2f4d5e6f7a8b"},
         {"type": "add_tags", "tag_ids": ["01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b"]},
     ],
 }

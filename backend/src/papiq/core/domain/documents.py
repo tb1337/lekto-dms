@@ -26,8 +26,8 @@ from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
     DocumentTypeId,
-    DrawerId,
     FieldId,
+    SpaceId,
     TagId,
     UserId,
     new_id,
@@ -101,7 +101,7 @@ class DocumentChanges:
 
 CONFIRMING = frozenset({"contact_id", "document_type_id", "tag_ids", "document_date", "fields"})
 """Metadata a person confirms by changing it (as `Document.apply_changes` names it); a title
-or a drawer alone does not."""
+or a space alone does not."""
 CLASSIFIER_LABELS = frozenset({"contact_id", "document_type_id", "tag_ids"})
 """What the classifier learns from confirmed documents: the pipeline deriving them anew ends
 the confirmation."""
@@ -111,7 +111,7 @@ the confirmation."""
 class Document:
     """A file with metadata.
 
-    Invariants: exactly one drawer; at most one contact and one document type; field values
+    Invariants: exactly one space; at most one contact and one document type; field values
     fit their definition, and type-bound fields only exist while the document has a matching
     type. `lane` is None while the pipeline runs and is set when it completes or fails.
 
@@ -120,7 +120,7 @@ class Document:
 
     id: DocumentId
     owner_id: UserId
-    drawer_id: DrawerId
+    space_id: SpaceId
     sha256: Sha256
     title: str
     original_filename: str
@@ -159,7 +159,7 @@ class Document:
         cls,
         *,
         owner_id: UserId,
-        drawer_id: DrawerId,
+        space_id: SpaceId,
         sha256: Sha256,
         original_filename: str,
         media_type: str,
@@ -175,7 +175,7 @@ class Document:
         document = cls(
             id=DocumentId(new_id()),
             owner_id=owner_id,
-            drawer_id=drawer_id,
+            space_id=space_id,
             sha256=sha256,
             title=PurePath(filename).stem or filename,
             original_filename=filename,
@@ -250,7 +250,7 @@ class Document:
             return ()  # a node that was still running after another failed
         if node is Node.FILE and result.outcome is Outcome.OK:
             self._record(
-                DocumentFiled(document_id=self.id, occurred_at=now, drawer_id=self.drawer_id)
+                DocumentFiled(document_id=self.id, occurred_at=now, space_id=self.space_id)
             )
         due = processing.due()
         if not due:
@@ -515,12 +515,12 @@ class Document:
         """The pipeline derived contact, type or tags anew: they are no longer a person's."""
         self.confirmed_at = None
 
-    def move_to(self, drawer_id: DrawerId, now: datetime) -> None:
-        """File the document into another drawer. Permissions are checked by the caller."""
-        if drawer_id == self.drawer_id:
+    def move_to(self, space_id: SpaceId, now: datetime) -> None:
+        """File the document into another space. Permissions are checked by the caller."""
+        if space_id == self.space_id:
             return
-        self.drawer_id = drawer_id
-        self._record(DocumentFiled(document_id=self.id, occurred_at=now, drawer_id=drawer_id))
+        self.space_id = space_id
+        self._record(DocumentFiled(document_id=self.id, occurred_at=now, space_id=space_id))
         self._touch(now)
 
     def delete(self, now: datetime, readers: Iterable[UserId] = ()) -> None:

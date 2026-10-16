@@ -441,9 +441,9 @@ def _violations(
     before: Document, after: Document, checks: dict[str, FieldCheck]
 ) -> tuple[str, ...]:
     """Changes the checks do not back: every changed field must have an OK check with the
-    applied value; drawer and owner must stay."""
+    applied value; space and owner must stay."""
     problems = []
-    for name in ("owner_id", "drawer_id"):
+    for name in ("owner_id", "space_id"):
         if getattr(before, name) != getattr(after, name):
             problems.append(f"{name} changed")
 

@@ -30,9 +30,9 @@
 	import { inboxDocument, tabHref, type Neighbours } from '#lib/document-view.ts';
 	import { reportError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import { drawerLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
-	import { canManage, canMove, writableDrawers } from '#lib/permissions.ts';
+	import { canManage, canMove, writableSpaces } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { progress, reprocessable, type GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -84,13 +84,11 @@
 	const manageable = $derived(canManage(document, user));
 	const movable = $derived(canMove(document, user));
 	const status = $derived(document.processing.status);
-	const drawers = $derived(
-		writableDrawers(lookup?.drawers ?? [], user).filter(
-			(drawer) => drawer.id !== document.drawer_id
-		)
+	const spaces = $derived(
+		writableSpaces(lookup?.spaces ?? [], user).filter((space) => space.id !== document.space_id)
 	);
-	const drawerName = $derived(
-		lookup?.drawers.find((drawer) => drawer.id === document.drawer_id)?.name ?? null
+	const spaceName = $derived(
+		lookup?.spaces.find((space) => space.id === document.space_id)?.name ?? null
 	);
 	const running = $derived(progress(document.processing));
 	// Nodes a reprocessing may start from: the graph decides (never past a failed node).
@@ -184,7 +182,7 @@
 				unwrap(
 					api.POST('/api/v1/documents/{id}/move', {
 						params: { path: { id: document.id } },
-						body: { drawer_id: target }
+						body: { space_id: target }
 					})
 				),
 			m.move_done()
@@ -245,7 +243,7 @@
 			</div>
 			<p class="text-sm text-muted-foreground">
 				{document.original_filename} · {m.doc_uploaded({ date: formatDate(document.created_at) })}
-				{#if drawerName}· {drawerName}{/if}
+				{#if spaceName}· {spaceName}{/if}
 				{#if document.page_count}· {m.doc_pages({ count: document.page_count })}{/if}
 			</p>
 			{#if status === 'processing'}
@@ -284,10 +282,10 @@
 				<Button
 					variant="outline"
 					onclick={() => {
-						target = drawers[0]?.id ?? '';
+						target = spaces[0]?.id ?? '';
 						moveOpen = true;
 					}}
-					disabled={drawers.length === 0}
+					disabled={spaces.length === 0}
 				>
 					<FolderInput aria-hidden="true" />
 					{m.move_title()}
@@ -351,13 +349,13 @@
 			<Dialog.Description>{m.move_hint()}</Dialog.Description>
 		</Dialog.Header>
 		<Field.Field>
-			<Field.Label for="move-drawer">{m.field_drawer()}</Field.Label>
+			<Field.Label for="move-space">{m.field_space()}</Field.Label>
 			<NativeSelect
-				id="move-drawer"
+				id="move-space"
 				bind:value={target}
-				options={drawers.map((drawer) => ({
-					value: drawer.id,
-					label: drawerLabel(drawer, lookup?.users ?? [], user?.id)
+				options={spaces.map((space) => ({
+					value: space.id,
+					label: spaceLabel(space, lookup?.users ?? [], user?.id)
 				}))}
 			/>
 		</Field.Field>

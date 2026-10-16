@@ -7,8 +7,8 @@ Common rules for every adapter:
 - `add` keeps the entity's version; `update` succeeds only if the stored version equals the
   entity's version, then increments both. Otherwise it raises ConcurrencyError (at the latest on
   commit).
-- Uniqueness (raises ConflictError at the latest on commit): usernames; drawer names per owner;
-  one default drawer per owner; names of contacts, document types, tags and field
+- Uniqueness (raises ConflictError at the latest on commit): usernames; space names per owner;
+  one default space per owner; names of contacts, document types, tags and field
   definitions; the original (SHA-256) per document owner. Names compare regardless of case.
 - `get` raises NotFoundError, `find` returns None.
 """
@@ -22,7 +22,6 @@ from uuid import UUID
 
 from papiq.core.domain.classifier import ClassifierModel
 from papiq.core.domain.documents import Document, Sha256
-from papiq.core.domain.drawers import Drawer
 from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.identifiers import IdentifierKind
 from papiq.core.domain.ids import (
@@ -31,10 +30,10 @@ from papiq.core.domain.ids import (
     DeliveryId,
     DocumentId,
     DocumentTypeId,
-    DrawerId,
     FieldId,
     RuleApplicationId,
     RuleId,
+    SpaceId,
     TagId,
     UserId,
     WebhookId,
@@ -43,6 +42,7 @@ from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.pipeline import Lane, NodeRun
 from papiq.core.domain.rules import Rule, RuleApplication, RuleVersion
 from papiq.core.domain.sorting import sort_key
+from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import User
 from papiq.core.domain.verdict import KnownLabels
 from papiq.core.domain.webhooks import Webhook, WebhookDelivery
@@ -78,22 +78,22 @@ class UserRepository(Repository[UserId, User], Protocol):
         ...
 
     async def remove(self, id: UserId) -> None:
-        """Delete the user; NotFoundError if missing. Documents, drawers, shares and identity
+        """Delete the user; NotFoundError if missing. Documents, spaces, shares and identity
         data that refer to the user must be removed first."""
         ...
 
 
-class DrawerRepository(Repository[DrawerId, Drawer], Protocol):
-    async def get_default(self, owner: UserId) -> Drawer:
-        """The owner's default drawer; NotFoundError if there is none."""
+class SpaceRepository(Repository[SpaceId, Space], Protocol):
+    async def get_default(self, owner: UserId) -> Space:
+        """The owner's default space; NotFoundError if there is none."""
         ...
 
-    async def list_accessible(self, user: UserId) -> list[Drawer]:
-        """Drawers the user owns or that are shared with them."""
+    async def list_accessible(self, user: UserId) -> list[Space]:
+        """Spaces the user owns or that are shared with them."""
         ...
 
-    async def remove(self, id: DrawerId) -> None:
-        """Delete the drawer and its shares; NotFoundError if missing. It must hold no
+    async def remove(self, id: SpaceId) -> None:
+        """Delete the space and its shares; NotFoundError if missing. It must hold no
         documents."""
         ...
 
@@ -120,7 +120,7 @@ class DocumentFilter:
     contact: ContactId | None = None
     document_type: DocumentTypeId | None = None
     tags: frozenset[TagId] = frozenset()
-    drawer: DrawerId | None = None
+    space: SpaceId | None = None
     lanes: frozenset[Lane | None] | None = None
     confirmed: bool | None = None
     field: FieldId | None = None
@@ -177,7 +177,7 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
 
     async def list_visible_to(self, user: UserId) -> list[Document]:
         """Documents within the user's reach (`papiq.core.domain.permissions.in_reach`): own
-        documents, and green documents in drawers the user owns or that are shared with them.
+        documents, and green documents in spaces the user owns or that are shared with them.
         """
         ...
 
@@ -240,7 +240,7 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         self,
         *,
         owner: UserId | None = None,
-        drawer: DrawerId | None = None,
+        space: SpaceId | None = None,
         contact: ContactId | None = None,
         document_type: DocumentTypeId | None = None,
         tag: TagId | None = None,

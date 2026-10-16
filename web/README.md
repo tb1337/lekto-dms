@@ -24,7 +24,7 @@ pnpm e2e             # Playwright smoke test against a running API (local only)
 The smoke tests (`tests/e2e`) run against the API serving the built UI. `smoke.spec.ts` creates a
 user through the admin of the environment, signs in with password and TOTP, navigates, reloads and
 signs out. `areas.spec.ts` signs in as that admin (without a second factor), opens every area
-without a console error (a CSP violation is one) and creates and removes a contact, a drawer, a
+without a console error (a CSP violation is one) and creates and removes a contact, a space, a
 webhook and an API token:
 
 ```sh
@@ -64,7 +64,7 @@ place of the editor (`tests/setup.ts`); `codemirror.test.ts` runs the real one.
 
 `/ui/documents` lists the documents and, with words in `?q=`, searches them
 (`/documents/search`, with snippets), with the same filters (`lib/filters.ts`: contact, type,
-tag, drawer, lane, a field with a value); there is no search page of its own. The field in the
+tag, space, lane, a field with a value); there is no search page of its own. The field in the
 header leads there; on narrow screens its icon opens the view with the field focused
 (`#search`). `?sort=` holds the sort: a search by relevance, a list by the newest document date
 unless chosen otherwise; the last choice of each, and grid or list (grid by default), stay in

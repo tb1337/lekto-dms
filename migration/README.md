@@ -16,7 +16,7 @@ Papiq image.
 | ASN, notes | fields `ASN` (number) and `Notizen` (text, one paragraph per note with date and author) |
 | Document date | document date |
 | Owner | owner (no owner, or a deleted one: the admin who runs the migration) |
-| Permissions | a drawer of the owner for every combination of readers and writers (groups resolved to users), named `Geteilt: anna (schreiben), bob (lesen)`; without extra permissions the owner's default drawer |
+| Permissions | a space of the owner for every combination of readers and writers (groups resolved to users), named `Geteilt: anna (schreiben), bob (lesen)`; without extra permissions the owner's default space |
 | File | the original (not Paperless' archive PDF) |
 
 Not taken over, and listed or counted in the report: storage paths, `documentlink` fields, the

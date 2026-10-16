@@ -14,7 +14,7 @@ into the index. A job is idempotent and may be repeated.
   database after the write.
 - Vectors are computed from sections of the text (`PAPIQ_SEARCH_CHUNK_SIZE`, at most
   `PAPIQ_SEARCH_MAX_CHUNKS`) and only when the sections differ from those of the indexed
-  vectors: a change of lane, drawer or date costs no embedding.
+  vectors: a change of lane, space or date costs no embedding.
 - Failed jobs are repeated with a growing delay (about three hours in all). If only the
   embedding fails, the document is written at once with the vectors it has (the words must not
   wait for the vectors), the job is repeated, and the last attempt writes without vectors; the
@@ -375,7 +375,7 @@ class IndexingService:
             id=document.id,
             version=document.version,
             owner_id=document.owner_id,
-            drawer_id=document.drawer_id,
+            space_id=document.space_id,
             lane=document.lane,
             title=document.title,
             filename=document.original_filename,

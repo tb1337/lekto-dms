@@ -27,10 +27,10 @@ from papiq import __version__
 from papiq.adapters.inbound.context import ApiContext
 from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
 from papiq.core.domain.documents import UNSET, Document, DocumentChanges
-from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import DomainError, SearchUnavailableError, ValidationError
 from papiq.core.domain.fields import FieldDefinition, field_from_json
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
+from papiq.core.domain.spaces import ShareLevel
 from papiq.core.ports import DocumentFilter
 from papiq.core.ports.search_index import MAX_HITS
 from papiq.core.services.auth import Principal
@@ -83,7 +83,7 @@ class DocumentOut(BaseModel):
     )
     status: str = Field(description="processing, review, completed or failed.")
     owner_id: UUID
-    drawer_id: UUID
+    space_id: UUID
     access: ShareLevel = Field(description="What you may do: read, or read_write.")
     contact: NameRef | None
     document_type: NameRef | None
@@ -214,7 +214,7 @@ def document_out(document: Document, access: ShareLevel, names: Names) -> Docume
         lane=None if document.lane is None else document.lane.value,
         status=document.processing.status.value,
         owner_id=document.owner_id,
-        drawer_id=document.drawer_id,
+        space_id=document.space_id,
         access=access,
         contact=names.contact(document.contact_id),
         document_type=names.document_type(document.document_type_id),

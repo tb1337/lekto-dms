@@ -1,4 +1,4 @@
-"""Endpoints for users, master data, drawers and document metadata: they do what they say."""
+"""Endpoints for users, master data, spaces and document metadata: they do what they say."""
 
 from collections.abc import AsyncIterator
 from typing import Any
@@ -12,9 +12,9 @@ from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.rest.conftest import Api
 
 
-async def green_document(api: Api, headers: dict[str, str], drawer: str | None = None) -> str:
+async def green_document(api: Api, headers: dict[str, str], space: str | None = None) -> str:
     files = {"file": ("Bill 2026.pdf", (SAMPLES / "scan.pdf").read_bytes(), "x/y")}
-    data = {} if drawer is None else {"drawer_id": drawer}
+    data = {} if space is None else {"space_id": space}
     response = await api.client.post(f"{PREFIX}/documents", files=files, data=data, headers=headers)
     assert response.status_code == 202, response.text
     await api.drain()
@@ -291,37 +291,37 @@ async def test_downloads(api: Api) -> None:
 async def test_moving_and_deleting(api: Api) -> None:
     owner = await api.user()
     document = await green_document(api, auth(owner))
-    target = await post(api, "/drawers", {"name": "Archive"}, auth(owner))
+    target = await post(api, "/spaces", {"name": "Archive"}, auth(owner))
     moved = await api.client.post(
-        f"{PREFIX}/documents/{document}/move", json={"drawer_id": target["id"]}, headers=auth(owner)
+        f"{PREFIX}/documents/{document}/move", json={"space_id": target["id"]}, headers=auth(owner)
     )
     assert moved.status_code == 204
     details = await api.client.get(f"{PREFIX}/documents/{document}", headers=auth(owner))
-    assert details.json()["drawer_id"] == target["id"]
+    assert details.json()["space_id"] == target["id"]
     deleted = await api.client.delete(f"{PREFIX}/documents/{document}", headers=auth(owner))
     assert deleted.status_code == 204
     gone = await api.client.get(f"{PREFIX}/documents/{document}", headers=auth(owner))
     assert gone.status_code == 404
 
 
-async def test_drawers_and_shares(api: Api) -> None:
+async def test_spaces_and_shares(api: Api) -> None:
     owner, friend = await api.user(), await api.user("friend")
-    drawer = await post(api, "/drawers", {"name": "Household"}, auth(owner))
-    assert drawer["access"] == "read_write" and drawer["shares"] == []
-    url = f"{PREFIX}/drawers/{drawer['id']}"
+    space = await post(api, "/spaces", {"name": "Household"}, auth(owner))
+    assert space["access"] == "read_write" and space["shares"] == []
+    url = f"{PREFIX}/spaces/{space['id']}"
     shared = await api.client.put(
         f"{url}/shares/{friend.id}", json={"level": "read"}, headers=auth(owner)
     )
     assert shared.json()["shares"] == [{"user_id": str(friend.id), "level": "read"}]
-    seen = (await api.client.get(f"{PREFIX}/drawers", headers=auth(friend))).json()
+    seen = (await api.client.get(f"{PREFIX}/spaces", headers=auth(friend))).json()
     assert {d["name"] for d in seen} == {"Default", "Household"}
     duplicate = await api.client.post(
-        f"{PREFIX}/drawers", json={"name": "household"}, headers=auth(owner)
+        f"{PREFIX}/spaces", json={"name": "household"}, headers=auth(owner)
     )
     assert duplicate.status_code == 409
     default = next(d for d in seen if d["is_default"])
     cannot = await api.client.put(
-        f"{PREFIX}/drawers/{default['id']}/shares/{owner.id}",
+        f"{PREFIX}/spaces/{default['id']}/shares/{owner.id}",
         json={"level": "read"},
         headers=auth(friend),
     )
@@ -571,7 +571,7 @@ async def test_bodies_without_length_are_bounded_while_read(api: Api) -> None:
         yield b'"}'
 
     response = await api.client.post(
-        f"{PREFIX}/drawers",
+        f"{PREFIX}/spaces",
         content=chunks(),
         headers={**auth(user), "content-type": "application/json"},
     )
@@ -583,5 +583,5 @@ async def test_bodies_without_length_are_bounded_while_read(api: Api) -> None:
 async def test_bodies_below_the_limit_pass(api: Api) -> None:
     user = await api.user()
     name = "a" * 200
-    response = await api.client.post(f"{PREFIX}/drawers", json={"name": name}, headers=auth(user))
+    response = await api.client.post(f"{PREFIX}/spaces", json={"name": name}, headers=auth(user))
     assert response.status_code == 201

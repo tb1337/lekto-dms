@@ -44,7 +44,7 @@ async def search_documents(
     contact_id: UUID | None = None,
     document_type_id: UUID | None = None,
     tag_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
-    drawer_id: UUID | None = None,
+    space_id: UUID | None = None,
     lane: Annotated[list[LaneFilter] | None, Query(max_length=4)] = None,
     field_id: UUID | None = None,
     sort: Annotated[
@@ -70,7 +70,7 @@ async def search_documents(
     page = await context.search.search(
         user,
         q,
-        document_filter(contact_id, document_type_id, tag_id, drawer_id, lane, field_id),
+        document_filter(contact_id, document_type_id, tag_id, space_id, lane, field_id),
         offset=offset,
         limit=limit,
         semantic_ratio=semantic_ratio,

@@ -7,7 +7,7 @@ from papiq.core.domain.classification import FieldCheck
 from papiq.core.domain.documents import Document
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.pipeline import RULES, NodeResult, Outcome
-from papiq.core.domain.rule_engine import DRAWER, Mode
+from papiq.core.domain.rule_engine import SPACE, Mode
 from papiq.core.domain.rules import Trigger
 from papiq.core.ports import (
     ObjectStore,
@@ -106,9 +106,9 @@ class RulesResult:
 
 
 class FileNode:
-    """Files the document into its drawer. The owner must still be allowed to write to it (a
+    """Files the document into its space. The owner must still be allowed to write to it (a
     share can be withdrawn while the document is processed), unless an active admin put the
-    document there; otherwise the node is uncertain and the owner chooses another drawer in the
+    document there; otherwise the node is uncertain and the owner chooses another space in the
     inbox."""
 
     async def run(self, document: Document) -> "FileResult":
@@ -118,10 +118,10 @@ class FileNode:
 @dataclass(frozen=True)
 class FileResult:
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
-        drawer = await uow.drawers.get(document.drawer_id)
-        if not await may_file(uow, document, drawer):
-            reason = f"the owner may not file into drawer '{drawer.name}' (any more)"
-            check = FieldCheck(field=DRAWER, outcome=Outcome.UNCERTAIN, confidence=0, reason=reason)
+        space = await uow.spaces.get(document.space_id)
+        if not await may_file(uow, document, space):
+            reason = f"the owner may not file into space '{space.name}' (any more)"
+            check = FieldCheck(field=SPACE, outcome=Outcome.UNCERTAIN, confidence=0, reason=reason)
             return NodeResult(
                 outcome=Outcome.UNCERTAIN, reason=reason, output={"fields": [check.to_json()]}
             )

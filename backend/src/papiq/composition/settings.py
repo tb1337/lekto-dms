@@ -79,7 +79,7 @@ Temperature = Annotated[Annotated[float, Field(ge=0, le=2)] | None, BeforeValida
 
 
 class Settings(BaseSettings):
-    """All technical settings. Business data (users, drawers, rules, ...) is not configuration."""
+    """All technical settings. Business data (users, spaces, rules, ...) is not configuration."""
 
     model_config = SettingsConfigDict(
         env_prefix=ENV_PREFIX,

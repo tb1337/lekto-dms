@@ -4,14 +4,14 @@ import { apiQuery, isFiltered, NO_FILTERS, parseFilters, writeFilters } from './
 describe('filters in the URL', () => {
 	it('reads and writes all of them', () => {
 		const params = new URLSearchParams(
-			'contact=c1&type=t1&tag=a&tag=b&drawer=d1&lane=red&lane=bogus&field=f1&q=x'
+			'contact=c1&type=t1&tag=a&tag=b&space=d1&lane=red&lane=bogus&field=f1&q=x'
 		);
 		const filters = parseFilters(params);
 		expect(filters).toEqual({
 			contact: 'c1',
 			type: 't1',
 			tags: ['a', 'b'],
-			drawer: 'd1',
+			space: 'd1',
 			lanes: ['red'],
 			field: 'f1'
 		});
@@ -31,7 +31,7 @@ describe('filters in the URL', () => {
 			contact_id: undefined,
 			document_type_id: undefined,
 			tag_id: undefined,
-			drawer_id: undefined,
+			space_id: undefined,
 			lane: undefined,
 			field_id: undefined,
 			all_users: undefined

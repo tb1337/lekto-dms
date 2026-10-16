@@ -22,7 +22,7 @@ const lookup = {
 	contacts: [],
 	documentTypes: [],
 	tags: [],
-	drawers: [],
+	spaces: [],
 	fields: [textField('f1', 'Notiz', 'text'), textField('f2', 'Betrag', 'amount')]
 } as unknown as Lookup;
 

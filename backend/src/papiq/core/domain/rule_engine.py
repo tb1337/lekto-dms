@@ -4,12 +4,12 @@ change, with conflicts instead of silent overwrites.
 Conditions are evaluated against the state before any rule acts (a rule's action never makes
 another rule match in the same run). The result of a condition is three-valued: with
 `distrust`, a condition on a contact, type or tag that the model set and no person confirmed is
-unknown. A rule that matches only with such values does not file into a drawer that others see
+unknown. A rule that matches only with such values does not file into a space that others see
 (the accepted risk of M5: a text can name a wrong contact and make it green).
 
 How the actions of all matching rules come together (`plan`):
 
-- A single field (drawer, contact, type, title, a field) set by one rule, or by several to
+- A single field (space, contact, type, title, a field) set by one rule, or by several to
   the same value, is set. Several different values are a conflict: nothing is set.
 - A value a person decided (confirming in the inbox, or changing the document) is never
   replaced: the rule is overruled and that is logged.
@@ -55,9 +55,9 @@ from papiq.core.domain.fields import (
 from papiq.core.domain.ids import (
     ContactId,
     DocumentTypeId,
-    DrawerId,
     FieldId,
     RuleId,
+    SpaceId,
     TagId,
 )
 from papiq.core.domain.json_value import JsonObject, JsonValue
@@ -75,14 +75,14 @@ from papiq.core.domain.rules import (
     RuleScope,
     SetContact,
     SetDocumentType,
-    SetDrawer,
     SetField,
+    SetSpace,
     SetTitle,
     condition_value,
 )
 from papiq.core.domain.templates import Render, TemplateValue, template_values
 
-DRAWER = "drawer"
+SPACE = "space"
 REVIEW = "review"
 TEXT_TARGET = "text"
 
@@ -379,8 +379,8 @@ def matches(
 
 
 @dataclass(frozen=True)
-class DrawerTarget:
-    """What the rules need to know about a drawer they file into, from the owner's view.
+class SpaceTarget:
+    """What the rules need to know about a space they file into, from the owner's view.
     `shared`: other users can see documents in it (it belongs to someone else or is shared)."""
 
     name: str
@@ -392,9 +392,9 @@ class DrawerTarget:
 class Situation:
     """Everything `plan` needs besides the matching rules.
 
-    - `drawers`: the drawers the rules file into that exist.
+    - `spaces`: the spaces the rules file into that exist.
     - `existing`: ids of the contacts, types, tags and fields that exist.
-    - `names`: names of contacts, types, tags and drawers, for templates; `owner_name` that of
+    - `names`: names of contacts, types, tags and spaces, for templates; `owner_name` that of
       the document's owner.
     - `render`: renders the templates of titles, text fields and review reasons (the port
       `TemplateRenderer`).
@@ -409,11 +409,11 @@ class Situation:
 
     mode: Mode
     document: Document
-    default_drawer: DrawerId
+    default_space: SpaceId
     definitions: Mapping[FieldId, FieldDefinition]
     render: Render
     owner_name: str | None = None
-    drawers: Mapping[DrawerId, DrawerTarget] = field(default_factory=dict)
+    spaces: Mapping[SpaceId, SpaceTarget] = field(default_factory=dict)
     existing: frozenset[object] = frozenset()
     names: Mapping[object, str] = field(default_factory=dict)
     model_values: Mapping[str, JsonValue] = field(default_factory=dict)
@@ -479,7 +479,7 @@ class RulePlan:
     reasons of forced reviews that hold."""
 
     changes: DocumentChanges
-    drawer: DrawerId | None
+    space: SpaceId | None
     reports: list[RuleReport]
     checks: list[FieldCheck]
     reviews: list[str]
@@ -546,7 +546,7 @@ class _Planner:
             for action in match.rule.definition.actions:
                 self._collect(match, report, action)
         result: dict[str, JsonValue] = {}
-        for field_name in (DOCUMENT_TYPE, CONTACT, DRAWER):
+        for field_name in (DOCUMENT_TYPE, CONTACT, SPACE):
             self._single(field_name, result)
         type_after = self._type_after(result)
         self._text_fields(result, type_after)
@@ -579,10 +579,10 @@ class _Planner:
             changes = replace(changes, title=str(result[TITLE]))
         if tags is not None:
             changes = replace(changes, tag_ids=tags)
-        drawer = DrawerId(UUID(str(result[DRAWER]))) if DRAWER in result else None
+        space = SpaceId(UUID(str(result[SPACE]))) if SPACE in result else None
         return RulePlan(
             changes=changes,
-            drawer=drawer,
+            space=space,
             reports=self._reports,
             checks=list(self._checks.values()),
             reviews=self._reviews,
@@ -593,8 +593,8 @@ class _Planner:
     def _collect(self, match: Match, report: RuleReport, action: object) -> None:
         s = self._s
         match action:
-            case SetDrawer(drawer_id=drawer):
-                self._drawer(match, report, drawer)
+            case SetSpace(space_id=space):
+                self._space(match, report, space)
             case SetContact(contact_id=contact):
                 self._candidate(CONTACT, str(contact), contact, match, report)
             case SetDocumentType(document_type_id=document_type):
@@ -638,37 +638,35 @@ class _Planner:
         else:
             self._candidates.setdefault(field_name, []).append(_Candidate(report, value, match))
 
-    def _drawer(self, match: Match, report: RuleReport, drawer: DrawerId) -> None:
+    def _space(self, match: Match, report: RuleReport, space: SpaceId) -> None:
         s = self._s
-        target = s.drawers.get(drawer)
+        target = s.spaces.get(space)
         if match.rule.scope is RuleScope.GLOBAL:
-            report.notes.append(Note(DRAWER, "refused", "global rules never change visibility"))
+            report.notes.append(Note(SPACE, "refused", "global rules never change visibility"))
         elif match.rule.owner_id != self._document.owner_id:
-            report.notes.append(Note(DRAWER, "refused", "the rule's owner does not own it"))
+            report.notes.append(Note(SPACE, "refused", "the rule's owner does not own it"))
         elif target is None:
-            report.notes.append(Note(DRAWER, "skipped", f"drawer {drawer} no longer exists"))
+            report.notes.append(Note(SPACE, "skipped", f"space {space} no longer exists"))
         elif not target.writable:
-            reason = f"no write access to drawer {drawer} (any more)"
-            report.notes.append(Note(DRAWER, "refused", reason))
-            if s.mode is Mode.INGEST and DRAWER not in s.locked:
-                self._uncertain(DRAWER, f"rule '{report.name}': {reason}", suggestion=None)
+            reason = f"no write access to space {space} (any more)"
+            report.notes.append(Note(SPACE, "refused", reason))
+            if s.mode is Mode.INGEST and SPACE not in s.locked:
+                self._uncertain(SPACE, f"rule '{report.name}': {reason}", suggestion=None)
         elif target.shared and not match.trusted and s.mode is Mode.RETROACTIVE:
             # The person sees the move in the preview and may accept it, as any conflict.
             fields = ", ".join(match.distrusted)
             if s.accept_conflicts:
-                self._candidates.setdefault(DRAWER, []).append(
-                    _Candidate(report, str(drawer), match)
-                )
+                self._candidates.setdefault(SPACE, []).append(_Candidate(report, str(space), match))
             else:
                 reason = (
-                    f"files into the shared drawer '{target.name}' with an unconfirmed "
+                    f"files into the shared space '{target.name}' with an unconfirmed "
                     f"{fields}; not accepted"
                 )
-                report.notes.append(Note(DRAWER, "conflict", reason))
+                report.notes.append(Note(SPACE, "conflict", reason))
         elif target.shared and not match.trusted:
             fields = ", ".join(match.distrusted)
-            reason = f"files into the shared drawer '{target.name}' only with a confirmed {fields}"
-            report.notes.append(Note(DRAWER, "refused", reason))
+            reason = f"files into the shared space '{target.name}' only with a confirmed {fields}"
+            report.notes.append(Note(SPACE, "refused", reason))
             if s.mode is Mode.INGEST:
                 for name in match.distrusted:
                     self._uncertain(
@@ -677,7 +675,7 @@ class _Planner:
                         suggestion=self._current(name),
                     )
         else:
-            self._candidates.setdefault(DRAWER, []).append(_Candidate(report, str(drawer), match))
+            self._candidates.setdefault(SPACE, []).append(_Candidate(report, str(space), match))
 
     def _review(self, report: RuleReport, reason: str) -> None:
         s = self._s
@@ -806,7 +804,7 @@ class _Planner:
     def _text_fields(
         self, result: Mapping[str, JsonValue], type_after: DocumentTypeId | None
     ) -> None:
-        """The templates of text fields, with the contact, type and drawer the rules set (the
+        """The templates of text fields, with the contact, type and space the rules set (the
         fields as they were: rules do not see each other's fields)."""
         if not self._texts:
             return
@@ -837,13 +835,13 @@ class _Planner:
         """What templates see: the document as the rules leave it."""
         document, s = self._document, self._s
         contact = result.get(CONTACT, self._current(CONTACT))
-        drawer = DrawerId(UUID(str(result[DRAWER]))) if DRAWER in result else document.drawer_id
+        space = SpaceId(UUID(str(result[SPACE]))) if SPACE in result else document.space_id
         current: dict[FieldId, object] = {**document.fields, **fields}
         return template_values(
             document,
             contact=None if contact is None else s.names.get(ContactId(UUID(str(contact)))),
             document_type=None if type_after is None else s.names.get(type_after),
-            drawer=s.names.get(drawer),
+            space=s.names.get(space),
             owner=s.owner_name,
             tags=[
                 s.names[tag]
@@ -894,8 +892,8 @@ class _Planner:
                 return None if document.contact_id is None else str(document.contact_id)
             case "document_type":
                 return None if document.document_type_id is None else str(document.document_type_id)
-            case "drawer":
-                return str(document.drawer_id)
+            case "space":
+                return str(document.space_id)
             case "title":
                 return document.title
             case "tags":
@@ -907,11 +905,11 @@ class _Planner:
         return None
 
     def _empty(self, field_name: str, current: JsonValue) -> bool:
-        """For applying to existing documents: the field has no value of its own (a drawer
-        counts as empty in the owner's default drawer, a title as long as it is the file
+        """For applying to existing documents: the field has no value of its own (a space
+        counts as empty in the owner's default space, a title as long as it is the file
         name or the machine's)."""
-        if field_name == DRAWER:
-            return current == str(self._s.default_drawer)
+        if field_name == SPACE:
+            return current == str(self._s.default_space)
         if field_name == TITLE:
             return current in (_default_title(self._document), self._s.machine_title)
         return current is None

@@ -108,7 +108,7 @@ def test_fenced_answers_are_read() -> None:
         ("no json", "not JSON"),
         ("[1]", "not a JSON object"),
         (json.dumps({k: v for k, v in ANSWER.items() if k != "tags"}), "missing tags"),
-        (json.dumps(ANSWER | {"drawer": "Shared"}), "unexpected drawer"),
+        (json.dumps(ANSWER | {"space": "Shared"}), "unexpected space"),
         (json.dumps(ANSWER | {"sender": "Stadtwerke"}), "sender: expected an object"),
         (json.dumps(ANSWER | {"sender": {"value": 1, "evidence": None}}), "expected text"),
         (json.dumps(ANSWER | {"recipient": 1}), "recipient: expected text"),

@@ -230,7 +230,7 @@ def _matches_filter(document: IndexDocument, criteria: DocumentFilter) -> bool:
         return False
     if not criteria.tags <= set(document.tag_ids):
         return False
-    if criteria.drawer is not None and document.drawer_id != criteria.drawer:
+    if criteria.space is not None and document.space_id != criteria.space:
         return False
     if criteria.confirmed is not None and document.confirmed is not criteria.confirmed:
         return False

@@ -5,7 +5,7 @@ Python package `papiq`, structured as ports and adapters.
 ```
 src/papiq/
   core/            domain core, framework-free
-    domain/        entities and value objects (document, drawer, contact, ...)
+    domain/        entities and value objects (document, space, contact, ...)
     ports/         interfaces the core needs (Python protocols)
     services/      use cases: ingest pipeline, rules, permissions
   adapters/
@@ -28,7 +28,7 @@ pattern matcher (`regex`, a search with a time limit) and the template renderer 
 
 ## Core
 
-- `core/domain`: users, drawers and shares, master data (contacts, document types, tags),
+- `core/domain`: users, spaces and shares, master data (contacts, document types, tags),
   field definitions and values, the document aggregate with the pipeline state machine and
   lanes, domain events, jobs and the permission rules. IDs are UUIDv7, timestamps are UTC.
 - `core/ports`: repositories, processing log, outbox and job queue share one `UnitOfWork`, so
@@ -38,7 +38,7 @@ pattern matcher (`regex`, a search with a time limit) and the template renderer 
   Further ports: `ObjectStore`, `Clock`, `Ocr`, `DocumentParser`, `PreviewRenderer`,
   `PasswordHasher`, `SecretCipher`, `Totp`, `OidcProvider`, `LanguageModel`, `Embeddings`,
   `SearchIndex`, `PatternMatcher`, `WebhookSender`.
-- `core/services`: use cases (users, drawers, master data, documents, pipeline, inbox,
+- `core/services`: use cases (users, spaces, master data, documents, pipeline, inbox,
   classification, rules, indexing, search, webhooks, maintenance). Each runs in one unit of work and checks the caller's rights.
 
 `papiq.composition.container.build_memory_container()` wires all designed ports to their
@@ -82,7 +82,7 @@ whether it is active. A deactivated user has no rights and cannot authenticate.
   deactivated.
 - Accounts: admins create users (optionally with a password), change roles, reset passwords,
   deactivate, turn TOTP off and remove links to identity providers. Deleting a user needs that
-  they own no documents and their drawers are empty; it removes their drawers, the shares to
+  they own no documents and their spaces are empty; it removes their spaces, the shares to
   them and their sign-in data. The last active admin cannot be demoted, deactivated or deleted.
 - The first admin: `PAPIQ_ADMIN_USERNAME` and `PAPIQ_ADMIN_PASSWORD[_FILE]` create an admin at
   API start while there is no admin at all. Afterwards they are ignored; they never change an
@@ -175,8 +175,8 @@ jobs of the old run are recognised as stale.
 | Signals (`signal_llm`, `signal_classifier`, `signal_neighbours`, `signal_facts`) | `content.txt`, master data, the classifier's model, the search index; `signal_facts` also the archive PDF | proposals in the log; `signal_facts` also `documents/<id>/codes.json` (the codes on the pages) | OK, also when abstaining (`abstained` names why); only `signal_llm` fails, after two unfit answers |
 | Judge (`JudgeNode`) | the signals' entries in the log, `content.txt` | contact, document type, tags, document date (applied if green) | see Understanding |
 | Fields (`FieldsNode`) | `content.txt`, the fields of the type and the global ones | field values and the title (applied if checked) | see Understanding |
-| Apply rules (`ApplyRulesNode`) | `content.txt` (only if a rule looks at the text), the rules | drawer, contact, type, title, tags, fields | uncertain on conflicts, refused actions and forced reviews; see Rules |
-| File (`FileNode`) | the drawer | - | uncertain if the owner may no longer file into the drawer (field `drawer`) |
+| Apply rules (`ApplyRulesNode`) | `content.txt` (only if a rule looks at the text), the rules | space, contact, type, title, tags, fields | uncertain on conflicts, refused actions and forced reviews; see Rules |
+| File (`FileNode`) | the space | - | uncertain if the owner may no longer file into the space (field `space`) |
 
 - A node that raises is retried (`PAPIQ_NODE_MAX_ATTEMPTS`, delay `PAPIQ_NODE_RETRY_DELAY`,
   doubling); it waits meanwhile (`document.node_deferred`); after the last attempt the
@@ -284,7 +284,7 @@ jobs of the old run are recognised as stale.
   in its owner's inbox; `document.filed` comes only when it is green. Confirming it (see the
   inbox below) lets processing continue up to filing.
 - Known gap: an original is stored before its document is created; if creating fails (e.g.
-  the drawer's rights changed meanwhile), the object stays without a document. Removing such
+  the space's rights changed meanwhile), the object stays without a document. Removing such
   objects is left to a later cleanup of the object store.
 
 ## Understanding
@@ -376,7 +376,7 @@ candidates and the raw answer is in the processing log (`fields`, `answer`), so 
 traceable after a correction; the rules read them with `core.services.inbox.field_checks`.
 
 The document text is sent between markers derived from its hash, and the model is told to treat
-it as data. It can only answer with the fixed schema: there is no field for drawers, owners,
+it as data. It can only answer with the fixed schema: there is no field for spaces, owners,
 shares or actions, and additional fields make the answer unfit. Long documents are shortened to
 `PAPIQ_LLM_INPUT_BUDGET` characters, a run of spaces counted once (the columns of the text as it
 is set cost a model little; beginning and end kept, the middle left out); with many
@@ -454,7 +454,7 @@ version; deleting is a soft delete.
              {"field": "text", "op": "matches", "value": "Kd\\.?-Nr"}], "not": true}
   ]},
   "actions": [
-    {"type": "set_drawer", "drawer_id": "<drawer id>"},
+    {"type": "set_space", "space_id": "<space id>"},
     {"type": "add_tags", "tag_ids": ["<tag id>"]},
     {"type": "set_title", "template": "{{ contact }} {{ document_date | date: '%Y-%m' }}"}
   ]
@@ -462,7 +462,7 @@ version; deleting is a soft delete.
 ```
 
 - **Scope.** A user rule (any user) acts on its owner's documents with all actions and files
-  only into drawers its owner may write to. A global rule (admins) acts on every document, but
+  only into spaces its owner may write to. A global rule (admins) acts on every document, but
   only with `add_tags`, `remove_tags`, `set_field` and `force_review`: nothing that changes
   who sees a document. Everyone reads the global rules; user rules are read by their owner and
   admins (`all_users=true`).
@@ -485,12 +485,12 @@ version; deleting is a soft delete.
   pattern that times out does not match and is logged. All patterns of one run on one
   document get two seconds together, a preview page twenty; the patterns left do not match. The text is the parsed text without
   markup, at most `PAPIQ_RULES_MAX_TEXT` characters; it is loaded only if a rule looks at it.
-- **Actions.** `set_drawer`, `set_contact`, `set_document_type`, `set_title`, `add_tags`,
+- **Actions.** `set_space`, `set_contact`, `set_document_type`, `set_title`, `add_tags`,
   `remove_tags`, `set_field`, `force_review` (with a reason).
 - **Templates.** A title, the value of a text field and a review's reason are Liquid templates
   (`python-liquid`, `adapters/outbound/liquid`): `{{ contact }}`, `{% if field.la_brutto %}`,
   filters with `|`. They see `title`, `filename`, `original_filename`, `contact`,
-  `document_type`, `document_date`, `added`, `tags`, `drawer`, `owner`, `channel`, `pages` and
+  `document_type`, `document_date`, `added`, `tags`, `space`, `owner`, `channel`, `pages` and
   `field.<key>` (`FieldOut.key`, from the name: `LA_Brutto` is `la_brutto`; an amount has
   `.amount` and `.currency`, a period `.start` and `.end`), as the rules leave the document. A
   period writes itself in ISO 8601 by what it is (`Period.notation`): `2026-09`, `2026-W38`,
@@ -510,19 +510,19 @@ version; deleting is a soft delete.
 - **Evaluation.** All conditions see the state before any rule acts; a rule's action never makes
   another rule match in the same run. Contact, type and tags the model set and no person
   confirmed are distrusted: a rule that matches only because of them does not file into a
-  drawer that others see (shared or another user's); it is reported instead. Retroactively
+  space that others see (shared or another user's); it is reported instead. Retroactively
   such a move is a conflict: it acts only where the person accepts it.
 - **Combining.** A field set by one rule, or by several to the same value, is set. Different
   values are a conflict and nothing is set; priority never decides. A value a person decided
   in the current processing run is never replaced (the rule is logged as overruled): in the
-  inbox, by a change, or the drawer chosen on upload or by moving the document; a value the model set and no person
+  inbox, by a change, or the space chosen on upload or by moving the document; a value the model set and no person
   confirmed is not replaced either (conflict). Tags of all rules are combined; added by one and
   removed by another is a conflict.
 - **On arrival** conflicts, refused actions and forced reviews make `apply_rules` uncertain: the
   document waits in the inbox. Confirming it there (`POST /documents/{id}/confirm`, optionally
-  with `drawer_id`) decides the open fields and continues to filing; a forced review the owner
-  saw counts as answered. Filing checks once more that the owner may file into the drawer; if
-  not, confirming needs a `drawer_id` (`422` with `open_fields: ["drawer"]`).
+  with `space_id`) decides the open fields and continues to filing; a forced review the owner
+  saw counts as answered. Filing checks once more that the owner may file into the space; if
+  not, confirming needs a `space_id` (`422` with `open_fields: ["space"]`).
 - **On a change** (`PATCH /documents/{id}`) rules are edge-triggered: a rule acts only if it
   holds after the change and did not hold before. Fields the person set in this change, or
   decided before in this processing run, are not touched. Nothing turns yellow: what cannot be applied is only reported, in the `rules`
@@ -536,14 +536,14 @@ version; deleting is a soft delete.
   job; conflicts only where accepted (`accept_conflicts`), forced reviews do not act. A user rule
   is applied by its owner to their documents, a global rule by anyone to the documents they may
   write to; rights are checked again per document. Progress: `GET /rule-applications/{id}`.
-- **References.** Contacts, types, tags, fields and drawers a rule names must exist (`404`),
-  drawers must be writable for the owner (`403`). Deleting one of them, or removing a choice a
+- **References.** Contacts, types, tags, fields and spaces a rule names must exist (`404`),
+  spaces must be writable for the owner (`403`). Deleting one of them, or removing a choice a
   rule uses, disables the rules that use it with a reason; enabling checks again. Deleting a user
   removes their rules.
 - **Log.** Every run is a processing log entry of node `apply_rules` with the rules and versions
   checked, matches, effects and notes. `model_version`: `rules` (the pipeline node),
   `rules:change` (after a change; it also records what the person changed), `rules:apply`
-  (retroactive), `person` (a confirmation), `person:drawer` (a drawer chosen on upload or by
+  (retroactive), `person` (a confirmation), `person:space` (a space chosen on upload or by
   moving). Later runs read from the log which values a person
   decided and which the model set.
 
@@ -581,7 +581,7 @@ meaning took part.
   index keeps serving, swaps it in and reconciles what changed meanwhile. The index holds no
   information that is not in the database.
 - **Rights.** The index query contains the rights (own documents in any lane; green documents of
-  drawers the caller owns or that are shared with them). Every hit is checked against the
+  spaces the caller owns or that are shared with them). Every hit is checked against the
   database once more and the filter applied again, so a withdrawn share ends the search for that
   document at once, before the index has changed; a page can therefore hold fewer items than
   `limit`. Documents still in processing are in the index, for their owner only.
@@ -645,14 +645,14 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409`. The lists take `document_counts=true` (and `all_users` for admins): each item with `document_count`, the documents in the caller's reach that have it (a field: a value for it), counted in one query |
 | `PUT /document-types/{id}/fields` | The fields of a document type, each required or optional, set from the type in one transaction (admins); answers its fields. A global field is `422`; taking off a field that has values on its documents or that the type's title pattern uses is `409` |
 | `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins); the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |
-| `GET/POST /drawers`, `GET/PATCH/DELETE /drawers/{id}`, `PUT/DELETE /drawers/{id}/shares/{user_id}` | Drawers and shares (owner) |
+| `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/shares/{user_id}` | Spaces and shares (owner) |
 | `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet, `estimated_total`, `next_offset`, `semantic` |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
-| `GET /documents` | Readable documents; `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), documents without a date last either way; filters `contact_id`, `document_type_id`, `tag_id`, `drawer_id`, `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (the last document's id; its sort value is looked up, `422` if it is gone) |
-| `POST /documents` | Upload (multipart: `file`, optional `drawer_id`, optional `channel=migration`; otherwise the channel is `web` with a session, `api` with a token); `202` with `id`, `status_url` |
+| `GET /documents` | Readable documents; `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), documents without a date last either way; filters `contact_id`, `document_type_id`, `tag_id`, `space_id`, `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (the last document's id; its sort value is looked up, `422` if it is gone) |
+| `POST /documents` | Upload (multipart: `file`, optional `space_id`, optional `channel=migration`; otherwise the channel is `web` with a session, `api` with a token); `202` with `id`, `status_url` |
 | `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`; change (write access; the answer has the change rules' `rules` report for the owner); delete (owner or admin) |
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result and the differences |
-| `POST /documents/{id}/move` | Into another drawer (owner, or an admin without read access) |
+| `POST /documents/{id}/move` | Into another space (owner, or an admin without read access) |
 | `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
 | `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit`; `409` while not parsed |
 | `GET /documents/{id}/files` | The files as stored (read access): when the document was added and changed, its original's name and type, and for the original and the archive (null while there is none) size, SHA-256 and metadata: a PDF's version, PDF/A level, pages, document information and XMP; an image's format, size, resolution and EXIF |
@@ -666,7 +666,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /pipeline/reparse` | Read the text of every document again in the background (admins, after the update to 0.2); `202` with `queued` |
 | `GET /inbox` | The caller's yellow and red documents, newest first, with their open nodes and fields; `limit`, `cursor` |
 | `GET /documents/{id}/review` | What the model proposed and how each field was checked (owner or admin) |
-| `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `drawer_id`), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (owner or admin); undecided fields: `422` with `open_fields` |
+| `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `space_id`), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (owner or admin); undecided fields: `422` with `open_fields` |
 | `GET/POST /rules`, `GET/PUT/PATCH/DELETE /rules/{id}`, `GET /rules/{id}/versions`, `/versions/{number}` | Rules: list (`scope`, `include_disabled`, `all_users` for admins), create, change (new version), enable or disable, delete; see Rules |
 | `POST /rules/{id}/apply/preview`, `POST /rules/{id}/apply`, `GET /rule-applications/{id}` | Apply a rule to existing documents: preview, start (`202`), progress |
 | `GET /events` | Server-sent events of the documents the caller may read, for admins also `classifier.trained`; `?document_id=` |
@@ -679,7 +679,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   content (PDF, JPEG, PNG, TIFF; otherwise `415`). A file the owner already has: `409` with
   `existing_document_id`.
 - Errors are problem details (RFC 9457, `application/problem+json`) and documented per endpoint.
-- Documents and drawers the caller may not see are `404` with the same answer as missing ones;
+- Documents and spaces the caller may not see are `404` with the same answer as missing ones;
   lists, filters and pages only ever contain readable documents (the repository query follows
   the permission rule, and the service checks every result again). Yellow, red and unfinished
   documents are the owner's only.

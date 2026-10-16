@@ -6,11 +6,11 @@ from datetime import date
 import pytest
 
 from papiq.core.domain.documents import DocumentChanges
-from papiq.core.domain.drawers import ShareLevel
 from papiq.core.domain.errors import NotFoundError
 from papiq.core.domain.pipeline import RULES_CHANGE, Lane, Outcome, ProcessingStatus
 from papiq.core.domain.rule_engine import Note
-from papiq.core.domain.rules import ForceReview, SetContact, SetDrawer, SetTitle, Trigger
+from papiq.core.domain.rules import ForceReview, SetContact, SetSpace, SetTitle, Trigger
+from papiq.core.domain.spaces import ShareLevel
 from papiq.core.services.documents import MetadataChange
 from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (
@@ -120,8 +120,8 @@ async def test_nothing_turns_yellow_on_a_change(world: World) -> None:
     owner, reader = await world.user(), await world.user()
     acme = await r.contact("ACME")
     paid, seen = await r.tag("paid"), await r.tag("seen")
-    shared = await world.drawers.create(owner.id, "Shared")
-    await world.drawers.share(owner.id, shared.id, reader.id, ShareLevel.READ)
+    shared = await world.spaces.create(owner.id, "Shared")
+    await world.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
     # The model set the contact and no person confirmed it.
     document = await r.arrive(owner, classify=Classifies(contact=acme.id))
     assert (document.lane, document.contact_id) == (Lane.GREEN, acme.id)
@@ -129,7 +129,7 @@ async def test_nothing_turns_yellow_on_a_change(world: World) -> None:
     await r.user_rule(
         owner,
         definition(
-            "Shared", all_of(contact_is(acme.id), paid_now), SetDrawer(shared.id), triggers=CHANGE
+            "Shared", all_of(contact_is(acme.id), paid_now), SetSpace(shared.id), triggers=CHANGE
         ),
     )
     await r.user_rule(owner, definition("A", paid_now, SetTitle("A"), triggers=CHANGE))
@@ -144,7 +144,7 @@ async def test_nothing_turns_yellow_on_a_change(world: World) -> None:
 
     kinds = {(note.field, note.kind) for note in reported(change)}
     assert kinds == {
-        ("drawer", "refused"),
+        ("space", "refused"),
         ("title", "conflict"),
         ("review", "skipped"),
     }
@@ -152,7 +152,7 @@ async def test_nothing_turns_yellow_on_a_change(world: World) -> None:
     stored = await r.stored(document)
     assert stored.lane is Lane.GREEN
     assert stored.processing.status is ProcessingStatus.COMPLETED
-    assert stored.drawer_id == (await world.default_drawer(owner)).id
+    assert stored.space_id == (await world.default_space(owner)).id
     assert (stored.title, stored.tag_ids) == ("scan", {paid.id, seen.id})
     assert await world.documents.list_visible(reader.id) == []
 
@@ -162,15 +162,15 @@ async def test_tags_the_person_sets_in_the_change_are_trusted(world: World) -> N
     owner, reader = await world.user(), await world.user()
     acme = await r.contact("ACME")
     tax = await r.tag("tax")
-    shared = await world.drawers.create(owner.id, "Shared")
-    await world.drawers.share(owner.id, shared.id, reader.id, ShareLevel.READ)
+    shared = await world.spaces.create(owner.id, "Shared")
+    await world.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
     document = await r.arrive(owner, classify=Classifies(tags=[tax.id]))
     await r.user_rule(
         owner,
         definition(
             "Shared",
             all_of(has_tag(tax.id), contact_is(acme.id)),
-            SetDrawer(shared.id),
+            SetSpace(shared.id),
             triggers=CHANGE,
         ),
     )
@@ -183,7 +183,7 @@ async def test_tags_the_person_sets_in_the_change_are_trusted(world: World) -> N
     )
 
     assert reported(change) == []
-    assert change.document.drawer_id == shared.id
+    assert change.document.space_id == shared.id
 
 
 async def test_change_rules_wait_until_processing_is_complete(world: World) -> None:
@@ -240,8 +240,8 @@ async def test_an_editor_sets_off_the_owners_rules(world: World) -> None:
     owner, editor = await world.user(), await world.user()
     acme = await r.contact("ACME")
     owners, editors, everyone = await r.tag("owner"), await r.tag("editor"), await r.tag("all")
-    shared = await world.drawers.create(owner.id, "Shared")
-    await world.drawers.share(owner.id, shared.id, editor.id, ShareLevel.READ_WRITE)
+    shared = await world.spaces.create(owner.id, "Shared")
+    await world.spaces.share(owner.id, shared.id, editor.id, ShareLevel.READ_WRITE)
     mine = await r.user_rule(
         owner, definition("Owner", contact_is(acme.id), add_tags(owners.id), triggers=CHANGE)
     )
@@ -251,7 +251,7 @@ async def test_an_editor_sets_off_the_owners_rules(world: World) -> None:
     common = await r.global_rule(
         definition("All", contact_is(acme.id), add_tags(everyone.id), triggers=CHANGE)
     )
-    document = await r.arrive(owner, drawer=shared.id)
+    document = await r.arrive(owner, space=shared.id)
 
     change = await r.documents.change_metadata(
         editor.id, document.id, DocumentChanges(contact_id=acme.id)
@@ -275,15 +275,15 @@ async def test_a_dry_run_stores_nothing_and_shows_the_caller_only_their_own(
     owner, editor = await world.user(), await world.user()
     acme = await r.contact("ACME")
     filed, editors = await r.tag("filed"), await r.tag("editor")
-    shared = await world.drawers.create(owner.id, "Shared")
-    private = await world.drawers.create(owner.id, "Private")
-    await world.drawers.share(owner.id, shared.id, editor.id, ShareLevel.READ_WRITE)
+    shared = await world.spaces.create(owner.id, "Shared")
+    private = await world.spaces.create(owner.id, "Private")
+    await world.spaces.share(owner.id, shared.id, editor.id, ShareLevel.READ_WRITE)
     await r.user_rule(
         owner,
         definition(
             "Private",
             contact_is(acme.id),
-            SetDrawer(private.id),
+            SetSpace(private.id),
             add_tags(filed.id),
             triggers=CHANGE,
         ),
@@ -291,12 +291,12 @@ async def test_a_dry_run_stores_nothing_and_shows_the_caller_only_their_own(
     await r.user_rule(
         editor, definition("Editor", contact_is(acme.id), add_tags(editors.id), triggers=CHANGE)
     )
-    # A rule files it into the shared drawer (a drawer the owner chose would stay).
+    # A rule files it into the shared space (a space the owner chose would stay).
     await r.user_rule(
-        owner, definition("Shared", channel_api(), SetDrawer(shared.id), triggers=(Trigger.INGEST,))
+        owner, definition("Shared", channel_api(), SetSpace(shared.id), triggers=(Trigger.INGEST,))
     )
     document = await r.arrive(owner)
-    assert document.drawer_id == shared.id
+    assert document.space_id == shared.id
     log, events = await r.log(document), world.event_types()
     acme_now = DocumentChanges(contact_id=acme.id)
 
@@ -309,10 +309,10 @@ async def test_a_dry_run_stores_nothing_and_shows_the_caller_only_their_own(
     # The owner sees what their rules would do.
     tried = await r.documents.change_metadata(owner.id, document.id, acme_now, dry_run=True)
     assert tried.access is ShareLevel.READ_WRITE
-    assert tried.drawer.id == private.id
+    assert tried.space.id == private.id
     assert tried.rules is not None
     assert [report.name for report in tried.rules.plan.reports] == ["Private"]
-    assert tried.before is not None and tried.before.drawer_id == shared.id
+    assert tried.before is not None and tried.before.space_id == shared.id
 
     # Nothing was stored.
     assert await r.stored(document) == document
@@ -324,4 +324,4 @@ async def test_a_dry_run_stores_nothing_and_shows_the_caller_only_their_own(
     assert changed.access is None
     with pytest.raises(NotFoundError):
         await r.documents.get(editor.id, document.id)
-    assert (await r.stored(document)).drawer_id == private.id
+    assert (await r.stored(document)).space_id == private.id

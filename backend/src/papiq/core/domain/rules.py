@@ -4,13 +4,13 @@ A rule has a scope, triggers, a tree of conditions and actions:
 
 - Scope: a global rule is made by an admin and acts on every document, but only on tags,
   fields and reviews (nothing that changes who sees a document). A user rule is made by any
-  user and acts on that user's own documents with all actions; it files only into drawers its
+  user and acts on that user's own documents with all actions; it files only into spaces its
   owner may write to.
 - Triggers: a document arriving (`ingest`, the pipeline node `apply_rules`) and a document being
   changed by a person (`change`).
 - Conditions: groups of `all` (and) or `any` (or), each may be negated; a condition is field,
   operator and value.
-- Actions: set drawer, contact, type, title or a field, add or remove tags, force a review.
+- Actions: set space, contact, type, title or a field, add or remove tags, force a review.
 
 The definition (name, priority, triggers, conditions, actions) is versioned: every change makes
 a new version; old versions stay readable so the processing log can refer to them. Enabling and
@@ -37,10 +37,10 @@ from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
     DocumentTypeId,
-    DrawerId,
     FieldId,
     RuleApplicationId,
     RuleId,
+    SpaceId,
     TagId,
     UserId,
     new_id,
@@ -256,9 +256,9 @@ class Group:
 
 
 @dataclass(frozen=True)
-class SetDrawer:
-    drawer_id: DrawerId
-    type: Literal["set_drawer"] = "set_drawer"
+class SetSpace:
+    space_id: SpaceId
+    type: Literal["set_space"] = "set_space"
 
 
 @dataclass(frozen=True)
@@ -331,7 +331,7 @@ class ForceReview:
 
 
 type Action = (
-    SetDrawer
+    SetSpace
     | SetContact
     | SetDocumentType
     | SetTitle
@@ -356,7 +356,7 @@ class References:
     document_types: frozenset[DocumentTypeId] = frozenset()
     tags: frozenset[TagId] = frozenset()
     fields: frozenset[FieldId] = frozenset()
-    drawers: frozenset[DrawerId] = frozenset()
+    spaces: frozenset[SpaceId] = frozenset()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -408,7 +408,7 @@ class RuleDefinition:
         types: set[DocumentTypeId] = set()
         tags: set[TagId] = set()
         fields: set[FieldId] = set()
-        drawers: set[DrawerId] = set()
+        spaces: set[SpaceId] = set()
         for condition in self.conditions.conditions():
             match condition.field:
                 case ConditionField.CONTACT:
@@ -422,8 +422,8 @@ class RuleDefinition:
                     fields.add(condition.field_id)
         for action in self.actions:
             match action:
-                case SetDrawer(drawer_id=drawer):
-                    drawers.add(drawer)
+                case SetSpace(space_id=space):
+                    spaces.add(space)
                 case SetContact(contact_id=contact):
                     contacts.add(contact)
                 case SetDocumentType(document_type_id=document_type):
@@ -437,7 +437,7 @@ class RuleDefinition:
             frozenset(types),
             frozenset(tags),
             frozenset(fields),
-            frozenset(drawers),
+            frozenset(spaces),
         )
 
     @property
@@ -817,8 +817,8 @@ def condition_to_json(condition: Condition) -> JsonObject:
 
 def action_to_json(action: Action) -> JsonObject:
     match action:
-        case SetDrawer(drawer_id=drawer):
-            return {"type": action.type, "drawer_id": str(drawer)}
+        case SetSpace(space_id=space):
+            return {"type": action.type, "space_id": str(space)}
         case SetContact(contact_id=contact):
             return {"type": action.type, "contact_id": str(contact)}
         case SetDocumentType(document_type_id=document_type):
@@ -910,9 +910,9 @@ def action_from_json(data: JsonValue, where: str = "action") -> Action:
     kind = object_.get("type")
     try:
         match kind:
-            case "set_drawer":
-                _only(object_, {"type", "drawer_id"}, where)
-                return SetDrawer(DrawerId(_uuid(object_.get("drawer_id"), "drawer_id")))
+            case "set_space":
+                _only(object_, {"type", "space_id"}, where)
+                return SetSpace(SpaceId(_uuid(object_.get("space_id"), "space_id")))
             case "set_contact":
                 _only(object_, {"type", "contact_id"}, where)
                 return SetContact(ContactId(_uuid(object_.get("contact_id"), "contact_id")))

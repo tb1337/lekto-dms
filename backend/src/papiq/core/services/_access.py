@@ -1,16 +1,16 @@
 """Loading entities together with the caller's rights."""
 
 from papiq.core.domain.documents import Document, DocumentChanges, Unset
-from papiq.core.domain.drawers import Drawer
 from papiq.core.domain.errors import AuthenticationError, NotFoundError, PermissionDeniedError
-from papiq.core.domain.ids import DocumentId, DrawerId, UserId
+from papiq.core.domain.ids import DocumentId, SpaceId, UserId
 from papiq.core.domain.permissions import (
     can_file_into,
     can_read_document,
     can_write_document,
-    drawer_access,
+    space_access,
 )
-from papiq.core.domain.pipeline import drawer_chooser
+from papiq.core.domain.pipeline import space_chooser
+from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import User
 from papiq.core.ports import UnitOfWork
 
@@ -24,37 +24,37 @@ async def load_actor(uow: UnitOfWork, actor: UserId) -> User:
     return user
 
 
-async def readable_document(uow: UnitOfWork, user: User, id: DocumentId) -> tuple[Document, Drawer]:
+async def readable_document(uow: UnitOfWork, user: User, id: DocumentId) -> tuple[Document, Space]:
     document = await uow.documents.find(id)
     if document is None:
         raise NotFoundError("document", id)
-    drawer = await uow.drawers.get(document.drawer_id)
-    if not can_read_document(user, document, drawer):
+    space = await uow.spaces.get(document.space_id)
+    if not can_read_document(user, document, space):
         raise NotFoundError("document", id)
-    return document, drawer
+    return document, space
 
 
-async def writable_document(uow: UnitOfWork, user: User, id: DocumentId) -> tuple[Document, Drawer]:
-    document, drawer = await readable_document(uow, user, id)
-    if not can_write_document(user, document, drawer):
+async def writable_document(uow: UnitOfWork, user: User, id: DocumentId) -> tuple[Document, Space]:
+    document, space = await readable_document(uow, user, id)
+    if not can_write_document(user, document, space):
         raise PermissionDeniedError(f"no write access to document {id}")
-    return document, drawer
+    return document, space
 
 
-async def visible_drawer(uow: UnitOfWork, user: User, id: DrawerId) -> Drawer:
-    drawer = await uow.drawers.find(id)
-    if drawer is None or drawer_access(user, drawer) is None:
-        raise NotFoundError("drawer", id)
-    return drawer
+async def visible_space(uow: UnitOfWork, user: User, id: SpaceId) -> Space:
+    space = await uow.spaces.find(id)
+    if space is None or space_access(user, space) is None:
+        raise NotFoundError("space", id)
+    return space
 
 
-async def may_file(uow: UnitOfWork, document: Document, drawer: Drawer) -> bool:
-    """Whether filing may put the document into `drawer`: its owner may write to the drawer, or
-    an active admin put the document there by hand (admins file into any drawer)."""
+async def may_file(uow: UnitOfWork, document: Document, space: Space) -> bool:
+    """Whether filing may put the document into `space`: its owner may write to the space, or
+    an active admin put the document there by hand (admins file into any space)."""
     owner = await uow.users.get(document.owner_id)
-    if can_file_into(owner, drawer):
+    if can_file_into(owner, space):
         return True
-    chooser = drawer_chooser(await uow.processing_log.list_for(document.id), drawer.id)
+    chooser = space_chooser(await uow.processing_log.list_for(document.id), space.id)
     if chooser is None:
         return False
     user = await uow.users.find(UserId(chooser))

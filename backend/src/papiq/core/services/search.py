@@ -14,11 +14,11 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from papiq.core.domain.documents import Document
-from papiq.core.domain.drawers import Drawer, ShareLevel
 from papiq.core.domain.errors import EmbeddingsError, PermissionDeniedError, ValidationError
-from papiq.core.domain.ids import DrawerId, UserId
+from papiq.core.domain.ids import SpaceId, UserId
 from papiq.core.domain.permissions import document_access, reach_access
 from papiq.core.domain.search import Segment, Visibility
+from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.ports import (
     DocumentFilter,
     DocumentOrder,
@@ -105,7 +105,7 @@ class SearchService:
             user = await load_actor(uow, actor)
             if all_users and not user.is_active_admin:
                 raise PermissionDeniedError("only admins search the documents of all users")
-            drawers = await uow.drawers.list_accessible(actor)
+            spaces = await uow.spaces.list_accessible(actor)
         if offset >= MAX_HITS:
             return SearchPage([], 0, None, False)
         limit = min(limit, MAX_HITS - offset)
@@ -115,7 +115,7 @@ class SearchService:
             SearchQuery(
                 text=text,
                 visibility=Visibility(
-                    actor, frozenset(drawer.id for drawer in drawers), everything=all_users
+                    actor, frozenset(space.id for space in spaces), everything=all_users
                 ),
                 filter=filter,
                 vector=vector,
@@ -127,17 +127,17 @@ class SearchService:
         )
 
         items = []
-        by_id: dict[DrawerId, Drawer] = {drawer.id: drawer for drawer in drawers}
+        by_id: dict[SpaceId, Space] = {space.id: space for space in spaces}
         async with self._uow() as uow:
             for hit in result.hits:
                 document = await uow.documents.find(hit.id)
                 if document is None:
                     continue  # deleted since the index was written
-                if document.drawer_id not in by_id:
-                    by_id[document.drawer_id] = await uow.drawers.get(document.drawer_id)
-                drawer = by_id[document.drawer_id]
-                allowed = all_users or reach_access(user, document, drawer) is not None
-                access = document_access(user, document, drawer)
+                if document.space_id not in by_id:
+                    by_id[document.space_id] = await uow.spaces.get(document.space_id)
+                space = by_id[document.space_id]
+                allowed = all_users or reach_access(user, document, space) is not None
+                access = document_access(user, document, space)
                 if not allowed or access is None or not _matches(document, filter):
                     continue  # the index is behind: a share or a lane has changed
                 items.append(SearchItem(document, access, hit.score, hit.snippet))
@@ -184,6 +184,6 @@ def _matches(document: Document, filter: DocumentFilter) -> bool:
         (filter.contact is None or document.contact_id == filter.contact)
         and (filter.document_type is None or document.document_type_id == filter.document_type)
         and filter.tags <= document.tag_ids
-        and (filter.drawer is None or document.drawer_id == filter.drawer)
+        and (filter.space is None or document.space_id == filter.space)
         and (filter.lanes is None or document.lane in filter.lanes)
     )

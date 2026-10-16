@@ -8,7 +8,6 @@ from typing import Any
 from uuid import UUID
 
 from papiq.core.domain.documents import Document
-from papiq.core.domain.drawers import Drawer
 from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.identity import ApiToken, ExternalIdentity, Session
@@ -16,6 +15,7 @@ from papiq.core.domain.ids import EventId, JobId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.master_data import Contact, MasterData
 from papiq.core.domain.pipeline import NodeRun
+from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import User
 from papiq.core.domain.validation import name_key
 
@@ -32,10 +32,10 @@ def _user_keys(user: User) -> Iterable[Hashable]:
     return [("username", name_key(user.username))]
 
 
-def _drawer_keys(drawer: Drawer) -> Iterable[Hashable]:
-    keys: list[Hashable] = [("name", drawer.owner_id, name_key(drawer.name))]
-    if drawer.is_default:
-        keys.append(("default", drawer.owner_id))
+def _space_keys(space: Space) -> Iterable[Hashable]:
+    keys: list[Hashable] = [("name", space.owner_id, name_key(space.name))]
+    if space.is_default:
+        keys.append(("default", space.owner_id))
     return keys
 
 
@@ -76,7 +76,7 @@ def _external_identity_keys(identity: ExternalIdentity) -> Iterable[Hashable]:
 
 
 USERS = Table("user", _user_keys)
-DRAWERS = Table("drawer", _drawer_keys)
+SPACES = Table("space", _space_keys)
 CONTACTS = Table("contact", _contact_keys)
 DOCUMENT_TYPES = Table("document type", _name_keys)
 TAGS = Table("tag", _name_keys)

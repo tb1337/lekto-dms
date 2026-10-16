@@ -12,8 +12,8 @@ from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
     DocumentTypeId,
-    DrawerId,
     FieldId,
+    SpaceId,
     TagId,
     UserId,
 )
@@ -52,7 +52,7 @@ class IndexDocument:
     id: DocumentId
     version: int
     owner_id: UserId
-    drawer_id: DrawerId
+    space_id: SpaceId
     lane: Lane | None
     title: str
     filename: str
@@ -102,19 +102,19 @@ class IndexState:
 
 @dataclass(frozen=True)
 class Visibility:
-    """Who is searching and which drawers they can read from: the drawers they own and those
+    """Who is searching and which spaces they can read from: the spaces they own and those
     shared with them. Own documents are visible in every lane; other users' documents only when
-    green and in one of `drawers` (the user's reach, `permissions.in_reach`). `everything`: every
+    green and in one of `spaces` (the user's reach, `permissions.in_reach`). `everything`: every
     document, for an admin who asks for all users' documents."""
 
     user: UserId
-    drawers: frozenset[DrawerId]
+    spaces: frozenset[SpaceId]
     everything: bool = False
 
     def allows(self, document: IndexDocument) -> bool:
         if self.everything or document.owner_id == self.user:
             return True
-        return document.lane is Lane.GREEN and document.drawer_id in self.drawers
+        return document.lane is Lane.GREEN and document.space_id in self.spaces
 
 
 @dataclass(frozen=True)

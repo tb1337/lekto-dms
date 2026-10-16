@@ -9,7 +9,7 @@
 		type Filters,
 		type LaneFilter
 	} from '#lib/filters.ts';
-	import { drawerLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
@@ -31,10 +31,10 @@
 		{ value: '', label },
 		...list.map((entry) => ({ value: entry.id, label: entry.name }))
 	];
-	const drawers = $derived(
-		lookup.drawers.map((drawer) => ({
-			id: drawer.id,
-			name: drawerLabel(drawer, lookup.users, session.user?.id)
+	const spaces = $derived(
+		lookup.spaces.map((space) => ({
+			id: space.id,
+			name: spaceLabel(space, lookup.users, session.user?.id)
 		}))
 	);
 	const tagName = $derived(new Map(lookup.tags.map((tag) => [tag.id, tag.name])));
@@ -70,10 +70,10 @@
 			class="h-10 w-48"
 		/>
 		<NativeSelect
-			aria-label={m.filter_drawer()}
-			value={filters.drawer ?? ''}
-			options={all(m.filter_drawer(), drawers)}
-			onchange={(value) => set({ drawer: value || null })}
+			aria-label={m.filter_space()}
+			value={filters.space ?? ''}
+			options={all(m.filter_space(), spaces)}
+			onchange={(value) => set({ space: value || null })}
 			class="h-10 w-48"
 		/>
 		<NativeSelect

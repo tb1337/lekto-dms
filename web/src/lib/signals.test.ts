@@ -12,7 +12,7 @@ const lookup = {
 	contacts: [{ id: UTILITY, name: 'Stadtwerke' }],
 	documentTypes: [{ id: INVOICE, name: 'Rechnung' }],
 	tags: [],
-	drawers: [],
+	spaces: [],
 	users: []
 } as unknown as Lookup;
 

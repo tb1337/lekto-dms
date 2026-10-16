@@ -30,7 +30,7 @@ test('every area opens, and the dialogs create things', async ({ page }) => {
 		['/ui/inbox', 'Inbox'],
 		['/ui/documents?q=invoice', 'Documents'],
 		['/ui/rules', 'Rules'],
-		['/ui/drawers', 'Drawers'],
+		['/ui/spaces', 'Spaces'],
 		['/ui/webhooks', 'Webhooks'],
 		['/ui/admin/users', 'Users'],
 		['/ui/admin/master-data', 'Master data'],
@@ -48,9 +48,9 @@ test('every area opens, and the dialogs create things', async ({ page }) => {
 	await page.getByRole('button', { name: 'Create' }).click();
 	await expect(page.getByText(NAME)).toBeVisible();
 
-	// Drawers: a drawer.
-	await page.goto('/ui/drawers');
-	await page.getByRole('button', { name: 'New drawer' }).click();
+	// Spaces: a space.
+	await page.goto('/ui/spaces');
+	await page.getByRole('button', { name: 'New space' }).click();
 	await page.getByRole('textbox', { name: 'Name' }).fill(NAME);
 	await page.getByRole('button', { name: 'Create' }).click();
 	await expect(page.getByText(NAME).first()).toBeVisible();

@@ -148,13 +148,13 @@ async def test_a_deleted_document_leaves_the_index(setup: Setup) -> None:
     assert document.id not in setup.index.documents
 
 
-async def test_a_move_changes_the_drawer(setup: Setup) -> None:
+async def test_a_move_changes_the_space(setup: Setup) -> None:
     owner = await setup.world.user()
     document = await setup.document(owner)
-    target = await setup.world.drawers.create(owner.id, "Archive")
+    target = await setup.world.spaces.create(owner.id, "Archive")
     await setup.world.documents.move(owner.id, document.id, target.id)
     await setup.settle()
-    assert setup.entry(document.id).drawer_id == target.id
+    assert setup.entry(document.id).space_id == target.id
 
 
 async def test_renaming_master_data_updates_the_documents_that_carry_it(setup: Setup) -> None:
@@ -200,7 +200,7 @@ async def test_a_change_without_new_text_keeps_the_vectors(setup: Setup) -> None
     stamp = (await setup.index.state(document.id)).embedding  # type: ignore[union-attr]
     assert stamp is not None
 
-    target = await setup.world.drawers.create(owner.id, "Archive")
+    target = await setup.world.spaces.create(owner.id, "Archive")
     await setup.world.documents.move(owner.id, document.id, target.id)
     await setup.settle()
     assert len(setup.embeddings.calls) == calls

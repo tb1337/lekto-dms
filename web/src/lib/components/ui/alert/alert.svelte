@@ -7,7 +7,14 @@
 			variant: {
 				default: 'bg-card text-card-foreground',
 				destructive:
-					'text-destructive bg-card *:data-[slot=alert-description]:text-destructive/90 *:[svg]:text-current'
+					'text-destructive bg-card *:data-[slot=alert-description]:text-destructive/90 *:[svg]:text-current',
+				// Admonitions, as GitHub and Docusaurus name them, each with its icon.
+				note: 'border-note-foreground/25 bg-note text-note-foreground *:data-[slot=alert-description]:text-note-foreground',
+				tip: 'border-lane-green-foreground/25 bg-lane-green text-lane-green-foreground *:data-[slot=alert-description]:text-lane-green-foreground',
+				warning:
+					'border-lane-yellow-foreground/25 bg-lane-yellow text-lane-yellow-foreground *:data-[slot=alert-description]:text-lane-yellow-foreground',
+				caution:
+					'border-lane-red-foreground/25 bg-lane-red text-lane-red-foreground *:data-[slot=alert-description]:text-lane-red-foreground'
 			}
 		},
 		defaultVariants: {
@@ -19,8 +26,15 @@
 </script>
 
 <script lang="ts">
+	import Info from '@lucide/svelte/icons/info';
+	import Lightbulb from '@lucide/svelte/icons/lightbulb';
+	import OctagonAlert from '@lucide/svelte/icons/octagon-alert';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { cn, type WithElementRef } from '#lib/utils.ts';
 	import type { HTMLAttributes } from 'svelte/elements';
+
+	// The admonitions bring their icon.
+	const ICONS = { note: Info, tip: Lightbulb, warning: TriangleAlert, caution: OctagonAlert };
 
 	let {
 		ref = $bindable(null),
@@ -40,5 +54,9 @@
 	class={cn(alertVariants({ variant }), className)}
 	{...restProps}
 >
+	{#if variant && variant in ICONS}
+		{@const Icon = ICONS[variant as keyof typeof ICONS]}
+		<Icon aria-hidden="true" />
+	{/if}
 	{@render children?.()}
 </div>

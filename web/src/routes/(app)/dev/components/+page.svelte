@@ -53,6 +53,12 @@
 			<Alert.Title>{m.error_title()}</Alert.Title>
 			<Alert.Description>{m.error_network()}</Alert.Description>
 		</Alert.Root>
+		{#each ['note', 'tip', 'warning', 'caution'] as const as variant (variant)}
+			<Alert.Root {variant}>
+				<Alert.Title>{variant}</Alert.Title>
+				<Alert.Description>{m.error_network()}</Alert.Description>
+			</Alert.Root>
+		{/each}
 		<div class="flex flex-col gap-2">
 			<Skeleton class="h-4 w-3/4" />
 			<Skeleton class="h-4 w-1/2" />

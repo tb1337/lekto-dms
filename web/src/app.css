@@ -48,6 +48,9 @@
 	--lane-red-foreground: #a11d17;
 	--lane-running: #efeeea;
 	--lane-running-foreground: #5f5c55;
+	/* Notes (alerts of the kind `note`): blue, as GitHub and Docusaurus draw them. */
+	--note: #e7f0fb;
+	--note-foreground: #1d4f91;
 }
 
 .dark {
@@ -82,6 +85,8 @@
 	--lane-red-foreground: #ff9089;
 	--lane-running: #232826;
 	--lane-running-foreground: #a2a8a5;
+	--note: #14223a;
+	--note-foreground: #8db8f0;
 }
 
 @theme inline {
@@ -117,6 +122,8 @@
 
 	--color-lane-green: var(--lane-green);
 	--color-lane-green-foreground: var(--lane-green-foreground);
+	--color-note: var(--note);
+	--color-note-foreground: var(--note-foreground);
 	--color-lane-yellow: var(--lane-yellow);
 	--color-lane-yellow-foreground: var(--lane-yellow-foreground);
 	--color-lane-red: var(--lane-red);

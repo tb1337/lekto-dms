@@ -261,7 +261,7 @@
 		/>
 
 		{#if advice}
-			<Alert.Root role="status" class="flex flex-wrap items-center gap-3">
+			<Alert.Root variant="tip" role="status" class="flex flex-wrap items-center gap-3">
 				<Alert.Description class="min-w-0 flex-1">{advice}</Alert.Description>
 				<Button size="sm" onclick={() => header?.startVision()}>{m.vision_read()}</Button>
 			</Alert.Root>

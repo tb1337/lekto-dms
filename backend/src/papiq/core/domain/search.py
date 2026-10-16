@@ -20,10 +20,11 @@ from papiq.core.domain.ids import (
 from papiq.core.domain.pipeline import Lane
 
 PROCESSING = "processing"
-LAYOUT = 2
-"""The shape of what the index holds of a document. An entry of an older layout is written
-anew by the reconciliation (2: the ids of the fields with a value, and the title's sort key)."""
 """The lane value of a document that has none yet."""
+LAYOUT = 3
+"""The shape of what the index holds of a document. An entry of an older layout is written
+anew by the reconciliation (2: the ids of the fields with a value, and the title's sort key;
+3: `space_id` instead of `drawer_id`)."""
 
 
 def lane_value(lane: Lane | None) -> str:

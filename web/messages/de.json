@@ -227,7 +227,7 @@
 	"all_users": "Alle Nutzer einbeziehen",
 	"all_users_hint": "Dokumente, Posteingang, Regeln und Zählungen aller Nutzer, nicht nur deine eigenen und die mit dir geteilten.",
 	"share_title": "„{name}“ teilen",
-	"share_hint": "„Lesen“ zeigt die grünen Dokumente des Space. „Lesen und schreiben“ erlaubt auch, Dokumente hineinzulegen.",
+	"share_hint": "„Lesen“ zeigt die grünen Dokumente des Spaces. „Lesen und schreiben“ erlaubt auch, Dokumente hineinzulegen.",
 	"share_none": "Noch mit niemandem geteilt.",
 	"share_read": "Lesen",
 	"share_read_write": "Lesen und schreiben",

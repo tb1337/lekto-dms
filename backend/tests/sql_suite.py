@@ -1241,6 +1241,100 @@ class MigrationSuite:
         with pytest.raises(RuntimeError, match=r"uses 'space' already"):
             await migrate(empty_database)
 
+    async def test_tags_get_scopes_and_groups_and_back(self, empty_database: Database) -> None:
+        """Revision 0026 keeps every tag (a document tag, proposed, shown, at the top) and every
+        row that refers to one; the downgrade drops the groups and the nesting, and the schema
+        is that of 0025 again."""
+        await migrate(empty_database, "0025")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        ids = {name: new_id() for name in ("user", "space", "first", "second", "tax", "paid")}
+        ids |= {name: new_id() for name in ("contact", "type", "group", "type_group", "child")}
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
+            (t.spaces, {"id": ids["space"], "owner_id": ids["user"], "name_key": "d"}),
+            (t.tags, {"id": ids["tax"], "name": "Tax", "name_key": "tax"}),
+            (t.tags, {"id": ids["paid"], "name": "Paid", "name_key": "paid"}),
+            (t.contacts, {"id": ids["contact"], "name": "Nord", "name_key": "nord"}),
+            (t.document_types, {"id": ids["type"], "name": "Invoice", "name_key": "invoice"}),
+        ]
+        for number, document in enumerate(("first", "second")):
+            values = {"id": ids[document], "owner_id": ids["user"], "space_id": ids["space"]}
+            rows.append((t.documents, values | {"sha256": str(number) * 64}))
+        rows += [
+            (t.document_tags, {"document_id": ids["first"], "tag_id": ids["tax"]}),
+            (t.document_tags, {"document_id": ids["first"], "tag_id": ids["paid"]}),
+            (t.document_tags, {"document_id": ids["second"], "tag_id": ids["tax"]}),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+        flat = sa.table(
+            "tags",
+            sa.column("id", sa.Uuid()),
+            sa.column("name", sa.Text()),
+            sa.column("name_key", sa.Text()),
+            sa.column("created_at", UtcDateTime()),
+        )
+
+        async def stored(table: sa.TableClause | sa.Table) -> dict[str, Any]:
+            async with empty_database.reading() as connection:
+
+                async def all_(query: Any) -> list[tuple[Any, ...]]:
+                    return sorted(tuple(row) for row in (await connection.execute(query)).all())
+
+                return {
+                    "tags": await all_(select(table)),
+                    "document_tags": await all_(select(t.document_tags)),
+                }
+
+        before = await stored(flat)
+        await migrate(empty_database)
+        after = await stored(t.tags)
+        assert after["document_tags"] == before["document_tags"]
+        assert {row[:4] for row in after["tags"]} == {
+            (ids["paid"], "Paid", "paid", "document"),
+            (ids["tax"], "Tax", "tax", "document"),
+        }
+        assert {row[4:7] for row in after["tags"]} == {(None, "auto", True)}
+
+        # Groups, a contact group named like a document tag, and a nested tag.
+        new_rows: list[tuple[sa.Table, dict[str, Any]]] = [
+            (t.tags, {"id": ids["group"], "name": "Tax", "name_key": "tax", "scope": "contact"}),
+            (
+                t.tags,
+                {"id": ids["type_group"], "name": "B", "name_key": "b", "scope": "document_type"},
+            ),
+            (t.tags, {"id": ids["child"], "name": "C", "name_key": "c", "parent_id": ids["tax"]}),
+            (t.contact_groups, {"contact_id": ids["contact"], "tag_id": ids["group"]}),
+            (
+                t.document_type_groups,
+                {"document_type_id": ids["type"], "tag_id": ids["type_group"]},
+            ),
+            (t.document_tags, {"document_id": ids["second"], "tag_id": ids["child"]}),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in new_rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+        with pytest.raises(sa.exc.IntegrityError):
+            async with empty_database.writing() as connection:
+                same: dict[str, Any] = {"name": "tax", "name_key": "tax", "scope": "contact"}
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in t.tags.c}
+                await connection.execute(
+                    insert(t.tags).values({**defaults, **same, "id": new_id()})
+                )
+
+        await downgrade(empty_database, "0025")
+        child = (ids["child"], "C", "c", NOW)
+        assert await stored(flat) == {
+            "tags": sorted([*before["tags"], child]),
+            "document_tags": sorted([*before["document_tags"], (ids["second"], ids["child"])]),
+        }
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:

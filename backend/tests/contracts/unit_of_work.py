@@ -10,7 +10,7 @@ from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundEr
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import DocumentId, SpaceId, new_id
-from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag
+from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
 from papiq.core.domain.periods import Period
 from papiq.core.domain.permissions import can_read_document
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
@@ -345,6 +345,72 @@ class UnitOfWorkContract:
             with pytest.raises(ConflictError):
                 await uow.contacts.add(Contact.create(name="stadtwerke", now=NOW))
                 await uow.commit()
+
+    async def test_tags_keep_scope_parent_assignment_and_display(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        top = Tag.create(name="Insurance", now=NOW)
+        child = Tag.create(
+            name="Health", now=NOW, parent_id=top.id, assignment=Assignment.MANUAL, shown=False
+        )
+        group = Tag.create(name="Insurance", now=NOW, scope=TagScope.CONTACT)
+        type_group = Tag.create(name="Bills", now=NOW, scope=TagScope.DOCUMENT_TYPE, shown=True)
+        async with uow_factory() as uow:
+            for item in (top, child, group, type_group):
+                await uow.tags.add(item)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.tags.get(child.id) == child
+            assert await uow.tags.get(type_group.id) == type_group
+            assert await uow.tags.find_by_name("INSURANCE") == top
+            assert await uow.tags.find_by_name("insurance", TagScope.CONTACT) == group
+            assert await uow.tags.find_by_name("Bills") is None
+            stored = await uow.tags.get(child.id)
+            stored.move(None)
+            stored.rename("Health insurance")
+            await uow.tags.update(stored)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.tags.get(child.id)).parent_id is None
+        # Names are unique per scope.
+        with pytest.raises(ConflictError):
+            async with uow_factory() as uow:
+                await uow.tags.add(Tag.create(name="insurance", now=NOW, scope=TagScope.CONTACT))
+                await uow.commit()
+
+    async def test_contacts_and_types_keep_their_groups(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        insurer = Tag.create(name="Insurer", now=NOW, scope=TagScope.CONTACT)
+        employer = Tag.create(name="Employer", now=NOW, scope=TagScope.CONTACT)
+        bills = Tag.create(name="Bills", now=NOW, scope=TagScope.DOCUMENT_TYPE)
+        contact = Contact.create(name="Nord", now=NOW)
+        contact.set_groups([insurer.id, employer.id])
+        kind = DocumentType.create(name="Invoice", now=NOW)
+        kind.set_groups([bills.id])
+        async with uow_factory() as uow:
+            for tag in (insurer, employer, bills):
+                await uow.tags.add(tag)
+            await uow.contacts.add(contact)
+            await uow.document_types.add(kind)
+            await uow.commit()
+        async with uow_factory() as uow:
+            stored = await uow.contacts.get(contact.id)
+            assert stored.group_ids == {insurer.id, employer.id}
+            assert (await uow.document_types.get(kind.id)).group_ids == {bills.id}
+            stored.set_groups([employer.id])
+            await uow.contacts.update(stored)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.contacts.get(contact.id)).group_ids == {employer.id}
+            await uow.contacts.remove(contact.id)
+            await uow.document_types.remove(kind.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            # The groups stay; what was in them went with the contact and the type.
+            assert {tag.id for tag in await uow.tags.list_all()} >= {insurer.id, bills.id}
+            await uow.tags.remove(employer.id)
+            await uow.commit()
 
     async def test_contact_aliases_and_type_description(
         self, uow_factory: UnitOfWorkFactory

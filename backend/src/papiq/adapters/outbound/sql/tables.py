@@ -24,6 +24,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    UniqueConstraint,
     Uuid,
     false,
     true,
@@ -108,7 +109,44 @@ document_types = _master_data(
     # A pattern the title of the type's documents is rendered from (see `domain.titles`).
     Column("title_pattern", Text, nullable=True),
 )
-tags = _master_data("tags")
+# Names are unique per scope (a contact group may be named like a document tag).
+tags = Table(
+    "tags",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("name_key", Text, nullable=False),
+    # `document`, `contact` (a contact group) or `document_type` (a type group): `TagScope`.
+    Column("scope", Text, nullable=False, server_default="document"),
+    # The tag it is nested under, of the same scope (checked by the service, as cycles are).
+    Column("parent_id", Uuid, ForeignKey("tags.id"), nullable=True, index=True),
+    # `auto` (classification proposes it) or `manual` (`Assignment`; groups always).
+    Column("assignment", Text, nullable=False, server_default="auto"),
+    # Whether documents show it.
+    Column("shown", Boolean, nullable=False, server_default=true()),
+    Column("created_at", UtcDateTime, nullable=False),
+    Column("version", Integer, nullable=False),
+    UniqueConstraint("scope", "name_key"),
+)
+
+# The groups a contact or a document type is in (tags of scope `contact`, `document_type`).
+contact_groups = Table(
+    "contact_groups",
+    metadata,
+    Column("contact_id", Uuid, ForeignKey("contacts.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", Uuid, ForeignKey("tags.id"), primary_key=True, index=True),
+)
+document_type_groups = Table(
+    "document_type_groups",
+    metadata,
+    Column(
+        "document_type_id",
+        Uuid,
+        ForeignKey("document_types.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("tag_id", Uuid, ForeignKey("tags.id"), primary_key=True, index=True),
+)
 
 # Other names of a contact; unique across contacts. That no alias is another contact's name is
 # checked by the service.

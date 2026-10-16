@@ -8,8 +8,9 @@ Common rules for every adapter:
   entity's version, then increments both. Otherwise it raises ConcurrencyError (at the latest on
   commit).
 - Uniqueness (raises ConflictError at the latest on commit): usernames; space names per owner;
-  one default space per owner; names of contacts, document types, tags and field
-  definitions; the original (SHA-256) per document owner. Names compare regardless of case.
+  one default space per owner; names of contacts, document types and field definitions, and
+  of tags per scope; the original (SHA-256) per document owner. Names compare regardless of
+  case.
 - `get` raises NotFoundError, `find` returns None.
 """
 
@@ -38,7 +39,7 @@ from papiq.core.domain.ids import (
     UserId,
     WebhookId,
 )
-from papiq.core.domain.master_data import Contact, DocumentType, Tag
+from papiq.core.domain.master_data import Contact, DocumentType, Tag, TagScope
 from papiq.core.domain.pipeline import Lane, NodeRun
 from papiq.core.domain.rules import Rule, RuleApplication, RuleVersion
 from papiq.core.domain.sorting import sort_key
@@ -104,7 +105,15 @@ class ContactRepository(NamedRepository[ContactId, Contact], Protocol): ...
 class DocumentTypeRepository(NamedRepository[DocumentTypeId, DocumentType], Protocol): ...
 
 
-class TagRepository(NamedRepository[TagId, Tag], Protocol): ...
+class TagRepository(NamedRepository[TagId, Tag], Protocol):
+    async def find_by_name(self, name: str, scope: TagScope = TagScope.DOCUMENT) -> Tag | None:
+        """Case-insensitive lookup among the tags of `scope` (names are unique per scope)."""
+        ...
+
+    async def remove(self, id: TagId) -> None:
+        """Delete it; NotFoundError if missing. No document, contact, type or tag may refer to
+        it."""
+        ...
 
 
 class FieldDefinitionRepository(NamedRepository[FieldId, FieldDefinition], Protocol): ...

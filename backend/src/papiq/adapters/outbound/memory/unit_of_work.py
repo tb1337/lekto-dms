@@ -68,7 +68,7 @@ from papiq.core.domain.ids import (
 )
 from papiq.core.domain.jobs import Job, JobStatus
 from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag
+from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag, TagScope
 from papiq.core.domain.pipeline import Lane, NodeRun
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import User
@@ -104,7 +104,7 @@ class MemoryUnitOfWork:
         self.document_types = MemoryNamedRepository[DocumentTypeId, DocumentType](
             self, DOCUMENT_TYPES
         )
-        self.tags = MemoryNamedRepository[TagId, Tag](self, TAGS)
+        self.tags = MemoryTagRepository(self, TAGS)
         self.fields = MemoryNamedRepository[FieldId, FieldDefinition](self, FIELDS)
         self.documents = MemoryDocumentRepository(self, DOCUMENTS)
         self.processing_log = MemoryProcessingLog(self)
@@ -257,6 +257,15 @@ class MemoryNamedRepository[K: UUID, E: MasterData](MemoryRepository[K, E]):
     async def remove(self, id: K) -> None:
         await self.get(id)
         self._uow._write(self._table, id, _REMOVED)
+
+
+class MemoryTagRepository(MemoryNamedRepository[TagId, Tag]):
+    async def find_by_name(self, name: str, scope: TagScope = TagScope.DOCUMENT) -> Tag | None:
+        key = name_key(name)
+        return next(
+            (_copy(row) for row in self._all() if row.scope is scope and name_key(row.name) == key),
+            None,
+        )
 
 
 class MemoryUserRepository(MemoryRepository[UserId, User]):

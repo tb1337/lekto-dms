@@ -13,7 +13,7 @@ from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.identity import ApiToken, ExternalIdentity, Session
 from papiq.core.domain.ids import EventId, JobId
 from papiq.core.domain.jobs import Job
-from papiq.core.domain.master_data import Contact, MasterData
+from papiq.core.domain.master_data import Contact, MasterData, Tag
 from papiq.core.domain.pipeline import NodeRun
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import User
@@ -51,6 +51,10 @@ def _contact_keys(contact: Contact) -> Iterable[Hashable]:
     ]
 
 
+def _tag_keys(tag: Tag) -> Iterable[Hashable]:
+    return [("name", tag.scope, name_key(tag.name))]
+
+
 def _field_keys(item: FieldDefinition) -> Iterable[Hashable]:
     return _name_keys(item)
 
@@ -79,7 +83,7 @@ USERS = Table("user", _user_keys)
 SPACES = Table("space", _space_keys)
 CONTACTS = Table("contact", _contact_keys)
 DOCUMENT_TYPES = Table("document type", _name_keys)
-TAGS = Table("tag", _name_keys)
+TAGS = Table("tag", _tag_keys)
 FIELDS = Table("field", _field_keys)
 DOCUMENTS = Table("document", _document_keys)
 CREDENTIALS = Table("credential", _no_keys)

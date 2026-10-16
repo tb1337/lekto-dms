@@ -4,14 +4,21 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Row, delete
+from sqlalchemy import Row, and_, delete
 
 from papiq.adapters.outbound.sql import tables as t
 from papiq.adapters.outbound.sql.repositories import SqlRepository, Values
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId
-from papiq.core.domain.master_data import Assignment, Contact, DocumentType, MasterData, Tag
+from papiq.core.domain.master_data import (
+    Assignment,
+    Contact,
+    DocumentType,
+    MasterData,
+    Tag,
+    TagScope,
+)
 from papiq.core.domain.validation import name_key
 
 
@@ -38,6 +45,7 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
         ids = [row.id for row in rows]
         aliases = await self._children(t.contact_aliases, "contact_id", ids)
         identifiers = await self._children(t.contact_identifiers, "contact_id", ids)
+        groups = await self._children(t.contact_groups, "contact_id", ids)
         return [
             Contact(
                 id=ContactId(row.id),
@@ -49,6 +57,7 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
                     Identifier(IdentifierKind(item.kind), item.value, IdentifierSource(item.source))
                     for item in identifiers[row.id]
                 ],
+                group_ids=frozenset(TagId(group.tag_id) for group in groups[row.id]),
                 created_at=row.created_at,
                 version=row.version,
             )
@@ -80,14 +89,14 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
                 for item in entity.identifiers
             ],
         )
+        await self._insert_many(
+            t.contact_groups,
+            [{"contact_id": entity.id, "tag_id": group} for group in entity.group_ids],
+        )
 
     async def _delete_children(self, ids: list[ContactId]) -> None:
-        await self._tx.write(
-            delete(t.contact_aliases).where(t.contact_aliases.c.contact_id.in_(ids))
-        )
-        await self._tx.write(
-            delete(t.contact_identifiers).where(t.contact_identifiers.c.contact_id.in_(ids))
-        )
+        for table in (t.contact_aliases, t.contact_identifiers, t.contact_groups):
+            await self._tx.write(delete(table).where(table.c.contact_id.in_(ids)))
 
 
 class SqlDocumentTypeRepository(SqlNamedRepository[DocumentTypeId, DocumentType]):
@@ -100,23 +109,64 @@ class SqlDocumentTypeRepository(SqlNamedRepository[DocumentTypeId, DocumentType]
             "title_pattern": entity.title_pattern,
         }
 
-    def _entity(self, row: Row[Any]) -> DocumentType:
-        return DocumentType(
-            id=DocumentTypeId(row.id),
-            name=row.name,
-            description=row.description,
-            title_pattern=row.title_pattern,
-            created_at=row.created_at,
-            version=row.version,
+    async def _entities(self, rows: Sequence[Row[Any]]) -> list[DocumentType]:
+        groups = await self._children(
+            t.document_type_groups, "document_type_id", (row.id for row in rows)
         )
+        return [
+            DocumentType(
+                id=DocumentTypeId(row.id),
+                name=row.name,
+                description=row.description,
+                title_pattern=row.title_pattern,
+                group_ids=frozenset(TagId(group.tag_id) for group in groups[row.id]),
+                created_at=row.created_at,
+                version=row.version,
+            )
+            for row in rows
+        ]
+
+    async def _write_children(self, entity: DocumentType) -> None:
+        await self._insert_many(
+            t.document_type_groups,
+            [{"document_type_id": entity.id, "tag_id": group} for group in entity.group_ids],
+        )
+
+    async def _delete_children(self, ids: list[DocumentTypeId]) -> None:
+        table = t.document_type_groups
+        await self._tx.write(delete(table).where(table.c.document_type_id.in_(ids)))
 
 
 class SqlTagRepository(SqlNamedRepository[TagId, Tag]):
     kind = "tag"
     table = t.tags
 
+    async def find_by_name(self, name: str, scope: TagScope = TagScope.DOCUMENT) -> Tag | None:
+        """Names are unique per scope."""
+        found = await self._load(
+            and_(self.table.c.name_key == name_key(name), self.table.c.scope == scope.value)
+        )
+        return found[0] if found else None
+
+    def _values(self, entity: Tag) -> Values:
+        return super()._values(entity) | {
+            "scope": entity.scope.value,
+            "parent_id": entity.parent_id,
+            "assignment": entity.assignment.value,
+            "shown": entity.shown,
+        }
+
     def _entity(self, row: Row[Any]) -> Tag:
-        return Tag(id=TagId(row.id), name=row.name, created_at=row.created_at, version=row.version)
+        return Tag(
+            id=TagId(row.id),
+            name=row.name,
+            scope=TagScope(row.scope),
+            parent_id=None if row.parent_id is None else TagId(row.parent_id),
+            assignment=Assignment(row.assignment),
+            shown=row.shown,
+            created_at=row.created_at,
+            version=row.version,
+        )
 
 
 class SqlFieldRepository(SqlNamedRepository[FieldId, FieldDefinition]):

@@ -86,6 +86,23 @@ def test_identifiers_in_a_letter() -> None:
 
 
 @pytest.mark.parametrize(
+    "text",
+    [
+        "IBAN DE89 3704 0044 0532 0130 00",
+        "IBAN: DE 89 3704 0044 0532 0130 00\nBank Musterstadt",  # the country apart
+        "DE89370400440532013000",
+    ],
+)
+def test_an_iban_however_it_is_grouped(text: str) -> None:
+    assert identifiers_in(text) == {(IBAN, THEIR_IBAN)}
+
+
+@pytest.mark.parametrize("text", ["de 12 Seiten 2026 bis 2030", "DE 89 3704 0044 0532 0130 01"])
+def test_no_iban_without_its_check_sum(text: str) -> None:
+    assert IBAN not in {kind for kind, _ in identifiers_in(text)}
+
+
+@pytest.mark.parametrize(
     ("text", "value"),
     [
         (" Personalnummer     : 00012345        Druckdatum    : 15.07.2026", "12345"),

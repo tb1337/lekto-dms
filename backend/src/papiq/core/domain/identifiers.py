@@ -133,7 +133,10 @@ def iban_valid(iban: str) -> bool:
 
 # --- finding in a text ------------------------------------------------------------------------
 
-_IBAN_IN_TEXT = re.compile(r"(?<![a-z0-9])[a-z]{2}\d{2}(?: ?[a-z0-9]{4}){2,7}(?: ?[a-z0-9]{1,4})?")
+# Groups of four, the country also apart from its check digits (`DE 89 3704 …`).
+_IBAN_IN_TEXT = re.compile(
+    r"(?<![a-z0-9])[a-z]{2} ?\d{2}(?: ?[a-z0-9]{4}){2,7}(?: ?[a-z0-9]{1,4})?"
+)
 _SHORTEST_IBAN = 15  # characters (Norway)
 _GERMAN_VAT = re.compile(r"(?<![a-z0-9])de ?\d{3} ?\d{3} ?\d{3}(?![a-z0-9])")
 # A label, then the value: its first word, and further words that hold a digit (`DE 123 456

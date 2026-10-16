@@ -56,7 +56,17 @@ CROP_WORDS = 30
 FETCH_PAGE = 1000
 _EXCERPT = 300  # characters of an error message from Meilisearch
 
-SEARCHABLE = ["title", "contact", "document_type", "tags", "fields", "filename", "text"]
+SEARCHABLE = [
+    "title",
+    "contact",
+    "document_type",
+    "tags",
+    "contact_groups",
+    "document_type_groups",
+    "fields",
+    "filename",
+    "text",
+]
 FILTERABLE = [
     "owner_id",
     "space_id",
@@ -64,6 +74,8 @@ FILTERABLE = [
     "contact_id",
     "document_type_id",
     "tag_ids",
+    "contact_group_ids",
+    "document_type_group_ids",
     "confirmed",
     "field_ids",
 ]
@@ -362,6 +374,10 @@ class MeilisearchIndex:
             "document_type": document.document_type,
             "tag_ids": [str(tag) for tag in document.tag_ids],
             "tags": list(document.tags),
+            "contact_group_ids": [str(tag) for tag in document.contact_group_ids],
+            "contact_groups": list(document.contact_groups),
+            "document_type_group_ids": [str(tag) for tag in document.document_type_group_ids],
+            "document_type_groups": list(document.document_type_groups),
             "fields": list(document.fields),
             "field_ids": [str(field) for field in document.field_ids],
             "document_date": None

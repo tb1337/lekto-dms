@@ -243,6 +243,24 @@ class SearchIndexContract:
         ) == {one_tag.id}
         assert await with_filter(contact=ContactId(new_id())) == set()
 
+    async def test_tags_with_their_ancestors_and_groups_are_found_by_name(
+        self, search_index: SearchIndex
+    ) -> None:
+        owner = UserId(new_id())
+        grouped = index_document(
+            owner_id=owner,
+            text="Schreiben",
+            tags=("Krankenversicherung", "Versicherungen"),
+            contact_groups=("Versorger",),
+            document_type_groups=("Belege",),
+        )
+        other = index_document(owner_id=owner, text="Schreiben")
+        await search_index.upsert([grouped, other])
+        who = visibility(owner)
+        for word in ("Versicherungen", "Versorger", "Belege"):
+            assert await found(search_index, word, who) == {grouped.id}
+        assert await found(search_index, "Schreiben", who) == {grouped.id, other.id}
+
     async def test_a_field_with_a_value(self, search_index: SearchIndex) -> None:
         owner, field = UserId(new_id()), FieldId(new_id())
         with_value = index_document(owner_id=owner, text="Rechnung", field_ids=(field,))

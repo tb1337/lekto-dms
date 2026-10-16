@@ -118,19 +118,33 @@ class Reconciled:
     removed: int  # documents in the index that no longer exist
 
 
+type _Named = tuple[tuple[TagId, str], ...]
+
+
 @dataclass(frozen=True)
 class _Snapshot:
-    """A document with the names it is indexed with."""
+    """A document with the names it is indexed with: `tags` those it carries, `labels` these
+    with their ancestors, and the groups of its contact and type with theirs."""
 
     document: Document
     contact: str | None
     document_type: str | None
-    tags: tuple[tuple[TagId, str], ...]
+    tags: _Named
+    labels: _Named = ()
+    contact_groups: _Named = ()
+    document_type_groups: _Named = ()
 
     @property
     def key(self) -> tuple[object, ...]:
         """What the index document depends on besides the text."""
-        return (self.document.version, self.contact, self.document_type, self.tags)
+        return (
+            self.document.version,
+            self.contact,
+            self.document_type,
+            self.labels,
+            self.contact_groups,
+            self.document_type_groups,
+        )
 
 
 class IndexingService:
@@ -387,8 +401,12 @@ class IndexingService:
             contact=snapshot.contact,
             document_type_id=document.document_type_id,
             document_type=snapshot.document_type,
-            tag_ids=tuple(tag for tag, _ in snapshot.tags),
-            tags=tuple(name for _, name in snapshot.tags),
+            tag_ids=tuple(tag for tag, _ in snapshot.labels),
+            tags=tuple(name for _, name in snapshot.labels),
+            contact_group_ids=tuple(tag for tag, _ in snapshot.contact_groups),
+            contact_groups=tuple(name for _, name in snapshot.contact_groups),
+            document_type_group_ids=tuple(tag for tag, _ in snapshot.document_type_groups),
+            document_type_groups=tuple(name for _, name in snapshot.document_type_groups),
             fields=_field_texts(document),
             field_ids=tuple(document.fields),
             document_date=document.document_date,
@@ -400,7 +418,8 @@ class IndexingService:
 
     def _sections(self, snapshot: _Snapshot, text: str) -> list[str]:
         """The texts that get a vector: the text in sections, the first one headed by what the
-        document says about itself."""
+        document says about itself (the tags it carries, without their ancestors: nesting a
+        tag elsewhere costs no embedding)."""
         header = "\n".join(
             part
             for part in (
@@ -528,20 +547,31 @@ def _carries(document: Document, kind: str, item: UUID) -> bool:
 
 
 async def _snapshot_of(uow: UnitOfWork, document: Document) -> _Snapshot:
-    contact = None
+    tree = TagTree.of(await uow.tags.list_all())
+    contact, contact_groups = None, frozenset[TagId]()
     if document.contact_id is not None:
         found = await uow.contacts.find(document.contact_id)
-        contact = None if found is None else found.name
-    document_type = None
+        if found is not None:
+            contact, contact_groups = found.name, found.group_ids
+    document_type, type_groups = None, frozenset[TagId]()
     if document.document_type_id is not None:
         kind = await uow.document_types.find(document.document_type_id)
-        document_type = None if kind is None else kind.name
-    tags = []
-    for tag_id in sorted(document.tag_ids, key=str):
-        tag = await uow.tags.find(tag_id)
-        if tag is not None:
-            tags.append((tag.id, tag.name))
-    return _Snapshot(document, contact, document_type, tuple(tags))
+        if kind is not None:
+            document_type, type_groups = kind.name, kind.group_ids
+
+    def named(ids: Collection[TagId]) -> _Named:
+        known = sorted((id for id in ids if id in tree), key=str)
+        return tuple((id, tree.tags[id].name) for id in known)
+
+    return _Snapshot(
+        document,
+        contact,
+        document_type,
+        tags=named(document.tag_ids),
+        labels=named(tree.with_ancestors(document.tag_ids)),
+        contact_groups=named(tree.with_ancestors(contact_groups)),
+        document_type_groups=named(tree.with_ancestors(type_groups)),
+    )
 
 
 def _digest(model: str, sections: list[str]) -> str:

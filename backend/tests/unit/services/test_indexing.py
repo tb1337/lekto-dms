@@ -187,6 +187,36 @@ async def test_renaming_master_data_updates_the_documents_that_carry_it(setup: S
     assert setup.entry(neither.id).version == neither.version
 
 
+async def test_an_entry_holds_tags_with_ancestors_and_the_groups(setup: Setup) -> None:
+    admin, owner = await setup.world.user(role=Role.ADMIN), await setup.world.user()
+    master = setup.master_data
+    insurance = await master.create_tag(admin.id, "Insurance")
+    health = await master.create_tag(admin.id, "Health", parent_id=insurance.id)
+    insurer = await master.create_tag(admin.id, "Insurer", scope=TagScope.CONTACT)
+    health_insurer = await master.create_tag(
+        admin.id, "Health insurer", scope=TagScope.CONTACT, parent_id=insurer.id
+    )
+    bills = await master.create_tag(admin.id, "Bills", scope=TagScope.DOCUMENT_TYPE)
+    contact = await master.create_contact(admin.id, "Nord", group_ids=[health_insurer.id])
+    kind = await master.create_document_type(admin.id, "Invoice", group_ids=[bills.id])
+    document = await setup.document(owner)
+    changes = DocumentChanges(
+        contact_id=contact.id, document_type_id=kind.id, tag_ids=frozenset({health.id})
+    )
+    await setup.world.documents.update_metadata(owner.id, document.id, changes)
+    await setup.settle()
+    entry = setup.entry(document.id)
+    assert set(entry.tag_ids) == {health.id, insurance.id}
+    assert set(entry.tags) == {"Health", "Insurance"}
+    assert set(entry.contact_group_ids) == {health_insurer.id, insurer.id}
+    assert set(entry.contact_groups) == {"Health insurer", "Insurer"}
+    assert (entry.document_type_group_ids, entry.document_type_groups) == ((bills.id,), ("Bills",))
+    # The first section is headed by the tag the document carries, not by its ancestors.
+    assert isinstance(setup.embeddings, FakeEmbeddings)
+    header = setup.embeddings.calls[-1][0].split("\n\n")[0]
+    assert "Health" in header and "Insurance" not in header
+
+
 async def test_nesting_a_tag_or_changing_groups_refreshes_the_documents_concerned(
     setup: Setup,
 ) -> None:

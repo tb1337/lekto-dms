@@ -21,10 +21,11 @@ from papiq.core.domain.pipeline import Lane
 
 PROCESSING = "processing"
 """The lane value of a document that has none yet."""
-LAYOUT = 3
+LAYOUT = 4
 """The shape of what the index holds of a document. An entry of an older layout is written
 anew by the reconciliation (2: the ids of the fields with a value, and the title's sort key;
-3: `space_id` instead of `drawer_id`)."""
+3: `space_id` instead of `drawer_id`; 4: tags with their ancestors, and the groups of the
+contact and the type)."""
 
 
 def lane_value(lane: Lane | None) -> str:
@@ -43,6 +44,10 @@ class EmbeddingStamp:
 @dataclass(frozen=True, kw_only=True)
 class IndexDocument:
     """A document as the index holds it. Names are indexed for the search, ids for the filters.
+
+    Tags come with their ancestors, and the groups of the document's contact and type with
+    theirs (`tag_tree`): a document is found by a tag above the one it carries, by name and by
+    id.
 
     `vectors` holds one vector per section of the text (all of one length); `embedding` says
     how they were made and is required with them. `vectors=None` keeps the vectors (and their
@@ -64,6 +69,10 @@ class IndexDocument:
     document_type: str | None = None
     tag_ids: tuple[TagId, ...] = ()
     tags: tuple[str, ...] = ()
+    contact_group_ids: tuple[TagId, ...] = ()
+    contact_groups: tuple[str, ...] = ()
+    document_type_group_ids: tuple[TagId, ...] = ()
+    document_type_groups: tuple[str, ...] = ()
     fields: tuple[str, ...] = ()
     field_ids: tuple[FieldId, ...] = ()  # the fields with a value, for the filter
     document_date: date | None = None

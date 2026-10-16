@@ -184,7 +184,7 @@ def _fields(document: IndexDocument) -> list[str]:
         document.title,
         document.contact or "",
         document.document_type or "",
-        " ".join(document.tags),
+        " ".join([*document.tags, *document.contact_groups, *document.document_type_groups]),
         " ".join(document.fields),
         document.filename,
         document.text,

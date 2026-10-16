@@ -55,12 +55,14 @@ from papiq.core.domain.rule_engine import (
     RulePlan,
     Situation,
     SpaceTarget,
+    Taxonomy,
     matches,
     pattern_subjects,
     pattern_text,
     plan,
 )
 from papiq.core.domain.rules import Rule, SetSpace, Trigger
+from papiq.core.domain.tag_tree import TagTree
 from papiq.core.domain.users import User
 from papiq.core.ports import ObjectStore, PatternMatcher, TemplateRenderer, UnitOfWork
 from papiq.core.services.inbox import MODEL_NODES, field_checks, latest_entries
@@ -358,6 +360,7 @@ def facts(
     prepared: Prepared,
     patterns: Mapping[PatternKey, bool],
     origin: Provenance,
+    taxonomy: Taxonomy | None = None,
 ) -> Facts:
     return Facts.of(
         document,
@@ -365,7 +368,34 @@ def facts(
         patterns={**prepared.patterns, **patterns},
         unverified=origin.unverified,
         unverified_tags=origin.model_tags,
+        taxonomy=taxonomy,
     )
+
+
+async def taxonomy(
+    uow: UnitOfWork, documents: Iterable[Document], rules: Iterable[Rule]
+) -> Taxonomy:
+    """The tag trees, and the groups of the contacts and types of `documents` and of those the
+    rules set."""
+    contacts: set[UUID] = set()
+    types: set[UUID] = set()
+    for document in documents:
+        if document.contact_id is not None:
+            contacts.add(document.contact_id)
+        if document.document_type_id is not None:
+            types.add(document.document_type_id)
+    for rule in rules:
+        references = rule.definition.references()
+        contacts |= references.contacts
+        types |= references.document_types
+    groups: dict[UUID, frozenset[TagId]] = {}
+    for id in contacts:
+        if (contact := await uow.contacts.find(ContactId(id))) is not None:
+            groups[id] = contact.group_ids
+    for id in types:
+        if (kind := await uow.document_types.find(DocumentTypeId(id))) is not None:
+            groups[id] = kind.group_ids
+    return Taxonomy(TagTree.of(await uow.tags.list_all()), groups)
 
 
 # --- the situation ----------------------------------------------------------------------------
@@ -385,8 +415,10 @@ async def situation(
     person_added_tags: frozenset[TagId] = frozenset(),
     person_removed_tags: frozenset[TagId] = frozenset(),
     accept_conflicts: bool = False,
+    tags: Taxonomy | None = None,
 ) -> Situation:
-    """Everything `plan` needs to know besides the matching rules."""
+    """Everything `plan` needs to know besides the matching rules. `tags`: the taxonomy of the
+    run (`taxonomy`), made here unless given."""
     rules = list(rules)
     references = [rule.definition.references() for rule in rules]
     existing: set[object] = set(definitions)
@@ -446,6 +478,7 @@ async def situation(
         person_removed_tags=person_removed_tags,
         reviewed=origin.reviewed,
         accept_conflicts=accept_conflicts,
+        taxonomy=tags or await taxonomy(uow, [document], rules),
     )
 
 
@@ -491,10 +524,11 @@ async def run_rules(
     for a change, the state before it and its field pattern results; only rules that become
     true with the change act."""
     patterns, problems = await field_patterns(matcher, rules, document)
-    now_facts = facts(document, prepared, patterns, origin)
+    tags = await taxonomy(uow, [document, *([] if before is None else [before[0]])], rules)
+    now_facts = facts(document, prepared, patterns, origin, tags)
     before_facts = None
     if before is not None:
-        before_facts = facts(before[0], prepared, before[1], origin)
+        before_facts = facts(before[0], prepared, before[1], origin, tags)
     matched = matches(rules, now_facts, definitions, before=before_facts)
     context = await situation(
         uow,
@@ -509,6 +543,7 @@ async def run_rules(
         person_added_tags=origin.tags_added,
         person_removed_tags=origin.tags_removed,
         accept_conflicts=accept_conflicts,
+        tags=tags,
     )
     return RuleRun(plan(matched, context), prepared.problems + problems)
 

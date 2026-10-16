@@ -9,6 +9,8 @@ export const TEMPLATE_NAMES = [
 	'document_date',
 	'added',
 	'tags',
+	'contact_groups',
+	'document_type_groups',
 	'space',
 	'owner',
 	'filename',
@@ -25,6 +27,8 @@ export const TEMPLATE_NAME_LABELS: Record<TemplateName, () => string> = {
 	document_date: m.field_date,
 	added: m.template_value_added,
 	tags: m.field_tags,
+	contact_groups: m.template_value_contact_groups,
+	document_type_groups: m.template_value_document_type_groups,
 	space: m.field_space,
 	owner: m.template_value_owner,
 	filename: m.template_value_filename,
@@ -34,7 +38,11 @@ export const TEMPLATE_NAME_LABELS: Record<TemplateName, () => string> = {
 };
 
 /** The lists among the values: a template joins them (`{{ tags | join: ', ' }}`). */
-export const LIST_NAMES: ReadonlySet<string> = new Set(['tags']);
+export const LIST_NAMES: ReadonlySet<string> = new Set([
+	'tags',
+	'contact_groups',
+	'document_type_groups'
+]);
 
 /** The fields a template may use: those of `documentType` (undefined: every field, as in a
  * rule; null: a type not saved yet, so the fields for every type). */

@@ -11,6 +11,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { ACTION_LABELS } from '#lib/rules/describe.ts';
 	import { defaultValue, type ActionNode } from '#lib/rules/model.ts';
+	import { tagOptions } from '#lib/tags.ts';
 
 	// One action. `spaces` are the ones the rule's owner may file into.
 	let {
@@ -84,7 +85,7 @@
 				<MultiPicker
 					{label}
 					{invalid}
-					options={lookup.tags.map((tag) => ({ value: tag.id, label: tag.name }))}
+					options={tagOptions(lookup.tags, 'document')}
 					selected={action.tag_ids}
 					onchange={(next) => {
 						if (action.type === 'add_tags' || action.type === 'remove_tags') action.tag_ids = next;

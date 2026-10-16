@@ -46,7 +46,7 @@ from papiq.core.domain.ids import (
     new_id,
 )
 from papiq.core.domain.json_value import JsonObject, JsonValue
-from papiq.core.domain.master_data import DocumentType
+from papiq.core.domain.master_data import DocumentType, TagScope
 from papiq.core.domain.validation import require_name, require_utc
 
 DEFAULT_PRIORITY = 100
@@ -73,7 +73,9 @@ class Trigger(StrEnum):
 
 class ConditionField(StrEnum):
     CONTACT = "contact"
+    CONTACT_GROUP = "contact_group"  # the groups of the document's contact
     DOCUMENT_TYPE = "document_type"
+    DOCUMENT_TYPE_GROUP = "document_type_group"  # the groups of the document's type
     TAGS = "tags"
     CHANNEL = "channel"
     TEXT = "text"
@@ -83,8 +85,8 @@ class ConditionField(StrEnum):
 
 class Operator(StrEnum):
     IS = "is"
-    IN = "in"  # is one of; for tags: has one of
-    CONTAINS = "contains"  # for tags: has this tag
+    IN = "in"  # is one of; for tags and groups: has one of (or one below it)
+    CONTAINS = "contains"  # for tags and groups: has this one (or one below it)
     MATCHES = "matches"  # regular expression
     GT = "gt"  # for a period: starts after the date
     LT = "lt"  # for a period: ends before the date
@@ -96,19 +98,26 @@ class Operator(StrEnum):
 type GroupMode = Literal["all", "any"]
 
 _REFERENCE_OPERATORS = frozenset({Operator.IS, Operator.IN, Operator.PRESENT, Operator.MISSING})
+_TAG_OPERATORS = frozenset({Operator.CONTAINS, Operator.IN, Operator.PRESENT, Operator.MISSING})
 _FIELD_OPERATORS: dict[ConditionField, frozenset[Operator]] = {
     ConditionField.CONTACT: _REFERENCE_OPERATORS,
+    ConditionField.CONTACT_GROUP: _TAG_OPERATORS,
     ConditionField.DOCUMENT_TYPE: _REFERENCE_OPERATORS,
-    ConditionField.TAGS: frozenset(
-        {Operator.CONTAINS, Operator.IN, Operator.PRESENT, Operator.MISSING}
-    ),
+    ConditionField.DOCUMENT_TYPE_GROUP: _TAG_OPERATORS,
+    ConditionField.TAGS: _TAG_OPERATORS,
     ConditionField.CHANNEL: frozenset({Operator.IS, Operator.IN}),
     ConditionField.TEXT: frozenset({Operator.CONTAINS, Operator.MATCHES}),
     ConditionField.DOCUMENT_DATE: frozenset(
         {Operator.IS, Operator.GT, Operator.LT, Operator.PRESENT, Operator.MISSING}
     ),
 }
-_ID_FIELDS = frozenset({ConditionField.CONTACT, ConditionField.DOCUMENT_TYPE, ConditionField.TAGS})
+TAG_FIELDS: dict[ConditionField, TagScope] = {
+    ConditionField.TAGS: TagScope.DOCUMENT,
+    ConditionField.CONTACT_GROUP: TagScope.CONTACT,
+    ConditionField.DOCUMENT_TYPE_GROUP: TagScope.DOCUMENT_TYPE,
+}
+"""The conditions on tags, and the scope of the tags each names."""
+_ID_FIELDS = frozenset({ConditionField.CONTACT, ConditionField.DOCUMENT_TYPE, *TAG_FIELDS})
 _ORDERED = frozenset({Operator.IS, Operator.GT, Operator.LT, Operator.PRESENT, Operator.MISSING})
 FIELD_TYPE_OPERATORS: dict[FieldType, frozenset[Operator]] = {
     FieldType.TEXT: frozenset(
@@ -194,7 +203,7 @@ class Condition:
 
     def _check_value(self, value: JsonValue) -> None:
         match self.field:
-            case ConditionField.CONTACT | ConditionField.DOCUMENT_TYPE | ConditionField.TAGS:
+            case id_field if id_field in _ID_FIELDS:
                 _uuid(value, self.field.value)
             case ConditionField.CHANNEL:
                 if not isinstance(value, str) or value not in {
@@ -350,13 +359,15 @@ GLOBAL_ACTIONS: tuple[type, ...] = (AddTags, RemoveTags, SetField, ForceReview)
 
 @dataclass(frozen=True)
 class References:
-    """What a definition refers to; the caller checks that it exists."""
+    """What a definition refers to; the caller checks that it exists. `tags`: of every scope
+    (groups in the conditions on them too); `tag_scopes` the scope each must have."""
 
     contacts: frozenset[ContactId] = frozenset()
     document_types: frozenset[DocumentTypeId] = frozenset()
     tags: frozenset[TagId] = frozenset()
     fields: frozenset[FieldId] = frozenset()
     spaces: frozenset[SpaceId] = frozenset()
+    tag_scopes: tuple[tuple[TagId, TagScope], ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -409,14 +420,17 @@ class RuleDefinition:
         tags: set[TagId] = set()
         fields: set[FieldId] = set()
         spaces: set[SpaceId] = set()
+        scopes: dict[tuple[TagId, TagScope], None] = {}
         for condition in self.conditions.conditions():
             match condition.field:
                 case ConditionField.CONTACT:
                     contacts.update(ContactId(id) for id in _ids(condition))
                 case ConditionField.DOCUMENT_TYPE:
                     types.update(DocumentTypeId(id) for id in _ids(condition))
-                case ConditionField.TAGS:
-                    tags.update(TagId(id) for id in _ids(condition))
+                case tag_field if tag_field in TAG_FIELDS:
+                    named = [TagId(id) for id in _ids(condition)]
+                    tags.update(named)
+                    scopes.update(((id, TAG_FIELDS[tag_field]), None) for id in named)
                 case ConditionField.FIELD:
                     assert condition.field_id is not None
                     fields.add(condition.field_id)
@@ -430,6 +444,7 @@ class RuleDefinition:
                     types.add(document_type)
                 case AddTags(tag_ids=ids) | RemoveTags(tag_ids=ids):
                     tags.update(ids)
+                    scopes.update(((id, TagScope.DOCUMENT), None) for id in sorted(ids))
                 case SetField(field_id=field):
                     fields.add(field)
         return References(
@@ -438,6 +453,7 @@ class RuleDefinition:
             frozenset(tags),
             frozenset(fields),
             frozenset(spaces),
+            tuple(scopes),
         )
 
     @property

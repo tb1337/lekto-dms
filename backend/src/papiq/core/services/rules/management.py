@@ -224,15 +224,26 @@ async def check_references(
     uow: UnitOfWork, definition: RuleDefinition, *, owner: User | None
 ) -> None:
     """Everything the definition refers to exists (NotFoundError otherwise), field
-    conditions and values fit their field (ValidationError), and the `owner` of a user
-    rule may file into its space (PermissionDeniedError; checked again whenever it runs)."""
+    conditions and values fit their field, tags are of the scope their place asks for (groups
+    in the conditions on groups, document tags elsewhere; ValidationError), and the `owner` of
+    a user rule may file into its space (PermissionDeniedError; checked again whenever it
+    runs)."""
     references = definition.references()
     for contact in references.contacts:
         await uow.contacts.get(contact)
     for document_type in references.document_types:
         await uow.document_types.get(document_type)
-    for tag in references.tags:
-        await uow.tags.get(tag)
+    if references.tags:
+        tags = {tag.id: tag for tag in await uow.tags.list_all()}
+        for id in references.tags:
+            if id not in tags:
+                raise NotFoundError("tag", id)
+        for id, scope in references.tag_scopes:
+            if tags[id].scope is not scope:
+                raise ValidationError(
+                    f"'{tags[id].name}' is a tag of scope {tags[id].scope}, where a tag of "
+                    f"scope {scope} belongs"
+                )
     if references.fields:
         fields = {field.id: field for field in await uow.fields.list_all()}
         for field_id in references.fields:
@@ -364,7 +375,8 @@ async def document_values(
     kind = None if document_type is None else await uow.document_types.find(document_type)
     space = await uow.spaces.find(document.space_id)
     owner = await uow.users.find(document.owner_id)
-    tags = [tag.name for id in document.tag_ids if (tag := await uow.tags.find(id)) is not None]
+    names = {tag.id: tag.name for tag in await uow.tags.list_all()}
+    tags = [names[id] for id in document.tag_ids if id in names]
     return template_values(
         document,
         contact=None if contact is None else contact.name,
@@ -374,4 +386,6 @@ async def document_values(
         tags=tags,
         document_date=document.document_date,
         fields=[(item, document.fields.get(item.id)) for item in fields],
+        contact_groups=[names[id] for id in (contact.group_ids if contact else ()) if id in names],
+        document_type_groups=[names[id] for id in (kind.group_ids if kind else ()) if id in names],
     )

@@ -33,8 +33,10 @@ from papiq.core.domain.rules import (
 
 class ConditionSchema(BaseModel):
     """`field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,
-    `missing`; tags: `contains` (this tag), `in` (one of), `present` (any), `missing` (none);
-    channel: `is`, `in`; text: `contains`, `matches` (regular expression); document_date and
+    `missing`; tags (document tags), contact_group (the groups of the document's contact),
+    document_type_group (those of its type): `contains` (this one), `in` (one of), `present`
+    (any), `missing` (none), where a tag or group matches the ones below it too; channel:
+    `is`, `in`; text: `contains`, `matches` (regular expression); document_date and
     number, amount, date fields: `is`, `gt`, `lt`, `present`, `missing`; text and link
     fields: `is`, `in`, `contains`, `matches`, `present`, `missing`; choice: `is`, `in`,
     `present`, `missing`; boolean: `is`, `present`, `missing`; period fields: `is`,
@@ -111,7 +113,9 @@ class SetDocumentTypeAction(BaseModel):
 TEMPLATE_DESCRIPTION = (
     "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: "
     "`title`, `filename` (the original's name without extension), `original_filename`, "
-    "`contact`, `document_type`, `document_date`, `added`, `tags` (a list), `space`, `owner`, "
+    "`contact`, `document_type`, `document_date`, `added`, `tags` (a list, those set), "
+    "`contact_groups` and `document_type_groups` (lists, the groups the contact and the type are "
+    "in), `space`, `owner`, "
     "`channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and "
     "`.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, "
     "`2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM "
@@ -131,6 +135,9 @@ class SetTitleAction(BaseModel):
 
 
 class AddTagsAction(BaseModel):
+    """Document tags (also those set by hand). A tag above one the document keeps or gets is
+    not added; a parent gives way to a child added."""
+
     model_config = ConfigDict(extra="forbid")
     type: Literal["add_tags"]
     tag_ids: list[UUID] = Field(min_length=1, max_length=100)

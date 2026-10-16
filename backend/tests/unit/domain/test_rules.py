@@ -18,6 +18,7 @@ from papiq.core.domain.ids import (
     new_id,
 )
 from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.rules import (
     GLOBAL_ACTIONS,
     MAX_ACTIONS,
@@ -772,6 +773,7 @@ def test_references() -> None:
     in_condition = ContactId(new_id())
     type_in_condition = DocumentTypeId(new_id())
     tags = [TagId(new_id()) for _ in range(3)]
+    groups = [TagId(new_id()) for _ in range(2)]
     attr = FieldId(new_id())
     rule = definition(
         SetSpace(SPACE),
@@ -790,6 +792,12 @@ def test_references() -> None:
                 Condition(field=ConditionField.TAGS, op=Operator.IN, value=[str(tags[1])]),
                 mode="any",
             ),
+            Condition(
+                field=ConditionField.CONTACT_GROUP, op=Operator.CONTAINS, value=str(groups[0])
+            ),
+            Condition(
+                field=ConditionField.DOCUMENT_TYPE_GROUP, op=Operator.IN, value=[str(groups[1])]
+            ),
             Condition(field=ConditionField.FIELD, op=Operator.IS, value=ID, field_id=attr),
             # text values and other values that look like ids are no references
             Condition(field=ConditionField.TEXT, op=Operator.CONTAINS, value=str(OTHER_CONTACT)),
@@ -798,13 +806,24 @@ def test_references() -> None:
         ),
     )
 
-    assert rule.references() == References(
+    references = rule.references()
+    assert references == References(
         contacts=frozenset({in_condition, ContactId(UUID(ID)), CONTACT}),
         document_types=frozenset({type_in_condition, TYPE}),
-        tags=frozenset({*tags, OTHER_TAG}),
+        tags=frozenset({*tags, *groups, OTHER_TAG}),
         fields=frozenset({attr, FIELD}),
         spaces=frozenset({SPACE}),
+        tag_scopes=references.tag_scopes,
     )
+    # The scope each tag must have: groups in their conditions, document tags elsewhere.
+    assert dict(references.tag_scopes) == {
+        tags[0]: TagScope.DOCUMENT,
+        tags[1]: TagScope.DOCUMENT,
+        tags[2]: TagScope.DOCUMENT,
+        OTHER_TAG: TagScope.DOCUMENT,
+        groups[0]: TagScope.CONTACT,
+        groups[1]: TagScope.DOCUMENT_TYPE,
+    }
 
 
 def test_uses_text_and_patterns() -> None:

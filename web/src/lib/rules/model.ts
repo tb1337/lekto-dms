@@ -81,7 +81,9 @@ export const TRIGGERS: readonly Trigger[] = ['ingest', 'change'];
 export const CHANNELS: readonly Channel[] = ['web', 'api', 'migration'];
 export const CONDITION_FIELDS: readonly ConditionField[] = [
 	'contact',
+	'contact_group',
 	'document_type',
+	'document_type_group',
 	'tags',
 	'channel',
 	'text',
@@ -102,14 +104,28 @@ const ALL_OPERATORS: readonly Operator[] = [
 const REFERENCE: readonly Operator[] = ['is', 'in', 'present', 'missing'];
 const ORDERED: readonly Operator[] = ['is', 'gt', 'lt', 'present', 'missing'];
 const TEXTUAL: readonly Operator[] = ['is', 'in', 'contains', 'matches', 'present', 'missing'];
+const TAGS: readonly Operator[] = ['contains', 'in', 'present', 'missing'];
+
+/** The condition fields on tags, and the scope of the tags each names. */
+export const TAG_FIELDS = {
+	tags: 'document',
+	contact_group: 'contact',
+	document_type_group: 'document_type'
+} as const satisfies Partial<Record<ConditionField, Schemas['TagScope']>>;
+
+export function isTagField(field: ConditionField): field is keyof typeof TAG_FIELDS {
+	return field in TAG_FIELDS;
+}
 
 export const CONDITION_FIELD_OPERATORS: Record<
 	Exclude<ConditionField, 'field'>,
 	readonly Operator[]
 > = {
 	contact: REFERENCE,
+	contact_group: TAGS,
 	document_type: REFERENCE,
-	tags: ['contains', 'in', 'present', 'missing'],
+	document_type_group: TAGS,
+	tags: TAGS,
 	channel: ['is', 'in'],
 	text: ['contains', 'matches'],
 	document_date: ORDERED
@@ -426,7 +442,7 @@ export function actionTypesFor(scope: Scope): readonly ActionType[] {
 export function referencedIds(node: ConditionNode | ActionNode): string[] {
 	if ('kind' in node && node.kind === 'condition') {
 		const ids: string[] = node.fieldId ? [node.fieldId] : [];
-		if (node.field === 'contact' || node.field === 'document_type' || node.field === 'tags') {
+		if (node.field === 'contact' || node.field === 'document_type' || isTagField(node.field)) {
 			const values = Array.isArray(node.value) ? node.value : [node.value];
 			ids.push(...values.filter((value): value is string => typeof value === 'string'));
 		}
@@ -573,6 +589,8 @@ function checkValue(
 		case 'contact':
 		case 'document_type':
 		case 'tags':
+		case 'contact_group':
+		case 'document_type_group':
 		case 'channel':
 			return typeof value === 'string' && value !== '' ? null : { code: 'choose' };
 		case 'document_date':

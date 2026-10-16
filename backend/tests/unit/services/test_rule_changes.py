@@ -6,10 +6,20 @@ from datetime import date
 import pytest
 
 from papiq.core.domain.documents import DocumentChanges
-from papiq.core.domain.errors import NotFoundError
+from papiq.core.domain.errors import NotFoundError, ValidationError
+from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.pipeline import RULES_CHANGE, Lane, Outcome, ProcessingStatus
 from papiq.core.domain.rule_engine import Note
-from papiq.core.domain.rules import ForceReview, SetContact, SetSpace, SetTitle, Trigger
+from papiq.core.domain.rules import (
+    Condition,
+    ConditionField,
+    ForceReview,
+    Operator,
+    SetContact,
+    SetSpace,
+    SetTitle,
+    Trigger,
+)
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.services.documents import MetadataChange
 from tests.unit.services.conftest import World
@@ -325,3 +335,60 @@ async def test_a_dry_run_stores_nothing_and_shows_the_caller_only_their_own(
     with pytest.raises(NotFoundError):
         await r.documents.get(editor.id, document.id)
     assert (await r.stored(document)).space_id == private.id
+
+
+async def test_a_rule_on_a_contact_group_acts_for_a_contact_in_a_group_below(
+    world: World,
+) -> None:
+    r = await rule_world(world)
+    owner = await world.user()
+    master = world.master_data
+    insurer = await master.create_tag(r.admin.id, "Insurer", scope=TagScope.CONTACT)
+    health = await master.create_tag(
+        r.admin.id, "Health insurer", scope=TagScope.CONTACT, parent_id=insurer.id
+    )
+    nord = await master.create_contact(r.admin.id, "Nord", group_ids=[health.id])
+    other = await r.contact("Beta")
+    tag = await r.tag("Insurance")
+    in_group = Condition(
+        field=ConditionField.CONTACT_GROUP, op=Operator.CONTAINS, value=str(insurer.id)
+    )
+    title = SetTitle("{{ contact }} ({{ contact_groups | join }})")
+    await r.user_rule(
+        owner, definition("Insurers", in_group, add_tags(tag.id), title, triggers=CHANGE)
+    )
+    document = await r.arrive(owner)
+    change = await r.documents.change_metadata(
+        owner.id, document.id, DocumentChanges(contact_id=other.id)
+    )
+    assert change.rules is not None and change.rules.plan.reports == []
+    change = await r.documents.change_metadata(
+        owner.id, document.id, DocumentChanges(contact_id=nord.id)
+    )
+    assert sorted(applied(change)) == ["tags", "title"]
+    stored = await r.stored(document)
+    assert (stored.tag_ids, stored.title) == ({tag.id}, "Nord (Health insurer)")
+
+
+async def test_rules_take_tags_of_the_scope_their_place_asks_for(world: World) -> None:
+    r = await rule_world(world)
+    owner = await world.user()
+    master = world.master_data
+    tag = await r.tag("Paid")
+    group = await master.create_tag(r.admin.id, "Insurer", scope=TagScope.CONTACT)
+    kinds = await master.create_tag(r.admin.id, "Bills", scope=TagScope.DOCUMENT_TYPE)
+
+    def on(field: ConditionField, id: object) -> Condition:
+        return Condition(field=field, op=Operator.IN, value=[str(id)])
+
+    for wrong in (
+        definition("A", on(ConditionField.TAGS, group.id), add_tags(tag.id)),
+        definition("B", on(ConditionField.CONTACT_GROUP, tag.id), add_tags(tag.id)),
+        definition("C", on(ConditionField.DOCUMENT_TYPE_GROUP, group.id), add_tags(tag.id)),
+        definition("D", channel_api(), add_tags(kinds.id)),
+    ):
+        with pytest.raises(ValidationError, match="scope"):
+            await r.user_rule(owner, wrong)
+    await r.user_rule(
+        owner, definition("E", on(ConditionField.DOCUMENT_TYPE_GROUP, kinds.id), add_tags(tag.id))
+    )

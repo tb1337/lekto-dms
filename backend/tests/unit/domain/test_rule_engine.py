@@ -19,6 +19,7 @@ from papiq.core.domain.ids import (
     new_id,
 )
 from papiq.core.domain.json_value import JsonValue
+from papiq.core.domain.master_data import Tag, TagScope
 from papiq.core.domain.periods import Period
 from papiq.core.domain.pipeline import Outcome
 from papiq.core.domain.rule_engine import (
@@ -30,6 +31,7 @@ from papiq.core.domain.rule_engine import (
     RulePlan,
     Situation,
     SpaceTarget,
+    Taxonomy,
     Truth,
     changed_fields,
     evaluate,
@@ -57,6 +59,7 @@ from papiq.core.domain.rules import (
     SetSpace,
     SetTitle,
 )
+from papiq.core.domain.tag_tree import TagTree
 from tests import builders
 from tests.builders import NOW
 
@@ -1202,3 +1205,121 @@ def test_plan_to_json() -> None:
     ]
     assert data["reviews"] == []
     assert isinstance(data["fields"], list) and len(data["fields"]) == 1
+
+
+# --- tags in trees and groups -------------------------------------------------------------
+
+
+def _tagged() -> tuple[dict[str, Tag], Taxonomy]:
+    """Insurance with Health (with Dental); the contact group Insurer with Health insurer,
+    whose member is ACME; the type group Bills, whose member is INVOICE."""
+    insurance = Tag.create(name="Insurance", now=NOW)
+    health = Tag.create(name="Health", now=NOW, parent_id=insurance.id)
+    dental = Tag.create(name="Dental", now=NOW, parent_id=health.id)
+    insurer = Tag.create(name="Insurer", now=NOW, scope=TagScope.CONTACT)
+    health_insurer = Tag.create(
+        name="Health insurer", now=NOW, scope=TagScope.CONTACT, parent_id=insurer.id
+    )
+    bills = Tag.create(name="Bills", now=NOW, scope=TagScope.DOCUMENT_TYPE)
+    tags = {
+        "insurance": insurance,
+        "health": health,
+        "dental": dental,
+        "insurer": insurer,
+        "health_insurer": health_insurer,
+        "bills": bills,
+    }
+    groups = {ACME: frozenset({health_insurer.id}), INVOICE: frozenset({bills.id})}
+    by_id: dict[UUID, frozenset[TagId]] = dict(groups)
+    return tags, Taxonomy(TagTree.of(tags.values()), by_id)
+
+
+def test_a_tag_condition_matches_the_tags_below_it() -> None:
+    tags, taxonomy = _tagged()
+    facts = Facts.of(doc(tag_ids={tags["dental"].id}), taxonomy=taxonomy)
+    for wanted, expected in (("insurance", True), ("health", True), ("dental", True)):
+        condition = cond(ConditionField.TAGS, Operator.CONTAINS, str(tags[wanted].id))
+        assert evaluate(all_(condition), facts, {}) is expected
+    on_health = cond(ConditionField.TAGS, Operator.CONTAINS, str(tags["health"].id))
+    assert (
+        evaluate(
+            all_(on_health), Facts.of(doc(tag_ids={tags["insurance"].id}), taxonomy=taxonomy), {}
+        )
+        is False
+    )
+    one_of = cond(ConditionField.TAGS, Operator.IN, [str(PAID), str(tags["insurance"].id)])
+    assert evaluate(all_(one_of), facts, {}) is True
+
+
+def test_conditions_on_the_groups_of_contact_and_type() -> None:
+    tags, taxonomy = _tagged()
+    facts = Facts.of(doc(contact_id=ACME, document_type_id=INVOICE), taxonomy=taxonomy)
+    other = Facts.of(doc(contact_id=BETA), taxonomy=taxonomy)
+
+    def truth(field: ConditionField, op: Operator, value: JsonValue, of: Facts) -> Truth:
+        return evaluate(all_(cond(field, op, value)), of, {})
+
+    group, kind = ConditionField.CONTACT_GROUP, ConditionField.DOCUMENT_TYPE_GROUP
+    insurer, bills = str(tags["insurer"].id), str(tags["bills"].id)
+    assert truth(group, Operator.CONTAINS, insurer, facts) is True  # a group below it
+    assert truth(group, Operator.CONTAINS, str(tags["health_insurer"].id), facts) is True
+    assert truth(group, Operator.IN, [bills, insurer], facts) is True
+    assert truth(group, Operator.CONTAINS, insurer, other) is False
+    assert truth(group, Operator.PRESENT, None, facts) is True
+    assert truth(group, Operator.MISSING, None, other) is True
+    assert truth(kind, Operator.CONTAINS, bills, facts) is True
+    assert truth(kind, Operator.PRESENT, None, other) is False
+
+
+def test_groups_of_an_unconfirmed_contact_are_unknown_under_distrust() -> None:
+    tags, taxonomy = _tagged()
+    document = doc(contact_id=ACME, document_type_id=INVOICE)
+    facts = Facts.of(document, unverified=frozenset({"contact"}), taxonomy=taxonomy)
+    in_group = all_(cond(ConditionField.CONTACT_GROUP, Operator.CONTAINS, str(tags["insurer"].id)))
+    of_type = all_(cond(ConditionField.DOCUMENT_TYPE_GROUP, Operator.PRESENT))
+    assert evaluate(in_group, facts, {}) is True
+    assert evaluate(in_group, facts, {}, distrust=True) is None
+    assert evaluate(of_type, facts, {}, distrust=True) is True  # the type is confirmed
+    filing = rule(SetSpace(SHARED), when=in_group)
+    (match,) = matches([filing], facts, {})
+    assert (match.trusted, match.distrusted) == (False, ("contact",))
+    result = plan([match], situation(document))
+    assert ("space", "refused") in notes(result)
+
+
+def test_an_unconfirmed_tag_below_the_wanted_one_is_unknown_under_distrust() -> None:
+    tags, taxonomy = _tagged()
+    facts = Facts.of(
+        doc(tag_ids={tags["dental"].id}),
+        unverified_tags=frozenset({tags["dental"].id}),
+        taxonomy=taxonomy,
+    )
+    wanted = all_(cond(ConditionField.TAGS, Operator.CONTAINS, str(tags["insurance"].id)))
+    assert evaluate(wanted, facts, {}, distrust=True) is None
+
+
+def test_rules_add_document_tags_only_and_leave_the_parent_of_a_child() -> None:
+    tags, taxonomy = _tagged()
+    insurance, health, dental = (tags[name].id for name in ("insurance", "health", "dental"))
+    existing = EXISTING | {tag.id for tag in tags.values()}
+    names: dict[object, str] = {**NAMES, **{tag.id: tag.name for tag in tags.values()}}
+    where = situation(doc(tag_ids={health}), existing=existing, names=names, taxonomy=taxonomy)
+    parent = rule(AddTags(frozenset({insurance})))
+    group = rule(AddTags(frozenset({tags["insurer"].id})))
+    result = run([parent, group], where)
+    assert result.changes.tag_ids is UNSET  # the document keeps Health: Insurance says less
+    assert ("tags", "skipped") in notes(result)
+    assert not result.effects
+    # A child set by a rule replaces its parent.
+    child = rule(AddTags(frozenset({dental, PAID})))
+    result = run([child], where)
+    assert result.changes.tag_ids == frozenset({dental, PAID})
+
+
+def test_templates_see_the_groups_of_contact_and_type() -> None:
+    tags, taxonomy = _tagged()
+    names: dict[object, str] = {**NAMES, **{tag.id: tag.name for tag in tags.values()}}
+    where = situation(doc(document_type_id=INVOICE), names=names, taxonomy=taxonomy)
+    title = SetTitle("{{ contact_groups | join: ', ' }} / {{ document_type_groups | join }}")
+    result = run([rule(SetContact(ACME), title)], where)
+    assert result.changes.title == "Health insurer / Bills"

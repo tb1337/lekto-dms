@@ -50,6 +50,7 @@ def test_the_values_of_a_document() -> None:
             (link, Url("https://example.org/a")),
             (empty, None),
         ],
+        contact_groups=["Versorger", "Arbeitgeber"],
     )
     assert values == {
         "title": document.title,
@@ -59,6 +60,8 @@ def test_the_values_of_a_document() -> None:
         "document_date": date(2026, 3, 31),
         "added": builders.NOW.date(),
         "tags": ["Gas", "strom"],
+        "contact_groups": ["Arbeitgeber", "Versorger"],
+        "document_type_groups": [],
         "space": "Privat",
         "owner": "tobi",
         "channel": document.channel.value,

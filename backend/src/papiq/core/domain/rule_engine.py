@@ -2,10 +2,12 @@
 change, with conflicts instead of silent overwrites.
 
 Conditions are evaluated against the state before any rule acts (a rule's action never makes
-another rule match in the same run). The result of a condition is three-valued: with
-`distrust`, a condition on a contact, type or tag that the model set and no person confirmed is
-unknown. A rule that matches only with such values does not file into a space that others see
-(the accepted risk of M5: a text can name a wrong contact and make it green).
+another rule match in the same run). A condition on a tag or a group matches the ones below it
+too (the document has the tag set and its ancestors; its contact and type have their groups and
+theirs). The result of a condition is three-valued: with `distrust`, a condition on a contact,
+type or tag that the model set and no person confirmed is unknown, and so is one on the groups
+of such a contact or type. A rule that matches only with such values does not file into a space
+that others see (the accepted risk of M5: a text can name a wrong contact and make it green).
 
 How the actions of all matching rules come together (`plan`):
 
@@ -15,7 +17,9 @@ How the actions of all matching rules come together (`plan`):
   replaced: the rule is overruled and that is logged.
 - A value the model set and no person confirmed is not replaced either: a conflict.
 - Tags added and removed by rules are combined; a tag added by one rule and removed by another
-  is a conflict. Removing a tag the model set is no conflict (tags are unchecked proposals).
+  is a conflict. Removing a tag the model set is no conflict (tags are unchecked proposals). Only
+  document tags are added (also those set by hand); the result is normalised: a tag above one
+  the document keeps is not added, and a parent gives way to its child.
 - On arrival (`ingest`) conflicts, refused actions and forced reviews make the node uncertain:
   the document waits in the inbox. On a change by a person (`change`) nothing turns yellow (a
   filed document would disappear for everyone else): what cannot be applied is only reported.
@@ -61,6 +65,7 @@ from papiq.core.domain.ids import (
     TagId,
 )
 from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.periods import Period
 from papiq.core.domain.pipeline import Outcome
 from papiq.core.domain.rules import (
@@ -80,6 +85,7 @@ from papiq.core.domain.rules import (
     SetTitle,
     condition_value,
 )
+from papiq.core.domain.tag_tree import TagTree
 from papiq.core.domain.templates import Render, TemplateValue, template_values
 
 SPACE = "space"
@@ -99,6 +105,18 @@ class Mode(StrEnum):
 # --- facts and evaluation ---------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class Taxonomy:
+    """The tags as trees, and the groups of the contacts and types a run looks at (by the
+    contact's or type's id)."""
+
+    tree: TagTree = field(default_factory=lambda: TagTree.of(()))
+    groups: Mapping[UUID, frozenset[TagId]] = field(default_factory=dict)
+
+    def groups_of(self, id: UUID | None) -> frozenset[TagId]:
+        return frozenset() if id is None else self.groups.get(id, frozenset())
+
+
 @dataclass(frozen=True, kw_only=True)
 class Facts:
     """A document's state as conditions see it.
@@ -106,7 +124,9 @@ class Facts:
     `patterns`: results of the regular expressions, by (target, pattern, case setting), target
     `text` or a field id; computed beforehand with a time limit. A missing result (no
     text, time out) does not match. `unverified`: the fields `contact` and `document_type` if
-    they hold a value the model set and no person confirmed; `unverified_tags` likewise."""
+    they hold a value the model set and no person confirmed; `unverified_tags` likewise.
+    `taxonomy`: the tag trees; `contact_groups` and `document_type_groups` the groups of the
+    contact and the type."""
 
     contact_id: ContactId | None
     document_type_id: DocumentTypeId | None
@@ -118,6 +138,9 @@ class Facts:
     patterns: Mapping[tuple[str, str, bool], bool] = field(default_factory=dict)
     unverified: frozenset[str] = frozenset()
     unverified_tags: frozenset[TagId] = frozenset()
+    taxonomy: Taxonomy = field(default_factory=Taxonomy)
+    contact_groups: frozenset[TagId] = frozenset()
+    document_type_groups: frozenset[TagId] = frozenset()
 
     @classmethod
     def of(
@@ -128,7 +151,9 @@ class Facts:
         patterns: Mapping[tuple[str, str, bool], bool] | None = None,
         unverified: frozenset[str] = frozenset(),
         unverified_tags: frozenset[TagId] = frozenset(),
+        taxonomy: Taxonomy | None = None,
     ) -> "Facts":
+        taxonomy = taxonomy or Taxonomy()
         return cls(
             contact_id=document.contact_id,
             document_type_id=document.document_type_id,
@@ -140,6 +165,9 @@ class Facts:
             patterns=patterns or {},
             unverified=unverified,
             unverified_tags=unverified_tags & frozenset(document.tag_ids),
+            taxonomy=taxonomy,
+            contact_groups=taxonomy.groups_of(document.contact_id),
+            document_type_groups=taxonomy.groups_of(document.document_type_id),
         )
 
 
@@ -176,6 +204,10 @@ def distrusted_fields(group: Group, facts: Facts) -> tuple[str, ...]:
                 found.append(CONTACT)
             case ConditionField.DOCUMENT_TYPE if DOCUMENT_TYPE in facts.unverified:
                 found.append(DOCUMENT_TYPE)
+            case ConditionField.CONTACT_GROUP if CONTACT in facts.unverified:
+                found.append(CONTACT)
+            case ConditionField.DOCUMENT_TYPE_GROUP if DOCUMENT_TYPE in facts.unverified:
+                found.append(DOCUMENT_TYPE)
             case ConditionField.TAGS if facts.unverified_tags:
                 found.append(TAGS)
     return tuple(dict.fromkeys(found))
@@ -197,6 +229,12 @@ def _condition(
             return _reference(op, None if current is None else str(current), values)
         case ConditionField.TAGS:
             return _tags(op, values, facts, distrust)
+        case ConditionField.CONTACT_GROUP | ConditionField.DOCUMENT_TYPE_GROUP:
+            owner = CONTACT if condition.field is ConditionField.CONTACT_GROUP else DOCUMENT_TYPE
+            if distrust and owner in facts.unverified:
+                return None
+            groups = facts.contact_groups if owner == CONTACT else facts.document_type_groups
+            return _held(op, values, facts.taxonomy.tree.with_ancestors(groups))
         case ConditionField.CHANNEL:
             return facts.channel.value in values
         case ConditionField.TEXT:
@@ -226,17 +264,29 @@ def _reference(op: Operator, current: str | None, values: list[JsonValue]) -> bo
 
 
 def _tags(op: Operator, values: list[JsonValue], facts: Facts, distrust: bool) -> Truth:
+    """A tag wanted matches the tags set below it: the document has it as an ancestor."""
     unverified = facts.unverified_tags if distrust else frozenset()
     verified = facts.tag_ids - unverified
+    tree = facts.taxonomy.tree
     wanted = {TagId(UUID(str(value))) for value in values}
     match op:
         case Operator.PRESENT:
             return True if verified else (None if unverified else False)
         case Operator.MISSING:
             return False if verified else (None if unverified else True)
-    if wanted & verified:
+    if wanted & tree.with_ancestors(verified):
         return True
-    return None if wanted & unverified else False
+    return None if wanted & tree.with_ancestors(unverified) else False
+
+
+def _held(op: Operator, values: list[JsonValue], held: frozenset[TagId]) -> bool:
+    """A condition on groups, against the groups held with their ancestors."""
+    match op:
+        case Operator.PRESENT:
+            return bool(held)
+        case Operator.MISSING:
+            return not held
+    return bool({TagId(UUID(str(value))) for value in values} & held)
 
 
 def _ordered[T: (date, Decimal)](op: Operator, current: T | None, values: list[T]) -> bool:
@@ -405,6 +455,8 @@ class Situation:
       likewise for tags.
     - `reviewed`: rules whose forced review a person confirmed in this processing run.
     - `accept_conflicts` (retroactive): the person accepted the rule's values over others.
+    - `taxonomy`: the tag trees (tags added are document tags, the result is normalised) and
+      the groups of the contacts and types the rules may leave (for templates).
     """
 
     mode: Mode
@@ -423,6 +475,7 @@ class Situation:
     person_removed_tags: frozenset[TagId] = frozenset()
     reviewed: frozenset[RuleId] = frozenset()
     accept_conflicts: bool = False
+    taxonomy: Taxonomy = field(default_factory=Taxonomy)
 
 
 @dataclass(frozen=True)
@@ -603,9 +656,13 @@ class _Planner:
                 self._titles.append((report, action, match))
             case AddTags(tag_ids=tags) | RemoveTags(tag_ids=tags):
                 target = self._adds if isinstance(action, AddTags) else self._removes
+                tree = s.taxonomy.tree
                 for tag in sorted(tags):
                     if tag not in s.existing:
                         report.notes.append(Note(TAGS, "skipped", f"tag {tag} no longer exists"))
+                    elif tag in tree and tree.tags[tag].scope is not TagScope.DOCUMENT:
+                        reason = f"tag {tag} is a group, not a document tag"
+                        report.notes.append(Note(TAGS, "skipped", reason))
                     else:
                         target.setdefault(tag, []).append(report)
             case SetField(field_id=field, value=value):
@@ -756,8 +813,6 @@ class _Planner:
                     report.notes.append(Note(TAGS, "overruled", f"a person removed tag {tag}"))
                 continue
             added.add(tag)
-            for report in reports:
-                report.applied.append(Effect(TAGS, None, str(tag)))
         for tag, reports in self._removes.items():
             if tag in both or tag not in current:
                 continue
@@ -770,7 +825,16 @@ class _Planner:
                 report.applied.append(Effect(TAGS, str(tag), None))
         if not added and not removed:
             return None
-        return frozenset((current | added) - removed)
+        # A tag above one the document keeps or gets says nothing more: it is not added.
+        result = s.taxonomy.tree.normalise((current | added) - removed)
+        for tag in sorted(added):
+            for report in self._adds[tag]:
+                if tag in result:
+                    report.applied.append(Effect(TAGS, None, str(tag)))
+                else:
+                    reason = f"tag {tag} is above a tag the document has"
+                    report.notes.append(Note(TAGS, "skipped", reason))
+        return None if result == current else result
 
     def _title(self, result: dict[str, JsonValue], values: Mapping[str, TemplateValue]) -> None:
         if not self._titles:
@@ -835,11 +899,17 @@ class _Planner:
         """What templates see: the document as the rules leave it."""
         document, s = self._document, self._s
         contact = result.get(CONTACT, self._current(CONTACT))
+        contact_id = None if contact is None else ContactId(UUID(str(contact)))
         space = SpaceId(UUID(str(result[SPACE]))) if SPACE in result else document.space_id
         current: dict[FieldId, object] = {**document.fields, **fields}
+        tree = s.taxonomy.tree
+
+        def group_names(id: UUID | None) -> list[str]:
+            return [tree.tags[tag].name for tag in s.taxonomy.groups_of(id) if tag in tree]
+
         return template_values(
             document,
-            contact=None if contact is None else s.names.get(ContactId(UUID(str(contact)))),
+            contact=None if contact_id is None else s.names.get(contact_id),
             document_type=None if type_after is None else s.names.get(type_after),
             space=s.names.get(space),
             owner=s.owner_name,
@@ -848,6 +918,8 @@ class _Planner:
                 for tag in (document.tag_ids if tags is None else tags)
                 if tag in s.names
             ],
+            contact_groups=group_names(contact_id),
+            document_type_groups=group_names(type_after),
             document_date=document.document_date,
             fields=[
                 (definition, _field_value(current.get(definition.id)))

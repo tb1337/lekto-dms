@@ -181,7 +181,9 @@ describe('the rule model', () => {
 	it('mirrors the operator tables of the core', () => {
 		expect(CONDITION_FIELD_OPERATORS).toEqual({
 			contact: ['is', 'in', 'present', 'missing'],
+			contact_group: ['contains', 'in', 'present', 'missing'],
 			document_type: ['is', 'in', 'present', 'missing'],
+			document_type_group: ['contains', 'in', 'present', 'missing'],
 			tags: ['contains', 'in', 'present', 'missing'],
 			channel: ['is', 'in'],
 			text: ['contains', 'matches'],

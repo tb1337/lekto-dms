@@ -7,7 +7,7 @@ import pytest
 
 from papiq.core.domain.classification import CandidateSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId
-from papiq.core.domain.master_data import Contact, DocumentType, Tag
+from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag
 from papiq.core.domain.pipeline import Outcome
 from papiq.core.domain.verdict import (
     ClassifierView,
@@ -222,7 +222,7 @@ def test_similar_documents_cover_only_what_confirmed_documents_carry() -> None:
     )
     for known in (knowing, replace(signals, neighbours_know=None)):
         assert judge_type(known, TYPES).outcome is Outcome.UNCERTAIN
-        assert judge_tags(known, TAGS).suggestion == ["Energie"]
+        assert judge_tags(known, TAGS).suggestion == [str(ENERGY.id)]
 
 
 def test_a_signal_naming_another_value_contradicts_even_one_it_does_not_know() -> None:
@@ -325,7 +325,25 @@ def test_tags_two_signals_name_are_set_one_is_a_suggestion() -> None:
     check = judge_tags(signals, TAGS)
     assert check.outcome is Outcome.OK
     assert check.value == [str(ENERGY.id)]
-    assert check.suggestion == ["Finanzen", "Unbekannt", "Strom"]
+    # Ids, as the review takes them; the model's new tags stand in what it proposed.
+    assert check.suggestion == [str(MONEY.id)]
+    assert check.proposed == {"tags": ["Energie", "Finanzen", "Unbekannt"], "new_tags": ["Strom"]}
     # Before the classifier knows the tags, the model's are set.
     cold = judge_tags(Signals(model=model(tags=("Energie",))), TAGS)
     assert cold.value == [str(ENERGY.id)]
+
+
+def test_tags_set_by_hand_are_never_proposed_and_a_child_beats_its_parent() -> None:
+    """A status tag set by hand is no target even when a signal names it; set together with its
+    child, a parent is left out (the child says more)."""
+    paid = Tag.create(name="Bezahlt", now=NOW, assignment=Assignment.MANUAL)
+    electricity = Tag.create(name="Strom", now=NOW, parent_id=ENERGY.id)
+    tags = [*TAGS, paid, electricity]
+    signals = Signals(
+        model=model(tags=("Energie", "Strom", "Bezahlt")),
+        classifier=classifier(tags={paid.id: 0.99, electricity.id: 0.95, ENERGY.id: 0.95}),
+    )
+    check = judge_tags(signals, tags)
+    assert check.value == [str(electricity.id)]
+    assert {candidate.label for candidate in check.candidates} == {"Energie", "Strom"}
+    assert check.suggestion is None

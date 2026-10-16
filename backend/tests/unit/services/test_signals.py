@@ -12,7 +12,7 @@ from papiq.adapters.outbound.memory import (
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.errors import EmbeddingsError
 from papiq.core.domain.identifiers import Identifier, IdentifierKind
-from papiq.core.domain.master_data import Contact
+from papiq.core.domain.master_data import Assignment, Contact, Tag
 from papiq.core.domain.pipeline import NodeResult
 from papiq.core.domain.search import EmbeddingStamp, IndexDocument
 from papiq.core.domain.users import User
@@ -200,6 +200,20 @@ async def test_neighbours_are_the_confirmed_documents_the_owner_may_read(world: 
         "document_types": [],
         "tags": [],
     }
+    # They vote on the tags the classification sets, not on those set by hand.
+    electricity = Tag.create(name="Strom", now=builders.NOW)
+    paid = Tag.create(name="Bezahlt", now=builders.NOW, assignment=Assignment.MANUAL)
+    async with world.uow() as uow:
+        await uow.tags.add(electricity)
+        await uow.tags.add(paid)
+        current = await uow.documents.get(near.id)
+        changes = DocumentChanges(tag_ids=frozenset({electricity.id, paid.id}))
+        current.apply_changes(changes, {}, builders.NOW)
+        await uow.documents.update(current)
+        await uow.commit()
+    tagged = output(await signal.run(document))
+    assert tagged["neighbours"][0]["tag_ids"] == [str(electricity.id)]
+    assert tagged["known"]["tags"] == [str(electricity.id)]
 
     for unavailable in (
         NeighboursSignal(world.uow, world.object_store, None, embeddings),

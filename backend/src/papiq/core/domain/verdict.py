@@ -30,7 +30,8 @@ value.
   and no other signal covers it: the rule from before the signals, per value, until the
   others know it.
 - A tag is set as a type is green; one only a single signal names is a suggestion. Tags never
-  make a document uncertain.
+  make a document uncertain. Only the tags the classification sets are judged (document tags
+  set `auto`); a tag set by hand is never proposed.
 """
 
 from collections import Counter
@@ -50,6 +51,7 @@ from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.names import best_match, mentions, name_key, related
 from papiq.core.domain.pipeline import Node, Outcome
+from papiq.core.domain.tag_tree import TagTree
 
 LLM = Node.SIGNAL_LLM.value
 CLASSIFIER = Node.SIGNAL_CLASSIFIER.value
@@ -533,12 +535,14 @@ def judge_tags(
     thresholds: Thresholds = DEFAULT_THRESHOLDS,
 ) -> FieldCheck:
     """Always OK: tags set are those two signals name, or the model alone where no other
-    signal could have; those one signal names are a suggestion, with the model's new ones."""
-    names = {tag.id: tag for tag in tags}
+    signal could have, without the ancestors of others set (`TagTree.normalise`); those one
+    signal names are a suggestion (their ids). `tags`: all tags; only the classification's
+    targets (`Tag.is_target`) are named."""
+    targets = [tag for tag in tags if tag.is_target]
+    names = {tag.id: tag for tag in targets}
     model = signals.model
     proposed_names = model.tags if model else ()
-    by_model = {found.id for name in proposed_names if (found := _by_name(tags, name))}
-    unknown = [name for name in proposed_names if _by_name(tags, name) is None]
+    by_model = {found.id for name in proposed_names if (found := _by_name(targets, name))}
     classifier = signals.classifier
     probabilities = {
         id: p for id, p in (classifier.tags if classifier else {}).items() if id in names
@@ -573,6 +577,8 @@ def judge_tags(
         else:
             suggested.append(id)
     by_name = sorted([*applied, *suggested], key=lambda id: names[id].name)
+    kept = TagTree.of(tags).normalise(applied)
+    applied = [id for id in applied if id in kept]
     candidates = tuple(
         Candidate(
             value=str(id),
@@ -581,8 +587,9 @@ def judge_tags(
         )
         for id in by_name
     )
-    new = list(dict.fromkeys([*unknown, *(model.new_tags if model else ())]))
-    suggestion: list[JsonValue] = [*(names[id].name for id in sorted(suggested, key=str)), *new]
+    suggestion: list[JsonValue] = [
+        str(id) for id in sorted(suggested, key=lambda id: names[id].name.casefold())
+    ]
     proposed: JsonValue = None
     if model is not None:
         proposed = {"tags": list(model.tags), "new_tags": list(model.new_tags)}

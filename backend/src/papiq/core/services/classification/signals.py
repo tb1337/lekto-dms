@@ -308,6 +308,8 @@ class NeighboursSignal:
         neighbours: list[JsonValue] = []
         async with self._uow() as uow:
             known = await uow.documents.confirmed_labels(owner.id)
+            # They vote on the tags the classification sets only, not on those set by hand.
+            targets = {tag.id for tag in await uow.tags.list_all() if tag.is_target}
             for hit in hits:
                 found = await uow.documents.find(hit.id)
                 if found is None or found.confirmed_at is None:
@@ -323,7 +325,7 @@ class NeighboursSignal:
                         "document_type_id": (
                             None if found.document_type_id is None else str(found.document_type_id)
                         ),
-                        "tag_ids": _texts(found.tag_ids),
+                        "tag_ids": _texts(found.tag_ids & targets),
                     }
                 )
         if not neighbours:
@@ -333,7 +335,7 @@ class NeighboursSignal:
             "known": {
                 "contacts": _texts(known.contacts),
                 "document_types": _texts(known.document_types),
-                "tags": _texts(known.tags),
+                "tags": _texts(known.tags & targets),
             },
         }
         return NodeResult(outcome=Outcome.OK, output=output)

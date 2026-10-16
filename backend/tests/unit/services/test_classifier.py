@@ -13,7 +13,7 @@ from papiq.core.domain.errors import ConflictError, NotFoundError, PermissionDen
 from papiq.core.domain.events import ClassifierTrained
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import ContactId
-from papiq.core.domain.master_data import Contact
+from papiq.core.domain.master_data import Assignment, Contact, Tag
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import UnitOfWork
 from papiq.core.services.classifier import (
@@ -93,6 +93,27 @@ async def test_training_learns_from_the_confirmed_documents(world: World) -> Non
     predicted = await classifier.predict("Stadtwerke Zählerstand Stromrechnung")
     assert predicted is not None
     assert predicted[1].contacts[0][0] == utility.id
+
+
+async def test_only_the_tags_the_classification_sets_are_learned(world: World) -> None:
+    owner, utility, _ = await corpus(world)
+    electricity = Tag.create(name="Strom", now=builders.NOW)
+    paid = Tag.create(name="Bezahlt", now=builders.NOW, assignment=Assignment.MANUAL)
+    async with world.uow() as uow:
+        await uow.tags.add(electricity)
+        await uow.tags.add(paid)
+        for document in await uow.documents.list_all():
+            if document.contact_id == utility.id:
+                tags = frozenset({electricity.id, paid.id})
+                document.apply_changes(DocumentChanges(tag_ids=tags), {}, world.clock.now())
+                await uow.documents.update(document)
+        await uow.commit()
+    classifier = service(world)
+    await classifier.train()
+    predicted = await classifier.predict("Stadtwerke Zählerstand Stromrechnung")
+    assert predicted is not None
+    assert set(predicted[1].tags) == {electricity.id}
+    del owner
 
 
 async def test_two_trainings_at_once_take_two_numbers(world: World) -> None:

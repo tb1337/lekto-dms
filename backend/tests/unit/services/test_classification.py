@@ -20,7 +20,7 @@ from papiq.core.domain.exchanges import RunExchange, exchanges_from_json
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.identifiers import Identifier, IdentifierKind
 from papiq.core.domain.json_value import JsonObject, JsonValue
-from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag
+from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
 from papiq.core.domain.reading import PageReading, readings_to_json
 from papiq.core.domain.users import Role
@@ -663,8 +663,25 @@ async def test_new_tags_are_only_proposed(world: World) -> None:
     tags = checks(result.result)["tags"]
     assert tags.ok
     assert tags.value == [str(seeded.tags["Strom"].id)]
-    assert tags.suggestion == ["Energie", "Abschlag"]
+    assert tags.suggestion is None  # the new ones stand in the proposal
+    assert tags.proposed == {"tags": ["Strom", "Energie", "Strom"], "new_tags": ["Abschlag"]}
     assert result.result.outcome is Outcome.OK
+    assert result.add_tags == frozenset({seeded.tags["Strom"].id})
+
+
+async def test_tags_set_by_hand_are_neither_listed_nor_set(world: World) -> None:
+    seeded = await seed(world)
+    paid = Tag.create(name="Bezahlt", now=NOW, assignment=Assignment.MANUAL)
+    group = Tag.create(name="Versorger", now=NOW, scope=TagScope.CONTACT)
+    async with world.uow() as uow:
+        await uow.tags.add(paid)
+        await uow.tags.add(group)
+        await uow.commit()
+    fake = model(proposal(tags=["Strom", "Bezahlt", "Versorger"]))
+    result = await judge(world, await document_with(world, INVOICE), fake)
+    assert "- Bezahlt" not in fake.requests[0].user and "- Versorger" not in fake.requests[0].user
+    assert "- Strom" in fake.requests[0].user
+    assert isinstance(result, MetadataResult)
     assert result.add_tags == frozenset({seeded.tags["Strom"].id})
 
 

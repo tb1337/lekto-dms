@@ -269,6 +269,9 @@ class ClassifierService:
         """The confirmed documents with their texts (one without a text yet is left out)."""
         documents: list[Document] = []
         after: DocumentPosition | None = None
+        async with self._uow() as uow:
+            # Only the tags the classification sets are learned, not those set by hand.
+            targets = {tag.id for tag in await uow.tags.list_all() if tag.is_target}
         while True:
             async with self._uow() as uow:
                 page = await uow.documents.query(
@@ -289,7 +292,7 @@ class ClassifierService:
                 text=text,
                 contact=document.contact_id,
                 document_type=document.document_type_id,
-                tags=frozenset(document.tag_ids),
+                tags=frozenset(document.tag_ids & targets),
             )
             examples.append(_Example(document, example))
         return examples

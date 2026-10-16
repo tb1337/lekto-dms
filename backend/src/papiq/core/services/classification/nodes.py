@@ -269,7 +269,11 @@ class LlmSignal(_ModelStep):
         async with self._uow() as uow:
             contacts = await uow.contacts.list_all()
             types = sorted(await uow.document_types.list_all(), key=lambda item: item.name)
-            tags = sorted(await uow.tags.list_all(), key=lambda item: item.name)
+            # Only the tags the classification sets: document tags, not those set by hand.
+            tags = sorted(
+                (item for item in await uow.tags.list_all() if item.is_target),
+                key=lambda item: item.name,
+            )
             definitions = sorted(
                 (item for item in await uow.fields.list_all() if item.is_read),
                 key=lambda item: item.name,

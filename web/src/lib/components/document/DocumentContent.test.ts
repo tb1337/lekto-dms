@@ -30,12 +30,10 @@ describe('DocumentContent', () => {
 			'Gesamtbrutto (EBeschV)      6.767,00\nSteuer-Brutto, EZ           3.544,50'
 		);
 		expect(within(second).getByText('Seite zwei')).toBeTruthy();
-		const views = screen.getByRole('group', { name: m.content_view() });
-		expect(
-			within(views)
-				.getAllByRole('button')
-				.map((button) => button.textContent?.trim())
-		).toEqual([m.content_text(), m.content_json()]);
+		// The text alone: no switch to its structure any more.
+		expect(screen.queryByRole('group')).toBeNull();
+		// Without facts yet, their card says when they come.
+		expect(screen.getByText(m.facts_pending())).toBeTruthy();
 	});
 
 	it('marks a fact where it stands in the text', async () => {

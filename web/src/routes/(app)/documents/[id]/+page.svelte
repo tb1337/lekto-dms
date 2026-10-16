@@ -236,7 +236,8 @@
 
 <svelte:head><title>{document?.title ?? m.nav_documents()} · p:api:q</title></svelte:head>
 
-<div class="flex flex-col gap-4" data-wide>
+<!-- From the desktop width on the view fills the window; only its cards scroll. -->
+<div class="flex flex-col gap-4 lg:h-full lg:min-h-0" data-wide>
 	{#if problem}
 		<div class="flex flex-col items-start gap-3" role="alert">
 			<p class="text-destructive">{notFound ? m.document_not_found() : describeError(problem)}</p>
@@ -288,8 +289,10 @@
 		</nav>
 
 		{#if tab === 'details'}
-			<div class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_28rem]">
-				<div class="flex min-h-[32rem] flex-col lg:h-[calc(100vh-19.5rem)]">
+			<div
+				class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_28rem] lg:grid-rows-[minmax(0,1fr)]"
+			>
+				<div class="flex min-h-[32rem] flex-col lg:min-h-0">
 					<!-- Anew once the archive exists: the marks belong to it, not to the original. -->
 					{#key `${id}:${archive}`}
 						{#if archive || !document.page_count}
@@ -306,7 +309,7 @@
 						{/if}
 					{/key}
 				</div>
-				<div class="flex min-h-[32rem] flex-col lg:h-[calc(100vh-19.5rem)]">
+				<div class="flex min-h-[32rem] flex-col lg:min-h-0">
 					{#if lookup}
 						{#key id}
 							<DocumentForm
@@ -340,13 +343,15 @@
 				onfactschanged={reloadFacts}
 			/>
 		{:else if tab === 'log'}
-			<DocumentLog
-				{document}
-				{graph}
-				{manageable}
-				{lookup}
-				onreprocess={() => header?.startReprocess()}
-			/>
+			<div class="lg:min-h-0 lg:flex-1">
+				<DocumentLog
+					{document}
+					{graph}
+					{manageable}
+					{lookup}
+					onreprocess={() => header?.startReprocess()}
+				/>
+			</div>
 		{/if}
 	{/if}
 </div>

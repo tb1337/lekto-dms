@@ -5,10 +5,8 @@
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
-	import { apiFetch } from '#lib/api/fetch.ts';
-	import { apiError, ApiError } from '#lib/api/problem.ts';
+	import { ApiError } from '#lib/api/problem.ts';
 	import FactsPanel from '#lib/components/document/FactsPanel.svelte';
-	import JsonTree from '#lib/components/document/JsonTree.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { events } from '#lib/events.svelte.ts';
@@ -24,12 +22,12 @@
 	import { formatNumber } from '#lib/i18n.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { cn } from '#lib/utils.ts';
 
 	// What was read from the document: the text as it is set, in a fixed-pitch font so that its
-	// columns line up, page by page, and its structure (pages, lines and words with boxes). The
-	// text comes as soon as the document is parsed. A document parsed before 0.2 shows Docling's
-	// Markdown as it is until it is read again.
+	// columns line up, page by page, and beside it the facts and codes. Two cards as in the
+	// details: the text on the card itself, the facts on its inner surface. The text comes as
+	// soon as the document is parsed. A document parsed before 0.2 shows Docling's Markdown as it
+	// is until it is read again.
 	let {
 		documentId,
 		filename,
@@ -55,26 +53,17 @@
 		onfactschanged?: () => void;
 	} = $props();
 
-	type View = 'text' | 'json';
 	const PIECE = 20_000;
 	// More than this is not shown (the download has all of it).
 	const MOST_TEXT = 2_000_000;
-	const MOST_JSON = 50_000_000;
 
-	let view = $state<View>('text');
 	// What the facts mark in the text: spans in characters of the whole text.
 	let marks = $state<Span[]>([]);
 	let textBox = $state<HTMLDivElement | null>(null);
 	let text = $state<string | null>(null);
 	let total = $state(0);
-	let textProblem = $state<string | null>(null);
+	let problem = $state<string | null>(null);
 	let loading = $state(true);
-	// The parsed structure; `undefined` until it is there. Too large ones are only downloaded.
-	let structure = $state<unknown>(undefined);
-	let structureBytes = $state(0);
-	let structureTooLarge = $state(false);
-	let structureProblem = $state<string | null>(null);
-	let loadingStructure = $state(false);
 
 	type Piece = { text: string; total_length: number; next_offset: number | null };
 
@@ -97,7 +86,7 @@
 	}
 
 	// An answer overtaken by a later request (several events at once) must not replace the
-	// current text or structure.
+	// current text.
 	let latest = 0;
 	async function loadText() {
 		const wanted = documentId;
@@ -108,44 +97,14 @@
 			if (wanted !== documentId || request !== latest) return;
 			text = read.text;
 			total = read.total;
-			textProblem = null;
+			problem = null;
 		} catch (error) {
 			if (wanted !== documentId || request !== latest) return;
 			// 409: not parsed yet; the next event brings the text.
 			if (error instanceof ApiError && error.status === 409) text = null;
-			else textProblem = describeError(error);
+			else problem = describeError(error);
 		} finally {
 			if (request === latest) loading = false;
-		}
-	}
-
-	let latestStructure = 0;
-	async function loadStructure() {
-		const wanted = documentId;
-		const request = ++latestStructure;
-		loadingStructure = true;
-		try {
-			const answer = await apiFetch(
-				new Request(new URL(`/api/v1/documents/${wanted}/structure`, location.origin))
-			);
-			if (wanted !== documentId || request !== latestStructure) return;
-			if (answer.status === 409) {
-				structure = undefined;
-				return;
-			}
-			if (!answer.ok) throw await apiError(answer);
-			const raw = await answer.text();
-			if (wanted !== documentId || request !== latestStructure) return;
-			structureBytes = new Blob([raw]).size;
-			structureTooLarge = raw.length > MOST_JSON;
-			structure = structureTooLarge ? null : JSON.parse(raw);
-			structureProblem = null;
-		} catch (error) {
-			if (wanted === documentId && request === latestStructure) {
-				structureProblem = describeError(error);
-			}
-		} finally {
-			if (request === latestStructure) loadingStructure = false;
 		}
 	}
 
@@ -153,33 +112,21 @@
 		void documentId;
 		untrack(() => {
 			text = null;
-			structure = undefined;
-			structureTooLarge = false;
-			textProblem = null;
-			structureProblem = null;
+			problem = null;
 		});
 		void events.generation;
 		void loadText();
 		return events.subscribe((event) => {
 			if (event.document_id === documentId && event.type === 'document.node_completed') {
 				void loadText();
-				if (structure !== undefined) void loadStructure();
 			}
 		});
 	});
 
-	$effect(() => {
-		if (view === 'json' && structure === undefined && structureProblem === null) {
-			untrack(() => void loadStructure());
-		}
-	});
-
-	const ready = $derived(view === 'json' ? structure !== undefined : text !== null);
 	// The pages of the text: a form feed on a line of its own separates them.
 	const pages = $derived((text ?? '').split(/\n?\f\n?/));
 	const ranges = $derived(pageRanges(text ?? ''));
 	const marked = $derived(text === null ? [] : inUnits(text, marks));
-	const withFacts = $derived(view === 'text' && facts !== null);
 
 	/** Mark `spans` in the text; with `reveal`, scroll the first into view. */
 	async function mark(spans: Span[], reveal: boolean) {
@@ -188,16 +135,12 @@
 		await tick();
 		textBox?.querySelector('[data-mark]')?.scrollIntoView({ block: 'center' });
 	}
-	const problem = $derived(view === 'json' ? structureProblem : textProblem);
 	const stem = $derived(filename.replace(/\.[^.]+$/, '') || 'document');
 
 	async function copy() {
-		if (!ready) return;
+		if (text === null) return;
 		try {
-			// The structure as text only when asked for: it can be large.
-			await navigator.clipboard.writeText(
-				view === 'json' ? JSON.stringify(structure, null, 2) : (text ?? '')
-			);
+			await navigator.clipboard.writeText(text);
 			toast.success(m.content_copied());
 		} catch (error) {
 			toast.error(describeError(error));
@@ -205,13 +148,6 @@
 	}
 
 	async function download() {
-		const link = window.document.createElement('a');
-		if (view === 'json') {
-			link.href = `/api/v1/documents/${documentId}/structure`;
-			link.download = `${stem}.json`;
-			link.click();
-			return;
-		}
 		if (text === null) return;
 		let whole = text;
 		if (text.length < total) {
@@ -223,79 +159,47 @@
 				return;
 			}
 		}
+		const link = window.document.createElement('a');
 		const url = URL.createObjectURL(new Blob([whole], { type: 'text/plain;charset=utf-8' }));
 		link.href = url;
 		link.download = `${stem}.txt`;
 		link.click();
 		setTimeout(() => URL.revokeObjectURL(url), 1000);
 	}
-
-	const views: { view: View; label: () => string }[] = [
-		{ view: 'text', label: m.content_text },
-		{ view: 'json', label: m.content_json }
-	];
 </script>
 
-<section class="flex flex-col gap-3" aria-label={m.tab_content()}>
-	<div class="flex flex-wrap items-center gap-3">
-		<div
-			role="group"
-			aria-label={m.content_view()}
-			class="flex gap-0.5 rounded-xl border bg-card p-[3px]"
-		>
-			{#each views as entry (entry.view)}
-				<button
-					type="button"
-					aria-pressed={view === entry.view}
-					onclick={() => (view = entry.view)}
-					class={cn(
-						'h-[34px] rounded-[10px] px-3.5 text-sm transition-colors',
-						view === entry.view
-							? 'bg-primary font-medium text-primary-foreground'
-							: 'text-muted-foreground hover:text-foreground'
-					)}
-				>
-					{entry.label()}
-				</button>
-			{/each}
-		</div>
-		<span class="text-sm text-muted-foreground">
-			{#if view === 'json'}
-				{#if structure !== undefined}
-					{m.content_json_size({
-						size: formatNumber(structureBytes / 1024, { maximumFractionDigits: 0 })
-					})}
+<div
+	class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_28rem] lg:grid-rows-[minmax(0,1fr)]"
+>
+	<section
+		aria-label={m.tab_content()}
+		class="flex min-h-[32rem] min-w-0 flex-col overflow-hidden rounded-2xl border bg-card lg:min-h-0"
+	>
+		<div class="flex flex-wrap items-center gap-2 border-b px-3 py-2">
+			<span class="px-1 text-sm text-muted-foreground">
+				{#if text !== null}
+					{m.text_length({ characters: formatNumber(total) })}
+					{#if vision}· {m.vision_read_by()}{/if}
 				{/if}
-			{:else if text !== null}
-				{m.text_length({ characters: formatNumber(total) })}
-				{#if vision}· {m.vision_read_by()}{/if}
-			{/if}
-		</span>
-		<div class="ml-auto flex gap-2">
-			<Button variant="outline" disabled={!ready || structureTooLarge} onclick={copy}>
-				<Copy aria-hidden="true" />
-				{m.content_copy()}
-			</Button>
-			<Button variant="outline" disabled={!ready} onclick={download}>
-				<Download aria-hidden="true" />
-				{m.doc_download()}
-			</Button>
+			</span>
+			<div class="ml-auto flex gap-1">
+				<Button variant="ghost" size="sm" disabled={text === null} onclick={copy}>
+					<Copy aria-hidden="true" />
+					{m.content_copy()}
+				</Button>
+				<Button variant="ghost" size="sm" disabled={text === null} onclick={download}>
+					<Download aria-hidden="true" />
+					{m.doc_download()}
+				</Button>
+			</div>
 		</div>
-	</div>
-
-	<div class={cn('flex flex-col gap-4', withFacts && 'lg:flex-row lg:items-start')}>
-		<div
-			bind:this={textBox}
-			class="h-[calc(100vh-17rem)] min-h-96 min-w-0 flex-1 overflow-auto rounded-2xl border bg-card"
-		>
+		<!-- As set: no wrapping, the card scrolls sideways. -->
+		<div bind:this={textBox} class="min-h-0 flex-1 overflow-auto">
 			{#if problem}
 				<p class="p-6 text-destructive" role="alert">{problem}</p>
-			{:else if !ready}
-				<p class="p-6 text-sm text-muted-foreground">
-					{(view === 'json' ? loadingStructure : loading) ? m.loading() : m.text_none()}
-				</p>
-			{:else if view === 'text'}
-				<!-- As set: no wrapping, the box scrolls sideways. -->
+			{:else if text === null}
+				<p class="p-6 text-sm text-muted-foreground">{loading ? m.loading() : m.text_none()}</p>
+			{:else}
 				{#each pages as page, index (index)}
 					<section aria-label={m.content_page({ page: index + 1 })} class="px-7 py-6">
 						{#if pages.length > 1}
@@ -304,7 +208,7 @@
 							</p>
 						{/if}
 						<pre
-							class="font-mono text-[13px] leading-relaxed whitespace-pre">{#if marked.length > 0 && text !== null}{#each segmentsOf(text, ranges[index], marked) as segment, at (at)}{#if segment.marked}<mark
+							class="font-mono text-[13px] leading-relaxed whitespace-pre">{#if marked.length > 0}{#each segmentsOf(text, ranges[index], marked) as segment, at (at)}{#if segment.marked}<mark
 											data-mark
 											class="rounded-sm bg-primary/20 text-inherit ring-2 ring-primary"
 											>{segment.text}</mark
@@ -312,19 +216,15 @@
 					</section>
 					{#if index < pages.length - 1}<hr class="border-muted" />{/if}
 				{/each}
-			{:else if structureTooLarge}
-				<p class="p-6 text-sm text-muted-foreground">{m.content_json_too_large()}</p>
-			{:else}
-				<div class="px-5 py-5 font-mono text-[13px] leading-relaxed">
-					<JsonTree value={structure} />
-				</div>
 			{/if}
 		</div>
-		{#if withFacts && facts}
-			<aside
-				aria-label={m.facts_title()}
-				class="min-w-0 lg:h-[calc(100vh-17rem)] lg:w-[23rem] lg:shrink-0 lg:overflow-auto"
-			>
+	</section>
+	<aside
+		aria-label={m.facts_title()}
+		class="flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-card lg:min-h-0"
+	>
+		<div class="min-h-0 flex-1 overflow-y-auto bg-surface p-3.5">
+			{#if facts}
 				<FactsPanel
 					{facts}
 					{documentId}
@@ -334,7 +234,9 @@
 					{onshowcode}
 					onchanged={onfactschanged}
 				/>
-			</aside>
-		{/if}
-	</div>
-</section>
+			{:else}
+				<p class="p-2 text-sm text-muted-foreground">{m.facts_pending()}</p>
+			{/if}
+		</div>
+	</aside>
+</div>

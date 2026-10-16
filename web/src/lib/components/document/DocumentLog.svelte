@@ -313,12 +313,15 @@
 	);
 </script>
 
-<!-- The run box beside the nodes where there is room, above them where not. -->
-<div class="@container">
-	<div class="grid items-start gap-6 @4xl:grid-cols-[minmax(0,1fr)_20rem]">
+<!-- The run box beside the nodes where there is room, above them where not; where the view fills
+	the window, each scrolls on its own. -->
+<div class="@container lg:h-full lg:min-h-0">
+	<div
+		class="grid items-start gap-6 @4xl:h-full @4xl:grid-cols-[minmax(0,1fr)_20rem] @4xl:grid-rows-[minmax(0,1fr)]"
+	>
 		<aside
 			aria-labelledby="run-heading"
-			class="flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5 @4xl:order-last"
+			class="flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5 @4xl:order-last @4xl:max-h-full @4xl:overflow-y-auto"
 		>
 			{#if runs.length > 1}
 				<h2 id="run-heading" class="font-semibold">{m.log_runs()}</h2>
@@ -395,7 +398,10 @@
 			{/if}
 		</aside>
 
-		<section aria-labelledby="log-heading" class="flex min-w-0 flex-col gap-2.5">
+		<section
+			aria-labelledby="log-heading"
+			class="flex min-w-0 flex-col gap-2.5 @4xl:h-full @4xl:overflow-y-auto"
+		>
 			<h2
 				id="log-heading"
 				class="text-xs font-semibold tracking-wider text-muted-foreground uppercase"

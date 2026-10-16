@@ -81,7 +81,9 @@
 	>{m.skip_to_content()}</a
 >
 
-<div class="flex min-h-screen flex-col">
+<!-- A page that needs the room (the document view) marks itself `data-wide`: from the desktop
+	width on it fills the window, and only its own areas scroll. -->
+<div class="flex min-h-screen flex-col lg:has-[[data-wide]]:h-dvh">
 	<header class="sticky top-0 z-40 border-b bg-card">
 		<div class="flex h-16 items-center gap-4 px-4 sm:px-8 lg:gap-7">
 			<Sheet.Root bind:open={menuOpen}>
@@ -187,9 +189,14 @@
 		</div>
 	</header>
 
-	<main id="main" tabindex="-1" class="flex flex-1 justify-center px-4 py-8 outline-none sm:px-8">
-		<!-- A page that needs the room (the document view) marks itself `data-wide`. -->
-		<div class="w-full max-w-[1040px] has-[[data-wide]]:max-w-[1600px]">
+	<main
+		id="main"
+		tabindex="-1"
+		class="flex flex-1 justify-center px-4 py-8 outline-none sm:px-8 lg:has-[[data-wide]]:min-h-0 lg:has-[[data-wide]]:py-6"
+	>
+		<div
+			class="w-full max-w-[1040px] has-[[data-wide]]:max-w-[1600px] lg:has-[[data-wide]]:min-h-0"
+		>
 			{@render children()}
 		</div>
 	</main>

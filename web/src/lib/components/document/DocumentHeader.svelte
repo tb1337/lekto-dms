@@ -21,6 +21,7 @@
 	import LaneBadge from '#lib/components/LaneBadge.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import ProcessingProgress from '#lib/components/ProcessingProgress.svelte';
+	import TagChips from '#lib/components/TagChips.svelte';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
@@ -246,6 +247,7 @@
 				{#if spaceName}· {spaceName}{/if}
 				{#if document.page_count}· {m.doc_pages({ count: document.page_count })}{/if}
 			</p>
+			<TagChips {document} {lookup} interactive size="md" />
 			{#if status === 'processing'}
 				{#if visionRunning}
 					<p class="text-sm text-muted-foreground" role="status">

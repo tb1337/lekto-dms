@@ -7,9 +7,10 @@ import { unwrap } from '#lib/api/call.ts';
 import type { components } from '#lib/api/schema.ts';
 import { m } from '#lib/paraglide/messages.js';
 
-type ContactOut = components['schemas']['ContactOut'];
+export type Contact = components['schemas']['ContactOut'];
+export type DocumentType = components['schemas']['DocumentTypeOut'];
 /** What every kind of master data has. */
-export type MasterData = Pick<ContactOut, 'id' | 'name' | 'created_at' | 'document_count'>;
+export type MasterData = Pick<Contact, 'id' | 'name' | 'created_at' | 'document_count'>;
 export type Tag = components['schemas']['TagOut'];
 export type TagScope = components['schemas']['TagScope'];
 export type FieldDefinition = components['schemas']['FieldOut'];
@@ -17,8 +18,8 @@ export type Space = components['schemas']['SpaceOut'];
 export type UserName = components['schemas']['UserOut'];
 
 export interface Lookup {
-	contacts: MasterData[];
-	documentTypes: MasterData[];
+	contacts: Contact[];
+	documentTypes: DocumentType[];
 	/** Of every scope: document tags, contact groups, type groups. */
 	tags: Tag[];
 	fields: FieldDefinition[];

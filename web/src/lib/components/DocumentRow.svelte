@@ -5,13 +5,14 @@
 	import DocumentThumb from '#lib/components/DocumentThumb.svelte';
 	import LaneBadge from '#lib/components/LaneBadge.svelte';
 	import ProcessingProgress from '#lib/components/ProcessingProgress.svelte';
+	import TagChips from '#lib/components/TagChips.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 
-	// One document in a list: preview, title, contact, type, date, lane, for admins the owner of
-	// another user's document; `children` adds a line.
+	// One document in a list: preview, title, contact, type, date, its shown groups and tags,
+	// lane, for admins the owner of another user's document; `children` adds a line.
 	let {
 		document,
 		lookup,
@@ -51,6 +52,7 @@
 			{#if owner}<Badge variant="outline" class="shrink-0">{owner}</Badge>{/if}
 		</span>
 		<span class="truncate text-sm text-muted-foreground">{line}</span>
+		<TagChips {document} {lookup} />
 		{#if document.processing.status === 'processing'}
 			<ProcessingProgress processing={document.processing} compact class="mt-1 max-w-48" />
 		{/if}

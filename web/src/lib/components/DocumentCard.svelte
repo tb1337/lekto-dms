@@ -5,13 +5,15 @@
 	import DocumentThumb from '#lib/components/DocumentThumb.svelte';
 	import LaneBadge from '#lib/components/LaneBadge.svelte';
 	import ProcessingProgress from '#lib/components/ProcessingProgress.svelte';
+	import TagChips from '#lib/components/TagChips.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 
 	// One document as a card of the grid: its first page, the lane on it, title, contact, type
-	// and date, for admins the owner of another user's document; `children` adds a line.
+	// and date, its shown groups and tags, for admins the owner of another user's document;
+	// `children` adds a line.
 	let {
 		document,
 		lookup,
@@ -56,6 +58,7 @@
 		</span>
 		{#if contact}<span class="truncate text-sm text-muted-foreground">{contact}</span>{/if}
 		<span class="truncate text-xs text-muted-foreground">{line}</span>
+		<TagChips {document} {lookup} />
 		{#if owner}<Badge variant="outline" class="w-fit">{owner}</Badge>{/if}
 		{#if document.processing.status === 'processing'}
 			<ProcessingProgress processing={document.processing} compact class="mt-1 max-w-48" />

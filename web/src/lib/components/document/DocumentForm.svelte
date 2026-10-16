@@ -17,6 +17,7 @@
 	import FieldGroup from '#lib/components/document/FieldGroup.svelte';
 	import FieldShell from '#lib/components/document/FieldShell.svelte';
 	import TagsInput from '#lib/components/document/TagsInput.svelte';
+	import GroupChips from '#lib/components/GroupChips.svelte';
 	import FieldValueInput from '#lib/components/FieldValueInput.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import RuleEffects from '#lib/components/rules/RuleEffects.svelte';
@@ -554,6 +555,10 @@
 					disabled={!editable}
 					options={options(lookup.contacts)}
 				/>
+				<GroupChips
+					tags={lookup.tags}
+					ids={lookup.contacts.find((entry) => entry.id === contact)?.group_ids ?? []}
+				/>
 				{#if factsChip}
 					<a
 						href={factsHref}
@@ -582,6 +587,10 @@
 					bind:value={documentType}
 					disabled={!editable}
 					options={options(lookup.documentTypes)}
+				/>
+				<GroupChips
+					tags={lookup.tags}
+					ids={lookup.documentTypes.find((entry) => entry.id === documentType)?.group_ids ?? []}
 				/>
 			</FieldShell>
 			<FieldShell

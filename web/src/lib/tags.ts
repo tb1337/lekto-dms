@@ -90,3 +90,38 @@ export function visibleRows<T extends TagLike>(
 	walk(null, 0);
 	return rows;
 }
+
+/** `ids` without the tags above others among them: a child and its parent set together leave
+ * the child, as the API keeps them. */
+export function normalise(tags: readonly TagLike[], ids: readonly string[]): string[] {
+	const parentOf = new Map(tags.map((tag) => [tag.id, tag.parent_id]));
+	const above = new Set<string>();
+	for (const id of ids) {
+		let parent = parentOf.get(id) ?? null;
+		while (parent !== null && !above.has(parent)) {
+			above.add(parent);
+			parent = parentOf.get(parent) ?? null;
+		}
+	}
+	return ids.filter((id, index) => !above.has(id) && ids.indexOf(id) === index);
+}
+
+/** The chips of `ids`: for each, the nearest shown tag on its way up (itself, else a tag above
+ * it), each once, by path. A hidden tag shows nothing unless a tag above it is shown. */
+export function shownChips<T extends TagLike & Pick<Tag, 'shown'>>(
+	tags: readonly T[],
+	ids: readonly string[]
+): T[] {
+	const byId = new Map(tags.map((tag) => [tag.id, tag]));
+	const found = new Map<string, T>();
+	for (const id of ids) {
+		const seen = new Set<string>();
+		let tag = byId.get(id);
+		while (tag && !tag.shown && tag.parent_id && !seen.has(tag.id)) {
+			seen.add(tag.id);
+			tag = byId.get(tag.parent_id);
+		}
+		if (tag?.shown) found.set(tag.id, tag);
+	}
+	return [...found.values()].sort((a, b) => pathLabel(a).localeCompare(pathLabel(b)));
+}

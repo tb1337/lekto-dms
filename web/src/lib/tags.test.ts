@@ -3,9 +3,11 @@ import type { Tag } from '#lib/masterdata.svelte.ts';
 import {
 	below,
 	matchesQuery,
+	normalise,
 	ofScope,
 	pathLabel,
 	SEPARATOR,
+	shownChips,
 	tagOptions,
 	visibleRows
 } from './tags.ts';
@@ -62,5 +64,29 @@ describe('tags as trees', () => {
 		expect(rows([])).toEqual(['0:bills', '0:insurance+', '1:car', '1:health+', '2:dental']);
 		expect(rows(['health'])).toEqual(['0:bills', '0:insurance+', '1:car', '1:health+']);
 		expect(rows(['insurance'])).toEqual(['0:bills', '0:insurance+']);
+	});
+});
+
+describe('tags at a document', () => {
+	it('keep the child of a parent set with it', () => {
+		expect(normalise(TAGS, ['insurance', 'dental', 'bills'])).toEqual(['dental', 'bills']);
+		expect(normalise(TAGS, ['insurance'])).toEqual(['insurance']);
+		expect(normalise(TAGS, ['car', 'car', 'unknown'])).toEqual(['car', 'unknown']);
+	});
+
+	it('show the nearest shown tag on the way up, each once', () => {
+		const hidden = TAGS.map((entry) =>
+			entry.id === 'dental' || entry.id === 'car' ? { ...entry, shown: false } : entry
+		);
+		expect(shownChips(hidden, ['dental', 'bills']).map((entry) => entry.id)).toEqual([
+			'bills',
+			'health'
+		]);
+		expect(shownChips(hidden, ['car', 'health']).map((entry) => entry.id)).toEqual([
+			'insurance',
+			'health'
+		]);
+		const insurer = TAGS[5]; // a group, hidden by default
+		expect(shownChips(TAGS, [insurer.id])).toEqual([]);
 	});
 });

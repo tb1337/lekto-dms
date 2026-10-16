@@ -194,7 +194,7 @@
 			</div>
 		</div>
 		<!-- As set: no wrapping, the card scrolls sideways. -->
-		<div bind:this={textBox} class="min-h-0 flex-1 overflow-auto">
+		<div bind:this={textBox} class="relative min-h-0 flex-1 overflow-auto">
 			{#if problem}
 				<p class="p-6 text-destructive" role="alert">{problem}</p>
 			{:else if text === null}
@@ -223,7 +223,7 @@
 		aria-label={m.facts_title()}
 		class="flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-card lg:min-h-0"
 	>
-		<div class="min-h-0 flex-1 overflow-y-auto bg-surface p-3.5">
+		<div class="relative min-h-0 flex-1 overflow-y-auto bg-surface p-3.5">
 			{#if facts}
 				<FactsPanel
 					{facts}

@@ -452,7 +452,7 @@
 	novalidate
 	aria-label={m.edit_title()}
 >
-	<div class="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto bg-surface p-3.5">
+	<div class="relative flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto bg-surface p-3.5">
 		{#if reviewing}
 			<div
 				class="flex items-start gap-2.5 rounded-xl bg-lane-yellow px-3.5 py-3 text-lane-yellow-foreground"

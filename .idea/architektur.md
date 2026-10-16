@@ -76,6 +76,7 @@ Papiq ist hexagonal aufgebaut: Der fachliche Kern kennt keine Datenbank, kein S3
 | Vorschau | PDFium (erste Seite als WebP) | anderer Renderer |
 | Fundstellen (Zitat → Seite und Box) | PDFium (Textebene des Archiv-PDFs) | anderer Locator |
 | Codes (Bar- und QR-Codes der Seiten) | zxing-cpp auf den Seiten des Archivs, mit PDFium in 300 dpi gerendert | anderer Leser |
+| Datei-Metadaten (Tab „Metadaten“) | pikepdf (PDF-Infos, XMP, PDF/A), Pillow (Bilder, EXIF) | anderer Leser |
 | Mustersuche (Regeln) | `regex` mit Zeitlimit | eigener Dienst |
 | Templates (Regeln, Titelmuster) | Liquid (`python-liquid`), mit Grenzen für Schleifen und Ausgabe | andere Template-Sprache |
 | Webhook-Versand | httpx2 | andere HTTP-Bibliothek |
@@ -107,6 +108,7 @@ Backend und Worker in Python; ein Container mit s6-overlay als Prozessüberwachu
 | OCR | OCRmyPDF | entschieden |
 | VLM (Seiten lesen) | OpenAI-kompatible Schnittstelle mit Bildern, als Texterkennung in OCRmyPDF; nur auf Wunsch einer Person (Tobi, 15.10.2026); gemessen mit Claude Sonnet 5.5 über Open WebUI | entschieden |
 | Parsing | Layout-Text aus der Textebene mit PDFium (statt Docling, Tobi 14.10.2026, siehe Ingest-Workflow) | entschieden |
+| Datei-Metadaten | `pikepdf` (MPL-2.0), über OCRmyPDF ohnehin im Image, jetzt direkte Abhängigkeit (Tobi, 16.10.2026) | entschieden |
 | Codes | `zxing-cpp` 3.1 (Apache-2.0; Pakete für amd64 und arm64, keine Systempakete): QR, Data Matrix, Aztec, PDF417, Code 128/39, EAN, ITF. Verworfen: `pyzbar` (Systempaket `libzbar0`, kein Data Matrix, zuletzt 2022), `pylibdmtx` (nur Data Matrix), OpenCV (groß, kein Data Matrix), `pyzxing` (Java) (Tobi, 15.10.2026) | entschieden |
 | LLM | OpenAI-kompatible Schnittstelle (Ollama, Cloud) | entschieden |
 | Klassifikator | scikit-learn, Vorhersage mit numpy | entschieden |
@@ -384,7 +386,7 @@ Die REST-API ist der einzige Zugang; es gibt keine Hintertüren für UI oder Mig
 
 - **REST-API:** OpenAPI-Spezifikation als Vertrag; daraus wird der TypeScript-Client der Web-UI generiert.
 - **MCP-Server:** im API-Prozess, nutzt dieselbe Service-Schicht; HTTP mit Bearer-Token. Tools (Vorschlag): `search`, `get_document`, `get_text`, `update_metadata`, `list_tags`.
-- **Web-UI:** Single-Page-App auf der API, als statische Dateien im Papiq-Container ausgeliefert; Job-Fortschritt per Server-Sent Events; PDF-Anzeige mit PDF.js; Posteingang mit Lanes, Probelauf für Regeln. Die Dialoge zum Anlegen und Ändern von Stammdaten öffnen auf jeder Seite an Ort und Stelle; der Typ-Dialog verlinkt die Regel seines Titelmusters, außer er wurde aus ihr geöffnet (Tobi, 15.10.2026). Im Inhalt stehen neben dem Text die Fakten (was den Kontakt belegt, was zu anderen Kontakten gehört, Kennungen ohne Kontakt) und die Codes der Seiten, ein GiroCode aufgeschlüsselt; Überfahren markiert die Fundstelle im Text, ein Code steht einmal je Format und Inhalt, mit einem Chip je Seite wie die Fundstellen der Felder. Unter Details führt nur ein Chip am Kontaktfeld dorthin (Tobi, 15.10.2026: die Spalte unter Details ist schon voll).
+- **Web-UI:** Single-Page-App auf der API, als statische Dateien im Papiq-Container ausgeliefert; Job-Fortschritt per Server-Sent Events; PDF-Anzeige mit PDF.js; Posteingang mit Lanes, Probelauf für Regeln. Dokumentansicht (Tobi, 16.10.2026): Ab Desktop-Breite füllt sie das Fenster, gescrollt wird nur in ihren Karten; am Handy scrollt die Seite. Tabs Details, Inhalt (der Text neben Fakten und Codes, in den Karten von Details; keine JSON-Ansicht mehr, `/structure` bleibt in der API), Metadaten (die Dateien wie in Paperless-ngx) und Protokoll. Die Seiten stehen nebeneinander, die Aufteilung folgt dem Zoom: „1 Seite“, „2 Seiten“ (Vorgabe, am Handy eine), „Übersicht“ (vier je Reihe, die kleinste Stufe); eine erreichte Aufteilung ist markiert. Zoom mit Strg/⌘ und Mausrad, Pinch auf dem Trackpad und zwei Fingern um den Zeiger, Doppelklick vergrößert eine Seite. Die Dialoge zum Anlegen und Ändern von Stammdaten öffnen auf jeder Seite an Ort und Stelle; der Typ-Dialog verlinkt die Regel seines Titelmusters, außer er wurde aus ihr geöffnet (Tobi, 15.10.2026). Im Inhalt stehen neben dem Text die Fakten (was den Kontakt belegt, was zu anderen Kontakten gehört, Kennungen ohne Kontakt) und die Codes der Seiten, ein GiroCode aufgeschlüsselt; Überfahren markiert die Fundstelle im Text, ein Code steht einmal je Format und Inhalt, mit einem Chip je Seite wie die Fundstellen der Felder. Unter Details führt nur ein Chip am Kontaktfeld dorthin (Tobi, 15.10.2026: die Spalte unter Details ist schon voll).
 
 ## Betrieb: Papiq-Container mit s6-overlay
 

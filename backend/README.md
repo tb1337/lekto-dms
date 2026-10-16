@@ -259,6 +259,10 @@ jobs of the old run are recognised as stale.
   the page; invalid and empty results are dropped, the same code on a page counts once. About
   0.1 to 0.3 s per page. A GiroCode (EPC069-12) is read as a credit transfer: payee, IBAN, BIC,
   amount, purpose (`core/domain/codes.py`).
+- File metadata: `MetadataReader` (`adapters/outbound/pikepdf`) reads, on request, a PDF's
+  version, PDF/A level, pages, document information and XMP packet (pikepdf), an image's
+  format, size, resolution and EXIF without how its pixels are stored (Pillow); a damaged or
+  encrypted file has none (`GET /documents/{id}/files`).
 - Quotes on the page: the judge and the fields node look up every quote of the model in
   the text layer of the archive (`TextLocator`, PDFium): case, spacing, line breaks, hyphens at
   line ends and the marks of Markdown do not matter. Each field check keeps up to five places
@@ -638,6 +642,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /documents/{id}/move` | Into another drawer (owner, or an admin without read access) |
 | `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
 | `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit`; `409` while not parsed |
+| `GET /documents/{id}/files` | The files as stored (read access): when the document was added and changed, its original's name and type, and for the original and the archive (null while there is none) size, SHA-256 and metadata: a PDF's version, PDF/A level, pages, document information and XMP; an image's format, size, resolution and EXIF |
 | `GET /documents/{id}/facts` | What the document shows of its contacts (read access): names and identifiers with the contact they belong to now and their spans in the text (characters, as `/text` counts them); the codes on its pages, each once for its format and text, with the pages and boxes where it stands (a box per copy), the GiroCode read, their identifiers and the amount fields of the same value; for admins, on the documents of how many other contacts an identifier stands; `409` while not parsed |
 | `GET /documents/{id}/log` | Processing log (owner or admin) |
 | `POST /documents/{id}/retry` | Repeat the failed nodes (owner or admin) |

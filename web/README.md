@@ -64,12 +64,24 @@ place of the editor (`tests/setup.ts`); `codemirror.test.ts` runs the real one.
 
 `/ui/documents/{id}` serves the inbox and the document list (`/ui/inbox/{id}` leads there with
 `?from=inbox`, which keeps the place among the inbox's documents) with the tabs details,
-content and log (`?tab=`). The details show the archive PDF with PDF.js; until the archive
-exists (the text is still being recognised), the page images from the API stand in. A field
-with a quote marks it on the page while hovered or focused (the places come from `/review`,
-owner and admins), a click on its page jumps there. The content tab renders the Markdown with
-`marked` (its lexer only: the tokens become elements, never HTML, so text of a document cannot
-become markup; links only to web and mail addresses).
+content, metadata and log (`?tab=`). From the desktop width on (`lg`) the view fills the window
+and only its cards scroll; on narrow screens the page scrolls.
+
+- **Details:** the archive PDF with PDF.js; until the archive exists (the text is still being
+  recognised), the page images from the API stand in. Both are shown by `PageViewer`: the
+  pages side by side, wrapping into rows, their width following the zoom (100 % is a page's
+  printed size), so the zoom decides how many stand in a row. The layouts one page, two pages
+  (the start; one on a narrow screen) and overview (four in a row, as far out as the zoom
+  goes) are buttons, marked once zooming reaches them (`lib/viewer/zoom.ts`). Ctrl or ⌘ with
+  the wheel, a pinch on a trackpad, Safari's gestures and two fingers zoom around the pointer
+  (`lib/viewer/gestures.ts`); a double click enlarges a page and goes back; the keys + − 0.
+  Pages are scaled while the zoom moves and drawn anew once it rests. A field with a quote
+  marks it on the page while hovered or focused (the places come from `/review`, owner and
+  admins), a click on its page jumps there; so does a code from the content tab.
+- **Content:** the text as it is set, page by page, and beside it the facts and codes
+  (`FactsPanel`, from `/facts`).
+- **Metadata:** the files from `/files`: size, SHA-256, a PDF's information and XMP, an
+  image's EXIF.
 
 ## API client
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { home, loginHref, oidcLoginHref, safeNext } from './navigation.ts';
 
 describe('safeNext', () => {
-	it.each(['/ui', '/ui/', '/ui/documents', '/ui/search?q=Strom%20Rechnung#top', '/ui/a/b..c'])(
+	it.each(['/ui', '/ui/', '/ui/documents', '/ui/documents?q=Strom%20Rechnung#top', '/ui/a/b..c'])(
 		'keeps the page %s',
 		(target) => {
 			expect(safeNext(target)).toBe(target);
@@ -35,7 +35,7 @@ describe('safeNext', () => {
 	});
 
 	it('allows dots and encoded slashes after the path', () => {
-		expect(safeNext('/ui/search?q=..%2F')).toBe('/ui/search?q=..%2F');
+		expect(safeNext('/ui/documents?q=..%2F')).toBe('/ui/documents?q=..%2F');
 	});
 });
 

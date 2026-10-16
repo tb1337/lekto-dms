@@ -7,12 +7,19 @@
 	import MasterDataDialog from '#lib/components/MasterDataDialog.svelte';
 	import { describeError } from '#lib/errors.ts';
 	import { type MasterDataRequest, masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
-	import type { FieldDefinition, MasterData } from '#lib/masterdata.svelte.ts';
-	import { type Item, KINDS, type SimpleKind, type Values } from '#lib/masterdata-api.ts';
+	import type { FieldDefinition, MasterData, Tag } from '#lib/masterdata.svelte.ts';
+	import {
+		isTagKind,
+		type Item,
+		KINDS,
+		type SimpleKind,
+		TAG_KINDS,
+		type Values
+	} from '#lib/masterdata-api.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
 	// The dialogs that add and change master data, for every page (`masterDataDialogs.open`):
-	// contacts, document types, tags and fields. A document type's dialog links the rule of its
+	// contacts, document types, tags of each scope and fields. A document type's dialog links the rule of its
 	// title pattern, unless it was opened from that rule.
 	const request = $derived(masterDataDialogs.request);
 	const simple = $derived(
@@ -24,6 +31,7 @@
 	let types = $state<MasterData[]>([]);
 	let ruleId = $state<string | null>(null);
 	let fields = $state<FieldDefinition[] | null>(null);
+	let tags = $state<Tag[]>([]);
 	let ready = $state(false);
 
 	// What the dialog shows, loaded where only an id is given. It returns before it is assigned:
@@ -35,7 +43,7 @@
 				typeof wanted.item === 'string'
 					? await unwrap(api.GET('/api/v1/fields/{id}', { params: { path: { id: wanted.item } } }))
 					: (wanted.item as FieldDefinition | null);
-			return { kinds, definition, entry: null, rule: null, all: null };
+			return { kinds, definition, entry: null, rule: null, all: null, every: [] };
 		}
 		const entry =
 			typeof wanted.item === 'string'
@@ -50,7 +58,9 @@
 		}
 		// A document type shows its fields.
 		const all = wanted.kind === 'document-types' ? await unwrap(api.GET('/api/v1/fields')) : null;
-		return { kinds: null, definition: null, entry, rule, all };
+		// A tag goes under another; contacts and types are in groups.
+		const every = await unwrap(api.GET('/api/v1/tags'));
+		return { kinds: null, definition: null, entry, rule, all, every };
 	}
 
 	$effect(() => {
@@ -63,9 +73,10 @@
 		if (!wanted) return;
 		let current = true;
 		loaded(wanted).then(
-			({ kinds, definition, entry, rule, all }) => {
+			({ kinds, definition, entry, rule, all, every }) => {
 				if (!current) return;
 				if (kinds) types = kinds;
+				tags = every;
 				[item, field, ruleId, fields, ready] = [entry, definition, rule, all, true];
 			},
 			(failure) => {
@@ -108,6 +119,8 @@
 		submitLabel={item ? m.save() : m.create()}
 		ruleHref={ruleId ? `${BASE}/rules/${ruleId}` : null}
 		{fields}
+		{tags}
+		scope={isTagKind(simple) ? TAG_KINDS[simple] : null}
 		onsubmit={submit}
 	/>
 {:else if request?.kind === 'fields'}

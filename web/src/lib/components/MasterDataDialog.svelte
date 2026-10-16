@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Workflow from '@lucide/svelte/icons/workflow';
 	import AssignmentList, { type Assignment } from '#lib/components/AssignmentList.svelte';
+	import MultiPicker from '#lib/components/MultiPicker.svelte';
+	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
@@ -11,12 +13,14 @@
 	import { describeError } from '#lib/errors.ts';
 	import { changesOf, type IdentifierRow, rowsOf } from '#lib/identifiers.ts';
 	import { type Extra, type Item, parseAliases, type Values } from '#lib/masterdata-api.ts';
-	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
+	import type { FieldDefinition, Tag, TagScope } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { below, ofScope, pathLabel, tagOptions } from '#lib/tags.ts';
 
-	// Create or change a contact (name, aliases, identifiers), a document type (name,
-	// description, title pattern, fields) or a tag (name). The API decides what is valid; its
-	// answer (e.g. 409 for a taken name) shows below.
+	// Create or change a contact (name, aliases, identifiers, groups), a document type (name,
+	// description, title pattern, fields, groups) or a tag (name, parent of its scope, how it is
+	// set, whether documents show it). The API decides what is valid; its answer (e.g. 409 for
+	// a taken name) shows below.
 	let {
 		open = $bindable(false),
 		title,
@@ -25,6 +29,8 @@
 		submitLabel = m.save(),
 		ruleHref = null,
 		fields = null,
+		tags = [],
+		scope = null,
 		onsubmit
 	}: {
 		open?: boolean;
@@ -36,6 +42,10 @@
 		ruleHref?: string | null;
 		/** Every field, for a document type's: those of the type are assigned there. */
 		fields?: readonly FieldDefinition[] | null;
+		/** Every tag: parents of a tag, groups of a contact or type. */
+		tags?: readonly Tag[];
+		/** The scope of a tag. */
+		scope?: TagScope | null;
 		onsubmit: (values: Values) => Promise<void>;
 	} = $props();
 
@@ -45,7 +55,24 @@
 	let description = $state('');
 	let titlePattern = $state('');
 	let assigned = $state<Assignment[]>([]);
+	let groupIds = $state<string[]>([]);
+	let parentId = $state('');
+	let manual = $state(false);
+	let shown = $state(true);
 	let error = $state<string | null>(null);
+	const groupScope = $derived<TagScope | null>(
+		extra === 'aliases' ? 'contact' : extra === 'description' ? 'document_type' : null
+	);
+	const isGroup = $derived(scope !== null && scope !== 'document');
+	// A tag goes under one of its scope, never under itself or one below it.
+	const parents = $derived.by(() => {
+		if (scope === null) return [];
+		const own = initial?.id;
+		const excluded = own ? below(tags, own).add(own) : new Set<string>();
+		return ofScope(tags, scope)
+			.filter((tag) => !excluded.has(tag.id))
+			.map((tag) => ({ value: tag.id, label: pathLabel(tag) }));
+	});
 	const typed = $derived((fields ?? []).filter((field) => field.document_type_ids !== null));
 	const everywhere = $derived((fields ?? []).filter((field) => field.document_type_ids === null));
 	let busy = $state(false);
@@ -57,6 +84,10 @@
 			identifiers = rowsOf(initial?.identifiers);
 			description = initial?.description ?? '';
 			titlePattern = initial?.title_pattern ?? '';
+			groupIds = [...(initial?.group_ids ?? [])];
+			parentId = initial?.parent_id ?? '';
+			manual = initial?.assignment === 'manual';
+			shown = initial?.shown ?? (scope === null || scope === 'document');
 			const id = initial?.id;
 			assigned = id
 				? typed
@@ -82,7 +113,11 @@
 				...changesOf(identifiers),
 				description: description.trim() || null,
 				title_pattern: titlePattern.trim() || null,
-				fields: extra === 'description' && fields ? assigned : null
+				fields: extra === 'description' && fields ? assigned : null,
+				group_ids: groupIds,
+				parent_id: parentId || null,
+				assignment: manual ? 'manual' : 'auto',
+				shown
 			});
 			open = false;
 		} catch (problem) {
@@ -101,6 +136,78 @@
 				<Field.Label for="master-name">{m.field_name()}</Field.Label>
 				<Input id="master-name" bind:value={name} maxlength={200} required />
 			</Field.Field>
+			{#if extra === 'tag' && scope !== null}
+				<Field.Field>
+					<Field.Label for="master-parent">
+						{isGroup ? m.tag_parent_group() : m.tag_parent()}
+					</Field.Label>
+					<NativeSelect
+						id="master-parent"
+						bind:value={parentId}
+						options={[{ value: '', label: m.tag_parent_none() }, ...parents]}
+						class="h-10"
+					/>
+				</Field.Field>
+				{#if !isGroup}
+					<fieldset class="flex flex-col gap-2">
+						<legend class="mb-2 text-sm font-medium">{m.tag_assignment()}</legend>
+						<div class="flex flex-wrap gap-x-6 gap-y-2">
+							<label class="flex items-center gap-2 text-sm">
+								<input
+									type="radio"
+									name="master-assignment"
+									checked={!manual}
+									onchange={() => (manual = false)}
+									class="size-4 accent-primary"
+								/>
+								{m.tag_assignment_auto()}
+							</label>
+							<label class="flex items-center gap-2 text-sm">
+								<input
+									type="radio"
+									name="master-assignment"
+									checked={manual}
+									onchange={() => (manual = true)}
+									class="size-4 accent-primary"
+								/>
+								{m.tag_assignment_manual()}
+							</label>
+						</div>
+						<Field.Description>{m.tag_assignment_hint()}</Field.Description>
+					</fieldset>
+				{/if}
+				<Field.Field>
+					<label class="flex items-center gap-2 text-sm font-medium">
+						<input
+							type="checkbox"
+							bind:checked={shown}
+							class="size-4 accent-primary"
+							aria-describedby="master-shown-hint"
+						/>
+						{m.tag_shown()}
+					</label>
+					<Field.Description id="master-shown-hint">
+						{isGroup ? m.tag_group_shown_hint() : m.tag_shown_hint()}
+					</Field.Description>
+				</Field.Field>
+			{/if}
+			{#if groupScope !== null}
+				<Field.Field>
+					<Field.Label for="master-groups">{m.master_groups()}</Field.Label>
+					<MultiPicker
+						id="master-groups"
+						label={m.master_groups()}
+						options={tagOptions(tags, groupScope)}
+						selected={groupIds}
+						onchange={(next) => (groupIds = next)}
+					/>
+					<Field.Description>
+						{groupScope === 'contact'
+							? m.master_contact_groups_hint()
+							: m.master_type_groups_hint()}
+					</Field.Description>
+				</Field.Field>
+			{/if}
 			{#if extra === 'aliases'}
 				<Field.Field>
 					<Field.Label for="master-aliases">{m.master_aliases()}</Field.Label>

@@ -11,12 +11,12 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
-	import { type Item, KINDS, type SimpleKind } from '#lib/masterdata-api.ts';
+	import { type Item, KINDS, type SimpleKind, type TagKind } from '#lib/masterdata-api.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
 
-	// Contacts, document types or tags: a list with add, change and delete.
-	let { kind }: { kind: SimpleKind } = $props();
+	// Contacts or document types: a list with add, change and delete (tags: `TagTreeList`).
+	let { kind }: { kind: Exclude<SimpleKind, TagKind> } = $props();
 	const ops = $derived(KINDS[kind]);
 
 	let items = $state<Item[] | null>(null);

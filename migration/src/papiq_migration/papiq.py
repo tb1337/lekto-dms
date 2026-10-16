@@ -95,8 +95,8 @@ class Papiq:
     async def me(self) -> dict[str, Any]:
         return await self._object("GET", "/auth/me")
 
-    async def items(self, path: str) -> list[dict[str, Any]]:
-        return cast("list[dict[str, Any]]", await self.request("GET", path))
+    async def items(self, path: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        return cast("list[dict[str, Any]]", await self.request("GET", path, params=params))
 
     async def documents(self, *, cursor: str | None = None) -> dict[str, Any]:
         params: dict[str, Any] = {"all_users": "true", "limit": 200}

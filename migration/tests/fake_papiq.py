@@ -84,7 +84,11 @@ class FakePapiq:
             "/spaces": self.spaces,
         }
         if path in simple:
-            return self._collection(path, simple[path], method, body)
+            store = simple[path]
+            if path == "/tags" and method == "GET" and "scope" in request.url.params:
+                scope = request.url.params["scope"]
+                store = {k: v for k, v in store.items() if v.get("scope", "document") == scope}
+            return self._collection(path, store, method, body)
         if found := re.fullmatch(r"/(users|fields)/([^/]+)", path):
             store = self.users if found[1] == "users" else self.fields
             if method == "PATCH" and found[2] in store:
@@ -126,8 +130,10 @@ class FakePapiq:
         if f"POST {path}" in self.refuse:
             return _problem(self.refuse[f"POST {path}"], "refused")
         name = str(body.get("username") or body.get("name"))
+        scope = body.get("scope", "document")  # tags: names are unique per scope
         if any(
             (item.get("username") or item["name"]).casefold() == name.casefold()
+            and (path != "/tags" or item.get("scope", "document") == scope)
             for item in store.values()
         ):
             return _problem(409, f"{name} exists")
@@ -154,6 +160,8 @@ class FakePapiq:
                 "choices": body.get("choices", []),
                 "document_type_ids": None,
             }
+        elif path == "/tags":
+            item = {"id": id, "name": name, "scope": body.get("scope", "document")}
         else:
             item = {"id": id, "name": name}
         store[id] = item

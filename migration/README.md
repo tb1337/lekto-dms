@@ -11,7 +11,7 @@ Papiq image.
 | Paperless-ngx | Papiq |
 | --- | --- |
 | Users | users by user name; missing ones are created without password, role `user`, inactive ones deactivated |
-| Correspondents, document types, tags | contacts, document types, tags, matched by name (case-insensitive) |
+| Correspondents, document types, tags | contacts, document types, document tags, matched by name (case-insensitive; tags among Papiq's document tags only, not its contact or type groups) |
 | Custom fields | global fields: string/longtext → text, url → link, date → date, boolean → yes/no, integer/float → number, monetary → amount, select → choice |
 | ASN, notes | fields `ASN` (number) and `Notizen` (text, one paragraph per note with date and author) |
 | Document date | document date |

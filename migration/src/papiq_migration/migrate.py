@@ -29,10 +29,12 @@ from papiq_migration.state import DOCUMENT_DONE, DocumentRow, State
 
 NEW, EXISTING, OMITTED, FAILED = "new", "existing", "omitted", "failed"
 DONE_PIPELINE = ("completed", "failed", "review")
-NAMED = (
-    ("contact", "/contacts", "correspondents", "contacts"),
-    ("document_type", "/document-types", "document_types", "document_types"),
-    ("tag", "/tags", "tags", "tags"),
+# Kind, path, Paperless's key, the key of the ids, and what lists the ones to match by name:
+# tags of documents only (a contact group of the same name is another thing).
+NAMED: tuple[tuple[str, str, str, str, dict[str, Any] | None], ...] = (
+    ("contact", "/contacts", "correspondents", "contacts", None),
+    ("document_type", "/document-types", "document_types", "document_types", None),
+    ("tag", "/tags", "tags", "tags", {"scope": "document"}),
 )
 
 Progress = Callable[[str], None]
@@ -136,8 +138,8 @@ class Migration:
 
     # --- reading Papiq -----------------------------------------------------------------------
 
-    async def _list(self, path: str) -> list[dict[str, Any]]:
-        return [] if self._target is None else await self._target.items(path)
+    async def _list(self, path: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        return [] if self._target is None else await self._target.items(path, params)
 
     async def _admin(self) -> None:
         if self._target is None:
@@ -268,8 +270,8 @@ class Migration:
     # --- contacts, document types, tags ------------------------------------------------------
 
     async def _master_data(self, snapshot: Snapshot) -> None:
-        for kind, path, source_key, ids_key in NAMED:
-            existing = {norm(item["name"]): item for item in await self._list(path)}
+        for kind, path, source_key, ids_key, listed in NAMED:
+            existing = {norm(item["name"]): item for item in await self._list(path, listed)}
             mapping: dict[int, str] = getattr(self.ids, ids_key)
             first: dict[str, str] = {}
             for item in getattr(snapshot, source_key):
@@ -294,7 +296,7 @@ class Migration:
                             if error.status != 409:
                                 raise
                             # Created by an earlier attempt whose answer was lost.
-                            again = {norm(i["name"]): i for i in await self._list(path)}
+                            again = {norm(i["name"]): i for i in await self._list(path, listed)}
                             if key not in again:
                                 raise
                             id, status = again[key]["id"], EXISTING

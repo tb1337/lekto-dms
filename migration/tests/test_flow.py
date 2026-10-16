@@ -432,3 +432,19 @@ async def test_the_check_compares_numbers_by_value_and_skips_what_a_stopped_pipe
     # A wrong amount is still found.
     document["fields"][gross] = {"amount": "9.9E+1", "currency": "EUR"}
     assert await setup.run("verify") == 1
+
+
+async def test_a_group_of_the_same_name_is_no_tag(setup: Setup) -> None:
+    """Papiq's names are unique per scope: a contact group named like a Paperless tag stays a
+    group, and the tag becomes a document tag of its own."""
+    setup.papiq.tags["group"] = {"id": "group", "name": "tax", "scope": "contact"}
+    assert await setup.run("run") == 0
+    tags = [t for t in setup.papiq.tags.values() if t["name"] == "tax"]
+    assert sorted(t.get("scope", "document") for t in tags) == ["contact", "document"]
+    document_tag = next(t for t in tags if t.get("scope") == "document")
+    taken = [
+        d for d in setup.papiq.documents.values() if document_tag["id"] in d.get("tag_ids", [])
+    ]
+    assert taken and not any(
+        "group" in d.get("tag_ids", []) for d in setup.papiq.documents.values()
+    )

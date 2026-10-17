@@ -23,6 +23,11 @@
 	// for (with the tags below it), add, change and delete.
 	let { kind }: { kind: TagKind } = $props();
 	const ops = $derived(KINDS[kind]);
+	const DELETE_CONFIRM: Record<TagKind, () => string> = {
+		tags: m.tag_delete_confirm,
+		'contact-groups': m.contact_group_delete_confirm,
+		'type-groups': m.type_group_delete_confirm
+	};
 
 	let items = $state<Tag[] | null>(null);
 	let problem = $state<string | null>(null);
@@ -161,7 +166,7 @@
 <ConfirmDialog
 	bind:open={() => removing !== null, (open) => !open && (removing = null)}
 	title={m.master_delete({ name: removing?.name ?? '' })}
-	description={m.tag_delete_confirm()}
+	description={DELETE_CONFIRM[kind]()}
 	confirmLabel={m.delete_title()}
 	onconfirm={remove}
 />

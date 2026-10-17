@@ -63,4 +63,9 @@ describe('TagsInput', () => {
 		expect(screen.getByText('Paid')).toBeTruthy();
 		expect(screen.queryByRole('option', { name: 'Insurance' })).toBeNull();
 	});
+
+	it('keeps the id for the label when there is nothing to add', () => {
+		const { container } = render(TagsInput, { tags: [], all: ALL, id: 'tags', disabled: true });
+		expect(container.querySelector('#tags')?.getAttribute('aria-labelledby')).toBe('tags-label');
+	});
 });

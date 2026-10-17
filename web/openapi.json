@@ -2907,7 +2907,7 @@
           "master data"
         ],
         "summary": "Create a contact",
-        "description": "Admins only. Names are unique regardless of case.",
+        "description": "Admins only. Names are unique regardless of case. A group in `group_ids` that does not exist is `404`, one of another scope `422`.",
         "operationId": "create_contact_api_v1_contacts_post",
         "requestBody": {
           "required": true,
@@ -2958,6 +2958,22 @@
                   "title": "Forbidden",
                   "status": 403,
                   "detail": "only the owner controls processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
                 }
               }
             }
@@ -3146,7 +3162,7 @@
           "master data"
         ],
         "summary": "Change a contact",
-        "description": "Admins only.",
+        "description": "Admins only. A group in `group_ids` that does not exist is `404`, one of another scope `422`.",
         "operationId": "change_contact_api_v1_contacts__id__patch",
         "parameters": [
           {
@@ -3725,7 +3741,7 @@
           "master data"
         ],
         "summary": "Create a document type",
-        "description": "Admins only. Names are unique regardless of case.",
+        "description": "Admins only. Names are unique regardless of case. A group in `group_ids` that does not exist is `404`, one of another scope `422`.",
         "operationId": "create_document_type_api_v1_document_types_post",
         "requestBody": {
           "required": true,
@@ -3776,6 +3792,22 @@
                   "title": "Forbidden",
                   "status": 403,
                   "detail": "only the owner controls processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
                 }
               }
             }
@@ -3964,7 +3996,7 @@
           "master data"
         ],
         "summary": "Change a document type",
-        "description": "Admins only.",
+        "description": "Admins only. A group in `group_ids` that does not exist is `404`, one of another scope `422`.",
         "operationId": "change_document_type_api_v1_document_types__id__patch",
         "parameters": [
           {

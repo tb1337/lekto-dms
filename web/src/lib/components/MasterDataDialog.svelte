@@ -144,7 +144,10 @@
 					<NativeSelect
 						id="master-parent"
 						bind:value={parentId}
-						options={[{ value: '', label: m.tag_parent_none() }, ...parents]}
+						options={[
+							{ value: '', label: isGroup ? m.tag_parent_group_none() : m.tag_parent_none() },
+							...parents
+						]}
 						class="h-10"
 					/>
 				</Field.Field>

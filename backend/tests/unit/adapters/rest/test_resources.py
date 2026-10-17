@@ -653,6 +653,10 @@ async def test_tags_with_scopes_trees_and_groups(api: Api) -> None:
         f"{PREFIX}/contacts/{contact['id']}", json={"group_ids": [bills["id"]]}, headers=a
     )
     assert wrong.status_code == 422, wrong.text
+    unknown = await api.client.post(
+        f"{PREFIX}/document-types", json={"name": "X", "group_ids": [str(UUID(int=8))]}, headers=a
+    )
+    assert unknown.status_code == 404, unknown.text
 
     document = await green_document(api, o)
     changed = await api.client.patch(

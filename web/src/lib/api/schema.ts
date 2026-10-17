@@ -439,7 +439,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Create a contact
-		 * @description Admins only. Names are unique regardless of case.
+		 * @description Admins only. Names are unique regardless of case. A group in `group_ids` that does not exist is `404`, one of another scope `422`.
 		 */
 		post: operations['create_contact_api_v1_contacts_post'];
 		delete?: never;
@@ -468,7 +468,7 @@ export interface paths {
 		head?: never;
 		/**
 		 * Change a contact
-		 * @description Admins only.
+		 * @description Admins only. A group in `group_ids` that does not exist is `404`, one of another scope `422`.
 		 */
 		patch: operations['change_contact_api_v1_contacts__id__patch'];
 		trace?: never;
@@ -508,7 +508,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Create a document type
-		 * @description Admins only. Names are unique regardless of case.
+		 * @description Admins only. Names are unique regardless of case. A group in `group_ids` that does not exist is `404`, one of another scope `422`.
 		 */
 		post: operations['create_document_type_api_v1_document_types_post'];
 		delete?: never;
@@ -537,7 +537,7 @@ export interface paths {
 		head?: never;
 		/**
 		 * Change a document type
-		 * @description Admins only.
+		 * @description Admins only. A group in `group_ids` that does not exist is `404`, one of another scope `422`.
 		 */
 		patch: operations['change_document_type_api_v1_document_types__id__patch'];
 		trace?: never;
@@ -7921,6 +7921,23 @@ export interface operations {
 					'application/problem+json': components['schemas']['Problem'];
 				};
 			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
 			/** @description Conflict */
 			409: {
 				headers: {
@@ -8637,6 +8654,23 @@ export interface operations {
 					 *       "title": "Forbidden",
 					 *       "status": 403,
 					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

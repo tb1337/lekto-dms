@@ -29,6 +29,7 @@
 		return ofScope(all, 'document').filter((tag) => !tags.includes(tag.id) && !higher.has(tag.id));
 	});
 	const found = $derived(free.filter((tag) => matchesQuery(tag, query)));
+	const addable = $derived(!disabled && free.length > 0);
 
 	function chip(id: string): Pick<Tag, 'id' | 'name' | 'path'> {
 		return byId.get(id) ?? { id, name: id, path: [id] };
@@ -41,8 +42,14 @@
 	}
 </script>
 
-{#if tags.length > 0}
-	<div class="flex flex-wrap gap-1.5">
+<!-- The chips carry `id` while there is no button to add one: the field's label points here. -->
+{#if tags.length > 0 || !addable}
+	<div
+		id={addable ? undefined : id}
+		role="group"
+		aria-labelledby="{id}-label"
+		class="flex flex-wrap gap-1.5"
+	>
 		{#each tags as tag (tag)}
 			<TagChip
 				tag={chip(tag)}
@@ -53,7 +60,7 @@
 		{/each}
 	</div>
 {/if}
-{#if !disabled && free.length > 0}
+{#if addable}
 	<Popover.Root bind:open>
 		<Popover.Trigger
 			{id}

@@ -103,9 +103,11 @@ def _simple(
         name=f"create_{name}",
         status_code=201,
         summary=f"Create a {kind}",
-        description=ADMINS_ONLY + " Names are unique regardless of case.",
+        description=ADMINS_ONLY
+        + " Names are unique regardless of case. A group in `group_ids` that does not exist "
+        "is `404`, one of another scope `422`.",
         response_model=out,
-        responses=problem_responses(401, 403, 409, 422),
+        responses=problem_responses(401, 403, 404, 409, 422),
     )
     async def create(
         body: create_in,  # type: ignore[valid-type]
@@ -129,7 +131,8 @@ def _simple(
         "/{id}",
         name=f"{change}_{name}",
         summary=f"{change.capitalize()} a {kind}",
-        description=ADMINS_ONLY,
+        description=ADMINS_ONLY
+        + " A group in `group_ids` that does not exist is `404`, one of another scope `422`.",
         response_model=out,
         responses=problem_responses(401, 403, 404, 409, 422),
     )

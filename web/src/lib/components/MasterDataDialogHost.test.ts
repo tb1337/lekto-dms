@@ -125,6 +125,7 @@ describe('MasterDataDialogHost', () => {
 		expect(screen.queryByLabelText(m.tag_assignment_auto())).toBeNull();
 		const parent = screen.getByLabelText(m.tag_parent_group()) as HTMLSelectElement;
 		expect([...parent.options].map((option) => option.value)).toEqual(['', 'g1']);
+		expect(parent.options[0].textContent?.trim()).toBe(m.tag_parent_group_none());
 		expect((screen.getByLabelText(m.tag_shown()) as HTMLInputElement).checked).toBe(false);
 	});
 });

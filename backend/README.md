@@ -699,7 +699,9 @@ a temporary Meilisearch index and runs the queries of `evaluation/search/queries
   at `contacts/<id>/logo.webp` (`objects.logo_key`); the contact keeps where it came from
   (`uploaded` or `fetched`), the domain of a fetched one and when it was stored
   (`Contact.logo`), and the domains whose fetch found none (`logo_failure`). It goes with its
-  contact. File and contact change under one lock per contact (`logos.logo_lock`).
+  contact. File and contact change under one lock per contact (`logos.logo_lock`), the
+  contact's row before the file: another change of the contact meanwhile fails the version
+  check before the file is replaced, and the step starts again (three times).
   - *Upload* (admins): a PNG, JPEG or WebP image of at most 1 MiB, recognised by content; SVG is
     refused (`415`: it can carry scripts). The port `ImageNormaliser` (Pillow,
     `adapters/outbound/pillow`) reads PNG, JPEG, WebP and ICO only, checks the size before it

@@ -11,6 +11,7 @@ from papiq.adapters.outbound.memory import (
     FakeImageNormaliser,
     FakeLogoFetcher,
     MemoryObjectStore,
+    MemoryUnitOfWork,
 )
 from papiq.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
 from papiq.core.domain.errors import (
@@ -23,7 +24,7 @@ from papiq.core.domain.errors import (
     ValidationError,
 )
 from papiq.core.domain.identifiers import Identifier, IdentifierKind
-from papiq.core.domain.ids import ContactId, new_id
+from papiq.core.domain.ids import ContactId, UserId, new_id
 from papiq.core.domain.jobs import JobStatus
 from papiq.core.domain.master_data import Contact
 from papiq.core.domain.users import Role
@@ -378,3 +379,74 @@ async def test_a_contact_gone_meanwhile_gets_no_logo(world: World) -> None:
     await master.delete_contact(admin.id, contact.id)
     assert await run_all(logos) == 1
     assert not await world.object_store.exists(logo_key(contact.id))
+
+
+class Meanwhile(MemoryObjectStore):
+    """An object store during whose first `put` an admin renames the contact elsewhere."""
+
+    def __init__(self, world: World, admin: UserId, contact: ContactId, name: str) -> None:
+        super().__init__()
+        self.world, self.admin, self.contact, self.name = world, admin, contact, name
+        self.puts = 0
+
+    async def put(self, key: str, data: bytes, *, content_type: str) -> None:
+        self.puts += 1
+        if self.puts == 1:
+            await self.world.master_data.change_contact(self.admin, self.contact, name=self.name)
+        await super().put(key, data, content_type=content_type)
+
+
+async def test_a_contact_changed_while_its_logo_is_stored_is_stored_again(world: World) -> None:
+    """The row first, then the file; a change of the contact meanwhile (which takes no logo
+    lock) fails the version check, and the step starts again on the new state, so that file
+    and row tell the same logo."""
+    admin = await world.user(role=Role.ADMIN)
+    contact = await world.master_data.create_contact(admin.id, "Nord", identifiers=[DOMAIN])
+    store = Meanwhile(world, admin.id, contact.id, "Nord AG")
+    world.object_store = store
+    uploaded = await world.logos.upload(admin.id, contact.id, PNG)
+    assert store.puts == 2
+    final = await stored(world, contact.id)
+    assert (final.name, final.logo) == ("Nord AG", uploaded.logo)
+    assert final.logo is not None and final.logo.source is LogoSource.UPLOADED
+    assert await store.get(logo_key(contact.id)) == FAKE_LOGO
+
+    # The same for a fetched logo.
+    sued = Identifier(IdentifierKind.EMAIL_DOMAIN, "sued.example")
+    other = await world.master_data.create_contact(admin.id, "Süd", identifiers=[sued])
+    store = Meanwhile(world, admin.id, other.id, "Süd AG")
+    world.object_store = store
+    _, logos = world.fetching(FakeLogoFetcher({"sued.example": PNG}))
+    assert await logos.fetch(other.id, domain="sued.example")
+    fetched = await stored(world, other.id)
+    assert fetched.name == "Süd AG" and store.puts == 2
+    assert fetched.logo is not None and fetched.logo.domain == "sued.example"
+
+
+async def test_the_row_is_written_before_the_file(world: World) -> None:
+    admin = await world.user(role=Role.ADMIN)
+    contact = await world.master_data.create_contact(admin.id, "Nord")
+    order: list[str] = []
+
+    class Recording(MemoryObjectStore):
+        async def put(self, key: str, data: bytes, *, content_type: str) -> None:
+            order.append("put")
+            await super().put(key, data, content_type=content_type)
+
+    world.object_store = Recording()
+    factory = world.uow
+
+    def recording() -> MemoryUnitOfWork:
+        uow = factory()
+        update = uow.contacts.update
+
+        async def recorded(item: Contact) -> None:
+            order.append("update")
+            await update(item)
+
+        uow.contacts.update = recorded  # type: ignore[method-assign, assignment]
+        return uow
+
+    logos = LogoService(recording, world.clock, world.object_store, world.images)
+    await logos.upload(admin.id, contact.id, PNG)
+    assert order == ["update", "put"]

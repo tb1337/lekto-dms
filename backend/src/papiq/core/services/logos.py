@@ -4,7 +4,10 @@ user (master data is global).
 The logo is stored as a small WebP at `objects.logo_key`; the contact names where it came from
 and when (`Contact.logo`). Storing and removing the file and the contact's change happen under
 one lock per contact (`logo_lock`), so that the file and the contact always tell the same
-logo, also when an upload, a removal, a deletion of the contact and a fetch meet.
+logo, also when an upload, a removal, a deletion of the contact and a fetch meet. The row is
+written before the file: another change of the contact meanwhile (it takes no logo lock) fails
+the row's version check there, on SQL before the file is touched (and holds the row until the
+commit), and the step starts again on the new state (`_retrying`).
 
 Fetching (with a `LogoFetcher`, `PAPIQ_LOGO_FETCH`) runs as the job `contacts.logo`, queued
 when a contact without a logo gets a domain among its identifiers (entered by hand, learned by
@@ -16,7 +19,7 @@ noted (`Contact.logo_failure`); they are tried again only when an admin asks.
 
 import asyncio
 import logging
-from collections.abc import Collection
+from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -62,6 +65,7 @@ MAX_DOMAINS = 3
 _LEASE = timedelta(minutes=10)
 _ATTEMPTS = 3  # tries of a job that broke for another reason than the website
 _RETRY_DELAY = timedelta(minutes=5)
+_COMMIT_ATTEMPTS = 3  # the contact changed while its logo was stored: again
 
 
 def logo_lock(contact: ContactId) -> str:
@@ -110,30 +114,39 @@ class LogoService:
         if media_types.detect_image(data[: media_types.SNIFF_SIZE]) not in media_types.LOGO_UPLOADS:
             raise UnsupportedMediaTypeError("a logo is a PNG, JPEG or WebP image")
         image = await self._images.normalise(data)
-        async with self._uow() as uow:
-            await uow.lock(logo_lock(id))
-            await _require_admin(uow, actor)
-            contact = await uow.contacts.get(id)
-            await self._store.put(logo_key(id), image, content_type=LOGO_TYPE)
-            contact.set_logo(ContactLogo(source=LogoSource.UPLOADED, stored_at=self._clock.now()))
-            await uow.contacts.update(contact)
-            await uow.commit()
-        return contact
+
+        async def store() -> Contact:
+            async with self._uow() as uow:
+                await uow.lock(logo_lock(id))
+                await _require_admin(uow, actor)
+                contact = await uow.contacts.get(id)
+                logo = ContactLogo(source=LogoSource.UPLOADED, stored_at=self._clock.now())
+                contact.set_logo(logo)
+                await uow.contacts.update(contact)
+                await self._store.put(logo_key(id), image, content_type=LOGO_TYPE)
+                await uow.commit()
+            return contact
+
+        return await _retrying(store)
 
     async def remove(self, actor: UserId, id: ContactId) -> Contact:
         """Admins only: the contact shows its initials again; a failed fetch noted is
         forgotten."""
-        async with self._uow() as uow:
-            await uow.lock(logo_lock(id))
-            await _require_admin(uow, actor)
-            contact = await uow.contacts.get(id)
-            if contact.logo is None and contact.logo_failure is None:
-                return contact
-            contact.remove_logo()
-            await uow.contacts.update(contact)
-            await self._store.delete(logo_key(id))
-            await uow.commit()
-        return contact
+
+        async def drop() -> Contact:
+            async with self._uow() as uow:
+                await uow.lock(logo_lock(id))
+                await _require_admin(uow, actor)
+                contact = await uow.contacts.get(id)
+                if contact.logo is None and contact.logo_failure is None:
+                    return contact
+                contact.remove_logo()
+                await uow.contacts.update(contact)
+                await self._store.delete(logo_key(id))
+                await uow.commit()
+            return contact
+
+        return await _retrying(drop)
 
     async def logo(self, actor: UserId, id: ContactId) -> StoredLogo:
         """Every signed-in user. NotFoundError if the contact has no logo."""
@@ -199,8 +212,8 @@ class LogoService:
         `domain`: only that one, while it is the contact's, has no failed fetch and the
         contact has no logo. `asked` (an admin's request, no domain): the contact's domains
         in turn (at most `MAX_DOMAINS`), also one that failed, replacing a fetched logo. An
-        uploaded logo is never replaced; a fetch that finds nothing is noted with the first
-        domain tried."""
+        uploaded logo is never replaced; a fetch that finds nothing notes the domains it
+        tried."""
         assert self._fetcher is not None
         async with self._uow() as uow:
             contact = await uow.contacts.find(id)
@@ -215,22 +228,29 @@ class LogoService:
         if not domains:
             return False
         found = await self._found(domains)
-        async with self._uow() as uow:
-            await uow.lock(logo_lock(id))
-            contact = await uow.contacts.find(id)
-            if contact is None or _uploaded(contact) or (not asked and contact.logo is not None):
-                return False
-            now = self._clock.now()
-            if found is None:
-                contact.note_failed_fetch(domains, now)
-            else:
-                await self._store.put(logo_key(id), found[1], content_type=LOGO_TYPE)
-                contact.set_logo(
-                    ContactLogo(source=LogoSource.FETCHED, stored_at=now, domain=found[0])
-                )
-            await uow.contacts.update(contact)
-            await uow.commit()
-        return found is not None
+
+        async def store() -> bool:
+            async with self._uow() as uow:
+                await uow.lock(logo_lock(id))
+                contact = await uow.contacts.find(id)
+                if contact is None or _uploaded(contact):
+                    return False
+                if not asked and contact.logo is not None:
+                    return False
+                now = self._clock.now()
+                if found is None:
+                    contact.note_failed_fetch(domains, now)
+                else:
+                    contact.set_logo(
+                        ContactLogo(source=LogoSource.FETCHED, stored_at=now, domain=found[0])
+                    )
+                await uow.contacts.update(contact)
+                if found is not None:
+                    await self._store.put(logo_key(id), found[1], content_type=LOGO_TYPE)
+                await uow.commit()
+            return found is not None
+
+        return await _retrying(store)
 
     async def _found(self, domains: Collection[str]) -> tuple[str, bytes] | None:
         """The first logo the websites at `domains` have, made a logo, with its domain."""
@@ -289,6 +309,18 @@ class LogoService:
                 await uow.commit()
         except ConcurrencyError:
             log.warning("lost the claim of a logo job", extra={"job_id": str(job.id)})
+
+
+async def _retrying[T](step: Callable[[], Awaitable[T]]) -> T:
+    """`step` again while the contact changed meanwhile, at most `_COMMIT_ATTEMPTS` times."""
+    for attempt in range(1, _COMMIT_ATTEMPTS + 1):
+        try:
+            return await step()
+        except ConcurrencyError:
+            if attempt == _COMMIT_ATTEMPTS:
+                raise
+            log.info("a contact changed while its logo was stored; storing again")
+    raise AssertionError("unreachable")
 
 
 async def queue_logo_fetch(

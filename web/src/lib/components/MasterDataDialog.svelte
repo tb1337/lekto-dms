@@ -2,6 +2,7 @@
 	import Workflow from '@lucide/svelte/icons/workflow';
 	import AssignmentList, { type Assignment } from '#lib/components/AssignmentList.svelte';
 	import ColorPicker from '#lib/components/ColorPicker.svelte';
+	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import ContactLogoEditor from '#lib/components/ContactLogoEditor.svelte';
 	import IconPicker from '#lib/components/IconPicker.svelte';
 	import EditorShell from '#lib/components/EditorShell.svelte';
@@ -196,6 +197,13 @@
 	}
 </script>
 
+{#snippet nameField()}
+	<Field.Field>
+		<Field.Label for="{uid}-name">{m.field_name()}</Field.Label>
+		<Input id="{uid}-name" bind:value={name} maxlength={200} required />
+	</Field.Field>
+{/snippet}
+
 <EditorShell
 	bind:open
 	{title}
@@ -239,12 +247,26 @@
 		</fieldset>
 	{/if}
 	{#if extra !== 'tag' || kind !== null}
-		<Field.Field>
-			<Field.Label for="{uid}-name">{m.field_name()}</Field.Label>
-			<Input id="{uid}-name" bind:value={name} maxlength={200} required />
-		</Field.Field>
+		{#if extra === 'aliases' && phone.current}
+			<!-- On a phone the logo stands beside the name, what to do with it below. -->
+			{#if initial}
+				<ContactLogoEditor contact={initial as Contact} {fetching} onchanged={onlogo}>
+					{#snippet beside()}{@render nameField()}{/snippet}
+				</ContactLogoEditor>
+			{:else}
+				<div class="flex flex-col gap-2" data-logo-beside>
+					<div class="flex items-center gap-3">
+						<ContactAvatar contact={{ name }} size="xl" />
+						<div class="min-w-0 flex-1">{@render nameField()}</div>
+					</div>
+					<p class="pl-17 text-xs text-muted-foreground">{m.logo_after_create()}</p>
+				</div>
+			{/if}
+		{:else}
+			{@render nameField()}
+		{/if}
 	{/if}
-	{#if extra === 'aliases'}
+	{#if extra === 'aliases' && !phone.current}
 		<Field.Field>
 			<Field.Label>{m.logo_title()}</Field.Label>
 			{#if initial}

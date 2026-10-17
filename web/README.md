@@ -86,7 +86,8 @@ lists filter by `?group=` and `?topic=`). A new tag without a kind asks for it f
 
 On a phone (below `sm`, `lib/phone.svelte.ts`) a whole row opens the editor (`MasterRow`), and
 the editors fill the screen with a bar on top (`EditorShell`); wider, the editors are dialogs
-whose footer stays while the body scrolls. Deleting is in the editors. Groups and topics are
+whose footer stays while the body scrolls. The contact editor puts the logo beside the name on a
+phone, uploading and fetching below them (`ContactLogoEditor` with `beside`). Deleting is in the editors. Groups and topics are
 picked in a sheet or dialog over the editor (`TagPicker`); there, in the document's tag input
 and in its topic field, an admin's search that finds no tag of the kind named so offers to
 create one at once or with details in a second dialog (`lib/tag-create.ts`,

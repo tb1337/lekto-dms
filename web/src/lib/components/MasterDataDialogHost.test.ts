@@ -265,6 +265,30 @@ describe('looks', () => {
 		expect(document.querySelector('[data-initials]')?.textContent?.trim()).toBe('NV');
 	});
 
+	it('puts a contact’s logo beside its name on a phone, what to do with it below', async () => {
+		phone.override(true);
+		const user = userEvent.setup();
+		render(WithDialogs);
+		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
+		const name = await screen.findByDisplayValue('Nord Versicherungsgruppe');
+		const block = name.closest('[data-logo-beside]') as HTMLElement;
+		const [row, below] = [...block.children] as HTMLElement[];
+		expect(row.contains(name) && row.querySelector('img')?.getAttribute('src')).toBe(FETCHED.url);
+		expect(within(below).getByRole('button', { name: m.logo_upload() })).toBeTruthy();
+		expect(within(below).getByRole('button', { name: m.logo_fetch_short() })).toBeTruthy();
+		expect(within(below).getByText(/nord\.example/, { selector: 'span' })).toBeTruthy();
+		// Nothing of the logo under its own label any more.
+		expect(screen.queryByText(m.logo_title())).toBeNull();
+		masterDataDialogs.close();
+		await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		// A new contact: its initials beside the name as it is typed.
+		masterDataDialogs.open('contacts');
+		await user.type(await screen.findByLabelText(m.field_name()), 'Süd Bank');
+		const fresh = screen.getByLabelText(m.field_name()).closest('[data-logo-beside]')!;
+		expect(fresh.querySelector('[data-initials]')?.textContent?.trim()).toBe('SB');
+		expect(within(fresh as HTMLElement).getByText(m.logo_after_create())).toBeTruthy();
+	});
+
 	it('names the domains whose fetch found no logo', async () => {
 		render(WithDialogs);
 		const failed = {

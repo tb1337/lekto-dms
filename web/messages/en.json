@@ -904,6 +904,7 @@
 	"logo_upload": "Upload logo",
 	"logo_remove": "Remove logo",
 	"logo_fetch": "Fetch from website",
+	"logo_fetch_short": "From website",
 	"logo_fetch_queued": "The logo is being fetched; it shows once it is there.",
 	"logo_upload_hint": "PNG, JPEG or WebP, at most 1 MB. Papiq keeps it at up to 128 pixels.",
 	"logo_fetch_hint": "Asks the contact's own website (its domain among the identifiers) for its icon. An uploaded logo is never replaced.",

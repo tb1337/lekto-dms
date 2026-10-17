@@ -10,7 +10,7 @@
 		class: className
 	}: {
 		contact: { name: string; logo?: { url: string } | null };
-		size?: 'xs' | 'sm' | 'md' | 'lg';
+		size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 		class?: string;
 	} = $props();
 
@@ -18,7 +18,8 @@
 		xs: 'size-5 text-[0.5625rem]',
 		sm: 'size-6 text-[0.625rem]',
 		md: 'size-8 text-xs',
-		lg: 'size-12 text-base'
+		lg: 'size-12 text-base',
+		xl: 'size-14 text-lg'
 	};
 	let broken = $state<string | null>(null);
 	const url = $derived(contact.logo?.url ?? null);

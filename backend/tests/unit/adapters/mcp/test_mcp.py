@@ -443,6 +443,32 @@ async def test_update_metadata_changes_what_is_given(api: Api, scene: Scene) -> 
     assert rest["title"] == "Strom März" and rest["contact_id"] is None
 
 
+async def test_the_topic_is_read_and_set_by_its_name(api: Api, scene: Scene) -> None:
+    admin = await api.admin()
+    master = api.services.master_data
+    work = await master.create_tag(admin.id, "Arbeit", scope=TagScope.TOPIC)
+    other = await master.create_tag(admin.id, "Girokonto", scope=TagScope.TOPIC)
+    await master.create_contact(admin.id, "Nord", topic_ids=[work.id])
+    writer = scene.headers["writer"]
+    result = data(
+        await call(api, writer, "update_metadata", id=scene.green, contact="nord", topic="arbeit")
+    )
+    assert result["document"]["topic"] == {"id": str(work.id), "name": "Arbeit"}
+    document = data(await call(api, scene.headers["reader"], "get_document", id=scene.green))
+    assert document["topic"]["name"] == "Arbeit"
+    # Only one the contact enables; a tag is no topic; null removes it.
+    assert "does not enable" in error(
+        await call(api, writer, "update_metadata", id=scene.green, topic=other.name)
+    )
+    assert "no topic named" in error(
+        await call(api, writer, "update_metadata", id=scene.green, topic="Strom")
+    )
+    cleared = data(await call(api, writer, "update_metadata", id=scene.green, topic=None))
+    assert cleared["document"]["topic"] is None
+    topics = data(await call(api, writer, "list_tags", scope="topic"))["tags"]
+    assert [tag["path"] for tag in topics] == [["Arbeit"], ["Girokonto"]]
+
+
 async def test_update_metadata_needs_a_read_write_token_and_write_access(
     api: Api, scene: Scene
 ) -> None:

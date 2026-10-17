@@ -104,8 +104,8 @@ def _simple(
         status_code=201,
         summary=f"Create a {kind}",
         description=ADMINS_ONLY
-        + " Names are unique regardless of case. A group in `group_ids` that does not exist "
-        "is `404`, one of another scope `422`.",
+        + " Names are unique regardless of case. A group in `group_ids` (a topic in "
+        "`topic_ids`) that does not exist is `404`, one of another scope `422`.",
         response_model=out,
         responses=problem_responses(401, 403, 404, 409, 422),
     )
@@ -132,7 +132,8 @@ def _simple(
         name=f"{change}_{name}",
         summary=f"{change.capitalize()} a {kind}",
         description=ADMINS_ONLY
-        + " A group in `group_ids` that does not exist is `404`, one of another scope `422`.",
+        + " A group in `group_ids` (a topic in `topic_ids`) that does not exist is `404`, one "
+        "of another scope `422`.",
         response_model=out,
         responses=problem_responses(401, 403, 404, 409, 422),
     )
@@ -161,11 +162,19 @@ def _simple(
 
 
 def _contact_arguments(given: dict[str, Any]) -> dict[str, Any]:
-    """Identifiers as written, normalised (ValidationError, 422, if one is none)."""
+    """Identifiers as written, normalised (ValidationError, 422, if one is none), with their
+    topic; a rejected one has none."""
     for key in ("identifiers", "rejected_identifiers"):
         if given.get(key) is not None:
             given[key] = [
-                Identifier.parse(IdentifierKind(item["kind"]), item["value"]) for item in given[key]
+                Identifier.parse(
+                    IdentifierKind(item["kind"]),
+                    item["value"],
+                    topic_id=None
+                    if key == "rejected_identifiers" or item.get("topic_id") is None
+                    else TagId(item["topic_id"]),
+                )
+                for item in given[key]
             ]
     return given
 
@@ -181,10 +190,11 @@ contacts = _simple(
     summary="Attach an identifier to a contact",
     description=(
         ADMINS_ONLY + " Enters one identifier by hand (as found on a document, see `GET "
-        "/documents/{id}/facts`); the contact's other identifiers stay as they are. One the "
-        "contact learned or rejected is then entered by hand; one another contact learned or "
-        "rejected moves here; 409 if another contact has it entered by hand. Documents use it "
-        "from their next processing on."
+        "/documents/{id}/facts`), with a topic the contact enables (422 otherwise) or none; the "
+        "contact's other identifiers stay as they are. One the contact learned or rejected is "
+        "then entered by hand; one another contact learned or rejected moves here; 409 if "
+        "another contact has it entered by hand. Documents use it from their next processing "
+        "on."
     ),
     response_model=ContactOut,
     responses=problem_responses(401, 403, 404, 409, 422),
@@ -192,7 +202,8 @@ contacts = _simple(
 async def attach_identifier(
     id: UUID, body: IdentifierIn, user: CurrentUser, context: Context
 ) -> ContactOut:
-    identifier = Identifier.parse(body.kind, body.value)
+    topic = None if body.topic_id is None else TagId(body.topic_id)
+    identifier = Identifier.parse(body.kind, body.value, topic_id=topic)
     return ContactOut.of(await context.master_data.add_identifier(user, ContactId(id), identifier))
 
 
@@ -218,9 +229,9 @@ async def _tree(context: ApiContext, user: UserId) -> TagTree:
     "",
     summary="List tags",
     description=(
-        "Tags of every scope, or of `scope`: document tags, contact groups, type groups. In "
-        "the order of their trees: each after its parent, siblings by name (scopes in this "
-        "order). Everyone reads them. With `document_counts`, each comes with how many "
+        "Tags of every scope, or of `scope`: document tags, contact groups, type groups, "
+        "topics. In the order of their trees: each after its parent, siblings by name (scopes "
+        "in this order). Everyone reads them. With `document_counts`, each comes with how many "
         "documents within the caller's reach it stands for (`TagOut.document_count`); admins "
         "count every document with `all_users` (others: 403)."
     ),
@@ -305,8 +316,9 @@ async def change_tag(id: UUID, body: TagPatch, user: CurrentUser, context: Conte
     status_code=204,
     summary="Delete a tag",
     description=ADMINS_ONLY
-    + " Only a tag without tags below it that nothing uses: no document carries it, no "
-    "contact or document type is in it, no rule refers to it (409).",
+    + " Only a tag without tags below it that nothing uses: no document carries it (as a "
+    "tag or its topic), no contact or document type is in it, no contact enables it as a "
+    "topic, no rule refers to it (409).",
     responses=problem_responses(401, 403, 404, 409, 422),
 )
 async def delete_tag(id: UUID, user: CurrentUser, context: Context) -> None:

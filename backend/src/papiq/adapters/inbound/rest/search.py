@@ -28,7 +28,7 @@ router = APIRouter(tags=["search"], dependencies=PROTECTED)
         "Full text and, if the installation has embeddings, meaning in one call. Finds the "
         "documents within the caller's reach, the same ones as `GET /documents` lists, with the "
         "same filters (they combine; `tag_id`, `contact_group_id`, `document_type_group_id` "
-        "and `lane` may repeat); admins search every "
+        "and `lane` may repeat, `topic_id` takes the topics below it); admins search every "
         "document with `all_users` (others: 403). Each hit is checked "
         "against the permissions once more before it is returned. The index follows the "
         "documents a moment later, so a new document may take a few seconds to turn up. "
@@ -50,6 +50,7 @@ async def search_documents(
     field_id: UUID | None = None,
     contact_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
     document_type_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
+    topic_id: UUID | None = None,
     sort: Annotated[
         DocumentSort | Literal["relevance"], Query(description="`relevance` or a key.")
     ] = "relevance",
@@ -82,6 +83,7 @@ async def search_documents(
             field_id,
             contact_group_id,
             document_type_group_id,
+            topic_id,
         ),
         offset=offset,
         limit=limit,

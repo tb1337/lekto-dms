@@ -439,7 +439,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Create a contact
-		 * @description Admins only. Names are unique regardless of case. A group in `group_ids` that does not exist is `404`, one of another scope `422`.
+		 * @description Admins only. Names are unique regardless of case. A group in `group_ids` (a topic in `topic_ids`) that does not exist is `404`, one of another scope `422`.
 		 */
 		post: operations['create_contact_api_v1_contacts_post'];
 		delete?: never;
@@ -468,7 +468,7 @@ export interface paths {
 		head?: never;
 		/**
 		 * Change a contact
-		 * @description Admins only. A group in `group_ids` that does not exist is `404`, one of another scope `422`.
+		 * @description Admins only. A group in `group_ids` (a topic in `topic_ids`) that does not exist is `404`, one of another scope `422`.
 		 */
 		patch: operations['change_contact_api_v1_contacts__id__patch'];
 		trace?: never;
@@ -484,7 +484,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Attach an identifier to a contact
-		 * @description Admins only. Enters one identifier by hand (as found on a document, see `GET /documents/{id}/facts`); the contact's other identifiers stay as they are. One the contact learned or rejected is then entered by hand; one another contact learned or rejected moves here; 409 if another contact has it entered by hand. Documents use it from their next processing on.
+		 * @description Admins only. Enters one identifier by hand (as found on a document, see `GET /documents/{id}/facts`), with a topic the contact enables (422 otherwise) or none; the contact's other identifiers stay as they are. One the contact learned or rejected is then entered by hand; one another contact learned or rejected moves here; 409 if another contact has it entered by hand. Documents use it from their next processing on.
 		 */
 		post: operations['attach_identifier_api_v1_contacts__id__identifiers_post'];
 		delete?: never;
@@ -508,7 +508,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Create a document type
-		 * @description Admins only. Names are unique regardless of case. A group in `group_ids` that does not exist is `404`, one of another scope `422`.
+		 * @description Admins only. Names are unique regardless of case. A group in `group_ids` (a topic in `topic_ids`) that does not exist is `404`, one of another scope `422`.
 		 */
 		post: operations['create_document_type_api_v1_document_types_post'];
 		delete?: never;
@@ -537,7 +537,7 @@ export interface paths {
 		head?: never;
 		/**
 		 * Change a document type
-		 * @description Admins only. A group in `group_ids` that does not exist is `404`, one of another scope `422`.
+		 * @description Admins only. A group in `group_ids` (a topic in `topic_ids`) that does not exist is `404`, one of another scope `422`.
 		 */
 		patch: operations['change_document_type_api_v1_document_types__id__patch'];
 		trace?: never;
@@ -571,7 +571,7 @@ export interface paths {
 		};
 		/**
 		 * List tags
-		 * @description Tags of every scope, or of `scope`: document tags, contact groups, type groups. In the order of their trees: each after its parent, siblings by name (scopes in this order). Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach it stands for (`TagOut.document_count`); admins count every document with `all_users` (others: 403).
+		 * @description Tags of every scope, or of `scope`: document tags, contact groups, type groups, topics. In the order of their trees: each after its parent, siblings by name (scopes in this order). Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach it stands for (`TagOut.document_count`); admins count every document with `all_users` (others: 403).
 		 */
 		get: operations['list_tags_api_v1_tags_get'];
 		put?: never;
@@ -599,7 +599,7 @@ export interface paths {
 		post?: never;
 		/**
 		 * Delete a tag
-		 * @description Admins only. Only a tag without tags below it that nothing uses: no document carries it, no contact or document type is in it, no rule refers to it (409).
+		 * @description Admins only. Only a tag without tags below it that nothing uses: no document carries it (as a tag or its topic), no contact or document type is in it, no contact enables it as a topic, no rule refers to it (409).
 		 */
 		delete: operations['delete_tag_api_v1_tags__id__delete'];
 		options?: never;
@@ -918,7 +918,7 @@ export interface paths {
 		};
 		/**
 		 * Search documents
-		 * @description Full text and, if the installation has embeddings, meaning in one call. Finds the documents within the caller's reach, the same ones as `GET /documents` lists, with the same filters (they combine; `tag_id`, `contact_group_id`, `document_type_group_id` and `lane` may repeat); admins search every document with `all_users` (others: 403). Each hit is checked against the permissions once more before it is returned. The index follows the documents a moment later, so a new document may take a few seconds to turn up. Pages are by `offset`; at most 1000 hits can be reached. `sort`: by relevance (the default), or by a key as in `GET /documents`, relevance breaking ties.
+		 * @description Full text and, if the installation has embeddings, meaning in one call. Finds the documents within the caller's reach, the same ones as `GET /documents` lists, with the same filters (they combine; `tag_id`, `contact_group_id`, `document_type_group_id` and `lane` may repeat, `topic_id` takes the topics below it); admins search every document with `all_users` (others: 403). Each hit is checked against the permissions once more before it is returned. The index follows the documents a moment later, so a new document may take a few seconds to turn up. Pages are by `offset`; at most 1000 hits can be reached. `sort`: by relevance (the default), or by a key as in `GET /documents`, relevance breaking ties.
 		 */
 		get: operations['search_documents_api_v1_documents_search_get'];
 		put?: never;
@@ -998,7 +998,7 @@ export interface paths {
 		};
 		/**
 		 * List documents
-		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id`, `contact_group_id`, `document_type_group_id` and `lane` may repeat (all tags and groups, any lane; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it. `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. To search by words and meaning use `GET /documents/search`.
+		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id`, `contact_group_id`, `document_type_group_id` and `lane` may repeat (all tags and groups, any lane; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; `topic_id` the documents with the topic or one below it. `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. To search by words and meaning use `GET /documents/search`.
 		 */
 		get: operations['list_documents_api_v1_documents_get'];
 		put?: never;
@@ -2226,6 +2226,11 @@ export interface components {
 			 * @description The contact groups it is in (tags of scope `contact`); its documents inherit them. A group set with one below it leaves the one below.
 			 */
 			group_ids?: string[];
+			/**
+			 * Topic Ids
+			 * @description The topics it enables (tags of scope `topic`): its documents carry one of them at most, and its identifiers may point to one. Taking one away is a conflict (409) while a document of the contact carries it; its identifiers lose it.
+			 */
+			topic_ids?: string[];
 		};
 		/** ContactOut */
 		ContactOut: {
@@ -2266,6 +2271,11 @@ export interface components {
 			 * @description The contact groups it is in.
 			 */
 			group_ids: string[];
+			/**
+			 * Topic Ids
+			 * @description The topics it enables.
+			 */
+			topic_ids: string[];
 		};
 		/**
 		 * ContactPatch
@@ -2289,6 +2299,8 @@ export interface components {
 			rejected_identifiers?: components['schemas']['IdentifierIn'][] | null;
 			/** Group Ids */
 			group_ids?: string[] | null;
+			/** Topic Ids */
+			topic_ids?: string[] | null;
 		};
 		/** DeliveryOut */
 		DeliveryOut: {
@@ -2444,6 +2456,11 @@ export interface components {
 			contact_id: string | null;
 			/** Document Type Id */
 			document_type_id: string | null;
+			/**
+			 * Topic Id
+			 * @description A topic (tag of scope `topic`) the contact enables; at most one.
+			 */
+			topic_id: string | null;
 			/** Tag Ids */
 			tag_ids: string[];
 			/** Document Date */
@@ -2468,7 +2485,7 @@ export interface components {
 			page_count: number | null;
 			/**
 			 * Confirmed At
-			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, tags, date or fields), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
+			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, topic, tags, date or fields), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
 			 */
 			confirmed_at: string | null;
 			processing: components['schemas']['Processing'];
@@ -2576,6 +2593,11 @@ export interface components {
 			contact_id: string | null;
 			/** Document Type Id */
 			document_type_id: string | null;
+			/**
+			 * Topic Id
+			 * @description A topic (tag of scope `topic`) the contact enables; at most one.
+			 */
+			topic_id: string | null;
 			/** Tag Ids */
 			tag_ids: string[];
 			/** Document Date */
@@ -2600,7 +2622,7 @@ export interface components {
 			page_count: number | null;
 			/**
 			 * Confirmed At
-			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, tags, date or fields), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
+			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, topic, tags, date or fields), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
 			 */
 			confirmed_at: string | null;
 			processing: components['schemas']['Processing'];
@@ -2691,7 +2713,9 @@ export interface components {
 		};
 		/**
 		 * DocumentPatch
-		 * @description Fields left out stay as they are; null removes a value.
+		 * @description Fields left out stay as they are; null removes a value. A new contact that does not
+		 *     enable the document's topic removes the topic; a topic given must be one the contact
+		 *     enables (422), unless an admin gives it: it is then enabled at the contact.
 		 * @example {
 		 *       "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "document_date": "2026-03-31",
@@ -2714,6 +2738,8 @@ export interface components {
 			contact_id?: string | null;
 			/** Document Type Id */
 			document_type_id?: string | null;
+			/** Topic Id */
+			topic_id?: string | null;
 			/** Tag Ids */
 			tag_ids?: string[] | null;
 			/** Document Date */
@@ -2735,7 +2761,7 @@ export interface components {
 			document: components['schemas']['DocumentDetails'] | null;
 			/**
 			 * Changed
-			 * @description Fields that would change: `title`, `contact`, `document_type`, `tags`, `document_date`, `field:<id>`, `space`.
+			 * @description Fields that would change: `title`, `contact`, `document_type`, `topic`, `tags`, `document_date`, `field:<id>`, `space`.
 			 */
 			changed: string[];
 			/**
@@ -2948,7 +2974,7 @@ export interface components {
 		FieldCheckOut: {
 			/**
 			 * Field
-			 * @description `contact`, `document_type`, `tags`, `document_date`, or `field:<id>`.
+			 * @description `contact`, `document_type`, `topic`, `tags`, `document_date`, or `field:<id>`. The topic, as the tags, is never uncertain: one not set comes as a `suggestion`.
 			 */
 			field: string;
 			/** @description `ok` or `uncertain`. */
@@ -2960,7 +2986,7 @@ export interface components {
 			confidence: number;
 			/**
 			 * Reason
-			 * @description Why the field is uncertain.
+			 * @description Why the field is uncertain (for the topic: why it was not set).
 			 */
 			reason: string | null;
 			/**
@@ -2980,7 +3006,7 @@ export interface components {
 			value: unknown;
 			/**
 			 * Suggestion
-			 * @description A value that can be accepted as it is (uncertain fields only).
+			 * @description A value that can be accepted as it is (uncertain fields, and the topic).
 			 */
 			suggestion: unknown;
 			/**
@@ -3000,7 +3026,7 @@ export interface components {
 			locations?: components['schemas']['LocationOut'][];
 			/**
 			 * Candidates
-			 * @description Contact, document type and tags: the values the signals proposed, best first, with what each signal said; empty for other fields and older checks.
+			 * @description Contact, document type, topic and tags: the values the signals proposed, best first, with what each signal said; empty for other fields and older checks.
 			 */
 			candidates?: components['schemas']['CandidateOut'][];
 		};
@@ -3218,6 +3244,11 @@ export interface components {
 			 * @description The contact it is an identifier of (entered or learned); null if none.
 			 */
 			contact_id: string | null;
+			/**
+			 * Topic Id
+			 * @description The topic of the contact it points to, if any.
+			 */
+			topic_id?: string | null;
 			/** In Text */
 			in_text: boolean;
 			/**
@@ -3304,6 +3335,11 @@ export interface components {
 			 * @example DE89 3704 0044 0532 0130 00
 			 */
 			value: string;
+			/**
+			 * Topic Id
+			 * @description One of the contact's topics it points to (a personnel number to work): found in a document, it is evidence for the contact and the topic. Not for a rejected one.
+			 */
+			topic_id?: string | null;
 		};
 		/**
 		 * IdentifierKind
@@ -3320,6 +3356,11 @@ export interface components {
 			value: string;
 			/** @description `manual`: entered by an admin; `learned`: found by training in confirmed documents of only this contact; `rejected`: learned, then rejected by an admin (does not count, and training does not learn it again). */
 			source: components['schemas']['IdentifierSource'];
+			/**
+			 * Topic Id
+			 * @description The topic of the contact it points to; a learned one points to a topic only if all the confirmed documents it stands in carry it.
+			 */
+			topic_id: string | null;
 		};
 		/**
 		 * IdentifierSource
@@ -4187,7 +4228,7 @@ export interface components {
 		RuleEffectOut: {
 			/**
 			 * Field
-			 * @description `space`, `contact`, `document_type`, `title`, `tags`, ...
+			 * @description `space`, `contact`, `document_type`, `topic`, `title`, `tags`, ...
 			 */
 			field: string;
 			/** Old */
@@ -4660,7 +4701,7 @@ export interface components {
 			 */
 			name: string;
 			/**
-			 * @description `document`: a tag of documents; `contact`: a contact group; `document_type`: a type group. Fixed once the tag exists.
+			 * @description `document`: a tag of documents; `contact`: a contact group; `document_type`: a type group; `topic`: a topic, enabled at contacts, one per document at most. Fixed once the tag exists.
 			 * @default document
 			 */
 			scope: components['schemas']['TagScope'];
@@ -4704,7 +4745,7 @@ export interface components {
 			created_at: string;
 			/**
 			 * Document Count
-			 * @description With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) it stands for: those with it or a tag below it, each once; for a group, those whose contact (type) is in it or a group below it.
+			 * @description With `document_counts`: how many documents within the caller's reach (with `all_users`, every document) it stands for: those with it or a tag below it, each once; for a group, those whose contact (type) is in it or a group below it; for a topic, those with it or a topic below it.
 			 */
 			document_count?: number | null;
 			scope: components['schemas']['TagScope'];
@@ -4715,11 +4756,11 @@ export interface components {
 			 * @description The names from the top-level tag down to its own; documents show the last, its path tells where it stands.
 			 */
 			path: string[];
-			/** @description `auto`: the classification proposes and sets it (document tags only); `manual`: only a person or a rule sets it (a status such as 'to pay'). Groups are always `manual`. */
+			/** @description `auto`: the classification proposes and sets it (document tags and topics); `manual`: only a person or a rule sets it (a status such as 'to pay'). Groups are always `manual`. */
 			assignment: components['schemas']['Assignment'];
 			/**
 			 * Shown
-			 * @description Whether documents show it (the chips of lists and the document; filters, search, rules and templates see it either way). Default: on for document tags, off for groups.
+			 * @description Whether documents show it (the chips of lists and the document; filters, search, rules and templates see it either way). Default: on for document tags and topics, off for groups.
 			 */
 			shown: boolean;
 		};
@@ -12639,6 +12680,7 @@ export interface operations {
 				field_id?: string | null;
 				contact_group_id?: string[] | null;
 				document_type_group_id?: string[] | null;
+				topic_id?: string | null;
 				/** @description `relevance` or a key. */
 				sort?: components['schemas']['DocumentSort'] | 'relevance';
 				limit?: number;
@@ -13038,6 +13080,7 @@ export interface operations {
 				field_id?: string | null;
 				contact_group_id?: string[] | null;
 				document_type_group_id?: string[] | null;
+				topic_id?: string | null;
 				sort?: components['schemas']['DocumentSort'];
 				limit?: number;
 				/** @description `next_cursor`. */

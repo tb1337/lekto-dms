@@ -121,9 +121,10 @@ def document_filter(
     field_id: UUID | None = None,
     contact_group_id: list[UUID] | None = None,
     document_type_group_id: list[UUID] | None = None,
+    topic_id: UUID | None = None,
 ) -> DocumentFilter:
     """The query parameters of the document list as a filter (also used by the search). Each
-    tag or group is one set; the service adds the tags below it."""
+    tag or group is one set, the topic one more; the service adds the tags below them."""
 
     def sets(ids: list[UUID] | None) -> tuple[frozenset[TagId], ...]:
         return tuple(frozenset({TagId(id)}) for id in dict.fromkeys(ids or ()))
@@ -134,6 +135,7 @@ def document_filter(
         tags=sets(tag_id),
         contact_groups=sets(contact_group_id),
         document_type_groups=sets(document_type_group_id),
+        topics=None if topic_id is None else frozenset({TagId(topic_id)}),
         space=None if space_id is None else SpaceId(space_id),
         lanes=None if not lane else frozenset(_LANES[item] for item in lane),
         field=None if field_id is None else FieldId(field_id),
@@ -266,7 +268,8 @@ async def upload(
         "document and list them all with `all_users` (others: 403). Filters combine; `tag_id`, "
         "`contact_group_id`, `document_type_group_id` and `lane` may repeat (all tags and "
         "groups, any lane; `processing`: no lane yet). A tag matches the documents with it or "
-        "a tag below it; a group those whose contact (type) is in it or a group below it. "
+        "a tag below it; a group those whose contact (type) is in it or a group below it; "
+        "`topic_id` the documents with the topic or one below it. "
         "`field_id`: a value for the field is set. `sort` orders by arrival (the default, "
         "newest first), "
         "document date or title; documents without a date come last. To search by words and "
@@ -286,6 +289,7 @@ async def list_documents(
     field_id: UUID | None = None,
     contact_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
     document_type_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
+    topic_id: UUID | None = None,
     sort: DocumentSort = DocumentSort.CREATED_DESC,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     cursor: Annotated[str | None, Query(max_length=64, description="`next_cursor`.")] = None,
@@ -302,6 +306,7 @@ async def list_documents(
         field_id,
         contact_group_id,
         document_type_group_id,
+        topic_id,
     )
     views = await context.documents.query(
         user,
@@ -757,6 +762,7 @@ def _differences(before: Document, after: Document) -> list[str]:
         "title": (before.title, after.title),
         "contact": (before.contact_id, after.contact_id),
         "document_type": (before.document_type_id, after.document_type_id),
+        "topic": (before.topic_id, after.topic_id),
         "tags": (before.tag_ids, after.tag_ids),
         "document_date": (before.document_date, after.document_date),
         "space": (before.space_id, after.space_id),
@@ -800,6 +806,7 @@ async def _changes(body: DocumentPatch, user: UserId, context: Context) -> Docum
         title=body.title if body.title is not None else UNSET,
         contact_id=_given(given, "contact_id", body.contact_id, ContactId),
         document_type_id=_given(given, "document_type_id", body.document_type_id, DocumentTypeId),
+        topic_id=_given(given, "topic_id", body.topic_id, TagId),
         tag_ids=(
             frozenset(TagId(tag) for tag in body.tag_ids or ()) if "tag_ids" in given else UNSET
         ),

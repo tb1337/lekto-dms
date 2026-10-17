@@ -106,6 +106,7 @@ class DocumentDetails(BaseModel):
                     "access": "read_write",
                     "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
                     "document_type_id": None,
+                    "topic_id": None,
                     "tag_ids": [],
                     "document_date": "2026-03-31",
                     "fields": {
@@ -161,6 +162,9 @@ class DocumentDetails(BaseModel):
     access: ShareLevel = Field(description="What the caller may do: read, or read and write.")
     contact_id: UUID | None
     document_type_id: UUID | None
+    topic_id: UUID | None = Field(
+        description="A topic (tag of scope `topic`) the contact enables; at most one."
+    )
     tag_ids: list[UUID]
     document_date: date | None
     fields: dict[UUID, FieldJson] = Field(description="Values by field id.")
@@ -171,7 +175,7 @@ class DocumentDetails(BaseModel):
     confirmed_at: datetime | None = Field(
         description=(
             "When a person last set or confirmed the metadata (in the inbox, or by changing "
-            "contact, type, tags, date or fields), or it was taken over with the source "
+            "contact, type, topic, tags, date or fields), or it was taken over with the source "
             "system's; null while it is the pipeline's own. Confirmed documents train the "
             "classifier."
         )
@@ -195,6 +199,7 @@ class DocumentDetails(BaseModel):
             access=access,
             contact_id=document.contact_id,
             document_type_id=document.document_type_id,
+            topic_id=document.topic_id,
             tag_ids=sorted(document.tag_ids),
             document_date=document.document_date,
             fields={key: field_json(value) for key, value in sorted(document.fields.items())},
@@ -220,7 +225,9 @@ class DocumentPage(BaseModel):
 
 
 class DocumentPatch(BaseModel):
-    """Fields left out stay as they are; null removes a value."""
+    """Fields left out stay as they are; null removes a value. A new contact that does not
+    enable the document's topic removes the topic; a topic given must be one the contact
+    enables (422), unless an admin gives it: it is then enabled at the contact."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -245,6 +252,7 @@ class DocumentPatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=500)
     contact_id: UUID | None = None
     document_type_id: UUID | None = None
+    topic_id: UUID | None = None
     tag_ids: list[UUID] | None = Field(default=None, max_length=500)
     document_date: date | None = None
     fields: dict[UUID, Any] | None = Field(
@@ -438,8 +446,8 @@ class DocumentPreviewOut(BaseModel):
         description="The document after the change; null if the caller could not read it then."
     )
     changed: list[str] = Field(
-        description="Fields that would change: `title`, `contact`, `document_type`, `tags`, "
-        "`document_date`, `field:<id>`, `space`."
+        description="Fields that would change: `title`, `contact`, `document_type`, `topic`, "
+        "`tags`, `document_date`, `field:<id>`, `space`."
     )
     rules: list[RuleReportOut] | None = Field(
         description="For the owner: the rules the change would set off, and what they would do."

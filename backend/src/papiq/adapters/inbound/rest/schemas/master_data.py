@@ -14,6 +14,7 @@ from papiq.core.domain.master_data import (
     MAX_DESCRIPTION,
     MAX_GROUPS,
     MAX_TITLE_PATTERN,
+    MAX_TOPICS,
     Assignment,
     Contact,
     DocumentType,
@@ -66,6 +67,12 @@ class IdentifierIn(BaseModel):
 
     kind: IdentifierKind
     value: str = Field(min_length=1, max_length=100, examples=["DE89 3704 0044 0532 0130 00"])
+    topic_id: UUID | None = Field(
+        default=None,
+        description="One of the contact's topics it points to (a personnel number to work): "
+        "found in a document, it is evidence for the contact and the topic. Not for a rejected "
+        "one.",
+    )
 
 
 class IdentifierOut(BaseModel):
@@ -75,6 +82,10 @@ class IdentifierOut(BaseModel):
         description="`manual`: entered by an admin; `learned`: found by training in "
         "confirmed documents of only this contact; `rejected`: learned, then rejected by an "
         "admin (does not count, and training does not learn it again)."
+    )
+    topic_id: UUID | None = Field(
+        description="The topic of the contact it points to; a learned one points to a topic "
+        "only if all the confirmed documents it stands in carry it."
     )
 
 
@@ -151,6 +162,17 @@ def _groups(scope: str) -> object:
 
 ContactGroups = Annotated[list[UUID], _groups("contact")]
 TypeGroups = Annotated[list[UUID], _groups("document type")]
+ContactTopics = Annotated[
+    list[UUID],
+    Field(
+        max_length=MAX_TOPICS,
+        description=(
+            "The topics it enables (tags of scope `topic`): its documents carry one of them at "
+            "most, and its identifiers may point to one. Taking one away is a conflict (409) "
+            "while a document of the contact carries it; its identifiers lose it."
+        ),
+    ),
+]
 
 
 class ContactCreate(NameIn):
@@ -162,6 +184,7 @@ class ContactCreate(NameIn):
     aliases: Aliases = Field(default_factory=list)
     identifiers: Identifiers = Field(default_factory=list)
     group_ids: ContactGroups = Field(default_factory=list)
+    topic_ids: ContactTopics = Field(default_factory=list)
 
 
 class ContactPatch(BaseModel):
@@ -178,6 +201,7 @@ class ContactPatch(BaseModel):
     identifiers: Identifiers | None = None
     rejected_identifiers: Rejected | None = None
     group_ids: ContactGroups | None = None
+    topic_ids: ContactTopics | None = None
 
 
 class ContactOut(MasterDataOut):
@@ -186,6 +210,7 @@ class ContactOut(MasterDataOut):
         description="Entered, learned and rejected identifiers, in this order."
     )
     group_ids: list[UUID] = Field(description="The contact groups it is in.")
+    topic_ids: list[UUID] = Field(description="The topics it enables.")
 
     @classmethod
     def of(cls, item: MasterData) -> "ContactOut":
@@ -195,10 +220,16 @@ class ContactOut(MasterDataOut):
             name=item.name,
             aliases=item.aliases,
             identifiers=[
-                IdentifierOut(kind=entry.kind, value=entry.value, source=entry.source)
+                IdentifierOut(
+                    kind=entry.kind,
+                    value=entry.value,
+                    source=entry.source,
+                    topic_id=entry.topic_id,
+                )
                 for entry in item.identifiers
             ],
             group_ids=sorted(item.group_ids),
+            topic_ids=sorted(item.topic_ids),
             created_at=item.created_at,
         )
 
@@ -251,17 +282,17 @@ class DocumentTypeOut(MasterDataOut):
 TagAssignment = Annotated[
     Assignment,
     Field(
-        description="`auto`: the classification proposes and sets it (document tags only); "
-        "`manual`: only a person or a rule sets it (a status such as 'to pay'). Groups are "
-        "always `manual`."
+        description="`auto`: the classification proposes and sets it (document tags and "
+        "topics); `manual`: only a person or a rule sets it (a status such as 'to pay'). Groups "
+        "are always `manual`."
     ),
 ]
 Shown = Annotated[
     bool,
     Field(
         description="Whether documents show it (the chips of lists and the document; filters, "
-        "search, rules and templates see it either way). Default: on for document tags, off "
-        "for groups."
+        "search, rules and templates see it either way). Default: on for document tags and "
+        "topics, off for groups."
     ),
 ]
 
@@ -283,7 +314,8 @@ class TagCreate(NameIn):
     scope: TagScope = Field(
         default=TagScope.DOCUMENT,
         description="`document`: a tag of documents; `contact`: a contact group; "
-        "`document_type`: a type group. Fixed once the tag exists.",
+        "`document_type`: a type group; `topic`: a topic, enabled at contacts, one per "
+        "document at most. Fixed once the tag exists.",
     )
     parent_id: UUID | None = None
     assignment: TagAssignment | None = None
@@ -334,7 +366,8 @@ class TagOut(MasterDataOut):
         description=(
             "With `document_counts`: how many documents within the caller's reach (with "
             "`all_users`, every document) it stands for: those with it or a tag below it, each "
-            "once; for a group, those whose contact (type) is in it or a group below it."
+            "once; for a group, those whose contact (type) is in it or a group below it; for a "
+            "topic, those with it or a topic below it."
         ),
     )
 

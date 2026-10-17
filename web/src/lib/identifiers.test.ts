@@ -6,9 +6,9 @@ import { changesOf, rowsOf } from '#lib/identifiers.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 const stored = [
-	{ kind: 'iban', value: 'DE89370400440532013000', source: 'manual' },
-	{ kind: 'email_domain', value: 'stadtwerke.example', source: 'learned' },
-	{ kind: 'customer_number', value: '4711', source: 'rejected' }
+	{ kind: 'iban', value: 'DE89370400440532013000', source: 'manual', topic_id: null },
+	{ kind: 'email_domain', value: 'stadtwerke.example', source: 'learned', topic_id: null },
+	{ kind: 'customer_number', value: '4711', source: 'rejected', topic_id: null }
 ] as const;
 
 describe('identifiers', () => {

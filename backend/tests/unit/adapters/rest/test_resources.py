@@ -454,7 +454,7 @@ async def test_contact_identifiers(api: Api) -> None:
     iban = {"kind": "iban", "value": "de89 3704 0044 0532 0130 00"}
     contact = await post(api, "/contacts", {"name": "Stadtwerke", "identifiers": [iban]}, a)
     assert contact["identifiers"] == [
-        {"kind": "iban", "value": "DE89370400440532013000", "source": "manual"}
+        {"kind": "iban", "value": "DE89370400440532013000", "source": "manual", "topic_id": None}
     ]
     path = f"{PREFIX}/contacts/{contact['id']}"
     domain = {"kind": "email_domain", "value": "www.stadtwerke.example"}
@@ -715,3 +715,79 @@ async def test_tags_with_scopes_trees_and_groups(api: Api) -> None:
     assert used.status_code == 409 and "contacts are in" in used.text
     gone = await api.client.delete(f"{PREFIX}/tags/{paid['id']}", headers=a)
     assert gone.status_code == 204
+
+
+async def test_topics_at_contacts_identifiers_and_documents(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    a, o = auth(admin), auth(owner)
+    insurance = await post(api, "/tags", {"name": "Insurance", "scope": "topic"}, a)
+    health = await post(
+        api, "/tags", {"name": "Health", "scope": "topic", "parent_id": insurance["id"]}, a
+    )
+    work = await post(api, "/tags", {"name": "Work", "scope": "topic"}, a)
+    assert (work["assignment"], work["shown"]) == ("auto", True)
+    listed = await api.client.get(f"{PREFIX}/tags", params={"scope": "topic"}, headers=o)
+    assert [item["path"] for item in listed.json()] == [
+        ["Insurance"],
+        ["Insurance", "Health"],
+        ["Work"],
+    ]
+    number = {"kind": "personnel_number", "value": "004711", "topic_id": work["id"]}
+    contact = await post(
+        api,
+        "/contacts",
+        {"name": "Nord", "topic_ids": [work["id"], health["id"]], "identifiers": [number]},
+        a,
+    )
+    assert contact["topic_ids"] == sorted([work["id"], health["id"]])
+    assert contact["identifiers"] == [
+        {"kind": "personnel_number", "value": "4711", "source": "manual", "topic_id": work["id"]}
+    ]
+    path = f"{PREFIX}/contacts/{contact['id']}"
+    attach = {"kind": "customer_number", "value": "KV-2026-1", "topic_id": insurance["id"]}
+    refused = await api.client.post(f"{path}/identifiers", json=attach, headers=a)
+    assert refused.status_code == 422, refused.text
+    assert "topic" in refused.json()["detail"]  # Nord does not enable Insurance
+    attach["topic_id"] = health["id"]
+    attached = await api.client.post(f"{path}/identifiers", json=attach, headers=a)
+    assert attached.status_code == 200, attached.text
+    assert [item["topic_id"] for item in attached.json()["identifiers"]] == [
+        health["id"],
+        work["id"],
+    ]
+    wrong = await api.client.patch(path, json={"topic_ids": [insurance["id"], "x"]}, headers=a)
+    assert wrong.status_code == 422
+
+    document = await green_document(api, o)
+    url = f"{PREFIX}/documents/{document}"
+    no_contact = await api.client.patch(url, json={"topic_id": work["id"]}, headers=o)
+    assert no_contact.status_code == 422, no_contact.text
+    response = await api.client.patch(
+        url, json={"contact_id": contact["id"], "topic_id": health["id"]}, headers=o
+    )
+    assert response.json()["topic_id"] == health["id"], response.text
+    not_enabled = await api.client.patch(url, json={"topic_id": insurance["id"]}, headers=o)
+    assert not_enabled.status_code == 422
+    chosen = await api.client.patch(url, json={"topic_id": insurance["id"]}, headers=a)
+    assert chosen.json()["topic_id"] == insurance["id"]
+    enabled = (await api.client.get(path, headers=a)).json()["topic_ids"]
+    assert insurance["id"] in enabled
+    # Taking it away again is refused while the document carries it.
+    kept = await api.client.patch(path, json={"topic_ids": [work["id"]]}, headers=a)
+    assert kept.status_code == 409
+    for topic, found in ((insurance, [document]), (work, [])):
+        page = await api.client.get(
+            f"{PREFIX}/documents", params={"topic_id": topic["id"]}, headers=o
+        )
+        assert [item["id"] for item in page.json()["items"]] == found
+    counted = await api.client.get(
+        f"{PREFIX}/tags", params={"scope": "topic", "document_counts": True}, headers=o
+    )
+    assert {item["name"]: item["document_count"] for item in counted.json()} == {
+        "Insurance": 1,
+        "Health": 0,
+        "Work": 0,
+    }
+    assert (
+        await api.client.delete(f"{PREFIX}/tags/{insurance['id']}", headers=a)
+    ).status_code == 409

@@ -182,9 +182,14 @@ describe('a contact’s topics', () => {
 		const topic = screen.getByLabelText(m.identifier_topic()) as HTMLSelectElement;
 		expect(topic.value).toBe('p1');
 		expect([...topic.options].map((option) => option.value)).toEqual(['', 'p1']);
-		// Enabling another offers it to the identifiers.
-		const picker = screen.getByRole('group', { name: m.master_topics() });
+		// Enabling another (in the picker over the dialog) offers it to the identifiers.
+		const chips = screen.getByRole('group', { name: m.master_topics() });
+		expect(within(chips).getByText('Arbeit')).toBeTruthy();
+		await userEvent.click(within(chips).getByRole('button', { name: m.picker_add_topic_label() }));
+		const picker = await screen.findByRole('dialog', { name: m.master_topics() });
 		await userEvent.click(within(picker).getByLabelText('Krankenversicherung'));
+		await userEvent.click(within(picker).getByRole('button', { name: m.picker_done() }));
+		expect(within(chips).getByText('Krankenversicherung')).toBeTruthy();
 		expect([...topic.options].map((option) => option.value)).toEqual(['', 'p1', 'p2']);
 		await userEvent.selectOptions(topic, 'p2');
 		await userEvent.click(screen.getByRole('button', { name: m.save() }));

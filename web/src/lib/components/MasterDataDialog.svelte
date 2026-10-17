@@ -4,9 +4,9 @@
 	import ColorPicker from '#lib/components/ColorPicker.svelte';
 	import ContactLogoEditor from '#lib/components/ContactLogoEditor.svelte';
 	import IconPicker from '#lib/components/IconPicker.svelte';
-	import MultiPicker from '#lib/components/MultiPicker.svelte';
 	import EditorShell from '#lib/components/EditorShell.svelte';
 	import TagChip from '#lib/components/TagChip.svelte';
+	import TagPicker from '#lib/components/TagPicker.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
@@ -18,7 +18,8 @@
 	import { type Extra, type Item, parseAliases, type Values } from '#lib/masterdata-api.ts';
 	import type { Contact, FieldDefinition, Tag, TagScope } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { below, ofScope, pathLabel, tagOptions } from '#lib/tags.ts';
+	import { phone } from '#lib/phone.svelte.ts';
+	import { below, ofScope, pathLabel } from '#lib/tags.ts';
 	import { cn } from '#lib/utils.ts';
 
 	/** The kinds of tag a new one can be, each with an example. */
@@ -104,8 +105,9 @@
 	const isGroup = $derived(kind === 'contact' || kind === 'document_type');
 	const isTopic = $derived(kind === 'topic');
 	// The topics a contact enables; its identifiers point to one of them.
-	const topicChoices = $derived(tagOptions(tags, 'topic'));
-	const enabledTopics = $derived(topicChoices.filter((topic) => topicIds.includes(topic.value)));
+	const enabledTopics = $derived(
+		ofScope(tags, 'topic').filter((topic) => topicIds.includes(topic.id))
+	);
 	// A tag goes under one of its scope, never under itself or one below it.
 	const parents = $derived.by(() => {
 		if (kind === null) return [];
@@ -343,11 +345,13 @@
 	{/if}
 	{#if groupScope !== null}
 		<Field.Field>
-			<Field.Label for="master-groups">{m.master_groups()}</Field.Label>
-			<MultiPicker
+			<Field.Label id="master-groups-label">{m.master_groups()}</Field.Label>
+			<TagPicker
 				id="master-groups"
 				label={m.master_groups()}
-				options={tagOptions(tags, groupScope)}
+				title={groupScope === 'contact' ? m.master_contact_groups() : m.master_type_groups()}
+				scope={groupScope}
+				{tags}
 				selected={groupIds}
 				onchange={(next) => (groupIds = next)}
 			/>
@@ -358,25 +362,32 @@
 	{/if}
 	{#if extra === 'aliases'}
 		<Field.Field>
-			<Field.Label for="master-topics">{m.master_topics()}</Field.Label>
-			<MultiPicker
+			<Field.Label id="master-topics-label">{m.master_topics()}</Field.Label>
+			<TagPicker
 				id="master-topics"
 				label={m.master_topics()}
-				options={topicChoices}
+				title={m.master_topics()}
+				scope="topic"
+				{tags}
 				selected={topicIds}
 				onchange={(next) => (topicIds = next)}
 			/>
 			<Field.Description>{m.master_contact_topics_hint()}</Field.Description>
 		</Field.Field>
 		<Field.Field>
-			<Field.Label for="master-aliases">{m.master_aliases()}</Field.Label>
-			<Textarea id="master-aliases" bind:value={aliases} rows={4} />
-			<Field.Description>{m.master_aliases_hint()}</Field.Description>
-		</Field.Field>
-		<Field.Field>
 			<Field.Label>{m.master_identifiers()}</Field.Label>
 			<IdentifiersEditor bind:rows={identifiers} topics={enabledTopics} />
 			<Field.Description>{m.master_identifiers_hint()}</Field.Description>
+		</Field.Field>
+		<Field.Field>
+			<Field.Label for="master-aliases">{m.master_aliases()}</Field.Label>
+			<!-- Compact on a phone: as many lines as there are aliases, and one more. -->
+			<Textarea
+				id="master-aliases"
+				bind:value={aliases}
+				rows={phone.current ? Math.min(Math.max(aliases.split('\n').length + 1, 2), 6) : 4}
+			/>
+			<Field.Description>{m.master_aliases_hint()}</Field.Description>
 		</Field.Field>
 	{:else if extra === 'description'}
 		<Field.Field>

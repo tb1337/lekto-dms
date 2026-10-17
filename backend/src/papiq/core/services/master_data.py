@@ -46,6 +46,9 @@ from papiq.core.services.rules.references import disable_rules, misfits, refers_
 type Repo[E] = Callable[[UnitOfWork], NamedRepository[Any, E]]
 
 MANUAL = IdentifierSource.MANUAL
+TAG_TREE_LOCK = "tags"
+"""Held while a tag is made or changed, before the tree is read: two moves at once could
+otherwise each pass `TagTree.check_parent` and together make a cycle or a sixth level."""
 
 
 def _contacts(uow: UnitOfWork) -> NamedRepository[ContactId, Contact]:
@@ -262,6 +265,7 @@ class MasterDataService:
             shown=shown,
         )
         async with self._uow() as uow:
+            await uow.lock(TAG_TREE_LOCK)
             await _require_admin(uow, actor)
             TagTree.of(await uow.tags.list_all()).check_parent(tag, parent_id)
             await _check_tag_name_free(uow, tag)
@@ -284,6 +288,7 @@ class MasterDataService:
         parent queues the refresh of the search index of the documents concerned (they hold
         the tag's ancestors)."""
         async with self._uow() as uow:
+            await uow.lock(TAG_TREE_LOCK)
             await _require_admin(uow, actor)
             tag = await uow.tags.get(id)
             before = (tag.name, tag.parent_id)

@@ -65,6 +65,12 @@ describe('tags as trees', () => {
 		expect(rows(['health'])).toEqual(['0:bills', '0:insurance+', '1:car', '1:health+']);
 		expect(rows(['insurance'])).toEqual(['0:bills', '0:insurance+']);
 	});
+
+	it('show tags no top-level tag leads to at the top', () => {
+		const cycle = [tag('top', ['Top'], null), tag('a', ['B', 'A'], 'b'), tag('b', ['A', 'B'], 'a')];
+		const rows = visibleRows(cycle, new Set()).map((row) => `${row.depth}:${row.tag.id}`);
+		expect(rows).toEqual(['0:top', '0:a', '1:b']);
+	});
 });
 
 describe('tags at a document', () => {

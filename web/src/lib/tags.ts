@@ -70,24 +70,39 @@ export function childrenOf<T extends TagLike>(tags: readonly T[]): Map<string | 
 	return children;
 }
 
-/** The rows of a tree view: each tag with its depth, below a collapsed tag nothing. */
+/** The rows of a tree view: each tag with its depth, below a collapsed tag nothing. Tags no
+ * top-level tag leads to (a cycle in stored data) come last, as if at the top, so that they stay
+ * visible and can be fixed. */
 export function visibleRows<T extends TagLike>(
 	tags: readonly T[],
 	collapsed: ReadonlySet<string>
 ): { tag: T; depth: number; hasChildren: boolean }[] {
 	const children = childrenOf(tags);
-	const rows: { tag: T; depth: number; hasChildren: boolean }[] = [];
-	const seen = new Set<string>();
-	const walk = (parent: string | null, depth: number) => {
+	const reached = new Set<string>();
+	const reach = (parent: string | null) => {
 		for (const tag of children.get(parent) ?? []) {
-			if (seen.has(tag.id)) continue;
-			seen.add(tag.id);
-			const kids = children.get(tag.id) ?? [];
-			rows.push({ tag, depth, hasChildren: kids.length > 0 });
-			if (!collapsed.has(tag.id)) walk(tag.id, depth + 1);
+			if (reached.has(tag.id)) continue;
+			reached.add(tag.id);
+			reach(tag.id);
 		}
 	};
-	walk(null, 0);
+	reach(null);
+	const rows: { tag: T; depth: number; hasChildren: boolean }[] = [];
+	const seen = new Set<string>();
+	const show = (tag: T, depth: number) => {
+		if (seen.has(tag.id)) return;
+		seen.add(tag.id);
+		const kids = children.get(tag.id) ?? [];
+		rows.push({ tag, depth, hasChildren: kids.length > 0 });
+		if (!collapsed.has(tag.id)) for (const kid of kids) show(kid, depth + 1);
+	};
+	for (const tag of children.get(null) ?? []) show(tag, 0);
+	for (const tag of tags) {
+		if (reached.has(tag.id)) continue;
+		reach(tag.id);
+		reached.add(tag.id);
+		show(tag, 0);
+	}
 	return rows;
 }
 

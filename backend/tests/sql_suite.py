@@ -31,6 +31,7 @@ from papiq.core.domain.jobs import Job
 from papiq.core.domain.pipeline import NODES, Node
 from papiq.core.domain.users import User
 from papiq.core.ports import DeliveryRetry, EventBus, UnitOfWorkFactory
+from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.pipeline import PipelineService, PlaceholderNode
 from tests import builders
 from tests.builders import NOW, incoming
@@ -172,6 +173,23 @@ class SqlAdapterSuite:
         assert all(isinstance(r, Document | DuplicateDocumentError) for r in results), results
         async with uow_factory() as uow:
             assert len(await uow.documents.list_visible_to(owner.id)) == 1
+
+    async def test_concurrent_tag_moves_make_no_cycle(self, uow_factory: UnitOfWorkFactory) -> None:
+        """Moving A under B and B under A at once: one move waits for the other and sees it."""
+        admin = builders.admin()
+        await _seed_user(uow_factory, admin)
+        service = MasterDataService(uow_factory, ManualClock(NOW), builders.TEMPLATES)
+        a = await service.create_tag(admin.id, "A")
+        b = await service.create_tag(admin.id, "B")
+        results = await asyncio.gather(
+            service.change_tag(admin.id, a.id, parent_id=b.id),
+            service.change_tag(admin.id, b.id, parent_id=a.id),
+            return_exceptions=True,
+        )
+        assert sorted(type(result).__name__ for result in results) == ["Tag", "ValidationError"]
+        async with uow_factory() as uow:
+            tags = {tag.id: tag for tag in await uow.tags.list_all()}
+        assert None in {tags[a.id].parent_id, tags[b.id].parent_id}
 
     async def test_a_failed_write_leaves_only_rollback(
         self, uow_factory: UnitOfWorkFactory

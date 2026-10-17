@@ -101,6 +101,8 @@ def test_normalise_keeps_the_child_of_a_parent_set_with_it(insurance: dict[str, 
 def test_a_cycle_in_stored_data_does_not_hang() -> None:
     first, second = tag("First"), tag("Second")
     first.parent_id, second.parent_id = second.id, first.id
-    tree = TagTree.of([first, second])
+    tree = TagTree.of([first, second, tag("Top")])
     assert tree.ancestors(first.id) == [second]
     assert tree.height(first.id) == 2
+    # No top-level tag leads to them: they come last, as if at the top, and stay visible.
+    assert [item.name for item in tree.of_scope(TagScope.DOCUMENT)] == ["Top", "First", "Second"]

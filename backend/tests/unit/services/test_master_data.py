@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from papiq.core.domain.documents import DocumentChanges
@@ -480,3 +482,15 @@ async def test_documents_carry_document_tags_normalised(world: World) -> None:
         owner.id, document.id, DocumentChanges(tag_ids=frozenset({insurance.id}))
     )
     assert parent_only.tag_ids == {insurance.id}
+
+
+async def test_concurrent_tag_moves_make_no_cycle(world: World) -> None:
+    admin = await world.user(role=Role.ADMIN)
+    service = world.master_data
+    a, b = await service.create_tag(admin.id, "A"), await service.create_tag(admin.id, "B")
+    results = await asyncio.gather(
+        service.change_tag(admin.id, a.id, parent_id=b.id),
+        service.change_tag(admin.id, b.id, parent_id=a.id),
+        return_exceptions=True,
+    )
+    assert sorted(type(result).__name__ for result in results) == ["Tag", "ValidationError"]

@@ -140,13 +140,20 @@ class TagTree:
         return given - above
 
     def _walk(self, parent: TagId | None) -> Iterator[TagId]:
-        """The tags below `parent` (None: all), depth first, each once."""
-        stack = list(reversed(self.children.get(parent, ())))
+        """The tags below `parent` (None: all), depth first, each once. Walking all, tags no
+        top-level tag leads to (a cycle in stored data) come last, as if at the top, so that
+        they stay visible and can be fixed."""
         seen: set[TagId] = set() if parent is None else {parent}
-        while stack:
-            id = stack.pop()
-            if id in seen:
-                continue
-            seen.add(id)
-            yield id
-            stack.extend(reversed(self.children.get(id, ())))
+        stacks = [list(reversed(self.children.get(parent, ())))]
+        if parent is None:
+            stacks += [
+                [id] for id in sorted(self.tags, key=lambda id: self.tags[id].name.casefold())
+            ]
+        for stack in stacks:
+            while stack:
+                id = stack.pop()
+                if id in seen:
+                    continue
+                seen.add(id)
+                yield id
+                stack.extend(reversed(self.children.get(id, ())))

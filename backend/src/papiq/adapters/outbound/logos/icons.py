@@ -10,6 +10,7 @@ without a size follow, `/favicon.ico` last.
 """
 
 import json
+import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit
@@ -29,13 +30,16 @@ class Candidate:
     rank: int = 0  # among equal sizes, lower first (a maskable manifest icon after others)
 
 
+_SIZE = re.compile(r"([0-9]{1,5})x([0-9]{1,5})")
+
+
 def declared_size(sizes: str | None) -> int | None:
     """The longest side among `sizes` ("16x16 32x32"); None for none or "any"."""
     best = None
     for item in (sizes or "").lower().split():
-        width, _, height = item.partition("x")
-        if width.isdigit() and height.isdigit():
-            best = max(best or 0, int(width), int(height))
+        match = _SIZE.fullmatch(item)
+        if match:
+            best = max(best or 0, int(match[1]), int(match[2]))
     return best
 
 
@@ -84,7 +88,7 @@ def manifest_icons(text: str, manifest_url: str) -> list[Candidate]:
     """The icons of a web app manifest (JSON) at `manifest_url`."""
     try:
         manifest = json.loads(text)
-    except ValueError:
+    except (ValueError, RecursionError):  # nested deeper than the parser goes
         return []
     found = manifest.get("icons") if isinstance(manifest, dict) else None
     if not isinstance(found, list):

@@ -3,6 +3,7 @@ picture of an ICO), keeps proportions, transparency and orientation."""
 
 import io
 import struct
+import time
 import zlib
 
 import pytest
@@ -26,18 +27,30 @@ def opened(data: bytes) -> Image.Image:
     return Image.open(io.BytesIO(data))
 
 
-def png_claiming(width: int, height: int) -> bytes:
+def chunk(kind: bytes, body: bytes) -> bytes:
+    crc = zlib.crc32(kind + body)
+    return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", crc)
+
+
+def png_claiming(width: int, height: int, *, decoy: bool = False) -> bytes:
     """A PNG whose header claims `width` by `height` grey pixels, with one row of data: tiny,
-    but a bomb if it were decoded."""
-
-    def chunk(kind: bytes, body: bytes) -> bytes:
-        crc = zlib.crc32(kind + body)
-        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", crc)
-
+    but a bomb if it were decoded. `decoy`: a first IHDR of one pixel before the real one
+    (Pillow takes the last)."""
     header = struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)
+    first = chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 0, 0, 0, 0)) if decoy else b""
     data = zlib.compress(b"\x00" * (width + 1))
-    chunks = chunk(b"IHDR", header) + chunk(b"IDAT", data) + chunk(b"IEND", b"")
+    chunks = first + chunk(b"IHDR", header) + chunk(b"IDAT", data) + chunk(b"IEND", b"")
     return b"\x89PNG\r\n\x1a\n" + chunks
+
+
+def icon_of(*pictures: bytes) -> bytes:
+    """An ICO holding `pictures` as they are, its directory saying 16 by 16 for each."""
+    offset = 6 + 16 * len(pictures)
+    directory = struct.pack("<HHH", 0, 1, len(pictures))
+    for picture in pictures:
+        directory += struct.pack("<BBBBHHII", 16, 16, 0, 0, 1, 32, len(picture), offset)
+        offset += len(picture)
+    return directory + b"".join(pictures)
 
 
 async def test_scales_down_keeping_proportions(image_normaliser: PillowImageNormaliser) -> None:
@@ -107,6 +120,21 @@ async def test_refuses_an_icon_whose_picture_claims_more_than_its_directory(
     broken = struct.pack("<HHH", 0, 1, 1) + struct.pack("<BBBBHHII", 16, 16, 0, 0, 1, 32, 999, 22)
     with pytest.raises(ImageError):
         await image_normaliser.normalise(broken + bytes(30))
+
+
+async def test_refuses_an_icon_whose_picture_hides_its_size_behind_a_decoy(
+    image_normaliser: PillowImageNormaliser,
+) -> None:
+    started = time.monotonic()
+    with pytest.raises(ImageError, match="larger than"):
+        await image_normaliser.normalise(
+            icon_of(image((16, 16)), png_claiming(9000, 9000, decoy=True))
+        )
+    assert time.monotonic() - started < 0.5  # refused before anything was decoded
+    with pytest.raises(ImageError, match="pictures"):
+        await image_normaliser.normalise(icon_of(*[image((16, 16))] * 65))
+    with pytest.raises(ImageError, match="pictures"):
+        await image_normaliser.normalise(icon_of())
 
 
 @pytest.mark.parametrize(

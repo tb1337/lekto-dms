@@ -18,6 +18,8 @@ def test_sizes() -> None:
     assert declared_size("any") is None
     assert declared_size(None) is None
     assert declared_size("big") is None
+    assert declared_size("²x²") is None  # digits, but not ASCII ones
+    assert declared_size("1" * 5000 + "x1") is None
 
 
 def test_reads_the_icons_of_a_page() -> None:
@@ -70,6 +72,7 @@ def test_reads_the_icons_of_a_manifest() -> None:
     assert manifest_icons("not json", "https://nord.example/m.json") == []
     assert manifest_icons('{"icons": "x"}', "https://nord.example/m.json") == []
     assert manifest_icons("[1, 2]", "https://nord.example/m.json") == []
+    assert manifest_icons("[" * 100_000, "https://nord.example/m.json") == []
 
 
 def test_tries_the_largest_first_and_the_favicon_last() -> None:

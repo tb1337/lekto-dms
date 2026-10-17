@@ -3,14 +3,17 @@ resolver: it passes the contract, takes the largest icon a website declares, and
 public addresses, HTTPS, few redirects, small and quick answers. No request leaves."""
 
 import asyncio
+import gzip
 import io
+import struct
+import time
 
 import httpx2
 import pytest
 from PIL import Image
 
 from papiq.adapters.outbound.logos import HttpLogoFetcher
-from papiq.adapters.outbound.logos.fetcher import MAX_REDIRECTS
+from papiq.adapters.outbound.logos.fetcher import MAX_REDIRECTS, _pixels
 from papiq.core.domain.errors import LogoFetchError
 from tests.contracts.images import LOGO_PNG, image
 from tests.contracts.logos import LogoFetcherContract
@@ -373,3 +376,69 @@ async def test_a_name_that_does_not_resolve_and_a_failing_server(web: Web) -> No
     web.serve("nord.example", "/", html("gone", status=410))
     with pytest.raises(LogoFetchError, match="status 410"):
         await fetcher(web).get("https://nord.example/", {"text/html"})
+
+
+# --- what a hostile website may send ------------------------------------------------------------
+
+
+async def test_reads_pages_as_utf8_whatever_charset_they_name(web: Web) -> None:
+    """A codec the server names could be slow (punycode) or fail (idna)."""
+    web.site("nord.example")
+    for charset in ("punycode", "idna", "undefined"):
+        web.serve(
+            "nord.example",
+            "/",
+            answer(f"text/html; charset={charset}", APPLE.encode() + b"x" * 500_000),
+        )
+        web.serve("nord.example", "/apple-touch-icon.png", answer("image/png", png(180)))
+        started = time.monotonic()
+        logo = await fetcher(web).fetch("nord.example")
+        assert logo.url.endswith("/apple-touch-icon.png")
+        assert time.monotonic() - started < 2
+
+
+async def test_a_favicon_is_measured_by_its_directory_not_decoded(web: Web) -> None:
+    out = io.BytesIO()
+    Image.new("RGBA", (256, 256), (1, 2, 3, 255)).save(out, "ICO", sizes=[(16, 16), (256, 256)])
+    started = time.monotonic()
+    assert _pixels(out.getvalue()) == 256
+    big = io.BytesIO()
+    Image.new("L", (4000, 4000)).save(big, "PNG")  # one picture larger than its directory says
+    directory = struct.pack("<HHH", 0, 1, 1) + struct.pack(
+        "<BBBBHHII", 0, 0, 0, 0, 1, 32, len(big.getvalue()), 22
+    )
+    assert _pixels(directory + big.getvalue()) == 256
+    assert time.monotonic() - started < 0.5
+    assert _pixels(struct.pack("<HHH", 0, 1, 70) + bytes(70 * 16)) is None  # too many pictures
+    assert _pixels(png(5000)) is None  # larger than a logo is made from
+
+
+async def test_gzip_ends_with_its_stream_and_counts_as_sent(web: Web) -> None:
+    web.site("nord.example")
+    body = gzip.compress(png(180)) + bytes(5_000_000)  # rubbish after the stream
+    web.serve(
+        "nord.example", "/trailing", answer("image/png", body, headers={"content-encoding": "gzip"})
+    )
+    found = await fetcher(web).get("https://nord.example/trailing", {"image/png"})
+    assert found.body == png(180)
+    # Empty stored blocks: nothing decoded, but more than the limit sent.
+    empty = b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff" + b"\x00\x00\x00\xff\xff" * 300_000
+    web.serve(
+        "nord.example", "/empty", answer("image/png", empty, headers={"content-encoding": "gzip"})
+    )
+    with pytest.raises(LogoFetchError, match="larger than"):
+        await fetcher(web).get("https://nord.example/empty", {"image/png"})
+
+
+async def test_what_breaks_a_parser_is_a_failed_fetch(
+    web: Web, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    web.site("nord.example")
+    web.serve("nord.example", "/", html(APPLE))
+
+    def broken(html: str, url: str) -> None:
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr("papiq.adapters.outbound.logos.fetcher.page_icons", broken)
+    with pytest.raises(LogoFetchError, match="RuntimeError"):
+        await fetcher(web).fetch("nord.example")

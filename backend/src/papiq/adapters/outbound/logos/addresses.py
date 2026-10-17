@@ -5,9 +5,10 @@ A domain learned from a document may name any host, also one that resolves to th
 network, the machine itself or a cloud's metadata service. An address is public if Python
 counts it as globally reachable (`is_global`) and it is none of these besides: private,
 loopback, link-local, multicast, reserved, unspecified, shared (100.64.0.0/10, carrier-grade
-NAT), unique local (fc00::/7), site-local, with a zone, IPv4-compatible (::a.b.c.d), 6to4 or
-Teredo. An IPv4 address inside an IPv6 one, mapped (::ffff:a.b.c.d) or behind the well-known
-NAT64 prefix (64:ff9b::/96), counts as that IPv4 address.
+NAT), the 6to4 relays (192.88.99.0/24), unique local (fc00::/7), site-local, with a zone,
+IPv4-compatible (::a.b.c.d), 6to4 or Teredo. An IPv4 address inside an IPv6 one, mapped
+(::ffff:a.b.c.d) or behind the well-known NAT64 prefix (64:ff9b::/96), counts as that IPv4
+address.
 """
 
 import asyncio
@@ -19,6 +20,7 @@ type Resolver = Callable[[str], Awaitable[Sequence[str]]]
 """The addresses (as text) a host name resolves to; OSError if it resolves to none."""
 
 _SHARED = ipaddress.IPv4Network("100.64.0.0/10")
+_SIXTOFOUR_RELAY = ipaddress.IPv4Network("192.88.99.0/24")
 _UNIQUE_LOCAL = ipaddress.IPv6Network("fc00::/7")
 _NAT64 = ipaddress.IPv6Network("64:ff9b::/96")
 _NAT64_LOCAL = ipaddress.IPv6Network("64:ff9b:1::/48")
@@ -52,7 +54,7 @@ def _public(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
             or address.is_site_local
         ):
             return False
-    elif address in _SHARED:
+    elif address in _SHARED or address in _SIXTOFOUR_RELAY:
         return False
     return address.is_global and not (
         address.is_private

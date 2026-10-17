@@ -9,14 +9,16 @@ Every request (the page, the manifest, each icon, each redirect):
   `Host` and for TLS (SNI and the certificate), so that a second answer of the name server
   cannot lead elsewhere (DNS rebinding);
 - follows at most `MAX_REDIRECTS` redirects itself, each checked like the first;
-- takes at most `TIMEOUT` with its redirects, reads at most `MAX_SIZE` bytes (a page longer
-  than that is read as far as that, its head is what counts; a longer image is refused),
-  accepts only the content types it asks for, and no encoding but gzip (decoded within the
-  same limit);
+- takes at most `TIMEOUT` with its redirects, reads at most `MAX_SIZE` bytes as sent and as
+  decoded (a page longer than that is read as far as that, its head is what counts; a longer
+  image is refused), accepts only the content types it asks for, and no encoding but gzip;
 - sends no cookies (each request has a client of its own) and ignores the environment's
   proxies and `.netrc` (`trust_env=False`).
 
-The whole fetch takes at most `DEADLINE` and `MAX_TRIES` icons. Failures are LogoFetchError
+The whole fetch takes at most `DEADLINE` and `MAX_TRIES` icons. Pages and manifests are read
+as UTF-8 whatever charset the server names (the link tags are ASCII; a codec it chooses could
+be slow). An icon's size comes from its header alone, in a thread (of an ICO from its
+directory: Pillow would decode the largest picture to open it). Failures are LogoFetchError
 with a short reason; no other error leaves.
 """
 
@@ -25,7 +27,6 @@ import io
 import logging
 import re
 import ssl
-import warnings
 import zlib
 from collections.abc import Collection
 from dataclasses import dataclass
@@ -56,22 +57,20 @@ IMAGES = frozenset(
 )
 _REDIRECTS = {301, 302, 303, 307, 308}
 _DOMAIN = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
-_IMAGE_FORMATS = ("PNG", "JPEG", "WEBP", "ICO")
+_IMAGE_FORMATS = ("PNG", "JPEG", "WEBP")
+_MAX_PIXELS = 4096 * 4096  # as the normaliser takes
+_MAX_ICON_ENTRIES = 64
 
 
 @dataclass(frozen=True)
 class Answer:
     url: httpx2.URL  # the last one, after redirects
     content_type: str
-    charset: str | None
     body: bytes
 
     @property
     def text(self) -> str:
-        try:
-            return self.body.decode(self.charset or "utf-8", "replace")
-        except LookupError:  # a charset Python does not know
-            return self.body.decode("utf-8", "replace")
+        return self.body.decode("utf-8", "replace")
 
 
 class HttpLogoFetcher:
@@ -101,6 +100,11 @@ class HttpLogoFetcher:
                 return await self._fetch(domain)
         except TimeoutError:
             raise LogoFetchError(f"no logo within {self._deadline:g} seconds") from None
+        except LogoFetchError:
+            raise
+        except Exception as error:  # what a website's answer may break in a parser
+            log.warning("logo: the website's answer broke the fetch", exc_info=True)
+            raise LogoFetchError(f"the website cannot be read: {type(error).__name__}") from None
 
     async def _fetch(self, domain: str) -> FetchedLogo:
         page: Answer | None = None
@@ -128,7 +132,7 @@ class HttpLogoFetcher:
             except LogoFetchError as error:
                 log.info("logo: an icon cannot be read", extra={"error": str(error)})
                 continue
-            size = _pixels(answer.body)
+            size = await asyncio.to_thread(_pixels, answer.body)
             if size is None or size < MIN_LOGO_SIZE:
                 continue
             if best is None or size > best[0]:
@@ -187,12 +191,12 @@ class HttpLogoFetcher:
                         continue
                     if response.status_code != 200:
                         raise LogoFetchError(f"status {response.status_code}")
-                    kind, _, parameters = response.headers.get("content-type", "").partition(";")
+                    kind = response.headers.get("content-type", "").partition(";")[0]
                     kind = kind.strip().lower()
                     if kind not in accept:
                         raise LogoFetchError(f"content type '{kind}'")
                     body = await self._body(response, whole)
-                    return Answer(target, kind, _charset(parameters), body)
+                    return Answer(target, kind, body)
                 finally:
                     await response.aclose()
         raise LogoFetchError(f"more than {MAX_REDIRECTS} redirects")
@@ -224,19 +228,22 @@ class HttpLogoFetcher:
             raise LogoFetchError(f"larger than {limit} bytes")
         decoder = zlib.decompressobj(16 + zlib.MAX_WBITS) if encoding == "gzip" else None
         body = bytearray()
+        sent = 0
+        over = False
         try:
             async for chunk in response.aiter_raw():
+                sent += len(chunk)
                 if decoder is not None:
                     chunk = decoder.decompress(chunk, limit + 1 - len(body))
-                    if decoder.unconsumed_tail:
-                        body += chunk
-                        break
+                    over = bool(decoder.unconsumed_tail)
                 body += chunk
-                if len(body) > limit:
+                # The bytes as sent count too: a stream of empty blocks is no shorter.
+                over = over or len(body) > limit or sent > limit
+                if over or (decoder is not None and decoder.eof):
                     break
         except zlib.error:
             raise LogoFetchError("a body that cannot be decoded") from None
-        if len(body) > limit or (decoder is not None and decoder.unconsumed_tail):
+        if over:
             if whole:
                 raise LogoFetchError(f"larger than {limit} bytes")
             del body[limit:]
@@ -255,34 +262,37 @@ def _https(url: httpx2.URL) -> httpx2.URL:
     return url
 
 
-def _charset(parameters: str) -> str | None:
-    for part in parameters.split(";"):
-        name, _, value = part.strip().partition("=")
-        if name.lower() == "charset" and value:
-            return value.strip("\"' ")
-    return None
-
-
 def _pixels(data: bytes) -> int | None:
-    """The longer side of a raster image a logo can be made from, by its header alone (of an
-    ICO its largest picture); None for anything else."""
-    if media_types.detect_image(data[: media_types.SNIFF_SIZE]) is None:
+    """The longer side of a raster image a logo can be made from, by its header alone; of an
+    ICO the largest its directory names (opening it, Pillow would decode a picture). None for
+    anything else, and for an image larger than a logo is made from."""
+    kind = media_types.detect_image(data[: media_types.SNIFF_SIZE])
+    if kind is None:
         return None
+    if kind == media_types.ICO:
+        return _icon_size(data)
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", Image.DecompressionBombWarning)
-            with Image.open(io.BytesIO(data), formats=_IMAGE_FORMATS) as image:
-                return max(image.size)
+        with Image.open(io.BytesIO(data), formats=_IMAGE_FORMATS) as image:
+            width, height = image.size
     except (
         UnidentifiedImageError,
         Image.DecompressionBombError,
-        Image.DecompressionBombWarning,
         OSError,
         ValueError,
         SyntaxError,
         EOFError,
     ):
         return None
+    return max(width, height) if 0 < width * height <= _MAX_PIXELS else None
+
+
+def _icon_size(data: bytes) -> int | None:
+    """The largest side an ICO's directory names (a byte each, 0 for 256)."""
+    count = int.from_bytes(data[4:6], "little")
+    if not 0 < count <= _MAX_ICON_ENTRIES or len(data) < 6 + 16 * count:
+        return None
+    entries = [data[6 + 16 * index : 8 + 16 * index] for index in range(count)]
+    return max(side or 256 for entry in entries for side in entry)
 
 
 def _describe(failure: httpx2.HTTPError) -> str:

@@ -48,6 +48,7 @@ from papiq.adapters.outbound.logos import is_public, system_resolver
         "2001::1",  # Teredo
         "2001:db8::1",  # documentation
         "100::1",  # discard
+        "192.88.99.1",  # 6to4 relays
         "localhost",
         "example.org",
         "",

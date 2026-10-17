@@ -336,3 +336,6 @@ processed at that moment is skipped; run the command again once it is through.
 The same update renamed `PAPIQ_STEP_MAX_ATTEMPTS` and `PAPIQ_STEP_RETRY_DELAY` to
 `PAPIQ_NODE_MAX_ATTEMPTS` and `PAPIQ_NODE_RETRY_DELAY`; a container with an old name refuses
 to start and says so.
+The update to 0.3.0 renamed drawers to spaces in the API (`/api/v1/spaces`, `space_id`), in
+rules and in templates (`{{ space }}`); it needs no `reindex`. What to do after it is in
+[backend/README.md](../backend/README.md) ("After the update to 0.3").

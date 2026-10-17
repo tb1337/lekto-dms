@@ -510,6 +510,29 @@ alone, so a new scikit-learn version cannot break it. `GET /classifier` tells it
    for them. Run it once `reparse` is through, which changes the text the identifiers are read
    from.
 
+**After the update to 0.3.** Revisions 0024 to 0028 run at start; then four things:
+
+1. "Drawer" is "space" everywhere, a break of the API: `/api/v1/spaces`, `space_id` (documents,
+   upload, move, confirm, filters), the rule action `set_space`, the template variable
+   `{{ space }}`. Revision 0024 rewrites what is stored (rule actions, the variable in rule
+   templates and title patterns, open `document.filed` events, the processing log); a template
+   that already uses `space` for something else stops it, and says which (rename it there
+   first). A client that still sends `drawer_id` on upload files into the default space.
+2. The worker's reconciliation at its start writes every entry in the index's layout 5 (the
+   space, tags with their ancestors, the groups of contact and type, the topic), with the
+   vectors it has: no embedding calls and no `reindex`. Until it is through, the search of
+   other users misses documents shared with them.
+3. Tags and fields from before are automatic document tags at the top level, shown on the
+   document, and automatic fields. Mark status tags such as "to pay" "by hand only": the
+   classification then never proposes them, and changing them alone confirms no document. Nest
+   tags, put contacts and types into groups, enable topics at contacts and give identifiers
+   their topic; the training learns topics (of documents and of learned identifiers) with its
+   next run (`train` trains at once).
+4. Logos of contacts come by upload. Fetching them from the contacts' websites is off: with
+   `PAPIQ_LOGO_FETCH=true` a contact without a logo that gets a domain has it fetched, and
+   `python -m papiq.composition fetch-logos` fetches them for the contacts from before
+   (outgoing HTTPS to their domains only).
+
 **Evaluation.** `python -m papiq.composition evaluate [--fake]` runs the synthetic documents in
 `evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).
 

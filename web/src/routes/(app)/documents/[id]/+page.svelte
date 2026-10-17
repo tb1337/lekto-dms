@@ -342,6 +342,7 @@
 				vision={reading?.vision ?? false}
 				{facts}
 				{lookup}
+				topicId={document.topic_id}
 				admin={session.isAdmin}
 				onshowcode={showCode}
 				onfactschanged={reloadFacts}

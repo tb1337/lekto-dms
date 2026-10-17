@@ -33,3 +33,20 @@ describe('identifiers', () => {
 		expect(screen.getAllByRole('textbox', { name: m.identifier_value() })).toHaveLength(2);
 	});
 });
+
+describe('the topic of an identifier', () => {
+	it('is sent where the contact enables it, never with a rejected one', () => {
+		const rows = rowsOf([
+			{ kind: 'personnel_number', value: '4711', source: 'manual', topic_id: 'p1' },
+			{ kind: 'customer_number', value: 'KV-1', source: 'manual', topic_id: 'p2' },
+			{ kind: 'iban', value: 'DE89370400440532013000', source: 'rejected', topic_id: null }
+		]);
+		expect(changesOf(rows, ['p1'])).toEqual({
+			identifiers: [
+				{ kind: 'personnel_number', value: '4711', topic_id: 'p1' },
+				{ kind: 'customer_number', value: 'KV-1' }
+			],
+			rejected_identifiers: [{ kind: 'iban', value: 'DE89370400440532013000' }]
+		});
+	});
+});

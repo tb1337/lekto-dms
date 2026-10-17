@@ -14,12 +14,21 @@
 	} from '#lib/identifiers.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
-	// A contact's identifiers: those entered by hand can be changed and removed; learned ones
-	// can be taken over (then they are entered by hand) or rejected (training does not learn
-	// them again); a rejected one can be allowed again.
-	let { rows = $bindable() }: { rows: IdentifierRow[] } = $props();
+	// A contact's identifiers: those entered by hand can be changed and removed, and point to
+	// one of the contact's `topics` (or none); learned ones can be taken over (then they are
+	// entered by hand) or rejected (training does not learn them again); a rejected one can be
+	// allowed again.
+	let {
+		rows = $bindable(),
+		topics = []
+	}: { rows: IdentifierRow[]; topics?: { value: string; label: string }[] } = $props();
 
 	const kinds = IDENTIFIER_KINDS.map((kind) => ({ value: kind, label: kindLabel(kind) }));
+	const topicOptions = $derived([{ value: '', label: m.topic_none() }, ...topics]);
+
+	function topicLabel(id: string): string | null {
+		return topics.find((topic) => topic.value === id)?.label ?? null;
+	}
 
 	function become(item: IdentifierRow, source: IdentifierSource) {
 		rows = rows.map((other) => (other.key === item.key ? { ...other, source } : other));
@@ -33,7 +42,7 @@
 <div class="flex flex-col gap-2">
 	{#each rows as item, index (item.key)}
 		{#if item.source === 'manual'}
-			<div class="flex items-center gap-2">
+			<div class="flex flex-wrap items-center gap-2">
 				<NativeSelect
 					bind:value={rows[index].kind}
 					options={kinds}
@@ -44,8 +53,18 @@
 					bind:value={rows[index].value}
 					aria-label={m.identifier_value()}
 					maxlength={100}
-					class="min-w-0 flex-1"
+					class="min-w-0 flex-1 basis-32"
 				/>
+				{#if topics.length > 0}
+					<NativeSelect
+						bind:value={rows[index].topic_id}
+						options={topicLabel(item.topic_id) || item.topic_id === ''
+							? topicOptions
+							: [...topicOptions, { value: item.topic_id, label: m.topic_not_enabled() }]}
+						aria-label={m.identifier_topic()}
+						class="order-last w-full sm:order-none sm:w-44"
+					/>
+				{/if}
 				<Button
 					type="button"
 					variant="ghost"
@@ -66,6 +85,9 @@
 					]}
 				>
 					{kindLabel(item.kind)}:&nbsp;<span class="font-mono">{item.value}</span>
+					{#if item.source === 'learned' && topicLabel(item.topic_id)}
+						<span class="text-muted-foreground"> · {topicLabel(item.topic_id)}</span>
+					{/if}
 				</span>
 				<Badge variant={item.source === 'learned' ? 'secondary' : 'outline'}>
 					{item.source === 'learned' ? m.identifier_learned() : m.identifier_rejected()}

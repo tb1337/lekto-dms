@@ -27,7 +27,9 @@ const lookup = {
 		tag('t3', ['Paid'], null, 'document', false),
 		tag('g1', ['Insurer'], null, 'contact', true),
 		tag('g2', ['Insurer', 'Health insurer'], 'g1', 'contact', false),
-		tag('g3', ['Bills'], null, 'document_type', false)
+		tag('g3', ['Bills'], null, 'document_type', false),
+		tag('p1', ['Versicherung'], null, 'topic', true),
+		tag('p2', ['Versicherung', 'Kranken'], 'p1', 'topic', true)
 	],
 	fields: [],
 	spaces: [],
@@ -41,6 +43,18 @@ describe('TagChips', () => {
 			`Insurance${SEPARATOR}Health`
 		);
 		expect(screen.queryByText('Paid')).toBeNull(); // hidden
+	});
+
+	it('shows the topic first, square, the tags round', () => {
+		const { container } = render(TagChips, {
+			document: { tag_ids: ['t2'], topic_id: 'p2' },
+			lookup
+		});
+		const chips = [...container.querySelectorAll('[title]')];
+		expect(chips.map((chip) => chip.textContent?.trim())).toEqual(['Kranken', 'Health']);
+		expect(chips[0].className).toContain('rounded-md');
+		expect(chips[1].className).toContain('rounded-full');
+		expect(chips[0].getAttribute('title')).toBe(`Versicherung${SEPARATOR}Kranken`);
 	});
 });
 

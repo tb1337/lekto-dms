@@ -17,10 +17,10 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { below, ofScope, pathLabel, tagOptions } from '#lib/tags.ts';
 
-	// Create or change a contact (name, aliases, identifiers, groups), a document type (name,
-	// description, title pattern, fields, groups) or a tag (name, parent of its scope, how it is
-	// set, whether documents show it). The API decides what is valid; its answer (e.g. 409 for
-	// a taken name) shows below.
+	// Create or change a contact (name, aliases, groups, topics, identifiers with their topic),
+	// a document type (name, description, title pattern, fields, groups) or a tag (name, parent
+	// of its scope, how it is set, whether documents show it). The API decides what is valid;
+	// its answer (e.g. 409 for a taken name) shows below.
 	let {
 		open = $bindable(false),
 		title,
@@ -42,7 +42,7 @@
 		ruleHref?: string | null;
 		/** Every field, for a document type's: those of the type are assigned there. */
 		fields?: readonly FieldDefinition[] | null;
-		/** Every tag: parents of a tag, groups of a contact or type. */
+		/** Every tag: parents of a tag, groups of a contact or type, topics of a contact. */
 		tags?: readonly Tag[];
 		/** The scope of a tag. */
 		scope?: TagScope | null;
@@ -56,6 +56,7 @@
 	let titlePattern = $state('');
 	let assigned = $state<Assignment[]>([]);
 	let groupIds = $state<string[]>([]);
+	let topicIds = $state<string[]>([]);
 	let parentId = $state('');
 	let manual = $state(false);
 	let shown = $state(true);
@@ -63,7 +64,11 @@
 	const groupScope = $derived<TagScope | null>(
 		extra === 'aliases' ? 'contact' : extra === 'description' ? 'document_type' : null
 	);
-	const isGroup = $derived(scope !== null && scope !== 'document');
+	const isGroup = $derived(scope === 'contact' || scope === 'document_type');
+	const isTopic = $derived(scope === 'topic');
+	// The topics a contact enables; its identifiers point to one of them.
+	const topicChoices = $derived(tagOptions(tags, 'topic'));
+	const enabledTopics = $derived(topicChoices.filter((topic) => topicIds.includes(topic.value)));
 	// A tag goes under one of its scope, never under itself or one below it.
 	const parents = $derived.by(() => {
 		if (scope === null) return [];
@@ -85,9 +90,10 @@
 			description = initial?.description ?? '';
 			titlePattern = initial?.title_pattern ?? '';
 			groupIds = [...(initial?.group_ids ?? [])];
+			topicIds = [...(initial?.topic_ids ?? [])];
 			parentId = initial?.parent_id ?? '';
 			manual = initial?.assignment === 'manual';
-			shown = initial?.shown ?? (scope === null || scope === 'document');
+			shown = initial?.shown ?? (scope === null || scope === 'document' || scope === 'topic');
 			const id = initial?.id;
 			assigned = id
 				? typed
@@ -110,11 +116,12 @@
 			await onsubmit({
 				name: name.trim(),
 				aliases: parseAliases(aliases),
-				...changesOf(identifiers),
+				...changesOf(identifiers, topicIds),
 				description: description.trim() || null,
 				title_pattern: titlePattern.trim() || null,
 				fields: extra === 'description' && fields ? assigned : null,
 				group_ids: groupIds,
+				topic_ids: topicIds,
 				parent_id: parentId || null,
 				assignment: manual ? 'manual' : 'auto',
 				shown
@@ -139,13 +146,20 @@
 			{#if extra === 'tag' && scope !== null}
 				<Field.Field>
 					<Field.Label for="master-parent">
-						{isGroup ? m.tag_parent_group() : m.tag_parent()}
+						{isGroup ? m.tag_parent_group() : isTopic ? m.topic_parent() : m.tag_parent()}
 					</Field.Label>
 					<NativeSelect
 						id="master-parent"
 						bind:value={parentId}
 						options={[
-							{ value: '', label: isGroup ? m.tag_parent_group_none() : m.tag_parent_none() },
+							{
+								value: '',
+								label: isGroup
+									? m.tag_parent_group_none()
+									: isTopic
+										? m.topic_parent_none()
+										: m.tag_parent_none()
+							},
 							...parents
 						]}
 						class="h-10"
@@ -176,7 +190,9 @@
 								{m.tag_assignment_manual()}
 							</label>
 						</div>
-						<Field.Description>{m.tag_assignment_hint()}</Field.Description>
+						<Field.Description>
+							{isTopic ? m.topic_assignment_hint() : m.tag_assignment_hint()}
+						</Field.Description>
 					</fieldset>
 				{/if}
 				<Field.Field>
@@ -190,7 +206,11 @@
 						{m.tag_shown()}
 					</label>
 					<Field.Description id="master-shown-hint">
-						{isGroup ? m.tag_group_shown_hint() : m.tag_shown_hint()}
+						{isGroup
+							? m.tag_group_shown_hint()
+							: isTopic
+								? m.topic_shown_hint()
+								: m.tag_shown_hint()}
 					</Field.Description>
 				</Field.Field>
 			{/if}
@@ -213,13 +233,24 @@
 			{/if}
 			{#if extra === 'aliases'}
 				<Field.Field>
+					<Field.Label for="master-topics">{m.master_topics()}</Field.Label>
+					<MultiPicker
+						id="master-topics"
+						label={m.master_topics()}
+						options={topicChoices}
+						selected={topicIds}
+						onchange={(next) => (topicIds = next)}
+					/>
+					<Field.Description>{m.master_contact_topics_hint()}</Field.Description>
+				</Field.Field>
+				<Field.Field>
 					<Field.Label for="master-aliases">{m.master_aliases()}</Field.Label>
 					<Textarea id="master-aliases" bind:value={aliases} rows={4} />
 					<Field.Description>{m.master_aliases_hint()}</Field.Description>
 				</Field.Field>
 				<Field.Field>
 					<Field.Label>{m.master_identifiers()}</Field.Label>
-					<IdentifiersEditor bind:rows={identifiers} />
+					<IdentifiersEditor bind:rows={identifiers} topics={enabledTopics} />
 					<Field.Description>{m.master_identifiers_hint()}</Field.Description>
 				</Field.Field>
 			{:else if extra === 'description'}

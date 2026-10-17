@@ -40,6 +40,7 @@
 	);
 	// Tags and groups by their path; each picked one stands as a chip.
 	const tagName = $derived(new Map(lookup.tags.map((tag) => [tag.id, pathLabel(tag)])));
+	const topics = $derived(tagOptions(lookup.tags, 'topic'));
 	const picks = $derived([
 		{ key: 'tags' as const, scope: 'document' as const, label: m.filter_tag_add() },
 		{
@@ -97,6 +98,21 @@
 			onchange={(value) => set({ type: value || null })}
 			class="h-10 w-48"
 		/>
+		{#if topics.length > 0 || filters.topic}
+			<NativeSelect
+				aria-label={m.filter_topic()}
+				value={filters.topic ?? ''}
+				options={[
+					{ value: '', label: m.filter_topic() },
+					...topics,
+					...(filters.topic && !tagName.has(filters.topic)
+						? [{ value: filters.topic, label: filters.topic }]
+						: [])
+				]}
+				onchange={(value) => set({ topic: value || null })}
+				class="h-10 w-48"
+			/>
+		{/if}
 		<NativeSelect
 			aria-label={m.filter_space()}
 			value={filters.space ?? ''}

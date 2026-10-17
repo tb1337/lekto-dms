@@ -8,6 +8,7 @@ import { writePeriod } from '#lib/periods.ts';
 const FIELD_LABELS: Record<string, () => string> = {
 	title: m.field_title,
 	contact: m.field_contact,
+	topic: m.field_topic,
 	document_type: m.field_document_type,
 	tags: m.field_tags,
 	document_date: m.field_date,

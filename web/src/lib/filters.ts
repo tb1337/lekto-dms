@@ -12,6 +12,8 @@ export interface Filters {
 	/** Documents whose contact (type) is in each group or one below it. */
 	contactGroups: string[];
 	typeGroups: string[];
+	/** Documents with this topic or one below it. */
+	topic: string | null;
 	space: string | null;
 	lanes: LaneFilter[];
 	/** Documents with a value for this field. */
@@ -24,6 +26,7 @@ export const NO_FILTERS: Filters = {
 	tags: [],
 	contactGroups: [],
 	typeGroups: [],
+	topic: null,
 	space: null,
 	lanes: [],
 	field: null
@@ -37,6 +40,7 @@ export function parseFilters(params: URLSearchParams): Filters {
 		tags: params.getAll('tag'),
 		contactGroups: params.getAll('contact_group'),
 		typeGroups: params.getAll('type_group'),
+		topic: params.get('topic'),
 		space: params.get('space'),
 		lanes: params
 			.getAll('lane')
@@ -47,7 +51,16 @@ export function parseFilters(params: URLSearchParams): Filters {
 
 /** Write the filters into `params` (other parameters stay). */
 export function writeFilters(params: URLSearchParams, filters: Filters): URLSearchParams {
-	for (const key of ['contact', 'type', 'tag', 'contact_group', 'type_group', 'space', 'lane']) {
+	for (const key of [
+		'contact',
+		'type',
+		'tag',
+		'contact_group',
+		'type_group',
+		'topic',
+		'space',
+		'lane'
+	]) {
 		params.delete(key);
 	}
 	params.delete('field');
@@ -56,6 +69,7 @@ export function writeFilters(params: URLSearchParams, filters: Filters): URLSear
 	for (const tag of filters.tags) params.append('tag', tag);
 	for (const group of filters.contactGroups) params.append('contact_group', group);
 	for (const group of filters.typeGroups) params.append('type_group', group);
+	if (filters.topic) params.set('topic', filters.topic);
 	if (filters.space) params.set('space', filters.space);
 	for (const lane of filters.lanes) params.append('lane', lane);
 	if (filters.field) params.set('field', filters.field);
@@ -70,6 +84,7 @@ export function apiQuery(filters: Filters, allUsers = false) {
 		tag_id: filters.tags.length > 0 ? filters.tags : undefined,
 		contact_group_id: filters.contactGroups.length > 0 ? filters.contactGroups : undefined,
 		document_type_group_id: filters.typeGroups.length > 0 ? filters.typeGroups : undefined,
+		topic_id: filters.topic ?? undefined,
 		space_id: filters.space ?? undefined,
 		lane: filters.lanes.length > 0 ? filters.lanes : undefined,
 		field_id: filters.field ?? undefined,
@@ -82,6 +97,7 @@ export function isFiltered(filters: Filters): boolean {
 	return Boolean(
 		filters.contact ||
 		filters.type ||
+		filters.topic ||
 		filters.space ||
 		filters.field ||
 		filters.tags.length ||

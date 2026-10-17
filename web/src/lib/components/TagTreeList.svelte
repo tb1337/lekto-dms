@@ -26,7 +26,8 @@
 	const DELETE_CONFIRM: Record<TagKind, () => string> = {
 		tags: m.tag_delete_confirm,
 		'contact-groups': m.contact_group_delete_confirm,
-		'type-groups': m.type_group_delete_confirm
+		'type-groups': m.type_group_delete_confirm,
+		topics: m.topic_delete_confirm
 	};
 
 	let items = $state<Tag[] | null>(null);
@@ -56,7 +57,9 @@
 	/** How a tag is set and whether documents show it, where it is not the default. */
 	function marks(tag: Tag): string {
 		return [
-			tag.scope === 'document' && tag.assignment === 'manual' ? m.tag_assignment_manual() : null,
+			(tag.scope === 'document' || tag.scope === 'topic') && tag.assignment === 'manual'
+				? m.tag_assignment_manual()
+				: null,
 			tag.shown ? null : m.tag_hidden()
 		]
 			.filter(Boolean)

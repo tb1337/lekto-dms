@@ -15,6 +15,7 @@
 		'tags',
 		'contact-groups',
 		'type-groups',
+		'topics',
 		'fields'
 	] as const;
 	type Tab = (typeof TABS)[number];
@@ -36,7 +37,7 @@
 		<p class="text-muted-foreground">{m.admin_only()}</p>
 	{:else}
 		<Tabs.Root value={tab} onValueChange={(value) => goto(`?tab=${value}`, { reset: false })}>
-			<!-- Six tabs: on a narrow screen they wrap instead of running off the page. -->
+			<!-- Seven tabs: on a narrow screen they wrap instead of running off the page. -->
 			<Tabs.List
 				class="h-auto flex-wrap justify-start group-data-[orientation=horizontal]/tabs:h-auto"
 			>
@@ -45,6 +46,7 @@
 				<Tabs.Trigger value="tags">{m.master_document_tags()}</Tabs.Trigger>
 				<Tabs.Trigger value="contact-groups">{m.master_contact_groups()}</Tabs.Trigger>
 				<Tabs.Trigger value="type-groups">{m.master_type_groups()}</Tabs.Trigger>
+				<Tabs.Trigger value="topics">{m.master_topics()}</Tabs.Trigger>
 				<Tabs.Trigger value="fields">{m.master_fields()}</Tabs.Trigger>
 			</Tabs.List>
 			<div class="mt-4">

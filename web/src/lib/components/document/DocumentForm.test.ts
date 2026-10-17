@@ -517,3 +517,115 @@ describe('DocumentForm', () => {
 		expect(sent.resume_at).toBe('fields');
 	});
 });
+
+describe('the topic', () => {
+	const WORK = '0199a6c4-0000-7000-8000-0000000000b1';
+	const HEALTH = '0199a6c4-0000-7000-8000-0000000000b2';
+	const topic = (id: string, name: string) => ({
+		id,
+		name,
+		path: [name],
+		parent_id: null,
+		scope: 'topic',
+		assignment: 'auto',
+		shown: true,
+		created_at: '2026-10-17T12:00:00Z'
+	});
+	const topics = {
+		...lookup,
+		contacts: [
+			{ ...named(CONTACT, 'Stadtwerke Musterstadt'), topic_ids: [WORK, HEALTH] },
+			{ ...named(BANK, 'Beispielbank'), topic_ids: [WORK] }
+		],
+		tags: [topic(WORK, 'Arbeit'), topic(HEALTH, 'Krankenversicherung')]
+	} as unknown as Lookup;
+	const filed = {
+		...documentOf('completed', 'green'),
+		contact_id: CONTACT,
+		topic_id: HEALTH
+	} as Document;
+	const select = (label: string) =>
+		screen.getByLabelText(label, { selector: 'select' }) as HTMLSelectElement;
+	const choices = (label: string) => [...select(label).options].map((option) => option.text);
+
+	it('offers the contact’s topics and leaves one the next contact does not have', async () => {
+		render(DocumentForm, props({ document: filed, lookup: topics, review: null }));
+		expect(select(m.field_topic()).value).toBe(HEALTH);
+		expect(choices(m.field_topic())).toEqual([m.value_unset(), 'Arbeit', 'Krankenversicherung']);
+		await userEvent.selectOptions(select(m.field_contact()), BANK);
+		expect(select(m.field_topic()).value).toBe('');
+		expect(choices(m.field_topic())).toEqual([m.value_unset(), 'Arbeit']);
+		await userEvent.selectOptions(select(m.field_contact()), '');
+		expect(select(m.field_topic()).disabled).toBe(true);
+		expect(choices(m.field_topic())).toEqual([m.topic_no_contact()]);
+	});
+
+	it('lets an admin choose any topic, which saving enables at the contact', async () => {
+		session.start({
+			user: { id: OWNER, username: 'admin', role: 'admin' },
+			method: 'password',
+			expires_at: '2026-10-09T12:00:00Z',
+			csrf_token: 'token'
+		});
+		fetchMock.mockResolvedValue(
+			new Response('{"changed": [], "rules": null, "visibility": null, "document": null}', {
+				status: 200,
+				headers: { 'content-type': 'application/json' }
+			})
+		);
+		const bank = { ...filed, contact_id: BANK, topic_id: null } as Document;
+		render(DocumentForm, props({ document: bank, lookup: topics, review: null }));
+		expect(choices(m.field_topic())).toEqual([m.value_unset(), 'Arbeit', 'Krankenversicherung']);
+		await userEvent.selectOptions(select(m.field_topic()), HEALTH);
+		expect(screen.getByText(m.topic_enables_hint())).toBeTruthy();
+		await userEvent.click(screen.getByRole('button', { name: m.edit_review() }));
+		const sent = await fetchMock.mock.calls[0][0].json();
+		expect(sent).toEqual({ topic_id: HEALTH });
+		await userEvent.click(await screen.findByRole('button', { name: m.cancel() }));
+	});
+
+	it('shows a topic Papiq only suggests as a card; a click takes it', async () => {
+		const suggested = {
+			document: {},
+			open: [],
+			nodes: [
+				{
+					node: 'judge',
+					run: 1,
+					outcome: 'ok',
+					reason: null,
+					model_version: 'qwen3:8b',
+					truncated: false,
+					fields: [
+						check('topic', {
+							reason: 'only one signal names it',
+							suggestion: WORK,
+							candidates: [
+								{
+									value: WORK,
+									label: 'Arbeit',
+									contradicted: false,
+									sources: [{ signal: 'signal_llm', names: true }]
+								}
+							]
+						})
+					]
+				}
+			]
+		} as unknown as Review;
+		const empty = { ...filed, topic_id: null } as Document;
+		render(DocumentForm, props({ document: empty, lookup: topics, review: suggested }));
+		const card = screen.getByRole('group', { name: m.field_topic() });
+		expect(within(card).getByText('only one signal names it')).toBeTruthy();
+		await userEvent.click(
+			within(card).getByRole('button', { name: m.candidate_pick({ name: 'Arbeit' }) })
+		);
+		expect(select(m.field_topic()).value).toBe(WORK);
+		// Taken, it is no suggestion any more.
+		expect(
+			within(screen.getByRole('group', { name: m.field_topic() })).queryByText(
+				'only one signal names it'
+			)
+		).toBeNull();
+	});
+});

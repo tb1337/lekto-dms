@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Lightbulb from '@lucide/svelte/icons/lightbulb';
 	import SearchX from '@lucide/svelte/icons/search-x';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import type { Snippet } from 'svelte';
@@ -14,8 +15,10 @@
 
 	// One field of the document with what backs it. A field that waits for a decision is a
 	// card with the confidence, reason and quote, and what the signals proposed (a click takes
-	// one); any other is a label and the input, with the page of its quote and where its value
-	// comes from. Hovering or focusing it marks the quote in the viewer.
+	// one); one Papiq only suggests without making anyone wait (`advice`, the topic) is a calm
+	// card with the reason and the candidates; any other is a label and the input, with the
+	// page of its quote and where its value comes from. Hovering or focusing it marks the quote
+	// in the viewer.
 	let {
 		key,
 		label,
@@ -23,6 +26,7 @@
 		evidence,
 		lookup,
 		review = false,
+		advice = false,
 		applies = true,
 		active = false,
 		required = false,
@@ -40,6 +44,8 @@
 		lookup: Lookup;
 		/** The document is being reviewed: open fields are cards. */
 		review?: boolean;
+		/** A suggestion that waits for nobody: a calm card with the candidates. */
+		advice?: boolean;
 		/** The checked value is still the field's (its quote's places still apply). */
 		applies?: boolean;
 		active?: boolean;
@@ -58,6 +64,7 @@
 
 	const check = $derived(evidence?.check);
 	const card = $derived(review && evidence?.open === true);
+	const calm = $derived(!card && advice && evidence !== undefined);
 	const kind = $derived(check ? provenance(check) : null);
 	// One chip per page; beyond `CHIPS` pages the rest behind "+N".
 	const CHIPS = 6;
@@ -105,11 +112,22 @@
 	class={cn(
 		card
 			? 'my-1 flex flex-col gap-2.5 rounded-2xl border border-lane-yellow-foreground/25 bg-lane-yellow/25 p-3.5 transition-shadow'
-			: '-mx-2.5 flex flex-col gap-1.5 rounded-xl px-2.5 py-2 transition-colors',
-		active && (card ? 'ring-2 ring-primary' : 'bg-panel')
+			: calm
+				? 'my-1 flex flex-col gap-2.5 rounded-2xl border bg-card p-3.5 transition-shadow'
+				: '-mx-2.5 flex flex-col gap-1.5 rounded-xl px-2.5 py-2 transition-colors',
+		active && (card || calm ? 'ring-2 ring-primary' : 'bg-panel')
 	)}
 >
-	{#if card && check}
+	{#if calm && check}
+		<div class="flex items-center gap-2">
+			<Lightbulb class="size-4 shrink-0 text-brand" aria-hidden="true" strokeWidth={2.2} />
+			<label id={labelId} for={inputId} class="font-semibold">{@render labelText()}</label>
+		</div>
+		{#if check.reason}<p class="text-sm">{check.reason}</p>{/if}
+		{#if check.candidates?.length}
+			<CandidateList candidates={check.candidates} onpick={pick} />
+		{/if}
+	{:else if card && check}
 		<div class="flex items-center gap-2">
 			<TriangleAlert
 				class="size-4 shrink-0 text-lane-yellow-foreground"

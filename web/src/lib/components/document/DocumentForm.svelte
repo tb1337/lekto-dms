@@ -46,6 +46,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { fieldId, initialValue, isRuleField, type ReviewValue } from '#lib/review.ts';
 	import { session } from '#lib/session.svelte.ts';
+	import { tagOptions } from '#lib/tags.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 	type Patch = components['schemas']['DocumentPatch'];
@@ -104,6 +105,7 @@
 	let title = $state('');
 	let date = $state('');
 	let contact = $state('');
+	let topic = $state('');
 	let documentType = $state('');
 	let tags = $state<string[]>([]);
 	let values = $state<Record<string, InputValue>>({});
@@ -142,13 +144,14 @@
 	const spaces = $derived(writableSpaces(lookup.spaces, session.user));
 
 	const snapshot = () =>
-		JSON.stringify([title, date, contact, documentType, tags, values, spaceId]);
+		JSON.stringify([title, date, contact, topic, documentType, tags, values, spaceId]);
 	let baseline: { id: string; form: string; reviewing: boolean } | null = null;
 
 	function assign(key: string, value: ReviewValue) {
 		const id = fieldId(key);
 		if (id !== null) values[id] = value as InputValue;
-		else if (key === 'contact') contact = value as string;
+		else if (key === 'contact') chooseContact(value as string);
+		else if (key === 'topic') topic = value as string;
 		else if (key === 'document_type') documentType = value as string;
 		else if (key === 'document_date') date = value as string;
 		else if (key === 'tags') tags = [...(value as string[])];
@@ -161,6 +164,7 @@
 		title = document.title;
 		date = document.document_date ?? '';
 		contact = document.contact_id ?? '';
+		topic = document.topic_id ?? '';
 		documentType = document.document_type_id ?? '';
 		tags = [...document.tag_ids];
 		values = Object.fromEntries(
@@ -179,10 +183,39 @@
 		const id = fieldId(key);
 		if (id !== null) return document.fields[id] ?? null;
 		if (key === 'contact') return document.contact_id;
+		if (key === 'topic') return document.topic_id;
 		if (key === 'document_type') return document.document_type_id;
 		if (key === 'document_date') return document.document_date;
 		if (key === 'tags') return document.tag_ids;
 		return null;
+	}
+
+	// The topics of the chosen contact; an admin may choose any (it is then enabled at the
+	// contact). Another contact keeps the topic only if it enables it, as the API does.
+	const enabledTopics = $derived(
+		lookup.contacts.find((entry) => entry.id === contact)?.topic_ids ?? []
+	);
+	const topicChoices = $derived(
+		tagOptions(lookup.tags, 'topic').filter(
+			(option) =>
+				option.value === topic ||
+				(contact !== '' && (session.isAdmin || enabledTopics.includes(option.value)))
+		)
+	);
+	const enablesTopic = $derived(topic !== '' && contact !== '' && !enabledTopics.includes(topic));
+	const topicCheck = $derived(evidence.get('topic')?.check);
+	// Papiq suggests a topic it did not set (a topic never waits): a card with the candidates.
+	const topicAdvice = $derived(
+		topic === '' &&
+			topicCheck !== undefined &&
+			(topicCheck.value ?? null) === null &&
+			(topicCheck.candidates?.length ?? 0) > 0
+	);
+
+	function chooseContact(value: string) {
+		contact = value;
+		const topics = lookup.contacts.find((entry) => entry.id === value)?.topic_ids ?? [];
+		if (topic !== '' && !topics.includes(topic)) topic = '';
 	}
 
 	$effect(() => {
@@ -230,6 +263,7 @@
 		if (title.trim() !== document.title) next.title = title.trim();
 		if ((date || null) !== document.document_date) next.document_date = date || null;
 		if ((contact || null) !== document.contact_id) next.contact_id = contact || null;
+		if ((topic || null) !== (document.topic_id ?? null)) next.topic_id = topic || null;
 		if ((documentType || null) !== document.document_type_id) {
 			next.document_type_id = documentType || null;
 		}
@@ -401,6 +435,7 @@
 		const field = fieldOf(key);
 		if (field) return toApi(field.data_type, values[field.id]);
 		if (key === 'contact') return contact || null;
+		if (key === 'topic') return topic || null;
 		if (key === 'document_type') return documentType || null;
 		if (key === 'document_date') return date || null;
 		if (key === 'tags') return tags;
@@ -551,9 +586,10 @@
 			>
 				<NativeSelect
 					id="doc-contact"
-					bind:value={contact}
+					value={contact}
 					disabled={!editable}
 					options={options(lookup.contacts)}
+					onchange={chooseContact}
 				/>
 				<GroupChips
 					tags={lookup.tags}
@@ -568,6 +604,32 @@
 						<ListChecks class="size-3.5" aria-hidden="true" />
 						{factsChip}
 					</a>
+				{/if}
+			</FieldShell>
+			<FieldShell
+				key="topic"
+				label={m.field_topic()}
+				inputId="doc-topic"
+				evidence={evidence.get('topic')}
+				{lookup}
+				advice={topicAdvice}
+				applies={applies('topic')}
+				active={focused === 'topic' || pinned === 'topic'}
+				onfocus={focus}
+				onjump={jump}
+				onpick={take}
+			>
+				<NativeSelect
+					id="doc-topic"
+					bind:value={topic}
+					disabled={!editable || topicChoices.length === 0}
+					options={[
+						{ value: '', label: contact === '' ? m.topic_no_contact() : m.value_unset() },
+						...topicChoices
+					]}
+				/>
+				{#if enablesTopic && session.isAdmin}
+					<p class="mt-1 text-xs text-muted-foreground">{m.topic_enables_hint()}</p>
 				{/if}
 			</FieldShell>
 			<FieldShell

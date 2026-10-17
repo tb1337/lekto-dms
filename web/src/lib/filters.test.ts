@@ -5,7 +5,7 @@ describe('filters in the URL', () => {
 	it('reads and writes all of them', () => {
 		const params = new URLSearchParams(
 			'contact=c1&type=t1&tag=a&tag=b&contact_group=g1&type_group=g2&type_group=g3&space=d1' +
-				'&lane=red&lane=bogus&field=f1&q=x'
+				'&lane=red&lane=bogus&field=f1&topic=p1&q=x'
 		);
 		const filters = parseFilters(params);
 		expect(filters).toEqual({
@@ -14,6 +14,7 @@ describe('filters in the URL', () => {
 			tags: ['a', 'b'],
 			contactGroups: ['g1'],
 			typeGroups: ['g2', 'g3'],
+			topic: 'p1',
 			space: 'd1',
 			lanes: ['red'],
 			field: 'f1'
@@ -24,6 +25,8 @@ describe('filters in the URL', () => {
 		expect(out.getAll('type_group')).toEqual(['g2', 'g3']);
 		expect(apiQuery(filters).contact_group_id).toEqual(['g1']);
 		expect(apiQuery(filters).document_type_group_id).toEqual(['g2', 'g3']);
+		expect(out.get('topic')).toBe('p1');
+		expect(apiQuery(filters).topic_id).toBe('p1');
 		expect(out.get('q')).toBe('x');
 		expect(out.getAll('lane')).toEqual(['red']);
 		// Whom the list covers is a setting, not part of the link.
@@ -40,6 +43,7 @@ describe('filters in the URL', () => {
 			tag_id: undefined,
 			contact_group_id: undefined,
 			document_type_group_id: undefined,
+			topic_id: undefined,
 			space_id: undefined,
 			lane: undefined,
 			field_id: undefined,
@@ -49,5 +53,6 @@ describe('filters in the URL', () => {
 		expect(isFiltered({ ...NO_FILTERS, tags: ['a'] })).toBe(true);
 		expect(isFiltered({ ...NO_FILTERS, field: 'f1' })).toBe(true);
 		expect(isFiltered({ ...NO_FILTERS, typeGroups: ['g1'] })).toBe(true);
+		expect(isFiltered({ ...NO_FILTERS, topic: 'p1' })).toBe(true);
 	});
 });

@@ -1,19 +1,20 @@
 /** Create, change and delete for the simple kinds of master data: contacts, document types
- * and the tags of each scope (document tags, contact groups, type groups). */
+ * and the tags of each scope (document tags, contact groups, type groups, topics). */
 import { api } from '#lib/api/client.ts';
 import { unwrap } from '#lib/api/call.ts';
 import type { IdentifierIn, IdentifierOut } from '#lib/identifiers.ts';
 import type { MasterData, Tag, TagScope } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
-export type TagKind = 'tags' | 'contact-groups' | 'type-groups';
+export type TagKind = 'tags' | 'contact-groups' | 'type-groups' | 'topics';
 export type SimpleKind = 'contacts' | 'document-types' | TagKind;
 
 /** The scope of the tags of each tag kind. */
 export const TAG_KINDS: Record<TagKind, TagScope> = {
 	tags: 'document',
 	'contact-groups': 'contact',
-	'type-groups': 'document_type'
+	'type-groups': 'document_type',
+	topics: 'topic'
 };
 
 export function isTagKind(kind: string): kind is TagKind {
@@ -24,14 +25,15 @@ export function isTagKind(kind: string): kind is TagKind {
  * in its tree. */
 export type Extra = 'aliases' | 'description' | 'tag';
 
-/** One item as listed: contacts carry aliases, identifiers and groups, document types a
- * description and groups, tags their scope, parent and path. */
+/** One item as listed: contacts carry aliases, identifiers, groups and topics, document types
+ * a description and groups, tags their scope, parent and path. */
 export type Item = MasterData & {
 	aliases?: string[];
 	identifiers?: IdentifierOut[];
 	description?: string | null;
 	title_pattern?: string | null;
 	group_ids?: string[];
+	topic_ids?: string[];
 	scope?: Tag['scope'];
 	parent_id?: string | null;
 	path?: string[];
@@ -68,6 +70,8 @@ export interface Values {
 	fields: { id: string; required: boolean }[] | null;
 	/** The groups of a contact or a document type. */
 	group_ids: string[];
+	/** The topics a contact enables. */
+	topic_ids: string[];
 	/** A tag's parent, how it is set, whether documents show it. */
 	parent_id: string | null;
 	assignment: Tag['assignment'];
@@ -79,7 +83,7 @@ export interface KindOps {
 	add: () => string;
 	extra: Extra;
 	/** The parameter of the document view that filters by an item. */
-	filter: 'contact' | 'type' | 'tag' | 'contact_group' | 'type_group';
+	filter: 'contact' | 'type' | 'tag' | 'contact_group' | 'type_group' | 'topic';
 	list(options?: ListOptions): Promise<Item[]>;
 	get(id: string): Promise<Item>;
 	create(values: Values): Promise<Item>;
@@ -97,13 +101,17 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		filter: 'contact',
 		list: (options) => unwrap(api.GET('/api/v1/contacts', listQuery(options))),
 		get: (id) => unwrap(api.GET('/api/v1/contacts/{id}', path(id))),
-		create: ({ name, aliases, identifiers, group_ids }) =>
-			unwrap(api.POST('/api/v1/contacts', { body: { name, aliases, identifiers, group_ids } })),
-		change: (id, { name, aliases, identifiers, rejected_identifiers, group_ids }) =>
+		create: ({ name, aliases, identifiers, group_ids, topic_ids }) =>
+			unwrap(
+				api.POST('/api/v1/contacts', {
+					body: { name, aliases, identifiers, group_ids, topic_ids }
+				})
+			),
+		change: (id, { name, aliases, identifiers, rejected_identifiers, group_ids, topic_ids }) =>
 			unwrap(
 				api.PATCH('/api/v1/contacts/{id}', {
 					...path(id),
-					body: { name, aliases, identifiers, rejected_identifiers, group_ids }
+					body: { name, aliases, identifiers, rejected_identifiers, group_ids, topic_ids }
 				})
 			),
 		remove: (id) => unwrap(api.DELETE('/api/v1/contacts/{id}', path(id)))
@@ -137,7 +145,8 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		m.master_add_contact_group,
 		'contact_group'
 	),
-	'type-groups': tagOps('type-groups', m.master_type_groups, m.master_add_type_group, 'type_group')
+	'type-groups': tagOps('type-groups', m.master_type_groups, m.master_add_type_group, 'type_group'),
+	topics: tagOps('topics', m.master_topics, m.master_add_topic, 'topic')
 };
 
 /** The tags of one scope: groups are always set by hand, so their assignment is not sent. */
@@ -148,7 +157,8 @@ function tagOps(
 	filter: KindOps['filter']
 ): KindOps {
 	const scope = TAG_KINDS[kind];
-	const assigned = (assignment: Tag['assignment']) => (scope === 'document' ? { assignment } : {});
+	const assigned = (assignment: Tag['assignment']) =>
+		scope === 'document' || scope === 'topic' ? { assignment } : {};
 	return {
 		title,
 		add,

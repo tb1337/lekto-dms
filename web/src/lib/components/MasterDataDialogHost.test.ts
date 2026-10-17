@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, within } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Item } from '#lib/masterdata-api.ts';
 import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
@@ -27,7 +28,9 @@ const TAGS = [
 	tag('t1', ['Insurance'], null),
 	tag('t2', ['Insurance', 'Health'], 't1'),
 	tag('t3', ['Insurance', 'Health', 'Dental'], 't2'),
-	tag('g1', ['Insurer'], null, 'contact')
+	tag('g1', ['Insurer'], null, 'contact'),
+	{ ...tag('p1', ['Arbeit'], null, 'topic'), assignment: 'auto', shown: true },
+	{ ...tag('p2', ['Krankenversicherung'], null, 'topic'), assignment: 'auto', shown: true }
 ];
 
 function json(body: unknown, status = 200) {
@@ -127,5 +130,37 @@ describe('MasterDataDialogHost', () => {
 		expect([...parent.options].map((option) => option.value)).toEqual(['', 'g1']);
 		expect(parent.options[0].textContent?.trim()).toBe(m.tag_parent_group_none());
 		expect((screen.getByLabelText(m.tag_shown()) as HTMLInputElement).checked).toBe(false);
+	});
+});
+
+describe('a contact’s topics', () => {
+	it('enables topics and lets its identifiers point to one of them', async () => {
+		render(WithDialogs);
+		const contact = {
+			id: 'c1',
+			name: 'Nord',
+			aliases: [],
+			identifiers: [{ kind: 'personnel_number', value: '4711', source: 'manual', topic_id: 'p1' }],
+			group_ids: [],
+			topic_ids: ['p1'],
+			created_at: '2026-10-17T12:00:00Z'
+		};
+		masterDataDialogs.open('contacts', contact as unknown as Item);
+		expect(await screen.findByDisplayValue('Nord')).toBeTruthy();
+		const topic = screen.getByLabelText(m.identifier_topic()) as HTMLSelectElement;
+		expect(topic.value).toBe('p1');
+		expect([...topic.options].map((option) => option.value)).toEqual(['', 'p1']);
+		// Enabling another offers it to the identifiers.
+		const picker = screen.getByRole('group', { name: m.master_topics() });
+		await userEvent.click(within(picker).getByLabelText('Krankenversicherung'));
+		expect([...topic.options].map((option) => option.value)).toEqual(['', 'p1', 'p2']);
+		await userEvent.selectOptions(topic, 'p2');
+		await userEvent.click(screen.getByRole('button', { name: m.save() }));
+		const patch = fetchMock.mock.calls
+			.map((call) => call[0])
+			.find((request) => request.method === 'PATCH');
+		const body = await patch?.json();
+		expect(body.topic_ids).toEqual(['p1', 'p2']);
+		expect(body.identifiers).toEqual([{ kind: 'personnel_number', value: '4711', topic_id: 'p2' }]);
 	});
 });

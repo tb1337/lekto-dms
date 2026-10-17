@@ -298,8 +298,12 @@ def person_record(
     }
 
 
-def corrected_fields(before: Document, after: Document) -> frozenset[str]:
-    """The values that differ between two states of a document, named as in field checks."""
+def corrected_fields(
+    before: Document, after: Document, *, decided: Collection[str] | None = None
+) -> frozenset[str]:
+    """The values that differ between two states of a document, named as in field checks.
+    With `decided` (the fields a person set), a topic only if they set it: one cleared
+    because the new contact does not enable it is no correction of theirs."""
     names = {
         name
         for name, attribute in (
@@ -315,6 +319,8 @@ def corrected_fields(before: Document, after: Document) -> frozenset[str]:
     for field_id in set(before.fields) | set(after.fields):
         if before.fields.get(field_id) != after.fields.get(field_id):
             names.add(field_key(field_id))
+    if decided is not None and TOPIC not in decided:
+        names.discard(TOPIC)
     return frozenset(names)
 
 

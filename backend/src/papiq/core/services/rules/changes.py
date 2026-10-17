@@ -105,13 +105,14 @@ class ChangeRules:
     ) -> RuleRun | None:
         """After the person's change is applied to `document`: run the rules, apply their
         change and (with `log`) write the log entry. Returns the run, if rules were
-        evaluated."""
+        evaluated. `changes`: the person's change as given, before `checked_changes` (a topic
+        it clears because the new contact does not enable it is no decision of theirs)."""
         changed = changed_fields(changes)
         record = person_record(
             changed=changed,
             tags_before=before.tag_ids,
             tags_after=document.tag_ids,
-            corrected=corrected_fields(before, document),
+            corrected=corrected_fields(before, document, decided=changed),
         )
         input: dict[str, JsonValue] = {
             "trigger": Trigger.CHANGE.value,

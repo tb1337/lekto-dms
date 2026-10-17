@@ -6,12 +6,20 @@ from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.errors import ConflictError, NotFoundError, ValidationError
 from papiq.core.domain.ids import TagId, new_id
 from papiq.core.domain.master_data import TagScope
-from papiq.core.domain.pipeline import RULES, Lane
-from papiq.core.domain.rules import Condition, ConditionField, Operator, SetSpace, SetTopic
+from papiq.core.domain.pipeline import PERSON, RULES, RULES_CHANGE, Lane
+from papiq.core.domain.rules import (
+    Condition,
+    ConditionField,
+    ForceReview,
+    Operator,
+    SetSpace,
+    SetTopic,
+)
 from papiq.core.domain.spaces import ShareLevel
 from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (
     Classifies,
+    channel_api,
     contact_is,
     definition,
     notes,
@@ -93,3 +101,69 @@ async def test_a_change_of_the_contact_by_a_person_runs_the_rules_on_the_topic_l
         owner.id, document.id, DocumentChanges(contact_id=sued.id)
     )
     assert change.document.topic_id == work.id
+
+
+async def test_a_topic_the_contact_change_cleared_is_no_decision_of_the_person(
+    world: World,
+) -> None:
+    """The person changes only the contact; the model's topic goes with it (the new contact
+    does not enable it). The rules may set another topic: the person decided none."""
+    r = await rule_world(world)
+    owner = await world.user()
+    service = world.master_data
+    work = await service.create_tag(r.admin.id, "Arbeit", scope=TagScope.TOPIC)
+    health = await service.create_tag(r.admin.id, "Krankenversicherung", scope=TagScope.TOPIC)
+    nord = await service.create_contact(r.admin.id, "Nord", topic_ids=[health.id])
+    sued = await service.create_contact(r.admin.id, "Süd", topic_ids=[work.id])
+    await r.user_rule(owner, definition("Süd at work", contact_is(sued.id), SetTopic(work.id)))
+    document = await r.arrive(owner, classify=Classifies(contact=nord.id, topic=health.id))
+    assert document.topic_id == health.id
+    change = await r.documents.change_metadata(
+        owner.id, document.id, DocumentChanges(contact_id=sued.id)
+    )
+    assert change.document.topic_id == work.id
+    entry = (await r.rule_entries(document, RULES_CHANGE))[-1]
+    assert (entry.result.input["changed"], entry.result.input["corrected"]) == (
+        ["contact"],
+        ["contact"],
+    )
+    # Given by the person, the topic is theirs: the rule is overruled.
+    cleared = await r.documents.change_metadata(
+        owner.id, document.id, DocumentChanges(contact_id=nord.id, topic_id=None)
+    )
+    assert cleared.document.topic_id is None
+    again = await r.documents.change_metadata(
+        owner.id, document.id, DocumentChanges(contact_id=sued.id)
+    )
+    assert again.document.topic_id is None
+    assert ("topic", "overruled") in notes(
+        (await r.rule_entries(document, RULES_CHANGE))[-1].result.output
+    )
+
+
+async def test_a_topic_the_confirmed_contact_cleared_is_no_decision_of_the_person(
+    world: World,
+) -> None:
+    """Confirming another contact in the inbox clears the model's topic; the rules that run
+    after the confirmation may set one."""
+    r = await rule_world(world)
+    owner = await world.user()
+    service = world.master_data
+    work = await service.create_tag(r.admin.id, "Arbeit", scope=TagScope.TOPIC)
+    health = await service.create_tag(r.admin.id, "Krankenversicherung", scope=TagScope.TOPIC)
+    nord = await service.create_contact(r.admin.id, "Nord", topic_ids=[health.id])
+    sued = await service.create_contact(r.admin.id, "Süd", topic_ids=[work.id])
+    await r.user_rule(owner, definition("look", channel_api(), ForceReview("look at it")))
+    await r.user_rule(owner, definition("Süd at work", contact_is(sued.id), SetTopic(work.id)))
+    document = await r.arrive(owner, classify=Classifies(contact=nord.id, topic=health.id))
+    assert (document.lane, document.topic_id) == (Lane.YELLOW, health.id)
+    await r.pipeline().confirm(owner.id, document.id, DocumentChanges(contact_id=sued.id))
+    await world.drain(r.pipeline())
+    document = await r.stored(document)
+    assert (document.lane, document.contact_id, document.topic_id) == (
+        Lane.GREEN,
+        sued.id,
+        work.id,
+    )
+    person = [entry for entry in await r.log(document) if entry.result.model_version == PERSON]
+    assert person[-1].result.output["changed"] == ["contact"]

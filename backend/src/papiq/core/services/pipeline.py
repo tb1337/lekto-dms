@@ -515,11 +515,14 @@ class PipelineService:
                 definitions=definitions,
                 given=() if target is None else (SPACE,),
             )
+            # The person decided the change as given (with the suggestions they accepted); a
+            # topic the new contact does not enable is cleared, but not by their decision.
+            decided = changed_fields(decision.changes)
             checked = await checked_changes(uow, decision.changes, document, user)
             decision = replace(decision, changes=checked)
             before = copy.deepcopy(document)
             document.apply_changes(decision.changes, definitions, now)
-            corrected = corrected_fields(before, document)
+            corrected = corrected_fields(before, document, decided=decided)
             if target is not None:
                 document.move_to(target.id, now)
             run = document.processing.run
@@ -530,7 +533,7 @@ class PipelineService:
                 Node.APPLY_RULES, outcomes.get(Node.APPLY_RULES), decision, user.id
             )
             person = person_record(
-                changed=changed_fields(decision.changes) | ({SPACE} if target else set()),
+                changed=decided | ({SPACE} if target else set()),
                 tags_before=tags_before,
                 tags_after=document.tag_ids,
                 corrected=corrected,

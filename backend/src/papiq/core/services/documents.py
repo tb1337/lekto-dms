@@ -574,7 +574,10 @@ class DocumentService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             document, _ = await writable_document(uow, user, id)
-            changes = await checked_changes(uow, changes, document, user)
+            # What the person decided is the change as given; one the checks add (a topic the
+            # new contact does not enable, cleared) is none of their decisions.
+            given = changes
+            changes = await checked_changes(uow, given, document, user)
             definitions = {item.id: item for item in await uow.fields.list_all()}
             now = self._clock.now()
             before = copy.deepcopy(document)
@@ -587,7 +590,7 @@ class DocumentService:
                     actor=user,
                     before=before,
                     document=document,
-                    changes=changes,
+                    changes=given,
                     prepared=prepared,
                     definitions=definitions,
                     now=now,

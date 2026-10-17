@@ -3,7 +3,7 @@
 import { api } from '#lib/api/client.ts';
 import { unwrap } from '#lib/api/call.ts';
 import type { IdentifierIn, IdentifierOut } from '#lib/identifiers.ts';
-import type { MasterData, Tag, TagScope } from '#lib/masterdata.svelte.ts';
+import type { Contact, MasterData, Tag, TagScope } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 
 export type TagKind = 'tags' | 'contact-groups' | 'type-groups' | 'topics';
@@ -25,8 +25,9 @@ export function isTagKind(kind: string): kind is TagKind {
  * in its tree. */
 export type Extra = 'aliases' | 'description' | 'tag';
 
-/** One item as listed: contacts carry aliases, identifiers, groups and topics, document types
- * a description and groups, tags their scope, parent and path. */
+/** One item as listed: contacts carry aliases, identifiers, groups, topics and their logo,
+ * document types a description, groups and an icon, tags their scope, parent, path, icon and
+ * colour. */
 export type Item = MasterData & {
 	aliases?: string[];
 	identifiers?: IdentifierOut[];
@@ -39,6 +40,10 @@ export type Item = MasterData & {
 	path?: string[];
 	assignment?: Tag['assignment'];
 	shown?: boolean;
+	icon?: string | null;
+	color?: string | null;
+	logo?: Contact['logo'];
+	logo_failure?: Contact['logo_failure'];
 	/** With `ListOptions.counts`: how many documents (in the scope) have it. */
 	document_count?: number | null;
 };
@@ -76,6 +81,9 @@ export interface Values {
 	parent_id: string | null;
 	assignment: Tag['assignment'];
 	shown: boolean;
+	/** The icon of a tag or a document type, the colour of a tag; null: none. */
+	icon: string | null;
+	color: string | null;
 }
 
 export interface KindOps {
@@ -123,17 +131,17 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 		filter: 'type',
 		list: (options) => unwrap(api.GET('/api/v1/document-types', listQuery(options))),
 		get: (id) => unwrap(api.GET('/api/v1/document-types/{id}', path(id))),
-		create: ({ name, description, title_pattern, group_ids }) =>
+		create: ({ name, description, title_pattern, group_ids, icon }) =>
 			unwrap(
 				api.POST('/api/v1/document-types', {
-					body: { name, description, title_pattern, group_ids }
+					body: { name, description, title_pattern, group_ids, icon }
 				})
 			),
-		change: (id, { name, description, title_pattern, group_ids }) =>
+		change: (id, { name, description, title_pattern, group_ids, icon }) =>
 			unwrap(
 				api.PATCH('/api/v1/document-types/{id}', {
 					...path(id),
-					body: { name, description, title_pattern, group_ids }
+					body: { name, description, title_pattern, group_ids, icon }
 				})
 			),
 		remove: (id) => unwrap(api.DELETE('/api/v1/document-types/{id}', path(id)))
@@ -171,17 +179,17 @@ function tagOps(
 				})
 			),
 		get: (id) => unwrap(api.GET('/api/v1/tags/{id}', path(id))),
-		create: ({ name, parent_id, assignment, shown }) =>
+		create: ({ name, parent_id, assignment, shown, icon, color }) =>
 			unwrap(
 				api.POST('/api/v1/tags', {
-					body: { name, scope, parent_id, shown, ...assigned(assignment) }
+					body: { name, scope, parent_id, shown, icon, color, ...assigned(assignment) }
 				})
 			),
-		change: (id, { name, parent_id, assignment, shown }) =>
+		change: (id, { name, parent_id, assignment, shown, icon, color }) =>
 			unwrap(
 				api.PATCH('/api/v1/tags/{id}', {
 					...path(id),
-					body: { name, parent_id, shown, ...assigned(assignment) }
+					body: { name, parent_id, shown, icon, color, ...assigned(assignment) }
 				})
 			),
 		remove: (id) => unwrap(api.DELETE('/api/v1/tags/{id}', path(id)))

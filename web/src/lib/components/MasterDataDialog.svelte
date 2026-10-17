@@ -1,7 +1,11 @@
 <script lang="ts">
 	import Workflow from '@lucide/svelte/icons/workflow';
 	import AssignmentList, { type Assignment } from '#lib/components/AssignmentList.svelte';
+	import ColorPicker from '#lib/components/ColorPicker.svelte';
+	import ContactLogoEditor from '#lib/components/ContactLogoEditor.svelte';
+	import IconPicker from '#lib/components/IconPicker.svelte';
 	import MultiPicker from '#lib/components/MultiPicker.svelte';
+	import TagChip from '#lib/components/TagChip.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
@@ -13,14 +17,15 @@
 	import { describeError } from '#lib/errors.ts';
 	import { changesOf, type IdentifierRow, rowsOf } from '#lib/identifiers.ts';
 	import { type Extra, type Item, parseAliases, type Values } from '#lib/masterdata-api.ts';
-	import type { FieldDefinition, Tag, TagScope } from '#lib/masterdata.svelte.ts';
+	import type { Contact, FieldDefinition, Tag, TagScope } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { below, ofScope, pathLabel, tagOptions } from '#lib/tags.ts';
 
-	// Create or change a contact (name, aliases, groups, topics, identifiers with their topic),
-	// a document type (name, description, title pattern, fields, groups) or a tag (name, parent
-	// of its scope, how it is set, whether documents show it). The API decides what is valid;
-	// its answer (e.g. 409 for a taken name) shows below.
+	// Create or change a contact (name, logo, aliases, groups, topics, identifiers with their
+	// topic), a document type (name, icon, description, title pattern, fields, groups) or a tag
+	// (name, icon, colour, parent of its scope, how it is set, whether documents show it). The
+	// API decides what is valid; its answer (e.g. 409 for a taken name) shows below. A contact's
+	// logo is saved apart, at once (`ContactLogoEditor`).
 	let {
 		open = $bindable(false),
 		title,
@@ -31,6 +36,8 @@
 		fields = null,
 		tags = [],
 		scope = null,
+		fetching = false,
+		onlogo = () => {},
 		onsubmit
 	}: {
 		open?: boolean;
@@ -46,6 +53,10 @@
 		tags?: readonly Tag[];
 		/** The scope of a tag. */
 		scope?: TagScope | null;
+		/** The server fetches logos of contacts from their websites. */
+		fetching?: boolean;
+		/** A contact's logo changed (saved at once). */
+		onlogo?: () => void;
 		onsubmit: (values: Values) => Promise<void>;
 	} = $props();
 
@@ -60,6 +71,8 @@
 	let parentId = $state('');
 	let manual = $state(false);
 	let shown = $state(true);
+	let icon = $state<string | null>(null);
+	let color = $state<string | null>(null);
 	let error = $state<string | null>(null);
 	const groupScope = $derived<TagScope | null>(
 		extra === 'aliases' ? 'contact' : extra === 'description' ? 'document_type' : null
@@ -94,6 +107,8 @@
 			parentId = initial?.parent_id ?? '';
 			manual = initial?.assignment === 'manual';
 			shown = initial?.shown ?? (scope === null || scope === 'document' || scope === 'topic');
+			icon = initial?.icon ?? null;
+			color = initial?.color ?? null;
 			const id = initial?.id;
 			assigned = id
 				? typed
@@ -124,7 +139,9 @@
 				topic_ids: topicIds,
 				parent_id: parentId || null,
 				assignment: manual ? 'manual' : 'auto',
-				shown
+				shown,
+				icon,
+				color
 			});
 			open = false;
 		} catch (problem) {
@@ -143,6 +160,44 @@
 				<Field.Label for="master-name">{m.field_name()}</Field.Label>
 				<Input id="master-name" bind:value={name} maxlength={200} required />
 			</Field.Field>
+			{#if extra === 'aliases'}
+				<Field.Field>
+					<Field.Label>{m.logo_title()}</Field.Label>
+					{#if initial}
+						<ContactLogoEditor contact={initial as Contact} {fetching} onchanged={onlogo} />
+					{:else}
+						<Field.Description>{m.logo_after_create()}</Field.Description>
+					{/if}
+				</Field.Field>
+			{/if}
+			{#if extra === 'tag' || extra === 'description'}
+				<Field.Field>
+					<Field.Label id="master-icon-label">{m.master_icon()}</Field.Label>
+					<IconPicker id="master-icon" bind:value={icon} />
+					<Field.Description>{m.master_icon_hint()}</Field.Description>
+				</Field.Field>
+			{/if}
+			{#if extra === 'tag' && scope !== null}
+				<Field.Field>
+					<Field.Label id="master-color-label">{m.master_color()}</Field.Label>
+					<ColorPicker id="master-color" bind:value={color} />
+					<div class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+						{m.master_color_preview()}
+						<TagChip
+							tag={{
+								id: initial?.id ?? 'new',
+								name: name.trim() || m.field_name(),
+								path: [name.trim() || m.field_name()],
+								icon,
+								color
+							}}
+							topic={isTopic}
+							group={isGroup}
+							size="md"
+						/>
+					</div>
+				</Field.Field>
+			{/if}
 			{#if extra === 'tag' && scope !== null}
 				<Field.Field>
 					<Field.Label for="master-parent">

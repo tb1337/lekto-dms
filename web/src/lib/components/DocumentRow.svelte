@@ -12,9 +12,9 @@
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 
-	// One document in a list: preview, title, contact and type each with its shown groups,
-	// date, its shown tags, lane, for admins the owner of another user's document; `children`
-	// adds a line.
+	// One document in a list: preview, title, contact (with its logo or initials) and type
+	// (with its icon) each with its shown groups, date, its shown tags, lane, for admins the
+	// owner of another user's document; `children` adds a line.
 	let {
 		document,
 		lookup,
@@ -50,8 +50,8 @@
 		</span>
 		<NamesLine
 			parts={[
-				{ name: contact?.name, groupIds: contact?.group_ids },
-				{ name: kind?.name, groupIds: kind?.group_ids }
+				{ name: contact?.name, groupIds: contact?.group_ids, avatar: contact },
+				{ name: kind?.name, groupIds: kind?.group_ids, icon: kind?.icon }
 			]}
 			date={formatDate(document.document_date ?? document.created_at)}
 			tags={lookup?.tags ?? []}

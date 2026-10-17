@@ -6,6 +6,7 @@
 	import FieldDialog from '#lib/components/FieldDialog.svelte';
 	import MasterDataDialog from '#lib/components/MasterDataDialog.svelte';
 	import { describeError } from '#lib/errors.ts';
+	import { logoFetching } from '#lib/logos.ts';
 	import { type MasterDataRequest, masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import type { FieldDefinition, MasterData, Tag } from '#lib/masterdata.svelte.ts';
 	import {
@@ -33,6 +34,7 @@
 	let fields = $state<FieldDefinition[] | null>(null);
 	let tags = $state<Tag[]>([]);
 	let ready = $state(false);
+	let fetching = $state(false);
 
 	// What the dialog shows, loaded where only an id is given. It returns before it is assigned:
 	// the effect below must not read the state it sets.
@@ -60,6 +62,8 @@
 		const all = wanted.kind === 'document-types' ? await unwrap(api.GET('/api/v1/fields')) : null;
 		// A tag goes under another; contacts and types are in groups.
 		const every = await unwrap(api.GET('/api/v1/tags'));
+		// A contact's logo may be fetched from its website, if the server does that.
+		if (wanted.kind === 'contacts') fetching = await logoFetching();
 		return { kinds: null, definition: null, entry, rule, all, every };
 	}
 
@@ -121,6 +125,8 @@
 		{fields}
 		{tags}
 		scope={isTagKind(simple) ? TAG_KINDS[simple] : null}
+		{fetching}
+		onlogo={() => masterDataDialogs.saved()}
 		onsubmit={submit}
 	/>
 {:else if request?.kind === 'fields'}

@@ -12,9 +12,9 @@
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 
-	// One document as a card of the grid: its first page, the lane on it, title, contact and
-	// type each with its shown groups, date, its shown tags, for admins the owner of another
-	// user's document; `children` adds a line.
+	// One document as a card of the grid: its first page, the lane on it, title, contact (with
+	// its logo or initials) and type (with its icon) each with its shown groups, date, its shown
+	// tags, for admins the owner of another user's document; `children` adds a line.
 	let {
 		document,
 		lookup,
@@ -51,12 +51,12 @@
 			{document.title}
 		</span>
 		<NamesLine
-			parts={[{ name: contact?.name, groupIds: contact?.group_ids }]}
+			parts={[{ name: contact?.name, groupIds: contact?.group_ids, avatar: contact }]}
 			tags={lookup?.tags ?? []}
 			class="text-sm text-muted-foreground"
 		/>
 		<NamesLine
-			parts={[{ name: kind?.name, groupIds: kind?.group_ids }]}
+			parts={[{ name: kind?.name, groupIds: kind?.group_ids, icon: kind?.icon }]}
 			date={formatDate(document.document_date ?? document.created_at)}
 			tags={lookup?.tags ?? []}
 			class="text-xs text-muted-foreground"

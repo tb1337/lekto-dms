@@ -14,6 +14,7 @@
 	import { ApiError } from '#lib/api/problem.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
+	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import FieldGroup from '#lib/components/document/FieldGroup.svelte';
 	import FieldShell from '#lib/components/document/FieldShell.svelte';
 	import TagsInput from '#lib/components/document/TagsInput.svelte';
@@ -21,6 +22,7 @@
 	import FieldValueInput from '#lib/components/FieldValueInput.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import RuleEffects from '#lib/components/rules/RuleEffects.svelte';
+	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
@@ -244,6 +246,8 @@
 
 	// Fields that fit the chosen type, and those the document has without fitting it.
 	const fitting = $derived(fieldsFor(lookup.fields, documentType || null));
+	const chosenContact = $derived(lookup.contacts.find((entry) => entry.id === contact));
+	const chosenType = $derived(lookup.documentTypes.find((entry) => entry.id === documentType));
 	const globalFields = $derived(fitting.filter((field) => field.document_type_ids === null));
 	const typeFields = $derived(fitting.filter((field) => field.document_type_ids !== null));
 	const otherFields = $derived(
@@ -603,13 +607,16 @@
 				onjump={jump}
 				onpick={take}
 			>
-				<NativeSelect
-					id="doc-contact"
-					value={contact}
-					disabled={!editable}
-					options={options(lookup.contacts)}
-					onchange={chooseContact}
-				/>
+				<div class="flex min-w-0 items-center gap-2">
+					{#if chosenContact}<ContactAvatar contact={chosenContact} size="md" />{/if}
+					<NativeSelect
+						id="doc-contact"
+						value={contact}
+						disabled={!editable}
+						options={options(lookup.contacts)}
+						onchange={chooseContact}
+					/>
+				</div>
 				<GroupChips
 					tags={lookup.tags}
 					ids={lookup.contacts.find((entry) => entry.id === contact)?.group_ids ?? []}
@@ -666,12 +673,19 @@
 				onjump={jump}
 				onpick={take}
 			>
-				<NativeSelect
-					id="doc-type"
-					bind:value={documentType}
-					disabled={!editable}
-					options={options(lookup.documentTypes)}
-				/>
+				<div class="flex min-w-0 items-center gap-2">
+					{#if chosenType?.icon}
+						<span class="grid size-8 shrink-0 place-items-center text-muted-foreground">
+							<TypeIcon icon={chosenType.icon} class="size-5" />
+						</span>
+					{/if}
+					<NativeSelect
+						id="doc-type"
+						bind:value={documentType}
+						disabled={!editable}
+						options={options(lookup.documentTypes)}
+					/>
+				</div>
 				<GroupChips
 					tags={lookup.tags}
 					ids={lookup.documentTypes.find((entry) => entry.id === documentType)?.group_ids ?? []}

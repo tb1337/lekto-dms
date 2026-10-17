@@ -4,6 +4,8 @@
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import type { Snippet } from 'svelte';
 	import { chosen } from '#lib/candidates.ts';
+	import type { Candidate } from '#lib/candidates.ts';
+	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import CandidateList from '#lib/components/document/CandidateList.svelte';
 	import SourceChip from '#lib/components/document/SourceChip.svelte';
 	import SourcesInfo from '#lib/components/document/SourcesInfo.svelte';
@@ -11,6 +13,7 @@
 	import { byPage, provenance, type FieldEvidence, type Place } from '#lib/document-view.ts';
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { cn } from '#lib/utils.ts';
 
 	// One field of the document with what backs it. A field that waits for a decision is a
@@ -81,6 +84,17 @@
 	const pick = $derived(onpick ? (value: unknown) => onpick(key, value) : undefined);
 </script>
 
+<!-- Before a proposed contact its logo or initials, before a proposed type its icon. -->
+{#snippet lead(candidate: Candidate)}
+	{#if key === 'contact'}
+		{@const found = lookup.contacts.find((entry) => entry.id === candidate.value)}
+		{#if found}<ContactAvatar contact={found} size="xs" />{/if}
+	{:else if key === 'document_type'}
+		{@const found = lookup.documentTypes.find((entry) => entry.id === candidate.value)}
+		<TypeIcon icon={found?.icon} class="size-3.5 text-muted-foreground" />
+	{/if}
+{/snippet}
+
 {#snippet labelText()}
 	{label}{#if required}<span class="text-destructive" aria-hidden="true">&nbsp;*</span><span
 			class="sr-only">({m.field_required()})</span
@@ -128,7 +142,7 @@
 		</div>
 		{#if check.reason}<p class="text-sm">{check.reason}</p>{/if}
 		{#if check.candidates?.length}
-			<CandidateList candidates={check.candidates} onpick={pick} />
+			<CandidateList candidates={check.candidates} onpick={pick} {lead} />
 		{/if}
 	{:else if card && check}
 		<div class="flex items-center gap-2">
@@ -141,7 +155,7 @@
 		</div>
 		{#if check.reason}<p class="text-sm">{check.reason}</p>{/if}
 		{#if check.candidates?.length}
-			<CandidateList candidates={check.candidates} onpick={pick} />
+			<CandidateList candidates={check.candidates} onpick={pick} {lead} />
 		{/if}
 		{#if check.new_name}
 			<p class="text-sm">

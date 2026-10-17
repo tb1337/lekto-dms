@@ -1,13 +1,15 @@
 <script lang="ts">
 	import X from '@lucide/svelte/icons/x';
+	import LucideIcon from '#lib/components/LucideIcon.svelte';
 	import * as Popover from '#lib/components/ui/popover/index.ts';
+	import { chipStyle, isHex } from '#lib/colors.ts';
 	import type { Tag } from '#lib/masterdata.svelte.ts';
 	import { pathLabel } from '#lib/tags.ts';
 	import { cn } from '#lib/utils.ts';
 
-	// A tag as a chip: its own name, the path as tooltip and, where `interactive`, on a tap (a
-	// phone has no hover); a group outlined, a topic square (tags are round); `onremove` adds a
-	// button that removes it.
+	// A tag as a chip: its icon and own name in its colour, the path as tooltip and, where
+	// `interactive`, on a tap (a phone has no hover); a group outlined, a topic square (tags are
+	// round); `onremove` adds a button that removes it.
 	let {
 		tag,
 		group = false,
@@ -17,7 +19,7 @@
 		onremove,
 		removeLabel = ''
 	}: {
-		tag: Pick<Tag, 'id' | 'name' | 'path'>;
+		tag: Pick<Tag, 'id' | 'name' | 'path'> & Partial<Pick<Tag, 'icon' | 'color'>>;
 		group?: boolean;
 		topic?: boolean;
 		interactive?: boolean;
@@ -28,18 +30,34 @@
 
 	const path = $derived(pathLabel(tag));
 	const nested = $derived(tag.path.length > 1);
+	const style = $derived(chipStyle(tag.color));
+	const coloured = $derived(style !== null);
 </script>
 
 <span
 	class={cn(
 		'inline-flex max-w-full min-w-0 items-center gap-1',
-		topic ? 'rounded-md border border-primary/25 bg-primary/10' : 'rounded-full',
-		!topic && (group ? 'border bg-background' : 'bg-secondary'),
+		topic ? 'rounded-md border' : 'rounded-full',
+		!coloured &&
+			(topic ? 'border-primary/25 bg-primary/10' : group ? 'border bg-background' : 'bg-secondary'),
+		coloured &&
+			(group
+				? 'border border-(--chip-fg)/45 bg-background text-(--chip-fg)'
+				: cn('bg-(--chip-bg) font-medium text-(--chip-fg)', topic && 'border-(--chip-fg)/25')),
+		isHex(tag.color) && 'chip-own',
+		// An own colour may be close to the card (white in light, black in dark): a faint ring
+		// keeps the chip's shape.
+		isHex(tag.color) && !group && !topic && 'ring-1 ring-(--chip-fg)/15 ring-inset',
 		size === 'sm' ? 'h-6 px-2 text-xs' : 'h-8 pl-3 text-sm',
 		size === 'md' && (onremove ? 'pr-1' : 'pr-3')
 	)}
+	{style}
 	title={path}
+	data-color={tag.color ?? undefined}
 >
+	{#if tag.icon}
+		<LucideIcon name={tag.icon} class={size === 'sm' ? 'size-3' : 'size-3.5'} />
+	{/if}
 	{#if interactive && nested}
 		<Popover.Root>
 			<Popover.Trigger

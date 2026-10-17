@@ -33,6 +33,30 @@ const TAGS = [
 	{ ...tag('p2', ['Krankenversicherung'], null, 'topic'), assignment: 'auto', shown: true }
 ];
 
+const FETCHED = {
+	source: 'fetched',
+	domain: 'nord.example',
+	stored_at: '2026-10-17T10:00:00Z',
+	url: '/api/v1/contacts/c1/logo?v=1'
+};
+const UPLOADED = {
+	...FETCHED,
+	source: 'uploaded',
+	domain: null,
+	url: '/api/v1/contacts/c1/logo?v=2'
+};
+const CONTACT = {
+	id: 'c1',
+	name: 'Nord Versicherungsgruppe',
+	aliases: [],
+	identifiers: [{ kind: 'email_domain', value: 'nord.example', source: 'manual', topic_id: null }],
+	group_ids: [],
+	topic_ids: [],
+	logo: FETCHED,
+	logo_failure: null,
+	created_at: '2026-10-17T12:00:00Z'
+};
+
 function json(body: unknown, status = 200) {
 	return new Response(JSON.stringify(body), {
 		status,
@@ -63,6 +87,12 @@ beforeEach(() => {
 			return json([{ id: RULE, name: 'Lohnabrechnung', managed_by_document_type_id: PAYSLIP }]);
 		}
 		if (path === '/api/v1/fields') return json([]);
+		if (path === '/api/v1/pipeline') return json({ nodes: [], vision: null, logo_fetch: true });
+		if (path === '/api/v1/contacts/c1/logo' && request.method === 'PUT') {
+			return json({ ...CONTACT, logo: UPLOADED, logo_failure: null });
+		}
+		if (path === '/api/v1/contacts/c1/logo') return new Response(null, { status: 204 });
+		if (path === '/api/v1/contacts/c1/logo/fetch') return new Response(null, { status: 202 });
 		if (path === '/api/v1/tags') return json(TAGS);
 		if (path === '/api/v1/documents') return json({ items: [], next_cursor: null });
 		return json({ used: [], rendered: null, missing: null, error: null });
@@ -162,5 +192,70 @@ describe('a contact’s topics', () => {
 		const body = await patch?.json();
 		expect(body.topic_ids).toEqual(['p1', 'p2']);
 		expect(body.identifiers).toEqual([{ kind: 'personnel_number', value: '4711', topic_id: 'p2' }]);
+	});
+});
+
+describe('looks', () => {
+	it('gives a tag an icon and a colour, shown in a preview', async () => {
+		const user = userEvent.setup();
+		render(WithDialogs);
+		masterDataDialogs.open('tags', TAGS[1] as Item);
+		expect(await screen.findByDisplayValue('Health')).toBeTruthy();
+		await user.click(screen.getByRole('button', { name: m.icon_choose() }));
+		await user.click(screen.getByTitle('piggy-bank'));
+		await user.click(screen.getByRole('radio', { name: m.color_teal() }));
+		const preview = document.querySelector('[data-color="teal"]');
+		expect(preview?.textContent?.trim()).toBe('Health');
+		await user.click(screen.getByRole('button', { name: m.save() }));
+		const patch = fetchMock.mock.calls
+			.map((call) => call[0])
+			.find((request) => request.method === 'PATCH');
+		const body = await patch?.json();
+		expect([body.icon, body.color]).toEqual(['piggy-bank', 'teal']);
+	});
+
+	it('gives a document type an icon and no colour', async () => {
+		render(WithDialogs);
+		masterDataDialogs.open('document-types', PAYSLIP);
+		expect(await screen.findByDisplayValue('Lohnabrechnung')).toBeTruthy();
+		expect(screen.getByRole('button', { name: m.icon_choose() })).toBeTruthy();
+		expect(screen.queryByRole('radiogroup')).toBeNull();
+	});
+
+	it('shows where a contact’s logo came from, and uploads, removes and fetches one', async () => {
+		const user = userEvent.setup();
+		render(WithDialogs);
+		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
+		expect(await screen.findByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
+		expect(screen.getByText(/nord\.example/, { selector: 'span' })).toBeTruthy();
+		const image = document.querySelector('img');
+		expect(image?.getAttribute('src')).toBe(FETCHED.url);
+
+		await user.click(await screen.findByRole('button', { name: m.logo_fetch() }));
+		const requests = () => fetchMock.mock.calls.map((call) => call[0]);
+		expect(requests().some((r) => r.method === 'POST' && r.url.endsWith('/logo/fetch'))).toBe(true);
+
+		const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+		await user.upload(
+			input,
+			new File([new Uint8Array([137, 80, 78, 71])], 'logo.png', { type: 'image/png' })
+		);
+		const put = requests().find((r) => r.method === 'PUT');
+		expect(put?.url).toContain('/api/v1/contacts/c1/logo');
+		// Uploaded: never replaced by a fetched one, so no fetching is offered.
+		expect(await screen.findByRole('button', { name: m.logo_remove() })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.logo_fetch() })).toBeNull();
+		expect(document.querySelector('img')?.getAttribute('src')).toBe(UPLOADED.url);
+
+		await user.click(screen.getByRole('button', { name: m.logo_remove() }));
+		expect(requests().some((r) => r.method === 'DELETE' && r.url.endsWith('/logo'))).toBe(true);
+		expect(await screen.findByText(m.logo_none())).toBeTruthy();
+		expect(document.querySelector('[data-initials]')?.textContent?.trim()).toBe('NV');
+	});
+
+	it('asks a new contact to be created before it gets a logo', async () => {
+		render(WithDialogs);
+		masterDataDialogs.open('contacts');
+		expect(await screen.findByText(m.logo_after_create())).toBeTruthy();
 	});
 });

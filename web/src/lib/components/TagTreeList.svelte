@@ -9,6 +9,7 @@
 	import { BASE } from '#lib/base.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import DocumentCount from '#lib/components/DocumentCount.svelte';
+	import TagChip from '#lib/components/TagChip.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
@@ -19,8 +20,9 @@
 	import { visibleRows } from '#lib/tags.ts';
 	import { cn } from '#lib/utils.ts';
 
-	// The tags of one scope as a tree: expand and collapse, how many documents each stands
-	// for (with the tags below it), add, change and delete.
+	// The tags of one scope as a tree, each as its chip (icon and colour, a topic square, a
+	// group outlined): expand and collapse, how many documents each stands for (with the tags
+	// below it), add, change and delete.
 	let { kind }: { kind: TagKind } = $props();
 	const ops = $derived(KINDS[kind]);
 	const DELETE_CONFIRM: Record<TagKind, () => string> = {
@@ -130,7 +132,11 @@
 						<span class="size-8 shrink-0" aria-hidden="true"></span>
 					{/if}
 					<div class="flex min-w-0 flex-1 flex-col items-start">
-						<span class="max-w-full truncate">{tag.name}</span>
+						<TagChip
+							tag={{ ...tag, path: [tag.name] }}
+							topic={tag.scope === 'topic'}
+							group={tag.scope === 'contact' || tag.scope === 'document_type'}
+						/>
 						{#if marks(tag)}
 							<span class="max-w-full truncate text-sm text-muted-foreground">{marks(tag)}</span>
 						{/if}

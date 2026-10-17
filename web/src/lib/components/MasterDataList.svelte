@@ -7,7 +7,9 @@
 	import { page } from '$app/state';
 	import { BASE } from '#lib/base.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import DocumentCount from '#lib/components/DocumentCount.svelte';
+	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
@@ -15,7 +17,8 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
 
-	// Contacts or document types: a list with add, change and delete (tags: `TagTreeList`).
+	// Contacts (with their logo or initials) or document types (with their icon): a list with
+	// add, change and delete (tags: `TagTreeList`).
 	let { kind }: { kind: Exclude<SimpleKind, TagKind> } = $props();
 	const ops = $derived(KINDS[kind]);
 
@@ -78,6 +81,13 @@
 		<ul class="flex flex-col gap-2">
 			{#each items as item (item.id)}
 				<li class="flex items-center gap-3 rounded-2xl border bg-card px-4 py-2">
+					{#if kind === 'contacts'}
+						<ContactAvatar contact={item} size="md" />
+					{:else}
+						<span class="grid size-8 shrink-0 place-items-center text-muted-foreground">
+							<TypeIcon icon={item.icon} class="size-5" />
+						</span>
+					{/if}
 					<div class="flex min-w-0 flex-1 flex-col">
 						<span class="truncate">{item.name}</span>
 						{#if item.aliases?.length}

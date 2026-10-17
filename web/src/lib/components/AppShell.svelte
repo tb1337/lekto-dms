@@ -91,9 +91,9 @@
 	width on it fills the window, and only its own areas scroll. -->
 <div class="flex min-h-screen flex-col lg:has-[[data-wide]]:h-dvh">
 	<header class="sticky top-0 z-40 border-b bg-card">
-		<!-- Narrower gaps on a phone, so that the menu, the wordmark and the buttons fit beside each
-		     other (they overflowed by 8 pixels at 390). -->
-		<div class="flex h-16 items-center gap-2 px-4 sm:gap-4 sm:px-8 lg:gap-7">
+		<!-- Narrower gaps on a phone, and a little narrower below 380 pixels, so that the menu, the
+		     wordmark and the buttons fit beside each other down to 360. -->
+		<div class="flex h-16 items-center gap-2 px-4 max-[380px]:px-3 sm:gap-4 sm:px-8 lg:gap-7">
 			<Sheet.Root bind:open={menuOpen}>
 				<Sheet.Trigger
 					class={cn(
@@ -143,7 +143,7 @@
 				{/if}
 			</nav>
 
-			<div class="ml-auto flex items-center gap-1.5 sm:gap-2">
+			<div class="ml-auto flex items-center gap-1.5 max-[380px]:gap-1 sm:gap-2">
 				<!-- The field where there is room: instead of the menu from md, beside it from xl
 				     (the admin's menu from xl, the field beside it from 2xl). -->
 				<HeaderSearch

@@ -4,13 +4,17 @@
 	import { buttonVariants } from '#lib/components/ui/button/index.ts';
 	import { changeLanguage, getLocale, LANGUAGE_NAMES, locales, type Locale } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { cn } from '#lib/utils.ts';
 
 	const current = getLocale();
 </script>
 
 <DropdownMenu.Root>
 	<DropdownMenu.Trigger
-		class={buttonVariants({ variant: 'secondary', size: 'default' })}
+		class={cn(
+			buttonVariants({ variant: 'secondary', size: 'default' }),
+			'max-[380px]:gap-1 max-[380px]:px-2.5'
+		)}
 		aria-label={`${m.language_label()}: ${LANGUAGE_NAMES[current]}`}
 	>
 		<Languages aria-hidden="true" />

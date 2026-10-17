@@ -21,6 +21,11 @@ export function isTagKind(kind: string): kind is TagKind {
 	return kind in TAG_KINDS;
 }
 
+/** The tag kind of `scope`. */
+export function kindOfScope(scope: TagScope): TagKind {
+	return (Object.keys(TAG_KINDS) as TagKind[]).find((kind) => TAG_KINDS[kind] === scope) ?? 'tags';
+}
+
 /** A contact's aliases and groups, a document type's description and groups, a tag's place
  * in its tree. */
 export type Extra = 'aliases' | 'description' | 'tag';
@@ -46,6 +51,10 @@ export type Item = MasterData & {
 	logo_failure?: Contact['logo_failure'];
 	/** With `ListOptions.counts`: how many documents (in the scope) have it. */
 	document_count?: number | null;
+	/** With `ListOptions.counts`: the contacts of a contact group or topic, the document types
+	 * of a type group. */
+	contact_count?: number | null;
+	document_type_count?: number | null;
 };
 
 /** A list may count the documents of each item, within the caller's reach or of all users. */
@@ -146,7 +155,7 @@ export const KINDS: Record<SimpleKind, KindOps> = {
 			),
 		remove: (id) => unwrap(api.DELETE('/api/v1/document-types/{id}', path(id)))
 	},
-	tags: tagOps('tags', m.master_document_tags, m.master_add_tag, 'tag'),
+	tags: tagOps('tags', m.master_document_tags, m.master_add_document_tag, 'tag'),
 	'contact-groups': tagOps(
 		'contact-groups',
 		m.master_contact_groups,

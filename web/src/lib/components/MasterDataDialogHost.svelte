@@ -94,6 +94,34 @@
 		};
 	});
 
+	/** What an item of each kind is, for the bar of a phone. */
+	const NOUN: Record<SimpleKind, () => string> = {
+		contacts: m.master_contact,
+		'document-types': m.master_type,
+		tags: m.tag_kind_document,
+		'contact-groups': m.tag_kind_contact,
+		'type-groups': m.tag_kind_type,
+		topics: m.tag_kind_topic
+	};
+
+	/** When an item of each kind can be deleted. */
+	const DELETE_HINT: Record<SimpleKind, () => string> = {
+		contacts: m.master_delete_confirm,
+		'document-types': m.master_delete_confirm,
+		tags: m.tag_delete_confirm,
+		'contact-groups': m.contact_group_delete_confirm,
+		'type-groups': m.type_group_delete_confirm,
+		topics: m.topic_delete_confirm
+	};
+
+	async function remove() {
+		if (!simple || !item) return;
+		await KINDS[simple].remove(item.id);
+		toast.success(m.master_deleted());
+		masterDataDialogs.close();
+		masterDataDialogs.saved();
+	}
+
 	async function submit(values: Values) {
 		if (!simple) return;
 		const ops = KINDS[simple];
@@ -118,6 +146,7 @@
 	<MasterDataDialog
 		bind:open={() => ready && request !== null, (value) => !value && masterDataDialogs.close()}
 		title={item ? m.master_edit({ name: item.name }) : KINDS[simple].add()}
+		shortTitle={item ? NOUN[simple]() : KINDS[simple].add()}
 		extra={KINDS[simple].extra}
 		initial={item}
 		submitLabel={item ? m.save() : m.create()}
@@ -128,6 +157,8 @@
 		{fetching}
 		onlogo={() => masterDataDialogs.saved()}
 		onsubmit={submit}
+		ondelete={remove}
+		deleteDescription={DELETE_HINT[simple]()}
 	/>
 {:else if request?.kind === 'fields'}
 	<FieldDialog

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Item } from '#lib/masterdata-api.ts';
 import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { phone } from '#lib/phone.svelte.ts';
 import { session } from '#lib/session.svelte.ts';
 import WithDialogs from '#lib/testing/WithDialogs.svelte';
 
@@ -102,6 +103,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	masterDataDialogs.close();
+	phone.override(null);
 	session.clear();
 	vi.unstubAllGlobals();
 	window.document.body.style.pointerEvents = '';
@@ -268,5 +270,72 @@ describe('looks', () => {
 		render(WithDialogs);
 		masterDataDialogs.open('contacts');
 		expect(await screen.findByText(m.logo_after_create())).toBeTruthy();
+	});
+});
+
+describe('the editor', () => {
+	it('deletes a tag after asking; refused, it stays open', async () => {
+		const user = userEvent.setup();
+		render(WithDialogs);
+		let refuse = true;
+		const before = fetchMock.getMockImplementation()!;
+		fetchMock.mockImplementation(async (request) => {
+			if (request.method === 'DELETE') {
+				return refuse
+					? json({ title: 'Conflict', status: 409, detail: 'the tag is in use' }, 409)
+					: new Response(null, { status: 204 });
+			}
+			return before(request);
+		});
+		const changed = masterDataDialogs.changed;
+		masterDataDialogs.open('tags', TAGS[2] as Item);
+		expect(await screen.findByDisplayValue('Dental')).toBeTruthy();
+		const remove = screen.getByRole('button', { name: m.master_delete({ name: 'Dental' }) });
+		await user.click(remove);
+		let confirm = await screen.findByRole('alertdialog');
+		expect(within(confirm).getByText(m.tag_delete_confirm())).toBeTruthy();
+		await user.click(within(confirm).getByRole('button', { name: m.delete_title() }));
+		expect(await screen.findByDisplayValue('Dental')).toBeTruthy();
+		expect(masterDataDialogs.request).not.toBeNull();
+		await user.click(within(confirm).getByRole('button', { name: m.cancel() }));
+		refuse = false;
+		await user.click(remove);
+		confirm = await screen.findByRole('alertdialog');
+		await user.click(within(confirm).getByRole('button', { name: m.delete_title() }));
+		await vi.waitFor(() => expect(masterDataDialogs.request).toBeNull());
+		expect(masterDataDialogs.changed).toBe(changed + 1);
+		const deleted = fetchMock.mock.calls
+			.map((call) => call[0])
+			.filter((r) => r.method === 'DELETE');
+		expect(deleted.map((r) => new URL(r.url).pathname)).toEqual([
+			'/api/v1/tags/t3',
+			'/api/v1/tags/t3'
+		]);
+	});
+
+	it('offers no deleting for an item still to be created', async () => {
+		render(WithDialogs);
+		masterDataDialogs.open('contacts');
+		expect(await screen.findByText(m.logo_after_create())).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.delete_title() })).toBeNull();
+	});
+
+	it('fills a phone’s screen with a bar on top to cancel and save', async () => {
+		phone.override(true);
+		const user = userEvent.setup();
+		render(WithDialogs);
+		masterDataDialogs.open('tags', TAGS[1] as Item);
+		expect(await screen.findByDisplayValue('Health')).toBeTruthy();
+		// One way to save, in the bar on top (no footer).
+		const dialog = screen.getByRole('dialog');
+		const bar = within(dialog).getByRole('button', { name: m.cancel() }).parentElement!;
+		expect(within(bar).getByRole('button', { name: m.editor_save_short() })).toBeTruthy();
+		expect(within(dialog).getAllByRole('button', { name: m.cancel() })).toHaveLength(1);
+		await user.clear(screen.getByLabelText(m.field_name()));
+		await user.type(screen.getByLabelText(m.field_name()), 'Health care');
+		await user.click(screen.getByRole('button', { name: m.editor_save_short() }));
+		const patch = fetchMock.mock.calls.map((call) => call[0]).find((r) => r.method === 'PATCH');
+		expect(await patch?.json()).toMatchObject({ name: 'Health care' });
+		await vi.waitFor(() => expect(masterDataDialogs.request).toBeNull());
 	});
 });

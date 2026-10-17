@@ -6,8 +6,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from papiq.adapters.inbound.rest.paths import logo_url
 from papiq.adapters.inbound.rest.schemas.common import Name, NameIn
-from papiq.core.domain.appearance import MAX_ICON, PaletteColor
+from papiq.core.domain.appearance import MAX_ICON, ContactLogo, LogoSource, PaletteColor
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.identifiers import MAX_IDENTIFIERS, IdentifierKind, IdentifierSource
 from papiq.core.domain.master_data import (
@@ -230,6 +231,38 @@ class ContactPatch(BaseModel):
     topic_ids: ContactTopics | None = None
 
 
+class LogoOut(BaseModel):
+    source: LogoSource = Field(
+        description="`uploaded` by an admin (a fetched one never replaces it) or `fetched` "
+        "from the contact's website."
+    )
+    domain: str | None = Field(
+        description="Of a fetched one: the domain whose website it came from.",
+        examples=["acme-energy.example"],
+    )
+    stored_at: datetime
+    url: str = Field(
+        description="Where to get it (`GET /contacts/{id}/logo`, WebP up to 128 px), with its "
+        "version: a new logo has a new URL, so it may be cached.",
+        examples=["/api/v1/contacts/01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b/logo?v=1792200000000000"],
+    )
+
+    @classmethod
+    def of(cls, contact: Contact, logo: ContactLogo) -> "LogoOut":
+        version = int(logo.stored_at.timestamp() * 1_000_000)
+        return cls(
+            source=logo.source,
+            domain=logo.domain,
+            stored_at=logo.stored_at,
+            url=logo_url(contact.id, version),
+        )
+
+
+class LogoFailureOut(BaseModel):
+    domain: str = Field(examples=["acme-energy.example"])
+    failed_at: datetime
+
+
 class ContactOut(MasterDataOut):
     aliases: list[str] = Field(examples=[["ACME Strom"]])
     identifiers: list[IdentifierOut] = Field(
@@ -237,6 +270,11 @@ class ContactOut(MasterDataOut):
     )
     group_ids: list[UUID] = Field(description="The contact groups it is in.")
     topic_ids: list[UUID] = Field(description="The topics it enables.")
+    logo: LogoOut | None = Field(description="Its logo; without one, clients show initials.")
+    logo_failure: LogoFailureOut | None = Field(
+        description="The last fetch of a logo from its website that found none; it is tried "
+        "again for another domain or when an admin asks (`POST /contacts/{id}/logo/fetch`)."
+    )
 
     @classmethod
     def of(cls, item: MasterData) -> "ContactOut":
@@ -256,6 +294,14 @@ class ContactOut(MasterDataOut):
             ],
             group_ids=sorted(item.group_ids),
             topic_ids=sorted(item.topic_ids),
+            logo=None if item.logo is None else LogoOut.of(item, item.logo),
+            logo_failure=(
+                None
+                if item.logo_failure is None
+                else LogoFailureOut(
+                    domain=item.logo_failure.domain, failed_at=item.logo_failure.failed_at
+                )
+            ),
             created_at=item.created_at,
         )
 

@@ -32,6 +32,7 @@ from papiq.core.domain.templates import uses_field as field_used
 from papiq.core.ports import (
     Clock,
     NamedRepository,
+    ObjectStore,
     TemplateRenderer,
     UnitOfWork,
     UnitOfWorkFactory,
@@ -40,6 +41,7 @@ from papiq.core.services._access import contact_topics_lock, load_actor
 
 # A rename queues the indexing service's refresh job; the worker runs it through that service.
 from papiq.core.services.indexing import REFRESH_JOB
+from papiq.core.services.logos import drop_logo
 from papiq.core.services.rules.management import renamed_field, uses_field
 from papiq.core.services.rules.references import disable_rules, misfits, refers_to
 
@@ -77,15 +79,18 @@ class MasterDataService:
         templates: TemplateRenderer,
         *,
         index_renames: bool = False,
+        store: ObjectStore | None = None,
     ) -> None:
         """`templates`: reads which fields the templates of rules use. `index_renames`:
         renaming a contact, type or tag, nesting a tag elsewhere and changing the groups of a
         contact or type queue a job that brings the search index of the documents concerned
-        up to date (set when there is a search index)."""
+        up to date (set when there is a search index). `store`: where the logos of contacts
+        are, which go with a deleted contact."""
         self._uow = uow
         self._clock = clock
         self._templates = templates
         self._index_renames = index_renames
+        self._store = store
 
     async def create_contact(
         self,
@@ -551,12 +556,20 @@ class MasterDataService:
     # --- deleting (admins; only what no document uses) -------------------------------------------
 
     async def delete_contact(self, actor: UserId, id: ContactId) -> None:
+        """Not while a document has it; its logo goes with it."""
+        store = self._store
+
+        async def drop(uow: UnitOfWork) -> None:
+            if store is not None:
+                await drop_logo(uow, store, id)
+
         await self._delete(
             actor,
             _contacts,
             id,
             lambda uow: uow.documents.exists(contact=id),
             ("contact", lambda refs: refs.contacts),
+            before=drop,
         )
 
     async def delete_document_type(self, actor: UserId, id: DocumentTypeId) -> None:

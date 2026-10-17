@@ -5,6 +5,7 @@ import pytest
 
 from papiq.adapters.outbound.memory import (
     FakeCipher,
+    FakeImageNormaliser,
     FakeOidcProvider,
     FakePasswordHasher,
     FakeTotp,
@@ -23,6 +24,7 @@ from papiq.core.domain.users import Role, User
 from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.auth import AuthService
 from papiq.core.services.documents import DocumentService
+from papiq.core.services.logos import LogoService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.oidc import OidcService
 from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode
@@ -75,6 +77,7 @@ class World:
     totp: FakeTotp = field(default_factory=FakeTotp)
     idp: FakeOidcProvider = field(default_factory=FakeOidcProvider)
     sender: FakeWebhookSender = field(default_factory=FakeWebhookSender)
+    images: FakeImageNormaliser = field(default_factory=FakeImageNormaliser)
 
     @property
     def uow(self) -> MemoryUnitOfWorkFactory:
@@ -107,7 +110,11 @@ class World:
 
     @property
     def master_data(self) -> MasterDataService:
-        return MasterDataService(self.uow, self.clock, builders.TEMPLATES)
+        return MasterDataService(self.uow, self.clock, builders.TEMPLATES, store=self.object_store)
+
+    @property
+    def logos(self) -> LogoService:
+        return LogoService(self.uow, self.clock, self.object_store, self.images)
 
     @property
     def documents(self) -> DocumentService:

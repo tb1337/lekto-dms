@@ -50,6 +50,7 @@ def make_app(
         users=services.users,
         spaces=services.spaces,
         master_data=services.master_data,
+        logos=services.logos,
         oidc=services.oidc,
         search=services.search,
         indexing=services.indexing,

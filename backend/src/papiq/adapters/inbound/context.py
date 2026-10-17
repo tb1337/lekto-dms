@@ -11,6 +11,7 @@ from papiq.core.services.auth import AuthService
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.indexing import IndexingService
+from papiq.core.services.logos import LogoService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.oidc import OidcService
 from papiq.core.services.pipeline import PipelineService
@@ -30,6 +31,7 @@ class ApiContext:
     users: UserService
     spaces: SpaceService
     master_data: MasterDataService
+    logos: LogoService
     pipeline: PipelineService
     documents: DocumentService
     rules: RuleService

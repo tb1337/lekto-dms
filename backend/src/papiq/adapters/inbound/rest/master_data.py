@@ -1,15 +1,17 @@
 """Master data: contacts, document types, tags, field definitions. Everyone reads them;
 admins change them. Deleting works only for what nothing uses."""
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request, Response
 from pydantic import BaseModel
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import ApiContext, Context
+from papiq.adapters.inbound.rest.paths import PREFIX
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.master_data import (
     ContactCreate,
@@ -28,6 +30,7 @@ from papiq.adapters.inbound.rest.schemas.master_data import (
     TagOut,
     TagPatch,
 )
+from papiq.adapters.inbound.rest.upload import FILE_FIELD, read_upload
 from papiq.core.domain.documents import UNSET, Unset
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.identifiers import Identifier, IdentifierKind
@@ -35,6 +38,7 @@ from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId, Use
 from papiq.core.domain.master_data import MasterData, TagScope
 from papiq.core.domain.tag_tree import TagTree
 from papiq.core.ports import CountBy
+from papiq.core.services.logos import LOGO_MAX_SIZE, LOGO_TYPE
 
 ADMINS_ONLY = "Admins only."
 COUNTS = (
@@ -205,6 +209,88 @@ async def attach_identifier(
     topic = None if body.topic_id is None else TagId(body.topic_id)
     identifier = Identifier.parse(body.kind, body.value, topic_id=topic)
     return ContactOut.of(await context.master_data.add_identifier(user, ContactId(id), identifier))
+
+
+LOGO_PATH = f"{PREFIX}/contacts/{{id}}/logo"
+_LOGO_BODY = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "multipart/form-data": {
+                "schema": {
+                    "type": "object",
+                    "required": [FILE_FIELD],
+                    "properties": {
+                        FILE_FIELD: {
+                            "type": "string",
+                            "format": "binary",
+                            "description": "PNG, JPEG or WebP, recognised by content; at most "
+                            f"{LOGO_MAX_SIZE} bytes.",
+                        }
+                    },
+                }
+            }
+        },
+    }
+}
+
+
+@contacts.put(
+    "/{id}/logo",
+    summary="Upload a contact's logo",
+    description=(
+        ADMINS_ONLY + " One part `file`: a PNG, JPEG or WebP image of at most 1 MiB (413 "
+        "otherwise); another kind, SVG among them, is 415, an image that cannot be read 422. "
+        "Papiq keeps it scaled to fit 128 px as WebP, in place of any other logo; a fetched "
+        "one never replaces it."
+    ),
+    response_model=ContactOut,
+    responses=problem_responses(400, 401, 403, 404, 413, 415, 422),
+    openapi_extra=_LOGO_BODY,
+)
+async def upload_logo(
+    id: UUID, request: Request, user: CurrentUser, context: Context
+) -> ContactOut:
+    received = await read_upload(request, max_size=LOGO_MAX_SIZE)
+    try:
+        data = await asyncio.to_thread(received.file.path.read_bytes)
+    finally:
+        await asyncio.shield(asyncio.to_thread(received.file.path.unlink, missing_ok=True))
+    return ContactOut.of(await context.logos.upload(user, ContactId(id), data))
+
+
+@contacts.delete(
+    "/{id}/logo",
+    status_code=204,
+    summary="Remove a contact's logo",
+    description=ADMINS_ONLY + " The contact shows its initials again.",
+    responses=problem_responses(401, 403, 404, 422),
+)
+async def remove_logo(id: UUID, user: CurrentUser, context: Context) -> None:
+    await context.logos.remove(user, ContactId(id))
+
+
+@contacts.get(
+    "/{id}/logo",
+    summary="A contact's logo",
+    description=(
+        "Everyone reads it (master data is global): WebP, up to 128 px. Unlike the API's "
+        "other answers it may be cached (`Cache-Control: private, max-age=86400`): its URL "
+        "in `ContactOut.logo.url` carries its version. 404 without a logo."
+    ),
+    response_class=Response,
+    responses={
+        200: {"content": {LOGO_TYPE: {"schema": {"type": "string", "format": "binary"}}}},
+        **problem_responses(401, 404, 422),
+    },
+)
+async def get_logo(id: UUID, user: CurrentUser, context: Context) -> Response:
+    stored = await context.logos.logo(user, ContactId(id))
+    return Response(
+        stored.data,
+        media_type=LOGO_TYPE,
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 document_types = _simple(

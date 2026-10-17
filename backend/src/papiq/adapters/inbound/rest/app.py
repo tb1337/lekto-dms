@@ -37,10 +37,11 @@ from papiq.adapters.inbound.rest.auth import (
 from papiq.adapters.inbound.rest.context import ApiContext
 from papiq.adapters.inbound.rest.events import EventHub, dispatch_forever
 from papiq.adapters.inbound.rest.middleware import LimitRequestBody, NoStore
+from papiq.adapters.inbound.rest.paths import PREFIX
 from papiq.adapters.inbound.rest.schemas.events import EventMessage
 from papiq.adapters.inbound.rest.ui import ui_routes
 
-PREFIX = "/api/v1"
+__all__ = ["PREFIX", "create_app"]
 
 DESCRIPTION = """\
 Papiq is a headless document management system; this API is the only way in.
@@ -124,12 +125,15 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
     app.add_middleware(
         LimitRequestBody,
         limit=context.max_request_size,
-        exempt={("POST", f"{PREFIX}/documents")},  # the upload has its own limit
+        # The uploads have their own limits.
+        exempt={("POST", f"{PREFIX}/documents"), ("PUT", master_data.LOGO_PATH)},
     )
     app.add_middleware(
         NoStore,
         prefix=PREFIX,
         public=(f"{PREFIX}/health", f"{PREFIX}/docs", f"{PREFIX}/openapi.json", f"{PREFIX}/redoc"),
+        # A logo is master data every user sees; its URL changes with it.
+        cacheable=(master_data.LOGO_PATH,),
     )
     for router in (
         account.public,

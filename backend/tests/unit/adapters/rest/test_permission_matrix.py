@@ -29,6 +29,7 @@ from papiq.core.domain.users import User
 from papiq.core.services.objects import archive_key, preview_key
 from tests.api import auth, bearer
 from tests.builders import UNCERTAIN
+from tests.contracts.images import image
 from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.rest.conftest import Api
 
@@ -622,6 +623,25 @@ async def test_master_data_is_read_by_all_and_changed_by_admins(api: Api, kind: 
     renamed = await api.client.patch(item, json={"name": "Y"}, headers=scene.headers["admin"])
     assert renamed.status_code == 200
     assert (await api.client.delete(item, headers=scene.headers["admin"])).status_code == 204
+
+
+async def test_a_contacts_logo_is_read_by_all_and_changed_by_admins(api: Api) -> None:
+    scene = await build_scene(api)
+    url = f"{PREFIX}/contacts/{scene.contact}/logo"
+    files = {"file": ("logo.png", image((64, 64)), "image/png")}
+    for actor, status in {**NOT_ADMIN, **DENIED}.items():
+        response = await api.client.put(url, files=files, headers=scene.headers[actor])
+        assert response.status_code == status, actor
+    uploaded = await api.client.put(url, files=files, headers=scene.headers["admin"])
+    assert uploaded.status_code == 200
+    for actor in ("owner", "reader", "stranger", "admin", "read_token"):
+        assert (await api.client.get(url, headers=scene.headers[actor])).status_code == 200
+    for actor in DENIED:
+        assert (await api.client.get(url, headers=scene.headers[actor])).status_code == 401
+    for actor, status in {**NOT_ADMIN, **DENIED}.items():
+        response = await api.client.delete(url, headers=scene.headers[actor])
+        assert response.status_code == status, actor
+    assert (await api.client.delete(url, headers=scene.headers["admin"])).status_code == 204
 
 
 async def test_users_are_managed_by_admins(api: Api) -> None:

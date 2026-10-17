@@ -101,6 +101,7 @@ from papiq.core.services.classifier import ClassifierPolicy, ClassifierService
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from papiq.core.services.indexing import IndexingPolicy, IndexingService
+from papiq.core.services.logos import LogoService
 from papiq.core.services.maintenance import MaintenanceService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.nodes import OcrNode, PagesNode, ParseNode
@@ -438,6 +439,7 @@ class Services:
     users: UserService
     spaces: SpaceService
     master_data: MasterDataService
+    logos: LogoService
     rules: RuleService
     rule_applications: RuleApplicationService
     webhooks: WebhookService
@@ -613,8 +615,9 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         users=UserService(uow, clock, container.password_hasher),
         spaces=SpaceService(uow, clock),
         master_data=MasterDataService(
-            uow, clock, container.templates, index_renames=index is not None
+            uow, clock, container.templates, index_renames=index is not None, store=store
         ),
+        logos=LogoService(uow, clock, store, container.images),
         rules=RuleService(uow, clock, container.templates),
         webhooks=WebhookService(uow, clock, container.cipher, webhook_policy_of(settings)),
         webhook_delivery=WebhookDeliveryService(

@@ -11,7 +11,9 @@ from papiq.adapters.inbound.evaluation.runner import CaseResult
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.pipeline import Lane
 
-FIELDS = ("contact", "document_type", "document_date")
+FIELDS = ("contact", "document_type", "topic", "document_date")
+_APPLIED_ONLY = frozenset({"topic"})
+"""Fields always checked OK, set or only suggested: accepted only when a value was applied."""
 _LANES: tuple[Lane | None, ...] = (Lane.GREEN, Lane.YELLOW, Lane.RED, None)
 
 
@@ -102,6 +104,7 @@ def summarise(results: Sequence[CaseResult], *, fake: bool) -> Summary:
         wanted: dict[str, JsonValue] = {
             "contact": expected.contact,
             "document_type": expected.document_type,
+            "topic": expected.topic,
             "document_date": expected.document_date,
         }
         # The title is no field of the set: nothing is expected of it.
@@ -116,7 +119,11 @@ def summarise(results: Sequence[CaseResult], *, fake: bool) -> Summary:
             got = result.proposed.get(name)
             right = _same(got, value)
             score.hits += right
-            if check is not None and check.ok:
+            if (
+                check is not None
+                and check.ok
+                and (name not in _APPLIED_ONLY or check.value is not None)
+            ):
                 score.accepted += 1
                 score.corrected += name in result.corrected
                 if not right:

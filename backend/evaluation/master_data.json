@@ -51,11 +51,48 @@
     "Krankenversicherung",
     "Wichtig"
   ],
+  "topics": [
+    "Arbeit",
+    "Versicherung",
+    {
+      "name": "Hausratversicherung",
+      "parent": "Versicherung"
+    },
+    {
+      "name": "Haftpflichtversicherung",
+      "parent": "Versicherung"
+    },
+    {
+      "name": "Krankenversicherung",
+      "parent": "Versicherung"
+    }
+  ],
+  "contact_topics": {
+    "Hanse Versicherung AG": [
+      "Arbeit",
+      "Hausratversicherung",
+      "Haftpflichtversicherung",
+      "Krankenversicherung"
+    ],
+    "Gesundkasse BKK": [
+      "Krankenversicherung"
+    ]
+  },
   "contact_identifiers": {
     "Hanse Versicherung AG": [
       {
         "kind": "customer_number",
         "value": "88-123-45"
+      },
+      {
+        "kind": "personnel_number",
+        "value": "52318",
+        "topic": "Arbeit"
+      },
+      {
+        "kind": "customer_number",
+        "value": "KV-2026-77310",
+        "topic": "Krankenversicherung"
       }
     ]
   },

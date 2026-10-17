@@ -287,6 +287,29 @@ class SearchIndexContract:
         assert await with_filter(types=(frozenset({bills}),)) == {both.id}
         assert await with_filter(types=(frozenset({insurer}),)) == set()
 
+    async def test_a_topic_with_those_above_it(self, search_index: SearchIndex) -> None:
+        owner = UserId(new_id())
+        insurance, health, work = (TagId(new_id()) for _ in range(3))
+        insured = index_document(
+            owner_id=owner,
+            text="Schreiben",
+            topic_ids=(health, insurance),
+            topics=("Krankenversicherung", "Versicherungen"),
+        )
+        working = index_document(owner_id=owner, text="Schreiben", topic_ids=(work,))
+        neither = index_document(owner_id=owner, text="Schreiben")
+        await search_index.upsert([insured, working, neither])
+        who = visibility(owner)
+        assert await found(search_index, "Versicherungen", who) == {insured.id}
+
+        async def with_topics(*topics: TagId) -> set[DocumentId]:
+            filter = DocumentFilter(topics=frozenset(topics))
+            return await found(search_index, "Schreiben", who, filter=filter)
+
+        assert await with_topics(insurance) == {insured.id}
+        assert await with_topics(work, health) == {insured.id, working.id}
+        assert await with_topics(TagId(new_id())) == set()
+
     async def test_a_field_with_a_value(self, search_index: SearchIndex) -> None:
         owner, field = UserId(new_id()), FieldId(new_id())
         with_value = index_document(owner_id=owner, text="Rechnung", field_ids=(field,))

@@ -184,7 +184,14 @@ def _fields(document: IndexDocument) -> list[str]:
         document.title,
         document.contact or "",
         document.document_type or "",
-        " ".join([*document.tags, *document.contact_groups, *document.document_type_groups]),
+        " ".join(
+            [
+                *document.tags,
+                *document.topics,
+                *document.contact_groups,
+                *document.document_type_groups,
+            ]
+        ),
         " ".join(document.fields),
         document.filename,
         document.text,
@@ -227,6 +234,8 @@ def _matches_filter(document: IndexDocument, criteria: DocumentFilter) -> bool:
     if criteria.contact is not None and document.contact_id != criteria.contact:
         return False
     if criteria.document_type is not None and document.document_type_id != criteria.document_type:
+        return False
+    if criteria.topics is not None and not criteria.topics & set(document.topic_ids):
         return False
     for sets, held in (
         (criteria.tags, document.tag_ids),

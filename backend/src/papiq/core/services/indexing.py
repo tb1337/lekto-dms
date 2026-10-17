@@ -19,10 +19,10 @@ into the index. A job is idempotent and may be repeated.
   embedding fails, the document is written at once with the vectors it has (the words must not
   wait for the vectors), the job is repeated, and the last attempt writes without vectors; the
   reconciliation adds them.
-- `search.refresh` follows the renaming of a contact, document type or tag, a tag nested
-  elsewhere and the changed groups of a contact or type: it queues an index job for every
-  document concerned (one that carries the tag or a tag below it, or whose contact or type is
-  in such a group).
+- `search.refresh` follows the renaming of a contact, document type or tag (a topic is one), a
+  tag nested elsewhere and the changed groups of a contact or type: it queues an index job for
+  every document concerned (one that carries the tag or a tag below it, or has it or one below
+  it as its topic, or whose contact or type is in such a group).
 - `search.reconcile` (recurring) compares the index with the database, queues jobs for what
   is missing or stale and removes what no longer exists. `search.rebuild` builds a new index from
   scratch next to the active one and swaps it in without an outage of the search.
@@ -124,7 +124,8 @@ type _Named = tuple[tuple[TagId, str], ...]
 @dataclass(frozen=True)
 class _Snapshot:
     """A document with the names it is indexed with: `tags` those it carries, `labels` these
-    with their ancestors, and the groups of its contact and type with theirs."""
+    with their ancestors, the groups of its contact and type with theirs, and its topic with
+    those above it (`topic` its path, as the first section names it)."""
 
     document: Document
     contact: str | None
@@ -133,6 +134,8 @@ class _Snapshot:
     labels: _Named = ()
     contact_groups: _Named = ()
     document_type_groups: _Named = ()
+    topics: _Named = ()
+    topic: str | None = None
 
     @property
     def key(self) -> tuple[object, ...]:
@@ -144,6 +147,8 @@ class _Snapshot:
             self.labels,
             self.contact_groups,
             self.document_type_groups,
+            self.topics,
+            self.topic,
         )
 
 
@@ -407,6 +412,8 @@ class IndexingService:
             contact_groups=tuple(name for _, name in snapshot.contact_groups),
             document_type_group_ids=tuple(tag for tag, _ in snapshot.document_type_groups),
             document_type_groups=tuple(name for _, name in snapshot.document_type_groups),
+            topic_ids=tuple(tag for tag, _ in snapshot.topics),
+            topics=tuple(name for _, name in snapshot.topics),
             fields=_field_texts(document),
             field_ids=tuple(document.fields),
             document_date=document.document_date,
@@ -418,14 +425,15 @@ class IndexingService:
 
     def _sections(self, snapshot: _Snapshot, text: str) -> list[str]:
         """The texts that get a vector: the text in sections, the first one headed by what the
-        document says about itself (the tags it carries, without their ancestors: nesting a
-        tag elsewhere costs no embedding)."""
+        document says about itself (the topic with its path; the tags it carries, without
+        their ancestors: nesting a tag elsewhere costs no embedding)."""
         header = "\n".join(
             part
             for part in (
                 snapshot.document.title,
                 snapshot.contact,
                 snapshot.document_type,
+                snapshot.topic,
                 ", ".join(name for _, name in snapshot.tags),
             )
             if part
@@ -439,7 +447,8 @@ class IndexingService:
 
     async def _refresh(self, kind: str, item: UUID) -> None:
         """Queue an index job for every document with the contact, type or tag `item`: for a
-        tag, also with a tag below it, or with a contact or type in it or a group below it."""
+        tag, also with a tag below it, with it or one below it as its topic, or with a contact
+        or type in it or a group below it."""
         async with self._uow() as uow:
             documents = await uow.documents.list_all()
             if kind in ("contact", "document_type"):
@@ -452,6 +461,7 @@ class IndexingService:
                     document.id
                     for document in documents
                     if document.tag_ids & tags
+                    or document.topic_id in tags
                     or document.contact_id in contacts
                     or document.document_type_id in types
                 ]
@@ -563,6 +573,7 @@ async def _snapshot_of(uow: UnitOfWork, document: Document) -> _Snapshot:
         known = sorted((id for id in ids if id in tree), key=str)
         return tuple((id, tree.tags[id].name) for id in known)
 
+    topic = document.topic_id if document.topic_id in tree else None
     return _Snapshot(
         document,
         contact,
@@ -571,6 +582,8 @@ async def _snapshot_of(uow: UnitOfWork, document: Document) -> _Snapshot:
         labels=named(tree.with_ancestors(document.tag_ids)),
         contact_groups=named(tree.with_ancestors(contact_groups)),
         document_type_groups=named(tree.with_ancestors(type_groups)),
+        topics=named(tree.with_ancestors([topic] if topic else [])),
+        topic=None if topic is None else tree.label(topic),
     )
 
 

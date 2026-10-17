@@ -61,6 +61,7 @@ SEARCHABLE = [
     "contact",
     "document_type",
     "tags",
+    "topics",
     "contact_groups",
     "document_type_groups",
     "fields",
@@ -74,6 +75,7 @@ FILTERABLE = [
     "contact_id",
     "document_type_id",
     "tag_ids",
+    "topic_ids",
     "contact_group_ids",
     "document_type_group_ids",
     "confirmed",
@@ -378,6 +380,8 @@ class MeilisearchIndex:
             "contact_groups": list(document.contact_groups),
             "document_type_group_ids": [str(tag) for tag in document.document_type_group_ids],
             "document_type_groups": list(document.document_type_groups),
+            "topic_ids": [str(tag) for tag in document.topic_ids],
+            "topics": list(document.topics),
             "fields": list(document.fields),
             "field_ids": [str(field) for field in document.field_ids],
             "document_date": None
@@ -473,6 +477,9 @@ def filter_expression(visibility: Visibility, criteria: DocumentFilter) -> str |
         parts.append(f"contact_id = {_quote(criteria.contact)}")
     if criteria.document_type is not None:
         parts.append(f"document_type_id = {_quote(criteria.document_type)}")
+    if criteria.topics is not None:
+        listed = ", ".join(_quote(topic) for topic in sorted(criteria.topics, key=str))
+        parts.append(f"topic_ids IN [{listed}]")
     for attribute, sets in (
         ("tag_ids", criteria.tags),
         ("contact_group_ids", criteria.contact_groups),

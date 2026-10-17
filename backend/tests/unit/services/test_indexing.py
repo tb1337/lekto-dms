@@ -266,6 +266,43 @@ async def test_nesting_a_tag_or_changing_groups_refreshes_the_documents_concerne
     assert not [job for job in setup.world.database.jobs.values() if job.status.is_active]
 
 
+async def test_an_entry_holds_the_topic_with_those_above_it(setup: Setup) -> None:
+    admin, owner = await setup.world.user(role=Role.ADMIN), await setup.world.user()
+    master = setup.master_data
+    insurance = await master.create_tag(admin.id, "Insurance", scope=TagScope.TOPIC)
+    health = await master.create_tag(
+        admin.id, "Health", scope=TagScope.TOPIC, parent_id=insurance.id
+    )
+    work = await master.create_tag(admin.id, "Work", scope=TagScope.TOPIC)
+    contact = await master.create_contact(admin.id, "Nord", topic_ids=[health.id, work.id])
+    insured, other = await setup.document(owner, "a"), await setup.document(owner, "b")
+    for id, topic in ((insured.id, health.id), (other.id, work.id)):
+        changes = DocumentChanges(contact_id=contact.id, topic_id=topic)
+        await setup.world.documents.update_metadata(owner.id, id, changes)
+    await setup.settle()
+    entry = setup.entry(insured.id)
+    assert set(entry.topic_ids) == {health.id, insurance.id}
+    assert set(entry.topics) == {"Health", "Insurance"}
+    # The first section names the topic with its path.
+    assert isinstance(setup.embeddings, FakeEmbeddings)
+    headers = [call[0].split("\n\n")[0] for call in setup.embeddings.calls]
+    assert any(
+        "Insurance \N{SINGLE RIGHT-POINTING ANGLE QUOTATION MARK} Health" in header
+        for header in headers
+    )
+    # A topic renamed or nested elsewhere refreshes the documents with it or one below it.
+    await master.change_tag(admin.id, insurance.id, name="Insurances")
+    assert await setup.indexing.run_next_job()
+    queued = {
+        DocumentId(UUID(str(job.payload["document_id"])))
+        for job in index_jobs(setup.world)
+        if job.status.is_active
+    }
+    assert queued == {insured.id}
+    await setup.settle()
+    assert "Insurances" in setup.entry(insured.id).topics
+
+
 async def test_renaming_queues_nothing_without_a_search_index(world: World) -> None:
     admin = await world.user(role=Role.ADMIN)
     contact = await world.master_data.create_contact(admin.id, "Stadtwerke")

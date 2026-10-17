@@ -141,6 +141,39 @@ async def test_documents_reach_the_search_index() -> None:
     assert job is not None
 
 
+async def test_a_moved_tag_is_normalised_at_its_documents() -> None:
+    container = build_memory_container()
+    services = build_services(container)
+    user, admin = await owner(container), builders.admin()
+    async with container.unit_of_work() as uow:
+        await uow.users.add(admin)
+        await uow.commit()
+    master = services.master_data
+    insurance = await master.create_tag(admin.id, "Insurance")
+    health = await master.create_tag(admin.id, "Health")
+    async with container.unit_of_work() as uow:
+        space = await uow.spaces.get_default(user.id)
+        document = builders.run_pipeline(builders.document(user, space))
+        document.tag_ids = {insurance.id, health.id}
+        await uow.documents.add(document)
+        await uow.commit()
+    service = Worker(
+        pipeline=services.pipeline,
+        maintenance=services.maintenance,
+        event_bus=container.event_bus,
+        concurrency=2,
+        poll_interval=FAST,
+        dispatch_interval=FAST,
+        shutdown_timeout=timedelta(seconds=5),
+        master_data=master,
+    )
+    async with running(service):
+        await master.change_tag(admin.id, health.id, parent_id=insurance.id)
+        async with asyncio.timeout(5):
+            while (await services.documents.get(user.id, document.id)).tag_ids != {health.id}:
+                await asyncio.sleep(0.01)
+
+
 async def test_the_cleanup_is_scheduled_at_start() -> None:
     container = build_memory_container()
     services = build_services(container)

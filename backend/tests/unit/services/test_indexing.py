@@ -254,6 +254,7 @@ async def test_nesting_a_tag_or_changing_groups_refreshes_the_documents_concerne
         with_health.id
     }
     assert await refreshed(master.change_tag(admin.id, car.id, parent_id=insurance.id)) == set()
+    assert await master.run_next_job()  # normalising after the move: no document carries Car
     assert await refreshed(master.change_tag(admin.id, insurer.id, name="Insurers")) == {
         with_contact.id
     }

@@ -5405,7 +5405,7 @@
           "master data"
         ],
         "summary": "Change a tag",
-        "description": "Admins only. Name, parent (of the same scope, not below the tag itself; at most five levels), assignment, whether documents show it, icon and colour. The scope stays. A new name or parent brings the search index of the documents concerned up to date.",
+        "description": "Admins only. Name, parent (of the same scope, not below the tag itself; at most five levels), assignment, whether documents show it, icon and colour. The scope stays. A new name or parent brings the search index of the documents concerned up to date. After a new parent, a job leaves documents (for a group: contacts or document types) that carry the tag and one now above it only the one below; a topic needs none.",
         "operationId": "change_tag_api_v1_tags__id__patch",
         "parameters": [
           {

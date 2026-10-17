@@ -13,6 +13,7 @@ from papiq.core.domain.fields import FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
 from papiq.core.domain.master_data import Assignment, TagScope
+from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.rules import (
     AddTags,
     Condition,
@@ -24,7 +25,9 @@ from papiq.core.domain.rules import (
     RuleScope,
 )
 from papiq.core.domain.users import Role
+from papiq.core.services import master_data
 from papiq.core.services.master_data import learn_alias, replace_learned_identifiers
+from tests import builders
 from tests.builders import incoming
 from tests.unit.services.conftest import World
 
@@ -482,6 +485,88 @@ async def test_documents_carry_document_tags_normalised(world: World) -> None:
         owner.id, document.id, DocumentChanges(tag_ids=frozenset({insurance.id}))
     )
     assert parent_only.tag_ids == {insurance.id}
+
+
+async def test_a_moved_tag_leaves_documents_and_groups_the_tag_below(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What carries a tag and one that a move put above it keeps the one below, as if set
+    anew: in a job, a page of documents at a time; lane and confirmation stay."""
+    monkeypatch.setattr(master_data, "_NORMALISE_BATCH", 2)
+    admin, owner = await world.user(role=Role.ADMIN), await world.user()
+    service = world.master_data
+    insurance = await service.create_tag(admin.id, "Insurance")
+    health = await service.create_tag(admin.id, "Health")
+    dental = await service.create_tag(admin.id, "Dental", parent_id=health.id)
+    other = await service.create_tag(admin.id, "Other")
+    insurer = await service.create_tag(admin.id, "Insurer", scope=TagScope.CONTACT)
+    kassen = await service.create_tag(admin.id, "Kassen", scope=TagScope.CONTACT)
+    bills = await service.create_tag(admin.id, "Bills", scope=TagScope.DOCUMENT_TYPE)
+    medical = await service.create_tag(admin.id, "Medical", scope=TagScope.DOCUMENT_TYPE)
+    nord = await service.create_contact(admin.id, "Nord", group_ids=[insurer.id, kassen.id])
+    invoice = await service.create_document_type(
+        admin.id, "Invoice", group_ids=[bills.id, medical.id]
+    )
+    space = await world.default_space(owner)
+    carried = [
+        {insurance.id, health.id},
+        {insurance.id, dental.id, other.id},
+        {insurance.id},
+        {health.id},
+        {insurance.id, health.id},
+    ]
+    documents = []
+    async with world.uow() as uow:
+        for number, tags in enumerate(carried):
+            document = builders.run_pipeline(builders.document(owner, space, content=str(number)))
+            document.tag_ids = set(tags)
+            await uow.documents.add(document)
+            documents.append(document)
+        await uow.commit()
+    await world.documents.update_metadata(
+        owner.id, documents[0].id, DocumentChanges(tag_ids=frozenset({insurance.id, health.id}))
+    )
+    confirmed = (await world.documents.get(owner.id, documents[0].id)).confirmed_at
+    world.database.outbox.clear()
+
+    await service.change_tag(admin.id, health.id, parent_id=insurance.id)
+    await service.change_tag(admin.id, kassen.id, parent_id=insurer.id)
+    await service.change_tag(admin.id, medical.id, parent_id=bills.id)
+    assert await service.run_next_job()
+    assert await service.run_next_job()
+    assert await service.run_next_job()
+    assert not await service.run_next_job()
+
+    async with world.uow() as uow:
+        stored = [await uow.documents.get(document.id) for document in documents]
+        assert (await uow.contacts.get(nord.id)).group_ids == {kassen.id}
+        assert (await uow.document_types.get(invoice.id)).group_ids == {medical.id}
+    assert [document.tag_ids for document in stored] == [
+        {health.id},
+        {dental.id, other.id},
+        {insurance.id},
+        {health.id},
+        {health.id},
+    ]
+    assert [document.lane for document in stored] == [Lane.GREEN] * 5
+    assert stored[0].confirmed_at == confirmed and stored[1].confirmed_at is None
+    assert world.event_types() == ["document.updated"] * 3
+
+
+async def test_only_a_new_parent_of_a_tag_or_group_normalises(world: World) -> None:
+    admin = await world.user(role=Role.ADMIN)
+    service = world.master_data
+    insurance = await service.create_tag(admin.id, "Insurance")
+    health = await service.create_tag(admin.id, "Health", parent_id=insurance.id)
+    work = await service.create_tag(admin.id, "Work", scope=TagScope.TOPIC)
+    jobs = await service.create_tag(admin.id, "Jobs", scope=TagScope.TOPIC)
+    await service.change_tag(admin.id, health.id, parent_id=None, name="Gesundheit")
+    await service.change_tag(admin.id, jobs.id, parent_id=work.id)
+    await service.change_tag(admin.id, insurance.id, shown=False)
+    assert not await service.run_next_job()
+    await service.change_tag(admin.id, insurance.id, parent_id=health.id)
+    assert await service.normalise_tagged(TagId(new_id())) == 0
+    assert await service.run_next_job()
 
 
 async def test_concurrent_tag_moves_make_no_cycle(world: World) -> None:

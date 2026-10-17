@@ -412,7 +412,9 @@ async def get_tag(id: UUID, user: CurrentUser, context: Context) -> TagOut:
         ADMINS_ONLY + " Name, parent (of the same scope, not below the tag itself; at most "
         "five levels), assignment, whether documents show it, icon and colour. The scope "
         "stays. A new name or parent brings the search index of the documents concerned up to "
-        "date."
+        "date. After a new parent, a job leaves documents (for a group: contacts or document "
+        "types) that carry the tag and one now above it only the one below; a topic needs "
+        "none."
     ),
     response_model=TagOut,
     responses=problem_responses(401, 403, 404, 409, 422),

@@ -319,6 +319,13 @@ Tags nest under a tag of the same scope (`parent_id`), at most five levels, with
   contact or type, and no rule (`409`, naming the rules; admins see all of them).
 - **Renaming** a tag, nesting it elsewhere and changing the groups of a contact or type refresh
   the search index of the documents concerned (`search.refresh`).
+- **Moving** a document tag or a group under another parent queues `tags.normalise`: what
+  carries the tag (or one below it) and one now above it keeps only the one below, as if set
+  anew (`MasterDataService.normalise_tagged`). Documents are changed 200 at a time, each an
+  update of its own (`document.updated`, which refreshes its search entry), without touching
+  lane or confirmation; contacts and types for a group (the index holds their groups with
+  ancestors, which stay the same). A topic needs none: a document carries one, and a contact
+  may enable a topic and one below it.
 
 ## Topics
 
@@ -860,6 +867,9 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   document's files.
 - Rule applications (`rules.apply`) run 25 documents per job, then queue the next job, so
   pipeline nodes do not wait behind them.
+- After a tag moved, `tags.normalise` leaves what carries it and a tag now above it the one
+  below (after rule applications; see Tags); a row changed meanwhile fails the version check,
+  and the job runs again (five tries, waiting from a minute, doubling).
 - With `PAPIQ_LOGO_FETCH`, the job `contacts.logo` fetches the logo of a contact (after rule
   applications, before training; see Icons, colours and logos). It asks the network outside
   any transaction and is repeated only for other errors than the website's (three tries).

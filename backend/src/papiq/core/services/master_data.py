@@ -1,10 +1,14 @@
-from collections.abc import Awaitable, Callable, Collection, Iterator, Mapping
+import asyncio
+import logging
+from collections.abc import Awaitable, Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
+from uuid import UUID
 
-from papiq.core.domain.documents import UNSET, Unset
+from papiq.core.domain.documents import UNSET, DocumentChanges, Unset
 from papiq.core.domain.errors import (
+    ConcurrencyError,
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
@@ -13,6 +17,7 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId, UserId
+from papiq.core.domain.jobs import Job
 from papiq.core.domain.master_data import (
     MAX_ALIASES,
     Assignment,
@@ -32,6 +37,8 @@ from papiq.core.domain.templates import rename_field_key, unknown_values
 from papiq.core.domain.templates import uses_field as field_used
 from papiq.core.ports import (
     Clock,
+    DocumentFilter,
+    DocumentPosition,
     NamedRepository,
     ObjectStore,
     TemplateRenderer,
@@ -46,12 +53,21 @@ from papiq.core.services.logos import drop_logo, queue_logo_fetch
 from papiq.core.services.rules.management import renamed_field, uses_field
 from papiq.core.services.rules.references import disable_rules, misfits, refers_to
 
+log = logging.getLogger(__name__)
+
 type Repo[E] = Callable[[UnitOfWork], NamedRepository[Any, E]]
 
 MANUAL = IdentifierSource.MANUAL
 TAG_TREE_LOCK = "tags"
 """Held while a tag is made or changed, before the tree is read: two moves at once could
 otherwise each pass `TagTree.check_parent` and together make a cycle or a sixth level."""
+NORMALISE_JOB = "tags.normalise"
+"""Payload: `tag_id` of a tag that got another parent (`MasterDataService.normalise_tagged`)."""
+
+_NORMALISE_BATCH = 200  # documents per unit of work
+_NORMALISE_LEASE = timedelta(minutes=10)
+_NORMALISE_ATTEMPTS = 5
+_NORMALISE_DELAY = timedelta(minutes=1)  # before the next attempt, doubling
 
 
 @dataclass(frozen=True)
@@ -360,7 +376,8 @@ class MasterDataService:
         leaves it as it is; a `parent_id` of None makes it a top-level tag, an `icon` or
         `color` of None removes it. The scope never changes. A new name or parent queues the
         refresh of the search index of the documents concerned (they hold the tag's
-        ancestors)."""
+        ancestors). A new parent of a document tag or a group queues normalising what carries
+        the tag and one now above it (`NORMALISE_JOB`, `normalise_tagged`)."""
         async with self._uow() as uow:
             await uow.lock(TAG_TREE_LOCK)
             await _require_admin(uow, actor)
@@ -383,11 +400,147 @@ class MasterDataService:
             await uow.tags.update(tag)
             if (tag.name, tag.parent_id) != before:
                 await self._refresh(uow, "tag", id)
+            # A topic needs no normalising: a document has one, a contact may enable both.
+            moved = tag.parent_id != before[1] and tag.parent_id is not None
+            if moved and tag.scope is not TagScope.TOPIC:
+                await uow.jobs.enqueue(NORMALISE_JOB, {"tag_id": str(id)}, run_at=self._clock.now())
             await uow.commit()
         return tag
 
     async def rename_tag(self, actor: UserId, id: TagId, name: str) -> Tag:
         return await self.change_tag(actor, id, name=name)
+
+    # --- normalising after a move ---------------------------------------------------------------
+
+    async def run_next_job(self) -> bool:
+        """Claim and run a due normalisation (`NORMALISE_JOB`); False if none was due."""
+        async with self._uow() as uow:
+            job = await uow.jobs.claim(
+                now=self._clock.now(), lease=_NORMALISE_LEASE, kinds=[NORMALISE_JOB]
+            )
+            await uow.commit()
+        if job is None:
+            return False
+        try:
+            await self._normalise(job)
+        except asyncio.CancelledError:
+            await asyncio.shield(self._release(job))
+            raise
+        return True
+
+    async def normalise_tagged(self, id: TagId) -> int:
+        """After `id` got another parent: what carries it or a tag below it together with a tag
+        now above it keeps only the one below (`TagTree.normalise`), as if set anew. Documents
+        for a document tag, in units of `_NORMALISE_BATCH` (each changed one is updated, which
+        refreshes its search entry); contacts or document types for a group (their groups with
+        their ancestors, what the index holds, stay the same). Neither lane nor confirmation
+        changes. Returns how many were changed; none for a tag that is gone."""
+        async with self._uow() as uow:
+            tree = TagTree.of(await uow.tags.list_all())
+        if id not in tree:
+            return 0
+        scope = tree.tags[id].scope
+        below = tree.with_descendants([id])
+        if scope is TagScope.DOCUMENT:
+            return await self._normalise_documents(tree, below)
+        if scope.is_group:
+            return await self._normalise_members(tree, below, scope)
+        return 0
+
+    async def _normalise_documents(self, tree: TagTree, below: frozenset[TagId]) -> int:
+        changed = 0
+        wanted = DocumentFilter(tags=(below,))
+        after: DocumentPosition | None = None
+        while True:
+            async with self._uow() as uow:
+                page = await uow.documents.query(wanted, after=after, limit=_NORMALISE_BATCH)
+                definitions = None
+                now = self._now()
+                for document in page:
+                    tags = tree.normalise(document.tag_ids)
+                    if tags == document.tag_ids:
+                        continue
+                    if definitions is None:
+                        definitions = {item.id: item for item in await uow.fields.list_all()}
+                    document.apply_changes(DocumentChanges(tag_ids=tags), definitions, now)
+                    await uow.documents.update(document)
+                    await uow.outbox.add(document.pull_events())
+                    changed += 1
+                await uow.commit()
+            if len(page) < _NORMALISE_BATCH:
+                return changed
+            after = DocumentPosition(page[-1].id)
+
+    async def _normalise_members(
+        self, tree: TagTree, below: frozenset[TagId], scope: TagScope
+    ) -> int:
+        changed = 0
+        async with self._uow() as uow:
+            members: Sequence[Contact | DocumentType] = (
+                await uow.contacts.list_all()
+                if scope is TagScope.CONTACT
+                else await uow.document_types.list_all()
+            )
+            for member in members:
+                groups = tree.normalise(member.group_ids)
+                if not member.group_ids & below or groups == member.group_ids:
+                    continue
+                member.set_groups(groups)
+                if isinstance(member, Contact):
+                    await uow.contacts.update(member)
+                else:
+                    await uow.document_types.update(member)
+                changed += 1
+            await uow.commit()
+        return changed
+
+    async def _normalise(self, job: Job) -> None:
+        try:
+            tag = TagId(UUID(str(job.payload["tag_id"])))
+        except (KeyError, ValueError) as error:
+            await self._finish(job, error=f"invalid payload: {error}")
+            return
+        try:
+            changed = await self.normalise_tagged(tag)
+        except Exception as error:  # a row changed meanwhile, or the database failed: again
+            await self._retry(job, error)
+            return
+        log.info("tags normalised", extra={"tag_id": str(tag), "changed": changed})
+        await self._finish(job)
+
+    async def _retry(self, job: Job, error: Exception) -> None:
+        reason = f"{type(error).__name__}: {error}"
+        log.warning("normalising tags failed", extra={"job_id": str(job.id)}, exc_info=True)
+        try:
+            async with self._uow() as uow:
+                if job.tries >= _NORMALISE_ATTEMPTS:
+                    await uow.jobs.fail(job, error=reason)
+                else:
+                    delay = _NORMALISE_DELAY * (1 << (job.tries - 1))
+                    await uow.jobs.reschedule(job, run_at=self._clock.now() + delay, error=reason)
+                await uow.commit()
+        except ConcurrencyError:
+            log.warning("lost the claim of a job", extra={"job_id": str(job.id)})
+
+    async def _finish(self, job: Job, *, error: str | None = None) -> None:
+        try:
+            async with self._uow() as uow:
+                if error is None:
+                    await uow.jobs.complete(job)
+                else:
+                    await uow.jobs.fail(job, error=error)
+                await uow.commit()
+        except ConcurrencyError:
+            log.warning("lost the claim of a job", extra={"job_id": str(job.id)})
+
+    async def _release(self, job: Job) -> None:
+        """The worker stops: give the job back to run again at once."""
+        try:
+            async with self._uow() as uow:
+                await uow.jobs.release(job, run_at=self._clock.now(), error="worker stopped")
+                await uow.commit()
+        except ConcurrencyError:
+            log.warning("lost the claim of a job", extra={"job_id": str(job.id)})
 
     async def create_field(
         self,

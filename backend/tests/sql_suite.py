@@ -29,9 +29,10 @@ from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.ids import new_id
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.master_data import TagScope
-from papiq.core.domain.pipeline import NODES, Node
+from papiq.core.domain.pipeline import NODES, Lane, Node
 from papiq.core.domain.users import User
 from papiq.core.ports import DeliveryRetry, EventBus, UnitOfWorkFactory
+from papiq.core.services import master_data
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.pipeline import PipelineService, PlaceholderNode
@@ -192,6 +193,65 @@ class SqlAdapterSuite:
         async with uow_factory() as uow:
             tags = {tag.id: tag for tag in await uow.tags.list_all()}
         assert None in {tags[a.id].parent_id, tags[b.id].parent_id}
+
+    async def test_a_moved_tag_leaves_documents_and_groups_the_tag_below(
+        self, uow_factory: UnitOfWorkFactory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The job after a move, a page of documents at a time: what carries a tag and one now
+        above it keeps the one below; the lane, the confirmation and other documents stay."""
+        monkeypatch.setattr(master_data, "_NORMALISE_BATCH", 2)
+        owner, space = await owner_with_space(uow_factory)
+        admin = builders.admin()
+        await _seed_user(uow_factory, admin)
+        service = MasterDataService(uow_factory, ManualClock(NOW), builders.TEMPLATES)
+        insurance = await service.create_tag(admin.id, "Insurance")
+        health = await service.create_tag(admin.id, "Health")
+        dental = await service.create_tag(admin.id, "Dental", parent_id=health.id)
+        insurer = await service.create_tag(admin.id, "Insurer", scope=TagScope.CONTACT)
+        kassen = await service.create_tag(admin.id, "Kassen", scope=TagScope.CONTACT)
+        bills = await service.create_tag(admin.id, "Bills", scope=TagScope.DOCUMENT_TYPE)
+        medical = await service.create_tag(admin.id, "Medical", scope=TagScope.DOCUMENT_TYPE)
+        nord = await service.create_contact(admin.id, "Nord", group_ids=[insurer.id, kassen.id])
+        invoice = await service.create_document_type(
+            admin.id, "Invoice", group_ids=[bills.id, medical.id]
+        )
+        carried = [
+            {insurance.id, health.id},
+            {insurance.id, dental.id},
+            {insurance.id},
+            {health.id},
+            {insurance.id, health.id},
+        ]
+        documents = []
+        async with uow_factory() as uow:
+            for number, tags in enumerate(carried):
+                document = builders.run_pipeline(
+                    builders.document(owner, space, content=str(number))
+                )
+                document.tag_ids = set(tags)
+                if number == 0:
+                    document.mark_confirmed(NOW)
+                await uow.documents.add(document)
+                documents.append(document)
+            await uow.commit()
+        await service.change_tag(admin.id, health.id, parent_id=insurance.id)
+        await service.change_tag(admin.id, kassen.id, parent_id=insurer.id)
+        await service.change_tag(admin.id, medical.id, parent_id=bills.id)
+        assert [await service.run_next_job() for _ in range(4)] == [True, True, True, False]
+        async with uow_factory() as uow:
+            stored = [await uow.documents.get(document.id) for document in documents]
+            assert (await uow.contacts.get(nord.id)).group_ids == {kassen.id}
+            assert (await uow.document_types.get(invoice.id)).group_ids == {medical.id}
+        assert [document.tag_ids for document in stored] == [
+            {health.id},
+            {dental.id},
+            {insurance.id},
+            {health.id},
+            {health.id},
+        ]
+        assert [document.version for document in stored] == [2, 2, 1, 1, 2]
+        assert {document.lane for document in stored} == {Lane.GREEN}
+        assert [document.confirmed_at for document in stored[:2]] == [NOW, None]
 
     async def test_groups_and_topics_count_their_contacts_and_types(
         self, uow_factory: UnitOfWorkFactory

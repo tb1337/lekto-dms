@@ -73,6 +73,24 @@ user menu (`lib/scope.svelte.ts`), kept in this browser too and shown at the ava
 search, the inbox with its counter, rules and the counts at the master data follow it. Every
 `localStorage` access is guarded: without storage the defaults hold.
 
+## Master data
+
+`/ui/admin/master-data` (admins) has four tabs in `?tab=`: contacts, document types, tags,
+fields; an unknown one is the first. Each has a search in this browser (`lib/master-search.ts`:
+contacts also by aliases and identifiers) and its button to add. The Tags tab holds every kind
+of tag (`TagsPanel`, `lib/tag-kinds.ts`): a filter by kind in `?kind=`, one section per kind
+with its tree, the collapsed sections remembered in this browser, and per tag its usage as a
+link (documents; a contact group's contacts and a type group's types, which the contact and type
+lists filter by `?group=` and `?topic=`). A new tag without a kind asks for it first.
+
+On a phone (below `sm`, `lib/phone.svelte.ts`) a whole row opens the editor (`MasterRow`), and
+the editors fill the screen with a bar on top (`EditorShell`); wider, the editors are dialogs
+whose footer stays while the body scrolls. Deleting is in the editors. Groups and topics are
+picked in a sheet or dialog over the editor (`TagPicker`); there, in the document's tag input
+and in its topic field, an admin's search that finds no tag of the kind named so offers to
+create one at once or with details in a second dialog (`lib/tag-create.ts`,
+`masterDataDialogs.createTag`).
+
 ## Document view
 
 `/ui/documents/{id}` serves the inbox and the document list (`/ui/inbox/{id}` leads there with

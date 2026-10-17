@@ -732,7 +732,9 @@ a temporary Meilisearch index and runs the queries of `evaluation/search/queries
     by training, attached from a document; a logo found there replaces the fetched one, none
     found leaves it), by an admin (`POST /contacts/{id}/logo/fetch`; all its domains in turn,
     also one that failed; may replace a fetched logo) and for the contacts without a logo with
-    `python -m papiq.composition fetch-logos`. It reads the page of the domain (or of `www.`),
+    `python -m papiq.composition fetch-logos`. A job that runs while `PAPIQ_LOGO_FETCH` is off
+    (switched off after it was queued) ends at once with a note, without waiting or retries;
+    the button answers `503` then. It reads the page of the domain (or of `www.`),
     the apple-touch-icon, `<link rel="icon">` with sizes and the web app manifest (with the
     standard library's `html.parser`), and `/favicon.ico`, and takes the largest raster icon of
     at least 64 px (at most four tried). The domains whose fetch finds none are noted and
@@ -880,6 +882,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 - With `PAPIQ_LOGO_FETCH`, the job `contacts.logo` fetches the logo of a contact (after rule
   applications, before training; see Icons, colours and logos). It asks the network outside
   any transaction and is repeated only for other errors than the website's (three tries).
+  Without it, a job queued before ends at once (failed, with the note that fetching is off).
 - `PAPIQ_WEBHOOK_CONCURRENCY` further loops deliver webhooks (see Webhooks); a receiver that
   does not answer holds up deliveries, never the pipeline.
 - SIGTERM or SIGINT: no new jobs; running jobs may finish within

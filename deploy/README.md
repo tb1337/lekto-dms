@@ -122,8 +122,8 @@ own websites: the domains among their identifiers, which training also learns fr
 It goes over HTTPS to public addresses only (no private, loopback, link-local or shared address,
 checked again for every redirect, at most three) and reads at most 1 MB in 10 s per request,
 with the user agent `Papiq/<version>`; a website learns that this Papiq fetched its icon. No
-logo service of a third party is asked. A proxy from the environment is not used for it. Logos
-uploaded by an admin need no setting.
+logo service of a third party is asked. A proxy from the environment is not used for it. Switched
+off again, fetches still queued end without asking. Logos uploaded by an admin need no setting.
 
 ## Roles
 

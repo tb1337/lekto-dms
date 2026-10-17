@@ -29,7 +29,7 @@ from papiq.core.domain.jobs import JobStatus
 from papiq.core.domain.master_data import Contact
 from papiq.core.domain.users import Role
 from papiq.core.ports.logos import FetchedLogo
-from papiq.core.services.logos import LOGO_JOB, LOGO_MAX_SIZE, LogoService
+from papiq.core.services.logos import FETCHING_OFF, LOGO_JOB, LOGO_MAX_SIZE, LogoService
 from papiq.core.services.master_data import replace_learned_identifiers
 from papiq.core.services.objects import logo_key
 from tests.builders import NOW
@@ -200,6 +200,24 @@ async def test_a_fetched_logo_is_fetched_again_for_a_new_domain(world: World) ->
     assert await queued(world) == []
     # fetch-logos still asks only for contacts without a logo.
     assert await logos.request_all() == 0
+
+
+async def test_a_fetch_queued_before_fetching_was_switched_off_ends_at_once(
+    world: World,
+) -> None:
+    admin = await world.user(role=Role.ADMIN)
+    master, _ = world.fetching(FakeLogoFetcher({"nord.example": PNG}))
+    contact = await master.create_contact(admin.id, "Nord", identifiers=[DOMAIN])
+    (job,) = [job for job in world.database.jobs.values() if job.kind == LOGO_JOB]
+    assert await world.logos.run_next_job() is True  # without fetching now
+    ended = world.database.jobs[job.id]
+    assert (ended.status, ended.last_error, ended.attempts) == (
+        JobStatus.FAILED,
+        FETCHING_OFF,
+        1,
+    )
+    assert await world.logos.run_next_job() is False
+    assert (await stored(world, contact.id)).logo is None
 
 
 async def test_without_fetching_nothing_is_queued(world: World) -> None:

@@ -14,7 +14,8 @@ when a contact without a logo, or with a fetched one, gets a domain among its id
 (entered by hand, learned by training or attached from a document: `queue_logo_fetch`), when an
 admin asks (`request_fetch`) and for every contact without one (`request_all`, the command
 `fetch-logos`). An uploaded logo is never replaced. The domains whose fetch found nothing are
-noted (`Contact.logo_failure`); they are tried again only when an admin asks.
+noted (`Contact.logo_failure`); they are tried again only when an admin asks. A job that runs
+while fetching is off ends at once, with a note.
 """
 
 import asyncio
@@ -58,6 +59,8 @@ LOGO_MAX_SIZE = 1024 * 1024
 """Bytes of an uploaded image."""
 LOGO_TYPE = "image/webp"
 LOGO_JOB = "contacts.logo"
+FETCHING_OFF = "not fetched: fetching logos is off (PAPIQ_LOGO_FETCH)"
+"""The note of a job that ran while fetching was off."""
 MAX_DOMAINS = 3
 """Domains of a contact an admin's request tries, in order, until one has a logo."""
 # A job asks at most `MAX_DOMAINS` websites, each within 30 s, and makes a logo of what it
@@ -193,14 +196,17 @@ class LogoService:
         return queued
 
     async def run_next_job(self) -> bool:
-        """Claim and run a due fetch; False if none was due (or there is no fetcher)."""
-        if self._fetcher is None:
-            return False
+        """Claim and run a due fetch; False if none was due. Without fetching (switched off
+        since the job was queued) the job ends at once with a note, neither waiting nor
+        tried again."""
         async with self._uow() as uow:
             job = await uow.jobs.claim(now=self._clock.now(), lease=_LEASE, kinds=[LOGO_JOB])
             await uow.commit()
         if job is None:
             return False
+        if self._fetcher is None:
+            await self._end(job)
+            return True
         try:
             await self._run(job)
         except asyncio.CancelledError:
@@ -307,6 +313,16 @@ class LogoService:
         try:
             async with self._uow() as uow:
                 await uow.jobs.release(job, run_at=self._clock.now(), error="worker stopped")
+                await uow.commit()
+        except ConcurrencyError:
+            log.warning("lost the claim of a logo job", extra={"job_id": str(job.id)})
+
+    async def _end(self, job: Job) -> None:
+        """A fetch queued while fetching was on: given up at once, with a note."""
+        log.info("logo not fetched: fetching is off", extra={"job_id": str(job.id)})
+        try:
+            async with self._uow() as uow:
+                await uow.jobs.fail(job, error=FETCHING_OFF)
                 await uow.commit()
         except ConcurrencyError:
             log.warning("lost the claim of a logo job", extra={"job_id": str(job.id)})

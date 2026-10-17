@@ -42,7 +42,8 @@
 <div class="flex flex-col gap-2">
 	{#each rows as item, index (item.key)}
 		{#if item.source === 'manual'}
-			<div class="flex flex-wrap items-center gap-2">
+			<!-- Kind, value and removal on a line, the topic below them. -->
+			<div class={['flex flex-wrap items-center gap-2', topics.length > 0 && 'pb-1']}>
 				<NativeSelect
 					bind:value={rows[index].kind}
 					options={kinds}
@@ -53,7 +54,7 @@
 					bind:value={rows[index].value}
 					aria-label={m.identifier_value()}
 					maxlength={100}
-					class="min-w-0 flex-1 basis-32"
+					class="min-w-0 flex-1"
 				/>
 				{#if topics.length > 0}
 					<NativeSelect
@@ -62,7 +63,7 @@
 							? topicOptions
 							: [...topicOptions, { value: item.topic_id, label: m.topic_not_enabled() }]}
 						aria-label={m.identifier_topic()}
-						class="order-last w-full sm:order-none sm:w-44"
+						class="order-last w-full"
 					/>
 				{/if}
 				<Button

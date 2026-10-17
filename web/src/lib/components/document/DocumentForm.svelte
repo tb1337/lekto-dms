@@ -263,7 +263,11 @@
 		if (title.trim() !== document.title) next.title = title.trim();
 		if ((date || null) !== document.document_date) next.document_date = date || null;
 		if ((contact || null) !== document.contact_id) next.contact_id = contact || null;
-		if ((topic || null) !== (document.topic_id ?? null)) next.topic_id = topic || null;
+		// With another contact a topic is sent too: the contact keeps it only if it is given
+		// (an admin's choice enables it there).
+		if ((topic || null) !== (document.topic_id ?? null) || (topic !== '' && 'contact_id' in next)) {
+			next.topic_id = topic || null;
+		}
 		if ((documentType || null) !== document.document_type_id) {
 			next.document_type_id = documentType || null;
 		}
@@ -613,6 +617,7 @@
 				evidence={evidence.get('topic')}
 				{lookup}
 				advice={topicAdvice}
+				quoted={false}
 				applies={applies('topic')}
 				active={focused === 'topic' || pinned === 'topic'}
 				onfocus={focus}

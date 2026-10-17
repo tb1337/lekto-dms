@@ -549,11 +549,23 @@ describe('the topic', () => {
 	const choices = (label: string) => [...select(label).options].map((option) => option.text);
 
 	it('offers the contact’s topics and leaves one the next contact does not have', async () => {
+		fetchMock.mockResolvedValue(
+			new Response('{"changed": [], "rules": null, "visibility": null, "document": null}', {
+				status: 200,
+				headers: { 'content-type': 'application/json' }
+			})
+		);
 		render(DocumentForm, props({ document: filed, lookup: topics, review: null }));
 		expect(select(m.field_topic()).value).toBe(HEALTH);
 		expect(choices(m.field_topic())).toEqual([m.value_unset(), 'Arbeit', 'Krankenversicherung']);
 		await userEvent.selectOptions(select(m.field_contact()), BANK);
 		expect(select(m.field_topic()).value).toBe('');
+		await userEvent.selectOptions(select(m.field_topic()), WORK);
+		await userEvent.click(screen.getByRole('button', { name: m.edit_review() }));
+		// Another contact with a topic sends the topic too, so that the contact keeps it.
+		expect(await fetchMock.mock.calls[0][0].json()).toEqual({ contact_id: BANK, topic_id: WORK });
+		await userEvent.click(await screen.findByRole('button', { name: m.cancel() }));
+		await userEvent.selectOptions(select(m.field_contact()), BANK);
 		expect(choices(m.field_topic())).toEqual([m.value_unset(), 'Arbeit']);
 		await userEvent.selectOptions(select(m.field_contact()), '');
 		expect(select(m.field_topic()).disabled).toBe(true);

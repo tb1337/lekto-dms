@@ -27,6 +27,7 @@
 		lookup,
 		review = false,
 		advice = false,
+		quoted = true,
 		applies = true,
 		active = false,
 		required = false,
@@ -46,6 +47,8 @@
 		review?: boolean;
 		/** A suggestion that waits for nobody: a calm card with the candidates. */
 		advice?: boolean;
+		/** Whether a quote could back it; one never quoted (the topic) tells no missing one. */
+		quoted?: boolean;
 		/** The checked value is still the field's (its quote's places still apply). */
 		applies?: boolean;
 		active?: boolean;
@@ -190,7 +193,7 @@
 				{/if}
 				{#if places.length > 0}
 					{@render chips()}
-				{:else if kind === 'none'}
+				{:else if kind === 'none' && quoted}
 					<span class="text-xs text-muted-foreground">{m.source_without()}</span>
 				{/if}
 			</span>

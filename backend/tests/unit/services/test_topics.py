@@ -194,14 +194,17 @@ async def test_documents_are_found_and_counted_by_a_topic_and_those_below_it(
         documents.append(await world.documents.update_metadata(owner.id, document.id, changes))
     numbers = {document.id: number for number, document in enumerate(documents)}
 
-    async def found(topic: Tag) -> set[int]:
-        filter = DocumentFilter(topics=frozenset({topic.id}))
+    async def found(*topics: Tag) -> set[int]:
+        filter = DocumentFilter(topics=frozenset(topic.id for topic in topics))
         listed = await world.documents.query(owner.id, filter)
         return {numbers[view.document.id] for view in listed}
 
     assert await found(work) == {0}
     assert await found(insurance) == {1, 2}
     assert await found(health) == {2}
+    # Several topics: one of them (a document has one), each with those below it.
+    assert await found(work, health) == {0, 2}
+    assert await found(work, insurance) == {0, 1, 2}
     counts = await world.documents.document_counts(owner.id, CountBy.TAG)
     assert {key: counts.get(key) for key in (work.id, insurance.id, health.id)} == {
         work.id: 1,

@@ -38,10 +38,12 @@
 			name: spaceLabel(space, lookup.users, session.user?.id)
 		}))
 	);
-	// Tags and groups by their path; each picked one stands as a chip.
+	// Tags, groups and topics by their path; each picked one stands as a chip (a topic's
+	// square, a group's outlined). Several topics: one of them (a document has one).
+	type PickKey = 'tags' | 'contactGroups' | 'typeGroups' | 'topics';
 	const tagName = $derived(new Map(lookup.tags.map((tag) => [tag.id, pathLabel(tag)])));
-	const topics = $derived(tagOptions(lookup.tags, 'topic'));
 	const picks = $derived([
+		{ key: 'topics' as const, scope: 'topic' as const, label: m.filter_topic_add() },
 		{ key: 'tags' as const, scope: 'document' as const, label: m.filter_tag_add() },
 		{
 			key: 'contactGroups' as const,
@@ -54,18 +56,19 @@
 			label: m.filter_type_group_add()
 		}
 	]);
+	const REMOVE: Record<PickKey, (inputs: { name: string }) => string> = {
+		tags: m.filter_tag_remove,
+		topics: m.filter_topic_remove,
+		contactGroups: m.filter_group_remove,
+		typeGroups: m.filter_group_remove
+	};
 	const chips = $derived(
 		picks.flatMap(({ key }) =>
-			filters[key].map((id) => ({
-				key,
-				id,
-				name: tagName.get(id) ?? id,
-				remove: key === 'tags' ? m.filter_tag_remove : m.filter_group_remove
-			}))
+			filters[key].map((id) => ({ key, id, name: tagName.get(id) ?? id, remove: REMOVE[key] }))
 		)
 	);
 
-	function free(key: 'tags' | 'contactGroups' | 'typeGroups', scope: TagScope) {
+	function free(key: PickKey, scope: TagScope) {
 		return tagOptions(lookup.tags, scope).filter((option) => !filters[key].includes(option.value));
 	}
 
@@ -98,21 +101,6 @@
 			onchange={(value) => set({ type: value || null })}
 			class="h-10 w-48"
 		/>
-		{#if topics.length > 0 || filters.topic}
-			<NativeSelect
-				aria-label={m.filter_topic()}
-				value={filters.topic ?? ''}
-				options={[
-					{ value: '', label: m.filter_topic() },
-					...topics,
-					...(filters.topic && !tagName.has(filters.topic)
-						? [{ value: filters.topic, label: filters.topic }]
-						: [])
-				]}
-				onchange={(value) => set({ topic: value || null })}
-				class="h-10 w-48"
-			/>
-		{/if}
 		<NativeSelect
 			aria-label={m.filter_space()}
 			value={filters.space ?? ''}
@@ -161,8 +149,9 @@
 		{#each chips as chip (`${chip.key}:${chip.id}`)}
 			<span
 				class={cn(
-					'inline-flex h-8 max-w-full items-center gap-1 rounded-full pr-1 pl-3 text-sm',
-					chip.key === 'tags' ? 'bg-secondary' : 'border bg-background'
+					'inline-flex h-8 max-w-full items-center gap-1 pr-1 pl-3 text-sm',
+					chip.key === 'topics' ? 'rounded-md' : 'rounded-full',
+					chip.key === 'tags' || chip.key === 'topics' ? 'bg-secondary' : 'border bg-background'
 				)}
 			>
 				<span class="truncate">{chip.name}</span>

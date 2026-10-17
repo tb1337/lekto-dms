@@ -111,6 +111,7 @@ class SearchItem(BaseModel):
     access: ShareLevel
     contact: NameRef | None
     document_type: NameRef | None
+    topic: NameRef | None
     tags: list[NameRef]
     document_date: date | None
 
@@ -290,8 +291,9 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
         description=(
             "Find documents by words and meaning. Returns the best matches among the documents "
             "you may read, with a snippet of the matching text. Filters (names, any case) "
-            "narrow by contact, document type and document tags (all of them; a tag matches "
-            "the tags below it too)."
+            "narrow by contact, document type, document tags (all of them; a tag matches "
+            "the tags below it too) and topics (one of them, as a document has one topic; a "
+            "topic matches the topics below it too)."
         ),
         annotations=READ_ONLY,
     )
@@ -305,6 +307,9 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
         document_type: Annotated[str | None, Field(description="Name of a document type.")] = None,
         tags: Annotated[
             list[str] | None, Field(description="Names of tags.", max_length=50)
+        ] = None,
+        topics: Annotated[
+            list[str] | None, Field(description="Names of topics.", max_length=50)
         ] = None,
     ) -> SearchOut:
         user = principal_of(ctx).id
@@ -320,6 +325,7 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
                     None if document_type is None else names.find_document_type(document_type)
                 ),
                 tags=tuple(frozenset({names.find_tag(tag)}) for tag in tags or ()),
+                topics=frozenset(names.find_topic(topic) for topic in topics) if topics else None,
             ),
             offset=offset,
             limit=limit,
@@ -335,6 +341,7 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
                     access=item.access,
                     contact=names.contact(item.document.contact_id),
                     document_type=names.document_type(item.document.document_type_id),
+                    topic=names.topic(item.document.topic_id),
                     tags=names.tag_refs(item.document.tag_ids),
                     document_date=item.document.document_date,
                 )
@@ -448,8 +455,8 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
         description=(
             "The tags with their scope and path, in the order of their trees. Use the names of "
             "document tags in `search` (a tag finds the documents with a tag below it too) and "
-            "`update_metadata`, those of topics as its `topic`; contact and document type "
-            "groups describe contacts and types."
+            "`update_metadata`, those of topics in `search` (`topics`) and as the `topic` of "
+            "`update_metadata`; contact and document type groups describe contacts and types."
         ),
         annotations=READ_ONLY,
     )

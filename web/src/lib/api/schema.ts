@@ -966,7 +966,7 @@ export interface paths {
 		};
 		/**
 		 * Search documents
-		 * @description Full text and, if the installation has embeddings, meaning in one call. Finds the documents within the caller's reach, the same ones as `GET /documents` lists, with the same filters (they combine; `tag_id`, `contact_group_id`, `document_type_group_id` and `lane` may repeat, `topic_id` takes the topics below it); admins search every document with `all_users` (others: 403). Each hit is checked against the permissions once more before it is returned. The index follows the documents a moment later, so a new document may take a few seconds to turn up. Pages are by `offset`; at most 1000 hits can be reached. `sort`: by relevance (the default), or by a key as in `GET /documents`, relevance breaking ties.
+		 * @description Full text and, if the installation has embeddings, meaning in one call. Finds the documents within the caller's reach, the same ones as `GET /documents` lists, with the same filters (they combine; `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat, a topic takes the topics below it); admins search every document with `all_users` (others: 403). Each hit is checked against the permissions once more before it is returned. The index follows the documents a moment later, so a new document may take a few seconds to turn up. Pages are by `offset`; at most 1000 hits can be reached. `sort`: by relevance (the default), or by a key as in `GET /documents`, relevance breaking ties.
 		 */
 		get: operations['search_documents_api_v1_documents_search_get'];
 		put?: never;
@@ -1046,7 +1046,7 @@ export interface paths {
 		};
 		/**
 		 * List documents
-		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id`, `contact_group_id`, `document_type_group_id` and `lane` may repeat (all tags and groups, any lane; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; `topic_id` the documents with the topic or one below it. `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. To search by words and meaning use `GET /documents/search`.
+		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (all tags and groups, any topic, any lane; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. To search by words and meaning use `GET /documents/search`.
 		 */
 		get: operations['list_documents_api_v1_documents_get'];
 		put?: never;
@@ -13324,7 +13324,7 @@ export interface operations {
 				field_id?: string | null;
 				contact_group_id?: string[] | null;
 				document_type_group_id?: string[] | null;
-				topic_id?: string | null;
+				topic_id?: string[] | null;
 				/** @description `relevance` or a key. */
 				sort?: components['schemas']['DocumentSort'] | 'relevance';
 				limit?: number;
@@ -13724,7 +13724,7 @@ export interface operations {
 				field_id?: string | null;
 				contact_group_id?: string[] | null;
 				document_type_group_id?: string[] | null;
-				topic_id?: string | null;
+				topic_id?: string[] | null;
 				sort?: components['schemas']['DocumentSort'];
 				limit?: number;
 				/** @description `next_cursor`. */

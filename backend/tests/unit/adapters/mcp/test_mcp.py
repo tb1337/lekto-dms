@@ -341,7 +341,7 @@ async def test_search_finds_what_the_caller_may_read(api: Api, scene: Scene) -> 
     page = data(await call(api, scene.headers["reader"], "search", query="pdf"))
     item = page["items"][0]
     assert item["id"] == scene.green and item["access"] == "read"
-    assert set(item) >= {"title", "score", "snippet", "contact", "document_type", "tags"}
+    assert set(item) >= {"title", "score", "snippet", "contact", "document_type", "topic", "tags"}
     assert isinstance(item["snippet"], str)
 
 
@@ -370,6 +370,39 @@ async def test_search_filters_by_name(api: Api, scene: Scene) -> None:
     assert "no tag named 'Gruppe'" in error(group)
     unknown = await call(api, scene.headers["owner"], "search", query="pdf", contact="Nope")
     assert "no contact named 'Nope'" in error(unknown)
+
+
+async def test_search_filters_by_topics(api: Api, scene: Scene) -> None:
+    """Several topics: the documents with one of them, each with the topics below it."""
+    admin = await api.admin()
+    master = api.services.master_data
+    work = await master.create_tag(admin.id, "Arbeit", scope=TagScope.TOPIC)
+    insurance = await master.create_tag(admin.id, "Versicherung", scope=TagScope.TOPIC)
+    health = await master.create_tag(
+        admin.id, "Krankenversicherung", scope=TagScope.TOPIC, parent_id=insurance.id
+    )
+    nord = await master.create_contact(admin.id, "Nord", topic_ids=[work.id, health.id])
+    for which, topic in ((scene.green, work), (scene.yellow, health)):
+        await api.services.documents.change_metadata(
+            scene.owner.id,
+            DocumentId(UUID(which)),
+            DocumentChanges(contact_id=nord.id, topic_id=topic.id),
+        )
+    await api.services.indexing.reconcile()  # type: ignore[union-attr]
+    while await api.services.indexing.run_next_job():  # type: ignore[union-attr]
+        pass
+    owner = scene.headers["owner"]
+    assert await found(api, owner, topics=["arbeit"]) == {scene.green}
+    assert await found(api, owner, topics=["Versicherung"]) == {scene.yellow}
+    assert await found(api, owner, topics=["Arbeit", "Krankenversicherung"]) == {
+        scene.green,
+        scene.yellow,
+    }
+    page = data(await call(api, owner, "search", query="pdf", topics=["Arbeit"]))
+    assert page["items"][0]["topic"] == {"id": str(work.id), "name": "Arbeit"}
+    assert "no topic named 'Nope'" in error(
+        await call(api, owner, "search", query="pdf", topics=["Nope"])
+    )
 
 
 async def test_search_without_an_index_says_so() -> None:

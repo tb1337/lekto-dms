@@ -121,10 +121,11 @@ def document_filter(
     field_id: UUID | None = None,
     contact_group_id: list[UUID] | None = None,
     document_type_group_id: list[UUID] | None = None,
-    topic_id: UUID | None = None,
+    topic_id: list[UUID] | None = None,
 ) -> DocumentFilter:
     """The query parameters of the document list as a filter (also used by the search). Each
-    tag or group is one set, the topic one more; the service adds the tags below them."""
+    tag or group is one set, the topics one more (a document has one topic: one of them); the
+    service adds the tags below them."""
 
     def sets(ids: list[UUID] | None) -> tuple[frozenset[TagId], ...]:
         return tuple(frozenset({TagId(id)}) for id in dict.fromkeys(ids or ()))
@@ -135,7 +136,7 @@ def document_filter(
         tags=sets(tag_id),
         contact_groups=sets(contact_group_id),
         document_type_groups=sets(document_type_group_id),
-        topics=None if topic_id is None else frozenset({TagId(topic_id)}),
+        topics=frozenset(TagId(id) for id in topic_id) if topic_id else None,
         space=None if space_id is None else SpaceId(space_id),
         lanes=None if not lane else frozenset(_LANES[item] for item in lane),
         field=None if field_id is None else FieldId(field_id),
@@ -266,10 +267,10 @@ async def upload(
         "The documents within the caller's reach, newest first: their own, and green "
         "documents in spaces they own or that are shared with them. Admins may read every "
         "document and list them all with `all_users` (others: 403). Filters combine; `tag_id`, "
-        "`contact_group_id`, `document_type_group_id` and `lane` may repeat (all tags and "
-        "groups, any lane; `processing`: no lane yet). A tag matches the documents with it or "
-        "a tag below it; a group those whose contact (type) is in it or a group below it; "
-        "`topic_id` the documents with the topic or one below it. "
+        "`contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (all "
+        "tags and groups, any topic, any lane; `processing`: no lane yet). A tag matches the "
+        "documents with it or a tag below it; a group those whose contact (type) is in it or a "
+        "group below it; a topic the documents with it or one below it. "
         "`field_id`: a value for the field is set. `sort` orders by arrival (the default, "
         "newest first), "
         "document date or title; documents without a date come last. To search by words and "
@@ -289,7 +290,7 @@ async def list_documents(
     field_id: UUID | None = None,
     contact_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
     document_type_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
-    topic_id: UUID | None = None,
+    topic_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
     sort: DocumentSort = DocumentSort.CREATED_DESC,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     cursor: Annotated[str | None, Query(max_length=64, description="`next_cursor`.")] = None,

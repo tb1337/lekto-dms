@@ -855,13 +855,31 @@ async def test_topics_at_contacts_identifiers_and_documents(api: Api) -> None:
             f"{PREFIX}/documents", params={"topic_id": topic["id"]}, headers=o
         )
         assert [item["id"] for item in page.json()["items"]] == found
+    upload = {"file": ("second.pdf", _pdf(1), "x/y")}
+    accepted = await api.client.post(f"{PREFIX}/documents", files=upload, headers=o)
+    await api.drain()
+    second = accepted.json()["id"]
+    await api.client.patch(
+        f"{PREFIX}/documents/{second}",
+        json={"contact_id": contact["id"], "topic_id": work["id"]},
+        headers=o,
+    )
+    # Several topics: the documents with one of them (or one below it), newest first.
+    for topics, found in (
+        ([work, insurance], [second, document]),
+        ([work, health], [second]),
+        ([health], []),
+    ):
+        params = [("topic_id", topic["id"]) for topic in topics]
+        page = await api.client.get(f"{PREFIX}/documents", params=params, headers=o)
+        assert [item["id"] for item in page.json()["items"]] == found, page.text
     counted = await api.client.get(
         f"{PREFIX}/tags", params={"scope": "topic", "document_counts": True}, headers=o
     )
     assert {item["name"]: item["document_count"] for item in counted.json()} == {
         "Insurance": 1,
         "Health": 0,
-        "Work": 0,
+        "Work": 1,
     }
     assert (
         await api.client.delete(f"{PREFIX}/tags/{insurance['id']}", headers=a)

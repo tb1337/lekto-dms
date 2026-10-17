@@ -17,6 +17,7 @@ from papiq.core.domain.classification import (
     DOCUMENT_DATE,
     DOCUMENT_TYPE,
     TAGS,
+    TOPIC,
     FieldCheck,
     checks_from_json,
     field_id_of,
@@ -257,6 +258,7 @@ def confirmation(
 _CHANGE_FIELDS = {
     CONTACT: "contact_id",
     DOCUMENT_TYPE: "document_type_id",
+    TOPIC: "topic_id",
     TAGS: "tag_ids",
     DOCUMENT_DATE: "document_date",
     "title": "title",
@@ -322,6 +324,8 @@ def _suggested(
                 return ContactId(UUID(str(value)))
             case "document_type":
                 return DocumentTypeId(UUID(str(value)))
+            case "topic":
+                return TagId(UUID(str(value)))
             case "tags" if isinstance(value, list):
                 return frozenset(TagId(UUID(str(item))) for item in value)
             case "document_date":

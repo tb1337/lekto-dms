@@ -19,6 +19,7 @@ from papiq.core.domain.classification import (
     DOCUMENT_TYPE,
     TAGS,
     TITLE,
+    TOPIC,
     field_key,
 )
 from papiq.core.domain.documents import Document
@@ -303,6 +304,7 @@ def corrected_fields(before: Document, after: Document) -> frozenset[str]:
             (TITLE, "title"),
             (CONTACT, "contact_id"),
             (DOCUMENT_TYPE, "document_type_id"),
+            (TOPIC, "topic_id"),
             (TAGS, "tag_ids"),
             (DOCUMENT_DATE, "document_date"),
         )

@@ -107,11 +107,12 @@ class MetadataResult:
     """A node result together with a change of the document's metadata (classification).
     Both are stored in the same transaction. If the change no longer fits (master data was
     removed meanwhile), nothing is changed and the node is uncertain. `add_tags` are added to
-    the tags the document has when the result is stored, so tags set meanwhile stay.
+    the tags the document has when the result is stored, so tags set meanwhile stay. A new
+    contact that does not enable the document's topic clears it (`checked_changes`).
 
     `confirms`: metadata taken over from the source system, which counts as confirmed;
-    otherwise it is the pipeline's, and a document whose contact, type or tags it changes is
-    no longer confirmed."""
+    otherwise it is the pipeline's, and a document whose contact, type, topic or tags it
+    changes is no longer confirmed."""
 
     result: NodeResult
     changes: DocumentChanges
@@ -123,7 +124,7 @@ class MetadataResult:
         if not self.add_tags <= document.tag_ids:
             changes = replace(changes, tag_ids=frozenset(document.tag_ids | self.add_tags))
         try:
-            changes = await checked_changes(uow, changes)
+            changes = await checked_changes(uow, changes, document)
             definitions = {item.id: item for item in await uow.fields.list_all()}
             changed = document.apply_changes(changes, definitions, now)
         except (NotFoundError, ValidationError) as error:
@@ -514,7 +515,8 @@ class PipelineService:
                 definitions=definitions,
                 given=() if target is None else (SPACE,),
             )
-            decision = replace(decision, changes=await checked_changes(uow, decision.changes))
+            checked = await checked_changes(uow, decision.changes, document, user)
+            decision = replace(decision, changes=checked)
             before = copy.deepcopy(document)
             document.apply_changes(decision.changes, definitions, now)
             corrected = corrected_fields(before, document)

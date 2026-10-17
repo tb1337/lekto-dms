@@ -41,6 +41,7 @@ from papiq.core.domain.classification import (
     DOCUMENT_TYPE,
     TAGS,
     TITLE,
+    TOPIC,
     FieldCheck,
     field_key,
 )
@@ -1022,6 +1023,7 @@ def changed_fields(changes: DocumentChanges) -> frozenset[str]:
         "title": TITLE,
         "contact_id": CONTACT,
         "document_type_id": DOCUMENT_TYPE,
+        "topic_id": TOPIC,
         "tag_ids": TAGS,
         "document_date": "document_date",
     }

@@ -94,13 +94,17 @@ class MasterDataService:
         aliases: Collection[str] = (),
         identifiers: Collection[Identifier] = (),
         group_ids: Collection[TagId] = (),
+        topic_ids: Collection[TagId] = (),
     ) -> Contact:
-        """`identifiers`: entered by hand; `group_ids`: contact groups (see
+        """`identifiers`: entered by hand, each pointing to one of `topic_ids` or none;
+        `group_ids`: contact groups; `topic_ids`: the topics it enables (see
         `change_contact`)."""
-        item = Contact.create(name=name, now=self._now(), aliases=aliases, identifiers=identifiers)
+        item = Contact.create(name=name, now=self._now(), aliases=aliases)
 
         async def check(uow: UnitOfWork) -> None:
             item.set_groups(await _groups(uow, group_ids, TagScope.CONTACT))
+            item.set_topics(await _topics(uow, topic_ids))
+            item.set_identifiers(identifiers)
             await _check_contact(uow, item)
 
         return await self._create(actor, _contacts, item, check)
@@ -118,28 +122,42 @@ class MasterDataService:
         identifiers: Collection[Identifier] | None = None,
         rejected_identifiers: Collection[Identifier] | None = None,
         group_ids: Collection[TagId] | None = None,
+        topic_ids: Collection[TagId] | None = None,
     ) -> Contact:
         """`None` leaves a part as it is. `aliases` replaces all of them; `identifiers`
         replaces those entered by hand (a learned one given is then entered by hand) and
         `rejected_identifiers` the rejected ones (a learned one given no longer counts and is
         not learned again). A value entered here that another contact learned or rejected
         moves here; one another contact has entered is a conflict. `group_ids` replaces the
-        contact groups (tags of scope `contact`; a child and its parent leave the child)."""
+        contact groups (tags of scope `contact`; a child and its parent leave the child).
+
+        `topic_ids` replaces the topics it enables (tags of scope `topic`). Taking one away is
+        a conflict while a document of the contact carries it; its identifiers lose it. An
+        identifier points to one of the topics the contact enables after the change, or to
+        none (ValidationError otherwise)."""
 
         def change(item: Contact) -> None:
             if name is not None:
                 item.rename(name)
             if aliases is not None:
                 item.set_aliases(aliases)
+
+        async def check(uow: UnitOfWork, item: Contact) -> None:
+            if group_ids is not None:
+                item.set_groups(await _groups(uow, group_ids, TagScope.CONTACT))
+            if topic_ids is not None:
+                for removed in item.set_topics(await _topics(uow, topic_ids)):
+                    if await uow.documents.exists(contact=item.id, topic=removed):
+                        topic = await uow.tags.get(removed)
+                        raise ConflictError(
+                            f"documents of '{item.name}' carry the topic '{topic.name}': give "
+                            "them another topic first"
+                        )
             if identifiers is not None or rejected_identifiers is not None:
                 entered = identifiers
                 if entered is None:
                     entered = [entry for entry in item.identifiers if entry.source is MANUAL]
                 item.set_identifiers(entered, rejected_identifiers)
-
-        async def check(uow: UnitOfWork, item: Contact) -> None:
-            if group_ids is not None:
-                item.set_groups(await _groups(uow, group_ids, TagScope.CONTACT))
             await _check_contact(uow, item)
 
         return await self._change(
@@ -154,10 +172,11 @@ class MasterDataService:
 
     async def add_identifier(self, actor: UserId, id: ContactId, identifier: Identifier) -> Contact:
         """Enter one identifier by hand for the contact (admins), from a document that shows
-        it; the others stay as they are. One the contact learned or rejected is then entered;
-        one another contact learned or rejected moves here; one another contact has entered is
-        a conflict."""
-        entered = Identifier(identifier.kind, identifier.value, MANUAL)
+        it, with its topic (one the contact enables, ValidationError otherwise) or none; the
+        others stay as they are. One the contact learned or rejected is then entered; one
+        another contact learned or rejected moves here; one another contact has entered is a
+        conflict."""
+        entered = Identifier(identifier.kind, identifier.value, MANUAL, identifier.topic_id)
 
         def change(item: Contact) -> None:
             manual = [e for e in item.identifiers if e.source is MANUAL and e.key != entered.key]
@@ -541,21 +560,30 @@ class MasterDataService:
         )
 
     async def delete_tag(self, actor: UserId, id: TagId) -> None:
-        """Only a tag without tags below it that nothing uses: no document carries it, no
-        contact or type is in it, no rule refers to it (ConflictError naming what does)."""
+        """Only a tag without tags below it that nothing uses: no document carries it (as a
+        tag or its topic), no contact or type is in it, no contact enables it as a topic and
+        no identifier points to it, no rule refers to it (ConflictError naming what does)."""
 
         async def used(uow: UnitOfWork) -> bool:
             tag = await uow.tags.get(id)
             if any(item.parent_id == id for item in await uow.tags.list_all()):
                 raise ConflictError(f"'{tag.name}' has tags below it")
-            if await uow.documents.exists(tag=id):
+            if await uow.documents.exists(tag=id) or await uow.documents.exists(topic=id):
                 return True
+            contacts = await uow.contacts.list_all()
             for kind, items in (
-                ("contacts", await uow.contacts.list_all()),
+                ("contacts", contacts),
                 ("document types", await uow.document_types.list_all()),
             ):
                 if any(id in item.group_ids for item in items):
                     raise ConflictError(f"{kind} are in '{tag.name}'")
+            enabling = sorted(
+                f"'{item.name}'"
+                for item in contacts
+                if id in item.topic_ids or any(entry.topic_id == id for entry in item.identifiers)
+            )
+            if enabling:
+                raise ConflictError(f"the contacts {', '.join(enabling)} enable '{tag.name}'")
             rules = [
                 rule
                 for rule in await uow.rules.list_for(owners=None, include_global=True)
@@ -799,6 +827,20 @@ async def _groups(uow: UnitOfWork, ids: Collection[TagId], scope: TagScope) -> f
     return tree.normalise(ids)
 
 
+async def _topics(uow: UnitOfWork, ids: Collection[TagId]) -> frozenset[TagId]:
+    """`ids` as the topics a contact enables: tags of scope `topic` (NotFoundError for one that
+    does not exist, ValidationError for one of another scope). A topic and one below it are
+    both enabled: a document may carry either."""
+    if not ids:
+        return frozenset()
+    tree = TagTree.of(await uow.tags.list_all())
+    for id in ids:
+        tag = tree.get(id)
+        if tag.scope is not TagScope.TOPIC:
+            raise ValidationError(f"'{tag.name}' is no topic")
+    return frozenset(ids)
+
+
 async def _check_key_free(uow: UnitOfWork, definition: FieldDefinition) -> None:
     """Templates name a field by its key: no two fields may share one."""
     for other in await uow.fields.list_all():
@@ -845,7 +887,8 @@ async def replace_learned_identifiers(
 ) -> int:
     """Make `learned` the learned identifiers of all contacts (training found them), in `uow`
     without committing; a contact not in `learned` has none afterwards. Values entered or
-    rejected anywhere stay where they are. Returns how many are learned."""
+    rejected anywhere stay where they are. A learned one points to its topic if its contact
+    enables it (`Contact.set_learned`). Returns how many are learned."""
     contacts = await uow.contacts.list_all()
     taken = {
         item.key

@@ -553,7 +553,9 @@ class DocumentService:
     async def update_metadata(
         self, actor: UserId, id: DocumentId, changes: DocumentChanges
     ) -> Document:
-        """Needs write access. Referenced contact, type, tags and fields must exist."""
+        """Needs write access. Referenced contact, type, topic, tags and fields must exist; the
+        topic is one the contact enables, or an admin's choice enables it there
+        (`_access.checked_changes`)."""
         return (await self.change_metadata(actor, id, changes)).document
 
     async def change_metadata(
@@ -572,7 +574,7 @@ class DocumentService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             document, _ = await writable_document(uow, user, id)
-            changes = await checked_changes(uow, changes)
+            changes = await checked_changes(uow, changes, document, user)
             definitions = {item.id: item for item in await uow.fields.list_all()}
             now = self._clock.now()
             before = copy.deepcopy(document)

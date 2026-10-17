@@ -70,19 +70,81 @@ async def may_file(uow: UnitOfWork, document: Document, space: Space) -> bool:
     return user is not None and user.is_active_admin
 
 
-async def checked_changes(uow: UnitOfWork, changes: DocumentChanges) -> DocumentChanges:
-    """The change as it is applied: its tags normalised (a child and its parent set together
-    leave the child, `TagTree.normalise`). NotFoundError if a contact, type or tag it refers
-    to does not exist, ValidationError for a tag that does not describe documents (a group)."""
+async def checked_changes(
+    uow: UnitOfWork,
+    changes: DocumentChanges,
+    document: Document | None = None,
+    actor: User | None = None,
+) -> DocumentChanges:
+    """The change as it is applied to `document` (None: a new one): its tags normalised (a
+    child and its parent set together leave the child, `TagTree.normalise`), and its topic one
+    the contact after the change enables.
+
+    A contact given that does not enable the document's topic clears the topic. A topic given
+    that the contact does not enable is enabled at the contact, in `uow`, if `actor` is an
+    active admin; otherwise, and for a topic without a contact, it is a ValidationError.
+    NotFoundError if a contact, type, tag or topic it refers to does not exist,
+    ValidationError for a tag that does not describe documents (a group, a topic) or a topic
+    that is none."""
     if not isinstance(changes.contact_id, Unset) and changes.contact_id is not None:
         await uow.contacts.get(changes.contact_id)
     if not isinstance(changes.document_type_id, Unset) and changes.document_type_id is not None:
         await uow.document_types.get(changes.document_type_id)
-    if isinstance(changes.tag_ids, Unset):
-        return changes
+    topic_given = not isinstance(changes.topic_id, Unset)
+    if isinstance(changes.tag_ids, Unset) and not topic_given:
+        return await _fitted_topic(uow, changes, document, actor)
     tree = TagTree.of(await uow.tags.list_all())
-    for id in changes.tag_ids:
-        tag = tree.get(id)
-        if tag.scope is not TagScope.DOCUMENT:
-            raise ValidationError(f"'{tag.name}' is a {tag.scope} group, not a document tag")
-    return replace(changes, tag_ids=tree.normalise(changes.tag_ids))
+    if not isinstance(changes.tag_ids, Unset):
+        for id in changes.tag_ids:
+            tag = tree.get(id)
+            if tag.scope is not TagScope.DOCUMENT:
+                raise ValidationError(f"'{tag.name}' is a {_SCOPES[tag.scope]}, not a document tag")
+        changes = replace(changes, tag_ids=tree.normalise(changes.tag_ids))
+    if not isinstance(changes.topic_id, Unset) and changes.topic_id is not None:
+        topic = tree.get(changes.topic_id)
+        if topic.scope is not TagScope.TOPIC:
+            raise ValidationError(f"'{topic.name}' is no topic")
+    return await _fitted_topic(uow, changes, document, actor)
+
+
+_SCOPES = {
+    TagScope.CONTACT: "contact group",
+    TagScope.DOCUMENT_TYPE: "document type group",
+    TagScope.TOPIC: "topic",
+}
+
+
+async def _fitted_topic(
+    uow: UnitOfWork, changes: DocumentChanges, document: Document | None, actor: User | None
+) -> DocumentChanges:
+    """`changes` with the topic the contact after it enables (see `checked_changes`); only a
+    change of the contact or the topic looks at it."""
+    contact_given = not isinstance(changes.contact_id, Unset)
+    topic_given = not isinstance(changes.topic_id, Unset)
+    if not (contact_given or topic_given):
+        return changes
+    current = document.contact_id if document is not None else None
+    contact_id = changes.contact_id if not isinstance(changes.contact_id, Unset) else current
+    topic_id = changes.topic_id if not isinstance(changes.topic_id, Unset) else None
+    if not topic_given and document is not None:
+        topic_id = document.topic_id
+    if topic_id is None:
+        return changes
+    if contact_id is None:
+        if topic_given:
+            raise ValidationError("a topic is one of the contact's: give the document a contact")
+        return replace(changes, topic_id=None)
+    contact = await uow.contacts.get(contact_id)
+    if topic_id in contact.topic_ids:
+        return changes
+    if not topic_given:
+        return replace(changes, topic_id=None)  # the new contact does not enable it
+    if actor is not None and actor.is_active_admin:
+        contact.enable_topic(topic_id)
+        await uow.contacts.update(contact)
+        return changes
+    topic = await uow.tags.get(topic_id)
+    raise ValidationError(
+        f"'{contact.name}' does not enable the topic '{topic.name}' (an admin enables it at "
+        "the contact, or by choosing it)"
+    )

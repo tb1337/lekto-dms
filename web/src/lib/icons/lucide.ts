@@ -1,8 +1,9 @@
 /**
  * The Lucide icons of the build, each its own file loaded when it is shown: the names come from
  * `import.meta.glob` over the per-icon modules of `@lucide/svelte`, so every icon is in the
- * build (no CDN, the CSP allows `'self'` only) and none is loaded before it is needed. The keys
- * are short (`./house.svelte`): the map of all icons goes with every page that shows one.
+ * build (no CDN, the CSP allows `'self'` only) and none is loaded before it is needed. The map
+ * of all 1,866 is large (about 50 KB gzip): only the icon picker imports it, and `load.ts` for
+ * an icon beyond those offered first (`curated-modules.ts`), both when they need it.
  */
 import type { Component } from 'svelte';
 

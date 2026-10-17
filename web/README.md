@@ -92,6 +92,12 @@ and in its topic field, an admin's search that finds no tag of the kind named so
 create one at once or with details in a second dialog (`lib/tag-create.ts`,
 `masterDataDialogs.createTag`).
 
+Icons come from Lucide in the own build, each its own file loaded when it is shown. Chips and
+type icons draw the 170 offered first from a small map (`lib/icons/curated-modules.ts`, which a
+test keeps equal to `curated.ts`); the map of all 1,866 (about 43 KB gzip) loads only with the
+icon picker's panel (`IconPickerPanel`, with the search and its words) or for an icon beyond
+those (`lib/icons/load.ts`).
+
 ## Document view
 
 `/ui/documents/{id}` serves the inbox and the document list (`/ui/inbox/{id}` leads there with

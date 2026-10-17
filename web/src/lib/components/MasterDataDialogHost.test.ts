@@ -110,6 +110,10 @@ afterEach(() => {
 	window.document.body.style.pointerEvents = '';
 });
 
+// The icon picker's panel is loaded when it opens; under a full parallel run that can take a
+// while.
+const LOADED = { timeout: 5000 };
+
 describe('MasterDataDialogHost', () => {
 	it('opens a document type from anywhere and links the rule of its pattern', async () => {
 		render(WithDialogs);
@@ -210,7 +214,7 @@ describe('looks', () => {
 		masterDataDialogs.open('tags', TAGS[1] as Item);
 		expect(await screen.findByDisplayValue('Health')).toBeTruthy();
 		await user.click(screen.getByRole('button', { name: m.icon_choose() }));
-		await user.click(screen.getByTitle('piggy-bank'));
+		await user.click(await screen.findByTitle('piggy-bank', {}, LOADED));
 		await user.click(screen.getByRole('radio', { name: m.color_teal() }));
 		const preview = document.querySelector('[data-color="teal"]');
 		expect(preview?.textContent?.trim()).toBe('Health');

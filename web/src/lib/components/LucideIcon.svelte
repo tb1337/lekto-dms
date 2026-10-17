@@ -1,12 +1,13 @@
 <script lang="ts">
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
 	import type { Component } from 'svelte';
-	import { loadIcon } from '#lib/icons/lucide.ts';
+	import { loadIcon } from '#lib/icons/load.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// A Lucide icon by its name, from the own build and loaded when it is shown (`lazy`: once it
-	// scrolls into view); a name Lucide does not have shows a stand-in. Decorative: the name of
-	// what it stands for is next to it.
+	// scrolls into view; one beyond those offered first loads the index of all icons first,
+	// `load.ts`); a name Lucide does not have shows a stand-in. Decorative: the name of what it
+	// stands for is next to it.
 	let {
 		name,
 		class: className = 'size-4',

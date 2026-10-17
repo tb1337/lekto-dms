@@ -4,13 +4,18 @@ import { describe, expect, it } from 'vitest';
 import { m } from '#lib/paraglide/messages.js';
 import IconPicker from './IconPicker.svelte';
 
+// The icon picker's panel is loaded when it opens; under a full parallel run that can take a
+// while.
+const LOADED = { timeout: 5000 };
+
 describe('IconPicker', () => {
 	it('offers the icons by area and takes one', async () => {
 		const user = userEvent.setup();
 		render(IconPicker, { id: 'icon', value: null });
 		expect(screen.getByText(m.icon_none())).toBeTruthy();
 		await user.click(screen.getByRole('button', { name: m.icon_choose() }));
-		expect(screen.getByRole('region', { name: m.icon_area_money() })).toBeTruthy();
+		// The panel loads when the picker opens.
+		expect(await screen.findByRole('region', { name: m.icon_area_money() }, LOADED)).toBeTruthy();
 		expect(screen.getAllByRole('button', { pressed: false }).length).toBeGreaterThanOrEqual(170);
 		await user.click(screen.getByTitle('piggy-bank'));
 		expect(screen.getByText('piggy-bank')).toBeTruthy();
@@ -23,7 +28,7 @@ describe('IconPicker', () => {
 		const user = userEvent.setup();
 		render(IconPicker, { id: 'icon', value: 'house' });
 		await user.click(screen.getByRole('button', { name: m.icon_choose() }));
-		await user.type(screen.getByRole('searchbox'), 'rocket');
+		await user.type(await screen.findByRole('searchbox', {}, LOADED), 'rocket');
 		expect(screen.queryByRole('region')).toBeNull();
 		expect(screen.getByTitle('rocket')).toBeTruthy();
 		await user.clear(screen.getByRole('searchbox'));

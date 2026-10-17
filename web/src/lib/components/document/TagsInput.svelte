@@ -27,6 +27,8 @@
 	let query = $state('');
 	// Tags made here, until `all` holds them too.
 	let made = $state<Tag[]>([]);
+	// A tag is being created: a second Enter or click must not send it again.
+	let busy = $state(false);
 	const known = $derived([
 		...all,
 		...made.filter((tag) => !all.some((other) => other.id === tag.id))
@@ -54,7 +56,10 @@
 	}
 
 	async function quick() {
+		if (busy) return;
+		busy = true;
 		const tag = await createQuickly('document', query);
+		busy = false;
 		if (!tag) return;
 		made = [...made, tag];
 		add(tag.id);
@@ -126,7 +131,12 @@
 					{/each}
 					{#if offered}
 						<Command.Group class="border-t">
-							<Command.Item value="create:quick" onSelect={quick} class="text-brand">
+							<Command.Item
+								value="create:quick"
+								onSelect={quick}
+								disabled={busy}
+								class="text-brand"
+							>
 								<Plus aria-hidden="true" class="text-brand" />
 								{m.tag_create_quick({ name: query.trim() })}
 							</Command.Item>

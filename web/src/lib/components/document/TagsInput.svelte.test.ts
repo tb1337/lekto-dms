@@ -116,6 +116,33 @@ describe('TagsInput', () => {
 			).toBeTruthy();
 		});
 
+		it('sends one creation for a double click', async () => {
+			signIn('admin');
+			let answer: (response: Response) => void = () => {};
+			const fetchMock = vi.fn<(request: Request) => Promise<Response>>(
+				() => new Promise((resolve) => (answer = resolve))
+			);
+			vi.stubGlobal('fetch', fetchMock);
+			const user = userEvent.setup();
+			const props = $state({ tags: [] as string[], all: ALL, id: 'tags' });
+			render(TagsInput, props);
+			await user.click(screen.getByRole('button', { name: m.field_tag_add() }));
+			await user.type(await screen.findByLabelText(m.picker_search_create()), 'Makler');
+			const offer = screen.getByText(m.tag_create_quick({ name: 'Makler' }));
+			await fireEvent.click(offer);
+			await fireEvent.click(offer);
+			await fireEvent.keyDown(offer, { key: 'Enter' });
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+			answer(
+				new Response(JSON.stringify(tag('t9', ['Makler'], null)), {
+					status: 201,
+					headers: { 'content-type': 'application/json' }
+				})
+			);
+			await waitFor(() => expect(props.tags).toEqual(['t9']));
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+		});
+
 		it('offers nothing to create to others', async () => {
 			signIn('user');
 			const user = userEvent.setup();

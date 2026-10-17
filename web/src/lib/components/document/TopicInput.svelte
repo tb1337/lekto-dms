@@ -41,6 +41,8 @@
 	let query = $state('');
 	// Topics made here, until `all` and `topics` hold them too.
 	let made = $state<Tag[]>([]);
+	// A topic is being created: a second Enter or click must not send it again.
+	let busy = $state(false);
 	const fresh = $derived(made.filter((tag) => !all.some((other) => other.id === tag.id)));
 	const known = $derived([...all, ...fresh]);
 	const choices = $derived([
@@ -65,7 +67,10 @@
 	}
 
 	async function quick() {
+		if (busy) return;
+		busy = true;
 		const tag = await createQuickly('topic', query);
+		busy = false;
 		if (tag) chooseMade(tag);
 	}
 
@@ -119,7 +124,7 @@
 				{/each}
 				{#if offered}
 					<Command.Group class={cn(found.length > 0 && 'border-t')}>
-						<Command.Item value="create:quick" onSelect={quick} class="text-brand">
+						<Command.Item value="create:quick" onSelect={quick} disabled={busy} class="text-brand">
 							<Plus aria-hidden="true" class="text-brand" />
 							{m.tag_create_quick({ name: query.trim() })}
 						</Command.Item>

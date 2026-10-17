@@ -61,6 +61,9 @@
 	const filter = $derived(kindFilter(page.url.searchParams));
 	const kinds = $derived(filter ? [filter] : TAG_KIND_ORDER);
 	const searching = $derived(query.trim() !== '');
+	// A search or a filter by kind shows its sections open, whatever this browser keeps
+	// collapsed (a lone collapsed section would show nothing).
+	const forcedOpen = $derived(searching || filter !== null);
 	const childCount = $derived(childCounts(tags ?? []));
 	const sections = $derived(
 		kinds.map((kind) => {
@@ -68,7 +71,7 @@
 			return {
 				kind,
 				rows: visibleRows(own, searching ? NO_COLLAPSE : collapsedTags),
-				open: searching || !collapsedKinds.has(kind)
+				open: forcedOpen || !collapsedKinds.has(kind)
 			};
 		})
 	);
@@ -228,7 +231,7 @@
 				<div
 					class="flex min-h-12 items-center gap-2 bg-muted/60 py-1 pr-1.5 pl-1 sm:gap-2.5 sm:pr-2.5"
 				>
-					{#if searching}
+					{#if forcedOpen}
 						<span class="size-11 shrink-0 sm:size-8" aria-hidden="true"></span>
 					{:else}
 						<Button
@@ -236,7 +239,7 @@
 							size="icon"
 							class="size-11 shrink-0 aria-expanded:bg-transparent sm:size-8"
 							aria-expanded={open}
-							aria-controls="tags-{kind}-list"
+							aria-controls={open ? `tags-${kind}-list` : undefined}
 							aria-label={open ? m.tree_collapse({ name: title }) : m.tree_expand({ name: title })}
 							onclick={() => toggleKind(kind)}
 						>

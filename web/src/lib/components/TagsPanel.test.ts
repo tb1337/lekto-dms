@@ -167,6 +167,32 @@ describe('TagsPanel', () => {
 		expect(localStorage.getItem('papiq.master-data.tags.collapsed')).toBeNull();
 	});
 
+	it('shows a kind the URL names open, though collapsed in this browser', async () => {
+		localStorage.setItem('papiq.master-data.tags.collapsed', '["topics"]');
+		nav.url = new URL('http://papiq/ui/admin/master-data?tab=tags&kind=topics');
+		render(TagsPanel);
+		expect(await screen.findByText('Work')).toBeTruthy();
+		// Nothing to collapse while it is the only one.
+		expect(
+			screen.queryByRole('button', { name: m.tree_expand({ name: m.master_topics() }) })
+		).toBeNull();
+		expect(localStorage.getItem('papiq.master-data.tags.collapsed')).toBe('["topics"]');
+	});
+
+	it('points to the list of a section only while it is open', async () => {
+		render(TagsPanel);
+		const collapse = await screen.findByRole('button', {
+			name: m.tree_collapse({ name: m.master_contact_groups() })
+		});
+		const list = collapse.getAttribute('aria-controls');
+		expect(list && document.getElementById(list)).toBeTruthy();
+		await fireEvent.click(collapse);
+		const expand = screen.getByRole('button', {
+			name: m.tree_expand({ name: m.master_contact_groups() })
+		});
+		expect(expand.hasAttribute('aria-controls')).toBe(false);
+	});
+
 	it('collapses a tag with tags below it', async () => {
 		render(TagsPanel);
 		const collapse = await screen.findByRole('button', {

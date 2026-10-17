@@ -8,8 +8,10 @@
 	import { page } from '$app/state';
 	import { BASE } from '#lib/base.ts';
 	import HeaderSearch from '#lib/components/HeaderSearch.svelte';
+	import LanguageChoices from '#lib/components/LanguageChoices.svelte';
 	import LanguageMenu from '#lib/components/LanguageMenu.svelte';
 	import Logo from '#lib/components/Logo.svelte';
+	import ThemeChoices from '#lib/components/ThemeChoices.svelte';
 	import ThemeMenu from '#lib/components/ThemeMenu.svelte';
 	import { buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
@@ -19,6 +21,7 @@
 	import { inbox } from '#lib/inbox.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { canListAllUsers } from '#lib/permissions.ts';
+	import { phone } from '#lib/phone.svelte.ts';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { href, isCurrent, SETTINGS, visibleSections, type Section } from '#lib/sections.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -163,8 +166,11 @@
 				>
 					<SearchIcon aria-hidden="true" />
 				</a>
-				<LanguageMenu />
-				<ThemeMenu />
+				<!-- On a phone, language and theme are in the account menu: the header has no room. -->
+				{#if !phone.current}
+					<LanguageMenu />
+					<ThemeMenu />
+				{/if}
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger
 						class={cn(
@@ -206,6 +212,12 @@
 									<span class="text-xs text-muted-foreground">{m.all_users_hint()}</span>
 								</span>
 							</DropdownMenu.CheckboxItem>
+							<DropdownMenu.Separator />
+						{/if}
+						{#if phone.current}
+							<LanguageChoices />
+							<DropdownMenu.Separator />
+							<ThemeChoices />
 							<DropdownMenu.Separator />
 						{/if}
 						<DropdownMenu.Item onSelect={() => goto(href(SETTINGS))}>

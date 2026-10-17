@@ -74,6 +74,13 @@ user menu (`lib/scope.svelte.ts`), kept in this browser too and shown at the ava
 search, the inbox with its counter, rules and the counts at the master data follow it. Every
 `localStorage` access is guarded: without storage the defaults hold.
 
+## Header
+
+The app's header holds the menu, the wordmark, the search, language, theme and the account menu
+(`AppShell`). On a phone (below `sm`) language and theme are groups of the account menu instead
+(`LanguageChoices`, `ThemeChoices`, which the header's own menus use too); the sign-in page keeps
+both menus at every width.
+
 ## Master data
 
 `/ui/admin/master-data` (admins) has four tabs in `?tab=`: contacts, document types, tags,

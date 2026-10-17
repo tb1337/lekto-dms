@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CURATED, CURATED_NAMES } from '#lib/icons/curated.ts';
 import { m } from '#lib/paraglide/messages.js';
 import IconPicker from './IconPicker.svelte';
 
@@ -9,6 +10,8 @@ import IconPicker from './IconPicker.svelte';
 const LOADED = { timeout: 5000 };
 
 describe('IconPicker', () => {
+	afterEach(() => vi.restoreAllMocks());
+
 	it('offers the icons by area and takes one', async () => {
 		const user = userEvent.setup();
 		render(IconPicker, { id: 'icon', value: null });
@@ -37,6 +40,48 @@ describe('IconPicker', () => {
 		await user.click(screen.getByRole('button', { name: m.icon_done() }));
 		await user.click(screen.getByRole('button', { name: m.icon_remove() }));
 		expect(screen.getByText(m.icon_none())).toBeTruthy();
+	});
+
+	it('is one tab stop whose arrows move by rows, Enter choosing', async () => {
+		// Six tiles to a row: jsdom lays nothing out.
+		vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+			this: HTMLElement
+		) {
+			const tiles = [...(this.parentElement?.children ?? [])];
+			const grids = [...document.querySelectorAll('[data-icon-tile]')].map(
+				(tile) => tile.parentElement
+			);
+			const grid = [...new Set(grids)].indexOf(this.parentElement);
+			const index = tiles.indexOf(this);
+			const top = grid * 1000 + Math.floor(index / 6) * 44;
+			return { top, left: (index % 6) * 44, width: 40, height: 40 } as DOMRect;
+		});
+		const user = userEvent.setup();
+		render(IconPicker, { id: 'icon', value: 'files' });
+		await user.click(screen.getByRole('button', { name: m.icon_choose() }));
+		const chosen = await screen.findByTitle('files', {}, LOADED);
+		const tiles = [...document.querySelectorAll<HTMLElement>('[data-icon-tile]')];
+		expect(tiles.filter((tile) => tile.tabIndex === 0)).toEqual([chosen]);
+		await user.click(screen.getByRole('searchbox'));
+		await user.tab();
+		expect(document.activeElement).toBe(chosen);
+		const at = (title: string) => expect(document.activeElement?.getAttribute('title')).toBe(title);
+		await user.keyboard('{ArrowRight}');
+		at(CURATED[0].icons[2]);
+		await user.keyboard('{ArrowDown}');
+		at(CURATED[0].icons[8]);
+		await user.keyboard('{End}');
+		at(CURATED[0].icons[11]);
+		await user.keyboard('{Home}');
+		at(CURATED[0].icons[6]);
+		await user.keyboard('{ArrowLeft}');
+		at(CURATED[0].icons[5]);
+		await user.keyboard('{Control>}{End}{/Control}');
+		at(CURATED_NAMES[CURATED_NAMES.length - 1]);
+		// The tab stop follows; Tab leaves the tiles.
+		expect(tiles.filter((tile) => tile.tabIndex === 0).length).toBe(1);
+		await user.keyboard('{Control>}{Home}{/Control}{Enter}');
+		expect(screen.getByText(CURATED_NAMES[0])).toBeTruthy();
 	});
 
 	it('marks an unknown name with a stand-in', async () => {

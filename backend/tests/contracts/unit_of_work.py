@@ -6,6 +6,7 @@ from uuid import UUID
 
 import pytest
 
+from papiq.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
 from papiq.core.domain.classifier import ClassifierModel
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
@@ -380,6 +381,49 @@ class UnitOfWorkContract:
             async with uow_factory() as uow:
                 await uow.tags.add(Tag.create(name="insurance", now=NOW, scope=TagScope.CONTACT))
                 await uow.commit()
+
+    async def test_master_data_keeps_icons_colours_and_logos(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        tag = Tag.create(name="Health", now=NOW, icon="heart-pulse", color="pink")
+        own = Tag.create(name="Car", now=NOW, scope=TagScope.TOPIC, icon="car", color="#b45309")
+        plain = Tag.create(name="Plain", now=NOW)
+        kind = DocumentType.create(name="Invoice", now=NOW, icon="receipt-euro")
+        uploaded = Contact.create(name="Nord", now=NOW)
+        uploaded.set_logo(ContactLogo(source=LogoSource.UPLOADED, stored_at=NOW))
+        failed = Contact.create(name="Süd", now=NOW)
+        failed.note_failed_fetch(FailedLogoFetch(domain="sued.example", failed_at=NOW))
+        async with uow_factory() as uow:
+            for item in (tag, own, plain):
+                await uow.tags.add(item)
+            await uow.document_types.add(kind)
+            await uow.contacts.add(uploaded)
+            await uow.contacts.add(failed)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.tags.get(tag.id) == tag
+            assert (await uow.tags.get(own.id)).color == "#b45309"
+            assert (await uow.tags.get(plain.id)).icon is None
+            assert (await uow.document_types.get(kind.id)).icon == "receipt-euro"
+            stored = await uow.contacts.get(uploaded.id)
+            assert stored.logo == uploaded.logo and stored.logo_failure is None
+            other = await uow.contacts.get(failed.id)
+            assert other.logo is None and other.logo_failure == failed.logo_failure
+            later = NOW + timedelta(minutes=1)
+            other.set_logo(
+                ContactLogo(source=LogoSource.FETCHED, stored_at=later, domain="sued.example")
+            )
+            stored.remove_logo()
+            for contact in (stored, other):
+                await uow.contacts.update(contact)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.contacts.get(uploaded.id)).logo is None
+            fetched = await uow.contacts.get(failed.id)
+            assert fetched.logo == ContactLogo(
+                source=LogoSource.FETCHED, stored_at=later, domain="sued.example"
+            )
+            assert fetched.logo_failure is None
 
     async def test_contacts_and_types_keep_their_groups(
         self, uow_factory: UnitOfWorkFactory

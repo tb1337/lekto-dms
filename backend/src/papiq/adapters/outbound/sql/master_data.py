@@ -8,6 +8,7 @@ from sqlalchemy import Row, and_, delete
 
 from papiq.adapters.outbound.sql import tables as t
 from papiq.adapters.outbound.sql.repositories import SqlRepository, Values
+from papiq.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId
@@ -41,6 +42,16 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
     kind = "contact"
     table = t.contacts
 
+    def _values(self, entity: Contact) -> Values:
+        logo, failure = entity.logo, entity.logo_failure
+        return super()._values(entity) | {
+            "logo_source": None if logo is None else logo.source.value,
+            "logo_domain": None if logo is None else logo.domain,
+            "logo_stored_at": None if logo is None else logo.stored_at,
+            "logo_failed_domain": None if failure is None else failure.domain,
+            "logo_failed_at": None if failure is None else failure.failed_at,
+        }
+
     async def _entities(self, rows: Sequence[Row[Any]]) -> list[Contact]:
         ids = [row.id for row in rows]
         aliases = await self._children(t.contact_aliases, "contact_id", ids)
@@ -65,6 +76,14 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
                 ],
                 group_ids=frozenset(TagId(group.tag_id) for group in groups[row.id]),
                 topic_ids=frozenset(TagId(topic.tag_id) for topic in topics[row.id]),
+                logo=_logo(row),
+                logo_failure=(
+                    None
+                    if row.logo_failed_domain is None
+                    else FailedLogoFetch(
+                        domain=row.logo_failed_domain, failed_at=row.logo_failed_at
+                    )
+                ),
                 created_at=row.created_at,
                 version=row.version,
             )
@@ -120,6 +139,7 @@ class SqlDocumentTypeRepository(SqlNamedRepository[DocumentTypeId, DocumentType]
         return super()._values(entity) | {
             "description": entity.description,
             "title_pattern": entity.title_pattern,
+            "icon": entity.icon,
         }
 
     async def _entities(self, rows: Sequence[Row[Any]]) -> list[DocumentType]:
@@ -133,6 +153,7 @@ class SqlDocumentTypeRepository(SqlNamedRepository[DocumentTypeId, DocumentType]
                 description=row.description,
                 title_pattern=row.title_pattern,
                 group_ids=frozenset(TagId(group.tag_id) for group in groups[row.id]),
+                icon=row.icon,
                 created_at=row.created_at,
                 version=row.version,
             )
@@ -167,6 +188,8 @@ class SqlTagRepository(SqlNamedRepository[TagId, Tag]):
             "parent_id": entity.parent_id,
             "assignment": entity.assignment.value,
             "shown": entity.shown,
+            "icon": entity.icon,
+            "color": entity.color,
         }
 
     def _entity(self, row: Row[Any]) -> Tag:
@@ -177,9 +200,19 @@ class SqlTagRepository(SqlNamedRepository[TagId, Tag]):
             parent_id=None if row.parent_id is None else TagId(row.parent_id),
             assignment=Assignment(row.assignment),
             shown=row.shown,
+            icon=row.icon,
+            color=row.color,
             created_at=row.created_at,
             version=row.version,
         )
+
+
+def _logo(row: Row[Any]) -> ContactLogo | None:
+    if row.logo_source is None:
+        return None
+    return ContactLogo(
+        source=LogoSource(row.logo_source), stored_at=row.logo_stored_at, domain=row.logo_domain
+    )
 
 
 class SqlFieldRepository(SqlNamedRepository[FieldId, FieldDefinition]):

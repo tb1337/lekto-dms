@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from papiq.adapters.inbound.rest.schemas.common import Name, NameIn
+from papiq.core.domain.appearance import MAX_ICON, PaletteColor
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.identifiers import MAX_IDENTIFIERS, IdentifierKind, IdentifierSource
 from papiq.core.domain.master_data import (
@@ -112,6 +113,31 @@ Rejected = Annotated[
     ),
 ]
 
+
+Icon = Annotated[
+    str,
+    Field(
+        max_length=MAX_ICON,
+        pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$",
+        description=(
+            "The name of a Lucide icon (lucide.dev), as `heart-pulse`. Only the form is "
+            "checked; clients show a stand-in for a name they do not know. Null removes it."
+        ),
+        examples=["receipt-euro"],
+    ),
+]
+Color = Annotated[
+    str,
+    Field(
+        pattern=rf"^({'|'.join(PaletteColor)}|#[0-9a-fA-F]{{6}})$",
+        description=(
+            "One of the twelve colours of the palette, which clients tune for light and dark "
+            "themes, or an own colour as `#rrggbb` (stored in lower case; clients mix it with "
+            "their background and text colours so the text stays readable). Null removes it."
+        ),
+        examples=["teal", "#b45309"],
+    ),
+]
 
 Description = Annotated[
     str,
@@ -245,6 +271,7 @@ class DocumentTypeCreate(NameIn):
     description: Description | None = None
     title_pattern: TitlePattern | None = None
     group_ids: TypeGroups = Field(default_factory=list)
+    icon: Icon | None = None
 
 
 class DocumentTypePatch(BaseModel):
@@ -259,12 +286,14 @@ class DocumentTypePatch(BaseModel):
     description: Description | None = None
     title_pattern: TitlePattern | None = None
     group_ids: TypeGroups | None = None
+    icon: Icon | None = None
 
 
 class DocumentTypeOut(MasterDataOut):
     description: str | None = Field(examples=["Entgeltbescheinigung"])
     title_pattern: str | None = Field(examples=["Lohn {document_date:YYYY-MM}"])
     group_ids: list[UUID] = Field(description="The document type groups it is in.")
+    icon: str | None = Field(description="The name of a Lucide icon.", examples=["receipt"])
 
     @classmethod
     def of(cls, item: MasterData) -> "DocumentTypeOut":
@@ -275,6 +304,7 @@ class DocumentTypeOut(MasterDataOut):
             description=item.description,
             title_pattern=item.title_pattern,
             group_ids=sorted(item.group_ids),
+            icon=item.icon,
             created_at=item.created_at,
         )
 
@@ -320,6 +350,8 @@ class TagCreate(NameIn):
     parent_id: UUID | None = None
     assignment: TagAssignment | None = None
     shown: Shown | None = None
+    icon: Icon | None = None
+    color: Color | None = None
 
 
 class TagPatch(BaseModel):
@@ -333,6 +365,8 @@ class TagPatch(BaseModel):
     parent_id: UUID | None = None
     assignment: TagAssignment | None = None
     shown: Shown | None = None
+    icon: Icon | None = None
+    color: Color | None = None
 
 
 class TagOut(MasterDataOut):
@@ -347,6 +381,8 @@ class TagOut(MasterDataOut):
                     "path": ["Insurance", "Health insurance"],
                     "assignment": "auto",
                     "shown": True,
+                    "icon": "heart-pulse",
+                    "color": "pink",
                     "created_at": "2026-01-10T09:00:00Z",
                 }
             ]
@@ -361,6 +397,8 @@ class TagOut(MasterDataOut):
     )
     assignment: TagAssignment
     shown: Shown
+    icon: str | None = Field(description="The name of a Lucide icon.")
+    color: str | None = Field(description="A colour of the palette or `#rrggbb`.")
     document_count: int | None = Field(
         default=None,
         description=(
@@ -383,6 +421,8 @@ class TagOut(MasterDataOut):
             path=path,
             assignment=item.assignment,
             shown=item.shown,
+            icon=item.icon,
+            color=item.color,
             created_at=item.created_at,
         )
 

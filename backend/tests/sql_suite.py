@@ -1496,6 +1496,84 @@ class MigrationSuite:
         async with empty_database.reading() as connection:
             assert await connection.run_sync(_schema) == schema
 
+    async def test_icons_colours_and_logos_come_and_go_with_revision_0028(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0028 keeps every tag, document type and contact as it is, without icon,
+        colour or logo; the downgrade drops them again, and the schema is that of 0027."""
+        await migrate(empty_database, "0027")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        ids = {name: new_id() for name in ("tag", "topic", "type", "contact", "other")}
+        rows: list[tuple[sa.Table, dict[str, Any]]] = [
+            (t.tags, {"id": ids["tag"], "name": "Tax", "name_key": "tax"}),
+            (t.tags, {"id": ids["topic"], "name": "Car", "name_key": "car", "scope": "topic"}),
+            (t.document_types, {"id": ids["type"], "name": "Invoice", "name_key": "invoice"}),
+            (t.contacts, {"id": ids["contact"], "name": "Nord", "name_key": "nord"}),
+            (t.contacts, {"id": ids["other"], "name": "Süd", "name_key": "süd"}),
+            (t.contact_topics, {"contact_id": ids["contact"], "tag_id": ids["topic"]}),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+        columns = ("id", "name", "name_key", "created_at", "version")
+        tables = {
+            name: sa.table(name, *(sa.column(column) for column in columns))
+            for name in ("tags", "document_types", "contacts")
+        }
+
+        async def stored() -> dict[str, list[tuple[Any, ...]]]:
+            async with empty_database.reading() as connection:
+                found = {
+                    name: sorted(
+                        tuple(str(value) for value in row)
+                        for row in (await connection.execute(select(table))).all()
+                    )
+                    for name, table in tables.items()
+                }
+                found["contact_topics"] = sorted(
+                    tuple(map(str, row))
+                    for row in (await connection.execute(select(t.contact_topics))).all()
+                )
+                return found
+
+        before = await stored()
+        await migrate(empty_database)
+        assert await stored() == before
+        looks = (
+            t.tags.c.icon,
+            t.tags.c.color,
+            t.document_types.c.icon,
+            t.contacts.c.logo_source,
+            t.contacts.c.logo_failed_domain,
+        )
+        async with empty_database.reading() as connection:
+            for column in looks:
+                assert {row[0] for row in await connection.execute(select(column))} == {None}
+        async with empty_database.writing() as connection:
+            await connection.execute(
+                t.tags.update()
+                .where(t.tags.c.id == ids["tag"])
+                .values(icon="calculator", color="#b45309")
+            )
+            await connection.execute(t.document_types.update().values(icon="receipt"))
+            await connection.execute(
+                t.contacts.update()
+                .where(t.contacts.c.id == ids["contact"])
+                .values(logo_source="fetched", logo_domain="nord.example", logo_stored_at=NOW)
+            )
+            await connection.execute(
+                t.contacts.update()
+                .where(t.contacts.c.id == ids["other"])
+                .values(logo_failed_domain="sued.example", logo_failed_at=NOW)
+            )
+
+        await downgrade(empty_database, "0027")
+        assert await stored() == before
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:

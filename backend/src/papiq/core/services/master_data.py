@@ -200,12 +200,18 @@ class MasterDataService:
         description: str | None = None,
         title_pattern: str | None = None,
         group_ids: Collection[TagId] = (),
+        icon: str | None = None,
     ) -> DocumentType:
         """`title_pattern` (a template, `domain.templates`) may name global fields only: no
         other field applies to a new type yet. A pattern is carried out by a rule of the type
-        (`rules.title_rule`). `group_ids`: type groups (tags of scope `document_type`)."""
+        (`rules.title_rule`). `group_ids`: type groups (tags of scope `document_type`).
+        `icon`: the name of a Lucide icon."""
         item = DocumentType.create(
-            name=name, now=self._now(), description=description, title_pattern=title_pattern
+            name=name,
+            now=self._now(),
+            description=description,
+            title_pattern=title_pattern,
+            icon=icon,
         )
 
         async def check(uow: UnitOfWork) -> None:
@@ -234,10 +240,11 @@ class MasterDataService:
         description: str | Unset | None = UNSET,
         title_pattern: str | Unset | None = UNSET,
         group_ids: Collection[TagId] | None = None,
+        icon: str | Unset | None = UNSET,
     ) -> DocumentType:
-        """`None` (name, groups) or UNSET (description, title pattern) leaves it as it is;
-        None removes a description or pattern. A pattern's fields must apply to the type.
-        `group_ids` replaces the type groups (tags of scope `document_type`)."""
+        """`None` (name, groups) or UNSET (description, title pattern, icon) leaves it as it
+        is; None removes a description, pattern or icon. A pattern's fields must apply to the
+        type. `group_ids` replaces the type groups (tags of scope `document_type`)."""
 
         def change(item: DocumentType) -> None:
             if name is not None:
@@ -246,6 +253,8 @@ class MasterDataService:
                 item.describe(description)
             if not isinstance(title_pattern, Unset):
                 item.set_title_pattern(title_pattern)
+            if not isinstance(icon, Unset):
+                item.set_icon(icon)
 
         async def check(uow: UnitOfWork, item: DocumentType) -> None:
             if group_ids is not None:
@@ -273,10 +282,13 @@ class MasterDataService:
         parent_id: TagId | None = None,
         assignment: Assignment | None = None,
         shown: bool | None = None,
+        icon: str | None = None,
+        color: str | None = None,
     ) -> Tag:
         """A tag of `scope` (fixed from now on), under `parent_id` (a tag of the same scope;
         at most five levels). `assignment` and `shown` follow the scope unless given: a group
-        is set by hand only (ValidationError for `auto`) and hidden at documents."""
+        is set by hand only (ValidationError for `auto`) and hidden at documents. `icon`: the
+        name of a Lucide icon; `color`: one of the palette or `#rrggbb`."""
         tag = Tag.create(
             name=name,
             now=self._now(),
@@ -284,6 +296,8 @@ class MasterDataService:
             parent_id=parent_id,
             assignment=assignment,
             shown=shown,
+            icon=icon,
+            color=color,
         )
         async with self._uow() as uow:
             await uow.lock(TAG_TREE_LOCK)
@@ -303,11 +317,14 @@ class MasterDataService:
         parent_id: TagId | Unset | None = UNSET,
         assignment: Assignment | None = None,
         shown: bool | None = None,
+        icon: str | Unset | None = UNSET,
+        color: str | Unset | None = UNSET,
     ) -> Tag:
-        """Admins only. `None` (name, assignment, shown) or UNSET (parent) leaves it as it is;
-        a `parent_id` of None makes it a top-level tag. The scope never changes. A new name or
-        parent queues the refresh of the search index of the documents concerned (they hold
-        the tag's ancestors)."""
+        """Admins only. `None` (name, assignment, shown) or UNSET (parent, icon, colour)
+        leaves it as it is; a `parent_id` of None makes it a top-level tag, an `icon` or
+        `color` of None removes it. The scope never changes. A new name or parent queues the
+        refresh of the search index of the documents concerned (they hold the tag's
+        ancestors)."""
         async with self._uow() as uow:
             await uow.lock(TAG_TREE_LOCK)
             await _require_admin(uow, actor)
@@ -322,6 +339,10 @@ class MasterDataService:
                 tag.assign(assignment)
             if shown is not None:
                 tag.shown = shown
+            if not isinstance(icon, Unset):
+                tag.set_icon(icon)
+            if not isinstance(color, Unset):
+                tag.set_color(color)
             await _check_tag_name_free(uow, tag)
             await uow.tags.update(tag)
             if (tag.name, tag.parent_id) != before:

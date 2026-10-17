@@ -102,12 +102,24 @@ def _master_data(name: str, *columns: Column[Any]) -> Table:
     )
 
 
-contacts = _master_data("contacts")
+contacts = _master_data(
+    "contacts",
+    # The stored logo (`objects.logo_key`): `uploaded` or `fetched` (`LogoSource`), the domain
+    # of a fetched one, when it was stored; none without a logo.
+    Column("logo_source", Text, nullable=True),
+    Column("logo_domain", Text, nullable=True),
+    Column("logo_stored_at", UtcDateTime, nullable=True),
+    # The last fetch that found no logo: its domain and when.
+    Column("logo_failed_domain", Text, nullable=True),
+    Column("logo_failed_at", UtcDateTime, nullable=True),
+)
 document_types = _master_data(
     "document_types",
     Column("description", Text, nullable=True),
     # A pattern the title of the type's documents is rendered from (see `domain.titles`).
     Column("title_pattern", Text, nullable=True),
+    # The name of a Lucide icon.
+    Column("icon", Text, nullable=True),
 )
 # Names are unique per scope (a contact group may be named like a document tag).
 tags = Table(
@@ -125,6 +137,9 @@ tags = Table(
     Column("assignment", Text, nullable=False, server_default="auto"),
     # Whether documents show it.
     Column("shown", Boolean, nullable=False, server_default=true()),
+    # The name of a Lucide icon; a colour of the palette or `#rrggbb`.
+    Column("icon", Text, nullable=True),
+    Column("color", Text, nullable=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),
     UniqueConstraint("scope", "name_key"),

@@ -717,6 +717,46 @@ async def test_tags_with_scopes_trees_and_groups(api: Api) -> None:
     assert gone.status_code == 204
 
 
+async def test_tags_and_types_carry_icons_and_colours(api: Api) -> None:
+    admin, user = await api.admin(), await api.user()
+    a = auth(admin)
+    tag = await post(api, "/tags", {"name": "Health", "icon": "heart-pulse", "color": "#B45309"}, a)
+    assert (tag["icon"], tag["color"]) == ("heart-pulse", "#b45309")
+    topic = await post(api, "/tags", {"name": "Car", "scope": "topic", "color": "sky"}, a)
+    assert (topic["icon"], topic["color"]) == (None, "sky")
+    for body in (
+        {"name": "X", "icon": "Heart"},
+        {"name": "X", "icon": "x" * 65},
+        {"name": "X", "color": "purple"},
+        {"name": "X", "color": "#12345"},
+        {"name": "X", "color": ""},
+    ):
+        response = await api.client.post(f"{PREFIX}/tags", json=body, headers=a)
+        assert response.status_code == 422, (body, response.text)
+    url = f"{PREFIX}/tags/{tag['id']}"
+    kept = await api.client.patch(url, json={"name": "Health care"}, headers=a)
+    assert (kept.json()["icon"], kept.json()["color"]) == ("heart-pulse", "#b45309")
+    removed = await api.client.patch(url, json={"icon": None, "color": "pink"}, headers=a)
+    assert (removed.json()["icon"], removed.json()["color"]) == (None, "pink")
+    refused = await api.client.patch(url, json={"icon": "house"}, headers=auth(user))
+    assert refused.status_code == 403
+
+    kind = await post(api, "/document-types", {"name": "Invoice", "icon": "receipt"}, a)
+    assert kind["icon"] == "receipt"
+    type_url = f"{PREFIX}/document-types/{kind['id']}"
+    described = await api.client.patch(type_url, json={"description": "Bills"}, headers=a)
+    assert described.json()["icon"] == "receipt"
+    cleared = await api.client.patch(type_url, json={"icon": None}, headers=a)
+    assert cleared.json()["icon"] is None
+    wrong = await api.client.patch(type_url, json={"icon": "receipt euro"}, headers=a)
+    assert wrong.status_code == 422
+    listed = await api.client.get(f"{PREFIX}/tags", headers=auth(user))
+    assert {item["name"]: item["color"] for item in listed.json()} == {
+        "Health care": "pink",
+        "Car": "sky",
+    }
+
+
 async def test_topics_at_contacts_identifiers_and_documents(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
     a, o = auth(admin), auth(owner)

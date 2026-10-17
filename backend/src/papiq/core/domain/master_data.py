@@ -4,7 +4,8 @@ A tag has a scope (`TagScope`): it describes a document, groups contacts or docu
 is a topic. Tags nest (`parent_id`, a tag of the same scope); only the tag set is stored, its
 ancestors are derived (`tag_tree.TagTree`). A contact and a document type are in any number of
 groups (`group_ids`), which their documents inherit. A contact enables topics (`topic_ids`), of
-which a document of the contact carries one at most."""
+which a document of the contact carries one at most. Tags and document types carry an icon,
+tags a colour, contacts a logo (`appearance`)."""
 
 import re
 from collections.abc import Iterable
@@ -13,6 +14,12 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Self
 
+from papiq.core.domain.appearance import (
+    ContactLogo,
+    FailedLogoFetch,
+    checked_color,
+    checked_icon,
+)
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.identifiers import (
     MAX_IDENTIFIERS,
@@ -119,13 +126,19 @@ class Contact(MasterData):
     them). `topic_ids`: the topics it enables (tags of scope `topic`, checked by the service):
     a document of the contact carries one of them at most. An identifier's topic is one of
     them (ValidationError otherwise); one taken away leaves the identifiers that point to it
-    without a topic."""
+    without a topic.
+
+    `logo`: the stored logo, if any (`appearance.ContactLogo`); `logo_failure`: the last fetch
+    that found none, kept until a logo is stored or removed (a fetch for the same domain then
+    waits for a person to ask)."""
 
     id: ContactId
     aliases: list[str] = field(default_factory=list)
     identifiers: list[Identifier] = field(default_factory=list)
     group_ids: frozenset[TagId] = frozenset()
     topic_ids: frozenset[TagId] = frozenset()
+    logo: ContactLogo | None = None
+    logo_failure: FailedLogoFetch | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -248,6 +261,29 @@ class Contact(MasterData):
         """The identifiers that count: entered and learned."""
         return [item for item in self.identifiers if item.counts]
 
+    @property
+    def domains(self) -> list[str]:
+        """The domains among the identifiers that count, those entered first: where its website
+        is."""
+        return [
+            item.value
+            for item in self.identifiers
+            if item.counts and item.kind is IdentifierKind.EMAIL_DOMAIN
+        ]
+
+    def set_logo(self, logo: ContactLogo) -> None:
+        """A new logo; a failed fetch noted before is past."""
+        self.logo = logo
+        self.logo_failure = None
+
+    def remove_logo(self) -> None:
+        self.logo = None
+        self.logo_failure = None
+
+    def note_failed_fetch(self, failure: FailedLogoFetch) -> None:
+        """A fetch found no logo; a logo it has stays."""
+        self.logo_failure = failure
+
     def is_named(self, name: str) -> bool:
         """Whether `name` is the name or an alias, regardless of case."""
         key = name_key(name)
@@ -268,18 +304,20 @@ class DocumentType(MasterData):
     `title_pattern`: a template (Liquid, `domain.templates`) for the title of its documents,
     carried out by a rule the type keeps (`rules.title_rule`); its syntax and fields are the
     service's to check. `group_ids`: the type groups it is in (tags of scope
-    `document_type`)."""
+    `document_type`). `icon`: the name of a Lucide icon (`appearance.checked_icon`)."""
 
     id: DocumentTypeId
     description: str | None = None
     title_pattern: str | None = None
     group_ids: frozenset[TagId] = frozenset()
+    icon: str | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
         self.description = checked_description(self.description)
         self.title_pattern = _title_pattern(self.title_pattern)
         self.group_ids = _groups(self.group_ids)
+        self.icon = checked_icon(self.icon)
 
     @classmethod
     def create(
@@ -289,6 +327,7 @@ class DocumentType(MasterData):
         now: datetime,
         description: str | None = None,
         title_pattern: str | None = None,
+        icon: str | None = None,
     ) -> Self:
         return cls(
             id=DocumentTypeId(new_id()),
@@ -296,10 +335,14 @@ class DocumentType(MasterData):
             created_at=now,
             description=description,
             title_pattern=title_pattern,
+            icon=icon,
         )
 
     def describe(self, description: str | None) -> None:
         self.description = checked_description(description)
+
+    def set_icon(self, icon: str | None) -> None:
+        self.icon = checked_icon(icon)
 
     def set_title_pattern(self, pattern: str | None) -> None:
         self.title_pattern = _title_pattern(pattern)
@@ -317,16 +360,21 @@ class Tag(MasterData):
     `assignment`: whether the classification proposes and sets it (`auto`, document tags
     only) or only a person or a rule does (`manual`: status tags such as "to pay"; groups
     always). `shown`: whether documents show it (in their chips; filters, search, rules and
-    templates see it either way)."""
+    templates see it either way). `icon` and `color`: how its chips look
+    (`appearance.checked_icon`, `appearance.checked_color`)."""
 
     id: TagId
     scope: TagScope = TagScope.DOCUMENT
     parent_id: TagId | None = None
     assignment: Assignment = Assignment.AUTO
     shown: bool = True
+    icon: str | None = None
+    color: str | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        self.icon = checked_icon(self.icon)
+        self.color = checked_color(self.color)
         self._check()
 
     @classmethod
@@ -339,6 +387,8 @@ class Tag(MasterData):
         parent_id: TagId | None = None,
         assignment: Assignment | None = None,
         shown: bool | None = None,
+        icon: str | None = None,
+        color: str | None = None,
     ) -> Self:
         """`assignment` and `shown` follow the scope unless given (`TagScope.assignment`,
         `TagScope.shown`)."""
@@ -350,7 +400,15 @@ class Tag(MasterData):
             parent_id=parent_id,
             assignment=scope.assignment if assignment is None else assignment,
             shown=scope.shown if shown is None else shown,
+            icon=icon,
+            color=color,
         )
+
+    def set_icon(self, icon: str | None) -> None:
+        self.icon = checked_icon(icon)
+
+    def set_color(self, color: str | None) -> None:
+        self.color = checked_color(color)
 
     def move(self, parent_id: TagId | None) -> None:
         """Nest it under `parent_id` (None: a top-level tag); the caller checks the tree."""

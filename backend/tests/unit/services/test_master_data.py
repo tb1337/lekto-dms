@@ -494,3 +494,32 @@ async def test_concurrent_tag_moves_make_no_cycle(world: World) -> None:
         return_exceptions=True,
     )
     assert sorted(type(result).__name__ for result in results) == ["Tag", "ValidationError"]
+
+
+async def test_tags_and_types_carry_icons_and_colours(world: World) -> None:
+    admin = await world.user(role=Role.ADMIN)
+    service = world.master_data
+    tag = await service.create_tag(admin.id, "Health", icon="heart-pulse", color="#B45309")
+    assert (tag.icon, tag.color) == ("heart-pulse", "#b45309")
+    # Left out, they stay; None removes one.
+    renamed = await service.change_tag(admin.id, tag.id, name="Health care")
+    assert (renamed.icon, renamed.color) == ("heart-pulse", "#b45309")
+    changed = await service.change_tag(admin.id, tag.id, icon=None, color="pink")
+    assert (changed.icon, changed.color) == (None, "pink")
+    with pytest.raises(ValidationError):
+        await service.change_tag(admin.id, tag.id, color="purple")
+    with pytest.raises(ValidationError):
+        await service.create_tag(admin.id, "X", icon="Heart Pulse")
+
+    kind = await service.create_document_type(admin.id, "Invoice", icon="receipt")
+    assert kind.icon == "receipt"
+    kept = await service.change_document_type(admin.id, kind.id, description="Bills")
+    assert kept.icon == "receipt"
+    gone = await service.change_document_type(admin.id, kind.id, icon=None)
+    assert gone.icon is None
+    async with world.uow() as uow:
+        assert (await uow.tags.get(tag.id)).color == "pink"
+        assert (await uow.document_types.get(kind.id)).icon is None
+    user = await world.user()
+    with pytest.raises(PermissionDeniedError):
+        await service.change_tag(user.id, tag.id, icon="house")

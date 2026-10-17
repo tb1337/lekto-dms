@@ -606,7 +606,7 @@ export interface paths {
 		head?: never;
 		/**
 		 * Change a tag
-		 * @description Admins only. Name, parent (of the same scope, not below the tag itself; at most five levels), assignment and whether documents show it. The scope stays. A new name or parent brings the search index of the documents concerned up to date.
+		 * @description Admins only. Name, parent (of the same scope, not below the tag itself; at most five levels), assignment, whether documents show it, icon and colour. The scope stays. A new name or parent brings the search index of the documents concerned up to date.
 		 */
 		patch: operations['change_tag_api_v1_tags__id__patch'];
 		trace?: never;
@@ -2819,6 +2819,8 @@ export interface components {
 			 * @description The document type groups it is in (tags of scope `document_type`); its documents inherit them. A group set with one below it leaves the one below.
 			 */
 			group_ids?: string[];
+			/** Icon */
+			icon?: string | null;
 		};
 		/** DocumentTypeOut */
 		DocumentTypeOut: {
@@ -2857,6 +2859,12 @@ export interface components {
 			 * @description The document type groups it is in.
 			 */
 			group_ids: string[];
+			/**
+			 * Icon
+			 * @description The name of a Lucide icon.
+			 * @example receipt
+			 */
+			icon: string | null;
 		};
 		/**
 		 * DocumentTypePatch
@@ -2875,6 +2883,8 @@ export interface components {
 			title_pattern?: string | null;
 			/** Group Ids */
 			group_ids?: string[] | null;
+			/** Icon */
+			icon?: string | null;
 		};
 		/**
 		 * ExchangeNode
@@ -4710,12 +4720,18 @@ export interface components {
 			assignment?: components['schemas']['Assignment'] | null;
 			/** Shown */
 			shown?: boolean | null;
+			/** Icon */
+			icon?: string | null;
+			/** Color */
+			color?: string | null;
 		};
 		/**
 		 * TagOut
 		 * @example {
 		 *       "assignment": "auto",
+		 *       "color": "pink",
 		 *       "created_at": "2026-01-10T09:00:00Z",
+		 *       "icon": "heart-pulse",
 		 *       "id": "01999d5e-2223-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "name": "Health insurance",
 		 *       "parent_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
@@ -4763,6 +4779,16 @@ export interface components {
 			 * @description Whether documents show it (the chips of lists and the document; filters, search, rules and templates see it either way). Default: on for document tags and topics, off for groups.
 			 */
 			shown: boolean;
+			/**
+			 * Icon
+			 * @description The name of a Lucide icon.
+			 */
+			icon: string | null;
+			/**
+			 * Color
+			 * @description A colour of the palette or `#rrggbb`.
+			 */
+			color: string | null;
 		};
 		/**
 		 * TagPatch
@@ -4779,6 +4805,10 @@ export interface components {
 			assignment?: components['schemas']['Assignment'] | null;
 			/** Shown */
 			shown?: boolean | null;
+			/** Icon */
+			icon?: string | null;
+			/** Color */
+			color?: string | null;
 		};
 		/**
 		 * TagScope

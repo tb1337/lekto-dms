@@ -15,6 +15,8 @@ function tag(id: string, path: string[], parent: string | null, scope = 'documen
 		scope: scope as Tag['scope'],
 		assignment: 'auto',
 		shown: true,
+		icon: null,
+		color: null,
 		created_at: '2026-10-16T12:00:00Z'
 	};
 }

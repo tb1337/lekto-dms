@@ -270,6 +270,8 @@ async def create_tag(body: TagCreate, user: CurrentUser, context: Context) -> Ta
         parent_id=None if body.parent_id is None else TagId(body.parent_id),
         assignment=body.assignment,
         shown=body.shown,
+        icon=body.icon,
+        color=body.color,
     )
     return TagOut.of(tag, await _tree(context, user))
 
@@ -290,8 +292,9 @@ async def get_tag(id: UUID, user: CurrentUser, context: Context) -> TagOut:
     summary="Change a tag",
     description=(
         ADMINS_ONLY + " Name, parent (of the same scope, not below the tag itself; at most "
-        "five levels), assignment and whether documents show it. The scope stays. A new name "
-        "or parent brings the search index of the documents concerned up to date."
+        "five levels), assignment, whether documents show it, icon and colour. The scope "
+        "stays. A new name or parent brings the search index of the documents concerned up to "
+        "date."
     ),
     response_model=TagOut,
     responses=problem_responses(401, 403, 404, 409, 422),
@@ -300,6 +303,7 @@ async def change_tag(id: UUID, body: TagPatch, user: CurrentUser, context: Conte
     parent: TagId | Unset | None = UNSET
     if "parent_id" in body.model_fields_set:
         parent = None if body.parent_id is None else TagId(body.parent_id)
+    given = body.model_fields_set
     tag = await context.master_data.change_tag(
         user,
         TagId(id),
@@ -307,6 +311,8 @@ async def change_tag(id: UUID, body: TagPatch, user: CurrentUser, context: Conte
         parent_id=parent,
         assignment=body.assignment,
         shown=body.shown,
+        icon=body.icon if "icon" in given else UNSET,
+        color=body.color if "color" in given else UNSET,
     )
     return TagOut.of(tag, await _tree(context, user))
 

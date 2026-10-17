@@ -728,9 +728,10 @@ a temporary Meilisearch index and runs the queries of `evaluation/search/queries
   - *Fetch* (`PAPIQ_LOGO_FETCH=true`; off by default, Papiq then never asks the web on its own):
     the worker's job `contacts.logo` asks the contact's own website for its icon, the port
     `LogoFetcher` (`adapters/outbound/logos`, httpx2). It is queued when a contact without a
-    logo gets a domain among its identifiers (entered by hand, learned by training, attached
-    from a document), by an admin (`POST /contacts/{id}/logo/fetch`; all its domains in turn,
-    also one that failed; may replace a fetched logo) and for the stock with
+    logo, or with a fetched one, gets a domain among its identifiers (entered by hand, learned
+    by training, attached from a document; a logo found there replaces the fetched one, none
+    found leaves it), by an admin (`POST /contacts/{id}/logo/fetch`; all its domains in turn,
+    also one that failed; may replace a fetched logo) and for the contacts without a logo with
     `python -m papiq.composition fetch-logos`. It reads the page of the domain (or of `www.`),
     the apple-touch-icon, `<link rel="icon">` with sizes and the web app manifest (with the
     standard library's `html.parser`), and `/favicon.ico`, and takes the largest raster icon of

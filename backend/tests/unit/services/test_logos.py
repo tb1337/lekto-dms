@@ -142,16 +142,64 @@ async def test_a_new_domain_queues_the_fetch_of_the_logo(world: World) -> None:
     assert logo == ContactLogo(source=LogoSource.FETCHED, stored_at=NOW, domain="nord.example")
     assert await world.object_store.get(logo_key(nord.id)) == FAKE_LOGO
 
-    # A rename, another identifier, another domain once it has a logo: nothing to fetch.
+    # A rename, another identifier: nothing to fetch.
     await master.change_contact(admin.id, nord.id, name="Nord AG")
-    second = Identifier(IdentifierKind.EMAIL_DOMAIN, "n.example")
-    await master.change_contact(admin.id, nord.id, identifiers=[DOMAIN, second])
+    await master.change_contact(admin.id, nord.id, identifiers=[DOMAIN, IBAN])
     # Attached from a document, a domain of a contact without a logo.
     attached = Identifier(IdentifierKind.EMAIL_DOMAIN, "sued.example")
     await master.add_identifier(admin.id, plain.id, attached)
     assert await queued(world) == [
         {"contact_id": str(plain.id), "domain": "sued.example", "asked": False}
     ]
+
+
+async def test_a_fetched_logo_is_fetched_again_for_a_new_domain(world: World) -> None:
+    """By hand, attached or learned; a domain that finds none leaves the logo, and an uploaded
+    logo is never replaced."""
+    admin = await world.user(role=Role.ADMIN)
+    fetcher = FakeLogoFetcher({"nord.example": PNG, "nord-ag.example": image((300, 300))})
+    master, logos = world.fetching(fetcher)
+    nord = await master.create_contact(admin.id, "Nord", identifiers=[DOMAIN])
+    await run_all(logos)
+    first = (await stored(world, nord.id)).logo
+    assert first is not None and first.domain == "nord.example"
+    world.clock.advance(timedelta(minutes=1))
+    nothing = Identifier(IdentifierKind.EMAIL_DOMAIN, "n.example")
+    await master.change_contact(admin.id, nord.id, identifiers=[DOMAIN, nothing])
+    assert await queued(world) == [
+        {"contact_id": str(nord.id), "domain": "n.example", "asked": False}
+    ]
+    await run_all(logos)
+    kept = await stored(world, nord.id)
+    assert kept.logo == first and kept.logo_failure is not None
+    attached = Identifier(IdentifierKind.EMAIL_DOMAIN, "nord-ag.example")
+    await master.add_identifier(admin.id, nord.id, attached)
+    await run_all(logos)
+    assert fetcher.calls == ["nord.example", "n.example", "nord-ag.example"]
+    again = (await stored(world, nord.id)).logo
+    assert again == ContactLogo(
+        source=LogoSource.FETCHED, stored_at=world.clock.now(), domain="nord-ag.example"
+    )
+    # Learned by training, the same: queued for the new domain.
+    async with world.uow() as uow:
+        learned = [Identifier(IdentifierKind.EMAIL_DOMAIN, "nord-gruppe.example")]
+        await replace_learned_identifiers(uow, {nord.id: learned}, fetch_logos_at=NOW)
+        await uow.commit()
+    assert await queued(world) == [
+        {"contact_id": str(nord.id), "domain": "nord-gruppe.example", "asked": False}
+    ]
+    await run_all(logos)
+    # The domain the logo came from, taken away and entered again: nothing new to fetch.
+    await master.change_contact(admin.id, nord.id, identifiers=[DOMAIN])
+    await master.change_contact(admin.id, nord.id, identifiers=[DOMAIN, attached])
+    assert await queued(world) == []
+    # An uploaded logo stays whatever domain comes.
+    await logos.upload(admin.id, nord.id, PNG)
+    other = Identifier(IdentifierKind.EMAIL_DOMAIN, "nord-neu.example")
+    await master.add_identifier(admin.id, nord.id, other)
+    assert await queued(world) == []
+    # fetch-logos still asks only for contacts without a logo.
+    assert await logos.request_all() == 0
 
 
 async def test_without_fetching_nothing_is_queued(world: World) -> None:

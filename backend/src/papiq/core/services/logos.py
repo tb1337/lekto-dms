@@ -10,9 +10,9 @@ the row's version check there, on SQL before the file is touched (and holds the 
 commit), and the step starts again on the new state (`_retrying`).
 
 Fetching (with a `LogoFetcher`, `PAPIQ_LOGO_FETCH`) runs as the job `contacts.logo`, queued
-when a contact without a logo gets a domain among its identifiers (entered by hand, learned by
-training or attached from a document: `queue_logo_fetch`), when an admin asks
-(`request_fetch`) and for every contact without one (`request_all`, the command
+when a contact without a logo, or with a fetched one, gets a domain among its identifiers
+(entered by hand, learned by training or attached from a document: `queue_logo_fetch`), when an
+admin asks (`request_fetch`) and for every contact without one (`request_all`, the command
 `fetch-logos`). An uploaded logo is never replaced. The domains whose fetch found nothing are
 noted (`Contact.logo_failure`); they are tried again only when an admin asks.
 """
@@ -187,7 +187,8 @@ class LogoService:
         queued = 0
         async with self._uow() as uow:
             for contact in await uow.contacts.list_all():
-                queued += await queue_logo_fetch(uow, contact, (), self._clock.now())
+                if contact.logo is None:
+                    queued += await queue_logo_fetch(uow, contact, (), self._clock.now())
             await uow.commit()
         return queued
 
@@ -209,11 +210,11 @@ class LogoService:
 
     async def fetch(self, id: ContactId, *, domain: str | None = None, asked: bool = False) -> bool:
         """Fetch the contact's logo and store it; whether one was stored. Queued for a new
-        `domain`: only that one, while it is the contact's, has no failed fetch and the
-        contact has no logo. `asked` (an admin's request, no domain): the contact's domains
-        in turn (at most `MAX_DOMAINS`), also one that failed, replacing a fetched logo. An
-        uploaded logo is never replaced; a fetch that finds nothing notes the domains it
-        tried."""
+        `domain`: only that one, while it is the contact's, has no failed fetch and is not
+        where its fetched logo came from; a logo found replaces a fetched one, none found
+        leaves it. `asked` (an admin's request, no domain): the contact's domains in turn (at
+        most `MAX_DOMAINS`), also one that failed, replacing a fetched logo. An uploaded logo
+        is never replaced; a fetch that finds nothing notes the domains it tried."""
         assert self._fetcher is not None
         async with self._uow() as uow:
             contact = await uow.contacts.find(id)
@@ -221,7 +222,7 @@ class LogoService:
             return False
         if asked:
             domains = contact.domains[:MAX_DOMAINS]
-        elif contact.logo is not None or domain not in contact.domains or _failed(contact, domain):
+        elif domain not in contact.domains or not _new(contact, domain):
             domains = []
         else:
             domains = [domain]
@@ -235,8 +236,8 @@ class LogoService:
                 contact = await uow.contacts.find(id)
                 if contact is None or _uploaded(contact):
                     return False
-                if not asked and contact.logo is not None:
-                    return False
+                if not asked and domain is not None and not _new(contact, domain):
+                    return False  # fetched from it meanwhile
                 now = self._clock.now()
                 if found is None:
                     contact.note_failed_fetch(domains, now)
@@ -326,13 +327,14 @@ async def _retrying[T](step: Callable[[], Awaitable[T]]) -> T:
 async def queue_logo_fetch(
     uow: UnitOfWork, contact: Contact, known: Collection[str], now: datetime
 ) -> bool:
-    """Queue fetching the logo of `contact`, in `uow`, if it has no logo and a domain beyond
-    `known` (those it had before the change) whose fetch has not failed: the first of them.
+    """Queue fetching the logo of `contact`, in `uow`, if it has no logo or a fetched one and a
+    domain beyond `known` (those it had before the change) whose fetch has not failed and that
+    the fetched logo did not come from: the first of them. An uploaded logo is never replaced.
     Callers ask only with fetching on. Whether a fetch was queued."""
-    if contact.logo is not None:
+    if _uploaded(contact):
         return False
     for domain in contact.domains:
-        if domain not in known and not _failed(contact, domain):
+        if domain not in known and _new(contact, domain):
             await _enqueue(uow, contact.id, domain, now)
             return True
     return False
@@ -352,8 +354,11 @@ def _uploaded(contact: Contact) -> bool:
     return contact.logo is not None and contact.logo.source is LogoSource.UPLOADED
 
 
-def _failed(contact: Contact, domain: str) -> bool:
-    return contact.fetch_failed(domain)
+def _new(contact: Contact, domain: str) -> bool:
+    """Whether a fetch from `domain` may find the contact a logo: it did not fail before, and
+    the logo the contact has did not come from it."""
+    came_from = None if contact.logo is None else contact.logo.domain
+    return not contact.fetch_failed(domain) and domain != came_from
 
 
 async def drop_logo(uow: UnitOfWork, store: ObjectStore, contact: ContactId) -> None:

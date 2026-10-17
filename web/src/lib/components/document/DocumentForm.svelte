@@ -558,6 +558,7 @@
 				<GroupChips
 					tags={lookup.tags}
 					ids={lookup.contacts.find((entry) => entry.id === contact)?.group_ids ?? []}
+					class="mt-1.5"
 				/>
 				{#if factsChip}
 					<a
@@ -591,6 +592,7 @@
 				<GroupChips
 					tags={lookup.tags}
 					ids={lookup.documentTypes.find((entry) => entry.id === documentType)?.group_ids ?? []}
+					class="mt-1.5"
 				/>
 			</FieldShell>
 			<FieldShell

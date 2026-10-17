@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import type { Lookup, Tag } from '#lib/masterdata.svelte.ts';
 import { SEPARATOR } from '#lib/tags.ts';
+import NamesLine from './NamesLine.svelte';
 import TagChips from './TagChips.svelte';
 
 function tag(id: string, path: string[], parent: string | null, scope: string, shown: boolean) {
@@ -34,17 +35,30 @@ const lookup = {
 } as unknown as Lookup;
 
 describe('TagChips', () => {
-	it('shows the shown tags and groups by their own names, the path as tooltip', () => {
-		render(TagChips, {
-			document: { tag_ids: ['t2', 't3'], contact_id: 'c1', document_type_id: 'k1' },
-			lookup
-		});
+	it('shows the shown tags by their own names, the path as tooltip', () => {
+		render(TagChips, { document: { tag_ids: ['t2', 't3'] }, lookup });
 		expect(screen.getByText('Health').closest('[title]')?.getAttribute('title')).toBe(
 			`Insurance${SEPARATOR}Health`
 		);
 		expect(screen.queryByText('Paid')).toBeNull(); // hidden
+	});
+});
+
+describe('NamesLine', () => {
+	it('shows the shown groups next to the contact and the type', () => {
+		const { container } = render(NamesLine, {
+			parts: [
+				{ name: 'Nord', groupIds: ['g2'] },
+				{ name: 'Invoice', groupIds: ['g3'] }
+			],
+			date: '16.10.2026',
+			tags: lookup.tags
+		});
 		// The contact's group is hidden, the one above it shown; the type's group is hidden.
-		expect(screen.getByText('Insurer')).toBeTruthy();
+		const text = [...container.querySelectorAll('span')]
+			.filter((span) => span.children.length === 0)
+			.map((span) => span.textContent?.trim());
+		expect(text).toEqual(['Nord', 'Insurer', '·', 'Invoice', '·', '16.10.2026']);
 		expect(screen.queryByText('Bills')).toBeNull();
 	});
 });

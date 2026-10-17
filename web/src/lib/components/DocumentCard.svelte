@@ -4,6 +4,7 @@
 	import { BASE } from '#lib/base.ts';
 	import DocumentThumb from '#lib/components/DocumentThumb.svelte';
 	import LaneBadge from '#lib/components/LaneBadge.svelte';
+	import NamesLine from '#lib/components/NamesLine.svelte';
 	import ProcessingProgress from '#lib/components/ProcessingProgress.svelte';
 	import TagChips from '#lib/components/TagChips.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
@@ -11,9 +12,9 @@
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 
-	// One document as a card of the grid: its first page, the lane on it, title, contact, type
-	// and date, its shown groups and tags, for admins the owner of another user's document;
-	// `children` adds a line.
+	// One document as a card of the grid: its first page, the lane on it, title, contact and
+	// type each with its shown groups, date, its shown tags, for admins the owner of another
+	// user's document; `children` adds a line.
 	let {
 		document,
 		lookup,
@@ -26,16 +27,9 @@
 		children?: Snippet;
 	} = $props();
 
-	const contact = $derived(
-		lookup?.contacts.find((entry) => entry.id === document.contact_id)?.name ?? null
-	);
-	const line = $derived(
-		[
-			lookup?.documentTypes.find((entry) => entry.id === document.document_type_id)?.name,
-			formatDate(document.document_date ?? document.created_at)
-		]
-			.filter(Boolean)
-			.join(' · ')
+	const contact = $derived(lookup?.contacts.find((entry) => entry.id === document.contact_id));
+	const kind = $derived(
+		lookup?.documentTypes.find((entry) => entry.id === document.document_type_id)
 	);
 	const owner = $derived(
 		session.isAdmin && document.owner_id !== session.user?.id
@@ -56,8 +50,17 @@
 		<span class="line-clamp-2 leading-snug font-medium group-hover:underline">
 			{document.title}
 		</span>
-		{#if contact}<span class="truncate text-sm text-muted-foreground">{contact}</span>{/if}
-		<span class="truncate text-xs text-muted-foreground">{line}</span>
+		<NamesLine
+			parts={[{ name: contact?.name, groupIds: contact?.group_ids }]}
+			tags={lookup?.tags ?? []}
+			class="text-sm text-muted-foreground"
+		/>
+		<NamesLine
+			parts={[{ name: kind?.name, groupIds: kind?.group_ids }]}
+			date={formatDate(document.document_date ?? document.created_at)}
+			tags={lookup?.tags ?? []}
+			class="text-xs text-muted-foreground"
+		/>
 		<TagChips {document} {lookup} />
 		{#if owner}<Badge variant="outline" class="w-fit">{owner}</Badge>{/if}
 		{#if document.processing.status === 'processing'}

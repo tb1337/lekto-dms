@@ -253,6 +253,17 @@ describe('looks', () => {
 		expect(document.querySelector('[data-initials]')?.textContent?.trim()).toBe('NV');
 	});
 
+	it('names the domains whose fetch found no logo', async () => {
+		render(WithDialogs);
+		const failed = {
+			...CONTACT,
+			logo: null,
+			logo_failure: { domains: ['a.example', 'nord.example'], failed_at: '2026-10-17T10:00:00Z' }
+		};
+		masterDataDialogs.open('contacts', failed as unknown as Item);
+		expect(await screen.findByText(/a\.example, nord\.example/)).toBeTruthy();
+	});
+
 	it('asks a new contact to be created before it gets a logo', async () => {
 		render(WithDialogs);
 		masterDataDialogs.open('contacts');

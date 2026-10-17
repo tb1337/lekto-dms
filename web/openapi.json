@@ -15490,7 +15490,7 @@
                 "type": "null"
               }
             ],
-            "description": "The last fetch of a logo from its website that found none; it is tried again for another domain or when an admin asks (`POST /contacts/{id}/logo/fetch`)."
+            "description": "The domains whose website had no logo that fits; they are tried again only when an admin asks (`POST /contacts/{id}/logo/fetch`), another domain at once."
           }
         },
         "type": "object",
@@ -18256,22 +18256,29 @@
       },
       "LogoFailureOut": {
         "properties": {
-          "domain": {
-            "type": "string",
-            "title": "Domain",
+          "domains": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Domains",
+            "description": "The domains whose website had no logo that fits, sorted.",
             "examples": [
-              "acme-energy.example"
+              [
+                "acme-energy.example"
+              ]
             ]
           },
           "failed_at": {
             "type": "string",
             "format": "date-time",
-            "title": "Failed At"
+            "title": "Failed At",
+            "description": "When the last of them failed."
           }
         },
         "type": "object",
         "required": [
-          "domain",
+          "domains",
           "failed_at"
         ],
         "title": "LogoFailureOut"

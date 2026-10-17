@@ -10,8 +10,8 @@ Fetching (with a `LogoFetcher`, `PAPIQ_LOGO_FETCH`) runs as the job `contacts.lo
 when a contact without a logo gets a domain among its identifiers (entered by hand, learned by
 training or attached from a document: `queue_logo_fetch`), when an admin asks
 (`request_fetch`) and for every contact without one (`request_all`, the command
-`fetch-logos`). An uploaded logo is never replaced. A fetch that finds nothing is noted with
-its domain (`Contact.logo_failure`); that domain is tried again only when an admin asks.
+`fetch-logos`). An uploaded logo is never replaced. The domains whose fetch found nothing are
+noted (`Contact.logo_failure`); they are tried again only when an admin asks.
 """
 
 import asyncio
@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from papiq.core.domain import media_types
-from papiq.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
+from papiq.core.domain.appearance import ContactLogo, LogoSource
 from papiq.core.domain.errors import (
     ConcurrencyError,
     ConflictError,
@@ -222,7 +222,7 @@ class LogoService:
                 return False
             now = self._clock.now()
             if found is None:
-                contact.note_failed_fetch(FailedLogoFetch(domain=domains[0], failed_at=now))
+                contact.note_failed_fetch(domains, now)
             else:
                 await self._store.put(logo_key(id), found[1], content_type=LOGO_TYPE)
                 contact.set_logo(
@@ -321,7 +321,7 @@ def _uploaded(contact: Contact) -> bool:
 
 
 def _failed(contact: Contact, domain: str) -> bool:
-    return contact.logo_failure is not None and contact.logo_failure.domain == domain
+    return contact.fetch_failed(domain)
 
 
 async def drop_logo(uow: UnitOfWork, store: ObjectStore, contact: ContactId) -> None:

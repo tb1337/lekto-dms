@@ -48,7 +48,7 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
             "logo_source": None if logo is None else logo.source.value,
             "logo_domain": None if logo is None else logo.domain,
             "logo_stored_at": None if logo is None else logo.stored_at,
-            "logo_failed_domain": None if failure is None else failure.domain,
+            "logo_failed_domains": None if failure is None else " ".join(sorted(failure.domains)),
             "logo_failed_at": None if failure is None else failure.failed_at,
         }
 
@@ -79,9 +79,10 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
                 logo=_logo(row),
                 logo_failure=(
                     None
-                    if row.logo_failed_domain is None
+                    if row.logo_failed_domains is None
                     else FailedLogoFetch(
-                        domain=row.logo_failed_domain, failed_at=row.logo_failed_at
+                        domains=frozenset(row.logo_failed_domains.split()),
+                        failed_at=row.logo_failed_at,
                     )
                 ),
                 created_at=row.created_at,

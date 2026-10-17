@@ -1546,7 +1546,7 @@ class MigrationSuite:
             t.tags.c.color,
             t.document_types.c.icon,
             t.contacts.c.logo_source,
-            t.contacts.c.logo_failed_domain,
+            t.contacts.c.logo_failed_domains,
         )
         async with empty_database.reading() as connection:
             for column in looks:
@@ -1566,7 +1566,7 @@ class MigrationSuite:
             await connection.execute(
                 t.contacts.update()
                 .where(t.contacts.c.id == ids["other"])
-                .values(logo_failed_domain="sued.example", logo_failed_at=NOW)
+                .values(logo_failed_domains="sued.example a.example", logo_failed_at=NOW)
             )
 
         await downgrade(empty_database, "0027")

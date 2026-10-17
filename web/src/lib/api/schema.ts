@@ -2326,7 +2326,7 @@ export interface components {
 			topic_ids: string[];
 			/** @description Its logo; without one, clients show initials. */
 			logo: components['schemas']['LogoOut'] | null;
-			/** @description The last fetch of a logo from its website that found none; it is tried again for another domain or when an admin asks (`POST /contacts/{id}/logo/fetch`). */
+			/** @description The domains whose website had no logo that fits; they are tried again only when an admin asks (`POST /contacts/{id}/logo/fetch`), another domain at once. */
 			logo_failure: components['schemas']['LogoFailureOut'] | null;
 		};
 		/**
@@ -3567,13 +3567,17 @@ export interface components {
 		/** LogoFailureOut */
 		LogoFailureOut: {
 			/**
-			 * Domain
-			 * @example acme-energy.example
+			 * Domains
+			 * @description The domains whose website had no logo that fits, sorted.
+			 * @example [
+			 *       "acme-energy.example"
+			 *     ]
 			 */
-			domain: string;
+			domains: string[];
 			/**
 			 * Failed At
 			 * Format: date-time
+			 * @description When the last of them failed.
 			 */
 			failed_at: string;
 		};

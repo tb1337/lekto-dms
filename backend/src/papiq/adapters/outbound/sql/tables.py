@@ -109,8 +109,8 @@ contacts = _master_data(
     Column("logo_source", Text, nullable=True),
     Column("logo_domain", Text, nullable=True),
     Column("logo_stored_at", UtcDateTime, nullable=True),
-    # The last fetch that found no logo: its domain and when.
-    Column("logo_failed_domain", Text, nullable=True),
+    # The domains whose fetch found no logo (apart by spaces) and when the last did.
+    Column("logo_failed_domains", Text, nullable=True),
     Column("logo_failed_at", UtcDateTime, nullable=True),
 )
 document_types = _master_data(

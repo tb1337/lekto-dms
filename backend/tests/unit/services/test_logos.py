@@ -178,7 +178,9 @@ async def test_a_failed_fetch_is_noted_and_tried_again_only_for_another_domain(
     await run_all(logos)
     failed = await stored(world, contact.id)
     assert failed.logo is None
-    assert failed.logo_failure == FailedLogoFetch(domain="nord.example", failed_at=NOW)
+    assert failed.logo_failure == FailedLogoFetch(
+        domains=frozenset({"nord.example"}), failed_at=NOW
+    )
     # The same domain again (taken away and entered anew), a run of fetch-logos: no new try.
     await master.change_contact(admin.id, contact.id, identifiers=[])
     await master.change_contact(admin.id, contact.id, identifiers=[DOMAIN])
@@ -193,6 +195,26 @@ async def test_a_failed_fetch_is_noted_and_tried_again_only_for_another_domain(
     found = await stored(world, contact.id)
     assert found.logo is not None and found.logo.domain == "n.example"
     assert found.logo_failure is None
+
+
+async def test_fetch_logos_tries_no_domain_twice(world: World) -> None:
+    """Two failing domains are each tried once, not in turn on every run."""
+    admin = await world.user(role=Role.ADMIN)
+    fetcher = FakeLogoFetcher()
+    master = world.master_data  # entered without fetching on
+    other = Identifier(IdentifierKind.EMAIL_DOMAIN, "zz-nord.example")
+    contact = await master.create_contact(admin.id, "Nord", identifiers=[DOMAIN, other])
+    _, logos = world.fetching(fetcher)
+    for _ in range(4):
+        await logos.request_all()
+        await run_all(logos)
+    assert fetcher.calls == ["nord.example", "zz-nord.example"]
+    failed = (await stored(world, contact.id)).logo_failure
+    assert failed is not None and failed.domains == {"nord.example", "zz-nord.example"}
+    # An admin's request tries them again, all of them.
+    await logos.request_fetch(admin.id, contact.id)
+    await run_all(logos)
+    assert fetcher.calls[2:] == ["nord.example", "zz-nord.example"]
 
 
 async def test_training_that_learns_a_domain_queues_the_fetch(world: World) -> None:
@@ -325,7 +347,9 @@ async def test_a_logo_that_breaks_the_normaliser_is_a_failed_fetch(world: World)
     jobs = [job for job in world.database.jobs.values() if job.kind == LOGO_JOB]
     assert {job.status for job in jobs} == {JobStatus.DONE}
     failed = (await stored(world, contact.id)).logo_failure
-    assert failed is not None and failed.domain == "nord.example"
+    # Both were tried; neither is queued again by `fetch-logos`.
+    assert failed is not None and failed.domains == {"nord.example", "zz-nord.example"}
+    assert await logos.request_all() == 0
 
 
 async def test_a_broken_job_is_tried_again_and_given_up(world: World) -> None:

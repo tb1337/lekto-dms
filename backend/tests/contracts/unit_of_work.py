@@ -392,7 +392,7 @@ class UnitOfWorkContract:
         uploaded = Contact.create(name="Nord", now=NOW)
         uploaded.set_logo(ContactLogo(source=LogoSource.UPLOADED, stored_at=NOW))
         failed = Contact.create(name="Süd", now=NOW)
-        failed.note_failed_fetch(FailedLogoFetch(domain="sued.example", failed_at=NOW))
+        failed.note_failed_fetch(["sued.example", "sued-ag.example"], NOW)
         async with uow_factory() as uow:
             for item in (tag, own, plain):
                 await uow.tags.add(item)
@@ -408,7 +408,9 @@ class UnitOfWorkContract:
             stored = await uow.contacts.get(uploaded.id)
             assert stored.logo == uploaded.logo and stored.logo_failure is None
             other = await uow.contacts.get(failed.id)
-            assert other.logo is None and other.logo_failure == failed.logo_failure
+            assert other.logo is None and other.logo_failure == FailedLogoFetch(
+                domains=frozenset({"sued.example", "sued-ag.example"}), failed_at=NOW
+            )
             later = NOW + timedelta(minutes=1)
             other.set_logo(
                 ContactLogo(source=LogoSource.FETCHED, stored_at=later, domain="sued.example")

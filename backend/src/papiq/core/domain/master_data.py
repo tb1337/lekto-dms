@@ -128,8 +128,8 @@ class Contact(MasterData):
     them (ValidationError otherwise); one taken away leaves the identifiers that point to it
     without a topic.
 
-    `logo`: the stored logo, if any (`appearance.ContactLogo`); `logo_failure`: the last fetch
-    that found none, kept until a logo is stored or removed (a fetch for the same domain then
+    `logo`: the stored logo, if any (`appearance.ContactLogo`); `logo_failure`: the domains
+    whose fetch found none, kept until a logo is stored or removed (a fetch for one of them
     waits for a person to ask)."""
 
     id: ContactId
@@ -280,9 +280,15 @@ class Contact(MasterData):
         self.logo = None
         self.logo_failure = None
 
-    def note_failed_fetch(self, failure: FailedLogoFetch) -> None:
-        """A fetch found no logo; a logo it has stays."""
-        self.logo_failure = failure
+    def note_failed_fetch(self, domains: Iterable[str], at: datetime) -> None:
+        """Fetching from `domains` found no logo, at `at`: they join those that failed before;
+        a logo it has stays."""
+        failed = self.logo_failure.domains if self.logo_failure is not None else frozenset()
+        self.logo_failure = FailedLogoFetch(domains=failed | set(domains), failed_at=at)
+
+    def fetch_failed(self, domain: str) -> bool:
+        """Whether fetching from `domain` found no logo before."""
+        return self.logo_failure is not None and domain in self.logo_failure.domains
 
     def is_named(self, name: str) -> bool:
         """Whether `name` is the name or an alias, regardless of case."""

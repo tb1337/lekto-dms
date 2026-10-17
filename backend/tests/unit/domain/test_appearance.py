@@ -81,10 +81,12 @@ def test_a_logo_names_where_it_came_from() -> None:
         ContactLogo(source=LogoSource.UPLOADED, stored_at=NOW.replace(tzinfo=None))
     offset = timezone(timedelta(hours=2))
     with pytest.raises(ValidationError):
-        FailedLogoFetch(domain="nord.example", failed_at=NOW.astimezone(offset))
+        FailedLogoFetch(domains=frozenset({"nord.example"}), failed_at=NOW.astimezone(offset))
+    with pytest.raises(ValidationError):
+        FailedLogoFetch(domains=frozenset(), failed_at=NOW)
 
 
-def test_a_contact_keeps_its_logo_and_the_last_failed_fetch() -> None:
+def test_a_contact_keeps_its_logo_and_the_domains_whose_fetch_failed() -> None:
     contact = Contact.create(
         name="Nord",
         now=NOW,
@@ -102,13 +104,16 @@ def test_a_contact_keeps_its_logo_and_the_last_failed_fetch() -> None:
     assert contact.domains == ["nord.example", "a-nord.example"]
     assert contact.identifiers[-1].source is IdentifierSource.REJECTED
 
-    failure = FailedLogoFetch(domain="nord.example", failed_at=NOW)
-    contact.note_failed_fetch(failure)
-    assert (contact.logo, contact.logo_failure) == (None, failure)
+    contact.note_failed_fetch(["nord.example"], NOW)
+    later = NOW + timedelta(hours=1)
+    contact.note_failed_fetch(["a-nord.example", "nord.example"], later)
+    both = FailedLogoFetch(domains=frozenset({"nord.example", "a-nord.example"}), failed_at=later)
+    assert (contact.logo, contact.logo_failure) == (None, both)
+    assert contact.fetch_failed("nord.example") and not contact.fetch_failed("x.example")
     logo = ContactLogo(source=LogoSource.FETCHED, stored_at=NOW, domain="a-nord.example")
     contact.set_logo(logo)
     assert (contact.logo, contact.logo_failure) == (logo, None)
-    contact.note_failed_fetch(failure)
-    assert (contact.logo, contact.logo_failure) == (logo, failure)
+    contact.note_failed_fetch(["nord.example"], NOW)
+    assert (contact.logo, contact.fetch_failed("nord.example")) == (logo, True)
     contact.remove_logo()
     assert (contact.logo, contact.logo_failure) == (None, None)

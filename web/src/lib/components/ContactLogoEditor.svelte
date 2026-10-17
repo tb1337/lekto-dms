@@ -81,7 +81,10 @@
 			{/if}
 			{#if failure}
 				<span class="text-xs break-words text-muted-foreground">
-					{m.logo_failed({ domain: failure.domain, date: formatDate(failure.failed_at) })}
+					{m.logo_failed({
+						domains: failure.domains.join(', '),
+						date: formatDate(failure.failed_at)
+					})}
 				</span>
 			{/if}
 		</div>

@@ -6,7 +6,7 @@ Create Date: 2026-10-17 12:00:00.000000
 
 Tags and document types get an icon (the name of a Lucide icon), tags a colour (one of the
 palette or `#rrggbb`), contacts a logo: where it came from, the domain of a fetched one and when
-it was stored, and the last fetch that found none. Nothing has any of them yet.
+it was stored, and the domains whose fetch found none. Nothing has any of them yet.
 
 The columns are nullable and without keys, so both databases add them in place (not as a batch
 operation: on SQLite that would copy the tables, which others refer to). The downgrade drops
@@ -33,7 +33,7 @@ _COLUMNS: tuple[tuple[str, str, sa.types.TypeEngine[Any]], ...] = (
     ("contacts", "logo_source", sa.Text()),
     ("contacts", "logo_domain", sa.Text()),
     ("contacts", "logo_stored_at", types.UtcDateTime()),
-    ("contacts", "logo_failed_domain", sa.Text()),
+    ("contacts", "logo_failed_domains", sa.Text()),
     ("contacts", "logo_failed_at", types.UtcDateTime()),
 )
 

@@ -259,8 +259,11 @@ class LogoOut(BaseModel):
 
 
 class LogoFailureOut(BaseModel):
-    domain: str = Field(examples=["acme-energy.example"])
-    failed_at: datetime
+    domains: list[str] = Field(
+        description="The domains whose website had no logo that fits, sorted.",
+        examples=[["acme-energy.example"]],
+    )
+    failed_at: datetime = Field(description="When the last of them failed.")
 
 
 class ContactOut(MasterDataOut):
@@ -272,8 +275,8 @@ class ContactOut(MasterDataOut):
     topic_ids: list[UUID] = Field(description="The topics it enables.")
     logo: LogoOut | None = Field(description="Its logo; without one, clients show initials.")
     logo_failure: LogoFailureOut | None = Field(
-        description="The last fetch of a logo from its website that found none; it is tried "
-        "again for another domain or when an admin asks (`POST /contacts/{id}/logo/fetch`)."
+        description="The domains whose website had no logo that fits; they are tried again "
+        "only when an admin asks (`POST /contacts/{id}/logo/fetch`), another domain at once."
     )
 
     @classmethod
@@ -299,7 +302,8 @@ class ContactOut(MasterDataOut):
                 None
                 if item.logo_failure is None
                 else LogoFailureOut(
-                    domain=item.logo_failure.domain, failed_at=item.logo_failure.failed_at
+                    domains=sorted(item.logo_failure.domains),
+                    failed_at=item.logo_failure.failed_at,
                 )
             ),
             created_at=item.created_at,

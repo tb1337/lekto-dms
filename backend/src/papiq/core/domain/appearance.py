@@ -9,8 +9,8 @@ readable).
 
 A contact's logo is an image stored by the core at `objects.logo_key`: uploaded by an admin, or
 fetched from the website at one of the contact's domains. An uploaded logo always wins: it is
-never replaced by a fetched one. A fetch that found nothing is noted with its domain, so that it
-is tried again only for another domain or when a person asks.
+never replaced by a fetched one. The domains whose fetch found nothing are noted, so that a
+fetch is tried again only for another domain or when a person asks.
 """
 
 import re
@@ -95,10 +95,13 @@ class ContactLogo:
 
 @dataclass(frozen=True, kw_only=True)
 class FailedLogoFetch:
-    """Fetching a logo from the website at `domain` found none at `failed_at`."""
+    """Fetching a logo from the websites at `domains` found none, the last time at
+    `failed_at`."""
 
-    domain: str
+    domains: frozenset[str]
     failed_at: datetime
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "failed_at", require_utc(self.failed_at, "failed_at"))
+        if not self.domains:
+            raise ValidationError("a failed fetch names its domains")

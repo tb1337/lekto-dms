@@ -832,7 +832,7 @@
 	"logo_none": "Kein Logo: Der Kontakt zeigt seine Initialen.",
 	"logo_uploaded": "Hochgeladen am {date}",
 	"logo_fetched": "Von {domain} geholt am {date}",
-	"logo_failed": "Der Abruf von {domain} am {date} fand kein Logo.",
+	"logo_failed": "Kein Logo gefunden bei {domains} (zuletzt am {date}); geholt wird dort nur noch auf Knopfdruck.",
 	"logo_upload": "Logo hochladen",
 	"logo_remove": "Logo entfernen",
 	"logo_fetch": "Von der Website holen",

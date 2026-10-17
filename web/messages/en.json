@@ -832,7 +832,7 @@
 	"logo_none": "No logo: the contact shows its initials.",
 	"logo_uploaded": "Uploaded on {date}",
 	"logo_fetched": "Fetched from {domain} on {date}",
-	"logo_failed": "Fetching from {domain} on {date} found no logo.",
+	"logo_failed": "No logo found at {domains} (last on {date}); fetched there only on request.",
 	"logo_upload": "Upload logo",
 	"logo_remove": "Remove logo",
 	"logo_fetch": "Fetch from website",

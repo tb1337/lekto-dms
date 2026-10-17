@@ -698,7 +698,7 @@ a temporary Meilisearch index and runs the queries of `evaluation/search/queries
 - **Logos.** A contact shows its logo, else its initials. The file is a WebP of at most 128 px
   at `contacts/<id>/logo.webp` (`objects.logo_key`); the contact keeps where it came from
   (`uploaded` or `fetched`), the domain of a fetched one and when it was stored
-  (`Contact.logo`), and the last fetch that found none (`logo_failure`). It goes with its
+  (`Contact.logo`), and the domains whose fetch found none (`logo_failure`). It goes with its
   contact. File and contact change under one lock per contact (`logos.logo_lock`).
   - *Upload* (admins): a PNG, JPEG or WebP image of at most 1 MiB, recognised by content; SVG is
     refused (`415`: it can carry scripts). The port `ImageNormaliser` (Pillow,
@@ -714,8 +714,8 @@ a temporary Meilisearch index and runs the queries of `evaluation/search/queries
     `python -m papiq.composition fetch-logos`. It reads the page of the domain (or of `www.`),
     the apple-touch-icon, `<link rel="icon">` with sizes and the web app manifest (with the
     standard library's `html.parser`), and `/favicon.ico`, and takes the largest raster icon of
-    at least 64 px (at most four tried). A fetch that finds none is noted with its domain and
-    tried again only for another domain or on request. No logo service of a third party is
+    at least 64 px (at most four tried). The domains whose fetch finds none are noted and
+    tried again only on request; a new domain is tried at once. No logo service of a third party is
     asked: it would learn whom one deals with.
   - *Protection against SSRF.* The domains come from documents. Every request and every
     redirect resolves the name and goes on only if every address it has is public (Python's
@@ -763,7 +763,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /users`, `POST /users/{id}/password`, `DELETE /users/{id}/totp`, `DELETE /users/{id}/oidc` | Create with password, reset password, turn TOTP off, remove links (admins, session only, not the own account) |
 | `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Contacts and types take `group_ids`, contacts `topic_ids` (the topics they enable) and identifiers with an optional `topic_id`. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409`. The lists take `document_counts=true` (and `all_users` for admins): each item with `document_count`, the documents in the caller's reach that have it (a field: a value for it; a tag: see Tags), counted in one query (tags in a few: the parents' counts and the groups' come apart) |
 | `GET /tags` | The tags in the order of their trees (each after its parent, siblings by name; document tags, contact groups, type groups, topics), or of one `scope`; each with `scope`, `parent_id`, `path` (the names from the top), `assignment`, `shown`, `icon`, `color`. `POST` takes `scope` (default `document`), `parent_id`, `assignment` and `shown` (by scope unless given), `icon` and `color`; `PATCH` name, parent (`null`: the top), assignment, `shown`, `icon` and `color` (`null` removes them), never the scope. Document types take an `icon` too |
-| `PUT/DELETE /contacts/{id}/logo`, `GET /contacts/{id}/logo` | A contact's logo (see Icons, colours and logos): upload (multipart `file`, admins; `413` above 1 MiB, `415` for another kind than PNG, JPEG or WebP, `422` if it cannot be read), remove (admins), read (everyone; WebP with `Cache-Control: private, max-age=86400`, the only answer of the API a browser may keep: `ContactOut.logo.url` carries the version). `ContactOut` has `logo` (source, domain, time, URL) and `logo_failure` |
+| `PUT/DELETE /contacts/{id}/logo`, `GET /contacts/{id}/logo` | A contact's logo (see Icons, colours and logos): upload (multipart `file`, admins; `413` above 1 MiB, `415` for another kind than PNG, JPEG or WebP, `422` if it cannot be read), remove (admins), read (everyone; WebP with `Cache-Control: private, max-age=86400`, the only answer of the API a browser may keep: `ContactOut.logo.url` carries the version). `ContactOut` has `logo` (source, domain, time, URL) and `logo_failure` (the domains whose fetch found none, the time of the last) |
 | `POST /contacts/{id}/logo/fetch` | Fetch the logo from the contact's website (admins, `202`); `503` without `PAPIQ_LOGO_FETCH`, `409` with an uploaded logo, `422` without a domain |
 | `PUT /document-types/{id}/fields` | The fields of a document type, each required or optional, set from the type in one transaction (admins); answers its fields. A global field is `422`; taking off a field that has values on its documents or that the type's title pattern uses is `409` |
 | `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins), optionally with a `topic_id` the contact enables; the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |

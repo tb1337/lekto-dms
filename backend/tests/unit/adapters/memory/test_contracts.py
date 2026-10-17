@@ -13,6 +13,7 @@ from papiq.adapters.outbound.memory import (
     FakeClassifier,
     FakeCodeReader,
     FakeEmbeddings,
+    FakeImageNormaliser,
     FakeLanguageModel,
     FakeMetadataReader,
     FakeOcr,
@@ -51,6 +52,7 @@ from tests.contracts.identity import (
     SecretCipherContract,
     TotpContract,
 )
+from tests.contracts.images import ImageNormaliserContract
 from tests.contracts.job_queue import JobQueueContract
 from tests.contracts.language_model import EmbeddingsContract, LanguageModelContract
 from tests.contracts.object_store import ObjectStoreContract
@@ -151,6 +153,15 @@ def metadata_reader() -> FakeMetadataReader:
 
 
 class TestFakeMetadataReader(MetadataReaderContract):
+    pass
+
+
+@pytest.fixture
+def image_normaliser() -> FakeImageNormaliser:
+    return FakeImageNormaliser()
+
+
+class TestFakeImageNormaliser(ImageNormaliserContract):
     pass
 
 

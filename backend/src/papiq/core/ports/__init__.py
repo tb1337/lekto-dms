@@ -17,6 +17,7 @@ from papiq.core.ports.identity import (
     SessionRepository,
     Totp,
 )
+from papiq.core.ports.images import ImageNormaliser
 from papiq.core.ports.job_queue import JobQueue
 from papiq.core.ports.llm import LanguageModel, StructuredAnswer, StructuredRequest
 from papiq.core.ports.locator import TextLocator
@@ -87,6 +88,7 @@ __all__ = [
     "ExternalIdentityRepository",
     "FieldDefinitionRepository",
     "FileMetadata",
+    "ImageNormaliser",
     "IndexBuild",
     "JobQueue",
     "LanguageModel",

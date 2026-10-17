@@ -71,6 +71,20 @@ class UnsupportedMediaTypeError(ValidationError):
     """The file type is not supported."""
 
 
+class ImageError(ValidationError):
+    """An image of a supported type cannot be read: it is damaged, or it would be too large
+    once decoded (a decompression bomb)."""
+
+
+class LogoFetchError(DomainError):
+    """No logo could be fetched from a website: none it declares fits, or the site cannot be
+    reached safely (an address that is not public, no HTTPS, too slow, too large)."""
+
+
+class LogoFetchDisabledError(DomainError):
+    """Papiq does not fetch logos (`PAPIQ_LOGO_FETCH` is off)."""
+
+
 class AuthenticationError(DomainError):
     """The caller could not be authenticated: wrong or missing credentials, an expired or
     revoked session or token, a deactivated account. The message never says which."""

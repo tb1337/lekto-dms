@@ -686,6 +686,48 @@ meaning took part.
 a temporary Meilisearch index and runs the queries of `evaluation/search/queries.json`; see
 [evaluation/README.md](evaluation/README.md).
 
+## Icons, colours and logos
+
+- **Icons.** Tags of every scope and document types carry the name of a Lucide icon
+  (`heart-pulse`: lower-case letters and digits in words joined by hyphens, at most 64
+  characters; `appearance.checked_icon`). Only the form is checked: the web UI brings the icons
+  in its own build and shows a stand-in for a name it does not know.
+- **Colours.** A tag carries one of the twelve colours of the palette (`gray`, `red`, `orange`,
+  `amber`, `lime`, `green`, `teal`, `sky`, `blue`, `violet`, `fuchsia`, `pink`; the web UI tunes
+  each for light and dark) or an own one as `#rrggbb` (stored in lower case).
+- **Logos.** A contact shows its logo, else its initials. The file is a WebP of at most 128 px
+  at `contacts/<id>/logo.webp` (`objects.logo_key`); the contact keeps where it came from
+  (`uploaded` or `fetched`), the domain of a fetched one and when it was stored
+  (`Contact.logo`), and the last fetch that found none (`logo_failure`). It goes with its
+  contact. File and contact change under one lock per contact (`logos.logo_lock`).
+  - *Upload* (admins): a PNG, JPEG or WebP image of at most 1 MiB, recognised by content; SVG is
+    refused (`415`: it can carry scripts). The port `ImageNormaliser` (Pillow,
+    `adapters/outbound/pillow`) reads PNG, JPEG, WebP and ICO only, checks the size before it
+    decodes (at most 4096 × 4096 pixels; of an ICO every picture by its own header) and writes
+    a WebP keeping transparency. An uploaded logo is never replaced by a fetched one.
+  - *Fetch* (`PAPIQ_LOGO_FETCH=true`; off by default, Papiq then never asks the web on its own):
+    the worker's job `contacts.logo` asks the contact's own website for its icon, the port
+    `LogoFetcher` (`adapters/outbound/logos`, httpx2). It is queued when a contact without a
+    logo gets a domain among its identifiers (entered by hand, learned by training, attached
+    from a document), by an admin (`POST /contacts/{id}/logo/fetch`; all its domains in turn,
+    also one that failed; may replace a fetched logo) and for the stock with
+    `python -m papiq.composition fetch-logos`. It reads the page of the domain (or of `www.`),
+    the apple-touch-icon, `<link rel="icon">` with sizes and the web app manifest (with the
+    standard library's `html.parser`), and `/favicon.ico`, and takes the largest raster icon of
+    at least 64 px (at most four tried). A fetch that finds none is noted with its domain and
+    tried again only for another domain or on request. No logo service of a third party is
+    asked: it would learn whom one deals with.
+  - *Protection against SSRF.* The domains come from documents. Every request and every
+    redirect resolves the name and goes on only if every address it has is public (Python's
+    `is_global`, and not shared 100.64.0.0/10, unique local, site-local, with a zone,
+    IPv4-compatible, 6to4 or Teredo; a mapped or NAT64 IPv4 address counts as that address),
+    then connects to the address it checked with the name as `Host` and for TLS (SNI and the
+    certificate), so that a second answer of the name server cannot lead elsewhere (DNS
+    rebinding). HTTPS on port 443 only, at most three redirects (each checked again), at most
+    1 MB and 10 s per request (30 s per fetch), only the content types asked for, no encoding
+    but gzip (decoded within the limit), no cookies, no proxies or `.netrc` from the
+    environment (`trust_env=False`).
+
 ## REST API
 
 `python -m papiq.composition api` (with `PAPIQ_ROLE` `all` or `api`) serves
@@ -720,7 +762,9 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /users`, `GET/PATCH/DELETE /users/{id}` | Accounts: list (others see active users' names), role and state, delete (admins) |
 | `POST /users`, `POST /users/{id}/password`, `DELETE /users/{id}/totp`, `DELETE /users/{id}/oidc` | Create with password, reset password, turn TOTP off, remove links (admins, session only, not the own account) |
 | `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Contacts and types take `group_ids`, contacts `topic_ids` (the topics they enable) and identifiers with an optional `topic_id`. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409`. The lists take `document_counts=true` (and `all_users` for admins): each item with `document_count`, the documents in the caller's reach that have it (a field: a value for it; a tag: see Tags), counted in one query (tags in a few: the parents' counts and the groups' come apart) |
-| `GET /tags` | The tags in the order of their trees (each after its parent, siblings by name; document tags, contact groups, type groups, topics), or of one `scope`; each with `scope`, `parent_id`, `path` (the names from the top), `assignment`, `shown`. `POST` takes `scope` (default `document`), `parent_id`, `assignment` and `shown` (by scope unless given); `PATCH` name, parent (`null`: the top), assignment and `shown`, never the scope |
+| `GET /tags` | The tags in the order of their trees (each after its parent, siblings by name; document tags, contact groups, type groups, topics), or of one `scope`; each with `scope`, `parent_id`, `path` (the names from the top), `assignment`, `shown`, `icon`, `color`. `POST` takes `scope` (default `document`), `parent_id`, `assignment` and `shown` (by scope unless given), `icon` and `color`; `PATCH` name, parent (`null`: the top), assignment, `shown`, `icon` and `color` (`null` removes them), never the scope. Document types take an `icon` too |
+| `PUT/DELETE /contacts/{id}/logo`, `GET /contacts/{id}/logo` | A contact's logo (see Icons, colours and logos): upload (multipart `file`, admins; `413` above 1 MiB, `415` for another kind than PNG, JPEG or WebP, `422` if it cannot be read), remove (admins), read (everyone; WebP with `Cache-Control: private, max-age=86400`, the only answer of the API a browser may keep: `ContactOut.logo.url` carries the version). `ContactOut` has `logo` (source, domain, time, URL) and `logo_failure` |
+| `POST /contacts/{id}/logo/fetch` | Fetch the logo from the contact's website (admins, `202`); `503` without `PAPIQ_LOGO_FETCH`, `409` with an uploaded logo, `422` without a domain |
 | `PUT /document-types/{id}/fields` | The fields of a document type, each required or optional, set from the type in one transaction (admins); answers its fields. A global field is `422`; taking off a field that has values on its documents or that the type's title pattern uses is `409` |
 | `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins), optionally with a `topic_id` the contact enables; the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |
 | `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/shares/{user_id}` | Spaces and shares (owner) |
@@ -740,7 +784,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (owner or admin) |
 | `POST /documents/{id}/vision` | Process again from OCR with the vision language model reading every page (owner or admin); `409` without a model |
 | `GET /documents/{id}/reading` | How the archive's text was read: by the vision model or not, each recognised page, the advice to read with the model (owner or admin) |
-| `GET /pipeline` | The graph: every node and what it needs, in graph order; the vision model, if one is configured |
+| `GET /pipeline` | The graph: every node and what it needs, in graph order; the vision model, if one is configured; whether logos are fetched (`logo_fetch`) |
 | `POST /pipeline/reparse` | Read the text of every document again in the background (admins, after the update to 0.2); `202` with `queued` |
 | `GET /inbox` | The caller's yellow and red documents, newest first, with their open nodes and fields; `limit`, `cursor` |
 | `GET /documents/{id}/review` | What the model proposed and how each field was checked (owner or admin) |
@@ -765,8 +809,10 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   documents are the owner's only.
 - Every answer below `/auth` carries `Cache-Control: no-store` (CSRF tokens, TOTP secrets,
   recovery codes, API tokens), also errors and redirects. The OpenAPI document, the docs and
-  `/health` stay public.
-- Request bodies other than uploads are bounded by `PAPIQ_REQUEST_MAX_SIZE`, by
+  `/health` stay public. Every other answer of the API is `no-store` too, but for a contact's
+  logo (`GET /contacts/{id}/logo`, successful answers only), which keeps its own
+  `private, max-age=86400`: its URL changes with the logo, so lists need not load it again.
+- Request bodies other than uploads (documents, logos) are bounded by `PAPIQ_REQUEST_MAX_SIZE`, by
   `Content-Length` before anything is read and by the bytes received otherwise (`413`);
   FastAPI would otherwise read a JSON body of any size into memory.
 - Downloads go through a temporary file and carry `X-Content-Type-Options: nosniff`,
@@ -807,6 +853,9 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   document's files.
 - Rule applications (`rules.apply`) run 25 documents per job, then queue the next job, so
   pipeline nodes do not wait behind them.
+- With `PAPIQ_LOGO_FETCH`, the job `contacts.logo` fetches the logo of a contact (after rule
+  applications, before training; see Icons, colours and logos). It asks the network outside
+  any transaction and is repeated only for other errors than the website's (three tries).
 - `PAPIQ_WEBHOOK_CONCURRENCY` further loops deliver webhooks (see Webhooks); a receiver that
   does not answer holds up deliveries, never the pipeline.
 - SIGTERM or SIGINT: no new jobs; running jobs may finish within

@@ -7,8 +7,13 @@
   pictures), every picture is opened on its own, which reads only its header, and checked as
   Pillow will read it (a PNG by its last IHDR, a bitmap by its DIB header), since opening the
   ICO decodes its largest picture at once.
-- A JPEG is decoded at a reduced scale where it can be (`draft`) and turned upright by its EXIF
-  orientation. Transparency stays (RGBA); the result fits `LOGO_SIZE` pixels square.
+- A progressive JPEG is decoded scan by scan, each over the whole picture: one of many scans
+  under 1 MB would bind a CPU for minutes. More than `MAX_JPEG_SCANS` start-of-scan markers are
+  refused before decoding. They are counted over the whole file: the coded data holds none (a
+  0xFF there is always followed by 0x00 or a restart marker), metadata may (an EXIF thumbnail),
+  which the limit leaves room for. A JPEG is decoded at a reduced scale where it can be
+  (`draft`) and turned upright by its EXIF orientation.
+- Transparency stays (RGBA); the result fits `LOGO_SIZE` pixels square.
 """
 
 import asyncio
@@ -22,6 +27,8 @@ from papiq.core.ports.images import LOGO_SIZE
 
 MAX_PIXELS = 4096 * 4096
 """Pixels of an image that is decoded at all (64 MB as RGBA)."""
+MAX_JPEG_SCANS = 64
+"""Scans of a progressive JPEG (an encoder writes about ten)."""
 MAX_ICON_ENTRIES = 64
 """Pictures of an ICO (a website's favicon has a few)."""
 _FORMATS = ("PNG", "JPEG", "WEBP", "ICO")
@@ -49,6 +56,8 @@ class PillowImageNormaliser:
         kind = media_types.detect_image(data[: media_types.SNIFF_SIZE])
         if kind is None:
             raise UnsupportedMediaTypeError("a logo is a PNG, JPEG, WebP or ICO image")
+        if kind == media_types.JPEG and data.count(b"\xff\xda") > MAX_JPEG_SCANS:
+            raise ImageError(f"the image has more than {MAX_JPEG_SCANS} scans")
         try:
             if kind == media_types.ICO:
                 self._check_icon(data)

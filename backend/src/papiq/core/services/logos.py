@@ -57,7 +57,9 @@ LOGO_TYPE = "image/webp"
 LOGO_JOB = "contacts.logo"
 MAX_DOMAINS = 3
 """Domains of a contact an admin's request tries, in order, until one has a logo."""
-_LEASE = timedelta(minutes=3)  # a fetch takes at most 30 s per domain, and the image
+# A job asks at most `MAX_DOMAINS` websites, each within 30 s, and makes a logo of what it
+# found, which the normaliser bounds to seconds (pixels, scans, pictures): well within this.
+_LEASE = timedelta(minutes=10)
 _ATTEMPTS = 3  # tries of a job that broke for another reason than the website
 _RETRY_DELAY = timedelta(minutes=5)
 

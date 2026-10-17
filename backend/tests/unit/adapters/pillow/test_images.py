@@ -10,6 +10,7 @@ import pytest
 from PIL import Image
 
 from papiq.adapters.outbound.pillow import PillowImageNormaliser
+from papiq.adapters.outbound.pillow.images import MAX_JPEG_SCANS
 from papiq.core.domain.errors import ImageError, UnsupportedMediaTypeError
 from tests.contracts.images import ImageNormaliserContract, image
 
@@ -135,6 +136,33 @@ async def test_refuses_an_icon_whose_picture_hides_its_size_behind_a_decoy(
         await image_normaliser.normalise(icon_of(*[image((16, 16))] * 65))
     with pytest.raises(ImageError, match="pictures"):
         await image_normaliser.normalise(icon_of())
+
+
+def progressive(scans: int) -> bytes:
+    """A grey progressive JPEG of 4096 by 4096 pixels with `scans` scans: the last one repeated,
+    as a hostile file would, staying far below 1 MB."""
+    out = io.BytesIO()
+    Image.new("L", (4096, 4096), 128).save(out, "JPEG", progressive=True)
+    data = out.getvalue()
+    last = data.rindex(b"\xff\xda")
+    extra = scans - data.count(b"\xff\xda")
+    return data[:-2] + data[last:-2] * extra + data[-2:]
+
+
+async def test_refuses_a_jpeg_of_many_scans_before_decoding_it(
+    image_normaliser: PillowImageNormaliser,
+) -> None:
+    bomb = progressive(29_000)
+    assert len(bomb) < 1024 * 1024
+    started = time.monotonic()
+    with pytest.raises(ImageError, match="scans"):
+        await image_normaliser.normalise(bomb)
+    assert time.monotonic() - started < 0.5
+    # As many as an encoder writes, and some more, are a logo.
+    assert opened(await image_normaliser.normalise(progressive(MAX_JPEG_SCANS))).size == (
+        128,
+        128,
+    )
 
 
 @pytest.mark.parametrize(

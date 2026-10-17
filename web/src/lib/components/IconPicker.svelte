@@ -60,15 +60,18 @@
 		<Button
 			variant="outline"
 			size="sm"
+			class="max-sm:h-11"
 			aria-expanded={open}
-			aria-controls="{id}-panel"
+			aria-controls={open ? `${id}-panel` : undefined}
 			aria-describedby="{id}-value"
 			onclick={() => (open = !open)}
 		>
 			{open ? m.icon_done() : m.icon_choose()}
 		</Button>
 		{#if value}
-			<Button variant="ghost" size="sm" onclick={() => choose(null)}>{m.icon_remove()}</Button>
+			<Button variant="ghost" size="sm" class="max-sm:h-11" onclick={() => choose(null)}>
+				{m.icon_remove()}
+			</Button>
 		{/if}
 	</div>
 	{#if open}

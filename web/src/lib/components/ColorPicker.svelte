@@ -62,7 +62,8 @@
 		value = next.toLowerCase();
 	}
 
-	// The swatches as a radio group: the arrows move the choice, Tab leaves the group.
+	// The swatches as a radio group: the arrows move the choice, Tab leaves the group. On a phone
+	// each takes a tap within 44 pixels (36 and 4 beyond the border, the gaps 8: none overlap).
 	const CHOICES: readonly (PaletteColor | null)[] = [null, ...PALETTE];
 	const focused = $derived<PaletteColor | null>(isPalette(value) ? value : null);
 
@@ -94,7 +95,7 @@
 	<div
 		role="radiogroup"
 		aria-labelledby="{id}-label"
-		class="flex flex-wrap gap-1.5"
+		class="flex flex-wrap gap-1.5 max-sm:gap-2"
 		tabindex="-1"
 		onkeydown={arrows}
 	>
@@ -105,7 +106,7 @@
 			tabindex={focused === null ? 0 : -1}
 			aria-label={m.color_none()}
 			title={m.color_none()}
-			class="grid size-8 place-items-center rounded-full border border-dashed bg-background aria-checked:ring-2 aria-checked:ring-ring aria-checked:ring-offset-2 aria-checked:ring-offset-background"
+			class="relative grid size-8 place-items-center rounded-full border border-dashed bg-background aria-checked:ring-2 aria-checked:ring-ring aria-checked:ring-offset-2 aria-checked:ring-offset-background max-sm:size-9 max-sm:after:absolute max-sm:after:-inset-[5px]"
 			onclick={() => choose(null)}
 		>
 			{#if value === null}<Check class="size-4 text-muted-foreground" aria-hidden="true" />{/if}
@@ -118,7 +119,7 @@
 				tabindex={focused === color ? 0 : -1}
 				aria-label={NAMES[color]()}
 				title={NAMES[color]()}
-				class="grid size-8 place-items-center rounded-full border border-(--chip-fg)/30 bg-(--chip-bg) text-(--chip-fg) aria-checked:ring-2 aria-checked:ring-ring aria-checked:ring-offset-2 aria-checked:ring-offset-background"
+				class="relative grid size-8 place-items-center rounded-full border border-(--chip-fg)/30 bg-(--chip-bg) text-(--chip-fg) aria-checked:ring-2 aria-checked:ring-ring aria-checked:ring-offset-2 aria-checked:ring-offset-background max-sm:size-9 max-sm:after:absolute max-sm:after:-inset-[5px]"
 				style="--chip-bg: var(--tag-{color}); --chip-fg: var(--tag-{color}-foreground)"
 				onclick={() => choose(color)}
 			>
@@ -149,7 +150,9 @@
 		</div>
 	{:else}
 		<div>
-			<Button variant="ghost" size="sm" onclick={openMore}>{m.color_more()}</Button>
+			<Button variant="ghost" size="sm" class="max-sm:h-11" onclick={openMore}>
+				{m.color_more()}
+			</Button>
 		</div>
 	{/if}
 </div>

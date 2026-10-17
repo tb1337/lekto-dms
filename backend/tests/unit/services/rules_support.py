@@ -62,7 +62,8 @@ class FakeMatcher:
 
 
 class Classifies:
-    """Classification that sets a contact and tags as the model does: applied, unconfirmed."""
+    """Classification that sets a contact, type, topic and tags as the model does: applied,
+    unconfirmed."""
 
     def __init__(
         self,
@@ -70,10 +71,12 @@ class Classifies:
         contact: ContactId | None = None,
         tags: Iterable[TagId] = (),
         document_type: DocumentTypeId | None = None,
+        topic: TagId | None = None,
     ) -> None:
         self.contact = contact
         self.tags = frozenset(tags)
         self.document_type = document_type
+        self.topic = topic
 
     async def run(self, document: Document) -> MetadataResult:
         checks: list[FieldCheck] = []
@@ -95,6 +98,11 @@ class Classifies:
                 )
             )
             changes = replace(changes, document_type_id=self.document_type)
+        if self.topic is not None:
+            checks.append(
+                FieldCheck(field="topic", outcome=Outcome.OK, confidence=1, value=str(self.topic))
+            )
+            changes = replace(changes, topic_id=self.topic)
         tags: list[JsonValue] = [str(tag) for tag in sorted(self.tags)]
         checks.append(FieldCheck(field="tags", outcome=Outcome.OK, confidence=0.9, value=tags))
         result = NodeResult(

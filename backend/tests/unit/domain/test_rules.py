@@ -48,6 +48,7 @@ from papiq.core.domain.rules import (
     SetField,
     SetSpace,
     SetTitle,
+    SetTopic,
     Trigger,
     action_from_json,
     check_fields,
@@ -567,7 +568,13 @@ def test_action_values() -> None:
 
 @pytest.mark.parametrize(
     "action",
-    [SetSpace(SPACE), SetContact(CONTACT), SetDocumentType(TYPE), SetTitle("{contact}")],
+    [
+        SetSpace(SPACE),
+        SetContact(CONTACT),
+        SetDocumentType(TYPE),
+        SetTopic(TAG),
+        SetTitle("{contact}"),
+    ],
 )
 def test_global_rules_cannot_change_who_sees_or_files(action: Action) -> None:
     with pytest.raises(ValidationError, match=f"a global rule cannot {action.type}"):
@@ -1028,3 +1035,25 @@ def test_a_period_starts_after_and_ends_before_a_date() -> None:
             field_rule(attr, Operator.GT, {"start": "2026-09-01", "end": "2026-09-30"}),
             {attr.id: attr},
         )
+
+
+def test_a_topic_condition_and_action() -> None:
+    topic, other = TagId(new_id()), TagId(new_id())
+    rule = definition(
+        SetTopic(topic),
+        conditions=group(
+            Condition(field=ConditionField.TOPIC, op=Operator.IN, value=[str(other)]),
+            Condition(field=ConditionField.TOPIC, op=Operator.MISSING),
+        ),
+    )
+    data = json.loads(json.dumps(definition_to_json(rule)))
+    assert data["actions"] == [{"type": "set_topic", "topic_id": str(topic)}]
+    assert definition_from_json(data) == rule
+    references = rule.references()
+    assert references.tags == {topic, other}
+    assert dict(references.tag_scopes) == {topic: TagScope.TOPIC, other: TagScope.TOPIC}
+    # A topic is one value: is, in, present, missing.
+    with pytest.raises(ValidationError, match="'contains' does not apply to topic"):
+        Condition(field=ConditionField.TOPIC, op=Operator.CONTAINS, value=str(topic))
+    with pytest.raises(ValidationError, match="the same field twice"):
+        definition(SetTopic(topic), SetTopic(other))

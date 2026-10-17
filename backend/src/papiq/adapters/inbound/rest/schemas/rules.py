@@ -33,7 +33,9 @@ from papiq.core.domain.rules import (
 
 class ConditionSchema(BaseModel):
     """`field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,
-    `missing`; tags (document tags), contact_group (the groups of the document's contact),
+    `missing`; topic: the same, where a topic matches the ones below it too (unknown while the
+    model set it and nobody confirmed it); tags (document tags), contact_group (the groups of
+    the document's contact),
     document_type_group (those of its type): `contains` (this one), `in` (one of), `present`
     (any), `missing` (none), where a tag or group matches the ones below it too; channel:
     `is`, `in`; text: `contains`, `matches` (regular expression); document_date and
@@ -110,10 +112,20 @@ class SetDocumentTypeAction(BaseModel):
     document_type_id: UUID
 
 
+class SetTopicAction(BaseModel):
+    """User rules only, as contact and type. Applied only if the document's contact (as the
+    rules leave it) enables the topic; otherwise skipped and noted."""
+
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["set_topic"]
+    topic_id: UUID = Field(description="A tag of scope `topic`.")
+
+
 TEMPLATE_DESCRIPTION = (
     "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: "
     "`title`, `filename` (the original's name without extension), `original_filename`, "
-    "`contact`, `document_type`, `document_date`, `added`, `tags` (a list, those set), "
+    "`contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, "
+    "those set), "
     "`contact_groups` and `document_type_groups` (lists, the groups the contact and the type are "
     "in), `space`, `owner`, "
     "`channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and "
@@ -172,6 +184,7 @@ ActionSchema = Annotated[
     SetSpaceAction
     | SetContactAction
     | SetDocumentTypeAction
+    | SetTopicAction
     | SetTitleAction
     | AddTagsAction
     | RemoveTagsAction

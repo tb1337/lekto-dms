@@ -84,6 +84,7 @@ export const CONDITION_FIELDS: readonly ConditionField[] = [
 	'contact_group',
 	'document_type',
 	'document_type_group',
+	'topic',
 	'tags',
 	'channel',
 	'text',
@@ -125,6 +126,7 @@ export const CONDITION_FIELD_OPERATORS: Record<
 	contact_group: TAGS,
 	document_type: REFERENCE,
 	document_type_group: TAGS,
+	topic: REFERENCE,
 	tags: TAGS,
 	channel: ['is', 'in'],
 	text: ['contains', 'matches'],
@@ -146,6 +148,7 @@ export const ACTION_TYPES: readonly ActionType[] = [
 	'set_space',
 	'set_contact',
 	'set_document_type',
+	'set_topic',
 	'set_title',
 	'add_tags',
 	'remove_tags',
@@ -283,6 +286,8 @@ export function newAction(type: ActionType): ActionNode {
 			return { key, type, contact_id: '' };
 		case 'set_document_type':
 			return { key, type, document_type_id: '' };
+		case 'set_topic':
+			return { key, type, topic_id: '' };
 		case 'set_title':
 			return { key, type, template: '' };
 		case 'add_tags':
@@ -442,7 +447,12 @@ export function actionTypesFor(scope: Scope): readonly ActionType[] {
 export function referencedIds(node: ConditionNode | ActionNode): string[] {
 	if ('kind' in node && node.kind === 'condition') {
 		const ids: string[] = node.fieldId ? [node.fieldId] : [];
-		if (node.field === 'contact' || node.field === 'document_type' || isTagField(node.field)) {
+		if (
+			node.field === 'contact' ||
+			node.field === 'document_type' ||
+			node.field === 'topic' ||
+			isTagField(node.field)
+		) {
 			const values = Array.isArray(node.value) ? node.value : [node.value];
 			ids.push(...values.filter((value): value is string => typeof value === 'string'));
 		}
@@ -456,6 +466,8 @@ export function referencedIds(node: ConditionNode | ActionNode): string[] {
 			return [action.contact_id];
 		case 'set_document_type':
 			return [action.document_type_id];
+		case 'set_topic':
+			return [action.topic_id];
 		case 'add_tags':
 		case 'remove_tags':
 			return [...action.tag_ids];
@@ -588,6 +600,7 @@ function checkValue(
 	switch (condition.field) {
 		case 'contact':
 		case 'document_type':
+		case 'topic':
 		case 'tags':
 		case 'contact_group':
 		case 'document_type_group':
@@ -661,6 +674,8 @@ function checkAction(
 			return action.contact_id ? null : { code: 'choose' };
 		case 'set_document_type':
 			return action.document_type_id ? null : { code: 'choose' };
+		case 'set_topic':
+			return action.topic_id ? null : { code: 'choose' };
 		case 'set_title':
 			return checkText(action.template, LIMITS.text);
 		case 'add_tags':

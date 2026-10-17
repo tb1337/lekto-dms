@@ -2105,6 +2105,7 @@ export interface components {
 			| 'contact_group'
 			| 'document_type'
 			| 'document_type_group'
+			| 'topic'
 			| 'tags'
 			| 'channel'
 			| 'text'
@@ -2113,7 +2114,9 @@ export interface components {
 		/**
 		 * ConditionSchema
 		 * @description `field` `op` `value`. Operators by field: contact, document_type: `is`, `in`, `present`,
-		 *     `missing`; tags (document tags), contact_group (the groups of the document's contact),
+		 *     `missing`; topic: the same, where a topic matches the ones below it too (unknown while the
+		 *     model set it and nobody confirmed it); tags (document tags), contact_group (the groups of
+		 *     the document's contact),
 		 *     document_type_group (those of its type): `contains` (this one), `in` (one of), `present`
 		 *     (any), `missing` (none), where a tag or group matches the ones below it too; channel:
 		 *     `is`, `in`; text: `contains`, `matches` (regular expression); document_date and
@@ -4097,6 +4100,7 @@ export interface components {
 				| components['schemas']['SetSpaceAction']
 				| components['schemas']['SetContactAction']
 				| components['schemas']['SetDocumentTypeAction']
+				| components['schemas']['SetTopicAction']
 				| components['schemas']['SetTitleAction']
 				| components['schemas']['AddTagsAction']
 				| components['schemas']['RemoveTagsAction']
@@ -4171,6 +4175,7 @@ export interface components {
 				| components['schemas']['SetSpaceAction']
 				| components['schemas']['SetContactAction']
 				| components['schemas']['SetDocumentTypeAction']
+				| components['schemas']['SetTopicAction']
 				| components['schemas']['SetTitleAction']
 				| components['schemas']['AddTagsAction']
 				| components['schemas']['RemoveTagsAction']
@@ -4219,6 +4224,7 @@ export interface components {
 				| components['schemas']['SetSpaceAction']
 				| components['schemas']['SetContactAction']
 				| components['schemas']['SetDocumentTypeAction']
+				| components['schemas']['SetTopicAction']
 				| components['schemas']['SetTitleAction']
 				| components['schemas']['AddTagsAction']
 				| components['schemas']['RemoveTagsAction']
@@ -4318,6 +4324,7 @@ export interface components {
 				| components['schemas']['SetSpaceAction']
 				| components['schemas']['SetContactAction']
 				| components['schemas']['SetDocumentTypeAction']
+				| components['schemas']['SetTopicAction']
 				| components['schemas']['SetTitleAction']
 				| components['schemas']['AddTagsAction']
 				| components['schemas']['RemoveTagsAction']
@@ -4487,10 +4494,28 @@ export interface components {
 			type: 'set_title';
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional).
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional).
 			 * @example {{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}
 			 */
 			template: string;
+		};
+		/**
+		 * SetTopicAction
+		 * @description User rules only, as contact and type. Applied only if the document's contact (as the
+		 *     rules leave it) enables the topic; otherwise skipped and noted.
+		 */
+		SetTopicAction: {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			type: 'set_topic';
+			/**
+			 * Topic Id
+			 * Format: uuid
+			 * @description A tag of scope `topic`.
+			 */
+			topic_id: string;
 		};
 		/**
 		 * ShareIn
@@ -4734,7 +4759,7 @@ export interface components {
 		TemplatePreviewIn: {
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional).
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional).
 			 */
 			template: string;
 			/**

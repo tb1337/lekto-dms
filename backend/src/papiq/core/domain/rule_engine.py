@@ -2,17 +2,20 @@
 change, with conflicts instead of silent overwrites.
 
 Conditions are evaluated against the state before any rule acts (a rule's action never makes
-another rule match in the same run). A condition on a tag or a group matches the ones below it
-too (the document has the tag set and its ancestors; its contact and type have their groups and
-theirs). The result of a condition is three-valued: with `distrust`, a condition on a contact,
-type or tag that the model set and no person confirmed is unknown, and so is one on the groups
-of such a contact or type. A rule that matches only with such values does not file into a space
-that others see (the accepted risk of M5: a text can name a wrong contact and make it green).
+another rule match in the same run). A condition on a tag, a group or a topic matches the ones
+below it too (the document has the tag set and its ancestors; its contact and type have their
+groups and theirs; its topic has its ancestors). The result of a condition is three-valued: with
+`distrust`, a condition on a contact, type, topic or tag that the model set and no person
+confirmed is unknown, and so is one on the groups of such a contact or type. A rule that matches
+only with such values does not file into a space that others see (the accepted risk of M5: a
+text can name a wrong contact and make it green).
 
 How the actions of all matching rules come together (`plan`):
 
-- A single field (space, contact, type, title, a field) set by one rule, or by several to
-  the same value, is set. Several different values are a conflict: nothing is set.
+- A single field (space, contact, type, topic, title, a field) set by one rule, or by several
+  to the same value, is set. Several different values are a conflict: nothing is set.
+- A topic is set only if the contact the rules leave enables it (otherwise the action is
+  skipped and noted); a contact set that does not enable the document's topic clears it.
 - A value a person decided (confirming in the inbox, or changing the document) is never
   replaced: the rule is overruled and that is logged.
 - A value the model set and no person confirmed is not replaced either: a conflict.
@@ -84,6 +87,7 @@ from papiq.core.domain.rules import (
     SetField,
     SetSpace,
     SetTitle,
+    SetTopic,
     condition_value,
 )
 from papiq.core.domain.tag_tree import TagTree
@@ -108,14 +112,18 @@ class Mode(StrEnum):
 
 @dataclass(frozen=True)
 class Taxonomy:
-    """The tags as trees, and the groups of the contacts and types a run looks at (by the
-    contact's or type's id)."""
+    """The tags as trees, the groups of the contacts and types a run looks at (by the
+    contact's or type's id), and the topics those contacts enable."""
 
     tree: TagTree = field(default_factory=lambda: TagTree.of(()))
     groups: Mapping[UUID, frozenset[TagId]] = field(default_factory=dict)
+    topics: Mapping[UUID, frozenset[TagId]] = field(default_factory=dict)
 
     def groups_of(self, id: UUID | None) -> frozenset[TagId]:
         return frozenset() if id is None else self.groups.get(id, frozenset())
+
+    def topics_of(self, contact: UUID | None) -> frozenset[TagId]:
+        return frozenset() if contact is None else self.topics.get(contact, frozenset())
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -124,8 +132,9 @@ class Facts:
 
     `patterns`: results of the regular expressions, by (target, pattern, case setting), target
     `text` or a field id; computed beforehand with a time limit. A missing result (no
-    text, time out) does not match. `unverified`: the fields `contact` and `document_type` if
-    they hold a value the model set and no person confirmed; `unverified_tags` likewise.
+    text, time out) does not match. `unverified`: the fields `contact`, `document_type` and
+    `topic` if they hold a value the model set and no person confirmed; `unverified_tags`
+    likewise.
     `taxonomy`: the tag trees; `contact_groups` and `document_type_groups` the groups of the
     contact and the type."""
 
@@ -135,6 +144,7 @@ class Facts:
     channel: Channel
     document_date: date | None
     fields: Mapping[FieldId, FieldValue]
+    topic_id: TagId | None = None
     text: DocumentText | None = None
     patterns: Mapping[tuple[str, str, bool], bool] = field(default_factory=dict)
     unverified: frozenset[str] = frozenset()
@@ -162,6 +172,7 @@ class Facts:
             channel=document.channel,
             document_date=document.document_date,
             fields=dict(document.fields),
+            topic_id=document.topic_id,
             text=text,
             patterns=patterns or {},
             unverified=unverified,
@@ -209,6 +220,8 @@ def distrusted_fields(group: Group, facts: Facts) -> tuple[str, ...]:
                 found.append(CONTACT)
             case ConditionField.DOCUMENT_TYPE_GROUP if DOCUMENT_TYPE in facts.unverified:
                 found.append(DOCUMENT_TYPE)
+            case ConditionField.TOPIC if TOPIC in facts.unverified:
+                found.append(TOPIC)
             case ConditionField.TAGS if facts.unverified_tags:
                 found.append(TAGS)
     return tuple(dict.fromkeys(found))
@@ -236,6 +249,11 @@ def _condition(
                 return None
             groups = facts.contact_groups if owner == CONTACT else facts.document_type_groups
             return _held(op, values, facts.taxonomy.tree.with_ancestors(groups))
+        case ConditionField.TOPIC:
+            if distrust and TOPIC in facts.unverified:
+                return None
+            topic = () if facts.topic_id is None else (facts.topic_id,)
+            return _held(op, values, facts.taxonomy.tree.with_ancestors(topic))
         case ConditionField.CHANNEL:
             return facts.channel.value in values
         case ConditionField.TEXT:
@@ -281,7 +299,7 @@ def _tags(op: Operator, values: list[JsonValue], facts: Facts, distrust: bool) -
 
 
 def _held(op: Operator, values: list[JsonValue], held: frozenset[TagId]) -> bool:
-    """A condition on groups, against the groups held with their ancestors."""
+    """A condition on groups (or the topic), against the groups held with their ancestors."""
     match op:
         case Operator.PRESENT:
             return bool(held)
@@ -602,6 +620,7 @@ class _Planner:
         result: dict[str, JsonValue] = {}
         for field_name in (DOCUMENT_TYPE, CONTACT, SPACE):
             self._single(field_name, result)
+        self._topic(result)
         type_after = self._type_after(result)
         self._text_fields(result, type_after)
         fields: dict[FieldId, object] = {}
@@ -629,6 +648,9 @@ class _Planner:
             changes = replace(
                 changes, document_type_id=DocumentTypeId(UUID(str(result[DOCUMENT_TYPE])))
             )
+        if TOPIC in result:
+            topic = result[TOPIC]
+            changes = replace(changes, topic_id=None if topic is None else TagId(UUID(str(topic))))
         if TITLE in result:
             changes = replace(changes, title=str(result[TITLE]))
         if tags is not None:
@@ -653,6 +675,8 @@ class _Planner:
                 self._candidate(CONTACT, str(contact), contact, match, report)
             case SetDocumentType(document_type_id=document_type):
                 self._candidate(DOCUMENT_TYPE, str(document_type), document_type, match, report)
+            case SetTopic(topic_id=topic):
+                self._candidate(TOPIC, str(topic), topic, match, report)
             case SetTitle():
                 self._titles.append((report, action, match))
             case AddTags(tag_ids=tags) | RemoveTags(tag_ids=tags):
@@ -794,6 +818,35 @@ class _Planner:
                 ),
             )
 
+    def _topic(self, result: dict[str, JsonValue]) -> None:
+        """The topic the rules set, if the contact they leave enables it; a contact set that
+        does not enable the document's topic clears it (an effect of the rules that set the
+        contact)."""
+        contact = result.get(CONTACT, self._current(CONTACT))
+        contact_id = None if contact is None else UUID(str(contact))
+        enabled = self._s.taxonomy.topics_of(contact_id)
+        candidates = self._candidates.get(TOPIC, [])
+        for candidate in candidates:
+            if TagId(UUID(str(candidate.value))) not in enabled:
+                reason = (
+                    "the document has no contact"
+                    if contact_id is None
+                    else f"its contact does not enable topic {candidate.value}"
+                )
+                candidate.report.notes.append(Note(TOPIC, "skipped", reason))
+        kept = [item for item in candidates if TagId(UUID(str(item.value))) in enabled]
+        if kept:
+            self._candidates[TOPIC] = kept
+        else:
+            self._candidates.pop(TOPIC, None)
+        self._single(TOPIC, result)
+        topic = self._document.topic_id
+        if TOPIC in result or CONTACT not in result or topic is None or topic in enabled:
+            return
+        result[TOPIC] = None
+        for candidate in self._candidates.get(CONTACT, []):
+            candidate.report.applied.append(Effect(TOPIC, str(topic), None))
+
     def _tags(self) -> frozenset[TagId] | None:
         s = self._s
         current = frozenset(self._document.tag_ids)
@@ -901,6 +954,8 @@ class _Planner:
         document, s = self._document, self._s
         contact = result.get(CONTACT, self._current(CONTACT))
         contact_id = None if contact is None else ContactId(UUID(str(contact)))
+        topic = result.get(TOPIC, self._current(TOPIC))
+        topic_id = None if topic is None else TagId(UUID(str(topic)))
         space = SpaceId(UUID(str(result[SPACE]))) if SPACE in result else document.space_id
         current: dict[FieldId, object] = {**document.fields, **fields}
         tree = s.taxonomy.tree
@@ -921,6 +976,7 @@ class _Planner:
             ],
             contact_groups=group_names(contact_id),
             document_type_groups=group_names(type_after),
+            topic=tree.tags[topic_id].name if topic_id is not None and topic_id in tree else None,
             document_date=document.document_date,
             fields=[
                 (definition, _field_value(current.get(definition.id)))
@@ -965,6 +1021,8 @@ class _Planner:
                 return None if document.contact_id is None else str(document.contact_id)
             case "document_type":
                 return None if document.document_type_id is None else str(document.document_type_id)
+            case "topic":
+                return None if document.topic_id is None else str(document.topic_id)
             case "space":
                 return str(document.space_id)
             case "title":

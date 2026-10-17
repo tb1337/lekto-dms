@@ -225,9 +225,9 @@ async def check_references(
 ) -> None:
     """Everything the definition refers to exists (NotFoundError otherwise), field
     conditions and values fit their field, tags are of the scope their place asks for (groups
-    in the conditions on groups, document tags elsewhere; ValidationError), and the `owner` of
-    a user rule may file into its space (PermissionDeniedError; checked again whenever it
-    runs)."""
+    in the conditions on groups, topics in those on the topic and in "set topic", document
+    tags elsewhere; ValidationError), and the `owner` of a user rule may file into its space
+    (PermissionDeniedError; checked again whenever it runs)."""
     references = definition.references()
     for contact in references.contacts:
         await uow.contacts.get(contact)
@@ -388,4 +388,5 @@ async def document_values(
         fields=[(item, document.fields.get(item.id)) for item in fields],
         contact_groups=[names[id] for id in (contact.group_ids if contact else ()) if id in names],
         document_type_groups=[names[id] for id in (kind.group_ids if kind else ()) if id in names],
+        topic=names.get(document.topic_id) if document.topic_id is not None else None,
     )

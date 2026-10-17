@@ -44,6 +44,15 @@
 		];
 	}
 
+	function withUnknown(list: { value: string; label: string }[], value: string) {
+		const known = value === '' || list.some((entry) => entry.value === value);
+		return [
+			{ value: '', label: m.rule_choose() },
+			...list,
+			...(known ? [] : [{ value, label: m.rule_unknown() }])
+		];
+	}
+
 	const field = $derived(
 		action.type === 'set_field'
 			? (lookup.fields.find((entry) => entry.id === action.field_id) ?? null)
@@ -77,6 +86,14 @@
 					aria-invalid={invalid || undefined}
 					bind:value={action.document_type_id}
 					options={options(lookup.documentTypes, action.document_type_id)}
+					class="h-10"
+				/>
+			{:else if action.type === 'set_topic'}
+				<NativeSelect
+					aria-label={label}
+					aria-invalid={invalid || undefined}
+					bind:value={action.topic_id}
+					options={withUnknown(tagOptions(lookup.tags, 'topic'), action.topic_id)}
 					class="h-10"
 				/>
 			{:else if action.type === 'set_title'}

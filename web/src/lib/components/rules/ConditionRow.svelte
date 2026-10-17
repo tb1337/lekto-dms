@@ -71,6 +71,8 @@
 			case 'contact_group':
 			case 'document_type_group':
 				return tagOptions(lookup.tags, TAG_FIELDS[condition.field]);
+			case 'topic':
+				return tagOptions(lookup.tags, 'topic');
 			case 'channel':
 				return CHANNELS.map((channel) => ({ value: channel, label: CHANNEL_LABELS[channel]() }));
 			case 'field':

@@ -181,8 +181,8 @@ _PERSON_ENTRIES = (PERSON, RULES_CHANGE, PERSON_SPACE)
 class Provenance:
     """Where the document's values came from, read from the processing log.
 
-    - `model_values`: single fields (contact, type, date, fields) whose value the model set
-      in its latest run and no person has decided since, as JSON.
+    - `model_values`: single fields (contact, type, topic, date, fields) whose value the model
+      set in its latest run and no person has decided since, as JSON.
     - `machine_title`: the title the machine gave (`titles.machine_title`), if the document
       still has it and no person decided the title; applied to existing documents, rules
       replace it as they replace the file name.
@@ -202,7 +202,9 @@ class Provenance:
 
     @property
     def unverified(self) -> frozenset[str]:
-        return frozenset(name for name in (CONTACT, DOCUMENT_TYPE) if name in self.model_values)
+        return frozenset(
+            name for name in (CONTACT, DOCUMENT_TYPE, TOPIC) if name in self.model_values
+        )
 
 
 def provenance(log: Sequence[NodeRun], document: Document) -> Provenance:
@@ -348,6 +350,7 @@ def _current_values(document: Document) -> dict[str, JsonValue]:
         DOCUMENT_TYPE: None
         if document.document_type_id is None
         else str(document.document_type_id),
+        TOPIC: None if document.topic_id is None else str(document.topic_id),
         "document_date": None
         if document.document_date is None
         else document.document_date.isoformat(),
@@ -378,7 +381,7 @@ async def taxonomy(
     uow: UnitOfWork, documents: Iterable[Document], rules: Iterable[Rule]
 ) -> Taxonomy:
     """The tag trees, and the groups of the contacts and types of `documents` and of those the
-    rules set."""
+    rules set, and the topics those contacts enable."""
     contacts: set[UUID] = set()
     types: set[UUID] = set()
     for document in documents:
@@ -391,13 +394,15 @@ async def taxonomy(
         contacts |= references.contacts
         types |= references.document_types
     groups: dict[UUID, frozenset[TagId]] = {}
+    topics: dict[UUID, frozenset[TagId]] = {}
     for id in contacts:
         if (contact := await uow.contacts.find(ContactId(id))) is not None:
             groups[id] = contact.group_ids
+            topics[id] = contact.topic_ids
     for id in types:
         if (kind := await uow.document_types.find(DocumentTypeId(id))) is not None:
             groups[id] = kind.group_ids
-    return Taxonomy(TagTree.of(await uow.tags.list_all()), groups)
+    return Taxonomy(TagTree.of(await uow.tags.list_all()), groups, topics)
 
 
 # --- the situation ----------------------------------------------------------------------------
@@ -441,7 +446,8 @@ async def situation(
         if document_type is not None:
             existing.add(type_id)
             names[type_id] = document_type.name
-    for tag_id in {id for refs in references for id in refs.tags} | set(document.tag_ids):
+    shown = {*document.tag_ids, *([] if document.topic_id is None else [document.topic_id])}
+    for tag_id in {id for refs in references for id in refs.tags} | shown:
         tag = await uow.tags.find(tag_id)
         if tag is not None:
             existing.add(tag_id)

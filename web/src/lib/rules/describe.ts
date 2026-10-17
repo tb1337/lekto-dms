@@ -22,6 +22,7 @@ const CONDITION_FIELDS: Record<Exclude<ConditionField, 'field'>, () => string> =
 	contact_group: m.rule_field_contact_group,
 	document_type: m.field_document_type,
 	document_type_group: m.rule_field_document_type_group,
+	topic: m.field_topic,
 	tags: m.field_tags,
 	channel: m.rule_field_channel,
 	text: m.rule_field_text,
@@ -47,6 +48,7 @@ export const ACTION_LABELS: Record<ActionType, () => string> = {
 	set_space: m.rule_action_set_space,
 	set_contact: m.rule_action_set_contact,
 	set_document_type: m.rule_action_set_document_type,
+	set_topic: m.rule_action_set_topic,
 	set_title: m.rule_action_set_title,
 	add_tags: m.rule_action_add_tags,
 	remove_tags: m.rule_action_remove_tags,
@@ -160,7 +162,7 @@ function describeConditionValue(
 	if (typeof value === 'string') {
 		if (condition.field === 'contact') return nameOf(value, lookup?.contacts ?? []);
 		if (condition.field === 'document_type') return nameOf(value, lookup?.documentTypes ?? []);
-		if (isTagField(condition.field)) return tagName(value, lookup);
+		if (isTagField(condition.field) || condition.field === 'topic') return tagName(value, lookup);
 		if (condition.field === 'channel') return CHANNEL_LABELS[value as Channel]?.() ?? value;
 		if (condition.field === 'text') return value;
 		if (condition.op === 'contains' || condition.op === 'matches') return value;
@@ -205,6 +207,8 @@ export function describeAction(action: ActionNode | ApiAction, lookup: Lookup | 
 			return `${label}: ${nameOf(action.contact_id, lookup?.contacts ?? [])}`;
 		case 'set_document_type':
 			return `${label}: ${nameOf(action.document_type_id, lookup?.documentTypes ?? [])}`;
+		case 'set_topic':
+			return `${label}: ${tagName(action.topic_id, lookup)}`;
 		case 'set_title':
 			return `${label}: ${m.rule_quoted({ text: action.template })}`;
 		case 'add_tags':

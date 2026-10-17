@@ -10,7 +10,8 @@ A rule has a scope, triggers, a tree of conditions and actions:
   changed by a person (`change`).
 - Conditions: groups of `all` (and) or `any` (or), each may be negated; a condition is field,
   operator and value.
-- Actions: set space, contact, type, title or a field, add or remove tags, force a review.
+- Actions: set space, contact, type, topic, title or a field, add or remove tags, force a
+  review.
 
 The definition (name, priority, triggers, conditions, actions) is versioned: every change makes
 a new version; old versions stay readable so the processing log can refer to them. Enabling and
@@ -76,6 +77,7 @@ class ConditionField(StrEnum):
     CONTACT_GROUP = "contact_group"  # the groups of the document's contact
     DOCUMENT_TYPE = "document_type"
     DOCUMENT_TYPE_GROUP = "document_type_group"  # the groups of the document's type
+    TOPIC = "topic"  # the document's topic: a topic given matches the ones below it too
     TAGS = "tags"
     CHANNEL = "channel"
     TEXT = "text"
@@ -84,8 +86,8 @@ class ConditionField(StrEnum):
 
 
 class Operator(StrEnum):
-    IS = "is"
-    IN = "in"  # is one of; for tags and groups: has one of (or one below it)
+    IS = "is"  # for a topic: it, or one below it
+    IN = "in"  # is one of; for tags, groups and topics: has one of (or one below it)
     CONTAINS = "contains"  # for tags and groups: has this one (or one below it)
     MATCHES = "matches"  # regular expression
     GT = "gt"  # for a period: starts after the date
@@ -104,6 +106,7 @@ _FIELD_OPERATORS: dict[ConditionField, frozenset[Operator]] = {
     ConditionField.CONTACT_GROUP: _TAG_OPERATORS,
     ConditionField.DOCUMENT_TYPE: _REFERENCE_OPERATORS,
     ConditionField.DOCUMENT_TYPE_GROUP: _TAG_OPERATORS,
+    ConditionField.TOPIC: _REFERENCE_OPERATORS,
     ConditionField.TAGS: _TAG_OPERATORS,
     ConditionField.CHANNEL: frozenset({Operator.IS, Operator.IN}),
     ConditionField.TEXT: frozenset({Operator.CONTAINS, Operator.MATCHES}),
@@ -115,8 +118,9 @@ TAG_FIELDS: dict[ConditionField, TagScope] = {
     ConditionField.TAGS: TagScope.DOCUMENT,
     ConditionField.CONTACT_GROUP: TagScope.CONTACT,
     ConditionField.DOCUMENT_TYPE_GROUP: TagScope.DOCUMENT_TYPE,
+    ConditionField.TOPIC: TagScope.TOPIC,
 }
-"""The conditions on tags, and the scope of the tags each names."""
+"""The conditions on tags (a topic is one), and the scope of the tags each names."""
 _ID_FIELDS = frozenset({ConditionField.CONTACT, ConditionField.DOCUMENT_TYPE, *TAG_FIELDS})
 _ORDERED = frozenset({Operator.IS, Operator.GT, Operator.LT, Operator.PRESENT, Operator.MISSING})
 FIELD_TYPE_OPERATORS: dict[FieldType, frozenset[Operator]] = {
@@ -283,6 +287,14 @@ class SetDocumentType:
 
 
 @dataclass(frozen=True)
+class SetTopic:
+    """The topic, if the document's contact (as the rules leave it) enables it."""
+
+    topic_id: TagId
+    type: Literal["set_topic"] = "set_topic"
+
+
+@dataclass(frozen=True)
 class SetTitle:
     """The title from a template (Liquid, `domain.templates`): `{{ contact }} {{ document_date
     | date: '%Y-%m' }}`. Its syntax and values are checked where the rule is saved (the
@@ -343,6 +355,7 @@ type Action = (
     SetSpace
     | SetContact
     | SetDocumentType
+    | SetTopic
     | SetTitle
     | AddTags
     | RemoveTags
@@ -442,6 +455,9 @@ class RuleDefinition:
                     contacts.add(contact)
                 case SetDocumentType(document_type_id=document_type):
                     types.add(document_type)
+                case SetTopic(topic_id=topic):
+                    tags.add(topic)
+                    scopes[(topic, TagScope.TOPIC)] = None
                 case AddTags(tag_ids=ids) | RemoveTags(tag_ids=ids):
                     tags.update(ids)
                     scopes.update(((id, TagScope.DOCUMENT), None) for id in sorted(ids))
@@ -839,6 +855,8 @@ def action_to_json(action: Action) -> JsonObject:
             return {"type": action.type, "contact_id": str(contact)}
         case SetDocumentType(document_type_id=document_type):
             return {"type": action.type, "document_type_id": str(document_type)}
+        case SetTopic(topic_id=topic):
+            return {"type": action.type, "topic_id": str(topic)}
         case SetTitle(template=template):
             return {"type": action.type, "template": template}
         case AddTags(tag_ids=tags) | RemoveTags(tag_ids=tags):
@@ -937,6 +955,9 @@ def action_from_json(data: JsonValue, where: str = "action") -> Action:
                 return SetDocumentType(
                     DocumentTypeId(_uuid(object_.get("document_type_id"), "document_type_id"))
                 )
+            case "set_topic":
+                _only(object_, {"type", "topic_id"}, where)
+                return SetTopic(TagId(_uuid(object_.get("topic_id"), "topic_id")))
             case "set_title":
                 _only(object_, {"type", "template"}, where)
                 template = object_.get("template")

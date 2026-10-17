@@ -16,6 +16,7 @@ import {
 	newCondition,
 	newGroup,
 	newModel,
+	referencedIds,
 	toApi,
 	validate,
 	type ApiCondition,
@@ -184,6 +185,7 @@ describe('the rule model', () => {
 			contact_group: ['contains', 'in', 'present', 'missing'],
 			document_type: ['is', 'in', 'present', 'missing'],
 			document_type_group: ['contains', 'in', 'present', 'missing'],
+			topic: ['is', 'in', 'present', 'missing'],
 			tags: ['contains', 'in', 'present', 'missing'],
 			channel: ['is', 'in'],
 			text: ['contains', 'matches'],
@@ -362,6 +364,19 @@ describe('checking a rule', () => {
 			[tags.key]: 'list'
 		});
 		expect(problems(model, 'global')[space.key]).toBe('scope');
+	});
+
+	it('takes a topic like a contact: one value, set by user rules only', () => {
+		const model = newModel();
+		model.name = 'x';
+		model.conditions.items = [{ ...newCondition('topic'), value: ID(5) }];
+		expect(model.conditions.items[0]).toMatchObject({ op: 'is' });
+		const topic = newAction('set_topic');
+		model.actions = [topic];
+		expect(problems(model)).toEqual({ [topic.key]: 'choose' });
+		expect(problems(model, 'global')[topic.key]).toBe('scope');
+		expect(referencedIds({ ...topic, topic_id: ID(6) } as never)).toEqual([ID(6)]);
+		expect(referencedIds(model.conditions.items[0] as never)).toEqual([ID(5)]);
 	});
 });
 

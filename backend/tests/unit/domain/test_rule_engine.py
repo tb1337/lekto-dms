@@ -58,6 +58,7 @@ from papiq.core.domain.rules import (
     SetField,
     SetSpace,
     SetTitle,
+    SetTopic,
 )
 from papiq.core.domain.tag_tree import TagTree
 from tests import builders
@@ -1323,3 +1324,98 @@ def test_templates_see_the_groups_of_contact_and_type() -> None:
     title = SetTitle("{{ contact_groups | join: ', ' }} / {{ document_type_groups | join }}")
     result = run([rule(SetContact(ACME), title)], where)
     assert result.changes.title == "Health insurer / Bills"
+
+
+# --- topics -------------------------------------------------------------------------------------
+
+
+def _topics() -> tuple[dict[str, Tag], Taxonomy]:
+    """Health below Insurance, and Work; ACME enables Health and Work, BETA Work."""
+    insurance = Tag.create(name="Insurance", now=NOW, scope=TagScope.TOPIC)
+    health = Tag.create(name="Health", now=NOW, scope=TagScope.TOPIC, parent_id=insurance.id)
+    work = Tag.create(name="Work", now=NOW, scope=TagScope.TOPIC)
+    tags = {"insurance": insurance, "health": health, "work": work}
+    topics: dict[UUID, frozenset[TagId]] = {
+        ACME: frozenset({health.id, work.id}),
+        BETA: frozenset({work.id}),
+    }
+    return tags, Taxonomy(TagTree.of(tags.values()), topics=topics)
+
+
+def test_a_topic_condition_matches_the_topics_below_it_and_is_unknown_unconfirmed() -> None:
+    tags, taxonomy = _topics()
+    document = doc(contact_id=ACME, topic_id=tags["health"].id)
+    facts = Facts.of(document, taxonomy=taxonomy)
+
+    def truth(op: Operator, value: JsonValue, of: Facts = facts) -> Truth:
+        return evaluate(all_(cond(ConditionField.TOPIC, op, value)), of, {}, distrust=True)
+
+    insurance, health, work = (str(tags[name].id) for name in ("insurance", "health", "work"))
+    assert truth(Operator.IS, insurance) is True
+    assert truth(Operator.IS, health) is True
+    assert truth(Operator.IS, work) is False
+    assert truth(Operator.IN, [work, insurance]) is True
+    assert truth(Operator.PRESENT, None) is True
+    assert truth(Operator.MISSING, None, Facts.of(doc(), taxonomy=taxonomy)) is True
+    unconfirmed = Facts.of(document, unverified=frozenset({"topic"}), taxonomy=taxonomy)
+    assert truth(Operator.IS, health, unconfirmed) is None
+    filing = rule(SetSpace(SHARED), when=all_(cond(ConditionField.TOPIC, Operator.IS, health)))
+    (match,) = matches([filing], unconfirmed, {})
+    assert (match.trusted, match.distrusted) == (False, ("topic",))
+
+
+def test_a_rule_sets_a_topic_the_contact_enables() -> None:
+    tags, taxonomy = _topics()
+    health, work, insurance = tags["health"].id, tags["work"].id, tags["insurance"].id
+    existing = EXISTING | {tag.id for tag in tags.values()}
+    names: dict[object, str] = {**NAMES, **{tag.id: tag.name for tag in tags.values()}}
+
+    def where(document: Document, mode: Mode = Mode.INGEST, **fields: Any) -> Situation:
+        return situation(
+            document, mode, existing=existing, names=names, taxonomy=taxonomy, **fields
+        )
+
+    result = run([rule(SetTopic(health), SetTitle("{{ topic }}"))], where(doc(contact_id=ACME)))
+    assert (result.changes.topic_id, result.changes.title) == (health, "Health")
+    assert check(result, "topic").value == str(health)
+    # One the contact does not enable is skipped and noted, also without a contact.
+    for document in (doc(contact_id=ACME), doc()):
+        result = run([rule(SetTopic(insurance))], where(document))
+        assert result.changes.topic_id is UNSET
+        assert notes(result) == [("topic", "skipped")]
+    # Global rules cannot set it.
+    with pytest.raises(ValidationError, match="set_topic"):
+        rule(SetTopic(work), scope=RuleScope.GLOBAL)
+    # The contact a rule sets decides; two rules with different topics conflict.
+    result = run([rule(SetContact(BETA), SetTopic(work))], where(doc(contact_id=ACME)))
+    assert (result.changes.contact_id, result.changes.topic_id) == (BETA, work)
+    result = run([rule(SetTopic(work)), rule(SetTopic(health))], where(doc(contact_id=ACME)))
+    assert result.changes.topic_id is UNSET
+    assert check(result, "topic").outcome is Outcome.UNCERTAIN
+    # A person's topic wins; the model's is not replaced silently.
+    person = run([rule(SetTopic(work))], where(doc(contact_id=ACME), locked=frozenset({"topic"})))
+    assert (person.changes.topic_id, notes(person)) == (UNSET, [("topic", "overruled")])
+    model = where(doc(contact_id=ACME, topic_id=health), model_values={"topic": str(health)})
+    result = run([rule(SetTopic(work))], model)
+    assert result.changes.topic_id is UNSET
+    assert check(result, "topic").outcome is Outcome.UNCERTAIN
+
+
+def test_a_contact_a_rule_sets_clears_a_topic_it_does_not_enable() -> None:
+    tags, taxonomy = _topics()
+    health, work = tags["health"].id, tags["work"].id
+    where = situation(
+        doc(contact_id=ACME, topic_id=health),
+        existing=EXISTING | {health, work},
+        taxonomy=taxonomy,
+    )
+    result = run([rule(SetContact(BETA))], where)
+    assert (result.changes.contact_id, result.changes.topic_id) == (BETA, None)
+    assert Effect("topic", str(health), None) in result.effects
+    kept = situation(doc(contact_id=ACME, topic_id=work), existing=EXISTING, taxonomy=taxonomy)
+    result = run([rule(SetContact(BETA))], kept)
+    assert (result.changes.contact_id, result.changes.topic_id) == (BETA, UNSET)
+
+
+def test_changed_fields_name_the_topic() -> None:
+    assert changed_fields(DocumentChanges(topic_id=None)) == {"topic"}

@@ -94,7 +94,7 @@ class Web:
 
     async def handle(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
-        host = request.headers["host"]
+        host = request.headers["host"].strip("[]")
         assert request.extensions.get("sni_hostname") == host
         assert request.url.scheme == "https" and request.url.port is None
         assert "cookie" not in request.headers
@@ -109,4 +109,4 @@ class Web:
         return httpx2.MockTransport(self.handle)
 
     def hosts(self) -> list[str]:
-        return [request.headers["host"] for request in self.requests]
+        return [request.headers["host"].strip("[]") for request in self.requests]

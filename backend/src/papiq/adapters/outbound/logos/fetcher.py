@@ -170,7 +170,7 @@ class HttpLogoFetcher:
                     "GET",
                     target.copy_with(host=address),
                     headers={
-                        "Host": host,
+                        "Host": f"[{host}]" if ":" in host else host,
                         "User-Agent": self._user_agent,
                         "Accept": ", ".join(sorted(accept)),
                         "Accept-Encoding": "identity",

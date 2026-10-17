@@ -350,6 +350,15 @@ async def test_fetches_only_for_a_domain(web: Web, domain: str) -> None:
     assert web.lookups == [] and web.requests == []
 
 
+async def test_a_public_address_as_host_is_named_as_it_is(web: Web) -> None:
+    web.site(OTHER_PUBLIC)  # an address resolves to itself, no name server is asked
+    web.serve(OTHER_PUBLIC, "/", html("ok"))
+    found = await fetcher(web).get(f"https://[{OTHER_PUBLIC}]/", {"text/html"})
+    assert found.text == "ok"
+    assert web.requests[0].headers["host"] == f"[{OTHER_PUBLIC}]"
+    assert web.lookups == []
+
+
 async def test_a_name_that_does_not_resolve_and_a_failing_server(web: Web) -> None:
     with pytest.raises(LogoFetchError, match="cannot be resolved"):
         await fetcher(web).get("https://gone.example/", {"text/html"})

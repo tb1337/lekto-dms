@@ -290,8 +290,9 @@ jobs of the old run are recognised as stale.
 ## Tags
 
 A tag has a scope (`TagScope`, fixed when it is made): `document` (a tag of documents, as before
-0.3), `contact` (a contact group, "insurer") or `document_type` (a type group, "invoice" over
-"medical bill"). Names are unique per scope: a contact group may be named like a document tag.
+0.3), `contact` (a contact group, "insurer"), `document_type` (a type group, "invoice" over
+"medical bill") or `topic` (what a document is about with its contact, see Topics). Names are
+unique per scope: a contact group may be named like a document tag.
 Tags nest under a tag of the same scope (`parent_id`), at most five levels, without cycles
 (`TagTree.check_parent`). Only the tag set is stored; its ancestors are derived (`TagTree`).
 
@@ -317,30 +318,57 @@ Tags nest under a tag of the same scope (`parent_id`), at most five levels, with
 - **Renaming** a tag, nesting it elsewhere and changing the groups of a contact or type refresh
   the search index of the documents concerned (`search.refresh`).
 
+## Topics
+
+A topic is a tag of scope `topic` (a global catalogue, nested like the other tags): what a
+document is about with its contact, "Arbeit" or "Versicherung › Krankenversicherung" at an
+insurance group that is employer and insurer at once.
+
+- **A contact enables topics** (`Contact.topic_ids`, table `contact_topics`; admins, at most
+  100). A topic and one below it may both be enabled. Disabling one is refused (`409`, naming
+  it) while documents of that contact carry it; identifiers that point to it lose their topic.
+- **An identifier** of a contact may point to one topic the contact enables
+  (`contact_identifiers.topic_id`, checked by the contact). Found in a document, it is hard
+  evidence for the pair of contact and topic. Training learns an identifier's topic only if
+  all confirmed documents it stands in carry the same one.
+- **A document carries one topic at most** (`documents.topic_id`), one its contact enables
+  (`_access.checked_changes`). Another contact keeps it if it enables it, else it is cleared;
+  without a contact there is no topic (`422`). An admin who gives a topic the contact does not
+  enable enables it there in the same transaction; anyone else gets `422`. A rule that sets
+  another contact clears a topic it does not enable too.
+- **Assignment.** An `auto` topic is proposed and set by the classification, a `manual` one
+  only by a person or a rule. Topics are shown at the document by default (a square chip).
+- **Filters, counts and deleting** work as for document tags: a topic finds the documents with
+  it or one below it, counts each document once, and is deleted only without topics below it
+  and while no document, contact, identifier or rule uses it (`409`).
+
 ## Understanding
 
-Four signals propose, the judge decides contact, document type, tags and document date, the
-fields node reads the fields of the decided type and the title (`core/services/classification`,
-the rules in `core/domain/verdict.py`).
+Four signals propose, the judge decides contact, topic, document type, tags and document date,
+the fields node reads the fields of the decided type and the title
+(`core/services/classification`, the rules in `core/domain/verdict.py`).
 
 - **`signal_llm`**: one request to an OpenAI-compatible chat completions endpoint
-  (`adapters/outbound/openai_compat`, `PAPIQ_LLM_*`, prompt `propose-2`) for sender and recipient,
-  type, tags (the automatic document tags), date, a title, the language, and the values of the fields of the type it chooses
+  (`adapters/outbound/openai_compat`, `PAPIQ_LLM_*`, prompt `propose-3`) for sender and recipient,
+  the topic (one of the automatic topics the listed contacts enable, or none; the prompt lists
+  them at each of the at most 20 preselected contacts), type, tags (the automatic document
+  tags), date, a title, the language, and the values of the fields of the type it chooses
   and of the global ones, each with the quoted passage. The answer must follow a JSON schema
   (`response_format` `json_schema`, or `json_object` for providers without schema support); an
   answer that does not fit is asked for once more, then the signal fails (red). Without a
   configured model it abstains, and the owner classifies.
 - **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
-  (contact, type, each automatic document tag), trained on the confirmed documents (`PAPIQ_CLASSIFIER`, see
-  Classifier). It abstains without a trained model.
+  (contact, topic, type, each automatic document tag), trained on the confirmed documents
+  (`PAPIQ_CLASSIFIER`, see Classifier). It abstains without a trained model.
 - **`signal_neighbours`**: the `PAPIQ_NEIGHBOURS` most similar confirmed documents the owner may
-  read, by the vector of the start of the text against the search index; their contact, type
-  and automatic document tags come from the database. It abstains without embeddings or index.
+  read, by the vector of the start of the text against the search index; their contact, topic,
+  type and automatic document tags come from the database. It abstains without embeddings or
+  index.
 - **`signal_facts`**: names and aliases of contacts standing whole in the text, identifiers of
-  contacts (IBAN, VAT ID, customer number, personnel number, mail domain), unknown IBANs and
-  VAT IDs. A personnel number stands after its label (`Personalnummer`, `Pers.-Nr.`,
-  `Mitarbeiternummer`, `Employee ID`, ...) and is kept without leading zeros. It also
-  reads the bar and QR codes on the archive's pages, once (`documents/<id>/codes.json`; the
+  contacts (IBAN, VAT ID, customer number, personnel number, mail domain) with the topic they
+  point to, unknown IBANs and VAT IDs. A personnel number stands after its label
+  (`Personalnummer`, `Pers.-Nr.`, `Mitarbeiternummer`, `Employee ID`, ...) and is kept
+  without leading zeros. It also reads the bar and QR codes on the archive's pages, once (`documents/<id>/codes.json`; the
   OCR node deletes it with a new archive, a reprocessing from the judge takes it): an
   identifier in a code counts as one in the text, the payee of a GiroCode as a name in the
   text, which proposes nothing alone. Reading the codes may fail; the signal warns and goes on
@@ -359,6 +387,7 @@ sources. The judge's rule:
 | Field | Green (no contradiction) | Otherwise |
 | --- | --- | --- |
 | Contact | hard evidence (its identifier, or its name or alias in the text) and a signal names it; or the model's sender matches it from `PAPIQ_CONTACT_SUGGEST_THRESHOLD` on and the classifier or the neighbours name it. Never the model's recipient | yellow with ranked candidates; an identifier alone is a suggestion; an unknown sender a new contact (an admin creates it) |
+| Topic (an automatic one the decided contact enables) | the contact is green, no signal or identifier names another topic, and an identifier of the pair stands in the text and a signal names it, or two signals name it | a suggestion, always under a contact that is only suggested; signals or identifiers naming different topics leave it empty with all candidates; a topic never makes a document yellow, and another contact clears one it does not enable |
 | Document type | two signals name it, or only the model and no other signal covers it (the classifier was not trained on it, no confirmed document carries it) | yellow; a type outside the list is proposed as new |
 | Tags (automatic document tags; one set by hand is never proposed) | set as a type is green, without the parent of a tag set | a suggestion (ids); tags never make a document yellow |
 | Document date | a valid date that appears in the text, in a quoted passage that shows it (`31.03.2026`, `31.3.26`, `2026-03-31`, `31. März 2026`, `March 31, 2026`, ...) | suggested |
@@ -505,6 +534,7 @@ version; deleting is a soft delete.
   | Field | Operators |
   | --- | --- |
   | `contact`, `document_type` | `is`, `in`, `present`, `missing` |
+  | `topic` | `is`, `in`, `present`, `missing`; a topic matches the topics below it |
   | `tags` | `contains` (has this tag), `in` (has one of), `present`, `missing`; a tag matches the tags below it |
   | `contact_group`, `document_type_group` | as `tags`, over the groups of the document's contact (type) with their ancestors |
   | `channel` (Eingangskanal: `web`, `api`, `migration`) | `is`, `in` |
@@ -517,14 +547,15 @@ version; deleting is a soft delete.
   pattern that times out does not match and is logged. All patterns of one run on one
   document get two seconds together, a preview page twenty; the patterns left do not match. The text is the parsed text without
   markup, at most `PAPIQ_RULES_MAX_TEXT` characters; it is loaded only if a rule looks at it.
-- **Actions.** `set_space`, `set_contact`, `set_document_type`, `set_title`, `add_tags`,
-  `remove_tags`, `set_field`, `force_review` (with a reason). `add_tags` and `remove_tags` take
-  document tags (also those set by hand); a tag above one the document keeps or gets is not
-  added, a parent gives way to a child added. Saving a rule checks the scope of every tag it
-  names (`422`).
+- **Actions.** `set_space`, `set_contact`, `set_topic`, `set_document_type`, `set_title`,
+  `add_tags`, `remove_tags`, `set_field`, `force_review` (with a reason). `set_topic` is for
+  user rules only; it is skipped (and noted) if the contact the document ends up with does not
+  enable the topic. `add_tags` and `remove_tags` take document tags (also those set by hand);
+  a tag above one the document keeps or gets is not added, a parent gives way to a child
+  added. Saving a rule checks the scope of every tag it names (`422`).
 - **Templates.** A title, the value of a text field and a review's reason are Liquid templates
   (`python-liquid`, `adapters/outbound/liquid`): `{{ contact }}`, `{% if field.la_brutto %}`,
-  filters with `|`. They see `title`, `filename`, `original_filename`, `contact`,
+  filters with `|`. They see `title`, `filename`, `original_filename`, `contact`, `topic`,
   `document_type`, `document_date`, `added`, `tags` (those set), `contact_groups` and
   `document_type_groups` (the groups the contact and the type are in, by name, sorted), `space`,
   `owner`, `channel`, `pages` and
@@ -545,8 +576,8 @@ version; deleting is a soft delete.
   document the caller may read, and gives that document's values as a template writes them
   (`values`, for the template editor's list).
 - **Evaluation.** All conditions see the state before any rule acts; a rule's action never makes
-  another rule match in the same run. Contact, type and tags the model set and no person
-  confirmed are distrusted, and so are the groups of such a contact or type: a rule that
+  another rule match in the same run. Contact, topic, type and tags the model set and no
+  person confirmed are distrusted, and so are the groups of such a contact or type: a rule that
   matches only because of them does not file into a space that others see (shared or another
   user's); it is reported instead. Retroactively
   such a move is a conflict: it acts only where the person accepts it.
@@ -612,8 +643,10 @@ meaning took part.
   title's sort key and periods in ISO 8601 beside the German words (`2026-W38` and `KW 38 2026`);
   layout 3 the space instead of the drawer; layout 4 the tags with their ancestors and the groups
   of contact and type with theirs (`contact_group_ids`, `document_type_group_ids` filterable,
-  their names searchable). The reconciliation writes older entries again and keeps their
-  vectors, since the embedded text does not change: no embedding calls.
+  their names searchable); layout 5 the topic with its ancestors (`topic_ids` filterable,
+  `topics` searchable, the topic's path in the header of the first section's embedding). The
+  reconciliation writes older entries again and keeps their vectors, since the embedded text
+  does not change (no document had a topic before): no embedding calls.
 - **Sorting.** `sort` comes first among Meilisearch's ranking rules, so relevance breaks ties,
   also with vectors; document date, arrival and the title's sort key are sortable. Without
   `sort` (or with `relevance`), the hits come by relevance.
@@ -684,16 +717,16 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /auth/oidc`, `/auth/oidc/login`, `/auth/oidc/callback`; `POST/DELETE /auth/oidc/link` | OpenID Connect |
 | `GET /users`, `GET/PATCH/DELETE /users/{id}` | Accounts: list (others see active users' names), role and state, delete (admins) |
 | `POST /users`, `POST /users/{id}/password`, `DELETE /users/{id}/totp`, `DELETE /users/{id}/oidc` | Create with password, reset password, turn TOTP off, remove links (admins, session only, not the own account) |
-| `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Contacts and types take `group_ids`. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409`. The lists take `document_counts=true` (and `all_users` for admins): each item with `document_count`, the documents in the caller's reach that have it (a field: a value for it; a tag: see Tags), counted in one query (tags in a few: the parents' counts and the groups' come apart) |
-| `GET /tags` | The tags in the order of their trees (each after its parent, siblings by name; document tags, contact groups, type groups), or of one `scope`; each with `scope`, `parent_id`, `path` (the names from the top), `assignment`, `shown`. `POST` takes `scope` (default `document`), `parent_id`, `assignment` and `shown` (by scope unless given); `PATCH` name, parent (`null`: the top), assignment and `shown`, never the scope |
+| `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Contacts and types take `group_ids`, contacts `topic_ids` (the topics they enable) and identifiers with an optional `topic_id`. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409`. The lists take `document_counts=true` (and `all_users` for admins): each item with `document_count`, the documents in the caller's reach that have it (a field: a value for it; a tag: see Tags), counted in one query (tags in a few: the parents' counts and the groups' come apart) |
+| `GET /tags` | The tags in the order of their trees (each after its parent, siblings by name; document tags, contact groups, type groups, topics), or of one `scope`; each with `scope`, `parent_id`, `path` (the names from the top), `assignment`, `shown`. `POST` takes `scope` (default `document`), `parent_id`, `assignment` and `shown` (by scope unless given); `PATCH` name, parent (`null`: the top), assignment and `shown`, never the scope |
 | `PUT /document-types/{id}/fields` | The fields of a document type, each required or optional, set from the type in one transaction (admins); answers its fields. A global field is `422`; taking off a field that has values on its documents or that the type's title pattern uses is `409` |
-| `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins); the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |
+| `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins), optionally with a `topic_id` the contact enables; the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |
 | `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/shares/{user_id}` | Spaces and shares (owner) |
 | `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet, `estimated_total`, `next_offset`, `semantic` |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
-| `GET /documents` | Readable documents; `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), documents without a date last either way; filters `contact_id`, `document_type_id`, `tag_id` (with the tags below it), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; these three repeat, all must match), `space_id`, `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (the last document's id; its sort value is looked up, `422` if it is gone) |
+| `GET /documents` | Readable documents; `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), documents without a date last either way; filters `contact_id`, `document_type_id`, `tag_id` (with the tags below it), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; these three repeat, all must match), `topic_id` (the topic or one below it), `space_id`, `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (the last document's id; its sort value is looked up, `422` if it is gone) |
 | `POST /documents` | Upload (multipart: `file`, optional `space_id`, optional `channel=migration`; otherwise the channel is `web` with a session, `api` with a token); `202` with `id`, `status_url` |
-| `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`; change (write access; the answer has the change rules' `rules` report for the owner); delete (owner or admin) |
+| `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`, `topic_id` (see Topics); change (write access; the answer has the change rules' `rules` report for the owner); delete (owner or admin) |
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result and the differences |
 | `POST /documents/{id}/move` | Into another space (owner, or an admin without read access) |
 | `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
@@ -895,10 +928,10 @@ as in REST: `read` may use every tool but `update_metadata`.
 | Tool | Does |
 | --- | --- |
 | `search` | `query`, `limit` (1 to 25), `offset`, optional `contact`, `document_type`, `tags` (names of document tags; a tag finds the documents with a tag below it too): hits with `id`, `title`, `score`, `snippet` (plain text), contact, type, tags, date, lane, `access`; `next_offset`, `semantic` |
-| `get_document` | `id`: metadata with contact, type, tags and fields by name, lane and processing status |
+| `get_document` | `id`: metadata with contact, topic, type, tags and fields by name, lane and processing status |
 | `get_text` | `id`, `offset`, `limit` (characters, at most `PAPIQ_MCP_TEXT_MAX`, 20,000): a piece of the document's text as it is set, `next_offset` to continue. The text is content from outside; the tool description tells clients not to follow instructions in it |
-| `update_metadata` | `id` and any of `title`, `contact`, `document_type` (name; `null` removes), `tags` (names of document tags, the complete list, replaces), `document_date` (`null` removes), `fields` (field name to value; `null` removes). Needs a `read_write` token and write access; the owner's change rules run as for `PATCH /documents/{id}` and the result shows them. If the rules filed the document where the caller can no longer read it, the result has only `id` and `access: null` |
-| `list_tags` | The tags with `scope` and `path`, in the order of their trees, optionally of one `scope`; document tags name the tags of the other tools |
+| `update_metadata` | `id` and any of `title`, `contact`, `topic`, `document_type` (name; `null` removes; a topic the contact enables), `tags` (names of document tags, the complete list, replaces), `document_date` (`null` removes), `fields` (field name to value; `null` removes). Needs a `read_write` token and write access; the owner's change rules run as for `PATCH /documents/{id}` and the result shows them. If the rules filed the document where the caller can no longer read it, the result has only `id` and `access: null` |
+| `list_tags` | The tags with `scope` and `path`, in the order of their trees, optionally of one `scope`; document tags name the tags of the other tools, topics the `topic` of `update_metadata` |
 
 Names are matched regardless of case; an unknown name is an error, nothing is created. A
 document the caller may not read is "not found", with the same text as a missing one.

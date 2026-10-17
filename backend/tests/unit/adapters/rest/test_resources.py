@@ -717,6 +717,41 @@ async def test_tags_with_scopes_trees_and_groups(api: Api) -> None:
     assert gone.status_code == 204
 
 
+async def test_groups_and_topics_come_with_their_contacts_and_types(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    a, o = auth(admin), auth(owner)
+    insurer = await post(api, "/tags", {"name": "Insurer", "scope": "contact"}, a)
+    health = await post(
+        api, "/tags", {"name": "Health", "scope": "contact", "parent_id": insurer["id"]}, a
+    )
+    work = await post(api, "/tags", {"name": "Work", "scope": "topic"}, a)
+    bills = await post(api, "/tags", {"name": "Bills", "scope": "document_type"}, a)
+    await post(api, "/tags", {"name": "Paid"}, a)
+    groups = [insurer["id"], health["id"]]
+    await post(
+        api, "/contacts", {"name": "Nord", "group_ids": groups, "topic_ids": [work["id"]]}, a
+    )
+    await post(api, "/contacts", {"name": "Süd", "group_ids": [health["id"]]}, a)
+    await post(api, "/document-types", {"name": "Invoice", "group_ids": [bills["id"]]}, a)
+
+    async def listed(**params: Any) -> list[tuple[str, Any, Any]]:
+        response = await api.client.get(f"{PREFIX}/tags", params=params, headers=o)
+        assert response.status_code == 200, response.text
+        return [
+            (tag["name"], tag["contact_count"], tag["document_type_count"])
+            for tag in response.json()
+        ]
+
+    assert await listed(document_counts=True) == [
+        ("Paid", None, None),
+        ("Insurer", 2, None),  # Nord once, though in Insurer and in Health below it
+        ("Health", 2, None),
+        ("Bills", None, 1),
+        ("Work", 1, None),
+    ]
+    assert {count for _, *counts in await listed() for count in counts} == {None}
+
+
 async def test_tags_and_types_carry_icons_and_colours(api: Api) -> None:
     admin, user = await api.admin(), await api.user()
     a = auth(admin)

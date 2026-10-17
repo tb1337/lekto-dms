@@ -619,7 +619,7 @@ export interface paths {
 		};
 		/**
 		 * List tags
-		 * @description Tags of every scope, or of `scope`: document tags, contact groups, type groups, topics. In the order of their trees: each after its parent, siblings by name (scopes in this order). Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach it stands for (`TagOut.document_count`); admins count every document with `all_users` (others: 403).
+		 * @description Tags of every scope, or of `scope`: document tags, contact groups, type groups, topics. In the order of their trees: each after its parent, siblings by name (scopes in this order). Everyone reads them. With `document_counts`, each comes with how many documents within the caller's reach it stands for (`TagOut.document_count`); admins count every document with `all_users` (others: 403). A contact group or topic comes with its contacts (`contact_count`), a type group with its document types (`document_type_count`), whoever asks.
 		 */
 		get: operations['list_tags_api_v1_tags_get'];
 		put?: never;
@@ -4891,6 +4891,16 @@ export interface components {
 			 * @description A colour of the palette or `#rrggbb`.
 			 */
 			color: string | null;
+			/**
+			 * Contact Count
+			 * @description With `document_counts`, for a contact group or a topic (else null): how many contacts are in it or a group below it (enable it or a topic below it), each once.
+			 */
+			contact_count?: number | null;
+			/**
+			 * Document Type Count
+			 * @description With `document_counts`, for a type group (else null): how many document types are in it or a group below it, each once.
+			 */
+			document_type_count?: number | null;
 		};
 		/**
 		 * TagPatch

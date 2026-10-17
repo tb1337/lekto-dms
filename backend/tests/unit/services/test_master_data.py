@@ -496,6 +496,36 @@ async def test_concurrent_tag_moves_make_no_cycle(world: World) -> None:
     assert sorted(type(result).__name__ for result in results) == ["Tag", "ValidationError"]
 
 
+async def test_groups_and_topics_count_their_contacts_and_types(world: World) -> None:
+    """Each contact (type) once at its group or topic and at those above it."""
+    admin = await world.user(role=Role.ADMIN)
+    service = world.master_data
+    insurer = await service.create_tag(admin.id, "Insurer", scope=TagScope.CONTACT)
+    health = await service.create_tag(
+        admin.id, "Health insurer", scope=TagScope.CONTACT, parent_id=insurer.id
+    )
+    bank = await service.create_tag(admin.id, "Bank", scope=TagScope.CONTACT)
+    insurance = await service.create_tag(admin.id, "Insurance", scope=TagScope.TOPIC)
+    dental = await service.create_tag(
+        admin.id, "Dental", scope=TagScope.TOPIC, parent_id=insurance.id
+    )
+    bills = await service.create_tag(admin.id, "Bills", scope=TagScope.DOCUMENT_TYPE)
+    medical = await service.create_tag(
+        admin.id, "Medical", scope=TagScope.DOCUMENT_TYPE, parent_id=bills.id
+    )
+    await service.create_contact(
+        admin.id, "Nord", group_ids=[insurer.id, health.id], topic_ids=[insurance.id, dental.id]
+    )
+    await service.create_contact(admin.id, "Süd", group_ids=[health.id], topic_ids=[dental.id])
+    await service.create_contact(admin.id, "Plain")
+    await service.create_document_type(admin.id, "Invoice", group_ids=[medical.id])
+    await service.create_document_type(admin.id, "Receipt", group_ids=[bills.id])
+    members = await service.tag_members(admin.id)
+    assert members.contacts == {insurer.id: 2, health.id: 2, insurance.id: 2, dental.id: 2}
+    assert bank.id not in members.contacts
+    assert members.document_types == {bills.id: 2, medical.id: 1}
+
+
 async def test_tags_and_types_carry_icons_and_colours(world: World) -> None:
     admin = await world.user(role=Role.ADMIN)
     service = world.master_data

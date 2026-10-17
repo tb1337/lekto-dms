@@ -84,6 +84,16 @@ class TagTree:
             found for id in ids for found in (id, *(tag.id for tag in self.descendants(id)))
         )
 
+    def holders(self, members: Iterable[Iterable[TagId]]) -> dict[TagId, int]:
+        """How many of `members` (each by the tags it has: a contact's groups or topics, a
+        type's groups) each tag holds: those with it or a tag below it, each once, as a filter
+        on the tag finds them. Only tags that hold one; an unknown id counts for itself."""
+        counts: dict[TagId, int] = {}
+        for tags in members:
+            for id in self.with_ancestors(tags):
+                counts[id] = counts.get(id, 0) + 1
+        return counts
+
     def path(self, id: TagId) -> list[str]:
         """The names from the top-level tag down to `id`'s own."""
         tag = self.get(id)

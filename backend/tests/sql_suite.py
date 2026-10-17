@@ -193,6 +193,32 @@ class SqlAdapterSuite:
             tags = {tag.id: tag for tag in await uow.tags.list_all()}
         assert None in {tags[a.id].parent_id, tags[b.id].parent_id}
 
+    async def test_groups_and_topics_count_their_contacts_and_types(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """Each contact (type) once at its group or topic and at those above it, from the
+        stored groups and topics of contacts and types."""
+        admin = builders.admin()
+        await _seed_user(uow_factory, admin)
+        service = MasterDataService(uow_factory, ManualClock(NOW), builders.TEMPLATES)
+        insurer = await service.create_tag(admin.id, "Insurer", scope=TagScope.CONTACT)
+        health = await service.create_tag(
+            admin.id, "Health insurer", scope=TagScope.CONTACT, parent_id=insurer.id
+        )
+        work = await service.create_tag(admin.id, "Work", scope=TagScope.TOPIC)
+        bills = await service.create_tag(admin.id, "Bills", scope=TagScope.DOCUMENT_TYPE)
+        medical = await service.create_tag(
+            admin.id, "Medical", scope=TagScope.DOCUMENT_TYPE, parent_id=bills.id
+        )
+        await service.create_contact(
+            admin.id, "Nord", group_ids=[insurer.id, health.id], topic_ids=[work.id]
+        )
+        await service.create_contact(admin.id, "Süd", group_ids=[health.id], topic_ids=[work.id])
+        await service.create_document_type(admin.id, "Invoice", group_ids=[medical.id])
+        members = await service.tag_members(admin.id)
+        assert members.contacts == {insurer.id: 2, health.id: 2, work.id: 2}
+        assert members.document_types == {bills.id: 1, medical.id: 1}
+
     async def test_a_topic_is_not_given_while_its_contact_gives_it_up(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:

@@ -52,6 +52,16 @@ def test_ancestors_descendants_and_paths(insurance: dict[str, Tag]) -> None:
         tree.path(unknown)
 
 
+def test_a_tag_holds_the_members_with_it_or_a_tag_below_it_once(
+    insurance: dict[str, Tag],
+) -> None:
+    tree = TagTree.of(insurance.values())
+    top, health, dental, car = (insurance[k] for k in ("insurance", "health", "dental", "car"))
+    members = [{dental.id}, {health.id, dental.id}, {car.id}, set()]
+    assert tree.holders(members) == {top.id: 3, health.id: 2, dental.id: 2, car.id: 1}
+    assert tree.holders([]) == {}
+
+
 def test_tags_of_a_scope_in_the_order_of_the_tree(insurance: dict[str, Tag]) -> None:
     tree = TagTree.of(insurance.values())
     names = [item.name for item in tree.of_scope(TagScope.DOCUMENT)]

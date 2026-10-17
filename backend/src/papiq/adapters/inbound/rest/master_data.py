@@ -339,7 +339,9 @@ async def _tree(context: ApiContext, user: UserId) -> TagTree:
         "topics. In the order of their trees: each after its parent, siblings by name (scopes "
         "in this order). Everyone reads them. With `document_counts`, each comes with how many "
         "documents within the caller's reach it stands for (`TagOut.document_count`); admins "
-        "count every document with `all_users` (others: 403)."
+        "count every document with `all_users` (others: 403). A contact group or topic comes "
+        "with its contacts (`contact_count`), a type group with its document types "
+        "(`document_type_count`), whoever asks."
     ),
     response_model=list[TagOut],
     responses=problem_responses(401, 403, 422),
@@ -357,7 +359,17 @@ async def list_tags(
     if not document_counts:
         return found
     counts = await context.documents.document_counts(user, CountBy.TAG, all_users=all_users)
-    return [item.model_copy(update={"document_count": counts.get(item.id, 0)}) for item in found]
+    members = await context.master_data.tag_members(user)
+
+    def counted(item: TagOut) -> TagOut:
+        update: dict[str, int] = {"document_count": counts.get(item.id, 0)}
+        if item.scope in (TagScope.CONTACT, TagScope.TOPIC):
+            update["contact_count"] = members.contacts.get(TagId(item.id), 0)
+        elif item.scope is TagScope.DOCUMENT_TYPE:
+            update["document_type_count"] = members.document_types.get(TagId(item.id), 0)
+        return item.model_copy(update=update)
+
+    return [counted(item) for item in found]
 
 
 @tags.post(

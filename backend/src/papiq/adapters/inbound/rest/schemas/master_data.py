@@ -458,6 +458,20 @@ class TagOut(MasterDataOut):
             "topic, those with it or a topic below it."
         ),
     )
+    contact_count: int | None = Field(
+        default=None,
+        description=(
+            "With `document_counts`, for a contact group or a topic (else null): how many "
+            "contacts are in it or a group below it (enable it or a topic below it), each once."
+        ),
+    )
+    document_type_count: int | None = Field(
+        default=None,
+        description=(
+            "With `document_counts`, for a type group (else null): how many document types are "
+            "in it or a group below it, each once."
+        ),
+    )
 
     @classmethod
     def of(cls, item: MasterData, tree: TagTree | None = None) -> "TagOut":

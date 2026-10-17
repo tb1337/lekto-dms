@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable, Collection, Iterator, Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -51,6 +52,15 @@ MANUAL = IdentifierSource.MANUAL
 TAG_TREE_LOCK = "tags"
 """Held while a tag is made or changed, before the tree is read: two moves at once could
 otherwise each pass `TagTree.check_parent` and together make a cycle or a sixth level."""
+
+
+@dataclass(frozen=True)
+class TagMembers:
+    """How many contacts each contact group and topic holds, how many document types each type
+    group (`MasterDataService.tag_members`); tags holding none are left out."""
+
+    contacts: Mapping[TagId, int]
+    document_types: Mapping[TagId, int]
 
 
 def _contacts(uow: UnitOfWork) -> NamedRepository[ContactId, Contact]:
@@ -561,6 +571,22 @@ class MasterDataService:
 
     async def list_fields(self, actor: UserId) -> list[FieldDefinition]:
         return await self._list(actor, _fields)
+
+    async def tag_members(self, actor: UserId) -> TagMembers:
+        """What the groups and topics hold, as their filters find it (`TagTree.holders`):
+        the contacts of each contact group and topic (in it or one below it, each once) and
+        the document types of each type group. Master data are global: no reach."""
+        async with self._uow() as uow:
+            await load_actor(uow, actor)
+            tree = TagTree.of(await uow.tags.list_all())
+            contacts = await uow.contacts.list_all()
+            types = await uow.document_types.list_all()
+        return TagMembers(
+            contacts=tree.holders(
+                [*(item.group_ids for item in contacts), *(item.topic_ids for item in contacts)]
+            ),
+            document_types=tree.holders(item.group_ids for item in types),
+        )
 
     async def get_contact(self, actor: UserId, id: ContactId) -> Contact:
         return await self._get(actor, _contacts, id)

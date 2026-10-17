@@ -312,7 +312,9 @@ Tags nest under a tag of the same scope (`parent_id`), at most five levels, with
   `DocumentFilter`), so no adapter walks a tree.
 - **Counts** (`GET /tags?document_counts=true`): a document tag counts each document once that
   carries it or a tag below it; a group the documents whose contact (type) is in it or a group
-  below it.
+  below it. A contact group and a topic also count their contacts (`contact_count`: in it or a
+  group below it, enabling it or a topic below it), a type group its document types
+  (`document_type_count`), each once.
 - **Deleting** a tag works only without tags below it and while nothing uses it: no document,
   contact or type, and no rule (`409`, naming the rules; admins see all of them).
 - **Renaming** a tag, nesting it elsewhere and changing the groups of a contact or type refresh

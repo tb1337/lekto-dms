@@ -28,9 +28,11 @@ from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.ids import new_id
 from papiq.core.domain.jobs import Job
+from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.pipeline import NODES, Node
 from papiq.core.domain.users import User
 from papiq.core.ports import DeliveryRetry, EventBus, UnitOfWorkFactory
+from papiq.core.services.documents import DocumentService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.pipeline import PipelineService, PlaceholderNode
 from tests import builders
@@ -190,6 +192,38 @@ class SqlAdapterSuite:
         async with uow_factory() as uow:
             tags = {tag.id: tag for tag in await uow.tags.list_all()}
         assert None in {tags[a.id].parent_id, tags[b.id].parent_id}
+
+    async def test_a_topic_is_not_given_while_its_contact_gives_it_up(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """Taking a topic away from a contact and giving it to one of its documents at once:
+        one waits for the other and sees it, so no document keeps a topic its contact does
+        not enable."""
+        owner, space = await owner_with_space(uow_factory)
+        admin = builders.admin()
+        await _seed_user(uow_factory, admin)
+        master = MasterDataService(uow_factory, ManualClock(NOW), builders.TEMPLATES)
+        documents = DocumentService(uow_factory, ManualClock(NOW), MemoryObjectStore())
+        work = await master.create_tag(admin.id, "Work", scope=TagScope.TOPIC)
+        nord = await master.create_contact(admin.id, "Nord", topic_ids=[work.id])
+        document = builders.document(owner, space)
+        async with uow_factory() as uow:
+            await uow.documents.add(document)
+            await uow.commit()
+        await documents.update_metadata(owner.id, document.id, DocumentChanges(contact_id=nord.id))
+        results = await asyncio.gather(
+            master.change_contact(admin.id, nord.id, topic_ids=[]),
+            documents.update_metadata(owner.id, document.id, DocumentChanges(topic_id=work.id)),
+            return_exceptions=True,
+        )
+        assert sorted(type(result).__name__ for result in results) in (
+            ["Contact", "ValidationError"],
+            ["ConflictError", "Document"],
+        ), results
+        async with uow_factory() as uow:
+            stored = await uow.documents.get(document.id)
+            contact = await uow.contacts.get(nord.id)
+        assert stored.topic_id is None or stored.topic_id in contact.topic_ids
 
     async def test_a_failed_write_leaves_only_rollback(
         self, uow_factory: UnitOfWorkFactory

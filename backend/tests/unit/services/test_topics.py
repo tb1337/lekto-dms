@@ -1,5 +1,7 @@
 """Topics: enabled at contacts, pointed to by identifiers, carried by documents."""
 
+import asyncio
+
 import pytest
 
 from papiq.core.domain.documents import Document, DocumentChanges
@@ -206,3 +208,23 @@ async def test_documents_are_found_and_counted_by_a_topic_and_those_below_it(
         insurance.id: 2,
         health.id: 1,
     }
+
+
+async def test_a_topic_is_not_given_while_its_contact_gives_it_up(world: World) -> None:
+    """Both at once: one waits for the other (`contact_topics_lock`) and sees it."""
+    admin, owner = await world.user(role=Role.ADMIN), await world.user()
+    work, _, _ = await _topics(world, admin)
+    nord = await world.master_data.create_contact(admin.id, "Nord", topic_ids=[work.id])
+    document = await _document(world, owner)
+    await world.documents.update_metadata(
+        owner.id, document.id, DocumentChanges(contact_id=nord.id)
+    )
+    results = await asyncio.gather(
+        world.master_data.change_contact(admin.id, nord.id, topic_ids=[]),
+        world.documents.update_metadata(owner.id, document.id, DocumentChanges(topic_id=work.id)),
+        return_exceptions=True,
+    )
+    assert sorted(type(result).__name__ for result in results) in (
+        ["Contact", "ValidationError"],
+        ["ConflictError", "Document"],
+    ), results

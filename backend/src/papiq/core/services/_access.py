@@ -9,7 +9,7 @@ from papiq.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
-from papiq.core.domain.ids import DocumentId, SpaceId, UserId
+from papiq.core.domain.ids import ContactId, DocumentId, SpaceId, UserId
 from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.permissions import (
     can_file_into,
@@ -70,6 +70,13 @@ async def may_file(uow: UnitOfWork, document: Document, space: Space) -> bool:
     return user is not None and user.is_active_admin
 
 
+def contact_topics_lock(contact: ContactId) -> str:
+    """The lock (`UnitOfWork.lock`) a unit takes before it reads the topics a contact enables
+    to give a document of the contact a topic, or to take topics away from the contact: one
+    waits for the other and sees what it did."""
+    return f"contact-topics:{contact}"
+
+
 async def checked_changes(
     uow: UnitOfWork,
     changes: DocumentChanges,
@@ -82,7 +89,9 @@ async def checked_changes(
 
     A contact given that does not enable the document's topic clears the topic. A topic given
     that the contact does not enable is enabled at the contact, in `uow`, if `actor` is an
-    active admin; otherwise, and for a topic without a contact, it is a ValidationError.
+    active admin; otherwise, and for a topic without a contact, it is a ValidationError. A
+    topic the document keeps or gets is checked under `contact_topics_lock`: the unit must
+    not have written yet.
     NotFoundError if a contact, type, tag or topic it refers to does not exist,
     ValidationError for a tag that does not describe documents (a group, a topic) or a topic
     that is none."""
@@ -134,6 +143,7 @@ async def _fitted_topic(
         if topic_given:
             raise ValidationError("a topic is one of the contact's: give the document a contact")
         return replace(changes, topic_id=None)
+    await uow.lock(contact_topics_lock(contact_id))
     contact = await uow.contacts.get(contact_id)
     if topic_id in contact.topic_ids:
         return changes

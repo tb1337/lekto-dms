@@ -36,7 +36,7 @@ from papiq.core.ports import (
     UnitOfWork,
     UnitOfWorkFactory,
 )
-from papiq.core.services._access import load_actor
+from papiq.core.services._access import contact_topics_lock, load_actor
 
 # A rename queues the indexing service's refresh job; the worker runs it through that service.
 from papiq.core.services.indexing import REFRESH_JOB
@@ -168,6 +168,8 @@ class MasterDataService:
             check=check,
             index_as="contact",
             indexed=lambda item: (item.name, item.group_ids),
+            # A document that gets a topic meanwhile is seen, or sees it gone.
+            lock=None if topic_ids is None else contact_topics_lock(id),
         )
 
     async def add_identifier(self, actor: UserId, id: ContactId, identifier: Identifier) -> Contact:
@@ -766,11 +768,14 @@ class MasterDataService:
         after: Callable[[UnitOfWork, E], Awaitable[None]] | None = None,
         index_as: str | None = None,
         indexed: Callable[[E], object] = lambda item: item.name,
+        lock: str | None = None,
     ) -> E:
         """`after`: what follows from the change, in the same unit of work. `index_as`: the
         kind whose documents' search index is brought up to date when what the index holds of
-        it (`indexed`: the name) changed."""
+        it (`indexed`: the name) changed. `lock`: a name the unit locks before it reads."""
         async with self._uow() as uow:
+            if lock is not None:
+                await uow.lock(lock)
             await _require_admin(uow, actor)
             item = await repository(uow).get(id)
             before = indexed(item)

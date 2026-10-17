@@ -199,6 +199,7 @@ async def test_neighbours_are_the_confirmed_documents_the_owner_may_read(world: 
         "contacts": [str(utility.id)],
         "document_types": [],
         "tags": [],
+        "topics": [],
     }
     # They vote on the tags the classification sets, not on those set by hand.
     electricity = Tag.create(name="Strom", now=builders.NOW)

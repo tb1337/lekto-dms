@@ -1,4 +1,4 @@
-"""The judge's rules: contact, document type and tags from what the signals proposed.
+"""The judge's rules: contact, document type, topic and tags from what the signals proposed.
 
 A signal *names* a value when it is sure of it:
 
@@ -32,6 +32,12 @@ value.
 - A tag is set as a type is green; one only a single signal names is a suggestion. Tags never
   make a document uncertain. Only the tags the classification sets are judged (document tags
   set `auto`); a tag set by hand is never proposed.
+- A topic is judged after the contact, among the topics that contact enables (those set
+  `auto`): it is set if the contact is green and an identifier of the pair of contact and
+  topic stands in the text and a signal names the topic, or two signals name it. Otherwise it
+  is a suggestion; if signals (or identifiers of the pair) name different topics, it stays
+  empty with all candidates. A topic never makes a document uncertain. Under a contact that is
+  only suggested, the topic is only suggested too.
 """
 
 from collections import Counter
@@ -42,6 +48,7 @@ from papiq.core.domain.classification import (
     CONTACT,
     DOCUMENT_TYPE,
     TAGS,
+    TOPIC,
     Candidate,
     CandidateSource,
     FieldCheck,
@@ -82,6 +89,7 @@ class ModelProposal:
     new_document_type: str | None = None
     tags: tuple[str, ...] = ()
     new_tags: tuple[str, ...] = ()
+    topic: str | None = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +101,8 @@ class ClassifierView:
     tags: Mapping[TagId, float] = field(default_factory=dict)
     known_contacts: frozenset[ContactId] = frozenset()
     known_types: frozenset[DocumentTypeId] = frozenset()
+    topics: Sequence[tuple[TagId, float]] = ()
+    known_topics: frozenset[TagId] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -102,14 +112,18 @@ class Neighbour:
     document_type: DocumentTypeId | None
     tags: frozenset[TagId] = frozenset()
     similarity: float | None = None  # to the document, as the search index measures it
+    topic: TagId | None = None
 
 
 @dataclass(frozen=True)
 class FactsView:
-    """Contacts named in the text, and the kinds of their identifiers found in it."""
+    """Contacts named in the text, the kinds of their identifiers found in it, and the topics
+    those identifiers point to (each with the kinds that point to it): the pairs of contact and
+    topic the text shows."""
 
     named: frozenset[ContactId] = frozenset()
     identifiers: Mapping[ContactId, tuple[str, ...]] = field(default_factory=dict)
+    topics: Mapping[ContactId, Mapping[TagId, tuple[str, ...]]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -605,6 +619,154 @@ def judge_tags(
     )
 
 
+# --- topic ------------------------------------------------------------------------------------
+
+
+def judge_topic(
+    signals: Signals,
+    contact: FieldCheck,
+    contacts: Sequence[Contact],
+    tags: Sequence[Tag],
+    thresholds: Thresholds = DEFAULT_THRESHOLDS,
+) -> FieldCheck:
+    """Always OK, as tags: the topic of the contact the judge decided (`contact`, the check of
+    `judge_contact`), among the topics it enables that the classification sets
+    (`Tag.is_topic_target`). Set if the contact is green and an identifier of the pair stands in
+    the text and a signal names the topic, or two signals name it; otherwise a suggestion (its
+    id), also for every topic under a contact that is only suggested. Signals or identifiers that
+    name different topics leave it empty, with all candidates. `tags`: all tags."""
+    green = contact.ok and isinstance(contact.value, str)
+    chosen = contact.value if green else contact.suggestion
+    owner = next((item for item in contacts if str(item.id) == chosen), None)
+    model = signals.model
+    proposed: JsonValue = None if model is None else model.topic
+    if owner is None:
+        return FieldCheck(
+            field=TOPIC,
+            outcome=Outcome.OK,
+            confidence=1.0,
+            reason="no contact: a topic is one of a contact's",
+            proposed=proposed,
+        )
+    names = {tag.id: tag for tag in tags if tag.is_topic_target and tag.id in owner.topic_ids}
+    by_model = _by_name(list(names.values()), model.topic) if model and model.topic else None
+    classifier = signals.classifier
+    ranking = [(id, p) for id, p in (classifier.topics if classifier else ()) if id in names]
+    probabilities = dict(ranking)
+    neighbours = signals.neighbours or ()
+    votes = Counter(item.topic for item in neighbours if item.topic in names)
+    evidence = {
+        id: kinds
+        for id, kinds in (signals.facts or FactsView()).topics.get(owner.id, {}).items()
+        if id in names
+    }
+    namers: dict[TagId, tuple[str, ...]] = {}
+    for signal, topic in (
+        (LLM, by_model.id if by_model else None),
+        (CLASSIFIER, _top(ranking, thresholds.classifier)),
+        (NEIGHBOURS, _majority(votes, len(neighbours))),
+    ):
+        if topic is not None:
+            namers[topic] = (*namers.get(topic, ()), signal)
+    named = set(namers) | set(evidence)
+
+    def sure(id: TagId) -> bool:
+        naming = namers.get(id, ())
+        return len(named) == 1 and ((id in evidence and bool(naming)) or len(naming) >= 2)
+
+    candidates = [
+        id
+        for id in _unique(
+            [
+                *namers,
+                *evidence,
+                *(id for id, p in probabilities.items() if p >= 1 - thresholds.classifier),
+                *votes,
+            ]
+        )
+        if id in names
+    ]
+    ranked = sorted(
+        candidates,
+        key=lambda id: (
+            -len(namers.get(id, ())),
+            -(id in evidence),
+            -probabilities.get(id, 0.0),
+            -votes.get(id, 0),
+            names[id].name.casefold(),
+        ),
+    )
+
+    def sources(id: TagId) -> tuple[CandidateSource, ...]:
+        found = []
+        if by_model is not None and by_model.id == id:
+            found.append(CandidateSource(signal=LLM, names=True))
+        if id in probabilities:
+            p = probabilities[id]
+            found.append(
+                CandidateSource(
+                    signal=CLASSIFIER,
+                    names=p >= thresholds.classifier,
+                    score=p,
+                    threshold=thresholds.classifier,
+                )
+            )
+        if votes.get(id):
+            found.append(
+                _neighbour_source(id, votes, neighbours, _majority(votes, len(neighbours)))
+            )
+        if id in evidence:
+            found.append(CandidateSource(signal=FACTS, identifiers=evidence[id]))
+        return tuple(found)
+
+    listed = tuple(
+        Candidate(
+            value=str(id),
+            label=names[id].name,
+            sources=sources(id),
+            contradicted=any(other != id for other in named),
+        )
+        for id in ranked
+    )
+    top = ranked[0] if ranked else None
+    if green and top is not None and sure(top):
+        return FieldCheck(
+            field=TOPIC,
+            outcome=Outcome.OK,
+            confidence=1.0,
+            proposed=proposed,
+            value=str(top),
+            candidates=listed,
+        )
+    if len(named) > 1:
+        reason = "the signals disagree: " + " or ".join(
+            f"'{names[id].name}'" for id in ranked if id in named
+        )
+        suggestion = None
+    elif top is None:
+        reason = f"no topic of '{owner.name}' recognised"
+        suggestion = None
+    else:
+        suggestion = str(top)
+        if not green:
+            reason = f"the contact '{owner.name}' is only suggested"
+        elif top in namers:
+            reason = f"only one signal names '{names[top].name}'"
+        elif top in evidence:
+            reason = f"only an identifier points to '{names[top].name}'"
+        else:
+            reason = f"'{names[top].name}' is only suggested: no signal is sure of it"
+    return FieldCheck(
+        field=TOPIC,
+        outcome=Outcome.OK,
+        confidence=1.0,
+        reason=reason,
+        proposed=proposed,
+        suggestion=suggestion,
+        candidates=listed,
+    )
+
+
 # --- helpers ----------------------------------------------------------------------------------
 
 
@@ -626,7 +788,7 @@ def _majority[K](votes: Counter[K], found: int, *, undivided: bool = False) -> K
 def _neighbour_source[K](
     id: K, votes: Counter[K], neighbours: Sequence[Neighbour], named: K | None
 ) -> CandidateSource:
-    carrying = [item for item in neighbours if id in (item.contact, item.document_type)]
+    carrying = [item for item in neighbours if id in (item.contact, item.document_type, item.topic)]
     similarities = [item.similarity for item in carrying if item.similarity is not None]
     count = votes.get(id, 0)
     return CandidateSource(

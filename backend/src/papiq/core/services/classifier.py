@@ -1,5 +1,5 @@
 """The classifier (see `ports.classifier`): trained from the documents a person confirmed, and
-asked for a new document's contact, type and tags (the signal `signal_classifier`).
+asked for a new document's contact, type, topic and tags (the signal `signal_classifier`).
 
 A recurring check queues a training once enough documents were confirmed since the last one
 (or, without a model, once there are enough at all); an admin can ask for one. Training also
@@ -273,8 +273,11 @@ class ClassifierService:
         documents: list[Document] = []
         after: DocumentPosition | None = None
         async with self._uow() as uow:
-            # Only the tags the classification sets are learned, not those set by hand.
-            targets = {tag.id for tag in await uow.tags.list_all() if tag.is_target}
+            # Only the tags and topics the classification sets are learned, not those set by
+            # hand.
+            tags = await uow.tags.list_all()
+            targets = {tag.id for tag in tags if tag.is_target}
+            topics = {tag.id for tag in tags if tag.is_topic_target}
         while True:
             async with self._uow() as uow:
                 page = await uow.documents.query(
@@ -296,6 +299,7 @@ class ClassifierService:
                 contact=document.contact_id,
                 document_type=document.document_type_id,
                 tags=frozenset(document.tag_ids & targets),
+                topic=document.topic_id if document.topic_id in topics else None,
             )
             examples.append(_Example(document, example))
         return examples

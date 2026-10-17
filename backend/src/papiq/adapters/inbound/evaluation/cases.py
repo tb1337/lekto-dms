@@ -125,7 +125,14 @@ class FakeAnswer:
             if isinstance(proposal, dict) and proposal.get("value") is not None:
                 value = _written(proposal["value"])
                 fields.append({"key": key, "value": value, "evidence": proposal.get("evidence")})
-        return {"recipient": None, "title": None, "language": "de", **answer, "fields": fields}
+        return {
+            "recipient": None,
+            "title": None,
+            "language": "de",
+            "topic": None,
+            **answer,
+            "fields": fields,
+        }
 
 
 @dataclass(frozen=True)

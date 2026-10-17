@@ -30,6 +30,7 @@ ANSWER = {
     "recipient": "Max Nord",
     "document_type": "Rechnung",
     "new_document_type": None,
+    "topic": None,
     "tags": ["Strom", " "],
     "new_tags": [],
     "document_date": {"value": "2026-03-31", "evidence": None},

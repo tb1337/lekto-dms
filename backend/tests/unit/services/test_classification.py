@@ -128,6 +128,7 @@ def proposal(**changes: Any) -> JsonObject:
         "recipient": "Max Nord",
         "document_type": "Rechnung",
         "new_document_type": None,
+        "topic": None,
         "tags": ["Strom"],
         "new_tags": [],
         "document_date": {"value": "2026-03-31", "evidence": "Musterstadt, 31.03.2026"},
@@ -500,7 +501,7 @@ async def test_a_verified_classification_is_applied(world: World) -> None:
         "signals": {"signal_facts": "facts", "signal_llm": "fake-llm 1"},
     }
     found = checks(result)
-    assert set(found) == {"contact", "document_type", "tags", "document_date"}
+    assert set(found) == {"contact", "document_type", "topic", "tags", "document_date"}
     (candidate, *_) = found["contact"].candidates
     assert [source.signal for source in candidate.sources] == ["signal_llm", "signal_facts"]
     assert candidate.sources[1].named_in_text is True
@@ -1378,7 +1379,7 @@ async def test_a_verified_document_is_filed_green(world: World) -> None:
     proposed = next(entry for entry in log if entry.node is Node.SIGNAL_LLM)
     assert proposed.result.output["answer"] == proposal()
     judged = next(entry for entry in log if entry.node is Node.JUDGE)
-    assert len(checks(judged.result)) == 4
+    assert len(checks(judged.result)) == 5
     assert judged.result.input["signals"] == {
         "signal_classifier": "abstained",
         "signal_facts": "facts",

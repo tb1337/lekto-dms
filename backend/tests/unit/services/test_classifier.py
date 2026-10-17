@@ -13,7 +13,7 @@ from papiq.core.domain.errors import ConflictError, NotFoundError, PermissionDen
 from papiq.core.domain.events import ClassifierTrained
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import ContactId
-from papiq.core.domain.master_data import Assignment, Contact, Tag
+from papiq.core.domain.master_data import Assignment, Contact, Tag, TagScope
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import UnitOfWork
 from papiq.core.services.classifier import (
@@ -114,6 +114,40 @@ async def test_only_the_tags_the_classification_sets_are_learned(world: World) -
     assert predicted is not None
     assert set(predicted[1].tags) == {electricity.id}
     del owner
+
+
+async def test_topics_are_learned_and_given_to_the_identifiers_of_one_topic(
+    world: World,
+) -> None:
+    """The utility's documents carry "Strom", the bank's "Girokonto" (set by hand: not
+    learned as a class). The utility's IBAN stands only in documents of "Strom": it points to
+    it."""
+    _, utility, bank = await corpus(world)
+    power = Tag.create(name="Strom", now=builders.NOW, scope=TagScope.TOPIC)
+    account = Tag.create(
+        name="Girokonto", now=builders.NOW, scope=TagScope.TOPIC, assignment=Assignment.MANUAL
+    )
+    async with world.uow() as uow:
+        await uow.tags.add(power)
+        await uow.tags.add(account)
+        for contact, topic in ((utility, power), (bank, account)):
+            stored = await uow.contacts.get(contact.id)
+            stored.set_topics([topic.id])
+            await uow.contacts.update(stored)
+        for document in await uow.documents.list_all():
+            topic = power if document.contact_id == utility.id else account
+            document.apply_changes(DocumentChanges(topic_id=topic.id), {}, world.clock.now())
+            await uow.documents.update(document)
+        await uow.commit()
+    classifier = service(world)
+    await classifier.train()
+    async with world.uow() as uow:
+        (learned,) = (await uow.contacts.get(utility.id)).identifiers
+        assert (learned.kind, learned.topic_id) == (IdentifierKind.IBAN, power.id)
+    predicted = await classifier.predict("Stadtwerke Zählerstand Stromrechnung")
+    assert predicted is not None
+    # One topic the classification sets is no target to tell apart.
+    assert predicted[1].topics == []
 
 
 async def test_two_trainings_at_once_take_two_numbers(world: World) -> None:

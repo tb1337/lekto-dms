@@ -103,6 +103,7 @@ def answers(case: Case) -> FakeLanguageModel:
         "recipient": None,
         "document_type": case.kind,
         "new_document_type": None,
+        "topic": None,
         "tags": [],
         "new_tags": [],
         "language": "de",

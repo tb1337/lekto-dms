@@ -15,7 +15,8 @@ How the actions of all matching rules come together (`plan`):
 - A single field (space, contact, type, topic, title, a field) set by one rule, or by several
   to the same value, is set. Several different values are a conflict: nothing is set.
 - A topic is set only if the contact the rules leave enables it (otherwise the action is
-  skipped and noted); a contact set that does not enable the document's topic clears it.
+  skipped and noted); a contact set that does not enable the document's topic clears it,
+  unless a person chose that topic: then the contact is overruled.
 - A value a person decided (confirming in the inbox, or changing the document) is never
   replaced: the rule is overruled and that is logged.
 - A value the model set and no person confirmed is not replaced either: a conflict.
@@ -618,6 +619,7 @@ class _Planner:
             for action in match.rule.definition.actions:
                 self._collect(match, report, action)
         result: dict[str, JsonValue] = {}
+        self._person_topic()
         for field_name in (DOCUMENT_TYPE, CONTACT, SPACE):
             self._single(field_name, result)
         self._topic(result)
@@ -817,6 +819,24 @@ class _Planner:
                     field=field_name, outcome=Outcome.OK, confidence=1, value=value, proposed=value
                 ),
             )
+
+    def _person_topic(self) -> None:
+        """A contact a rule sets that does not enable the topic a person chose is overruled:
+        the person's topic stays, and so does the contact that enables it."""
+        topic = self._document.topic_id
+        if TOPIC not in self._s.locked or topic is None or CONTACT not in self._candidates:
+            return
+        kept = []
+        for candidate in self._candidates[CONTACT]:
+            if topic in self._s.taxonomy.topics_of(UUID(str(candidate.value))):
+                kept.append(candidate)
+            else:
+                reason = f"a person chose topic {topic}, which it does not enable"
+                candidate.report.notes.append(Note(CONTACT, "overruled", reason))
+        if kept:
+            self._candidates[CONTACT] = kept
+        else:
+            del self._candidates[CONTACT]
 
     def _topic(self, result: dict[str, JsonValue]) -> None:
         """The topic the rules set, if the contact they leave enables it; a contact set that

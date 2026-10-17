@@ -12,8 +12,10 @@ from papiq.core.domain.rules import (
     ConditionField,
     ForceReview,
     Operator,
+    SetContact,
     SetSpace,
     SetTopic,
+    Trigger,
 )
 from papiq.core.domain.spaces import ShareLevel
 from tests.unit.services.conftest import World
@@ -167,3 +169,38 @@ async def test_a_topic_the_confirmed_contact_cleared_is_no_decision_of_the_perso
     )
     person = [entry for entry in await r.log(document) if entry.result.model_version == PERSON]
     assert person[-1].result.output["changed"] == ["contact"]
+
+
+async def test_a_rule_keeps_the_topic_a_person_chose(world: World) -> None:
+    """A change rule sets a contact that does not enable the topic the person just chose: the
+    rule's contact is overruled, the person's topic stays with its contact."""
+    r = await rule_world(world)
+    owner = await world.user()
+    service = world.master_data
+    work = await service.create_tag(r.admin.id, "Arbeit", scope=TagScope.TOPIC)
+    nord = await service.create_contact(r.admin.id, "Nord", topic_ids=[work.id])
+    sued = await service.create_contact(r.admin.id, "Süd")
+    await r.user_rule(
+        owner,
+        definition("ingest", channel_api(), SetContact(nord.id), triggers=[Trigger.INGEST]),
+    )
+    await r.user_rule(
+        owner,
+        definition("change", topic_is(work.id), SetContact(sued.id), triggers=[Trigger.CHANGE]),
+    )
+    document = await r.arrive(owner)
+    assert document.contact_id == nord.id
+    change = await r.documents.change_metadata(
+        owner.id, document.id, DocumentChanges(topic_id=work.id)
+    )
+    assert (change.document.contact_id, change.document.topic_id) == (nord.id, work.id)
+    assert ("contact", "overruled") in notes(
+        (await r.rule_entries(document, RULES_CHANGE))[-1].result.output
+    )
+    # A contact that enables it is set (when the condition comes true again); the topic stays.
+    await service.change_contact(r.admin.id, sued.id, topic_ids=[work.id])
+    await r.documents.change_metadata(owner.id, document.id, DocumentChanges(topic_id=None))
+    again = await r.documents.change_metadata(
+        owner.id, document.id, DocumentChanges(topic_id=work.id)
+    )
+    assert (again.document.contact_id, again.document.topic_id) == (sued.id, work.id)

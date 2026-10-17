@@ -336,7 +336,8 @@ insurance group that is employer and insurer at once.
   without a contact there is no topic (`422`). An admin who gives a topic the contact does not
   enable enables it there in the same transaction; anyone else gets `422`. A topic cleared
   that way is no decision of the person's: change rules may set another one. A rule that sets
-  another contact clears a topic it does not enable too.
+  another contact clears a topic it does not enable too, unless a person chose the topic: then
+  the rule's contact is overruled.
 - **Assignment.** An `auto` topic is proposed and set by the classification, a `manual` one
   only by a person or a rule. Topics are shown at the document by default (a square chip).
 - **Filters, counts and deleting** work as for document tags: a topic finds the documents with

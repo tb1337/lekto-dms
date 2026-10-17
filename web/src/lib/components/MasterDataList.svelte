@@ -14,7 +14,7 @@
 	import { contactMatches, typeMatches } from '#lib/master-search.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { type Item, KINDS } from '#lib/masterdata-api.ts';
-	import type { FieldDefinition, Tag } from '#lib/masterdata.svelte.ts';
+	import type { FieldDefinition, Tag, TagScope } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { scope } from '#lib/scope.svelte.ts';
@@ -33,8 +33,16 @@
 	let problem = $state<string | null>(null);
 
 	const byId = $derived(new Map(tags.map((tag) => [tag.id, tag])));
-	const group = $derived(page.url.searchParams.get('group'));
-	const topic = $derived(kind === 'contacts' ? page.url.searchParams.get('topic') : null);
+	/** `id` if it names a tag of `scope`; else null: the filter is ignored. */
+	function known(id: string | null, scope: TagScope): string | null {
+		return id !== null && byId.get(id)?.scope === scope ? id : null;
+	}
+	const group = $derived(
+		known(page.url.searchParams.get('group'), kind === 'contacts' ? 'contact' : 'document_type')
+	);
+	const topic = $derived(
+		kind === 'contacts' ? known(page.url.searchParams.get('topic'), 'topic') : null
+	);
 	const filterTag = $derived(byId.get(group ?? topic ?? '') ?? null);
 	const listed = $derived.by(() => {
 		let list = items ?? [];
@@ -64,6 +72,19 @@
 			problem = describeError(error);
 		}
 	}
+
+	// Once the tags are there, a filter naming no tag of its kind (deleted, mistyped) leaves the
+	// URL instead of emptying the list without a chip to remove.
+	$effect(() => {
+		if (items === null) return;
+		const params = page.url.searchParams;
+		const stale =
+			(params.has('group') && group === null) ||
+			(kind === 'contacts' && params.has('topic') && topic === null);
+		if (!stale) return;
+		const kept = [`tab=${kind}`, group && `group=${group}`, topic && `topic=${topic}`];
+		void goto(`?${kept.filter(Boolean).join('&')}`, { replace: true, reset: false });
+	});
 
 	// A link to a document type opens it.
 	onMount(() => {

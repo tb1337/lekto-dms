@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
@@ -129,6 +129,17 @@ describe('MasterDataList', () => {
 			screen.getByRole('button', { name: m.master_filter_remove({ name: label }) })
 		);
 		expect(nav.goto).toHaveBeenCalledWith('?tab=contacts', { reset: false });
+	});
+
+	it('ignores a filter that names no tag of its kind, and takes it out of the URL', async () => {
+		nav.url = new URL('http://papiq/ui/admin/master-data?tab=contacts&group=gone');
+		render(MasterDataList, { kind: 'contacts' });
+		expect(await screen.findByText('Nord Versicherungsgruppe')).toBeTruthy();
+		expect(screen.getByText('Sparkasse Musterstadt')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /gone/ })).toBeNull();
+		await waitFor(() =>
+			expect(nav.goto).toHaveBeenCalledWith('?tab=contacts', { replace: true, reset: false })
+		);
 	});
 
 	it('on a phone opens a contact with a tap on its row', async () => {

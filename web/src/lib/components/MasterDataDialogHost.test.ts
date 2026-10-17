@@ -368,6 +368,30 @@ describe('creating from a picker', () => {
 	});
 });
 
+describe('stacked dialogs', () => {
+	it('closes only the tag dialog on top with Escape', async () => {
+		const user = userEvent.setup();
+		render(WithDialogs);
+		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
+		expect(await screen.findByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
+		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
+		const picker = await screen.findByRole('dialog', { name: m.master_contact_groups() });
+		await user.type(within(picker).getByRole('searchbox'), 'Makler');
+		await user.click(within(picker).getByText(m.tag_create_details()));
+		const nested = await screen.findByRole('dialog', { name: m.master_add_contact_group() });
+		expect(within(nested).getByDisplayValue('Makler')).toBeTruthy();
+		await user.keyboard('{Escape}');
+		await waitFor(() =>
+			expect(screen.queryByRole('dialog', { name: m.master_add_contact_group() })).toBeNull()
+		);
+		expect(masterDataDialogs.nested).toBeNull();
+		expect(masterDataDialogs.request).not.toBeNull();
+		expect(screen.getByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
+		const posted = fetchMock.mock.calls.some((call) => call[0].method === 'POST');
+		expect(posted).toBe(false);
+	});
+});
+
 describe('the editor', () => {
 	it('deletes a tag after asking; refused, it stays open', async () => {
 		const user = userEvent.setup();

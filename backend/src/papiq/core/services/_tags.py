@@ -5,13 +5,13 @@ contact (type) is in the group or a group below it. The repository and the index
 ("one of these") and know nothing of the trees (`DocumentFilter`).
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from uuid import UUID
 
 from papiq.core.domain.documents import Document
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId, UserId
-from papiq.core.domain.master_data import TagScope
+from papiq.core.domain.master_data import Contact, DocumentType, TagScope
 from papiq.core.domain.tag_tree import TagTree
 from papiq.core.ports import CountBy, DocumentFilter, UnitOfWork
 from papiq.core.ports.repository import TagSets
@@ -86,12 +86,20 @@ async def tag_counts(uow: UnitOfWork, user: UserId | None) -> dict[UUID, int]:
         counts.pop(parent, None)
     if parents:
         counts.update(await uow.documents.count_tagged(parents, user))
-    for scope, by, members in (
-        (TagScope.CONTACT, CountBy.CONTACT, await uow.contacts.list_all()),
-        (TagScope.DOCUMENT_TYPE, CountBy.DOCUMENT_TYPE, await uow.document_types.list_all()),
+    for scope, by in (
+        (TagScope.CONTACT, CountBy.CONTACT),
+        (TagScope.DOCUMENT_TYPE, CountBy.DOCUMENT_TYPE),
     ):
+        groups = tree.of_scope(scope)
+        if not groups:
+            continue
+        members: Sequence[Contact | DocumentType] = (
+            await uow.contacts.list_all()
+            if scope is TagScope.CONTACT
+            else await uow.document_types.list_all()
+        )
         per_member = await uow.documents.count_by(by, user)
-        for group in tree.of_scope(scope):
+        for group in groups:
             below = tree.with_descendants([group.id])
             total = sum(
                 per_member.get(member.id, 0) for member in members if member.group_ids & below

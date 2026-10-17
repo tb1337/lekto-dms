@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import Mapping
 from datetime import timedelta
+from typing import Any
 
 import pytest
 
@@ -166,11 +167,13 @@ async def test_a_contact_changed_meanwhile_stores_the_model_again(
     admin = await world.user(role=Role.ADMIN)
     calls = 0
 
-    async def meanwhile(uow: UnitOfWork, learned: Mapping[ContactId, list[Identifier]]) -> int:
+    async def meanwhile(
+        uow: UnitOfWork, learned: Mapping[ContactId, list[Identifier]], **options: Any
+    ) -> int:
         """The learned identifiers are staged; then the admin's change commits first."""
         nonlocal calls
         calls += 1
-        staged = await replace_learned_identifiers(uow, learned)
+        staged = await replace_learned_identifiers(uow, learned, **options)
         if calls == 1:
             await world.master_data.change_contact(admin.id, utility.id, aliases=["SWM"])
         return staged

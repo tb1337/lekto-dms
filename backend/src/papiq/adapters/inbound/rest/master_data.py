@@ -270,6 +270,26 @@ async def remove_logo(id: UUID, user: CurrentUser, context: Context) -> None:
     await context.logos.remove(user, ContactId(id))
 
 
+@contacts.post(
+    "/{id}/logo/fetch",
+    status_code=202,
+    summary="Fetch a contact's logo from its website",
+    description=(
+        ADMINS_ONLY + " Only with `PAPIQ_LOGO_FETCH` (503 otherwise; `GET /pipeline` tells, "
+        "`logo_fetch`). The worker asks the website at each of the contact's domains in turn "
+        "for its icon (HTTPS to public addresses only), also one whose fetch failed before, "
+        "and stores the first that fits in place of a fetched logo; `ContactOut.logo` or "
+        "`logo_failure` tell the outcome. 409 while the contact has an uploaded logo (it is "
+        "never replaced), 422 without a domain among its identifiers."
+    ),
+    response_class=Response,
+    responses={202: {"description": "Queued"}, **problem_responses(401, 403, 404, 409, 422, 503)},
+)
+async def fetch_logo(id: UUID, user: CurrentUser, context: Context) -> Response:
+    await context.logos.request_fetch(user, ContactId(id))
+    return Response(status_code=202)
+
+
 @contacts.get(
     "/{id}/logo",
     summary="A contact's logo",

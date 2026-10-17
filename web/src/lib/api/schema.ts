@@ -521,6 +521,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/contacts/{id}/logo/fetch': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Fetch a contact's logo from its website
+		 * @description Admins only. Only with `PAPIQ_LOGO_FETCH` (503 otherwise; `GET /pipeline` tells, `logo_fetch`). The worker asks the website at each of the contact's domains in turn for its icon (HTTPS to public addresses only), also one whose fetch failed before, and stores the first that fits in place of a fetched logo; `ContactOut.logo` or `logo_failure` tell the outcome. 409 while the contact has an uploaded logo (it is never replaced), 422 without a domain among its identifiers.
+		 */
+		post: operations['fetch_logo_api_v1_contacts__id__logo_fetch_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/document-types': {
 		parameters: {
 			query?: never;
@@ -1458,7 +1478,7 @@ export interface paths {
 		};
 		/**
 		 * The processing graph
-		 * @description The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Papiq; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured.
+		 * @description The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Papiq; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured; `logo_fetch` says whether Papiq fetches the logos of contacts from their websites.
 		 */
 		get: operations['pipeline_api_v1_pipeline_get'];
 		put?: never;
@@ -3934,6 +3954,7 @@ export interface components {
 		/**
 		 * PipelineOut
 		 * @example {
+		 *       "logo_fetch": false,
 		 *       "nodes": [
 		 *         {
 		 *           "node": "receive",
@@ -3979,6 +4000,11 @@ export interface components {
 			nodes: components['schemas']['GraphNodeOut'][];
 			/** @description The vision language model a person can have documents read with (`POST /documents/{id}/vision`); none if it is not configured. */
 			vision: components['schemas']['VisionOut'] | null;
+			/**
+			 * Logo Fetch
+			 * @description Whether Papiq fetches the logos of contacts from their websites (`PAPIQ_LOGO_FETCH`; `POST /contacts/{id}/logo/fetch`).
+			 */
+			logo_fetch: boolean;
 		};
 		/** Processing */
 		Processing: {
@@ -9035,6 +9061,145 @@ export interface operations {
 					 *       "title": "Internal Server Error",
 					 *       "status": 500,
 					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	fetch_logo_api_v1_contacts__id__logo_fetch_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Queued */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner controls processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Service Unavailable",
+					 *       "status": 503,
+					 *       "detail": "database: unreachable"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

@@ -21,6 +21,7 @@ from papiq.core.domain.identity import Credential, check_new_password
 from papiq.core.domain.pipeline import NODES, Node, NodeResult
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import Role, User
+from papiq.core.ports.logos import LogoFetcher
 from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.auth import AuthService
 from papiq.core.services.documents import DocumentService
@@ -115,6 +116,13 @@ class World:
     @property
     def logos(self) -> LogoService:
         return LogoService(self.uow, self.clock, self.object_store, self.images)
+
+    def fetching(self, fetcher: LogoFetcher) -> tuple[MasterDataService, LogoService]:
+        """Master data and logos with fetching on."""
+        master = MasterDataService(
+            self.uow, self.clock, builders.TEMPLATES, store=self.object_store, fetch_logos=True
+        )
+        return master, LogoService(self.uow, self.clock, self.object_store, self.images, fetcher)
 
     @property
     def documents(self) -> DocumentService:

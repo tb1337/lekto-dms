@@ -4021,6 +4021,153 @@
         ]
       }
     },
+    "/api/v1/contacts/{id}/logo/fetch": {
+      "post": {
+        "tags": [
+          "master data"
+        ],
+        "summary": "Fetch a contact's logo from its website",
+        "description": "Admins only. Only with `PAPIQ_LOGO_FETCH` (503 otherwise; `GET /pipeline` tells, `logo_fetch`). The worker asks the website at each of the contact's domains in turn for its icon (HTTPS to public addresses only), also one whose fetch failed before, and stores the first that fits in place of a fetched logo; `ContactOut.logo` or `logo_failure` tell the outcome. 409 while the contact has an uploaded logo (it is never replaced), 422 without a domain among its identifiers.",
+        "operationId": "fetch_logo_api_v1_contacts__id__logo_fetch_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Queued"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only the owner controls processing of this document"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "database: unreachable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/document-types": {
       "get": {
         "tags": [
@@ -12787,7 +12934,7 @@
           "pipeline"
         ],
         "summary": "The processing graph",
-        "description": "The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Papiq; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured.",
+        "description": "The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Papiq; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured; `logo_fetch` says whether Papiq fetches the logos of contacts from their websites.",
         "operationId": "pipeline_api_v1_pipeline_get",
         "responses": {
           "200": {
@@ -18861,16 +19008,23 @@
               }
             ],
             "description": "The vision language model a person can have documents read with (`POST /documents/{id}/vision`); none if it is not configured."
+          },
+          "logo_fetch": {
+            "type": "boolean",
+            "title": "Logo Fetch",
+            "description": "Whether Papiq fetches the logos of contacts from their websites (`PAPIQ_LOGO_FETCH`; `POST /contacts/{id}/logo/fetch`)."
           }
         },
         "type": "object",
         "required": [
           "nodes",
-          "vision"
+          "vision",
+          "logo_fetch"
         ],
         "title": "PipelineOut",
         "examples": [
           {
+            "logo_fetch": false,
             "nodes": [
               {
                 "node": "receive",

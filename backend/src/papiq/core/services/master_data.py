@@ -41,7 +41,7 @@ from papiq.core.services._access import contact_topics_lock, load_actor
 
 # A rename queues the indexing service's refresh job; the worker runs it through that service.
 from papiq.core.services.indexing import REFRESH_JOB
-from papiq.core.services.logos import drop_logo
+from papiq.core.services.logos import drop_logo, queue_logo_fetch
 from papiq.core.services.rules.management import renamed_field, uses_field
 from papiq.core.services.rules.references import disable_rules, misfits, refers_to
 
@@ -80,17 +80,20 @@ class MasterDataService:
         *,
         index_renames: bool = False,
         store: ObjectStore | None = None,
+        fetch_logos: bool = False,
     ) -> None:
         """`templates`: reads which fields the templates of rules use. `index_renames`:
         renaming a contact, type or tag, nesting a tag elsewhere and changing the groups of a
         contact or type queue a job that brings the search index of the documents concerned
         up to date (set when there is a search index). `store`: where the logos of contacts
-        are, which go with a deleted contact."""
+        are, which go with a deleted contact. `fetch_logos`: a contact without a logo that
+        gets a domain among its identifiers queues fetching its logo (`logos`)."""
         self._uow = uow
         self._clock = clock
         self._templates = templates
         self._index_renames = index_renames
         self._store = store
+        self._fetch_logos = fetch_logos
 
     async def create_contact(
         self,
@@ -112,7 +115,9 @@ class MasterDataService:
             item.set_identifiers(identifiers)
             await _check_contact(uow, item)
 
-        return await self._create(actor, _contacts, item, check)
+        return await self._create(
+            actor, _contacts, item, check, after=lambda uow: self._logo_for(uow, item, ())
+        )
 
     async def rename_contact(self, actor: UserId, id: ContactId, name: str) -> Contact:
         return await self.change_contact(actor, id, name=name)
@@ -139,9 +144,12 @@ class MasterDataService:
         `topic_ids` replaces the topics it enables (tags of scope `topic`). Taking one away is
         a conflict while a document of the contact carries it; its identifiers lose it. An
         identifier points to one of the topics the contact enables after the change, or to
-        none (ValidationError otherwise)."""
+        none (ValidationError otherwise). A new domain among the identifiers of a contact
+        without a logo queues fetching it, with fetching on."""
+        known: list[str] = []
 
         def change(item: Contact) -> None:
+            known.extend(item.domains)
             if name is not None:
                 item.rename(name)
             if aliases is not None:
@@ -171,6 +179,7 @@ class MasterDataService:
             id,
             change,
             check=check,
+            after=lambda uow, item: self._logo_for(uow, item, known),
             index_as="contact",
             indexed=lambda item: (item.name, item.group_ids),
             # A document that gets a topic meanwhile is seen, or sees it gone.
@@ -184,8 +193,10 @@ class MasterDataService:
         another contact learned or rejected moves here; one another contact has entered is a
         conflict."""
         entered = Identifier(identifier.kind, identifier.value, MANUAL, identifier.topic_id)
+        known: list[str] = []
 
         def change(item: Contact) -> None:
+            known.extend(item.domains)
             manual = [e for e in item.identifiers if e.source is MANUAL and e.key != entered.key]
             rejected = [
                 e
@@ -195,8 +206,18 @@ class MasterDataService:
             item.set_identifiers([*manual, entered], rejected)
 
         return await self._change(
-            actor, _contacts, id, change, check=lambda uow, item: _check_contact(uow, item)
+            actor,
+            _contacts,
+            id,
+            change,
+            check=lambda uow, item: _check_contact(uow, item),
+            after=lambda uow, item: self._logo_for(uow, item, known),
         )
+
+    async def _logo_for(self, uow: UnitOfWork, contact: Contact, known: Collection[str]) -> None:
+        """With fetching on: the contact's logo is fetched for a domain beyond `known`."""
+        if self._fetch_logos:
+            await queue_logo_fetch(uow, contact, known, self._now())
 
     async def create_document_type(
         self,
@@ -922,12 +943,17 @@ async def _check_contact_identifiers(uow: UnitOfWork, contact: Contact) -> None:
 
 
 async def replace_learned_identifiers(
-    uow: UnitOfWork, learned: Mapping[ContactId, Collection[Identifier]]
+    uow: UnitOfWork,
+    learned: Mapping[ContactId, Collection[Identifier]],
+    *,
+    fetch_logos_at: datetime | None = None,
 ) -> int:
     """Make `learned` the learned identifiers of all contacts (training found them), in `uow`
     without committing; a contact not in `learned` has none afterwards. Values entered or
     rejected anywhere stay where they are. A learned one points to its topic if its contact
-    enables it (`Contact.set_learned`). Returns how many are learned."""
+    enables it (`Contact.set_learned`). Returns how many are learned. `fetch_logos_at` (with
+    fetching on): a contact without a logo that learned a new domain gets its logo fetched,
+    queued for then."""
     contacts = await uow.contacts.list_all()
     taken = {
         item.key
@@ -950,10 +976,13 @@ async def replace_learned_identifiers(
     count = 0
     for contact in contacts:
         before = list(contact.identifiers)
+        known = contact.domains
         contact.set_learned(fresh[contact.id])
         count += sum(item.source is IdentifierSource.LEARNED for item in contact.identifiers)
         if contact.identifiers != before:
             await uow.contacts.update(contact)
+            if fetch_logos_at is not None:
+                await queue_logo_fetch(uow, contact, known, fetch_logos_at)
     return count
 
 

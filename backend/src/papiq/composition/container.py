@@ -560,7 +560,12 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         None
         if container.classifier is None
         else ClassifierService(
-            uow, store, clock, container.classifier, classifier_policy_of(settings)
+            uow,
+            store,
+            clock,
+            container.classifier,
+            classifier_policy_of(settings),
+            fetch_logos=container.logo_fetcher is not None,
         )
     )
     index, embeddings = container.search_index, container.embeddings
@@ -627,9 +632,14 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         users=UserService(uow, clock, container.password_hasher),
         spaces=SpaceService(uow, clock),
         master_data=MasterDataService(
-            uow, clock, container.templates, index_renames=index is not None, store=store
+            uow,
+            clock,
+            container.templates,
+            index_renames=index is not None,
+            store=store,
+            fetch_logos=container.logo_fetcher is not None,
         ),
-        logos=LogoService(uow, clock, store, container.images),
+        logos=LogoService(uow, clock, store, container.images, container.logo_fetcher),
         rules=RuleService(uow, clock, container.templates),
         webhooks=WebhookService(uow, clock, container.cipher, webhook_policy_of(settings)),
         webhook_delivery=WebhookDeliveryService(

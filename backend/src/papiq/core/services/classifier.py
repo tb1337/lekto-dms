@@ -99,7 +99,12 @@ class ClassifierService:
         clock: Clock,
         classifier: Classifier,
         policy: ClassifierPolicy | None = None,
+        *,
+        fetch_logos: bool = False,
     ) -> None:
+        """`fetch_logos`: a contact without a logo that learns a domain gets its logo fetched
+        (`logos`)."""
+        self._fetch_logos = fetch_logos
         self._uow = uow
         self._store = store
         self._clock = clock
@@ -242,7 +247,11 @@ class ClassifierService:
                 for item in contact.identifiers
                 if item.source is not IdentifierSource.LEARNED
             ]
-            learned = await replace_learned_identifiers(uow, mine_identifiers(found, taken))
+            learned = await replace_learned_identifiers(
+                uow,
+                mine_identifiers(found, taken),
+                fetch_logos_at=self._clock.now() if self._fetch_logos else None,
+            )
             summary: JsonObject = {
                 **trained.summary,
                 "method": self._classifier.name,

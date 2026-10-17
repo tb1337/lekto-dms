@@ -1,31 +1,65 @@
-"""Logos of contacts: uploaded by admins, read by every signed-in user (master data is global).
+"""Logos of contacts: uploaded by admins, fetched from their websites, read by every signed-in
+user (master data is global).
 
 The logo is stored as a small WebP at `objects.logo_key`; the contact names where it came from
 and when (`Contact.logo`). Storing and removing the file and the contact's change happen under
 one lock per contact (`logo_lock`), so that the file and the contact always tell the same
 logo, also when an upload, a removal, a deletion of the contact and a fetch meet.
+
+Fetching (with a `LogoFetcher`, `PAPIQ_LOGO_FETCH`) runs as the job `contacts.logo`, queued
+when a contact without a logo gets a domain among its identifiers (entered by hand, learned by
+training or attached from a document: `queue_logo_fetch`), when an admin asks
+(`request_fetch`) and for every contact without one (`request_all`, the command
+`fetch-logos`). An uploaded logo is never replaced. A fetch that finds nothing is noted with
+its domain (`Contact.logo_failure`); that domain is tried again only when an admin asks.
 """
 
+import asyncio
+import logging
+from collections.abc import Collection
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from uuid import UUID
 
 from papiq.core.domain import media_types
-from papiq.core.domain.appearance import ContactLogo, LogoSource
+from papiq.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
 from papiq.core.domain.errors import (
+    ConcurrencyError,
+    ConflictError,
+    ImageError,
+    LogoFetchDisabledError,
+    LogoFetchError,
     NotFoundError,
     PermissionDeniedError,
     UnsupportedMediaTypeError,
     ValidationError,
 )
 from papiq.core.domain.ids import ContactId, UserId
+from papiq.core.domain.jobs import Job
 from papiq.core.domain.master_data import Contact
 from papiq.core.domain.permissions import can_manage_master_data
-from papiq.core.ports import Clock, ImageNormaliser, ObjectStore, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports import (
+    Clock,
+    ImageNormaliser,
+    LogoFetcher,
+    ObjectStore,
+    UnitOfWork,
+    UnitOfWorkFactory,
+)
 from papiq.core.services._access import load_actor
 from papiq.core.services.objects import logo_key
+
+log = logging.getLogger(__name__)
 
 LOGO_MAX_SIZE = 1024 * 1024
 """Bytes of an uploaded image."""
 LOGO_TYPE = "image/webp"
+LOGO_JOB = "contacts.logo"
+MAX_DOMAINS = 3
+"""Domains of a contact an admin's request tries, in order, until one has a logo."""
+_LEASE = timedelta(minutes=3)  # a fetch takes at most 30 s per domain, and the image
+_ATTEMPTS = 3  # tries of a job that broke for another reason than the website
+_RETRY_DELAY = timedelta(minutes=5)
 
 
 def logo_lock(contact: ContactId) -> str:
@@ -47,11 +81,19 @@ class LogoService:
         clock: Clock,
         store: ObjectStore,
         images: ImageNormaliser,
+        fetcher: LogoFetcher | None = None,
     ) -> None:
+        """`fetcher`: with one, logos are fetched from the websites of contacts."""
         self._uow = uow
         self._clock = clock
         self._store = store
         self._images = images
+        self._fetcher = fetcher
+
+    @property
+    def fetching(self) -> bool:
+        """Whether logos are fetched from websites (`PAPIQ_LOGO_FETCH`)."""
+        return self._fetcher is not None
 
     async def upload(self, actor: UserId, id: ContactId, data: bytes) -> Contact:
         """Admins only. `data`, a PNG, JPEG or WebP image of at most `LOGO_MAX_SIZE` bytes,
@@ -99,6 +141,182 @@ class LogoService:
         if contact.logo is None:
             raise NotFoundError("logo of contact", id)
         return StoredLogo(await self._store.get(logo_key(id)), contact.logo)
+
+    # --- fetching ---------------------------------------------------------------------------
+
+    async def request_fetch(self, actor: UserId, id: ContactId) -> None:
+        """Admins only: fetch the contact's logo from its website now, trying its domains in
+        turn, also one whose fetch failed before; a logo found replaces a fetched one.
+        LogoFetchDisabledError without fetching; ConflictError while it has an uploaded logo;
+        ValidationError without a domain among its identifiers."""
+        async with self._uow() as uow:
+            await _require_admin(uow, actor)
+            if self._fetcher is None:
+                raise LogoFetchDisabledError("Papiq does not fetch logos (PAPIQ_LOGO_FETCH is off)")
+            contact = await uow.contacts.get(id)
+            if contact.logo is not None and contact.logo.source is LogoSource.UPLOADED:
+                raise ConflictError(
+                    f"'{contact.name}' has an uploaded logo; a fetched one never replaces it"
+                )
+            if not contact.domains:
+                raise ValidationError(f"'{contact.name}' has no domain among its identifiers")
+            await _enqueue(uow, contact.id, None, self._clock.now())
+            await uow.commit()
+
+    async def request_all(self) -> int:
+        """`fetch-logos`: queue a fetch for every contact without a logo that has a domain
+        whose fetch has not failed. Returns how many. LogoFetchDisabledError without
+        fetching."""
+        if self._fetcher is None:
+            raise LogoFetchDisabledError("Papiq does not fetch logos (PAPIQ_LOGO_FETCH is off)")
+        queued = 0
+        async with self._uow() as uow:
+            for contact in await uow.contacts.list_all():
+                queued += await queue_logo_fetch(uow, contact, (), self._clock.now())
+            await uow.commit()
+        return queued
+
+    async def run_next_job(self) -> bool:
+        """Claim and run a due fetch; False if none was due (or there is no fetcher)."""
+        if self._fetcher is None:
+            return False
+        async with self._uow() as uow:
+            job = await uow.jobs.claim(now=self._clock.now(), lease=_LEASE, kinds=[LOGO_JOB])
+            await uow.commit()
+        if job is None:
+            return False
+        try:
+            await self._run(job)
+        except asyncio.CancelledError:
+            await asyncio.shield(self._release(job))
+            raise
+        return True
+
+    async def fetch(self, id: ContactId, *, domain: str | None = None, asked: bool = False) -> bool:
+        """Fetch the contact's logo and store it; whether one was stored. Queued for a new
+        `domain`: only that one, while it is the contact's, has no failed fetch and the
+        contact has no logo. `asked` (an admin's request, no domain): the contact's domains
+        in turn (at most `MAX_DOMAINS`), also one that failed, replacing a fetched logo. An
+        uploaded logo is never replaced; a fetch that finds nothing is noted with the first
+        domain tried."""
+        assert self._fetcher is not None
+        async with self._uow() as uow:
+            contact = await uow.contacts.find(id)
+        if contact is None or _uploaded(contact):
+            return False
+        if asked:
+            domains = contact.domains[:MAX_DOMAINS]
+        elif contact.logo is not None or domain not in contact.domains or _failed(contact, domain):
+            domains = []
+        else:
+            domains = [domain]
+        if not domains:
+            return False
+        found = await self._found(domains)
+        async with self._uow() as uow:
+            await uow.lock(logo_lock(id))
+            contact = await uow.contacts.find(id)
+            if contact is None or _uploaded(contact) or (not asked and contact.logo is not None):
+                return False
+            now = self._clock.now()
+            if found is None:
+                contact.note_failed_fetch(FailedLogoFetch(domain=domains[0], failed_at=now))
+            else:
+                await self._store.put(logo_key(id), found[1], content_type=LOGO_TYPE)
+                contact.set_logo(
+                    ContactLogo(source=LogoSource.FETCHED, stored_at=now, domain=found[0])
+                )
+            await uow.contacts.update(contact)
+            await uow.commit()
+        return found is not None
+
+    async def _found(self, domains: Collection[str]) -> tuple[str, bytes] | None:
+        """The first logo the websites at `domains` have, made a logo, with its domain."""
+        assert self._fetcher is not None
+        for domain in domains:
+            try:
+                fetched = await self._fetcher.fetch(domain)
+                image = await self._images.normalise(fetched.data)
+            except (LogoFetchError, ImageError, UnsupportedMediaTypeError) as error:
+                log.info("no logo fetched", extra={"domain": domain, "error": str(error)})
+                continue
+            log.info("logo fetched", extra={"domain": domain, "url": fetched.url})
+            return domain, image
+        return None
+
+    async def _run(self, job: Job) -> None:
+        payload = job.payload
+        try:
+            domain = payload.get("domain")
+            await self.fetch(
+                ContactId(UUID(str(payload["contact_id"]))),
+                domain=domain if isinstance(domain, str) else None,
+                asked=bool(payload.get("asked")),
+            )
+        except Exception as error:
+            await self._failed(job, error)
+            return
+        try:
+            async with self._uow() as uow:
+                await uow.jobs.complete(job)
+                await uow.commit()
+        except ConcurrencyError:
+            log.warning("lost the claim of a logo job", extra={"job_id": str(job.id)})
+
+    async def _failed(self, job: Job, error: Exception) -> None:
+        reason = f"{type(error).__name__}: {error}"
+        log.warning("logo job failed", exc_info=True)
+        try:
+            async with self._uow() as uow:
+                if job.tries >= _ATTEMPTS:
+                    await uow.jobs.fail(job, error=reason)
+                else:
+                    run_at = self._clock.now() + _RETRY_DELAY * job.tries
+                    await uow.jobs.reschedule(job, run_at=run_at, error=reason)
+                await uow.commit()
+        except ConcurrencyError:
+            log.warning("lost the claim of a logo job", extra={"job_id": str(job.id)})
+
+    async def _release(self, job: Job) -> None:
+        try:
+            async with self._uow() as uow:
+                await uow.jobs.release(job, run_at=self._clock.now(), error="worker stopped")
+                await uow.commit()
+        except ConcurrencyError:
+            log.warning("lost the claim of a logo job", extra={"job_id": str(job.id)})
+
+
+async def queue_logo_fetch(
+    uow: UnitOfWork, contact: Contact, known: Collection[str], now: datetime
+) -> bool:
+    """Queue fetching the logo of `contact`, in `uow`, if it has no logo and a domain beyond
+    `known` (those it had before the change) whose fetch has not failed: the first of them.
+    Callers ask only with fetching on. Whether a fetch was queued."""
+    if contact.logo is not None:
+        return False
+    for domain in contact.domains:
+        if domain not in known and not _failed(contact, domain):
+            await _enqueue(uow, contact.id, domain, now)
+            return True
+    return False
+
+
+async def _enqueue(uow: UnitOfWork, contact: ContactId, domain: str | None, now: datetime) -> None:
+    """A fetch for `domain`, or one an admin asked for (None); each once while it waits."""
+    await uow.jobs.enqueue(
+        LOGO_JOB,
+        {"contact_id": str(contact), "domain": domain, "asked": domain is None},
+        run_at=now,
+        dedup_key=f"{LOGO_JOB}:{contact}:{domain or 'asked'}",
+    )
+
+
+def _uploaded(contact: Contact) -> bool:
+    return contact.logo is not None and contact.logo.source is LogoSource.UPLOADED
+
+
+def _failed(contact: Contact, domain: str) -> bool:
+    return contact.logo_failure is not None and contact.logo_failure.domain == domain
 
 
 async def drop_logo(uow: UnitOfWork, store: ObjectStore, contact: ContactId) -> None:

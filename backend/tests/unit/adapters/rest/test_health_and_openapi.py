@@ -134,6 +134,7 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/contacts/{{id}}/logo", "put"),
         (f"{PREFIX}/contacts/{{id}}/logo", "delete"),
         (f"{PREFIX}/contacts/{{id}}/logo", "get"),
+        (f"{PREFIX}/contacts/{{id}}/logo/fetch", "post"),
         (f"{PREFIX}/document-types/{{id}}/fields", "put"),
         (f"{PREFIX}/documents/{{id}}/pages/{{number}}", "get"),
         (f"{PREFIX}/documents/{{id}}/text", "get"),

@@ -641,6 +641,8 @@ async def test_a_contacts_logo_is_read_by_all_and_changed_by_admins(api: Api) ->
     for actor, status in {**NOT_ADMIN, **DENIED}.items():
         response = await api.client.delete(url, headers=scene.headers[actor])
         assert response.status_code == status, actor
+        response = await api.client.post(f"{url}/fetch", headers=scene.headers[actor])
+        assert response.status_code == status, actor
     assert (await api.client.delete(url, headers=scene.headers["admin"])).status_code == 204
 
 

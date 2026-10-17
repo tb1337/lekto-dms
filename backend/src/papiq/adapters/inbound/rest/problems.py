@@ -24,6 +24,7 @@ from papiq.core.domain.errors import (
     DuplicateDocumentError,
     IdentityProviderError,
     InvalidTransitionError,
+    LogoFetchDisabledError,
     NotFoundError,
     OpenFieldsError,
     PermissionDeniedError,
@@ -104,4 +105,5 @@ _STATUSES: list[tuple[type[Exception], int]] = [
     (MalformedUploadError, 400),
     (SearchError, 503),
     (ClassifierUnavailableError, 503),
+    (LogoFetchDisabledError, 503),
 ]

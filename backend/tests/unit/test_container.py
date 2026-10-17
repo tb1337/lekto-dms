@@ -10,7 +10,7 @@ from papiq.adapters.outbound.crypto import Argon2PasswordHasher, PyotpTotp
 from papiq.adapters.outbound.filesystem import FilesystemObjectStore
 from papiq.adapters.outbound.logos import HttpLogoFetcher, system_resolver
 from papiq.adapters.outbound.meilisearch import MeilisearchIndex
-from papiq.adapters.outbound.memory import FakeOcr, FakeParser, ManualClock
+from papiq.adapters.outbound.memory import FakeLogoFetcher, FakeOcr, FakeParser, ManualClock
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
 from papiq.adapters.outbound.oidc import AuthlibOidcProvider
 from papiq.adapters.outbound.openai_compat import OpenAiCompatEmbeddings, OpenAiCompatLanguageModel
@@ -324,6 +324,16 @@ async def test_search_services_follow_the_search_index(monkeypatch: pytest.Monke
     assert services.master_data._index_renames is True
     await without.aclose()
     await with_index.aclose()
+
+
+def test_fetching_logos_follows_the_logo_fetcher() -> None:
+    off = build_services(build_memory_container())
+    assert not off.logos.fetching
+    assert not off.master_data._fetch_logos
+    assert off.classifier is not None and not off.classifier._fetch_logos
+    on = build_services(replace(build_memory_container(), logo_fetcher=FakeLogoFetcher()))
+    assert on.logos.fetching and on.master_data._fetch_logos
+    assert on.classifier is not None and on.classifier._fetch_logos
 
 
 def test_the_services_are_tuned_by_the_settings() -> None:

@@ -866,6 +866,7 @@
 	"icon_done": "Fertig",
 	"icon_remove": "Entfernen",
 	"icon_search": "Icons suchen, z. B. Auto oder Haus",
+	"icon_load_failed": "Die Icons ließen sich nicht laden. Lade die Seite neu.",
 	"icon_search_none": "Kein Icon passt.",
 	"icon_search_more": "{count} weitere: Ein weiteres Wort grenzt ein.",
 	"icon_area_documents": "Dokumente und Post",

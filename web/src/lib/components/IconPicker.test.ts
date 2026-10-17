@@ -79,9 +79,15 @@ describe('IconPicker', () => {
 		await user.keyboard('{Control>}{End}{/Control}');
 		at(CURATED_NAMES[CURATED_NAMES.length - 1]);
 		// The tab stop follows; Tab leaves the tiles.
-		expect(tiles.filter((tile) => tile.tabIndex === 0).length).toBe(1);
+		expect(tiles.filter((tile) => tile.tabIndex === 0)).toEqual([document.activeElement]);
+		await user.tab();
+		expect(document.activeElement?.hasAttribute('data-icon-tile')).toBe(false);
+		await user.tab({ shift: true });
+		at(CURATED_NAMES[CURATED_NAMES.length - 1]);
+		// Enter chooses, closes and gives the focus back to the button.
 		await user.keyboard('{Control>}{Home}{/Control}{Enter}');
 		expect(screen.getByText(CURATED_NAMES[0])).toBeTruthy();
+		expect(document.activeElement).toBe(screen.getByRole('button', { name: m.icon_choose() }));
 	});
 
 	it('marks an unknown name with a stand-in', async () => {

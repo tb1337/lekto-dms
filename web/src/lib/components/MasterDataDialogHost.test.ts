@@ -275,7 +275,9 @@ describe('looks', () => {
 		const [row, below] = [...block.children] as HTMLElement[];
 		expect(row.contains(name) && row.querySelector('img')?.getAttribute('src')).toBe(FETCHED.url);
 		expect(within(below).getByRole('button', { name: m.logo_upload() })).toBeTruthy();
-		expect(within(below).getByRole('button', { name: m.logo_fetch_short() })).toBeTruthy();
+		// Short beside the name, but named for what it fetches.
+		const fetchButton = within(below).getByRole('button', { name: m.logo_fetch() });
+		expect(fetchButton.textContent?.trim()).toBe(m.logo_fetch_short());
 		expect(within(below).getByText(/nord\.example/, { selector: 'span' })).toBeTruthy();
 		// Nothing of the logo under its own label any more.
 		expect(screen.queryByText(m.logo_title())).toBeNull();

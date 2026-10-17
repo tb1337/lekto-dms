@@ -866,6 +866,7 @@
 	"icon_done": "Done",
 	"icon_remove": "Remove",
 	"icon_search": "Search icons, e.g. car or house",
+	"icon_load_failed": "The icons could not be loaded. Reload the page.",
 	"icon_search_none": "No icon matches.",
 	"icon_search_more": "{count} more: another word narrows it down.",
 	"icon_area_documents": "Documents and mail",

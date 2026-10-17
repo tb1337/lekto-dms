@@ -113,10 +113,12 @@
 			{m.logo_upload()}
 		</Button>
 		{#if canFetch}
+			<!-- Short beside the name; its name still says what it fetches. -->
 			<Button
 				variant={beside ? 'outline' : 'ghost'}
 				size="sm"
 				class={pill}
+				aria-label={beside ? m.logo_fetch() : undefined}
 				disabled={busy}
 				onclick={() =>
 					run(async () => {

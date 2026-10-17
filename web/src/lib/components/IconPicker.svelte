@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import LucideIcon from '#lib/components/LucideIcon.svelte';
 	import { m } from '#lib/paraglide/messages.js';
@@ -6,7 +7,8 @@
 
 	// An icon, or none: the chosen one and, opened in place, the icons offered first by areas of
 	// life and a search over every Lucide icon (`IconPickerPanel`, loaded when it opens: the
-	// index of all icons and their words stay off the pages until then).
+	// index of all icons and their words stay off the pages until then). Choosing one closes it
+	// and gives the focus back to the button that opened it.
 	let {
 		value = $bindable(null),
 		id
@@ -16,11 +18,18 @@
 	} = $props();
 
 	let open = $state(false);
+	let toggle = $state<HTMLButtonElement | null>(null);
 	const panel = () => import('#lib/components/IconPickerPanel.svelte');
 
 	function choose(name: string | null) {
 		value = name;
 		open = false;
+	}
+
+	async function chosen(name: string) {
+		choose(name);
+		await tick();
+		toggle?.focus();
 	}
 </script>
 
@@ -39,6 +48,7 @@
 			{value ?? m.icon_none()}
 		</span>
 		<Button
+			bind:ref={toggle}
 			variant="outline"
 			size="sm"
 			class="max-sm:h-11"
@@ -57,7 +67,9 @@
 	</div>
 	{#if open}
 		{#await panel() then { default: Panel }}
-			<Panel {id} {value} onchoose={choose} />
+			<Panel {id} {value} onchoose={chosen} />
+		{:catch}
+			<p id="{id}-panel" class="text-sm text-destructive" role="alert">{m.icon_load_failed()}</p>
 		{/await}
 	{/if}
 </div>

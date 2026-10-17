@@ -259,6 +259,10 @@ class Settings(BaseSettings):
     # search index with embeddings); 0 turns them off.
     neighbours: Annotated[int, Field(ge=0, le=20)] = 5
 
+    # Logos of contacts: fetched from the contact's own website (its domain among its
+    # identifiers) when on. Off, Papiq never asks the web on its own; uploads work either way.
+    logo_fetch: bool = False
+
     # Rules: the time limit of one regular expression, the characters of document text that
     # text conditions see, and the documents one retroactive application may cover.
     rules_pattern_timeout: Seconds = timedelta(milliseconds=200)

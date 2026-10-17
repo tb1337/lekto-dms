@@ -21,6 +21,7 @@ from papiq.core.ports.images import ImageNormaliser
 from papiq.core.ports.job_queue import JobQueue
 from papiq.core.ports.llm import LanguageModel, StructuredAnswer, StructuredRequest
 from papiq.core.ports.locator import TextLocator
+from papiq.core.ports.logos import FetchedLogo, LogoFetcher
 from papiq.core.ports.metadata import FileMetadata, MetadataEntry, MetadataReader, MetadataSource
 from papiq.core.ports.object_store import ObjectStore
 from papiq.core.ports.ocr import Ocr, OcrResult, VisionModel, VisionReading
@@ -86,6 +87,7 @@ __all__ = [
     "EventBus",
     "EventHandler",
     "ExternalIdentityRepository",
+    "FetchedLogo",
     "FieldDefinitionRepository",
     "FileMetadata",
     "ImageNormaliser",
@@ -93,6 +95,7 @@ __all__ = [
     "JobQueue",
     "LanguageModel",
     "LoginFailureRepository",
+    "LogoFetcher",
     "MetadataEntry",
     "MetadataReader",
     "MetadataSource",

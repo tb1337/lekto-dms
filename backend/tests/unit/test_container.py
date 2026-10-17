@@ -8,12 +8,14 @@ import pytest
 
 from papiq.adapters.outbound.crypto import Argon2PasswordHasher, PyotpTotp
 from papiq.adapters.outbound.filesystem import FilesystemObjectStore
+from papiq.adapters.outbound.logos import HttpLogoFetcher, system_resolver
 from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.adapters.outbound.memory import FakeOcr, FakeParser, ManualClock
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
 from papiq.adapters.outbound.oidc import AuthlibOidcProvider
 from papiq.adapters.outbound.openai_compat import OpenAiCompatEmbeddings, OpenAiCompatLanguageModel
 from papiq.adapters.outbound.pdfium import LayoutParser
+from papiq.adapters.outbound.pillow import PillowImageNormaliser
 from papiq.adapters.outbound.s3 import S3ObjectStore
 from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory, migrate
 from papiq.adapters.outbound.system import SystemClock
@@ -193,6 +195,12 @@ def test_optional_ports_are_only_selected_when_configured(
     assert isinstance(built.password_hasher, Argon2PasswordHasher)
     assert isinstance(built.totp, PyotpTotp)
     assert built.oidc is None
+    assert built.logo_fetcher is None  # Papiq asks no website unless told to
+    assert isinstance(built.images, PillowImageNormaliser)
+    fetching = build_container(settings(logo_fetch="true")).logo_fetcher
+    assert isinstance(fetching, HttpLogoFetcher)
+    assert fetching._user_agent.startswith("Papiq/")
+    assert fetching._resolve is system_resolver and fetching._transport is None
 
     monkeypatch.setitem(container.SEARCH_INDEXES, "meilisearch", lambda _: object())
     assert build_container(settings(meilisearch_url="http://meilisearch:7700")).search_index

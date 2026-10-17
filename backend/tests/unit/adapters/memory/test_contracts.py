@@ -15,6 +15,7 @@ from papiq.adapters.outbound.memory import (
     FakeEmbeddings,
     FakeImageNormaliser,
     FakeLanguageModel,
+    FakeLogoFetcher,
     FakeMetadataReader,
     FakeOcr,
     FakeOidcProvider,
@@ -55,6 +56,7 @@ from tests.contracts.identity import (
 from tests.contracts.images import ImageNormaliserContract
 from tests.contracts.job_queue import JobQueueContract
 from tests.contracts.language_model import EmbeddingsContract, LanguageModelContract
+from tests.contracts.logos import LOGO_PNG, LogoFetcherContract
 from tests.contracts.object_store import ObjectStoreContract
 from tests.contracts.processing import (
     CodeReaderContract,
@@ -162,6 +164,15 @@ def image_normaliser() -> FakeImageNormaliser:
 
 
 class TestFakeImageNormaliser(ImageNormaliserContract):
+    pass
+
+
+@pytest.fixture
+def logo_fetcher() -> FakeLogoFetcher:
+    return FakeLogoFetcher({"logo.example": LOGO_PNG})
+
+
+class TestFakeLogoFetcher(LogoFetcherContract):
     pass
 
 

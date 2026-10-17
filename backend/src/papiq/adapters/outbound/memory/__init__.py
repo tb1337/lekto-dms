@@ -14,6 +14,7 @@ from papiq.adapters.outbound.memory.language_model import (
     FakeEmbeddings,
     FakeLanguageModel,
 )
+from papiq.adapters.outbound.memory.logos import FakeLogoFetcher
 from papiq.adapters.outbound.memory.object_store import MemoryObjectStore
 from papiq.adapters.outbound.memory.oidc import FakeOidcProvider
 from papiq.adapters.outbound.memory.processing import (
@@ -41,6 +42,7 @@ __all__ = [
     "FakeEmbeddings",
     "FakeImageNormaliser",
     "FakeLanguageModel",
+    "FakeLogoFetcher",
     "FakeMetadataReader",
     "FakeOcr",
     "FakeOidcProvider",

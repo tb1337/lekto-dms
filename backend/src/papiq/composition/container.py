@@ -21,6 +21,7 @@ from papiq.adapters.outbound.crypto import (
 )
 from papiq.adapters.outbound.filesystem import FilesystemObjectStore
 from papiq.adapters.outbound.liquid import LiquidTemplateRenderer
+from papiq.adapters.outbound.logos import HttpLogoFetcher
 from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.adapters.outbound.memory import (
     FakeCipher,
@@ -69,6 +70,7 @@ from papiq.core.ports import (
     EventBus,
     ImageNormaliser,
     LanguageModel,
+    LogoFetcher,
     MetadataReader,
     ObjectStore,
     Ocr,
@@ -259,6 +261,9 @@ IMAGE_NORMALISERS: dict[str, Factory[ImageNormaliser]] = {
     "pillow": lambda _: PillowImageNormaliser()
 }
 CLASSIFIERS: dict[str, Factory[Classifier]] = {"scikit-learn": lambda _: SklearnClassifier()}
+LOGO_FETCHERS: dict[str, Factory[LogoFetcher]] = {
+    "httpx2": lambda _: HttpLogoFetcher(user_agent=f"Papiq/{__version__}")
+}
 
 
 def redirect_uri(settings: Settings) -> str:
@@ -319,6 +324,8 @@ class Container:
     language_model: LanguageModel | None
     embeddings: Embeddings | None
     classifier: Classifier | None
+    # With `PAPIQ_LOGO_FETCH`: Papiq asks the websites of contacts for their logos.
+    logo_fetcher: LogoFetcher | None = None
     closers: tuple[Closer, ...] = field(default=(), repr=False)
 
     async def aclose(self) -> None:
@@ -385,6 +392,11 @@ def build_container(settings: Settings) -> Container:
             None
             if settings.classifier == "none"
             else _select("classifier", settings.classifier, CLASSIFIERS, settings)
+        ),
+        logo_fetcher=(
+            _select("logo_fetcher", "httpx2", LOGO_FETCHERS, settings)
+            if settings.logo_fetch
+            else None
         ),
         closers=tuple(closers),
     )

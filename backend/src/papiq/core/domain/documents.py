@@ -2,7 +2,7 @@
 
 import hashlib
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import Enum, StrEnum
@@ -104,10 +104,27 @@ CONFIRMING = frozenset(
     {"contact_id", "document_type_id", "topic_id", "tag_ids", "document_date", "fields"}
 )
 """Metadata a person confirms by changing it (as `Document.apply_changes` names it); a title
-or a space alone does not."""
+or a space alone does not, nor do tags set by hand alone (`confirms`)."""
 CLASSIFIER_LABELS = frozenset({"contact_id", "document_type_id", "topic_id", "tag_ids"})
 """What the classifier learns from confirmed documents: the pipeline deriving them anew ends
 the confirmation."""
+
+
+def confirms(
+    changed: Collection[str],
+    tags_before: Collection[TagId],
+    tags_after: Collection[TagId],
+    manual: Collection[TagId],
+) -> bool:
+    """Whether a person's change confirms the metadata: it changed a value in `CONFIRMING`
+    (`changed` as `Document.apply_changes` names them), unless all it changed are tags set by
+    hand (`manual`), added or removed. A status tag such as "to pay" says nothing about contact
+    and type; a change that also adds or removes an automatic tag, or changes any other
+    confirming value, confirms."""
+    touched = CONFIRMING & set(changed)
+    if touched != {"tag_ids"}:
+        return bool(touched)
+    return not set(tags_before) ^ set(tags_after) <= set(manual)
 
 
 @dataclass(kw_only=True)
@@ -141,8 +158,9 @@ class Document:
     processing: Processing
     page_count: int | None = None  # known once the pages node has rendered the page images
     # When a person last set or confirmed its metadata (in the inbox, or by changing contact,
-    # type, topic, tags, date or fields), or it was taken over with the source system's; None
-    # while its metadata is the pipeline's own. Confirmed documents train the classifier.
+    # type, topic, tags, date or fields; tags set by hand alone do not count, `confirms`), or
+    # it was taken over with the source system's; None while its metadata is the pipeline's
+    # own. Confirmed documents train the classifier.
     confirmed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime

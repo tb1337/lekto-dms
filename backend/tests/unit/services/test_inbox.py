@@ -18,10 +18,10 @@ from papiq.core.domain.errors import (
 )
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.ids import ContactId, SpaceId, UserId
-from papiq.core.domain.master_data import Contact
+from papiq.core.domain.master_data import Assignment, Contact
 from papiq.core.domain.pipeline import PERSON, Lane, Node, NodeResult, Outcome, ProcessingStatus
 from papiq.core.domain.spaces import ShareLevel
-from papiq.core.domain.users import User
+from papiq.core.domain.users import Role, User
 from papiq.core.services.inbox import OpenNode, decide, field_checks
 from papiq.core.services.pipeline import MetadataResult, PipelineService
 from tests.builders import FAILED, NOW, document, incoming
@@ -120,6 +120,36 @@ async def test_a_person_confirms_the_metadata(world: World) -> None:
     assert titled.confirmed_at == confirmed.confirmed_at
     await world.documents.change_metadata(
         s.owner.id, s.document.id, DocumentChanges(document_date=date(2026, 4, 1))
+    )
+    assert (await world.documents.get(s.owner.id, s.document.id)).confirmed_at == (
+        world.clock.now()
+    )
+
+
+async def test_tags_set_by_hand_alone_confirm_nothing(world: World) -> None:
+    """Adding or removing a status tag ("to pay") says nothing about contact and type; with an
+    automatic tag or any other confirming value the change confirms."""
+    s = await scene(world)
+    admin = await world.user(role=Role.ADMIN)
+    paid = await world.master_data.create_tag(admin.id, "Paid", assignment=Assignment.MANUAL)
+    due = await world.master_data.create_tag(admin.id, "Due", assignment=Assignment.MANUAL)
+    bill = await world.master_data.create_tag(admin.id, "Bill")
+    change = world.documents.change_metadata
+    await change(s.owner.id, s.document.id, DocumentChanges(tag_ids=frozenset({paid.id})))
+    await change(s.owner.id, s.document.id, DocumentChanges(tag_ids=frozenset({due.id})))
+    await change(s.owner.id, s.document.id, DocumentChanges(tag_ids=frozenset()))
+    assert (await world.documents.get(s.owner.id, s.document.id)).confirmed_at is None
+    await change(s.owner.id, s.document.id, DocumentChanges(tag_ids=frozenset({bill.id})))
+    confirmed = world.clock.now()
+    assert (await world.documents.get(s.owner.id, s.document.id)).confirmed_at == confirmed
+    world.clock.advance(timedelta(hours=1))
+    await change(s.owner.id, s.document.id, DocumentChanges(tag_ids=frozenset({bill.id, paid.id})))
+    stored = await world.documents.get(s.owner.id, s.document.id)
+    assert (stored.tag_ids, stored.confirmed_at) == ({bill.id, paid.id}, confirmed)
+    await change(
+        s.owner.id,
+        s.document.id,
+        DocumentChanges(tag_ids=frozenset({bill.id}), document_date=date(2026, 4, 1)),
     )
     assert (await world.documents.get(s.owner.id, s.document.id)).confirmed_at == (
         world.clock.now()

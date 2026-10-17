@@ -295,6 +295,7 @@ Nicht hundertprozentig sicher heißt kein Grün. Ein Signal *nennt* einen Wert, 
 **Training und Rückkopplung**
 
 - Trainingsbeispiele sind Dokumente, deren Metadaten eine Person gesetzt oder bestätigt hat (`confirmed_at`: Bestätigen im Posteingang, Änderung von Kontakt, Typ, Thema, Tags, Datum oder Feldern, die Übernahme); automatisch grüne trainieren nicht. Ändert die Verarbeitung Kontakt, Typ, Thema oder Tags, gilt das Dokument nicht mehr als bestätigt.
+- Manuelle Tags bestätigen nicht (Tobi, 17.10.2026): Eine Änderung, die nur Tags „nur von Hand“ hinzufügt oder entfernt und sonst nichts Bestätigendes ändert, setzt `confirmed_at` nicht; ein Status-Tag wie „zu bezahlen“ sagt nichts über Kontakt und Typ. Berührt sie auch einen automatischen Tag oder einen anderen bestätigenden Wert, bestätigt sie wie bisher.
 - Ein wiederkehrender Job prüft alle zehn Minuten, ob genug neue Bestätigungen da sind (`PAPIQ_CLASSIFIER_RETRAIN_AFTER`, erstes Modell ab `PAPIQ_CLASSIFIER_MIN_EXAMPLES`), und reiht das Training ein; `train` und `POST /classifier/train` stoßen es sofort an. Das Modell liegt als `npz` ohne Pickle im Objektspeicher (die letzten drei bleiben), die Vorhersage rechnet mit numpy allein.
 - Jede Korrektur hält fest, was eine Person wirklich geändert hat (`corrected`); daraus das Rückkopplungsmaß je Feld, der Anteil automatisch gesetzter Werte, die später korrigiert wurden. Es steht im Bewertungsbericht; Anzeige im Betrieb und Kalibrierung der Schwellen kommen mit M18.
 

@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from papiq.core.domain.documents import UNSET, Document, DocumentChanges, Sha256
+from papiq.core.domain.documents import UNSET, Document, DocumentChanges, Sha256, confirms
 from papiq.core.domain.errors import NotFoundError, ValidationError
 from papiq.core.domain.events import (
     DocumentDeleted,
@@ -91,6 +91,20 @@ def test_unchanged_metadata_records_nothing() -> None:
     assert document.pull_events() == []
     assert document.updated_at == NOW
     assert DocumentChanges().title is UNSET
+
+
+def test_tags_set_by_hand_alone_confirm_nothing() -> None:
+    """A status tag says nothing about contact and type; any other confirming change does."""
+    paid, due, invoice = TagId(new_id()), TagId(new_id()), TagId(new_id())
+    manual = {paid, due}
+    assert not confirms(("tag_ids",), {invoice}, {invoice, paid}, manual)
+    assert not confirms(("tag_ids",), {paid}, {due}, manual)
+    assert not confirms(("tag_ids", "title"), {paid}, set(), manual)
+    assert confirms(("tag_ids",), {paid}, {paid, invoice}, manual)
+    assert confirms(("tag_ids",), {invoice}, {paid}, manual)
+    assert confirms(("tag_ids", "contact_id"), set(), {paid}, manual)
+    assert confirms(("document_date",), set(), set(), manual)
+    assert not confirms(("title",), set(), set(), manual)
 
 
 def test_field_values_are_validated_and_scoped() -> None:

@@ -2537,7 +2537,7 @@ export interface components {
 			page_count: number | null;
 			/**
 			 * Confirmed At
-			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, topic, tags, date or fields), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
+			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, topic, tags, date or fields; adding or removing tags set by hand alone does not count), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
 			 */
 			confirmed_at: string | null;
 			processing: components['schemas']['Processing'];
@@ -2674,7 +2674,7 @@ export interface components {
 			page_count: number | null;
 			/**
 			 * Confirmed At
-			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, topic, tags, date or fields), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
+			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, topic, tags, date or fields; adding or removing tags set by hand alone does not count), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
 			 */
 			confirmed_at: string | null;
 			processing: components['schemas']['Processing'];

@@ -11,7 +11,7 @@ from uuid import UUID
 
 from papiq.core.domain import media_types
 from papiq.core.domain.codes import Code, GiroCode, code_identifiers, codes_from_json, giro_code
-from papiq.core.domain.documents import CONFIRMING, Document, DocumentChanges
+from papiq.core.domain.documents import Document, DocumentChanges, confirms
 from papiq.core.domain.errors import (
     ConflictError,
     NotFoundError,
@@ -24,8 +24,9 @@ from papiq.core.domain.exchanges import RunExchange, exchanges_from_json
 from papiq.core.domain.facts import Facts, facts_in
 from papiq.core.domain.fields import FieldType, FieldValue
 from papiq.core.domain.identifiers import IdentifierKind
-from papiq.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId, UserId
+from papiq.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId, TagId, UserId
 from papiq.core.domain.locations import Box, Location
+from papiq.core.domain.master_data import Assignment
 from papiq.core.domain.permissions import (
     can_control_document,
     can_manage_master_data,
@@ -555,7 +556,8 @@ class DocumentService:
     ) -> Document:
         """Needs write access. Referenced contact, type, topic, tags and fields must exist; the
         topic is one the contact enables, or an admin's choice enables it there
-        (`_access.checked_changes`)."""
+        (`_access.checked_changes`). A change of confirming metadata confirms the document,
+        unless it only adds or removes tags set by hand (`documents.confirms`)."""
         return (await self.change_metadata(actor, id, changes)).document
 
     async def change_metadata(
@@ -581,7 +583,10 @@ class DocumentService:
             definitions = {item.id: item for item in await uow.fields.list_all()}
             now = self._clock.now()
             before = copy.deepcopy(document)
-            if CONFIRMING & set(document.apply_changes(changes, definitions, now)):
+            changed = document.apply_changes(changes, definitions, now)
+            if confirms(
+                changed, before.tag_ids, document.tag_ids, await _manual(uow, before, document)
+            ):
                 document.mark_confirmed(now)
             run = None
             if rules is not None:
@@ -666,6 +671,16 @@ async def _readers(uow: UnitOfWork, document: Document) -> list[UserId]:
         if user is not None and in_reach(user, document, space):
             readers.append(candidate)
     return sorted(readers)
+
+
+async def _manual(uow: UnitOfWork, before: Document, after: Document) -> frozenset[TagId]:
+    """The tags added or removed between `before` and `after` that are set by hand only."""
+    manual = set()
+    for id in before.tag_ids ^ after.tag_ids:
+        tag = await uow.tags.find(id)
+        if tag is not None and tag.assignment is Assignment.MANUAL:
+            manual.add(id)
+    return frozenset(manual)
 
 
 async def _save(uow: UnitOfWork, document: Document) -> None:

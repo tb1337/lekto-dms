@@ -175,9 +175,9 @@ class DocumentDetails(BaseModel):
     confirmed_at: datetime | None = Field(
         description=(
             "When a person last set or confirmed the metadata (in the inbox, or by changing "
-            "contact, type, topic, tags, date or fields), or it was taken over with the source "
-            "system's; null while it is the pipeline's own. Confirmed documents train the "
-            "classifier."
+            "contact, type, topic, tags, date or fields; adding or removing tags set by hand "
+            "alone does not count), or it was taken over with the source system's; null while "
+            "it is the pipeline's own. Confirmed documents train the classifier."
         )
     )
     processing: Processing

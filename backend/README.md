@@ -461,8 +461,11 @@ with `OLLAMA_CONTEXT_LENGTH=8192` or more. Local models on a CPU are slow:
 
 **Classifier.** One model for all users (`core/services/classifier.py`,
 `adapters/outbound/sklearn`). Training examples are the documents whose metadata a person set or
-confirmed (`confirmed_at`: confirming in the inbox, changing contact, type, tags, date or fields,
-taking a document over); green documents do not train. A recurring job (`classifier.check`,
+confirmed (`confirmed_at`: confirming in the inbox, changing contact, type, topic, tags, date or
+fields, taking a document over); green documents do not train. A change that only adds or
+removes tags set by hand (statuses such as "to pay") confirms nothing: they say nothing about
+contact and type (`documents.confirms`); with an automatic tag or any other confirming value
+it confirms. A recurring job (`classifier.check`,
 every ten minutes) queues the training (`classifier.train`) once `PAPIQ_CLASSIFIER_MIN_EXAMPLES`
 documents are confirmed and no model exists, or `PAPIQ_CLASSIFIER_RETRAIN_AFTER` were confirmed
 since the last one; `python -m papiq.composition train` and `POST /classifier/train` train at

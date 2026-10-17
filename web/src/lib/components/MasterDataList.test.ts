@@ -142,6 +142,25 @@ describe('MasterDataList', () => {
 		);
 	});
 
+	it('tells a type’s description under its name, and nothing for a type without one', async () => {
+		fetchMock.mockImplementation(async (request) => {
+			const path = new URL(request.url).pathname;
+			if (path === '/api/v1/document-types') {
+				return json([
+					{ id: 't1', name: 'Rechnung', description: 'Eine Forderung', group_ids: [], icon: null },
+					{ id: 't2', name: 'Kündigung', description: null, group_ids: [], icon: null }
+				]);
+			}
+			return json([]);
+		});
+		render(MasterDataList, { kind: 'document-types' });
+		const invoice = (await screen.findByText('Rechnung')).closest('li')!;
+		expect(within(invoice).getByText('Eine Forderung')).toBeTruthy();
+		const notice = screen.getByText('Kündigung').closest('li')!;
+		expect(notice.textContent?.replace(/\s+/g, ' ').trim()).toMatch(/^Kündigung\b/);
+		expect(within(notice).queryByText(/Beschreibung|description/i)).toBeNull();
+	});
+
 	it('on a phone opens a contact with a tap on its row', async () => {
 		phone.override(true);
 		render(MasterDataList, { kind: 'contacts' });

@@ -266,7 +266,6 @@
 	"master_alias_more": "also “{alias}” +{count}",
 	"master_topic_one": "1 topic",
 	"master_topics_many": "{count} topics",
-	"master_no_description": "No description yet",
 	"master_field_one": "1 field",
 	"master_fields_many": "{count} fields",
 	"master_required_count": "{count} required",

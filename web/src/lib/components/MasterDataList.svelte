@@ -212,12 +212,8 @@
 						{/if}
 					{/snippet}
 					<span class="line-clamp-2 break-words">{item.name}</span>
-					{#if kind === 'document-types'}
-						<span
-							class={['line-clamp-2 text-sm text-muted-foreground', !item.description && 'italic']}
-						>
-							{item.description || m.master_no_description()}
-						</span>
+					{#if kind === 'document-types' && item.description}
+						<span class="line-clamp-2 text-sm text-muted-foreground">{item.description}</span>
 					{/if}
 					{#if groups.length > 0 || notesOf(item).length > 0}
 						<span

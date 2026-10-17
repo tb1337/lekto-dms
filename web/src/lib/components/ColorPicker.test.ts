@@ -22,6 +22,23 @@ describe('ColorPicker', () => {
 		);
 	});
 
+	it('moves the choice with the arrow keys', async () => {
+		const user = userEvent.setup();
+		render(ColorPicker, { id: 'color', value: 'pink' });
+		const pink = screen.getByRole('radio', { name: m.color_pink() });
+		expect(pink.getAttribute('tabindex')).toBe('0');
+		expect(screen.getByRole('radio', { name: m.color_red() }).getAttribute('tabindex')).toBe('-1');
+		pink.focus();
+		await user.keyboard('{ArrowRight}');
+		const none = screen.getByRole('radio', { name: m.color_none() });
+		expect(none.getAttribute('aria-checked')).toBe('true');
+		expect(document.activeElement).toBe(none);
+		await user.keyboard('{ArrowLeft}{ArrowLeft}');
+		expect(
+			screen.getByRole('radio', { name: m.color_fuchsia() }).getAttribute('aria-checked')
+		).toBe('true');
+	});
+
 	it('takes an own colour as #rrggbb behind "More colours"', async () => {
 		const user = userEvent.setup();
 		render(ColorPicker, { id: 'color', value: 'red' });

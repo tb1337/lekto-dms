@@ -3,7 +3,7 @@
 	import { untrack } from 'svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
-	import { isHex, PALETTE, type PaletteColor } from '#lib/colors.ts';
+	import { isHex, isPalette, PALETTE, type PaletteColor } from '#lib/colors.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
 
@@ -62,6 +62,25 @@
 		value = next.toLowerCase();
 	}
 
+	// The swatches as a radio group: the arrows move the choice, Tab leaves the group.
+	const CHOICES: readonly (PaletteColor | null)[] = [null, ...PALETTE];
+	const focused = $derived<PaletteColor | null>(isPalette(value) ? value : null);
+
+	function choose(color: PaletteColor | null) {
+		value = color;
+		more = false;
+	}
+
+	function arrows(event: KeyboardEvent & { currentTarget: HTMLElement }) {
+		const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+		if (!step) return;
+		event.preventDefault();
+		const next = CHOICES[(CHOICES.indexOf(focused) + step + CHOICES.length) % CHOICES.length];
+		choose(next);
+		const radios = event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]');
+		radios[CHOICES.indexOf(next)]?.focus();
+	}
+
 	function openMore() {
 		more = true;
 		if (!own) {
@@ -72,18 +91,22 @@
 </script>
 
 <div class="flex flex-col gap-3">
-	<div role="radiogroup" aria-labelledby="{id}-label" class="flex flex-wrap gap-1.5">
+	<div
+		role="radiogroup"
+		aria-labelledby="{id}-label"
+		class="flex flex-wrap gap-1.5"
+		tabindex="-1"
+		onkeydown={arrows}
+	>
 		<button
 			type="button"
 			role="radio"
 			aria-checked={value === null}
+			tabindex={focused === null ? 0 : -1}
 			aria-label={m.color_none()}
 			title={m.color_none()}
 			class="grid size-8 place-items-center rounded-full border border-dashed bg-background aria-checked:ring-2 aria-checked:ring-ring aria-checked:ring-offset-2 aria-checked:ring-offset-background"
-			onclick={() => {
-				value = null;
-				more = false;
-			}}
+			onclick={() => choose(null)}
 		>
 			{#if value === null}<Check class="size-4 text-muted-foreground" aria-hidden="true" />{/if}
 		</button>
@@ -92,14 +115,12 @@
 				type="button"
 				role="radio"
 				aria-checked={value === color}
+				tabindex={focused === color ? 0 : -1}
 				aria-label={NAMES[color]()}
 				title={NAMES[color]()}
 				class="grid size-8 place-items-center rounded-full border border-(--chip-fg)/30 bg-(--chip-bg) text-(--chip-fg) aria-checked:ring-2 aria-checked:ring-ring aria-checked:ring-offset-2 aria-checked:ring-offset-background"
 				style="--chip-bg: var(--tag-{color}); --chip-fg: var(--tag-{color}-foreground)"
-				onclick={() => {
-					value = color;
-					more = false;
-				}}
+				onclick={() => choose(color)}
 			>
 				{#if value === color}<Check class="size-4" aria-hidden="true" />{/if}
 			</button>

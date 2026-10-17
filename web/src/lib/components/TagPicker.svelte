@@ -65,6 +65,7 @@
 
 	async function details() {
 		const name = query;
+		query = '';
 		open = false;
 		const tag = await createWithDetails(scope, name);
 		if (tag) chosen(tag);

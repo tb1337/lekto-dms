@@ -448,3 +448,20 @@ async def test_a_group_of_the_same_name_is_no_tag(setup: Setup) -> None:
     assert taken and not any(
         "group" in d.get("tag_ids", []) for d in setup.papiq.documents.values()
     )
+
+
+async def test_a_tag_papiq_keeps_as_its_child_is_no_deviation(setup: Setup) -> None:
+    """Papiq keeps a child set with its parent as the child alone: the check compares tags with
+    the tags above them."""
+    assert await setup.run("run") == 0
+    tags = {t["name"]: t for t in setup.papiq.tags.values()}
+    tags["tax/2024"]["parent_id"] = tags["tax"]["id"]
+    for document in setup.papiq.documents.values():
+        held = document.get("tag_ids", [])
+        if tags["tax/2024"]["id"] in held and tags["tax"]["id"] in held:
+            document["tag_ids"] = [tags["tax/2024"]["id"]]
+            break
+    else:
+        raise AssertionError("no document carries both tags")
+    assert await setup.run("verify") == 0
+    assert setup.report("verify")["deviations"] == []

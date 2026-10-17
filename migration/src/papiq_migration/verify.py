@@ -170,6 +170,9 @@ async def verify(
                     deviation("field", entry["source_id"], "options missing", missing)
 
     types = {field_id: found["data_type"] for field_id, found in by_id["field"].items()}
+    # Papiq nests tags and keeps a child set with its parent as the child alone: tags compare
+    # with the tags above them.
+    parents = {tag_id: found.get("parent_id") for tag_id, found in by_id["tag"].items()}
     users = {int(user["id"]): user for user in snapshot.users}
     expected: dict[int, Prepared] = {
         int(document["id"]): prepare(
@@ -239,6 +242,7 @@ async def verify(
             originals[document_id],
             row.sha256,
             types,
+            parents,
         )
         if actual.get("lane") != row.lane and row.status == "done":
             deviation(
@@ -282,6 +286,17 @@ async def verify(
     }
 
 
+def _with_ancestors(ids: list[str], parents: dict[str, str | None]) -> set[str]:
+    """The tags and the tags above them."""
+    found: set[str] = set()
+    for id in ids:
+        current: str | None = id
+        while current is not None and current not in found:
+            found.add(current)
+            current = parents.get(current)
+    return found
+
+
 def _compare(
     item: Prepared,
     actual: dict[str, Any],
@@ -290,6 +305,7 @@ def _compare(
     original: dict[str, Any],
     state_sha: str | None,
     types: dict[str, str],
+    parents: dict[str, str | None],
 ) -> bool:
     """Compare a document with what it should be; False if its pipeline stopped before the
     metadata was applied (then there is nothing to compare: the document is a finding)."""
@@ -304,8 +320,9 @@ def _compare(
         for field in ("contact_id", "document_type_id"):
             if (actual.get(field) or None) != (meta[field] or None):
                 deviation("document", id, f"{field} differs", meta[field], actual.get(field))
-        if sorted(actual.get("tag_ids") or []) != sorted(meta["tag_ids"]):
-            deviation("document", id, "tags differ", meta["tag_ids"], actual.get("tag_ids"))
+        have = actual.get("tag_ids") or []
+        if _with_ancestors(have, parents) != _with_ancestors(meta["tag_ids"], parents):
+            deviation("document", id, "tags differ", meta["tag_ids"], have)
         if actual.get("document_date") != meta["document_date"]:
             deviation(
                 "document",

@@ -415,6 +415,78 @@ class UnitOfWorkContract:
             await uow.tags.remove(employer.id)
             await uow.commit()
 
+    async def test_topics_at_contacts_identifiers_and_documents(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """A contact keeps the topics it enables and the topic of each identifier; a document
+        keeps its topic, is found by it (one of a set) and counted by it."""
+        owner, space = await owner_with_space(uow_factory)
+        stranger = builders.user()
+        await seed(uow_factory, stranger)
+        insurance = Tag.create(name="Insurance", now=NOW, scope=TagScope.TOPIC)
+        health = Tag.create(name="Health", now=NOW, scope=TagScope.TOPIC, parent_id=insurance.id)
+        work = Tag.create(name="Work", now=NOW, scope=TagScope.TOPIC)
+        number = Identifier.parse(IdentifierKind.PERSONNEL_NUMBER, "4711", topic_id=work.id)
+        policy = Identifier.parse(IdentifierKind.CUSTOMER_NUMBER, "KV-2026-1")
+        contact = Contact.create(
+            name="Nord", now=NOW, topic_ids=[work.id, health.id], identifiers=[number, policy]
+        )
+        contact.set_learned(
+            [Identifier(IdentifierKind.EMAIL_DOMAIN, "nord.example", topic_id=health.id)]
+        )
+        documents = []
+        for topic in (work.id, health.id, None):
+            document = builders.processed(owner, space)
+            document.apply_changes(DocumentChanges(contact_id=contact.id, topic_id=topic), {}, NOW)
+            document.mark_confirmed(NOW)
+            documents.append(document)
+        async with uow_factory() as uow:
+            for tag in (insurance, health, work):
+                await uow.tags.add(tag)
+            await uow.contacts.add(contact)
+            for document in documents:
+                await uow.documents.add(document)
+            await uow.commit()
+        numbers = {document.id: index for index, document in enumerate(documents)}
+        async with uow_factory() as uow:
+            stored = await uow.contacts.get(contact.id)
+            assert stored == contact
+            assert stored.topic_ids == {work.id, health.id}
+            assert [item.topic_id for item in stored.identifiers] == [None, work.id, health.id]
+            assert (await uow.documents.get(documents[0].id)).topic_id == work.id
+
+            async def found(topics: frozenset[TagId]) -> set[int]:
+                filter = DocumentFilter(topics=topics)
+                listed = await uow.documents.query(filter, limit=9)
+                assert listed == await uow.documents.query_visible(owner.id, filter, limit=9)
+                return {numbers[document.id] for document in listed}
+
+            assert await found(frozenset({work.id})) == {0}
+            assert await found(frozenset({work.id, health.id})) == {0, 1}
+            assert await found(frozenset({insurance.id})) == set()
+            assert await uow.documents.count_by(CountBy.TOPIC, None) == {work.id: 1, health.id: 1}
+            assert await uow.documents.count_by(CountBy.TOPIC, stranger.id) == {}
+            assert (await uow.documents.confirmed_labels(owner.id)).topics == {work.id, health.id}
+            assert await uow.documents.exists(topic=work.id)
+            assert await uow.documents.exists(contact=contact.id, topic=health.id)
+            assert not await uow.documents.exists(topic=insurance.id)
+            # Taking a topic away leaves its identifiers without one.
+            stored.set_topics([work.id])
+            await uow.contacts.update(stored)
+            await uow.commit()
+        async with uow_factory() as uow:
+            stored = await uow.contacts.get(contact.id)
+            assert stored.topic_ids == {work.id}
+            assert [item.topic_id for item in stored.identifiers] == [None, work.id, None]
+            for document in documents:
+                await uow.documents.remove(document.id)
+            await uow.contacts.remove(contact.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            # The topics stay; the contact took its enabling with it.
+            await uow.tags.remove(work.id)
+            await uow.commit()
+
     async def test_contact_aliases_and_type_description(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:

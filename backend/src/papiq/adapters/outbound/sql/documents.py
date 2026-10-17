@@ -135,6 +135,8 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             column = documents.c.contact_id
             if by is CountBy.DOCUMENT_TYPE:
                 column = documents.c.document_type_id
+            elif by is CountBy.TOPIC:
+                column = documents.c.topic_id
             criteria.append(column.is_not(None))
         statement = (
             select(column.label("key"), func.count().label("documents"))
@@ -190,6 +192,8 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             criteria.append(documents.c.contact_id == filter.contact)
         if filter.document_type is not None:
             criteria.append(documents.c.document_type_id == filter.document_type)
+        if filter.topics is not None:
+            criteria.append(documents.c.topic_id.in_(sorted(filter.topics)))
         if filter.space is not None:
             criteria.append(documents.c.space_id == filter.space)
         for tag_set in filter.tags:
@@ -259,6 +263,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
                 map(DocumentTypeId, await values(documents.c.document_type_id, documents))
             ),
             tags=frozenset(map(TagId, await values(tags.c.tag_id, tagged))),
+            topics=frozenset(map(TagId, await values(documents.c.topic_id, documents))),
         )
 
     async def exists(
@@ -269,6 +274,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         contact: ContactId | None = None,
         document_type: DocumentTypeId | None = None,
         tag: TagId | None = None,
+        topic: TagId | None = None,
         field: FieldId | None = None,
         sha256: Sha256 | None = None,
     ) -> bool:
@@ -282,6 +288,8 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             criteria.append(documents.c.contact_id == contact)
         if document_type is not None:
             criteria.append(documents.c.document_type_id == document_type)
+        if topic is not None:
+            criteria.append(documents.c.topic_id == topic)
         if tag is not None:
             tags = t.document_tags
             criteria.append(
@@ -316,6 +324,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
                 document_type_id=(
                     None if row.document_type_id is None else DocumentTypeId(row.document_type_id)
                 ),
+                topic_id=None if row.topic_id is None else TagId(row.topic_id),
                 tag_ids={TagId(tag.tag_id) for tag in tags[row.id]},
                 fields={FieldId(value.field_id): _field_value(value) for value in fields[row.id]},
                 document_date=row.document_date,
@@ -352,6 +361,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             "media_type": entity.media_type,
             "contact_id": entity.contact_id,
             "document_type_id": entity.document_type_id,
+            "topic_id": entity.topic_id,
             "document_date": entity.document_date,
             "channel": entity.channel.value,
             "lane": None if entity.lane is None else entity.lane.value,

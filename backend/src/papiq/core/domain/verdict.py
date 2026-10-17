@@ -114,12 +114,13 @@ class FactsView:
 
 @dataclass(frozen=True)
 class KnownLabels:
-    """The contacts, types and tags confirmed documents carry: what similar documents can
-    name."""
+    """The contacts, types, topics and tags confirmed documents carry: what similar documents
+    can name."""
 
     contacts: frozenset[ContactId] = frozenset()
     document_types: frozenset[DocumentTypeId] = frozenset()
     tags: frozenset[TagId] = frozenset()
+    topics: frozenset[TagId] = frozenset()
 
 
 @dataclass(frozen=True)

@@ -116,7 +116,8 @@ tags = Table(
     Column("id", Uuid, primary_key=True),
     Column("name", Text, nullable=False),
     Column("name_key", Text, nullable=False),
-    # `document`, `contact` (a contact group) or `document_type` (a type group): `TagScope`.
+    # `document`, `contact` (a contact group), `document_type` (a type group) or `topic`:
+    # `TagScope`.
     Column("scope", Text, nullable=False, server_default="document"),
     # The tag it is nested under, of the same scope (checked by the service, as cycles are).
     Column("parent_id", Uuid, ForeignKey("tags.id"), nullable=True, index=True),
@@ -147,6 +148,13 @@ document_type_groups = Table(
     ),
     Column("tag_id", Uuid, ForeignKey("tags.id"), primary_key=True, index=True),
 )
+# The topics a contact enables (tags of scope `topic`).
+contact_topics = Table(
+    "contact_topics",
+    metadata,
+    Column("contact_id", Uuid, ForeignKey("contacts.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", Uuid, ForeignKey("tags.id"), primary_key=True, index=True),
+)
 
 # Other names of a contact; unique across contacts. That no alias is another contact's name is
 # checked by the service.
@@ -166,8 +174,6 @@ contact_aliases = Table(
     Column("position", Integer, nullable=False),
 )
 
-# Values a contact's documents carry (IBAN, VAT number, ...); kind and value are unique across
-# contacts. `source`: entered by hand, learned by training, or learned and rejected.
 # The trained classifiers; the models themselves are files in the object store.
 classifier_models = Table(
     "classifier_models",
@@ -182,6 +188,9 @@ classifier_models = Table(
     Column("version", Integer, nullable=False),
 )
 
+# Values a contact's documents carry (IBAN, VAT number, ...); kind and value are unique across
+# contacts. `source`: entered by hand, learned by training, or learned and rejected. `topic_id`:
+# the contact's topic it points to (one the contact enables, checked by the domain).
 contact_identifiers = Table(
     "contact_identifiers",
     metadata,
@@ -195,6 +204,7 @@ contact_identifiers = Table(
     Column("kind", Text, primary_key=True),
     Column("value", Text, primary_key=True),
     Column("source", Text, nullable=False),
+    Column("topic_id", Uuid, ForeignKey("tags.id"), nullable=True),
 )
 
 field_definitions = Table(
@@ -246,6 +256,8 @@ documents = Table(
     Column("media_type", Text, nullable=False),
     Column("contact_id", Uuid, ForeignKey("contacts.id"), nullable=True),
     Column("document_type_id", Uuid, ForeignKey("document_types.id"), nullable=True),
+    # A tag of scope `topic` the contact enables (checked by the services).
+    Column("topic_id", Uuid, ForeignKey("tags.id"), nullable=True, index=True),
     Column("document_date", Date, nullable=True),
     # Intake channel (`Channel`); documents from before M7 count as `api`.
     Column("channel", Text, nullable=False, server_default="api"),

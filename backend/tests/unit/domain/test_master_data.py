@@ -3,10 +3,12 @@ from datetime import UTC, datetime
 import pytest
 
 from papiq.core.domain.errors import ValidationError
+from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.master_data import (
     MAX_ALIASES,
     MAX_DESCRIPTION,
     MAX_GROUPS,
+    MAX_TOPICS,
     Assignment,
     Contact,
     DocumentType,
@@ -89,3 +91,43 @@ def test_contacts_and_types_are_in_groups() -> None:
     assert kind.group_ids == {group.id}
     with pytest.raises(ValidationError, match="groups"):
         kind.set_groups(Tag.create(name=str(n), now=NOW).id for n in range(MAX_GROUPS + 1))
+
+
+def test_a_topic_is_proposed_and_shown_unless_set_by_hand() -> None:
+    topic = Tag.create(name="Work", now=NOW, scope=TagScope.TOPIC)
+    assert (topic.assignment, topic.shown) == (Assignment.AUTO, True)
+    assert topic.is_topic_target and not topic.is_target
+    by_hand = Tag.create(
+        name="Private", now=NOW, scope=TagScope.TOPIC, assignment=Assignment.MANUAL
+    )
+    assert not by_hand.is_topic_target
+    assert not Tag.create(name="Paid", now=NOW).is_topic_target
+
+
+def test_a_contact_enables_topics_and_its_identifiers_point_to_them() -> None:
+    work, health = (Tag.create(name=name, now=NOW, scope=TagScope.TOPIC) for name in "WH")
+    number = Identifier(IdentifierKind.PERSONNEL_NUMBER, "4711", topic_id=work.id)
+    with pytest.raises(ValidationError, match="topic"):
+        Contact.create(name="Nord", now=NOW, identifiers=[number])
+    contact = Contact.create(name="Nord", now=NOW, topic_ids=[work.id], identifiers=[number])
+    assert contact.identifiers == [number]
+    policy = Identifier(IdentifierKind.CUSTOMER_NUMBER, "KV1", topic_id=health.id)
+    with pytest.raises(ValidationError, match="topic"):
+        contact.set_identifiers([number, policy])
+    assert contact.enable_topic(health.id) and not contact.enable_topic(health.id)
+    contact.set_identifiers([number, policy])
+    # A learned one keeps a topic the contact enables, and loses one it does not.
+    other = Tag.create(name="Other", now=NOW, scope=TagScope.TOPIC)
+    contact.set_learned(
+        [
+            Identifier(IdentifierKind.EMAIL_DOMAIN, "nord.example", topic_id=health.id),
+            Identifier(IdentifierKind.IBAN, "DE89370400440532013000", topic_id=other.id),
+        ]
+    )
+    learned = [item for item in contact.identifiers if item.source is IdentifierSource.LEARNED]
+    assert [item.topic_id for item in learned] == [None, health.id]
+    # Taking a topic away leaves its identifiers without one.
+    assert contact.set_topics([work.id]) == {health.id}
+    assert [item.topic_id for item in contact.identifiers] == [None, work.id, None, None]
+    with pytest.raises(ValidationError, match="topics"):
+        contact.set_topics(Tag.create(name=str(n), now=NOW).id for n in range(MAX_TOPICS + 1))

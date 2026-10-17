@@ -29,7 +29,7 @@ from papiq.core.domain.identifiers import (
     identifiers_in,
     mine_identifiers,
 )
-from papiq.core.domain.ids import ClassifierModelId, ContactId, UserId
+from papiq.core.domain.ids import ClassifierModelId, ContactId, TagId, UserId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.ports import (
@@ -193,7 +193,10 @@ class ClassifierService:
             (item.document.confirmed_at for item in examples if item.document.confirmed_at),
             default=None,
         )
-        found = [(item.document.contact_id, identifiers_in(item.example.text)) for item in examples]
+        found = [
+            (item.document.contact_id, item.document.topic_id, identifiers_in(item.example.text))
+            for item in examples
+        ]
         for attempt in range(1, _COMMIT_ATTEMPTS + 1):
             try:
                 model, learned, old = await self._store_model(
@@ -219,7 +222,7 @@ class ClassifierService:
     async def _store_model(
         self,
         trained: TrainedModel,
-        found: list[tuple[ContactId | None, set[tuple[IdentifierKind, str]]]],
+        found: list[tuple[ContactId | None, TagId | None, set[tuple[IdentifierKind, str]]]],
         accuracy: JsonObject | None,
         examples: int,
         until: datetime | None,

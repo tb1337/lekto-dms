@@ -4717,12 +4717,13 @@ export interface components {
 		/**
 		 * TagScope
 		 * @description What a tag describes, fixed when it is made: a document (`document`, as tags were
-		 *     before 0.3), contacts (`contact`: a contact group, "insurance") or document types
-		 *     (`document_type`: a type group, "invoice" over "medical bill"). Names are unique per
-		 *     scope.
+		 *     before 0.3), contacts (`contact`: a contact group, "insurance"), document types
+		 *     (`document_type`: a type group, "invoice" over "medical bill") or what a document is about
+		 *     with its contact (`topic`: "work", "health insurance"; a global catalogue, enabled at
+		 *     contacts, at most one per document). Names are unique per scope.
 		 * @enum {string}
 		 */
-		TagScope: 'document' | 'contact' | 'document_type';
+		TagScope: 'document' | 'contact' | 'document_type' | 'topic';
 		/**
 		 * TemplatePreviewIn
 		 * @example {

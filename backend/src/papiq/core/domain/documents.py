@@ -97,12 +97,15 @@ class DocumentChanges:
     tag_ids: frozenset[TagId] | Unset = UNSET
     document_date: date | Unset | None = UNSET
     fields: Mapping[FieldId, object] = field(default_factory=dict)
+    topic_id: TagId | Unset | None = UNSET
 
 
-CONFIRMING = frozenset({"contact_id", "document_type_id", "tag_ids", "document_date", "fields"})
+CONFIRMING = frozenset(
+    {"contact_id", "document_type_id", "topic_id", "tag_ids", "document_date", "fields"}
+)
 """Metadata a person confirms by changing it (as `Document.apply_changes` names it); a title
 or a space alone does not."""
-CLASSIFIER_LABELS = frozenset({"contact_id", "document_type_id", "tag_ids"})
+CLASSIFIER_LABELS = frozenset({"contact_id", "document_type_id", "topic_id", "tag_ids"})
 """What the classifier learns from confirmed documents: the pipeline deriving them anew ends
 the confirmation."""
 
@@ -111,9 +114,11 @@ the confirmation."""
 class Document:
     """A file with metadata.
 
-    Invariants: exactly one space; at most one contact and one document type; field values
-    fit their definition, and type-bound fields only exist while the document has a matching
-    type. `lane` is None while the pipeline runs and is set when it completes or fails.
+    Invariants: exactly one space; at most one contact, one document type and one topic (a
+    tag of scope `topic` its contact enables; the services see to that, `_access`); field
+    values fit their definition, and type-bound fields only exist while the document has a
+    matching type. `lane` is None while the pipeline runs and is set when it completes or
+    fails.
 
     State changes record domain events; `pull_events()` hands them over for the outbox.
     """
@@ -127,6 +132,7 @@ class Document:
     media_type: str
     contact_id: ContactId | None = None
     document_type_id: DocumentTypeId | None = None
+    topic_id: TagId | None = None
     tag_ids: set[TagId] = field(default_factory=set)
     fields: dict[FieldId, FieldValue] = field(default_factory=dict)
     document_date: date | None = None
@@ -135,8 +141,8 @@ class Document:
     processing: Processing
     page_count: int | None = None  # known once the pages node has rendered the page images
     # When a person last set or confirmed its metadata (in the inbox, or by changing contact,
-    # type, tags, date or fields), or it was taken over with the source system's; None while
-    # its metadata is the pipeline's own. Confirmed documents train the classifier.
+    # type, topic, tags, date or fields), or it was taken over with the source system's; None
+    # while its metadata is the pipeline's own. Confirmed documents train the classifier.
     confirmed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
@@ -456,13 +462,14 @@ class Document:
         """Apply a metadata change; returns the names of the changed fields.
 
         `definitions` must contain the definitions of all fields in the change and of all
-        fields the document has. References to contacts, types and tags are checked by the
-        caller. Values of type-bound fields that no longer apply after a type change are
-        removed.
+        fields the document has. References to contacts, types, topics and tags are checked by
+        the caller, and so is that the contact enables the topic (`_access.checked_changes`).
+        Values of type-bound fields that no longer apply after a type change are removed.
         """
         title = require_name(_pick(changes.title, self.title), "title")
         contact_id = _pick(changes.contact_id, self.contact_id)
         document_type_id = _pick(changes.document_type_id, self.document_type_id)
+        topic_id = _pick(changes.topic_id, self.topic_id)
         tag_ids = set(_pick(changes.tag_ids, frozenset(self.tag_ids)))
         document_date = _pick(changes.document_date, self.document_date)
 
@@ -488,6 +495,7 @@ class Document:
             "title": title,
             "contact_id": contact_id,
             "document_type_id": document_type_id,
+            "topic_id": topic_id,
             "tag_ids": tag_ids,
             "document_date": document_date,
             "fields": fields,
@@ -496,6 +504,7 @@ class Document:
         self.title = title
         self.contact_id = contact_id
         self.document_type_id = document_type_id
+        self.topic_id = topic_id
         self.tag_ids = tag_ids
         self.document_date = document_date
         self.fields = fields
@@ -512,7 +521,8 @@ class Document:
         self._touch(now)
 
     def drop_confirmation(self) -> None:
-        """The pipeline derived contact, type or tags anew: they are no longer a person's."""
+        """The pipeline derived contact, type, topic or tags anew: they are no longer a
+        person's."""
         self.confirmed_at = None
 
     def move_to(self, space_id: SpaceId, now: datetime) -> None:

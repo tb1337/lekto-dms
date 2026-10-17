@@ -46,6 +46,7 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
         aliases = await self._children(t.contact_aliases, "contact_id", ids)
         identifiers = await self._children(t.contact_identifiers, "contact_id", ids)
         groups = await self._children(t.contact_groups, "contact_id", ids)
+        topics = await self._children(t.contact_topics, "contact_id", ids)
         return [
             Contact(
                 id=ContactId(row.id),
@@ -54,10 +55,16 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
                     alias.name for alias in sorted(aliases[row.id], key=lambda item: item.position)
                 ],
                 identifiers=[
-                    Identifier(IdentifierKind(item.kind), item.value, IdentifierSource(item.source))
+                    Identifier(
+                        IdentifierKind(item.kind),
+                        item.value,
+                        IdentifierSource(item.source),
+                        None if item.topic_id is None else TagId(item.topic_id),
+                    )
                     for item in identifiers[row.id]
                 ],
                 group_ids=frozenset(TagId(group.tag_id) for group in groups[row.id]),
+                topic_ids=frozenset(TagId(topic.tag_id) for topic in topics[row.id]),
                 created_at=row.created_at,
                 version=row.version,
             )
@@ -85,6 +92,7 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
                     "kind": item.kind.value,
                     "value": item.value,
                     "source": item.source.value,
+                    "topic_id": item.topic_id,
                 }
                 for item in entity.identifiers
             ],
@@ -93,9 +101,14 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
             t.contact_groups,
             [{"contact_id": entity.id, "tag_id": group} for group in entity.group_ids],
         )
+        await self._insert_many(
+            t.contact_topics,
+            [{"contact_id": entity.id, "tag_id": topic} for topic in entity.topic_ids],
+        )
 
     async def _delete_children(self, ids: list[ContactId]) -> None:
-        for table in (t.contact_aliases, t.contact_identifiers, t.contact_groups):
+        tables = (t.contact_aliases, t.contact_identifiers, t.contact_groups, t.contact_topics)
+        for table in tables:
             await self._tx.write(delete(table).where(table.c.contact_id.in_(ids)))
 
 

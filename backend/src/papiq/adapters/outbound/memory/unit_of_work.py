@@ -383,6 +383,8 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
                     keys: Collection[UUID] = [document.contact_id] if document.contact_id else []
                 case CountBy.DOCUMENT_TYPE:
                     keys = [document.document_type_id] if document.document_type_id else []
+                case CountBy.TOPIC:
+                    keys = [document.topic_id] if document.topic_id else []
                 case CountBy.TAG:
                     keys = document.tag_ids
                 case CountBy.FIELD:
@@ -406,6 +408,7 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
                 row.document_type_id for row in confirmed if row.document_type_id is not None
             ),
             tags=frozenset(tag for row in confirmed for tag in row.tag_ids),
+            topics=frozenset(row.topic_id for row in confirmed if row.topic_id is not None),
         )
 
     async def exists(
@@ -416,10 +419,11 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
         contact: ContactId | None = None,
         document_type: DocumentTypeId | None = None,
         tag: TagId | None = None,
+        topic: TagId | None = None,
         field: FieldId | None = None,
         sha256: Sha256 | None = None,
     ) -> bool:
-        criteria = (owner, space, contact, document_type, tag, field, sha256)
+        criteria = (owner, space, contact, document_type, tag, topic, field, sha256)
         if all(value is None for value in criteria):
             raise ValueError("exists needs at least one criterion")
         return any(
@@ -428,6 +432,7 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
             and (contact is None or row.contact_id == contact)
             and (document_type is None or row.document_type_id == document_type)
             and (tag is None or tag in row.tag_ids)
+            and (topic is None or row.topic_id == topic)
             and (field is None or field in row.fields)
             and (sha256 is None or row.sha256 == sha256)
             for row in self._all()
@@ -659,6 +664,7 @@ def _query(
         for document in documents
         if (filter.contact is None or document.contact_id == filter.contact)
         and (filter.document_type is None or document.document_type_id == filter.document_type)
+        and (filter.topics is None or document.topic_id in filter.topics)
         and all(tags & document.tag_ids for tags in filter.tags)
         and groups.match(document, filter)
         and (filter.space is None or document.space_id == filter.space)

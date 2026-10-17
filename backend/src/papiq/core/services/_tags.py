@@ -1,8 +1,10 @@
-"""Tags as filters and counts: what a tag or a group stands for in a query of documents.
+"""Tags as filters and counts: what a tag, a group or a topic stands for in a query of
+documents.
 
 A filter on a tag matches its descendants; a filter on a group matches the documents whose
-contact (type) is in the group or a group below it. The repository and the index take sets
-("one of these") and know nothing of the trees (`DocumentFilter`).
+contact (type) is in the group or a group below it; a filter on a topic the documents with it or
+a topic below it. The repository and the index take sets ("one of these") and know nothing of
+the trees (`DocumentFilter`).
 """
 
 from collections.abc import Mapping, Sequence
@@ -28,11 +30,12 @@ def expand(filter: DocumentFilter, tree: TagTree) -> DocumentFilter:
         tags=widened(filter.tags),
         contact_groups=widened(filter.contact_groups),
         document_type_groups=widened(filter.document_type_groups),
+        topics=None if filter.topics is None else tree.with_descendants(filter.topics),
     )
 
 
 async def expanded(uow: UnitOfWork, filter: DocumentFilter) -> DocumentFilter:
-    if not (filter.tags or filter.contact_groups or filter.document_type_groups):
+    if not (filter.tags or filter.contact_groups or filter.document_type_groups or filter.topics):
         return filter
     return expand(filter, TagTree.of(await uow.tags.list_all()))
 
@@ -63,6 +66,7 @@ def matches(
     return (
         (filter.contact is None or document.contact_id == filter.contact)
         and (filter.document_type is None or document.document_type_id == filter.document_type)
+        and (filter.topics is None or document.topic_id in filter.topics)
         and all(tags & document.tag_ids for tags in filter.tags)
         and all(groups & (contact or frozenset()) for groups in filter.contact_groups)
         and all(groups & (kind or frozenset()) for groups in filter.document_type_groups)
@@ -74,7 +78,8 @@ def matches(
 async def tag_counts(uow: UnitOfWork, user: UserId | None) -> dict[UUID, int]:
     """How many documents the user may read (None: every document) each tag stands for: a
     document tag counts each document once that carries it or a tag below it; a group the
-    documents whose contact (type) is in it or a group below it. Only tags with documents."""
+    documents whose contact (type) is in it or a group below it; a topic those with it or a
+    topic below it (a document has one topic at most). Only tags with documents."""
     tree = TagTree.of(await uow.tags.list_all())
     counts = dict(await uow.documents.count_by(CountBy.TAG, user))
     parents: dict[UUID, frozenset[TagId]] = {
@@ -106,4 +111,11 @@ async def tag_counts(uow: UnitOfWork, user: UserId | None) -> dict[UUID, int]:
             )
             if total:
                 counts[group.id] = total
+    topics = tree.of_scope(TagScope.TOPIC)
+    if topics:
+        per_topic = await uow.documents.count_by(CountBy.TOPIC, user)
+        for topic in topics:
+            total = sum(per_topic.get(id, 0) for id in tree.with_descendants([topic.id]))
+            if total:
+                counts[topic.id] = total
     return counts

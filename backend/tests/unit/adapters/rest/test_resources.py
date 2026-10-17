@@ -640,7 +640,7 @@ async def test_tags_with_scopes_trees_and_groups(api: Api) -> None:
         ({"name": "insurance"}, 409),  # names are unique per scope
         ({"name": "X", "scope": "contact", "assignment": "auto"}, 422),
         ({"name": "X", "parent_id": insurer["id"]}, 422),  # another scope
-        ({"name": "X", "scope": "topic"}, 422),
+        ({"name": "X", "scope": "person"}, 422),
         ({"name": "X", "parent_id": str(UUID(int=7))}, 404),
     ):
         response = await api.client.post(f"{PREFIX}/tags", json=body, headers=a)

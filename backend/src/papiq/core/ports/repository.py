@@ -111,8 +111,8 @@ class TagRepository(NamedRepository[TagId, Tag], Protocol):
         ...
 
     async def remove(self, id: TagId) -> None:
-        """Delete it; NotFoundError if missing. No document, contact, type or tag may refer to
-        it."""
+        """Delete it; NotFoundError if missing. No document, contact, identifier, type or tag
+        may refer to it."""
         ...
 
 
@@ -129,15 +129,17 @@ class DocumentFilter:
     `tags`: sets of tags; the document carries one tag of each set. The core gives a tag with
     its descendants as one set (`TagTree.with_descendants`), so no adapter walks the tree.
     `contact_groups`, `document_type_groups` likewise: the document's contact (type) is in one
-    group of each set. `lanes`: one of them, where None stands for documents still in
-    processing. `confirmed`: whether a person set or confirmed the metadata
-    (`Document.confirmed_at`). `field`: a value for it is set."""
+    group of each set. `topics`: the document's topic is one of them (a topic with its
+    descendants). `lanes`: one of them, where None stands for documents still in processing.
+    `confirmed`: whether a person set or confirmed the metadata (`Document.confirmed_at`).
+    `field`: a value for it is set."""
 
     contact: ContactId | None = None
     document_type: DocumentTypeId | None = None
     tags: TagSets = ()
     contact_groups: TagSets = ()
     document_type_groups: TagSets = ()
+    topics: frozenset[TagId] | None = None
     space: SpaceId | None = None
     lanes: frozenset[Lane | None] | None = None
     confirmed: bool | None = None
@@ -147,6 +149,8 @@ class DocumentFilter:
         for sets in (self.tags, self.contact_groups, self.document_type_groups):
             if any(not tags for tags in sets):
                 raise ValueError("a set of tags in a filter is never empty")
+        if self.topics is not None and not self.topics:
+            raise ValueError("a set of topics in a filter is never empty")
 
 
 class SortKey(StrEnum):
@@ -168,10 +172,12 @@ NEWEST_FIRST = DocumentOrder()
 
 
 class CountBy(StrEnum):
-    """What documents are counted by: their contact, type, each tag, each field with a value."""
+    """What documents are counted by: their contact, type, topic, each tag, each field with a
+    value."""
 
     CONTACT = "contact"
     DOCUMENT_TYPE = "document_type"
+    TOPIC = "topic"
     TAG = "tag"
     FIELD = "field"
 
@@ -242,7 +248,8 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
 
     async def count_by(self, by: CountBy, user: UserId | None) -> dict[UUID, int]:
         """How many documents the user may read (as `list_visible_to`; None: every document)
-        have each contact, type or tag, or a value for each field. Only ids with documents."""
+        have each contact, type, topic or tag, or a value for each field. Only ids with
+        documents."""
         ...
 
     async def count_tagged(
@@ -263,8 +270,8 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         ...
 
     async def confirmed_labels(self, reader: UserId) -> KnownLabels:
-        """The contacts, document types and tags the confirmed documents `reader` may read
-        carry: what a document similar to one of theirs can name."""
+        """The contacts, document types, topics and tags the confirmed documents `reader` may
+        read carry: what a document similar to one of theirs can name."""
         ...
 
     async def exists(
@@ -275,6 +282,7 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         contact: ContactId | None = None,
         document_type: DocumentTypeId | None = None,
         tag: TagId | None = None,
+        topic: TagId | None = None,
         field: FieldId | None = None,
         sha256: Sha256 | None = None,
     ) -> bool:

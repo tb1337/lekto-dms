@@ -665,7 +665,7 @@ class MigrationSuite:
             *(
                 sa.column(c.name, c.type)
                 for c in t.documents.c
-                if c.name not in {"confirmed_at", "space_id"}
+                if c.name not in {"confirmed_at", "space_id", "topic_id"}
             ),
             sa.column("drawer_id", sa.Uuid()),
         )
@@ -1353,6 +1353,115 @@ class MigrationSuite:
         async with empty_database.reading() as connection:
             assert await connection.run_sync(_schema) == schema
 
+    async def test_topics_come_and_go_with_revision_0027(self, empty_database: Database) -> None:
+        """Revision 0027 keeps every document, identifier and the rows that refer to them,
+        without a topic; the downgrade drops the topics and the columns again, and the schema is
+        that of 0026."""
+        await migrate(empty_database, "0026")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        ids = {name: new_id() for name in ("user", "space", "first", "second", "tax", "contact")}
+        ids |= {name: new_id() for name in ("insurance", "health", "type")}
+        rows: list[tuple[sa.TableClause | sa.Table, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "a", "username_key": "a", "role": "admin"}),
+            (t.spaces, {"id": ids["space"], "owner_id": ids["user"], "name_key": "d"}),
+            (t.tags, {"id": ids["tax"], "name": "Tax", "name_key": "tax"}),
+            (t.contacts, {"id": ids["contact"], "name": "Nord", "name_key": "nord"}),
+            (t.document_types, {"id": ids["type"], "name": "Invoice", "name_key": "invoice"}),
+        ]
+        for number, document in enumerate(("first", "second")):
+            values = {"id": ids[document], "owner_id": ids["user"], "space_id": ids["space"]}
+            values |= {"contact_id": ids["contact"], "document_type_id": ids["type"]}
+            rows.append((t.documents, values | {"sha256": str(number) * 64, "title": document}))
+        rows += [
+            (t.document_tags, {"document_id": ids["first"], "tag_id": ids["tax"]}),
+            (t.document_identifiers, {"document_id": ids["first"], "kind": "iban", "value": "X"}),
+            (
+                t.contact_identifiers,
+                {"contact_id": ids["contact"], "kind": "iban", "value": "X", "source": "manual"},
+            ),
+            (
+                t.contact_identifiers,
+                {"contact_id": ids["contact"], "kind": "vat_id", "value": "Y", "source": "learned"},
+            ),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+        documents = sa.table(
+            "documents",
+            *(sa.column(name) for name in ("id", "owner_id", "space_id", "sha256", "title")),
+            *(sa.column(name) for name in ("contact_id", "document_type_id", "processing_nodes")),
+        )
+        identifiers = sa.table(
+            "contact_identifiers",
+            *(sa.column(c) for c in ("contact_id", "kind", "value", "source")),
+        )
+
+        async def stored() -> dict[str, list[tuple[Any, ...]]]:
+            async with empty_database.reading() as connection:
+
+                async def all_(query: Any) -> list[tuple[Any, ...]]:
+                    return sorted(
+                        tuple(str(value) for value in row)
+                        for row in (await connection.execute(query)).all()
+                    )
+
+                return {
+                    "documents": await all_(select(documents)),
+                    "identifiers": await all_(select(identifiers)),
+                    "document_tags": await all_(select(t.document_tags)),
+                    "document_identifiers": await all_(select(t.document_identifiers)),
+                    "tags": await all_(select(t.tags.c.id, t.tags.c.scope)),
+                }
+
+        before = await stored()
+        await migrate(empty_database)
+        assert await stored() == before
+        async with empty_database.reading() as connection:
+            topics = await connection.execute(select(t.documents.c.topic_id))
+            assert {row[0] for row in topics} == {None}
+            topics = await connection.execute(select(t.contact_identifiers.c.topic_id))
+            assert {row[0] for row in topics} == {None}
+
+        topic: dict[str, Any] = {"scope": "topic"}
+        new_rows: list[tuple[sa.Table, dict[str, Any]]] = [
+            (t.tags, {"id": ids["insurance"], "name": "Tax", "name_key": "tax", **topic}),
+            (
+                t.tags,
+                {"id": ids["health"], "name": "H", "name_key": "h", "parent_id": ids["insurance"]}
+                | topic,
+            ),
+            (t.contact_topics, {"contact_id": ids["contact"], "tag_id": ids["health"]}),
+        ]
+        async with empty_database.writing() as connection:
+            for table, values in new_rows:
+                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+                await connection.execute(insert(table).values({**defaults, **values}))
+            await connection.execute(
+                t.documents.update()
+                .where(t.documents.c.id == ids["first"])
+                .values(topic_id=ids["health"])
+            )
+            await connection.execute(
+                t.contact_identifiers.update()
+                .where(t.contact_identifiers.c.kind == "iban")
+                .values(topic_id=ids["health"])
+            )
+        with pytest.raises(sa.exc.IntegrityError):
+            async with empty_database.writing() as connection:
+                await connection.execute(
+                    t.documents.update()
+                    .where(t.documents.c.id == ids["second"])
+                    .values(topic_id=new_id())
+                )
+
+        await downgrade(empty_database, "0026")
+        assert await stored() == before
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -1542,9 +1651,9 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
 
 
 def _before_0021(table: sa.Table) -> sa.TableClause:
-    """`table` as the revisions before 0021 had it: no vision reading of the run, and no sort
-    key of the title (0023); without the space column (see `_drawer`)."""
-    later = {"processing_vision", "title_key", "space_id"}
+    """`table` as the revisions before 0021 had it: no vision reading of the run, no sort key
+    of the title (0023) and no topic (0027); without the space column (see `_drawer`)."""
+    later = {"processing_vision", "title_key", "space_id", "topic_id"}
     return sa.table(
         table.name, *(sa.column(c.name, c.type) for c in table.c if c.name not in later)
     )
@@ -1553,7 +1662,8 @@ def _before_0021(table: sa.Table) -> sa.TableClause:
 def _before_0010(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0010 had it: the current node and the outcomes instead
     of the state of every node, and no page count (0011), confirmation (0014), vision reading
-    (0021) or sort key of the title (0023); without the space column (see `_drawer`)."""
+    (0021), sort key of the title (0023) or topic (0027); without the space column (see
+    `_drawer`)."""
     later = {
         "processing_nodes",
         "page_count",
@@ -1561,6 +1671,7 @@ def _before_0010(table: sa.Table) -> sa.TableClause:
         "processing_vision",
         "title_key",
         "space_id",
+        "topic_id",
     }
     columns = [sa.column(c.name, c.type) for c in table.c if c.name not in later]
     if table.name == "documents":

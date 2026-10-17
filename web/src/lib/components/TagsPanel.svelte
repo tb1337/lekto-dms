@@ -194,7 +194,7 @@
 				type="button"
 				aria-pressed={filter === kind}
 				class={cn(
-					'h-9 shrink-0 rounded-full border px-3.5 text-sm whitespace-nowrap transition-colors max-sm:h-10',
+					'h-9 shrink-0 rounded-full border px-3.5 text-sm whitespace-nowrap transition-colors max-sm:h-11',
 					filter === kind
 						? 'border-primary bg-primary/10 font-medium text-foreground'
 						: 'border-input bg-card hover:bg-secondary'
@@ -229,12 +229,12 @@
 					class="flex min-h-12 items-center gap-2 bg-muted/60 py-1 pr-1.5 pl-1 sm:gap-2.5 sm:pr-2.5"
 				>
 					{#if searching}
-						<span class="size-10 shrink-0 sm:size-8" aria-hidden="true"></span>
+						<span class="size-11 shrink-0 sm:size-8" aria-hidden="true"></span>
 					{:else}
 						<Button
 							variant="ghost"
 							size="icon"
-							class="size-10 shrink-0 aria-expanded:bg-transparent sm:size-8"
+							class="size-11 shrink-0 aria-expanded:bg-transparent sm:size-8"
 							aria-expanded={open}
 							aria-controls="tags-{kind}-list"
 							aria-label={open ? m.tree_collapse({ name: title }) : m.tree_expand({ name: title })}
@@ -253,7 +253,7 @@
 					<Button
 						variant={phone.current ? 'ghost' : 'outline'}
 						size="icon"
-						class="size-10 shrink-0 rounded-full text-brand sm:size-8"
+						class="size-11 shrink-0 rounded-full text-brand sm:size-8"
 						aria-label={KINDS[kind].add()}
 						title={KINDS[kind].add()}
 						onclick={() => masterDataDialogs.open(kind)}
@@ -287,7 +287,7 @@
 											<Button
 												variant="ghost"
 												size="icon"
-												class="size-10 shrink-0 aria-expanded:bg-transparent sm:size-8"
+												class="size-11 shrink-0 aria-expanded:bg-transparent sm:size-8"
 												aria-expanded={!collapsedTags.has(tag.id)}
 												aria-label={collapsedTags.has(tag.id)
 													? m.tree_expand({ name: tag.name })
@@ -301,7 +301,7 @@
 												{/if}
 											</Button>
 										{:else}
-											<span class="size-10 shrink-0 sm:size-8" aria-hidden="true"></span>
+											<span class="size-11 shrink-0 sm:size-8" aria-hidden="true"></span>
 										{/if}
 									{/snippet}
 									<span class="flex max-w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-1">

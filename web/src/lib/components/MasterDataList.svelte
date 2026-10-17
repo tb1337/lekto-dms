@@ -144,12 +144,12 @@
 				: m.master_filter_topic({ name: pathLabel(filterTag) })}
 		<div>
 			<span
-				class="inline-flex h-9 max-w-full items-center gap-1 rounded-full border bg-card pr-1 pl-3.5 text-sm"
+				class="inline-flex h-9 max-w-full items-center gap-1 rounded-full border bg-card pr-1 pl-3.5 text-sm max-sm:h-11"
 			>
 				<span class="min-w-0 truncate">{label}</span>
 				<button
 					type="button"
-					class="grid size-7 shrink-0 place-items-center rounded-full hover:bg-secondary"
+					class="relative grid size-7 shrink-0 place-items-center rounded-full after:absolute after:-inset-1 hover:bg-secondary max-sm:size-9"
 					aria-label={m.master_filter_remove({ name: label })}
 					onclick={() => goto(`?tab=${kind}`, { reset: false })}
 				>

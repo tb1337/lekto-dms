@@ -9,7 +9,7 @@
 
 	// A tag as a chip: its icon and own name in its colour, the path as tooltip and, where
 	// `interactive`, on a tap (a phone has no hover); a group outlined, a topic square (tags are
-	// round); `onremove` adds a button that removes it.
+	// round); `onremove` adds a button that removes it (a finger hits it beyond its edge).
 	let {
 		tag,
 		group = false,
@@ -76,7 +76,7 @@
 	{#if onremove}
 		<button
 			type="button"
-			class="grid size-6 shrink-0 place-items-center rounded-full hover:bg-background"
+			class="relative grid size-6 shrink-0 place-items-center rounded-full after:absolute after:-inset-2.5 hover:bg-background"
 			aria-label={removeLabel}
 			onclick={onremove}
 		>

@@ -92,7 +92,7 @@
 		aria-haspopup="dialog"
 		aria-label={isTopic ? m.picker_add_topic_label() : m.picker_add_group_label()}
 		class={cn(
-			'inline-flex h-8 items-center gap-1.5 border border-dashed border-muted-foreground/50 px-3 text-sm text-brand transition-colors hover:bg-secondary max-sm:h-10',
+			'inline-flex h-8 items-center gap-1.5 border border-dashed border-muted-foreground/50 px-3 text-sm text-brand transition-colors hover:bg-secondary max-sm:h-11',
 			isTopic ? 'rounded-md' : 'rounded-full'
 		)}
 		onclick={() => (open = true)}

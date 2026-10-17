@@ -43,6 +43,8 @@ export function initialValue(
 			return (
 				document.document_type_id ?? (typeof check.suggestion === 'string' ? check.suggestion : '')
 			);
+		case 'topic':
+			return document.topic_id ?? (typeof check.suggestion === 'string' ? check.suggestion : '');
 		case 'document_date':
 			return (
 				document.document_date ?? (typeof check.suggestion === 'string' ? check.suggestion : '')

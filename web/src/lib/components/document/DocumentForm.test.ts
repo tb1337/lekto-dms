@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -546,6 +546,12 @@ describe('the topic', () => {
 	} as Document;
 	const select = (label: string) =>
 		screen.getByLabelText(label, { selector: 'select' }) as HTMLSelectElement;
+	// A closed dialog gives the page its pointer back a moment later.
+	const closed = () =>
+		waitFor(() => {
+			expect(screen.queryByRole('dialog')).toBeNull();
+			expect(globalThis.document.body.style.pointerEvents).not.toBe('none');
+		});
 	const choices = (label: string) => [...select(label).options].map((option) => option.text);
 
 	it('offers the contact’s topics and leaves one the next contact does not have', async () => {
@@ -562,9 +568,10 @@ describe('the topic', () => {
 		expect(select(m.field_topic()).value).toBe('');
 		await userEvent.selectOptions(select(m.field_topic()), WORK);
 		await userEvent.click(screen.getByRole('button', { name: m.edit_review() }));
-		// Another contact with a topic sends the topic too, so that the contact keeps it.
+		// Another topic chosen with another contact is sent with it.
 		expect(await fetchMock.mock.calls[0][0].json()).toEqual({ contact_id: BANK, topic_id: WORK });
 		await userEvent.click(await screen.findByRole('button', { name: m.cancel() }));
+		await closed();
 		await userEvent.selectOptions(select(m.field_contact()), BANK);
 		expect(choices(m.field_topic())).toEqual([m.value_unset(), 'Arbeit']);
 		await userEvent.selectOptions(select(m.field_contact()), '');
@@ -594,6 +601,7 @@ describe('the topic', () => {
 		const sent = await fetchMock.mock.calls[0][0].json();
 		expect(sent).toEqual({ topic_id: HEALTH });
 		await userEvent.click(await screen.findByRole('button', { name: m.cancel() }));
+		await closed();
 	});
 
 	it('shows a topic Papiq only suggests as a card; a click takes it', async () => {
@@ -639,5 +647,103 @@ describe('the topic', () => {
 				'only one signal names it'
 			)
 		).toBeNull();
+	});
+
+	const json = (body: unknown) =>
+		new Response(JSON.stringify(body), {
+			status: 200,
+			headers: { 'content-type': 'application/json' }
+		});
+	const PREVIEW = { changed: [], rules: null, visibility: null, document: null };
+	// The dry run of the form's change: what it sends; the dialog is closed again.
+	const sentPatch = async () => {
+		const calls = fetchMock.mock.calls.length;
+		await userEvent.click(screen.getByRole('button', { name: m.edit_review() }));
+		const body = await fetchMock.mock.calls[calls][0].json();
+		await userEvent.click(await screen.findByRole('button', { name: m.cancel() }));
+		await closed();
+		return body;
+	};
+
+	it('leaves a topic the next contact does not enable to the API to clear', async () => {
+		fetchMock.mockImplementation(async () => json(PREVIEW));
+		render(DocumentForm, props({ document: filed, lookup: topics, review: null }));
+		await userEvent.selectOptions(select(m.field_contact()), BANK);
+		expect(select(m.field_topic()).value).toBe('');
+		// Cleared by the contact, not by the person: no decision on the topic is sent.
+		expect(await sentPatch()).toEqual({ contact_id: BANK });
+	});
+
+	it('keeps a topic the next contact enables, unless the person clears it', async () => {
+		fetchMock.mockImplementation(async () => json(PREVIEW));
+		const working = { ...filed, topic_id: WORK } as Document;
+		render(DocumentForm, props({ document: working, lookup: topics, review: null }));
+		await userEvent.selectOptions(select(m.field_contact()), BANK);
+		expect(select(m.field_topic()).value).toBe(WORK);
+		expect(await sentPatch()).toEqual({ contact_id: BANK });
+		await userEvent.selectOptions(select(m.field_topic()), '');
+		expect(await sentPatch()).toEqual({ contact_id: BANK, topic_id: null });
+	});
+
+	it('sends the topic an admin chooses again for the next contact, and reloads the master data', async () => {
+		session.start({
+			user: { id: OWNER, username: 'admin', role: 'admin' },
+			method: 'password',
+			expires_at: '2026-10-09T12:00:00Z',
+			csrf_token: 'token'
+		});
+		fetchMock.mockImplementation(async (request) =>
+			json(request.method === 'PATCH' ? { ...filed, contact_id: BANK } : PREVIEW)
+		);
+		const onenabled = vi.fn();
+		const onsaved = vi.fn();
+		render(
+			DocumentForm,
+			props({ document: filed, lookup: topics, review: null, onenabled, onsaved })
+		);
+		await userEvent.selectOptions(select(m.field_contact()), BANK);
+		await userEvent.selectOptions(select(m.field_topic()), HEALTH);
+		await userEvent.click(screen.getByRole('button', { name: m.edit_review() }));
+		expect(await fetchMock.mock.calls[0][0].json()).toEqual({ contact_id: BANK, topic_id: HEALTH });
+		await userEvent.click(await screen.findByRole('button', { name: m.edit_save() }));
+		expect(fetchMock.mock.calls[1][0].method).toBe('PATCH');
+		expect(onsaved).toHaveBeenCalled();
+		expect(onenabled).toHaveBeenCalledOnce();
+	});
+
+	it('confirms a topic the rules left open, also as none', async () => {
+		fetchMock.mockImplementation(async () => json({}));
+		const conflict = {
+			document: {},
+			open: [
+				{
+					node: 'apply_rules',
+					outcome: 'uncertain',
+					reason: 'topic',
+					fields: [
+						check('topic', {
+							outcome: 'uncertain',
+							confidence: 0,
+							reason: 'rules set different values',
+							suggestion: WORK
+						})
+					]
+				}
+			],
+			nodes: []
+		} as unknown as Review;
+		const waiting = { ...documentOf('review'), contact_id: CONTACT, topic_id: null } as Document;
+		render(DocumentForm, props({ document: waiting, lookup: topics, review: conflict }));
+		const card = screen.getByRole('group', { name: m.field_topic() });
+		expect(within(card).getByText('rules set different values')).toBeTruthy();
+		expect(within(card).queryByText(m.source_none())).toBeNull();
+		expect(select(m.field_topic()).value).toBe(WORK);
+		await userEvent.selectOptions(select(m.field_topic()), '');
+		await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
+		expect(await fetchMock.mock.calls[0][0].json()).toEqual({
+			changes: { topic_id: null },
+			accept_suggestions: false,
+			resume_at: 'apply_rules'
+		});
 	});
 });

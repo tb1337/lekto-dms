@@ -156,6 +156,8 @@
 		{/if}
 		{#if byHand}
 			<p class="text-sm text-muted-foreground">{m.review_by_hand()}</p>
+		{:else if !quoted}
+			<!-- Never quoted (the topic): no missing quote to tell. -->
 		{:else if kind === 'none'}
 			<p
 				class="flex items-center gap-2 rounded-lg bg-muted px-2.5 py-2 text-sm text-muted-foreground"

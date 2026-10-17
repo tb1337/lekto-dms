@@ -68,6 +68,7 @@
 		onconfirmed,
 		onmarks,
 		onreveal,
+		onenabled,
 		factCounts = null,
 		factsHref = ''
 	}: {
@@ -83,6 +84,8 @@
 		onconfirmed: (next: string | null) => void;
 		onmarks: (marks: Mark[]) => void;
 		onreveal: (place: Place) => void;
+		/** An admin's choice enabled the topic at the contact: the master data changed. */
+		onenabled?: () => void;
 		/** What the document shows of its contact, counted; a chip at the contact leads there. */
 		factCounts?: { evidence: number; unknown: number; codes: number } | null;
 		/** Where the facts are: the content. */
@@ -263,11 +266,18 @@
 		if (title.trim() !== document.title) next.title = title.trim();
 		if ((date || null) !== document.document_date) next.document_date = date || null;
 		if ((contact || null) !== document.contact_id) next.contact_id = contact || null;
-		// With another contact a topic is sent too: the contact keeps it only if it is given
-		// (an admin's choice enables it there).
-		if ((topic || null) !== (document.topic_id ?? null) || (topic !== '' && 'contact_id' in next)) {
-			next.topic_id = topic || null;
-		}
+		const chosen = topic || null;
+		const kept = document.topic_id ?? null;
+		if ('contact_id' in next) {
+			// Another contact keeps the topic if it enables it and clears it otherwise (the API
+			// does both): only the person's own choice is sent. Another topic; the stored one
+			// cleared where the contact enables it; or the stored one chosen again where it
+			// does not (an admin's choice enables it there).
+			const enabled = (id: string) => enabledTopics.includes(id);
+			if (chosen !== null ? chosen !== kept || !enabled(chosen) : kept !== null && enabled(kept)) {
+				next.topic_id = chosen;
+			}
+		} else if (chosen !== kept) next.topic_id = chosen;
 		if ((documentType || null) !== document.document_type_id) {
 			next.document_type_id = documentType || null;
 		}
@@ -304,6 +314,7 @@
 				if (typeChanged && field?.assignment !== 'manual') delete fields[id];
 				else if (field) fields[id] = toApi(field.data_type, values[id]);
 			} else if (check.field === 'contact') changes.contact_id = contact || null;
+			else if (check.field === 'topic') changes.topic_id = topic || null;
 			else if (check.field === 'document_type') changes.document_type_id = documentType || null;
 			else if (check.field === 'document_date') changes.document_date = date || null;
 			else if (check.field === 'tags') changes.tag_ids = [...tags];
@@ -339,6 +350,7 @@
 	async function confirm() {
 		busy = true;
 		formError = null;
+		const enabling = session.isAdmin && enablesTopic;
 		try {
 			await unwrap(
 				api.POST('/api/v1/documents/{id}/confirm', {
@@ -347,6 +359,7 @@
 				})
 			);
 			baseline = null;
+			if (enabling) onenabled?.();
 			toast.success(m.review_confirmed());
 			onconfirmed(openNext ? next : null);
 		} catch (error) {
@@ -378,6 +391,7 @@
 
 	async function save() {
 		busy = true;
+		const enabling = session.isAdmin && enablesTopic && 'topic_id' in patch;
 		try {
 			const result = await unwrap(
 				api.PATCH('/api/v1/documents/{id}', {
@@ -387,6 +401,7 @@
 			);
 			preview = null;
 			baseline = null;
+			if (enabling) onenabled?.();
 			toast.success(m.document_saved());
 			if ('title' in result) onsaved(result);
 			else {
@@ -616,6 +631,7 @@
 				inputId="doc-topic"
 				evidence={evidence.get('topic')}
 				{lookup}
+				review={reviewing}
 				advice={topicAdvice}
 				quoted={false}
 				applies={applies('topic')}

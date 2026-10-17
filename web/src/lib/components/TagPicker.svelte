@@ -1,15 +1,20 @@
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
+	import CreateOffers from '#lib/components/CreateOffers.svelte';
 	import TagChip from '#lib/components/TagChip.svelte';
 	import TagPickerDialog from '#lib/components/TagPickerDialog.svelte';
 	import type { Tag, TagScope } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { session } from '#lib/session.svelte.ts';
+	import { creatable, createQuickly, createWithDetails } from '#lib/tag-create.ts';
 	import { pathLabel } from '#lib/tags.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// The groups of a contact or a type, the topics of a contact: chips to remove and a button
 	// that opens the picker over the editor (`TagPickerDialog`). A chosen tag missing from
-	// `tags` (deleted meanwhile) stays as a chip until removed.
+	// `tags` (deleted meanwhile) stays as a chip until removed. An admin's search that finds no
+	// tag named so offers to create one (`tag-create.ts`), chosen at once; `oncreated` tells
+	// the editor, whose `tags` should hold it.
 	let {
 		id,
 		label,
@@ -17,7 +22,8 @@
 		scope,
 		tags,
 		selected,
-		onchange
+		onchange,
+		oncreated = () => {}
 	}: {
 		id: string;
 		/** What the chips are ("Groups"). */
@@ -28,9 +34,13 @@
 		tags: readonly Tag[];
 		selected: readonly string[];
 		onchange: (selected: string[]) => void;
+		oncreated?: (tag: Tag) => void;
 	} = $props();
 
 	let open = $state(false);
+	let query = $state('');
+	let busy = $state(false);
+	const offered = $derived(session.isAdmin && creatable(tags, scope, query));
 	const byId = $derived(new Map(tags.map((tag) => [tag.id, tag])));
 	const chips = $derived(
 		[...new Set(selected)].map(
@@ -38,6 +48,27 @@
 		)
 	);
 	const isTopic = $derived(scope === 'topic');
+
+	function chosen(tag: Tag) {
+		oncreated(tag);
+		onchange([...selected, tag.id]);
+	}
+
+	async function quick() {
+		busy = true;
+		const tag = await createQuickly(scope, query);
+		busy = false;
+		if (!tag) return;
+		chosen(tag);
+		query = '';
+	}
+
+	async function details() {
+		const name = query;
+		open = false;
+		const tag = await createWithDetails(scope, name);
+		if (tag) chosen(tag);
+	}
 </script>
 
 <div
@@ -71,4 +102,19 @@
 	</button>
 </div>
 
-<TagPickerDialog bind:open {title} {scope} {tags} {selected} {onchange} />
+<TagPickerDialog
+	bind:open
+	bind:query
+	{title}
+	{scope}
+	{tags}
+	{selected}
+	{onchange}
+	searchLabel={session.isAdmin ? m.picker_search_create() : m.assignment_search()}
+>
+	{#snippet actions()}
+		{#if offered}
+			<CreateOffers name={query.trim()} {busy} onquick={quick} ondetails={details} />
+		{/if}
+	{/snippet}
+</TagPickerDialog>

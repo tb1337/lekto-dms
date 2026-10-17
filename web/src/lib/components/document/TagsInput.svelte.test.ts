@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Tag } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { session } from '#lib/session.svelte.ts';
 import { SEPARATOR } from '#lib/tags.ts';
 import TagsInput from './TagsInput.svelte';
 
@@ -69,5 +70,69 @@ describe('TagsInput', () => {
 	it('keeps the id for the label when there is nothing to add', () => {
 		const { container } = render(TagsInput, { tags: [], all: ALL, id: 'tags', disabled: true });
 		expect(container.querySelector('#tags')?.getAttribute('aria-labelledby')).toBe('tags-label');
+	});
+
+	describe('creating', () => {
+		afterEach(() => {
+			session.clear();
+			vi.unstubAllGlobals();
+		});
+
+		function signIn(role: 'admin' | 'user') {
+			session.start({
+				user: { id: 'u1', username: 'tobi', role },
+				method: 'password',
+				expires_at: '2026-10-17T23:00:00Z',
+				csrf_token: 'token'
+			});
+		}
+
+		it('lets an admin create a document tag named as searched, set at once', async () => {
+			signIn('admin');
+			const fetchMock = vi.fn(async (request: Request) => {
+				const body = await request.clone().json();
+				return new Response(JSON.stringify(tag('t9', [body.name], null)), {
+					status: 201,
+					headers: { 'content-type': 'application/json' }
+				});
+			});
+			vi.stubGlobal('fetch', fetchMock);
+			const user = userEvent.setup();
+			const props = $state({ tags: ['t3'], all: ALL, id: 'tags' });
+			render(TagsInput, props);
+			await user.click(screen.getByRole('button', { name: m.field_tag_add() }));
+			const search = await screen.findByLabelText(m.picker_search_create());
+			// A group of the same name is no document tag: creating is offered.
+			await user.type(search, 'Insurer');
+			await user.click(screen.getByText(m.tag_create_quick({ name: 'Insurer' })));
+			await waitFor(() => expect(props.tags).toEqual(['t3', 't9']));
+			expect(await fetchMock.mock.calls[0][0].json()).toEqual({
+				name: 'Insurer',
+				scope: 'document'
+			});
+			// Shown by its name before the lookup has it.
+			expect(
+				screen.getByRole('button', { name: m.filter_tag_remove({ name: 'Insurer' }) })
+			).toBeTruthy();
+		});
+
+		it('offers nothing to create to others', async () => {
+			signIn('user');
+			const user = userEvent.setup();
+			render(TagsInput, { tags: [], all: ALL, id: 'tags' });
+			await user.click(screen.getByRole('button', { name: m.field_tag_add() }));
+			await user.type(await screen.findByLabelText(m.assignment_search()), 'Makler');
+			expect(screen.queryByText(m.tag_create_quick({ name: 'Makler' }))).toBeNull();
+			expect(screen.queryByText(m.tag_create_details())).toBeNull();
+		});
+
+		it('offers nothing to create for a name a document tag has', async () => {
+			signIn('admin');
+			const user = userEvent.setup();
+			render(TagsInput, { tags: ['t3'], all: ALL, id: 'tags' });
+			await user.click(screen.getByRole('button', { name: m.field_tag_add() }));
+			await user.type(await screen.findByLabelText(m.picker_search_create()), 'PAID ');
+			expect(screen.queryByText(m.tag_create_quick({ name: 'PAID' }))).toBeNull();
+		});
 	});
 });

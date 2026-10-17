@@ -43,6 +43,7 @@
 		shortTitle = title,
 		extra,
 		initial = null,
+		presetName = '',
 		submitLabel = m.save(),
 		ruleHref = null,
 		fields = null,
@@ -51,6 +52,7 @@
 		chooseScope = false,
 		fetching = false,
 		onlogo = () => {},
+		ontagcreated = () => {},
 		onsubmit,
 		ondelete,
 		deleteDescription = ''
@@ -61,6 +63,8 @@
 		shortTitle?: string;
 		extra: Extra;
 		initial?: Item | null;
+		/** A new item's name, filled in. */
+		presetName?: string;
 		submitLabel?: string;
 		/** The rule of the type's title pattern, to go to from here. */
 		ruleHref?: string | null;
@@ -76,6 +80,8 @@
 		fetching?: boolean;
 		/** A contact's logo changed (saved at once). */
 		onlogo?: () => void;
+		/** A picker made a tag (a group, a topic): `tags` should hold it. */
+		ontagcreated?: (tag: Tag) => void;
 		onsubmit: (values: Values) => Promise<void>;
 		/** Deletes the item (asked first); its answer (409: still in use) shows as a toast. */
 		ondelete?: () => Promise<void>;
@@ -83,6 +89,8 @@
 		deleteDescription?: string;
 	} = $props();
 
+	// Ids of this dialog's fields: a second one may stand over it (a tag made from a picker).
+	const uid = $props.id();
 	let name = $state('');
 	let aliases = $state('');
 	let identifiers = $state<IdentifierRow[]>([]);
@@ -123,7 +131,7 @@
 
 	$effect(() => {
 		if (open) {
-			name = initial?.name ?? '';
+			name = initial?.name ?? presetName;
 			aliases = (initial?.aliases ?? []).join('\n');
 			identifiers = rowsOf(initial?.identifiers);
 			description = initial?.description ?? '';
@@ -214,7 +222,7 @@
 					>
 						<input
 							type="radio"
-							name="master-kind"
+							name="{uid}-kind"
 							value={card.scope}
 							checked={kind === card.scope}
 							onchange={() => chooseKind(card.scope)}
@@ -232,8 +240,8 @@
 	{/if}
 	{#if extra !== 'tag' || kind !== null}
 		<Field.Field>
-			<Field.Label for="master-name">{m.field_name()}</Field.Label>
-			<Input id="master-name" bind:value={name} maxlength={200} required />
+			<Field.Label for="{uid}-name">{m.field_name()}</Field.Label>
+			<Input id="{uid}-name" bind:value={name} maxlength={200} required />
 		</Field.Field>
 	{/if}
 	{#if extra === 'aliases'}
@@ -249,11 +257,11 @@
 	{#if extra === 'description'}{@render iconField()}{/if}
 	{#if extra === 'tag' && kind !== null}
 		<Field.Field>
-			<Field.Label for="master-parent">
+			<Field.Label for="{uid}-parent">
 				{isGroup ? m.tag_parent_group() : isTopic ? m.topic_parent() : m.tag_parent()}
 			</Field.Label>
 			<NativeSelect
-				id="master-parent"
+				id="{uid}-parent"
 				bind:value={parentId}
 				options={[
 					{
@@ -271,8 +279,8 @@
 		</Field.Field>
 		{@render iconField()}
 		<Field.Field>
-			<Field.Label id="master-color-label">{m.master_color()}</Field.Label>
-			<ColorPicker id="master-color" bind:value={color} />
+			<Field.Label id="{uid}-color-label">{m.master_color()}</Field.Label>
+			<ColorPicker id="{uid}-color" bind:value={color} />
 		</Field.Field>
 		{#if !isGroup}
 			<fieldset class="flex flex-col gap-2">
@@ -281,7 +289,7 @@
 					<label class="flex items-center gap-2 text-sm">
 						<input
 							type="radio"
-							name="master-assignment"
+							name="{uid}-assignment"
 							checked={!manual}
 							onchange={() => (manual = false)}
 							class="size-4 accent-primary"
@@ -291,7 +299,7 @@
 					<label class="flex items-center gap-2 text-sm">
 						<input
 							type="radio"
-							name="master-assignment"
+							name="{uid}-assignment"
 							checked={manual}
 							onchange={() => (manual = true)}
 							class="size-4 accent-primary"
@@ -310,11 +318,11 @@
 					type="checkbox"
 					bind:checked={shown}
 					class="size-4 accent-primary"
-					aria-describedby="master-shown-hint"
+					aria-describedby="{uid}-shown-hint"
 				/>
 				{m.tag_shown()}
 			</label>
-			<Field.Description id="master-shown-hint">
+			<Field.Description id="{uid}-shown-hint">
 				{isGroup ? m.tag_group_shown_hint() : isTopic ? m.topic_shown_hint() : m.tag_shown_hint()}
 			</Field.Description>
 		</Field.Field>
@@ -345,15 +353,16 @@
 	{/if}
 	{#if groupScope !== null}
 		<Field.Field>
-			<Field.Label id="master-groups-label">{m.master_groups()}</Field.Label>
+			<Field.Label id="{uid}-groups-label">{m.master_groups()}</Field.Label>
 			<TagPicker
-				id="master-groups"
+				id="{uid}-groups"
 				label={m.master_groups()}
 				title={groupScope === 'contact' ? m.master_contact_groups() : m.master_type_groups()}
 				scope={groupScope}
 				{tags}
 				selected={groupIds}
 				onchange={(next) => (groupIds = next)}
+				oncreated={ontagcreated}
 			/>
 			<Field.Description>
 				{groupScope === 'contact' ? m.master_contact_groups_hint() : m.master_type_groups_hint()}
@@ -362,15 +371,16 @@
 	{/if}
 	{#if extra === 'aliases'}
 		<Field.Field>
-			<Field.Label id="master-topics-label">{m.master_topics()}</Field.Label>
+			<Field.Label id="{uid}-topics-label">{m.master_topics()}</Field.Label>
 			<TagPicker
-				id="master-topics"
+				id="{uid}-topics"
 				label={m.master_topics()}
 				title={m.master_topics()}
 				scope="topic"
 				{tags}
 				selected={topicIds}
 				onchange={(next) => (topicIds = next)}
+				oncreated={ontagcreated}
 			/>
 			<Field.Description>{m.master_contact_topics_hint()}</Field.Description>
 		</Field.Field>
@@ -380,10 +390,10 @@
 			<Field.Description>{m.master_identifiers_hint()}</Field.Description>
 		</Field.Field>
 		<Field.Field>
-			<Field.Label for="master-aliases">{m.master_aliases()}</Field.Label>
+			<Field.Label for="{uid}-aliases">{m.master_aliases()}</Field.Label>
 			<!-- Compact on a phone: as many lines as there are aliases, and one more. -->
 			<Textarea
-				id="master-aliases"
+				id="{uid}-aliases"
 				bind:value={aliases}
 				rows={phone.current ? Math.min(Math.max(aliases.split('\n').length + 1, 2), 6) : 4}
 			/>
@@ -391,14 +401,14 @@
 		</Field.Field>
 	{:else if extra === 'description'}
 		<Field.Field>
-			<Field.Label for="master-description">{m.master_description()}</Field.Label>
-			<Textarea id="master-description" bind:value={description} rows={3} maxlength={300} />
+			<Field.Label for="{uid}-description">{m.master_description()}</Field.Label>
+			<Textarea id="{uid}-description" bind:value={description} rows={3} maxlength={300} />
 			<Field.Description>{m.master_description_hint()}</Field.Description>
 		</Field.Field>
 		<Field.Field>
-			<Field.Label for="master-title-pattern">{m.master_title_pattern()}</Field.Label>
+			<Field.Label for="{uid}-title-pattern">{m.master_title_pattern()}</Field.Label>
 			<TemplateInput
-				id="master-title-pattern"
+				id="{uid}-title-pattern"
 				bind:value={titlePattern}
 				label={m.master_title_pattern()}
 				documentType={initial?.id ?? null}
@@ -444,8 +454,8 @@
 
 {#snippet iconField()}
 	<Field.Field>
-		<Field.Label id="master-icon-label">{m.master_icon()}</Field.Label>
-		<IconPicker id="master-icon" bind:value={icon} />
+		<Field.Label id="{uid}-icon-label">{m.master_icon()}</Field.Label>
+		<IconPicker id="{uid}-icon" bind:value={icon} />
 		<Field.Description>{m.master_icon_hint()}</Field.Description>
 	</Field.Field>
 {/snippet}

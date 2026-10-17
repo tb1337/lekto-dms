@@ -1,9 +1,11 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 import type { Tag } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { phone } from '#lib/phone.svelte.ts';
+import { session } from '#lib/session.svelte.ts';
 import { SEPARATOR } from '#lib/tags.ts';
 import TagPicker from './TagPicker.svelte';
 
@@ -29,20 +31,51 @@ const TAGS = [
 	tag('p1', ['Work'], null, 'topic')
 ];
 
+const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
+
+beforeEach(() => {
+	fetchMock.mockReset();
+	fetchMock.mockImplementation(async (request) => {
+		const body = await request.clone().json();
+		return new Response(JSON.stringify({ ...tag('new', [body.name], null, body.scope), ...body }), {
+			status: 201,
+			headers: { 'content-type': 'application/json' }
+		});
+	});
+	vi.stubGlobal('fetch', fetchMock);
+});
+
 afterEach(() => {
 	phone.override(null);
+	session.clear();
+	masterDataDialogs.finishTag(null);
+	vi.unstubAllGlobals();
 	document.body.style.pointerEvents = '';
 });
 
+function signIn(role: 'admin' | 'user') {
+	session.start({
+		user: { id: 'u1', username: 'tobi', role },
+		method: 'password',
+		expires_at: '2026-10-17T23:00:00Z',
+		csrf_token: 'token'
+	});
+}
+
 function picker(selected: string[] = ['g1']) {
+	const made: Tag[] = [];
 	const props = $state({
+		made,
+		oncreated: (created: Tag) => made.push(created),
 		id: 'groups',
 		label: m.master_groups(),
 		title: m.master_contact_groups(),
 		scope: 'contact' as const,
 		tags: TAGS,
 		selected,
-		onchange: (next: string[]) => (props.selected = next)
+		onchange: (next: string[]) => {
+			props.selected = next;
+		}
 	});
 	render(TagPicker, props);
 	return props;
@@ -93,5 +126,53 @@ describe('TagPicker', () => {
 		await user.type(search, 'Makler');
 		expect(within(dialog).getByText(m.picker_no_match())).toBeTruthy();
 		expect(within(dialog).getAllByRole('checkbox')).toHaveLength(3);
+	});
+
+	it('lets an admin create a group named as searched, chosen at once', async () => {
+		signIn('admin');
+		const user = userEvent.setup();
+		const props = picker();
+		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
+		const dialog = await screen.findByRole('dialog');
+		const search = within(dialog).getByRole('searchbox');
+		// A name that exists (in another case) is chosen, not created.
+		await user.type(search, 'bank');
+		expect(within(dialog).queryByText(m.tag_create_quick({ name: 'bank' }))).toBeNull();
+		await user.clear(search);
+		await user.type(search, 'Versicherungsmakler ');
+		await user.click(within(dialog).getByText(m.tag_create_quick({ name: 'Versicherungsmakler' })));
+		await waitFor(() => expect(props.selected).toEqual(['g1', 'new']));
+		const sent = fetchMock.mock.calls[0][0];
+		expect([sent.method, new URL(sent.url).pathname]).toEqual(['POST', '/api/v1/tags']);
+		expect(await sent.clone().json()).toEqual({ name: 'Versicherungsmakler', scope: 'contact' });
+		expect(props.made.map((made) => made.id)).toEqual(['new']);
+		expect((search as HTMLInputElement).value).toBe('');
+	});
+
+	it('opens the tag dialog for one with details, and chooses the tag it makes', async () => {
+		signIn('admin');
+		const user = userEvent.setup();
+		const props = picker([]);
+		const create = vi.spyOn(masterDataDialogs, 'createTag');
+		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
+		await user.type(within(await screen.findByRole('dialog')).getByRole('searchbox'), 'Makler');
+		await user.click(screen.getByText(m.tag_create_details()));
+		expect(create).toHaveBeenCalledWith('contact', 'Makler');
+		// The picker gives way to the tag dialog.
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		masterDataDialogs.finishTag(tag('g9', ['Makler'], null));
+		await waitFor(() => expect(props.selected).toEqual(['g9']));
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('offers no creating to others than admins', async () => {
+		signIn('user');
+		const user = userEvent.setup();
+		picker([]);
+		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
+		await user.type(within(await screen.findByRole('dialog')).getByRole('searchbox'), 'Makler');
+		expect(screen.getByText(m.picker_no_match())).toBeTruthy();
+		expect(screen.queryByText(m.tag_create_quick({ name: 'Makler' }))).toBeNull();
+		expect(screen.queryByText(m.tag_create_details())).toBeNull();
 	});
 });

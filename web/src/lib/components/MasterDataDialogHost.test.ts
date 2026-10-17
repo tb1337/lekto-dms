@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Item } from '#lib/masterdata-api.ts';
@@ -102,6 +102,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	masterDataDialogs.finishTag(null);
 	masterDataDialogs.close();
 	phone.override(null);
 	session.clear();
@@ -322,6 +323,48 @@ describe('a new tag', () => {
 		expect(await screen.findByLabelText(m.field_name())).toBeTruthy();
 		expect(screen.queryByRole('group', { name: m.tag_kind() })).toBeNull();
 		expect(screen.getByLabelText(m.topic_parent())).toBeTruthy();
+	});
+});
+
+describe('creating from a picker', () => {
+	it('makes a group with its details over the contact dialog, chosen there after', async () => {
+		const user = userEvent.setup();
+		const MAKLER = tag('g9', ['Makler'], null, 'contact');
+		let made = false;
+		const before = fetchMock.getMockImplementation()!;
+		fetchMock.mockImplementation(async (request) => {
+			const path = new URL(request.url).pathname;
+			if (path === '/api/v1/tags' && request.method === 'POST') {
+				made = true;
+				return json(MAKLER, 201);
+			}
+			if (path === '/api/v1/tags') return json(made ? [...TAGS, MAKLER] : TAGS);
+			return before(request);
+		});
+		render(WithDialogs);
+		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
+		expect(await screen.findByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
+		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
+		const picker = await screen.findByRole('dialog', { name: m.master_contact_groups() });
+		await user.type(within(picker).getByRole('searchbox'), 'Makler');
+		await user.click(within(picker).getByText(m.tag_create_details()));
+		// The tag dialog over the contact's: its kind set, the name filled in.
+		const nested = await screen.findByRole('dialog', { name: m.master_add_contact_group() });
+		expect((within(nested).getByLabelText(m.field_name()) as HTMLInputElement).value).toBe(
+			'Makler'
+		);
+		expect(within(nested).queryByRole('group', { name: m.tag_kind() })).toBeNull();
+		await user.click(within(nested).getByRole('button', { name: m.create() }));
+		const post = fetchMock.mock.calls.map((call) => call[0]).find((r) => r.method === 'POST');
+		expect(await post!.json()).toMatchObject({ name: 'Makler', scope: 'contact' });
+		await waitFor(() =>
+			expect(
+				within(screen.getByRole('group', { name: m.master_groups() })).getByText('Makler')
+			).toBeTruthy()
+		);
+		await user.click(screen.getByRole('button', { name: m.save() }));
+		const patch = fetchMock.mock.calls.map((call) => call[0]).find((r) => r.method === 'PATCH');
+		expect((await patch!.json()).group_ids).toEqual(['g9']);
 	});
 });
 

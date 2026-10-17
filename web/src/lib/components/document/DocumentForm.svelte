@@ -18,6 +18,7 @@
 	import FieldGroup from '#lib/components/document/FieldGroup.svelte';
 	import FieldShell from '#lib/components/document/FieldShell.svelte';
 	import TagsInput from '#lib/components/document/TagsInput.svelte';
+	import TopicInput from '#lib/components/document/TopicInput.svelte';
 	import GroupChips from '#lib/components/GroupChips.svelte';
 	import FieldValueInput from '#lib/components/FieldValueInput.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
@@ -48,7 +49,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { fieldId, initialValue, isRuleField, type ReviewValue } from '#lib/review.ts';
 	import { session } from '#lib/session.svelte.ts';
-	import { tagOptions } from '#lib/tags.ts';
+	import { ofScope } from '#lib/tags.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 	type Patch = components['schemas']['DocumentPatch'];
@@ -201,10 +202,10 @@
 		lookup.contacts.find((entry) => entry.id === contact)?.topic_ids ?? []
 	);
 	const topicChoices = $derived(
-		tagOptions(lookup.tags, 'topic').filter(
+		ofScope(lookup.tags, 'topic').filter(
 			(option) =>
-				option.value === topic ||
-				(contact !== '' && (session.isAdmin || enabledTopics.includes(option.value)))
+				option.id === topic ||
+				(contact !== '' && (session.isAdmin || enabledTopics.includes(option.id)))
 		)
 	);
 	const enablesTopic = $derived(topic !== '' && contact !== '' && !enabledTopics.includes(topic));
@@ -647,14 +648,15 @@
 				onjump={jump}
 				onpick={take}
 			>
-				<NativeSelect
+				<!-- An admin creates a topic here, too; saving enables it at the contact. -->
+				<TopicInput
 					id="doc-topic"
 					bind:value={topic}
-					disabled={!editable || topicChoices.length === 0}
-					options={[
-						{ value: '', label: contact === '' ? m.topic_no_contact() : m.value_unset() },
-						...topicChoices
-					]}
+					topics={topicChoices}
+					all={lookup.tags}
+					disabled={!editable || contact === '' || (topicChoices.length === 0 && !session.isAdmin)}
+					placeholder={contact === '' ? m.topic_no_contact() : m.value_unset()}
+					creating={session.isAdmin && contact !== ''}
 				/>
 				{#if enablesTopic && session.isAdmin}
 					<p class="mt-1 text-xs text-muted-foreground">{m.topic_enables_hint()}</p>

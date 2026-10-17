@@ -23,7 +23,8 @@
 	// The dialogs that add and change master data, for every page (`masterDataDialogs.open`):
 	// contacts, document types, tags of each scope (a new one of any: its kind comes first) and
 	// fields. A document type's dialog links the rule of its title pattern, unless it was opened
-	// from that rule.
+	// from that rule. A tag made with its details from a picker opens in a second dialog over
+	// the first (`masterDataDialogs.createTag`).
 	const request = $derived(masterDataDialogs.request);
 	const anyTag = $derived(request?.kind === 'any-tag');
 	const simple = $derived(
@@ -123,6 +124,47 @@
 		topics: m.topic_delete_confirm
 	};
 
+	// A picker made a tag: there at once, then in the order of the trees.
+	async function created(tag: Tag) {
+		tags = [...tags.filter((other) => other.id !== tag.id), tag];
+		try {
+			tags = await unwrap(api.GET('/api/v1/tags'));
+		} catch (failure) {
+			toast.error(describeError(failure));
+		}
+	}
+
+	const nested = $derived(masterDataDialogs.nested);
+	let nestedTags = $state<Tag[] | null>(null);
+
+	$effect(() => {
+		const wanted = nested;
+		nestedTags = null;
+		if (!wanted) return;
+		let current = true;
+		unwrap(api.GET('/api/v1/tags')).then(
+			(every) => {
+				if (current) nestedTags = every;
+			},
+			(failure) => {
+				if (!current) return;
+				toast.error(describeError(failure));
+				masterDataDialogs.finishTag(null);
+			}
+		);
+		return () => {
+			current = false;
+		};
+	});
+
+	async function submitNested(values: Values) {
+		if (!nested) return;
+		const tag = (await KINDS[kindOfScope(nested.scope)].create(values)) as Tag;
+		toast.success(m.master_created());
+		masterDataDialogs.saved();
+		masterDataDialogs.finishTag(tag);
+	}
+
 	async function remove() {
 		if (!simple || !item) return;
 		await KINDS[simple].remove(item.id);
@@ -166,6 +208,7 @@
 		scope={isTagKind(simple) ? TAG_KINDS[simple] : null}
 		{fetching}
 		onlogo={() => masterDataDialogs.saved()}
+		ontagcreated={created}
 		onsubmit={submit}
 		ondelete={remove}
 		deleteDescription={DELETE_HINT[simple]()}
@@ -186,5 +229,18 @@
 		initial={field}
 		{types}
 		onsaved={() => masterDataDialogs.saved()}
+	/>
+{/if}
+
+{#if nested}
+	<MasterDataDialog
+		bind:open={() => nestedTags !== null, (value) => !value && masterDataDialogs.finishTag(null)}
+		title={KINDS[kindOfScope(nested.scope)].add()}
+		extra="tag"
+		presetName={nested.name}
+		submitLabel={m.create()}
+		tags={nestedTags ?? []}
+		scope={nested.scope}
+		onsubmit={submitNested}
 	/>
 {/if}

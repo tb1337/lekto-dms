@@ -113,6 +113,26 @@ describe('TagPicker', () => {
 		expect(screen.queryByRole('dialog')).toBeNull();
 	});
 
+	it('opens with an empty search after "Fertig", and tells whether it is open', async () => {
+		const user = userEvent.setup();
+		picker([]);
+		const add = screen.getByRole('button', { name: m.picker_add_group_label() });
+		expect(add.getAttribute('aria-expanded')).toBe('false');
+		await user.click(add);
+		expect(add.getAttribute('aria-expanded')).toBe('true');
+		const dialog = await screen.findByRole('dialog');
+		await user.type(within(dialog).getByRole('searchbox'), 'Bank');
+		await user.click(within(dialog).getByRole('button', { name: m.picker_done() }));
+		await waitFor(() => {
+			expect(screen.queryByRole('dialog')).toBeNull();
+			expect(document.body.style.pointerEvents).not.toBe('none');
+		});
+		await user.click(add);
+		const again = await screen.findByRole('dialog');
+		expect((within(again).getByRole('searchbox') as HTMLInputElement).value).toBe('');
+		expect(within(again).getAllByRole('checkbox')).toHaveLength(3);
+	});
+
 	it('searches the paths and shows all of them when nothing matches', async () => {
 		const user = userEvent.setup();
 		picker([]);

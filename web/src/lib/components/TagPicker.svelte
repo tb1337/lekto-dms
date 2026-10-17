@@ -18,6 +18,7 @@
 	let {
 		id,
 		label,
+		labelledby,
 		title,
 		scope,
 		tags,
@@ -28,6 +29,8 @@
 		id: string;
 		/** What the chips are ("Groups"). */
 		label: string;
+		/** The id of a visible label of the chips, named so instead of by `label`. */
+		labelledby?: string;
 		/** The picker's title, the tags of the scope ("Contact groups"). */
 		title: string;
 		scope: TagScope;
@@ -75,7 +78,8 @@
 <div
 	{id}
 	role="group"
-	aria-label={label}
+	aria-label={labelledby ? undefined : label}
+	aria-labelledby={labelledby}
 	class="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-input bg-card p-2 dark:bg-input/30"
 >
 	{#each chips as tag (tag.id)}
@@ -91,12 +95,16 @@
 	<button
 		type="button"
 		aria-haspopup="dialog"
+		aria-expanded={open}
 		aria-label={isTopic ? m.picker_add_topic_label() : m.picker_add_group_label()}
 		class={cn(
 			'inline-flex h-8 items-center gap-1.5 border border-dashed border-muted-foreground/50 px-3 text-sm text-brand transition-colors hover:bg-secondary max-sm:h-11',
 			isTopic ? 'rounded-md' : 'rounded-full'
 		)}
-		onclick={() => (open = true)}
+		onclick={() => {
+			query = '';
+			open = true;
+		}}
 	>
 		<Plus class="size-4" aria-hidden="true" />
 		{isTopic ? m.picker_add_topic() : m.picker_add_group()}

@@ -50,6 +50,8 @@
 	}
 </script>
 
+<!-- However it closes, the next time it opens with an empty search: bits-ui reports only its own
+     closes (Escape, outside), "Fertig" clears it itself. -->
 <Dialog.Root bind:open onOpenChange={(value) => !value && (query = '')}>
 	<Dialog.Content
 		showCloseButton={false}
@@ -75,7 +77,10 @@
 			<Button
 				variant="ghost"
 				class="h-11 px-3 text-base font-semibold text-brand"
-				onclick={() => (open = false)}
+				onclick={() => {
+					query = '';
+					open = false;
+				}}
 			>
 				{m.picker_done()}
 			</Button>

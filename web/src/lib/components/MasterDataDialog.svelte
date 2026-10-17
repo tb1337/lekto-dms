@@ -357,6 +357,7 @@
 			<TagPicker
 				id="{uid}-groups"
 				label={m.master_groups()}
+				labelledby="{uid}-groups-label"
 				title={groupScope === 'contact' ? m.master_contact_groups() : m.master_type_groups()}
 				scope={groupScope}
 				{tags}
@@ -375,6 +376,7 @@
 			<TagPicker
 				id="{uid}-topics"
 				label={m.master_topics()}
+				labelledby="{uid}-topics-label"
 				title={m.master_topics()}
 				scope="topic"
 				{tags}

@@ -1,4 +1,5 @@
 import asyncio
+from datetime import date
 
 import pytest
 
@@ -491,7 +492,8 @@ async def test_a_moved_tag_leaves_documents_and_groups_the_tag_below(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """What carries a tag and one that a move put above it keeps the one below, as if set
-    anew: in a job, a page of documents at a time; lane and confirmation stay."""
+    anew: a job, a page of documents per step (each step queueing the next); lane and
+    confirmation stay."""
     monkeypatch.setattr(master_data, "_NORMALISE_BATCH", 2)
     admin, owner = await world.user(role=Role.ADMIN), await world.user()
     service = world.master_data
@@ -524,18 +526,20 @@ async def test_a_moved_tag_leaves_documents_and_groups_the_tag_below(
             documents.append(document)
         await uow.commit()
     await world.documents.update_metadata(
-        owner.id, documents[0].id, DocumentChanges(tag_ids=frozenset({insurance.id, health.id}))
+        owner.id, documents[0].id, DocumentChanges(document_date=date(2026, 9, 30))
     )
     confirmed = (await world.documents.get(owner.id, documents[0].id)).confirmed_at
+    assert confirmed is not None
     world.database.outbox.clear()
 
     await service.change_tag(admin.id, health.id, parent_id=insurance.id)
     await service.change_tag(admin.id, kassen.id, parent_id=insurer.id)
     await service.change_tag(admin.id, medical.id, parent_id=bills.id)
-    assert await service.run_next_job()
-    assert await service.run_next_job()
-    assert await service.run_next_job()
-    assert not await service.run_next_job()
+    steps = 0
+    while await service.run_next_job():
+        steps += 1
+    # Health: four documents carry it or Dental, two per step, and a last step finds none.
+    assert steps == 3 + 1 + 1
 
     async with world.uow() as uow:
         stored = [await uow.documents.get(document.id) for document in documents]
@@ -565,8 +569,46 @@ async def test_only_a_new_parent_of_a_tag_or_group_normalises(world: World) -> N
     await service.change_tag(admin.id, insurance.id, shown=False)
     assert not await service.run_next_job()
     await service.change_tag(admin.id, insurance.id, parent_id=health.id)
-    assert await service.normalise_tagged(TagId(new_id())) == 0
     assert await service.run_next_job()
+    # A tag gone meanwhile: the job ends without changing anything.
+    async with world.uow() as uow:
+        await uow.jobs.enqueue(
+            master_data.NORMALISE_JOB, {"tag_id": str(new_id())}, run_at=world.clock.now()
+        )
+        await uow.commit()
+    assert await service.run_next_job()
+    assert not [job for job in world.database.jobs.values() if job.status.is_active]
+
+
+async def test_each_step_of_the_normalising_sees_the_tree_as_it_is(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tag moved back while the job pages: the later steps leave its documents alone."""
+    monkeypatch.setattr(master_data, "_NORMALISE_BATCH", 2)
+    admin, owner = await world.user(role=Role.ADMIN), await world.user()
+    service = world.master_data
+    insurance = await service.create_tag(admin.id, "Insurance")
+    health = await service.create_tag(admin.id, "Health")
+    space = await world.default_space(owner)
+    documents = []
+    async with world.uow() as uow:
+        for number in range(4):
+            document = builders.run_pipeline(builders.document(owner, space, content=str(number)))
+            document.tag_ids = {insurance.id, health.id}
+            await uow.documents.add(document)
+            documents.append(document)
+        await uow.commit()
+    await service.change_tag(admin.id, health.id, parent_id=insurance.id)
+    assert await service.run_next_job()  # the first two by id
+    await service.change_tag(admin.id, health.id, parent_id=None)
+    while await service.run_next_job():
+        pass
+    async with world.uow() as uow:
+        stored = {
+            document.id: (await uow.documents.get(document.id)).tag_ids for document in documents
+        }
+    newest = sorted(stored, reverse=True)  # the first step took the highest ids
+    assert [stored[id] for id in newest] == [{health.id}] * 2 + [{insurance.id, health.id}] * 2
 
 
 async def test_concurrent_tag_moves_make_no_cycle(world: World) -> None:

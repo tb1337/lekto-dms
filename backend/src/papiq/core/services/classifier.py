@@ -102,8 +102,8 @@ class ClassifierService:
         *,
         fetch_logos: bool = False,
     ) -> None:
-        """`fetch_logos`: a contact without a logo that learns a domain gets its logo fetched
-        (`logos`)."""
+        """`fetch_logos`: a contact without a logo, or with a fetched one, that learns a new
+        domain gets its logo fetched (`logos.queue_logo_fetch`)."""
         self._fetch_logos = fetch_logos
         self._uow = uow
         self._store = store

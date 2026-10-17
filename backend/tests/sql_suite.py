@@ -237,7 +237,8 @@ class SqlAdapterSuite:
         await service.change_tag(admin.id, health.id, parent_id=insurance.id)
         await service.change_tag(admin.id, kassen.id, parent_id=insurer.id)
         await service.change_tag(admin.id, medical.id, parent_id=bills.id)
-        assert [await service.run_next_job() for _ in range(4)] == [True, True, True, False]
+        # Health: four documents carry it or Dental, two per step, and a last step finds none.
+        assert [await service.run_next_job() for _ in range(6)] == [True] * 5 + [False]
         async with uow_factory() as uow:
             stored = [await uow.documents.get(document.id) for document in documents]
             assert (await uow.contacts.get(nord.id)).group_ids == {kassen.id}

@@ -16,7 +16,7 @@ from papiq.core.domain.errors import (
 )
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierSource
-from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId, UserId
+from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.master_data import (
     MAX_ALIASES,
@@ -62,9 +62,10 @@ TAG_TREE_LOCK = "tags"
 """Held while a tag is made or changed, before the tree is read: two moves at once could
 otherwise each pass `TagTree.check_parent` and together make a cycle or a sixth level."""
 NORMALISE_JOB = "tags.normalise"
-"""Payload: `tag_id` of a tag that got another parent (`MasterDataService.normalise_tagged`)."""
+"""Payload: `tag_id` of a tag that got another parent, `after` (optional) the document the step
+starts after (`normalise_tagged`)."""
 
-_NORMALISE_BATCH = 200  # documents per unit of work
+_NORMALISE_BATCH = 200  # documents per step, one job and one unit of work each
 _NORMALISE_LEASE = timedelta(minutes=10)
 _NORMALISE_ATTEMPTS = 5
 _NORMALISE_DELAY = timedelta(minutes=1)  # before the next attempt, doubling
@@ -112,8 +113,9 @@ class MasterDataService:
         renaming a contact, type or tag, nesting a tag elsewhere and changing the groups of a
         contact or type queue a job that brings the search index of the documents concerned
         up to date (set when there is a search index). `store`: where the logos of contacts
-        are, which go with a deleted contact. `fetch_logos`: a contact without a logo that
-        gets a domain among its identifiers queues fetching its logo (`logos`)."""
+        are, which go with a deleted contact. `fetch_logos`: a contact without a logo, or with a
+        fetched one, that gets a new domain among its identifiers queues fetching its logo
+        (`logos.queue_logo_fetch`)."""
         self._uow = uow
         self._clock = clock
         self._templates = templates
@@ -171,7 +173,7 @@ class MasterDataService:
         a conflict while a document of the contact carries it; its identifiers lose it. An
         identifier points to one of the topics the contact enables after the change, or to
         none (ValidationError otherwise). A new domain among the identifiers of a contact
-        without a logo queues fetching it, with fetching on."""
+        without a logo, or with a fetched one, queues fetching it, with fetching on."""
         known: list[str] = []
 
         def change(item: Contact) -> None:
@@ -428,85 +430,32 @@ class MasterDataService:
             raise
         return True
 
-    async def normalise_tagged(self, id: TagId) -> int:
-        """After `id` got another parent: what carries it or a tag below it together with a tag
-        now above it keeps only the one below (`TagTree.normalise`), as if set anew. Documents
-        for a document tag, in units of `_NORMALISE_BATCH` (each changed one is updated, which
-        refreshes its search entry); contacts or document types for a group (their groups with
-        their ancestors, what the index holds, stay the same). Neither lane nor confirmation
-        changes. Returns how many were changed; none for a tag that is gone."""
-        async with self._uow() as uow:
-            tree = TagTree.of(await uow.tags.list_all())
-        if id not in tree:
-            return 0
-        scope = tree.tags[id].scope
-        below = tree.with_descendants([id])
-        if scope is TagScope.DOCUMENT:
-            return await self._normalise_documents(tree, below)
-        if scope.is_group:
-            return await self._normalise_members(tree, below, scope)
-        return 0
-
-    async def _normalise_documents(self, tree: TagTree, below: frozenset[TagId]) -> int:
-        changed = 0
-        wanted = DocumentFilter(tags=(below,))
-        after: DocumentPosition | None = None
-        while True:
-            async with self._uow() as uow:
-                page = await uow.documents.query(wanted, after=after, limit=_NORMALISE_BATCH)
-                definitions = None
-                now = self._now()
-                for document in page:
-                    tags = tree.normalise(document.tag_ids)
-                    if tags == document.tag_ids:
-                        continue
-                    if definitions is None:
-                        definitions = {item.id: item for item in await uow.fields.list_all()}
-                    document.apply_changes(DocumentChanges(tag_ids=tags), definitions, now)
-                    await uow.documents.update(document)
-                    await uow.outbox.add(document.pull_events())
-                    changed += 1
-                await uow.commit()
-            if len(page) < _NORMALISE_BATCH:
-                return changed
-            after = DocumentPosition(page[-1].id)
-
-    async def _normalise_members(
-        self, tree: TagTree, below: frozenset[TagId], scope: TagScope
-    ) -> int:
-        changed = 0
-        async with self._uow() as uow:
-            members: Sequence[Contact | DocumentType] = (
-                await uow.contacts.list_all()
-                if scope is TagScope.CONTACT
-                else await uow.document_types.list_all()
-            )
-            for member in members:
-                groups = tree.normalise(member.group_ids)
-                if not member.group_ids & below or groups == member.group_ids:
-                    continue
-                member.set_groups(groups)
-                if isinstance(member, Contact):
-                    await uow.contacts.update(member)
-                else:
-                    await uow.document_types.update(member)
-                changed += 1
-            await uow.commit()
-        return changed
-
     async def _normalise(self, job: Job) -> None:
+        """One step: the batch, completing the job and queueing the next step commit together;
+        a row changed meanwhile (or a lost claim) leaves all of it to the next attempt."""
         try:
             tag = TagId(UUID(str(job.payload["tag_id"])))
+            after = job.payload.get("after")
+            start = None if after is None else DocumentId(UUID(str(after)))
         except (KeyError, ValueError) as error:
             await self._finish(job, error=f"invalid payload: {error}")
             return
         try:
-            changed = await self.normalise_tagged(tag)
+            async with self._uow() as uow:
+                await uow.lock(TAG_TREE_LOCK)
+                changed, last = await normalise_tagged(uow, tag, start, self._now())
+                await uow.jobs.complete(job)
+                if last is not None:
+                    await uow.jobs.enqueue(
+                        NORMALISE_JOB,
+                        {"tag_id": str(tag), "after": str(last)},
+                        run_at=self._clock.now(),
+                    )
+                await uow.commit()
         except Exception as error:  # a row changed meanwhile, or the database failed: again
             await self._retry(job, error)
             return
         log.info("tags normalised", extra={"tag_id": str(tag), "changed": changed})
-        await self._finish(job)
 
     async def _retry(self, job: Job, error: Exception) -> None:
         reason = f"{type(error).__name__}: {error}"
@@ -1034,6 +983,62 @@ class MasterDataService:
             )
 
 
+async def normalise_tagged(
+    uow: UnitOfWork, id: TagId, after: DocumentId | None, now: datetime
+) -> tuple[int, DocumentId | None]:
+    """One step of `NORMALISE_JOB` after `id` got another parent, in `uow` (which holds
+    `TAG_TREE_LOCK`, so the tree is the one the step works with): what carries `id` or a tag
+    below it together with a tag now above it keeps only the one below (`TagTree.normalise`),
+    as if set anew. For a document tag the next `_NORMALISE_BATCH` documents (by id, after
+    `after`) that carry one of them, each changed one an update of its own (`document.updated`
+    refreshes its search entry); for a group the contacts or document types in it (their
+    groups with ancestors, what the index holds, stay the same). Neither lane nor confirmation
+    changes. Returns how many were changed, and the last document of a full batch: the next
+    step starts after it (None: done; also for a tag that is gone)."""
+    tree = TagTree.of(await uow.tags.list_all())
+    if id not in tree:
+        return 0, None
+    scope = tree.tags[id].scope
+    below = tree.with_descendants([id])
+    changed = 0
+    if scope is TagScope.DOCUMENT:
+        page = await uow.documents.query(
+            DocumentFilter(tags=(below,)),
+            after=None if after is None else DocumentPosition(after),
+            limit=_NORMALISE_BATCH,
+        )
+        definitions = None
+        for document in page:
+            tags = tree.normalise(document.tag_ids)
+            if tags == document.tag_ids:
+                continue
+            if definitions is None:
+                definitions = {item.id: item for item in await uow.fields.list_all()}
+            document.apply_changes(DocumentChanges(tag_ids=tags), definitions, now)
+            await uow.documents.update(document)
+            await uow.outbox.add(document.pull_events())
+            changed += 1
+        return changed, page[-1].id if len(page) == _NORMALISE_BATCH else None
+    if not scope.is_group:
+        return 0, None  # a topic: a document carries one, a contact may enable both
+    members: Sequence[Contact | DocumentType] = (
+        await uow.contacts.list_all()
+        if scope is TagScope.CONTACT
+        else await uow.document_types.list_all()
+    )
+    for member in members:
+        groups = tree.normalise(member.group_ids)
+        if not member.group_ids & below or groups == member.group_ids:
+            continue
+        member.set_groups(groups)
+        if isinstance(member, Contact):
+            await uow.contacts.update(member)
+        else:
+            await uow.document_types.update(member)
+        changed += 1
+    return changed, None
+
+
 async def _require_admin(uow: UnitOfWork, actor: UserId) -> None:
     if not can_manage_master_data(await load_actor(uow, actor)):
         raise PermissionDeniedError("only admins change master data")
@@ -1131,8 +1136,8 @@ async def replace_learned_identifiers(
     without committing; a contact not in `learned` has none afterwards. Values entered or
     rejected anywhere stay where they are. A learned one points to its topic if its contact
     enables it (`Contact.set_learned`). Returns how many are learned. `fetch_logos_at` (with
-    fetching on): a contact without a logo that learned a new domain gets its logo fetched,
-    queued for then."""
+    fetching on): a contact without a logo, or with a fetched one, that learned a new domain
+    gets its logo fetched, queued for then."""
     contacts = await uow.contacts.list_all()
     taken = {
         item.key

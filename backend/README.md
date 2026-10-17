@@ -321,9 +321,11 @@ Tags nest under a tag of the same scope (`parent_id`), at most five levels, with
   the search index of the documents concerned (`search.refresh`).
 - **Moving** a document tag or a group under another parent queues `tags.normalise`: what
   carries the tag (or one below it) and one now above it keeps only the one below, as if set
-  anew (`MasterDataService.normalise_tagged`). Documents are changed 200 at a time, each an
-  update of its own (`document.updated`, which refreshes its search entry), without touching
-  lane or confirmation; contacts and types for a group (the index holds their groups with
+  anew (`master_data.normalise_tagged`). Documents are changed 200 per step, each an update
+  of its own (`document.updated`, which refreshes its search entry), without touching lane or
+  confirmation; a step holds the lock of the tag tree, reads the tree as it is then and queues
+  the next step in the same commit (so a lease covers one step, and a tag moved back meanwhile
+  is left alone). For a group the contacts or types (the index holds their groups with
   ancestors, which stay the same). A topic needs none: a document carries one, and a contact
   may enable a topic and one below it.
 

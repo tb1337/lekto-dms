@@ -14,12 +14,14 @@
   which the limit leaves room for. A JPEG is decoded at a reduced scale where it can be
   (`draft`) and turned upright by its EXIF orientation.
 - Transparency stays (RGBA); the result fits `LOGO_SIZE` pixels square.
+- Whatever Pillow raises for such a file is an ImageError (it raises more than its documented
+  errors for broken metadata); EXIF it cannot apply leaves the picture as it is.
 """
 
 import asyncio
 import io
 
-from PIL import BmpImagePlugin, Image, ImageOps, UnidentifiedImageError
+from PIL import BmpImagePlugin, Image, ImageOps
 
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import ImageError, UnsupportedMediaTypeError
@@ -33,14 +35,7 @@ MAX_ICON_ENTRIES = 64
 """Pictures of an ICO (a website's favicon has a few)."""
 _FORMATS = ("PNG", "JPEG", "WEBP", "ICO")
 _PNG = b"\x89PNG\r\n\x1a\n"
-_UNREADABLE = (
-    UnidentifiedImageError,
-    Image.DecompressionBombError,
-    OSError,
-    ValueError,
-    SyntaxError,  # what some of Pillow's decoders raise for a broken header
-    EOFError,
-)
+
 _QUALITY = 90
 
 
@@ -65,7 +60,7 @@ class PillowImageNormaliser:
                 return self._logo(image)
         except ImageError:
             raise
-        except _UNREADABLE:
+        except Exception:  # an untrusted file: Pillow's decoders raise all kinds of errors
             raise ImageError("the image cannot be read") from None
 
     def _logo(self, image: Image.Image) -> bytes:
@@ -73,7 +68,10 @@ class PillowImageNormaliser:
         if image.format == "JPEG":
             image.draft("RGB", (self._size, self._size))
         image.load()
-        picture = ImageOps.exif_transpose(image)
+        try:
+            picture = ImageOps.exif_transpose(image)
+        except Exception:  # EXIF it cannot read (a resolution as text): the picture as it is
+            picture = image
         transparent = picture.mode in ("RGBA", "LA", "PA") or "transparency" in picture.info
         picture = picture.convert("RGBA" if transparent else "RGB")
         picture.thumbnail((self._size, self._size), Image.Resampling.LANCZOS)

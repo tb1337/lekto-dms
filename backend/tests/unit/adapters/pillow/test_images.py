@@ -7,7 +7,7 @@ import time
 import zlib
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageOps
 
 from papiq.adapters.outbound.pillow import PillowImageNormaliser
 from papiq.adapters.outbound.pillow.images import MAX_JPEG_SCANS
@@ -136,6 +136,39 @@ async def test_refuses_an_icon_whose_picture_hides_its_size_behind_a_decoy(
         await image_normaliser.normalise(icon_of(*[image((16, 16))] * 65))
     with pytest.raises(ImageError, match="pictures"):
         await image_normaliser.normalise(icon_of())
+
+
+def bad_exif() -> bytes:
+    """A JPEG rotated by its EXIF, which also gives the resolution as text: Pillow's
+    `exif_transpose` raises a TypeError for it."""
+    out = io.BytesIO()
+    Image.new("RGB", (80, 40), (200, 30, 30)).save(out, "JPEG")
+    data = out.getvalue()
+    entries = struct.pack(">HHI4s", 0x011B, 2, 4, b"Cam\x00")  # YResolution as text
+    entries += struct.pack(">HHIHH", 0x0112, 3, 1, 6, 0)  # orientation: rotated by 90°
+    tiff = b"MM\x00*" + struct.pack(">IH", 8, 2) + entries + struct.pack(">I", 0)
+    app1 = b"\xff\xe1" + struct.pack(">H", len(tiff) + 8) + b"Exif\x00\x00" + tiff
+    return data[:2] + app1 + data[2:]
+
+
+async def test_exif_it_cannot_apply_leaves_the_picture_as_it_is(
+    image_normaliser: PillowImageNormaliser,
+) -> None:
+    with Image.open(io.BytesIO(bad_exif())) as image, pytest.raises(TypeError):
+        ImageOps.exif_transpose(image)
+    assert opened(await image_normaliser.normalise(bad_exif())).size == (80, 40)
+
+
+async def test_whatever_breaks_in_pillow_is_an_image_error(
+    image_normaliser: PillowImageNormaliser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(*args: object, **kwargs: object) -> None:
+        raise struct.error("unpack requires a buffer of 4 bytes")
+
+    data = image((40, 40))
+    monkeypatch.setattr(Image.Image, "load", broken)
+    with pytest.raises(ImageError):
+        await image_normaliser.normalise(data)
 
 
 def progressive(scans: int) -> bytes:

@@ -242,6 +242,9 @@ class LogoService:
             except (LogoFetchError, ImageError, UnsupportedMediaTypeError) as error:
                 log.info("no logo fetched", extra={"domain": domain, "error": str(error)})
                 continue
+            except Exception:  # a broken adapter: no logo from this website either
+                log.warning("no logo fetched", extra={"domain": domain}, exc_info=True)
+                continue
             log.info("logo fetched", extra={"domain": domain, "url": fetched.url})
             return domain, image
         return None

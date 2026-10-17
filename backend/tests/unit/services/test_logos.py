@@ -6,7 +6,12 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.adapters.outbound.memory import FAKE_LOGO, FakeLogoFetcher
+from papiq.adapters.outbound.memory import (
+    FAKE_LOGO,
+    FakeImageNormaliser,
+    FakeLogoFetcher,
+    MemoryObjectStore,
+)
 from papiq.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
 from papiq.core.domain.errors import (
     ConflictError,
@@ -300,14 +305,39 @@ async def test_fetch_logos_queues_the_contacts_without_one(world: World) -> None
     assert fetcher.calls == ["nord.example"]
 
 
-async def test_a_broken_job_is_tried_again_and_given_up(world: World) -> None:
+async def test_a_logo_that_breaks_the_normaliser_is_a_failed_fetch(world: World) -> None:
+    """Whatever an image or an adapter breaks, the next domain is tried and the failure noted,
+    so that `fetch-logos` does not queue the contact again and again."""
     admin = await world.user(role=Role.ADMIN)
 
-    class Broken(FakeLogoFetcher):
-        async def fetch(self, domain: str) -> FetchedLogo:
-            raise RuntimeError("store down")
+    class Broken(FakeImageNormaliser):
+        async def normalise(self, data: bytes) -> bytes:
+            if data == b"broken":
+                raise TypeError("bad operand type for abs(): 'str'")
+            return await super().normalise(data)
 
-    master, logos = world.fetching(Broken())
+    world.images = Broken()
+    other = Identifier(IdentifierKind.EMAIL_DOMAIN, "zz-nord.example")
+    master, logos = world.fetching(FakeLogoFetcher({"nord.example": b"broken"}))
+    contact = await master.create_contact(admin.id, "Nord", identifiers=[DOMAIN, other])
+    await logos.request_fetch(admin.id, contact.id)
+    await run_all(logos)
+    jobs = [job for job in world.database.jobs.values() if job.kind == LOGO_JOB]
+    assert {job.status for job in jobs} == {JobStatus.DONE}
+    failed = (await stored(world, contact.id)).logo_failure
+    assert failed is not None and failed.domain == "nord.example"
+
+
+async def test_a_broken_job_is_tried_again_and_given_up(world: World) -> None:
+    """What breaks beyond the website (the object store) is tried again, three times."""
+    admin = await world.user(role=Role.ADMIN)
+
+    class Down(MemoryObjectStore):
+        async def put(self, key: str, data: bytes, *, content_type: str) -> None:
+            raise OSError("store down")
+
+    world.object_store = Down()
+    master, logos = world.fetching(FakeLogoFetcher({"nord.example": PNG}))
     await master.create_contact(admin.id, "Nord", identifiers=[DOMAIN])
     for attempt in range(3):
         assert await logos.run_next_job()

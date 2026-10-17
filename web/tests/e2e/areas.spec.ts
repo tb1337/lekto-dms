@@ -41,12 +41,16 @@ test('every area opens, and the dialogs create things', async ({ page }) => {
 		await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
 	}
 
-	// Master data: a contact.
+	// Master data: a contact, deleted from its editor.
 	await page.goto('/ui/admin/master-data');
 	await page.getByRole('button', { name: 'New contact' }).click();
 	await page.getByRole('textbox', { name: 'Name' }).fill(NAME);
 	await page.getByRole('button', { name: 'Create' }).click();
 	await expect(page.getByText(NAME)).toBeVisible();
+	await page.getByRole('button', { name: `Edit ${NAME}` }).click();
+	await page.getByRole('button', { name: `Delete ${NAME}` }).click();
+	await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
+	await expect(page.getByText(NAME)).toHaveCount(0);
 
 	// Spaces: a space.
 	await page.goto('/ui/spaces');

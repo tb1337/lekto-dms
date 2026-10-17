@@ -100,7 +100,7 @@ async def test_a_change_rule_acts_when_it_starts_to_hold(world: World) -> None:
         owner.id, document.id, DocumentChanges(contact_id=acme.id)
     )
     assert change.rules is not None and len(change.rules.plan.reports) == 1
-    assert Note("tags", "overruled", f"a person removed tag {tag.id}") in reported(change)
+    assert Note("tags", "overruled", f"a person removed tag '{tag.name}'") in reported(change)
     assert (await r.stored(document)).tag_ids == set()
 
 

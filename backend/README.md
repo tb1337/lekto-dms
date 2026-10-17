@@ -602,7 +602,11 @@ version; deleting is a soft delete.
   in the current processing run is never replaced (the rule is logged as overruled): in the
   inbox, by a change, or the space chosen on upload or by moving the document; a value the model set and no person
   confirmed is not replaced either (conflict). Tags of all rules are combined; added by one and
-  removed by another is a conflict.
+  removed by another is a conflict. Reasons and notes name contacts, types, topics, spaces,
+  tags and fields by their names and a field's value as written ("rules set different values
+  ('Nord, Arbeit': 'Nord Versicherung', 'Süd': 'Süd AG')", "'Betrag': …", `12.50 EUR`,
+  `2026-Q3`); the ids stay in the structured output (values, suggestions, effects), and only
+  something that no longer exists is named by its id.
 - **On arrival** conflicts, refused actions and forced reviews make `apply_rules` uncertain: the
   document waits in the inbox. Confirming it there (`POST /documents/{id}/confirm`, optionally
   with `space_id`) decides the open fields and continues to filing; a forced review the owner

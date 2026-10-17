@@ -552,6 +552,50 @@ def test_different_values_conflict_whatever_the_priority() -> None:
     assert result.reasons[0].startswith("contact: rules set different values")
 
 
+def test_reasons_name_values_not_ids() -> None:
+    """Contacts, types, topics, spaces, tags and fields by their names, a field's value as
+    written; the ids stay in the suggestion and the effects."""
+    names = {**NAMES, PAID: "Paid"}
+    contacts = run(
+        [rule(SetContact(ACME), name="Nord, Arbeit"), rule(SetContact(BETA), name="Süd")],
+        situation(doc(), names=names),
+    )
+    assert check(contacts, "contact").reason == (
+        "rules set different values ('Nord, Arbeit': 'ACME GmbH', 'Süd': 'Beta AG')"
+    )
+    assert check(contacts, "contact").suggestion == str(ACME)
+    amounts = run(
+        [
+            rule(SetField(AMOUNT.id, {"amount": "12.50", "currency": "EUR"}), name="a"),
+            rule(SetField(AMOUNT.id, {"amount": "13", "currency": "EUR"}), name="b"),
+            rule(SetField(INTERVAL.id, "monthly"), name="c"),
+            rule(SetField(INTERVAL.id, "yearly"), name="d"),
+            rule(SetField(SPAN.id, {"start": "2026-09-01", "end": "2026-09-30"}), name="e"),
+            rule(SetField(SPAN.id, {"start": "2026-07-01", "end": "2026-09-30"}), name="f"),
+        ],
+        situation(doc(), definitions=DEFINITIONS),
+    )
+    assert amounts.reasons == [
+        "'amount': rules set different values ('a': 12.50 EUR, 'b': 13 EUR)",
+        "'choice': rules set different values ('c': 'monthly', 'd': 'yearly')",
+        "'period': rules set different values ('e': 2026-09, 'f': 2026-Q3)",
+    ]
+    model = run(
+        [rule(SetContact(ACME))],
+        situation(doc(contact_id=BETA), names=names, model_values={"contact": str(BETA)}),
+    )
+    assert check(model, "contact").reason == "rules: the model set another value ('Beta AG')"
+    tags = run(
+        [rule(AddTags(frozenset({PAID}))), rule(RemoveTags(frozenset({PAID})))],
+        situation(doc(), names=names),
+    )
+    assert check(tags, "tags").reason == "tag 'Paid' is added and removed by rules"
+    refused = run([rule(SetSpace(READ_ONLY))], situation(doc()))
+    assert check(refused, "space").reason.endswith(
+        f"no write access to space '{SPACES[READ_ONLY].name}' (any more)"
+    )
+
+
 def test_person_decided_field_overrules_the_rule() -> None:
     result = run(
         [rule(SetContact(ACME))],
@@ -1383,15 +1427,25 @@ def test_a_rule_sets_a_topic_the_contact_enables() -> None:
         result = run([rule(SetTopic(insurance))], where(document))
         assert result.changes.topic_id is UNSET
         assert notes(result) == [("topic", "skipped")]
+    skipped = run([rule(SetTopic(insurance))], where(doc(contact_id=ACME)))
+    assert skipped.reports[0].notes[0].reason == (
+        "its contact does not enable the topic 'Insurance'"
+    )
     # Global rules cannot set it.
     with pytest.raises(ValidationError, match="set_topic"):
         rule(SetTopic(work), scope=RuleScope.GLOBAL)
     # The contact a rule sets decides; two rules with different topics conflict.
     result = run([rule(SetContact(BETA), SetTopic(work))], where(doc(contact_id=ACME)))
     assert (result.changes.contact_id, result.changes.topic_id) == (BETA, work)
-    result = run([rule(SetTopic(work)), rule(SetTopic(health))], where(doc(contact_id=ACME)))
+    result = run(
+        [rule(SetTopic(work), name="a"), rule(SetTopic(health), name="b")],
+        where(doc(contact_id=ACME)),
+    )
     assert result.changes.topic_id is UNSET
     assert check(result, "topic").outcome is Outcome.UNCERTAIN
+    assert (
+        check(result, "topic").reason == "rules set different values ('a': 'Work', 'b': 'Health')"
+    )
     # A person's topic wins; the model's is not replaced silently.
     person = run([rule(SetTopic(work))], where(doc(contact_id=ACME), locked=frozenset({"topic"})))
     assert (person.changes.topic_id, notes(person)) == (UNSET, [("topic", "overruled")])

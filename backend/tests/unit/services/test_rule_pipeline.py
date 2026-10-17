@@ -188,7 +188,7 @@ async def test_a_rule_does_not_replace_the_models_value(world: World) -> None:
     assert (document.lane, document.contact_id) == (Lane.YELLOW, model.id)
     ((check,),) = [open.fields for open in (await r.documents.review(owner.id, document.id)).open]
     assert check.field == "contact"
-    assert check.reason == f"rules: the model set another value ({model.id})"
+    assert check.reason == "rules: the model set another value ('Model')"
     assert check.suggestion == str(rule.id)
 
     # The owner takes the rule's value; it is not yellow again.
@@ -299,7 +299,7 @@ async def test_a_withdrawn_share_stops_the_rule_from_filing(world: World) -> Non
     (open,) = (await r.documents.review(owner.id, document.id)).open
     (check,) = open.fields
     assert check.field == "space"
-    assert check.reason == f"rule 'Office': no write access to space {office.id} (any more)"
+    assert check.reason == "rule 'Office': no write access to space 'Office' (any more)"
 
     # Keeping the space: the rule is refused again, but the document is filed.
     await r.pipeline().confirm(owner.id, document.id, DocumentChanges())

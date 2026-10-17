@@ -350,7 +350,7 @@ Gespeichert als JSON, geprüft mit Pydantic; die UI bietet einen Baukasten.
 
 - **Position:** Regeln laufen nach der LLM-Klassifizierung und sehen deren Ergebnis.
 - **Reihenfolge:** Alle zutreffenden Regeln laufen, sortiert nach Priorität; Tags werden vereinigt.
-- **Konflikte → Gelb:** Setzen zwei Regeln unterschiedliche Werte für ein Einzelfeld (Space, Kontakt, Typ, Thema, Feld), oder widerspricht eine Regel dem LLM-Ergebnis, geht das Dokument auf Gelb. Regeln überschreiben das LLM nicht stillschweigend.
+- **Konflikte → Gelb:** Setzen zwei Regeln unterschiedliche Werte für ein Einzelfeld (Space, Kontakt, Typ, Thema, Feld), oder widerspricht eine Regel dem LLM-Ergebnis, geht das Dokument auf Gelb. Regeln überschreiben das LLM nicht stillschweigend. Gründe nennen Kontakte, Typen, Themen, Spaces, Tags und Felder beim Namen und Feldwerte, wie sie geschrieben werden; die IDs bleiben in der strukturierten Ausgabe (Tobi, 17.10.2026).
 - **Schleifenschutz:** Regeln laufen pro Änderung einmal; eine Regel-Aktion löst keine weiteren Regeln aus.
 - **Misstrauen (M7):** Kontakt, Typ und Tags, die das Modell gesetzt und niemand bestätigt hat, gelten als unsicher. Trifft eine Regel nur deshalb zu, legt sie nicht in einen geteilten oder fremden Space ab.
 - **Gelb nur in der Pipeline (M7):** Konflikte und „Prüfung erzwingen" machen ein Dokument nur beim Eingang gelb. Bei einer Änderung durch eine Person bleibt es grün; nicht Anwendbares wird nur gemeldet (ein abgelegtes Dokument verschwände sonst für andere).

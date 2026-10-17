@@ -29,6 +29,11 @@ How the actions of all matching rules come together (`plan`):
   filed document would disappear for everyone else): what cannot be applied is only reported.
 - Applied to existing documents on request (`retroactive`), one rule: a field that has another
   value already is a conflict, applied only where the person accepted it.
+
+Reasons name what they are about as a person reads it: contacts, types, topics, spaces, tags
+and fields by their names, a field's value as written (`_Planner._shown`); the ids stay in the
+structured parts (values, suggestions, effects). Only something that no longer exists is named
+by its id.
 """
 
 import re
@@ -58,6 +63,7 @@ from papiq.core.domain.fields import (
     FieldValue,
     Money,
     Url,
+    decimal_text,
     field_from_json,
     field_to_json,
 )
@@ -549,13 +555,15 @@ class RulePlan:
 
     `checks`: per single field the rules touched, as in the model nodes: OK if applied,
     uncertain (on arrival) if a person has to decide; the inbox reads them. `reviews`:
-    reasons of forced reviews that hold."""
+    reasons of forced reviews that hold. `labels`: how `reasons` names a field (`field:<id>`)
+    of a check, by its name."""
 
     changes: DocumentChanges
     space: SpaceId | None
     reports: list[RuleReport]
     checks: list[FieldCheck]
     reviews: list[str]
+    labels: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def uncertain(self) -> bool:
@@ -564,7 +572,9 @@ class RulePlan:
     @property
     def reasons(self) -> list[str]:
         return [
-            f"{check.field}: {check.reason}" for check in self.checks if not check.ok
+            f"{self.labels.get(check.field, check.field)}: {check.reason}"
+            for check in self.checks
+            if not check.ok
         ] + self.reviews
 
     @property
@@ -658,12 +668,18 @@ class _Planner:
         if tags is not None:
             changes = replace(changes, tag_ids=tags)
         space = SpaceId(UUID(str(result[SPACE]))) if SPACE in result else None
+        definitions = self._s.definitions
         return RulePlan(
             changes=changes,
             space=space,
             reports=self._reports,
             checks=list(self._checks.values()),
             reviews=self._reviews,
+            labels={
+                name: f"'{definitions[id].name}'"
+                for name in self._checks
+                if (id := _field_id(name)) is not None and id in definitions
+            },
         )
 
     # --- collecting ---------------------------------------------------------------------------
@@ -688,7 +704,7 @@ class _Planner:
                     if tag not in s.existing:
                         report.notes.append(Note(TAGS, "skipped", f"tag {tag} no longer exists"))
                     elif tag in tree and tree.tags[tag].scope is not TagScope.DOCUMENT:
-                        reason = f"tag {tag} is a group, not a document tag"
+                        reason = f"tag {self._tag(tag)} is a group, not a document tag"
                         report.notes.append(Note(TAGS, "skipped", reason))
                     else:
                         target.setdefault(tag, []).append(report)
@@ -732,7 +748,7 @@ class _Planner:
         elif target is None:
             report.notes.append(Note(SPACE, "skipped", f"space {space} no longer exists"))
         elif not target.writable:
-            reason = f"no write access to space {space} (any more)"
+            reason = f"no write access to space '{target.name}' (any more)"
             report.notes.append(Note(SPACE, "refused", reason))
             if s.mode is Mode.INGEST and SPACE not in s.locked:
                 self._uncertain(SPACE, f"rule '{report.name}': {reason}", suggestion=None)
@@ -783,7 +799,8 @@ class _Planner:
         values = list(dict.fromkeys(_key(candidate.value) for candidate in candidates))
         if len(values) > 1:
             listed = ", ".join(
-                f"'{candidate.report.name}': {candidate.value}" for candidate in candidates
+                f"'{candidate.report.name}': {self._shown(field_name, candidate.value)}"
+                for candidate in candidates
             )
             disagree = f"rules set different values ({listed})"
             for candidate in candidates:
@@ -798,11 +815,14 @@ class _Planner:
         kind = "conflict"
         if s.mode is Mode.RETROACTIVE:
             if not self._empty(field_name, current) and not s.accept_conflicts:
-                reason = f"the document has another value ({current}); not accepted"
+                reason = (
+                    f"the document has another value ({self._shown(field_name, current)}); "
+                    "not accepted"
+                )
         elif field_name in s.locked:
             kind, reason = "overruled", "a person decided this field"
         elif field_name in s.model_values and _key(s.model_values[field_name]) == _key(current):
-            reason = f"the model set another value ({current})"
+            reason = f"the model set another value ({self._shown(field_name, current)})"
             if s.mode is Mode.INGEST:
                 self._uncertain(field_name, f"rules: {reason}", suggestion=value)
         if reason is not None:
@@ -831,7 +851,7 @@ class _Planner:
             if topic in self._s.taxonomy.topics_of(UUID(str(candidate.value))):
                 kept.append(candidate)
             else:
-                reason = f"a person chose topic {topic}, which it does not enable"
+                reason = f"a person chose the topic {self._tag(topic)}, which it does not enable"
                 candidate.report.notes.append(Note(CONTACT, "overruled", reason))
         if kept:
             self._candidates[CONTACT] = kept
@@ -848,10 +868,11 @@ class _Planner:
         candidates = self._candidates.get(TOPIC, [])
         for candidate in candidates:
             if TagId(UUID(str(candidate.value))) not in enabled:
+                named = self._shown(TOPIC, candidate.value)
                 reason = (
                     "the document has no contact"
                     if contact_id is None
-                    else f"its contact does not enable topic {candidate.value}"
+                    else f"its contact does not enable the topic {named}"
                 )
                 candidate.report.notes.append(Note(TOPIC, "skipped", reason))
         kept = [item for item in candidates if TagId(UUID(str(item.value))) in enabled]
@@ -872,7 +893,7 @@ class _Planner:
         current = frozenset(self._document.tag_ids)
         both = set(self._adds) & set(self._removes)
         for tag in sorted(both):
-            reason = f"tag {tag} is added and removed by rules"
+            reason = f"tag {self._tag(tag)} is added and removed by rules"
             for report in self._adds[tag] + self._removes[tag]:
                 report.notes.append(Note(TAGS, "conflict", reason))
             if s.mode is Mode.INGEST and TAGS not in s.locked:
@@ -884,7 +905,8 @@ class _Planner:
                 continue
             if tag in s.person_removed_tags:
                 for report in reports:
-                    report.notes.append(Note(TAGS, "overruled", f"a person removed tag {tag}"))
+                    reason = f"a person removed tag {self._tag(tag)}"
+                    report.notes.append(Note(TAGS, "overruled", reason))
                 continue
             added.add(tag)
         for tag, reports in self._removes.items():
@@ -892,7 +914,8 @@ class _Planner:
                 continue
             if tag in s.person_added_tags:
                 for report in reports:
-                    report.notes.append(Note(TAGS, "overruled", f"a person set tag {tag}"))
+                    reason = f"a person set tag {self._tag(tag)}"
+                    report.notes.append(Note(TAGS, "overruled", reason))
                 continue
             removed.add(tag)
             for report in reports:
@@ -906,7 +929,7 @@ class _Planner:
                 if tag in result:
                     report.applied.append(Effect(TAGS, None, str(tag)))
                 else:
-                    reason = f"tag {tag} is above a tag the document has"
+                    reason = f"tag {self._tag(tag)} is above a tag the document has"
                     report.notes.append(Note(TAGS, "skipped", reason))
         return None if result == current else result
 
@@ -1029,6 +1052,34 @@ class _Planner:
 
     # --- helpers ------------------------------------------------------------------------------
 
+    def _shown(self, field_name: str, value: JsonValue) -> str:
+        """`value` of `field_name` as a reason names it: a contact, type, topic or space by its
+        name, a title quoted, a field's value as written (`_value_text`); the id where no name
+        is known."""
+        s = self._s
+        if value is None:
+            return "none"
+        if field_name in (CONTACT, DOCUMENT_TYPE, SPACE, TOPIC):
+            try:
+                id = UUID(str(value))
+            except ValueError:
+                return str(value)
+            if field_name == TOPIC:
+                return self._tag(TagId(id))
+            name = s.names.get(id)
+            return str(value) if name is None else f"'{name}'"
+        if field_name == TITLE:
+            return f"'{value}'"
+        field = _field_id(field_name)
+        definition = None if field is None else s.definitions.get(field)
+        return str(value) if definition is None else _value_text(definition, value)
+
+    def _tag(self, tag: TagId) -> str:
+        """A tag (of any scope) as a reason names it: its name quoted; its id if it is gone."""
+        tree = self._s.taxonomy.tree
+        name = tree.tags[tag].name if tag in tree else self._s.names.get(tag)
+        return str(tag) if name is None else f"'{name}'"
+
     def _type_after(self, result: Mapping[str, JsonValue]) -> DocumentTypeId | None:
         if DOCUMENT_TYPE in result:
             return DocumentTypeId(UUID(str(result[DOCUMENT_TYPE])))
@@ -1082,6 +1133,40 @@ class _Planner:
 def _key(value: JsonValue) -> str:
     """Comparable form of a JSON value."""
     return repr(value)
+
+
+def _field_id(field_name: str) -> FieldId | None:
+    """The field a check of `field:<id>` is about; None for the others."""
+    if not field_name.startswith("field:"):
+        return None
+    try:
+        return FieldId(UUID(field_name.removeprefix("field:")))
+    except ValueError:
+        return None
+
+
+def _value_text(definition: FieldDefinition, value: JsonValue) -> str:
+    """A field's value (its JSON form) as written: text and choices quoted, numbers as they
+    are, an amount with its currency, a date and a period in ISO 8601, yes or no."""
+    try:
+        parsed = field_from_json(definition, value)
+    except ValidationError:
+        return str(value)
+    match parsed:
+        case bool():
+            return "yes" if parsed else "no"
+        case str():
+            return f"'{parsed}'"
+        case Decimal():
+            return decimal_text(parsed)
+        case Money():
+            return f"{decimal_text(parsed.amount)} {parsed.currency}"
+        case Url():
+            return parsed.value
+        case Period():
+            return parsed.notation
+        case date():
+            return parsed.isoformat()
 
 
 def _field_value(value: object) -> FieldValue | None:

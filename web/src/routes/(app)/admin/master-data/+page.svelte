@@ -53,7 +53,7 @@
 
 	/** A new item of the tab; on the Tags tab of the kind it shows, else the kind comes first. */
 	function add() {
-		if (tab === 'tags') masterDataDialogs.open(kindFilter(page.url.searchParams) ?? 'tags');
+		if (tab === 'tags') masterDataDialogs.open(kindFilter(page.url.searchParams) ?? 'any-tag');
 		else masterDataDialogs.open(tab);
 	}
 </script>

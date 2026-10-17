@@ -19,10 +19,20 @@
 	import type { Contact, FieldDefinition, Tag, TagScope } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { below, ofScope, pathLabel, tagOptions } from '#lib/tags.ts';
+	import { cn } from '#lib/utils.ts';
+
+	/** The kinds of tag a new one can be, each with an example. */
+	const KIND_CARDS: { scope: TagScope; title: () => string; example: () => string }[] = [
+		{ scope: 'document', title: m.tag_kind_document, example: m.tag_kind_document_example },
+		{ scope: 'contact', title: m.tag_kind_contact, example: m.tag_kind_contact_example },
+		{ scope: 'document_type', title: m.tag_kind_type, example: m.tag_kind_type_example },
+		{ scope: 'topic', title: m.tag_kind_topic, example: m.tag_kind_topic_example }
+	];
 
 	// Create or change a contact (name, logo, aliases, groups, topics, identifiers with their
 	// topic), a document type (name, icon, description, title pattern, fields, groups) or a tag
-	// (name, icon, colour, parent of its scope, how it is set, whether documents show it). The
+	// (name, parent of its scope, icon, colour, how it is set, whether documents show it; a new
+	// one without a scope asks for its kind first, `chooseScope`). The
 	// API decides what is valid; its answer (e.g. 409 for a taken name) shows above the body. A
 	// contact's logo is saved apart, at once (`ContactLogoEditor`). An item that exists can be
 	// deleted from here (`ondelete`).
@@ -37,6 +47,7 @@
 		fields = null,
 		tags = [],
 		scope = null,
+		chooseScope = false,
 		fetching = false,
 		onlogo = () => {},
 		onsubmit,
@@ -58,6 +69,8 @@
 		tags?: readonly Tag[];
 		/** The scope of a tag. */
 		scope?: TagScope | null;
+		/** A new tag whose kind is chosen here first (`scope` is null). */
+		chooseScope?: boolean;
 		/** The server fetches logos of contacts from their websites. */
 		fetching?: boolean;
 		/** A contact's logo changed (saved at once). */
@@ -82,21 +95,23 @@
 	let shown = $state(true);
 	let icon = $state<string | null>(null);
 	let color = $state<string | null>(null);
+	// A tag's scope: as given, or as chosen for a new one.
+	let kind = $state<TagScope | null>(null);
 	let error = $state<string | null>(null);
 	const groupScope = $derived<TagScope | null>(
 		extra === 'aliases' ? 'contact' : extra === 'description' ? 'document_type' : null
 	);
-	const isGroup = $derived(scope === 'contact' || scope === 'document_type');
-	const isTopic = $derived(scope === 'topic');
+	const isGroup = $derived(kind === 'contact' || kind === 'document_type');
+	const isTopic = $derived(kind === 'topic');
 	// The topics a contact enables; its identifiers point to one of them.
 	const topicChoices = $derived(tagOptions(tags, 'topic'));
 	const enabledTopics = $derived(topicChoices.filter((topic) => topicIds.includes(topic.value)));
 	// A tag goes under one of its scope, never under itself or one below it.
 	const parents = $derived.by(() => {
-		if (scope === null) return [];
+		if (kind === null) return [];
 		const own = initial?.id;
 		const excluded = own ? below(tags, own).add(own) : new Set<string>();
-		return ofScope(tags, scope)
+		return ofScope(tags, kind)
 			.filter((tag) => !excluded.has(tag.id))
 			.map((tag) => ({ value: tag.id, label: pathLabel(tag) }));
 	});
@@ -113,6 +128,7 @@
 			titlePattern = initial?.title_pattern ?? '';
 			groupIds = [...(initial?.group_ids ?? [])];
 			topicIds = [...(initial?.topic_ids ?? [])];
+			kind = scope;
 			parentId = initial?.parent_id ?? '';
 			manual = initial?.assignment === 'manual';
 			shown = initial?.shown ?? (scope === null || scope === 'document' || scope === 'topic');
@@ -131,9 +147,17 @@
 		}
 	});
 
+	/** A new tag becomes one of `next`: no parent yet, shown and set as that kind's are. */
+	function chooseKind(next: TagScope) {
+		kind = next;
+		parentId = '';
+		manual = false;
+		shown = next === 'document' || next === 'topic';
+	}
+
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
-		if (busy) return;
+		if (busy || (extra === 'tag' && kind === null)) return;
 		busy = true;
 		error = null;
 		try {
@@ -150,7 +174,8 @@
 				assignment: manual ? 'manual' : 'auto',
 				shown,
 				icon,
-				color
+				color,
+				scope: kind
 			});
 			open = false;
 		} catch (problem) {
@@ -167,17 +192,48 @@
 	{shortTitle}
 	{submitLabel}
 	{busy}
-	disabled={name.trim() === ''}
+	disabled={name.trim() === '' || (extra === 'tag' && kind === null)}
 	{error}
 	onsubmit={submit}
 	ondelete={initial && ondelete ? ondelete : undefined}
 	deleteTitle={m.master_delete({ name: initial?.name ?? '' })}
 	{deleteDescription}
 >
-	<Field.Field>
-		<Field.Label for="master-name">{m.field_name()}</Field.Label>
-		<Input id="master-name" bind:value={name} maxlength={200} required />
-	</Field.Field>
+	{#if extra === 'tag' && chooseScope}
+		<fieldset class="flex flex-col gap-2">
+			<legend class="mb-2 text-sm font-medium">{m.tag_kind()}</legend>
+			<div class="grid gap-2 sm:grid-cols-2">
+				{#each KIND_CARDS as card (card.scope)}
+					<label
+						class={cn(
+							'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors hover:bg-secondary/60',
+							kind === card.scope && 'border-primary bg-primary/10 hover:bg-primary/10'
+						)}
+					>
+						<input
+							type="radio"
+							name="master-kind"
+							value={card.scope}
+							checked={kind === card.scope}
+							onchange={() => chooseKind(card.scope)}
+							class="mt-0.5 size-4 shrink-0 accent-primary"
+						/>
+						<span class="flex flex-col gap-0.5">
+							<span class="text-sm font-medium">{card.title()}</span>
+							<span class="text-sm text-muted-foreground">{card.example()}</span>
+						</span>
+					</label>
+				{/each}
+			</div>
+			<p class="text-sm text-muted-foreground">{m.tag_kind_hint()}</p>
+		</fieldset>
+	{/if}
+	{#if extra !== 'tag' || kind !== null}
+		<Field.Field>
+			<Field.Label for="master-name">{m.field_name()}</Field.Label>
+			<Input id="master-name" bind:value={name} maxlength={200} required />
+		</Field.Field>
+	{/if}
 	{#if extra === 'aliases'}
 		<Field.Field>
 			<Field.Label>{m.logo_title()}</Field.Label>
@@ -188,35 +244,8 @@
 			{/if}
 		</Field.Field>
 	{/if}
-	{#if extra === 'tag' || extra === 'description'}
-		<Field.Field>
-			<Field.Label id="master-icon-label">{m.master_icon()}</Field.Label>
-			<IconPicker id="master-icon" bind:value={icon} />
-			<Field.Description>{m.master_icon_hint()}</Field.Description>
-		</Field.Field>
-	{/if}
-	{#if extra === 'tag' && scope !== null}
-		<Field.Field>
-			<Field.Label id="master-color-label">{m.master_color()}</Field.Label>
-			<ColorPicker id="master-color" bind:value={color} />
-			<div class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-				{m.master_color_preview()}
-				<TagChip
-					tag={{
-						id: initial?.id ?? 'new',
-						name: name.trim() || m.field_name(),
-						path: [name.trim() || m.field_name()],
-						icon,
-						color
-					}}
-					topic={isTopic}
-					group={isGroup}
-					size="md"
-				/>
-			</div>
-		</Field.Field>
-	{/if}
-	{#if extra === 'tag' && scope !== null}
+	{#if extra === 'description'}{@render iconField()}{/if}
+	{#if extra === 'tag' && kind !== null}
 		<Field.Field>
 			<Field.Label for="master-parent">
 				{isGroup ? m.tag_parent_group() : isTopic ? m.topic_parent() : m.tag_parent()}
@@ -237,6 +266,11 @@
 				]}
 				class="h-10"
 			/>
+		</Field.Field>
+		{@render iconField()}
+		<Field.Field>
+			<Field.Label id="master-color-label">{m.master_color()}</Field.Label>
+			<ColorPicker id="master-color" bind:value={color} />
 		</Field.Field>
 		{#if !isGroup}
 			<fieldset class="flex flex-col gap-2">
@@ -282,6 +316,30 @@
 				{isGroup ? m.tag_group_shown_hint() : isTopic ? m.topic_shown_hint() : m.tag_shown_hint()}
 			</Field.Description>
 		</Field.Field>
+		<div
+			class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-muted/60 px-3 py-2.5 text-sm text-muted-foreground"
+		>
+			{m.master_color_preview()}
+			<TagChip
+				tag={{
+					id: initial?.id ?? 'new',
+					name: name.trim() || m.field_name(),
+					path: [name.trim() || m.field_name()],
+					icon,
+					color
+				}}
+				topic={isTopic}
+				group={isGroup}
+				size="md"
+			/>
+			<span class="text-xs">
+				{isTopic
+					? m.tag_preview_topic()
+					: isGroup
+						? m.tag_preview_group()
+						: m.tag_preview_document()}
+			</span>
+		</div>
 	{/if}
 	{#if groupScope !== null}
 		<Field.Field>
@@ -372,3 +430,11 @@
 		{/if}
 	{/if}
 </EditorShell>
+
+{#snippet iconField()}
+	<Field.Field>
+		<Field.Label id="master-icon-label">{m.master_icon()}</Field.Label>
+		<IconPicker id="master-icon" bind:value={icon} />
+		<Field.Description>{m.master_icon_hint()}</Field.Description>
+	</Field.Field>
+{/snippet}

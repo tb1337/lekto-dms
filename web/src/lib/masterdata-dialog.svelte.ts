@@ -5,7 +5,8 @@
 import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 import type { Item, SimpleKind } from '#lib/masterdata-api.ts';
 
-export type MasterDataKind = SimpleKind | 'fields';
+/** `any-tag`: a new tag whose kind is chosen in the dialog first. */
+export type MasterDataKind = SimpleKind | 'fields' | 'any-tag';
 
 export interface MasterDataRequest {
 	kind: MasterDataKind;

@@ -273,6 +273,53 @@ describe('looks', () => {
 	});
 });
 
+describe('a new tag', () => {
+	it('asks for its kind first, then for what that kind has', async () => {
+		const user = userEvent.setup();
+		render(WithDialogs);
+		masterDataDialogs.open('any-tag');
+		const kinds = await screen.findByRole('group', { name: m.tag_kind() });
+		expect(within(kinds).getAllByRole('radio')).toHaveLength(4);
+		expect(screen.getByText(m.tag_kind_topic_example())).toBeTruthy();
+		// Nothing else before the kind.
+		expect(screen.queryByLabelText(m.field_name())).toBeNull();
+		expect((screen.getByRole('button', { name: m.create() }) as HTMLButtonElement).disabled).toBe(
+			true
+		);
+		await user.click(within(kinds).getByLabelText(m.tag_kind_topic(), { exact: false }));
+		const parent = screen.getByLabelText(m.topic_parent()) as HTMLSelectElement;
+		expect([...parent.options].map((option) => option.value)).toEqual(['', 'p1', 'p2']);
+		expect(screen.getByText(m.tag_preview_topic())).toBeTruthy();
+		// Another kind: its parents, no assignment for a group, hidden at documents.
+		await user.click(within(kinds).getByLabelText(m.tag_kind_contact(), { exact: false }));
+		const groups = screen.getByLabelText(m.tag_parent_group()) as HTMLSelectElement;
+		expect([...groups.options].map((option) => option.value)).toEqual(['', 'g1']);
+		expect(screen.queryByLabelText(m.tag_assignment_auto())).toBeNull();
+		expect((screen.getByLabelText(m.tag_shown()) as HTMLInputElement).checked).toBe(false);
+		await user.type(screen.getByLabelText(m.field_name()), 'Versicherungsmakler');
+		await user.selectOptions(groups, 'g1');
+		await user.click(screen.getByRole('button', { name: m.create() }));
+		const post = fetchMock.mock.calls.map((call) => call[0]).find((r) => r.method === 'POST');
+		expect(new URL(post!.url).pathname).toBe('/api/v1/tags');
+		expect(await post!.json()).toEqual({
+			name: 'Versicherungsmakler',
+			scope: 'contact',
+			parent_id: 'g1',
+			shown: false,
+			icon: null,
+			color: null
+		});
+	});
+
+	it('skips the kind where it is given', async () => {
+		render(WithDialogs);
+		masterDataDialogs.open('topics');
+		expect(await screen.findByLabelText(m.field_name())).toBeTruthy();
+		expect(screen.queryByRole('group', { name: m.tag_kind() })).toBeNull();
+		expect(screen.getByLabelText(m.topic_parent())).toBeTruthy();
+	});
+});
+
 describe('the editor', () => {
 	it('deletes a tag after asking; refused, it stays open', async () => {
 		const user = userEvent.setup();

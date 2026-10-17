@@ -13,6 +13,7 @@
 		isTagKind,
 		type Item,
 		KINDS,
+		kindOfScope,
 		type SimpleKind,
 		TAG_KINDS,
 		type Values
@@ -20,11 +21,15 @@
 	import { m } from '#lib/paraglide/messages.js';
 
 	// The dialogs that add and change master data, for every page (`masterDataDialogs.open`):
-	// contacts, document types, tags of each scope and fields. A document type's dialog links the rule of its
-	// title pattern, unless it was opened from that rule.
+	// contacts, document types, tags of each scope (a new one of any: its kind comes first) and
+	// fields. A document type's dialog links the rule of its title pattern, unless it was opened
+	// from that rule.
 	const request = $derived(masterDataDialogs.request);
+	const anyTag = $derived(request?.kind === 'any-tag');
 	const simple = $derived(
-		request && request.kind !== 'fields' ? (request.kind as SimpleKind) : null
+		request && request.kind !== 'fields' && request.kind !== 'any-tag'
+			? (request.kind as SimpleKind)
+			: null
 	);
 
 	let item = $state<Item | null>(null);
@@ -46,6 +51,10 @@
 					? await unwrap(api.GET('/api/v1/fields/{id}', { params: { path: { id: wanted.item } } }))
 					: (wanted.item as FieldDefinition | null);
 			return { kinds, definition, entry: null, rule: null, all: null, every: [] };
+		}
+		if (wanted.kind === 'any-tag') {
+			const every = await unwrap(api.GET('/api/v1/tags'));
+			return { kinds: null, definition: null, entry: null, rule: null, all: null, every };
 		}
 		const entry =
 			typeof wanted.item === 'string'
@@ -123,8 +132,9 @@
 	}
 
 	async function submit(values: Values) {
-		if (!simple) return;
-		const ops = KINDS[simple];
+		const kind = anyTag && values.scope ? kindOfScope(values.scope) : simple;
+		if (!kind) return;
+		const ops = KINDS[kind];
 		const id = item ? item.id : null;
 		if (id) await ops.change(id, values);
 		const saved = id ?? (await ops.create(values)).id;
@@ -159,6 +169,16 @@
 		onsubmit={submit}
 		ondelete={remove}
 		deleteDescription={DELETE_HINT[simple]()}
+	/>
+{:else if anyTag}
+	<MasterDataDialog
+		bind:open={() => ready && request !== null, (value) => !value && masterDataDialogs.close()}
+		title={m.master_add_tag()}
+		extra="tag"
+		submitLabel={m.create()}
+		{tags}
+		chooseScope
+		onsubmit={submit}
 	/>
 {:else if request?.kind === 'fields'}
 	<FieldDialog

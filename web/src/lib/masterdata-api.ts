@@ -93,6 +93,8 @@ export interface Values {
 	/** The icon of a tag or a document type, the colour of a tag; null: none. */
 	icon: string | null;
 	color: string | null;
+	/** A tag's scope (chosen for a new one); null for the other kinds. */
+	scope: TagScope | null;
 }
 
 export interface KindOps {

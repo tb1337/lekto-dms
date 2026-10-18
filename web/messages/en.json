@@ -196,7 +196,7 @@
 	"upload_duplicate": "Duplicate",
 	"upload_existing": "Open the document already there",
 	"upload_skipped_type": "Not a PDF, JPEG, PNG or TIFF",
-	"upload_skipped_hidden": "Hidden file",
+	"upload_skipped_hidden": "Hidden",
 	"upload_skipped_too_large": "Too large",
 	"upload_skipped_unreadable": "Could not be read",
 	"graph_title": "Processing",

@@ -50,17 +50,14 @@ describe('UploadSummary', () => {
 			]
 		});
 		const summary = await screen.findByRole('region', { name: m.upload_summary_label() });
-		await waitFor(() =>
-			expect(
-				within(summary).getByText(
-					[
-						m.upload_summary_uploaded({ count: 2 }),
-						m.upload_summary_duplicate(),
-						m.upload_summary_skipped({ count: 2 })
-					].join(', ')
-				)
-			).toBeTruthy()
-		);
+		const line = [
+			m.upload_summary_uploaded({ count: 2 }),
+			m.upload_summary_duplicate(),
+			m.upload_summary_skipped({ count: 2 })
+		].join(', ');
+		// Shown, and said once all files are through.
+		await waitFor(() => expect(within(summary).getAllByText(line)).toHaveLength(2));
+		expect(summary.querySelector('[aria-live="polite"]')?.textContent).toBe(line);
 		const twin = within(summary).getByText('twin.pdf').closest('li')!;
 		expect(within(twin).getByText(m.upload_duplicate())).toBeTruthy();
 		expect(within(twin).getByRole('link', { name: m.upload_existing() }).getAttribute('href')).toBe(
@@ -92,7 +89,9 @@ describe('UploadSummary', () => {
 		uploads.add({ files: [pdf('a.pdf'), pdf('b.pdf')], skipped: [] });
 		const summary = await screen.findByRole('region', { name: m.upload_summary_label() });
 		expect(within(summary).getByText(m.upload_running({ done: 0, total: 2 }))).toBeTruthy();
-		expect(within(summary).getByRole('progressbar')).toBeTruthy();
+		expect(within(summary).getByRole('progressbar', { name: m.upload_title() })).toBeTruthy();
+		// Nothing is said for each file on its way.
+		expect(summary.querySelector('[aria-live="polite"]')?.textContent).toBe('');
 		expect(
 			(within(summary).getByRole('button', { name: m.upload_dismiss() }) as HTMLButtonElement)
 				.disabled

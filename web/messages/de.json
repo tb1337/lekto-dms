@@ -196,7 +196,7 @@
 	"upload_duplicate": "Dublette",
 	"upload_existing": "Vorhandenes Dokument öffnen",
 	"upload_skipped_type": "Kein PDF, JPEG, PNG oder TIFF",
-	"upload_skipped_hidden": "Versteckte Datei",
+	"upload_skipped_hidden": "Versteckt",
 	"upload_skipped_too_large": "Zu groß",
 	"upload_skipped_unreadable": "Nicht lesbar",
 	"graph_title": "Verarbeitung",

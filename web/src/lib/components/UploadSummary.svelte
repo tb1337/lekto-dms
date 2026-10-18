@@ -12,7 +12,8 @@
 
 	// What came of the uploads, until dismissed (in this browser only): "12 uploaded,
 	// 1 duplicate, 3 skipped", the progress while files are on their way, and each duplicate
-	// (with the document already there), skipped file (with the reason) and failure.
+	// (with the document already there), skipped file (with the reason) and failure. A screen
+	// reader hears the result once all files are through.
 	const counts = $derived(uploads.counts);
 	const line = $derived(
 		[
@@ -41,14 +42,12 @@
 	<section aria-label={m.upload_summary_label()} class="rounded-2xl border bg-card p-4">
 		<div class="flex items-start gap-3">
 			<Upload class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-			<div class="flex min-w-0 flex-1 flex-col gap-2" aria-live="polite">
+			<div class="flex min-w-0 flex-1 flex-col gap-2">
 				<p class="font-medium">{line}</p>
+				<!-- Said once, when every file is through, not for each one. -->
+				<p class="sr-only" aria-live="polite">{uploads.active ? '' : line}</p>
 				{#if uploads.active}
-					<Progress
-						value={counts.done}
-						max={counts.total}
-						aria-label={m.upload_running({ done: counts.done, total: counts.total })}
-					/>
+					<Progress value={counts.done} max={counts.total} aria-label={m.upload_title()} />
 					<p class="text-sm text-muted-foreground">
 						{m.upload_running({ done: counts.done, total: counts.total })}
 					</p>

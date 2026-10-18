@@ -355,10 +355,10 @@ describe('uploading in the inbox', () => {
 		const summary = await screen.findByRole('region', { name: m.upload_summary_label() });
 		await waitFor(() =>
 			expect(
-				within(summary).getByText(
+				within(summary).getAllByText(
 					`${m.upload_summary_uploaded({ count: 3 })}, ${m.upload_summary_skipped({ count: 1 })}`
-				)
-			).toBeTruthy()
+				).length
+			).toBeGreaterThan(0)
 		);
 		expect(within(summary).getByText('Scans/notes.txt')).toBeTruthy();
 	});

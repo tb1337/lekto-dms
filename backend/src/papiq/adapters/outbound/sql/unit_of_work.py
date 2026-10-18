@@ -31,6 +31,7 @@ from papiq.adapters.outbound.sql.identity import (
     SqlLoginFailureRepository,
     SqlSessionRepository,
 )
+from papiq.adapters.outbound.sql.inbox import SqlInboxRepository
 from papiq.adapters.outbound.sql.job_queue import SqlJobQueue
 from papiq.adapters.outbound.sql.master_data import (
     SqlContactRepository,
@@ -97,6 +98,7 @@ class SqlUnitOfWork:
         self.documents = SqlDocumentRepository(self._tx)
         self.processing_log = SqlProcessingLog(self._tx)
         self.document_identifiers = SqlDocumentIdentifierRepository(self._tx)
+        self.inbox = SqlInboxRepository(self._tx, self.documents)
         self.rules = SqlRuleRepository(self._tx)
         self.rule_applications = SqlRuleApplicationRepository(self._tx)
         self.classifier_models = SqlClassifierModelRepository(self._tx)

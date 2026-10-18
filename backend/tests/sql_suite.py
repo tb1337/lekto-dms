@@ -1539,11 +1539,23 @@ class MigrationSuite:
             assert set(await _read_all(connection, select(*inbox))) == {(None, None)}
             decided = select(t.documents.c.processing_decided)
             assert set(await _read_all(connection, decided)) == {(False,)}
+            assert await _read_all(connection, select(t.inbox_seen)) == []
+            assert await _read_all(connection, select(t.inbox_confirmations)) == []
         async with empty_database.writing() as connection:
             await connection.execute(
                 t.documents.update()
                 .where(t.documents.c.id == ids["green"])
                 .values(new_at=NOW, processing_baseline="0" * 64, processing_decided=True)
+            )
+            await connection.execute(
+                insert(t.inbox_seen).values(
+                    user_id=ids["user"], document_id=ids["green"], seen_at=NOW
+                )
+            )
+            await connection.execute(
+                insert(t.inbox_confirmations).values(
+                    document_id=ids["yellow"], confirmed_by=ids["user"], confirmed_at=NOW
+                )
             )
 
         await downgrade(empty_database, "0029")

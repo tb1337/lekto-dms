@@ -371,6 +371,35 @@ processing_log = Table(
     Column("duration_us", BigInteger, nullable=False),
 )
 
+# --- the inbox (`domain.inbox`): rows go with their document ------------------------------------
+
+# When a user saw a document last; it is new for them again once it became new after
+# (`documents.new_at`). The rows also go with their user.
+inbox_seen = Table(
+    "inbox_seen",
+    metadata,
+    Column("user_id", Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "document_id",
+        Uuid,
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    ),
+    Column("seen_at", UtcDateTime, nullable=False),
+)
+
+# Who confirmed a document out of yellow or red last, and when: for "done", removed by the
+# cleanup after `DONE_PERIOD`. `confirmed_by` has no foreign key: the account may be deleted,
+# the record stays.
+inbox_confirmations = Table(
+    "inbox_confirmations",
+    metadata,
+    Column("document_id", Uuid, ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+    Column("confirmed_by", Uuid, nullable=False),
+    Column("confirmed_at", UtcDateTime, nullable=False, index=True),
+)
+
 # --- rules --------------------------------------------------------------------------------------
 
 # A rule and the number of its current version; the definitions are in `rule_versions`.

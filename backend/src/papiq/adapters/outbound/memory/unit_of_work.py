@@ -45,6 +45,7 @@ from papiq.adapters.outbound.memory.identity import (
     MemoryLoginFailureRepository,
     MemorySessionRepository,
 )
+from papiq.adapters.outbound.memory.inbox import MemoryInboxRepository, SeenKey
 from papiq.adapters.outbound.memory.ordering import Rank, rank
 from papiq.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from papiq.adapters.outbound.memory.rules import (
@@ -69,6 +70,7 @@ from papiq.core.domain.ids import (
     UserId,
     new_id,
 )
+from papiq.core.domain.inbox import Confirmation
 from papiq.core.domain.jobs import Job, JobStatus
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag, TagScope
@@ -101,6 +103,9 @@ class MemoryUnitOfWork:
         self._job_base: dict[JobId, Job | None] = {}
         self._purged_jobs: set[JobId] = set()
         self._held: asyncio.Lock | None = None
+        # The inbox's marks this unit wrote; None removes one.
+        self._seen: dict[SeenKey, datetime | None] = {}
+        self._confirmations: dict[DocumentId, Confirmation | None] = {}
 
         self.users = MemoryUserRepository(self, USERS)
         self.spaces = MemorySpaceRepository(self, SPACES)
@@ -113,6 +118,7 @@ class MemoryUnitOfWork:
         self.documents = MemoryDocumentRepository(self, DOCUMENTS)
         self.processing_log = MemoryProcessingLog(self)
         self.document_identifiers = MemoryDocumentIdentifierRepository(self)
+        self.inbox = MemoryInboxRepository(self)
         self.rules = MemoryRuleRepository(self, RULES)
         self.rule_applications = MemoryRuleApplicationRepository(self, RULE_APPLICATIONS)
         self.classifier_models = MemoryClassifierModelRepository(self, CLASSIFIER_MODELS)
@@ -178,6 +184,7 @@ class MemoryUnitOfWork:
         self._db.processing_log[:] = [
             entry for entry in self._db.processing_log if entry.document_id not in removed
         ]
+        self._commit_inbox(removed)
         self._db.outbox.extend(self._events)
         recorded_at = datetime.now(UTC)
         self._db.recorded_at.update((event.id, recorded_at) for event in self._events)
@@ -185,6 +192,23 @@ class MemoryUnitOfWork:
         for id in self._purged_jobs:
             self._db.jobs.pop(id, None)
         self._closed = True
+
+    def _commit_inbox(self, removed: set[UUID]) -> None:
+        """Apply the inbox's marks; those of removed documents go with them."""
+        for key, at in self._seen.items():
+            if at is None:
+                self._db.seen.pop(key, None)
+            else:
+                self._db.seen[key] = at
+        for document, confirmation in self._confirmations.items():
+            if confirmation is None:
+                self._db.confirmations.pop(document, None)
+            else:
+                self._db.confirmations[document] = confirmation
+        for key in [key for key in self._db.seen if key[1] in removed]:
+            del self._db.seen[key]
+        for id in removed:
+            self._db.confirmations.pop(DocumentId(id), None)
 
     async def rollback(self) -> None:
         self._check_open()

@@ -52,6 +52,7 @@ from tests.contracts.identity import (
     TotpContract,
 )
 from tests.contracts.images import ImageNormaliserContract
+from tests.contracts.inbox import InboxRepositoryContract
 from tests.contracts.job_queue import JobQueueContract
 from tests.contracts.language_model import EmbeddingsContract, LanguageModelContract
 from tests.contracts.logos import LOGO_PNG, LogoFetcherContract
@@ -102,6 +103,10 @@ def clock() -> Clock:
 
 
 class TestMemoryUnitOfWork(UnitOfWorkContract):
+    pass
+
+
+class TestMemoryInboxRepository(InboxRepositoryContract):
     pass
 
 

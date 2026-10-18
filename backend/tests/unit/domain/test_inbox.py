@@ -1,9 +1,23 @@
-"""The inbox in the domain: when processing makes a document new (Tobi, 17./18.10.2026)."""
+"""The inbox in the domain: when processing makes a document new, and where a document stands
+in whose inbox (Tobi, 17./18.10.2026)."""
 
 from datetime import datetime, timedelta
 
+import pytest
+
 from papiq.core.domain.documents import Document, DocumentChanges, metadata_digest
-from papiq.core.domain.ids import ContactId, TagId, new_id
+from papiq.core.domain.ids import ContactId, TagId, UserId, new_id
+from papiq.core.domain.inbox import (
+    DONE_PERIOD,
+    Confirmation,
+    Departure,
+    Done,
+    InboxState,
+    InboxTab,
+    inbox_state,
+    open_tab,
+    worst_lane,
+)
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, ProcessingStatus
 from tests import builders
 from tests.builders import FAILED, NOW, OK, UNCERTAIN
@@ -140,3 +154,85 @@ def test_the_digest_covers_what_a_person_confirms() -> None:
         changed = green()
         changed.apply_changes(change, {}, NOW)
         assert metadata_digest(changed) != digest
+
+
+# --- where a document stands ---------------------------------------------------------------------
+
+VIEWER = UserId(new_id())
+ADMIN = UserId(new_id())
+SINCE = LAST - DONE_PERIOD
+
+
+def state(
+    document: Document, seen_at: datetime | None = None, confirmation: Confirmation | None = None
+) -> InboxState | None:
+    return inbox_state(
+        document, viewer=VIEWER, seen_at=seen_at, confirmation=confirmation, since=SINCE
+    )
+
+
+def test_processing_yellow_and_red_stand_open_whatever_was_seen() -> None:
+    cases = {
+        InboxTab.PROCESSING: builders.received(),
+        InboxTab.REVIEW: finish(builders.received(), NOW, {Node.JUDGE: UNCERTAIN}),
+        InboxTab.INTERVENE: finish(builders.received(), NOW, {Node.OCR: FAILED}),
+    }
+    for tab, document in cases.items():
+        for seen_at in (None, LATER):
+            assert open_tab(document, seen_at) is tab
+            assert state(document, seen_at, Confirmation(ADMIN, LATER)) == InboxState(tab)
+
+
+def test_a_new_document_stands_until_the_viewer_sees_it() -> None:
+    document = green()
+    assert state(document) == InboxState(InboxTab.NEW)
+    assert state(document, NOW - timedelta(minutes=1)) == InboxState(InboxTab.NEW)
+    assert state(document, LATER) == InboxState(InboxTab.DONE, Done(Departure.SEEN, LATER, VIEWER))
+    document.new_at = LAST  # new again since
+    assert state(document, LATER) == InboxState(InboxTab.NEW)
+
+
+def test_done_lasts_the_period() -> None:
+    document = green()
+    seen_long_ago = SINCE - timedelta(seconds=1)
+    document.new_at = seen_long_ago - timedelta(days=1)
+    assert state(document, seen_long_ago) is None  # seen, but long ago
+    assert state(document, SINCE) == InboxState(InboxTab.DONE, Done(Departure.SEEN, SINCE, VIEWER))
+
+
+def test_a_confirmed_document_is_done_for_everyone_with_who_confirmed_it() -> None:
+    document = green()
+    document.new_at = None  # confirming takes it away
+    confirmed = Confirmation(ADMIN, LATER)
+    assert state(document, None, confirmed) == InboxState(
+        InboxTab.DONE, Done(Departure.CONFIRMED, LATER, ADMIN)
+    )
+    assert state(document, LAST, confirmed) == InboxState(
+        InboxTab.DONE, Done(Departure.CONFIRMED, LATER, ADMIN)
+    )  # seen counts while it is new only
+    assert state(document, None, Confirmation(ADMIN, SINCE - timedelta(seconds=1))) is None
+    assert state(document) is None  # never in the inbox
+
+
+def test_a_document_confirmed_before_it_became_new_counts_as_new() -> None:
+    document = green()
+    earlier = Confirmation(ADMIN, NOW - timedelta(minutes=5))
+    assert state(document, None, earlier) == InboxState(InboxTab.NEW)
+    assert state(document, LATER, earlier) == InboxState(
+        InboxTab.DONE, Done(Departure.SEEN, LATER, VIEWER)
+    )
+
+
+@pytest.mark.parametrize(
+    ("counts", "lane"),
+    [
+        ({InboxTab.INTERVENE: 1, InboxTab.REVIEW: 2, InboxTab.NEW: 3}, Lane.RED),
+        ({InboxTab.REVIEW: 2, InboxTab.NEW: 3, InboxTab.PROCESSING: 1}, Lane.YELLOW),
+        ({InboxTab.NEW: 3, InboxTab.PROCESSING: 1, InboxTab.DONE: 4}, Lane.GREEN),
+        ({InboxTab.PROCESSING: 1, InboxTab.DONE: 4}, None),
+        ({tab: 0 for tab in InboxTab}, None),
+        ({}, None),
+    ],
+)
+def test_the_worst_lane_among_the_open_cases(counts: dict[InboxTab, int], lane: Lane) -> None:
+    assert worst_lane(counts) is lane

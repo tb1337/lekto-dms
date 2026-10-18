@@ -155,12 +155,7 @@ class WebhookDeliveryService:
             secrets = self._decrypt(webhook, now)
             response = await self._send(webhook, secrets, event_id, TEST_EVENT, now, None)
         except (DecryptionError, ValueError):
-            log.error("webhook secret unusable", extra={"webhook_id": str(id)})
-            response = WebhookResponse(
-                status_code=None,
-                duration_ms=0,
-                error="the secret cannot be used (was the secret key changed?)",
-            )
+            response = _unusable_secret(id)
         outcome = DeliveryOutcome.DELIVERED if _is_success(response) else DeliveryOutcome.GAVE_UP
         delivery = _row(webhook, event_id, TEST_EVENT, None, 1, now, response, outcome)
         async with self._uow() as uow:
@@ -236,12 +231,7 @@ class WebhookDeliveryService:
                 webhook, secrets, event_id, event_type, occurred_at, document_id
             )
         except (DecryptionError, ValueError):
-            log.error("webhook secret unusable", extra={"webhook_id": str(webhook_id)})
-            response = WebhookResponse(
-                status_code=None,
-                duration_ms=0,
-                error="the secret cannot be used (was the secret key changed?)",
-            )
+            response = _unusable_secret(webhook_id)
             outcome = DeliveryOutcome.GAVE_UP
         else:
             outcome = self._outcome(response, attempt)
@@ -413,6 +403,16 @@ async def _may_read(uow: UnitOfWork, user: User, document: Document) -> bool:
 
 
 # --- answers ------------------------------------------------------------------------------------
+
+
+def _unusable_secret(webhook_id: WebhookId) -> WebhookResponse:
+    """The answer of a request that was not sent: the webhook's secret cannot be decrypted."""
+    log.error("webhook secret unusable", extra={"webhook_id": str(webhook_id)})
+    return WebhookResponse(
+        status_code=None,
+        duration_ms=0,
+        error="the secret cannot be used (was the secret key changed?)",
+    )
 
 
 def _is_success(response: WebhookResponse) -> bool:

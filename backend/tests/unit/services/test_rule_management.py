@@ -74,12 +74,13 @@ async def test_user_rules_are_their_owners_and_global_rules_the_admins(world: Wo
     assert (await r.rules.set_enabled(r.admin.id, mine.id, True)).enabled
 
     # Listing: the caller's rules and the global ones; all users' for admins only.
-    assert {rule.id for rule in await r.rules.list(owner.id)} == {mine.id, shared.id}
-    assert {rule.id for rule in await r.rules.list(owner.id, scope=RuleScope.USER)} == {mine.id}
-    assert {rule.id for rule in await r.rules.list(r.admin.id)} == {shared.id}
+    assert {rule.id for rule in await r.rules.list_rules(owner.id)} == {mine.id, shared.id}
+    user_rules = await r.rules.list_rules(owner.id, scope=RuleScope.USER)
+    assert {rule.id for rule in user_rules} == {mine.id}
+    assert {rule.id for rule in await r.rules.list_rules(r.admin.id)} == {shared.id}
     with pytest.raises(PermissionDeniedError):
-        await r.rules.list(owner.id, all_users=True)
-    everything = await r.rules.list(r.admin.id, all_users=True)
+        await r.rules.list_rules(owner.id, all_users=True)
+    everything = await r.rules.list_rules(r.admin.id, all_users=True)
     assert {rule.id for rule in everything} == {mine.id, theirs.id, shared.id}
     assert everything[0].id == shared.id  # same priority: global rules first
 
@@ -135,8 +136,8 @@ async def test_a_deleted_rule_never_runs_and_its_versions_stay_readable(world: W
         await r.rules.set_enabled(owner.id, rule.id, True)
     with pytest.raises(NotFoundError):
         await r.rules.delete(owner.id, rule.id)
-    assert await r.rules.list(owner.id) == []
-    assert await r.rules.list(r.admin.id, all_users=True) == []
+    assert await r.rules.list_rules(owner.id) == []
+    assert await r.rules.list_rules(r.admin.id, all_users=True) == []
     versions = await r.rules.versions(owner.id, rule.id)
     assert [version.definition.name for version in versions] == ["Tax", "Tax v2"]
 
@@ -225,7 +226,7 @@ async def test_deleting_a_user_removes_their_rules(world: World) -> None:
 
     with pytest.raises(NotFoundError):
         await r.rules.get(r.admin.id, gone.id)
-    assert [rule.id for rule in await r.rules.list(r.admin.id, all_users=True)] == [files.id]
+    assert [rule.id for rule in await r.rules.list_rules(r.admin.id, all_users=True)] == [files.id]
     rule = await r.rules.get(staying.id, files.id)
     assert (rule.enabled, rule.disabled_reason) == (False, "space 'Shared' was deleted")
 

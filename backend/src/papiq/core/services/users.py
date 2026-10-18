@@ -42,7 +42,7 @@ class UserService:
 
     # --- reading --------------------------------------------------------------------------------
 
-    async def list(self, actor: UserId) -> list[User]:
+    async def list_users(self, actor: UserId) -> list[User]:
         """Admins see all users; others see the active ones (to share spaces with them)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)

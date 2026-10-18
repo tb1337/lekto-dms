@@ -9,7 +9,6 @@ Who may do what:
 - Global rules are read by everyone and changed by admins only.
 """
 
-import builtins
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 
@@ -78,7 +77,7 @@ class RuleService:
         self._templates = templates
         self._patterns = patterns
 
-    async def list(
+    async def list_rules(
         self,
         actor: UserId,
         *,
@@ -112,7 +111,7 @@ class RuleService:
                 raise NotFoundError("rule", id)
             return rule
 
-    async def versions(self, actor: UserId, id: RuleId) -> "builtins.list[RuleVersion]":
+    async def versions(self, actor: UserId, id: RuleId) -> list[RuleVersion]:
         """All versions, oldest first; also of a deleted rule, so the processing log can be
         read."""
         async with self._uow() as uow:

@@ -56,7 +56,7 @@ async def test_owner_creates_renames_and_shares_spaces(world: World) -> None:
     assert renamed.name == "Home"
     shared = await world.spaces.share(owner.id, space.id, other.id, ShareLevel.READ)
     assert shared.shares == {other.id: ShareLevel.READ}
-    assert {d.id for d in await world.spaces.list(other.id)} == {
+    assert {d.id for d in await world.spaces.list_spaces(other.id)} == {
         space.id,
         (await world.default_space(other)).id,
     }

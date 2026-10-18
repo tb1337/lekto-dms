@@ -77,7 +77,7 @@ SCAN = 200
 """Documents a preview page looks at, at most."""
 PREVIEW_BUDGET = 20.0
 """Seconds the patterns of a preview page may take together; the page ends early then."""
-_LANES = frozenset({Lane.GREEN, Lane.YELLOW, Lane.RED})
+_WITH_LANE = DocumentFilter(lanes=frozenset({Lane.GREEN, Lane.YELLOW, Lane.RED}))
 
 
 @dataclass(frozen=True)
@@ -139,11 +139,11 @@ class RuleApplicationService:
             rule = await _applicable_rule(uow, user, id)
             if user.is_active_admin:
                 documents = await uow.documents.query(
-                    DocumentFilter(lanes=_LANES), after=_position(before), limit=SCAN
+                    _WITH_LANE, after=_position(before), limit=SCAN
                 )
             else:
                 documents = await uow.documents.query_visible(
-                    actor, DocumentFilter(lanes=_LANES), after=_position(before), limit=SCAN
+                    actor, _WITH_LANE, after=_position(before), limit=SCAN
                 )
         items: list[PreviewItem] = []
         next_cursor = documents[-1].id if len(documents) == SCAN else None

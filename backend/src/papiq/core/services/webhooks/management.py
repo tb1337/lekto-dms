@@ -6,7 +6,6 @@ is shown to them, once. The secret is never shown again. Other users do not lear
 else's webhook exists (NotFoundError).
 """
 
-import builtins
 from collections.abc import Collection
 from dataclasses import dataclass, field
 
@@ -75,7 +74,7 @@ class WebhookService:
             await uow.commit()
         return CreatedWebhook(webhook, secret)
 
-    async def list(self, actor: UserId, *, owner: UserId | None = None) -> "builtins.list[Webhook]":
+    async def list_webhooks(self, actor: UserId, *, owner: UserId | None = None) -> list[Webhook]:
         """The caller's webhooks, oldest first. Admins get everybody's; `owner` narrows to one
         user's."""
         async with self._uow() as uow:
@@ -139,7 +138,7 @@ class WebhookService:
         *,
         before: DeliveryId | None = None,
         limit: int = PAGE_SIZE,
-    ) -> "builtins.list[WebhookDelivery]":
+    ) -> list[WebhookDelivery]:
         """The log of a webhook, newest first."""
         limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:

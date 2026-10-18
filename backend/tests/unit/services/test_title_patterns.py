@@ -29,7 +29,7 @@ async def rule_notes(world: World, owner: User, document: Document) -> list[tupl
 
 
 async def title_rules(r: RuleWorld) -> list[Rule]:
-    return [rule for rule in await r.rules.list(r.admin.id) if rule.managed_by is not None]
+    return [rule for rule in await r.rules.list_rules(r.admin.id) if rule.managed_by is not None]
 
 
 async def test_the_pattern_is_a_rule_of_its_type(world: World) -> None:

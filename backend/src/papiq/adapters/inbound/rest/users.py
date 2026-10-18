@@ -52,7 +52,7 @@ def _account(account: Account) -> AccountOut:
 )
 async def list_users(principal: Authenticated, context: Context) -> list[UserOut]:
     full = principal.user.is_admin
-    return [UserOut.of(user, full=full) for user in await context.users.list(principal.id)]
+    return [UserOut.of(user, full=full) for user in await context.users.list_users(principal.id)]
 
 
 @router.post(

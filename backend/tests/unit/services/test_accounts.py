@@ -68,8 +68,8 @@ async def test_users_see_active_users_and_admins_all(world: World) -> None:
     admin = await world.account("root", Role.ADMIN)
     alice, bob = await world.account("alice"), await world.account("Bob")
     await world.users.update(admin.id, bob.id, active=False)
-    assert [u.username for u in await world.users.list(alice.id)] == ["alice", "root"]
-    assert [u.username for u in await world.users.list(admin.id)] == ["alice", "Bob", "root"]
+    assert [u.username for u in await world.users.list_users(alice.id)] == ["alice", "root"]
+    assert [u.username for u in await world.users.list_users(admin.id)] == ["alice", "Bob", "root"]
     with pytest.raises(NotFoundError):
         await world.users.get(alice.id, bob.id)
     assert (await world.users.get(admin.id, bob.id)).active is False
@@ -126,7 +126,7 @@ async def test_deactivation_ends_sessions_and_refuses_tokens(world: World) -> No
     with pytest.raises(AuthenticationError):
         await world.auth.login("alice", PASSWORD)
     with pytest.raises(AuthenticationError):
-        await world.spaces.list(user.id)
+        await world.spaces.list_spaces(user.id)
 
     await world.users.update(admin.id, user.id, active=True)
     await world.auth.authenticate_token(token)

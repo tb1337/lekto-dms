@@ -167,7 +167,9 @@ async def list_webhooks(
     context: Context,
     owner: Annotated[UUID | None, Query(description="Only this user's (admins).")] = None,
 ) -> list[WebhookOut]:
-    found = await context.webhooks.list(user, owner=None if owner is None else UserId(owner))
+    found = await context.webhooks.list_webhooks(
+        user, owner=None if owner is None else UserId(owner)
+    )
     return [WebhookOut.of(webhook) for webhook in found]
 
 

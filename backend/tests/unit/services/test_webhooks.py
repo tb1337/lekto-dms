@@ -37,7 +37,7 @@ async def test_a_user_creates_a_webhook_and_sees_the_secret_once(world: World) -
         world.cipher.decrypt(stored.encrypted_secret, context=secret_context(stored.id)).decode()
         == created.secret
     )
-    listed = await world.webhooks.list(user.id)
+    listed = await world.webhooks.list_webhooks(user.id)
     assert [webhook.id for webhook in listed] == [created.webhook.id]
 
 
@@ -47,7 +47,7 @@ async def test_a_bad_url_or_event_type_is_refused(world: World) -> None:
         await world.webhooks.create(user.id, name="x", url="ftp://x", event_types=["*"])
     with pytest.raises(ValidationError):
         await world.webhooks.create(user.id, name="x", url=URL, event_types=["nonsense"])
-    assert await world.webhooks.list(user.id) == []
+    assert await world.webhooks.list_webhooks(user.id) == []
 
 
 async def test_the_number_of_webhooks_per_user_is_limited(world: World) -> None:
@@ -73,13 +73,14 @@ async def test_others_do_not_find_a_webhook_but_admins_read_it(world: World) -> 
         await service.deliveries(other.id, hook.id)
     with pytest.raises(NotFoundError):
         await service.update(other.id, hook.id, name="mine")
-    assert await service.list(other.id) == []
+    assert await service.list_webhooks(other.id) == []
     assert (await service.get(admin.id, hook.id)).id == hook.id
     assert await service.deliveries(admin.id, hook.id) == []
-    assert [webhook.id for webhook in await service.list(admin.id)] == [hook.id]
-    assert [webhook.id for webhook in await service.list(admin.id, owner=owner.id)] == [hook.id]
-    assert await service.list(admin.id, owner=other.id) == []
-    assert await service.list(other.id, owner=owner.id) == []
+    assert [webhook.id for webhook in await service.list_webhooks(admin.id)] == [hook.id]
+    owned = await service.list_webhooks(admin.id, owner=owner.id)
+    assert [webhook.id for webhook in owned] == [hook.id]
+    assert await service.list_webhooks(admin.id, owner=other.id) == []
+    assert await service.list_webhooks(other.id, owner=owner.id) == []
 
 
 async def test_admins_change_renew_and_delete_other_users_webhooks(world: World) -> None:
@@ -158,7 +159,7 @@ async def test_a_deactivated_user_cannot_use_webhooks(world: World) -> None:
     await world.webhooks.create(user.id, name="x", url=URL, event_types=["*"])
     await world.users.update(admin.id, user.id, active=False)
     with pytest.raises(AuthenticationError):
-        await world.webhooks.list(user.id)
+        await world.webhooks.list_webhooks(user.id)
     with pytest.raises(AuthenticationError):
         await world.webhooks.create(user.id, name="y", url=URL, event_types=["*"])
 

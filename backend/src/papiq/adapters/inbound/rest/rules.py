@@ -66,7 +66,7 @@ async def list_rules(
     include_disabled: bool = True,
     all_users: AllRules = False,
 ) -> list[RuleOut]:
-    rules = await context.rules.list(
+    rules = await context.rules.list_rules(
         user, scope=scope, include_disabled=include_disabled, all_users=all_users
     )
     return [RuleOut.of(rule) for rule in rules]

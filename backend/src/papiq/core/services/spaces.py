@@ -14,7 +14,7 @@ class SpaceService:
         self._uow = uow
         self._clock = clock
 
-    async def list(self, actor: UserId) -> list[Space]:
+    async def list_spaces(self, actor: UserId) -> list[Space]:
         """Spaces the user owns or that are shared with them; every space for admins."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)

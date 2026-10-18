@@ -32,8 +32,8 @@ async def test_admins_list_spaces_of_everyone_and_manage_them(world: World) -> N
     office = await world.spaces.create(owner.id, "Office")
     await world.spaces.share(owner.id, office.id, friend.id, ShareLevel.READ)
 
-    assert office.id in {space.id for space in await world.spaces.list(admin.id)}
-    assert office.id not in {space.id for space in await world.spaces.list(stranger.id)}
+    assert office.id in {space.id for space in await world.spaces.list_spaces(admin.id)}
+    assert office.id not in {space.id for space in await world.spaces.list_spaces(stranger.id)}
     assert (await world.spaces.get(admin.id, office.id)).id == office.id
 
     renamed = await world.spaces.rename(admin.id, office.id, "Büro")
@@ -61,7 +61,7 @@ async def test_admins_list_spaces_of_everyone_and_manage_them(world: World) -> N
     with pytest.raises(AuthenticationError):
         await world.spaces.rename(admin.id, other.id, "Gone")
     with pytest.raises(AuthenticationError):
-        await world.spaces.list(admin.id)
+        await world.spaces.list_spaces(admin.id)
 
 
 async def test_admins_control_other_users_documents_in_every_lane(world: World) -> None:

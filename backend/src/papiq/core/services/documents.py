@@ -237,6 +237,12 @@ class DocumentService:
         self._rules = rules
         self._metadata = metadata
 
+    @property
+    def _object_store(self) -> ObjectStore:
+        """Reading a document's files and what was read from them needs the object store."""
+        assert self._store is not None, "DocumentService needs an object store to read files"
+        return self._store
+
     async def get(self, actor: UserId, id: DocumentId) -> Document:
         async with self._uow() as uow:
             document, _ = await readable_document(uow, await load_actor(uow, actor), id)
@@ -258,11 +264,11 @@ class DocumentService:
         below 1; ConflictError while the document has no text yet (it is not parsed)."""
         if offset < 0 or limit < 1:
             raise ValidationError("offset must be 0 or more and limit 1 or more")
-        assert self._store is not None, "reading text needs the object store"
+        store = self._object_store
         async with self._uow() as uow:
             await readable_document(uow, await load_actor(uow, actor), id)
         try:
-            data = await load_text(self._store, id)
+            data = await load_text(store, id)
         except NotFoundError:
             raise ConflictError("document has no text yet") from None
         text = data.decode("utf-8", errors="replace")
@@ -278,14 +284,14 @@ class DocumentService:
         """The facts of the document's text and codes, as the facts signal finds them now:
         a contact named or an identifier attached since counts at once. NotFoundError if the
         caller may not read the document; ConflictError while it has no text yet."""
-        assert self._store is not None, "reading facts needs the object store"
+        store = self._object_store
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             document, _ = await readable_document(uow, user, id)
             contacts = await uow.contacts.list_all()
             definitions = await field_definitions(uow)
         try:
-            text = (await load_text(self._store, id)).decode("utf-8", errors="replace")
+            text = (await load_text(store, id)).decode("utf-8", errors="replace")
         except NotFoundError:
             raise ConflictError("document has no text yet") from None
         codes = await self._codes(id)
@@ -318,9 +324,8 @@ class DocumentService:
     async def _codes(self, id: DocumentId) -> tuple[Code, ...] | None:
         """The codes read from the archive's pages, None while they are not (or of an earlier
         version)."""
-        assert self._store is not None
         try:
-            return codes_from_json(json.loads(await self._store.get(codes_key(id))))
+            return codes_from_json(json.loads(await self._object_store.get(codes_key(id))))
         except NotFoundError:
             return None
         except (ValueError, ValidationError):
@@ -328,14 +333,15 @@ class DocumentService:
             return None
 
     async def read_structure(self, actor: UserId, id: DocumentId) -> bytes:
-        """The parsed structure in the parser's JSON format (Docling's, with page and box of
-        every element). NotFoundError if the caller may not read the document; ConflictError
-        while it is not parsed."""
-        assert self._store is not None, "reading the structure needs the object store"
+        """The structure of the text as JSON: its pages, lines and words with their boxes
+        (`structure_key`; a document parsed before 0.2 has Docling's until it is read again).
+        NotFoundError if the caller may not read the document; ConflictError while it is not
+        parsed."""
+        store = self._object_store
         async with self._uow() as uow:
             await readable_document(uow, await load_actor(uow, actor), id)
         try:
-            return await self._store.get(structure_key(id))
+            return await store.get(structure_key(id))
         except NotFoundError:
             raise ConflictError("document has no structure yet") from None
 
@@ -387,7 +393,7 @@ class DocumentService:
         """Write a file of a readable document to the local path `target`. NotFoundError if
         the caller may not read the document or the file does not exist (yet); for a page,
         also if the document has fewer pages."""
-        assert self._store is not None, "DocumentService needs an object store for downloads"
+        store = self._object_store
         async with self._uow() as uow:
             document, _ = await readable_document(uow, await load_actor(uow, actor), id)
         stem = document.file_title
@@ -403,27 +409,26 @@ class DocumentService:
                 if document.page_count is None or not 1 <= page <= document.page_count:
                     raise NotFoundError(f"page {page} of document", id)
                 key, info = page_key(id, page), FileInfo(PAGE_MEDIA_TYPE, f"{stem}-{page}.webp")
-        if not await self._store.exists(key):
+        if not await store.exists(key):
             raise NotFoundError(f"{file.value} of document", id)
-        await self._store.download(key, target)
+        await store.download(key, target)
         return info
 
     async def files(self, actor: UserId, id: DocumentId) -> DocumentFiles:
         """The files of a readable document as they are stored: size, SHA-256 and their
         metadata (a PDF's document information and XMP, an image's EXIF). NotFoundError if
         the caller may not read the document."""
-        assert self._store is not None, "reading files needs the object store"
+        store = self._object_store
         async with self._uow() as uow:
             document, _ = await readable_document(uow, await load_actor(uow, actor), id)
         original = await self._stored(original_key(document.sha256))
         archive = None
-        if await self._store.exists(archive_key(id)):
+        if await store.exists(archive_key(id)):
             archive = await self._stored(archive_key(id))
         return DocumentFiles(document=document, original=original, archive=archive)
 
     async def _stored(self, key: str) -> StoredFile:
-        assert self._store is not None
-        data = await self._store.get(key)
+        data = await self._object_store.get(key)
         digest = await asyncio.to_thread(lambda: hashlib.sha256(data).hexdigest())
         metadata = None
         if self._metadata is not None:
@@ -498,7 +503,7 @@ class DocumentService:
         does not ask the model."""
         if node not in EXCHANGE_NODES:
             raise ValidationError(f"node {node.value} does not ask a language model")
-        assert self._store is not None, "reading model exchanges needs the object store"
+        store = self._object_store
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             await controllable_document(uow, user, id, f"read the model exchanges of {id}")
@@ -506,7 +511,7 @@ class DocumentService:
             if key is None:
                 continue
             try:
-                data = await self._store.get(key)
+                data = await store.get(key)
             except NotFoundError:
                 continue
             return exchanges_from_json(json.loads(data))

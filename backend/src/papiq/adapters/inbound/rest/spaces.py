@@ -28,7 +28,7 @@ OWNER_ONLY = "The owner and admins."
     responses=problem_responses(401),
 )
 async def list_spaces(principal: Authenticated, context: Context) -> list[SpaceOut]:
-    spaces = await context.spaces.list(principal.id)
+    spaces = await context.spaces.list_spaces(principal.id)
     return [SpaceOut.of(d, principal.user) for d in sorted(spaces, key=lambda d: sort_key(d.name))]
 
 

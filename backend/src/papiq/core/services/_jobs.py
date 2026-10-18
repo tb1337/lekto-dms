@@ -11,9 +11,12 @@ import logging
 import random
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, timedelta
+from uuid import UUID
 
 from papiq.core.domain.errors import ConcurrencyError
+from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.jobs import Job, JobStatus
+from papiq.core.domain.json_value import JsonObject
 from papiq.core.ports import Clock, UnitOfWork, UnitOfWorkFactory
 
 log = logging.getLogger(__name__)
@@ -29,6 +32,17 @@ up to `STORE_BACKOFF` seconds times the attempt, at random (workers finishing si
 
 type Step = Callable[[UnitOfWork], Awaitable[None]]
 """More to do in the commit that ends a job."""
+
+
+def document_payload(id: DocumentId) -> JsonObject:
+    """The payload of a job about one document."""
+    return {"document_id": str(id)}
+
+
+def payload_document(payload: JsonObject) -> DocumentId:
+    """The document of a `document_payload`; KeyError or ValueError for a payload that is
+    none."""
+    return DocumentId(UUID(str(payload["document_id"])))
 
 
 class JobRunner:

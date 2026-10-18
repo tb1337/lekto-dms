@@ -45,10 +45,9 @@ from papiq.core.services.pipeline import (
     REPARSE_JOB,
     MetadataResult,
     PipelineService,
-    PlaceholderNode,
 )
 from tests import builders
-from tests.builders import FAILED, NOW, UNCERTAIN, Returns, incoming
+from tests.builders import FAILED, NOW, UNCERTAIN, PlaceholderNode, Returns, incoming
 from tests.contracts.processing import SAMPLES
 from tests.unit.services.conftest import Raises, World
 

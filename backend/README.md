@@ -477,7 +477,8 @@ fields, taking a document over); green documents do not train. A change that onl
 removes tags set by hand (statuses such as "to pay") confirms nothing: they say nothing about
 contact and type (`documents.confirms`); with an automatic tag or any other confirming value
 it confirms. A recurring job (`classifier.check`,
-every ten minutes) queues the training (`classifier.train`) once `PAPIQ_CLASSIFIER_MIN_EXAMPLES`
+every ten minutes) queues the training (`classifier.train`, which may take an hour before another
+worker takes it over) once `PAPIQ_CLASSIFIER_MIN_EXAMPLES`
 documents are confirmed and no model exists, or `PAPIQ_CLASSIFIER_RETRAIN_AFTER` were confirmed
 since the last one; `python -m papiq.composition train` and `POST /classifier/train` train at
 once. Training also learns identifiers of contacts: one that stands in at least two confirmed
@@ -698,9 +699,9 @@ meaning took part.
   also with vectors; document date, arrival and the title's sort key are sortable. Without
   `sort` (or with `relevance`), the hits come by relevance.
 - **Rebuild at any time.** `POST /search/reindex` (admins) or `python -m papiq.composition
-  reindex` builds `<index>-rebuild` from the database and the object store while the active
-  index keeps serving, swaps it in and reconciles what changed meanwhile. The index holds no
-  information that is not in the database.
+  reindex` builds `<index>-rebuild` from the database and the object store, 50 documents per
+  request, while the active index keeps serving, swaps it in and reconciles what changed
+  meanwhile. The index holds no information that is not in the database.
 - **Rights.** The index query contains the rights (own documents in any lane; green documents of
   spaces the caller owns or that are shared with them). Every hit is checked against the
   database once more and the filter applied again, so a withdrawn share ends the search for that

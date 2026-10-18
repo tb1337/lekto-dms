@@ -166,7 +166,7 @@ async def test_the_filter_is_applied_to_the_database_state_too(scene: Scene) -> 
 
 async def test_a_deactivated_user_finds_nothing(scene: Scene) -> None:
     admin = await scene.setup.world.user(role=Role.ADMIN)
-    await scene.setup.world.users.set_active(admin.id, scene.reader.id, False)
+    await scene.setup.world.users.update(admin.id, scene.reader.id, active=False)
     with pytest.raises(AuthenticationError):
         await scene.ids(scene.reader, "Stromrechnung")
 
@@ -359,6 +359,6 @@ async def test_admins_search_their_reach_or_everything(scene: Scene) -> None:
         with pytest.raises(PermissionDeniedError):
             await search.search(user.id, "Stromrechnung", all_users=True)
     other = await scene.setup.world.user("other admin", role=Role.ADMIN)
-    await scene.setup.world.users.set_active(other.id, admin.id, False)
+    await scene.setup.world.users.update(other.id, admin.id, active=False)
     with pytest.raises(AuthenticationError):
         await search.search(admin.id, "Stromrechnung", all_users=True)

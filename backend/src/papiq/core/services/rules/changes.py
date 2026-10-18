@@ -26,6 +26,7 @@ from papiq.core.domain.pipeline import (
     ACTOR,
     RULES_CHANGE,
     TRIGGER,
+    TRIGGER_MOVE,
     Node,
     NodeRun,
     ProcessingStatus,
@@ -86,7 +87,7 @@ class ChangeRules:
             document,
             node=Node.APPLY_RULES,
             actor=actor.id,
-            trigger="move",
+            trigger=TRIGGER_MOVE,
             version=self._version,
             now=now,
         )

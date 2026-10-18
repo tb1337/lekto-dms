@@ -212,7 +212,7 @@ async def test_a_deactivated_user_and_a_document_in_the_inbox_have_fewer_readers
     world: World, scene: Scene
 ) -> None:
     admin = await world.user(role=Role.ADMIN)
-    await world.users.set_active(admin.id, scene.reader.id, False)
+    await world.users.update(admin.id, scene.reader.id, active=False)
     await world.documents.delete(scene.owner.id, scene.document.id)
     (event,) = world.events()
     assert isinstance(event, DocumentDeleted)

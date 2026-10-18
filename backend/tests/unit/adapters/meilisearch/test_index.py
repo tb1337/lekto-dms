@@ -24,7 +24,7 @@ from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, SpaceId
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.search import EmbeddingStamp, Segment, Visibility
 from papiq.core.ports import DocumentFilter, SearchQuery
-from tests.builders import DEFAULT_SETTINGS, NOW, index_document
+from tests.builders import DEFAULT_SETTINGS, NOW, index_document, search_query
 
 URL = "http://meilisearch:7700"
 
@@ -183,9 +183,9 @@ async def test_an_answer_that_the_index_is_gone_sets_it_up_again() -> None:
     sim.fail = lose
     visibility = Visibility(UserId(uid(5)), frozenset())
     with pytest.raises(SearchIndexError, match="index_not_found"):
-        await index.search(SearchQuery(text="x", visibility=visibility))
+        await index.search(search_query("x", visibility))
     settings_checks = len(sim.calls("GET", "/settings"))
-    await index.search(SearchQuery(text="x", visibility=visibility))
+    await index.search(search_query("x", visibility))
     assert len(sim.calls("GET", "/settings")) == settings_checks + 1
 
 
@@ -515,7 +515,7 @@ async def test_dropping_removes_the_index_and_the_remains_of_a_rebuild() -> None
 
 def _query(**fields: Any) -> SearchQuery:
     visibility = Visibility(UserId(uid(100)), frozenset())
-    return SearchQuery(text="Zahlung", visibility=visibility, **fields)
+    return search_query("Zahlung", visibility, **fields)
 
 
 def test_the_filter_for_a_user_without_spaces() -> None:
@@ -524,9 +524,9 @@ def test_the_filter_for_a_user_without_spaces() -> None:
 
 def test_the_filter_for_a_user_with_spaces_and_criteria() -> None:
     visibility = Visibility(UserId(uid(100)), frozenset({SpaceId(uid(2)), SpaceId(uid(1))}))
-    query = SearchQuery(
-        text="x",
-        visibility=visibility,
+    query = search_query(
+        "x",
+        visibility,
         filter=DocumentFilter(
             contact=ContactId(uid(3)),
             document_type=DocumentTypeId(uid(4)),
@@ -551,9 +551,7 @@ def test_the_filter_for_a_user_with_spaces_and_criteria() -> None:
 def test_the_filter_of_a_search_over_everything() -> None:
     everything = Visibility(UserId(uid(100)), frozenset(), everything=True)
     assert filter_expression(everything, DocumentFilter()) is None
-    query = SearchQuery(
-        text="x", visibility=everything, filter=DocumentFilter(contact=ContactId(uid(3)))
-    )
+    query = search_query("x", everything, filter=DocumentFilter(contact=ContactId(uid(3))))
     assert filter_expression(query.visibility, query.filter) == f'contact_id = "{uid(3)}"'
 
 

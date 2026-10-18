@@ -8,8 +8,7 @@ from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.composition.settings import Settings
 from papiq.core.domain.ids import UserId, new_id
 from papiq.core.domain.search import Visibility
-from papiq.core.ports import SearchQuery
-from tests.builders import index_document
+from tests.builders import index_document, search_query
 from tests.contracts.search_index import SearchIndexContract
 from tests.integration.adapters.meilisearch.conftest import drop, new_index
 
@@ -23,9 +22,7 @@ async def test_compound_words_are_split(search_index: MeilisearchIndex) -> None:
     document = index_document(owner_id=owner, title="Stromrechnung", text="Ihre Jahresabrechnung")
     await search_index.upsert([document])
     for word in ("Strom", "rechnung", "Abrechnung"):
-        result = await search_index.search(
-            SearchQuery(text=word, visibility=Visibility(owner, frozenset()))
-        )
+        result = await search_index.search(search_query(word, Visibility(owner, frozenset())))
         assert [hit.id for hit in result.hits] == [document.id], word
 
 
@@ -67,9 +64,7 @@ async def test_an_index_without_embedder_takes_documents_without_vectors(
         owner = UserId(new_id())
         document = index_document(owner_id=owner, title="Mahnung")
         await index.upsert([document])
-        result = await index.search(
-            SearchQuery(text="Mahnung", visibility=Visibility(owner, frozenset()))
-        )
+        result = await index.search(search_query("Mahnung", Visibility(owner, frozenset())))
         assert [hit.id for hit in result.hits] == [document.id]
     finally:
         await index.aclose()

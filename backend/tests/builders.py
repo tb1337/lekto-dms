@@ -25,16 +25,15 @@ from papiq.core.domain.documents import Document, Sha256
 from papiq.core.domain.identity import Credential, check_new_password
 from papiq.core.domain.ids import DocumentId, SpaceId, UserId, new_id
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, Outcome
-from papiq.core.domain.search import IndexDocument
+from papiq.core.domain.search import IndexDocument, Visibility
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import Clock, ObjectStore, PasswordHasher, UnitOfWorkFactory
+from papiq.core.ports import Clock, ObjectStore, PasswordHasher, SearchQuery, UnitOfWorkFactory
 from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.pipeline import (
     IncomingFile,
     NodeExecutor,
     PipelineService,
-    PlaceholderNode,
 )
 
 # Templates of rules and title patterns, as the memory container renders them.
@@ -89,6 +88,13 @@ TRUSTED_PROXY = "127.0.0.1"
 OK = NodeResult(outcome=Outcome.OK)
 UNCERTAIN = NodeResult(outcome=Outcome.UNCERTAIN, reason="new contact", confidence=0.4)
 FAILED = NodeResult(outcome=Outcome.FAILED, reason="OCR crashed")
+
+
+class PlaceholderNode:
+    """Node executor that does nothing and passes."""
+
+    async def run(self, document: Document) -> NodeResult:
+        return NodeResult(outcome=Outcome.OK)
 
 
 class Returns:
@@ -245,3 +251,9 @@ def index_document(**fields: Any) -> IndexDocument:
     }
     values.update(fields)
     return IndexDocument(**values)
+
+
+def search_query(text: str, visibility: Visibility, **fields: Any) -> SearchQuery:
+    """A query of the index with the shipped semantic ratio unless `fields` give one."""
+    fields.setdefault("semantic_ratio", SEARCH.semantic_ratio)
+    return SearchQuery(text=text, visibility=visibility, **fields)

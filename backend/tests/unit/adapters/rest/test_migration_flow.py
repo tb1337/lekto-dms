@@ -16,8 +16,8 @@ from papiq_migration.fake_paperless import FakePaperless, sample_archive
 from papiq.adapters.inbound.rest import PREFIX
 from papiq.core.domain.pipeline import SIGNALS, Node
 from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
-from papiq.core.services.pipeline import PlaceholderNode
 from tests import api as helpers
+from tests.builders import PlaceholderNode
 from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.rest.support import Api
 

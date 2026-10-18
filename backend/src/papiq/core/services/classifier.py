@@ -35,7 +35,6 @@ from papiq.core.ports import (
     Classifier,
     Clock,
     DocumentFilter,
-    DocumentPosition,
     ObjectStore,
     Prediction,
     TrainedModel,
@@ -45,6 +44,7 @@ from papiq.core.ports import (
 )
 from papiq.core.services._access import require_admin
 from papiq.core.services._jobs import LEASE, JobRunner, Step, retrying
+from papiq.core.services._pages import document_pages
 from papiq.core.services.master_data import replace_learned_identifiers
 from papiq.core.services.objects import classifier_key, load_text
 
@@ -53,7 +53,6 @@ log = logging.getLogger(__name__)
 CHECK_JOB = "classifier.check"
 TRAIN_JOB = "classifier.train"
 _TRAIN_RETRY = RetryPolicy(max_attempts=3, delay=timedelta(minutes=5))
-_PAGE = 500
 _COMMIT_ATTEMPTS = 3  # a contact changed while the learned identifiers were written: again
 _HOLDOUT_FROM = 50  # examples from which a share is held out to measure the model
 _HOLDOUT_EVERY = 5  # every fifth example: a fifth held out
@@ -267,23 +266,17 @@ class ClassifierService:
 
     async def _examples(self) -> list[_Example]:
         """The confirmed documents with their texts (one without a text yet is left out)."""
-        documents: list[Document] = []
-        after: DocumentPosition | None = None
         async with self._uow() as uow:
             # Only the tags and topics the classification sets are learned, not those set by
             # hand.
             tags = await uow.tags.list_all()
             targets = {tag.id for tag in tags if tag.is_target}
             topics = {tag.id for tag in tags if tag.is_topic_target}
-        while True:
-            async with self._uow() as uow:
-                page = await uow.documents.query(
-                    DocumentFilter(confirmed=True), after=after, limit=_PAGE
-                )
-            documents.extend(page)
-            if len(page) < _PAGE:
-                break
-            after = DocumentPosition(page[-1].id)
+        documents = [
+            document
+            async for page in document_pages(self._uow, DocumentFilter(confirmed=True))
+            for document in page
+        ]
         examples = []
         for document in documents:
             try:

@@ -2,6 +2,7 @@
 vectors of three numbers (`DIMENSIONS`)."""
 
 from datetime import date
+from typing import Any
 
 import pytest
 
@@ -21,7 +22,7 @@ from papiq.core.domain.search import EmbeddingStamp, IndexDocument, Visibility
 from papiq.core.ports import DocumentFilter, DocumentOrder, SearchIndex, SearchQuery, SortKey
 from papiq.core.ports.repository import TagSets
 from papiq.core.ports.search_index import SimilarQuery
-from tests.builders import index_document
+from tests.builders import index_document, search_query
 
 DIMENSIONS = 3
 STAMP = EmbeddingStamp("test-model", "abc")
@@ -31,8 +32,8 @@ def visibility(user: UserId, *spaces: SpaceId) -> Visibility:
     return Visibility(user, frozenset(spaces))
 
 
-def query(text: str, who: Visibility, **fields: object) -> SearchQuery:
-    return SearchQuery(text=text, visibility=who, **fields)  # type: ignore[arg-type]
+def query(text: str, who: Visibility, **fields: Any) -> SearchQuery:
+    return search_query(text, who, **fields)
 
 
 def ids(result_hits: list) -> set[DocumentId]:  # type: ignore[type-arg]

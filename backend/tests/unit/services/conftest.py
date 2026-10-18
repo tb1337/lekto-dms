@@ -27,11 +27,12 @@ from papiq.core.services.documents import DocumentService
 from papiq.core.services.logos import LogoService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.oidc import OidcService
-from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode
+from papiq.core.services.pipeline import NodeExecutor, PipelineService
 from papiq.core.services.spaces import SpaceService
 from papiq.core.services.users import UserService
 from papiq.core.services.webhooks import WebhookDeliveryService, WebhookPolicy, WebhookService
 from tests import builders
+from tests.builders import PlaceholderNode
 
 
 class Raises:

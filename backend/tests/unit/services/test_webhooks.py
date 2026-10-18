@@ -156,7 +156,7 @@ async def test_delete_removes_the_webhook_and_a_deleted_user_loses_theirs(world:
 async def test_a_deactivated_user_cannot_use_webhooks(world: World) -> None:
     admin, user = await world.user(role=Role.ADMIN), await world.user()
     await world.webhooks.create(user.id, name="x", url=URL, event_types=["*"])
-    await world.users.set_active(admin.id, user.id, False)
+    await world.users.update(admin.id, user.id, active=False)
     with pytest.raises(AuthenticationError):
         await world.webhooks.list(user.id)
     with pytest.raises(AuthenticationError):

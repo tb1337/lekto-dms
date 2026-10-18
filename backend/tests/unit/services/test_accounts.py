@@ -51,8 +51,8 @@ async def test_only_admins_manage_accounts(world: World) -> None:
     other = await world.account("bob")
     calls = [
         world.users.create_user(user.id, "x", Role.USER),
-        world.users.change_role(user.id, other.id, Role.ADMIN),
-        world.users.set_active(user.id, other.id, False),
+        world.users.update(user.id, other.id, role=Role.ADMIN),
+        world.users.update(user.id, other.id, active=False),
         world.users.reset_password(user.id, other.id, NEW_PASSWORD),
         world.users.disable_totp(user.id, other.id),
         world.users.unlink_external_identities(user.id, other.id),
@@ -67,7 +67,7 @@ async def test_only_admins_manage_accounts(world: World) -> None:
 async def test_users_see_active_users_and_admins_all(world: World) -> None:
     admin = await world.account("root", Role.ADMIN)
     alice, bob = await world.account("alice"), await world.account("Bob")
-    await world.users.set_active(admin.id, bob.id, False)
+    await world.users.update(admin.id, bob.id, active=False)
     assert [u.username for u in await world.users.list(alice.id)] == ["alice", "root"]
     assert [u.username for u in await world.users.list(admin.id)] == ["alice", "Bob", "root"]
     with pytest.raises(NotFoundError):
@@ -78,25 +78,25 @@ async def test_users_see_active_users_and_admins_all(world: World) -> None:
 async def test_the_last_active_admin_stays(world: World) -> None:
     admin = await world.account("root", Role.ADMIN)
     for call in (
-        world.users.change_role(admin.id, admin.id, Role.USER),
-        world.users.set_active(admin.id, admin.id, False),
+        world.users.update(admin.id, admin.id, role=Role.USER),
+        world.users.update(admin.id, admin.id, active=False),
         world.users.delete_user(admin.id, admin.id),
     ):
         with pytest.raises(ConflictError):
             await call
     second = await world.account("second", Role.ADMIN)
     inactive = await world.account("inactive", Role.ADMIN)
-    await world.users.set_active(admin.id, inactive.id, False)
-    await world.users.change_role(second.id, admin.id, Role.USER)
+    await world.users.update(admin.id, inactive.id, active=False)
+    await world.users.update(second.id, admin.id, role=Role.USER)
     with pytest.raises(ConflictError):  # the inactive admin does not count
-        await world.users.change_role(second.id, second.id, Role.USER)
+        await world.users.update(second.id, second.id, role=Role.USER)
 
 
 async def test_taking_admin_rights_writes_the_remaining_admins(world: World) -> None:
     """So that a concurrent change relying on them fails its version check."""
     admin = await world.account("root", Role.ADMIN)
     second = await world.account("second", Role.ADMIN)
-    await world.users.change_role(admin.id, admin.id, Role.USER)
+    await world.users.update(admin.id, admin.id, role=Role.USER)
     async with world.uow() as uow:
         assert (await uow.users.get(second.id)).version == second.version + 1
 
@@ -105,7 +105,7 @@ async def test_role_changes_apply_at_once(world: World) -> None:
     admin = await world.account("root", Role.ADMIN)
     user = await world.account("alice")
     signed_in = await world.auth.login("alice", PASSWORD)
-    await world.users.change_role(admin.id, user.id, Role.ADMIN)
+    await world.users.update(admin.id, user.id, role=Role.ADMIN)
     principal = await world.auth.authenticate_session(signed_in.token)
     assert principal.user.is_admin
     await world.master_data.create_tag(user.id, "now possible")
@@ -117,7 +117,7 @@ async def test_deactivation_ends_sessions_and_refuses_tokens(world: World) -> No
     signed_in = await world.auth.login("alice", PASSWORD)
     _, token = await world.auth.create_api_token(user.id, "cli", TokenScope.READ)
 
-    await world.users.set_active(admin.id, user.id, False)
+    await world.users.update(admin.id, user.id, active=False)
 
     async with world.uow() as uow:
         assert await uow.sessions.find_by_token(signed_in.session.token_hash) is None
@@ -128,7 +128,7 @@ async def test_deactivation_ends_sessions_and_refuses_tokens(world: World) -> No
     with pytest.raises(AuthenticationError):
         await world.spaces.list(user.id)
 
-    await world.users.set_active(admin.id, user.id, True)
+    await world.users.update(admin.id, user.id, active=True)
     await world.auth.authenticate_token(token)
     await world.auth.login("alice", PASSWORD)
 

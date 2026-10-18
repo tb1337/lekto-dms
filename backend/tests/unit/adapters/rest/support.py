@@ -236,8 +236,8 @@ async def build_scene(api: Api) -> Scene:
     )
     await api.services.auth.revoke_api_token(owner.id, revoked_token.id)
     api.clock.advance(timedelta(seconds=1))
-    await api.services.users.set_active(admin.id, gone.id, False)
-    await api.services.users.set_active(admin.id, retired.id, False)
+    await api.services.users.update(admin.id, gone.id, active=False)
+    await api.services.users.update(admin.id, retired.id, active=False)
     headers = {
         "owner": auth(owner),
         "reader": auth(reader),

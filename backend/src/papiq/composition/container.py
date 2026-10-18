@@ -60,7 +60,7 @@ from papiq.composition.database import open_database
 from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
 from papiq.core.domain.jobs import RetryPolicy
-from papiq.core.domain.pipeline import NODES, Node
+from papiq.core.domain.pipeline import Node
 from papiq.core.domain.verdict import Thresholds
 from papiq.core.ports import (
     Classifier,
@@ -110,7 +110,7 @@ from papiq.core.services.maintenance import MaintenanceService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.nodes import OcrNode, PagesNode, ParseNode
 from papiq.core.services.oidc import OidcService
-from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode
+from papiq.core.services.pipeline import NodeExecutor, PipelineService
 from papiq.core.services.rules import RuleService
 from papiq.core.services.rules.changes import ChangeRules
 from papiq.core.services.rules.nodes import ApplyRulesNode, FileNode
@@ -633,27 +633,26 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         )
     )
     index, embeddings = container.search_index, container.embeddings
-    executors: dict[Node, NodeExecutor] = {
-        node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE
-    }
-    executors[Node.OCR] = OcrNode(store, container.ocr)
-    executors[Node.PAGES] = PagesNode(store, container.pages)
-    executors[Node.PARSE] = ParseNode(store, container.parser)
     facts = FactsSignal(uow, store, container.codes)
-    executors |= classification_nodes(
-        container,
-        settings,
-        model=container.language_model,
-        classifier=classifier,
-        index=index,
-        embeddings=embeddings,
-        facts=facts,
-        locator=container.locator,
-    )
-    executors[Node.APPLY_RULES] = ApplyRulesNode(
-        uow, store, container.patterns, container.templates, max_text=settings.rules_max_text
-    )
-    executors[Node.FILE] = FileNode()
+    executors: dict[Node, NodeExecutor] = {
+        Node.OCR: OcrNode(store, container.ocr),
+        Node.PAGES: PagesNode(store, container.pages),
+        Node.PARSE: ParseNode(store, container.parser),
+        **classification_nodes(
+            container,
+            settings,
+            model=container.language_model,
+            classifier=classifier,
+            index=index,
+            embeddings=embeddings,
+            facts=facts,
+            locator=container.locator,
+        ),
+        Node.APPLY_RULES: ApplyRulesNode(
+            uow, store, container.patterns, container.templates, max_text=settings.rules_max_text
+        ),
+        Node.FILE: FileNode(),
+    }
     auth = AuthService(
         uow,
         clock,

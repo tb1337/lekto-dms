@@ -42,10 +42,10 @@ from papiq.core.services.classification.signals import (
     NeighboursSignal,
 )
 from papiq.core.services.objects import archive_key, exchanges_key, text_key
-from papiq.core.services.pipeline import MetadataResult, NodeExecutor, PlaceholderNode
+from papiq.core.services.pipeline import MetadataResult, NodeExecutor
 from papiq.core.services.rules.nodes import ApplyRulesNode
 from tests import builders
-from tests.builders import NOW, incoming
+from tests.builders import NOW, PlaceholderNode, incoming
 from tests.unit.services.conftest import World
 
 INVOICE = """\

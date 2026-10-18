@@ -32,9 +32,8 @@ from papiq.core.domain.jobs import Job
 from papiq.core.domain.pipeline import NODES, Node
 from papiq.core.domain.users import User
 from papiq.core.ports import EventBus, UnitOfWorkFactory
-from papiq.core.services.pipeline import PlaceholderNode
 from tests import builders
-from tests.builders import NOW, incoming
+from tests.builders import NOW, PlaceholderNode, incoming
 from tests.contracts.event_bus import EventBusFactory, Recorder, publish, received
 from tests.contracts.unit_of_work import owner_with_space
 from tests.service_suite import ServicesOverPersistence

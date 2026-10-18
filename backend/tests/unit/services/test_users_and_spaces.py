@@ -129,7 +129,7 @@ async def test_spaces_are_not_shared_with_deactivated_users(world: World) -> Non
     """M4-10: a share would take effect unnoticed when the user is activated again."""
     admin, owner, gone = await world.user(role=Role.ADMIN), await world.user(), await world.user()
     space = await world.spaces.create(owner.id, "Household")
-    await world.users.set_active(admin.id, gone.id, False)
+    await world.users.update(admin.id, gone.id, active=False)
     with pytest.raises(NotFoundError):
         await world.spaces.share(owner.id, space.id, gone.id, ShareLevel.READ)
     with pytest.raises(NotFoundError):

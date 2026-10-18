@@ -63,7 +63,6 @@ from papiq.core.domain.rule_engine import (
     TEXT_TARGET,
     Facts,
     Mode,
-    NoteKind,
     RulePlan,
     Situation,
     SpaceTarget,
@@ -72,6 +71,7 @@ from papiq.core.domain.rule_engine import (
     pattern_subjects,
     pattern_text,
     plan,
+    reviewing_rules,
 )
 from papiq.core.domain.rules import Rule, SetSpace, Trigger
 from papiq.core.domain.users import User
@@ -254,7 +254,7 @@ def provenance(log: Sequence[NodeRun], document: Document) -> Provenance:
     open_reviews: set[RuleId] = set()
     for entry in log:  # a confirmation answers the `apply_rules` entry before it
         if entry.result.model_version == RULES:
-            open_reviews = _reviewing(entry.result.output)
+            open_reviews = reviewing_rules(entry.result.output)
         elif entry.result.model_version == PERSON and entry.run == run:
             reviewed |= open_reviews
     given = machine_title(log)
@@ -267,22 +267,6 @@ def provenance(log: Sequence[NodeRun], document: Document) -> Provenance:
         frozenset(removed),
         machine_title=given if TITLE not in person and document.title == given else None,
     )
-
-
-def _reviewing(output: JsonValue) -> set[RuleId]:
-    """The rules that forced a review in an `apply_rules` entry."""
-    found: set[RuleId] = set()
-    reports = output.get("rules") if isinstance(output, dict) else None
-    for report in reports if isinstance(reports, list) else []:
-        if not isinstance(report, dict):
-            continue
-        notes = report.get("notes")
-        if any(
-            isinstance(note, dict) and note.get("kind") == NoteKind.REVIEW
-            for note in (notes if isinstance(notes, list) else [])
-        ):
-            found.add(RuleId(UUID(str(report["rule_id"]))))
-    return found
 
 
 def _strings(value: JsonValue) -> list[str]:

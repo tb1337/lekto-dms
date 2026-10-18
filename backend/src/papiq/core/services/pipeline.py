@@ -4,12 +4,11 @@ import asyncio
 import copy
 import hashlib
 import logging
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Protocol, Self
-from uuid import UUID
 
 from papiq.core.domain import media_types
 from papiq.core.domain.classification import CLASSIFIER_LABELS, SPACE
@@ -39,6 +38,7 @@ from papiq.core.domain.permissions import can_file_into
 from papiq.core.domain.pipeline import (
     CHOSEN_SPACE,
     NODES,
+    TRIGGER_UPLOAD,
     Lane,
     Node,
     NodeResult,
@@ -65,7 +65,14 @@ from papiq.core.services._access import (
     require_admin,
     visible_space,
 )
-from papiq.core.services._jobs import STORE_ATTEMPTS, JobRunner, retrying
+from papiq.core.services._jobs import (
+    STORE_ATTEMPTS,
+    JobRunner,
+    document_payload,
+    payload_document,
+    retrying,
+)
+from papiq.core.services._pages import document_pages
 from papiq.core.services.inbox import (
     LEARNED_ALIAS,
     alias_to_learn,
@@ -101,7 +108,7 @@ class NodeJob:
     run: int
 
     def to_json(self) -> JsonObject:
-        return {"document_id": str(self.document_id), "node": self.node.value, "run": self.run}
+        return document_payload(self.document_id) | {"node": self.node.value, "run": self.run}
 
     @classmethod
     def from_json(cls, payload: JsonObject) -> Self:
@@ -109,7 +116,7 @@ class NodeJob:
         run = payload["run"]
         if not isinstance(run, int):
             raise ValueError(f"invalid node job payload {payload!r}")
-        return cls(DocumentId(UUID(str(payload["document_id"]))), Node(str(payload["node"])), run)
+        return cls(payload_document(payload), Node(str(payload["node"])), run)
 
 
 class DeferredResult(Protocol):
@@ -163,14 +170,6 @@ class NodeExecutor(Protocol):
     """
 
     async def run(self, document: Document) -> NodeResult | DeferredResult: ...
-
-
-class PlaceholderNode:
-    """A node that does nothing and passes: for tests, and for nodes a composition leaves
-    out."""
-
-    async def run(self, document: Document) -> NodeResult:
-        return NodeResult(outcome=Outcome.OK)
 
 
 @dataclass(frozen=True)
@@ -354,7 +353,7 @@ class PipelineService:
                         document,
                         node=Node.RECEIVE,
                         actor=actor,
-                        trigger="upload",
+                        trigger=TRIGGER_UPLOAD,
                         version=self._version,
                         now=now,
                     )
@@ -579,22 +578,17 @@ class PipelineService:
         Returns how many were queued; a document with such a job already is not queued
         again. A document that starts a new run meanwhile keeps the node skipped; its job is
         stale then, and the next call queues it again."""
-        now = self._clock.now()
-        queued = 0
-        async with self._uow() as uow:
-            for document in await uow.documents.list_all():
-                run = document.processing.run
-                if not document.is_skipped(node, run):
-                    continue
-                job = await uow.jobs.enqueue(
-                    CATCH_UP_JOB,
-                    NodeJob(document.id, node, run).to_json(),
-                    run_at=now,
-                    dedup_key=f"{document.id}:{run}:{node.value}:catch-up",
-                )
-                queued += job is not None
-            await uow.commit()
-        return queued
+
+        def catch_up(document: Document) -> tuple[JsonObject, str] | None:
+            run = document.processing.run
+            if not document.is_skipped(node, run):
+                return None
+            return (
+                NodeJob(document.id, node, run).to_json(),
+                f"{document.id}:{run}:{node.value}:catch-up",
+            )
+
+        return await self._queue_each(CATCH_UP_JOB, catch_up)
 
     async def request_reparse(self, actor: UserId) -> int:
         """Admins only: `reparse`."""
@@ -609,22 +603,14 @@ class PipelineService:
         Its nodes, status, lane and metadata stay as they are; its log gets the new reading, and
         the search index takes up the new text. A document that starts a new run meanwhile has
         its text read there; its job is stale then."""
-        now = self._clock.now()
-        queued = 0
-        async with self._uow() as uow:
-            for document in await uow.documents.list_all():
-                run = document.processing.run
-                if not _reparsable(document, run):
-                    continue
-                job = await uow.jobs.enqueue(
-                    REPARSE_JOB,
-                    NodeJob(document.id, Node.PARSE, run).to_json(),
-                    run_at=now,
-                    dedup_key=f"{document.id}:{run}:reparse",
-                )
-                queued += job is not None
-            await uow.commit()
-        return queued
+
+        def reparse(document: Document) -> tuple[JsonObject, str] | None:
+            run = document.processing.run
+            if not _reparsable(document, run):
+                return None
+            return NodeJob(document.id, Node.PARSE, run).to_json(), f"{document.id}:{run}:reparse"
+
+        return await self._queue_each(REPARSE_JOB, reparse)
 
     async def request_facts(self) -> int:
         """Queue reading the facts of every document whose text was read and that is not being
@@ -633,23 +619,37 @@ class PipelineService:
         queued already is not queued twice."""
         if self._facts is None:
             return 0
-        now = self._clock.now()
+
+        def facts(document: Document) -> tuple[JsonObject, str] | None:
+            processing = document.processing
+            if processing.status is ProcessingStatus.PROCESSING:
+                return None
+            if processing.outcome(Node.PARSE) not in (Outcome.OK, Outcome.UNCERTAIN):
+                return None
+            return document_payload(document.id), f"{document.id}:facts"
+
+        return await self._queue_each(FACTS_JOB, facts)
+
+    async def _queue_each(
+        self, kind: str, job: Callable[[Document], tuple[JsonObject, str] | None]
+    ) -> int:
+        """A `kind` job for each document `job` gives a payload and a dedup key for; returns
+        how many were queued (one queued already is not queued twice)."""
         queued = 0
-        async with self._uow() as uow:
-            for document in await uow.documents.list_all():
-                processing = document.processing
-                if processing.status is ProcessingStatus.PROCESSING:
-                    continue
-                if processing.outcome(Node.PARSE) not in (Outcome.OK, Outcome.UNCERTAIN):
-                    continue
-                job = await uow.jobs.enqueue(
-                    FACTS_JOB,
-                    {"document_id": str(document.id)},
-                    run_at=now,
-                    dedup_key=f"{document.id}:facts",
-                )
-                queued += job is not None
-            await uow.commit()
+        async for page in document_pages(self._uow):
+            async with self._uow() as uow:
+                for document in page:
+                    found = job(document)
+                    if found is None:
+                        continue
+                    payload, dedup = found
+                    queued += (
+                        await uow.jobs.enqueue(
+                            kind, payload, run_at=self._clock.now(), dedup_key=dedup
+                        )
+                        is not None
+                    )
+                await uow.commit()
         return queued
 
     # --- worker ---------------------------------------------------------------------------------
@@ -768,7 +768,7 @@ class PipelineService:
         identifiers it shows); the result itself is not recorded. An attempt that raises runs
         again later, like a node."""
         try:
-            document_id = DocumentId(UUID(str(job.payload["document_id"])))
+            document_id = payload_document(job.payload)
         except (KeyError, ValueError) as error:
             await self._jobs.invalid(job, error)
             return

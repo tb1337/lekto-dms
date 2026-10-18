@@ -173,7 +173,13 @@ CHOSEN_SPACE = "space_id"
 """Key of the space a person chose, in the input of a `PERSON_SPACE` entry and the output of a
 `PERSON` entry."""
 TRIGGER = "trigger"
-"""Key of what set off an `apply_rules` entry (`rules.Trigger`, or `apply`), in its input."""
+"""Key of what set off an `apply_rules` entry (`rules.Trigger`, or one of the `TRIGGER_`
+values a person sets off), in its input."""
+TRIGGER_APPLY = "apply"
+TRIGGER_MOVE = "move"
+TRIGGER_UPLOAD = "upload"
+"""What a person set off: applying a rule to documents they chose, moving a document, uploading
+it into a space they chose."""
 ACTOR = "actor"
 """Key of the person who set off an entry (a change, a rule applied on request, a space they
 chose), in its input."""

@@ -78,7 +78,14 @@ from papiq.core.domain.ids import (
     SpaceId,
     TagId,
 )
-from papiq.core.domain.json_value import JsonObject, JsonValue, require_date
+from papiq.core.domain.json_value import (
+    JsonObject,
+    JsonValue,
+    as_list,
+    as_object,
+    as_uuid,
+    require_date,
+)
 from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.periods import Period
 from papiq.core.domain.pipeline import Outcome
@@ -596,6 +603,18 @@ class RulePlan:
             "fields": [check.to_json() for check in self.checks],
             "reviews": list(self.reviews),
         }
+
+
+def reviewing_rules(output: JsonValue) -> set[RuleId]:
+    """The rules that forced a review, in what `RulePlan.to_json` wrote."""
+    found: set[RuleId] = set()
+    for value in as_list((as_object(output) or {}).get("rules")):
+        report = as_object(value) or {}
+        rule = as_uuid(report.get("rule_id"))
+        notes = (as_object(note) or {} for note in as_list(report.get("notes")))
+        if rule is not None and any(note.get("kind") == NoteKind.REVIEW for note in notes):
+            found.add(RuleId(rule))
+    return found
 
 
 @dataclass

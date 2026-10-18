@@ -291,7 +291,7 @@ class RuleWorld:
         ]
 
     async def deactivate(self, user: User) -> None:
-        await self.world.users.set_active(self.admin.id, user.id, False)
+        await self.world.users.update(self.admin.id, user.id, active=False)
 
 
 def incoming_pdf() -> IncomingFile:

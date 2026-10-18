@@ -450,7 +450,7 @@ async def test_a_sign_in_does_not_outlive_a_reset_or_deactivation(
         if change == "reset":
             await world.users.reset_password(admin.id, user.id, NEW_PASSWORD)
         else:
-            await world.users.set_active(admin.id, user.id, False)
+            await world.users.update(admin.id, user.id, active=False)
 
     hasher.meanwhile = meanwhile
     with pytest.raises(AuthenticationError):

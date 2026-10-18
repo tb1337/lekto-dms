@@ -62,6 +62,7 @@ from papiq.core.domain.pipeline import SIGNALS
 from papiq.core.domain.search import LAYOUT, EmbeddingStamp, IndexDocument, IndexState
 from papiq.core.ports import (
     Clock,
+    DocumentFilter,
     Embeddings,
     ObjectStore,
     SearchIndex,
@@ -69,7 +70,8 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
 )
 from papiq.core.services._access import require_admin
-from papiq.core.services._jobs import JobRunner, lost
+from papiq.core.services._jobs import JobRunner, document_payload, lost, payload_document
+from papiq.core.services._pages import document_pages
 from papiq.core.services._tags import tag_tree
 from papiq.core.services.objects import load_text
 
@@ -96,16 +98,6 @@ class RefreshKind(StrEnum):
 def refresh_payload(kind: RefreshKind, id: UUID) -> JsonObject:
     """The payload of a `REFRESH_JOB`."""
     return {"kind": kind.value, "id": str(id)}
-
-
-def index_payload(id: DocumentId) -> JsonObject:
-    """The payload of an `INDEX_JOB`."""
-    return {"document_id": str(id)}
-
-
-def _indexed(payload: JsonObject) -> DocumentId:
-    """The document of an `INDEX_JOB` (`index_payload`)."""
-    return DocumentId(UUID(str(payload["document_id"])))
 
 
 def _refreshed(payload: JsonObject) -> tuple[RefreshKind, UUID]:
@@ -217,7 +209,7 @@ class IndexingService:
             return
         async with self._uow() as uow:
             await uow.jobs.enqueue(
-                INDEX_JOB, index_payload(event.document_id), run_at=self._clock.now()
+                INDEX_JOB, document_payload(event.document_id), run_at=self._clock.now()
             )
             await uow.commit()
 
@@ -264,7 +256,7 @@ class IndexingService:
 
     def _work(self, job: Job) -> Callable[[], Awaitable[object]]:
         if job.kind == INDEX_JOB:
-            document_id = _indexed(job.payload)
+            document_id = payload_document(job.payload)
             final = job.tries >= _RETRIES[INDEX_JOB].max_attempts
             return lambda: self.index_document(document_id, tolerate_embedding_failure=final)
         if job.kind == REFRESH_JOB:
@@ -432,29 +424,33 @@ class IndexingService:
         """Queue an index job for every document with the contact, type or tag `item`: for a
         tag, also with a tag below it, with it or one below it as its topic, or with a contact
         or type in it or a group below it."""
-        async with self._uow() as uow:
-            documents = await uow.documents.list_all()
-            if kind is not RefreshKind.TAG:
-                carrying = [document.id for document in documents if _carries(document, kind, item)]
-            else:
-                tags = (await tag_tree(uow)).with_descendants([TagId(item)])
-                contacts = {c.id for c in await uow.contacts.list_all() if c.group_ids & tags}
-                types = {t.id for t in await uow.document_types.list_all() if t.group_ids & tags}
-                carrying = [
-                    document.id
-                    for document in documents
-                    if document.tag_ids & tags
-                    or document.topic_id in tags
-                    or document.contact_id in contacts
-                    or document.document_type_id in types
+        match kind:
+            case RefreshKind.CONTACT:
+                filters = [DocumentFilter(contact=ContactId(item))]
+            case RefreshKind.DOCUMENT_TYPE:
+                filters = [DocumentFilter(document_type=DocumentTypeId(item))]
+            case RefreshKind.TAG:
+                async with self._uow() as uow:
+                    tags = (await tag_tree(uow)).with_descendants([TagId(item)])
+                filters = [
+                    DocumentFilter(tags=(tags,)),
+                    DocumentFilter(topics=tags),
+                    DocumentFilter(contact_groups=(tags,)),
+                    DocumentFilter(document_type_groups=(tags,)),
                 ]
-        await self._queue(carrying)
+        carrying: dict[DocumentId, None] = {}
+        for filter in filters:
+            async for page in document_pages(self._uow, filter):
+                carrying |= dict.fromkeys(document.id for document in page)
+        await self._queue(list(carrying))
 
     async def _queue(self, documents: list[DocumentId]) -> None:
         for start in range(0, len(documents), _QUEUE_BATCH):
             async with self._uow() as uow:
                 for id in documents[start : start + _QUEUE_BATCH]:
-                    await uow.jobs.enqueue(INDEX_JOB, index_payload(id), run_at=self._clock.now())
+                    await uow.jobs.enqueue(
+                        INDEX_JOB, document_payload(id), run_at=self._clock.now()
+                    )
                 await uow.commit()
 
     # --- the whole index ------------------------------------------------------------------------
@@ -466,24 +462,23 @@ class IndexingService:
         model. `also`: documents to
         queue in any case."""
         indexed = {state.id: state async for state in self._index.states()}
-        async with self._uow() as uow:
-            documents = await uow.documents.list_all()
         model = None if self._embeddings is None else self._embeddings.model
         queue = set(also)
         stale: list[DocumentId] = []
-        for document in documents:
-            state = indexed.pop(document.id, None)
-            if (
-                document.id in queue
-                or state is None
-                or state.version != document.version
-                or state.layout != LAYOUT
-                or (
-                    model is not None
-                    and (state.embedding is None or state.embedding.model != model)
-                )
-            ):
-                stale.append(document.id)
+        async for page in document_pages(self._uow):
+            for document in page:
+                state = indexed.pop(document.id, None)
+                if (
+                    document.id in queue
+                    or state is None
+                    or state.version != document.version
+                    or state.layout != LAYOUT
+                    or (
+                        model is not None
+                        and (state.embedding is None or state.embedding.model != model)
+                    )
+                ):
+                    stale.append(document.id)
         for id in indexed:  # not in the database
             await self._index.remove(id)
         await self._queue(stale)
@@ -493,8 +488,7 @@ class IndexingService:
     async def rebuild(self, progress: Callable[[int, int], None] | None = None) -> Rebuilt:
         """Build a new index from the database and the object store while the active one keeps
         serving, swap it in, and reconcile what changed meanwhile. `progress(done, total)`."""
-        async with self._uow() as uow:
-            ids = sorted(document.id for document in await uow.documents.list_all())
+        ids = sorted([document.id async for page in document_pages(self._uow) for document in page])
         build = await self._index.begin_rebuild()
         built: dict[DocumentId, tuple[object, ...]] = {}
         try:
@@ -526,12 +520,6 @@ class IndexingService:
         reconciled = await self.reconcile(changed)
         log.info("search index rebuilt", extra={"documents": added})
         return Rebuilt(documents=added, queued=reconciled.queued, removed=reconciled.removed)
-
-
-def _carries(document: Document, kind: RefreshKind, item: UUID) -> bool:
-    if kind is RefreshKind.CONTACT:
-        return document.contact_id == ContactId(item)
-    return document.document_type_id == DocumentTypeId(item)
 
 
 async def _snapshot_of(uow: UnitOfWork, document: Document) -> _Snapshot:

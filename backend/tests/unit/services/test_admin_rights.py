@@ -57,7 +57,7 @@ async def test_admins_list_spaces_of_everyone_and_manage_them(world: World) -> N
 
     # A deactivated admin has no rights.
     other = await world.spaces.create(owner.id, "Other")
-    await world.users.set_active(boss.id, admin.id, False)
+    await world.users.update(boss.id, admin.id, active=False)
     with pytest.raises(AuthenticationError):
         await world.spaces.rename(admin.id, other.id, "Gone")
     with pytest.raises(AuthenticationError):
@@ -114,12 +114,12 @@ async def test_admins_control_other_users_documents_in_every_lane(world: World) 
 
     await world.pipeline().reprocess_from(admin.id, yellow.id, Node.PARSE)
     await world.drain()
-    await world.users.set_active(boss.id, admin.id, False)
+    await world.users.update(boss.id, admin.id, active=False)
     with pytest.raises(AuthenticationError):
         await world.documents.get(admin.id, yellow.id)
     with pytest.raises(AuthenticationError):
         await world.documents.delete(admin.id, yellow.id)
-    await world.users.set_active(boss.id, admin.id, True)
+    await world.users.update(boss.id, admin.id, active=True)
     await world.documents.delete(admin.id, yellow.id)
     with pytest.raises(NotFoundError):
         await world.documents.get(owner.id, yellow.id)
@@ -171,7 +171,7 @@ async def test_admins_confirm_into_any_space(world: World) -> None:
     await pipeline.reprocess_from(owner.id, received.id, Node.APPLY_RULES)
     await world.drain(pipeline)
     assert (await world.documents.get(owner.id, received.id)).lane is Lane.GREEN
-    await world.users.set_active(boss.id, admin.id, False)
+    await world.users.update(boss.id, admin.id, active=False)
     await pipeline.reprocess_from(owner.id, received.id, Node.APPLY_RULES)
     await world.drain(pipeline)
     assert (await world.documents.get(owner.id, received.id)).lane is Lane.YELLOW

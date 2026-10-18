@@ -152,7 +152,7 @@ async def test_a_deactivated_owner_is_not_told(world: World) -> None:
     admin, user = await world.user(role=Role.ADMIN), await world.user()
     document = await seed(world, user)
     await hook(world, user)
-    await world.users.set_active(admin.id, user.id, False)
+    await world.users.update(admin.id, user.id, active=False)
     await world.webhook_delivery().on_event(lane_changed(document))
     assert deliveries(world) == []
 
@@ -408,7 +408,7 @@ async def test_a_switched_off_webhook_or_deactivated_owner_or_vanished_document_
         hooks.append((await hook(world, owner))[0])
         await queue(world, document, service)
     await world.webhooks.update(a.id, hooks[0].id, active=False)
-    await world.users.set_active(admin.id, b.id, False)
+    await world.users.update(admin.id, b.id, active=False)
     async with world.uow() as uow:
         await uow.documents.remove(docs[2].id)
         await uow.commit()

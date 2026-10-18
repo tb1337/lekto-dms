@@ -34,11 +34,12 @@ from papiq.composition.container import (
 )
 from papiq.composition.errors import ConfigurationError
 from papiq.composition.settings import Settings
-from papiq.core.domain.pipeline import NODES, Node
+from papiq.core.domain.documents import Document
+from papiq.core.domain.pipeline import NODES, Node, NodeResult, Outcome
 from papiq.core.ports import LanguageModel
 from papiq.core.services.classification.prompts import EXTRACT_PROMPT, PROPOSE_PROMPT
 from papiq.core.services.classification.signals import FactsSignal
-from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode
+from papiq.core.services.pipeline import NodeExecutor, PipelineService
 
 FAKE_MODEL = "fixed answers"
 PIPELINE_VERSION = "evaluation"
@@ -69,6 +70,13 @@ def evaluation_container(run: Run) -> Container:
         embeddings=BagOfWordsEmbeddings(dimensions=EMBEDDING_DIMENSIONS),
         classifier=SklearnClassifier(),
     )
+
+
+class _Passes:
+    """A node the evaluation leaves out: it passes without doing anything."""
+
+    async def run(self, document: Document) -> NodeResult:
+        return NodeResult(outcome=Outcome.OK)
 
 
 def build_environment(
@@ -103,7 +111,7 @@ def build_environment(
         # The text is stored: the nodes before the signals pass, and the codes of pages and
         # the places of quotes are not read (there is no archive).
         executors: dict[Node, NodeExecutor] = {
-            node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE
+            node: _Passes() for node in NODES if node is not Node.RECEIVE
         }
         executors |= classification_nodes(
             container,

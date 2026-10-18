@@ -15,8 +15,9 @@ from papiq.core.domain.identity import TokenScope
 from papiq.core.domain.pipeline import SIGNALS, Node, NodeResult
 from papiq.core.domain.users import User
 from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
-from papiq.core.services.pipeline import DeferredResult, NodeExecutor, PlaceholderNode
+from papiq.core.services.pipeline import DeferredResult, NodeExecutor
 from tests.api import auth, bearer
+from tests.builders import PlaceholderNode
 from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.rest.support import DOCUMENTS, Api, post, sample_file
 
@@ -209,7 +210,7 @@ async def test_an_owner_who_is_gone_or_inactive_is_not_found(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
     unknown = await upload(api, auth(admin), owner=str(UUID(int=5)))
     assert unknown.status_code == 404
-    await api.services.users.set_active(admin.id, owner.id, False)
+    await api.services.users.update(admin.id, owner.id, active=False)
     inactive = await upload(api, auth(admin), owner=str(owner.id))
     assert inactive.status_code == 404
     assert (await upload(api, auth(admin), owner="not-a-uuid")).status_code == 422
@@ -220,7 +221,7 @@ async def test_a_deactivated_admin_and_a_read_token_can_neither(api: Api) -> Non
     _, token = await api.services.auth.create_api_token(admin.id, "read", TokenScope.READ)
     response = await upload(api, bearer(token), owner=str(owner.id))
     assert response.status_code == 403
-    await api.services.users.set_active(boss.id, admin.id, False)
+    await api.services.users.update(boss.id, admin.id, active=False)
     response = await upload(api, auth(admin), owner=str(owner.id))
     assert response.status_code == 401
 

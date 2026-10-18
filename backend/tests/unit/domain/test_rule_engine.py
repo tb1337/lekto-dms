@@ -13,6 +13,7 @@ from papiq.core.domain.ids import (
     ContactId,
     DocumentTypeId,
     FieldId,
+    RuleId,
     SpaceId,
     TagId,
     UserId,
@@ -30,6 +31,7 @@ from papiq.core.domain.rule_engine import (
     Note,
     NoteKind,
     RulePlan,
+    RuleReport,
     Situation,
     SpaceTarget,
     Taxonomy,
@@ -40,6 +42,7 @@ from papiq.core.domain.rule_engine import (
     pattern_subjects,
     pattern_text,
     plan,
+    reviewing_rules,
 )
 from papiq.core.domain.rules import (
     Action,
@@ -1474,3 +1477,20 @@ def test_a_contact_a_rule_sets_clears_a_topic_it_does_not_enable() -> None:
 
 def test_changed_fields_name_the_topic() -> None:
     assert changed_fields(DocumentChanges(topic_id=None)) == {"topic"}
+
+
+def test_the_rules_that_forced_a_review_read_back_from_the_log() -> None:
+    reviewing, quiet = RuleId(new_id()), RuleId(new_id())
+    reports = [
+        RuleReport(
+            reviewing,
+            1,
+            "Check",
+            RuleScope.USER,
+            notes=[Note("review", NoteKind.REVIEW, "look at it")],
+        ),
+        RuleReport(quiet, 1, "Tag", RuleScope.USER, notes=[Note("tags", NoteKind.SKIPPED, "x")]),
+    ]
+    written = RulePlan(DocumentChanges(), None, reports, [], []).to_json()
+    assert reviewing_rules(written) == {reviewing}
+    assert reviewing_rules(None) == set()

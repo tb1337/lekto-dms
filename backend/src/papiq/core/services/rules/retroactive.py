@@ -34,6 +34,7 @@ from papiq.core.domain.pipeline import (
     ACTOR,
     RULES_APPLY,
     TRIGGER,
+    TRIGGER_APPLY,
     Lane,
     Node,
 )
@@ -341,7 +342,7 @@ class RuleApplicationService:
                 node=Node.APPLY_RULES,
                 model_version=RULES_APPLY,
                 input={
-                    TRIGGER: "apply",
+                    TRIGGER: TRIGGER_APPLY,
                     ACTOR: str(user.id),
                     "application_id": str(application.id),
                     "rules": checked_rules([rule]),

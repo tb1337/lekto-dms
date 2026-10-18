@@ -108,12 +108,6 @@ class UserService:
         log.info("user created", extra={"user_id": str(user.id), "role": role.value})
         return user
 
-    async def change_role(self, actor: UserId, id: UserId, role: Role) -> User:
-        return await self.update(actor, id, role=role)
-
-    async def set_active(self, actor: UserId, id: UserId, active: bool) -> User:
-        return await self.update(actor, id, active=active)
-
     async def update(
         self,
         actor: UserId,

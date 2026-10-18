@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from papiq.adapters.outbound.memory.database import MemoryDatabase, Retry, SubscriptionState
 from papiq.core.domain.jobs import RetryPolicy
 from papiq.core.ports.clock import Clock
-from papiq.core.ports.event_bus import EventHandler
+from papiq.core.ports.event_bus import DISPATCH_BATCH, EventHandler
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class MemoryEventBus:
         self._handlers[subscriber] = handler
         self._db.subscriptions.setdefault(subscriber, SubscriptionState(len(self._db.outbox)))
 
-    async def dispatch(self, *, limit: int = 100) -> int:
+    async def dispatch(self, *, limit: int = DISPATCH_BATCH) -> int:
         async with self._lock:
             delivered = 0
             for name, handler in list(self._handlers.items()):

@@ -19,6 +19,7 @@ from papiq.core.domain.json_value import (
     JsonValue,
     as_bool,
     as_int,
+    as_list,
     as_number,
     as_text,
     as_texts,
@@ -62,6 +63,9 @@ CHANGE_FIELDS: Mapping[str, str] = {
 `DocumentChanges` that holds each; custom fields are `CUSTOM_FIELDS`."""
 CUSTOM_FIELDS = "fields"
 """The attribute of `Document` and `DocumentChanges` that holds the custom field values."""
+CHECKS = "fields"
+"""Key of the field checks (`checks_to_json`) in the output of the judge, the fields node and
+the rules node."""
 CONFIRMING = frozenset(
     {CHANGE_FIELDS[name] for name in (CONTACT, DOCUMENT_TYPE, TOPIC, TAGS, DOCUMENT_DATE)}
     | {CUSTOM_FIELDS}
@@ -177,10 +181,7 @@ class Candidate:
         return cls(
             value=data.get("value"),
             label=str(data["label"]),
-            sources=tuple(
-                CandidateSource.from_json(item)
-                for item in (sources if isinstance(sources, list) else [])
-            ),
+            sources=tuple(CandidateSource.from_json(item) for item in as_list(sources)),
             contradicted=data.get("contradicted") is True,
         )
 
@@ -252,9 +253,9 @@ class FieldCheck:
         if not isinstance(data, dict):
             raise ValidationError(f"invalid field check {data!r}")
         try:
-            confidence = data["confidence"]
-            if not isinstance(confidence, int | float) or isinstance(confidence, bool):
-                raise ValidationError(f"invalid confidence {confidence!r}")
+            confidence = as_number(data["confidence"])
+            if confidence is None:
+                raise ValidationError(f"invalid confidence {data['confidence']!r}")
             return cls(
                 field=str(data["field"]),
                 outcome=Outcome(str(data["outcome"])),
@@ -285,4 +286,4 @@ def checks_from_json(data: JsonValue) -> list[FieldCheck]:
 
 
 def _candidates(value: JsonValue) -> tuple[Candidate, ...]:
-    return tuple(Candidate.from_json(item) for item in value) if isinstance(value, list) else ()
+    return tuple(Candidate.from_json(item) for item in as_list(value))

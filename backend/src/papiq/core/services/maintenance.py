@@ -14,23 +14,48 @@ that completes the current run.
 """
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from uuid import UUID
 
 from papiq.core.domain.documents import Sha256
 from papiq.core.domain.errors import ConcurrencyError, ValidationError
 from papiq.core.domain.identity import ACCOUNT_THROTTLE, SOURCE_THROTTLE
 from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.jobs import Job, RetryPolicy
+from papiq.core.domain.json_value import JsonObject, as_int
 from papiq.core.ports import Clock, EventBus, ObjectStore, UnitOfWork, UnitOfWorkFactory
-from papiq.core.services._jobs import LEASE, JobRunner, lost
+from papiq.core.services._jobs import LEASE, JobRunner, document_payload, lost, payload_document
 from papiq.core.services.objects import derivative_keys, original_key
 
 log = logging.getLogger(__name__)
 
 CLEANUP_JOB = "maintenance.cleanup"
 REMOVE_FILES_JOB = "documents.remove_files"
-"""Payload: `document_id`, `sha256` of the deleted document."""
+"""Payload: `RemoveFiles`."""
+
+
+@dataclass(frozen=True)
+class RemoveFiles:
+    """The payload of a `REMOVE_FILES_JOB`: the files of a deleted document."""
+
+    document_id: DocumentId
+    sha256: Sha256
+    page_count: int | None
+
+    def to_json(self) -> JsonObject:
+        return document_payload(self.document_id) | {
+            "sha256": self.sha256.hex,
+            "page_count": self.page_count,
+        }
+
+    @classmethod
+    def from_json(cls, payload: JsonObject) -> "RemoveFiles":
+        """KeyError, ValueError or ValidationError for a payload that is none."""
+        pages = payload.get("page_count")
+        if pages is not None and as_int(pages) is None:
+            raise ValueError(f"page_count {pages!r}")
+        return cls(payload_document(payload), Sha256(str(payload["sha256"])), as_int(pages))
+
 
 # Removing the files of a deleted document: five attempts, waiting a minute, doubling.
 _REMOVE_RETRY = RetryPolicy(max_attempts=5, delay=timedelta(minutes=1))
@@ -81,15 +106,12 @@ class MaintenanceService:
 
     async def _remove_files(self, job: Job) -> None:
         try:
-            document = DocumentId(UUID(str(job.payload["document_id"])))
-            sha256 = Sha256(str(job.payload["sha256"]))
-            pages = job.payload.get("page_count")
-            if pages is not None and not isinstance(pages, int):
-                raise ValueError(f"page_count {pages!r}")
+            files = RemoveFiles.from_json(job.payload)
         except (KeyError, ValueError, ValidationError) as error:
             await self._jobs.invalid(job, error)
             return
         assert self._store is not None, "removing files needs the object store"
+        document, sha256, pages = files.document_id, files.sha256, files.page_count
         original = original_key(sha256)
         try:
             for key in derivative_keys(document, pages):

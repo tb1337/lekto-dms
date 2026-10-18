@@ -17,6 +17,8 @@ from papiq.core.ports.repository import DocumentFilter, DocumentOrder
 MAX_LIMIT = 100
 MAX_HITS = 1000
 """Hits a search can reach: `offset + limit` may not be larger."""
+SEARCH_PAGE = 20
+"""Hits on a page of a search unless the caller asks for another number."""
 
 
 def check_search(text: str, semantic_ratio: float, offset: int, limit: int) -> None:
@@ -48,7 +50,7 @@ class SearchQuery:
     semantic_ratio: float
     order: DocumentOrder | None = None
     offset: int = 0
-    limit: int = 20
+    limit: int = SEARCH_PAGE
 
     def __post_init__(self) -> None:
         check_search(self.text, self.semantic_ratio, self.offset, self.limit)
@@ -65,7 +67,7 @@ class SimilarQuery:
     visibility: Visibility
     filter: DocumentFilter = field(default_factory=DocumentFilter)
     exclude: DocumentId | None = None
-    limit: int = 5
+    limit: int
 
     def __post_init__(self) -> None:
         if not self.vector:

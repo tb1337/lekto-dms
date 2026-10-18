@@ -37,7 +37,7 @@ from papiq.core.domain.ids import (
     TagId,
     UserId,
 )
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import JsonObject, JsonValue, as_list
 from papiq.core.domain.permissions import can_file_into
 from papiq.core.domain.pipeline import (
     ACCEPTED,
@@ -270,7 +270,7 @@ def provenance(log: Sequence[NodeRun], document: Document) -> Provenance:
 
 
 def _strings(value: JsonValue) -> list[str]:
-    return [str(item) for item in value] if isinstance(value, list) else []
+    return [str(item) for item in as_list(value)]
 
 
 def person_record(

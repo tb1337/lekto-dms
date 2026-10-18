@@ -19,7 +19,7 @@ from uuid import UUID
 from papiq.core.domain.documents import MAX_TITLE
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.ids import FieldId
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import JsonObject, JsonValue, as_object, as_text, as_texts
 from papiq.core.domain.master_data import one_line
 
 # Characters of a quoted passage that are kept: more than the prompt asks for
@@ -132,29 +132,21 @@ class StoredProposal:
         fields = data.get("fields")
         return cls(
             sender=Proposal.from_json(data.get("sender")),
-            recipient=_stored_text(data.get("recipient")),
-            document_type=_stored_text(data.get("document_type")),
-            new_document_type=_stored_text(data.get("new_document_type")),
-            topic=_stored_text(data.get("topic")),
-            tags=_stored_texts(data.get("tags")),
-            new_tags=_stored_texts(data.get("new_tags")),
+            recipient=as_text(data.get("recipient")),
+            document_type=as_text(data.get("document_type")),
+            new_document_type=as_text(data.get("new_document_type")),
+            topic=as_text(data.get("topic")),
+            tags=as_texts(data.get("tags")),
+            new_tags=as_texts(data.get("new_tags")),
             document_date=Proposal.from_json(data.get("document_date")),
-            title=_stored_text(data.get("title")),
-            language=_stored_text(data.get("language")),
+            title=as_text(data.get("title")),
+            language=as_text(data.get("language")),
             fields={
                 id: Proposal.from_json(value)
-                for key, value in (fields.items() if isinstance(fields, dict) else ())
+                for key, value in (as_object(fields) or {}).items()
                 if (id := _stored_id(key)) is not None
             },
         )
-
-
-def _stored_text(value: JsonValue) -> str | None:
-    return value if isinstance(value, str) else None
-
-
-def _stored_texts(value: JsonValue) -> tuple[str, ...]:
-    return tuple(item for item in value if isinstance(item, str)) if isinstance(value, list) else ()
 
 
 def _stored_id(value: str) -> FieldId | None:

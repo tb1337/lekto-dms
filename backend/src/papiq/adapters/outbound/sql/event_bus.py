@@ -39,7 +39,7 @@ from papiq.adapters.outbound.sql import events, tables
 from papiq.adapters.outbound.sql.database import Database
 from papiq.core.domain.jobs import RetryPolicy
 from papiq.core.ports.clock import Clock
-from papiq.core.ports.event_bus import EventHandler
+from papiq.core.ports.event_bus import DISPATCH_BATCH, EventHandler
 
 log = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ class SqlEventBus:
             raise ValueError(f"subscriber {subscriber!r} is already registered")
         self._subscribers[subscriber] = _Subscriber(handler)
 
-    async def dispatch(self, *, limit: int = 100) -> int:
+    async def dispatch(self, *, limit: int = DISPATCH_BATCH) -> int:
         async with self._lock:
             delivered = 0
             for name, subscriber in list(self._subscribers.items()):

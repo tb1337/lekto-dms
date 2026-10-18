@@ -45,6 +45,7 @@ from uuid import UUID
 
 from papiq.core.domain.classification import (
     CHANGE_FIELDS,
+    CHECKS,
     CONTACT,
     DOCUMENT_TYPE,
     REVIEW,
@@ -600,7 +601,7 @@ class RulePlan:
     def to_json(self) -> JsonObject:
         return {
             "rules": [report.to_json() for report in self.reports],
-            "fields": [check.to_json() for check in self.checks],
+            CHECKS: [check.to_json() for check in self.checks],
             "reviews": list(self.reviews),
         }
 

@@ -9,7 +9,17 @@ from enum import Enum, StrEnum
 from pathlib import PurePath
 from typing import Self
 
-from papiq.core.domain.classification import CONFIRMING
+from papiq.core.domain.classification import (
+    CHANGE_FIELDS,
+    CONFIRMING,
+    CONTACT,
+    CUSTOM_FIELDS,
+    DOCUMENT_DATE,
+    DOCUMENT_TYPE,
+    TAGS,
+    TITLE,
+    TOPIC,
+)
 from papiq.core.domain.errors import InvalidTransitionError, NotFoundError, ValidationError
 from papiq.core.domain.events import (
     DocumentDeleted,
@@ -118,7 +128,7 @@ def confirms(
     and type; a change that also adds or removes an automatic tag, or changes any other
     confirming value, confirms."""
     touched = CONFIRMING & set(changed)
-    if touched != {"tag_ids"}:
+    if touched != {CHANGE_FIELDS[TAGS]}:
         return bool(touched)
     return not set(tags_before) ^ set(tags_after) <= set(manual)
 
@@ -514,13 +524,13 @@ class Document:
 
         # Everything is valid; apply it.
         new_values: dict[str, object] = {
-            "title": title,
-            "contact_id": contact_id,
-            "document_type_id": document_type_id,
-            "topic_id": topic_id,
-            "tag_ids": tag_ids,
-            "document_date": document_date,
-            "fields": fields,
+            CHANGE_FIELDS[TITLE]: title,
+            CHANGE_FIELDS[CONTACT]: contact_id,
+            CHANGE_FIELDS[DOCUMENT_TYPE]: document_type_id,
+            CHANGE_FIELDS[TOPIC]: topic_id,
+            CHANGE_FIELDS[TAGS]: tag_ids,
+            CHANGE_FIELDS[DOCUMENT_DATE]: document_date,
+            CUSTOM_FIELDS: fields,
         }
         changed = [name for name, value in new_values.items() if getattr(self, name) != value]
         self.title = title

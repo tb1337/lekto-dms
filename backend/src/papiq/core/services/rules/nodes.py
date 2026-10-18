@@ -4,14 +4,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 
-from papiq.core.domain.classification import SPACE, FieldCheck, field_key
+from papiq.core.domain.classification import CHECKS, SPACE, FieldCheck, field_key
 from papiq.core.domain.documents import Document
 from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.ids import FieldId
-from papiq.core.domain.json_value import JsonValue
+from papiq.core.domain.json_value import JsonValue, as_list
 from papiq.core.domain.pipeline import RULES, TRIGGER, NodeResult, Outcome
 from papiq.core.domain.rule_engine import Mode
 from papiq.core.domain.rules import Trigger
+from papiq.core.domain.sorting import sort_key
 from papiq.core.ports import (
     ObjectStore,
     PatternMatcher,
@@ -124,7 +125,7 @@ def _waiting_for_hand(
             confidence=0,
             reason=f"'{definition.name}' is set by hand and has no value yet",
         )
-        for definition in sorted(definitions.values(), key=lambda item: item.name)
+        for definition in sorted(definitions.values(), key=lambda item: sort_key(item.name))
         if not definition.is_read
         and definition.applies_to(document.document_type_id)
         and definition.is_required_for(document.document_type_id)
@@ -132,10 +133,10 @@ def _waiting_for_hand(
     ]
     if not waiting:
         return result
-    checks = result.output.get("fields")
+    checks = result.output.get(CHECKS)
     output = {
         **result.output,
-        "fields": [*(checks if isinstance(checks, list) else []), *(c.to_json() for c in waiting)],
+        CHECKS: [*as_list(checks), *(c.to_json() for c in waiting)],
     }
     reasons = [*([result.reason] if result.reason else []), *(c.reason or "" for c in waiting)]
     return replace(result, outcome=Outcome.UNCERTAIN, reason="; ".join(reasons), output=output)
@@ -159,6 +160,6 @@ class FileResult:
             reason = f"the owner may not file into space '{space.name}' (any more)"
             check = FieldCheck(field=SPACE, outcome=Outcome.UNCERTAIN, confidence=0, reason=reason)
             return NodeResult(
-                outcome=Outcome.UNCERTAIN, reason=reason, output={"fields": [check.to_json()]}
+                outcome=Outcome.UNCERTAIN, reason=reason, output={CHECKS: [check.to_json()]}
             )
         return NodeResult(outcome=Outcome.OK)

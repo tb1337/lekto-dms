@@ -284,6 +284,11 @@ def guarded[**P, R](tool: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]
     return run
 
 
+SEARCH_HITS = 10
+"""Hits one `search` call returns unless the client asks for more: fewer than a page of the
+web UI, so that the answer leaves room in a model's context."""
+
+
 def build_server(context: ApiContext) -> MCPServer:
     """The server with its five tools, on the services of `context`."""
     text_max = context.text_max
@@ -304,7 +309,7 @@ def build_server(context: ApiContext) -> MCPServer:
     async def search(
         ctx: Context,
         query: Annotated[str, Field(min_length=1, max_length=500, description="What to look for.")],
-        limit: Annotated[int, Field(ge=1, le=SEARCH_MAX_LIMIT)] = 10,
+        limit: Annotated[int, Field(ge=1, le=SEARCH_MAX_LIMIT)] = SEARCH_HITS,
         offset: Annotated[int, Field(ge=0, le=MAX_HITS)] = 0,
         contact: Annotated[str | None, Field(description="Name of a contact.")] = None,
         document_type: Annotated[str | None, Field(description="Name of a document type.")] = None,

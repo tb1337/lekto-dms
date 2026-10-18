@@ -38,11 +38,10 @@ _BLANK_LINE = 1.5  # in line distances of the block: a gap that wide is a blank 
 
 @dataclass(frozen=True)
 class FixedPitchBlock:
-    """Lines set in a fixed-pitch font on page `page` (from 1). The box is in points, from the
-    bottom left corner of the visible page (its crop box); `line` is the usual distance from one
-    line to the next."""
+    """Lines set in a fixed-pitch font on one page. The box is in points, from the bottom left
+    corner of the visible page (its crop box); `line` is the usual distance from one line to the
+    next."""
 
-    page: int
     left: float
     bottom: float
     right: float
@@ -57,8 +56,8 @@ def page_lines(chars: list[Char]) -> list[Line]:
     return lines_of(chars, fixed_pitch_fonts(chars))
 
 
-def blocks_of(page: int, lines: list[Line]) -> list[FixedPitchBlock]:
-    """The blocks of fixed-pitch text among the lines of page `page` (`page_lines`)."""
+def blocks_of(lines: list[Line]) -> list[FixedPitchBlock]:
+    """The blocks of fixed-pitch text among the lines of a page (`page_lines`)."""
     blocks: list[FixedPitchBlock] = []
     run: list[Line] = []
     for line in [*lines, None]:
@@ -66,7 +65,7 @@ def blocks_of(page: int, lines: list[Line]) -> list[FixedPitchBlock]:
             run.append(line)
             continue
         if len(run) >= MIN_LINES:
-            blocks.append(_block(page, run))
+            blocks.append(_block(run))
         run = [line] if line is not None and line.advance is not None else []
     return blocks
 
@@ -96,7 +95,7 @@ def _continues(last: Line, line: Line) -> bool:
     )
 
 
-def _block(page: int, lines: list[Line]) -> FixedPitchBlock:
+def _block(lines: list[Line]) -> FixedPitchBlock:
     chars = [char for line in lines for char in line.chars]
     origin = min(char.left for char in chars)
     pitch = _pitch(lines)
@@ -108,7 +107,6 @@ def _block(page: int, lines: list[Line]) -> FixedPitchBlock:
             text.append("")
         text.append(_columns(line, origin, pitch))
     return FixedPitchBlock(
-        page=page,
         left=origin,
         bottom=min(char.bottom for char in chars),
         right=max(char.right for char in chars),

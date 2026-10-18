@@ -23,7 +23,7 @@ def fixed_pitch_blocks(path: Path) -> list[FixedPitchBlock]:
             return [
                 block
                 for number in range(1, len(document) + 1)
-                for block in blocks_of(number, page_lines(_page_chars(document, number)))
+                for block in blocks_of(page_lines(_page_chars(document, number)))
             ]
         finally:
             document.close()
@@ -57,7 +57,6 @@ def courier(lines: list[str], y: float = 750) -> str:
 def test_a_printout_keeps_its_columns() -> None:
     (block,) = fixed_pitch_blocks(SAMPLES / "printout.pdf")
     assert block.text == "\n".join(PRINTOUT)
-    assert block.page == 1
     # From the left edge of the dashes to the top of the first line, below the title.
     assert block.left == pytest.approx(60, abs=0.5)
     assert 750 < block.top < 760

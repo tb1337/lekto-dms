@@ -46,7 +46,8 @@ from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId
 from papiq.core.domain.imports import ImportedMetadata
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.master_data import TagScope
-from papiq.core.domain.pipeline import CORRECTED, Lane, Node, NodeRun, ProcessingStatus
+from papiq.core.domain.pipeline import CORRECTED, TRUNCATED, Lane, Node, NodeRun, ProcessingStatus
+from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import ObjectStore
 from papiq.core.services.classifier import ClassifierService
@@ -427,7 +428,7 @@ def _result(
         if field not in by_hand
     }
     truncated = any(
-        entry.result.input.get("truncated") is True
+        entry.result.input.get(TRUNCATED) is True
         for entry in log
         if entry.node in (Node.JUDGE, Node.FIELDS)
     )
@@ -471,9 +472,8 @@ def _resolved(check: FieldCheck, master: MasterData) -> JsonValue:
             names = {str(id): name for id, name in master.topics.items()}
         case CheckField.TAGS:
             names = {str(id): name for id, name in master.tags.items()}
-            tags: list[JsonValue] = []
-            tags.extend(sorted(names.get(item, item) for item in _strings(value)))
-            return tags
+            labels = sorted((names.get(item, item) for item in _strings(value)), key=sort_key)
+            return list[JsonValue](labels)
         case _:
             return value
     return names.get(value, value) if isinstance(value, str) else value

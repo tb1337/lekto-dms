@@ -8,7 +8,7 @@ without the document becoming uncertain. A title a person or a rule gave stays.
 
 from collections.abc import Sequence
 
-from papiq.core.domain.classification import TITLE, checks_from_json
+from papiq.core.domain.classification import CHECKS, TITLE, checks_from_json
 from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.pipeline import Node, NodeRun
@@ -28,7 +28,7 @@ def machine_title(log: Sequence[NodeRun]) -> str | None:
         if entry.node is not Node.FIELDS:
             continue
         try:
-            checks = checks_from_json(entry.result.output.get("fields"))
+            checks = checks_from_json(entry.result.output.get(CHECKS))
         except ValidationError:
             continue
         for check in checks:

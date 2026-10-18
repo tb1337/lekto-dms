@@ -20,6 +20,7 @@ from typing import Any
 from uuid import UUID
 
 from papiq.core.domain.classification import (
+    CHECKS,
     DOCUMENT_DATE,
     TITLE,
     FieldCheck,
@@ -52,7 +53,7 @@ from papiq.core.domain.fields import (
     field_to_json,
 )
 from papiq.core.domain.ids import ContactId, FieldId
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import JsonObject, JsonValue, as_list
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.names import match_key, mentions, named_share
 from papiq.core.domain.periods import Period, PeriodKind
@@ -288,10 +289,14 @@ class LlmSignal(_ModelStep):
         text = await self._text(document)
         async with self._uow() as uow:
             contacts = await uow.contacts.list_all()
-            types = sorted(await uow.document_types.list_all(), key=lambda item: item.name)
+            types = sorted(
+                await uow.document_types.list_all(), key=lambda item: sort_key(item.name)
+            )
             every = await uow.tags.list_all()
             # Only the tags the classification sets: document tags, not those set by hand.
-            tags = sorted((item for item in every if item.is_target), key=lambda item: item.name)
+            tags = sorted(
+                (item for item in every if item.is_target), key=lambda item: sort_key(item.name)
+            )
             topics = {item.id: item.name for item in every if item.is_topic_target}
             definitions = sorted(
                 (item for item in await uow.fields.list_all() if item.is_read),
@@ -310,7 +315,7 @@ class LlmSignal(_ModelStep):
             )
             for contact in candidates
         }
-        topic_names = sorted({name for names in enabled.values() for name in names})
+        topic_names = sorted({name for names in enabled.values() for name in names}, key=sort_key)
         keys = field_keys(definitions)
         key_of = {definition.id: key for key, definition in keys.items()}
         typed = [
@@ -440,7 +445,7 @@ class JudgeNode(_ModelStep):
                 reason="nothing recognised: no contact, document type or date",
                 model_version=model_version,
                 input=input,
-                output={"fields": checks_to_json([contact, kind, topic, tagged, date_check])},
+                output={CHECKS: checks_to_json([contact, kind, topic, tagged, date_check])},
             )
         contact, kind, topic, tagged, date_check = await self._locate(
             document, [contact, kind, topic, tagged, date_check]
@@ -456,7 +461,7 @@ class JudgeNode(_ModelStep):
             document_date=_applied(date_check, date.fromisoformat),
         )
         # Tags are added: those the document has (set by its owner) stay.
-        add_tags = frozenset(_by_id(tags, value).id for value in _list(tagged.value))
+        add_tags = frozenset(_by_id(tags, value).id for value in as_list(tagged.value))
         uncertain = [check for check in checks if not check.ok]
         result = NodeResult(
             outcome=Outcome.UNCERTAIN if uncertain else Outcome.OK,
@@ -464,7 +469,7 @@ class JudgeNode(_ModelStep):
             confidence=min(check.confidence for check in checks),
             model_version=model_version,
             input=input,
-            output={"fields": checks_to_json(checks)},
+            output={CHECKS: checks_to_json(checks)},
         )
         return MetadataResult(result, changes, add_tags)
 
@@ -599,7 +604,7 @@ class FieldsNode(_ModelStep):
             confidence=min((check.confidence for check in checks), default=1.0),
             model_version=model_version,
             input=input,
-            output=_answered(answers, {"fields": raw}) | {"fields": checks_to_json(all_checks)},
+            output=_answered(answers, {"fields": raw}) | {CHECKS: checks_to_json(all_checks)},
         )
         return MetadataResult(result, changes)
 
@@ -1009,7 +1014,7 @@ def _listed_tags(tags: Sequence[Tag], facts: DocumentText, limit: int) -> list[T
     text_key = match_key(facts.raw)
     named = [tag for tag in tags if mentions(text_key, match_key(tag.name))]
     rest = [tag for tag in tags if tag not in named]
-    return sorted((named + rest)[:limit], key=lambda tag: tag.name)
+    return sorted((named + rest)[:limit], key=lambda tag: sort_key(tag.name))
 
 
 def _listed_contacts(contacts: Sequence[Contact], facts: DocumentText, limit: int) -> list[Contact]:
@@ -1036,10 +1041,6 @@ def _applied[T](check: FieldCheck, convert: Callable[[str], T]) -> T | Unset:
     if check.ok and isinstance(check.value, str):
         return convert(check.value)
     return UNSET
-
-
-def _list(value: JsonValue) -> list[JsonValue]:
-    return value if isinstance(value, list) else []
 
 
 def _model_version(answer: StructuredAnswer) -> str:

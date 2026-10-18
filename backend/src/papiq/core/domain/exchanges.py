@@ -76,7 +76,7 @@ def exchanges_to_json(runs: Sequence[RunExchange]) -> JsonObject:
 
 def exchanges_from_json(data: JsonValue) -> list[RunExchange]:
     """The runs of a stored file, oldest first."""
-    runs = data.get("runs") if isinstance(data, dict) else None
+    runs = (as_object(data) or {}).get("runs")
     if not isinstance(runs, list):
         raise ValidationError("invalid exchanges: no list of runs")
     return sorted((RunExchange.from_json(run) for run in runs), key=lambda run: run.run)

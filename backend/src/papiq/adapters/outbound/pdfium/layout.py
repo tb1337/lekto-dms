@@ -132,7 +132,7 @@ def _page(
     structure: list[dict[str, Any]] = []
     if chars:
         lines = page_lines(chars)
-        blocks = blocks_of(0, lines)
+        blocks = blocks_of(lines)
         origin = min(char.left for char in chars)
         unit = statistics.median(char.right - char.left for char in chars)
         distances = [above.middle - below.middle for above, below in itertools.pairwise(lines)]

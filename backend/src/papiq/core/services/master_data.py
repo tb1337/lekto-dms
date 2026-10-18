@@ -718,7 +718,9 @@ class MasterDataService:
                 if id in rule.definition.references().tags
             ]
             if rules:
-                names = ", ".join(sorted(f"'{rule.definition.name}'" for rule in rules))
+                names = ", ".join(
+                    sorted((f"'{rule.definition.name}'" for rule in rules), key=sort_key)
+                )
                 raise ConflictError(f"'{tag.name}' is used by the rules {names}")
             return False
 
@@ -733,13 +735,15 @@ class MasterDataService:
             definition = await uow.fields.get(id)
             patterns = await self._patterns_using(uow, definition.key)
             if patterns:
-                names = ", ".join(sorted(f"'{item.name}'" for item in patterns))
+                names = ", ".join(sorted((f"'{item.name}'" for item in patterns), key=sort_key))
                 raise ConflictError(
                     f"field.{definition.key} is used by the title patterns of {names}"
                 )
             rules = await self._rules_using(uow, definition.key)
             if rules:
-                names = ", ".join(sorted(f"'{rule.definition.name}'" for rule in rules))
+                names = ", ".join(
+                    sorted((f"'{rule.definition.name}'" for rule in rules), key=sort_key)
+                )
                 raise ConflictError(
                     f"field.{definition.key} is used by the templates of the rules {names}"
                 )

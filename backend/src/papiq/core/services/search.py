@@ -27,7 +27,7 @@ from papiq.core.ports import (
     SearchQuery,
     UnitOfWorkFactory,
 )
-from papiq.core.ports.search_index import MAX_HITS, check_search
+from papiq.core.ports.search_index import MAX_HITS, SEARCH_PAGE, check_search
 from papiq.core.services._access import admin_only, load_actor
 from papiq.core.services._tags import expanded, group_lookup, matches
 
@@ -85,7 +85,7 @@ class SearchService:
         filter: DocumentFilter | None = None,
         *,
         offset: int = 0,
-        limit: int = 20,
+        limit: int = SEARCH_PAGE,
         semantic_ratio: float | None = None,
         order: DocumentOrder | None = None,
         all_users: bool = False,

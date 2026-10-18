@@ -339,6 +339,12 @@ def test_tags_two_signals_name_are_set_one_is_a_suggestion() -> None:
     assert cold.value == [str(ENERGY.id)]
 
 
+def test_candidates_are_listed_as_lists_sort_names() -> None:
+    dentists, doctors = (Tag.create(name=name, now=NOW) for name in ("Zahnärzte", "Ärzte"))
+    check = judge_tags(Signals(model=model(tags=("Zahnärzte", "Ärzte"))), [dentists, doctors])
+    assert [item.label for item in check.candidates] == ["Ärzte", "Zahnärzte"]
+
+
 def test_tags_set_by_hand_are_never_proposed_and_a_child_beats_its_parent() -> None:
     """A status tag set by hand is no target even when a signal names it; set together with its
     child, a parent is left out (the child says more)."""

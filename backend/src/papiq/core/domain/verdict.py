@@ -263,7 +263,7 @@ def judge_contact(
             -view.probabilities.get(id, 0.0),
             -(view.match_score if view.matched == id else 0.0),
             -view.votes.get(id, 0),
-            names[id].name,
+            sort_key(names[id].name),
         ),
     )
     listed = [
@@ -473,7 +473,7 @@ def judge_type(
             -len(namers.get(id, ())),
             -probabilities.get(id, 0.0),
             -votes.get(id, 0),
-            names[id].name,
+            sort_key(names[id].name),
         ),
     )
 
@@ -594,7 +594,7 @@ def judge_tags(
             applied.append(id)
         else:
             suggested.append(id)
-    by_name = sorted([*applied, *suggested], key=lambda id: names[id].name)
+    by_name = sorted([*applied, *suggested], key=lambda id: sort_key(names[id].name))
     kept = TagTree.of(tags).normalise(applied)
     applied = [id for id in applied if id in kept]
     candidates = tuple(

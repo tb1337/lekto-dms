@@ -14,6 +14,7 @@ from uuid import UUID
 
 from papiq.core.domain.classification import (
     CHANGE_FIELDS,
+    CHECKS,
     CONTACT,
     REVIEW,
     SPACE,
@@ -263,7 +264,7 @@ def confirmation(
 
 def _checks(result: NodeResult) -> list[FieldCheck]:
     try:
-        return checks_from_json(result.output.get("fields"))
+        return checks_from_json(result.output.get(CHECKS))
     except ValidationError:
         return []
 

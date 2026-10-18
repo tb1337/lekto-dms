@@ -65,7 +65,7 @@ from papiq.core.services._access import (
 )
 from papiq.core.services._tags import expanded, tag_counts
 from papiq.core.services.inbox import InboxItem, Review, node_reviews, open_nodes
-from papiq.core.services.maintenance import REMOVE_FILES_JOB
+from papiq.core.services.maintenance import REMOVE_FILES_JOB, RemoveFiles
 from papiq.core.services.objects import (
     EXCHANGE_NODES,
     archive_key,
@@ -636,11 +636,7 @@ class DocumentService:
             await uow.outbox.add(document.pull_events())
             await uow.jobs.enqueue(
                 REMOVE_FILES_JOB,
-                {
-                    "document_id": str(id),
-                    "sha256": document.sha256.hex,
-                    "page_count": document.page_count,
-                },
+                RemoveFiles(id, document.sha256, document.page_count).to_json(),
                 run_at=self._clock.now(),
             )
             await uow.commit()

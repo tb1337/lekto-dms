@@ -16,7 +16,7 @@ from papiq.adapters.inbound.rest.schemas.search import (
     SnippetSegment,
 )
 from papiq.core.domain.errors import SearchUnavailableError
-from papiq.core.ports.search_index import MAX_HITS, MAX_LIMIT
+from papiq.core.ports.search_index import MAX_HITS, MAX_LIMIT, SEARCH_PAGE
 
 router = APIRouter(tags=["search"], dependencies=PROTECTED)
 
@@ -46,7 +46,7 @@ async def search_documents(
     sort: Annotated[
         DocumentSort | Literal["relevance"], Query(description="`relevance` or a key.")
     ] = "relevance",
-    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 20,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = SEARCH_PAGE,
     offset: Annotated[int, Query(ge=0, le=MAX_HITS)] = 0,
     semantic_ratio: Annotated[
         float | None,

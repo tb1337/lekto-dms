@@ -14,6 +14,10 @@ class Outbox(Protocol):
     async def add(self, events: Iterable[DomainEvent]) -> None: ...
 
 
+DISPATCH_BATCH = 100
+"""Events a dispatch delivers to each subscriber at most, new ones and due ones each."""
+
+
 class EventBus(Protocol):
     """Delivers committed events to subscribers, at least once per subscriber.
 
@@ -38,7 +42,7 @@ class EventBus(Protocol):
         create the durable subscription lazily on the next dispatch."""
         ...
 
-    async def dispatch(self, *, limit: int = 100) -> int:
+    async def dispatch(self, *, limit: int = DISPATCH_BATCH) -> int:
         """Deliver to each subscriber up to `limit` new events and up to `limit` events that
         failed before and are due again; returns the number of successful deliveries."""
         ...

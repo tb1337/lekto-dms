@@ -109,10 +109,7 @@ class OcrNode:
         )
 
 
-NO_VISION_MODEL = (
-    "a person asked for the vision language model, but none is configured "
-    "(PAPIQ_VLM_BASE_URL, PAPIQ_VLM_MODEL)"
-)
+NO_VISION_MODEL = "a person asked for the vision language model, but none is configured"
 
 
 def read_by(vision: VisionReading) -> str:

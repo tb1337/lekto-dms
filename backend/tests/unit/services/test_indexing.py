@@ -444,7 +444,7 @@ async def test_vectors_of_another_length_are_refused(world: World) -> None:
     owner = await world.user()
     received = await world.pipeline().receive(owner.id, incoming(b"%PDF-1 f"), filename="f.pdf")
     await setup.put_text(received.id, "Text")
-    with pytest.raises(EmbeddingsError, match="PAPIQ_EMBEDDING_DIMENSIONS"):
+    with pytest.raises(EmbeddingsError, match="do not have the 3 dimensions configured"):
         await setup.indexing.index_document(received.id)
     assert setup.entry(received.id).vectors == ()  # still found by its words
     await setup.indexing.index_document(received.id, tolerate_embedding_failure=True)

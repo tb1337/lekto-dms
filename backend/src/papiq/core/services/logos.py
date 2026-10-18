@@ -56,7 +56,7 @@ LOGO_MAX_SIZE = 1024 * 1024
 """Bytes of an uploaded image."""
 LOGO_TYPE = media_types.WEBP
 LOGO_JOB = "contacts.logo"
-FETCHING_OFF = "not fetched: fetching logos is off (PAPIQ_LOGO_FETCH)"
+FETCHING_OFF = "not fetched: fetching logos is off"
 """The note of a job that ran while fetching was off."""
 MAX_DOMAINS = 3
 """Domains of a contact an admin's request tries, in order, until one has a logo."""
@@ -167,7 +167,7 @@ class LogoService:
         async with self._uow() as uow:
             await require_admin(uow, actor, "change master data")
             if self._fetcher is None:
-                raise LogoFetchDisabledError("Papiq does not fetch logos (PAPIQ_LOGO_FETCH is off)")
+                raise LogoFetchDisabledError("Papiq does not fetch logos")
             contact = await uow.contacts.get(id)
             if contact.logo is not None and contact.logo.source is LogoSource.UPLOADED:
                 raise ConflictError(
@@ -183,7 +183,7 @@ class LogoService:
         whose fetch has not failed. Returns how many. LogoFetchDisabledError without
         fetching."""
         if self._fetcher is None:
-            raise LogoFetchDisabledError("Papiq does not fetch logos (PAPIQ_LOGO_FETCH is off)")
+            raise LogoFetchDisabledError("Papiq does not fetch logos")
         queued = 0
         async with self._uow() as uow:
             for contact in await uow.contacts.list_all():

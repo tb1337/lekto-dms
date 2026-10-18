@@ -205,7 +205,10 @@ jobs of the old run are recognised as stale.
   white, CMYK is converted, all pages of a TIFF are kept. OCRmyPDF shares the CPU cores among
   `PAPIQ_WORKER_CONCURRENCY` jobs.
 - A vision language model (`PAPIQ_VLM_*`, off without) reads a document only when a person
-  asks for it (`POST /documents/{id}/vision`, owner or admin); nothing asks on its own. The
+  asks for it (`POST /documents/{id}/vision`, owner or admin); nothing asks on its own. Without
+  `PAPIQ_VLM_BASE_URL` and `PAPIQ_VLM_MODEL` the request answers `409` ("no vision language
+  model is configured"), and a run that asked before the model was taken away fails at `ocr`
+  ("a person asked for the vision language model, but none is configured"). The
   document is processed again from OCR, and OCRmyPDF runs with `--force-ocr --deskew` and the
   plugin `ocrmypdf/plugin.py` as OCR engine: Tesseract still tells orientation and skew, every
   page image goes to the model at no more than 1.15 megapixels (so that the service does not
@@ -371,7 +374,8 @@ the fields node reads the fields of the decided type and the title
   and of the global ones, each with the quoted passage. The answer must follow a JSON schema
   (`response_format` `json_schema`, or `json_object` for providers without schema support); an
   answer that does not fit is asked for once more, then the signal fails (red). Without a
-  configured model it abstains, and the owner classifies.
+  configured model (`PAPIQ_LLM_BASE_URL` and `PAPIQ_LLM_MODEL`) it abstains with "no language
+  model is configured", and the owner classifies.
 - **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
   (contact, topic, type, each automatic document tag), trained on the confirmed documents
   (`PAPIQ_CLASSIFIER`, see Classifier). It abstains without a trained model.
@@ -717,7 +721,8 @@ meaning took part.
   The model is `snowflake-arctic-embed2` with `PAPIQ_EMBEDDING_QUERY_PREFIX=query:` (compared with
   `bge-m3` and `qwen3-embedding:0.6b` in `evaluation/search/reports`).
   `PAPIQ_EMBEDDING_DIMENSIONS` is the length of the vectors and required with Meilisearch and an
-  embedding endpoint; vectors of another length are refused (the query then goes by words).
+  embedding endpoint; vectors of another length are refused ("the vectors of <model> do not
+  have the <n> dimensions configured"; the query then goes by words).
   Changing the model means a rebuild. Some models want a prefix for queries
   and documents (`PAPIQ_EMBEDDING_QUERY_PREFIX`, `PAPIQ_EMBEDDING_DOCUMENT_PREFIX`).
 - **Limits.** Meilisearch ranks the documents nearest in meaning even if no word matches, so
@@ -761,8 +766,9 @@ a temporary Meilisearch index and runs the queries of `evaluation/search/queries
     found leaves it), by an admin (`POST /contacts/{id}/logo/fetch`; all its domains in turn,
     also one that failed; may replace a fetched logo) and for the contacts without a logo with
     `python -m papiq.composition fetch-logos`. A job that runs while `PAPIQ_LOGO_FETCH` is off
-    (switched off after it was queued) ends at once with a note, without waiting or retries;
-    the button answers `503` then. It reads the page of the domain (or of `www.`),
+    (switched off after it was queued) ends at once with the note "not fetched: fetching logos
+    is off", without waiting or retries; the button answers `503` ("Papiq does not fetch
+    logos") then. It reads the page of the domain (or of `www.`),
     the apple-touch-icon, `<link rel="icon">` with sizes and the web app manifest (with the
     standard library's `html.parser`), and `/favicon.ico`, and takes the largest raster icon of
     at least 64 px (at most four tried). The domains whose fetch finds none are noted and

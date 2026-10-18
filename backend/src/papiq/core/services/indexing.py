@@ -365,7 +365,7 @@ class IndexingService:
                 if wanted is not None and any(len(vector) != wanted for vector in result.vectors):
                     raise EmbeddingsError(
                         f"the vectors of {self._embeddings.model} do not have the "
-                        f"{wanted} numbers of PAPIQ_EMBEDDING_DIMENSIONS"
+                        f"{wanted} dimensions configured"
                     )
                 vectors = tuple(tuple(vector) for vector in result.vectors)
         return IndexDocument(

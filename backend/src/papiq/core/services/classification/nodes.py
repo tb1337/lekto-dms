@@ -122,7 +122,7 @@ _RAW_LENGTH = 4000  # characters of an unfit answer kept in the log
 _EARLIEST = date(1900, 1, 1)
 _LATEST_AHEAD = timedelta(days=366)
 
-NO_MODEL = "no language model is configured (PAPIQ_LLM_BASE_URL)"
+NO_MODEL = "no language model is configured"
 JUDGE = "judge"
 """`model_version` of the judge's entry when the language model gave nothing."""
 

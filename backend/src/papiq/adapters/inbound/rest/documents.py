@@ -94,48 +94,8 @@ class DocumentSort(StrEnum):
         return DocumentOrder(SortKey(self.value.lstrip("-")), ascending=not self.startswith("-"))
 
 
-SPACE_FIELD = "space_id"
-CHANNEL_FIELD = "channel"
-OWNER_FIELD = "owner"
-METADATA_FIELD = "metadata"
-METADATA_LIMIT = 48 * 1024  # bytes of the metadata field
-
-
 _UPLOAD_BODY = upload_body(
-    "PDF, JPEG, PNG or TIFF; recognised by content.",
-    **{
-        SPACE_FIELD: {
-            "type": "string",
-            "format": "uuid",
-            "description": "Target space; default: the owner's default space.",
-        },
-        CHANNEL_FIELD: {
-            "type": "string",
-            "enum": [Channel.MIGRATION.value],
-            "description": (
-                "The intake channel, for rules. Default: `web` with a session, `api` with an "
-                "API token; `migration` for imports from another system."
-            ),
-        },
-        OWNER_FIELD: {
-            "type": "string",
-            "format": "uuid",
-            "description": (
-                "Admins only: the active user who owns the document. Default: the caller. The "
-                "duplicate check, the default space and the write access to `space_id` are the "
-                "owner's."
-            ),
-        },
-        METADATA_FIELD: {
-            "type": "string",
-            "description": (
-                "Admins only, with `channel=migration`: JSON of the metadata the document comes "
-                f"with (up to {METADATA_LIMIT // 1024} KiB), as `ImportedMetadataIn`. "
-                "Classification and field extraction apply it instead of asking the language "
-                "model; the other nodes and the rules run as usual."
-            ),
-        },
-    },
+    "PDF, JPEG, PNG or TIFF; recognised by content.", **UploadFields.form_schema()
 )
 
 
@@ -177,8 +137,8 @@ async def upload(
     received = await read_upload(
         request,
         max_size=context.max_upload_size,
-        fields=[SPACE_FIELD, CHANNEL_FIELD, OWNER_FIELD, METADATA_FIELD],
-        limits={METADATA_FIELD: METADATA_LIMIT},
+        fields=UploadFields.model_fields,
+        limits=UploadFields.LIMITS,
     )
     try:
         try:

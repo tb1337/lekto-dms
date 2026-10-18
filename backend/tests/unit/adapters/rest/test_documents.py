@@ -10,6 +10,7 @@ from uuid import UUID
 import httpx2
 import pytest
 
+from papiq.adapters.inbound.rest.schemas.documents import UploadFields
 from papiq.composition.container import build_memory_container, build_services
 from papiq.core.domain.documents import Sha256
 from papiq.core.domain.errors import UnprocessableDocumentError
@@ -227,8 +228,8 @@ async def test_the_form_fields_are_checked_like_a_body(api: Api) -> None:
     assert invalid.status_code == 422
     assert [part.split(":")[0] for part in invalid.json()["detail"].split("; ")] == [
         "space_id",
-        "owner",
         "channel",
+        "owner",
     ]
     blank = {"space_id": " ", "owner": "", "channel": " "}
     accepted = await api.client.post(
@@ -237,6 +238,12 @@ async def test_the_form_fields_are_checked_like_a_body(api: Api) -> None:
     assert accepted.status_code == 202, accepted.text
     status = await api.client.get(accepted.json()["status_url"], headers=auth(owner))
     assert status.json()["channel"] == "api"
+
+
+def test_the_form_is_described_by_its_fields() -> None:
+    """Names, limits and the OpenAPI schema of the form come from `UploadFields` alone."""
+    assert set(UploadFields.LIMITS) <= set(UploadFields.model_fields)
+    assert list(UploadFields.form_schema()) == list(UploadFields.model_fields)
 
 
 async def test_the_filename_is_reduced_to_its_last_segment(api: Api) -> None:

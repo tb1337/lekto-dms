@@ -10,7 +10,7 @@ from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.ids import FieldId
 from papiq.core.domain.json_value import JsonValue, as_list
 from papiq.core.domain.pipeline import RULES, TRIGGER, NodeResult, Outcome
-from papiq.core.domain.rule_engine import Mode
+from papiq.core.domain.rule_planner import Mode
 from papiq.core.domain.rules import Trigger
 from papiq.core.domain.sorting import sort_key
 from papiq.core.ports import (

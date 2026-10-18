@@ -53,7 +53,7 @@ from papiq.core.domain.reading import (
     OcrOutput,
     vision_advice,
 )
-from papiq.core.domain.rule_engine import changed_fields
+from papiq.core.domain.rule_planner import changed_fields
 from papiq.core.ports import Clock, ObjectStore, UnitOfWork, UnitOfWorkFactory
 from papiq.core.ports.ocr import VisionModel
 from papiq.core.services._access import (

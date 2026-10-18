@@ -26,7 +26,8 @@ from papiq.core.domain.master_data import (
     one_line,
 )
 from papiq.core.domain.names import match_key, related
-from papiq.core.domain.rules import References, Rule, RuleScope, definition_to_json, title_rule
+from papiq.core.domain.rules import References, Rule, RuleScope, title_rule
+from papiq.core.domain.rules_json import definition_to_json
 from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.templates import rename_field_key, unknown_values
 from papiq.core.domain.templates import uses_field as field_used

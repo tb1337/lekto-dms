@@ -541,11 +541,11 @@ alone, so a new scikit-learn version cannot break it. It sees about the first 8,
 
 ## Rules
 
-Rules are data, not code (`core/domain/rules.py`, `core/domain/rule_engine.py`,
-`core/services/rules`). A rule has a name, a priority (0 to 1000, default 100, higher first),
-triggers, a tree of conditions and actions. Changing its content makes a new version; old
-versions stay readable, so the processing log can refer to them. Enabling and disabling make no
-version; deleting is a soft delete.
+Rules are data, not code (`core/domain/rules.py`, `rules_json.py`, `rule_conditions.py`,
+`rule_planner.py`, `core/services/rules`). A rule has a name, a priority (0 to 1000, default
+100, higher first), triggers, a tree of conditions and actions. Changing its content makes a new
+version; old versions stay readable, so the processing log can refer to them. Enabling and
+disabling make no version; deleting is a soft delete.
 
 ```json
 {

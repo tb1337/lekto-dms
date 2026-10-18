@@ -4,7 +4,7 @@ a confirmed review) is not undone by rules later in the processing run."""
 from papiq.core.domain.classification import FieldCheck, checks_to_json
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.pipeline import PERSON_SPACE, RULES, Lane, NodeResult, Outcome
-from papiq.core.domain.rule_engine import Note, NoteKind
+from papiq.core.domain.rule_planner import Note, NoteKind
 from papiq.core.domain.rules import ForceReview, RemoveTags, SetSpace, Trigger
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.services.pipeline import MetadataResult

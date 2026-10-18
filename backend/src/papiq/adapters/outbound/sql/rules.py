@@ -19,9 +19,8 @@ from papiq.core.domain.rules import (
     RuleApplication,
     RuleScope,
     RuleVersion,
-    definition_from_json,
-    definition_to_json,
 )
+from papiq.core.domain.rules_json import definition_from_json, definition_to_json
 
 
 class SqlRuleRepository(SqlRepository[RuleId, Rule]):

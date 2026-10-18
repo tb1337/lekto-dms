@@ -37,8 +37,8 @@ from papiq.core.domain.rules import (
     SetSpace,
     SetTitle,
     Trigger,
-    definition_to_json,
 )
+from papiq.core.domain.rules_json import definition_to_json
 from papiq.core.domain.users import User
 from papiq.core.ports import UnitOfWorkFactory
 from tests import builders

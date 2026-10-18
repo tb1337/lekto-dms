@@ -25,8 +25,9 @@ from papiq.adapters.inbound.rest.schemas.rules import (
 from papiq.adapters.inbound.schemas import RuleEffectOut, RuleNoteOut
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.ids import DocumentId, DocumentTypeId, RuleApplicationId, RuleId
-from papiq.core.domain.rule_engine import Note
-from papiq.core.domain.rules import RuleScope, definition_from_json
+from papiq.core.domain.rule_planner import Note
+from papiq.core.domain.rules import RuleScope
+from papiq.core.domain.rules_json import definition_from_json
 
 router = APIRouter(prefix="/rules", tags=["rules"], dependencies=PROTECTED)
 templates = APIRouter(prefix="/templates", tags=["rules"], dependencies=PROTECTED)

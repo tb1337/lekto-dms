@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, TypeAdapter
 
 from papiq.core.domain.fields import FieldValue, field_to_json
-from papiq.core.domain.rule_engine import NoteKind, RuleReport
+from papiq.core.domain.rule_planner import NoteKind, RuleReport
 from papiq.core.domain.rules import RuleScope
 
 

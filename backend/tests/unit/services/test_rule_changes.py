@@ -9,7 +9,7 @@ from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.errors import NotFoundError, ValidationError
 from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.pipeline import RULES_CHANGE, Lane, Outcome, ProcessingStatus
-from papiq.core.domain.rule_engine import Note, NoteKind
+from papiq.core.domain.rule_planner import Note, NoteKind
 from papiq.core.domain.rules import (
     Condition,
     ConditionField,

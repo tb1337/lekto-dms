@@ -59,17 +59,19 @@ from papiq.core.domain.pipeline import (
     NodeRun,
     Outcome,
 )
-from papiq.core.domain.rule_engine import (
+from papiq.core.domain.rule_conditions import (
     TEXT_TARGET,
     Facts,
-    Mode,
-    RulePlan,
-    Situation,
-    SpaceTarget,
     Taxonomy,
     matches,
     pattern_subjects,
     pattern_text,
+)
+from papiq.core.domain.rule_planner import (
+    Mode,
+    RulePlan,
+    Situation,
+    SpaceTarget,
     plan,
     reviewing_rules,
 )

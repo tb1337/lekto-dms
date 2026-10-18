@@ -35,8 +35,8 @@ from papiq.core.domain.rules import (
     RuleScope,
     RuleVersion,
     Trigger,
-    definition_to_json,
 )
+from papiq.core.domain.rules_json import definition_to_json
 from papiq.core.domain.validation import MAX_NAME
 from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 

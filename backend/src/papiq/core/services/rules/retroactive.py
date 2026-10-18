@@ -38,7 +38,7 @@ from papiq.core.domain.pipeline import (
     Lane,
     Node,
 )
-from papiq.core.domain.rule_engine import Effect, Mode, Note, NoteKind
+from papiq.core.domain.rule_planner import Effect, Mode, Note, NoteKind
 from papiq.core.domain.rules import Rule, RuleApplication, RuleScope
 from papiq.core.domain.users import User
 from papiq.core.ports import (

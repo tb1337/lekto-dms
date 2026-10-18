@@ -31,7 +31,7 @@ from papiq.core.domain.pipeline import (
     NodeRun,
     ProcessingStatus,
 )
-from papiq.core.domain.rule_engine import Mode, changed_fields
+from papiq.core.domain.rule_planner import Mode, changed_fields
 from papiq.core.domain.rules import Rule, Trigger
 from papiq.core.domain.users import User
 from papiq.core.ports import ObjectStore, PatternMatcher, TemplateRenderer, UnitOfWork

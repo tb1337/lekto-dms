@@ -16,7 +16,9 @@ Two fields whose names give the same key stop the upgrade: one of them is to be 
 The downgrade removes the rules and writes the forms written here as the old placeholders.
 """
 
+import os
 import re
+import time
 import unicodedata
 import uuid
 from collections.abc import Sequence
@@ -104,7 +106,7 @@ def upgrade() -> None:
         connection.execute(
             _types.update().where(_types.c.id == row.id).values(title_pattern=template)
         )
-        rule = uuid.uuid4()
+        rule = _new_id()
         connection.execute(
             sa.insert(_rules).values(
                 id=rule,
@@ -207,3 +209,14 @@ def _placeholders(template: str, names: dict[str, str]) -> str:
         template,
     )
     return re.sub(r"\{\{ (contact|document_type|document_date|filename) \}\}", r"{\1}", template)
+
+
+def _new_id() -> uuid.UUID:
+    """A UUIDv7, as `papiq.core.domain.ids.new_id` makes it today (a revision keeps its own
+    copy)."""
+    milliseconds = time.time_ns() // 1_000_000 & ((1 << 48) - 1)
+    random = int.from_bytes(os.urandom(10))
+    value = milliseconds << 80 | random
+    value = value & ~(0xF << 76) | 0x7 << 76  # version 7
+    value = value & ~(0x3 << 62) | 0x2 << 62  # variant RFC 9562
+    return uuid.UUID(int=value)

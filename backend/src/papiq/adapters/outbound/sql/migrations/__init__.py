@@ -4,6 +4,9 @@
 back the same way). On SQLite, Alembic's
 batch mode recreates tables for changes SQLite cannot make in place; foreign keys are switched
 off meanwhile (as SQLite requires) and checked before the commit.
+
+A revision writes what it wrote when it was made: revisions do not import domain functions;
+they keep their own copies (`_key` in 0019, `_sort_key` in 0023, `_new_id` in 0016 and 0019).
 """
 
 from collections.abc import Callable

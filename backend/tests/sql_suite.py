@@ -949,6 +949,7 @@ class MigrationSuite:
         new = "Lohn {{ contact }} {{ document_date | date: '%Y-%m' }} {{ field.la_brutto }}"
         assert patterns == {payslip: new, letter: None}
         assert link.document_type_id == payslip and link.rule_id == rule["id"]
+        assert rule["id"].version == 7  # time-ordered, as every id
         assert (rule["scope"], rule["owner_id"], rule["enabled"]) == ("global", None, True)
         assert version["name"] == "Lohn" and version["actions"] == [
             {"type": "set_title", "template": new}

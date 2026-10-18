@@ -55,6 +55,14 @@ def fake_persistence(_: Settings) -> Persistence:
     return Persistence(unit_of_work=object, event_bus=object(), close=_no_op)  # type: ignore[arg-type]
 
 
+@pytest.fixture
+def offline_adapters(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No database, OCR program or parser: the container builds without them."""
+    monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
+
+
 def test_missing_adapter_is_reported_with_port_and_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -184,13 +192,10 @@ async def test_closing_runs_every_closer_in_reverse_order() -> None:
     assert [str(error) for error in info.value.exceptions] == ["store"]
 
 
+@pytest.mark.usefixtures("offline_adapters")
 def test_optional_ports_are_only_selected_when_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
-
     built = build_container(settings())
     assert built.search_index is None
     assert built.language_model is None
@@ -212,11 +217,8 @@ def test_optional_ports_are_only_selected_when_configured(
         build_container(settings(meilisearch_url="http://meilisearch:7700"))
 
 
-def test_language_model_and_embeddings_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
-
+@pytest.mark.usefixtures("offline_adapters")
+def test_language_model_and_embeddings_from_settings() -> None:
     built = build_container(
         settings(
             llm_base_url="http://ollama:11434/v1",
@@ -246,12 +248,10 @@ def test_language_model_and_embeddings_from_settings(monkeypatch: pytest.MonkeyP
     assert model.aclose in built.closers and embeddings.aclose in built.closers
 
 
-def test_templates_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.usefixtures("offline_adapters")
+def test_templates_from_settings() -> None:
     """Dates and amounts of templates in `PAPIQ_TEMPLATE_LOCALE`, the `currency` filter in
     `PAPIQ_DEFAULT_CURRENCY`; the memory container takes the defaults."""
-    monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
     values: dict[str, TemplateValue] = {"day": date(2026, 3, 31), "sum": Decimal("12.5")}
     template = "{{ day | datetime: format: 'MMMM' }} {{ sum | currency }}"
     built = build_container(settings(template_locale="en_US", default_currency="CHF"))
@@ -260,11 +260,8 @@ def test_templates_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     assert memory.templates.render(template, values) == "März 12,50\xa0€"
 
 
-async def test_search_index_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
-
+@pytest.mark.usefixtures("offline_adapters")
+async def test_search_index_from_settings() -> None:
     built = build_container(
         settings(
             meilisearch_url="http://meilisearch:7700",
@@ -296,11 +293,8 @@ async def test_search_index_from_settings(monkeypatch: pytest.MonkeyPatch) -> No
     await plain.aclose()
 
 
-async def test_search_services_follow_the_search_index(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
-
+@pytest.mark.usefixtures("offline_adapters")
+async def test_search_services_follow_the_search_index() -> None:
     without = build_container(settings())
     assert without.search_index is None
     services = build_services(without)

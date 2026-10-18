@@ -11,7 +11,8 @@ their reach unless they ask for all users. Hidden documents and spaces are "not 
 exactly as missing ones.
 """
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
+from types import MappingProxyType
 from typing import Any
 from uuid import UUID
 
@@ -39,104 +40,29 @@ def doc(method: str, suffix: str = "", body: Any = None) -> Call:
 
 HIDDEN = {"stranger": 404}
 
+# Each actor who may read the green document reads it.
+READ_ALL: Mapping[str, int] = MappingProxyType(
+    {
+        "owner": 200,
+        "reader": 200,
+        "writer": 200,
+        "read_token": 200,
+        "admin": 200,
+        **HIDDEN,
+        **DENIED,
+    }
+)
+
 # For the green document in the shared space.
-GREEN: dict[str, tuple[Call, dict[str, int]]] = {
-    "read": (
-        doc("GET"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
-    "original": (
-        doc("GET", "/original"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
-    "archive": (
-        doc("GET", "/archive"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
-    "preview": (
-        doc("GET", "/preview"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
-    "text": (
-        doc("GET", "/text"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
-    "structure": (
-        doc("GET", "/structure"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
-    "page": (
-        doc("GET", "/pages/1"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
-    "files": (
-        doc("GET", "/files"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
+GREEN: dict[str, tuple[Call, Mapping[str, int]]] = {
+    "read": (doc("GET"), READ_ALL),
+    "original": (doc("GET", "/original"), READ_ALL),
+    "archive": (doc("GET", "/archive"), READ_ALL),
+    "preview": (doc("GET", "/preview"), READ_ALL),
+    "text": (doc("GET", "/text"), READ_ALL),
+    "structure": (doc("GET", "/structure"), READ_ALL),
+    "page": (doc("GET", "/pages/1"), READ_ALL),
+    "files": (doc("GET", "/files"), READ_ALL),
     "change": (
         doc("PATCH", body={"title": "Changed"}),
         {

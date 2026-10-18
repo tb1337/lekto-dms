@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import timedelta
+from typing import Any
 
 import pytest
 
@@ -29,8 +30,13 @@ FAST = timedelta(milliseconds=10)
 
 
 def worker(
-    container: Container, services: Services, *, shutdown_timeout: timedelta = timedelta(seconds=5)
+    container: Container,
+    services: Services,
+    *,
+    shutdown_timeout: timedelta = timedelta(seconds=5),
+    **extra: Any,
 ) -> Worker:
+    """A worker that polls often; `extra` are further arguments (`indexing`, `master_data`)."""
     return Worker(
         pipeline=services.pipeline,
         maintenance=services.maintenance,
@@ -40,6 +46,7 @@ def worker(
         dispatch_interval=FAST,
         shutdown_timeout=shutdown_timeout,
         webhook_concurrency=DEFAULT_SETTINGS.webhook_concurrency,
+        **extra,
     )
 
 
@@ -112,18 +119,7 @@ async def test_documents_reach_the_search_index() -> None:
     assert isinstance(index, MemorySearchIndex) and services.indexing is not None
     container.event_bus.subscribe(SUBSCRIBER, services.indexing.on_event)
     user = await owner(container)
-    service = Worker(
-        pipeline=services.pipeline,
-        maintenance=services.maintenance,
-        event_bus=container.event_bus,
-        concurrency=2,
-        poll_interval=FAST,
-        dispatch_interval=FAST,
-        shutdown_timeout=timedelta(seconds=5),
-        webhook_concurrency=DEFAULT_SETTINGS.webhook_concurrency,
-        indexing=services.indexing,
-    )
-    async with running(service):
+    async with running(worker(container, services, indexing=services.indexing)):
         document = await services.pipeline.receive(
             user.id, incoming((SAMPLES / "scan.pdf").read_bytes()), filename="invoice.pdf"
         )
@@ -149,18 +145,7 @@ async def test_a_moved_tag_is_normalised_at_its_documents() -> None:
         document.tag_ids = {insurance.id, health.id}
         await uow.documents.add(document)
         await uow.commit()
-    service = Worker(
-        pipeline=services.pipeline,
-        maintenance=services.maintenance,
-        event_bus=container.event_bus,
-        concurrency=2,
-        poll_interval=FAST,
-        dispatch_interval=FAST,
-        shutdown_timeout=timedelta(seconds=5),
-        webhook_concurrency=DEFAULT_SETTINGS.webhook_concurrency,
-        master_data=master,
-    )
-    async with running(service):
+    async with running(worker(container, services, master_data=master)):
         await master.change_tag(admin.id, health.id, parent_id=insurance.id)
 
         async def moved() -> bool:

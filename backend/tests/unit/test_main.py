@@ -17,6 +17,15 @@ from papiq.composition.__main__ import main
 from tests.builders import PASSWORD, SECRET_KEY, TRUSTED_PROXY
 
 
+@pytest.fixture
+def sqlite_instance(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A migrated SQLite database in `tmp_path`; OCR and parser are fakes."""
+    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
+    assert main(["migrate"]) == 0
+
+
 def test_valid_configuration_exits_zero_and_masks_secrets(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
@@ -92,55 +101,38 @@ def test_train_needs_a_classifier(
     assert "PAPIQ_CLASSIFIER is none" in capsys.readouterr().err
 
 
-def test_train_without_confirmed_documents_fails(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
-    assert main(["migrate"]) == 0
-
+@pytest.mark.usefixtures("sqlite_instance")
+def test_train_without_confirmed_documents_fails(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["train"]) == 1
     events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
     assert "training the classifier failed" in [event["event"] for event in events]
 
 
+@pytest.mark.usefixtures("sqlite_instance")
 def test_render_pages_queues_the_documents_without_page_images(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
-    assert main(["migrate"]) == 0
-
     assert main(["render-pages"]) == 0
 
     events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
     assert [e["documents"] for e in events if e["event"] == "render-pages queued"] == [0]
 
 
+@pytest.mark.usefixtures("sqlite_instance")
 def test_read_codes_queues_the_documents_to_read_the_facts_of(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
-    assert main(["migrate"]) == 0
-
     assert main(["read-codes"]) == 0
 
     events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
     assert [e["documents"] for e in events if e["event"] == "read-codes queued"] == [0]
 
 
+@pytest.mark.usefixtures("sqlite_instance")
 def test_fetch_logos_queues_the_contacts_without_a_logo(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
     monkeypatch.setitem(container.LOGO_FETCHERS, "httpx2", lambda _: FakeLogoFetcher())
-    assert main(["migrate"]) == 0
 
     # Off by default: Papiq asks no website.
     assert main(["fetch-logos"]) == 1
@@ -152,30 +144,21 @@ def test_fetch_logos_queues_the_contacts_without_a_logo(
     assert [e["contacts"] for e in events if e["event"] == "fetch-logos queued"] == [0]
 
 
-def test_reparse_queues_the_documents_to_read_again(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
-    assert main(["migrate"]) == 0
-
+@pytest.mark.usefixtures("sqlite_instance")
+def test_reparse_queues_the_documents_to_read_again(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["reparse"]) == 0
 
     events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
     assert [e["documents"] for e in events if e["event"] == "reparse queued"] == [0]
 
 
+@pytest.mark.usefixtures("sqlite_instance")
 def test_reindex_rebuilds_the_index(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
     monkeypatch.setenv("PAPIQ_MEILISEARCH_URL", "http://meilisearch:7700")
     index = MemorySearchIndex()
     monkeypatch.setitem(container.SEARCH_INDEXES, "meilisearch", lambda _: container.Opened(index))
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
-    assert main(["migrate"]) == 0
 
     assert main(["reindex"]) == 0
 

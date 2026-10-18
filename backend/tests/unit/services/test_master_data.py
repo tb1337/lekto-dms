@@ -535,11 +535,9 @@ async def test_only_a_new_parent_of_a_tag_or_group_normalises(world: World) -> N
     assert not [job for job in world.database.jobs.values() if job.status.is_active]
 
 
-async def test_each_step_of_the_normalising_sees_the_tree_as_it_is(
-    world: World, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_each_step_of_the_normalising_sees_the_tree_as_it_is() -> None:
     """A tag moved back while the job pages: the later steps leave its documents alone."""
-    monkeypatch.setattr(master_data, "_NORMALISE_BATCH", 2)
+    world = World(normalise_batch=2)
     admin, owner = await world.user(role=Role.ADMIN), await world.user()
     service = world.master_data
     insurance = await service.create_tag(admin.id, "Insurance")

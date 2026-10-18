@@ -68,8 +68,10 @@ otherwise each pass `TagTree.check_parent` and together make a cycle or a sixth 
 NORMALISE_JOB = "tags.normalise"
 """Payload: `tag_id` of a tag that got another parent, `after` (optional) the document the step
 starts after (`normalise_tagged`)."""
+NORMALISE_BATCH = 200
+"""Documents a step of `NORMALISE_JOB` changes at most, one job and one unit of work each
+(`MasterDataService`, `normalise_batch`)."""
 
-_NORMALISE_BATCH = 200  # documents per step, one job and one unit of work each
 _NORMALISE_RETRY = RetryPolicy(max_attempts=5, delay=timedelta(minutes=1))
 
 
@@ -110,6 +112,7 @@ class MasterDataService:
         index_renames: bool = False,
         store: ObjectStore | None = None,
         fetch_logos: bool = False,
+        normalise_batch: int = NORMALISE_BATCH,
     ) -> None:
         """`templates`: reads which fields the templates of rules use. `index_renames`:
         renaming a contact, type or tag, nesting a tag elsewhere and changing the groups of a
@@ -117,13 +120,15 @@ class MasterDataService:
         up to date (set when there is a search index). `store`: where the logos of contacts
         are, which go with a deleted contact. `fetch_logos`: a contact without a logo, or with a
         fetched one, that gets a new domain among its identifiers queues fetching its logo
-        (`logos.queue_logo_fetch`)."""
+        (`logos.queue_logo_fetch`). `normalise_batch`: documents per step of normalising after
+        a move (`normalise_tagged`)."""
         self._uow = uow
         self._clock = clock
         self._templates = templates
         self._index_renames = index_renames
         self._store = store
         self._fetch_logos = fetch_logos
+        self._normalise_batch = normalise_batch
         self._jobs = JobRunner(uow, clock)
 
     async def create_contact(
@@ -432,7 +437,9 @@ class MasterDataService:
         try:
             async with self._uow() as uow:
                 await uow.lock(TAG_TREE_LOCK)
-                changed, last = await normalise_tagged(uow, tag, start, self._now())
+                changed, last = await normalise_tagged(
+                    uow, tag, start, self._now(), batch=self._normalise_batch
+                )
                 await uow.jobs.complete(job)
                 if last is not None:
                     await uow.jobs.enqueue(
@@ -959,12 +966,12 @@ class MasterDataService:
 
 
 async def normalise_tagged(
-    uow: UnitOfWork, id: TagId, after: DocumentId | None, now: datetime
+    uow: UnitOfWork, id: TagId, after: DocumentId | None, now: datetime, *, batch: int
 ) -> tuple[int, DocumentId | None]:
     """One step of `NORMALISE_JOB` after `id` got another parent, in `uow` (which holds
     `TAG_TREE_LOCK`, so the tree is the one the step works with): what carries `id` or a tag
     below it together with a tag now above it keeps only the one below (`TagTree.normalise`),
-    as if set anew. For a document tag the next `_NORMALISE_BATCH` documents (by id, after
+    as if set anew. For a document tag the next `batch` documents (by id, after
     `after`) that carry one of them, each changed one an update of its own (`document.updated`
     refreshes its search entry); for a group the contacts or document types in it (their
     groups with ancestors, what the index holds, stay the same). Neither lane nor confirmation
@@ -980,7 +987,7 @@ async def normalise_tagged(
         page = await uow.documents.query(
             DocumentFilter(tags=(below,)),
             after=DocumentPosition.after(after),
-            limit=_NORMALISE_BATCH,
+            limit=batch,
         )
         definitions = None
         for document in page:
@@ -993,7 +1000,7 @@ async def normalise_tagged(
             await uow.documents.update(document)
             await uow.outbox.add(document.pull_events())
             changed += 1
-        return changed, page[-1].id if len(page) == _NORMALISE_BATCH else None
+        return changed, page[-1].id if len(page) == batch else None
     if not scope.is_group:
         return 0, None  # a topic: a document carries one, a contact may enable both
     members: Sequence[Contact | DocumentType] = (

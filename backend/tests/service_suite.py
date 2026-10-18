@@ -4,15 +4,12 @@ references: run on the in-memory adapters, SQLite and Postgres alike (each needs
 
 import asyncio
 
-import pytest
-
 from papiq.adapters.outbound.memory import ManualClock, MemoryObjectStore
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.users import User
 from papiq.core.ports import UnitOfWorkFactory
-from papiq.core.services import master_data
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.master_data import MasterDataService
 from tests import builders
@@ -46,15 +43,16 @@ class ServicesOverPersistence:
         assert None in {tags[a.id].parent_id, tags[b.id].parent_id}
 
     async def test_a_moved_tag_leaves_documents_and_groups_the_tag_below(
-        self, uow_factory: UnitOfWorkFactory, monkeypatch: pytest.MonkeyPatch
+        self, uow_factory: UnitOfWorkFactory
     ) -> None:
         """The job after a move, a page of documents at a time (each step queueing the next):
         what carries a tag and one now above it keeps the one below, as if set anew; the lane,
         the confirmation, other tags and other documents stay."""
-        monkeypatch.setattr(master_data, "_NORMALISE_BATCH", 2)
         owner, space = await owner_with_space(uow_factory)
         admin = await _admin(uow_factory)
-        service = MasterDataService(uow_factory, ManualClock(NOW), builders.TEMPLATES)
+        service = MasterDataService(
+            uow_factory, ManualClock(NOW), builders.TEMPLATES, normalise_batch=2
+        )
         insurance = await service.create_tag(admin.id, "Insurance")
         health = await service.create_tag(admin.id, "Health")
         dental = await service.create_tag(admin.id, "Dental", parent_id=health.id)

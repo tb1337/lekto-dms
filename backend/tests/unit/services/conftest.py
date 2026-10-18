@@ -25,7 +25,7 @@ from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.auth import AuthService
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.logos import LogoService
-from papiq.core.services.master_data import MasterDataService
+from papiq.core.services.master_data import NORMALISE_BATCH, MasterDataService
 from papiq.core.services.oidc import OidcService
 from papiq.core.services.pipeline import NodeExecutor, PipelineService
 from papiq.core.services.spaces import SpaceService
@@ -67,6 +67,7 @@ class World:
     idp: FakeOidcProvider = field(default_factory=FakeOidcProvider)
     sender: FakeWebhookSender = field(default_factory=FakeWebhookSender)
     images: FakeImageNormaliser = field(default_factory=FakeImageNormaliser)
+    normalise_batch: int = NORMALISE_BATCH
 
     @property
     def uow(self) -> MemoryUnitOfWorkFactory:
@@ -104,7 +105,13 @@ class World:
 
     @property
     def master_data(self) -> MasterDataService:
-        return MasterDataService(self.uow, self.clock, builders.TEMPLATES, store=self.object_store)
+        return MasterDataService(
+            self.uow,
+            self.clock,
+            builders.TEMPLATES,
+            store=self.object_store,
+            normalise_batch=self.normalise_batch,
+        )
 
     @property
     def logos(self) -> LogoService:

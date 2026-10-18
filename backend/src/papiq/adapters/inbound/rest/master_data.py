@@ -3,7 +3,9 @@ admins change them. Deleting works only for what nothing uses."""
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any, Protocol, Self, cast
+from dataclasses import dataclass
+from types import GenericAlias
+from typing import Any, Concatenate, Protocol, Self
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
@@ -40,6 +42,7 @@ from papiq.core.domain.master_data import MasterData, TagScope
 from papiq.core.domain.tag_tree import TagTree
 from papiq.core.ports import CountBy
 from papiq.core.services.logos import LOGO_MAX_SIZE, LOGO_TYPE
+from papiq.core.services.master_data import MasterDataService
 
 ADMINS_ONLY = "Admins only."
 COUNTS = (
@@ -48,37 +51,44 @@ COUNTS = (
     "every document with `all_users` (others: 403)."
 )
 
-type Operation = Callable[..., Awaitable[Any]]
+
+@dataclass(frozen=True, kw_only=True)
+class Kind[K: UUID, E: MasterData, C: BaseModel, P: BaseModel, O: MasterDataOut]:
+    """One kind of named master data for `_simple`: the service's methods for it, the bodies
+    that create (`C`) and change it (`P`), and its answer (`O`, made with `of`). The bodies'
+    fields are the methods' keyword arguments, as `arguments` turns them."""
+
+    path: str
+    noun: str  # in summaries: "List document types"
+    name: str  # in route names: `create_document_type`
+    plural: str  # in the list's route name: `list_document_types`
+    id: Callable[[UUID], K]
+    list: Callable[[MasterDataService, UserId], Awaitable[list[E]]]
+    create: Callable[Concatenate[MasterDataService, UserId, ...], Awaitable[E]]
+    get: Callable[[MasterDataService, UserId, K], Awaitable[E]]
+    change: Callable[Concatenate[MasterDataService, UserId, K, ...], Awaitable[E]]
+    delete: Callable[[MasterDataService, UserId, K], Awaitable[None]]
+    create_in: type[C]
+    patch_in: type[P]
+    out: type[O]
+    of: Callable[[E], O]
+    counted: CountBy
+    arguments: Callable[[dict[str, Any]], dict[str, Any]] = lambda given: given
 
 
-def _simple(
-    path: str,
-    kind: str,
-    plural: str,
-    name: str,
-    out: type[MasterDataOut],
-    create_in: type[BaseModel],
-    patch_in: type[BaseModel],
-    counted: CountBy,
-    *,
-    change: str = "rename",
-    arguments: Callable[[dict[str, Any]], dict[str, Any]] = lambda given: given,
+def _simple[K: UUID, E: MasterData, C: BaseModel, P: BaseModel, O: MasterDataOut](
+    kind: Kind[K, E, C, P, O],
 ) -> APIRouter:
-    """List, create, read, change (`change`: the service's verb) and delete one kind of named
-    master data. The bodies' fields are the service's keyword arguments (as `arguments` turns
-    them); a patch passes only the fields given."""
-    router = APIRouter(prefix=f"/{path}", tags=["master data"], dependencies=PROTECTED)
-
-    def service(context: ApiContext, action: str) -> Operation:
-        operation: Operation = getattr(context.master_data, f"{action}_{name}")
-        return operation
+    """List, create, read, change and delete one kind of named master data; a patch passes
+    only the fields given."""
+    router = APIRouter(prefix=f"/{kind.path}", tags=["master data"], dependencies=PROTECTED)
 
     @router.get(
         "",
-        name=f"list_{plural}",
-        summary=f"List {kind}s",
+        name=f"list_{kind.plural}",
+        summary=f"List {kind.noun}s",
         description=COUNTS,
-        response_model=list[out],  # type: ignore[valid-type]
+        response_model=GenericAlias(list, (kind.out,)),
         responses=problem_responses(401, 403, 422),
     )
     async def list_items(
@@ -86,76 +96,77 @@ def _simple(
         context: Context,
         document_counts: DocumentCounts = False,
         all_users: CountAll = False,
-    ) -> list[MasterDataOut]:
-        operation: Operation = getattr(context.master_data, f"list_{plural}")
-        items: list[MasterData] = await operation(user)
-        found = [out.of(item) for item in items]
+    ) -> list[O]:
+        found = [kind.of(item) for item in await kind.list(context.master_data, user)]
         if not document_counts:
             return found
-        counts = await context.documents.document_counts(user, counted, all_users=all_users)
+        counts = await context.documents.document_counts(user, kind.counted, all_users=all_users)
         return _with_counts(found, counts)
 
     @router.post(
         "",
-        name=f"create_{name}",
+        name=f"create_{kind.name}",
         status_code=201,
-        summary=f"Create a {kind}",
+        summary=f"Create a {kind.noun}",
         description=ADMINS_ONLY
         + " Names are unique regardless of case. A group in `group_ids` (a topic in "
         "`topic_ids`) that does not exist is `404`, one of another scope `422`.",
-        response_model=out,
+        response_model=kind.out,
         responses=problem_responses(401, 403, 404, 409, 422),
     )
-    async def create(
-        body: create_in,  # type: ignore[valid-type]
-        user: CurrentUser,
-        context: Context,
-    ) -> MasterDataOut:
-        given = arguments(cast(BaseModel, body).model_dump())
-        return out.of(await service(context, "create")(user, **given))
+    @_body(kind.create_in)
+    async def create(body: C, user: CurrentUser, context: Context) -> O:
+        given = kind.arguments(body.model_dump())
+        return kind.of(await kind.create(context.master_data, user, **given))
 
     @router.get(
         "/{id}",
-        name=f"get_{name}",
-        summary=f"A {kind}",
-        response_model=out,
+        name=f"get_{kind.name}",
+        summary=f"A {kind.noun}",
+        response_model=kind.out,
         responses=problem_responses(401, 404, 422),
     )
-    async def get(id: UUID, user: CurrentUser, context: Context) -> MasterDataOut:
-        return out.of(await service(context, "get")(user, id))
+    async def get(id: UUID, user: CurrentUser, context: Context) -> O:
+        return kind.of(await kind.get(context.master_data, user, kind.id(id)))
 
     @router.patch(
         "/{id}",
-        name=f"{change}_{name}",
-        summary=f"{change.capitalize()} a {kind}",
+        name=f"change_{kind.name}",
+        summary=f"Change a {kind.noun}",
         description=ADMINS_ONLY
         + " A group in `group_ids` (a topic in `topic_ids`) that does not exist is `404`, one "
         "of another scope `422`.",
-        response_model=out,
+        response_model=kind.out,
         responses=problem_responses(401, 403, 404, 409, 422),
     )
-    async def patch(
-        id: UUID,
-        body: patch_in,  # type: ignore[valid-type]
-        user: CurrentUser,
-        context: Context,
-    ) -> MasterDataOut:
-        model = cast(BaseModel, body)
-        given = arguments(model.model_dump(include=model.model_fields_set))
-        return out.of(await service(context, change)(user, id, **given))
+    @_body(kind.patch_in)
+    async def patch(id: UUID, body: P, user: CurrentUser, context: Context) -> O:
+        given = kind.arguments(body.model_dump(include=body.model_fields_set))
+        return kind.of(await kind.change(context.master_data, user, kind.id(id), **given))
 
     @router.delete(
         "/{id}",
-        name=f"delete_{name}",
+        name=f"delete_{kind.name}",
         status_code=204,
-        summary=f"Delete a {kind}",
+        summary=f"Delete a {kind.noun}",
         description=ADMINS_ONLY + " Only while no document uses it (409).",
         responses=problem_responses(401, 403, 404, 409, 422),
     )
     async def delete(id: UUID, user: CurrentUser, context: Context) -> None:
-        await service(context, "delete")(user, id)
+        await kind.delete(context.master_data, user, kind.id(id))
 
     return router
+
+
+def _body[F: Callable[..., Awaitable[object]]](model: type[BaseModel]) -> Callable[[F], F]:
+    """FastAPI reads a body's model from the endpoint's annotation, which in `_simple` is a type
+    parameter: this puts the kind's model there."""
+
+    def put(endpoint: F) -> F:
+        endpoint.__annotations__["body"] = model
+        return endpoint
+
+    return put
 
 
 class _Counted(Protocol):
@@ -192,9 +203,25 @@ def _contact_arguments(given: dict[str, Any]) -> dict[str, Any]:
 
 
 contacts = _simple(
-    "contacts", "contact", "contacts", "contact", ContactOut, ContactCreate, ContactPatch,
-    CountBy.CONTACT, change="change", arguments=_contact_arguments,
-)  # fmt: skip
+    Kind(
+        path="contacts",
+        noun="contact",
+        name="contact",
+        plural="contacts",
+        id=ContactId,
+        list=MasterDataService.list_contacts,
+        create=MasterDataService.create_contact,
+        get=MasterDataService.get_contact,
+        change=MasterDataService.change_contact,
+        delete=MasterDataService.delete_contact,
+        create_in=ContactCreate,
+        patch_in=ContactPatch,
+        out=ContactOut,
+        of=ContactOut.of,
+        counted=CountBy.CONTACT,
+        arguments=_contact_arguments,
+    )
+)
 
 
 @contacts.post(
@@ -304,15 +331,23 @@ async def get_logo(id: UUID, user: CurrentUser, context: Context) -> Response:
 
 
 document_types = _simple(
-    "document-types",
-    "document type",
-    "document_types",
-    "document_type",
-    DocumentTypeOut,
-    DocumentTypeCreate,
-    DocumentTypePatch,
-    CountBy.DOCUMENT_TYPE,
-    change="change",
+    Kind(
+        path="document-types",
+        noun="document type",
+        name="document_type",
+        plural="document_types",
+        id=DocumentTypeId,
+        list=MasterDataService.list_document_types,
+        create=MasterDataService.create_document_type,
+        get=MasterDataService.get_document_type,
+        change=MasterDataService.change_document_type,
+        delete=MasterDataService.delete_document_type,
+        create_in=DocumentTypeCreate,
+        patch_in=DocumentTypePatch,
+        out=DocumentTypeOut,
+        of=DocumentTypeOut.of,
+        counted=CountBy.DOCUMENT_TYPE,
+    )
 )
 tags = APIRouter(prefix="/tags", tags=["master data"], dependencies=PROTECTED)
 

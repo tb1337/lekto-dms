@@ -20,7 +20,6 @@ from papiq.core.domain.master_data import (
     Assignment,
     Contact,
     DocumentType,
-    MasterData,
     Tag,
     TagScope,
 )
@@ -38,10 +37,6 @@ class MasterDataOut(BaseModel):
             "`all_users`, every document) have it; for a field, a value for it."
         ),
     )
-
-    @classmethod
-    def of(cls, item: MasterData) -> "MasterDataOut":
-        return cls(id=getattr(item, "id"), name=item.name, created_at=item.created_at)  # noqa: B009
 
 
 Aliases = Annotated[
@@ -280,8 +275,7 @@ class ContactOut(MasterDataOut):
     )
 
     @classmethod
-    def of(cls, item: MasterData) -> "ContactOut":
-        assert isinstance(item, Contact)
+    def of(cls, item: Contact) -> "ContactOut":
         return cls(
             id=item.id,
             name=item.name,
@@ -346,8 +340,7 @@ class DocumentTypeOut(MasterDataOut):
     icon: str | None = Field(description="The name of a Lucide icon.", examples=["receipt"])
 
     @classmethod
-    def of(cls, item: MasterData) -> "DocumentTypeOut":
-        assert isinstance(item, DocumentType)
+    def of(cls, item: DocumentType) -> "DocumentTypeOut":
         return cls(
             id=item.id,
             name=item.name,
@@ -474,8 +467,7 @@ class TagOut(MasterDataOut):
     )
 
     @classmethod
-    def of(cls, item: MasterData, tree: TagTree | None = None) -> "TagOut":
-        assert isinstance(item, Tag)
+    def of(cls, item: Tag, tree: TagTree | None = None) -> "TagOut":
         path = [item.name] if tree is None or item.id not in tree else tree.path(item.id)
         return cls(
             id=item.id,

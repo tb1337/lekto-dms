@@ -125,8 +125,32 @@ GREEN: dict[str, tuple[Call, dict[str, int]]] = {
             **DENIED,
         },
     ),
+    "files": (
+        doc("GET", "/files"),
+        {
+            "owner": 200,
+            "reader": 200,
+            "writer": 200,
+            "read_token": 200,
+            "admin": 200,
+            **HIDDEN,
+            **DENIED,
+        },
+    ),
     "change": (
         doc("PATCH", body={"title": "Changed"}),
+        {
+            "owner": 200,
+            "reader": 403,
+            "writer": 200,
+            "read_token": 403,
+            "admin": 200,
+            **HIDDEN,
+            **DENIED,
+        },
+    ),
+    "dry_run": (
+        doc("POST", "/dry-run", {"title": "Changed"}),
         {
             "owner": 200,
             "reader": 403,
@@ -260,7 +284,9 @@ HIDDEN_FROM_SHARES = [
     "text",
     "structure",
     "page",
+    "files",
     "change",
+    "dry_run",
     "delete",
     "log",
     "exchanges",
@@ -472,6 +498,12 @@ MASTER_DATA = {
     "tags": {"name": "X"},
     "fields": {"name": "X", "data_type": "text"},
 }
+# Changes of an item besides renaming and deleting, also for admins only: (method, path below
+# the item, body).
+ITEM_CHANGES: dict[str, list[tuple[str, str, Any]]] = {
+    "contacts": [("POST", "/identifiers", {"kind": "customer_number", "value": "2004-7718"})],
+    "document-types": [("PUT", "/fields", {"fields": []})],
+}
 NOT_ADMIN = {"owner": 403, "reader": 403, "writer": 403, "stranger": 403, "read_token": 403}
 
 
@@ -492,12 +524,18 @@ async def test_master_data_is_read_by_all_and_changed_by_admins(api: Api, kind: 
     item = f"{url}/{created.json()['id']}"
     for actor in ("owner", "reader", "stranger", "read_token"):
         assert (await api.client.get(item, headers=scene.headers[actor])).status_code == 200
-    for method, change in (("PATCH", {"name": "Y"}), ("DELETE", None)):
+    changes = [("PATCH", "", {"name": "Y"}), ("DELETE", "", None), *ITEM_CHANGES.get(kind, [])]
+    for method, path, change in changes:
         for actor, status in {**NOT_ADMIN, **DENIED}.items():
             response = await api.client.request(
-                method, item, json=change, headers=scene.headers[actor]
+                method, f"{item}{path}", json=change, headers=scene.headers[actor]
             )
-            assert response.status_code == status, (method, actor)
+            assert response.status_code == status, (method, path, actor)
+    for method, path, change in ITEM_CHANGES.get(kind, []):
+        response = await api.client.request(
+            method, f"{item}{path}", json=change, headers=scene.headers["admin"]
+        )
+        assert response.status_code == 200, (method, path, response.text)
     renamed = await api.client.patch(item, json={"name": "Y"}, headers=scene.headers["admin"])
     assert renamed.status_code == 200
     assert (await api.client.delete(item, headers=scene.headers["admin"])).status_code == 204

@@ -211,7 +211,8 @@ async def test_exceptions_are_retried_with_backoff(world: World) -> None:
     flaky = Raises(times=2)
     pipeline = world.pipeline({Node.OCR: flaky})
     owner, document = await receive(world, pipeline)
-    assert await world.drain(pipeline) == 2  # the pages, and attempt 1 fails
+    # The pages, and the first attempt of the OCR, which fails.
+    assert await world.drain(pipeline) == len(Node.RECEIVE.successors)
     assert not await pipeline.run_next_job()  # waits 30 s
     waiting = await world.documents.get(owner.id, document.id)
     assert waiting.processing.nodes[Node.OCR] == NodeState()  # not shown as running meanwhile

@@ -3,6 +3,7 @@
 from pydantic import BaseModel, Field
 
 from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails
+from papiq.core.ports.search_index import MAX_HITS
 
 
 class SnippetSegment(BaseModel):
@@ -27,7 +28,7 @@ class SearchResultPage(BaseModel):
         "caller may no longer read, or that are gone, are left out."
     )
     estimated_total: int = Field(
-        description="An estimate of the hits, not exact. At most 1000 hits can be reached."
+        description=f"An estimate of the hits, not exact. At most {MAX_HITS} hits can be reached."
     )
     next_offset: int | None = Field(
         description="Pass as `offset` for the next page; null on the last page."

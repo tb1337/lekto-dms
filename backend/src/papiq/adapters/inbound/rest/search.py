@@ -32,7 +32,7 @@ router = APIRouter(tags=["search"], dependencies=PROTECTED)
         "document with `all_users` (others: 403). Each hit is checked "
         "against the permissions once more before it is returned. The index follows the "
         "documents a moment later, so a new document may take a few seconds to turn up. "
-        "Pages are by `offset`; at most 1000 hits can be reached. `sort`: by relevance (the "
+        f"Pages are by `offset`; at most {MAX_HITS} hits can be reached. `sort`: by relevance (the "
         "default), or by a key as in `GET /documents`, relevance breaking ties."
     ),
     response_model=SearchResultPage,

@@ -47,10 +47,9 @@ async def seed(
 
 
 async def owner_with_space(uow_factory: UnitOfWorkFactory) -> tuple[User, Space]:
-    owner = builders.user()
-    space = builders.default_space(owner)
-    await seed(uow_factory, owner, spaces=(space,))
-    return owner, space
+    owner = await builders.seed_user(uow_factory)
+    async with uow_factory() as uow:
+        return owner, await uow.spaces.get_default(owner.id)
 
 
 def _repository_of(item: object) -> str:

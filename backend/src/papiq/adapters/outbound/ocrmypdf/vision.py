@@ -9,7 +9,8 @@ line (measured on the synthetic documents of issue #53).
 
 The model answers in JSON (`SCHEMA`); an answer that does not fit is asked for once more. Each
 page leaves a record in the folder the configuration names (`page-<n>.json`): its words, those
-the model could not read (`UNREADABLE`) and what was sent and received. The configuration comes
+the model could not read (`UNREADABLE`) and what was sent and received. A page the model cannot
+read leaves the reason there (`error.json`, `write_error`). The configuration comes
 in the environment (`CONFIG_ENV`, the key apart in `KEY_ENV`), since the plugin runs in
 OCRmyPDF's process and its workers. Neither the key nor the page's text is logged.
 """
@@ -48,6 +49,7 @@ MAX_EDGE = 1568
 MAX_TOKENS = 16_000  # a dense page with its boxes takes about 2,500
 UNREADABLE = "[unreadable]"
 _ATTEMPTS = 2
+_ERROR_FILE = "error.json"
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$")
 
 SYSTEM = """\
@@ -172,6 +174,25 @@ def configuration() -> tuple[VisionSettings, Path]:
 
 def record_path(records: Path, page: int) -> Path:
     return records / f"page-{page}.json"
+
+
+def write_error(records: Path, page: int, message: str) -> None:
+    """Leave why page `page` could not be read in `records`, for the engine: its page and the
+    message. Pages are read side by side; the first to fail keeps its reason."""
+    with (
+        contextlib.suppress(FileExistsError),
+        (records / _ERROR_FILE).open("x", encoding="utf-8") as file,
+    ):
+        json.dump({"page": page, "message": message}, file)
+
+
+def read_error(records: Path) -> str | None:
+    """The message `write_error` left in `records`; None if no page failed."""
+    try:
+        data = json.loads((records / _ERROR_FILE).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    return str(data["message"])
 
 
 def read_records(records: Path) -> list[PageRecord]:

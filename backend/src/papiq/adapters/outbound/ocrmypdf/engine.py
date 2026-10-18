@@ -38,8 +38,8 @@ is read from its image, text of its own or not, and the archive holds the pages 
 the model's text. The plugin runs in OCRmyPDF's process; its configuration goes there in the
 environment, and it leaves a record of each page in a folder of our own: its words, the ones the
 model could not read, and what was sent. Such a run has a time limit of its own
-(`vision_timeout`). A page the model cannot read fails the run (exit code 15) with the plugin's
-reason.
+(`vision_timeout`). A page the model cannot read fails the run (exit code 15) with the reason
+the plugin leaves in that folder.
 
 How well a page was read comes from Tesseract's hOCR, which OCRmyPDF keeps in its work folder
 with `--keep-temporary-files` (`*_ocr_hocr.hocr`, one per page it recognised): the words with
@@ -69,6 +69,7 @@ from papiq.adapters.outbound.ocrmypdf.vision import (
     PageRecord,
     VisionSettings,
     environment,
+    read_error,
     read_records,
 )
 from papiq.adapters.outbound.pdfium import count_pages, has_hidden_text, has_unreadable_text
@@ -190,7 +191,13 @@ class OcrmypdfEngine:
             else:
                 mode = ["--skip-text", "--deskew"]
             pdfa, notes = await self._convert(
-                source, temporary, [*mode, *extra], work, env=env, timeout=timeout
+                source,
+                temporary,
+                [*mode, *extra],
+                work,
+                env=env,
+                timeout=timeout,
+                records=records if vision else None,
             )
             if unreadable:
                 notes = [UNREADABLE_NOTE, *notes]
@@ -240,10 +247,11 @@ class OcrmypdfEngine:
         *,
         env: dict[str, str],
         timeout: timedelta,
+        records: Path | None,
     ) -> tuple[bool, list[str]]:
         """Run OCRmyPDF, with a second run where it helps (see the module). Returns whether the
         output is PDF/A, and the notes for the processing log; `work` keeps the files of the
-        last run."""
+        last run, `records` those of the vision plugin."""
         notes: list[str] = []
         invalidate = False
 
@@ -275,8 +283,14 @@ class OcrmypdfEngine:
                 f"{_UNPROCESSABLE[code]}: {_last_line(completed.stderr)}"
             )
         if code not in (0, _PDFA_CONVERSION_FAILED):
-            if failure := _VISION_ERROR.findall(completed.stderr):
-                raise LanguageModelError(failure[-1].strip())
+            # A page the model could not read: the plugin leaves the reason in `records`; its
+            # exception in the output only counts without it, as the output's end may hold
+            # other things.
+            failure = None if records is None else await asyncio.to_thread(read_error, records)
+            if failure is None and (found := _VISION_ERROR.findall(completed.stderr)):
+                failure = found[-1].strip()
+            if failure is not None:
+                raise LanguageModelError(failure)
             raise RuntimeError(
                 f"ocrmypdf failed with exit code {code}: {_last_line(completed.stderr)}"
             )

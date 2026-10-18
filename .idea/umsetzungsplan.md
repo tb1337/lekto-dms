@@ -1050,6 +1050,55 @@ PR mit Label `new-feature`.
 - `release/0.3.0` → `main` als PR mit `skip-changelog` (die Pakete tragen die Release Notes), Merge-Commit; Tobi veröffentlicht 0.3.0.
 - Offen für spätere Releases: Umbau der Rechte; Migrationsclient mit ASN, Tag-Hierarchie und Farben aus Paperless; Personen als Nutzer, die ein Dokument betrifft.
 
+### Release 0.4.0 – Posteingang als Eingang
+
+**Anlass (Tobi, 17.10.2026):** Der Posteingang soll die Ansicht sein, über die ein Nutzer neue Dokumente einstellt (Knopf oder Ziehen auf die Seite), und dort soll alles Neue stehen, bis ein Mensch es gesehen hat – auch Dokumente, die ganz von selbst grün durchliefen. Das Archiv braucht die Lanes dann nicht mehr.
+
+**Entscheidungen (Tobi, 17./18.10.2026, in vier Runden; Ergebnis in `architektur.md` › Verarbeitung › „Posteingang“):**
+- Hochladen nur im Posteingang: Knopf mit Dialog (Space, für Admins Besitzer), Ziehen lädt sofort in den Standard-Space; mehrere Dateien und Ordner (rekursiv, ohne Struktur), andere Dateitypen und versteckte Dateien übersprungen; das Ergebnis nur im Browser. Am Handy der Knopf (Kamera und Fotos des Systems), kein eigener Scan.
+- Im Posteingang: in Verarbeitung (sofort), Gelb und Rot bis zur Bestätigung, von selbst Grünes als „neu“ wie eine ungelesene Mail. Gesehen je Nutzer, durch Öffnen der Dokumentansicht oder „Gesehen“/„Alle als gesehen“; kein Bestätigen, keine Wirkung aufs Training (verworfen: „Passt“ als Bestätigung, weil Grün dann wie Gelb wäre; ein Verfallen nach N Tagen). Neu ist nur, was ohne menschliche Entscheidung grün wurde; nach erneuter Verarbeitung wieder, wenn sich Kontakt, Typ, Thema, Tags, Datum oder Felder änderten. Beim Update ist nichts neu.
+- „Erledigt“: 14 Tage, alles, was meinen Posteingang verließ, mit wie, wann und von wem; gesehene „wieder als neu“.
+- Reiter Alle · Neu · Prüfen · Eingreifen · In Verarbeitung · Erledigt; das Badge zählt alle Fälle und nimmt als Hintergrund die Farbe der schlechtesten Lane an (grau nur mit Dokumenten in Verarbeitung).
+- Archiv: alles in Reichweite, ohne Lane-Filter, -Abzeichen und Fortschritt; „Im Posteingang“ an Dokumenten, die dort stehen. Die API behält `lane`.
+- **Schnitt:** zwei Pakete von `release/0.4.0` (von `main` c6ab2f1, nach dem Backend-Review #94), je ein PR mit Label; danach `release/0.4.0` → `main` als Draft-PR. Die Briefs verweisen auf `.idea/reviews/0.3.0-code-review.md`: nichts, was #94 vereinheitlicht hat, entsteht neu doppelt (Job-Gerüst `services/_jobs.py`, ein Cursor-Format, Reichweite und Dokumentfilter einmal in Python, „Besitzer oder Admin“ an einer Stelle, Ereignistypen und Grenzen aus dem Kern, `UploadFields`, gemeinsame Test-Helfer).
+
+| # | Branch | Inhalt | Label | Revision | Modell |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `feature/inbox-backend-0.4.0` | Neu, gesehen, erledigt, Abfrage und Zusammenfassung des Posteingangs, „im Posteingang“ an Dokumenten | `new-feature` | 0030 | Opus 5.5 |
+| 2 | `feature/inbox-ui-0.4.0` | Posteingang mit Hochladen, Ziehen, Reitern, Badge; Archiv ohne Lanes | `new-feature` | – | Opus 5.5 |
+
+#### Paket 1 – Posteingang im Backend (`feature/inbox-backend-0.4.0`)
+
+PR mit Label `new-feature`.
+
+- **Revision 0030:** am Dokument der Zeitpunkt, zu dem es zuletzt ohne menschliche Entscheidung grün wurde (leer: für niemanden neu; der Bestand bleibt leer); eine Tabelle „gesehen“ je Nutzer und Dokument (Zeitpunkt; beide mit CASCADE); was „Erledigt“ braucht (wer bestätigte und wann, wer sah und wann). Der Plan der Branch wählt zwischen einer eigenen Tabelle des Verlaufs und der Ableitung aus „gesehen“ und dem Protokoll (`confirmed_by`); der Aufräum-Job nimmt, was älter als 14 Tage ist, sofern es nur dafür da ist. Indizes für die Abfrage des Posteingangs. Test mit Daten auf SQLite und Postgres, hin und zurück.
+- **Kern:**
+  - Endet die Verarbeitung grün ohne Entscheidung einer Person in diesem Lauf, wird das Dokument neu: beim ersten Mal immer, nach einer erneuten Verarbeitung nur, wenn sich Kontakt, Typ, Thema, Tags, Datum oder Felder gegenüber vorher änderten. Ein Bestätigen aus Gelb oder Rot macht es nicht neu und hält fest, wer bestätigte.
+  - „Gesehen“ je Nutzer setzen und entfernen („wieder als neu“), „alle als gesehen“ für das, was im Posteingang des Aufrufers neu ist (mit `all_users` für Admins); kein Einfluss auf `confirmed_at`, Training oder Regeln.
+  - Abfrage des Posteingangs nach Reiter (neu, prüfen, eingreifen, in Verarbeitung, erledigt; ohne Angabe alles Offene), neueste zuerst, mit dem einen Cursor-Format; Reichweite wie heute (der Besitzer, Admins mit `all_users`). Zusammenfassung: Zahl je Reiter und die schlechteste Lane der offenen Fälle.
+  - Je Dokument in Listen und Suche, ob es im Posteingang des Aufrufers steht.
+- **API:** `GET /inbox` mit dem Reiter als Filter (die Einträge mit ihren offenen Knoten, bei „erledigt“ mit wie, wann und von wem); `GET /inbox/summary`; `PUT`/`DELETE /documents/{id}/seen`; `POST /inbox/seen`; `in_inbox` an den Dokumenten von Liste und Suche. Abrufe über API und MCP setzen nichts. `openapi.json` und `schema.ts` neu erzeugt (die Web-UI nutzt sie erst in Paket 2).
+- **Doku:** `backend/README.md` (Posteingang, Endpunkte, „After the update to 0.4“: Revision 0030, nichts ist neu).
+- **Prüfung:** Unit für die Regel „neu“ (erster Lauf, erneute Verarbeitung mit und ohne Änderung, Bestätigen, Admin bestätigt das Dokument eines Nutzers), gesehen je Nutzer, Reiter, Zusammenfassung, erledigt nach 14 Tagen; Verträge auf Speicher, SQLite und Postgres; REST.
+
+**Nach dem Merge:** Devinstanz: Revision 0030, Neustart.
+
+#### Paket 2 – Posteingang in der Web-UI (`feature/inbox-ui-0.4.0`)
+
+PR mit Label `new-feature`.
+
+- **Posteingang:** Reiter in der URL; Knopf „Hochladen“ mit dem bisherigen Dialog; Ziehen auf die Seite mit Overlay („Loslassen zum Hochladen“), Ordner rekursiv über die Einträge des Browsers, mehrere Dateien parallel mit begrenzter Zahl gleichzeitiger Anfragen; die Zusammenfassung (hochgeladen, Dubletten mit Link, übersprungen mit Grund) bis zum Wegklicken, nur im Browser. Neue Dokumente ruhig dargestellt, „Gesehen“ je Zeile, „Alle als gesehen markieren“ mit Rückfrage; „Erledigt“ mit wie, wann, von wem und „wieder als neu“.
+- **Badge:** Hintergrund in der Farbe der schlechtesten Lane, die Zahl lesbar auf jeder Farbe, grau nur mit Dokumenten in Verarbeitung; `aria-label` nennt, was darin steht.
+- **Dokumentansicht:** meldet „gesehen“ beim Öffnen.
+- **Archiv:** Hochladen, Lane-Filter, Lane-Abzeichen und Fortschritt fallen weg; „Im Posteingang“ mit Link.
+- **Handy:** nur der Knopf; Reiter und Zeilen bei 360–390 px ohne Überlauf.
+- **Doku:** `web/README.md`.
+- **Prüfung:** Vitest (Reiter, Ziehen mit Dateien und Ordnern, übersprungene Typen, Dublette, Badge-Farben, gesehen beim Öffnen, Archiv ohne Lanes); Browser gegen den Build auf der Prüfinstanz: Ziehen von Dateien und eines Ordners, Dublette, alle Reiter, das Badge in jeder Farbe, Deutsch und Englisch, hell und dunkel, 1400 und 390 px, ohne Konsolenfehler und CSP-Verstöße.
+
+#### Abschluss des Release
+
+- `release/0.4.0` → `main` als Draft-PR mit `skip-changelog`; gemergt auf Tobis Wort, danach die Notes prüfen (beim Ändern eines Entwurfs `tag_name` mitschicken).
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

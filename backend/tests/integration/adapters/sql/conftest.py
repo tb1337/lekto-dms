@@ -14,7 +14,7 @@ from papiq.adapters.outbound.sql.tables import metadata
 from papiq.composition.settings import Settings
 from papiq.core.domain.jobs import RetryPolicy
 from papiq.core.ports import Clock, EventBus, UnitOfWorkFactory
-from tests import builders, probes
+from tests import builders
 from tests.contracts.event_bus import EventBusFactory
 
 
@@ -47,15 +47,6 @@ async def drop_database(settings: Settings, name: str) -> None:
             await connection.exec_driver_sql(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
     finally:
         await admin.dispose()
-
-
-@pytest.fixture(scope="session")
-def postgres_settings(settings: Settings) -> Settings:
-    if settings.db_type != "postgres" or settings.db_host is None:
-        pytest.skip("PAPIQ_DB_TYPE is not postgres")
-    if not probes.postgres_answers(settings.db_host, settings.db_port):
-        pytest.skip(f"Postgres not reachable at {settings.db_host}:{settings.db_port}")
-    return settings
 
 
 @pytest.fixture

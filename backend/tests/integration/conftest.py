@@ -27,12 +27,34 @@ def settings() -> Settings:
     return load_settings()
 
 
+# The services: each fixture is the one place that skips a test when its service is not
+# configured or does not answer. The CI checks that nothing skipped.
+
+
+@pytest.fixture(scope="session")
+def postgres_settings(settings: Settings) -> Settings:
+    if settings.db_type != "postgres" or settings.db_host is None:
+        pytest.skip("PAPIQ_DB_TYPE is not postgres")
+    if not probes.postgres_answers(settings.db_host, settings.db_port):
+        pytest.skip(f"Postgres not reachable at {settings.db_host}:{settings.db_port}")
+    return settings
+
+
 @pytest.fixture(scope="session")
 def s3_settings(settings: Settings) -> Settings:
     if settings.storage_type != "s3" or settings.s3_endpoint_url is None:
         pytest.skip("PAPIQ_STORAGE_TYPE is not s3")
     if probes.http_status(str(settings.s3_endpoint_url)) is None:
         pytest.skip(f"S3 endpoint not reachable at {settings.s3_endpoint_url}")
+    return settings
+
+
+@pytest.fixture(scope="session")
+def meilisearch_settings(settings: Settings) -> Settings:
+    if settings.meilisearch_url is None:
+        pytest.skip("PAPIQ_MEILISEARCH_URL is not set")
+    if probes.meilisearch_health(str(settings.meilisearch_url)) is None:
+        pytest.skip(f"Meilisearch not reachable at {settings.meilisearch_url}")
     return settings
 
 
@@ -85,11 +107,7 @@ async def stores(
         yield database, FilesystemObjectStore(tmp_path / "objects")
         await database.dispose()
         return
-    settings: Settings = request.getfixturevalue("settings")
-    if settings.db_type != "postgres" or settings.db_host is None:
-        pytest.skip("PAPIQ_DB_TYPE is not postgres")
-    if not probes.postgres_answers(settings.db_host, settings.db_port):
-        pytest.skip(f"Postgres not reachable at {settings.db_host}:{settings.db_port}")
+    settings: Settings = request.getfixturevalue("postgres_settings")
     s3: Settings = request.getfixturevalue("s3_settings")
     assert settings.db_name
     name = f"{settings.db_name}_test_{secrets.token_hex(4)}"

@@ -4,7 +4,6 @@ the signals, the judge and the fields with a stand-in language model. Without a 
 nothing goes to the vision model; the document is red then, and the advice says why."""
 
 import json
-import shutil
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
@@ -29,13 +28,12 @@ from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.reading import VisionAdvice
 from papiq.core.ports import StructuredRequest
 from papiq.core.services.objects import text_key
-from tests import builders
+from tests import builders, probes
 from tests.builders import DEFAULT_SETTINGS, NOW, incoming
 from tests.contracts.processing import SAMPLES
 from tests.vision_stub import Lines, VisionStub, serve
 
-if not (shutil.which("tesseract") and shutil.which("gs")):
-    pytest.skip("Tesseract or Ghostscript not installed", allow_module_level=True)
+pytestmark = probes.requires_ocr
 
 
 @dataclass(frozen=True)

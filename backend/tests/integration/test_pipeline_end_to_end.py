@@ -2,7 +2,6 @@
 and on S3 (Garage); archive PDF, preview, text and structure end up in the object store.
 Metadata stays in memory."""
 
-import shutil
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import timedelta
@@ -19,13 +18,12 @@ from papiq.core.domain import media_types
 from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.ports import ObjectStore
 from papiq.core.services.objects import archive_key, preview_key, structure_key, text_key
-from tests import builders
+from tests import builders, probes
 from tests.builders import DEFAULT_SETTINGS, incoming
 from tests.contracts.processing import SAMPLES
 from tests.integration.conftest import s3_test_store
 
-if not (shutil.which("tesseract") and shutil.which("gs")):
-    pytest.skip("Tesseract or Ghostscript not installed", allow_module_level=True)
+pytestmark = probes.requires_ocr
 
 
 @pytest.fixture(params=["filesystem", "s3"])

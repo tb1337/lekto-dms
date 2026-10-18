@@ -1,9 +1,13 @@
-"""Reachability probes for integration tests. Standard library only, no client libraries."""
+"""Reachability probes for integration tests, and the mark for those that need the OCR programs.
+Standard library and pytest only, no client libraries."""
 
 import json
+import shutil
 import socket
 import urllib.error
 import urllib.request
+
+import pytest
 
 TIMEOUT = 3.0
 
@@ -43,3 +47,14 @@ def meilisearch_health(url: str) -> str | None:
     except (OSError, ValueError):
         return None
     return status if isinstance(status, str) else None
+
+
+def ocr_programs_installed() -> bool:
+    """True if Tesseract and Ghostscript, which OCRmyPDF calls, are on the path."""
+    return all(shutil.which(program) for program in ("tesseract", "gs"))
+
+
+requires_ocr = pytest.mark.skipif(
+    not ocr_programs_installed(), reason="Tesseract or Ghostscript not installed"
+)
+"""Mark for tests (or `pytestmark` of a module) that run OCRmyPDF."""

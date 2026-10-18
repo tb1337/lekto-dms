@@ -3,7 +3,6 @@ with OCRmyPDF and the layout text, progress arrives as server-sent events. Real 
 (Uvicorn) and worker, in two set-ups: SQLite with the filesystem, Postgres with S3 (Garage)."""
 
 import asyncio
-import shutil
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, replace
 from datetime import timedelta
@@ -31,13 +30,12 @@ from papiq.core.domain.users import User
 from papiq.core.ports import ObjectStore, OcrResult
 from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.objects import archive_key, preview_key, structure_key, text_key
-from tests import builders
+from tests import builders, probes
 from tests.api import Stream, auth, issue_token, listen, serving, until
 from tests.builders import DEFAULT_SETTINGS
 from tests.contracts.processing import SAMPLES
 
-if not (shutil.which("tesseract") and shutil.which("gs")):
-    pytest.skip("Tesseract or Ghostscript not installed", allow_module_level=True)
+pytestmark = probes.requires_ocr
 
 DOCUMENTS = f"{PREFIX}/documents"
 PROCESSING = 180.0  # seconds a document may take here

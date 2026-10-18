@@ -18,7 +18,6 @@ from sqlalchemy import func, select
 
 from papiq.adapters.inbound.rest import PREFIX
 from papiq.adapters.inbound.worker import Worker
-from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.adapters.outbound.memory import FakeEmbeddings
 from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory
 from papiq.adapters.outbound.sql.tables import jobs
@@ -34,10 +33,10 @@ from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import ObjectStore, OcrResult, ParseResult
 from papiq.core.services.indexing import SUBSCRIBER
-from tests import builders, probes
+from tests import builders
 from tests.api import auth, issue_token, serving
 from tests.builders import DEFAULT_SETTINGS
-from tests.integration.adapters.meilisearch.conftest import drop
+from tests.integration.adapters.meilisearch.conftest import drop, new_index
 
 DOCUMENTS = f"{PREFIX}/documents"
 SEARCH = f"{DOCUMENTS}/search"
@@ -162,23 +161,13 @@ class System:
 
 
 @pytest.fixture
-async def system(stores: tuple[Database, ObjectStore], settings: Settings) -> AsyncIterator[System]:
-    if settings.meilisearch_url is None:
-        pytest.skip("PAPIQ_MEILISEARCH_URL is not set")
-    if probes.meilisearch_health(str(settings.meilisearch_url)) is None:
-        pytest.skip(f"Meilisearch not reachable at {settings.meilisearch_url}")
+async def system(
+    stores: tuple[Database, ObjectStore], meilisearch_settings: Settings
+) -> AsyncIterator[System]:
+    settings = meilisearch_settings
     database, object_store = stores
     name = f"papiq-test-{secrets.token_hex(6)}"
-    key = settings.meilisearch_api_key
-    index = MeilisearchIndex(
-        url=str(settings.meilisearch_url),
-        api_key=None if key is None else key.get_secret_value(),
-        index=name,
-        dimensions=FakeEmbeddings.DIMENSIONS,
-        locales=DEFAULT_SETTINGS.search_locales.split("+"),
-        timeout=DEFAULT_SETTINGS.meilisearch_timeout.total_seconds(),
-        task_timeout=DEFAULT_SETTINGS.meilisearch_task_timeout.total_seconds(),
-    )
+    index = new_index(settings, name, dimensions=FakeEmbeddings.DIMENSIONS)
     container = replace(
         build_memory_container(),
         unit_of_work=SqlUnitOfWorkFactory(database),

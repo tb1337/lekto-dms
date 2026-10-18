@@ -2,7 +2,6 @@
 the programs are not installed (the devcontainer has them)."""
 
 import asyncio
-import shutil
 from collections.abc import Iterator
 from datetime import timedelta
 from pathlib import Path
@@ -18,12 +17,12 @@ from papiq.adapters.outbound.pdfium.library import unreadable_share
 from papiq.composition.container import VISION_REQUEST_TIMEOUT
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import LanguageModelError
+from tests import probes
 from tests.builders import DEFAULT_SETTINGS
 from tests.contracts.processing import SAMPLES, OcrContract
 from tests.vision_stub import VisionStub, serve
 
-if not (shutil.which("tesseract") and shutil.which("gs")):
-    pytest.skip("Tesseract or Ghostscript not installed", allow_module_level=True)
+pytestmark = probes.requires_ocr
 
 
 def engine(

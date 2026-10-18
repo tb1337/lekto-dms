@@ -6,18 +6,8 @@ import pytest
 
 from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.composition.settings import Settings
-from tests import probes
 from tests.builders import DEFAULT_SETTINGS
 from tests.contracts.search_index import DIMENSIONS
-
-
-@pytest.fixture(scope="session")
-def meilisearch_settings(settings: Settings) -> Settings:
-    if settings.meilisearch_url is None:
-        pytest.skip("PAPIQ_MEILISEARCH_URL is not set")
-    if probes.meilisearch_health(str(settings.meilisearch_url)) is None:
-        pytest.skip(f"Meilisearch not reachable at {settings.meilisearch_url}")
-    return settings
 
 
 def new_index(

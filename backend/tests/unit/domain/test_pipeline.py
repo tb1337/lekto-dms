@@ -130,7 +130,7 @@ def test_node_run_is_a_log_entry() -> None:
 
 
 def test_the_history_reads_the_latest_entry_of_a_node() -> None:
-    document = received()
+    document = builders.received()
 
     def entry(node: Node, result: NodeResult) -> NodeRun:
         return NodeRun(

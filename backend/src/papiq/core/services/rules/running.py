@@ -389,11 +389,19 @@ def facts(
     )
 
 
-async def taxonomy(
-    uow: UnitOfWork, documents: Iterable[Document], rules: Iterable[Rule]
-) -> Taxonomy:
-    """The tag trees, and the groups of the contacts and types of `documents` and of those the
-    rules set, and the topics those contacts enable."""
+@dataclass(frozen=True)
+class Loaded:
+    """The master data a rule run looks at, loaded once (`taxonomy`): the taxonomy, and the
+    names of the contacts and types that exist, by id. The tags' names are in the tree."""
+
+    taxonomy: Taxonomy
+    contacts: Mapping[UUID, str]
+    types: Mapping[UUID, str]
+
+
+async def taxonomy(uow: UnitOfWork, documents: Iterable[Document], rules: Iterable[Rule]) -> Loaded:
+    """The tag trees, and the groups and names of the contacts and types of `documents` and of
+    those the rules refer to, and the topics those contacts enable."""
     contacts: set[UUID] = set()
     types: set[UUID] = set()
     for document in documents:
@@ -407,14 +415,18 @@ async def taxonomy(
         types |= references.document_types
     groups: dict[UUID, frozenset[TagId]] = {}
     topics: dict[UUID, frozenset[TagId]] = {}
+    contact_names: dict[UUID, str] = {}
+    type_names: dict[UUID, str] = {}
     for id in contacts:
         if (contact := await uow.contacts.find(ContactId(id))) is not None:
             groups[id] = contact.group_ids
             topics[id] = contact.topic_ids
+            contact_names[id] = contact.name
     for id in types:
         if (kind := await uow.document_types.find(DocumentTypeId(id))) is not None:
             groups[id] = kind.group_ids
-    return Taxonomy(await tag_tree(uow), groups, topics)
+            type_names[id] = kind.name
+    return Loaded(Taxonomy(await tag_tree(uow), groups, topics), contact_names, type_names)
 
 
 # --- the situation ----------------------------------------------------------------------------
@@ -434,11 +446,13 @@ async def situation(
     person_added_tags: frozenset[TagId] = frozenset(),
     person_removed_tags: frozenset[TagId] = frozenset(),
     accept_conflicts: bool = False,
-    tags: Taxonomy | None = None,
+    loaded: Loaded | None = None,
 ) -> Situation:
-    """Everything `plan` needs to know besides the matching rules. `tags`: the taxonomy of the
-    run (`taxonomy`), made here unless given."""
+    """Everything `plan` needs to know besides the matching rules. `loaded`: the master data
+    of the run (`taxonomy`, for the document and at least `rules`), loaded here unless given;
+    beyond it, only the spaces are read."""
     rules = list(rules)
+    loaded = loaded or await taxonomy(uow, [document], rules)
     references = [rule.definition.references() for rule in rules]
     existing: set[object] = set(definitions)
     names: dict[object, str] = {}
@@ -449,21 +463,19 @@ async def situation(
     if document.document_type_id is not None:
         types.add(document.document_type_id)
     for contact_id in contacts:
-        contact = await uow.contacts.find(ContactId(contact_id))
-        if contact is not None:
+        if (name := loaded.contacts.get(contact_id)) is not None:
             existing.add(contact_id)
-            names[contact_id] = contact.name
+            names[contact_id] = name
     for type_id in types:
-        document_type = await uow.document_types.find(DocumentTypeId(type_id))
-        if document_type is not None:
+        if (name := loaded.types.get(type_id)) is not None:
             existing.add(type_id)
-            names[type_id] = document_type.name
+            names[type_id] = name
+    tree = loaded.taxonomy.tree
     shown = {*document.tag_ids, *([] if document.topic_id is None else [document.topic_id])}
     for tag_id in {id for refs in references for id in refs.tags} | shown:
-        tag = await uow.tags.find(tag_id)
-        if tag is not None:
+        if tag_id in tree:
             existing.add(tag_id)
-            names[tag_id] = tag.name
+            names[tag_id] = tree.tags[tag_id].name
     spaces: dict[SpaceId, SpaceTarget] = {}
     for rule in rules:
         for action in rule.definition.actions:
@@ -498,7 +510,7 @@ async def situation(
         person_removed_tags=person_removed_tags,
         reviewed=origin.reviewed,
         accept_conflicts=accept_conflicts,
-        taxonomy=tags or await taxonomy(uow, [document], rules),
+        taxonomy=loaded.taxonomy,
     )
 
 
@@ -544,11 +556,11 @@ async def run_rules(
     for a change, the state before it and its field pattern results; only rules that become
     true with the change act."""
     patterns, problems = await field_patterns(matcher, rules, document)
-    tags = await taxonomy(uow, [document, *([] if before is None else [before[0]])], rules)
-    now_facts = facts(document, prepared, patterns, origin, tags)
+    loaded = await taxonomy(uow, [document, *([] if before is None else [before[0]])], rules)
+    now_facts = facts(document, prepared, patterns, origin, loaded.taxonomy)
     before_facts = None
     if before is not None:
-        before_facts = facts(before[0], prepared, before[1], origin, tags)
+        before_facts = facts(before[0], prepared, before[1], origin, loaded.taxonomy)
     matched = matches(rules, now_facts, definitions, before=before_facts)
     context = await situation(
         uow,
@@ -563,7 +575,7 @@ async def run_rules(
         person_added_tags=origin.tags_added,
         person_removed_tags=origin.tags_removed,
         accept_conflicts=accept_conflicts,
-        tags=tags,
+        loaded=loaded,
     )
     return RuleRun(plan(matched, context), prepared.problems + problems)
 

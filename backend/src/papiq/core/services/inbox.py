@@ -1,11 +1,13 @@
-"""The inbox: what is open in a yellow or red document, and how its owner's decision on the open
-fields turns into a metadata change.
+"""The inbox: what stands in whose inbox, by tab (`domain.inbox`), and seen per user
+(`InboxService`); what is open in a yellow or red document, and how its owner's decision on the
+open fields turns into a metadata change.
 
 What the signals proposed and how each field was checked lies in the processing log (output
 of the judge and the fields node). These functions read it from there; the rules (M7) use
 `field_checks` for the values of the latest run.
 """
 
+import logging
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
@@ -27,8 +29,26 @@ from papiq.core.domain.classification import (
 from papiq.core.domain.documents import Document, DocumentChanges, Unset
 from papiq.core.domain.errors import OpenFieldsError, ValidationError
 from papiq.core.domain.fields import FieldDefinition, field_from_json
-from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId
+from papiq.core.domain.ids import (
+    ContactId,
+    DocumentId,
+    DocumentTypeId,
+    FieldId,
+    SpaceId,
+    TagId,
+    UserId,
+)
+from papiq.core.domain.inbox import (
+    DONE_PERIOD,
+    OPEN_TABS,
+    InboxState,
+    InboxTab,
+    inbox_state,
+    open_tab,
+    worst_lane,
+)
 from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.permissions import can_control_document, document_access
 from papiq.core.domain.pipeline import (
     ACCEPTED,
     CONFIRMED_BY,
@@ -37,13 +57,20 @@ from papiq.core.domain.pipeline import (
     NODES,
     PERSON,
     TRUNCATED,
+    Lane,
     Node,
     NodeResult,
     NodeRun,
     Outcome,
     ProcessingHistory,
 )
-from papiq.core.domain.spaces import ShareLevel
+from papiq.core.domain.spaces import ShareLevel, Space
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from papiq.core.services._access import load_actor, load_lister, readable_document
+
+log = logging.getLogger(__name__)
 
 ALWAYS_SET = frozenset({SPACE, TITLE, REVIEW})
 """Open fields of the rules that always have a value: confirming keeps it."""
@@ -78,9 +105,27 @@ class NodeReview:
 
 @dataclass(frozen=True)
 class InboxItem:
+    """A document in the caller's inbox: where it stands (with how it left, under done), and
+    what is open in it."""
+
     document: Document
     access: ShareLevel  # the caller's, as in `DocumentView`
     open: tuple[OpenNode, ...]
+    state: InboxState
+
+
+@dataclass(frozen=True)
+class InboxSummary:
+    """How many documents stand under each tab of the caller's inbox, and the worst lane among
+    the open ones (`domain.inbox.worst_lane`)."""
+
+    counts: Mapping[InboxTab, int]
+    worst_lane: Lane | None
+
+    @property
+    def open(self) -> int:
+        """Everything open: what the badge counts."""
+        return sum(self.counts.get(tab, 0) for tab in OPEN_TABS)
 
 
 @dataclass(frozen=True)
@@ -328,3 +373,126 @@ def _label(
     if field_id is None:
         return field
     return f"{field} ({definitions[field_id].name})"
+
+
+class InboxService:
+    """The inbox (`domain.inbox`): what stands in the caller's, by tab, newest first; its
+    summary; seen per user. An admin with `all_users` has every user's inbox, with their own
+    seen. Seen changes nothing but the inbox: not `confirmed_at`, the training, rules or the
+    lane."""
+
+    def __init__(self, uow: UnitOfWorkFactory, clock: Clock) -> None:
+        self._uow = uow
+        self._clock = clock
+
+    async def items(
+        self,
+        actor: UserId,
+        *,
+        tab: InboxTab | None = None,
+        after: DocumentId | None = None,
+        limit: int = PAGE_SIZE,
+        all_users: bool = False,
+    ) -> list[InboxItem]:
+        """The documents under `tab` of the caller's inbox (None: under any open tab), newest
+        first, after the document `after`; with `all_users` (admins only), of every user. Each
+        with what is open in it, and under done how, when and by whom it left."""
+        limit = max(1, min(limit, PAGE_LIMIT))
+        async with self._uow() as uow:
+            user = await load_lister(uow, actor, all_users, "see the inboxes of all users")
+            since = self._clock.now() - DONE_PERIOD
+            entries = await uow.inbox.query(
+                actor,
+                owner=None if all_users else actor,
+                tab=tab,
+                since=since,
+                after=after,
+                limit=limit,
+            )
+            spaces: dict[SpaceId, Space] = {}
+            items = []
+            for entry in entries:
+                document = entry.document
+                state = inbox_state(
+                    document,
+                    viewer=actor,
+                    seen_at=entry.seen_at,
+                    confirmation=entry.confirmation,
+                    since=since,
+                )
+                if state is None:
+                    log.error(
+                        "the repository listed a document that is not in the inbox",
+                        extra={"document_id": str(document.id), "user_id": str(actor)},
+                    )
+                    continue
+                if document.space_id not in spaces:
+                    spaces[document.space_id] = await uow.spaces.get(document.space_id)
+                access = document_access(user, document, spaces[document.space_id])
+                assert access is not None  # the owner's, or any to an admin
+                items.append(InboxItem(document, access, await _open(uow, document), state))
+        return items
+
+    async def summary(self, actor: UserId, *, all_users: bool = False) -> InboxSummary:
+        """How many documents stand under each tab of the caller's inbox (with `all_users`,
+        admins only: every user's), and the worst lane among the open ones."""
+        async with self._uow() as uow:
+            await load_lister(uow, actor, all_users, "see the inboxes of all users")
+            counts = await uow.inbox.count(
+                actor,
+                owner=None if all_users else actor,
+                since=self._clock.now() - DONE_PERIOD,
+            )
+        return InboxSummary(counts, worst_lane(counts))
+
+    async def mark_seen(self, actor: UserId, id: DocumentId) -> None:
+        """The caller saw the document: the web UI reports it when the document view opens
+        (reading a document through the API or MCP does not). NotFoundError if they cannot read
+        it. Nothing changes for a document that is new for no one, or one that cannot stand in
+        the caller's inbox (a document in reach through a share only)."""
+        async with self._uow() as uow:
+            user = await load_actor(uow, actor)
+            document, _ = await readable_document(uow, user, id)
+            if document.new_at is None or not can_control_document(user, document):
+                return
+            await uow.inbox.mark_seen(actor, id, self._clock.now())
+            await uow.commit()
+
+    async def mark_unseen(self, actor: UserId, id: DocumentId) -> None:
+        """Mark the document as new again: the caller's seen is forgotten, and it stands new in
+        their inbox while it is new. NotFoundError if they cannot read it."""
+        async with self._uow() as uow:
+            await readable_document(uow, await load_actor(uow, actor), id)
+            await uow.inbox.unmark_seen(actor, id)
+            await uow.commit()
+
+    async def mark_all_seen(self, actor: UserId, *, all_users: bool = False) -> int:
+        """Mark everything new in the caller's inbox (with `all_users`, admins only: in every
+        user's) as seen by them; returns how many documents."""
+        async with self._uow() as uow:
+            await load_lister(uow, actor, all_users, "see the inboxes of all users")
+            count = await uow.inbox.mark_all_seen(
+                actor, owner=None if all_users else actor, at=self._clock.now()
+            )
+            await uow.commit()
+        return count
+
+
+async def in_inbox(
+    uow: UnitOfWork, viewer: UserId, documents: Sequence[Document], *, all_users: bool
+) -> set[DocumentId]:
+    """Those of `documents` that stand open in `viewer`'s inbox (with `all_users`, an admin's:
+    of every user), for marking them in lists and search: one query for the viewer's seen marks
+    of the new ones."""
+    theirs = [document for document in documents if all_users or document.owner_id == viewer]
+    new = [item.id for item in theirs if item.lane is Lane.GREEN and item.new_at is not None]
+    seen = await uow.inbox.seen(viewer, new) if new else {}
+    return {item.id for item in theirs if open_tab(item, seen.get(item.id)) is not None}
+
+
+async def _open(uow: UnitOfWork, document: Document) -> tuple[OpenNode, ...]:
+    """What is open in the document; its log is read only if a node is uncertain or failed."""
+    outcomes = document.processing.outcomes.values()
+    if not any(outcome in (Outcome.UNCERTAIN, Outcome.FAILED) for outcome in outcomes):
+        return ()
+    return open_nodes(document, await uow.processing_log.list_for(document.id))

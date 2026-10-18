@@ -1,5 +1,5 @@
 """Documents: list, metadata, moving, deleting, files; upload, processing log, retry and
-reprocessing; the inbox, review and confirmation.
+reprocessing; the inbox with its tabs, summary and seen, review and confirmation.
 
 Documents the caller may not read are "not found", the same as documents that do not exist:
 the list leaves them out, filters and pages only ever see readable ones.
@@ -24,7 +24,7 @@ from starlette.background import BackgroundTask
 from papiq.adapters.inbound.rest.auth import PROTECTED, Authenticated, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
 from papiq.adapters.inbound.rest.cursors import Cursor, decode_cursor, encode_cursor
-from papiq.adapters.inbound.rest.params import AllDocuments, Filter
+from papiq.adapters.inbound.rest.params import AllDocuments, AllInboxes, Filter
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.documents import (
     DocumentAccepted,
@@ -51,6 +51,8 @@ from papiq.adapters.inbound.rest.schemas.inbox import (
     ConfirmRequest,
     InboxItemOut,
     InboxPage,
+    InboxSeenOut,
+    InboxSummaryOut,
     ReviewOut,
 )
 from papiq.adapters.inbound.rest.upload import read_upload, upload_body
@@ -69,6 +71,7 @@ from papiq.core.domain.ids import (
     UserId,
 )
 from papiq.core.domain.imports import ImportedMetadata
+from papiq.core.domain.inbox import InboxTab
 from papiq.core.domain.pipeline import Node
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE
 from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE, DocumentOrder, SortKey
@@ -569,6 +572,38 @@ async def reprocess(
     return _details(await context.pipeline.reprocess_from(user, DocumentId(id), node))
 
 
+@router.put(
+    "/{id}/seen",
+    status_code=204,
+    summary="Mark a document as seen",
+    description=(
+        "The caller saw the document: if it stands in their inbox as new, it leaves it (`done`, "
+        "`GET /inbox`). The web UI calls it when the document view opens; reading a document "
+        "(`GET /documents/{id}`, MCP) does not. Needs read access; nothing changes for a "
+        "document that is new for no one, or one the caller reaches through a share only (it "
+        "never stands in their inbox). Seen is per user and changes nothing else: not "
+        "`confirmed_at`, the training, rules or the lane."
+    ),
+    responses=problem_responses(401, 403, 404, 422),
+)
+async def mark_seen(id: UUID, user: CurrentUser, context: Context) -> None:
+    await context.inbox.mark_seen(user, DocumentId(id))
+
+
+@router.delete(
+    "/{id}/seen",
+    status_code=204,
+    summary="Mark a document as new again",
+    description=(
+        "Forgets that the caller saw the document: while it is new, it stands in their inbox "
+        "under `new` again. Needs read access."
+    ),
+    responses=problem_responses(401, 403, 404, 422),
+)
+async def mark_unseen(id: UUID, user: CurrentUser, context: Context) -> None:
+    await context.inbox.mark_unseen(user, DocumentId(id))
+
+
 @router.get(
     "/{id}/review",
     summary="What the model proposed for a document",
@@ -623,9 +658,15 @@ async def confirm(
     "",
     summary="The caller's inbox",
     description=(
-        "The caller's yellow and red documents, newest first, each with its open nodes and "
-        "fields; with `all_users` (admins, others: 403) those of every user. Confirm them with "
-        "`POST /documents/{id}/confirm`, or repeat a failed node with `retry`."
+        "The caller's own documents that wait for them, newest first: in processing, yellow "
+        "(`review`), red (`intervene`), and new ones, which went green without a person's "
+        "decision and are not seen by the caller since (`PUT /documents/{id}/seen`); each with "
+        "its open nodes and fields. Documents the caller reaches through a share never stand "
+        "there. `tab` takes one of them, or `done`: what left the inbox in the last 14 days, "
+        "with how (confirmed out of yellow or red, or seen), when and by whom. With "
+        "`all_users` (admins, others: 403) every user's inbox, with the caller's own seen. "
+        "Confirm yellow and red documents with `POST /documents/{id}/confirm`, or repeat a "
+        "failed node with `retry`."
     ),
     response_model=InboxPage,
     responses=problem_responses(401, 403, 422),
@@ -633,15 +674,53 @@ async def confirm(
 async def list_inbox(
     user: CurrentUser,
     context: Context,
+    tab: Annotated[
+        InboxTab | None, Query(description="One tab; without it, everything but `done`.")
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=PAGE_LIMIT)] = PAGE_SIZE,
     cursor: Cursor = None,
-    all_users: AllDocuments = False,
+    all_users: AllInboxes = False,
 ) -> InboxPage:
-    items = await context.documents.inbox(
-        user, before=decode_cursor(cursor), limit=limit, all_users=all_users
+    items = await context.inbox.items(
+        user, tab=tab, after=decode_cursor(cursor), limit=limit, all_users=all_users
     )
     next_cursor = encode_cursor(items[-1].document.id) if len(items) == limit else None
     return InboxPage(items=[InboxItemOut.of(item) for item in items], next_cursor=next_cursor)
+
+
+@inbox.get(
+    "/summary",
+    summary="What the caller's inbox holds",
+    description=(
+        "How many documents stand under each tab of the caller's inbox (as `GET /inbox`), "
+        "everything open together, and the worst lane among the open ones (red before yellow "
+        "before green; null with nothing open but documents in processing). With `all_users` "
+        "(admins, others: 403) every user's inbox."
+    ),
+    response_model=InboxSummaryOut,
+    responses=problem_responses(401, 403, 422),
+)
+async def inbox_summary(
+    user: CurrentUser, context: Context, all_users: AllInboxes = False
+) -> InboxSummaryOut:
+    return InboxSummaryOut.of(await context.inbox.summary(user, all_users=all_users))
+
+
+@inbox.post(
+    "/seen",
+    summary="Mark everything new in the inbox as seen",
+    description=(
+        "Marks every document that stands under `new` in the caller's inbox as seen by them "
+        "(with `all_users`, admins, others: 403: in every user's inbox, for the caller). They "
+        "go to `done`."
+    ),
+    response_model=InboxSeenOut,
+    responses=problem_responses(401, 403, 422),
+)
+async def mark_all_seen(
+    user: CurrentUser, context: Context, all_users: AllInboxes = False
+) -> InboxSeenOut:
+    return InboxSeenOut(marked=await context.inbox.mark_all_seen(user, all_users=all_users))
 
 
 def _differences(before: Document, after: Document) -> list[str]:

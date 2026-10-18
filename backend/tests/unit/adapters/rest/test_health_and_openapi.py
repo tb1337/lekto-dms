@@ -199,7 +199,11 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/documents/{{id}}/review", "get"),
         (f"{PREFIX}/documents/{{id}}/confirm", "post"),
         (f"{PREFIX}/documents/{{id}}/dry-run", "post"),
+        (f"{PREFIX}/documents/{{id}}/seen", "put"),
+        (f"{PREFIX}/documents/{{id}}/seen", "delete"),
         (f"{PREFIX}/inbox", "get"),
+        (f"{PREFIX}/inbox/summary", "get"),
+        (f"{PREFIX}/inbox/seen", "post"),
         (f"{PREFIX}/events", "get"),
         (f"{PREFIX}/health", "get"),
     }

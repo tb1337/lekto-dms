@@ -34,9 +34,8 @@ from papiq.core.domain.permissions import (
     document_access,
     in_reach,
 )
-from papiq.core.domain.pipeline import Lane, Node, NodeRun
+from papiq.core.domain.pipeline import Node, NodeRun
 from papiq.core.domain.spaces import ShareLevel, Space
-from papiq.core.domain.users import User
 from papiq.core.ports.clock import Clock
 from papiq.core.ports.metadata import FileMetadata, MetadataReader
 from papiq.core.ports.object_store import ObjectStore
@@ -54,17 +53,17 @@ from papiq.core.ports.repository import (
 from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import (
     access_to,
-    admin_only,
     checked_changes,
     controllable_document,
     field_definitions,
     load_actor,
+    load_lister,
     readable_document,
     visible_space,
     writable_document,
 )
 from papiq.core.services._tags import expanded, tag_counts
-from papiq.core.services.inbox import InboxItem, Review, node_reviews, open_nodes
+from papiq.core.services.inbox import Review, node_reviews, open_nodes
 from papiq.core.services.maintenance import REMOVE_FILES_JOB, RemoveFiles
 from papiq.core.services.objects import (
     EXCHANGE_NODES,
@@ -361,7 +360,7 @@ class DocumentService:
         `after` is gone while the list sorts by another key than the order of arrival."""
         limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
-            user = await _lister(uow, actor, all_users)
+            user = await load_lister(uow, actor, all_users, "list the documents of all users")
             position = await _position(uow, order, after)
             filter = await expanded(uow, filter)
             if all_users:
@@ -448,7 +447,7 @@ class DocumentService:
         its filter finds: the documents with it or a tag below it (each once), a group those
         whose contact or type is in it or a group below it (`_tags.tag_counts`)."""
         async with self._uow() as uow:
-            await _lister(uow, actor, all_users)
+            await load_lister(uow, actor, all_users, "count the documents of all users")
             user = None if all_users else actor
             if by is CountBy.TAG:
                 return await tag_counts(uow, user)
@@ -516,40 +515,6 @@ class DocumentService:
                 continue
             return exchanges_from_json(json.loads(data))
         return []
-
-    async def inbox(
-        self,
-        actor: UserId,
-        *,
-        before: DocumentId | None = None,
-        limit: int = PAGE_SIZE,
-        all_users: bool = False,
-    ) -> list[InboxItem]:
-        """The caller's yellow and red documents, newest first, with what is open in them;
-        with `all_users` (admins only), those of every user."""
-        limit = max(1, min(limit, PAGE_LIMIT))
-        waiting = DocumentFilter(lanes=frozenset({Lane.YELLOW, Lane.RED}))
-        async with self._uow() as uow:
-            user = await _lister(uow, actor, all_users)
-            after = DocumentPosition.after(before)
-            if all_users:
-                documents = await uow.documents.query(waiting, after=after, limit=limit)
-            else:
-                documents = await uow.documents.query_visible(
-                    actor, waiting, after=after, limit=limit
-                )
-            spaces: dict[SpaceId, Space] = {}
-            items = []
-            for document in documents:
-                if not all_users and document.owner_id != actor:
-                    continue  # only owners see their yellow and red documents in their reach
-                if document.space_id not in spaces:
-                    spaces[document.space_id] = await uow.spaces.get(document.space_id)
-                access = document_access(user, document, spaces[document.space_id])
-                assert access is not None  # the owner's, or any to an admin
-                log = await uow.processing_log.list_for(document.id)
-                items.append(InboxItem(document, access, open_nodes(document, log)))
-        return items
 
     async def review(self, actor: UserId, id: DocumentId) -> Review:
         """Owner or admin: what is open, and what the model proposed and how it was checked."""
@@ -651,13 +616,6 @@ class DocumentService:
                 run_at=self._clock.now(),
             )
             await uow.commit()
-
-
-async def _lister(uow: UnitOfWork, actor: UserId, all_users: bool) -> User:
-    user = await load_actor(uow, actor)
-    if all_users:
-        admin_only(user, "list the documents of all users")
-    return user
 
 
 async def _readers(uow: UnitOfWork, document: Document) -> list[UserId]:

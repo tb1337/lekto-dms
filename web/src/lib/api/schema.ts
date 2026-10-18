@@ -1409,6 +1409,30 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/{id}/seen': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/**
+		 * Mark a document as seen
+		 * @description The caller saw the document: if it stands in their inbox as new, it leaves it (`done`, `GET /inbox`). The web UI calls it when the document view opens; reading a document (`GET /documents/{id}`, MCP) does not. Needs read access; nothing changes for a document that is new for no one, or one the caller reaches through a share only (it never stands in their inbox). Seen is per user and changes nothing else: not `confirmed_at`, the training, rules or the lane.
+		 */
+		put: operations['mark_seen_api_v1_documents__id__seen_put'];
+		post?: never;
+		/**
+		 * Mark a document as new again
+		 * @description Forgets that the caller saw the document: while it is new, it stands in their inbox under `new` again. Needs read access.
+		 */
+		delete: operations['mark_unseen_api_v1_documents__id__seen_delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/{id}/review': {
 		parameters: {
 			query?: never;
@@ -1458,11 +1482,51 @@ export interface paths {
 		};
 		/**
 		 * The caller's inbox
-		 * @description The caller's yellow and red documents, newest first, each with its open nodes and fields; with `all_users` (admins, others: 403) those of every user. Confirm them with `POST /documents/{id}/confirm`, or repeat a failed node with `retry`.
+		 * @description The caller's own documents that wait for them, newest first: in processing, yellow (`review`), red (`intervene`), and new ones, which went green without a person's decision and are not seen by the caller since (`PUT /documents/{id}/seen`); each with its open nodes and fields. Documents the caller reaches through a share never stand there. `tab` takes one of them, or `done`: what left the inbox in the last 14 days, with how (confirmed out of yellow or red, or seen), when and by whom. With `all_users` (admins, others: 403) every user's inbox, with the caller's own seen. Confirm yellow and red documents with `POST /documents/{id}/confirm`, or repeat a failed node with `retry`.
 		 */
 		get: operations['list_inbox_api_v1_inbox_get'];
 		put?: never;
 		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/inbox/summary': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * What the caller's inbox holds
+		 * @description How many documents stand under each tab of the caller's inbox (as `GET /inbox`), everything open together, and the worst lane among the open ones (red before yellow before green; null with nothing open but documents in processing). With `all_users` (admins, others: 403) every user's inbox.
+		 */
+		get: operations['inbox_summary_api_v1_inbox_summary_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/inbox/seen': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Mark everything new in the inbox as seen
+		 * @description Marks every document that stands under `new` in the caller's inbox as seen by them (with `all_users`, admins, others: 403: in every user's inbox, for the caller). They go to `done`.
+		 */
+		post: operations['mark_all_seen_api_v1_inbox_seen_post'];
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -2408,6 +2472,12 @@ export interface components {
 		 * @enum {string}
 		 */
 		DeliveryOutcome: 'delivered' | 'retrying' | 'gave_up' | 'dropped';
+		/**
+		 * Departure
+		 * @description How a document left the inbox.
+		 * @enum {string}
+		 */
+		Departure: 'confirmed' | 'seen';
 		/** DocumentAccepted */
 		DocumentAccepted: {
 			/**
@@ -3432,11 +3502,34 @@ export interface components {
 		 * @enum {string}
 		 */
 		IdentifierSource: 'manual' | 'learned' | 'rejected';
+		/**
+		 * InboxDoneOut
+		 * @description How a document left the caller's inbox.
+		 */
+		InboxDoneOut: {
+			/** @description `confirmed`: a person confirmed it out of yellow or red (it left every inbox); `seen`: the caller saw it. */
+			how: components['schemas']['Departure'];
+			/**
+			 * At
+			 * Format: date-time
+			 */
+			at: string;
+			/**
+			 * By
+			 * Format: uuid
+			 * @description The user who confirmed it, or who saw it (the caller); the account may be gone.
+			 */
+			by: string;
+		};
 		/** InboxItemOut */
 		InboxItemOut: {
 			document: components['schemas']['DocumentDetails'];
+			/** @description Where it stands: `new` (green by itself, not seen by the caller since it became new), `review` (yellow), `intervene` (red), `processing` (no lane yet), `done` (left the caller's inbox in the last 14 days). */
+			tab: components['schemas']['InboxTab'];
 			/** Open */
 			open: components['schemas']['OpenNodeOut'][];
+			/** @description How it left the inbox; `done` only. */
+			done: components['schemas']['InboxDoneOut'] | null;
 		};
 		/** InboxPage */
 		InboxPage: {
@@ -3448,6 +3541,51 @@ export interface components {
 			 */
 			next_cursor: string | null;
 		};
+		/** InboxSeenOut */
+		InboxSeenOut: {
+			/**
+			 * Marked
+			 * @description The documents marked as seen.
+			 */
+			marked: number;
+		};
+		/**
+		 * InboxSummaryOut
+		 * @description How many documents stand under each tab of the caller's inbox.
+		 * @example {
+		 *       "done": 12,
+		 *       "intervene": 0,
+		 *       "new": 3,
+		 *       "open": 6,
+		 *       "processing": 2,
+		 *       "review": 1,
+		 *       "worst_lane": "yellow"
+		 *     }
+		 */
+		InboxSummaryOut: {
+			/** New */
+			new: number;
+			/** Review */
+			review: number;
+			/** Intervene */
+			intervene: number;
+			/** Processing */
+			processing: number;
+			/** Done */
+			done: number;
+			/**
+			 * Open
+			 * @description Everything open: all tabs but `done`.
+			 */
+			open: number;
+			/** @description The worst lane among the open documents, `red` before `yellow` before `green` (new ones); null with only documents in processing, or none. */
+			worst_lane: components['schemas']['Lane'] | null;
+		};
+		/**
+		 * InboxTab
+		 * @enum {string}
+		 */
+		InboxTab: 'new' | 'review' | 'intervene' | 'processing' | 'done';
 		/**
 		 * Lane
 		 * @enum {string}
@@ -16135,6 +16273,216 @@ export interface operations {
 			};
 		};
 	};
+	mark_seen_api_v1_documents__id__seen_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	mark_unseen_api_v1_documents__id__seen_delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
 	review_api_v1_documents__id__review_get: {
 		parameters: {
 			query?: never;
@@ -16390,10 +16738,12 @@ export interface operations {
 	list_inbox_api_v1_inbox_get: {
 		parameters: {
 			query?: {
+				/** @description One tab; without it, everything but `done`. */
+				tab?: components['schemas']['InboxTab'] | null;
 				limit?: number;
 				/** @description `next_cursor`. */
 				cursor?: string | null;
-				/** @description Every user's documents instead of the caller's reach (admins). */
+				/** @description Every user's inbox instead of the caller's, with the caller's seen (admins). */
 				all_users?: boolean;
 			};
 			header?: never;
@@ -16409,6 +16759,188 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['InboxPage'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	inbox_summary_api_v1_inbox_summary_get: {
+		parameters: {
+			query?: {
+				/** @description Every user's inbox instead of the caller's, with the caller's seen (admins). */
+				all_users?: boolean;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['InboxSummaryOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	mark_all_seen_api_v1_inbox_seen_post: {
+		parameters: {
+			query?: {
+				/** @description Every user's inbox instead of the caller's, with the caller's seen (admins). */
+				all_users?: boolean;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['InboxSeenOut'];
 				};
 			};
 			/** @description Unauthorized */

@@ -115,7 +115,7 @@ async def test_conflicting_rules_wait_in_the_inbox_until_the_owner_decides(world
 
     assert document.lane is Lane.YELLOW
     assert document.contact_id is None  # priority orders, but never decides
-    (item,) = await r.documents.inbox(owner.id)
+    (item,) = await world.inbox.items(owner.id)
     (open,) = item.open
     assert open.node is Node.APPLY_RULES
     (check,) = open.fields
@@ -148,7 +148,7 @@ async def test_a_required_field_set_by_hand_waits_for_a_person(world: World) -> 
     document = await r.arrive(owner)
 
     assert document.lane is Lane.YELLOW
-    (item,) = await r.documents.inbox(owner.id)
+    (item,) = await world.inbox.items(owner.id)
     (open,) = item.open
     assert open.node is Node.APPLY_RULES
     (check,) = open.fields

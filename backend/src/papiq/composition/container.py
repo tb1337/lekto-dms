@@ -99,6 +99,7 @@ from papiq.core.services.classification.signals import (
 from papiq.core.services.classifier import ClassifierPolicy, ClassifierService
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
+from papiq.core.services.inbox import InboxService
 from papiq.core.services.indexing import IndexingPolicy, IndexingService
 from papiq.core.services.logos import LogoService
 from papiq.core.services.maintenance import MaintenanceService
@@ -482,6 +483,7 @@ class Services:
     webhooks: WebhookService
     webhook_delivery: WebhookDeliveryService
     documents: DocumentService
+    inbox: InboxService
     pipeline: PipelineService
     maintenance: MaintenanceService
     indexing: IndexingService | None  # with a search index
@@ -737,6 +739,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
                 pipeline_version=__version__,
             ),
         ),
+        inbox=InboxService(uow, clock),
         pipeline=PipelineService(
             uow,
             clock,

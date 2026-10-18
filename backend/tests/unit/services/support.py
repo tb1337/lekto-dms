@@ -25,6 +25,7 @@ from papiq.core.ports.logos import LogoFetcher
 from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.auth import AuthService
 from papiq.core.services.documents import DocumentService
+from papiq.core.services.inbox import InboxService
 from papiq.core.services.logos import LogoService
 from papiq.core.services.master_data import NORMALISE_BATCH, MasterDataService
 from papiq.core.services.oidc import OidcService
@@ -128,6 +129,10 @@ class World:
     @property
     def documents(self) -> DocumentService:
         return DocumentService(self.uow, self.clock, self.object_store)
+
+    @property
+    def inbox(self) -> InboxService:
+        return InboxService(self.uow, self.clock)
 
     @property
     def webhooks(self) -> WebhookService:

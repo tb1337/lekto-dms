@@ -181,7 +181,7 @@ async def test_the_model_deriving_contact_type_or_tags_ends_the_confirmation(
 async def test_an_uncertain_document_is_in_the_inbox(world: World) -> None:
     s = await scene(world)
     assert s.document.processing.status is ProcessingStatus.REVIEW
-    (item,) = await world.documents.inbox(s.owner.id)
+    (item,) = await world.inbox.items(s.owner.id)
     assert item.document.id == s.document.id
     assert [(node.node, node.outcome) for node in item.open] == [
         (Node.JUDGE, Outcome.UNCERTAIN),
@@ -189,7 +189,7 @@ async def test_an_uncertain_document_is_in_the_inbox(world: World) -> None:
     ]
     assert [check.field for check in item.open[0].fields] == ["contact", "document_date"]
     assert item.open[1].fields[0].field == field_key(s.amount.id)
-    assert await world.documents.inbox((await world.user()).id) == []
+    assert await world.inbox.items((await world.user()).id) == []
 
 
 async def test_the_review_shows_the_model_runs(world: World) -> None:
@@ -245,7 +245,7 @@ async def test_a_confirmed_document_is_filed(world: World) -> None:
     assert document.document_date == date(2026, 3, 31)
     assert document.fields[s.amount.id] == Money(Decimal("84.20"), "EUR")
     assert DocumentFiled.type in world.event_types()
-    assert await world.documents.inbox(s.owner.id) == []
+    assert await world.inbox.items(s.owner.id) == []
     # Who confirmed it, for the inbox's done; new it is for no one.
     assert world.database.confirmations == {s.document.id: Confirmation(s.owner.id, NOW)}
     assert document.new_at is None
@@ -398,7 +398,7 @@ async def test_a_red_document_can_be_taken_over(world: World) -> None:
     pipeline = world.pipeline({Node.JUDGE: Returns(FAILED)})
     document = await pipeline.receive(owner.id, incoming(b"%PDF-1.7\n%%EOF\n"), filename="a.pdf")
     await world.drain(pipeline)
-    (item,) = await world.documents.inbox(owner.id)
+    (item,) = await world.inbox.items(owner.id)
     assert (item.open[0].node, item.open[0].outcome, item.open[0].fields) == (
         Node.JUDGE,
         Outcome.FAILED,

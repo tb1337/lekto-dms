@@ -76,6 +76,7 @@ def api_context(container: Container, settings: Settings, services: Services) ->
         cookie_secure=settings.cookie_secure,
         pipeline=services.pipeline,
         documents=services.documents,
+        inbox=services.inbox,
         rules=services.rules,
         rule_applications=services.rule_applications,
         webhooks=services.webhooks,

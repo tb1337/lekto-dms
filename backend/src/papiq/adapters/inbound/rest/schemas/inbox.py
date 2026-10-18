@@ -1,5 +1,6 @@
-"""The inbox: open fields, review and confirmation."""
+"""The inbox: its tabs and summary, open fields, review and confirmation."""
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 from uuid import UUID
@@ -8,9 +9,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails, DocumentPatch
 from papiq.core.domain.classification import Candidate, CandidateSource, FieldCheck
+from papiq.core.domain.inbox import Departure, Done, InboxTab
 from papiq.core.domain.locations import Box, Location
-from papiq.core.domain.pipeline import Node, Outcome
-from papiq.core.services.inbox import InboxItem, NodeReview, OpenNode, Review
+from papiq.core.domain.pipeline import Lane, Node, Outcome
+from papiq.core.services.inbox import (
+    InboxItem,
+    InboxSummary,
+    NodeReview,
+    OpenNode,
+    Review,
+)
 
 ResumeNode = StrEnum(  # type: ignore[misc]
     "ResumeNode", {node.name: node.value for node in (Node.FIELDS, Node.APPLY_RULES)}
@@ -256,15 +264,47 @@ class OpenNodeOut(BaseModel):
         )
 
 
+class InboxDoneOut(BaseModel):
+    """How a document left the caller's inbox."""
+
+    how: Departure = Field(
+        description=(
+            "`confirmed`: a person confirmed it out of yellow or red (it left every inbox); "
+            "`seen`: the caller saw it."
+        )
+    )
+    at: datetime
+    by: UUID = Field(
+        description=(
+            "The user who confirmed it, or who saw it (the caller); the account may be gone."
+        )
+    )
+
+    @classmethod
+    def of(cls, done: Done) -> "InboxDoneOut":
+        return cls(how=done.how, at=done.at, by=done.by)
+
+
 class InboxItemOut(BaseModel):
     document: DocumentDetails
+    tab: InboxTab = Field(
+        description=(
+            "Where it stands: `new` (green by itself, not seen by the caller since it became "
+            "new), `review` (yellow), `intervene` (red), `processing` (no lane yet), `done` "
+            "(left the caller's inbox in the last 14 days)."
+        )
+    )
     open: list[OpenNodeOut]
+    done: InboxDoneOut | None = Field(description="How it left the inbox; `done` only.")
 
     @classmethod
     def of(cls, item: InboxItem) -> "InboxItemOut":
+        done = item.state.done
         return cls(
             document=DocumentDetails.of(item.document, item.access),
+            tab=item.state.tab,
             open=[OpenNodeOut.of(node) for node in item.open],
+            done=None if done is None else InboxDoneOut.of(done),
         )
 
 
@@ -273,6 +313,52 @@ class InboxPage(BaseModel):
     next_cursor: str | None = Field(
         description="Pass as `cursor` for the next page; null on the last page."
     )
+
+
+class InboxSummaryOut(BaseModel):
+    """How many documents stand under each tab of the caller's inbox."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "new": 3,
+                    "review": 1,
+                    "intervene": 0,
+                    "processing": 2,
+                    "done": 12,
+                    "open": 6,
+                    "worst_lane": "yellow",
+                }
+            ]
+        }
+    )
+
+    new: int
+    review: int
+    intervene: int
+    processing: int
+    done: int
+    open: int = Field(description="Everything open: all tabs but `done`.")
+    worst_lane: Lane | None = Field(
+        description=(
+            "The worst lane among the open documents, `red` before `yellow` before `green` "
+            "(new ones); null with only documents in processing, or none."
+        )
+    )
+
+    @classmethod
+    def of(cls, summary: InboxSummary) -> "InboxSummaryOut":
+        counts = summary.counts
+        return cls(
+            **{tab.value: counts.get(tab, 0) for tab in InboxTab},
+            open=summary.open,
+            worst_lane=summary.worst_lane,
+        )
+
+
+class InboxSeenOut(BaseModel):
+    marked: int = Field(description="The documents marked as seen.")
 
 
 class NodeReviewOut(BaseModel):

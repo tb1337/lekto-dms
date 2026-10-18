@@ -32,6 +32,7 @@
 		documentId,
 		filename,
 		vision = false,
+		hasText = true,
 		facts = null,
 		lookup = null,
 		topicId = null,
@@ -43,6 +44,8 @@
 		filename: string;
 		/** The vision language model read the text (a person asked for it). */
 		vision?: boolean;
+		/** The document has its text: before, nothing is asked for (409). */
+		hasText?: boolean;
 		/** What the document shows of its contact; beside the text when there. */
 		facts?: Facts | null;
 		lookup?: Lookup | null;
@@ -117,6 +120,10 @@
 			text = null;
 			problem = null;
 		});
+		if (!hasText) {
+			loading = false;
+			return;
+		}
 		void events.generation;
 		void loadText();
 		return events.subscribe((event) => {

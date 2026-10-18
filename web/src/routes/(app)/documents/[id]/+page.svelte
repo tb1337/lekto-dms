@@ -379,6 +379,7 @@
 				documentId={id}
 				filename={document.original_filename}
 				vision={reading?.vision ?? false}
+				hasText={hasText(document.processing)}
 				{facts}
 				{lookup}
 				topicId={document.topic_id}

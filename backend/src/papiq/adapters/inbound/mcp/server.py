@@ -26,7 +26,7 @@ from starlette.requests import Request
 from papiq import __version__
 from papiq.adapters.inbound.context import ApiContext
 from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
-from papiq.core.domain.documents import MAX_TITLE, UNSET, Document, DocumentChanges
+from papiq.core.domain.documents import MAX_TITLE, UNSET, Document, DocumentChanges, Unset
 from papiq.core.domain.errors import DomainError, SearchUnavailableError, ValidationError
 from papiq.core.domain.fields import FieldDefinition, field_from_json
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
@@ -53,20 +53,6 @@ READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 CHANGES = ToolAnnotations(
     read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False
 )
-
-
-class _Unset:
-    """Default of a parameter that was not given, as opposed to given as null."""
-
-    def __repr__(self) -> str:
-        return "UNSET"
-
-
-NOT_GIVEN: Any = _Unset()
-
-
-def not_given() -> Any:
-    return NOT_GIVEN
 
 
 class NameRef(BaseModel):
@@ -420,13 +406,17 @@ def build_server(context: ApiContext) -> MCPServer:
     async def update_metadata(
         ctx: Context,
         id: UUID,
-        title: Annotated[str, Field(min_length=1, max_length=MAX_TITLE, default_factory=not_given)],
-        contact: Annotated[str | None, Field(default_factory=not_given)],
-        document_type: Annotated[str | None, Field(default_factory=not_given)],
-        topic: Annotated[str | None, Field(default_factory=not_given)],
-        tags: Annotated[list[str], Field(default_factory=not_given, max_length=50)],
-        document_date: Annotated[date | None, Field(default_factory=not_given)],
-        fields: Annotated[dict[str, Any], Field(default_factory=not_given)],
+        # A parameter left out is `UNSET` (pydantic neither checks a `default_factory`'s value
+        # nor shows it in the schema), unlike one given as null.
+        title: Annotated[
+            str, Field(min_length=1, max_length=MAX_TITLE, default_factory=lambda: UNSET)
+        ],
+        contact: Annotated[str | None, Field(default_factory=lambda: UNSET)],
+        document_type: Annotated[str | None, Field(default_factory=lambda: UNSET)],
+        topic: Annotated[str | None, Field(default_factory=lambda: UNSET)],
+        tags: Annotated[list[str], Field(default_factory=lambda: UNSET, max_length=50)],
+        document_date: Annotated[date | None, Field(default_factory=lambda: UNSET)],
+        fields: Annotated[dict[str, Any], Field(default_factory=lambda: UNSET)],
     ) -> UpdateOut:
         principal = principal_of(ctx)
         if not principal.can_write:
@@ -434,14 +424,14 @@ def build_server(context: ApiContext) -> MCPServer:
         user = principal.id
         names = await Names.load(context, user)
         changes = DocumentChanges(
-            title=UNSET if title is NOT_GIVEN else title,
+            title=title,
             contact_id=_reference(contact, names.find_contact),
             document_type_id=_reference(document_type, names.find_document_type),
             topic_id=_reference(topic, names.find_topic),
             tag_ids=(
-                UNSET if tags is NOT_GIVEN else frozenset(names.find_tag(tag) for tag in tags)
+                UNSET if isinstance(tags, Unset) else frozenset(names.find_tag(t) for t in tags)
             ),
-            document_date=UNSET if document_date is NOT_GIVEN else document_date,
+            document_date=document_date,
             fields=_fields(fields, names),
         )
         change = await context.documents.change_metadata(user, DocumentId(id), changes)
@@ -450,7 +440,8 @@ def build_server(context: ApiContext) -> MCPServer:
         return UpdateOut(
             id=change.document.id,
             access=change.access,
-            document=document_out(change.document, change.access, await Names.load(context, user)),
+            # A change of a document leaves the master data as it is.
+            document=document_out(change.document, change.access, names),
             rules=(
                 None
                 if change.rules is None
@@ -489,15 +480,15 @@ def build_server(context: ApiContext) -> MCPServer:
     return server
 
 
-def _reference[T](name: str | None, find: Callable[[str], T]) -> Any:
+def _reference[T](name: str | Unset | None, find: Callable[[str], T]) -> T | Unset | None:
     """Not given: unchanged; null: removed; else the named item."""
-    if name is NOT_GIVEN:
+    if isinstance(name, Unset):
         return UNSET
     return None if name is None else find(name)
 
 
-def _fields(given: dict[str, Any], names: Names) -> dict[FieldId, object]:
-    if given is NOT_GIVEN:
+def _fields(given: dict[str, Any] | Unset, names: Names) -> dict[FieldId, object]:
+    if isinstance(given, Unset):
         return {}
     changes: dict[FieldId, object] = {}
     for name, value in given.items():

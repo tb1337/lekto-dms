@@ -6,6 +6,7 @@
 	import { page } from '$app/state';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
+	import { ApiError } from '#lib/api/problem.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import InboxRow from '#lib/components/InboxRow.svelte';
 	import UploadDialog from '#lib/components/UploadDialog.svelte';
@@ -116,8 +117,15 @@
 		};
 	});
 
+	// After seen or new again the list starts over: a document moved between the tabs, and
+	// "done" (ordered by when a document left) answers 422 for a cursor no longer in it.
 	async function changed() {
-		await Promise.all([list.refresh(), inbox.refresh()]);
+		await Promise.all([list.reload(), inbox.refresh()]);
+	}
+
+	async function more() {
+		await list.more();
+		if (list.error instanceof ApiError && list.error.status === 422) await list.reload();
 	}
 
 	async function mark(id: string, seen: boolean) {
@@ -221,7 +229,9 @@
 	{#if list.error}
 		<div class="flex flex-col items-start gap-3" role="alert">
 			<p class="text-destructive">{describeError(list.error)}</p>
-			<Button variant="outline" onclick={() => list.reload()}>{m.retry()}</Button>
+			<Button variant="outline" class="h-11 sm:h-9" onclick={() => list.reload()}>
+				{m.retry()}
+			</Button>
 		</div>
 	{:else if list.empty}
 		<p
@@ -248,7 +258,7 @@
 		{/if}
 		{#if list.hasMore}
 			<div class="flex justify-center">
-				<Button variant="outline" disabled={list.loading} onclick={() => list.more()}>
+				<Button variant="outline" class="h-11 sm:h-9" disabled={list.loading} onclick={more}>
 					{m.load_more()}
 				</Button>
 			</div>

@@ -231,6 +231,59 @@ describe('inbox rows', () => {
 		await userEvent.click(within(seen).getByRole('button', { name: m.inbox_unseen() }));
 		await waitFor(() => expect(calls(api)).toContain('DELETE /api/v1/documents/s1/seen'));
 	});
+
+	it('starts done over after "mark as new", not on with the old cursor', async () => {
+		state.url = new URL('http://papiq/ui/inbox?tab=done');
+		let renewed = false;
+		const api = fakeApi({
+			'GET /api/v1/inbox': (_, url) => {
+				const cursor = url.searchParams.get('cursor');
+				if (renewed)
+					return { items: [inboxItem('done', { id: 'c1', title: 'Zwei' })], next_cursor: null };
+				return cursor
+					? { items: [inboxItem('done', { id: 'c1', title: 'Zwei' })], next_cursor: null }
+					: { items: [inboxItem('done', { id: 's1', title: 'Eins' })], next_cursor: 's1' };
+			},
+			'GET /api/v1/inbox/summary': () => summaryOf({ done: 2 }),
+			'DELETE /api/v1/documents/s1/seen': () => {
+				renewed = true;
+				return new Response(null, { status: 204 });
+			}
+		});
+		vi.stubGlobal('fetch', api);
+		render(Page);
+		const row = (await screen.findByText('Eins')).closest('li')!;
+		await userEvent.click(within(row).getByRole('button', { name: m.inbox_unseen() }));
+		await screen.findByText('Zwei');
+		const after = calls(api).slice(calls(api).indexOf('DELETE /api/v1/documents/s1/seen'));
+		expect(after).toContain('GET /api/v1/inbox?tab=done');
+		expect(after.some((call) => call.includes('cursor='))).toBe(false);
+		expect(screen.queryByRole('button', { name: m.load_more() })).toBeNull();
+	});
+
+	it('starts over when the next page no longer follows', async () => {
+		state.url = new URL('http://papiq/ui/inbox?tab=done');
+		let pages = 0;
+		const api = fakeApi({
+			'GET /api/v1/inbox': (_, url) => {
+				if (url.searchParams.get('cursor')) {
+					return json({ type: 'about:blank', title: 'Unprocessable', status: 422 }, 422);
+				}
+				pages++;
+				return pages === 1
+					? { items: [inboxItem('done', { id: 'gone', title: 'Weg' })], next_cursor: 'gone' }
+					: { items: [inboxItem('done', { id: 'c1', title: 'Da' })], next_cursor: null };
+			},
+			'GET /api/v1/inbox/summary': () => summaryOf({ done: 1 })
+		});
+		vi.stubGlobal('fetch', api);
+		render(Page);
+		await screen.findByText('Weg');
+		await userEvent.click(screen.getByRole('button', { name: m.load_more() }));
+		expect(await screen.findByText('Da')).toBeTruthy();
+		expect(screen.queryByRole('alert')).toBeNull();
+		expect(calls(api).filter((call) => call === 'GET /api/v1/inbox?tab=done')).toHaveLength(2);
+	});
 });
 
 const pdf = (name: string) => new File(['%PDF-1.7'], name, { type: 'application/pdf' });

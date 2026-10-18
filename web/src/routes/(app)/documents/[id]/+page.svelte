@@ -18,7 +18,10 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import {
 		inboxDocument,
+		keepPlace,
 		neighbours,
+		nextDecision,
+		type InboxPlace,
 		tabHref,
 		tabOf,
 		type Mark,
@@ -29,6 +32,7 @@
 	} from '#lib/document-view.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
+	import { inbox as inboxSummary } from '#lib/inbox.svelte.ts';
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { canEdit, canManage } from '#lib/permissions.ts';
@@ -56,7 +60,9 @@
 	let facts = $state<Facts | null>(null);
 	// A code shown on its page from the content (`Auf der Seite zeigen`).
 	let codeMarks = $state<Mark[]>([]);
-	let inboxIds = $state<string[] | null>(null);
+	// The open documents of the inbox, in its order, opened from there.
+	let inboxPlaces = $state<InboxPlace[] | null>(null);
+	let inboxReady: Promise<void> = Promise.resolve();
 	let problem = $state<unknown>(null);
 	let marks = $state<Mark[]>([]);
 	let viewer = $state<PdfViewer | null>(null);
@@ -72,7 +78,17 @@
 			(state) => state.node === 'ocr' && state.status === 'done' && state.outcome !== 'failed'
 		) ?? false
 	);
-	const inbox = $derived(fromInbox && inboxIds ? neighbours(inboxIds, id) : null);
+	const inbox = $derived(
+		fromInbox && inboxPlaces
+			? neighbours(
+					inboxPlaces.map((place) => place.id),
+					id
+				)
+			: null
+	);
+	// After confirming, the next document that waits for a decision; not a new one, nor one in
+	// processing.
+	const nextUp = $derived(fromInbox && inboxPlaces ? nextDecision(inboxPlaces, id) : null);
 
 	// An answer for a document the page has left behind, or one overtaken by a later request
 	// (several events arrive at once), must not replace the current state.
@@ -98,6 +114,7 @@
 				reading = read;
 				facts = found;
 				problem = null;
+				reportSeen(loaded);
 			}
 		} catch (error) {
 			if (wanted === id && request === latest) problem = error;
@@ -148,10 +165,31 @@
 					params: { query: { limit: 100, all_users: scope.query } }
 				})
 			);
-			inboxIds = listed.items.map((item) => item.document.id);
+			const now = listed.items.map((item) => ({ id: item.document.id, tab: item.tab }));
+			inboxPlaces = keepPlace(inboxPlaces ?? [], now, id);
 		} catch (error) {
 			reportError(error);
 		}
+	}
+
+	// Opening the view counts as seen (a read through the API does not), from anywhere: the
+	// inbox, the archive, a search, a link. Seen while the document is processed does not count
+	// (it is not new yet), so it is reported again when the open document turns green. Opened
+	// from the inbox, after the inbox is known: the document keeps its place there.
+	let reported: { id: string; green: boolean } | null = null;
+	function reportSeen(loaded: Document) {
+		const green = loaded.lane === 'green';
+		const report = reported?.id !== loaded.id || (green && !reported.green);
+		reported = { id: loaded.id, green };
+		if (!report) return;
+		void inboxReady
+			.then(() => api.PUT('/api/v1/documents/{id}/seen', { params: { path: { id: loaded.id } } }))
+			.then(({ response }) => {
+				if (response.ok) void inboxSummary.refresh();
+			})
+			.catch(() => {
+				// Seen is bookkeeping; the next opening reports it again.
+			});
 	}
 
 	$effect(() => {
@@ -177,7 +215,7 @@
 	$effect(() => {
 		void events.generation;
 		void scope.allUsers;
-		if (fromInbox) untrack(() => void loadInbox());
+		if (fromInbox) untrack(() => (inboxReady = loadInbox()));
 	});
 
 	// Again after a master data dialog saved here (a contact opened from its facts): names,
@@ -320,7 +358,7 @@
 								{lookup}
 								{review}
 								{editable}
-								next={inbox?.next ?? null}
+								next={nextUp}
 								onsaved={(updated) => (document = updated)}
 								onenabled={() => loadLookup().then((value) => (lookup = value), reportError)}
 								onconfirmed={confirmed}

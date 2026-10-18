@@ -80,7 +80,8 @@
 		/** What the model proposed: owner and admins only, else null. */
 		review: Review | null;
 		editable: boolean;
-		/** The next document of the inbox, offered after confirming. */
+		/** The document offered to open after confirming: the inbox's next one that waits for a
+		 * decision. */
 		next?: string | null;
 		onsaved: (document: Document) => void;
 		/** After confirming: the document to open next, or null for the inbox. */

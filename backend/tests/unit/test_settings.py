@@ -231,10 +231,16 @@ def test_url_credentials_are_masked(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_choices_ignore_case_and_whitespace(monkeypatch: pytest.MonkeyPatch) -> None:
     set_env(
         monkeypatch,
-        {"PAPIQ_ROLE": "API", "PAPIQ_LOG_FORMAT": " Console ", "PAPIQ_DB_TYPE": "SQLite"},
+        {
+            "PAPIQ_ROLE": "API",
+            "PAPIQ_LOG_FORMAT": " Console ",
+            "PAPIQ_DB_TYPE": "SQLite",
+            "PAPIQ_CLASSIFIER": "NONE",
+        },
     )
     settings = load_settings()
     assert (settings.role, settings.log_format, settings.db_type) == ("api", "console", "sqlite")
+    assert settings.classifier == "none"
 
 
 def test_blank_values_count_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:

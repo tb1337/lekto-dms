@@ -69,13 +69,19 @@ from papiq.composition.search_evaluation import (
     parse_ratios,
     run_search_evaluation,
 )
-from papiq.composition.settings import Settings, find_unknown_variables, load_settings
+from papiq.composition.settings import (
+    API_ROLES,
+    WORKER_ROLES,
+    Settings,
+    find_unknown_variables,
+    load_settings,
+)
 from papiq.composition.train import run_training
 from papiq.composition.worker import run_worker
 from papiq.core.domain.errors import LogoFetchDisabledError
 
 # Services and the roles that run them.
-SERVICES = {"api": {"all", "api"}, "worker": {"all", "worker"}}
+SERVICES = {"api": API_ROLES, "worker": WORKER_ROLES}
 
 
 def main(argv: Sequence[str] = ()) -> int:

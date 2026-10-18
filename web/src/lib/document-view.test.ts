@@ -9,6 +9,7 @@ import {
 	provenance,
 	tabHref,
 	tabOf,
+	viewerSources,
 	type Check,
 	type Review
 } from './document-view.ts';
@@ -164,5 +165,20 @@ describe('places by page', () => {
 			{ page: 1, boxes: [box(0.2)] },
 			{ page: 9, boxes: [box(0.1), box(0.5), box(0.52)] }
 		]);
+	});
+});
+
+describe('viewerSources', () => {
+	const pdf = { id: 'd1', media_type: 'application/pdf', page_count: null };
+	const image = { id: 'd2', media_type: 'image/png', page_count: null };
+
+	it('shows the archive once it exists', () => {
+		expect(viewerSources(pdf, true)).toEqual(['/api/v1/documents/d1/archive']);
+		expect(viewerSources(image, true)).toEqual(['/api/v1/documents/d2/archive']);
+	});
+
+	it('asks for no archive before it can exist', () => {
+		expect(viewerSources(pdf, false)).toEqual(['/api/v1/documents/d1/original']);
+		expect(viewerSources(image, false)).toEqual([]);
 	});
 });

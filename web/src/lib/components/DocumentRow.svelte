@@ -42,7 +42,11 @@
 	{href}
 	class="flex items-center gap-4 rounded-2xl border bg-card p-3 transition-colors hover:border-primary"
 >
-	<DocumentThumb id={document.id} class="h-20 w-14 shrink-0 rounded-lg border" />
+	<DocumentThumb
+		id={document.id}
+		pages={document.page_count}
+		class="h-20 w-14 shrink-0 rounded-lg border"
+	/>
 	<div class="flex min-w-0 flex-1 flex-col gap-1">
 		<span class="flex min-w-0 items-center gap-2">
 			<span class="truncate font-medium">{document.title}</span>

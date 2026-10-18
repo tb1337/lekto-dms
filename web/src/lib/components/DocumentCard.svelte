@@ -43,7 +43,7 @@
 	class="group flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border bg-card transition-colors hover:border-primary"
 >
 	<div class="relative aspect-[3/4] overflow-hidden border-b bg-secondary">
-		<DocumentThumb id={document.id} class="size-full" />
+		<DocumentThumb id={document.id} pages={document.page_count} class="size-full" />
 		<span class="absolute top-2 right-2"><LaneBadge lane={document.lane} /></span>
 	</div>
 	<div class="flex min-w-0 flex-1 flex-col gap-1 p-3">

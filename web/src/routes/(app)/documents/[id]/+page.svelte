@@ -24,7 +24,8 @@
 		type Mark,
 		type Place,
 		type Review,
-		type Tab
+		type Tab,
+		viewerSources
 	} from '#lib/document-view.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
@@ -64,8 +65,8 @@
 	const user = $derived(session.user);
 	const editable = $derived(document !== null && canEdit(document, user));
 	const manageable = $derived(document !== null && canManage(document, user));
-	const base = $derived(`/api/v1/documents/${id}`);
-	// The archive exists once the text is recognised; until then the page images stand in.
+	// The archive exists once the text is recognised; until then the page images stand in, or,
+	// before they are rendered, the original PDF.
 	const archive = $derived(
 		document?.processing.nodes.some(
 			(state) => state.node === 'ocr' && state.status === 'done' && state.outcome !== 'failed'
@@ -302,9 +303,7 @@
 						{#if archive || !document.page_count}
 							<PdfViewer
 								bind:this={viewer}
-								sources={archive || document.media_type !== 'application/pdf'
-									? [`${base}/archive`]
-									: [`${base}/archive`, `${base}/original`]}
+								sources={viewerSources(document, archive)}
 								label={document.title}
 								marks={archive ? [...marks, ...codeMarks] : []}
 							/>

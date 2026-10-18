@@ -32,6 +32,19 @@ export function tabHref(url: Address, tab: Tab): string {
 	return query ? `${url.pathname}?${query}` : url.pathname;
 }
 
+type Viewed = Pick<components['schemas']['DocumentDetails'], 'id' | 'media_type' | 'page_count'>;
+
+/**
+ * What the PDF viewer shows of a document: the archive PDF once it exists; before, while no
+ * page images stand in, the original if it is a PDF, else nothing (an image is shown once its
+ * page image exists). Nothing is asked for that cannot be there yet.
+ */
+export function viewerSources(document: Viewed, archive: boolean): string[] {
+	const base = `/api/v1/documents/${document.id}`;
+	if (archive) return [`${base}/archive`];
+	return document.media_type === 'application/pdf' ? [`${base}/original`] : [];
+}
+
 export interface FieldEvidence {
 	check: Check;
 	/** The field waits for a decision. */

@@ -2,18 +2,20 @@
 tabs of an inbox, and the cleanup. The rule itself is `domain.inbox.inbox_state`; the suite
 checks that an adapter selects by it."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
 
 import pytest
 
 from papiq.core.domain.documents import Document
-from papiq.core.domain.ids import DocumentId, new_id
+from papiq.core.domain.errors import ConflictError
+from papiq.core.domain.ids import DocumentId, UserId, new_id
 from papiq.core.domain.inbox import DONE_PERIOD, Confirmation, InboxTab
 from papiq.core.domain.pipeline import Node
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import User
-from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from tests import builders
 from tests.builders import FAILED, NOW, UNCERTAIN
 from tests.contracts.unit_of_work import owner_with_space
@@ -288,6 +290,24 @@ class InboxRepositoryContract:
                 owner, owner=owner, tab=InboxTab.DONE, since=SINCE, limit=9
             )
             assert [entry.document.id for entry in done] == scene.ids("filed")
+
+    async def test_marks_refer_to_a_document_and_a_user(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner, space = await owner_with_space(uow_factory)
+        document = green(owner, space)
+        await store(uow_factory, document)
+        missing = DocumentId(new_id())
+        marks: list[Callable[[UnitOfWork], Awaitable[None]]] = [
+            lambda uow: uow.inbox.mark_seen(owner.id, missing, NOW),
+            lambda uow: uow.inbox.mark_seen(UserId(new_id()), document.id, NOW),
+            lambda uow: uow.inbox.record_confirmation(missing, Confirmation(owner.id, NOW)),
+        ]
+        for mark in marks:
+            with pytest.raises(ConflictError):
+                async with uow_factory() as uow:
+                    await mark(uow)
+                    await uow.commit()
 
     @pytest.mark.parametrize("tab", [None, *InboxTab])
     async def test_an_empty_inbox(self, uow_factory: UnitOfWorkFactory, tab: InboxTab) -> None:

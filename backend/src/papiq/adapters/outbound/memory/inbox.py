@@ -7,9 +7,10 @@ from collections.abc import Collection, Iterator
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from papiq.adapters.outbound.memory.database import DOCUMENTS
+from papiq.adapters.outbound.memory.database import DOCUMENTS, USERS
 from papiq.adapters.outbound.memory.rows import _copy
 from papiq.core.domain.documents import Document
+from papiq.core.domain.errors import ConflictError
 from papiq.core.domain.ids import DocumentId, UserId
 from papiq.core.domain.inbox import Confirmation, InboxState, InboxTab, inbox_state, open_tab
 from papiq.core.domain.validation import require_utc
@@ -65,6 +66,9 @@ class MemoryInboxRepository:
 
     async def mark_seen(self, viewer: UserId, document: DocumentId, at: datetime) -> None:
         self._marks()  # the unit is open
+        self._refer(document)
+        if self._uow._row(USERS, viewer) is None:
+            raise ConflictError(f"seen mark of a user that does not exist: {viewer}")
         self._uow._seen[(viewer, document)] = require_utc(at, "seen_at")
 
     async def mark_all_seen(self, viewer: UserId, *, owner: UserId | None, at: datetime) -> int:
@@ -84,6 +88,7 @@ class MemoryInboxRepository:
 
     async def record_confirmation(self, document: DocumentId, confirmation: Confirmation) -> None:
         self._confirmations()
+        self._refer(document)
         require_utc(confirmation.at, "confirmed_at")
         self._uow._confirmations[document] = confirmation
 
@@ -127,6 +132,12 @@ class MemoryInboxRepository:
 
     def _exists(self, document: DocumentId) -> bool:
         return self._uow._row(DOCUMENTS, document) is not None
+
+    def _refer(self, document: DocumentId) -> None:
+        """ConflictError for a mark of a document that does not exist, as the SQL schema's
+        foreign key refuses it."""
+        if not self._exists(document):
+            raise ConflictError(f"inbox mark of a document that does not exist: {document}")
 
     def _marks(self) -> dict[SeenKey, datetime]:
         """The seen marks committed, with this unit's changes."""

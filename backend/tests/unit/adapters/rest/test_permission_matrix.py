@@ -11,7 +11,6 @@ their reach unless they ask for all users. Hidden documents and spaces are "not 
 exactly as missing ones.
 """
 
-import base64
 from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
@@ -20,6 +19,7 @@ import httpx2
 import pytest
 
 from papiq.adapters.inbound.rest import PREFIX
+from papiq.core.domain.encoding import base64url
 from tests.contracts.images import image
 from tests.unit.adapters.rest.support import ACTORS, DENIED, Api, Scene, build_scene
 
@@ -414,7 +414,7 @@ async def test_lists_show_only_readable_documents(api: Api) -> None:
 async def test_a_cursor_does_not_reveal_hidden_documents(api: Api) -> None:
     """Paging after a hidden document's id works like after any id: only readable ones."""
     scene = await build_scene(api)
-    cursor = base64.urlsafe_b64encode(UUID(scene.yellow).bytes).decode().rstrip("=")
+    cursor = base64url(UUID(scene.yellow).bytes)
     response = await api.client.get(
         f"{PREFIX}/documents", params={"cursor": cursor}, headers=scene.headers["reader"]
     )

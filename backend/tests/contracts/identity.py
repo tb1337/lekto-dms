@@ -2,14 +2,12 @@
 ports."""
 
 import asyncio
-import base64
-import hashlib
 from collections.abc import Callable
 from datetime import timedelta
-from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+from papiq.core.domain.encoding import pkce_challenge, query_parameters
 from papiq.core.domain.errors import AuthenticationError, ConcurrencyError, ConflictError
 from papiq.core.domain.identity import (
     ACCOUNT_THROTTLE,
@@ -403,10 +401,6 @@ type Consent = Callable[[str, str, str | None], str]
 """Plays the user at the provider: (authorization URL, subject, username) -> code."""
 
 
-def _query(url: str) -> dict[str, str]:
-    return {key: values[0] for key, values in parse_qs(urlsplit(url).query).items()}
-
-
 class OidcProviderContract:
     async def test_the_authorization_url_carries_state_nonce_and_pkce(
         self, oidc_provider: OidcProvider
@@ -414,13 +408,12 @@ class OidcProviderContract:
         url = await oidc_provider.authorization_url(
             state="s" * 43, nonce="n" * 43, code_verifier="v" * 64
         )
-        query = _query(url)
+        query = query_parameters(url)
         assert query["state"] == "s" * 43 and query["nonce"] == "n" * 43
         assert query["response_type"] == "code"
         assert "openid" in query["scope"].split()
         assert query["code_challenge_method"] == "S256"
-        digest = hashlib.sha256(b"v" * 64).digest()
-        assert query["code_challenge"] == base64.urlsafe_b64encode(digest).decode().rstrip("=")
+        assert query["code_challenge"] == pkce_challenge("v" * 64)
         assert "v" * 64 not in url
 
     async def test_a_code_gives_the_identity_once(

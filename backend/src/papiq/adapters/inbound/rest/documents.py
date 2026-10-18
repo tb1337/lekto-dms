@@ -6,8 +6,6 @@ the list leaves them out, filters and pages only ever see readable ones.
 """
 
 import asyncio
-import base64
-import binascii
 import os
 import tempfile
 from enum import StrEnum
@@ -55,6 +53,7 @@ from papiq.adapters.inbound.rest.upload import read_upload, upload_body
 from papiq.adapters.inbound.schemas import RuleReportOut
 from papiq.core.domain.classification import CHANGE_FIELDS, SPACE, field_key
 from papiq.core.domain.documents import UNSET, Channel, Document, DocumentChanges
+from papiq.core.domain.encoding import base64url, from_base64url
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.fields import field_from_json
 from papiq.core.domain.ids import (
@@ -730,15 +729,15 @@ def _given[T](given: set[str], name: str, value: UUID | None, kind: type[T]) -> 
 
 
 def _encode_cursor(id: DocumentId) -> str:
-    return base64.urlsafe_b64encode(id.bytes).decode().rstrip("=")
+    return base64url(id.bytes)
 
 
 def _decode_cursor(cursor: str | None) -> DocumentId | None:
     if not cursor:
         return None
     try:
-        return DocumentId(UUID(bytes=base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))))
-    except (ValueError, binascii.Error):
+        return DocumentId(UUID(bytes=from_base64url(cursor)))
+    except ValueError:
         raise ValidationError("cursor: invalid") from None
 
 

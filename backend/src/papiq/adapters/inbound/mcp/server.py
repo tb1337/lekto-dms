@@ -34,6 +34,7 @@ from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.tag_tree import TagTree
+from papiq.core.domain.validation import name_key
 from papiq.core.ports import DocumentFilter
 from papiq.core.ports.search_index import MAX_HITS
 from papiq.core.services.auth import Principal
@@ -216,17 +217,17 @@ class Names:
         return TagId(_find("topic", name, self.topics))
 
     def find_field(self, name: str) -> FieldDefinition:
-        wanted = name.strip().casefold()
+        wanted = name_key(name)
         for definition in self.fields.values():
-            if definition.name.casefold() == wanted:
+            if name_key(definition.name) == wanted:
                 return definition
         raise ValidationError(f"no field named {name!r}")
 
 
 def _find(kind: str, name: str, names: dict[UUID, str]) -> UUID:
-    wanted = name.strip().casefold()
+    wanted = name_key(name)
     for id, existing in names.items():
-        if existing.casefold() == wanted:
+        if name_key(existing) == wanted:
             return id
     raise ValidationError(f"no {kind} named {name!r}")
 

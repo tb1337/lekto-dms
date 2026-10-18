@@ -58,6 +58,7 @@ from papiq.core.domain.periods import Period, PeriodKind
 from papiq.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
 from papiq.core.domain.reading import PageReading, readings_from_json
 from papiq.core.domain.sorting import sort_key
+from papiq.core.domain.validation import name_key
 from papiq.core.domain.verdict import (
     Thresholds,
     judge_contact,
@@ -619,7 +620,7 @@ def _text_value(value: object) -> str | None:
 
 
 def _same_name(proposed: str | None, name: str) -> bool:
-    return proposed is not None and proposed.casefold() == name.casefold()
+    return proposed is not None and name_key(proposed) == name_key(name)
 
 
 # --- checks -----------------------------------------------------------------------------------

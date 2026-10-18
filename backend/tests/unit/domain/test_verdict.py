@@ -452,6 +452,24 @@ def test_topics_named_against_each_other_leave_it_empty_with_all_candidates(
     assert check.reason is not None and check.reason.startswith("the signals disagree")
 
 
+def test_tied_topics_are_listed_as_lists_sort_names() -> None:
+    doctors = Tag.create(name="Ärzte", now=NOW, scope=TagScope.TOPIC)
+    dentists = Tag.create(name="Zahnärzte", now=NOW, scope=TagScope.TOPIC)
+    clinic = Contact.create(name="Praxis", now=NOW, topic_ids=[dentists.id, doctors.id])
+    green = FieldCheck(field="contact", outcome=Outcome.OK, confidence=1, value=str(clinic.id))
+    facts = FactsView(
+        identifiers={clinic.id: ("customer_number",) * 2},
+        topics={clinic.id: {topic.id: ("customer_number",) for topic in (dentists, doctors)}},
+    )
+    check = judge_topic(Signals(facts=facts), green, [clinic], [dentists, doctors])
+    assert [item.label for item in check.candidates] == ["Ärzte", "Zahnärzte"]
+
+
+def test_the_model_names_a_type_regardless_of_case_and_outer_spaces() -> None:
+    check = judge_type(Signals(model=model(document_type=" rechnung ")), TYPES)
+    assert (check.outcome, check.value) == (Outcome.OK, str(INVOICE.id))
+
+
 def test_under_a_suggested_contact_the_topic_is_only_suggested() -> None:
     signals = Signals(model=model(topic="Arbeit"), facts=pair(WORK))
     check = judge(signals, YELLOW)

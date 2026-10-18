@@ -32,13 +32,6 @@ def http_url() -> Iterator[str]:
     server.server_close()
 
 
-@pytest.fixture
-def free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
-
-
 def serve_once(reply: bytes) -> tuple[int, Callable[[], None]]:
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
@@ -63,8 +56,8 @@ def test_postgres_answers(reply: bytes, expected: bool) -> None:
     join()
 
 
-def test_postgres_unreachable(free_port: int) -> None:
-    assert probes.postgres_answers("127.0.0.1", free_port) is False
+def test_postgres_unreachable() -> None:
+    assert probes.postgres_answers("127.0.0.1", probes.free_port()) is False
 
 
 def test_http_status_includes_error_statuses(http_url: str) -> None:
@@ -72,10 +65,10 @@ def test_http_status_includes_error_statuses(http_url: str) -> None:
     assert probes.http_status(http_url + "/health") == 200
 
 
-def test_http_status_unreachable(free_port: int) -> None:
-    assert probes.http_status(f"http://127.0.0.1:{free_port}") is None
+def test_http_status_unreachable() -> None:
+    assert probes.http_status(f"http://127.0.0.1:{probes.free_port()}") is None
 
 
-def test_meilisearch_health(http_url: str, free_port: int) -> None:
+def test_meilisearch_health(http_url: str) -> None:
     assert probes.meilisearch_health(http_url) == "available"
-    assert probes.meilisearch_health(f"http://127.0.0.1:{free_port}") is None
+    assert probes.meilisearch_health(f"http://127.0.0.1:{probes.free_port()}") is None

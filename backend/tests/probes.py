@@ -1,5 +1,5 @@
-"""Reachability probes for integration tests, and the mark for those that need the OCR programs.
-Standard library and pytest only, no client libraries."""
+"""Reachability probes for integration tests, a free local port, and the mark for those that need
+the OCR programs. Standard library and pytest only, no client libraries."""
 
 import json
 import shutil
@@ -16,6 +16,13 @@ _POSTGRES_SSL_REQUEST = (8).to_bytes(4, "big") + (80877103).to_bytes(4, "big")
 
 # Requests to the services of the compose network must never go through a configured proxy.
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def free_port() -> int:
+    """A port on 127.0.0.1 that was free a moment ago; nobody listens on it."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
 
 
 def postgres_answers(host: str, port: int) -> bool:

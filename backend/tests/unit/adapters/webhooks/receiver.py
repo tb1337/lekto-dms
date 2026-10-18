@@ -1,10 +1,11 @@
 """A webhook receiver on the loopback interface: a minimal HTTP server that records requests."""
 
 import asyncio
-import socket
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
+
+from tests.probes import free_port
 
 
 @dataclass(frozen=True)
@@ -53,10 +54,7 @@ class LocalReceiver:
 
     @property
     def unreachable_url(self) -> str:
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", 0))
-            port = probe.getsockname()[1]
-        return f"http://127.0.0.1:{port}"  # closed again: nobody listens
+        return f"http://127.0.0.1:{free_port()}"
 
     def hits(self, path: str) -> int:
         return Counter(r.path for r in self.received)[path]

@@ -132,7 +132,8 @@ class Settings(BaseSettings):
 
     # API (Uvicorn).
     api_host: str = "0.0.0.0"
-    api_port: Annotated[int, Field(ge=1, le=65535)] = 8000
+    # 0: the operating system picks a free port; the start line `api started` names it.
+    api_port: Annotated[int, Field(ge=0, le=65535)] = 8000
     upload_max_size: Annotated[ByteSize, Field(gt=0)] = ByteSize(100 * 1024 * 1024)
     # Every other request body (JSON).
     request_max_size: Annotated[ByteSize, Field(gt=0)] = ByteSize(1024 * 1024)

@@ -1,7 +1,6 @@
 import json
 import os
 import signal
-import socket
 import sqlite3
 import subprocess
 import sys
@@ -246,17 +245,10 @@ def test_the_worker_stops_cleanly_on_sigterm(tmp_path: Path) -> None:
     assert events[-2:] == ["worker stopping", "worker stopped"]
 
 
-def free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port: int = probe.getsockname()[1]
-        return port
-
-
 def test_the_api_serves_health_and_stops_on_sigterm(tmp_path: Path) -> None:
-    """In a process of its own: start on SQLite and the filesystem, ask /health, SIGTERM. The
-    first admin is created from the configuration; the password never shows in the log."""
-    port = free_port()
+    """In a process of its own: start on SQLite and the filesystem, on the port the operating
+    system picks, which the start line names; ask /health, SIGTERM. The first admin is created
+    from the configuration; the password never shows in the log."""
     password_file = tmp_path / "admin-password"
     password_file.write_text(PASSWORD + "\n")
     environment = {key: value for key, value in os.environ.items() if not key.startswith("PAPIQ_")}
@@ -264,7 +256,7 @@ def test_the_api_serves_health_and_stops_on_sigterm(tmp_path: Path) -> None:
         "PAPIQ_DB_SQLITE_PATH": str(tmp_path / "papiq.db"),
         "PAPIQ_STORAGE_PATH": str(tmp_path / "objects"),
         "PAPIQ_API_HOST": "127.0.0.1",
-        "PAPIQ_API_PORT": str(port),
+        "PAPIQ_API_PORT": "0",
         "PAPIQ_SECRET_KEY": SECRET_KEY,
         "PAPIQ_FORWARDED_ALLOW_IPS": TRUSTED_PROXY,
         "PAPIQ_ADMIN_USERNAME": "admin",
@@ -278,14 +270,17 @@ def test_the_api_serves_health_and_stops_on_sigterm(tmp_path: Path) -> None:
         [*command, "api"], env=environment, stderr=subprocess.PIPE, text=True
     ) as process:
         assert process.stderr is not None
-        deadline = time.monotonic() + 30
-        health = None
-        while time.monotonic() < deadline and health is None:
-            try:
-                with opener.open(f"http://127.0.0.1:{port}/api/v1/health", timeout=1) as answer:
-                    health = json.load(answer)
-            except OSError:
-                time.sleep(0.1)
+        lines: list[str] = []
+        port = None
+        for line in process.stderr:
+            lines.append(line)
+            event = json.loads(line)
+            if event["event"] == "api started":
+                port = event["port"]
+                break
+        assert port is not None, "".join(lines)
+        with opener.open(f"http://127.0.0.1:{port}/api/v1/health", timeout=5) as answer:
+            health = json.load(answer)
         login = urllib.request.Request(
             f"http://127.0.0.1:{port}/api/v1/auth/login",
             data=json.dumps({"username": "admin", "password": PASSWORD}).encode(),
@@ -295,7 +290,7 @@ def test_the_api_serves_health_and_stops_on_sigterm(tmp_path: Path) -> None:
             signed_in = json.load(answer)
             cookie = answer.headers["Set-Cookie"]
         process.send_signal(signal.SIGTERM)
-        output = process.stderr.read()
+        output = "".join(lines) + process.stderr.read()
         assert process.wait(timeout=30) == 0, output
     assert health == {"status": "ok", "checks": {"database": "ok", "object_store": "ok"}}
     assert signed_in["user"]["role"] == "admin"

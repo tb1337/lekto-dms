@@ -1104,7 +1104,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_S3_SECRET_ACCESS_KEY` | both | unset | *secret*; required for `s3` |
 | `PAPIQ_S3_PATH_STYLE` | both | `true` | Path-style addressing (Garage needs it) |
 | `PAPIQ_API_HOST` | API | `0.0.0.0` | Where the API listens |
-| `PAPIQ_API_PORT` | API | `8000` |  |
+| `PAPIQ_API_PORT` | API | `8000` | `0`: the operating system picks a free port, which the log line `api started` names (for tests; the image's health check needs a fixed port) |
 | `PAPIQ_UPLOAD_MAX_SIZE` | API | `100MiB` | Largest upload; bytes or with unit (`50MB`, `1GiB`); a proxy's body limit must allow it |
 | `PAPIQ_REQUEST_MAX_SIZE` | API | `1MiB` | Largest body of every other request (JSON); larger ones get `413` |
 | `PAPIQ_UI_DIR` | API | unset; image: `/opt/papiq/ui` | The built web UI (`web/build`), served below `/ui`; `/` leads there. Must contain `index.html`; unset serves the API only |

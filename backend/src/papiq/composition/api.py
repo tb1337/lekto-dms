@@ -2,7 +2,9 @@
 
 import asyncio
 import contextlib
+import logging
 import signal
+import socket
 import types
 from collections.abc import Iterator
 from uuid import UUID
@@ -22,6 +24,8 @@ from papiq.composition.bootstrap import ensure_first_admin
 from papiq.composition.container import Container, Services, build_container, build_services
 from papiq.composition.settings import Settings
 from papiq.core.domain.ids import UserId
+
+log = logging.getLogger(__name__)
 
 _SIGNALS = (signal.SIGTERM, signal.SIGINT)
 
@@ -94,11 +98,20 @@ class _Server(uvicorn.Server):
       timeout.
     - The signal is handled in the event loop and not raised again after shutdown (Uvicorn's
       default), so the caller can still close the database engine and exits normally.
+
+    Once it listens, it logs `api started` with the port it bound (with `PAPIQ_API_PORT=0`, the
+    one the operating system picked).
     """
 
     def __init__(self, config: uvicorn.Config, app: FastAPI) -> None:
         super().__init__(config)
         self._app = app
+
+    async def startup(self, sockets: list[socket.socket] | None = None) -> None:
+        await super().startup(sockets)
+        if self.started:
+            port = self.servers[0].sockets[0].getsockname()[1]
+            log.info("api started", extra={"host": self.config.host, "port": port})
 
     @contextlib.contextmanager
     def capture_signals(self) -> Iterator[None]:

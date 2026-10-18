@@ -67,7 +67,7 @@ class SklearnClassifier:
         return TrainedModel(data, summary)
 
     async def predict(self, model: bytes, text: str) -> Prediction:
-        key = sha256(model).hexdigest()
+        key = await asyncio.to_thread(lambda: sha256(model).hexdigest())
         decoded = self._models.get(key)
         if decoded is None:
             decoded = await asyncio.to_thread(_Model.load, model)

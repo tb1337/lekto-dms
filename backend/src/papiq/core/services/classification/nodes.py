@@ -10,6 +10,7 @@ document; uncertain ones are only proposed, and the node is uncertain (the docum
 the inbox).
 """
 
+import asyncio
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -279,9 +280,12 @@ class LlmSignal(_ModelStep):
                 (item for item in await uow.fields.list_all() if item.is_read),
                 key=lambda item: item.name,
             )
+        # Matching every name against a long text takes a while: not in the loop.
         facts = DocumentText(text)
-        listed = _listed_tags(tags, facts, self._policy.max_tags)
-        candidates = _listed_contacts(contacts, facts, self._policy.max_contacts)
+        listed = await asyncio.to_thread(_listed_tags, tags, facts, self._policy.max_tags)
+        candidates = await asyncio.to_thread(
+            _listed_contacts, contacts, facts, self._policy.max_contacts
+        )
         # The topics of each contact listed: the answer names one of the sender's.
         enabled = {
             contact.id: tuple(

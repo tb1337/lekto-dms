@@ -14,6 +14,7 @@ model's signal fails, when its answers do not fit or it cannot be reached after 
   with their contact, type, topic and tags.
 """
 
+import asyncio
 import json
 import logging
 from collections.abc import Iterable, Mapping, Sequence
@@ -113,10 +114,11 @@ class FactsSignal:
         codes = await self.codes(document)
         async with self._uow() as uow:
             contacts = await uow.contacts.list_all()
-        output = facts_of(text, contacts, codes or ())
+        # Matching every contact's names against a long text takes a while: not in the loop.
+        output = await asyncio.to_thread(facts_of, text, contacts, codes or ())
         if codes is not None:
             output["codes"] = len(codes)
-        found = identifiers_in(text)
+        found = await asyncio.to_thread(identifiers_in, text)
         for code in codes or ():
             found |= code_identifiers(code)
         result = NodeResult(outcome=Outcome.OK, model_version=FACTS, output=output)

@@ -49,8 +49,12 @@ def similarity(a: str, b: str) -> float:
 
 
 def mentions(text_key: str, key: str) -> bool:
-    """Whether the name key appears as whole words in a text turned into a key."""
-    return bool(key) and re.search(rf"(?<!\w){re.escape(key)}(?!\w)", text_key) is not None
+    """Whether the name key appears as whole words in a text turned into a key. The plain
+    substring test first: it rules out almost every name at C speed, where the pattern's
+    lookbehind would scan the whole text in Python's regex engine."""
+    if not key or key not in text_key:
+        return False
+    return re.search(rf"(?<!\w){re.escape(key)}(?!\w)", text_key) is not None
 
 
 @dataclass(frozen=True, kw_only=True)

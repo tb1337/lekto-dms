@@ -116,12 +116,15 @@ class HttpLogoFetcher:
         candidates: list[Candidate] = []
         base = httpx2.URL(f"https://{domain}/") if page is None else page.url
         if page is not None:
-            icons, manifest = page_icons(page.text, str(page.url))
+            # Parsing a page of up to a megabyte takes a while: not in the loop.
+            icons, manifest = await asyncio.to_thread(page_icons, page.text, str(page.url))
             candidates += icons
             if manifest is not None:
                 try:
                     answer = await self.get(manifest, MANIFESTS)
-                    candidates += manifest_icons(answer.text, str(answer.url))
+                    candidates += await asyncio.to_thread(
+                        manifest_icons, answer.text, str(answer.url)
+                    )
                 except LogoFetchError as error:
                     log.info("logo: the manifest cannot be read", extra={"error": str(error)})
         best: tuple[int, FetchedLogo] | None = None

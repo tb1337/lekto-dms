@@ -84,7 +84,7 @@ class LayoutParser:
         try:
             await asyncio.to_thread(text.write_text, content, encoding="utf-8")
             await asyncio.to_thread(
-                structure.write_text, json.dumps(data, ensure_ascii=False), encoding="utf-8"
+                lambda: structure.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
             )
         except BaseException:
             for path in (text, structure):

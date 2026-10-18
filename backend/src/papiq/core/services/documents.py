@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import functools
 import hashlib
 import json
 import logging
@@ -288,7 +289,10 @@ class DocumentService:
         except NotFoundError:
             raise ConflictError("document has no text yet") from None
         codes = await self._codes(id)
-        facts = facts_in(text, contacts, codes or (), places=True)
+        # Matching every contact's names against a long text takes a while: not in the loop.
+        facts = await asyncio.to_thread(
+            functools.partial(facts_in, text, contacts, codes or (), places=True)
+        )
         amounts = {
             field: value
             for field, value in document.fields.items()

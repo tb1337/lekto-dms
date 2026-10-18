@@ -20,9 +20,7 @@ from papiq.adapters.inbound.rest.schemas.users import (
     UserCreate,
     UserPatch,
 )
-from papiq.core.domain.errors import PermissionDeniedError
 from papiq.core.domain.ids import UserId
-from papiq.core.domain.users import Role
 from papiq.core.services.users import Account
 
 router = APIRouter(prefix="/users", tags=["users"], dependencies=PROTECTED)
@@ -70,13 +68,10 @@ async def list_users(principal: Authenticated, context: Context) -> list[UserOut
     responses=problem_responses(401, 403, 409, 422),
 )
 async def create_user(body: UserCreate, admin: Authenticated, context: Context) -> UserOut:
-    if admin.session is None and (body.password is not None or body.role is not Role.USER):
-        raise PermissionDeniedError(
-            "this needs a signed-in session: an API token can only create users with the "
-            "role 'user' and no password"
-        )
     password = None if body.password is None else body.password.get_secret_value()
-    created = await context.users.create_user(admin.id, body.username, body.role, password)
+    created = await context.users.create_user(
+        admin.id, body.username, body.role, password, session=admin.session is not None
+    )
     return UserOut.of(created)
 
 

@@ -35,6 +35,17 @@ async def test_admins_create_users_with_password(world: World) -> None:
     assert not account.has_password and not account.totp_enabled
 
 
+async def test_an_api_token_creates_only_plain_users(world: World) -> None:
+    """Without a session (an API token, as a migration uses) a password or the role admin
+    would turn a leaked token into a sign-in with more rights than the token gives."""
+    admin = await world.account("root", Role.ADMIN)
+    created = await world.users.create_user(admin.id, "alice", Role.USER, session=False)
+    assert created.role is Role.USER
+    for role, password in ((Role.ADMIN, None), (Role.USER, PASSWORD)):
+        with pytest.raises(PermissionDeniedError, match="signed-in session"):
+            await world.users.create_user(admin.id, "bob", role, password, session=False)
+
+
 async def test_only_admins_manage_accounts(world: World) -> None:
     user = await world.account("alice")
     other = await world.account("bob")

@@ -73,10 +73,26 @@ class UserService:
     # --- changes by admins ----------------------------------------------------------------------
 
     async def create_user(
-        self, actor: UserId, username: str, role: Role, password: str | None = None
+        self,
+        actor: UserId,
+        username: str,
+        role: Role,
+        password: str | None = None,
+        *,
+        session: bool = True,
     ) -> User:
         """Admins only. Creates the user together with their private default space and, if
-        given, a password (which must meet the policy)."""
+        given, a password (which must meet the policy).
+
+        `session`: whether the caller is signed in with a session. With an API token (as a
+        migration uses) only a user with the role `user` and no password can be created: a
+        password or the role `admin` would turn a leaked token into a sign-in with more
+        rights than the token was meant to give (see `update`)."""
+        if not session and (password is not None or role is not Role.USER):
+            raise PermissionDeniedError(
+                "this needs a signed-in session: an API token can only create users with the "
+                "role 'user' and no password"
+            )
         password_hash = await self._hash(username, password)
         now = self._clock.now()
         async with self._uow() as uow:
@@ -136,10 +152,10 @@ class UserService:
                 if not new_active:
                     await uow.sessions.remove_for_user(id)
                 await uow.commit()
-        log.info(
-            "account changed",
-            extra={"user_id": str(id), "role": user.role.value, "active": user.active},
-        )
+                log.info(
+                    "account changed",
+                    extra={"user_id": str(id), "role": user.role.value, "active": user.active},
+                )
         return user
 
     async def reset_password(
@@ -185,7 +201,7 @@ class UserService:
                 credential.recovery_codes = set()
                 await uow.credentials.update(credential)
                 await uow.commit()
-        log.info("TOTP turned off by an admin", extra={"user_id": str(id)})
+                log.info("TOTP turned off by an admin", extra={"user_id": str(id)})
 
     async def unlink_external_identities(self, actor: UserId, id: UserId) -> int:
         """Admins only: remove the user's links to identity providers."""

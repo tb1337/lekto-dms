@@ -28,24 +28,16 @@ from papiq.composition.container import (
     Container,
     build_memory_container,
     build_services,
-    neighbours_policy_of,
+    classification_nodes,
     openai_language_model,
-    policy_of,
     retry_policy_of,
-    thresholds_of,
 )
 from papiq.composition.errors import ConfigurationError
 from papiq.composition.settings import Settings
 from papiq.core.domain.pipeline import NODES, Node
 from papiq.core.ports import LanguageModel
-from papiq.core.services.classification.nodes import FieldsNode, JudgeNode, LlmSignal
 from papiq.core.services.classification.prompts import EXTRACT_PROMPT, PROPOSE_PROMPT
-from papiq.core.services.classification.signals import (
-    ClassifierSignal,
-    FactsSignal,
-    NeighboursSignal,
-)
-from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
+from papiq.core.services.classification.signals import FactsSignal
 from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode
 
 FAKE_MODEL = "fixed answers"
@@ -101,7 +93,6 @@ def build_environment(
         )
     services = build_services(container, settings)
     uow, clock, store = container.unit_of_work, container.clock, container.object_store
-    policy = policy_of(settings)
     trained = run is Run.TRAINED
     classifier = services.classifier if trained else None
     index = container.search_index if trained else None
@@ -109,24 +100,20 @@ def build_environment(
 
     def pipeline_for(case: Case | None) -> PipelineService:
         model = None if case is None else model_for(case)
+        # The text is stored: the nodes before the signals pass, and the codes of pages and
+        # the places of quotes are not read (there is no archive).
         executors: dict[Node, NodeExecutor] = {
             node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE
         }
-        signals: dict[Node, NodeExecutor] = {
-            Node.SIGNAL_LLM: LlmSignal(uow, store, model, clock, policy),
-            Node.SIGNAL_FACTS: FactsSignal(uow, store),
-            Node.SIGNAL_CLASSIFIER: ClassifierSignal(store, classifier),
-            Node.SIGNAL_NEIGHBOURS: NeighboursSignal(
-                uow, store, index, embeddings, neighbours_policy_of(settings)
-            ),
-        }
-        executors |= {node: ImportedSignal(uow, signal) for node, signal in signals.items()}
-        executors[Node.JUDGE] = ImportedJudgeNode(
-            uow,
-            JudgeNode(uow, store, clock, policy, thresholds=thresholds_of(settings)),
-        )
-        executors[Node.FIELDS] = ImportedFieldsNode(
-            uow, FieldsNode(uow, store, model, clock, policy)
+        executors |= classification_nodes(
+            container,
+            settings,
+            model=model,
+            classifier=classifier,
+            index=index,
+            embeddings=embeddings,
+            facts=FactsSignal(uow, store),
+            locator=None,
         )
         return PipelineService(
             uow,
@@ -134,7 +121,7 @@ def build_environment(
             store,
             executors,
             pipeline_version=PIPELINE_VERSION,
-            suggest_contact=policy.suggest_contact,
+            suggest_contact=settings.contact_suggest_threshold,
             retry=replace(retry_policy_of(settings), max_attempts=1),
             poor_reading=settings.poor_reading_threshold,
         )

@@ -58,7 +58,19 @@ def build_app(
 ) -> FastAPI:
     """The API with, if enabled, the MCP endpoint below its prefix."""
     services = services or build_services(container, settings)
-    context = ApiContext(
+    context = api_context(container, settings, services)
+    mounts = (
+        [McpEndpoint(context, path=f"{PREFIX}/mcp", text_max=settings.mcp_text_max)]
+        if settings.mcp_enabled
+        else []
+    )
+    return create_app(context, mounts)
+
+
+def api_context(container: Container, settings: Settings, services: Services) -> ApiContext:
+    """What the REST and MCP adapters work with: the services, the container's event bus and
+    health checks, and the tuning of the API from `settings`."""
+    return ApiContext(
         auth=services.auth,
         users=services.users,
         spaces=services.spaces,
@@ -83,12 +95,6 @@ def build_app(
         events_poll_interval=settings.events_poll_interval,
         ui_directory=settings.ui_dir,
     )
-    mounts = (
-        [McpEndpoint(context, path=f"{PREFIX}/mcp", text_max=settings.mcp_text_max)]
-        if settings.mcp_enabled
-        else []
-    )
-    return create_app(context, mounts)
 
 
 class _Server(uvicorn.Server):

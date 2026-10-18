@@ -151,8 +151,8 @@ def test_services_take_their_tuning_from_the_settings() -> None:
     # A classification node may ask the model twice.
     longer = build_services(build_memory_container(), settings(llm_timeout="400")).pipeline
     assert longer._lease == timedelta(seconds=800) + container.LEASE_MARGIN
-    assert isinstance(pipeline._executors[Node.OCR], OcrNode)
-    assert isinstance(pipeline._executors[Node.PARSE], ParseNode)
+    assert isinstance(pipeline.executor(Node.OCR), OcrNode)
+    assert isinstance(pipeline.executor(Node.PARSE), ParseNode)
     maintenance = services.maintenance
     assert (maintenance._interval, maintenance._retention) == (
         timedelta(minutes=1),

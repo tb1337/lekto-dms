@@ -654,6 +654,16 @@ class PipelineService:
 
     # --- worker ---------------------------------------------------------------------------------
 
+    def executor(self, node: Node) -> NodeExecutor:
+        """What runs `node`."""
+        return self._executors[node]
+
+    def replace_executor(self, node: Node, executor: NodeExecutor) -> NodeExecutor:
+        """Let `executor` run `node` from now on, for tests and tools; returns the one it
+        replaces."""
+        replaced, self._executors[node] = self._executors[node], executor
+        return replaced
+
     async def run_next_job(self) -> bool:
         """Claim the next due node job and run it. Returns False if no job was due.
 

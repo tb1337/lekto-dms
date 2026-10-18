@@ -28,11 +28,11 @@ def imported_steps(api: Api) -> None:
     """The signals, the judge and the fields node as the container builds them, around nodes
     that do nothing (there is no language model)."""
     uow = api.container.unit_of_work
-    executors = api.services.pipeline._executors
+    pipeline = api.services.pipeline
     for signal in SIGNALS:
-        executors[signal] = ImportedSignal(uow, PlaceholderNode())
-    executors[Node.JUDGE] = ImportedJudgeNode(uow, PlaceholderNode())
-    executors[Node.FIELDS] = ImportedFieldsNode(uow, PlaceholderNode())
+        pipeline.replace_executor(signal, ImportedSignal(uow, PlaceholderNode()))
+    pipeline.replace_executor(Node.JUDGE, ImportedJudgeNode(uow, PlaceholderNode()))
+    pipeline.replace_executor(Node.FIELDS, ImportedFieldsNode(uow, PlaceholderNode()))
 
 
 def file(name: str = "scan.pdf") -> dict[str, tuple[str, bytes, str]]:
@@ -137,8 +137,8 @@ class FailsOnce:
 async def test_a_red_document_keeps_the_metadata_and_gets_them_when_retried(api: Api) -> None:
     """The metadata is applied by the classification nodes, so a document whose OCR fails is
     red without it; the receive entry keeps it, and a retry applies it (decision 8, M13)."""
-    executors = api.services.pipeline._executors
-    executors[Node.OCR] = FailsOnce(executors[Node.OCR])
+    pipeline = api.services.pipeline
+    pipeline.replace_executor(Node.OCR, FailsOnce(pipeline.executor(Node.OCR)))
     admin, owner = await api.admin(), await api.user()
     data = await master_data(api, admin)
     response = await upload(

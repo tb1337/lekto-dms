@@ -377,9 +377,8 @@ async def test_retry_and_reprocess(api: Api) -> None:
             raise UnprocessableDocumentError("the PDF is encrypted")
 
     owner = await api.user()
-    executors = api.services.pipeline._executors
-    working = executors[Node.OCR]
-    executors[Node.OCR] = Broken()  # type: ignore[assignment]
+    pipeline = api.services.pipeline
+    working = pipeline.replace_executor(Node.OCR, Broken())  # type: ignore[arg-type]
     response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
     url = response.json()["status_url"]
     await api.drain()
@@ -392,7 +391,7 @@ async def test_retry_and_reprocess(api: Api) -> None:
     )
     assert skip.status_code == 409
 
-    executors[Node.OCR] = working
+    pipeline.replace_executor(Node.OCR, working)
     retried = await api.client.post(f"{url}/retry", headers=auth(owner))
     assert retried.status_code == 202
     processing = retried.json()["processing"]

@@ -179,7 +179,7 @@ def skip_classification(pipeline: PipelineService) -> PipelineService:
     """Let classification and field extraction pass as OK, for tests about other things
     (without a language model, they would make every document yellow)."""
     for node in (Node.JUDGE, Node.FIELDS):
-        pipeline._executors[node] = PlaceholderNode()
+        pipeline.replace_executor(node, PlaceholderNode())
     return pipeline
 
 

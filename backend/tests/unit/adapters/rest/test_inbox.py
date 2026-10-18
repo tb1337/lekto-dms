@@ -74,7 +74,7 @@ async def test_confirm_from_the_inbox(api: Api) -> None:
     async with api.container.unit_of_work() as uow:
         await uow.contacts.add(contact)
         await uow.commit()
-    api.services.pipeline._executors[Node.JUDGE] = Returns(uncertain(contact))
+    api.services.pipeline.replace_executor(Node.JUDGE, Returns(uncertain(contact)))
     response = await api.client.post(f"{PREFIX}/documents", files=pdf(), headers=auth(owner))
     url = response.json()["status_url"]
     await api.drain()

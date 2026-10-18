@@ -576,6 +576,43 @@ def search_policy_of(settings: Settings) -> SearchPolicy:
     )
 
 
+def classification_nodes(
+    container: Container,
+    settings: Settings,
+    *,
+    model: LanguageModel | None,
+    classifier: ClassifierService | None,
+    index: SearchIndex | None,
+    embeddings: Embeddings | None,
+    facts: FactsSignal,
+    locator: TextLocator | None,
+) -> dict[Node, NodeExecutor]:
+    """The signals, the judge and the fields node, each taking over the metadata a document
+    came in with (`ImportedSignal`, ...): for the container and, with a model per case, for
+    the evaluation."""
+    uow, clock, store = container.unit_of_work, container.clock, container.object_store
+    policy = policy_of(settings)
+    signals: dict[Node, NodeExecutor] = {
+        Node.SIGNAL_LLM: LlmSignal(uow, store, model, clock, policy),
+        Node.SIGNAL_FACTS: facts,
+        Node.SIGNAL_CLASSIFIER: ClassifierSignal(store, classifier),
+        Node.SIGNAL_NEIGHBOURS: NeighboursSignal(
+            uow, store, index, embeddings, neighbours_policy_of(settings)
+        ),
+    }
+    return {node: ImportedSignal(uow, signal) for node, signal in signals.items()} | {
+        Node.JUDGE: ImportedJudgeNode(
+            uow,
+            JudgeNode(
+                uow, store, clock, policy, thresholds=thresholds_of(settings), locator=locator
+            ),
+        ),
+        Node.FIELDS: ImportedFieldsNode(
+            uow, FieldsNode(uow, store, model, clock, policy, locator=locator)
+        ),
+    }
+
+
 def build_services(container: Container, settings: Settings | None = None) -> Services:
     """The use cases; tuning (retries, time limits, cleanup) from `settings`, or the defaults.
 
@@ -603,23 +640,16 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
     executors[Node.OCR] = OcrNode(store, container.ocr)
     executors[Node.PAGES] = PagesNode(store, container.pages)
     executors[Node.PARSE] = ParseNode(store, container.parser)
-    policy = policy_of(settings)
-    model = container.language_model
-    locator = container.locator
-    executors[Node.SIGNAL_LLM] = ImportedSignal(uow, LlmSignal(uow, store, model, clock, policy))
-    executors[Node.JUDGE] = ImportedJudgeNode(
-        uow,
-        JudgeNode(uow, store, clock, policy, thresholds=thresholds_of(settings), locator=locator),
-    )
-    executors[Node.FIELDS] = ImportedFieldsNode(
-        uow, FieldsNode(uow, store, model, clock, policy, locator=locator)
-    )
     facts = FactsSignal(uow, store, container.codes)
-    executors[Node.SIGNAL_FACTS] = ImportedSignal(uow, facts)
-    executors[Node.SIGNAL_CLASSIFIER] = ImportedSignal(uow, ClassifierSignal(store, classifier))
-    executors[Node.SIGNAL_NEIGHBOURS] = ImportedSignal(
-        uow,
-        NeighboursSignal(uow, store, index, embeddings, neighbours_policy_of(settings)),
+    executors |= classification_nodes(
+        container,
+        settings,
+        model=container.language_model,
+        classifier=classifier,
+        index=index,
+        embeddings=embeddings,
+        facts=facts,
+        locator=container.locator,
     )
     executors[Node.APPLY_RULES] = ApplyRulesNode(
         uow, store, container.patterns, container.templates, max_text=settings.rules_max_text

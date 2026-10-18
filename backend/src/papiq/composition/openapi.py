@@ -9,33 +9,18 @@ import json
 import sys
 from pathlib import Path
 
-from papiq.adapters.inbound.rest import ApiContext, create_app
+from papiq.adapters.inbound.rest import create_app
+from papiq.composition.api import api_context
 from papiq.composition.container import build_memory_container, build_services
+from papiq.composition.settings import Settings
 
 
 def openapi_document() -> dict[str, object]:
     """The OpenAPI document of the REST API. It does not depend on the configuration: the app is
     built on in-memory adapters only to read its routes."""
     container = build_memory_container()
-    services = build_services(container)
-    app = create_app(
-        ApiContext(
-            auth=services.auth,
-            users=services.users,
-            spaces=services.spaces,
-            master_data=services.master_data,
-            logos=services.logos,
-            pipeline=services.pipeline,
-            documents=services.documents,
-            rules=services.rules,
-            rule_applications=services.rule_applications,
-            webhooks=services.webhooks,
-            webhook_delivery=services.webhook_delivery,
-            event_bus=container.event_bus,
-            health_checks={},
-            max_upload_size=1,
-        )
-    )
+    settings = Settings.model_construct()
+    app = create_app(api_context(container, settings, build_services(container, settings)))
     return app.openapi()
 
 

@@ -25,8 +25,11 @@ from papiq.core.services.webhooks import WebhookDeliveryService, WebhookService
 type HealthCheck = Callable[[], Awaitable[None]]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class ApiContext:
+    """What the REST and MCP adapters work with (`composition.api.api_context`); the tuning
+    comes from the settings, which hold its defaults."""
+
     auth: AuthService
     users: UserService
     spaces: SpaceService
@@ -41,7 +44,7 @@ class ApiContext:
     event_bus: EventBus
     health_checks: Mapping[str, HealthCheck]
     max_upload_size: int
-    max_request_size: int = 1024 * 1024  # every other request body
+    max_request_size: int  # every other request body
     # Checks of parts the API works without (the search): a failure is `degraded`, not `503`.
     optional_checks: frozenset[str] = frozenset()
     oidc: OidcService | None = None
@@ -50,9 +53,9 @@ class ApiContext:
     indexing: IndexingService | None = None
     # With a classifier; without, its endpoints answer 503.
     classifier: ClassifierService | None = None
-    events_poll_interval: timedelta = timedelta(seconds=1)
+    events_poll_interval: timedelta
     # `False` only for development over plain HTTP: cookies without `Secure`.
-    cookie_secure: bool = True
+    cookie_secure: bool
     # Event streams check every so often that their session or token is still valid.
     stream_recheck_interval: timedelta = timedelta(seconds=30)
     # The built web UI, served below `/ui`; None: the API only.

@@ -90,7 +90,7 @@ def build_services(container: Container) -> Services:
 
 def with_ocr(services: Services, executor: Slow) -> Services:
     pipeline = services.pipeline
-    pipeline._executors[Node.OCR] = executor
+    pipeline.replace_executor(Node.OCR, executor)
     return replace(services, pipeline=pipeline)
 
 

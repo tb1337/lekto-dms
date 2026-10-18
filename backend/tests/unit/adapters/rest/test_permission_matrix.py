@@ -91,9 +91,10 @@ async def build_scene(api: Api) -> Scene:
     yellow = await upload("yellow.pdf")
     await api.services.pipeline.reprocess_from(owner.id, UUID(yellow), Node.JUDGE)  # type: ignore[arg-type]
     pipeline = api.services.pipeline
-    pipeline._executors[Node.JUDGE] = _Returns()  # yellow: the classification is uncertain
+    # yellow: the classification is uncertain
+    judge = pipeline.replace_executor(Node.JUDGE, _Returns())
     await api.drain()
-    pipeline._executors.pop(Node.JUDGE)
+    pipeline.replace_executor(Node.JUDGE, judge)
     processing = await upload_without_processing(api, owner, shared)
     for id in (green, yellow):
         await api.container.object_store.put(archive_key(UUID(id)), b"%PDF", content_type="x")  # type: ignore[arg-type]

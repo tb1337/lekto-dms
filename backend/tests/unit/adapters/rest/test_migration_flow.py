@@ -71,11 +71,11 @@ async def migrating(api: Api, directory: Path) -> AsyncIterator[Migrating]:
     and fields node of a migration around nodes that do nothing (there is no language
     model)."""
     uow = api.container.unit_of_work
-    executors = api.services.pipeline._executors
+    pipeline = api.services.pipeline
     for signal in SIGNALS:
-        executors[signal] = ImportedSignal(uow, PlaceholderNode())
-    executors[Node.JUDGE] = ImportedJudgeNode(uow, PlaceholderNode())
-    executors[Node.FIELDS] = ImportedFieldsNode(uow, PlaceholderNode())
+        pipeline.replace_executor(signal, ImportedSignal(uow, PlaceholderNode()))
+    pipeline.replace_executor(Node.JUDGE, ImportedJudgeNode(uow, PlaceholderNode()))
+    pipeline.replace_executor(Node.FIELDS, ImportedFieldsNode(uow, PlaceholderNode()))
     admin = await api.admin()
 
     async def work() -> None:

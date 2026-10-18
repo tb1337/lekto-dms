@@ -3,7 +3,7 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from pathlib import Path
 
@@ -12,9 +12,10 @@ import pytest
 from fastapi import FastAPI
 
 from papiq.adapters.inbound.mcp import McpEndpoint
-from papiq.adapters.inbound.rest import PREFIX, ApiContext, create_app
+from papiq.adapters.inbound.rest import PREFIX, create_app
 from papiq.adapters.inbound.rest.auth import CSRF_HEADER
 from papiq.adapters.outbound.memory import ManualClock
+from papiq.composition.api import api_context
 from papiq.composition.container import (
     Container,
     Services,
@@ -42,27 +43,10 @@ def make_app(
     mcp_text_max: int = 20_000,
     ui_directory: Path | None = None,
 ) -> FastAPI:
-    async def ok() -> None:
-        pass
-
-    context = ApiContext(
-        auth=services.auth,
-        users=services.users,
-        spaces=services.spaces,
-        master_data=services.master_data,
-        logos=services.logos,
-        oidc=services.oidc,
-        search=services.search,
-        indexing=services.indexing,
-        classifier=services.classifier,
-        pipeline=services.pipeline,
-        documents=services.documents,
-        rules=services.rules,
-        rule_applications=services.rule_applications,
-        webhooks=services.webhooks,
-        webhook_delivery=services.webhook_delivery,
-        event_bus=container.event_bus,
-        health_checks={"database": ok, "object_store": ok},
+    """The app as `composition.api` builds it from the shipped settings, with what a test
+    changes."""
+    context = replace(
+        api_context(container, builders.DEFAULT_SETTINGS, services),
         max_upload_size=max_upload,
         events_poll_interval=poll,
         cookie_secure=cookie_secure,

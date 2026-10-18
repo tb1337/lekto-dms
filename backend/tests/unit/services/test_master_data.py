@@ -50,10 +50,10 @@ async def test_admin_maintains_master_data(world: World) -> None:
     period = await service.create_field(
         admin.id, "Period", FieldType.CHOICE, choices=["monthly", "yearly"]
     )
-    assert (await service.rename_contact(admin.id, contact.id, "SWK")).name == "SWK"
-    assert (await service.rename_document_type(admin.id, invoice.id, "Bill")).name == "Bill"
-    assert (await service.rename_tag(admin.id, tag.id, "Taxes")).name == "Taxes"
-    assert (await service.rename_field(admin.id, total.id, "Sum")).name == "Sum"
+    assert (await service.change_contact(admin.id, contact.id, name="SWK")).name == "SWK"
+    assert (await service.change_document_type(admin.id, invoice.id, name="Bill")).name == "Bill"
+    assert (await service.change_tag(admin.id, tag.id, name="Taxes")).name == "Taxes"
+    assert (await service.change_field(admin.id, total.id, name="Sum")).name == "Sum"
     async with world.uow() as uow:
         assert (await uow.contacts.get(contact.id)).name == "SWK"
         assert (await uow.fields.get(total.id)).document_type_ids == frozenset({invoice.id})
@@ -81,7 +81,7 @@ async def test_only_admins_change_master_data(world: World) -> None:
     with pytest.raises(PermissionDeniedError):
         await service.create_contact(user.id, "Other bank")
     with pytest.raises(PermissionDeniedError):
-        await service.rename_contact(user.id, contact.id, "Mine")
+        await service.change_contact(user.id, contact.id, name="Mine")
     with pytest.raises(PermissionDeniedError):
         await service.create_document_type(user.id, "Letter")
     with pytest.raises(PermissionDeniedError):
@@ -101,7 +101,9 @@ async def test_contact_aliases_and_type_descriptions(world: World) -> None:
         aliases=["Nord Krankenversicherung AG", "nord krankenversicherung ag"],
     )
     assert changed.aliases == ["Nord Krankenversicherung AG"]
-    assert (await service.rename_contact(admin.id, example.id, "Nord")).aliases == changed.aliases
+    assert (
+        await service.change_contact(admin.id, example.id, name="Nord")
+    ).aliases == changed.aliases
     # A name or an alias of one contact is never a name or an alias of another.
     for change in (
         service.change_contact(admin.id, other.id, aliases=["Nord"]),
@@ -199,7 +201,7 @@ async def test_required_fields_and_title_patterns(world: World) -> None:
     with pytest.raises(ValidationError):
         await service.create_document_type(admin.id, "Neu", title_pattern="{{ field.zeitraum }}")
     # Renamed, the field is renamed in the patterns; narrowed, it stays required for the rest.
-    await service.rename_field(admin.id, period.id, "Abrechnungszeitraum")
+    await service.change_field(admin.id, period.id, name="Abrechnungszeitraum")
     async with world.uow() as uow:
         assert (await uow.document_types.get(payslip.id)).title_pattern == (
             "Lohn {{ field.abrechnungszeitraum }} {{ field.notiz }}"
@@ -253,8 +255,8 @@ async def test_names_are_unique_per_kind(world: World) -> None:
         await service.create_tag(admin.id, "insurance")
     other = await service.create_tag(admin.id, "Car")
     with pytest.raises(ConflictError):
-        await service.rename_tag(admin.id, other.id, "INSURANCE")
-    assert (await service.rename_tag(admin.id, other.id, "CAR")).name == "CAR"
+        await service.change_tag(admin.id, other.id, name="INSURANCE")
+    assert (await service.change_tag(admin.id, other.id, name="CAR")).name == "CAR"
 
 
 async def test_field_needs_existing_document_types(world: World) -> None:

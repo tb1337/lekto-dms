@@ -174,8 +174,8 @@ async def test_renaming_master_data_updates_the_documents_that_carry_it(setup: S
         await setup.world.documents.update_metadata(owner.id, id, changes)
     await setup.settle()
 
-    await setup.master_data.rename_contact(admin.id, contact.id, "Energie AG")
-    await setup.master_data.rename_tag(admin.id, tag.id, "Strom")
+    await setup.master_data.change_contact(admin.id, contact.id, name="Energie AG")
+    await setup.master_data.change_tag(admin.id, tag.id, name="Strom")
     assert sorted(
         job.kind for job in setup.world.database.jobs.values() if job.status.is_active
     ) == [
@@ -308,7 +308,7 @@ async def test_an_entry_holds_the_topic_with_those_above_it(setup: Setup) -> Non
 async def test_renaming_queues_nothing_without_a_search_index(world: World) -> None:
     admin = await world.user(role=Role.ADMIN)
     contact = await world.master_data.create_contact(admin.id, "Stadtwerke")
-    await world.master_data.rename_contact(admin.id, contact.id, "Energie AG")
+    await world.master_data.change_contact(admin.id, contact.id, name="Energie AG")
     assert not world.database.jobs
 
 
@@ -614,7 +614,7 @@ async def test_a_rebuild_notices_a_rename_made_while_it_ran(world: World) -> Non
 
     async def rename() -> None:
         # The refresh and index jobs run now and write to the index that is about to be replaced.
-        await setup.master_data.rename_contact(admin.id, contact.id, "Energie AG")
+        await setup.master_data.change_contact(admin.id, contact.id, name="Energie AG")
         await setup.settle(pipeline=False)
 
     index.after_first_batch = rename

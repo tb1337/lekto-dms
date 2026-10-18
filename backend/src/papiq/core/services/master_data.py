@@ -148,9 +148,6 @@ class MasterDataService:
             actor, _contacts, item, check, after=lambda uow: self._logo_for(uow, item, ())
         )
 
-    async def rename_contact(self, actor: UserId, id: ContactId, name: str) -> Contact:
-        return await self.change_contact(actor, id, name=name)
-
     async def change_contact(
         self,
         actor: UserId,
@@ -281,11 +278,6 @@ class MasterDataService:
             after=lambda uow: self._keep_title_rule(uow, actor, item),
         )
 
-    async def rename_document_type(
-        self, actor: UserId, id: DocumentTypeId, name: str
-    ) -> DocumentType:
-        return await self.change_document_type(actor, id, name=name)
-
     async def change_document_type(
         self,
         actor: UserId,
@@ -409,9 +401,6 @@ class MasterDataService:
                 await uow.jobs.enqueue(NORMALISE_JOB, {"tag_id": str(id)}, run_at=self._clock.now())
             await uow.commit()
         return tag
-
-    async def rename_tag(self, actor: UserId, id: TagId, name: str) -> Tag:
-        return await self.change_tag(actor, id, name=name)
 
     # --- normalising after a move ---------------------------------------------------------------
 
@@ -554,9 +543,6 @@ class MasterDataService:
                 )
             await uow.commit()
         return definition
-
-    async def rename_field(self, actor: UserId, id: FieldId, name: str) -> FieldDefinition:
-        return await self.change_field(actor, id, name=name)
 
     async def assign_fields(
         self, actor: UserId, id: DocumentTypeId, fields: Mapping[FieldId, bool]

@@ -45,7 +45,7 @@ async def test_the_pattern_is_a_rule_of_its_type(world: World) -> None:
 
     # It follows the type: a new pattern, a new name.
     await service.change_document_type(r.admin.id, kind.id, title_pattern="{{ filename }}")
-    await service.rename_document_type(r.admin.id, kind.id, "Beleg")
+    await service.change_document_type(r.admin.id, kind.id, name="Beleg")
     (rule,) = await title_rules(r)
     assert rule.current.number == 3 and rule.definition.name == "Beleg"
     assert rule.definition.actions == (SetTitle("{{ filename }}"),)

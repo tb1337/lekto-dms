@@ -173,7 +173,7 @@ def test_reindex_rebuilds_the_index(
     monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
     monkeypatch.setenv("PAPIQ_MEILISEARCH_URL", "http://meilisearch:7700")
     index = MemorySearchIndex()
-    monkeypatch.setitem(container.SEARCH_INDEXES, "meilisearch", lambda _: index)
+    monkeypatch.setitem(container.SEARCH_INDEXES, "meilisearch", lambda _: container.Opened(index))
     monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
     monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
     assert main(["migrate"]) == 0

@@ -44,6 +44,11 @@ class ObjectStore(Protocol):
         """Remove the object; does nothing if it does not exist."""
         ...
 
+    async def check(self) -> None:
+        """For health checks: raise unless the store can be used (the directory is writable,
+        the bucket exists and the credentials work)."""
+        ...
+
 
 def check_key(key: str) -> str:
     """Return `key` if it is a valid object key, otherwise raise ValueError."""

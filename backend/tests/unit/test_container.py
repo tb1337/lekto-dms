@@ -23,6 +23,7 @@ from papiq.composition import container
 from papiq.composition.api import health_checks
 from papiq.composition.container import (
     Closer,
+    Opened,
     Persistence,
     build_container,
     build_memory_container,
@@ -78,7 +79,8 @@ def test_the_database_type_selects_the_sql_adapter(tmp_path: Path) -> None:
 
 def test_the_storage_type_selects_the_object_store(tmp_path: Path) -> None:
     filesystem = container.OBJECT_STORES["filesystem"](settings(storage_path=tmp_path / "o"))
-    assert isinstance(filesystem, FilesystemObjectStore)
+    assert isinstance(filesystem.adapter, FilesystemObjectStore)
+    assert filesystem.close is None  # it holds nothing
     s3 = container.OBJECT_STORES["s3"](
         settings(
             storage_type="s3",
@@ -88,7 +90,8 @@ def test_the_storage_type_selects_the_object_store(tmp_path: Path) -> None:
             s3_secret_access_key="s",
         )
     )
-    assert isinstance(s3, S3ObjectStore)
+    assert isinstance(s3.adapter, S3ObjectStore)
+    assert s3.close == s3.adapter.aclose
     assert list(tmp_path.iterdir()) == []  # directories are created on the first write
 
 
@@ -202,7 +205,7 @@ def test_optional_ports_are_only_selected_when_configured(
     assert fetching._user_agent.startswith("Papiq/")
     assert fetching._resolve is system_resolver and fetching._transport is None
 
-    monkeypatch.setitem(container.SEARCH_INDEXES, "meilisearch", lambda _: object())
+    monkeypatch.setitem(container.SEARCH_INDEXES, "meilisearch", lambda _: Opened(object()))
     assert build_container(settings(meilisearch_url="http://meilisearch:7700")).search_index
     monkeypatch.delitem(container.SEARCH_INDEXES, "meilisearch")
     with pytest.raises(AdapterNotAvailableError, match="search_index: adapter 'meilisearch'"):
@@ -240,6 +243,7 @@ def test_language_model_and_embeddings_from_settings(monkeypatch: pytest.MonkeyP
     assert embeddings.model == "bge-m3"
     assert "Authorization" not in embeddings._client._client.headers
     assert embeddings._client._timeout == 20
+    assert model.aclose in built.closers and embeddings.aclose in built.closers
 
 
 def test_templates_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:

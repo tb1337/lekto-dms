@@ -8,6 +8,7 @@ import os
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import timedelta
+from typing import Protocol
 
 from pydantic import SecretStr
 
@@ -128,6 +129,23 @@ type Factory[T] = Callable[[Settings], T]
 type Closer = Callable[[], Awaitable[None]]
 
 
+@dataclass(frozen=True)
+class Opened[T]:
+    """An adapter and, if it holds something to release (a client, connections), its closer."""
+
+    adapter: T
+    close: Closer | None = None
+
+
+class _Closable(Protocol):
+    async def aclose(self) -> None: ...
+
+
+def _closing[T: _Closable](adapter: T) -> Opened[T]:
+    """`adapter`, released by its `aclose`."""
+    return Opened(adapter, adapter.aclose)
+
+
 USER_AGENT = f"Papiq/{__version__}"
 """How Papiq names itself in requests to other sites: logo fetches and webhooks."""
 
@@ -152,21 +170,23 @@ def sql_persistence(settings: Settings) -> Persistence:
     )
 
 
-def filesystem_store(settings: Settings) -> FilesystemObjectStore:
-    return FilesystemObjectStore(settings.storage_path)
+def filesystem_store(settings: Settings) -> Opened[FilesystemObjectStore]:
+    return Opened(FilesystemObjectStore(settings.storage_path))
 
 
-def s3_store(settings: Settings) -> S3ObjectStore:
+def s3_store(settings: Settings) -> Opened[S3ObjectStore]:
     # Settings guarantee these for s3.
     assert settings.s3_endpoint_url and settings.s3_bucket
     assert settings.s3_access_key_id and settings.s3_secret_access_key
-    return S3ObjectStore(
-        endpoint_url=str(settings.s3_endpoint_url),
-        region=settings.s3_region,
-        bucket=settings.s3_bucket,
-        access_key_id=settings.s3_access_key_id.get_secret_value(),
-        secret_access_key=settings.s3_secret_access_key.get_secret_value(),
-        path_style=settings.s3_path_style,
+    return _closing(
+        S3ObjectStore(
+            endpoint_url=str(settings.s3_endpoint_url),
+            region=settings.s3_region,
+            bucket=settings.s3_bucket,
+            access_key_id=settings.s3_access_key_id.get_secret_value(),
+            secret_access_key=settings.s3_secret_access_key.get_secret_value(),
+            path_style=settings.s3_path_style,
+        )
     )
 
 
@@ -176,7 +196,7 @@ PERSISTENCE: dict[str, Factory[Persistence]] = {
     "sqlite": sql_persistence,
     "postgres": sql_persistence,
 }
-OBJECT_STORES: dict[str, Factory[ObjectStore]] = {
+OBJECT_STORES: dict[str, Factory[Opened[ObjectStore]]] = {
     "filesystem": filesystem_store,
     "s3": s3_store,
 }
@@ -210,23 +230,29 @@ def _secret(value: SecretStr | None) -> str | None:
     return None if value is None else value.get_secret_value()
 
 
-def meilisearch_index(settings: Settings) -> MeilisearchIndex:
+def meilisearch_index(settings: Settings) -> Opened[MeilisearchIndex]:
     assert settings.meilisearch_url is not None  # the adapter is only selected with a URL
-    return MeilisearchIndex(
-        url=str(settings.meilisearch_url),
-        api_key=_secret(settings.meilisearch_api_key),
-        index=settings.meilisearch_index,
-        # Vectors only where there is a model to compute them (settings guarantee the length).
-        dimensions=settings.embedding_dimensions if settings.embedding_base_url else None,
-        locales=settings.search_locales.split("+"),
-        timeout=settings.meilisearch_timeout.total_seconds(),
-        task_timeout=settings.meilisearch_task_timeout.total_seconds(),
+    return _closing(
+        MeilisearchIndex(
+            url=str(settings.meilisearch_url),
+            api_key=_secret(settings.meilisearch_api_key),
+            index=settings.meilisearch_index,
+            # Vectors only where there is a model to compute them (settings guarantee the length).
+            dimensions=settings.embedding_dimensions if settings.embedding_base_url else None,
+            locales=settings.search_locales.split("+"),
+            timeout=settings.meilisearch_timeout.total_seconds(),
+            task_timeout=settings.meilisearch_task_timeout.total_seconds(),
+        )
     )
 
 
-SEARCH_INDEXES: dict[str, Factory[SearchIndex]] = {"meilisearch": meilisearch_index}
-LANGUAGE_MODELS: dict[str, Factory[LanguageModel]] = {"openai-compatible": openai_language_model}
-EMBEDDINGS: dict[str, Factory[Embeddings]] = {"openai-compatible": openai_embeddings}
+SEARCH_INDEXES: dict[str, Factory[Opened[SearchIndex]]] = {"meilisearch": meilisearch_index}
+LANGUAGE_MODELS: dict[str, Factory[Opened[LanguageModel]]] = {
+    "openai-compatible": lambda settings: _closing(openai_language_model(settings))
+}
+EMBEDDINGS: dict[str, Factory[Opened[Embeddings]]] = {
+    "openai-compatible": lambda settings: _closing(openai_embeddings(settings))
+}
 
 
 def _cores_per_job(settings: Settings) -> int:
@@ -349,29 +375,29 @@ def build_container(settings: Settings) -> Container:
     """Create the adapter for every port. Raises AdapterNotAvailableError for a missing one."""
     persistence = _select("persistence", settings.db_type, PERSISTENCE, settings)
     closers: list[Closer] = [persistence.close]
-    object_store = _select("object_store", settings.storage_type, OBJECT_STORES, settings)
-    if isinstance(object_store, S3ObjectStore):
-        closers.append(object_store.aclose)
+
+    def opened[T](port: str, adapter: str, factories: Mapping[str, Factory[Opened[T]]]) -> T:
+        built = _select(port, adapter, factories, settings)
+        if built.close is not None:
+            closers.append(built.close)
+        return built.adapter
+
+    object_store = opened("object_store", settings.storage_type, OBJECT_STORES)
     search_index = (
-        _select("search_index", "meilisearch", SEARCH_INDEXES, settings)
+        opened("search_index", "meilisearch", SEARCH_INDEXES)
         if settings.meilisearch_url is not None
         else None
     )
-    if isinstance(search_index, MeilisearchIndex):
-        closers.append(search_index.aclose)
     language_model = (
-        _select("llm", "openai-compatible", LANGUAGE_MODELS, settings)
+        opened("llm", "openai-compatible", LANGUAGE_MODELS)
         if settings.llm_base_url is not None
         else None
     )
     embeddings = (
-        _select("embeddings", "openai-compatible", EMBEDDINGS, settings)
+        opened("embeddings", "openai-compatible", EMBEDDINGS)
         if settings.embedding_base_url is not None
         else None
     )
-    for client in (language_model, embeddings):
-        if isinstance(client, OpenAiCompatLanguageModel | OpenAiCompatEmbeddings):
-            closers.append(client.aclose)
     return Container(
         unit_of_work=persistence.unit_of_work,
         event_bus=persistence.event_bus,

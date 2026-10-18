@@ -18,8 +18,6 @@ from papiq.adapters.inbound.rest import (
     close_event_streams,
     create_app,
 )
-from papiq.adapters.outbound.filesystem import FilesystemObjectStore
-from papiq.adapters.outbound.s3 import S3ObjectStore
 from papiq.composition.bootstrap import ensure_first_admin
 from papiq.composition.container import Container, Services, build_container, build_services
 from papiq.composition.settings import Settings
@@ -39,15 +37,10 @@ def health_checks(container: Container) -> dict[str, HealthCheck]:
         async with container.unit_of_work() as uow:
             await uow.users.find(UserId(UUID(int=0)))
 
-    store = container.object_store
-
-    async def object_store() -> None:
-        if isinstance(store, FilesystemObjectStore | S3ObjectStore):
-            await store.check()  # the root directory or the bucket
-        else:
-            await store.exists("health/probe")
-
-    checks: dict[str, HealthCheck] = {"database": database, "object_store": object_store}
+    checks: dict[str, HealthCheck] = {
+        "database": database,
+        "object_store": container.object_store.check,
+    }
     if container.search_index is not None:
         checks["search"] = container.search_index.check
     return checks

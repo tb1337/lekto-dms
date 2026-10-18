@@ -33,6 +33,9 @@ class MemoryObjectStore:
     async def delete(self, key: str) -> None:
         self._objects.pop(check_key(key), None)
 
+    async def check(self) -> None:
+        """Memory is always there."""
+
     def content_type(self, key: str) -> str:
         """The content type an object was stored with (for tests)."""
         try:

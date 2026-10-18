@@ -19289,6 +19289,7 @@
             "description": "Discard the results from this node on and process again from there."
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "from_node"

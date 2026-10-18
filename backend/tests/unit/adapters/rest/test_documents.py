@@ -450,6 +450,11 @@ async def test_reprocess_validates_the_step(api: Api) -> None:
         assert invalid.status_code == 422, body
         assert invalid.headers["content-type"] == PROBLEM
         assert "from_node" in invalid.json()["detail"]
+    misspelt = await api.client.post(
+        f"{url}/reprocess", json={"from_node": "parse", "frm_node": "ocr"}, headers=auth(owner)
+    )
+    assert misspelt.status_code == 422
+    assert "frm_node" in misspelt.json()["detail"]
 
 
 async def test_only_the_owner_controls_processing(api: Api) -> None:

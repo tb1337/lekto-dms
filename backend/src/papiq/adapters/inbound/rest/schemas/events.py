@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class EventMessage(BaseModel):
@@ -11,7 +11,7 @@ class EventMessage(BaseModel):
     `occurred_at` and `document_id` depend on the type (`classifier.trained`: `number` and
     `examples` of the new model)."""
 
-    model_config = {"extra": "allow"}
+    model_config = ConfigDict(extra="allow")
 
     type: str = Field(examples=["document.node_completed"])
     id: UUID

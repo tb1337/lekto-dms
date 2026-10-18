@@ -70,6 +70,7 @@ from tests.contracts.rules import RuleRepositoriesContract
 from tests.contracts.search_index import DIMENSIONS, SearchIndexContract
 from tests.contracts.unit_of_work import UnitOfWorkContract
 from tests.contracts.webhooks import WebhookRepositoryContract
+from tests.service_suite import ServicesOverPersistence
 
 
 @pytest.fixture
@@ -103,6 +104,10 @@ def clock() -> Clock:
 
 
 class TestMemoryUnitOfWork(UnitOfWorkContract):
+    pass
+
+
+class TestMemoryServices(ServicesOverPersistence):
     pass
 
 

@@ -7,7 +7,6 @@ learns identifiers of contacts from the same documents (`identifiers.mine_identi
 keeps the latest `KEPT_MODELS` models.
 """
 
-import asyncio
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -17,7 +16,6 @@ from papiq.core.domain.classifier import KEPT_MODELS, ClassifierModel
 from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import (
     ClassifierError,
-    ConcurrencyError,
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
@@ -30,7 +28,7 @@ from papiq.core.domain.identifiers import (
     mine_identifiers,
 )
 from papiq.core.domain.ids import ClassifierModelId, ContactId, TagId, UserId
-from papiq.core.domain.jobs import Job
+from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.ports import (
     Classifier,
@@ -45,6 +43,7 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
 )
 from papiq.core.services._access import load_actor
+from papiq.core.services._jobs import LEASE, JobRunner, Step, retrying
 from papiq.core.services.master_data import replace_learned_identifiers
 from papiq.core.services.objects import classifier_key, load_text
 
@@ -52,8 +51,7 @@ log = logging.getLogger(__name__)
 
 CHECK_JOB = "classifier.check"
 TRAIN_JOB = "classifier.train"
-_TRAIN_ATTEMPTS = 3
-_RETRY_DELAY = timedelta(minutes=5)
+_TRAIN_RETRY = RetryPolicy(max_attempts=3, delay=timedelta(minutes=5))
 _PAGE = 500
 _COMMIT_ATTEMPTS = 3  # a contact changed while the learned identifiers were written: again
 _HOLDOUT_FROM = 50  # examples from which a share is held out to measure the model
@@ -114,6 +112,7 @@ class ClassifierService:
         self._classifier = classifier
         self.policy = policy
         self._cached: tuple[ClassifierModelId, bytes] | None = None
+        self._jobs = JobRunner(uow, clock)
 
     @property
     def name(self) -> str:
@@ -129,21 +128,9 @@ class ClassifierService:
 
     async def run_next_job(self) -> bool:
         """Claim and run a due check or training; False if none was due."""
-        for kind, lease in (
-            (CHECK_JOB, timedelta(minutes=5)),
-            (TRAIN_JOB, self.policy.train_lease),
-        ):
-            async with self._uow() as uow:
-                job = await uow.jobs.claim(now=self._clock.now(), lease=lease, kinds=[kind])
-                await uow.commit()
-            if job is not None:
-                try:
-                    await self._run_claimed(job)
-                except asyncio.CancelledError:
-                    await asyncio.shield(self._release(job))
-                    raise
-                return True
-        return False
+        return await self._jobs.run_next(
+            [CHECK_JOB], LEASE, self._run_claimed
+        ) or await self._jobs.run_next([TRAIN_JOB], self.policy.train_lease, self._run_claimed)
 
     async def check(self) -> bool:
         """Queue a training if one is due; returns whether it is."""
@@ -205,16 +192,10 @@ class ClassifierService:
             (item.document.contact_id, item.document.topic_id, identifiers_in(item.example.text))
             for item in examples
         ]
-        for attempt in range(1, _COMMIT_ATTEMPTS + 1):
-            try:
-                model, learned, old = await self._store_model(
-                    trained, found, accuracy, len(examples), until
-                )
-                break
-            except ConcurrencyError:
-                if attempt == _COMMIT_ATTEMPTS:
-                    raise
-                log.info("a contact changed while the model was stored; storing again")
+        model, learned, old = await retrying(
+            lambda: self._store_model(trained, found, accuracy, len(examples), until),
+            attempts=_COMMIT_ATTEMPTS,
+        )
         for item in old:
             await self._forget(item.object_key)
         log.info(
@@ -375,54 +356,26 @@ class ClassifierService:
                 await self.train()
         except ClassifierError as error:
             log.warning("the classifier cannot be trained", extra={"error": str(error)})
-            await self._finish(job, error=str(error))
+            await self._jobs.end(job, error=str(error), also=self._after(job))
             return
         except Exception as error:
-            await self._failed(job, error)
+            log.warning("classifier job failed", extra={"kind": job.kind}, exc_info=True)
+            reason = f"{type(error).__name__}: {error}"
+            if job.kind == CHECK_JOB:  # the next check comes anyway
+                await self._jobs.end(job, error=reason, also=self._next_check)
+            else:
+                run_at = _TRAIN_RETRY.next_run(job.tries, self._clock.now())
+                await self._jobs.again(job, reason, run_at)
             return
-        await self._finish(job)
+        await self._jobs.end(job, also=self._after(job))
 
-    async def _finish(self, job: Job, *, error: str | None = None) -> None:
-        try:
-            async with self._uow() as uow:
-                if error is None:
-                    await uow.jobs.complete(job)
-                else:
-                    await uow.jobs.fail(job, error=error)
-                if job.kind == CHECK_JOB:
-                    await self._next_check(uow)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a classifier job", extra={"job_id": str(job.id)})
-
-    async def _failed(self, job: Job, error: Exception) -> None:
-        reason = f"{type(error).__name__}: {error}"
-        log.warning("classifier job failed", extra={"kind": job.kind}, exc_info=True)
-        try:
-            async with self._uow() as uow:
-                if job.kind == CHECK_JOB:
-                    await uow.jobs.fail(job, error=reason)
-                    await self._next_check(uow)
-                elif job.tries >= _TRAIN_ATTEMPTS:
-                    await uow.jobs.fail(job, error=reason)
-                else:
-                    run_at = self._clock.now() + _RETRY_DELAY * job.tries
-                    await uow.jobs.reschedule(job, run_at=run_at, error=reason)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a classifier job", extra={"job_id": str(job.id)})
+    def _after(self, job: Job) -> Step | None:
+        """A check queues the next one when it ends."""
+        return self._next_check if job.kind == CHECK_JOB else None
 
     async def _next_check(self, uow: UnitOfWork) -> None:
         run_at = self._clock.now() + self.policy.check_interval
         await uow.jobs.enqueue(CHECK_JOB, {}, run_at=run_at, dedup_key=CHECK_JOB)
-
-    async def _release(self, job: Job) -> None:
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.release(job, run_at=self._clock.now(), error="worker stopped")
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a classifier job", extra={"job_id": str(job.id)})
 
 
 def _shortened(text: str, limit: int) -> str:

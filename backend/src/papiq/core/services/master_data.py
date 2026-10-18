@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -8,7 +7,6 @@ from uuid import UUID
 
 from papiq.core.domain.documents import UNSET, DocumentChanges, Unset
 from papiq.core.domain.errors import (
-    ConcurrencyError,
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
@@ -17,7 +15,7 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
-from papiq.core.domain.jobs import Job
+from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.master_data import (
     MAX_ALIASES,
     Assignment,
@@ -46,6 +44,7 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
 )
 from papiq.core.services._access import contact_topics_lock, load_actor
+from papiq.core.services._jobs import LEASE, JobRunner
 
 # A rename queues the indexing service's refresh job; the worker runs it through that service.
 from papiq.core.services.indexing import REFRESH_JOB, RefreshKind, refresh_payload
@@ -66,9 +65,7 @@ NORMALISE_JOB = "tags.normalise"
 starts after (`normalise_tagged`)."""
 
 _NORMALISE_BATCH = 200  # documents per step, one job and one unit of work each
-_NORMALISE_LEASE = timedelta(minutes=10)
-_NORMALISE_ATTEMPTS = 5
-_NORMALISE_DELAY = timedelta(minutes=1)  # before the next attempt, doubling
+_NORMALISE_RETRY = RetryPolicy(max_attempts=5, delay=timedelta(minutes=1))
 
 
 @dataclass(frozen=True)
@@ -122,6 +119,7 @@ class MasterDataService:
         self._index_renames = index_renames
         self._store = store
         self._fetch_logos = fetch_logos
+        self._jobs = JobRunner(uow, clock)
 
     async def create_contact(
         self,
@@ -416,19 +414,7 @@ class MasterDataService:
 
     async def run_next_job(self) -> bool:
         """Claim and run a due normalisation (`NORMALISE_JOB`); False if none was due."""
-        async with self._uow() as uow:
-            job = await uow.jobs.claim(
-                now=self._clock.now(), lease=_NORMALISE_LEASE, kinds=[NORMALISE_JOB]
-            )
-            await uow.commit()
-        if job is None:
-            return False
-        try:
-            await self._normalise(job)
-        except asyncio.CancelledError:
-            await asyncio.shield(self._release(job))
-            raise
-        return True
+        return await self._jobs.run_next([NORMALISE_JOB], LEASE, self._normalise)
 
     async def _normalise(self, job: Job) -> None:
         """One step: the batch, completing the job and queueing the next step commit together;
@@ -438,7 +424,7 @@ class MasterDataService:
             after = job.payload.get("after")
             start = None if after is None else DocumentId(UUID(str(after)))
         except (KeyError, ValueError) as error:
-            await self._finish(job, error=f"invalid payload: {error}")
+            await self._jobs.invalid(job, error)
             return
         try:
             async with self._uow() as uow:
@@ -453,43 +439,11 @@ class MasterDataService:
                     )
                 await uow.commit()
         except Exception as error:  # a row changed meanwhile, or the database failed: again
-            await self._retry(job, error)
+            log.warning("normalising tags failed", extra={"job_id": str(job.id)}, exc_info=True)
+            reason = f"{type(error).__name__}: {error}"
+            await self._jobs.again(job, reason, _NORMALISE_RETRY.next_run(job.tries, self._now()))
             return
         log.info("tags normalised", extra={"tag_id": str(tag), "changed": changed})
-
-    async def _retry(self, job: Job, error: Exception) -> None:
-        reason = f"{type(error).__name__}: {error}"
-        log.warning("normalising tags failed", extra={"job_id": str(job.id)}, exc_info=True)
-        try:
-            async with self._uow() as uow:
-                if job.tries >= _NORMALISE_ATTEMPTS:
-                    await uow.jobs.fail(job, error=reason)
-                else:
-                    delay = _NORMALISE_DELAY * (1 << (job.tries - 1))
-                    await uow.jobs.reschedule(job, run_at=self._clock.now() + delay, error=reason)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a job", extra={"job_id": str(job.id)})
-
-    async def _finish(self, job: Job, *, error: str | None = None) -> None:
-        try:
-            async with self._uow() as uow:
-                if error is None:
-                    await uow.jobs.complete(job)
-                else:
-                    await uow.jobs.fail(job, error=error)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a job", extra={"job_id": str(job.id)})
-
-    async def _release(self, job: Job) -> None:
-        """The worker stops: give the job back to run again at once."""
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.release(job, run_at=self._clock.now(), error="worker stopped")
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a job", extra={"job_id": str(job.id)})
 
     async def create_field(
         self,

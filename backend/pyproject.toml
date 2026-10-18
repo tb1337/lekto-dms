@@ -108,7 +108,11 @@ modules = [
 [[tool.importlinter.contracts]]
 name = "Service helpers do not import use cases"
 type = "forbidden"
-source_modules = ["papiq.core.services._access", "papiq.core.services.objects"]
+source_modules = [
+    "papiq.core.services._access",
+    "papiq.core.services._jobs",
+    "papiq.core.services.objects",
+]
 forbidden_modules = ["papiq.core.services"]
 
 [[tool.importlinter.contracts]]

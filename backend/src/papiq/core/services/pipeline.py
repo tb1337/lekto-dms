@@ -4,7 +4,6 @@ import asyncio
 import copy
 import hashlib
 import logging
-import random
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
@@ -22,7 +21,6 @@ from papiq.core.domain.documents import (
     Sha256,
 )
 from papiq.core.domain.errors import (
-    ConcurrencyError,
     ConflictError,
     DuplicateDocumentError,
     InvalidTransitionError,
@@ -36,7 +34,7 @@ from papiq.core.domain.errors import (
 )
 from papiq.core.domain.ids import DocumentId, JobId, SpaceId, TagId, UserId
 from papiq.core.domain.imports import IMPORTED, ImportedMetadata
-from papiq.core.domain.jobs import Job, JobStatus, RetryPolicy
+from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.permissions import can_control_document, can_file_into
 from papiq.core.domain.pipeline import (
@@ -67,6 +65,7 @@ from papiq.core.services._access import (
     readable_document,
     visible_space,
 )
+from papiq.core.services._jobs import STORE_ATTEMPTS, JobRunner, retrying
 from papiq.core.services.inbox import (
     LEARNED_ALIAS,
     alias_to_learn,
@@ -79,11 +78,6 @@ from papiq.core.services.objects import original_key
 from papiq.core.services.rules.running import corrected_fields, person_record, space_choice
 
 log = logging.getLogger(__name__)
-
-# Attempts to store a node result while the document is changed concurrently: the signals of a
-# document finish side by side, each attempt waits a little longer, at random.
-_RECORD_ATTEMPTS = 10
-_RECORD_BACKOFF = 0.02  # seconds, times the attempt
 
 NODE_JOB = "pipeline.node"
 """Job kind of a pipeline node; payload: `NodeJob`."""
@@ -231,6 +225,7 @@ class PipelineService:
         self._suggest_contact = suggest_contact
         self._retry = retry
         self._lease = lease
+        self._jobs = JobRunner(uow, clock)
         self._vision = vision
         self._poor_reading = poor_reading
         self._facts = facts
@@ -666,21 +661,9 @@ class PipelineService:
         A catch-up job (`catch_up`) runs the same way, except that its node is not marked as
         running and its result changes neither the status nor the lane.
         """
-        async with self._uow() as uow:
-            job = await uow.jobs.claim(
-                now=self._clock.now(),
-                lease=self._lease,
-                kinds=[NODE_JOB, CATCH_UP_JOB, REPARSE_JOB, FACTS_JOB],
-            )
-            await uow.commit()
-        if job is None:
-            return False
-        try:
-            await self._run_claimed(job)
-        except asyncio.CancelledError:
-            await asyncio.shield(self._release(job))
-            raise
-        return True
+        return await self._jobs.run_next(
+            [NODE_JOB, CATCH_UP_JOB, REPARSE_JOB, FACTS_JOB], self._lease, self._run_claimed
+        )
 
     async def _run_claimed(self, job: Job) -> None:
         if job.kind == FACTS_JOB:
@@ -689,8 +672,7 @@ class PipelineService:
         try:
             target = NodeJob.from_json(job.payload)
         except (KeyError, TypeError, ValueError) as error:
-            log.error("invalid node job", extra={"job_id": str(job.id), "error": str(error)})
-            await self._finish(job, error=f"invalid payload: {error}")
+            await self._jobs.invalid(job, error)
             return
         document_id, node, run = target.document_id, target.node, target.run
         if job.kind == REPARSE_JOB:
@@ -702,7 +684,7 @@ class PipelineService:
         else:
             document = await self._start(document_id, node, run, started)
         if document is None:
-            await self._finish(job)
+            await self._jobs.end(job)
             return
         if job.tries > self._retry.max_attempts:
             reason = (
@@ -742,29 +724,23 @@ class PipelineService:
     ) -> None:
         """Let the job run again at `retry_at` and show the node as waiting meanwhile (a
         catch-up job has nothing to show). Nothing changes if the job's claim was lost."""
-        for attempt in range(1, _RECORD_ATTEMPTS + 1):
-            try:
-                async with self._uow() as uow:
-                    await uow.jobs.reschedule(job, run_at=retry_at, error=reason)
-                    document = await uow.documents.find(document_id)
-                    if (
-                        job.kind != CATCH_UP_JOB
-                        and document is not None
-                        and document.is_awaiting(node, run)
-                        and document.processing.nodes[node].status is NodeStatus.RUNNING
-                    ):
-                        document.defer_node(node, run, retry_at, self._clock.now())
-                        await uow.documents.update(document)
-                        await uow.outbox.add(document.pull_events())
-                    await uow.commit()
-                return
-            except ConcurrencyError:
-                if not await self._still_claimed(job):
-                    log.warning("lost the claim of a node job", extra={"job_id": str(job.id)})
-                    return
-                if attempt == _RECORD_ATTEMPTS:
-                    raise
-                await _backoff(attempt)
+
+        async def defer() -> None:
+            async with self._uow() as uow:
+                await uow.jobs.reschedule(job, run_at=retry_at, error=reason)
+                document = await uow.documents.find(document_id)
+                if (
+                    job.kind != CATCH_UP_JOB
+                    and document is not None
+                    and document.is_awaiting(node, run)
+                    and document.processing.nodes[node].status is NodeStatus.RUNNING
+                ):
+                    document.defer_node(node, run, retry_at, self._clock.now())
+                    await uow.documents.update(document)
+                    await uow.outbox.add(document.pull_events())
+                await uow.commit()
+
+        await self._jobs.storing(job, defer)
 
     async def _read_facts(self, job: Job) -> None:
         """Read a document's facts outside processing and keep what they apply (the
@@ -773,42 +749,28 @@ class PipelineService:
         try:
             document_id = DocumentId(UUID(str(job.payload["document_id"])))
         except (KeyError, ValueError) as error:
-            await self._finish(job, error=f"invalid payload: {error}")
+            await self._jobs.invalid(job, error)
             return
         async with self._uow() as uow:
             document = await uow.documents.find(document_id)
         if document is None or self._facts is None:
-            await self._finish(job)
+            await self._jobs.end(job)
             return
         try:
             outcome = await self._facts.run(document)
         except Exception as error:
-            reason = f"{type(error).__name__}: {error}"
-            log.warning(
-                "reading the facts failed",
-                extra={"document_id": str(document_id), "attempt": job.tries},
-                exc_info=True,
-            )
-            retry_at = self._retry.next_run(job.tries, self._clock.now())
-            if retry_at is None:
-                await self._finish(job, error=reason)
-                return
-            async with self._uow() as uow:
-                await uow.jobs.reschedule(job, run_at=retry_at, error=reason)
-                await uow.commit()
+            await self._failed_aside(job, "reading the facts failed", document_id, error)
             return
         if isinstance(outcome, NodeResult):
-            await self._finish(job)
+            await self._jobs.end(job)
             return
-        try:
-            async with self._uow() as uow:
-                current = await uow.documents.find(document_id)
-                if current is not None:
-                    await outcome.apply(uow, current, self._clock.now())
-                await uow.jobs.complete(job)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a facts job", extra={"job_id": str(job.id)})
+
+        async def apply(uow: UnitOfWork) -> None:
+            current = await uow.documents.find(document_id)
+            if current is not None:
+                await outcome.apply(uow, current, self._clock.now())
+
+        await self._jobs.end(job, also=apply)
 
     async def _reparse(self, job: Job, document_id: DocumentId, run: int) -> None:
         """Read a document's text again (`reparse`) and record the reading beside processing.
@@ -817,7 +779,7 @@ class PipelineService:
         async with self._uow() as uow:
             document = await uow.documents.find(document_id)
         if document is None or not _reparsable(document, run):
-            await self._finish(job)
+            await self._jobs.end(job)
             return
         started = self._clock.now()
         try:
@@ -825,41 +787,38 @@ class PipelineService:
         except UnprocessableDocumentError as error:
             outcome = _failed(str(error))
         except Exception as error:
-            reason = f"{type(error).__name__}: {error}"
-            log.warning(
-                "reading the text again failed",
-                extra={"document_id": str(document_id), "attempt": job.tries},
-                exc_info=True,
-            )
-            retry_at = self._retry.next_run(job.tries, self._clock.now())
-            if retry_at is None:
-                await self._finish(job, error=reason)
-                return
-            async with self._uow() as uow:
-                await uow.jobs.reschedule(job, run_at=retry_at, error=reason)
-                await uow.commit()
+            await self._failed_aside(job, "reading the text again failed", document_id, error)
             return
         assert isinstance(outcome, NodeResult), "parsing applies nothing"
         result = replace(outcome, input={**outcome.input, "reparse": True})
-        for attempt in range(1, _RECORD_ATTEMPTS + 1):
+
+        async def record() -> None:
             now = self._clock.now()
-            try:
-                async with self._uow() as uow:
-                    document = await uow.documents.find(document_id)
-                    if document is not None and _reparsable(document, run):
-                        document.text_read_again(run, result.outcome, now)
-                        await uow.documents.update(document)
-                        await self._log(uow, document.id, Node.PARSE, run, result, started, now)
-                        await uow.outbox.add(document.pull_events())
-                    if result.outcome is Outcome.FAILED:
-                        await uow.jobs.fail(job, error=result.reason or "failed")
-                    else:
-                        await uow.jobs.complete(job)
-                    await uow.commit()
-                return
-            except ConcurrencyError:
-                if attempt == _RECORD_ATTEMPTS:
-                    raise
+            async with self._uow() as uow:
+                document = await uow.documents.find(document_id)
+                if document is not None and _reparsable(document, run):
+                    document.text_read_again(run, result.outcome, now)
+                    await uow.documents.update(document)
+                    await self._log(uow, document.id, Node.PARSE, run, result, started, now)
+                    await uow.outbox.add(document.pull_events())
+                if result.outcome is Outcome.FAILED:
+                    await uow.jobs.fail(job, error=result.reason or "failed")
+                else:
+                    await uow.jobs.complete(job)
+                await uow.commit()
+
+        await self._jobs.storing(job, record)
+
+    async def _failed_aside(
+        self, job: Job, message: str, document_id: DocumentId, error: Exception
+    ) -> None:
+        """An attempt of a job beside processing (facts, reading again) raised: it runs again
+        later, like a node, and is given up after as many attempts."""
+        log.warning(
+            message, extra={"document_id": str(document_id), "attempt": job.tries}, exc_info=True
+        )
+        reason = f"{type(error).__name__}: {error}"
+        await self._jobs.again(job, reason, self._retry.next_run(job.tries, self._clock.now()))
 
     async def _skipped(self, document_id: DocumentId, node: Node, run: int) -> Document | None:
         """The document, if its `node` is still to catch up on; None if the job is stale."""
@@ -874,22 +833,19 @@ class PipelineService:
     ) -> Document | None:
         """Mark the node as running and return the document; None if the job is stale. A
         concurrent change of the document (another node of it finishing) is retried."""
-        for attempt in range(1, _RECORD_ATTEMPTS + 1):
-            try:
-                async with self._uow() as uow:
-                    document = await uow.documents.find(document_id)
-                    if document is None or not document.is_awaiting(node, run):
-                        return None
-                    document.start_node(node, run, now)
-                    await uow.documents.update(document)
-                    await uow.outbox.add(document.pull_events())
-                    await uow.commit()
-                return document
-            except ConcurrencyError:
-                if attempt == _RECORD_ATTEMPTS:
-                    raise
-                await _backoff(attempt)
-        raise AssertionError("unreachable")
+
+        async def start() -> Document | None:
+            async with self._uow() as uow:
+                document = await uow.documents.find(document_id)
+                if document is None or not document.is_awaiting(node, run):
+                    return None
+                document.start_node(node, run, now)
+                await uow.documents.update(document)
+                await uow.outbox.add(document.pull_events())
+                await uow.commit()
+            return document
+
+        return await retrying(start, attempts=STORE_ATTEMPTS, backoff=True)
 
     async def _record(
         self,
@@ -903,17 +859,9 @@ class PipelineService:
         """Store a node result (completing a deferred one on the stored state). A concurrent
         change of the document (e.g. a metadata edit) is retried; if the job's claim was lost,
         another worker owns the node and nothing is stored."""
-        for attempt in range(1, _RECORD_ATTEMPTS + 1):
-            try:
-                await self._record_once(job, document_id, node, run, result, started)
-                return
-            except ConcurrencyError:
-                if not await self._still_claimed(job):
-                    log.warning("lost the claim of a node job", extra={"job_id": str(job.id)})
-                    return
-                if attempt == _RECORD_ATTEMPTS:
-                    raise
-                await _backoff(attempt)
+        await self._jobs.storing(
+            job, lambda: self._record_once(job, document_id, node, run, result, started)
+        )
 
     async def _record_once(
         self,
@@ -952,41 +900,6 @@ class PipelineService:
                 await uow.jobs.complete(job)
             await uow.outbox.add(document.pull_events())
             await uow.commit()
-
-    async def _release(self, job: Job) -> None:
-        """Let an interrupted job run again at once. Nothing to do if it was finished or lost
-        its claim meanwhile."""
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.release(
-                    job, run_at=self._clock.now(), error="interrupted: the worker stopped"
-                )
-                await uow.commit()
-        except ConcurrencyError:
-            pass
-        except Exception:
-            log.warning(
-                "could not release an interrupted job",
-                extra={"job_id": str(job.id)},
-                exc_info=True,
-            )
-
-    async def _still_claimed(self, job: Job) -> bool:
-        async with self._uow() as uow:
-            current = await uow.jobs.get(job.id)
-        return current.status is JobStatus.RUNNING and current.attempts == job.attempts
-
-    async def _finish(self, job: Job, *, error: str | None = None) -> None:
-        """End a job that has nothing (more) to do: completed if stale, failed with `error`."""
-        try:
-            async with self._uow() as uow:
-                if error is None:
-                    await uow.jobs.complete(job)
-                else:
-                    await uow.jobs.fail(job, error=error)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a node job", extra={"job_id": str(job.id)})
 
     async def _log(
         self,
@@ -1028,10 +941,6 @@ async def _owned_document(uow: UnitOfWork, user: User, id: DocumentId) -> Docume
     if not can_control_document(user, document):
         raise PermissionDeniedError(f"only the owner controls processing of document {id}")
     return document
-
-
-async def _backoff(attempt: int) -> None:
-    await asyncio.sleep(random.uniform(0, _RECORD_BACKOFF * attempt))
 
 
 async def _enqueue(

@@ -33,8 +33,8 @@ import hashlib
 import logging
 import re
 from collections.abc import Awaitable, Callable, Collection
-from dataclasses import dataclass
-from datetime import date, timedelta
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from uuid import UUID
@@ -56,7 +56,7 @@ from papiq.core.domain.events import (
 )
 from papiq.core.domain.fields import FieldValue, Money, Url
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, TagId, UserId
-from papiq.core.domain.jobs import Job
+from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.periods import Period, PeriodKind
 from papiq.core.domain.pipeline import SIGNALS
@@ -71,6 +71,7 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
 )
 from papiq.core.services._access import load_actor
+from papiq.core.services._jobs import JobRunner, lost
 from papiq.core.services.objects import load_text
 
 log = logging.getLogger(__name__)
@@ -99,9 +100,9 @@ def refresh_payload(kind: RefreshKind, id: UUID) -> JsonObject:
 
 
 _ROUNDS = 3
-_RETRY_DELAY = timedelta(seconds=30)
-_RETRY_MAX_DELAY = timedelta(hours=1)
-_ATTEMPTS = {INDEX_JOB: 10, REFRESH_JOB: 10, REBUILD_JOB: 3}
+_RETRY = RetryPolicy(max_attempts=10, delay=timedelta(seconds=30), max_delay=timedelta(hours=1))
+_RETRIES = {INDEX_JOB: _RETRY, REFRESH_JOB: _RETRY, REBUILD_JOB: replace(_RETRY, max_attempts=3)}
+"""How often a job is tried; the reconciliation runs again at its next interval instead."""
 _QUEUE_BATCH = 200
 
 
@@ -188,6 +189,7 @@ class IndexingService:
         self._index = index
         self._embeddings = embeddings
         self._policy = policy
+        self._jobs = JobRunner(uow, clock)
 
     # --- events and jobs ------------------------------------------------------------------------
 
@@ -226,46 +228,31 @@ class IndexingService:
     async def run_next_job(self) -> bool:
         """Claim and run a due job of this service. Returns False if none was due. The rebuild
         has a lease of its own, as long as a rebuild may take."""
-        for kinds, lease in (
-            ([INDEX_JOB, REFRESH_JOB, RECONCILE_JOB], self._policy.job_lease),
-            ([REBUILD_JOB], self._policy.rebuild_lease),
-        ):
-            async with self._uow() as uow:
-                job = await uow.jobs.claim(now=self._clock.now(), lease=lease, kinds=kinds)
-                await uow.commit()
-            if job is not None:
-                try:
-                    await self._run_claimed(job)
-                except asyncio.CancelledError:
-                    await asyncio.shield(self._release(job))
-                    raise
-                return True
-        return False
+        return await self._jobs.run_next(
+            [INDEX_JOB, REFRESH_JOB, RECONCILE_JOB], self._policy.job_lease, self._run_claimed
+        ) or await self._jobs.run_next([REBUILD_JOB], self._policy.rebuild_lease, self._run_claimed)
 
     async def _run_claimed(self, job: Job) -> None:
         try:
             work = self._work(job)
         except (KeyError, TypeError, ValueError) as error:
-            log.error("invalid search job", extra={"job_id": str(job.id), "error": str(error)})
-            await self._finish(job, error=f"invalid payload: {error}")
+            await self._jobs.invalid(job, error)
             return
         try:
             await work()
         except ConcurrencyError:
-            log.warning("lost the claim of a search job", extra={"job_id": str(job.id)})
+            lost(job)
             return
         except Exception as error:
             await self._failed(job, error)
             return
-        if job.kind == RECONCILE_JOB:
-            await self._finish(job, next_reconcile=job.payload.get("once") is not True)
-        else:
-            await self._finish(job)
+        recurring = job.kind == RECONCILE_JOB and job.payload.get("once") is not True
+        await self._jobs.end(job, also=self._next_reconcile if recurring else None)
 
     def _work(self, job: Job) -> Callable[[], Awaitable[object]]:
         if job.kind == INDEX_JOB:
             document_id = DocumentId(UUID(str(job.payload["document_id"])))
-            final = job.tries >= _ATTEMPTS[INDEX_JOB]
+            final = job.tries >= _RETRIES[INDEX_JOB].max_attempts
             return lambda: self.index_document(document_id, tolerate_embedding_failure=final)
         if job.kind == REFRESH_JOB:
             kind, item = RefreshKind(str(job.payload["kind"])), UUID(str(job.payload["id"]))
@@ -276,52 +263,19 @@ class IndexingService:
 
     async def _failed(self, job: Job, error: Exception) -> None:
         reason = f"{type(error).__name__}: {error}"
-        attempts = _ATTEMPTS.get(job.kind)
         log.warning(
             "search job failed", extra={"job_id": str(job.id), "kind": job.kind}, exc_info=True
         )
-        try:
-            async with self._uow() as uow:
-                if job.kind == RECONCILE_JOB:
-                    # Try again at the next interval, like the cleanup.
-                    run_at = self._clock.now() + self._policy.reconcile_interval
-                    await uow.jobs.reschedule(job, run_at=run_at, error=reason)
-                elif attempts is not None and job.tries >= attempts:
-                    log.error("search job given up", extra={"job_id": str(job.id), "error": reason})
-                    await uow.jobs.fail(job, error=reason)
-                else:
-                    delay = min(_RETRY_DELAY * (1 << min(job.tries - 1, 20)), _RETRY_MAX_DELAY)
-                    await uow.jobs.reschedule(job, run_at=self._clock.now() + delay, error=reason)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a search job", extra={"job_id": str(job.id)})
+        now = self._clock.now()
+        if job.kind == RECONCILE_JOB:  # again at the next interval, like the cleanup
+            run_at: datetime | None = now + self._policy.reconcile_interval
+        else:
+            run_at = _RETRIES[job.kind].next_run(job.tries, now)
+        await self._jobs.again(job, reason, run_at)
 
-    async def _finish(
-        self, job: Job, *, error: str | None = None, next_reconcile: bool = False
-    ) -> None:
-        try:
-            async with self._uow() as uow:
-                if error is None:
-                    await uow.jobs.complete(job)
-                else:
-                    await uow.jobs.fail(job, error=error)
-                if next_reconcile:
-                    run_at = self._clock.now() + self._policy.reconcile_interval
-                    await uow.jobs.enqueue(
-                        RECONCILE_JOB, {}, run_at=run_at, dedup_key=RECONCILE_JOB
-                    )
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a search job", extra={"job_id": str(job.id)})
-
-    async def _release(self, job: Job) -> None:
-        """The worker stops: give the job back to run again at once."""
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.release(job, run_at=self._clock.now(), error="worker stopped")
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a search job", extra={"job_id": str(job.id)})
+    async def _next_reconcile(self, uow: UnitOfWork) -> None:
+        run_at = self._clock.now() + self._policy.reconcile_interval
+        await uow.jobs.enqueue(RECONCILE_JOB, {}, run_at=run_at, dedup_key=RECONCILE_JOB)
 
     # --- one document ---------------------------------------------------------------------------
 

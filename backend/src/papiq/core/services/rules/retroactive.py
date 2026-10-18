@@ -13,11 +13,10 @@
   and continues in a new job, so processing and indexing do not wait.
 """
 
-import asyncio
 import logging
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import datetime
 from uuid import UUID
 
 from papiq.core.domain.documents import Document
@@ -56,6 +55,7 @@ from papiq.core.ports import (
 )
 from papiq.core.ports.repository import PAGE_SIZE
 from papiq.core.services._access import load_actor
+from papiq.core.services._jobs import LEASE, JobRunner, lost
 from papiq.core.services.rules.management import visible_rule
 from papiq.core.services.rules.running import (
     PatternBudget,
@@ -111,7 +111,6 @@ class RuleApplicationService:
         max_text: int,
         max_documents: int,
         pipeline_version: str,
-        lease: timedelta = timedelta(minutes=10),
     ) -> None:
         self._uow = uow
         self._clock = clock
@@ -121,7 +120,7 @@ class RuleApplicationService:
         self._max_text = max_text
         self._max_documents = max_documents
         self._version = pipeline_version
-        self._lease = lease
+        self._jobs = JobRunner(uow, clock)
 
     # --- preview ---------------------------------------------------------------------------------
 
@@ -223,22 +222,16 @@ class RuleApplicationService:
 
     async def run_next_job(self) -> bool:
         """Claim and run a due application job. Returns False if none was due."""
-        async with self._uow() as uow:
-            job = await uow.jobs.claim(now=self._clock.now(), lease=self._lease, kinds=[APPLY_JOB])
-            await uow.commit()
-        if job is None:
-            return False
+        return await self._jobs.run_next([APPLY_JOB], LEASE, self._attempt)
+
+    async def _attempt(self, job: Job) -> None:
         try:
             await self._run(job)
-        except asyncio.CancelledError:
-            await asyncio.shield(self._give_back(job))
-            raise
         except ConcurrencyError:
-            log.warning("lost the claim of a rule job", extra={"job_id": str(job.id)})
+            lost(job)
         except Exception as error:
             log.exception("rule application failed", extra={"job_id": str(job.id)})
             await self._abort(job, error)
-        return True
 
     async def _abort(self, job: Job, error: Exception) -> None:
         """An unexpected error: end the application, so it does not run again and again."""
@@ -259,9 +252,7 @@ class RuleApplicationService:
         try:
             id = RuleApplicationId(UUID(str(job.payload["application_id"])))
         except (KeyError, ValueError) as error:
-            async with self._uow() as uow:
-                await uow.jobs.fail(job, error=f"invalid payload: {error}")
-                await uow.commit()
+            await self._jobs.invalid(job, error)
             return
         for _ in range(BATCH):
             done = await self._next_document(id)
@@ -393,14 +384,6 @@ class RuleApplicationService:
             accept_conflicts=accept,
         )
         return run if run.plan.reports else None
-
-    async def _give_back(self, job: Job) -> None:
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.release(job, run_at=self._clock.now(), error="worker stopped")
-                await uow.commit()
-        except ConcurrencyError:
-            pass
 
 
 async def _applicable_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:

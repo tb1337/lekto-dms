@@ -11,7 +11,7 @@
 - After an error, a loop waits longer, doubling up to `MAX_BACKOFF`.
 
 `stop()` (on SIGTERM) ends the loops after their current job. Jobs still running after
-`shutdown_timeout` are cancelled: the pipeline releases their jobs to run again.
+`shutdown_timeout` are cancelled: each service gives its job back to run again at once.
 
 Each loop runs its units of work one after another, never nested, as SQLite requires.
 """

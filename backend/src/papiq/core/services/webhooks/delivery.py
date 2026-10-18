@@ -28,7 +28,6 @@ Secrets are decrypted only for signing; neither they nor the receiver's answer a
 stored.
 """
 
-import asyncio
 import logging
 from collections import deque
 from datetime import datetime, timedelta
@@ -61,6 +60,7 @@ from papiq.core.ports import (
     WebhookSender,
 )
 from papiq.core.services._access import load_actor
+from papiq.core.services._jobs import JobRunner, lost
 from papiq.core.services.webhooks.management import manageable_webhook, secret_context
 from papiq.core.services.webhooks.policy import WebhookPolicy
 
@@ -94,6 +94,7 @@ class WebhookDeliveryService:
             delay=self._policy.retry_delay,
             max_delay=self._policy.max_retry_delay,
         )
+        self._jobs = JobRunner(uow, clock)
         # When each user sent test requests, for the limit per window (this process only; a
         # second API instance would count on its own).
         self._test_requests: dict[UserId, deque[datetime]] = {}
@@ -135,21 +136,8 @@ class WebhookDeliveryService:
 
     async def run_next_job(self) -> bool:
         """Claim and run a due delivery. Returns False if none was due."""
-        async with self._uow() as uow:
-            job = await uow.jobs.claim(
-                now=self._clock.now(),
-                lease=self._policy.timeout + _LEASE_MARGIN,
-                kinds=[DELIVER_JOB],
-            )
-            await uow.commit()
-        if job is None:
-            return False
-        try:
-            await self._run_claimed(job)
-        except asyncio.CancelledError:
-            await asyncio.shield(self._release(job))
-            raise
-        return True
+        lease = self._policy.timeout + _LEASE_MARGIN
+        return await self._jobs.run_next([DELIVER_JOB], lease, self._run_claimed)
 
     async def send_test(self, actor: UserId, id: WebhookId) -> WebhookDelivery:
         """Owner or admin: send a `webhook.test` request now, once, and return the log row. Works
@@ -196,15 +184,16 @@ class WebhookDeliveryService:
             raw_document = job.payload.get("document_id")
             document_id = None if raw_document is None else DocumentId(UUID(str(raw_document)))
         except (KeyError, TypeError, ValueError) as error:
-            log.error("invalid webhook job", extra={"job_id": str(job.id), "error": str(error)})
-            await self._settle(job, fail=f"invalid payload: {error}")
+            await self._jobs.invalid(job, error)
             return
         try:
             await self._attempt(job, webhook_id, event_id, event_type, occurred_at, document_id)
         except ConcurrencyError:
-            log.warning("lost the claim of a webhook job", extra={"job_id": str(job.id)})
+            lost(job)
         except Exception as error:
-            await self._failed(job, error)
+            log.warning("webhook job failed", extra={"job_id": str(job.id)}, exc_info=True)
+            reason = f"{type(error).__name__}: {error}"
+            await self._jobs.again(job, reason, self._retry.next_run(job.tries, self._clock.now()))
 
     async def _attempt(
         self,
@@ -366,39 +355,6 @@ class WebhookDeliveryService:
                 return webhook.gave_up(disable_after=self._policy.disable_after, now=now)
             case _:
                 return None
-
-    async def _failed(self, job: Job, error: Exception) -> None:
-        """An unexpected error (database, ...): repeat the job like a failed attempt."""
-        reason = f"{type(error).__name__}: {error}"
-        log.warning("webhook job failed", extra={"job_id": str(job.id)}, exc_info=True)
-        next_attempt = self._retry.next_run(job.tries, self._clock.now())
-        if next_attempt is None:
-            log.error("webhook job given up", extra={"job_id": str(job.id), "error": reason})
-            await self._settle(job, fail=reason)
-            return
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.reschedule(job, run_at=next_attempt, error=reason)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a webhook job", extra={"job_id": str(job.id)})
-
-    async def _settle(self, job: Job, *, fail: str) -> None:
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.fail(job, error=fail)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a webhook job", extra={"job_id": str(job.id)})
-
-    async def _release(self, job: Job) -> None:
-        """The worker stops: give the job back to run again at once."""
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.release(job, run_at=self._clock.now(), error="worker stopped")
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a webhook job", extra={"job_id": str(job.id)})
 
 
 # --- rights -------------------------------------------------------------------------------------

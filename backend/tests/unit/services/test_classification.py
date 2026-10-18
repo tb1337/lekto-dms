@@ -1134,6 +1134,18 @@ async def test_the_document_date_on_a_poorly_read_page_is_only_suggested(world: 
     assert result.changes.document_date is UNSET
 
 
+async def test_the_readings_are_those_of_the_latest_ocr_that_made_a_text(world: World) -> None:
+    # The rule of `PipelineService.reading`: a failed attempt after it read nothing.
+    await seed(world)
+    document = await document_with(world)
+    await record(world, document, Node.OCR, recognised(PageReading(1, 224, 23)))
+    await record(world, document, Node.OCR, NodeResult(outcome=Outcome.FAILED, reason="timeout"))
+    result = await judge(world, document, model(proposal()))
+    assert isinstance(result, MetadataResult)
+    check = checks(result.result)["document_date"]
+    assert check.reason == "page 1 was poorly read (10% of its words unsure)"
+
+
 async def test_values_are_read_as_written_in_german(world: World) -> None:
     seeded, result = await extract(
         world,

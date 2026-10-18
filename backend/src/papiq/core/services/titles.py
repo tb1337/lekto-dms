@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from papiq.core.domain.classification import CHECKS, TITLE, checks_from_json
 from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.pipeline import Node, NodeRun
+from papiq.core.domain.pipeline import Node, NodeRun, ProcessingHistory
 
 RENDERED_TITLE = "rendered_title"
 """Key in the output of a confirmation before 0.2.0: the title the pattern gave with the decided
@@ -21,7 +21,7 @@ values (patterns are rules now; the key is still read)."""
 def machine_title(log: Sequence[NodeRun]) -> str | None:
     """The title the machine gave last: the fields node's title check, or the title rendered
     when a person confirmed the document."""
-    for entry in reversed(log):
+    for entry in ProcessingHistory(log).newest_first():
         rendered = entry.result.output.get(RENDERED_TITLE)
         if isinstance(rendered, str):
             return rendered

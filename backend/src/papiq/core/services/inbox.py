@@ -35,13 +35,13 @@ from papiq.core.domain.pipeline import (
     ENTERED,
     KEPT,
     NODES,
-    OUTSIDE_PIPELINE,
     PERSON,
     TRUNCATED,
     Node,
     NodeResult,
     NodeRun,
     Outcome,
+    ProcessingHistory,
 )
 
 ALWAYS_SET = frozenset({SPACE, TITLE, REVIEW})
@@ -101,16 +101,11 @@ class Decision:
 
 
 def latest_entries(log: Sequence[NodeRun], *, by_model: bool = False) -> dict[Node, NodeRun]:
-    """The latest log entry of each node written by processing; with `by_model`, leaving out
-    confirmations too."""
-    latest: dict[Node, NodeRun] = {}
-    for entry in log:
-        if entry.result.model_version in OUTSIDE_PIPELINE:
-            continue
-        if by_model and entry.result.model_version == PERSON:
-            continue
-        latest[entry.node] = entry
-    return latest
+    """The latest log entry of each node written by processing, in graph order; with
+    `by_model`, leaving out confirmations too (`ProcessingHistory.latest`)."""
+    history = ProcessingHistory(log)
+    latest = {node: history.latest(node, by_model=by_model) for node in NODES}
+    return {node: entry for node, entry in latest.items() if entry is not None}
 
 
 def field_checks(log: Sequence[NodeRun]) -> dict[str, FieldCheck]:

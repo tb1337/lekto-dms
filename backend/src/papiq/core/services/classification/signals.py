@@ -51,7 +51,7 @@ from papiq.core.domain.json_value import (
 )
 from papiq.core.domain.master_data import Contact
 from papiq.core.domain.permissions import reach_access
-from papiq.core.domain.pipeline import SIGNALS, Node, NodeResult, NodeRun, Outcome
+from papiq.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
 from papiq.core.domain.search import Visibility
 from papiq.core.domain.verdict import (
     ClassifierView,
@@ -359,16 +359,6 @@ def _texts(ids: Iterable[object]) -> list[JsonValue]:
 
 
 # --- what the judge reads ---------------------------------------------------------------------
-
-
-def latest_signals(log: Sequence[NodeRun]) -> dict[Node, NodeRun]:
-    """The latest entry of each signal: a reprocessing from the judge on keeps the signals of
-    an earlier run."""
-    latest: dict[Node, NodeRun] = {}
-    for entry in log:
-        if entry.node in SIGNALS and entry.result.outcome is Outcome.OK:
-            latest[entry.node] = entry
-    return latest
 
 
 def signals_of(entries: Mapping[Node, NodeRun]) -> Signals:

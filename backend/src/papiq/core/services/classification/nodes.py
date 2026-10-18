@@ -66,6 +66,7 @@ from papiq.core.domain.pipeline import (
     NodeResult,
     NodeRun,
     Outcome,
+    ProcessingHistory,
 )
 from papiq.core.domain.reading import OcrOutput, PageReading
 from papiq.core.domain.sorting import sort_key
@@ -106,7 +107,6 @@ from papiq.core.services.classification.signals import (
     ABSTAINED,
     PROPOSAL,
     abstained,
-    latest_signals,
     model_proposal,
     signals_of,
 )
@@ -398,7 +398,7 @@ class JudgeNode(_ModelStep):
             contacts = await uow.contacts.list_all()
             types = await uow.document_types.list_all()
             tags = await uow.tags.list_all()
-        entries = latest_signals(log)
+        entries = ProcessingHistory(log).signals()
         signals = signals_of(entries)
         proposal = model_proposal(entries)
         text = await self._text(document)
@@ -508,7 +508,7 @@ class FieldsNode(_ModelStep):
                 if document.document_type_id is None
                 else await uow.document_types.find(document.document_type_id)
             )
-        entries = latest_signals(log)
+        entries = ProcessingHistory(log).signals()
         proposal = model_proposal(entries)
         given: dict[FieldId, Proposal] = {}
         if proposal is not None:
@@ -883,12 +883,11 @@ def _literally(value: FieldValue, quote: DocumentText) -> bool:
 
 
 def _ocr_readings(log: Sequence[NodeRun]) -> tuple[PageReading, ...]:
-    """How well the OCR read the pages, by its latest entry; none for a document recognised
-    before readings, or with text of its own."""
-    for entry in reversed(log):
-        if entry.node is Node.OCR:
-            return OcrOutput.from_json(entry.result.output).readings
-    return ()
+    """How well the OCR read the pages, by its latest entry that made a text (as
+    `PipelineService.reading` tells it); none for a document recognised before readings, or
+    with text of its own."""
+    entry = ProcessingHistory(log).latest(Node.OCR, made=True)
+    return () if entry is None else OcrOutput.from_json(entry.result.output).readings
 
 
 def _readable(

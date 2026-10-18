@@ -16,6 +16,8 @@ from papiq.core.domain.pipeline import (
     CURRENT_SIGNALS,
     GRAPH,
     NODES,
+    PERSON,
+    RULES_CHANGE,
     SIGNALS,
     Lane,
     Node,
@@ -25,6 +27,7 @@ from papiq.core.domain.pipeline import (
     NodeStatus,
     Outcome,
     Processing,
+    ProcessingHistory,
     ProcessingStatus,
 )
 from tests import builders
@@ -128,6 +131,38 @@ def test_node_run_is_a_log_entry() -> None:
             started_at=NOW,
             duration=timedelta(seconds=-1),
         )
+
+
+def test_the_history_reads_the_latest_entry_of_a_node() -> None:
+    document = received()
+
+    def entry(node: Node, result: NodeResult) -> NodeRun:
+        return NodeRun(
+            document_id=document.id,
+            node=node,
+            run=1,
+            result=result,
+            pipeline_version="0.1.0",
+            started_at=NOW,
+            duration=timedelta(0),
+        )
+
+    read, failed = entry(Node.OCR, OK), entry(Node.OCR, FAILED)
+    judged = entry(Node.JUDGE, UNCERTAIN)
+    confirmed = entry(Node.JUDGE, NodeResult(outcome=Outcome.OK, model_version=PERSON))
+    applied = entry(Node.APPLY_RULES, OK)
+    changed = entry(Node.APPLY_RULES, NodeResult(outcome=Outcome.OK, model_version=RULES_CHANGE))
+    signal = entry(Node.SIGNAL_LLM, OK)
+    history = ProcessingHistory(
+        [read, failed, signal, entry(Node.SIGNAL_LLM, FAILED), judged, confirmed, applied, changed]
+    )
+    assert history.latest(Node.OCR) is failed
+    assert history.latest(Node.OCR, made=True) is read  # the readings the document has
+    assert history.latest(Node.JUDGE) is confirmed
+    assert history.latest(Node.JUDGE, by_model=True) is judged
+    assert history.latest(Node.APPLY_RULES) is applied  # a person's change says nothing
+    assert history.latest(Node.FIELDS) is None
+    assert history.signals() == {Node.SIGNAL_LLM: signal}
 
 
 def test_node_state_invariants() -> None:

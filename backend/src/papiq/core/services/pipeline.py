@@ -45,6 +45,7 @@ from papiq.core.domain.pipeline import (
     NodeRun,
     NodeStatus,
     Outcome,
+    ProcessingHistory,
     ProcessingStatus,
 )
 from papiq.core.domain.reading import (
@@ -449,8 +450,9 @@ class PipelineService:
                 uow, await load_actor(uow, actor), id, f"control the processing of document {id}"
             )
             log = await uow.processing_log.list_for(id)
-        ocr = _latest(log, Node.OCR, made=True)
-        parse = _latest(log, Node.PARSE)
+        history = ProcessingHistory(log)
+        ocr = history.latest(Node.OCR, made=True)
+        parse = history.latest(Node.PARSE)
         read = None if ocr is None else OcrOutput.from_json(ocr.result.output)
         vision = read is not None and read.vision is not None
         pages = () if read is None else read.readings
@@ -943,17 +945,6 @@ class PipelineService:
                 duration=now - started,
             )
         )
-
-
-def _latest(log: Iterable[NodeRun], node: Node, *, made: bool = False) -> NodeRun | None:
-    """The latest run of `node` in the log; with `made`, the latest that did not fail (whose
-    result the document still has)."""
-    runs = [
-        entry
-        for entry in log
-        if entry.node is node and not (made and entry.result.outcome is Outcome.FAILED)
-    ]
-    return runs[-1] if runs else None
 
 
 async def _enqueue(

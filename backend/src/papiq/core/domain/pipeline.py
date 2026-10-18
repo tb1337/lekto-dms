@@ -1,6 +1,6 @@
 """Ingest graph: nodes and their dependencies, node results, the state of each node, lanes."""
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -220,6 +220,39 @@ def space_chooser(log: Sequence[NodeRun], space: UUID) -> UUID | None:
         if chosen == str(space):
             return UUID(actor) if isinstance(actor, str) else None
     return None
+
+
+@dataclass(frozen=True)
+class ProcessingHistory:
+    """A document's processing log, read for the latest entries of its nodes. Entries written
+    outside processing (`OUTSIDE_PIPELINE`) say nothing about a node's state and are left out."""
+
+    log: Sequence[NodeRun]
+
+    def newest_first(self) -> Iterator[NodeRun]:
+        """Every entry, the latest first."""
+        return reversed(self.log)
+
+    def latest(self, node: Node, *, made: bool = False, by_model: bool = False) -> NodeRun | None:
+        """The latest entry of `node` written by processing; with `made`, the latest that did
+        not fail (whose result the document still has); with `by_model`, leaving out
+        confirmations too. The OCR's readings are those of its latest entry that made a text."""
+        for entry in self.newest_first():
+            result = entry.result
+            if (
+                entry.node is node
+                and result.model_version not in OUTSIDE_PIPELINE
+                and not (made and result.outcome is Outcome.FAILED)
+                and not (by_model and result.model_version == PERSON)
+            ):
+                return entry
+        return None
+
+    def signals(self) -> dict[Node, NodeRun]:
+        """The latest entry of each signal that did not fail (a signal goes through or fails):
+        a reprocessing from the judge on keeps the signals of an earlier run."""
+        latest = {node: self.latest(node, made=True) for node in NODES if node in SIGNALS}
+        return {node: entry for node, entry in latest.items() if entry is not None}
 
 
 class NodeStatus(StrEnum):

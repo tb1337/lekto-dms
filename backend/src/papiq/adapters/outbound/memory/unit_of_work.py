@@ -69,7 +69,8 @@ from papiq.core.domain.ids import (
 from papiq.core.domain.jobs import Job, JobStatus
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag, TagScope
-from papiq.core.domain.pipeline import Lane, NodeRun
+from papiq.core.domain.permissions import within_reach
+from papiq.core.domain.pipeline import NodeRun
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import User
 from papiq.core.domain.validation import name_key, require_utc
@@ -80,6 +81,7 @@ from papiq.core.ports.repository import (
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
+    FilterView,
     SortKey,
 )
 
@@ -302,11 +304,7 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
 
     async def list_visible_to(self, user: UserId) -> list[Document]:
         readable = {space.id for space in await self._uow.spaces.list_accessible(user)}
-        return [
-            _copy(row)
-            for row in self._all()
-            if row.owner_id == user or (row.lane is Lane.GREEN and row.space_id in readable)
-        ]
+        return [_copy(row) for row in self._all() if within_reach(user, readable, row)]
 
     async def remove(self, id: DocumentId) -> None:
         if self._uow._row(self._table, id) is _REMOVED:
@@ -642,11 +640,13 @@ class _Groups:
     contacts: Mapping[UUID, frozenset[TagId]]
     document_types: Mapping[UUID, frozenset[TagId]]
 
-    def match(self, document: Document, filter: DocumentFilter) -> bool:
-        contact = self.contacts.get(document.contact_id or UUID(int=0), frozenset())
-        kind = self.document_types.get(document.document_type_id or UUID(int=0), frozenset())
-        return all(groups & contact for groups in filter.contact_groups) and all(
-            groups & kind for groups in filter.document_type_groups
+    def view(self, document: Document) -> FilterView:
+        return FilterView.of(
+            document,
+            contact_groups=self.contacts.get(document.contact_id or UUID(int=0), frozenset()),
+            document_type_groups=self.document_types.get(
+                document.document_type_id or UUID(int=0), frozenset()
+            ),
         )
 
 
@@ -659,19 +659,7 @@ def _query(
     after: DocumentPosition | None,
     limit: int,
 ) -> list[Document]:
-    matching = [
-        document
-        for document in documents
-        if (filter.contact is None or document.contact_id == filter.contact)
-        and (filter.document_type is None or document.document_type_id == filter.document_type)
-        and (filter.topics is None or document.topic_id in filter.topics)
-        and all(tags & document.tag_ids for tags in filter.tags)
-        and groups.match(document, filter)
-        and (filter.space is None or document.space_id == filter.space)
-        and (filter.lanes is None or document.lane in filter.lanes)
-        and (filter.confirmed is None or (document.confirmed_at is not None) is filter.confirmed)
-        and (filter.field is None or filter.field in document.fields)
-    ]
+    matching = [document for document in documents if filter.matches(groups.view(document))]
     ranked = sorted(matching, key=lambda document: _rank(document, order))
     if after is not None:
         # The documents after `after`: its rank is the one it had (the cursor's value).

@@ -16,7 +16,7 @@ from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId, UserId
 from papiq.core.domain.master_data import Contact, DocumentType, TagScope
 from papiq.core.domain.tag_tree import TagTree
 from papiq.core.ports import CountBy, DocumentFilter, UnitOfWork
-from papiq.core.ports.repository import TagSets
+from papiq.core.ports.repository import FilterView, TagSets
 
 
 def expand(filter: DocumentFilter, tree: TagTree) -> DocumentFilter:
@@ -63,15 +63,12 @@ def matches(
     groups (`group_lookup`)."""
     contact = contacts.get(document.contact_id) if document.contact_id else None
     kind = types.get(document.document_type_id) if document.document_type_id else None
-    return (
-        (filter.contact is None or document.contact_id == filter.contact)
-        and (filter.document_type is None or document.document_type_id == filter.document_type)
-        and (filter.topics is None or document.topic_id in filter.topics)
-        and all(tags & document.tag_ids for tags in filter.tags)
-        and all(groups & (contact or frozenset()) for groups in filter.contact_groups)
-        and all(groups & (kind or frozenset()) for groups in filter.document_type_groups)
-        and (filter.space is None or document.space_id == filter.space)
-        and (filter.lanes is None or document.lane in filter.lanes)
+    return filter.matches(
+        FilterView.of(
+            document,
+            contact_groups=contact or frozenset(),
+            document_type_groups=kind or frozenset(),
+        )
     )
 
 

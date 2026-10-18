@@ -13,7 +13,7 @@ from papiq.core.domain.errors import SearchIndexError
 from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.search import LAYOUT, IndexDocument, IndexState, Segment
 from papiq.core.domain.sorting import sort_key
-from papiq.core.ports.repository import DocumentFilter, DocumentOrder, SortKey
+from papiq.core.ports.repository import DocumentFilter, DocumentOrder, FilterView, SortKey
 from papiq.core.ports.search_index import (
     IndexBuild,
     SearchHit,
@@ -231,26 +231,20 @@ def _cosine(left: Sequence[float], right: Sequence[float]) -> float:
 
 
 def _matches_filter(document: IndexDocument, criteria: DocumentFilter) -> bool:
-    if criteria.contact is not None and document.contact_id != criteria.contact:
-        return False
-    if criteria.document_type is not None and document.document_type_id != criteria.document_type:
-        return False
-    if criteria.topics is not None and not criteria.topics & set(document.topic_ids):
-        return False
-    for sets, held in (
-        (criteria.tags, document.tag_ids),
-        (criteria.contact_groups, document.contact_group_ids),
-        (criteria.document_type_groups, document.document_type_group_ids),
-    ):
-        if not all(wanted & set(held) for wanted in sets):
-            return False
-    if criteria.space is not None and document.space_id != criteria.space:
-        return False
-    if criteria.confirmed is not None and document.confirmed is not criteria.confirmed:
-        return False
-    if criteria.field is not None and criteria.field not in document.field_ids:
-        return False
-    return criteria.lanes is None or document.lane in criteria.lanes
+    return criteria.matches(
+        FilterView(
+            contact=document.contact_id,
+            document_type=document.document_type_id,
+            topics=frozenset(document.topic_ids),
+            tags=frozenset(document.tag_ids),
+            contact_groups=frozenset(document.contact_group_ids),
+            document_type_groups=frozenset(document.document_type_group_ids),
+            space=document.space_id,
+            lane=document.lane,
+            confirmed=document.confirmed,
+            fields=frozenset(document.field_ids),
+        )
+    )
 
 
 def _ordered(

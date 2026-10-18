@@ -17,6 +17,7 @@ from papiq.core.domain.ids import (
     TagId,
     UserId,
 )
+from papiq.core.domain.permissions import within_reach
 from papiq.core.domain.pipeline import Lane
 
 PROCESSING = "processing"
@@ -115,18 +116,15 @@ class IndexState:
 @dataclass(frozen=True)
 class Visibility:
     """Who is searching and which spaces they can read from: the spaces they own and those
-    shared with them. Own documents are visible in every lane; other users' documents only when
-    green and in one of `spaces` (the user's reach, `permissions.in_reach`). `everything`: every
-    document, for an admin who asks for all users' documents."""
+    shared with them (`permissions.within_reach`). `everything`: every document, for an admin who
+    asks for all users' documents."""
 
     user: UserId
     spaces: frozenset[SpaceId]
     everything: bool = False
 
     def allows(self, document: IndexDocument) -> bool:
-        if self.everything or document.owner_id == self.user:
-            return True
-        return document.lane is Lane.GREEN and document.space_id in self.spaces
+        return self.everything or within_reach(self.user, self.spaces, document)
 
 
 @dataclass(frozen=True)

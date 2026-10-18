@@ -440,10 +440,15 @@ def _contact_view(
     )
 
 
+def _disagreeing(names: Iterable[str]) -> str:
+    """The reason when more than one value is named."""
+    return "the signals disagree: " + " or ".join(f"'{name}'" for name in names)
+
+
 def _contact_reason(view: _ContactView, top: ContactId | None, no_model: bool) -> str:
     names, namers = view.names, view.ranking.namers
     if len(namers) > 1:
-        return "the signals disagree: " + " or ".join(f"'{names[id].name}'" for id in namers)
+        return _disagreeing(names[id].name for id in namers)
     if top is not None and view.recipient == top:
         return f"'{names[top].name}' is the recipient, not the sender"
     if len(view.facts.identifiers) > 1:
@@ -551,7 +556,7 @@ def _type_reason(
     new: str | None,
 ) -> str:
     if len(namers) > 1:
-        return "the signals disagree: " + " or ".join(f"'{names[id].name}'" for id in namers)
+        return _disagreeing(names[id].name for id in namers)
     if top is not None and top in namers:
         return f"only one signal names '{names[top].name}'"
     if new:
@@ -708,9 +713,7 @@ def judge_topic(
             candidates=listed,
         )
     if len(named) > 1:
-        reason = "the signals disagree: " + " or ".join(
-            f"'{names[id].name}'" for id in ranked if id in named
-        )
+        reason = _disagreeing(names[id].name for id in ranked if id in named)
         suggestion = None
     elif top is None:
         reason = f"no topic of '{owner.name}' recognised"

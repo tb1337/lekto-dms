@@ -449,13 +449,12 @@ async def situation(
     person_added_tags: frozenset[TagId] = frozenset(),
     person_removed_tags: frozenset[TagId] = frozenset(),
     accept_conflicts: bool = False,
-    loaded: Loaded | None = None,
+    loaded: Loaded,
 ) -> Situation:
     """Everything `plan` needs to know besides the matching rules. `loaded`: the master data
-    of the run (`taxonomy`, for the document and at least `rules`), loaded here unless given;
-    beyond it, only the spaces are read."""
+    of the run (`taxonomy`, for the document and at least `rules`); beyond it, only the
+    spaces are read."""
     rules = list(rules)
-    loaded = loaded or await taxonomy(uow, [document], rules)
     references = [rule.definition.references() for rule in rules]
     existing: set[object] = set(definitions)
     names: dict[object, str] = {}

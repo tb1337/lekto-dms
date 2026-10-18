@@ -53,7 +53,7 @@ class UserService:
         return sorted(visible, key=lambda u: sort_key(u.username))
 
     async def get(self, actor: UserId, id: UserId) -> User:
-        """Like `list`: a deactivated user is not found for others than admins."""
+        """Like `list_users`: a deactivated user is not found for others than admins."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             found = await uow.users.find(id)

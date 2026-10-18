@@ -27,7 +27,7 @@ from uuid import UUID
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.events import DOCUMENT_EVENT_TYPES
 from papiq.core.domain.ids import DeliveryId, DocumentId, EventId, UserId, WebhookId, new_id
-from papiq.core.domain.validation import require_name, require_utc
+from papiq.core.domain.validation import has_control_characters, require_name, require_utc
 
 ALL_EVENTS = "*"
 """In `event_types`: every event type, also those that come later."""
@@ -58,7 +58,7 @@ def validate_url(url: str) -> str:
     url = url.strip()
     if not url or len(url) > MAX_URL_LENGTH:
         raise ValidationError(f"the URL must have 1 to {MAX_URL_LENGTH} characters")
-    if any(ord(char) < 33 or ord(char) == 127 for char in url):
+    if has_control_characters(url):
         raise ValidationError("the URL must not contain spaces or control characters")
     try:
         parts = urlsplit(url)
@@ -159,9 +159,7 @@ class Webhook:
     version: int = 1
 
     def __post_init__(self) -> None:
-        self.name = require_name(self.name, "webhook name")
-        if len(self.name) > MAX_NAME_LENGTH:
-            raise ValidationError(f"the name must have at most {MAX_NAME_LENGTH} characters")
+        self.name = require_name(self.name, "webhook name", max_length=MAX_NAME_LENGTH)
         self.url = validate_url(self.url)
         self.event_types = validate_event_types(self.event_types)
         self.created_at = require_utc(self.created_at, "created_at")
@@ -205,9 +203,7 @@ class Webhook:
     ) -> None:
         """Change what is given. Switching on (again) clears the failures and the reason."""
         if name is not None:
-            self.name = require_name(name, "webhook name")
-            if len(self.name) > MAX_NAME_LENGTH:
-                raise ValidationError(f"the name must have at most {MAX_NAME_LENGTH} characters")
+            self.name = require_name(name, "webhook name", max_length=MAX_NAME_LENGTH)
         if url is not None:
             self.url = validate_url(url)
         if event_types is not None:

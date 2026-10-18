@@ -67,6 +67,11 @@ class Sha256:
         return self.hex
 
 
+MAX_TITLE = 500
+"""Characters of a document's title; the REST schemas, the MCP tool and the model's answers
+keep to it."""
+
+
 class Channel(StrEnum):
     """How a document came in (its intake channel). Further connectors (mail, folder) follow."""
 
@@ -170,9 +175,11 @@ class Document:
     )
 
     def __post_init__(self) -> None:
-        self.title = require_name(self.title, "title")
-        self.original_filename = require_name(self.original_filename, "original filename")
-        self.media_type = require_name(self.media_type, "media type")
+        self.title = require_name(self.title, "title", max_length=MAX_TITLE)
+        self.original_filename = require_name(
+            self.original_filename, "original filename", max_length=None
+        )
+        self.media_type = require_name(self.media_type, "media type", max_length=None)
         self.created_at = require_utc(self.created_at, "created_at")
         self.updated_at = require_utc(self.updated_at, "updated_at")
 
@@ -195,7 +202,7 @@ class Document:
         the nodes after it are due."""
         if result.outcome is Outcome.FAILED:
             raise ValidationError("a document whose receive node failed is not created")
-        filename = require_name(original_filename, "original filename")
+        filename = require_name(original_filename, "original filename", max_length=None)
         document = cls(
             id=DocumentId(new_id()),
             owner_id=owner_id,
@@ -484,7 +491,7 @@ class Document:
         the caller, and so is that the contact enables the topic (`_access.checked_changes`).
         Values of type-bound fields that no longer apply after a type change are removed.
         """
-        title = require_name(_pick(changes.title, self.title), "title")
+        title = require_name(_pick(changes.title, self.title), "title", max_length=MAX_TITLE)
         contact_id = _pick(changes.contact_id, self.contact_id)
         document_type_id = _pick(changes.document_type_id, self.document_type_id)
         topic_id = _pick(changes.topic_id, self.topic_id)

@@ -10,6 +10,7 @@ from papiq.adapters.outbound.sql.repositories import SqlRepository, Values
 from papiq.core.domain.errors import NotFoundError
 from papiq.core.domain.ids import DeliveryId, DocumentId, EventId, UserId, WebhookId
 from papiq.core.domain.webhooks import DeliveryOutcome, Webhook, WebhookDelivery
+from papiq.core.ports.repository import PAGE_SIZE
 
 
 class SqlWebhookRepository(SqlRepository[WebhookId, Webhook]):
@@ -76,7 +77,7 @@ class SqlWebhookRepository(SqlRepository[WebhookId, Webhook]):
         )
 
     async def deliveries(
-        self, webhook: WebhookId, *, before: DeliveryId | None = None, limit: int = 50
+        self, webhook: WebhookId, *, before: DeliveryId | None = None, limit: int = PAGE_SIZE
     ) -> list[WebhookDelivery]:
         table = t.webhook_deliveries
         query = select(table).where(table.c.webhook_id == webhook)

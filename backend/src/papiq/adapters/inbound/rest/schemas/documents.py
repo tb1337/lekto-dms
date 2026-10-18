@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from papiq.adapters.inbound.rest.schemas.spaces import ShareOut
 from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
-from papiq.core.domain.documents import Channel, Document
+from papiq.core.domain.documents import MAX_TITLE, Channel, Document
 from papiq.core.domain.exchanges import ModelCall, RunExchange
 from papiq.core.domain.permissions import can_manage_space
 from papiq.core.domain.pipeline import (
@@ -249,7 +249,7 @@ class DocumentPatch(BaseModel):
         },
     )
 
-    title: str | None = Field(default=None, min_length=1, max_length=500)
+    title: str | None = Field(default=None, min_length=1, max_length=MAX_TITLE)
     contact_id: UUID | None = None
     document_type_id: UUID | None = None
     topic_id: UUID | None = None
@@ -280,7 +280,7 @@ class ImportedMetadataIn(BaseModel):
         },
     )
 
-    title: str | None = Field(default=None, min_length=1, max_length=500)
+    title: str | None = Field(default=None, min_length=1, max_length=MAX_TITLE)
     contact_id: UUID | None = None
     document_type_id: UUID | None = None
     tag_ids: list[UUID] = Field(default_factory=list, max_length=500)

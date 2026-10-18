@@ -49,7 +49,7 @@ from papiq.core.domain.errors import (
     NotFoundError,
     UnsupportedMediaTypeError,
 )
-from papiq.core.domain.identity import csrf_token
+from papiq.core.domain.identity import MAX_REDIRECT_TARGET, csrf_token
 from papiq.core.domain.ids import ApiTokenId
 from papiq.core.services.auth import Principal, SignedIn
 from papiq.core.services.oidc import OidcService
@@ -309,7 +309,9 @@ def _oidc(context: ApiContext) -> OidcService:
 
 Next = Annotated[
     str | None,
-    Query(max_length=2000, description="Where to go afterwards: a path on this site."),
+    Query(
+        max_length=MAX_REDIRECT_TARGET, description="Where to go afterwards: a path on this site."
+    ),
 ]
 
 

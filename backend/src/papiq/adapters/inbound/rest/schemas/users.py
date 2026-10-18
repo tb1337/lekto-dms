@@ -3,7 +3,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from papiq.adapters.inbound.rest.schemas.account import LinkOut, Password, UserOut
-from papiq.core.domain.users import Role
+from papiq.core.domain.users import MAX_USERNAME, Role
 
 
 class UserCreate(BaseModel):
@@ -14,7 +14,7 @@ class UserCreate(BaseModel):
         },
     )
 
-    username: str = Field(min_length=1, max_length=150)
+    username: str = Field(min_length=1, max_length=MAX_USERNAME)
     role: Role = Role.USER
     password: Password | None = Field(
         default=None, description="Optional; 12 to 256 characters, not the username."

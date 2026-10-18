@@ -20,6 +20,7 @@ from papiq.core.domain.errors import AuthenticationError, PermissionDeniedError
 from papiq.core.domain.identity import csrf_matches
 from papiq.core.domain.ids import UserId
 from papiq.core.services.auth import Principal, SignedIn
+from papiq.core.services.oidc import FLOW_LIFETIME
 
 SECURE_SESSION_COOKIE = "__Host-papiq_session"
 SESSION_COOKIE = "papiq_session"  # without `Secure`, for development over plain HTTP
@@ -149,7 +150,7 @@ def set_flow_cookie(response: Response, context: ApiContext, value: str) -> None
     response.set_cookie(
         flow_cookie_name(context),
         value,
-        max_age=600,
+        max_age=int(FLOW_LIFETIME.total_seconds()),
         path="/",
         secure=context.cookie_secure,
         httponly=True,

@@ -26,7 +26,7 @@ from starlette.requests import Request
 from papiq import __version__
 from papiq.adapters.inbound.context import ApiContext
 from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
-from papiq.core.domain.documents import UNSET, Document, DocumentChanges
+from papiq.core.domain.documents import MAX_TITLE, UNSET, Document, DocumentChanges
 from papiq.core.domain.errors import DomainError, SearchUnavailableError, ValidationError
 from papiq.core.domain.fields import FieldDefinition, field_from_json
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
@@ -412,7 +412,7 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
     async def update_metadata(
         ctx: Context,
         id: UUID,
-        title: Annotated[str, Field(min_length=1, default_factory=not_given)],
+        title: Annotated[str, Field(min_length=1, max_length=MAX_TITLE, default_factory=not_given)],
         contact: Annotated[str | None, Field(default_factory=not_given)],
         document_type: Annotated[str | None, Field(default_factory=not_given)],
         topic: Annotated[str | None, Field(default_factory=not_given)],

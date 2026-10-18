@@ -13,11 +13,14 @@ from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.core.domain.ids import DeliveryId, UserId, WebhookId
 from papiq.core.domain.webhooks import (
     ALL_EVENTS,
+    MAX_NAME_LENGTH,
+    MAX_URL_LENGTH,
     DeliveryOutcome,
     Webhook,
     WebhookDelivery,
     event_type_names,
 )
+from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from papiq.core.services.webhooks import CreatedWebhook
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"], dependencies=PROTECTED)
@@ -46,9 +49,9 @@ class WebhookCreate(BaseModel):
         },
     )
 
-    name: str = Field(min_length=1, max_length=100, description="Shown in lists.")
+    name: str = Field(min_length=1, max_length=MAX_NAME_LENGTH, description="Shown in lists.")
     url: str = Field(
-        max_length=2000,
+        max_length=MAX_URL_LENGTH,
         description=(
             "Where Papiq sends the events (POST). `http` or `https`; targets in the own "
             "network are fine. Redirects are not followed."
@@ -63,8 +66,8 @@ class WebhookPatch(BaseModel):
 
     model_config = ConfigDict(extra="forbid", json_schema_extra={"examples": [{"active": False}]})
 
-    name: str | None = Field(default=None, min_length=1, max_length=100)
-    url: str | None = Field(default=None, max_length=2000)
+    name: str | None = Field(default=None, min_length=1, max_length=MAX_NAME_LENGTH)
+    url: str | None = Field(default=None, max_length=MAX_URL_LENGTH)
     event_types: list[str] | None = Field(default=None, min_length=1, description=EVENT_TYPES_HELP)
     active: bool | None = Field(
         default=None, description="Switching on clears the failure count and the reason."
@@ -175,8 +178,8 @@ async def list_webhooks(
         "Papiq sends a signed request to the URL for each event of the chosen types on "
         "documents within the owner's reach: their own, and green ones in spaces they own or "
         "that are shared with them (an admin's webhooks too; the rights of an admin do not "
-        "widen them). The answer holds the secret, shown only once. At most 20 webhooks per "
-        "user (409)."
+        "widen them). The answer holds the secret, shown only once. A user has at most as "
+        "many webhooks as `PAPIQ_WEBHOOKS_PER_USER` allows (409)."
     ),
     response_model=WebhookCreated,
     responses=problem_responses(401, 403, 409, 422),
@@ -265,7 +268,7 @@ async def list_deliveries(
     before: Annotated[
         UUID | None, Query(description="The `id` of the last entry of the previous page.")
     ] = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    limit: Annotated[int, Query(ge=1, le=PAGE_LIMIT)] = PAGE_SIZE,
 ) -> list[DeliveryOut]:
     found = await context.webhooks.deliveries(
         user,

@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from papiq.adapters.outbound.memory.language_model import minimal_instance
+from papiq.core.domain.documents import MAX_TITLE
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.services.classification.answers import (
     AnswerError,
@@ -90,11 +91,11 @@ def test_parse_propose() -> None:
 
 
 def test_the_title_comes_on_one_line_and_short() -> None:
-    title = "Strom\nrechnung\x00  März " + "x" * 300
+    title = "Strom\nrechnung\x00  März " + "x" * (MAX_TITLE + 100)
     answer = parse_propose(json.dumps(ANSWER | {"title": title}), [])
     assert answer.title is not None
     assert answer.title.startswith("Strom rechnung März x")
-    assert len(answer.title) == 200 and "\n" not in answer.title
+    assert len(answer.title) == MAX_TITLE and "\n" not in answer.title
     assert parse_propose(json.dumps(ANSWER | {"title": " \n\t "}), []).title is None
 
 

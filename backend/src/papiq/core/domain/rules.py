@@ -56,7 +56,6 @@ MAX_PRIORITY = 1000
 MAX_DEPTH = 5
 MAX_CONDITIONS = 50
 MAX_ACTIONS = 20
-MAX_NAME = 200
 MAX_TEXT = 500
 MAX_PATTERN = 200
 MAX_LIST = 100
@@ -396,8 +395,6 @@ class RuleDefinition:
 
     def __post_init__(self) -> None:
         name = require_name(self.name, "rule name")
-        if len(name) > MAX_NAME:
-            raise ValidationError(f"the rule name has more than {MAX_NAME} characters")
         object.__setattr__(self, "name", name)
         if (
             isinstance(self.priority, bool)

@@ -52,9 +52,8 @@ MAX_TRIES = 4  # icons fetched at most
 
 PAGES = frozenset({"text/html", "application/xhtml+xml"})
 MANIFESTS = frozenset({"application/manifest+json", "application/json"})
-IMAGES = frozenset(
-    {"image/png", "image/jpeg", "image/webp", "image/x-icon", "image/vnd.microsoft.icon"}
-)
+IMAGES = frozenset({*media_types.LOGO_IMAGES, "image/vnd.microsoft.icon"})
+"""What a logo is made from (`media_types.LOGO_IMAGES`), plus the other name of ICO."""
 _REDIRECTS = {301, 302, 303, 307, 308}
 _DOMAIN = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
 _IMAGE_FORMATS = ("PNG", "JPEG", "WEBP")

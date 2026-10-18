@@ -12,6 +12,7 @@ from papiq.adapters.outbound.memory.rows import _REMOVED, MemoryRepository
 from papiq.core.domain.errors import NotFoundError
 from papiq.core.domain.ids import DeliveryId, UserId, WebhookId
 from papiq.core.domain.webhooks import Webhook, WebhookDelivery
+from papiq.core.ports.repository import PAGE_SIZE
 
 if TYPE_CHECKING:
     from papiq.adapters.outbound.memory.unit_of_work import MemoryUnitOfWork
@@ -66,7 +67,7 @@ class MemoryWebhookRepository(MemoryRepository[WebhookId, Webhook]):
         await self._deliveries.add(DeliveryRow(delivery.id, delivery))
 
     async def deliveries(
-        self, webhook: WebhookId, *, before: DeliveryId | None = None, limit: int = 50
+        self, webhook: WebhookId, *, before: DeliveryId | None = None, limit: int = PAGE_SIZE
     ) -> list[WebhookDelivery]:
         rows = [
             row.item

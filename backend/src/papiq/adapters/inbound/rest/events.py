@@ -53,8 +53,8 @@ class Listener:
 
     async def events(
         self,
-        still_allowed: Callable[[], Awaitable[bool]] | None = None,
-        every: timedelta = timedelta(seconds=30),
+        still_allowed: Callable[[], Awaitable[bool]] | None,
+        every: timedelta,
     ) -> AsyncIterator[DomainEvent]:
         """The events for this listener until the hub closes or the client falls behind.
 

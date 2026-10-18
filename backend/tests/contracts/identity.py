@@ -33,6 +33,7 @@ from papiq.core.ports import (
     Totp,
     UnitOfWorkFactory,
 )
+from papiq.core.ports.identity import TOTP_STEP
 from tests import builders
 from tests.builders import NOW
 from tests.contracts.unit_of_work import seed
@@ -371,13 +372,13 @@ class SecretCipherContract:
 class TotpContract:
     def test_codes_match_their_step_and_neighbours(self, totp: Totp) -> None:
         secret = totp.new_secret()
-        step = int(NOW.timestamp()) // 30
+        step = int(NOW.timestamp()) // TOTP_STEP
         assert totp.matching_step(secret, totp.code(secret, NOW), NOW) == step
-        earlier = totp.code(secret, NOW - timedelta(seconds=30))
-        later = totp.code(secret, NOW + timedelta(seconds=30))
+        earlier = totp.code(secret, NOW - timedelta(seconds=TOTP_STEP))
+        later = totp.code(secret, NOW + timedelta(seconds=TOTP_STEP))
         assert totp.matching_step(secret, earlier, NOW) == step - 1
         assert totp.matching_step(secret, later, NOW) == step + 1
-        too_old = totp.code(secret, NOW - timedelta(seconds=90))
+        too_old = totp.code(secret, NOW - timedelta(seconds=3 * TOTP_STEP))
         assert totp.matching_step(secret, too_old, NOW) is None
 
     def test_wrong_codes_and_secrets(self, totp: Totp) -> None:

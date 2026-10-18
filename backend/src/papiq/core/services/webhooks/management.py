@@ -15,10 +15,9 @@ from papiq.core.domain.ids import DeliveryId, UserId, WebhookId
 from papiq.core.domain.users import User
 from papiq.core.domain.webhooks import Webhook, WebhookDelivery, new_secret
 from papiq.core.ports import Clock, SecretCipher, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from papiq.core.services._access import load_actor
 from papiq.core.services.webhooks.policy import WebhookPolicy
-
-MAX_PAGE = 200
 
 
 @dataclass(frozen=True)
@@ -134,10 +133,15 @@ class WebhookService:
         return CreatedWebhook(webhook, secret)
 
     async def deliveries(
-        self, actor: UserId, id: WebhookId, *, before: DeliveryId | None = None, limit: int = 50
+        self,
+        actor: UserId,
+        id: WebhookId,
+        *,
+        before: DeliveryId | None = None,
+        limit: int = PAGE_SIZE,
     ) -> "builtins.list[WebhookDelivery]":
         """The log of a webhook, newest first."""
-        limit = max(1, min(limit, MAX_PAGE))
+        limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
             webhook = await visible_webhook(uow, await load_actor(uow, actor), id)
             return await uow.webhooks.deliveries(webhook.id, before=before, limit=limit)

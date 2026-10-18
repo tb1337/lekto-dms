@@ -53,6 +53,7 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
 )
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE
+from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from papiq.core.services._access import (
     checked_changes,
     load_actor,
@@ -79,8 +80,6 @@ from papiq.core.services.rules.changes import ChangeRules
 from papiq.core.services.rules.running import Prepared, RuleRun
 
 log = logging.getLogger(__name__)
-
-MAX_PAGE = 200
 
 
 @dataclass(frozen=True)
@@ -342,14 +341,14 @@ class DocumentService:
         *,
         order: DocumentOrder = NEWEST_FIRST,
         after: DocumentId | None = None,
-        limit: int = 50,
+        limit: int = PAGE_SIZE,
         all_users: bool = False,
     ) -> list[DocumentView]:
         """Documents within the caller's reach matching `filter`, in `order` (newest first),
         after the page ending at the document `after`; with `all_users` (admins only), every
         document. Each is checked against the permission rules once more. ValidationError if
         `after` is gone while the list sorts by another key than the order of arrival."""
-        limit = max(1, min(limit, MAX_PAGE))
+        limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
             user = await _lister(uow, actor, all_users)
             position = await _position(uow, order, after)
@@ -517,12 +516,12 @@ class DocumentService:
         actor: UserId,
         *,
         before: DocumentId | None = None,
-        limit: int = 50,
+        limit: int = PAGE_SIZE,
         all_users: bool = False,
     ) -> list[InboxItem]:
         """The caller's yellow and red documents, newest first, with what is open in them;
         with `all_users` (admins only), those of every user."""
-        limit = max(1, min(limit, MAX_PAGE))
+        limit = max(1, min(limit, PAGE_LIMIT))
         waiting = DocumentFilter(lanes=frozenset({Lane.YELLOW, Lane.RED}))
         async with self._uow() as uow:
             await _lister(uow, actor, all_users)

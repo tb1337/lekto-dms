@@ -40,6 +40,7 @@ from papiq.core.domain.search import (
 from papiq.core.domain.sorting import sort_key
 from papiq.core.ports.repository import DocumentFilter, SortKey
 from papiq.core.ports.search_index import (
+    MAX_HITS,
     IndexBuild,
     SearchHit,
     SearchQuery,
@@ -91,7 +92,6 @@ SORTED_BY = {
     SortKey.TITLE: "title_key",
 }
 STATE_FIELDS = ["id", "version", "embedding_model", "embedding_digest", "layout"]
-MAX_TOTAL_HITS = 1000
 READY_FOR = 30.0  # seconds an index counts as set up before its settings are looked at again
 _UNORDERED = {"filterableAttributes", "sortableAttributes"}
 
@@ -353,7 +353,8 @@ class MeilisearchIndex:
             "sortableAttributes": SORTABLE,
             "rankingRules": RANKING_RULES,
             "localizedAttributes": [{"locales": self._locales, "attributePatterns": ["*"]}],
-            "pagination": {"maxTotalHits": MAX_TOTAL_HITS},
+            # `SearchQuery` promises that `offset + limit` up to `MAX_HITS` is reachable.
+            "pagination": {"maxTotalHits": MAX_HITS},
         }
         if self._dimensions is not None:
             settings["embedders"] = {

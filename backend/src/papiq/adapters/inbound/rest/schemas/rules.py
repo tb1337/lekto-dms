@@ -19,6 +19,14 @@ from papiq.adapters.inbound.schemas import (
 )
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.rules import (
+    DEFAULT_PRIORITY,
+    MAX_ACTIONS,
+    MAX_CONDITIONS,
+    MAX_DEPTH,
+    MAX_LIST,
+    MAX_PRIORITY,
+    MAX_TEXT,
+    MIN_PRIORITY,
     ApplicationStatus,
     ConditionField,
     Operator,
@@ -29,6 +37,8 @@ from papiq.core.domain.rules import (
     Trigger,
     definition_to_json,
 )
+from papiq.core.domain.validation import MAX_NAME
+from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 
 
 class ConditionSchema(BaseModel):
@@ -81,7 +91,9 @@ class AllGroup(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    all: list["ConditionSchema | AllGroup | AnyGroup"] = Field(min_length=1, max_length=50)
+    all: list["ConditionSchema | AllGroup | AnyGroup"] = Field(
+        min_length=1, max_length=MAX_CONDITIONS
+    )
     negate: bool = Field(default=False, alias="not")
 
 
@@ -90,7 +102,9 @@ class AnyGroup(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    any: list["ConditionSchema | AllGroup | AnyGroup"] = Field(min_length=1, max_length=50)
+    any: list["ConditionSchema | AllGroup | AnyGroup"] = Field(
+        min_length=1, max_length=MAX_CONDITIONS
+    )
     negate: bool = Field(default=False, alias="not")
 
 
@@ -140,7 +154,7 @@ class SetTitleAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["set_title"]
     template: str = Field(
-        max_length=500,
+        max_length=MAX_TEXT,
         examples=["{{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}"],
         description=TEMPLATE_DESCRIPTION,
     )
@@ -152,13 +166,13 @@ class AddTagsAction(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     type: Literal["add_tags"]
-    tag_ids: list[UUID] = Field(min_length=1, max_length=100)
+    tag_ids: list[UUID] = Field(min_length=1, max_length=MAX_LIST)
 
 
 class RemoveTagsAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["remove_tags"]
-    tag_ids: list[UUID] = Field(min_length=1, max_length=100)
+    tag_ids: list[UUID] = Field(min_length=1, max_length=MAX_LIST)
 
 
 class SetFieldAction(BaseModel):
@@ -174,7 +188,7 @@ class ForceReviewAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["force_review"]
     reason: str = Field(
-        max_length=500,
+        max_length=MAX_TEXT,
         examples=["check the contract term of {{ contact }}"],
         description="A template, as a title's; the review holds where it cannot be rendered.",
     )
@@ -216,11 +230,11 @@ class RuleDefinitionIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid", json_schema_extra={"examples": [_RULE_EXAMPLE]})
 
-    name: str = Field(min_length=1, max_length=200)
+    name: str = Field(min_length=1, max_length=MAX_NAME)
     priority: int = Field(
-        default=100,
-        ge=0,
-        le=1000,
+        default=DEFAULT_PRIORITY,
+        ge=MIN_PRIORITY,
+        le=MAX_PRIORITY,
         description=(
             "Higher first; the order of the log and of suggestions. Conflicts are never "
             "decided by priority."
@@ -232,9 +246,9 @@ class RuleDefinitionIn(BaseModel):
         description="`ingest`: when a document arrives; `change`: when a person changes it.",
     )
     conditions: AllGroup | AnyGroup = Field(
-        description="Nested at most 5 deep, at most 50 conditions."
+        description=f"Nested at most {MAX_DEPTH} deep, at most {MAX_CONDITIONS} conditions."
     )
-    actions: list[ActionSchema] = Field(min_length=1, max_length=20)
+    actions: list[ActionSchema] = Field(min_length=1, max_length=MAX_ACTIONS)
 
     def to_json(self) -> JsonValue:
         data: JsonValue = self.model_dump(mode="json", by_alias=True, exclude_defaults=True)
@@ -341,7 +355,7 @@ class TemplatePreviewIn(BaseModel):
         },
     )
 
-    template: str = Field(max_length=500, description=TEMPLATE_DESCRIPTION)
+    template: str = Field(max_length=MAX_TEXT, description=TEMPLATE_DESCRIPTION)
     document_id: UUID | None = Field(
         default=None, description="A document the caller may read, to render the template with."
     )
@@ -376,7 +390,7 @@ class ApplyPreviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", json_schema_extra={"examples": [{"limit": 50}]})
 
     cursor: str | None = Field(default=None, max_length=64, description="`next_cursor`.")
-    limit: int = Field(default=50, ge=1, le=200)
+    limit: int = Field(default=PAGE_SIZE, ge=1, le=PAGE_LIMIT)
 
 
 class ApplyPreviewItemOut(BaseModel):

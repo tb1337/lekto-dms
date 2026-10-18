@@ -9,6 +9,9 @@ from typing import Self
 from papiq.core.domain.ids import UserId, new_id
 from papiq.core.domain.validation import require_name, require_utc
 
+MAX_USERNAME = 150
+"""Characters of a username; the REST schemas take their limit from here."""
+
 
 class Role(StrEnum):
     ADMIN = "admin"  # all rights: users, master data, every document and space (`permissions`)
@@ -25,7 +28,7 @@ class User:
     version: int = 1
 
     def __post_init__(self) -> None:
-        self.username = require_name(self.username, "username")
+        self.username = require_name(self.username, "username", max_length=MAX_USERNAME)
         self.created_at = require_utc(self.created_at, "created_at")
 
     @classmethod

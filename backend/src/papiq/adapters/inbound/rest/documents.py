@@ -68,7 +68,9 @@ from papiq.core.domain.imports import ImportedMetadata
 from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.ports import DocumentFilter, DocumentOrder, SortKey
-from papiq.core.services.documents import MAX_PAGE, DocumentFile, MetadataChange
+from papiq.core.ports.pages import PAGE_MEDIA_TYPE
+from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
+from papiq.core.services.documents import DocumentFile, MetadataChange
 
 router = APIRouter(prefix="/documents", tags=["documents"], dependencies=PROTECTED)
 inbox = APIRouter(prefix="/inbox", tags=["inbox"], dependencies=PROTECTED)
@@ -292,7 +294,7 @@ async def list_documents(
     document_type_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
     topic_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
     sort: DocumentSort = DocumentSort.CREATED_DESC,
-    limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
+    limit: Annotated[int, Query(ge=1, le=PAGE_LIMIT)] = PAGE_SIZE,
     cursor: Annotated[str | None, Query(max_length=64, description="`next_cursor`.")] = None,
     all_users: Annotated[
         bool, Query(description="Every user's documents instead of the caller's reach (admins).")
@@ -437,7 +439,7 @@ _file_route(DocumentFile.ORIGINAL, "The original file", "application/octet-strea
 _file_route(
     DocumentFile.ARCHIVE, "The archive PDF (PDF/A with text layer)", "application/pdf", "inline"
 )
-_file_route(DocumentFile.PREVIEW, "The preview image of the first page", "image/webp", "inline")
+_file_route(DocumentFile.PREVIEW, "The preview image of the first page", PAGE_MEDIA_TYPE, "inline")
 
 
 @router.get(
@@ -449,7 +451,7 @@ _file_route(DocumentFile.PREVIEW, "The preview image of the first page", "image/
     ),
     response_class=FileResponse,
     responses={
-        200: {"content": {"image/webp": {"schema": {"type": "string", "format": "binary"}}}},
+        200: {"content": {PAGE_MEDIA_TYPE: {"schema": {"type": "string", "format": "binary"}}}},
         **problem_responses(401, 404, 422),
     },
 )
@@ -739,7 +741,7 @@ async def confirm(
 async def list_inbox(
     user: CurrentUser,
     context: Context,
-    limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
+    limit: Annotated[int, Query(ge=1, le=PAGE_LIMIT)] = PAGE_SIZE,
     cursor: Annotated[str | None, Query(max_length=64, description="`next_cursor`.")] = None,
     all_users: Annotated[
         bool, Query(description="Every user's documents instead of the caller's reach (admins).")

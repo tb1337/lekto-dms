@@ -14,11 +14,14 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from papiq.core.domain.documents import MAX_TITLE
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import one_line
 
-_EVIDENCE_LENGTH = 500  # characters of a quoted passage that are kept
+# Characters of a quoted passage that are kept: more than the prompt asks for
+# (`prompts.EVIDENCE_CHARACTERS`), so a long quote is cut, not lost.
+_EVIDENCE_LENGTH = 500
 _FENCE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL)
 
 _TEXT_OR_NULL: JsonObject = {"type": ["string", "null"]}
@@ -68,7 +71,6 @@ _PROPOSE_FIELDS = (
     "language",
     "fields",
 )
-_TITLE_LENGTH = 200
 _FIELD_ENTRY = ("key", "value", "evidence")
 
 
@@ -127,7 +129,7 @@ def parse_propose(content: str, keys: Sequence[str]) -> ProposeAnswer:
             fields[key] = proposal
     # The title becomes the document's: on one line, without control characters, not too long.
     title = _text_or_null(data["title"], "title")
-    title = one_line(title)[:_TITLE_LENGTH].strip() or None if title else None
+    title = one_line(title)[:MAX_TITLE].strip() or None if title else None
     return ProposeAnswer(
         sender=_parse_proposal(data["sender"], "sender", text=True),
         recipient=_text_or_null(data["recipient"], "recipient"),

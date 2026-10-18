@@ -57,7 +57,7 @@ log = logging.getLogger(__name__)
 
 LOGO_MAX_SIZE = 1024 * 1024
 """Bytes of an uploaded image."""
-LOGO_TYPE = "image/webp"
+LOGO_TYPE = media_types.WEBP
 LOGO_JOB = "contacts.logo"
 FETCHING_OFF = "not fetched: fetching logos is off (PAPIQ_LOGO_FETCH)"
 """The note of a job that ran while fetching was off."""

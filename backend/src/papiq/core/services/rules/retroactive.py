@@ -45,6 +45,7 @@ from papiq.core.ports import (
     UnitOfWork,
     UnitOfWorkFactory,
 )
+from papiq.core.ports.repository import PAGE_SIZE
 from papiq.core.services._access import load_actor
 from papiq.core.services.rules.management import visible_rule
 from papiq.core.services.rules.running import (
@@ -121,7 +122,7 @@ class RuleApplicationService:
         id: RuleId,
         *,
         before: DocumentId | None = None,
-        limit: int = 50,
+        limit: int = PAGE_SIZE,
     ) -> ApplyPreview:
         """The documents the rule's current version would change, newest first, from the page
         ending at `before` on. A page looks at `SCAN` documents at most: it may hold fewer than

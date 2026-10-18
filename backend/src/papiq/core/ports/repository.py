@@ -182,6 +182,12 @@ class CountBy(StrEnum):
     FIELD = "field"
 
 
+PAGE_SIZE = 50
+"""Items of a page of a list when the caller names no size."""
+PAGE_LIMIT = 200
+"""Items a page may hold at most; the services clamp to it, the REST parameters declare it."""
+
+
 @dataclass(frozen=True)
 class DocumentPosition:
     """Where a page of a sorted list ended: its last document, and that document's value of
@@ -424,7 +430,7 @@ class WebhookRepository(Protocol):
         ...
 
     async def deliveries(
-        self, webhook: WebhookId, *, before: DeliveryId | None = None, limit: int = 50
+        self, webhook: WebhookId, *, before: DeliveryId | None = None, limit: int = PAGE_SIZE
     ) -> list[WebhookDelivery]:
         """The log of a webhook, newest first (by id), the page after `before`."""
         ...

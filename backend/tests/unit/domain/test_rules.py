@@ -25,7 +25,6 @@ from papiq.core.domain.rules import (
     MAX_CONDITIONS,
     MAX_DEPTH,
     MAX_LIST,
-    MAX_NAME,
     MAX_PATTERN,
     MAX_TEXT,
     Action,
@@ -59,6 +58,7 @@ from papiq.core.domain.rules import (
     definition_to_json,
     group_from_json,
 )
+from papiq.core.domain.validation import MAX_NAME
 from tests.builders import NOW
 
 OWNER = UserId(new_id())
@@ -461,7 +461,7 @@ def test_a_rule_has_at_most_max_actions() -> None:
 def test_rule_name() -> None:
     assert definition(name="  Invoices  ").name == "Invoices"
     assert definition(name="x" * MAX_NAME).name == "x" * MAX_NAME
-    with pytest.raises(ValidationError, match=f"more than {MAX_NAME} characters"):
+    with pytest.raises(ValidationError, match=f"at most {MAX_NAME} characters"):
         definition(name="x" * (MAX_NAME + 1))
     with pytest.raises(ValidationError, match="must not be empty"):
         definition(name="   ")

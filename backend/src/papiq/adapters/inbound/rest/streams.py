@@ -47,8 +47,8 @@ async def _visible_document(
         "`examples`), unless the stream follows one document. "
         "Each event has the event type as `event`, the event id as `id`, and JSON as `data` "
         "(see `EventMessage`). Events are thin: fetch the document for its state. There is "
-        "no replay; after reconnecting, fetch the current state. The stream checks every "
-        "30 seconds that its session or token is still valid and ends otherwise."
+        "no replay; after reconnecting, fetch the current state. The stream checks "
+        "regularly that its session or token is still valid and ends otherwise."
     ),
     response_class=EventSourceResponse,
     responses={

@@ -41,7 +41,7 @@ value.
 """
 
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from papiq.core.domain.classification import (
@@ -55,7 +55,7 @@ from papiq.core.domain.classification import (
 )
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId
 from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.master_data import Contact, DocumentType, Tag
+from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag
 from papiq.core.domain.names import best_match, match_key, mentions, related
 from papiq.core.domain.pipeline import Node, Outcome
 from papiq.core.domain.sorting import sort_key
@@ -152,6 +152,138 @@ class Signals:
     neighbours_know: KnownLabels | None = None
 
 
+# --- ranking ----------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, kw_only=True)
+class _Ranking[K]:
+    """What the signals say about the values of one field (contact, type or topic), worked out
+    once, and the order of its candidates: by the number of signals that name a value, then
+    hard evidence in the text, the classifier's probability, how well the model's answer matches
+    it, the similar documents that carry it, and its name. The judges differ only in their
+    rules: when a value is green and what contradicts it."""
+
+    names: Mapping[K, MasterData]  # the values the field can take
+    answer: Mapping[K, CandidateSource]  # the value the model's answer matches, as a source
+    probabilities: Mapping[K, float]  # the classifier's
+    neighbours: tuple[Neighbour, ...]
+    votes: Counter[K]  # how many of the similar documents carry a value
+    namers: Mapping[K, tuple[str, ...]]  # the signals that name a value
+    evidence: Mapping[K, CandidateSource]  # hard evidence in the text, as a source
+    identified: tuple[K, ...]  # the values identifiers in the text point to
+    thresholds: Thresholds
+
+    @classmethod
+    def of(
+        cls,
+        names: Mapping[K, MasterData],
+        signals: Signals,
+        thresholds: Thresholds,
+        *,
+        answer: Mapping[K, CandidateSource],
+        classified: Sequence[tuple[K, float]],
+        carried: Callable[[Neighbour], K | None],
+        undivided: bool = False,
+        evidence: Mapping[K, CandidateSource] | None = None,
+        identified: Iterable[K] = (),
+    ) -> "_Ranking[K]":
+        """`answer`: the value the model's answer matches, as a source (the model names it if
+        the source says so); `classified`: the classifier's probabilities, best first;
+        `carried`: the value a similar document carries; `undivided`: as for `_majority`."""
+        # A model trained before a value was deleted (two merged) still knows it: leave it out.
+        ranking = [(id, p) for id, p in classified if id in names]
+        neighbours = signals.neighbours or ()
+        votes = Counter(
+            id for item in neighbours if (id := carried(item)) is not None and id in names
+        )
+        namers: dict[K, tuple[str, ...]] = {}
+        for signal, named in (
+            (LLM, next((id for id, source in answer.items() if source.names), None)),
+            (CLASSIFIER, _top(ranking, thresholds.classifier)),
+            (NEIGHBOURS, _majority(votes, len(neighbours), undivided=undivided)),
+        ):
+            if named is not None:
+                namers[named] = (*namers.get(named, ()), signal)
+        return cls(
+            names=names,
+            answer=answer,
+            probabilities=dict(ranking),
+            neighbours=neighbours,
+            votes=votes,
+            namers=namers,
+            evidence=evidence or {},
+            identified=tuple(identified),
+            thresholds=thresholds,
+        )
+
+    def candidates(self) -> list[K]:
+        """The values a signal names or points to, best first."""
+        likely = (id for id, p in self.probabilities.items() if p >= 1 - self.thresholds.classifier)
+        found = _unique([*self.namers, *self.answer, *self.identified, *likely, *self.votes])
+        return sorted(
+            (id for id in found if id in self.names),
+            key=lambda id: (
+                -len(self.namers.get(id, ())),
+                -(id in self.evidence),
+                -self.probabilities.get(id, 0.0),
+                -self._matches(id),
+                -self.votes.get(id, 0),
+                sort_key(self.names[id].name),
+            ),
+        )
+
+    def listed(self, ranked: Iterable[K], contradicted: Callable[[K], bool]) -> list[Candidate]:
+        """The candidates `ranked`, each with what the signals say about it."""
+        return [
+            Candidate(
+                value=str(id),
+                label=self.names[id].name,
+                sources=self.sources(id),
+                contradicted=contradicted(id),
+            )
+            for id in ranked
+        ]
+
+    def sources(self, id: K) -> tuple[CandidateSource, ...]:
+        """What each signal says about the value `id`."""
+        found = [self.answer[id]] if id in self.answer else []
+        if id in self.probabilities:
+            p = self.probabilities[id]
+            named = p >= self.thresholds.classifier
+            found.append(
+                CandidateSource(
+                    signal=CLASSIFIER, names=named, score=p, threshold=self.thresholds.classifier
+                )
+            )
+        if self.votes.get(id):
+            found.append(self._neighbour_source(id))
+        if id in self.evidence:
+            found.append(self.evidence[id])
+        return tuple(found)
+
+    def _matches(self, id: K) -> float:
+        """How well the model's answer matches the value `id`."""
+        source = self.answer.get(id)
+        return (source.score or 0.0) if source is not None else 0.0
+
+    def _neighbour_source(self, id: K) -> CandidateSource:
+        neighbours = self.neighbours
+        carrying = [
+            item for item in neighbours if id in (item.contact, item.document_type, item.topic)
+        ]
+        similarities = [item.similarity for item in carrying if item.similarity is not None]
+        count = self.votes.get(id, 0)
+        return CandidateSource(
+            signal=NEIGHBOURS,
+            names=NEIGHBOURS in self.namers.get(id, ()),
+            score=count / len(neighbours) if neighbours else None,
+            similarity=max(similarities) if similarities else None,
+            votes=count,
+            of=len(neighbours),
+            documents=tuple(item.document for item in carrying),
+        )
+
+
 # --- contact ----------------------------------------------------------------------------------
 
 
@@ -165,15 +297,9 @@ class _ContactView:
     matched: ContactId | None  # the contact the model's sender matches at least `suggest`
     match_score: float
     ambiguous: bool  # another contact matches the sender about as well
-    model_names: bool
     recipient: ContactId | None
-    probabilities: Mapping[ContactId, float]
-    classifier_names: ContactId | None
-    neighbours: tuple[Neighbour, ...]
-    votes: Counter[ContactId]
-    neighbours_name: ContactId | None
     facts: FactsView
-    proposers: Mapping[ContactId, tuple[str, ...]]
+    ranking: _Ranking[ContactId]
     thresholds: Thresholds
 
     def hard(self, id: ContactId) -> bool:
@@ -189,7 +315,7 @@ class _ContactView:
             )
         )
         return (
-            any(other != id for other in self.proposers)
+            any(other != id for other in self.ranking.namers)
             or self.recipient == id
             or any(other != id for other in self.facts.identifiers)
             or unrelated
@@ -198,41 +324,10 @@ class _ContactView:
     def green(self, id: ContactId) -> bool:
         if self.contradicted(id):
             return False
-        backed = id in (self.classifier_names, self.neighbours_name)
+        naming = self.ranking.namers.get(id, ())
+        backed = CLASSIFIER in naming or NEIGHBOURS in naming
         soft = self.matched == id and not self.ambiguous and backed
-        return (self.hard(id) and id in self.proposers) or soft
-
-    def sources(self, id: ContactId) -> tuple[CandidateSource, ...]:
-        sources = []
-        if self.matched == id:
-            sources.append(
-                CandidateSource(
-                    signal=LLM,
-                    names=self.model_names,
-                    score=self.match_score,
-                    threshold=self.thresholds.accept,
-                    quote=self.quote,
-                )
-            )
-        if id in self.probabilities:
-            p = self.probabilities[id]
-            named = p >= self.thresholds.classifier
-            sources.append(
-                CandidateSource(
-                    signal=CLASSIFIER, names=named, score=p, threshold=self.thresholds.classifier
-                )
-            )
-        if self.votes.get(id):
-            sources.append(_neighbour_source(id, self.votes, self.neighbours, self.neighbours_name))
-        if self.hard(id):
-            sources.append(
-                CandidateSource(
-                    signal=FACTS,
-                    identifiers=self.facts.identifiers.get(id, ()),
-                    named_in_text=id in self.facts.named,
-                )
-            )
-        return tuple(sources)
+        return (self.hard(id) and id in self.ranking.namers) or soft
 
 
 def judge_contact(
@@ -241,40 +336,9 @@ def judge_contact(
     thresholds: Thresholds,
 ) -> FieldCheck:
     view = _contact_view(signals, contacts, thresholds)
-    names = view.names
-    candidates = [
-        id
-        for id in _unique(
-            [
-                *view.proposers,
-                *([view.matched] if view.matched else []),
-                *view.facts.identifiers,
-                *(id for id, p in view.probabilities.items() if p >= 1 - thresholds.classifier),
-                *view.votes,
-            ]
-        )
-        if id in names
-    ]
-    ranked = sorted(
-        candidates,
-        key=lambda id: (
-            -len(view.proposers.get(id, ())),
-            -view.hard(id),
-            -view.probabilities.get(id, 0.0),
-            -(view.match_score if view.matched == id else 0.0),
-            -view.votes.get(id, 0),
-            sort_key(names[id].name),
-        ),
-    )
-    listed = [
-        Candidate(
-            value=str(id),
-            label=names[id].name,
-            sources=view.sources(id),
-            contradicted=view.contradicted(id),
-        )
-        for id in ranked
-    ]
+    names, probabilities = view.names, view.ranking.probabilities
+    ranked = view.ranking.candidates()
+    listed = view.ranking.listed(ranked, view.contradicted)
     if view.sender and view.matched is None:
         source = CandidateSource(signal=LLM, quote=view.quote)
         listed.append(Candidate(value=None, label=view.sender, sources=(source,)))
@@ -283,7 +347,7 @@ def judge_contact(
     if chosen is not None:
         score = max(
             view.match_score if view.matched == chosen else 0.0,
-            view.probabilities.get(chosen, 0.0),
+            probabilities.get(chosen, 0.0),
             thresholds.accept,
         )
         return FieldCheck(
@@ -297,7 +361,7 @@ def judge_contact(
             candidates=tuple(listed),
         )
     top = ranked[0] if ranked else None
-    score = max(view.match_score, view.probabilities.get(top, 0.0) if top else 0.0)
+    score = max(view.match_score, probabilities.get(top, 0.0) if top else 0.0)
     return FieldCheck(
         field=CONTACT,
         outcome=Outcome.UNCERTAIN,
@@ -318,6 +382,7 @@ def _contact_view(
     pairs = [(contact, own) for contact in contacts for own in contact.names()]
     model = signals.model
     sender = model.sender if model else None
+    quote = model.sender_quote if model else None
     matched: ContactId | None = None
     match_score, model_names, ambiguous = 0.0, False, False
     if sender:
@@ -332,50 +397,53 @@ def _contact_view(
         if found.best is not None and found.score >= thresholds.accept:
             recipient = found.best.id
     names = {contact.id: contact for contact in contacts}
-    # A model trained before a contact was deleted (two merged) still knows it: leave it out.
-    ranking = [
-        (id, p)
-        for id, p in (signals.classifier.contacts if signals.classifier else ())
-        if id in names
-    ]
-    classifier_names = _top(ranking, thresholds.classifier)
-    neighbours = signals.neighbours or ()
-    votes = Counter(item.contact for item in neighbours if item.contact in names)
-    neighbours_name = _majority(votes, len(neighbours), undivided=True)
-    proposers: dict[ContactId, tuple[str, ...]] = {}
-    for signal, named in (
-        (LLM, matched if model_names else None),
-        (CLASSIFIER, classifier_names),
-        (NEIGHBOURS, neighbours_name),
-    ):
-        if named is not None:
-            proposers[named] = (*proposers.get(named, ()), signal)
+    answer: dict[ContactId, CandidateSource] = {}
+    if matched is not None:
+        answer[matched] = CandidateSource(
+            signal=LLM,
+            names=model_names,
+            score=match_score,
+            threshold=thresholds.accept,
+            quote=quote,
+        )
+    facts = signals.facts or FactsView()
+    evidence = {
+        id: CandidateSource(
+            signal=FACTS,
+            identifiers=facts.identifiers.get(id, ()),
+            named_in_text=id in facts.named,
+        )
+        for id in (*facts.identifiers, *facts.named)
+    }
+    ranking = _Ranking.of(
+        names,
+        signals,
+        thresholds,
+        answer=answer,
+        classified=signals.classifier.contacts if signals.classifier else (),
+        carried=lambda item: item.contact,
+        undivided=True,
+        evidence=evidence,
+        identified=facts.identifiers,
+    )
     return _ContactView(
         names=names,
         sender=sender,
-        quote=model.sender_quote if model else None,
+        quote=quote,
         matched=matched,
         match_score=match_score,
         ambiguous=ambiguous,
-        model_names=model_names,
         recipient=recipient,
-        probabilities=dict(ranking),
-        classifier_names=classifier_names,
-        neighbours=neighbours,
-        votes=votes,
-        neighbours_name=neighbours_name,
-        facts=signals.facts or FactsView(),
-        proposers=proposers,
+        facts=facts,
+        ranking=ranking,
         thresholds=thresholds,
     )
 
 
 def _contact_reason(view: _ContactView, top: ContactId | None, no_model: bool) -> str:
-    names = view.names
-    if len(view.proposers) > 1:
-        return "the signals disagree: " + " or ".join(
-            f"'{names[id].name}'" for id in view.proposers
-        )
+    names, namers = view.names, view.ranking.namers
+    if len(namers) > 1:
+        return "the signals disagree: " + " or ".join(f"'{names[id].name}'" for id in namers)
     if top is not None and view.recipient == top:
         return f"'{names[top].name}' is the recipient, not the sender"
     if len(view.facts.identifiers) > 1:
@@ -388,7 +456,7 @@ def _contact_reason(view: _ContactView, top: ContactId | None, no_model: bool) -
     name = names[top].name
     if view.sender and view.matched is None:
         return f"'{view.sender}' is no contact, and only other signals point to '{name}'"
-    if top not in view.proposers:
+    if top not in namers:
         if top == view.matched and view.match_score >= view.thresholds.accept:
             return f"'{view.sender}' matches several contacts"
         if top == view.matched:
@@ -424,28 +492,20 @@ def judge_type(
         proposed if proposed and by_model is None else None
     )
     classifier = signals.classifier
-    ranking = [
-        (id, p) for id, p in (classifier.document_types if classifier else ()) if id in names
-    ]
-    probabilities = dict(ranking)
-    classifier_names = _top(ranking, thresholds.classifier)
-    neighbours = signals.neighbours or ()
-    votes = Counter(item.document_type for item in neighbours if item.document_type in names)
-    neighbours_name = _majority(votes, len(neighbours))
-    namers: dict[DocumentTypeId, tuple[str, ...]] = {}
-    for signal, named in (
-        (LLM, by_model.id if by_model else None),
-        (CLASSIFIER, classifier_names),
-        (NEIGHBOURS, neighbours_name),
-    ):
-        if named is not None:
-            namers[named] = (*namers.get(named, ()), signal)
-
+    ranking = _Ranking.of(
+        names,
+        signals,
+        thresholds,
+        answer={by_model.id: CandidateSource(signal=LLM, names=True)} if by_model else {},
+        classified=classifier.document_types if classifier else (),
+        carried=lambda item: item.document_type,
+    )
+    namers, probabilities = ranking.namers, ranking.probabilities
     known = signals.neighbours_know
 
     def covered_by_others(id: DocumentTypeId) -> bool:
         by_classifier = classifier is not None and id in classifier.known_types
-        by_neighbours = bool(neighbours) and (known is None or id in known.document_types)
+        by_neighbours = bool(ranking.neighbours) and (known is None or id in known.document_types)
         return by_classifier or by_neighbours
 
     def contradicted(id: DocumentTypeId) -> bool:
@@ -456,51 +516,8 @@ def judge_type(
         sole = naming == (LLM,) and not covered_by_others(id)
         return not contradicted(id) and (len(naming) >= 2 or sole)
 
-    candidates = [
-        id
-        for id in _unique(
-            [
-                *namers,
-                *(id for id, p in probabilities.items() if p >= 1 - thresholds.classifier),
-                *votes,
-            ]
-        )
-        if id in names
-    ]
-    ranked = sorted(
-        candidates,
-        key=lambda id: (
-            -len(namers.get(id, ())),
-            -probabilities.get(id, 0.0),
-            -votes.get(id, 0),
-            sort_key(names[id].name),
-        ),
-    )
-
-    def sources(id: DocumentTypeId) -> tuple[CandidateSource, ...]:
-        found = []
-        if by_model is not None and by_model.id == id:
-            found.append(CandidateSource(signal=LLM, names=True))
-        if id in probabilities:
-            p = probabilities[id]
-            found.append(
-                CandidateSource(
-                    signal=CLASSIFIER,
-                    names=p >= thresholds.classifier,
-                    score=p,
-                    threshold=thresholds.classifier,
-                )
-            )
-        if votes.get(id):
-            found.append(_neighbour_source(id, votes, neighbours, neighbours_name))
-        return tuple(found)
-
-    listed = [
-        Candidate(
-            value=str(id), label=names[id].name, sources=sources(id), contradicted=contradicted(id)
-        )
-        for id in ranked
-    ]
+    ranked = ranking.candidates()
+    listed = ranking.listed(ranked, contradicted)
     if new:
         listed.append(Candidate(value=None, label=new, sources=(CandidateSource(signal=LLM),)))
     chosen = next((id for id in ranked if green(id)), None)
@@ -654,83 +671,32 @@ def judge_topic(
     names = {tag.id: tag for tag in tags if tag.is_topic_target and tag.id in owner.topic_ids}
     by_model = _by_name(list(names.values()), model.topic) if model and model.topic else None
     classifier = signals.classifier
-    ranking = [(id, p) for id, p in (classifier.topics if classifier else ()) if id in names]
-    probabilities = dict(ranking)
-    neighbours = signals.neighbours or ()
-    votes = Counter(item.topic for item in neighbours if item.topic in names)
     evidence = {
         id: kinds
         for id, kinds in (signals.facts or FactsView()).topics.get(owner.id, {}).items()
         if id in names
     }
-    namers: dict[TagId, tuple[str, ...]] = {}
-    for signal, topic in (
-        (LLM, by_model.id if by_model else None),
-        (CLASSIFIER, _top(ranking, thresholds.classifier)),
-        (NEIGHBOURS, _majority(votes, len(neighbours))),
-    ):
-        if topic is not None:
-            namers[topic] = (*namers.get(topic, ()), signal)
+    ranking = _Ranking.of(
+        names,
+        signals,
+        thresholds,
+        answer={by_model.id: CandidateSource(signal=LLM, names=True)} if by_model else {},
+        classified=classifier.topics if classifier else (),
+        carried=lambda item: item.topic,
+        evidence={
+            id: CandidateSource(signal=FACTS, identifiers=kinds) for id, kinds in evidence.items()
+        },
+        identified=evidence,
+    )
+    namers = ranking.namers
     named = set(namers) | set(evidence)
 
     def sure(id: TagId) -> bool:
         naming = namers.get(id, ())
         return len(named) == 1 and ((id in evidence and bool(naming)) or len(naming) >= 2)
 
-    candidates = [
-        id
-        for id in _unique(
-            [
-                *namers,
-                *evidence,
-                *(id for id, p in probabilities.items() if p >= 1 - thresholds.classifier),
-                *votes,
-            ]
-        )
-        if id in names
-    ]
-    ranked = sorted(
-        candidates,
-        key=lambda id: (
-            -len(namers.get(id, ())),
-            -(id in evidence),
-            -probabilities.get(id, 0.0),
-            -votes.get(id, 0),
-            sort_key(names[id].name),
-        ),
-    )
-
-    def sources(id: TagId) -> tuple[CandidateSource, ...]:
-        found = []
-        if by_model is not None and by_model.id == id:
-            found.append(CandidateSource(signal=LLM, names=True))
-        if id in probabilities:
-            p = probabilities[id]
-            found.append(
-                CandidateSource(
-                    signal=CLASSIFIER,
-                    names=p >= thresholds.classifier,
-                    score=p,
-                    threshold=thresholds.classifier,
-                )
-            )
-        if votes.get(id):
-            found.append(
-                _neighbour_source(id, votes, neighbours, _majority(votes, len(neighbours)))
-            )
-        if id in evidence:
-            found.append(CandidateSource(signal=FACTS, identifiers=evidence[id]))
-        return tuple(found)
-
-    listed = tuple(
-        Candidate(
-            value=str(id),
-            label=names[id].name,
-            sources=sources(id),
-            contradicted=any(other != id for other in named),
-        )
-        for id in ranked
-    )
+    ranked = ranking.candidates()
+    listed = tuple(ranking.listed(ranked, lambda id: any(other != id for other in named)))
     top = ranked[0] if ranked else None
     if green and top is not None and sure(top):
         return FieldCheck(
@@ -786,23 +752,6 @@ def _majority[K](votes: Counter[K], found: int, *, undivided: bool = False) -> K
     if undivided and any(other >= 2 for _, other in others):
         return None
     return value if count >= 2 and count > found / 2 else None
-
-
-def _neighbour_source[K](
-    id: K, votes: Counter[K], neighbours: Sequence[Neighbour], named: K | None
-) -> CandidateSource:
-    carrying = [item for item in neighbours if id in (item.contact, item.document_type, item.topic)]
-    similarities = [item.similarity for item in carrying if item.similarity is not None]
-    count = votes.get(id, 0)
-    return CandidateSource(
-        signal=NEIGHBOURS,
-        names=named == id,
-        score=count / len(neighbours) if neighbours else None,
-        similarity=max(similarities) if similarities else None,
-        votes=count,
-        of=len(neighbours),
-        documents=tuple(item.document for item in carrying),
-    )
 
 
 def _unique[K](items: Iterable[K]) -> list[K]:

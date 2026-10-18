@@ -213,7 +213,10 @@
 		void load();
 	});
 
+	// Again on every document opened: what changed at the one before (confirmed) came while it
+	// was no longer shown.
 	$effect(() => {
+		void id;
 		void events.generation;
 		void scope.allUsers;
 		if (fromInbox) untrack(() => (inboxReady = loadInbox()));
@@ -252,6 +255,9 @@
 	}
 
 	async function confirmed(next: string | null) {
+		// It waits for no decision any more, whatever the next list says.
+		const left = id;
+		inboxPlaces = inboxPlaces?.filter((place) => place.id !== left) ?? null;
 		await goto(next ? inboxDocument(next) : `${BASE}/inbox`);
 	}
 

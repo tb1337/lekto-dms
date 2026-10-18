@@ -15,24 +15,14 @@ import {
 	OWNER,
 	summaryOf
 } from '#lib/testing/documents.ts';
+import { goTo } from '#lib/testing/page-state.svelte.ts';
 import Page from './+page.svelte';
 
 type Document = components['schemas']['DocumentDetails'];
 
-const state = vi.hoisted(() => ({
-	url: new URL('http://papiq/ui/documents/doc-1?tab=metadata'),
-	params: { id: 'doc-1' }
-}));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
-vi.mock('$app/state', () => ({
-	page: {
-		get url() {
-			return state.url;
-		},
-		get params() {
-			return state.params;
-		}
-	}
+vi.mock('$app/state', async () => ({
+	page: (await import('#lib/testing/page-state.svelte.ts')).testPage
 }));
 
 let emit: ((type: string, data: object) => void) | null = null;
@@ -55,20 +45,21 @@ function streamEvents() {
 		});
 }
 
+/** The routes of one document's view. */
+function documentRoutes(id: string, current: () => Document): Parameters<typeof fakeApi>[0] {
+	return {
+		[`GET /api/v1/documents/${id}`]: () => current(),
+		[`GET /api/v1/documents/${id}/review`]: () => ({ document: current(), open: [], nodes: [] }),
+		[`GET /api/v1/documents/${id}/reading`]: () => ({ vision: false, pages: [], advice: null }),
+		// The metadata tab says so; the test looks at seen.
+		[`GET /api/v1/documents/${id}/files`]: () =>
+			json({ type: 'about:blank', title: 'Not Found', status: 404 }, 404)
+	};
+}
+
 function serve(current: () => Document, routes: Parameters<typeof fakeApi>[0] = {}) {
 	const api = fakeApi({
-		'GET /api/v1/documents/doc-1': () => current(),
-		'GET /api/v1/documents/doc-1/review': () => ({ document: current(), open: [], nodes: [] }),
-		'GET /api/v1/documents/doc-1/reading': () => ({ vision: false, pages: [], advice: null }),
-		'GET /api/v1/documents/doc-1/facts': () => ({
-			contact_id: null,
-			named: [],
-			identifiers: [],
-			codes: []
-		}),
-		// The metadata tab says so; the test looks at seen.
-		'GET /api/v1/documents/doc-1/files': () =>
-			json({ type: 'about:blank', title: 'Not Found', status: 404 }, 404),
+		...documentRoutes('doc-1', current),
 		'GET /api/v1/pipeline': () => ({ nodes: [], vision: null }),
 		'GET /api/v1/inbox/summary': () => summaryOf(),
 		...routes
@@ -81,8 +72,7 @@ const seen = (api: ReturnType<typeof fakeApi>) =>
 	calls(api).filter((call) => call === 'PUT /api/v1/documents/doc-1/seen');
 
 beforeEach(() => {
-	state.url = new URL('http://papiq/ui/documents/doc-1?tab=metadata');
-	state.params = { id: 'doc-1' };
+	goTo('/ui/documents/doc-1?tab=metadata', { id: 'doc-1' });
 	vi.mocked(goto).mockClear();
 	session.start({
 		user: { id: OWNER, username: 'tobi', role: 'user' },
@@ -136,7 +126,7 @@ describe('the document view and seen', () => {
 	});
 
 	it('reports seen of a document opened from the inbox once the inbox is known', async () => {
-		state.url = new URL('http://papiq/ui/documents/doc-1?from=inbox&tab=metadata');
+		goTo('/ui/documents/doc-1?from=inbox&tab=metadata', { id: 'doc-1' });
 		const api = serve(() => documentOf({ lane: 'green' }), {
 			'GET /api/v1/inbox': () => ({
 				items: [inboxItem('new', { id: 'doc-0' }), inboxItem('new', { id: 'doc-1' })],
@@ -155,7 +145,7 @@ describe('the document view and seen', () => {
 
 describe('confirming from the inbox', () => {
 	it('opens next the document that waits for a decision', async () => {
-		state.url = new URL('http://papiq/ui/documents/doc-1?from=inbox');
+		goTo('/ui/documents/doc-1?from=inbox', { id: 'doc-1' });
 		const yellow = documentOf({
 			lane: 'yellow',
 			processing: { ...documentOf().processing, status: 'review' }
@@ -186,7 +176,7 @@ describe('confirming from the inbox', () => {
 	});
 
 	it('goes back to the inbox when nothing else waits for a decision', async () => {
-		state.url = new URL('http://papiq/ui/documents/doc-1?from=inbox');
+		goTo('/ui/documents/doc-1?from=inbox', { id: 'doc-1' });
 		const yellow = documentOf({
 			lane: 'yellow',
 			processing: { ...documentOf().processing, status: 'review' }
@@ -208,5 +198,48 @@ describe('confirming from the inbox', () => {
 		expect(screen.queryByRole('checkbox', { name: m.review_next_document() })).toBeNull();
 		await userEvent.click(confirm);
 		await waitFor(() => expect(goto).toHaveBeenCalledWith('/ui/inbox'));
+	});
+
+	it('offers next no document confirmed before', async () => {
+		goTo('/ui/documents/doc-1?from=inbox', { id: 'doc-1' });
+		const yellow = (id: string) =>
+			documentOf({
+				id,
+				lane: 'yellow',
+				processing: { ...documentOf().processing, status: 'review' }
+			});
+		const open = (id: string) => () => ({
+			document: yellow(id),
+			open: [{ node: 'judge', outcome: 'uncertain', reason: 'Widerspruch', fields: [] }],
+			nodes: []
+		});
+		let confirmedOne = false;
+		const api = serve(() => yellow('doc-1'), {
+			'GET /api/v1/documents/doc-1/review': open('doc-1'),
+			...documentRoutes('doc-2', () => yellow('doc-2')),
+			'GET /api/v1/documents/doc-2/review': open('doc-2'),
+			'POST /api/v1/documents/doc-1/confirm': () => {
+				confirmedOne = true;
+				return yellow('doc-1');
+			},
+			// Once confirmed, doc-1 is processed on: it waits for no decision any more.
+			'GET /api/v1/inbox': () => ({
+				items: confirmedOne
+					? [inboxItem('review', { id: 'doc-2' }), inboxItem('processing', { id: 'doc-1' })]
+					: [inboxItem('review', { id: 'doc-1' }), inboxItem('review', { id: 'doc-2' })],
+				next_cursor: null
+			})
+		});
+		render(Page);
+		await userEvent.click(await screen.findByRole('button', { name: m.review_confirm() }));
+		await waitFor(() => expect(goto).toHaveBeenCalledWith('/ui/documents/doc-2?from=inbox'));
+		goTo('/ui/documents/doc-2?from=inbox', { id: 'doc-2' });
+		await waitFor(() => expect(calls(api)).toContain('GET /api/v1/documents/doc-2/review'));
+		await waitFor(() =>
+			expect(screen.queryByRole('checkbox', { name: m.review_next_document() })).toBeNull()
+		);
+		await userEvent.click(await screen.findByRole('button', { name: m.review_confirm() }));
+		await waitFor(() => expect(calls(api)).toContain('POST /api/v1/documents/doc-2/confirm'));
+		await waitFor(() => expect(goto).toHaveBeenLastCalledWith('/ui/inbox'));
 	});
 });

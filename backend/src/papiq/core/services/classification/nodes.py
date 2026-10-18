@@ -52,7 +52,7 @@ from papiq.core.domain.fields import (
     field_from_json,
     field_to_json,
 )
-from papiq.core.domain.ids import ContactId, FieldId
+from papiq.core.domain.ids import ContactId, DocumentId, FieldId
 from papiq.core.domain.json_value import JsonObject, JsonValue, as_list
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.names import match_key, mentions, named_share
@@ -160,7 +160,42 @@ class _UnfitAnswerError(Exception):
         self.answers = answers
 
 
+async def _document_text(store: ObjectStore, id: DocumentId) -> str:
+    return (await load_text(store, id)).decode("utf-8")
+
+
+async def _locate_quotes(
+    store: ObjectStore, locator: TextLocator | None, document: Document, checks: list[FieldCheck]
+) -> list[FieldCheck]:
+    """Each quote's page and boxes in the archive PDF. Without a locator, an archive or a
+    readable PDF the checks stay as they are: the places help a person find the passage, they
+    are not part of the check."""
+    quotes = sorted({(check.evidence or "").strip() for check in checks} - {""})
+    if locator is None or not quotes:
+        return checks
+    async with work_directory() as work:
+        archive = work / ARCHIVE_FILE
+        try:
+            await store.download(archive_key(document.id), archive)
+            places = await locator.locate(archive, quotes)
+        except Exception as error:
+            log.warning(
+                "the quotes were not located: %s",
+                error,
+                exc_info=not isinstance(error, (NotFoundError, UnprocessableDocumentError)),
+                extra={"document_id": str(document.id)},
+            )
+            return checks
+    found = dict(zip(quotes, places, strict=True))
+    return [
+        replace(check, locations=found.get((check.evidence or "").strip(), ())) for check in checks
+    ]
+
+
 class _ModelStep:
+    """A node that asks the language model (`_ask`); without one (None) the node decides what
+    it does."""
+
     def __init__(
         self,
         uow: UnitOfWorkFactory,
@@ -168,19 +203,12 @@ class _ModelStep:
         model: LanguageModel | None,
         clock: Clock,
         policy: ClassificationPolicy,
-        *,
-        locator: TextLocator | None = None,
     ) -> None:
-        """`locator`: find each quote on the pages of the archive PDF (`FieldCheck.locations`)."""
         self._uow = uow
         self._store = store
         self._model = model
         self._clock = clock
         self._policy = policy
-        self._locator = locator
-
-    async def _text(self, document: Document) -> str:
-        return (await load_text(self._store, document.id)).decode("utf-8")
 
     async def _ask[T](
         self,
@@ -224,32 +252,6 @@ class _ModelStep:
             if calls:
                 await keep_calls(self._store, document, node, calls)
 
-    async def _locate(self, document: Document, checks: list[FieldCheck]) -> list[FieldCheck]:
-        """Each quote's page and boxes in the archive PDF. Without a locator, an archive or a
-        readable PDF the checks stay as they are: the places help a person find the passage,
-        they are not part of the check."""
-        quotes = sorted({(check.evidence or "").strip() for check in checks} - {""})
-        if self._locator is None or not quotes:
-            return checks
-        async with work_directory() as work:
-            archive = work / ARCHIVE_FILE
-            try:
-                await self._store.download(archive_key(document.id), archive)
-                places = await self._locator.locate(archive, quotes)
-            except Exception as error:
-                log.warning(
-                    "the quotes were not located: %s",
-                    error,
-                    exc_info=not isinstance(error, (NotFoundError, UnprocessableDocumentError)),
-                    extra={"document_id": str(document.id)},
-                )
-                return checks
-        found = dict(zip(quotes, places, strict=True))
-        return [
-            replace(check, locations=found.get((check.evidence or "").strip(), ()))
-            for check in checks
-        ]
-
     def _input(self, document: Document, text: str, sent: Shortened, prompt: str) -> JsonObject:
         assert self._model is not None
         return {
@@ -286,7 +288,7 @@ class LlmSignal(_ModelStep):
     async def run(self, document: Document) -> NodeResult:
         if self._model is None:
             return abstained(NO_MODEL)
-        text = await self._text(document)
+        text = await _document_text(self._store, document.id)
         async with self._uow() as uow:
             contacts = await uow.contacts.list_all()
             types = sorted(
@@ -371,7 +373,7 @@ class LlmSignal(_ModelStep):
         )
 
 
-class JudgeNode(_ModelStep):
+class JudgeNode:
     """The judge (`judge`): contact, document type, topic and tags from the signals' proposals
     by the rules of `domain.verdict`, and the document date the model read, checked against the
     text. What is green is applied; tags are added. A document the model answered for, but no
@@ -388,9 +390,14 @@ class JudgeNode(_ModelStep):
         thresholds: Thresholds,
         locator: TextLocator | None = None,
     ) -> None:
-        """`thresholds`: those of the judge, from the same settings as `policy`."""
-        super().__init__(uow, store, None, clock, policy, locator=locator)
+        """`thresholds`: those of the judge, from the same settings as `policy`; `locator`:
+        find each quote on the pages of the archive PDF (`FieldCheck.locations`)."""
+        self._uow = uow
+        self._store = store
+        self._clock = clock
+        self._policy = policy
         self._thresholds = thresholds
+        self._locator = locator
 
     async def run(self, document: Document) -> NodeResult | MetadataResult:
         async with self._uow() as uow:
@@ -401,7 +408,7 @@ class JudgeNode(_ModelStep):
         entries = ProcessingHistory(log).signals()
         signals = signals_of(entries)
         proposal = model_proposal(entries)
-        text = await self._text(document)
+        text = await _document_text(self._store, document.id)
         facts = await asyncio.to_thread(DocumentText.read, text)
         if proposal is None:
             silent = entries.get(Node.SIGNAL_LLM)
@@ -447,8 +454,8 @@ class JudgeNode(_ModelStep):
                 input=input,
                 output={CHECKS: checks_to_json([contact, kind, topic, tagged, date_check])},
             )
-        contact, kind, topic, tagged, date_check = await self._locate(
-            document, [contact, kind, topic, tagged, date_check]
+        contact, kind, topic, tagged, date_check = await _locate_quotes(
+            self._store, self._locator, document, [contact, kind, topic, tagged, date_check]
         )
         date_check = _readable(date_check, _ocr_readings(log), self._policy.poor_reading)
         checks = [contact, kind, topic, tagged, date_check]
@@ -492,6 +499,20 @@ class FieldsNode(_ModelStep):
     The title comes from the type's title pattern, or from the model's proposal, as long as
     the document's title is still the file name or the one set here before."""
 
+    def __init__(
+        self,
+        uow: UnitOfWorkFactory,
+        store: ObjectStore,
+        model: LanguageModel | None,
+        clock: Clock,
+        policy: ClassificationPolicy,
+        *,
+        locator: TextLocator | None = None,
+    ) -> None:
+        """`locator`: find each quote on the pages of the archive PDF (`FieldCheck.locations`)."""
+        super().__init__(uow, store, model, clock, policy)
+        self._locator = locator
+
     async def run(self, document: Document) -> NodeResult | MetadataResult:
         async with self._uow() as uow:
             log = await uow.processing_log.list_for(document.id)
@@ -522,7 +543,11 @@ class FieldsNode(_ModelStep):
                     )
         missing = [item for item in definitions if item.is_read and item.id not in given]
         answers: list[StructuredAnswer] = []
-        text = await self._text(document) if any(item.is_read for item in definitions) else ""
+        text = (
+            await _document_text(self._store, document.id)
+            if any(item.is_read for item in definitions)
+            else ""
+        )
         taken_over = len(given)
         input: JsonObject = {"taken_over": taken_over}
         unread: set[FieldId] = set()
@@ -574,7 +599,7 @@ class FieldsNode(_ModelStep):
             else check
             for check, definition in zip(checks, definitions, strict=True)
         ]
-        checks = await self._locate(document, checks)
+        checks = await _locate_quotes(self._store, self._locator, document, checks)
         readings = _ocr_readings(log)
         checks = [
             _readable(check, readings, self._policy.poor_reading, definition.name)

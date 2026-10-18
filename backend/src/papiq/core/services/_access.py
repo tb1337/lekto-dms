@@ -17,10 +17,11 @@ from papiq.core.domain.permissions import (
     can_file_into,
     can_read_document,
     can_write_document,
+    document_access,
     space_access,
 )
 from papiq.core.domain.pipeline import space_chooser
-from papiq.core.domain.spaces import Space
+from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import User
 from papiq.core.ports import UnitOfWork
 from papiq.core.services._tags import tag_tree
@@ -80,6 +81,13 @@ async def controllable_document(
     if not can_control_document(user, document):
         raise PermissionDeniedError(f"only the owner and admins {action}")
     return document
+
+
+async def access_to(uow: UnitOfWork, user: User, document: Document) -> ShareLevel:
+    """The access of `user`, who may read `document`, to it in the space it lies in now."""
+    access = document_access(user, document, await uow.spaces.get(document.space_id))
+    assert access is not None  # readable
+    return access
 
 
 async def visible_space(uow: UnitOfWork, user: User, id: SpaceId) -> Space:

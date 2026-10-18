@@ -200,7 +200,7 @@ async def test_a_node_still_queued_after_a_failure_is_dropped_and_retried_later(
     assert all(job.status is not JobStatus.QUEUED for job in world.database.jobs.values())
 
     working = world.pipeline({Node.PAGES: pages})
-    retried = await working.retry(owner.id, document.id)
+    retried = (await working.retry(owner.id, document.id)).document
     assert retried.processing.due() == (Node.OCR, Node.PAGES)
     await world.drain(working)
     assert pages.calls == 1
@@ -247,7 +247,7 @@ async def test_exhausted_retries_end_red_and_retry_recovers(world: World) -> Non
     ocr_job = next(job for job in world.database.jobs.values() if job.payload["node"] == "ocr")
     assert ocr_job.status is JobStatus.FAILED
 
-    retried = await pipeline.retry(owner.id, stored.id)
+    retried = (await pipeline.retry(owner.id, stored.id)).document
     assert retried.processing.run == 2
     assert retried.lane is None
     await world.drain(pipeline)

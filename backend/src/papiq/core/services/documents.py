@@ -54,6 +54,7 @@ from papiq.core.ports import (
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE
 from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from papiq.core.services._access import (
+    access_to,
     admin_only,
     checked_changes,
     controllable_document,
@@ -530,7 +531,7 @@ class DocumentService:
         limit = max(1, min(limit, PAGE_LIMIT))
         waiting = DocumentFilter(lanes=frozenset({Lane.YELLOW, Lane.RED}))
         async with self._uow() as uow:
-            await _lister(uow, actor, all_users)
+            user = await _lister(uow, actor, all_users)
             after = DocumentPosition.after(before)
             if all_users:
                 documents = await uow.documents.query(waiting, after=after, limit=limit)
@@ -538,12 +539,17 @@ class DocumentService:
                 documents = await uow.documents.query_visible(
                     actor, waiting, after=after, limit=limit
                 )
+            spaces: dict[SpaceId, Space] = {}
             items = []
             for document in documents:
                 if not all_users and document.owner_id != actor:
                     continue  # only owners see their yellow and red documents in their reach
+                if document.space_id not in spaces:
+                    spaces[document.space_id] = await uow.spaces.get(document.space_id)
+                access = document_access(user, document, spaces[document.space_id])
+                assert access is not None  # the owner's, or any to an admin
                 log = await uow.processing_log.list_for(document.id)
-                items.append(InboxItem(document, open_nodes(document, log)))
+                items.append(InboxItem(document, access, open_nodes(document, log)))
         return items
 
     async def review(self, actor: UserId, id: DocumentId) -> Review:
@@ -551,8 +557,9 @@ class DocumentService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             document = await controllable_document(uow, user, id, f"review document {id}")
+            access = await access_to(uow, user, document)
             log = await uow.processing_log.list_for(id)
-        return Review(document, open_nodes(document, log), node_reviews(log))
+        return Review(document, access, open_nodes(document, log), node_reviews(log))
 
     async def update_metadata(
         self, actor: UserId, id: DocumentId, changes: DocumentChanges

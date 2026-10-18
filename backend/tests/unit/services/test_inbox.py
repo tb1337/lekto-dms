@@ -224,12 +224,14 @@ async def test_confirming_needs_a_decision_on_every_open_field(world: World) -> 
 
 async def test_a_confirmed_document_is_filed(world: World) -> None:
     s = await scene(world)
-    confirmed = await s.pipeline.confirm(
+    view = await s.pipeline.confirm(
         s.owner.id,
         s.document.id,
         DocumentChanges(document_date=date(2026, 3, 31)),
         accept_suggestions=True,
     )
+    confirmed = view.document
+    assert view.access is ShareLevel.READ_WRITE
     assert confirmed.processing.status is ProcessingStatus.PROCESSING
     assert confirmed.processing.due() == (Node.APPLY_RULES,)
     assert confirmed.lane is None

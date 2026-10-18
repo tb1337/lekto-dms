@@ -108,7 +108,8 @@ async def test_admins_control_other_users_documents_in_every_lane(world: World) 
         accept_suggestions=True,
         space=owners_space.id,
     )
-    assert confirmed.space_id == owners_space.id
+    assert confirmed.document.space_id == owners_space.id
+    assert confirmed.access is ShareLevel.READ_WRITE
     await world.drain()
     assert (await world.documents.get(owner.id, yellow.id)).lane is Lane.GREEN
 

@@ -70,11 +70,10 @@ from papiq.core.domain.ids import (
 )
 from papiq.core.domain.imports import ImportedMetadata
 from papiq.core.domain.pipeline import Node
-from papiq.core.domain.spaces import ShareLevel
 from papiq.core.ports import DocumentOrder, SortKey
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE
 from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
-from papiq.core.services.documents import DocumentFile, MetadataChange
+from papiq.core.services.documents import DocumentFile, DocumentView, MetadataChange
 
 router = APIRouter(prefix="/documents", tags=["documents"], dependencies=PROTECTED)
 inbox = APIRouter(prefix="/inbox", tags=["inbox"], dependencies=PROTECTED)
@@ -650,7 +649,7 @@ async def confirm(
     id: UUID, body: ConfirmRequest, user: CurrentUser, context: Context
 ) -> DocumentDetails:
     changes = await _changes(body.changes, user, context)
-    document = await context.pipeline.confirm(
+    view = await context.pipeline.confirm(
         user,
         DocumentId(id),
         changes,
@@ -658,7 +657,7 @@ async def confirm(
         resume_at=Node(body.resume_at.value),
         space=None if body.space_id is None else SpaceId(body.space_id),
     )
-    return _details(document)
+    return _details(view)
 
 
 @inbox.get(
@@ -707,9 +706,8 @@ def _changed(change: MetadataChange) -> DocumentChanged | DocumentOutOfReach:
     return DocumentChanged(**details.model_dump(), rules=rules)
 
 
-def _details(document: Document) -> DocumentDetails:
-    """Retry and reprocessing are the owner's: full access."""
-    return DocumentDetails.of(document, ShareLevel.READ_WRITE)
+def _details(view: DocumentView) -> DocumentDetails:
+    return DocumentDetails.of(view.document, view.access)
 
 
 async def _changes(body: DocumentPatch, user: UserId, context: Context) -> DocumentChanges:

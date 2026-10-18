@@ -43,6 +43,7 @@ from papiq.core.domain.pipeline import (
     Outcome,
     ProcessingHistory,
 )
+from papiq.core.domain.spaces import ShareLevel
 
 ALWAYS_SET = frozenset({SPACE, TITLE, REVIEW})
 """Open fields of the rules that always have a value: confirming keeps it."""
@@ -78,12 +79,14 @@ class NodeReview:
 @dataclass(frozen=True)
 class InboxItem:
     document: Document
+    access: ShareLevel  # the caller's, as in `DocumentView`
     open: tuple[OpenNode, ...]
 
 
 @dataclass(frozen=True)
 class Review:
     document: Document
+    access: ShareLevel  # the caller's, as in `DocumentView`
     open: tuple[OpenNode, ...]
     nodes: tuple[NodeReview, ...]
 

@@ -61,6 +61,7 @@ from papiq.core.domain.validation import require_name
 from papiq.core.ports import Clock, ObjectStore, UnitOfWork, UnitOfWorkFactory
 from papiq.core.ports.ocr import VisionModel
 from papiq.core.services._access import (
+    access_to,
     checked_changes,
     controllable_document,
     field_definitions,
@@ -77,6 +78,7 @@ from papiq.core.services._jobs import (
     retrying,
 )
 from papiq.core.services._pages import document_pages
+from papiq.core.services.documents import DocumentView
 from papiq.core.services.inbox import (
     LEARNED_ALIAS,
     alias_to_learn,
@@ -408,28 +410,32 @@ class PipelineService:
 
     # --- retry and reprocess --------------------------------------------------------------------
 
-    async def retry(self, actor: UserId, id: DocumentId) -> Document:
+    async def retry(self, actor: UserId, id: DocumentId) -> DocumentView:
         """Owner or admin: repeat the failed nodes and continue from there."""
         async with self._uow() as uow:
+            user = await load_actor(uow, actor)
             document = await controllable_document(
-                uow, await load_actor(uow, actor), id, f"control the processing of document {id}"
+                uow, user, id, f"control the processing of document {id}"
             )
+            access = await access_to(uow, user, document)
             document.retry(self._clock.now())
             await self._restart(uow, document)
-        return document
+        return DocumentView(document, access)
 
-    async def reprocess_from(self, actor: UserId, id: DocumentId, node: Node) -> Document:
+    async def reprocess_from(self, actor: UserId, id: DocumentId, node: Node) -> DocumentView:
         """Owner or admin: discard the results of `node` and the nodes after it and process
         them again."""
         async with self._uow() as uow:
+            user = await load_actor(uow, actor)
             document = await controllable_document(
-                uow, await load_actor(uow, actor), id, f"control the processing of document {id}"
+                uow, user, id, f"control the processing of document {id}"
             )
+            access = await access_to(uow, user, document)
             document.reprocess_from(node, self._clock.now())
             await self._restart(uow, document)
-        return document
+        return DocumentView(document, access)
 
-    async def read_with_vision(self, actor: UserId, id: DocumentId) -> Document:
+    async def read_with_vision(self, actor: UserId, id: DocumentId) -> DocumentView:
         """Owner or admin: have the vision language model read every page, and process the
         document again from OCR (`Document.read_with_vision`). Sending the pages out is a
         person's decision; nothing else asks for it. InvalidTransitionError without a model,
@@ -437,12 +443,14 @@ class PipelineService:
         if self._vision is None:
             raise InvalidTransitionError("no vision language model is configured")
         async with self._uow() as uow:
+            user = await load_actor(uow, actor)
             document = await controllable_document(
-                uow, await load_actor(uow, actor), id, f"control the processing of document {id}"
+                uow, user, id, f"control the processing of document {id}"
             )
+            access = await access_to(uow, user, document)
             document.read_with_vision(self._clock.now())
             await self._restart(uow, document)
-        return document
+        return DocumentView(document, access)
 
     async def reading(self, actor: UserId, id: DocumentId) -> DocumentReading:
         """Owner or admin, as the log: how the archive's text was read (its latest OCR that
@@ -486,7 +494,7 @@ class PipelineService:
         accept_suggestions: bool = False,
         resume_at: Node = Node.APPLY_RULES,
         space: SpaceId | None = None,
-    ) -> Document:
+    ) -> DocumentView:
         """Owner or admin, for a document in the inbox: decide its open fields, apply `changes`
         (as a metadata change), move it into `space` (one the owner may write to; an admin
         chooses any space, and filing accepts it) and let processing continue from `resume_at`,
@@ -568,8 +576,9 @@ class PipelineService:
                 chosen[LEARNED_ALIAS] = {"contact_id": str(learned[0]), "alias": learned[1]}
             result = replace(result, output={**result.output, **person, **chosen})
             await self._log(uow, id, Node.APPLY_RULES, run, result, now, now)
+            access = await access_to(uow, user, document)
             await self._restart(uow, document)
-        return document
+        return DocumentView(document, access)
 
     async def _restart(self, uow: UnitOfWork, document: Document) -> None:
         await uow.documents.update(document)

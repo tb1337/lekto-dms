@@ -108,8 +108,8 @@ modules = [
 [[tool.importlinter.contracts]]
 name = "Outbound adapters are independent of each other"
 type = "independence"
-# Shared infrastructure, not adapters: `http_client` and `system`. OCRmyPDF checks the PDFs it
-# makes with PDFium, and ZXing renders pages under PDFium's lock.
+# Shared infrastructure, not adapters: `http_client`, `imaging` and `system`. OCRmyPDF checks
+# the PDFs it makes with PDFium, and ZXing renders pages under PDFium's lock.
 modules = [
     "papiq.adapters.outbound.crypto",
     "papiq.adapters.outbound.filesystem",

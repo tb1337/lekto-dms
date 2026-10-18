@@ -63,6 +63,7 @@ from pathlib import Path
 from PIL import Image, ImageSequence
 
 from papiq.adapters.outbound.http_client import endpoint_of
+from papiq.adapters.outbound.imaging import flatten_on_white
 from papiq.adapters.outbound.ocrmypdf.vision import (
     PROMPT,
     PageRecord,
@@ -433,13 +434,7 @@ def _join(notes: Sequence[str]) -> str | None:
 
 def _ocr_ready(image: Image.Image) -> Image.Image:
     """`image` itself if OCRmyPDF takes it, otherwise a converted copy."""
-    if image.mode == "P" and "transparency" in image.info:
-        image = image.convert("RGBA")
-    if image.mode in ("RGBA", "LA", "PA", "RGBa", "La"):
-        rgba = image.convert("RGBA")
-        flat = Image.new("RGB", rgba.size, "white")
-        flat.paste(rgba, mask=rgba.getchannel("A"))
-        return flat
+    image = flatten_on_white(image)
     if image.mode in ("1", "L", "RGB", "P"):
         return image
     if image.mode.startswith(("I", "F")):

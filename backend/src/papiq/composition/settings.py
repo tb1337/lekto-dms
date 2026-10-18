@@ -13,7 +13,6 @@ from pathlib import Path
 from types import UnionType
 from typing import Annotated, Any, Literal, Union, get_args, get_origin
 
-from babel import Locale, UnknownLocaleError
 from pydantic import (
     AfterValidator,
     AnyHttpUrl,
@@ -31,6 +30,7 @@ from pydantic_settings import (
 )
 
 from papiq.adapters.outbound.crypto import decode_key
+from papiq.adapters.outbound.liquid import parse_locale
 from papiq.composition.errors import ConfigurationError
 
 ENV_PREFIX = "PAPIQ_"
@@ -84,10 +84,7 @@ Seconds = Annotated[timedelta, BeforeValidator(_seconds), Field(gt=timedelta(0))
 
 
 def _locale(value: str) -> str:
-    try:
-        Locale.parse(value.replace("-", "_"))
-    except (ValueError, UnknownLocaleError):
-        raise ValueError(f"unknown locale {value!r}") from None
+    parse_locale(value)
     return value
 
 

@@ -179,6 +179,12 @@ def test_invalid_value_names_the_variable(
     assert value in message
 
 
+@pytest.mark.parametrize("value", ["xx_YY", "de DE"])
+def test_an_unknown_template_locale_is_refused(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    message = error_message(monkeypatch, {"PAPIQ_TEMPLATE_LOCALE": value})
+    assert "PAPIQ_TEMPLATE_LOCALE:" in message and f"unknown locale {value!r}" in message
+
+
 def test_postgres_requires_connection_parameters(monkeypatch: pytest.MonkeyPatch) -> None:
     message = error_message(monkeypatch, {"PAPIQ_DB_TYPE": "postgres"})
     for name in ("HOST", "NAME", "USER", "PASSWORD"):

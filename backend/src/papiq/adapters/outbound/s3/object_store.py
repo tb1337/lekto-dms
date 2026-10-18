@@ -20,7 +20,7 @@ from aiobotocore.config import AioConfig
 from botocore.exceptions import ClientError
 
 from papiq.core.domain.errors import NotFoundError
-from papiq.core.ports.object_store import check_key
+from papiq.core.ports.object_store import check_key, check_readable
 
 _NOT_FOUND = {"404", "NoSuchKey", "NotFound"}
 
@@ -76,7 +76,7 @@ class S3ObjectStore:
         name = self._key(key)
         s3 = await self._s3()
         # Fail on a missing source before anything is sent.
-        await asyncio.to_thread(_check_readable, source)
+        await asyncio.to_thread(check_readable, source)
         await s3.upload_file(
             str(source), self._bucket, name, ExtraArgs={"ContentType": content_type}
         )
@@ -127,11 +127,6 @@ class S3ObjectStore:
 
     def _key(self, key: str) -> str:
         return self._prefix + check_key(key)
-
-
-def _check_readable(source: Path) -> None:
-    with source.open("rb"):
-        pass
 
 
 def _code(error: Exception) -> str:

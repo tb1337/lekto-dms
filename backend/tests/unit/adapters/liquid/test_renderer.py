@@ -1,11 +1,12 @@
 """The Liquid renderer passes the contract; its locale shapes dates and amounts."""
 
+import re
 from datetime import date
 from decimal import Decimal
 
 import pytest
 
-from papiq.adapters.outbound.liquid import LiquidTemplateRenderer
+from papiq.adapters.outbound.liquid import LiquidTemplateRenderer, parse_locale
 from papiq.core.domain.fields import Money
 from papiq.core.domain.periods import Period
 from papiq.core.domain.templates import TemplateValue
@@ -69,6 +70,16 @@ def test_a_period_in_words_through_its_start() -> None:
     )
 
 
-def test_an_unknown_locale_is_refused() -> None:
-    with pytest.raises(ValueError):
-        LiquidTemplateRenderer(locale="xx_YY", currency="EUR")
+@pytest.mark.parametrize(("text", "locale"), [("de", "de"), ("de-AT", "de_AT"), ("en_us", "en_US")])
+def test_a_locale_is_named_as_babel_names_it(text: str, locale: str) -> None:
+    assert parse_locale(text) == locale
+
+
+@pytest.mark.parametrize("text", ["xx_YY", "de DE", ""])
+def test_an_unknown_locale_is_refused(text: str) -> None:
+    """With one message, whether Babel does not know the locale or cannot read the name."""
+    message = re.escape(f"unknown locale {text!r}")
+    with pytest.raises(ValueError, match=message):
+        parse_locale(text)
+    with pytest.raises(ValueError, match=message):
+        LiquidTemplateRenderer(locale=text, currency="EUR")

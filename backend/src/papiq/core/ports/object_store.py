@@ -55,3 +55,10 @@ def check_key(key: str) -> str:
     if not isinstance(key, str) or not all(_SEGMENT.fullmatch(part) for part in key.split("/")):
         raise ValueError(f"invalid object key {key!r}")
     return key
+
+
+def check_readable(source: Path) -> None:
+    """Raise OSError unless the local file `source` can be read: `upload` checks it before it
+    sends or writes anything."""
+    with source.open("rb"):
+        pass

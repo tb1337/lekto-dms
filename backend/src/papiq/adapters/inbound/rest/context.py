@@ -1,17 +1,23 @@
 """The context of the API as a FastAPI dependency, and the services the API works without as
-dependencies that answer 503 while they are not configured."""
+dependencies: search and classifier answer 503 while they are not configured, the identity
+provider 404."""
 
 from typing import Annotated
 
 from fastapi import Depends, Request
 
 from papiq.adapters.inbound.context import ApiContext, HealthCheck
-from papiq.core.domain.errors import ClassifierUnavailableError, SearchUnavailableError
+from papiq.core.domain.errors import (
+    ClassifierUnavailableError,
+    NotFoundError,
+    SearchUnavailableError,
+)
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.indexing import IndexingService
+from papiq.core.services.oidc import OidcService
 from papiq.core.services.search import SearchService
 
-__all__ = ["ApiContext", "Classifier", "Context", "HealthCheck", "Indexing", "Search"]
+__all__ = ["ApiContext", "Classifier", "Context", "HealthCheck", "Indexing", "Oidc", "Search"]
 
 
 def _context(request: Request) -> ApiContext:
@@ -40,6 +46,13 @@ def _classifier(context: Context) -> ClassifierService:
     return context.classifier
 
 
+def _oidc(context: Context) -> OidcService:
+    if context.oidc is None:
+        raise NotFoundError("identity provider", "oidc")
+    return context.oidc
+
+
 Search = Annotated[SearchService, Depends(_search)]
 Indexing = Annotated[IndexingService, Depends(_indexing)]
 Classifier = Annotated[ClassifierService, Depends(_classifier)]
+Oidc = Annotated[OidcService, Depends(_oidc)]

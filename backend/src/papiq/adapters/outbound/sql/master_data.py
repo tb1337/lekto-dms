@@ -1,8 +1,7 @@
 """Contacts, document types, tags and field definitions: named master data."""
 
 from collections.abc import Sequence
-from datetime import datetime
-from typing import Any, Protocol
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Row, and_, delete
@@ -10,7 +9,6 @@ from sqlalchemy import Row, and_, delete
 from papiq.adapters.outbound.sql import tables as t
 from papiq.adapters.outbound.sql.repositories import SqlRepository, Values
 from papiq.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
-from papiq.core.domain.entity import Entity
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId
@@ -18,23 +16,14 @@ from papiq.core.domain.master_data import (
     Assignment,
     Contact,
     DocumentType,
+    MasterData,
     Tag,
     TagScope,
 )
 from papiq.core.domain.validation import name_key
 
 
-class Named(Entity[UUID], Protocol):
-    """Master data as stored: `MasterData` with its id."""
-
-    @property
-    def name(self) -> str: ...
-
-    @property
-    def created_at(self) -> datetime: ...
-
-
-class SqlNamedRepository[K: UUID, E: Named](SqlRepository[K, E]):
+class SqlNamedRepository[K: UUID, E: MasterData](SqlRepository[K, E]):
     async def find_by_name(self, name: str) -> E | None:
         found = await self._load(self.table.c.name_key == name_key(name))
         return found[0] if found else None

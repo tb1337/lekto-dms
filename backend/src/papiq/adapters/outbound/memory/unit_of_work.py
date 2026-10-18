@@ -36,7 +36,6 @@ from papiq.adapters.outbound.memory.database import (
     WEBHOOKS,
     IdentifiersRow,
     MemoryDatabase,
-    Named,
     Table,
 )
 from papiq.adapters.outbound.memory.identity import (
@@ -72,7 +71,7 @@ from papiq.core.domain.ids import (
 )
 from papiq.core.domain.jobs import Job, JobStatus
 from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.master_data import Contact, DocumentType, Tag, TagScope
+from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag, TagScope
 from papiq.core.domain.permissions import within_reach
 from papiq.core.domain.pipeline import NodeRun
 from papiq.core.domain.spaces import Space
@@ -293,7 +292,7 @@ _REFERRERS: dict[str, tuple[tuple[Table[Any], Callable[[Any, UUID], bool]], ...]
 }
 
 
-class MemoryNamedRepository[K: UUID, E: Named](MemoryRepository[K, E]):
+class MemoryNamedRepository[K: UUID, E: MasterData](MemoryRepository[K, E]):
     async def find_by_name(self, name: str) -> E | None:
         key = name_key(name)
         return next((_copy(row) for row in self._all() if name_key(row.name) == key), None)

@@ -1,5 +1,5 @@
-"""`python -m papiq.composition [check | migrate | api | worker | evaluate | evaluate-search |
-reindex | render-pages | read-codes | fetch-logos | reparse | train]`.
+"""`python -m papiq.composition [check | migrate | check-schema | api | worker | evaluate |
+evaluate-search | reindex | render-pages | read-codes | fetch-logos | reparse | train]`.
 
 - `check` (default): validate the configuration and print it without secrets.
 - `migrate`: validate, then bring the configured database to the newest schema. Run before the

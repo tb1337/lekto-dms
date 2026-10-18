@@ -2,11 +2,17 @@
 rule): the id of the document a page ends with, in base64url. Clients pass `next_cursor` back
 as `cursor` and do not read it."""
 
+from typing import Annotated
 from uuid import UUID
+
+from fastapi import Query
 
 from papiq.core.domain.encoding import base64url, from_base64url
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.ids import DocumentId
+
+Cursor = Annotated[str | None, Query(max_length=64, description="`next_cursor`.")]
+"""The `cursor` parameter of a page."""
 
 
 def encode_cursor(id: DocumentId) -> str:

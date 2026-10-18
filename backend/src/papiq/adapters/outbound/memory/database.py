@@ -4,7 +4,6 @@ import asyncio
 from collections.abc import Callable, Hashable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Protocol
 from uuid import UUID
 
 from papiq.core.domain.classifier import ClassifierModel
@@ -16,7 +15,7 @@ from papiq.core.domain.identifiers import IdentifierKind
 from papiq.core.domain.identity import ApiToken, ExternalIdentity, Session
 from papiq.core.domain.ids import DocumentId, EventId, JobId
 from papiq.core.domain.jobs import Job
-from papiq.core.domain.master_data import Contact, DocumentType, Tag
+from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag
 from papiq.core.domain.pipeline import NodeRun
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import User
@@ -29,13 +28,6 @@ class Table[E: Entity[UUID]]:
 
     name: str
     unique_keys: Callable[[E], Iterable[Hashable]]
-
-
-class Named(Entity[UUID], Protocol):
-    """Master data as a table holds it: an entity with a name unique per kind."""
-
-    @property
-    def name(self) -> str: ...
 
 
 @dataclass
@@ -58,7 +50,7 @@ def _space_keys(space: Space) -> Iterable[Hashable]:
     return keys
 
 
-def _name_keys(item: Named) -> Iterable[Hashable]:
+def _name_keys(item: MasterData) -> Iterable[Hashable]:
     return [("name", name_key(item.name))]
 
 

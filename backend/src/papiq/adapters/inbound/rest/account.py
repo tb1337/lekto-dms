@@ -21,7 +21,7 @@ from papiq.adapters.inbound.rest.auth import (
     set_flow_cookie,
     set_session_cookie,
 )
-from papiq.adapters.inbound.rest.context import ApiContext, Context
+from papiq.adapters.inbound.rest.context import ApiContext, Context, Oidc
 from papiq.adapters.inbound.rest.params import SESSION_ONLY_NOTE
 from papiq.adapters.inbound.rest.paths import OIDC_CALLBACK_PATH, PREFIX
 from papiq.adapters.inbound.rest.problems import problem_responses
@@ -48,14 +48,12 @@ from papiq.core.domain.errors import (
     AuthenticationError,
     ConflictError,
     IdentityProviderError,
-    NotFoundError,
     UnsupportedMediaTypeError,
 )
 from papiq.core.domain.identity import csrf_token
 from papiq.core.domain.ids import ApiTokenId
 from papiq.core.domain.validation import MAX_URL_LENGTH
 from papiq.core.services.auth import Principal, SignedIn
-from papiq.core.services.oidc import OidcService
 
 public = APIRouter(prefix="/auth", tags=["auth"])
 router = APIRouter(prefix="/auth", tags=["auth"], dependencies=PROTECTED)
@@ -302,12 +300,6 @@ async def revoke_token(id: UUID, principal: SessionPrincipal, context: Context) 
 # --- OpenID Connect -----------------------------------------------------------------------------
 
 
-def _oidc(context: ApiContext) -> OidcService:
-    if context.oidc is None:
-        raise NotFoundError("identity provider", "oidc")
-    return context.oidc
-
-
 Next = Annotated[
     str | None,
     Query(max_length=MAX_URL_LENGTH, description="Where to go afterwards: a path on this site."),
@@ -337,8 +329,8 @@ async def oidc_info(context: Context) -> OidcInfo:
         **problem_responses(404, 422, 502),
     },
 )
-async def oidc_login(context: Context, next: Next = None) -> RedirectResponse:
-    start = await _oidc(context).begin(next)
+async def oidc_login(context: Context, oidc: Oidc, next: Next = None) -> RedirectResponse:
+    start = await oidc.begin(next)
     response = RedirectResponse(start.url, status_code=302)
     set_flow_cookie(response, context, start.flow)
     return response
@@ -366,12 +358,12 @@ async def oidc_login(context: Context, next: Next = None) -> RedirectResponse:
 async def oidc_callback(
     request: Request,
     context: Context,
+    oidc: Oidc,
     caller: Annotated[Principal | None, Depends(optional_session)],
     code: Annotated[str | None, Query(max_length=2000)] = None,
     state: Annotated[str | None, Query(max_length=200)] = None,
     error: Annotated[str | None, Query(max_length=200)] = None,
 ) -> RedirectResponse:
-    oidc = _oidc(context)
     # The browser lands on a page of the web UI, not on a problem document: a failure comes back
     # as a code in the page's address (`/ui/login?error=<code>`, or the settings while linking).
     failed = f"{UI_PREFIX}/settings" if caller is not None else f"{UI_PREFIX}/login"
@@ -417,9 +409,13 @@ def _oidc_failure(path: str, code: str, context: ApiContext) -> RedirectResponse
     responses=problem_responses(401, 403, 404, 422, 502),
 )
 async def oidc_link(
-    principal: SessionPrincipal, response: Response, context: Context, next: Next = None
+    principal: SessionPrincipal,
+    response: Response,
+    context: Context,
+    oidc: Oidc,
+    next: Next = None,
 ) -> AuthorizationUrl:
-    start = await _oidc(context).begin_link(principal.id, next)
+    start = await oidc.begin_link(principal.id, next)
     set_flow_cookie(response, context, start.flow)
     return AuthorizationUrl(authorization_url=start.url)
 
@@ -432,5 +428,5 @@ async def oidc_link(
     response_model=Removed,
     responses=problem_responses(401, 403, 404, 409),
 )
-async def oidc_unlink(principal: SessionPrincipal, context: Context) -> Removed:
-    return Removed(removed=await _oidc(context).unlink(principal.id))
+async def oidc_unlink(principal: SessionPrincipal, oidc: Oidc) -> Removed:
+    return Removed(removed=await oidc.unlink(principal.id))

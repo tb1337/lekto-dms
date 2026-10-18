@@ -23,7 +23,7 @@ from starlette.background import BackgroundTask
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, Authenticated, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
-from papiq.adapters.inbound.rest.cursors import decode_cursor, encode_cursor
+from papiq.adapters.inbound.rest.cursors import Cursor, decode_cursor, encode_cursor
 from papiq.adapters.inbound.rest.params import AllDocuments, Filter
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.documents import (
@@ -238,7 +238,7 @@ async def list_documents(
     filter: Filter,
     sort: DocumentSort = DocumentSort.CREATED_DESC,
     limit: Annotated[int, Query(ge=1, le=PAGE_LIMIT)] = PAGE_SIZE,
-    cursor: Annotated[str | None, Query(max_length=64, description="`next_cursor`.")] = None,
+    cursor: Cursor = None,
     all_users: AllDocuments = False,
 ) -> DocumentPage:
     views = await context.documents.query(
@@ -674,7 +674,7 @@ async def list_inbox(
     user: CurrentUser,
     context: Context,
     limit: Annotated[int, Query(ge=1, le=PAGE_LIMIT)] = PAGE_SIZE,
-    cursor: Annotated[str | None, Query(max_length=64, description="`next_cursor`.")] = None,
+    cursor: Cursor = None,
     all_users: AllDocuments = False,
 ) -> InboxPage:
     items = await context.documents.inbox(

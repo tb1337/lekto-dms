@@ -36,12 +36,24 @@
 	let busy = $state<string | null>(null);
 	let askAll = $state(false);
 	let uploadOpen = $state(false);
+	let tabsNav = $state<HTMLElement | null>(null);
 	let dragging = $state(false);
 	// Dropping on the page: not on a phone, and not while the dialog takes drops itself.
 	const droppable = $derived(!phone.current && !uploadOpen);
 
 	$effect(() => {
 		if (!droppable) dragging = false;
+	});
+
+	// Where the tabs scroll sideways (a phone), the current one stands in view, in their row
+	// only: the page itself does not move. Again once the counts widen the tabs.
+	$effect(() => {
+		void tab;
+		void inbox.summary;
+		const current = tabsNav?.querySelector<HTMLElement>('[aria-current="page"]');
+		if (!tabsNav || !current) return;
+		const left = current.offsetLeft - (tabsNav.clientWidth - current.offsetWidth) / 2;
+		tabsNav.scrollLeft = Math.max(0, left);
 	});
 
 	function carriesFiles(event: DragEvent): boolean {
@@ -175,8 +187,9 @@
 	<div class="flex flex-wrap items-center justify-between gap-3">
 		<!-- On a phone the tabs scroll sideways in their own row. -->
 		<nav
+			bind:this={tabsNav}
 			aria-label={m.inbox_tabs_label()}
-			class="flex w-fit max-w-full gap-1 overflow-x-auto rounded-full bg-secondary p-1"
+			class="relative flex w-fit max-w-full gap-1 overflow-x-auto rounded-full bg-secondary p-1"
 		>
 			{#each TABS as entry (entry.tab)}
 				{@const count = inbox.summary ? entry.count(inbox.summary) : 0}

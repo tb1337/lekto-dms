@@ -24,6 +24,7 @@ from typing import Any
 
 from fastapi.encoders import jsonable_encoder
 
+from papiq.adapters.inbound.backoff import backoff
 from papiq.core.domain.events import (
     ClassifierTrained,
     DocumentDeleted,
@@ -38,7 +39,6 @@ log = logging.getLogger(__name__)
 
 SUBSCRIBER = "api.sse"
 QUEUE_SIZE = 100
-MAX_BACKOFF = timedelta(seconds=30)
 
 _CLOSED = object()
 
@@ -178,9 +178,7 @@ async def dispatch_forever(bus: EventBus, interval: timedelta) -> None:
         except Exception:
             failures += 1
             log.exception("event dispatch failed", extra={"failures": failures})
-            await asyncio.sleep(
-                min(interval * (1 << min(failures, 10)), MAX_BACKOFF).total_seconds()
-            )
+            await asyncio.sleep(backoff(interval, failures).total_seconds())
             continue
         failures = 0
         if delivered == 0:

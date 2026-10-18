@@ -8,7 +8,7 @@
   does not answer holds up deliveries, never the pipeline.
 - One loop dispatches the outbox (`EventBus.dispatch`) every `dispatch_interval` while there is
   nothing to deliver, and at once again while there is.
-- After an error, a loop waits longer, doubling up to `MAX_BACKOFF`.
+- After an error, a loop waits longer, doubling up to `backoff.MAX_BACKOFF`.
 
 `stop()` (on SIGTERM) ends the loops after their current job. Jobs still running after
 `shutdown_timeout` are cancelled: each service gives its job back to run again at once.
@@ -22,6 +22,7 @@ import logging
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import timedelta
 
+from papiq.adapters.inbound.backoff import backoff
 from papiq.core.ports import EventBus
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.indexing import IndexingService
@@ -33,8 +34,6 @@ from papiq.core.services.rules.retroactive import RuleApplicationService
 from papiq.core.services.webhooks import WebhookDeliveryService
 
 log = logging.getLogger(__name__)
-
-MAX_BACKOFF = timedelta(seconds=30)
 
 
 class Worker:
@@ -123,7 +122,7 @@ class Worker:
             except Exception:
                 failures += 1
                 log.exception("worker loop failed", extra={"loop": name, "failures": failures})
-                await self._sleep(min(interval * (1 << min(failures, 10)), MAX_BACKOFF))
+                await self._sleep(backoff(interval, failures))
                 continue
             failures = 0
             if not busy:

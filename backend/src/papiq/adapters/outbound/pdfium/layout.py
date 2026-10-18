@@ -38,6 +38,7 @@ from papiq.adapters.outbound.pdfium.chars import (
     Geometry,
     lines_of,
     page_chars,
+    page_fractions,
     reading_turn,
 )
 from papiq.adapters.outbound.pdfium.fixed_pitch import FixedPitchBlock, blocks_of
@@ -266,9 +267,4 @@ def _box(chars: Sequence[Char], width: float, height: float) -> list[float]:
     right = max(char.right for char in chars)
     bottom = min(char.bottom for char in chars)
     top = max(char.top for char in chars)
-    return [
-        round(max(0.0, left / width), 4),
-        round(max(0.0, (height - top) / height), 4),
-        round(min(1.0, right / width), 4),
-        round(min(1.0, (height - bottom) / height), 4),
-    ]
+    return [round(value, 4) for value in page_fractions(left, bottom, right, top, (width, height))]

@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pypdfium2
 
+from papiq.adapters.outbound.pdfium.chars import SAME_LINE, Geometry
 from papiq.adapters.outbound.pdfium.library import LOCK
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.domain.locations import Box, Location
@@ -86,7 +87,7 @@ def _search_page(
     if not chars.strip():
         return
     strict, loose = _normalize(chars, loose=False), _normalize(chars, loose=True)
-    geometry = _Geometry.of(page)
+    geometry = Geometry.of(page)
     for index, text in enumerate(texts):
         for first, last in _matches(strict, loose, text, MAX_PLACES - len(found[index])):
             boxes = _boxes(textpage, first, last, geometry)
@@ -173,52 +174,12 @@ def _matches(
     return []
 
 
-@dataclass(frozen=True)
-class _Geometry:
-    """The visible part of a page in its own coordinates (origin bottom left) and its
-    rotation, clockwise."""
-
-    left: float
-    bottom: float
-    right: float
-    top: float
-    rotation: int
-
-    @classmethod
-    def of(cls, page: pypdfium2.PdfPage) -> "_Geometry":
-        left, bottom, right, top = page.get_cropbox()
-        return cls(left, bottom, right, top, page.get_rotation() % 360)
-
-    def box(self, left: float, bottom: float, right: float, top: float) -> Box | None:
-        width, height = self.right - self.left, self.top - self.bottom
-        if width <= 0 or height <= 0:
-            return None
-        corners = [
-            self._turn((x - self.left) / width, (self.top - y) / height)
-            for x, y in ((left, top), (right, bottom))
-        ]
-        (x1, y1), (x2, y2) = corners
-        return Box.clamped(x1, y1, x2, y2)
-
-    def _turn(self, x: float, y: float) -> tuple[float, float]:
-        """A point of the unrotated page (fractions from the top left) on the page as shown."""
-        match self.rotation:
-            case 90:
-                return 1 - y, x
-            case 180:
-                return 1 - x, 1 - y
-            case 270:
-                return y, 1 - x
-            case _:
-                return x, y
-
-
 def _boxes(
-    textpage: pypdfium2.PdfTextPage, first: int, last: int, geometry: _Geometry
+    textpage: pypdfium2.PdfTextPage, first: int, last: int, geometry: Geometry
 ) -> tuple[Box, ...]:
     boxes = []
     for index in range(textpage.count_rects(first, last - first + 1)):
-        box = geometry.box(*textpage.get_rect(index))
+        box = geometry.fraction_box(*textpage.get_rect(index))
         if box is not None and box.width > 0 and box.height > 0:
             boxes.append(box)
     return _lines(boxes)
@@ -234,7 +195,7 @@ def _lines(boxes: list[Box]) -> tuple[Box, ...]:
         row = rows[-1] if rows else None
         if (
             row is not None
-            and abs(_middle(box) - _middle(row[-1])) <= max(box.height, row[-1].height) / 2
+            and abs(_middle(box) - _middle(row[-1])) <= max(box.height, row[-1].height) * SAME_LINE
         ):
             row.append(box)
         else:

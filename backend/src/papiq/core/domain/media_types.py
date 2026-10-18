@@ -1,5 +1,7 @@
 """File types Papiq accepts, recognised by their content, not by name or declared type."""
 
+from dataclasses import dataclass
+
 PDF = "application/pdf"
 JPEG = "image/jpeg"
 PNG = "image/png"
@@ -38,6 +40,36 @@ def detect_image(head: bytes) -> str | None:
         return ICO
     found = detect(head)
     return found if found in (PNG, JPEG) else None
+
+
+@dataclass(frozen=True)
+class IconEntry:
+    """A picture an ICO's directory names: its sides as given there and where it lies."""
+
+    width: int
+    height: int
+    size: int  # bytes
+    offset: int
+
+
+def icon_entries(data: bytes, limit: int) -> list[IconEntry] | None:
+    """The pictures the directory of the ICO `data` names (a side of 0 there is 256); None if
+    it names none or more than `limit`, or is cut short."""
+    count = int.from_bytes(data[4:6], "little")
+    if not 0 < count <= limit or len(data) < 6 + 16 * count:
+        return None
+    entries = []
+    for index in range(count):
+        entry = data[6 + 16 * index : 6 + 16 * (index + 1)]
+        entries.append(
+            IconEntry(
+                width=entry[0] or 256,
+                height=entry[1] or 256,
+                size=int.from_bytes(entry[8:12], "little"),
+                offset=int.from_bytes(entry[12:16], "little"),
+            )
+        )
+    return entries
 
 
 def detect(head: bytes) -> str | None:

@@ -39,7 +39,7 @@ from papiq.adapters.outbound.logos.addresses import Resolver, is_public, literal
 from papiq.adapters.outbound.logos.icons import Candidate, manifest_icons, page_icons, ranked
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import LogoFetchError
-from papiq.core.ports.images import LOGO_SIZE
+from papiq.core.ports.images import LOGO_SIZE, MAX_ICON_ENTRIES, MAX_PIXELS
 from papiq.core.ports.logos import MIN_LOGO_SIZE, FetchedLogo
 
 log = logging.getLogger(__name__)
@@ -57,8 +57,6 @@ IMAGES = frozenset({*media_types.LOGO_IMAGES, "image/vnd.microsoft.icon"})
 _REDIRECTS = {301, 302, 303, 307, 308}
 _DOMAIN = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
 _IMAGE_FORMATS = ("PNG", "JPEG", "WEBP")
-_MAX_PIXELS = 4096 * 4096  # as the normaliser takes
-_MAX_ICON_ENTRIES = 64
 
 
 @dataclass(frozen=True)
@@ -285,13 +283,12 @@ def _pixels(data: bytes) -> int | None:
         EOFError,
     ):
         return None
-    return max(width, height) if 0 < width * height <= _MAX_PIXELS else None
+    return max(width, height) if 0 < width * height <= MAX_PIXELS else None
 
 
 def _icon_size(data: bytes) -> int | None:
     """The largest side an ICO's directory names (a byte each, 0 for 256)."""
-    count = int.from_bytes(data[4:6], "little")
-    if not 0 < count <= _MAX_ICON_ENTRIES or len(data) < 6 + 16 * count:
+    entries = media_types.icon_entries(data, MAX_ICON_ENTRIES)
+    if entries is None:
         return None
-    entries = [data[6 + 16 * index : 8 + 16 * index] for index in range(count)]
-    return max(side or 256 for entry in entries for side in entry)
+    return max(side for entry in entries for side in (entry.width, entry.height))

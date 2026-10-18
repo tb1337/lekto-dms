@@ -25,14 +25,10 @@ from PIL import BmpImagePlugin, Image, ImageOps
 
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import ImageError, UnsupportedMediaTypeError
-from papiq.core.ports.images import LOGO_SIZE
+from papiq.core.ports.images import LOGO_SIZE, MAX_ICON_ENTRIES, MAX_PIXELS
 
-MAX_PIXELS = 4096 * 4096
-"""Pixels of an image that is decoded at all (64 MB as RGBA)."""
 MAX_JPEG_SCANS = 64
 """Scans of a progressive JPEG (an encoder writes about ten)."""
-MAX_ICON_ENTRIES = 64
-"""Pictures of an ICO (a website's favicon has a few)."""
 _FORMATS = ("PNG", "JPEG", "WEBP", "ICO")
 _PNG = b"\x89PNG\r\n\x1a\n"
 
@@ -89,13 +85,11 @@ class PillowImageNormaliser:
         """Every picture of an ICO by the size Pillow reads from its own header (a PNG's
         last IHDR, a bitmap's DIB header), which may differ from the ICO's directory; opening
         a picture on its own reads no more than its header."""
-        count = int.from_bytes(data[4:6], "little")
-        if not 0 < count <= MAX_ICON_ENTRIES or len(data) < 6 + 16 * count:
+        entries = media_types.icon_entries(data, MAX_ICON_ENTRIES)
+        if entries is None:
             raise ImageError(f"an icon holds 1 to {MAX_ICON_ENTRIES} pictures")
-        for index in range(count):
-            entry = data[6 + 16 * index : 6 + 16 * (index + 1)]
-            size = int.from_bytes(entry[8:12], "little")
-            offset = int.from_bytes(entry[12:16], "little")
+        for entry in entries:
+            size, offset = entry.size, entry.offset
             if size < 24 or offset + size > len(data):
                 raise ImageError("the image cannot be read")
             picture = io.BytesIO(data[offset : offset + size])

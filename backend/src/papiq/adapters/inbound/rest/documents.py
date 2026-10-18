@@ -16,12 +16,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response
 from fastapi import Path as FastApiPath
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse
 from pydantic import ValidationError as PydanticValidationError
 from starlette.background import BackgroundTask
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, Authenticated, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
+from papiq.adapters.inbound.rest.cursors import decode_cursor, encode_cursor
 from papiq.adapters.inbound.rest.params import AllDocuments, Filter
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.documents import (
@@ -40,6 +42,7 @@ from papiq.adapters.inbound.rest.schemas.documents import (
     ReadingOut,
     ReprocessRequest,
     RunExchangeOut,
+    UploadFields,
     VisibilityOut,
 )
 from papiq.adapters.inbound.rest.schemas.facts import FactsOut
@@ -54,7 +57,6 @@ from papiq.adapters.inbound.rest.upload import read_upload, upload_body
 from papiq.adapters.inbound.schemas import RuleReportOut
 from papiq.core.domain.classification import CHANGE_FIELDS, SPACE, field_key
 from papiq.core.domain.documents import UNSET, Channel, Document, DocumentChanges, Unset
-from papiq.core.domain.encoding import base64url, from_base64url
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.fields import field_from_json
 from papiq.core.domain.ids import (
@@ -181,17 +183,29 @@ async def upload(
         limits={METADATA_FIELD: METADATA_LIMIT},
     )
     try:
-        space = _space(received.fields.get(SPACE_FIELD))
-        channel = _channel(received.fields.get(CHANNEL_FIELD), session=principal.session)
-        owner = _owner(received.fields.get(OWNER_FIELD))
-        imported = await _imported(received.fields.get(METADATA_FIELD), principal.id, context)
+        try:
+            form = UploadFields.model_validate(received.fields)
+        except PydanticValidationError as error:
+            # The form is the body: its errors read as those of a JSON body.
+            raise RequestValidationError(
+                [{**item, "loc": ("body", *item["loc"])} for item in error.errors()]
+            ) from None
+        # The intake channel: as the caller says (`migration` only), else by credentials.
+        channel = Channel.API if principal.session is None else Channel.WEB
+        if form.channel is not None:
+            channel = Channel(form.channel)
+        imported = (
+            None
+            if form.metadata is None
+            else await _imported_metadata(form.metadata, principal.id, context)
+        )
         document = await context.pipeline.receive(
             principal.id,
             received.file,
             filename=received.filename,
-            space=space,
+            space=None if form.space_id is None else SpaceId(form.space_id),
             channel=channel,
-            owner=owner,
+            owner=None if form.owner is None else UserId(form.owner),
             imported=imported,
         )
     finally:
@@ -233,11 +247,11 @@ async def list_documents(
         user,
         filter,
         order=sort.order,
-        after=_decode_cursor(cursor),
+        after=decode_cursor(cursor),
         limit=limit,
         all_users=all_users,
     )
-    next_cursor = _encode_cursor(views[-1].document.id) if len(views) == limit else None
+    next_cursor = encode_cursor(views[-1].document.id) if len(views) == limit else None
     return DocumentPage(
         items=[DocumentDetails.of(view.document, view.access) for view in views],
         next_cursor=next_cursor,
@@ -666,9 +680,9 @@ async def list_inbox(
     all_users: AllDocuments = False,
 ) -> InboxPage:
     items = await context.documents.inbox(
-        user, before=_decode_cursor(cursor), limit=limit, all_users=all_users
+        user, before=decode_cursor(cursor), limit=limit, all_users=all_users
     )
-    next_cursor = _encode_cursor(items[-1].document.id) if len(items) == limit else None
+    next_cursor = encode_cursor(items[-1].document.id) if len(items) == limit else None
     return InboxPage(items=[InboxItemOut.of(item) for item in items], next_cursor=next_cursor)
 
 
@@ -731,49 +745,10 @@ def _given[T](
     return None if value is None else kind(value)
 
 
-def _encode_cursor(id: DocumentId) -> str:
-    return base64url(id.bytes)
-
-
-def _decode_cursor(cursor: str | None) -> DocumentId | None:
-    if not cursor:
-        return None
-    try:
-        return DocumentId(UUID(bytes=from_base64url(cursor)))
-    except ValueError:
-        raise ValidationError("cursor: invalid") from None
-
-
-def _space(value: str | None) -> SpaceId | None:
-    if value is None or not value.strip():
-        return None
-    try:
-        return SpaceId(UUID(value.strip()))
-    except ValueError:
-        raise ValidationError(f"space_id: not a UUID: {value!r}") from None
-
-
-def _owner(value: str | None) -> UserId | None:
-    if value is None or not value.strip():
-        return None
-    try:
-        return UserId(UUID(value.strip()))
-    except ValueError:
-        raise ValidationError(f"owner: not a UUID: {value!r}") from None
-
-
-async def _imported(value: str | None, user: UserId, context: Context) -> ImportedMetadata | None:
+async def _imported_metadata(
+    body: ImportedMetadataIn, user: UserId, context: Context
+) -> ImportedMetadata:
     """The metadata field as domain values (field values by their definitions)."""
-    if value is None or not value.strip():
-        return None
-    try:
-        body = ImportedMetadataIn.model_validate_json(value)
-    except PydanticValidationError as error:
-        first = error.errors()[0]
-        place = ".".join(str(part) for part in first["loc"])
-        raise ValidationError(
-            f"metadata.{place}: {first['msg']}" if place else "metadata: invalid"
-        ) from None
     definitions = {a.id: a for a in await context.master_data.list_fields(user)}
     fields = {}
     for field_id, raw in body.fields.items():
@@ -796,12 +771,3 @@ async def _imported(value: str | None, user: UserId, context: Context) -> Import
         )
     except ValidationError as error:
         raise ValidationError(f"metadata: {error}") from None
-
-
-def _channel(value: str | None, *, session: object | None) -> Channel:
-    """The intake channel: as the caller says (`migration` only), else by credentials."""
-    if value is None or not value.strip():
-        return Channel.API if session is None else Channel.WEB
-    if value.strip() != Channel.MIGRATION.value:
-        raise ValidationError(f"channel: only '{Channel.MIGRATION.value}' can be given")
-    return Channel.MIGRATION

@@ -252,6 +252,36 @@ async def test_a_rule_is_applied_to_existing_documents(api: Api) -> None:
     assert two["title"] == "Tax Other" and two["tag_ids"] == [tax["id"]]
 
 
+async def test_the_preview_pages_with_the_cursor_of_the_document_list(api: Api) -> None:
+    owner = await api.user()
+    o = auth(owner)
+    first, second = await upload(api, o), await upload(api, o, content=OTHER, filename="Other.png")
+    rule = await post(
+        api,
+        "/rules",
+        {
+            "name": "Title",
+            "conditions": {"all": [{"field": "channel", "op": "is", "value": "api"}]},
+            "actions": [{"type": "set_title", "template": "Tax {{ filename }}"}],
+        },
+        o,
+    )
+    url = f"{PREFIX}/rules/{rule['id']}/apply/preview"
+    seen: list[str] = []
+    cursor = None
+    while True:
+        page = (await api.client.post(url, json={"cursor": cursor, "limit": 1}, headers=o)).json()
+        seen += [item["document_id"] for item in page["items"]]
+        if (cursor := page["next_cursor"]) is None:
+            break
+        assert cursor not in (first, second)  # not the id as it is
+    assert sorted(seen) == sorted([first, second])
+    for bad in ("!!", first):
+        response = await api.client.post(url, json={"cursor": bad}, headers=o)
+        assert response.status_code == 422
+        assert response.json()["detail"] == "cursor: invalid"
+
+
 async def test_a_dry_run_shows_what_a_change_would_do(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
     telekom = await post(api, "/contacts", {"name": "Telekom"}, auth(admin))

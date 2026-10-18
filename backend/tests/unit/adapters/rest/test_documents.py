@@ -220,6 +220,26 @@ async def test_upload_into_a_space(api: Api) -> None:
     assert hidden.status_code == 404
 
 
+async def test_the_form_fields_are_checked_like_a_body(api: Api) -> None:
+    """Every invalid field is named, as for a JSON body; a blank one counts as not given."""
+    owner = await api.user()
+    data = {"space_id": "no-uuid", "owner": "nobody", "channel": "web"}
+    invalid = await api.client.post(DOCUMENTS, files=sample_file(), data=data, headers=auth(owner))
+    assert invalid.status_code == 422
+    assert [part.split(":")[0] for part in invalid.json()["detail"].split("; ")] == [
+        "space_id",
+        "owner",
+        "channel",
+    ]
+    blank = {"space_id": " ", "owner": "", "channel": " "}
+    accepted = await api.client.post(
+        DOCUMENTS, files=sample_file(), data=blank, headers=auth(owner)
+    )
+    assert accepted.status_code == 202, accepted.text
+    status = await api.client.get(accepted.json()["status_url"], headers=auth(owner))
+    assert status.json()["channel"] == "api"
+
+
 async def test_the_filename_is_reduced_to_its_last_segment(api: Api) -> None:
     owner = await api.user()
     files = {"file": ("../../etc/rechnung.pdf", (SAMPLES / "scan.pdf").read_bytes(), "x/y")}

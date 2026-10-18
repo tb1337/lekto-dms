@@ -2,10 +2,10 @@
 
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, Json, field_validator
 
 from papiq.adapters.inbound.rest.schemas.spaces import ShareOut
 from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
@@ -288,6 +288,24 @@ class ImportedMetadataIn(BaseModel):
     fields: dict[UUID, Any] = Field(
         default_factory=dict, description="Values by field id, as in `PATCH /documents/{id}`."
     )
+
+
+class UploadFields(BaseModel):
+    """The text fields of the form of `POST /documents`; a blank one counts as not given."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    space_id: UUID | None = None
+    owner: UUID | None = None
+    channel: Literal["migration"] | None = None
+    metadata: Json[ImportedMetadataIn] | None = None
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _blank_is_none(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
 
 
 class MoveRequest(BaseModel):

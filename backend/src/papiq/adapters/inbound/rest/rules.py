@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request, Response
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
+from papiq.adapters.inbound.rest.cursors import decode_cursor, encode_cursor
 from papiq.adapters.inbound.rest.params import AllRules
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.rules import (
@@ -23,7 +24,6 @@ from papiq.adapters.inbound.rest.schemas.rules import (
     TemplatePreviewOut,
 )
 from papiq.adapters.inbound.schemas import RuleEffectOut, RuleNoteOut
-from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.ids import DocumentId, DocumentTypeId, RuleApplicationId, RuleId
 from papiq.core.domain.rule_planner import Note
 from papiq.core.domain.rules import RuleScope
@@ -184,7 +184,7 @@ async def preview_apply(
     id: UUID, body: ApplyPreviewRequest, user: CurrentUser, context: Context
 ) -> ApplyPreviewOut:
     preview = await context.rule_applications.preview(
-        user, RuleId(id), before=_cursor(body.cursor), limit=body.limit
+        user, RuleId(id), before=decode_cursor(body.cursor), limit=body.limit
     )
     return ApplyPreviewOut(
         rule_id=preview.rule.id,
@@ -199,7 +199,7 @@ async def preview_apply(
             )
             for item in preview.items
         ],
-        next_cursor=None if preview.next_cursor is None else str(preview.next_cursor),
+        next_cursor=None if preview.next_cursor is None else encode_cursor(preview.next_cursor),
     )
 
 
@@ -253,15 +253,6 @@ def _note(note: Note) -> RuleNoteOut:
     return RuleNoteOut.model_validate(
         {"field": note.field, "kind": note.kind, "reason": note.reason}
     )
-
-
-def _cursor(value: str | None) -> DocumentId | None:
-    if value is None or not value.strip():
-        return None
-    try:
-        return DocumentId(UUID(value.strip()))
-    except ValueError:
-        raise ValidationError(f"cursor: not a valid cursor: {value!r}") from None
 
 
 @templates.post(

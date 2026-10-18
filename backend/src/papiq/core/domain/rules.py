@@ -22,7 +22,6 @@ conditions and actions keep their JSON form (field values as `field_to_json` wri
 them) and are read with the field definitions where needed (`check_fields`).
 """
 
-import re
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -215,16 +214,14 @@ class Condition:
                 }:
                     raise ValidationError(f"unknown channel {value!r}")
             case ConditionField.TEXT:
+                # A pattern is checked by the pattern matcher that runs it (`check_patterns`).
                 _text(value, MAX_PATTERN if self.op is Operator.MATCHES else MAX_TEXT)
-                if self.op is Operator.MATCHES:
-                    _pattern(value)
             case ConditionField.DOCUMENT_DATE:
                 _date(value)
             case ConditionField.FIELD:
                 # Checked against the definition by `check_fields`; here only patterns.
                 if self.op is Operator.MATCHES:
                     _text(value, MAX_PATTERN)
-                    _pattern(value)
                 elif self.op is Operator.CONTAINS:
                     _text(value, MAX_TEXT)
 
@@ -1027,13 +1024,6 @@ def _text(value: JsonValue, limit: int) -> str:
     if len(value) > limit:
         raise ValidationError(f"text longer than {limit} characters")
     return value
-
-
-def _pattern(value: JsonValue) -> None:
-    try:
-        re.compile(str(value))
-    except re.error as error:
-        raise ValidationError(f"invalid regular expression {value!r}: {error}") from None
 
 
 def _date(value: JsonValue) -> date:

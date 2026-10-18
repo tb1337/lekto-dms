@@ -24,6 +24,9 @@ class RegexPatternMatcher:
             raise ValueError("timeout must be positive")
         self._timeout = timeout
 
+    def validate(self, pattern: str) -> None:
+        _compile(pattern, True)
+
     async def search(self, pattern: str, text: str, *, case_sensitive: bool) -> bool:
         compiled = _compile(pattern, case_sensitive)
         return await asyncio.to_thread(self._search, compiled, text)

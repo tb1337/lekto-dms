@@ -9,7 +9,7 @@ from dataclasses import dataclass, field, replace
 
 from papiq.core.domain.classification import FieldCheck, checks_to_json
 from papiq.core.domain.documents import Channel, Document, DocumentChanges
-from papiq.core.domain.errors import PatternTimeoutError
+from papiq.core.domain.errors import PatternTimeoutError, ValidationError
 from papiq.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact, Tag
@@ -52,6 +52,12 @@ class FakeMatcher:
     def __init__(self) -> None:
         self.slow: set[str] = set()
         self.searched: list[str] = []
+
+    def validate(self, pattern: str) -> None:
+        try:
+            re.compile(pattern)
+        except re.error as error:
+            raise ValidationError(f"invalid pattern {pattern!r}: {error}") from None
 
     async def search(self, pattern: str, text: str, *, case_sensitive: bool) -> bool:
         self.searched.append(pattern)
@@ -187,7 +193,7 @@ class RuleWorld:
 
     @property
     def rules(self) -> RuleService:
-        return RuleService(self.world.uow, self.world.clock, TEMPLATES)
+        return RuleService(self.world.uow, self.world.clock, TEMPLATES, self.matcher)
 
     @property
     def applications(self) -> RuleApplicationService:

@@ -46,7 +46,7 @@ from papiq.core.domain.templates import (
 )
 from papiq.core.domain.templates import uses_field as field_used
 from papiq.core.domain.users import User
-from papiq.core.ports import Clock, TemplateRenderer, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports import Clock, PatternMatcher, TemplateRenderer, UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import admin_only, field_definitions, load_actor, readable_document
 from papiq.core.services._tags import tag_tree
 
@@ -66,10 +66,17 @@ class TemplatePreview:
 
 
 class RuleService:
-    def __init__(self, uow: UnitOfWorkFactory, clock: Clock, templates: TemplateRenderer) -> None:
+    def __init__(
+        self,
+        uow: UnitOfWorkFactory,
+        clock: Clock,
+        templates: TemplateRenderer,
+        patterns: PatternMatcher,
+    ) -> None:
         self._uow = uow
         self._clock = clock
         self._templates = templates
+        self._patterns = patterns
 
     async def list(
         self,
@@ -131,6 +138,7 @@ class RuleService:
                 now=self._clock.now(),
             )
             await check_references(uow, rule.definition, owner=user if rule.owner_id else None)
+            check_patterns(self._patterns, rule.definition)
             await check_templates(uow, self._templates, rule.definition)
             await uow.rules.add(rule)
             await uow.commit()
@@ -192,6 +200,7 @@ class RuleService:
             rule = await _managed_rule(uow, user, id)
             rule.change(definition, user.id, self._clock.now())
             await check_references(uow, definition, owner=await _owner(uow, rule))
+            check_patterns(self._patterns, definition)
             await check_templates(uow, self._templates, definition)
             await uow.rules.update(rule)
             await uow.commit()
@@ -253,6 +262,13 @@ async def check_references(
             raise NotFoundError("space", space_id)
         if not access.can_write:
             raise SpaceWriteDeniedError(space.id, space.name)
+
+
+def check_patterns(patterns: PatternMatcher, definition: RuleDefinition) -> None:
+    """The regular expressions of the conditions are patterns the matcher that runs them can
+    run (ValidationError)."""
+    for _, pattern, _ in sorted(definition.patterns()):
+        patterns.validate(pattern)
 
 
 async def check_templates(

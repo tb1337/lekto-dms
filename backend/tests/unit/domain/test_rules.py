@@ -349,11 +349,6 @@ INVALID_CONDITIONS: list[tuple[JsonObject, str]] = [
     ({"field": "document_date", "op": "is", "value": "2026-02-30"}, "is no date"),
     ({"field": "document_date", "op": "gt", "value": "31.03.2026"}, "is no date"),
     ({"field": "document_date", "op": "lt", "value": 20260331}, "is no date"),
-    ({"field": "text", "op": "matches", "value": "("}, "invalid regular expression"),
-    (
-        {"field": "field", "op": "matches", "field_id": ID, "value": "[a-"},
-        "invalid regular expression",
-    ),
     ({"field": "text", "op": "contains", "value": "  "}, "expected non-empty text"),
     ({"field": "text", "op": "contains", "value": "x" * (MAX_TEXT + 1)}, f"{MAX_TEXT} characters"),
     (

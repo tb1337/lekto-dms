@@ -659,7 +659,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             fetch_logos=container.logo_fetcher is not None,
         ),
         logos=LogoService(uow, clock, store, container.images, container.logo_fetcher),
-        rules=RuleService(uow, clock, container.templates),
+        rules=RuleService(uow, clock, container.templates, container.patterns),
         webhooks=WebhookService(uow, clock, container.cipher, webhook_policy_of(settings)),
         webhook_delivery=WebhookDeliveryService(
             uow, clock, container.cipher, container.webhook_sender, webhook_policy_of(settings)

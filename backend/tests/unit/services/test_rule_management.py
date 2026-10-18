@@ -3,6 +3,7 @@ references go away."""
 
 import pytest
 
+from papiq.adapters.outbound.regex import RegexPatternMatcher
 from papiq.core.domain.errors import (
     ConflictError,
     NotFoundError,
@@ -23,8 +24,10 @@ from papiq.core.domain.rules import (
     SetTitle,
 )
 from papiq.core.domain.spaces import ShareLevel
+from papiq.core.services.rules import RuleService
+from tests.builders import TEMPLATES
 from tests.unit.services.conftest import World
-from tests.unit.services.rules_support import channel_api, definition, rule_world
+from tests.unit.services.rules_support import channel_api, definition, rule_world, text_matches
 
 
 async def test_user_rules_are_their_owners_and_global_rules_the_admins(world: World) -> None:
@@ -304,3 +307,20 @@ async def test_a_field_a_template_uses_is_not_deleted(world: World) -> None:
         await service.delete_field(r.admin.id, gross.id)
     await r.rules.delete(owner.id, rule.id)
     await service.delete_field(r.admin.id, gross.id)
+
+
+async def test_a_pattern_is_checked_by_the_matcher_that_runs_it(world: World) -> None:
+    """Of the `regex` package, which knows Unicode properties that `re` refuses."""
+    r = await rule_world(world)
+    rules = RuleService(world.uow, world.clock, TEMPLATES, RegexPatternMatcher(0.2))
+    admin = r.admin.id
+    street = await r.tag("Street")
+    accepted = definition("Umlauts", text_matches(r"\p{L}+straße"), AddTags(frozenset({street.id})))
+    rule = await rules.create(admin, RuleScope.GLOBAL, accepted)
+    assert rule.definition == accepted
+    with pytest.raises(ValidationError, match="invalid pattern"):
+        broken = definition("Broken", text_matches("("), AddTags(frozenset({street.id})))
+        await rules.create(admin, RuleScope.GLOBAL, broken)
+    with pytest.raises(ValidationError, match="invalid pattern"):
+        broken = definition("Broken", text_matches("[a-"), AddTags(frozenset({street.id})))
+        await rules.change(admin, rule.id, broken)

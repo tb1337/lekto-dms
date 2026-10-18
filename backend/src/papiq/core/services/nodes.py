@@ -18,7 +18,7 @@ from pathlib import Path
 from papiq.core.domain import media_types
 from papiq.core.domain.documents import Document
 from papiq.core.domain.exchanges import ModelCall
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import JsonObject, JsonValue, as_int
 from papiq.core.domain.pipeline import Node, NodeResult, Outcome
 from papiq.core.domain.reading import NO_TEXT_REASON, readings_to_json
 from papiq.core.ports import DocumentParser, ObjectStore, Ocr, PageRenderer, UnitOfWork
@@ -133,16 +133,12 @@ def _tokens(calls: tuple[ModelCall, ...]) -> list[JsonValue]:
     endpoint's report, as the model nodes log theirs."""
     return [
         {
-            "prompt": _count(call.usage.get("prompt_tokens")),
-            "completion": _count(call.usage.get("completion_tokens")),
+            "prompt": as_int(call.usage.get("prompt_tokens")),
+            "completion": as_int(call.usage.get("completion_tokens")),
             "usage": call.usage,
         }
         for call in calls
     ]
-
-
-def _count(value: JsonValue | None) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 class PagesNode:

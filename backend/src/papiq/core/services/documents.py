@@ -6,7 +6,7 @@ import logging
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path, PurePath
+from pathlib import Path
 from uuid import UUID
 
 from papiq.core.domain import media_types
@@ -385,7 +385,7 @@ class DocumentService:
         assert self._store is not None, "DocumentService needs an object store for downloads"
         async with self._uow() as uow:
             document, _ = await readable_document(uow, await load_actor(uow, actor), id)
-        stem = PurePath(document.original_filename).stem or "document"
+        stem = document.file_title
         match file:
             case DocumentFile.ORIGINAL:
                 key = original_key(document.sha256)

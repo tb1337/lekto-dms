@@ -11,6 +11,7 @@ from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.common import NameIn
 from papiq.adapters.inbound.rest.schemas.spaces import ShareIn, SpaceCreate, SpaceOut
 from papiq.core.domain.ids import SpaceId, UserId
+from papiq.core.domain.sorting import sort_key
 
 router = APIRouter(prefix="/spaces", tags=["spaces"], dependencies=PROTECTED)
 
@@ -28,7 +29,7 @@ OWNER_ONLY = "The owner and admins."
 )
 async def list_spaces(principal: Authenticated, context: Context) -> list[SpaceOut]:
     spaces = await context.spaces.list(principal.id)
-    return [SpaceOut.of(d, principal.user) for d in sorted(spaces, key=lambda d: d.name.casefold())]
+    return [SpaceOut.of(d, principal.user) for d in sorted(spaces, key=lambda d: sort_key(d.name))]
 
 
 @router.post(

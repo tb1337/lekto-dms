@@ -23,7 +23,7 @@ from papiq.core.domain.identifiers import (
     identifiers_in,
     normalise_identifier,
 )
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import JsonObject, JsonValue, as_int
 from papiq.core.domain.locations import Box
 
 CODES_VERSION = 1
@@ -58,8 +58,8 @@ class Code:
     def from_json(cls, data: JsonValue) -> "Code":
         if not isinstance(data, dict):
             raise ValidationError(f"invalid code {data!r:.100}")
-        page, format, text = data.get("page"), data.get("format"), data.get("text")
-        if not (isinstance(page, int) and isinstance(format, str) and isinstance(text, str)):
+        page, format, text = as_int(data.get("page")), data.get("format"), data.get("text")
+        if not (page is not None and isinstance(format, str) and isinstance(text, str)):
             raise ValidationError(f"invalid code {data!r:.100}")
         return cls(page=page, format=format, text=text, box=Box.from_json(data.get("box")))
 

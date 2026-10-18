@@ -27,8 +27,9 @@ _LEGAL_FORMS = frozenset(
 _PUNCTUATION = re.compile(r"[^\w\s]|_")
 
 
-def name_key(name: str) -> str:
-    """The comparable form of a name; empty if nothing but legal forms and punctuation."""
+def match_key(name: str) -> str:
+    """The form in which names are compared and found in text (not `validation.name_key`, which
+    keeps names apart); empty if nothing but legal forms and punctuation."""
     text = _DOTTED_FORMS.sub(" ", normalise(name)).replace("&", " und ")
     text = fold_umlauts(_PUNCTUATION.sub(" ", text))
     return " ".join(word for word in text.split() if word not in _LEGAL_FORMS)
@@ -65,10 +66,10 @@ def best_match[T](name: str, candidates: Iterable[tuple[T, str]]) -> NameMatch[T
     """The candidate whose name (second item) is most similar to `name`. A candidate may come
     with several names (its aliases): its best one counts, and the runner-up is always another
     candidate (the same object)."""
-    key = name_key(name)
+    key = match_key(name)
     best: dict[int, tuple[float, int, T]] = {}
     for index, (item, other) in enumerate(candidates):
-        score = similarity(key, name_key(other))
+        score = similarity(key, match_key(other))
         known = best.get(id(item))
         if known is None or score > known[0]:
             best[id(item)] = (score, known[1] if known else index, item)

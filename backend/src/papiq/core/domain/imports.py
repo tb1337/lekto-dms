@@ -9,7 +9,7 @@ from papiq.core.domain.documents import UNSET, DocumentChanges
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.fields import FieldDefinition, FieldValue, field_from_json, field_to_json
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import JsonObject, JsonValue, as_list, as_text
 
 IMPORTED = "imported"
 """Key of the receive log entry's output that holds the metadata, and the `model_version` of
@@ -65,10 +65,10 @@ class ImportedMetadata:
                     raise ValidationError(f"field {key} no longer exists")
                 fields[field_id] = field_from_json(definitions[field_id], value)
             return cls(
-                title=_text(data.get("title")),
+                title=as_text(data.get("title")),
                 contact_id=_id(data.get("contact_id"), ContactId),
                 document_type_id=_id(data.get("document_type_id"), DocumentTypeId),
-                tag_ids=frozenset(TagId(UUID(str(tag))) for tag in _list(data.get("tag_ids"))),
+                tag_ids=frozenset(TagId(UUID(str(tag))) for tag in as_list(data.get("tag_ids"))),
                 document_date=_date(data.get("document_date")),
                 fields=fields,
             )
@@ -76,16 +76,8 @@ class ImportedMetadata:
             raise ValidationError(f"imported metadata: {error}") from None
 
 
-def _text(value: JsonValue) -> str | None:
-    return value if isinstance(value, str) else None
-
-
 def _id[T](value: JsonValue, kind: type[T]) -> T | None:
     return None if value is None else kind(UUID(str(value)))  # type: ignore[call-arg]
-
-
-def _list(value: JsonValue) -> list[JsonValue]:
-    return value if isinstance(value, list) else []
 
 
 def _date(value: JsonValue) -> date | None:

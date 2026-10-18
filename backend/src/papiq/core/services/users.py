@@ -12,6 +12,7 @@ from datetime import datetime
 from papiq.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
 from papiq.core.domain.identity import Credential, ExternalIdentity, check_new_password
 from papiq.core.domain.ids import UserId
+from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import Clock, PasswordHasher, UnitOfWork, UnitOfWorkFactory
@@ -47,7 +48,7 @@ class UserService:
             user = await load_actor(uow, actor)
             users = await uow.users.list_all()
         visible = users if user.is_active_admin else [u for u in users if u.active]
-        return sorted(visible, key=lambda u: u.username.casefold())
+        return sorted(visible, key=lambda u: sort_key(u.username))
 
     async def get(self, actor: UserId, id: UserId) -> User:
         """Like `list`: a deactivated user is not found for others than admins."""

@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import JsonObject, JsonValue, as_int
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -65,8 +65,8 @@ class RunExchange:
     def from_json(cls, data: JsonValue) -> "RunExchange":
         if not isinstance(data, dict):
             raise ValidationError(f"invalid run exchange {data!r}")
-        run, calls = data.get("run"), data.get("calls")
-        if not isinstance(run, int) or isinstance(run, bool) or not isinstance(calls, list):
+        run, calls = as_int(data.get("run")), data.get("calls")
+        if run is None or not isinstance(calls, list):
             raise ValidationError(f"invalid run exchange {data!r}")
         return cls(run=run, calls=tuple(ModelCall.from_json(call) for call in calls))
 

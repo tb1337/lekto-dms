@@ -2,8 +2,8 @@ import pytest
 
 from papiq.core.domain.names import (
     best_match,
+    match_key,
     mentions,
-    name_key,
     named_share,
     related,
     similarity,
@@ -23,7 +23,7 @@ from papiq.core.domain.names import (
     ],
 )
 def test_name_key(name: str, key: str) -> None:
-    assert name_key(name) == key
+    assert match_key(name) == key
 
 
 def test_similarity() -> None:
@@ -63,23 +63,23 @@ def test_best_match_counts_a_candidate_once() -> None:
 
 
 def test_named_share() -> None:
-    text = name_key("Nord Krankenversicherung AG, Hauptstraße 1, Südstadt")
+    text = match_key("Nord Krankenversicherung AG, Hauptstraße 1, Südstadt")
     words = frozenset(text.split())
-    assert named_share(text, words, name_key("Nord Krankenversicherung AG")) == 1
-    assert named_share(text, words, name_key("Nord Versicherungsgruppe")) == 0.5
-    assert named_share(text, words, name_key("Muster")) == 0
-    assert named_share(text, words, name_key("AB")) == 0  # too short to count
+    assert named_share(text, words, match_key("Nord Krankenversicherung AG")) == 1
+    assert named_share(text, words, match_key("Nord Versicherungsgruppe")) == 0.5
+    assert named_share(text, words, match_key("Muster")) == 0
+    assert named_share(text, words, match_key("AB")) == 0  # too short to count
 
 
 def test_mentions_whole_words() -> None:
-    text = name_key("Ihre Stadtwerke Musterstadt GmbH, Postfach 12")
+    text = match_key("Ihre Stadtwerke Musterstadt GmbH, Postfach 12")
     assert mentions(text, "stadtwerke musterstadt")
     assert not mentions(text, "werke muster")
     assert not mentions(text, "")
 
 
 def test_entities_do_not_hide_a_name() -> None:
-    assert mentions(name_key("Brief von Müller &amp; Söhne GmbH"), name_key("Müller & Söhne"))
+    assert mentions(match_key("Brief von Müller &amp; Söhne GmbH"), match_key("Müller & Söhne"))
 
 
 def test_related_shares_a_word_or_reaches_the_threshold() -> None:

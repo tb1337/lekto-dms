@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import JsonObject, JsonValue, as_int
 
 # Fewer words say too little about a page: a blank back side, a page number.
 MIN_WORDS = 10
@@ -60,8 +60,8 @@ def readings_from_json(data: object) -> tuple[PageReading, ...]:
     for item in data:
         if not isinstance(item, dict):
             continue
-        page, words, unsure = item.get("page"), item.get("words"), item.get("unsure")
-        if isinstance(page, int) and isinstance(words, int) and isinstance(unsure, int):
+        page, words, unsure = (as_int(item.get(key)) for key in ("page", "words", "unsure"))
+        if page is not None and words is not None and unsure is not None:
             try:
                 readings.append(PageReading(page=page, words=words, unsure=unsure))
             except ValidationError:

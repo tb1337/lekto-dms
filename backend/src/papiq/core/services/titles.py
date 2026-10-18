@@ -7,7 +7,6 @@ without the document becoming uncertain. A title a person or a rule gave stays.
 """
 
 from collections.abc import Sequence
-from pathlib import PurePath
 
 from papiq.core.domain.classification import TITLE, checks_from_json
 from papiq.core.domain.documents import Document
@@ -17,11 +16,6 @@ from papiq.core.domain.pipeline import Node, NodeRun
 RENDERED_TITLE = "rendered_title"
 """Key in the output of a confirmation before 0.2.0: the title the pattern gave with the decided
 values (patterns are rules now; the key is still read)."""
-
-
-def file_title(document: Document) -> str:
-    """The title a document is received with: its file name without the extension."""
-    return PurePath(document.original_filename).stem or document.original_filename
 
 
 def machine_title(log: Sequence[NodeRun]) -> str | None:
@@ -45,4 +39,4 @@ def machine_title(log: Sequence[NodeRun]) -> str | None:
 
 def has_machine_title(document: Document, log: Sequence[NodeRun]) -> bool:
     """Whether the document's title is the file name or the one the machine gave last."""
-    return document.title in (file_title(document), machine_title(log))
+    return document.title in (document.file_title, machine_title(log))

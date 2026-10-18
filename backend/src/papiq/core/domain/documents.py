@@ -185,6 +185,12 @@ class Document:
 
     # --- creation -------------------------------------------------------------------------------
 
+    @property
+    def file_title(self) -> str:
+        """The name of the file it came in without the extension: the title it is received
+        with."""
+        return file_title(self.original_filename)
+
     @classmethod
     def receive(
         cls,
@@ -208,7 +214,7 @@ class Document:
             owner_id=owner_id,
             space_id=space_id,
             sha256=sha256,
-            title=PurePath(filename).stem or filename,
+            title=file_title(filename),
             original_filename=filename,
             media_type=media_type,
             channel=channel,
@@ -598,3 +604,8 @@ def _definition(
         return definitions[field_id]
     except KeyError:
         raise NotFoundError("field", field_id) from None
+
+
+def file_title(filename: str) -> str:
+    """A file name without its extension (all of it if that leaves nothing)."""
+    return PurePath(filename).stem or filename

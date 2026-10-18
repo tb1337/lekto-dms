@@ -14,7 +14,15 @@ from uuid import UUID
 
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.ids import FieldId
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import (
+    JsonObject,
+    JsonValue,
+    as_bool,
+    as_int,
+    as_number,
+    as_text,
+    as_texts,
+)
 from papiq.core.domain.locations import Location, locations_from_json, locations_to_json
 from papiq.core.domain.pipeline import Outcome
 
@@ -119,14 +127,14 @@ class CandidateSource:
         return cls(
             signal=str(data["signal"]),
             names=data.get("names") is True,
-            score=_optional_number(data.get("score")),
-            threshold=_optional_number(data.get("threshold")),
-            similarity=_optional_number(data.get("similarity")),
-            votes=_optional_int(data.get("votes")),
-            of=_optional_int(data.get("of")),
-            quote=_optional_text(data.get("quote")),
-            identifiers=_texts(data.get("identifiers")),
-            documents=_texts(data.get("documents")),
+            score=as_number(data.get("score")),
+            threshold=as_number(data.get("threshold")),
+            similarity=as_number(data.get("similarity")),
+            votes=as_int(data.get("votes")),
+            of=as_int(data.get("of")),
+            quote=as_text(data.get("quote")),
+            identifiers=as_texts(data.get("identifiers")),
+            documents=as_texts(data.get("documents")),
             named_in_text=data.get("named_in_text") is True,
         )
 
@@ -240,13 +248,13 @@ class FieldCheck:
                 field=str(data["field"]),
                 outcome=Outcome(str(data["outcome"])),
                 confidence=float(confidence),
-                reason=_optional_text(data.get("reason")),
+                reason=as_text(data.get("reason")),
                 proposed=data.get("proposed"),
-                evidence=_optional_text(data.get("evidence")),
+                evidence=as_text(data.get("evidence")),
                 value=data.get("value"),
                 suggestion=data.get("suggestion"),
-                new_name=_optional_text(data.get("new_name")),
-                quote_shows_value=_optional_bool(data.get("quote_shows_value")),
+                new_name=as_text(data.get("new_name")),
+                quote_shows_value=as_bool(data.get("quote_shows_value")),
                 locations=locations_from_json(data.get("locations")),
                 candidates=_candidates(data.get("candidates")),
             )
@@ -263,26 +271,6 @@ def checks_from_json(data: JsonValue) -> list[FieldCheck]:
     if not isinstance(data, list):
         return []
     return [FieldCheck.from_json(item) for item in data]
-
-
-def _optional_text(value: JsonValue) -> str | None:
-    return value if isinstance(value, str) else None
-
-
-def _optional_bool(value: JsonValue) -> bool | None:
-    return value if isinstance(value, bool) else None
-
-
-def _optional_number(value: JsonValue) -> float | None:
-    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
-
-
-def _optional_int(value: JsonValue) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
-
-
-def _texts(value: JsonValue) -> tuple[str, ...]:
-    return tuple(item for item in value if isinstance(item, str)) if isinstance(value, list) else ()
 
 
 def _candidates(value: JsonValue) -> tuple[Candidate, ...]:

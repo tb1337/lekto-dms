@@ -57,7 +57,7 @@ from papiq.core.domain.fields import FieldValue, Money, Url
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, TagId, UserId
 from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.json_value import JsonObject
-from papiq.core.domain.periods import Period, PeriodKind
+from papiq.core.domain.periods import MONTH_NAMES, Period, PeriodKind
 from papiq.core.domain.pipeline import SIGNALS
 from papiq.core.domain.search import LAYOUT, EmbeddingStamp, IndexDocument, IndexState
 from papiq.core.domain.tag_tree import TagTree
@@ -585,38 +585,6 @@ def _field_text(value: FieldValue) -> str:
             return f"{value.isoformat()} {value:%d.%m.%Y}"
 
 
-_MONTHS = {
-    "de": [
-        "Januar",
-        "Februar",
-        "März",
-        "April",
-        "Mai",
-        "Juni",
-        "Juli",
-        "August",
-        "September",
-        "Oktober",
-        "November",
-        "Dezember",
-    ],
-    "en": [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    ],
-}
-
-
 def _period_text(period: Period) -> str:
     """A period as it is searched for: its ends in both notations, what it is in ISO 8601
     (`2026-09`, `2026-W38`, `2026-Q3`, `2026`) and in words (`September 2026` in German and
@@ -630,7 +598,7 @@ def _period_text(period: Period) -> str:
             year, week, _ = start.isocalendar()
             words.append(f"KW {week} {year}")
         case PeriodKind.MONTH:
-            names = {names[start.month - 1] for names in _MONTHS.values()}
+            names = {names[start.month - 1] for names in MONTH_NAMES.values()}
             words += [f"{name} {start.year}" for name in sorted(names)]
             words.append(f"{start:%m/%Y} {start:%m.%Y}")
         case PeriodKind.QUARTER:

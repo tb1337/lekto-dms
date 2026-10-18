@@ -8,6 +8,38 @@ from typing import Self
 
 from papiq.core.domain.errors import ValidationError
 
+MONTH_NAMES: dict[str, tuple[str, ...]] = {
+    "de": (
+        "Januar",
+        "Februar",
+        "März",
+        "April",
+        "Mai",
+        "Juni",
+        "Juli",
+        "August",
+        "September",
+        "Oktober",
+        "November",
+        "Dezember",
+    ),
+    "en": (
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ),
+}
+"""The names of the months, by language, January first."""
+
 
 class PeriodKind(StrEnum):
     """What a period is, by its ends: one day, a calendar week (Monday to Sunday), a month, a

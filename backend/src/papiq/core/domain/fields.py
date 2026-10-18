@@ -11,6 +11,7 @@ from typing import Self
 from urllib.parse import urlsplit
 
 from papiq.core.domain.errors import ValidationError
+from papiq.core.domain.evidence import fold_umlauts
 from papiq.core.domain.ids import DocumentTypeId, FieldId, new_id
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.master_data import Assignment, MasterData, checked_description
@@ -302,7 +303,6 @@ def _numeric(value: object) -> bool:
     return isinstance(value, int | float | str) and not isinstance(value, bool)
 
 
-_UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue"})
 _NOT_KEY = re.compile(r"[^a-z0-9]+")
 
 
@@ -310,7 +310,7 @@ def template_key(name: str) -> str:
     """A field's name as templates write it: lower case, umlauts as `ae`, `oe`, `ue`, `ß` as
     `ss`, other accents dropped, anything else an underscore (`LA_Brutto` → `la_brutto`,
     `Fällig am` → `faellig_am`); `f_` before a leading digit."""
-    folded = unicodedata.normalize("NFKC", name).casefold().translate(_UMLAUTS)
+    folded = fold_umlauts(unicodedata.normalize("NFKC", name).casefold())
     plain = "".join(
         char for char in unicodedata.normalize("NFKD", folded) if not unicodedata.combining(char)
     )

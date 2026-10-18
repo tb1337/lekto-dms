@@ -52,10 +52,11 @@ from papiq.core.domain.fields import (
 from papiq.core.domain.ids import ContactId, FieldId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
-from papiq.core.domain.names import mentions, name_key, named_share
+from papiq.core.domain.names import match_key, mentions, named_share
 from papiq.core.domain.periods import Period, PeriodKind
 from papiq.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
 from papiq.core.domain.reading import PageReading, readings_from_json
+from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.verdict import (
     Thresholds,
     judge_contact,
@@ -284,7 +285,7 @@ class LlmSignal(_ModelStep):
         # The topics of each contact listed: the answer names one of the sender's.
         enabled = {
             contact.id: tuple(
-                sorted((topics[id] for id in contact.topic_ids if id in topics), key=str.casefold)
+                sorted((topics[id] for id in contact.topic_ids if id in topics), key=sort_key)
             )
             for contact in candidates
         }
@@ -997,8 +998,8 @@ def _listed_tags(tags: Sequence[Tag], facts: DocumentText, limit: int) -> list[T
     """All tags if they fit the limit; otherwise first those named in the text."""
     if len(tags) <= limit:
         return list(tags)
-    text_key = name_key(facts.raw)
-    named = [tag for tag in tags if mentions(text_key, name_key(tag.name))]
+    text_key = match_key(facts.raw)
+    named = [tag for tag in tags if mentions(text_key, match_key(tag.name))]
     rest = [tag for tag in tags if tag not in named]
     return sorted((named + rest)[:limit], key=lambda tag: tag.name)
 
@@ -1006,15 +1007,15 @@ def _listed_tags(tags: Sequence[Tag], facts: DocumentText, limit: int) -> list[T
 def _listed_contacts(contacts: Sequence[Contact], facts: DocumentText, limit: int) -> list[Contact]:
     """The contacts whose names or aliases the text shows most (see `named_share`), at most
     `limit`; none the text does not show at all."""
-    text_key = name_key(facts.raw)
+    text_key = match_key(facts.raw)
     words = frozenset(text_key.split())
     scored = [
-        (max(named_share(text_key, words, name_key(own)) for own in contact.names()), contact)
+        (max(named_share(text_key, words, match_key(own)) for own in contact.names()), contact)
         for contact in contacts
     ]
     ranked = sorted(
         ((score, contact) for score, contact in scored if score > 0),
-        key=lambda entry: (-entry[0], entry[1].name.casefold()),
+        key=lambda entry: (-entry[0], sort_key(entry[1].name)),
     )
     return [contact for _, contact in ranked[:limit]]
 

@@ -31,6 +31,7 @@ from papiq.core.domain.errors import DomainError, SearchUnavailableError, Valida
 from papiq.core.domain.fields import FieldDefinition, field_from_json
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from papiq.core.domain.master_data import TagScope
+from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.tag_tree import TagTree
 from papiq.core.ports import DocumentFilter
@@ -194,7 +195,7 @@ class Names:
 
     def tag_refs(self, ids: Any) -> list[NameRef]:
         refs = [NameRef(id=i, name=self.tags.get(i, str(i))) for i in ids]
-        return sorted(refs, key=lambda ref: ref.name.casefold())
+        return sorted(refs, key=lambda ref: sort_key(ref.name))
 
     def field_name(self, id: FieldId) -> str:
         definition = self.fields.get(id)

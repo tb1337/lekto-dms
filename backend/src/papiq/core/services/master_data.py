@@ -25,9 +25,9 @@ from papiq.core.domain.master_data import (
     TagScope,
     one_line,
 )
-from papiq.core.domain.names import name_key as match_key
-from papiq.core.domain.names import related
+from papiq.core.domain.names import match_key, related
 from papiq.core.domain.rules import References, Rule, RuleScope, definition_to_json, title_rule
+from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.tag_tree import TagTree
 from papiq.core.domain.templates import rename_field_key, unknown_values
 from papiq.core.domain.templates import uses_field as field_used
@@ -835,7 +835,7 @@ class MasterDataService:
         async with self._uow() as uow:
             await load_actor(uow, actor)
             items = await repository(uow).list_all()
-        return sorted(items, key=lambda item: item.name.casefold())
+        return sorted(items, key=lambda item: sort_key(item.name))
 
     async def _get[E: MasterData](self, actor: UserId, repository: Repo[E], id: Any) -> E:
         async with self._uow() as uow:
@@ -1151,7 +1151,7 @@ async def learn_alias(
     - it is not related to the contact's names (`names.related` with `threshold`, the one
       from which a name suggests a contact): the model read something else, often the
       recipient, and the person corrected it;
-    - it matches another contact's name (see `names.name_key`).
+    - it matches another contact's name (see `names.match_key`).
 
     An alias of another contact that it matches moves (the person's choice is the newer word).
     """

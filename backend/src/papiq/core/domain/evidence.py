@@ -17,14 +17,16 @@ from functools import cached_property
 from itertools import pairwise
 
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.periods import Period
+from papiq.core.domain.periods import MONTH_NAMES, Period
 
 # Markdown markup that may sit inside a value (`**84,20 €**`, table pipes).
 _MARKUP = re.compile(r"[*_#|`>~]+")
 # A word broken at the end of a line: `Rech-\nnung`.
 _HYPHENATION = re.compile(r"(?<=[^\W\d_])-[ \t]*\n[ \t]*(?=[^\W\d_])")
 _WHITESPACE = re.compile(r"\s+")
-_UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue"})
+UMLAUTS = {"ä": "ae", "ö": "oe", "ü": "ue"}
+"""Umlauts (case folded) and how they are written without them."""
+_UMLAUTS = str.maketrans(UMLAUTS)
 
 
 def normalise(text: str) -> str:
@@ -37,6 +39,11 @@ def normalise(text: str) -> str:
     return _WHITESPACE.sub(" ", text.casefold()).strip()
 
 
+def without_markup(text: str) -> str:
+    """Markdown markup removed and whitespace collapsed; case kept."""
+    return _WHITESPACE.sub(" ", _MARKUP.sub(" ", text)).strip()
+
+
 def fold_umlauts(text: str) -> str:
     """`ä` as `ae` and so on, for names written either way; expects normalised text."""
     return text.translate(_UMLAUTS)
@@ -44,19 +51,32 @@ def fold_umlauts(text: str) -> str:
 
 # --- dates ------------------------------------------------------------------------------------
 
+# Other ways to write the months than their names: Austrian, without umlauts, abbreviated.
+_OTHER_SPELLINGS = (
+    ("jänner", "jaenner", "jan"),
+    ("feb",),
+    ("maerz", "mär", "mrz", "mar"),
+    ("apr",),
+    (),
+    ("jun",),
+    ("jul",),
+    ("aug",),
+    ("sept", "sep"),
+    ("okt", "oct"),
+    ("nov",),
+    ("dez", "dec"),
+)
 _MONTHS = {
-    **dict.fromkeys(("januar", "jänner", "jaenner", "january", "jan"), 1),
-    **dict.fromkeys(("februar", "february", "feb"), 2),
-    **dict.fromkeys(("märz", "maerz", "march", "mär", "mrz", "mar"), 3),
-    **dict.fromkeys(("april", "apr"), 4),
-    **dict.fromkeys(("mai", "may"), 5),
-    **dict.fromkeys(("juni", "june", "jun"), 6),
-    **dict.fromkeys(("juli", "july", "jul"), 7),
-    **dict.fromkeys(("august", "aug"), 8),
-    **dict.fromkeys(("september", "sept", "sep"), 9),
-    **dict.fromkeys(("oktober", "october", "okt", "oct"), 10),
-    **dict.fromkeys(("november", "nov"), 11),
-    **dict.fromkeys(("dezember", "december", "dez", "dec"), 12),
+    **{
+        name.casefold(): number
+        for names in MONTH_NAMES.values()
+        for number, name in enumerate(names, 1)
+    },
+    **{
+        spelling: number
+        for number, spellings in enumerate(_OTHER_SPELLINGS, 1)
+        for spelling in spellings
+    },
 }
 _MONTH = "(" + "|".join(sorted(_MONTHS, key=len, reverse=True)) + r")\.?"
 _DAY = r"(\d{1,2})(?:st|nd|rd|th|\.)?"

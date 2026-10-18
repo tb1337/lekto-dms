@@ -6,11 +6,11 @@ import re
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from datetime import date
 from decimal import Decimal
-from pathlib import PurePath
 
 from papiq.core.domain.documents import Document
 from papiq.core.domain.fields import FieldDefinition, FieldValue, Money, Url
 from papiq.core.domain.periods import Period
+from papiq.core.domain.sorting import sort_key
 
 type TemplateValue = (
     str
@@ -70,12 +70,12 @@ def template_values(
     groups the contact and the type are in (not their ancestors). Lists are sorted by name."""
 
     def ordered(items: Iterable[str]) -> list[TemplateValue]:
-        return [*sorted(items, key=str.casefold)]
+        return [*sorted(items, key=sort_key)]
 
     names = ordered(tags)
     given: dict[str, TemplateValue | None] = {
         "title": document.title,
-        "filename": PurePath(document.original_filename).stem,
+        "filename": document.file_title,
         "original_filename": document.original_filename,
         "contact": contact,
         "document_type": document_type,

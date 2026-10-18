@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import JsonObject, JsonValue, as_int, as_number
 
 _DIGITS = 4
 
@@ -49,11 +49,7 @@ class Box:
         if not isinstance(data, dict):
             raise ValidationError(f"invalid box {data!r}")
         values = [data.get(name) for name in ("x", "y", "width", "height")]
-        numbers = [
-            float(value)
-            for value in values
-            if isinstance(value, int | float) and not isinstance(value, bool)
-        ]
+        numbers = [number for value in values if (number := as_number(value)) is not None]
         if len(numbers) != 4:
             raise ValidationError(f"invalid box {data!r}")
         return cls(*numbers)
@@ -77,8 +73,8 @@ class Location:
     def from_json(cls, data: JsonValue) -> "Location":
         if not isinstance(data, dict):
             raise ValidationError(f"invalid location {data!r}")
-        page, boxes = data.get("page"), data.get("boxes")
-        if not isinstance(page, int) or isinstance(page, bool) or not isinstance(boxes, list):
+        page, boxes = as_int(data.get("page")), data.get("boxes")
+        if page is None or not isinstance(boxes, list):
             raise ValidationError(f"invalid location {data!r}")
         return cls(page, tuple(Box.from_json(box) for box in boxes))
 

@@ -56,8 +56,9 @@ from papiq.core.domain.classification import (
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
-from papiq.core.domain.names import best_match, mentions, name_key, related
+from papiq.core.domain.names import best_match, match_key, mentions, related
 from papiq.core.domain.pipeline import Node, Outcome
+from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.tag_tree import TagTree
 
 LLM = Node.SIGNAL_LLM.value
@@ -182,7 +183,7 @@ class _ContactView:
             self.sender is not None
             and self.matched is None
             and not any(
-                related(name_key(self.sender), name_key(own), threshold=self.thresholds.suggest)
+                related(match_key(self.sender), match_key(own), threshold=self.thresholds.suggest)
                 for own in self.names[id].names()
             )
         )
@@ -401,9 +402,9 @@ def _quote_names(quote: str | None, contact: Contact | None, sender: str | None)
     """Whether the model's quote shows the contact's name (or the sender as read)."""
     if not quote:
         return None
-    key = name_key(quote)
+    key = match_key(quote)
     own = contact.names() if contact is not None else [sender] if sender else []
-    return any(mentions(key, name_key(name)) for name in own)
+    return any(mentions(key, match_key(name)) for name in own)
 
 
 # --- document type ----------------------------------------------------------------------------
@@ -604,7 +605,7 @@ def judge_tags(
         for id in by_name
     )
     suggestion: list[JsonValue] = [
-        str(id) for id in sorted(suggested, key=lambda id: names[id].name.casefold())
+        str(id) for id in sorted(suggested, key=lambda id: sort_key(names[id].name))
     ]
     proposed: JsonValue = None
     if model is not None:

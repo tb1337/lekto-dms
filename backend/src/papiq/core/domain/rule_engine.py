@@ -36,13 +36,11 @@ structured parts (values, suggestions, effects). Only something that no longer e
 by its id.
 """
 
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal
 from enum import StrEnum
-from pathlib import PurePath
 from uuid import UUID
 
 from papiq.core.domain.classification import (
@@ -61,7 +59,7 @@ from papiq.core.domain.classification import (
 )
 from papiq.core.domain.documents import Channel, Document, DocumentChanges, Unset
 from papiq.core.domain.errors import MissingValueError, ValidationError
-from papiq.core.domain.evidence import DocumentText, contains, normalise
+from papiq.core.domain.evidence import DocumentText, contains, normalise, without_markup
 from papiq.core.domain.fields import (
     FieldDefinition,
     FieldType,
@@ -416,8 +414,7 @@ def pattern_subjects(
 def pattern_text(markdown: str, limit: int) -> str:
     """The text regular expressions run against: Markdown markup removed, whitespace collapsed,
     case kept, at most `limit` characters."""
-    text = re.sub(r"[*_#|`>~]+", " ", markdown[: limit * 2])
-    return re.sub(r"\s+", " ", text).strip()[:limit]
+    return without_markup(markdown[: limit * 2])[:limit]
 
 
 # --- matching rules ---------------------------------------------------------------------------
@@ -1187,7 +1184,7 @@ def _field_value(value: object) -> FieldValue | None:
 
 
 def _default_title(document: Document) -> str:
-    return PurePath(document.original_filename).stem or document.original_filename
+    return document.file_title
 
 
 def changed_fields(changes: DocumentChanges) -> frozenset[str]:

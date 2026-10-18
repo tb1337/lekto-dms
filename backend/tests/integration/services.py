@@ -5,6 +5,7 @@ fixtures."""
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import aioboto3
 import httpx2
@@ -66,7 +67,9 @@ def s3_store(settings: Settings, prefix: str) -> S3ObjectStore:
     )
 
 
-async def remove_prefix(settings: Settings, prefix: str) -> None:
+@asynccontextmanager
+async def s3_client(settings: Settings) -> AsyncIterator[Any]:
+    """A client of the S3 service, beside the stores."""
     assert settings.s3_access_key_id and settings.s3_secret_access_key
     session = aioboto3.Session(
         aws_access_key_id=settings.s3_access_key_id.get_secret_value(),
@@ -74,15 +77,22 @@ async def remove_prefix(settings: Settings, prefix: str) -> None:
         region_name=settings.s3_region,
     )
     async with session.client("s3", endpoint_url=str(settings.s3_endpoint_url)) as s3:
+        yield s3
+
+
+async def remove_prefix(settings: Settings, prefix: str) -> None:
+    async with s3_client(settings) as s3:
         listing = await s3.list_objects_v2(Bucket=settings.s3_bucket, Prefix=prefix)
         for item in listing.get("Contents", []):
             await s3.delete_object(Bucket=settings.s3_bucket, Key=item["Key"])
 
 
 @asynccontextmanager
-async def s3_test_store(settings: Settings) -> AsyncIterator[S3ObjectStore]:
-    """A store below a key prefix of its own, removed afterwards."""
-    prefix = f"tests/{secrets.token_hex(8)}/"
+async def s3_test_store(
+    settings: Settings, prefix: str | None = None
+) -> AsyncIterator[S3ObjectStore]:
+    """A store below a key prefix of its own (`prefix`, or a new one), removed afterwards."""
+    prefix = prefix or f"tests/{secrets.token_hex(8)}/"
     store = s3_store(settings, prefix)
     try:
         yield store

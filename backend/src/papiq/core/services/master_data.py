@@ -131,6 +131,16 @@ class MasterDataService:
         self._normalise_batch = normalise_batch
         self._jobs = JobRunner(uow, clock)
 
+    @property
+    def index_renames(self) -> bool:
+        """Whether renames and moves queue a refresh of the search index."""
+        return self._index_renames
+
+    @property
+    def fetch_logos(self) -> bool:
+        """Whether a new domain of a contact queues fetching its logo."""
+        return self._fetch_logos
+
     async def create_contact(
         self,
         actor: UserId,

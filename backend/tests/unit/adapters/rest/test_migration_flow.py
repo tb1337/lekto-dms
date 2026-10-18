@@ -40,7 +40,7 @@ class Migrating:
             "state": self.directory / "state.sqlite",
             "report_dir": self.directory / "reports",
             "paperless_token": fake_paperless.TOKEN,
-            "papiq_token": helpers._TOKENS[self.admin.id],
+            "papiq_token": helpers.token(self.admin),
             "concurrency": 3,
         }
         return Config(**{**values, **changes})

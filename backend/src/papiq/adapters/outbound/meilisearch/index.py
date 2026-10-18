@@ -127,6 +127,11 @@ class MeilisearchIndex:
         self._ready_until = 0.0  # monotonic time until which the index counts as set up
         self._lock = asyncio.Lock()
 
+    @property
+    def task_timeout(self) -> float:
+        """Seconds a task of the index may take."""
+        return self._task_timeout
+
     async def aclose(self) -> None:
         await self._client.aclose()
 

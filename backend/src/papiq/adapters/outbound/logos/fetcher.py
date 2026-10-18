@@ -89,6 +89,21 @@ class HttpLogoFetcher:
         self._deadline = deadline
         self._max_size = max_size
 
+    @property
+    def user_agent(self) -> str:
+        """Sent with every request."""
+        return self._user_agent
+
+    @property
+    def resolver(self) -> Resolver:
+        """The name server: the system's unless a test replaces it."""
+        return self._resolve
+
+    @property
+    def transport(self) -> httpx2.AsyncBaseTransport | None:
+        """None: the network."""
+        return self._transport
+
     async def fetch(self, domain: str) -> FetchedLogo:
         if not _DOMAIN.fullmatch(domain):
             raise LogoFetchError(f"'{domain}' is no domain")

@@ -31,9 +31,14 @@ async def issue_token(auth_service: AuthService, user: User) -> str:
     return token
 
 
+def token(user: User) -> str:
+    """The test token of `user` (`issue_token`)."""
+    return _TOKENS[user.id]
+
+
 def auth(user: User) -> dict[str, str]:
     """Headers that authenticate `user` with their test token."""
-    return bearer(_TOKENS[user.id])
+    return bearer(token(user))
 
 
 def bearer(token: str) -> dict[str, str]:

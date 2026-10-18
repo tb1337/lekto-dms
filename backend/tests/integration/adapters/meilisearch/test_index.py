@@ -26,21 +26,21 @@ async def test_compound_words_are_split(search_index: MeilisearchIndex) -> None:
         assert [hit.id for hit in result.hits] == [document.id], word
 
 
-async def test_the_settings_are_applied_once(
-    meilisearch_settings: Settings, search_index: MeilisearchIndex
-) -> None:
+async def test_the_settings_are_applied_once(meilisearch_settings: Settings) -> None:
     """A second adapter on the same index finds the settings in place and changes nothing, so a
     restart does not index again."""
-    await search_index.check()
-    await search_index.upsert([index_document()])
-    name = search_index._index
-    again = new_index(meilisearch_settings, name)
+    name = f"papiq-test-{secrets.token_hex(6)}"
+    first, again = new_index(meilisearch_settings, name), new_index(meilisearch_settings, name)
     try:
+        await first.check()
+        await first.upsert([index_document()])
         before = await _settings_tasks(meilisearch_settings, name)
         await again.upsert([index_document()])
         assert await _settings_tasks(meilisearch_settings, name) == before
     finally:
+        await first.aclose()
         await again.aclose()
+        await drop(meilisearch_settings, name)
     assert before >= 1
 
 

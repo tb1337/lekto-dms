@@ -88,6 +88,16 @@ class MaintenanceService:
         self._store = object_store
         self._jobs = JobRunner(uow, clock)
 
+    @property
+    def interval(self) -> timedelta:
+        """The time between two cleanups."""
+        return self._interval
+
+    @property
+    def retention(self) -> timedelta:
+        """How long finished jobs and delivered events are kept."""
+        return self._retention
+
     async def schedule(self) -> None:
         """Make sure a cleanup is queued; due at once unless one is queued already."""
         async with self._uow() as uow:

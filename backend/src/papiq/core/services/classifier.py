@@ -126,6 +126,11 @@ class ClassifierService:
     def name(self) -> str:
         return self._classifier.name
 
+    @property
+    def fetch_logos(self) -> bool:
+        """Whether a domain a contact learns queues fetching its logo."""
+        return self._fetch_logos
+
     # --- jobs -------------------------------------------------------------------------------------
 
     async def schedule(self) -> None:

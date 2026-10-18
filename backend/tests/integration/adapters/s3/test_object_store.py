@@ -1,6 +1,7 @@
 """The S3 object store passes the contract against the configured server (Garage in the
 devcontainer). Every test works below a key prefix of its own, removed afterwards."""
 
+import secrets
 from collections.abc import AsyncIterator
 
 import pytest
@@ -8,7 +9,7 @@ import pytest
 from papiq.adapters.outbound.s3 import S3ObjectStore
 from papiq.composition.settings import Settings
 from tests.contracts.object_store import ObjectStoreContract
-from tests.integration.services import s3_store, s3_test_store
+from tests.integration.services import s3_client, s3_store, s3_test_store
 
 
 @pytest.fixture
@@ -21,10 +22,12 @@ class TestS3ObjectStore(ObjectStoreContract):
     pass
 
 
-async def test_the_content_type_is_stored(object_store: S3ObjectStore) -> None:
-    await object_store.put("a.pdf", b"%PDF", content_type="application/pdf")
-    s3 = await object_store._s3()
-    head = await s3.head_object(Bucket=object_store._bucket, Key=object_store._key("a.pdf"))
+async def test_the_content_type_is_stored(s3_settings: Settings) -> None:
+    """As a client of its own sees the object, below the store's prefix."""
+    prefix = f"tests/{secrets.token_hex(8)}/"
+    async with s3_test_store(s3_settings, prefix) as store, s3_client(s3_settings) as s3:
+        await store.put("a.pdf", b"%PDF", content_type="application/pdf")
+        head = await s3.head_object(Bucket=s3_settings.s3_bucket, Key=prefix + "a.pdf")
     assert head["ContentType"] == "application/pdf"
 
 

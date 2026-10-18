@@ -1,9 +1,12 @@
+import json
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import httpx2
 import pytest
 
 from papiq.adapters.outbound.crypto import Argon2PasswordHasher, PyotpTotp
@@ -12,13 +15,15 @@ from papiq.adapters.outbound.logos import HttpLogoFetcher, system_resolver
 from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.adapters.outbound.memory import FakeLogoFetcher, FakeOcr, FakeParser, ManualClock
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
+from papiq.adapters.outbound.ocrmypdf import engine as ocrmypdf_engine
+from papiq.adapters.outbound.ocrmypdf.vision import CONFIG_ENV, KEY_ENV
 from papiq.adapters.outbound.oidc import AuthlibOidcProvider
 from papiq.adapters.outbound.openai_compat import OpenAiCompatEmbeddings, OpenAiCompatLanguageModel
 from papiq.adapters.outbound.pdfium import LayoutParser
 from papiq.adapters.outbound.pillow import PillowImageNormaliser
 from papiq.adapters.outbound.s3 import S3ObjectStore
 from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory, migrate
-from papiq.adapters.outbound.system import SystemClock
+from papiq.adapters.outbound.system import Completed, SystemClock
 from papiq.composition import container
 from papiq.composition.api import health_checks
 from papiq.composition.container import (
@@ -31,7 +36,9 @@ from papiq.composition.container import (
 )
 from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
+from papiq.core.domain import media_types
 from papiq.core.domain.events import DocumentReceived, DomainEvent, LaneChanged
+from papiq.core.domain.ids import DocumentId, new_id
 from papiq.core.domain.jobs import WORK_LEASE_MARGIN, RetryPolicy
 from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.templates import TemplateValue
@@ -40,6 +47,7 @@ from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.nodes import OcrNode, ParseNode
 from tests import builders
 from tests.builders import NOW, SAMPLES, incoming
+from tests.contracts.language_model import REQUEST
 
 
 def settings(**values: Any) -> Settings:
@@ -60,6 +68,83 @@ def offline_adapters(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(container.PERSISTENCE, "sqlite", fake_persistence)
     monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
     monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
+
+
+type Run = tuple[list[str], timedelta, dict[str, str]]
+
+
+class OcrRuns:
+    """Stands in for OCRmyPDF's process: keeps the command line, time limit and environment
+    of each run and fails it, so the engine stops there."""
+
+    def __init__(self) -> None:
+        self.runs: list[Run] = []
+
+    async def __call__(
+        self, args: Sequence[str], *, timeout: timedelta, env: dict[str, str] | None = None
+    ) -> Completed:
+        self.runs.append((list(args), timeout, env or {}))
+        return Completed(returncode=15, stdout="", stderr="stopped by the test")
+
+
+@pytest.fixture
+def ocr_runs(monkeypatch: pytest.MonkeyPatch) -> OcrRuns:
+    runs = OcrRuns()
+    monkeypatch.setattr(ocrmypdf_engine, "run_process", runs)
+    return runs
+
+
+async def first_run(
+    ocr: OcrmypdfEngine, runs: OcrRuns, tmp_path: Path, *, vision: bool = False
+) -> Run:
+    """How `ocr` starts OCRmyPDF for a scan."""
+    with pytest.raises(RuntimeError, match="exit code 15"):
+        await ocr.make_archive(
+            SAMPLES / "scan.pdf",
+            tmp_path / "archive.pdf",
+            media_type=media_types.PDF,
+            vision=vision,
+        )
+    (run,) = runs.runs
+    return run
+
+
+class Network:
+    """Instead of the network, for every HTTP client built while it is installed (`network`):
+    keeps each request and answers as a model endpoint or Meilisearch would."""
+
+    def __init__(self) -> None:
+        self.requests: list[httpx2.Request] = []
+
+    def answer(self, request: httpx2.Request) -> httpx2.Response:
+        self.requests.append(request)
+        if request.url.path.endswith("/chat/completions"):
+            return httpx2.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+        if request.url.path.endswith("/embeddings"):
+            return httpx2.Response(200, json={"data": [{"index": 0, "embedding": [1.0]}]})
+        return httpx2.Response(200, json={"taskUid": 1, "status": "succeeded"})
+
+
+@pytest.fixture
+def network(monkeypatch: pytest.MonkeyPatch) -> Network:
+    network = Network()
+
+    class Offline(httpx2.AsyncClient):
+        def __init__(self, **options: Any) -> None:
+            super().__init__(**{**options, "transport": httpx2.MockTransport(network.answer)})
+
+    monkeypatch.setattr(httpx2, "AsyncClient", Offline)
+    return network
+
+
+def body_of(request: httpx2.Request) -> Any:
+    return json.loads(request.content)
+
+
+def timeout_of(request: httpx2.Request) -> float:
+    """The read timeout of the client that sent `request`, in seconds."""
+    timeout: float = request.extensions["timeout"]["read"]
+    return timeout
 
 
 def test_missing_adapter_is_reported_with_port_and_name(
@@ -113,7 +198,7 @@ def test_each_port_is_checked_in_turn(monkeypatch: pytest.MonkeyPatch) -> None:
         build_container(settings())
 
 
-def test_processing_adapters_follow_the_settings(tmp_path: Path) -> None:
+async def test_processing_adapters_follow_the_settings(tmp_path: Path, ocr_runs: OcrRuns) -> None:
     configured = settings(
         ocr_languages="deu+eng+fra",
         ocr_timeout="120",
@@ -121,12 +206,16 @@ def test_processing_adapters_follow_the_settings(tmp_path: Path) -> None:
     )
     ocr = container.OCR_ENGINES["ocrmypdf"](configured)
     assert isinstance(ocr, OcrmypdfEngine)
-    assert (ocr._languages, ocr._timeout) == ("deu+eng+fra", timedelta(minutes=2))
     assert ocr.vision is None
+    command, timeout, _ = await first_run(ocr, ocr_runs, tmp_path)
+    assert command[command.index("--language") + 1] == "deu+eng+fra"
+    assert timeout == timedelta(minutes=2)
     assert isinstance(container.PARSERS["layout"](configured), LayoutParser)
 
 
-def test_a_vision_model_reads_pages_when_configured() -> None:
+async def test_a_vision_model_reads_pages_when_configured(
+    tmp_path: Path, ocr_runs: OcrRuns
+) -> None:
     configured = settings(
         vlm_base_url="https://user:pw@chat.example/api",
         vlm_model="claude-sonnet",
@@ -136,9 +225,10 @@ def test_a_vision_model_reads_pages_when_configured() -> None:
     ocr = container.OCR_ENGINES["ocrmypdf"](configured)
     assert isinstance(ocr, OcrmypdfEngine)
     assert ocr.vision == VisionModel(model="claude-sonnet", endpoint="chat.example")
-    assert ocr._vision is not None and ocr._vision.api_key == "vlm-key"
-    assert ocr._vision.timeout == timedelta(minutes=5)
-    assert ocr._vision_timeout == timedelta(minutes=10)
+    _, timeout, environment = await first_run(ocr, ocr_runs, tmp_path, vision=True)
+    assert environment[KEY_ENV] == "vlm-key"
+    assert json.loads(environment[CONFIG_ENV])["timeout"] == 300  # seconds for one page
+    assert timeout == timedelta(minutes=10)  # for the whole document
     # Reading a document with the model may take longer than OCR: the lease grows with it.
     assert container.node_lease(configured) == timedelta(minutes=10) + WORK_LEASE_MARGIN
     quick = settings(vlm_base_url="https://chat.example/api", vlm_model="m", vlm_timeout="60")
@@ -156,15 +246,15 @@ def test_services_take_their_tuning_from_the_settings() -> None:
     )
     services = build_services(build_memory_container(), configured)
     pipeline = services.pipeline
-    assert pipeline._retry == RetryPolicy(max_attempts=5, delay=timedelta(seconds=10))
-    assert pipeline._lease == timedelta(minutes=5) + WORK_LEASE_MARGIN
+    assert pipeline.retry_policy == RetryPolicy(max_attempts=5, delay=timedelta(seconds=10))
+    assert pipeline.lease == timedelta(minutes=5) + WORK_LEASE_MARGIN
     # A classification node may ask the model twice.
     longer = build_services(build_memory_container(), settings(llm_timeout="400")).pipeline
-    assert longer._lease == timedelta(seconds=800) + WORK_LEASE_MARGIN
+    assert longer.lease == timedelta(seconds=800) + WORK_LEASE_MARGIN
     assert isinstance(pipeline.executor(Node.OCR), OcrNode)
     assert isinstance(pipeline.executor(Node.PARSE), ParseNode)
     maintenance = services.maintenance
-    assert (maintenance._interval, maintenance._retention) == (
+    assert (maintenance.interval, maintenance.retention) == (
         timedelta(minutes=1),
         timedelta(days=1),
     )
@@ -206,8 +296,8 @@ def test_optional_ports_are_only_selected_when_configured(
     assert isinstance(built.images, PillowImageNormaliser)
     fetching = build_container(settings(logo_fetch="true")).logo_fetcher
     assert isinstance(fetching, HttpLogoFetcher)
-    assert fetching._user_agent.startswith("Papiq/")
-    assert fetching._resolve is system_resolver and fetching._transport is None
+    assert fetching.user_agent.startswith("Papiq/")
+    assert fetching.resolver is system_resolver and fetching.transport is None
 
     monkeypatch.setitem(container.SEARCH_INDEXES, "meilisearch", lambda _: Opened(object()))
     assert build_container(settings(meilisearch_url="http://meilisearch:7700")).search_index
@@ -217,7 +307,7 @@ def test_optional_ports_are_only_selected_when_configured(
 
 
 @pytest.mark.usefixtures("offline_adapters")
-def test_language_model_and_embeddings_from_settings() -> None:
+async def test_language_model_and_embeddings_from_settings(network: Network) -> None:
     built = build_container(
         settings(
             llm_base_url="http://ollama:11434/v1",
@@ -235,16 +325,23 @@ def test_language_model_and_embeddings_from_settings() -> None:
     model = built.language_model
     assert isinstance(model, OpenAiCompatLanguageModel)
     assert (model.model, model.endpoint) == ("qwen3", "ollama:11434")
-    assert model._client._url == "http://ollama:11434/v1/chat/completions"
-    assert model._client._client.headers["Authorization"] == "Bearer sk-1"
-    assert (model._temperature, model._seed, model._client._timeout) == (0.1, 3, 120)
-    assert model._format == "json_object"
+    await model.complete(REQUEST)
+    (asked,) = network.requests
+    assert asked.url == "http://ollama:11434/v1/chat/completions"
+    assert asked.headers["Authorization"] == "Bearer sk-1"
+    body = body_of(asked)
+    assert (body["temperature"], body["seed"], timeout_of(asked)) == (0.1, 3, 120)
+    assert body["response_format"] == {"type": "json_object"}
     embeddings = built.embeddings
     assert isinstance(embeddings, OpenAiCompatEmbeddings)
     assert embeddings.model == "bge-m3"
-    assert "Authorization" not in embeddings._client._client.headers
-    assert embeddings._client._timeout == 20
+    await embeddings.embed(["Rechnung"])
+    embedded = network.requests[-1]
+    assert embedded.url == "http://ollama:11434/v1/embeddings"
+    assert "Authorization" not in embedded.headers
+    assert timeout_of(embedded) == 20
     assert model.aclose in built.closers and embeddings.aclose in built.closers
+    await built.aclose()
 
 
 @pytest.mark.usefixtures("offline_adapters")
@@ -259,8 +356,14 @@ def test_templates_from_settings() -> None:
     assert memory.templates.render(template, values) == "März 12,50\xa0€"
 
 
+async def index_settings(index: MeilisearchIndex, network: Network) -> httpx2.Request:
+    """The request that sets the index up, which comes before its first write."""
+    await index.remove(DocumentId(new_id()))
+    return next(request for request in reversed(network.requests) if request.method == "PATCH")
+
+
 @pytest.mark.usefixtures("offline_adapters")
-async def test_search_index_from_settings() -> None:
+async def test_search_index_from_settings(network: Network) -> None:
     built = build_container(
         settings(
             meilisearch_url="http://meilisearch:7700",
@@ -276,18 +379,21 @@ async def test_search_index_from_settings() -> None:
     )
     index = built.search_index
     assert isinstance(index, MeilisearchIndex)
-    assert (index._index, index._dimensions, index._locales) == ("papiq-test", 1024, ["deu"])
-    assert index._task_timeout == 9
-    assert index._client.headers["Authorization"] == "Bearer key"
-    assert index._client.timeout.read == 7
+    assert index.task_timeout == 9
     assert index.aclose in built.closers
+    wanted = await index_settings(index, network)
+    assert wanted.url == "http://meilisearch:7700/indexes/papiq-test/settings"
+    assert (wanted.headers["Authorization"], timeout_of(wanted)) == ("Bearer key", 7)
+    body = body_of(wanted)
+    assert body["localizedAttributes"] == [{"locales": ["deu"], "attributePatterns": ["*"]}]
+    assert [embedder["dimensions"] for embedder in body["embedders"].values()] == [1024]
 
     # Without a model there are no vectors, whatever the length says.
     plain = build_container(
         settings(meilisearch_url="http://meilisearch:7700", embedding_dimensions=1024)
     )
     assert isinstance(plain.search_index, MeilisearchIndex)
-    assert plain.search_index._dimensions is None
+    assert "embedders" not in body_of(await index_settings(plain.search_index, network))
     await built.aclose()
     await plain.aclose()
 
@@ -298,7 +404,7 @@ async def test_search_services_follow_the_search_index() -> None:
     assert without.search_index is None
     services = build_services(without)
     assert (services.indexing, services.search) == (None, None)
-    assert services.master_data._index_renames is False
+    assert services.master_data.index_renames is False
 
     with_index = build_container(
         settings(
@@ -319,7 +425,7 @@ async def test_search_services_follow_the_search_index() -> None:
     )
     services = build_services(with_index, settings(search_semantic_ratio=0.7))
     assert services.indexing is not None and services.search is not None
-    assert services.master_data._index_renames is True
+    assert services.master_data.index_renames is True
     await without.aclose()
     await with_index.aclose()
 
@@ -327,11 +433,11 @@ async def test_search_services_follow_the_search_index() -> None:
 def test_fetching_logos_follows_the_logo_fetcher() -> None:
     off = build_services(build_memory_container())
     assert not off.logos.fetching
-    assert not off.master_data._fetch_logos
-    assert off.classifier is not None and not off.classifier._fetch_logos
+    assert not off.master_data.fetch_logos
+    assert off.classifier is not None and not off.classifier.fetch_logos
     on = build_services(replace(build_memory_container(), logo_fetcher=FakeLogoFetcher()))
-    assert on.logos.fetching and on.master_data._fetch_logos
-    assert on.classifier is not None and on.classifier._fetch_logos
+    assert on.logos.fetching and on.master_data.fetch_logos
+    assert on.classifier is not None and on.classifier.fetch_logos
 
 
 def test_the_services_are_tuned_by_the_settings() -> None:

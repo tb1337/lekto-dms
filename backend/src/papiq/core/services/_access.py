@@ -12,6 +12,7 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.ids import ContactId, DocumentId, SpaceId, UserId
 from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.permissions import (
+    can_control_document,
     can_file_into,
     can_read_document,
     can_write_document,
@@ -33,6 +34,19 @@ async def load_actor(uow: UnitOfWork, actor: UserId) -> User:
     return user
 
 
+def admin_only(user: User, action: str) -> None:
+    """PermissionDeniedError ("only admins <action>") unless `user` is an active admin."""
+    if not user.is_active_admin:
+        raise PermissionDeniedError(f"only admins {action}")
+
+
+async def require_admin(uow: UnitOfWork, actor: UserId, action: str) -> User:
+    """The caller, if an active admin (`admin_only`)."""
+    user = await load_actor(uow, actor)
+    admin_only(user, action)
+    return user
+
+
 async def readable_document(uow: UnitOfWork, user: User, id: DocumentId) -> tuple[Document, Space]:
     document = await uow.documents.find(id)
     if document is None:
@@ -48,6 +62,18 @@ async def writable_document(uow: UnitOfWork, user: User, id: DocumentId) -> tupl
     if not can_write_document(user, document, space):
         raise PermissionDeniedError(f"no write access to document {id}")
     return document, space
+
+
+async def controllable_document(
+    uow: UnitOfWork, user: User, id: DocumentId, action: str
+) -> Document:
+    """The document, if `user` controls it (`can_control_document`: its owner or an admin);
+    NotFoundError if they cannot read it, PermissionDeniedError ("only the owner and admins
+    <action>") if they only read it."""
+    document, _ = await readable_document(uow, user, id)
+    if not can_control_document(user, document):
+        raise PermissionDeniedError(f"only the owner and admins {action}")
+    return document
 
 
 async def visible_space(uow: UnitOfWork, user: User, id: SpaceId) -> Space:

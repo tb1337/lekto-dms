@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from papiq.core.domain.documents import Document
-from papiq.core.domain.errors import EmbeddingsError, PermissionDeniedError, ValidationError
+from papiq.core.domain.errors import EmbeddingsError, ValidationError
 from papiq.core.domain.ids import SpaceId, UserId
 from papiq.core.domain.permissions import document_access, reach_access
 from papiq.core.domain.search import Segment, Visibility
@@ -28,7 +28,7 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
 )
 from papiq.core.ports.search_index import MAX_HITS, MAX_LIMIT
-from papiq.core.services._access import load_actor
+from papiq.core.services._access import admin_only, load_actor
 from papiq.core.services._tags import expanded, group_lookup, matches
 
 log = logging.getLogger(__name__)
@@ -107,8 +107,8 @@ class SearchService:
             raise ValidationError(f"offset must be 0 or more and limit between 1 and {MAX_LIMIT}")
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            if all_users and not user.is_active_admin:
-                raise PermissionDeniedError("only admins search the documents of all users")
+            if all_users:
+                admin_only(user, "search the documents of all users")
             spaces = await uow.spaces.list_accessible(actor)
             filter = await expanded(uow, filter)
         if offset >= MAX_HITS:

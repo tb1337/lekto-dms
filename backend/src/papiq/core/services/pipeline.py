@@ -36,7 +36,7 @@ from papiq.core.domain.ids import DocumentId, JobId, SpaceId, TagId, UserId
 from papiq.core.domain.imports import IMPORTED, ImportedMetadata
 from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.json_value import JsonObject
-from papiq.core.domain.permissions import can_control_document, can_file_into
+from papiq.core.domain.permissions import can_file_into
 from papiq.core.domain.pipeline import (
     CHOSEN_SPACE,
     NODES,
@@ -55,14 +55,14 @@ from papiq.core.domain.reading import (
     vision_advice,
 )
 from papiq.core.domain.rule_engine import changed_fields
-from papiq.core.domain.users import User
 from papiq.core.ports import Clock, ObjectStore, UnitOfWork, UnitOfWorkFactory
 from papiq.core.ports.ocr import VisionModel
 from papiq.core.services._access import (
     checked_changes,
+    controllable_document,
     load_actor,
     may_file,
-    readable_document,
+    require_admin,
     visible_space,
 )
 from papiq.core.services._jobs import STORE_ATTEMPTS, JobRunner, retrying
@@ -407,7 +407,9 @@ class PipelineService:
     async def retry(self, actor: UserId, id: DocumentId) -> Document:
         """Owner or admin: repeat the failed nodes and continue from there."""
         async with self._uow() as uow:
-            document = await _owned_document(uow, await load_actor(uow, actor), id)
+            document = await controllable_document(
+                uow, await load_actor(uow, actor), id, f"control the processing of document {id}"
+            )
             document.retry(self._clock.now())
             await self._restart(uow, document)
         return document
@@ -416,7 +418,9 @@ class PipelineService:
         """Owner or admin: discard the results of `node` and the nodes after it and process
         them again."""
         async with self._uow() as uow:
-            document = await _owned_document(uow, await load_actor(uow, actor), id)
+            document = await controllable_document(
+                uow, await load_actor(uow, actor), id, f"control the processing of document {id}"
+            )
             document.reprocess_from(node, self._clock.now())
             await self._restart(uow, document)
         return document
@@ -429,7 +433,9 @@ class PipelineService:
         if self._vision is None:
             raise InvalidTransitionError("no vision language model is configured")
         async with self._uow() as uow:
-            document = await _owned_document(uow, await load_actor(uow, actor), id)
+            document = await controllable_document(
+                uow, await load_actor(uow, actor), id, f"control the processing of document {id}"
+            )
             document.read_with_vision(self._clock.now())
             await self._restart(uow, document)
         return document
@@ -439,7 +445,9 @@ class PipelineService:
         made one), and whether reading it with the vision language model is advised: the
         document waits for a person because no text was found, or with a poorly read page."""
         async with self._uow() as uow:
-            document = await _owned_document(uow, await load_actor(uow, actor), id)
+            document = await controllable_document(
+                uow, await load_actor(uow, actor), id, f"control the processing of document {id}"
+            )
             log = await uow.processing_log.list_for(id)
         ocr = _latest(log, Node.OCR, made=True)
         parse = _latest(log, Node.PARSE)
@@ -490,7 +498,9 @@ class PipelineService:
         decided values, as long as the document has the machine's title (`titles`)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document = await _owned_document(uow, user, id)
+            document = await controllable_document(
+                uow, user, id, f"control the processing of document {id}"
+            )
             log = await uow.processing_log.list_for(id)
             outcomes = dict(document.processing.outcomes)
             again = {resume_at, *resume_at.descendants}
@@ -587,8 +597,7 @@ class PipelineService:
     async def request_reparse(self, actor: UserId) -> int:
         """Admins only: `reparse`."""
         async with self._uow() as uow:
-            if not (await load_actor(uow, actor)).is_active_admin:
-                raise PermissionDeniedError("only admins read the text of all documents again")
+            await require_admin(uow, actor, "read the text of all documents again")
         return await self.reparse()
 
     async def reparse(self) -> int:
@@ -933,14 +942,6 @@ def _latest(log: Iterable[NodeRun], node: Node, *, made: bool = False) -> NodeRu
         if entry.node is node and not (made and entry.result.outcome is Outcome.FAILED)
     ]
     return runs[-1] if runs else None
-
-
-async def _owned_document(uow: UnitOfWork, user: User, id: DocumentId) -> Document:
-    """The document, if the caller controls its processing: its owner or an admin."""
-    document, _ = await readable_document(uow, user, id)
-    if not can_control_document(user, document):
-        raise PermissionDeniedError(f"only the owner controls processing of document {id}")
-    return document
 
 
 async def _enqueue(

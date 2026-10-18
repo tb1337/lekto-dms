@@ -12,11 +12,10 @@ from datetime import datetime
 from papiq.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
 from papiq.core.domain.identity import Credential, ExternalIdentity, check_new_password
 from papiq.core.domain.ids import UserId
-from papiq.core.domain.permissions import can_manage_users
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import Clock, PasswordHasher, UnitOfWork, UnitOfWorkFactory
-from papiq.core.services._access import load_actor
+from papiq.core.services._access import load_actor, require_admin
 from papiq.core.services.rules.references import disable_rules, refers_to
 
 log = logging.getLogger(__name__)
@@ -47,7 +46,7 @@ class UserService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             users = await uow.users.list_all()
-        visible = users if can_manage_users(user) else [u for u in users if u.active]
+        visible = users if user.is_active_admin else [u for u in users if u.active]
         return sorted(visible, key=lambda u: u.username.casefold())
 
     async def get(self, actor: UserId, id: UserId) -> User:
@@ -55,7 +54,7 @@ class UserService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             found = await uow.users.find(id)
-        if found is None or not (found.active or can_manage_users(user)):
+        if found is None or not (found.active or user.is_active_admin):
             raise NotFoundError("user", id)
         return found
 
@@ -67,7 +66,7 @@ class UserService:
     async def account(self, actor: UserId, id: UserId) -> Account:
         """Admins only."""
         async with self._uow() as uow:
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "manage users")
             return await _account(uow, await uow.users.get(id))
 
     # --- changes by admins ----------------------------------------------------------------------
@@ -96,7 +95,7 @@ class UserService:
         password_hash = await self._hash(username, password)
         now = self._clock.now()
         async with self._uow() as uow:
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "manage users")
             user = await add_user(uow, username, role, now)
             if password_hash is not None:
                 await uow.credentials.add(
@@ -132,7 +131,7 @@ class UserService:
         session and has everything the token was not meant to give; nor may it deactivate the
         admins. A token only deactivates and reactivates users, as a migration does."""
         async with self._uow() as uow:
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "manage users")
             user = await uow.users.get(id)
             if not session and (
                 (role is not None and role is not user.role)
@@ -166,13 +165,13 @@ class UserService:
         `revoke_tokens`."""
         _not_own(actor, id, "reset their own password here")
         async with self._uow() as uow:
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "manage users")
             user = await uow.users.get(id)
         password_hash = await self._hash(user.username, password)
         assert password_hash is not None
         now = self._clock.now()
         async with self._uow() as uow:
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "manage users")
             credential = await uow.credentials.find(id)
             if credential is None:
                 await uow.credentials.add(
@@ -193,7 +192,7 @@ class UserService:
         their own account (that is `AuthService.disable_totp`, which needs a code)."""
         _not_own(actor, id, "turn off their own TOTP here")
         async with self._uow() as uow:
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "manage users")
             await uow.users.get(id)
             credential = await uow.credentials.find(id)
             if credential is not None and credential.totp is not None:
@@ -206,7 +205,7 @@ class UserService:
     async def unlink_external_identities(self, actor: UserId, id: UserId) -> int:
         """Admins only: remove the user's links to identity providers."""
         async with self._uow() as uow:
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "manage users")
             await uow.users.get(id)
             removed = await uow.external_identities.remove_for_user(id)
             await uow.commit()
@@ -217,7 +216,7 @@ class UserService:
         Removes their spaces, the shares to them, their rules and webhooks and all their sign-in
         data. Other users' rules that file into the removed spaces are disabled."""
         async with self._uow() as uow:
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "manage users")
             user = await uow.users.get(id)
             if user.is_active_admin:
                 await _keep_an_admin(uow, user)
@@ -287,13 +286,6 @@ class UserService:
 def _not_own(actor: UserId, id: UserId, what: str) -> None:
     if actor == id:
         raise PermissionDeniedError(f"admins cannot {what}")
-
-
-async def _require_admin(uow: UnitOfWork, actor: UserId) -> User:
-    user = await load_actor(uow, actor)
-    if not can_manage_users(user):
-        raise PermissionDeniedError("only admins manage users")
-    return user
 
 
 async def add_user(uow: UnitOfWork, username: str, role: Role, now: datetime) -> User:

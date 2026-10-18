@@ -5,7 +5,7 @@ from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import User
 from papiq.core.domain.validation import name_key
 from papiq.core.ports import Clock, UnitOfWork, UnitOfWorkFactory
-from papiq.core.services._access import load_actor, visible_space
+from papiq.core.services._access import admin_only, load_actor, visible_space
 from papiq.core.services.rules.references import disable_rules, refers_to
 
 
@@ -51,8 +51,7 @@ class SpaceService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             if owner is not None and owner != actor:
-                if not user.is_active_admin:
-                    raise PermissionDeniedError("only admins create spaces for other users")
+                admin_only(user, "create spaces for other users")
                 target = await uow.users.find(owner)
                 if target is None or not target.active:
                     raise NotFoundError("user", owner)

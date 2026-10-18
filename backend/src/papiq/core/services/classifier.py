@@ -18,7 +18,6 @@ from papiq.core.domain.errors import (
     ClassifierError,
     ConflictError,
     NotFoundError,
-    PermissionDeniedError,
 )
 from papiq.core.domain.events import ClassifierTrained
 from papiq.core.domain.identifiers import (
@@ -42,7 +41,7 @@ from papiq.core.ports import (
     UnitOfWork,
     UnitOfWorkFactory,
 )
-from papiq.core.services._access import load_actor
+from papiq.core.services._access import require_admin
 from papiq.core.services._jobs import LEASE, JobRunner, Step, retrying
 from papiq.core.services.master_data import replace_learned_identifiers
 from papiq.core.services.objects import classifier_key, load_text
@@ -150,8 +149,7 @@ class ClassifierService:
         """Admins only: queue a training, unless one is queued or running. ConflictError with
         fewer confirmed documents than a first model needs."""
         async with self._uow() as uow:
-            if not (await load_actor(uow, actor)).is_active_admin:
-                raise PermissionDeniedError("only admins train the classifier")
+            await require_admin(uow, actor, "train the classifier")
             confirmed = await uow.documents.count_confirmed()
             if confirmed < self.policy.min_examples:
                 raise ConflictError(
@@ -163,8 +161,7 @@ class ClassifierService:
     async def status(self, actor: UserId) -> ClassifierStatus:
         """Admins only: the latest model and the confirmations since."""
         async with self._uow() as uow:
-            if not (await load_actor(uow, actor)).is_active_admin:
-                raise PermissionDeniedError("only admins see the classifier")
+            await require_admin(uow, actor, "see the classifier")
             latest = await uow.classifier_models.latest()
             confirmed = await uow.documents.count_confirmed()
             since = (

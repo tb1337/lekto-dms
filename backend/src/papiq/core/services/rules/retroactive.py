@@ -392,7 +392,7 @@ async def _applicable_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
     if rule.deleted_at is not None:
         raise NotFoundError("rule", id)
     if rule.scope is RuleScope.USER and not (rule.owner_id == user.id or user.is_active_admin):
-        raise PermissionDeniedError("only the owner applies a user rule")
+        raise PermissionDeniedError("only the owner and admins apply a user rule")
     return rule
 
 

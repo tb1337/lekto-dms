@@ -9,7 +9,6 @@ from papiq.core.domain.documents import UNSET, DocumentChanges, Unset
 from papiq.core.domain.errors import (
     ConflictError,
     NotFoundError,
-    PermissionDeniedError,
     ValidationError,
 )
 from papiq.core.domain.fields import FieldDefinition, FieldType
@@ -28,7 +27,6 @@ from papiq.core.domain.master_data import (
 )
 from papiq.core.domain.names import name_key as match_key
 from papiq.core.domain.names import related
-from papiq.core.domain.permissions import can_manage_master_data
 from papiq.core.domain.rules import References, Rule, RuleScope, definition_to_json, title_rule
 from papiq.core.domain.tag_tree import TagTree
 from papiq.core.domain.templates import rename_field_key, unknown_values
@@ -43,7 +41,7 @@ from papiq.core.ports import (
     UnitOfWork,
     UnitOfWorkFactory,
 )
-from papiq.core.services._access import contact_topics_lock, load_actor
+from papiq.core.services._access import contact_topics_lock, load_actor, require_admin
 from papiq.core.services._jobs import LEASE, JobRunner
 
 # A rename queues the indexing service's refresh job; the worker runs it through that service.
@@ -353,7 +351,7 @@ class MasterDataService:
         )
         async with self._uow() as uow:
             await uow.lock(TAG_TREE_LOCK)
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "change master data")
             TagTree.of(await uow.tags.list_all()).check_parent(tag, parent_id)
             await _check_tag_name_free(uow, tag)
             await uow.tags.add(tag)
@@ -380,7 +378,7 @@ class MasterDataService:
         the tag and one now above it (`NORMALISE_JOB`, `normalise_tagged`)."""
         async with self._uow() as uow:
             await uow.lock(TAG_TREE_LOCK)
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "change master data")
             tag = await uow.tags.get(id)
             before = (tag.name, tag.parent_id)
             if name is not None:
@@ -502,7 +500,7 @@ class MasterDataService:
         required for narrow with it); required (global) or the types it is required for. The
         data type never changes. ConflictError if values are in use."""
         async with self._uow() as uow:
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "change master data")
             definition = await uow.fields.get(id)
             old_key = definition.key
             if name is not None:
@@ -565,7 +563,7 @@ class MasterDataService:
         of no other type (it would belong nowhere) or a global one (it belongs to every type).
         One transaction; returns the fields that changed."""
         async with self._uow() as uow:
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "change master data")
             document_type = await uow.document_types.get(id)
             definitions = {item.id: item for item in await uow.fields.list_all()}
             for field in fields:
@@ -858,7 +856,7 @@ class MasterDataService:
         goes with it, before it goes."""
         kind, select = referenced
         async with self._uow() as uow:
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "change master data")
             item = await repository(uow).get(id)
             if await used(uow):
                 raise ConflictError(f"'{item.name}' is in use")
@@ -884,7 +882,7 @@ class MasterDataService:
     ) -> E:
         """`after`: what follows from the new item, in the same unit of work."""
         async with self._uow() as uow:
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "change master data")
             if check is not None:
                 await check(uow)
             await _check_name_free(repository(uow), item)
@@ -913,7 +911,7 @@ class MasterDataService:
         async with self._uow() as uow:
             if lock is not None:
                 await uow.lock(lock)
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "change master data")
             item = await repository(uow).get(id)
             before = indexed(item)
             change(item)
@@ -989,11 +987,6 @@ async def normalise_tagged(
             await uow.document_types.update(member)
         changed += 1
     return changed, None
-
-
-async def _require_admin(uow: UnitOfWork, actor: UserId) -> None:
-    if not can_manage_master_data(await load_actor(uow, actor)):
-        raise PermissionDeniedError("only admins change master data")
 
 
 async def _check_name_free[E: MasterData](repository: NamedRepository[Any, E], item: E) -> None:

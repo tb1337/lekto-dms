@@ -32,14 +32,12 @@ from papiq.core.domain.errors import (
     LogoFetchDisabledError,
     LogoFetchError,
     NotFoundError,
-    PermissionDeniedError,
     UnsupportedMediaTypeError,
     ValidationError,
 )
 from papiq.core.domain.ids import ContactId, UserId
 from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.master_data import Contact
-from papiq.core.domain.permissions import can_manage_master_data
 from papiq.core.ports import (
     Clock,
     ImageNormaliser,
@@ -48,7 +46,7 @@ from papiq.core.ports import (
     UnitOfWork,
     UnitOfWorkFactory,
 )
-from papiq.core.services._access import load_actor
+from papiq.core.services._access import load_actor, require_admin
 from papiq.core.services._jobs import LEASE, JobRunner, retrying
 from papiq.core.services.objects import logo_key
 
@@ -109,7 +107,7 @@ class LogoService:
         UnsupportedMediaTypeError for another kind (SVG: it can carry scripts),
         ValidationError if it is too large, ImageError if it cannot be read."""
         async with self._uow() as uow:
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "change master data")
             await uow.contacts.get(id)
         if len(data) > LOGO_MAX_SIZE:
             raise ValidationError(f"a logo is at most {LOGO_MAX_SIZE} bytes")
@@ -120,7 +118,7 @@ class LogoService:
         async def store() -> Contact:
             async with self._uow() as uow:
                 await uow.lock(logo_lock(id))
-                await _require_admin(uow, actor)
+                await require_admin(uow, actor, "change master data")
                 contact = await uow.contacts.get(id)
                 logo = ContactLogo(source=LogoSource.UPLOADED, stored_at=self._clock.now())
                 contact.set_logo(logo)
@@ -138,7 +136,7 @@ class LogoService:
         async def drop() -> Contact:
             async with self._uow() as uow:
                 await uow.lock(logo_lock(id))
-                await _require_admin(uow, actor)
+                await require_admin(uow, actor, "change master data")
                 contact = await uow.contacts.get(id)
                 if contact.logo is None and contact.logo_failure is None:
                     return contact
@@ -167,7 +165,7 @@ class LogoService:
         LogoFetchDisabledError without fetching; ConflictError while it has an uploaded logo;
         ValidationError without a domain among its identifiers."""
         async with self._uow() as uow:
-            await _require_admin(uow, actor)
+            await require_admin(uow, actor, "change master data")
             if self._fetcher is None:
                 raise LogoFetchDisabledError("Papiq does not fetch logos (PAPIQ_LOGO_FETCH is off)")
             contact = await uow.contacts.get(id)
@@ -325,8 +323,3 @@ async def drop_logo(uow: UnitOfWork, store: ObjectStore, contact: ContactId) -> 
     lock (the unit's only one), so that no logo is stored for it meanwhile."""
     await uow.lock(logo_lock(contact))
     await store.delete(logo_key(contact))
-
-
-async def _require_admin(uow: UnitOfWork, actor: UserId) -> None:
-    if not can_manage_master_data(await load_actor(uow, actor)):
-        raise PermissionDeniedError("only admins change master data")

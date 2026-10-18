@@ -98,11 +98,3 @@ def is_document_owner(user: User, document: Document) -> bool:
 def can_control_document(user: User, document: Document) -> bool:
     """Delete, retry and reprocess a document, read its processing log, review and confirm it."""
     return is_document_owner(user, document) or user.is_active_admin
-
-
-def can_manage_master_data(user: User) -> bool:
-    return user.is_active_admin
-
-
-def can_manage_users(user: User) -> bool:
-    return user.is_active_admin

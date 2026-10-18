@@ -5819,7 +5819,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -5948,7 +5948,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6070,7 +6070,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6141,7 +6141,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6233,7 +6233,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6357,7 +6357,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6500,7 +6500,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6639,7 +6639,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6714,7 +6714,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6819,7 +6819,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6927,7 +6927,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7049,7 +7049,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7212,7 +7212,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7425,7 +7425,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7553,7 +7553,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7696,7 +7696,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7818,7 +7818,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7925,7 +7925,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8035,7 +8035,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8127,7 +8127,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8356,7 +8356,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8484,7 +8484,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8629,7 +8629,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8887,7 +8887,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9026,7 +9026,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9131,7 +9131,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9275,7 +9275,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9367,7 +9367,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9596,7 +9596,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9724,7 +9724,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9869,7 +9869,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10014,7 +10014,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10106,7 +10106,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10335,7 +10335,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10463,7 +10463,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10607,7 +10607,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10699,7 +10699,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10928,7 +10928,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11056,7 +11056,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11253,7 +11253,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11482,7 +11482,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11610,7 +11610,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11756,7 +11756,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11881,7 +11881,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11991,7 +11991,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12083,7 +12083,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12301,7 +12301,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12440,7 +12440,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12568,7 +12568,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12894,7 +12894,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13022,7 +13022,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13238,7 +13238,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13380,7 +13380,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13483,7 +13483,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13571,7 +13571,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13657,7 +13657,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13778,7 +13778,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13918,7 +13918,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -14164,7 +14164,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -14276,7 +14276,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -14421,7 +14421,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -14564,7 +14564,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -15269,7 +15269,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -15376,7 +15376,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -15483,7 +15483,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -15607,7 +15607,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -15928,7 +15928,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -16039,7 +16039,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -16180,7 +16180,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -16291,7 +16291,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -16436,7 +16436,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -16578,7 +16578,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -16823,7 +16823,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -17035,7 +17035,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -17146,7 +17146,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -17287,7 +17287,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -17488,7 +17488,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner controls processing of this document"
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

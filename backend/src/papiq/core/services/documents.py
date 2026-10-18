@@ -15,7 +15,6 @@ from papiq.core.domain.documents import Document, DocumentChanges, confirms
 from papiq.core.domain.errors import (
     ConflictError,
     NotFoundError,
-    PermissionDeniedError,
     SpaceWriteDeniedError,
     UnprocessableDocumentError,
     ValidationError,
@@ -29,7 +28,6 @@ from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.master_data import Assignment
 from papiq.core.domain.permissions import (
     can_control_document,
-    can_manage_master_data,
     can_move_document,
     can_read_document,
     document_access,
@@ -55,7 +53,9 @@ from papiq.core.ports import (
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE
 from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from papiq.core.services._access import (
+    admin_only,
     checked_changes,
+    controllable_document,
     load_actor,
     readable_document,
     visible_space,
@@ -297,7 +297,7 @@ class DocumentService:
         if codes is not None:
             views = _code_facts(codes, amounts)
         others = None
-        if can_manage_master_data(user):
+        if user.is_active_admin:
             async with self._uow() as uow:
                 carrying = await uow.document_identifiers.contacts_of(
                     [item.key for item in facts.identifiers]
@@ -484,9 +484,7 @@ class DocumentService:
         """Owner or admin: the log may hold technical details of failed runs."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await readable_document(uow, user, id)
-            if not can_control_document(user, document):
-                raise PermissionDeniedError(f"only the owner reads the processing log of {id}")
+            await controllable_document(uow, user, id, f"read the processing log of {id}")
             return await uow.processing_log.list_for(id)
 
     async def exchanges(self, actor: UserId, id: DocumentId, node: Node) -> list[RunExchange]:
@@ -498,9 +496,7 @@ class DocumentService:
         assert self._store is not None, "reading model exchanges needs the object store"
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await readable_document(uow, user, id)
-            if not can_control_document(user, document):
-                raise PermissionDeniedError(f"only the owner reads the model exchanges of {id}")
+            await controllable_document(uow, user, id, f"read the model exchanges of {id}")
         for key in (exchanges_key(id, node), legacy_exchanges_key(id, node)):
             if key is None:
                 continue
@@ -544,9 +540,7 @@ class DocumentService:
         """Owner or admin: what is open, and what the model proposed and how it was checked."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await readable_document(uow, user, id)
-            if not can_control_document(user, document):
-                raise PermissionDeniedError(f"only the owner reviews document {id}")
+            document = await controllable_document(uow, user, id, f"review document {id}")
             log = await uow.processing_log.list_for(id)
         return Review(document, open_nodes(document, log), node_reviews(log))
 
@@ -613,9 +607,7 @@ class DocumentService:
         any space."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await readable_document(uow, user, id)
-            if not can_control_document(user, document):
-                raise PermissionDeniedError(f"only the owner moves document {id}")
+            document = await controllable_document(uow, user, id, f"move document {id}")
             target = await visible_space(uow, user, space)
             if not can_move_document(user, document, target):
                 raise SpaceWriteDeniedError(target.id, target.name)
@@ -633,9 +625,7 @@ class DocumentService:
         (derivatives, and the original unless another document has the same file)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await readable_document(uow, user, id)
-            if not can_control_document(user, document):
-                raise PermissionDeniedError(f"only the owner deletes document {id}")
+            document = await controllable_document(uow, user, id, f"delete document {id}")
             document.delete(self._clock.now(), await _readers(uow, document))
             await uow.documents.remove(id)
             await uow.outbox.add(document.pull_events())
@@ -653,8 +643,8 @@ class DocumentService:
 
 async def _lister(uow: UnitOfWork, actor: UserId, all_users: bool) -> User:
     user = await load_actor(uow, actor)
-    if all_users and not user.is_active_admin:
-        raise PermissionDeniedError("only admins list the documents of all users")
+    if all_users:
+        admin_only(user, "list the documents of all users")
     return user
 
 

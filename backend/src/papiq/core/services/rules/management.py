@@ -47,7 +47,7 @@ from papiq.core.domain.templates import (
 from papiq.core.domain.templates import uses_field as field_used
 from papiq.core.domain.users import User
 from papiq.core.ports import Clock, TemplateRenderer, UnitOfWork, UnitOfWorkFactory
-from papiq.core.services._access import load_actor, readable_document
+from papiq.core.services._access import admin_only, load_actor, readable_document
 
 
 @dataclass(frozen=True)
@@ -82,8 +82,8 @@ class RuleService:
         `all_users`: the rules of every user instead of the caller's (admins only)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            if all_users and not user.is_active_admin:
-                raise PermissionDeniedError("only admins list the rules of all users")
+            if all_users:
+                admin_only(user, "list the rules of all users")
             rules = await uow.rules.list_for(
                 owners=None if all_users else (user.id,),
                 include_global=scope is not RuleScope.USER,
@@ -120,8 +120,8 @@ class RuleService:
         """A global rule needs an admin; a user rule belongs to the caller."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            if scope is RuleScope.GLOBAL and not user.is_active_admin:
-                raise PermissionDeniedError("only admins create global rules")
+            if scope is RuleScope.GLOBAL:
+                admin_only(user, "create global rules")
             rule = Rule.create(
                 scope=scope,
                 owner_id=None if scope is RuleScope.GLOBAL else user.id,
@@ -355,7 +355,7 @@ async def _managed_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
     if rule.scope is RuleScope.GLOBAL:
         raise PermissionDeniedError("only admins change global rules")
     if rule.owner_id != user.id:
-        raise PermissionDeniedError("only the owner changes a user rule")
+        raise PermissionDeniedError("only the owner and admins change a user rule")
     return rule
 
 

@@ -44,7 +44,6 @@ from papiq.core.domain.errors import (
     ConcurrencyError,
     EmbeddingsError,
     NotFoundError,
-    PermissionDeniedError,
     SearchIndexError,
 )
 from papiq.core.domain.events import (
@@ -70,7 +69,7 @@ from papiq.core.ports import (
     UnitOfWork,
     UnitOfWorkFactory,
 )
-from papiq.core.services._access import load_actor
+from papiq.core.services._access import require_admin
 from papiq.core.services._jobs import JobRunner, lost
 from papiq.core.services.objects import load_text
 
@@ -220,8 +219,7 @@ class IndexingService:
     async def request_rebuild(self, actor: UserId) -> None:
         """Admins only: queue a rebuild of the index, unless one is queued or running."""
         async with self._uow() as uow:
-            if not (await load_actor(uow, actor)).is_active_admin:
-                raise PermissionDeniedError("only admins rebuild the search index")
+            await require_admin(uow, actor, "rebuild the search index")
             await uow.jobs.enqueue(REBUILD_JOB, {}, run_at=self._clock.now(), dedup_key=REBUILD_JOB)
             await uow.commit()
 

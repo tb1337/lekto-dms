@@ -41,7 +41,7 @@ PROBLEMS: dict[int, tuple[str, str]] = {
     401: ("Unauthorized", "authentication is required"),
     429: ("Too Many Requests", "too many failed attempts; try again later"),
     502: ("Bad Gateway", "the identity provider cannot be reached"),
-    403: ("Forbidden", "only the owner controls processing of this document"),
+    403: ("Forbidden", "only the owner and admins control the processing of this document"),
     404: ("Not Found", "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"),
     405: ("Method Not Allowed", "the method is not allowed here"),
     409: ("Conflict", "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"),

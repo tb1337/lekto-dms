@@ -62,13 +62,27 @@ place of the editor (`tests/setup.ts`); `codemirror.test.ts` runs the real one.
 
 ## Inbox
 
-`/ui/inbox` is the start page and the way in: everything new stands there until a person saw it
-or decided. Its tabs are in `?tab=` (`lib/inbox-view.ts`): all that is open (none), new,
-review, intervene, processing, done; an unknown one counts as none. Each row (`InboxRow`) says
-where its document stands: in processing with its progress bar, yellow or red with the lane and
-why, new calmly with a marker and "Seen" (no call to act), done (the last 14 days) with how
-(confirmed or seen), when and by whom, and "Mark as new" for a seen one. "Mark all as seen"
-asks first. Events refresh the list, also while documents are processed.
+`/ui/inbox` is the start page and the way in: documents are uploaded there only, and
+everything new stands there until a person saw it or decided.
+
+- **Upload:** the button opens `UploadDialog` (the space and, for admins, the owner; files
+  chosen, on a phone through the system's picker with camera and photos, or dropped there).
+  Dropping files on the page uploads them at once into the default space; an overlay shows
+  while files are dragged over it (not on a phone). A drop may hold folders, read in full
+  and recursively through the browser's entries (`lib/intake.ts`, batched `readEntries`),
+  without their structure; files of other types (only PDF, JPEG, PNG, TIFF go) and hidden
+  ones (`.DS_Store`, hidden folders as one) are skipped. Three requests at a time
+  (`lib/upload.svelte.ts`). The result (`UploadSummary`: uploaded, duplicates with a link to
+  the document already there from the 409's `existing_document_id`, skipped with the reason,
+  413 as too large, failures) stays until dismissed, in this browser only; the progress shows
+  while files are on their way. `/ui/documents` has no upload.
+- **Tabs** in `?tab=` (`lib/inbox-view.ts`): all that is open (none), new, review, intervene,
+  processing, done; an unknown one counts as none. Each row (`InboxRow`) says where its
+  document stands: in processing with its progress bar, yellow or red with the lane and why,
+  new calmly with a marker and "Seen" (no call to act), done (the last 14 days) with how
+  (confirmed or seen), when and by whom, and "Mark as new" for a seen one. "Mark all as
+  seen" asks first. Events refresh the list, also while documents are processed. On a phone
+  the tabs scroll sideways in their row, and the actions of a row are icons of 44 pixels.
 
 The counter at the menu entry (`lib/inbox.svelte.ts`) shows everything open from
 `/inbox/summary`, on the colour of the worst lane in it (grey with only documents in

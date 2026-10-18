@@ -1,10 +1,12 @@
-import { render, screen, waitFor, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { inbox } from '#lib/inbox.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
-import { session } from '#lib/session.svelte.ts';
-import { calls, fakeApi, inboxItem, OWNER, summaryOf } from '#lib/testing/documents.ts';
+import { phone } from '#lib/phone.svelte.ts';
+import { session, type User } from '#lib/session.svelte.ts';
+import { calls, fakeApi, inboxItem, json, OWNER, summaryOf } from '#lib/testing/documents.ts';
+import { uploads } from '#lib/upload.svelte.ts';
 import Page from './+page.svelte';
 
 const state = vi.hoisted(() => ({ url: new URL('http://papiq/ui/inbox') }));
@@ -18,8 +20,26 @@ vi.mock('$app/state', () => ({
 }));
 
 const USERS = [
-	{ id: OWNER, username: 'tobi' },
-	{ id: 'admin-1', username: 'admin' }
+	{ id: OWNER, username: 'tobi', role: 'user', active: true },
+	{ id: 'admin-1', username: 'admin', role: 'admin', active: true }
+];
+const SPACES = [
+	{
+		id: 'space-1',
+		name: 'Privat',
+		owner_id: OWNER,
+		is_default: true,
+		access: 'read_write',
+		shares: []
+	},
+	{
+		id: 'space-2',
+		name: 'Büro',
+		owner_id: 'admin-1',
+		is_default: true,
+		access: 'read_write',
+		shares: []
+	}
 ];
 
 type Items = ReturnType<typeof inboxItem>[];
@@ -32,7 +52,9 @@ function start(items: Items | ((tab: string | null) => Items), summary = summary
 		}),
 		'GET /api/v1/inbox/summary': () => summary,
 		'GET /api/v1/users': () => USERS,
-		'POST /api/v1/inbox/seen': () => ({ marked: 2 })
+		'POST /api/v1/inbox/seen': () => ({ marked: 2 }),
+		'POST /api/v1/documents': () => json({ id: 'doc-new' }, 202),
+		'GET /api/v1/spaces': () => SPACES
 	});
 	vi.stubGlobal('fetch', api);
 	inbox.summary = summary;
@@ -40,18 +62,28 @@ function start(items: Items | ((tab: string | null) => Items), summary = summary
 	return api;
 }
 
-beforeEach(() => {
-	state.url = new URL('http://papiq/ui/inbox');
+function signIn(role: User['role'] = 'user') {
 	session.start({
-		user: { id: OWNER, username: 'tobi', role: 'user' },
+		user:
+			role === 'admin'
+				? { id: 'admin-1', username: 'admin', role }
+				: { id: OWNER, username: 'tobi', role },
 		method: 'password',
 		expires_at: '2026-10-18T12:00:00Z',
 		csrf_token: 'token'
 	});
+}
+
+beforeEach(() => {
+	state.url = new URL('http://papiq/ui/inbox');
+	phone.override(false);
+	signIn();
 });
 
 afterEach(() => {
 	inbox.summary = null;
+	uploads.reset();
+	phone.override(null);
 	session.clear();
 	vi.unstubAllGlobals();
 });
@@ -198,5 +230,151 @@ describe('inbox rows', () => {
 		expect(within(confirmed).queryByRole('button')).toBeNull();
 		await userEvent.click(within(seen).getByRole('button', { name: m.inbox_unseen() }));
 		await waitFor(() => expect(calls(api)).toContain('DELETE /api/v1/documents/s1/seen'));
+	});
+});
+
+const pdf = (name: string) => new File(['%PDF-1.7'], name, { type: 'application/pdf' });
+
+function fileEntry(path: string, file: File) {
+	return {
+		isFile: true,
+		isDirectory: false,
+		name: file.name,
+		fullPath: path,
+		file: (resolve: (file: File) => void) => resolve(file)
+	};
+}
+
+/** What a browser hands over for a drop of a folder `Scans` (a PDF, a text file, a folder with
+ * another PDF) and a PDF beside it. */
+function droppedFolder() {
+	const inner = [fileEntry('/Scans/2026/b.pdf', pdf('b.pdf'))];
+	const outer = [
+		fileEntry('/Scans/a.pdf', pdf('a.pdf')),
+		fileEntry('/Scans/notes.txt', new File(['hi'], 'notes.txt', { type: 'text/plain' })),
+		{
+			isFile: false,
+			isDirectory: true,
+			name: '2026',
+			fullPath: '/Scans/2026',
+			createReader: () => reader(inner)
+		}
+	];
+	const reader = (entries: unknown[]) => {
+		let done = false;
+		return {
+			readEntries(resolve: (entries: unknown[]) => void) {
+				resolve(done ? [] : entries);
+				done = true;
+			}
+		};
+	};
+	const roots = [
+		{
+			isFile: false,
+			isDirectory: true,
+			name: 'Scans',
+			fullPath: '/Scans',
+			createReader: () => reader(outer)
+		},
+		fileEntry('/c.pdf', pdf('c.pdf'))
+	];
+	return {
+		types: ['Files'],
+		items: roots.map((entry) => ({ kind: 'file', webkitGetAsEntry: () => entry })),
+		files: [],
+		dropEffect: 'none'
+	};
+}
+
+describe('uploading in the inbox', () => {
+	it('drops files and folders on the page into the default space', async () => {
+		const api = start([]);
+		await screen.findByText(m.inbox_empty());
+		expect(screen.queryByText(m.upload_drop_overlay())).toBeNull();
+		await fireEvent.dragEnter(window, { dataTransfer: { types: ['Files'] } });
+		expect(screen.getByText(m.upload_drop_overlay())).toBeTruthy();
+		await fireEvent.drop(window, { dataTransfer: droppedFolder() });
+		expect(screen.queryByText(m.upload_drop_overlay())).toBeNull();
+		await waitFor(() =>
+			expect(calls(api).filter((call) => call === 'POST /api/v1/documents')).toHaveLength(3)
+		);
+		const summary = await screen.findByRole('region', { name: m.upload_summary_label() });
+		await waitFor(() =>
+			expect(
+				within(summary).getByText(
+					`${m.upload_summary_uploaded({ count: 3 })}, ${m.upload_summary_skipped({ count: 1 })}`
+				)
+			).toBeTruthy()
+		);
+		expect(within(summary).getByText('Scans/notes.txt')).toBeTruthy();
+	});
+
+	it('leaves the overlay when the files leave the page, and ignores other drags', async () => {
+		start([]);
+		await screen.findByText(m.inbox_empty());
+		await fireEvent.dragEnter(window, { dataTransfer: { types: ['text/plain'] } });
+		expect(screen.queryByText(m.upload_drop_overlay())).toBeNull();
+		await fireEvent.dragEnter(window, { dataTransfer: { types: ['Files'] } });
+		const overlay = screen.getByText(m.upload_drop_overlay()).closest('[role="presentation"]')!;
+		await fireEvent.dragLeave(overlay);
+		expect(screen.queryByText(m.upload_drop_overlay())).toBeNull();
+	});
+
+	it('offers no drop on a phone, only the button', async () => {
+		phone.override(true);
+		const api = start([]);
+		await screen.findByText(m.inbox_empty());
+		await fireEvent.dragEnter(window, { dataTransfer: { types: ['Files'] } });
+		expect(screen.queryByText(m.upload_drop_overlay())).toBeNull();
+		await fireEvent.drop(window, { dataTransfer: droppedFolder() });
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(calls(api)).not.toContain('POST /api/v1/documents');
+		expect(screen.getByRole('button', { name: m.upload_title() })).toBeTruthy();
+	});
+
+	it('uploads with the dialog, into the space and for the owner an admin chose', async () => {
+		signIn('admin');
+		const user = userEvent.setup();
+		const append = vi.spyOn(FormData.prototype, 'append');
+		try {
+			const api = start([]);
+			await screen.findByText(m.inbox_empty());
+			await user.click(screen.getByRole('button', { name: m.upload_title() }));
+			const dialog = await screen.findByRole('dialog');
+			const owner = within(dialog).getByLabelText(m.upload_owner());
+			await waitFor(() => expect(owner.querySelectorAll('option')).toHaveLength(2));
+			await user.selectOptions(owner, OWNER);
+			const space = within(dialog).getByLabelText(m.upload_space());
+			// Only the spaces the owner may write to.
+			expect([...space.querySelectorAll('option')].map((option) => option.value)).toEqual([
+				'',
+				'space-1'
+			]);
+			await user.selectOptions(space, 'space-1');
+			await user.upload(within(dialog).getByLabelText(m.upload_choose()), [pdf('a.pdf')]);
+			await waitFor(() => expect(calls(api)).toContain('POST /api/v1/documents'));
+			await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+			await waitFor(() => expect(document.body.style.pointerEvents).not.toBe('none'));
+			expect(
+				append.mock.calls.map(([name, value]) => [name, value instanceof File ? value.name : value])
+			).toEqual([
+				['file', 'a.pdf'],
+				['space_id', 'space-1'],
+				['owner', OWNER]
+			]);
+		} finally {
+			append.mockRestore();
+		}
+	});
+
+	it('asks a user for no owner', async () => {
+		const user = userEvent.setup();
+		start([]);
+		await screen.findByText(m.inbox_empty());
+		await user.click(screen.getByRole('button', { name: m.upload_title() }));
+		const dialog = await screen.findByRole('dialog');
+		expect(within(dialog).queryByLabelText(m.upload_owner())).toBeNull();
+		expect(within(dialog).getByLabelText(m.upload_space())).toBeTruthy();
 	});
 });

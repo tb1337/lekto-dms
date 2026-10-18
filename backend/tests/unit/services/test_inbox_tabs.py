@@ -150,8 +150,8 @@ async def test_a_confirmed_document_is_new_for_no_one(world: World, by: Role) ->
 
 
 async def test_a_retry_from_red_ending_green_by_itself(world: World) -> None:
-    """Red documents stand under intervene; a retry that ends green is new only if it changed
-    contact, type, topic, tags, date or fields."""
+    """Red documents stand under intervene; a retry that ends green by itself makes them new,
+    also with their metadata unchanged (Tobi, 18.10.2026)."""
     owner = await world.user()
     acme = await contact(world, "ACME")
     filing = await arrive(world, owner, {Node.FILE: Returns(FAILED)})
@@ -167,10 +167,24 @@ async def test_a_retry_from_red_ending_green_by_itself(world: World) -> None:
     for document in (filing, reading):
         await pipeline.retry(owner.id, document.id)
     await world.drain(pipeline)
-    (item,) = await world.inbox.items(owner.id)
-    assert (item.document.id, item.state.tab) == (reading.id, InboxTab.NEW)
+    assert tabs(await world.inbox.items(owner.id)) == [("a", InboxTab.NEW)] * 2
     filed = await world.documents.get(owner.id, filing.id)
-    assert (filed.lane, filed.new_at) == (Lane.GREEN, None)
+    assert (filed.lane, filed.contact_id, filed.new_at) == (Lane.GREEN, None, NOW + MINUTE)
+
+
+async def test_a_yellow_document_reprocessed_green_by_itself_is_new(world: World) -> None:
+    owner = await world.user()
+    yellow = await arrive(world, owner, {Node.JUDGE: Returns(UNCERTAIN)})
+    world.clock.advance(MINUTE)
+    pipeline = world.pipeline()
+    await pipeline.reprocess_from(owner.id, yellow.id, Node.JUDGE)
+    await world.drain(pipeline)
+    (item,) = await world.inbox.items(owner.id)
+    assert (item.document.id, item.state.tab, item.document.new_at) == (
+        yellow.id,
+        InboxTab.NEW,
+        NOW + MINUTE,
+    )
 
 
 async def test_seen_is_per_user(world: World) -> None:

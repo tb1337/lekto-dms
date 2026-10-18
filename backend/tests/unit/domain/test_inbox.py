@@ -61,7 +61,7 @@ def test_a_first_run_ending_yellow_or_red_makes_nothing_new() -> None:
         assert document.new_at is None
 
 
-def test_reprocessing_makes_it_new_again_only_if_the_metadata_changed() -> None:
+def test_reprocessing_a_green_document_makes_it_new_only_if_the_metadata_changed() -> None:
     document = green()
     document.reprocess_from(Node.JUDGE, LATER)
     finish(document, LATER, change=DocumentChanges(contact_id=CONTACT))
@@ -75,18 +75,26 @@ def test_reprocessing_makes_it_new_again_only_if_the_metadata_changed() -> None:
         assert document.new_at == LAST
 
 
-def test_a_retry_from_red_ending_green_by_itself_compares_with_before() -> None:
-    """A retry is a run like a reprocessing: new only if the metadata changed in it."""
-    at_filing = finish(builders.received(), NOW, {Node.FILE: FAILED}, change=DocumentChanges())
-    assert (at_filing.lane, at_filing.new_at) == (Lane.RED, None)
-    at_filing.retry(LATER)
-    finish(at_filing, LATER)
-    assert (at_filing.lane, at_filing.new_at) == (Lane.GREEN, None)
+def test_a_document_that_was_not_green_is_new_whatever_changed() -> None:
+    """A retry from red, a reprocessing of a yellow document (Tobi, 18.10.2026): ending green
+    by itself, it is new, also with its metadata unchanged."""
+    red = finish(builders.received(), NOW, {Node.FILE: FAILED}, change=DocumentChanges())
+    assert (red.lane, red.new_at) == (Lane.RED, None)
+    red.retry(LATER)
+    finish(red, LATER)
+    assert (red.lane, red.new_at) == (Lane.GREEN, LATER)
 
-    at_ocr = finish(builders.received(), NOW, {Node.OCR: FAILED})
-    at_ocr.retry(LATER)
-    finish(at_ocr, LATER, change=DocumentChanges(contact_id=CONTACT))
-    assert (at_ocr.lane, at_ocr.new_at) == (Lane.GREEN, LATER)
+    yellow = finish(builders.received(), NOW, {Node.JUDGE: UNCERTAIN})
+    yellow.reprocess_from(Node.JUDGE, LATER)
+    finish(yellow, LATER)
+    assert (yellow.lane, yellow.new_at) == (Lane.GREEN, LATER)
+
+    once_green = green()  # new since its first run, then yellow after a reprocessing
+    once_green.reprocess_from(Node.JUDGE, LATER)
+    finish(once_green, LATER, {Node.JUDGE: UNCERTAIN})
+    once_green.reprocess_from(Node.JUDGE, LAST)
+    finish(once_green, LAST, change=DocumentChanges(contact_id=CONTACT))  # unchanged
+    assert (once_green.lane, once_green.new_at) == (Lane.GREEN, LAST)
 
 
 def test_a_confirmed_document_is_new_for_no_one() -> None:

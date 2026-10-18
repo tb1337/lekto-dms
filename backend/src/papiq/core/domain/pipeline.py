@@ -298,6 +298,12 @@ class NodeState:
         return self.status in (NodeStatus.WAITING, NodeStatus.RUNNING)
 
 
+NOT_GREEN = "not green"
+"""`Processing.baseline` of a run that started on a document that was not green: in
+processing (its first run), yellow or red. Ending green by itself, the run makes it new
+whatever changed."""
+
+
 class ProcessingStatus(StrEnum):
     PROCESSING = "processing"  # nodes are due or running
     COMPLETED = "completed"  # every node done or skipped
@@ -315,9 +321,11 @@ class Processing:
     (`Document.read_with_vision`); a retry keeps it, another reprocessing does not.
 
     What decides whether the run makes the document new when it ends green (the inbox,
-    `Document.new_at`): `decided`, a person decided in this run (confirmed the document in the
-    inbox, set its metadata, or they were taken over from the source system), and then it does
-    not; otherwise its first run always does, and a later one if the document's metadata differ
+    `Document.new_at`; Tobi, 18.10.2026): `decided`, a person decided in this run (confirmed
+    the document in the inbox, set its metadata, or they were taken over from the source
+    system), and then it does not. Otherwise a run that started on a document that was not
+    green (its first run, a retry from red, a reprocessing of a yellow one: `baseline` is
+    `NOT_GREEN`) always does, and one that started on a green document if its metadata differ
     from `baseline`, their digest when the run started (`documents.metadata_digest`). Runs
     started before 0.4 have no baseline and make no document new, except a first run.
     """
@@ -346,9 +354,12 @@ class Processing:
 
     @classmethod
     def new(cls) -> "Processing":
-        """The state of a document that just arrived: every node waiting."""
+        """The state of a document that just arrived: every node waiting; it was not green."""
         return cls(
-            status=ProcessingStatus.PROCESSING, run=1, nodes={node: NodeState() for node in NODES}
+            status=ProcessingStatus.PROCESSING,
+            run=1,
+            nodes={node: NodeState() for node in NODES},
+            baseline=NOT_GREEN,
         )
 
     def outcome(self, node: Node) -> Outcome | None:

@@ -302,14 +302,17 @@ their inbox.
 - **Open**, newest first, in the one cursor format: in processing (`processing`, no lane yet),
   yellow (`review`) and red (`intervene`) until a person confirms them, and new documents
   (`new`) until the caller has seen them. Nothing leaves with time: a document leaves when a
-  person confirms it or the caller sees it, or when a retry or reprocessing ends green with its
-  metadata unchanged (it is not new then). Each item keeps its open nodes and fields.
+  person confirms it or the caller sees it; a green document processed again leaves
+  `processing` as it came, new only if its metadata changed. Each item keeps its open nodes and
+  fields.
 - **New** (`documents.new_at`): a processing run that ends green makes the document new, unless
   a person decided in it: confirmed it in the inbox, set its metadata while it ran, or it was
-  taken over with the source system's metadata (`processing_decided`). Its first run always
-  does; a retry or a reprocessing only if contact, type, topic, tags, date or fields differ from
-  when it started (`processing_baseline`, a digest of them). Confirming out of yellow or red,
-  by the owner or an admin, makes it new for no one.
+  taken over with the source system's metadata (`processing_decided`). A run that started on a
+  document that was not green always does: its first run, a retry from red, a reprocessing of a
+  yellow document, also with its metadata unchanged. A run that started on a green document
+  does only if contact, type, topic, tags, date or fields differ from when it started
+  (`processing_baseline`, a digest of them). Confirming out of yellow or red, by the owner or an
+  admin, makes it new for no one.
 - **Seen** is per user (`inbox_seen`, when each user saw a document last; new for them again
   once it became new after). The web UI reports it when the document view opens
   (`PUT /documents/{id}/seen`); reading through the API or MCP sets nothing. `DELETE` marks a

@@ -16,7 +16,15 @@ from papiq.core.domain.ids import DocumentId, SpaceId, TagId, new_id
 from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
 from papiq.core.domain.periods import Period
 from papiq.core.domain.permissions import can_read_document
-from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
+from papiq.core.domain.pipeline import (
+    NOT_GREEN,
+    Lane,
+    Node,
+    NodeResult,
+    NodeRun,
+    Outcome,
+    ProcessingStatus,
+)
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import User
 from papiq.core.domain.verdict import KnownLabels
@@ -782,6 +790,7 @@ class UnitOfWorkContract:
         failed = builders.processed(owner, space, {Node.PARSE: FAILED})
         failed.retry(NOW)
         failed.pull_events()
+        assert failed.processing.baseline == NOT_GREEN  # it was red: new if it ends green
         received = builders.document(owner, space)
         in_review = builders.processed(owner, space, {Node.JUDGE: UNCERTAIN})
         assert in_review.processing.status is ProcessingStatus.REVIEW

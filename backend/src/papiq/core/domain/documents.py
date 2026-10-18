@@ -46,6 +46,7 @@ from papiq.core.domain.ids import (
 )
 from papiq.core.domain.pipeline import (
     CURRENT_SIGNALS,
+    NOT_GREEN,
     SIGNALS,
     Lane,
     Node,
@@ -190,8 +191,9 @@ class Document:
     # own. Confirmed documents train the classifier.
     confirmed_at: datetime | None = None
     # When processing last made it new for the inbox: a run ended green without a person's
-    # decision in it (`Processing.decided`), its first, or a later one after which its
-    # metadata differ from before (`Processing.baseline`). None: new for no one (a person
+    # decision in it (`Processing.decided`) that started on a document that was not green (its
+    # first run, a retry from red, a reprocessing of a yellow one), or on a green one whose
+    # metadata differ afterwards (`Processing.baseline`). None: new for no one (a person
     # confirmed it out of yellow or red since, or it never was; documents from before 0.4).
     # Who saw it since is per user (`domain.inbox`).
     new_at: datetime | None = None
@@ -509,7 +511,7 @@ class Document:
             processing.nodes[node] = NodeState()
         processing.run += 1
         processing.status = ProcessingStatus.PROCESSING
-        processing.baseline = metadata_digest(self)
+        processing.baseline = metadata_digest(self) if self.lane is Lane.GREEN else NOT_GREEN
         processing.decided = False
         self._set_lane(None, now)
         self._touch(now)
@@ -525,9 +527,9 @@ class Document:
         processing = self.processing
         if processing.decided:
             return False
-        if processing.run == 1:
-            return True
-        return processing.baseline is not None and processing.baseline != metadata_digest(self)
+        if processing.baseline is None:  # a run started before 0.4
+            return processing.run == 1
+        return processing.baseline == NOT_GREEN or processing.baseline != metadata_digest(self)
 
     # --- metadata -------------------------------------------------------------------------------
 

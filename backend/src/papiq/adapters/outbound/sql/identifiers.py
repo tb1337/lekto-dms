@@ -6,12 +6,12 @@ from collections.abc import Collection
 from sqlalchemy import and_, delete, insert, or_, select
 
 from papiq.adapters.outbound.sql import tables as t
+from papiq.adapters.outbound.sql.repositories import KEYS_PER_QUERY
 from papiq.adapters.outbound.sql.transaction import Transaction
 from papiq.core.domain.identifiers import IdentifierKind
 from papiq.core.domain.ids import ContactId, DocumentId
 
 type Key = tuple[IdentifierKind, str]
-_BATCH = 200  # identifiers per query
 
 
 class SqlDocumentIdentifierRepository:
@@ -32,11 +32,11 @@ class SqlDocumentIdentifierRepository:
         table, documents = t.document_identifiers, t.documents
         found: dict[Key, set[ContactId]] = defaultdict(set)
         keys = sorted(set(identifiers))
-        for start in range(0, len(keys), _BATCH):
+        for start in range(0, len(keys), KEYS_PER_QUERY):
             wanted = or_(
                 *(
                     and_(table.c.kind == kind.value, table.c.value == value)
-                    for kind, value in keys[start : start + _BATCH]
+                    for kind, value in keys[start : start + KEYS_PER_QUERY]
                 )
             )
             query = (

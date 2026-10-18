@@ -16,6 +16,7 @@ from papiq.core.domain.evidence import (
     read_date,
     read_number,
     read_period,
+    truth_value,
 )
 from papiq.core.domain.periods import Period
 
@@ -293,3 +294,21 @@ def test_a_text_shows_a_period_as_written_or_by_its_first_and_last_day() -> None
     assert periods_in(normalise("Kunden-Nr. 2026-0412, Rechnung vom 01.09.2026")) == {
         Period.day(date(2026, 9, 1))
     }
+
+
+def test_yes_and_no_as_written() -> None:
+    assert [truth_value(text) for text in ("Ja", " yes ", "true", "nein", "No", "false")] == [
+        True,
+        True,
+        True,
+        False,
+        False,
+        False,
+    ]
+    assert truth_value("vielleicht") is None
+
+
+def test_a_text_read_at_once_has_found_everything() -> None:
+    text = DocumentText.read("Rechnung vom 31.03.2026 über 84,20 EUR")
+    assert {"normalised", "dates", "periods", "numbers", "amounts", "currencies"} <= set(vars(text))
+    assert text.has_date(date(2026, 3, 31)) and text.has_currency("EUR")

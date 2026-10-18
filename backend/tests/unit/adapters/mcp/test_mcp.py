@@ -26,12 +26,8 @@ from papiq.core.domain.master_data import TagScope
 from papiq.core.services.objects import text_key
 from tests import builders
 from tests.api import auth, serving
-from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import Api, make_app
-from tests.unit.adapters.rest.test_permission_matrix import Scene
-from tests.unit.adapters.rest.test_resources import post
-from tests.unit.adapters.rest.test_rules import upload
-from tests.unit.adapters.rest.test_search import indexed_scene
+from tests.builders import SAMPLES
+from tests.unit.adapters.rest.support import Api, Scene, indexed_scene, make_app, post, upload
 
 URL = f"https://papiq{PREFIX}/mcp"
 TEXT = "Strom Rechnung März\n" + "Zeile mit Inhalt\n" * 20
@@ -65,7 +61,7 @@ async def api() -> AsyncIterator[Api]:
     container = build_memory_container(clock)
     services = build_services(container)
     builders.skip_classification(services.pipeline)
-    app = make_app(container, services, mcp=True, mcp_text_max=100)
+    app = make_app(container, services, mcp=True, text_max=100)
     async with running(app):
         transport = httpx2.ASGITransport(app=app)
         async with httpx2.AsyncClient(transport=transport, base_url="https://papiq") as client:
@@ -357,9 +353,10 @@ async def test_search_filters_by_name(api: Api, scene: Scene) -> None:
         DocumentId(UUID(scene.green)),
         DocumentChanges(tag_ids=frozenset({tag.id})),
     )
-    await api.services.indexing.reconcile()  # type: ignore[union-attr]
-    while await api.services.indexing.run_next_job():  # type: ignore[union-attr]
-        pass
+    indexing = api.services.indexing
+    assert indexing is not None
+    await indexing.reconcile()
+    await builders.drain(indexing)
     assert await found(api, scene.headers["owner"], tags=["strom"]) == {scene.green}
     # A tag finds the documents with a tag below it.
     assert await found(api, scene.headers["owner"], tags=["Energie"]) == {scene.green}
@@ -388,9 +385,10 @@ async def test_search_filters_by_topics(api: Api, scene: Scene) -> None:
             DocumentId(UUID(which)),
             DocumentChanges(contact_id=nord.id, topic_id=topic.id),
         )
-    await api.services.indexing.reconcile()  # type: ignore[union-attr]
-    while await api.services.indexing.run_next_job():  # type: ignore[union-attr]
-        pass
+    indexing = api.services.indexing
+    assert indexing is not None
+    await indexing.reconcile()
+    await builders.drain(indexing)
     owner = scene.headers["owner"]
     assert await found(api, owner, topics=["arbeit"]) == {scene.green}
     assert await found(api, owner, topics=["Versicherung"]) == {scene.yellow}

@@ -17,20 +17,20 @@ The definition (name, priority, triggers, conditions, actions) is versioned: eve
 a new version; old versions stay readable so the processing log can refer to them. Enabling and
 disabling are state, not content, and make no version.
 
-Definitions are stored as JSON (`definition_to_json`, `definition_from_json`). Values in
-conditions and actions keep their JSON form (field values as `field_to_json` writes
-them) and are read with the field definitions where needed (`check_fields`).
+Definitions are stored as JSON (`rules_json`). Values in conditions and actions keep their
+JSON form (field values as `field_to_json` writes them) and are read with the field
+definitions where needed (`check_fields`).
 """
 
-import re
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal, Self
 from uuid import UUID
 
+from papiq.core.domain.classification import field_key
 from papiq.core.domain.documents import Channel
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.fields import FieldDefinition, FieldType, FieldValue, field_from_json
@@ -46,7 +46,7 @@ from papiq.core.domain.ids import (
     UserId,
     new_id,
 )
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import JsonValue, require_date, require_uuid
 from papiq.core.domain.master_data import DocumentType, TagScope
 from papiq.core.domain.validation import require_name, require_utc
 
@@ -56,7 +56,6 @@ MAX_PRIORITY = 1000
 MAX_DEPTH = 5
 MAX_CONDITIONS = 50
 MAX_ACTIONS = 20
-MAX_NAME = 200
 MAX_TEXT = 500
 MAX_PATTERN = 200
 MAX_LIST = 100
@@ -202,29 +201,27 @@ class Condition:
             self._check_value(item)
         if self.field in _ID_FIELDS:
             # One spelling of every id, so conditions compare ids as text.
-            ids = [str(_uuid(item, self.field.value)) for item in items]
+            ids = [str(require_uuid(item, self.field.value)) for item in items]
             object.__setattr__(self, "value", ids if self.op is Operator.IN else ids[0])
 
     def _check_value(self, value: JsonValue) -> None:
         match self.field:
             case id_field if id_field in _ID_FIELDS:
-                _uuid(value, self.field.value)
+                require_uuid(value, self.field.value)
             case ConditionField.CHANNEL:
                 if not isinstance(value, str) or value not in {
                     channel.value for channel in Channel
                 }:
                     raise ValidationError(f"unknown channel {value!r}")
             case ConditionField.TEXT:
+                # A pattern is checked by the pattern matcher that runs it (`check_patterns`).
                 _text(value, MAX_PATTERN if self.op is Operator.MATCHES else MAX_TEXT)
-                if self.op is Operator.MATCHES:
-                    _pattern(value)
             case ConditionField.DOCUMENT_DATE:
-                _date(value)
+                require_date(value, self.field.value)
             case ConditionField.FIELD:
                 # Checked against the definition by `check_fields`; here only patterns.
                 if self.op is Operator.MATCHES:
                     _text(value, MAX_PATTERN)
-                    _pattern(value)
                 elif self.op is Operator.CONTAINS:
                     _text(value, MAX_TEXT)
 
@@ -396,8 +393,6 @@ class RuleDefinition:
 
     def __post_init__(self) -> None:
         name = require_name(self.name, "rule name")
-        if len(name) > MAX_NAME:
-            raise ValidationError(f"the rule name has more than {MAX_NAME} characters")
         object.__setattr__(self, "name", name)
         if (
             isinstance(self.priority, bool)
@@ -500,7 +495,7 @@ def _single_key(action: Action) -> str | None:
     """The field an action sets alone; two such actions in one rule contradict each other."""
     match action:
         case SetField(field_id=field):
-            return f"field:{field}"
+            return field_key(field)
         case AddTags() | RemoveTags() | ForceReview():
             return None
     return action.type
@@ -566,7 +561,7 @@ def condition_value(field: FieldDefinition, op: Operator, value: JsonValue) -> F
     """A value a condition on `field` compares with, in the field's type; for a period's `gt`
     and `lt` a date (it starts after, it ends before). ValidationError if it does not fit."""
     if field.data_type is FieldType.PERIOD and op in (Operator.GT, Operator.LT):
-        return _date(value)
+        return require_date(value, field.name)
     return field_from_json(field, value)
 
 
@@ -794,14 +789,22 @@ class RuleApplication:
     def remaining(self) -> tuple[DocumentId, ...]:
         return self.documents[self.position :]
 
-    def record(self, document: DocumentId, outcome: Literal["applied", "unchanged"] | str) -> None:
-        """One more document done: applied, unchanged, or skipped with a reason."""
-        if outcome == "applied":
-            self.applied += 1
-        elif outcome == "unchanged":
-            self.unchanged += 1
-        else:
-            self.skipped.append((document, outcome))
+    def record_applied(self) -> None:
+        """One more document done: the rule changed it."""
+        self.applied += 1
+        self._next()
+
+    def record_unchanged(self) -> None:
+        """One more document done: the rule did not hold or changed nothing."""
+        self.unchanged += 1
+        self._next()
+
+    def record_skipped(self, document: DocumentId, reason: str) -> None:
+        """One more document done: left as it was, for `reason`."""
+        self.skipped.append((document, reason))
+        self._next()
+
+    def _next(self) -> None:
         self.position += 1
         self.status = ApplicationStatus.RUNNING
 
@@ -811,216 +814,7 @@ class RuleApplication:
         self.finished_at = require_utc(now, "finished_at")
 
 
-# --- JSON -------------------------------------------------------------------------------------
-
-
-def definition_to_json(definition: RuleDefinition) -> JsonObject:
-    return {
-        "name": definition.name,
-        "priority": definition.priority,
-        "triggers": _strings(sorted(trigger.value for trigger in definition.triggers)),
-        "conditions": group_to_json(definition.conditions),
-        "actions": [action_to_json(action) for action in definition.actions],
-    }
-
-
-def group_to_json(group: Group) -> JsonObject:
-    data: JsonObject = {
-        group.mode: [
-            group_to_json(item) if isinstance(item, Group) else condition_to_json(item)
-            for item in group.items
-        ]
-    }
-    if group.negate:
-        data["not"] = True
-    return data
-
-
-def condition_to_json(condition: Condition) -> JsonObject:
-    data: JsonObject = {"field": condition.field.value, "op": condition.op.value}
-    if condition.field_id is not None:
-        data["field_id"] = str(condition.field_id)
-    if condition.value is not None:
-        data["value"] = condition.value
-    if condition.case_sensitive:
-        data["case_sensitive"] = True
-    return data
-
-
-def action_to_json(action: Action) -> JsonObject:
-    match action:
-        case SetSpace(space_id=space):
-            return {"type": action.type, "space_id": str(space)}
-        case SetContact(contact_id=contact):
-            return {"type": action.type, "contact_id": str(contact)}
-        case SetDocumentType(document_type_id=document_type):
-            return {"type": action.type, "document_type_id": str(document_type)}
-        case SetTopic(topic_id=topic):
-            return {"type": action.type, "topic_id": str(topic)}
-        case SetTitle(template=template):
-            return {"type": action.type, "template": template}
-        case AddTags(tag_ids=tags) | RemoveTags(tag_ids=tags):
-            return {"type": action.type, "tag_ids": _strings(sorted(str(tag) for tag in tags))}
-        case SetField(field_id=field, value=value):
-            return {"type": action.type, "field_id": str(field), "value": value}
-        case ForceReview(reason=reason):
-            return {"type": action.type, "reason": reason}
-
-
-def definition_from_json(data: JsonValue) -> RuleDefinition:
-    """ValidationError, naming the place, if `data` is no valid definition."""
-    object_ = _object(data, "rule")
-    _only(object_, {"name", "priority", "triggers", "conditions", "actions"}, "rule")
-    triggers = object_.get("triggers", [trigger.value for trigger in Trigger])
-    if not isinstance(triggers, list):
-        raise ValidationError("triggers: expected a list")
-    actions = object_.get("actions")
-    if not isinstance(actions, list):
-        raise ValidationError("actions: expected a list")
-    priority = object_.get("priority", DEFAULT_PRIORITY)
-    if not isinstance(priority, int):
-        raise ValidationError("priority: expected a whole number")
-    name = object_.get("name")
-    if not isinstance(name, str):
-        raise ValidationError("name: expected text")
-    return RuleDefinition(
-        name=name,
-        priority=priority,
-        triggers=frozenset(_enum(Trigger, item, "triggers") for item in triggers),
-        conditions=group_from_json(object_.get("conditions"), "conditions"),
-        actions=tuple(
-            action_from_json(item, f"actions[{index}]") for index, item in enumerate(actions)
-        ),
-    )
-
-
-def group_from_json(data: JsonValue, where: str = "conditions") -> Group:
-    object_ = _object(data, where)
-    modes = [mode for mode in ("all", "any") if mode in object_]
-    if len(modes) != 1:
-        raise ValidationError(f"{where}: a group has exactly one of 'all' and 'any'")
-    mode: GroupMode = "all" if modes[0] == "all" else "any"
-    _only(object_, {mode, "not"}, where)
-    negate = object_.get("not", False)
-    if not isinstance(negate, bool):
-        raise ValidationError(f"{where}.not: expected true or false")
-    items = object_[mode]
-    if not isinstance(items, list):
-        raise ValidationError(f"{where}.{mode}: expected a list")
-    parsed: list[Condition | Group] = []
-    for index, item in enumerate(items):
-        place = f"{where}.{mode}[{index}]"
-        if isinstance(item, dict) and ("all" in item or "any" in item):
-            parsed.append(group_from_json(item, place))
-        else:
-            parsed.append(condition_from_json(item, place))
-    try:
-        return Group(mode=mode, items=tuple(parsed), negate=negate)
-    except ValidationError as error:
-        raise ValidationError(f"{where}: {error}") from None
-
-
-def condition_from_json(data: JsonValue, where: str = "condition") -> Condition:
-    object_ = _object(data, where)
-    _only(object_, {"field", "op", "value", "field_id", "case_sensitive"}, where)
-    field_id = object_.get("field_id")
-    case_sensitive = object_.get("case_sensitive", False)
-    if not isinstance(case_sensitive, bool):
-        raise ValidationError(f"{where}.case_sensitive: expected true or false")
-    try:
-        return Condition(
-            field=_enum(ConditionField, object_.get("field"), f"{where}.field"),
-            op=_enum(Operator, object_.get("op"), f"{where}.op"),
-            value=object_.get("value"),
-            field_id=None if field_id is None else FieldId(_uuid(field_id, "field_id")),
-            case_sensitive=case_sensitive,
-        )
-    except ValidationError as error:
-        raise ValidationError(f"{where}: {error}") from None
-
-
-def action_from_json(data: JsonValue, where: str = "action") -> Action:
-    object_ = _object(data, where)
-    kind = object_.get("type")
-    try:
-        match kind:
-            case "set_space":
-                _only(object_, {"type", "space_id"}, where)
-                return SetSpace(SpaceId(_uuid(object_.get("space_id"), "space_id")))
-            case "set_contact":
-                _only(object_, {"type", "contact_id"}, where)
-                return SetContact(ContactId(_uuid(object_.get("contact_id"), "contact_id")))
-            case "set_document_type":
-                _only(object_, {"type", "document_type_id"}, where)
-                return SetDocumentType(
-                    DocumentTypeId(_uuid(object_.get("document_type_id"), "document_type_id"))
-                )
-            case "set_topic":
-                _only(object_, {"type", "topic_id"}, where)
-                return SetTopic(TagId(_uuid(object_.get("topic_id"), "topic_id")))
-            case "set_title":
-                _only(object_, {"type", "template"}, where)
-                template = object_.get("template")
-                if not isinstance(template, str):
-                    raise ValidationError("template: expected text")
-                return SetTitle(template)
-            case "add_tags" | "remove_tags":
-                _only(object_, {"type", "tag_ids"}, where)
-                ids = object_.get("tag_ids")
-                if not isinstance(ids, list):
-                    raise ValidationError("tag_ids: expected a list")
-                tags = frozenset(TagId(_uuid(item, "tag_ids")) for item in ids)
-                return AddTags(tags) if kind == "add_tags" else RemoveTags(tags)
-            case "set_field":
-                _only(object_, {"type", "field_id", "value"}, where)
-                return SetField(
-                    FieldId(_uuid(object_.get("field_id"), "field_id")),
-                    object_.get("value"),
-                )
-            case "force_review":
-                _only(object_, {"type", "reason"}, where)
-                reason = object_.get("reason")
-                if not isinstance(reason, str):
-                    raise ValidationError("reason: expected text")
-                return ForceReview(reason)
-    except ValidationError as error:
-        raise ValidationError(f"{where}: {error}") from None
-    raise ValidationError(f"{where}.type: unknown action {kind!r}")
-
-
 # --- helpers ----------------------------------------------------------------------------------
-
-
-def _strings(items: list[str]) -> list[JsonValue]:
-    return list(items)
-
-
-def _object(data: JsonValue, where: str) -> dict[str, JsonValue]:
-    if not isinstance(data, dict):
-        raise ValidationError(f"{where}: expected an object")
-    return data
-
-
-def _only(data: Mapping[str, JsonValue], allowed: set[str], where: str) -> None:
-    unknown = sorted(set(data) - allowed)
-    if unknown:
-        raise ValidationError(f"{where}: unknown key '{unknown[0]}'")
-
-
-def _enum[E: StrEnum](kind: type[E], value: JsonValue, where: str) -> E:
-    try:
-        return kind(str(value))
-    except ValueError:
-        raise ValidationError(f"{where}: unknown value {value!r}") from None
-
-
-def _uuid(value: JsonValue, what: str) -> UUID:
-    try:
-        if isinstance(value, str):
-            return UUID(value)
-    except ValueError:
-        pass
-    raise ValidationError(f"{what}: {value!r} is no id")
 
 
 def _text(value: JsonValue, limit: int) -> str:
@@ -1029,22 +823,6 @@ def _text(value: JsonValue, limit: int) -> str:
     if len(value) > limit:
         raise ValidationError(f"text longer than {limit} characters")
     return value
-
-
-def _pattern(value: JsonValue) -> None:
-    try:
-        re.compile(str(value))
-    except re.error as error:
-        raise ValidationError(f"invalid regular expression {value!r}: {error}") from None
-
-
-def _date(value: JsonValue) -> date:
-    try:
-        if isinstance(value, str):
-            return date.fromisoformat(value)
-    except ValueError:
-        pass
-    raise ValidationError(f"{value!r} is no date (YYYY-MM-DD)")
 
 
 def _tag_list(tags: frozenset[TagId]) -> None:

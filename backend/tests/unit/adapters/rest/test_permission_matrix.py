@@ -11,10 +11,8 @@ their reach unless they ask for all users. Hidden documents and spaces are "not 
 exactly as missing ones.
 """
 
-import base64
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from datetime import timedelta
+from collections.abc import Awaitable, Callable, Mapping
+from types import MappingProxyType
 from typing import Any
 from uuid import UUID
 
@@ -22,127 +20,9 @@ import httpx2
 import pytest
 
 from papiq.adapters.inbound.rest import PREFIX
-from papiq.core.domain.identity import TokenScope
-from papiq.core.domain.pipeline import Node
-from papiq.core.domain.spaces import ShareLevel, Space
-from papiq.core.domain.users import User
-from papiq.core.services.objects import archive_key, preview_key
-from tests.api import auth, bearer
-from tests.builders import UNCERTAIN
+from papiq.core.domain.encoding import base64url
 from tests.contracts.images import image
-from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import Api
-
-ACTORS = [
-    "owner",
-    "reader",
-    "writer",
-    "stranger",
-    "admin",
-    "read_token",
-    "expired_token",
-    "revoked_token",
-    "deactivated",
-    "deactivated_admin",
-]
-
-
-@dataclass
-class Scene:
-    api: Api
-    headers: dict[str, dict[str, str]]
-    owner: User
-    shared: Space
-    own_space: Space  # another space of the owner, target for moving
-    green: str
-    yellow: str
-    processing: str
-    contact: str
-
-    def document(self, which: str) -> str:
-        return str(getattr(self, which))
-
-
-async def build_scene(api: Api) -> Scene:
-    owner, reader, writer = await api.user("owner"), await api.user("reader"), await api.user()
-    stranger, admin = await api.user("stranger"), await api.admin("admin")
-    gone = await api.user("deactivated")
-    retired = await api.admin("retired")
-    spaces = api.services.spaces
-    shared = await spaces.create(owner.id, "Shared")
-    for user, level in [(reader, ShareLevel.READ), (writer, ShareLevel.READ_WRITE)]:
-        await spaces.share(owner.id, shared.id, user.id, level)
-    await spaces.share(owner.id, shared.id, gone.id, ShareLevel.READ_WRITE)
-    own_space = await spaces.create(owner.id, "Private")
-
-    async def upload(name: str) -> str:
-        files = {"file": (name, unique_pdf(name), "x/y")}
-        response = await api.client.post(
-            f"{PREFIX}/documents",
-            files=files,
-            data={"space_id": str(shared.id)},
-            headers=auth(owner),
-        )
-        assert response.status_code == 202, response.text
-        await api.drain()
-        return str(response.json()["id"])
-
-    green = await upload("green.pdf")
-    yellow = await upload("yellow.pdf")
-    await api.services.pipeline.reprocess_from(owner.id, UUID(yellow), Node.JUDGE)  # type: ignore[arg-type]
-    pipeline = api.services.pipeline
-    pipeline._executors[Node.JUDGE] = _Returns()  # yellow: the classification is uncertain
-    await api.drain()
-    pipeline._executors.pop(Node.JUDGE)
-    processing = await upload_without_processing(api, owner, shared)
-    for id in (green, yellow):
-        await api.container.object_store.put(archive_key(UUID(id)), b"%PDF", content_type="x")  # type: ignore[arg-type]
-        await api.container.object_store.put(preview_key(UUID(id)), b"RIFF", content_type="x")  # type: ignore[arg-type]
-    contact = await api.services.master_data.create_contact(admin.id, "ACME")
-
-    _, read_token = await api.services.auth.create_api_token(owner.id, "r", TokenScope.READ)
-    _, expired = await api.services.auth.create_api_token(
-        owner.id, "e", TokenScope.READ_WRITE, expires_at=api.clock.now() + timedelta(seconds=1)
-    )
-    revoked_token, revoked = await api.services.auth.create_api_token(
-        owner.id, "x", TokenScope.READ_WRITE
-    )
-    await api.services.auth.revoke_api_token(owner.id, revoked_token.id)
-    api.clock.advance(timedelta(seconds=1))
-    await api.services.users.set_active(admin.id, gone.id, False)
-    await api.services.users.set_active(admin.id, retired.id, False)
-    headers = {
-        "owner": auth(owner),
-        "reader": auth(reader),
-        "writer": auth(writer),
-        "stranger": auth(stranger),
-        "admin": auth(admin),
-        "read_token": bearer(read_token),
-        "expired_token": bearer(expired),
-        "revoked_token": bearer(revoked),
-        "deactivated": auth(gone),
-        "deactivated_admin": auth(retired),
-    }
-    return Scene(api, headers, owner, shared, own_space, green, yellow, processing, str(contact.id))
-
-
-def unique_pdf(name: str) -> bytes:
-    """The sample scan with a comment, so that every upload is a file of its own."""
-    return (SAMPLES / "scan.pdf").read_bytes().rstrip() + f"\n%{name}\n%%EOF\n".encode()
-
-
-class _Returns:
-    async def run(self, document: object) -> Any:
-        return UNCERTAIN
-
-
-async def upload_without_processing(api: Api, owner: User, space: Space) -> str:
-    files = {"file": ("new.pdf", unique_pdf("new"), "x/y")}
-    response = await api.client.post(
-        f"{PREFIX}/documents", files=files, data={"space_id": str(space.id)}, headers=auth(owner)
-    )
-    return str(response.json()["id"])
-
+from tests.unit.adapters.rest.support import ACTORS, DENIED, Api, Scene, build_scene
 
 type Call = Callable[[Scene, httpx2.AsyncClient, dict[str, str], str], Awaitable[httpx2.Response]]
 
@@ -158,97 +38,45 @@ def doc(method: str, suffix: str = "", body: Any = None) -> Call:
     return call
 
 
-DENIED = {"expired_token": 401, "revoked_token": 401, "deactivated": 401, "deactivated_admin": 401}
 HIDDEN = {"stranger": 404}
 
+# Each actor who may read the green document reads it.
+READ_ALL: Mapping[str, int] = MappingProxyType(
+    {
+        "owner": 200,
+        "reader": 200,
+        "writer": 200,
+        "read_token": 200,
+        "admin": 200,
+        **HIDDEN,
+        **DENIED,
+    }
+)
+
 # For the green document in the shared space.
-GREEN: dict[str, tuple[Call, dict[str, int]]] = {
-    "read": (
-        doc("GET"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
-    "original": (
-        doc("GET", "/original"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
-    "archive": (
-        doc("GET", "/archive"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
-    "preview": (
-        doc("GET", "/preview"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
-    "text": (
-        doc("GET", "/text"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
-    "structure": (
-        doc("GET", "/structure"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
-    "page": (
-        doc("GET", "/pages/1"),
-        {
-            "owner": 200,
-            "reader": 200,
-            "writer": 200,
-            "read_token": 200,
-            "admin": 200,
-            **HIDDEN,
-            **DENIED,
-        },
-    ),
+GREEN: dict[str, tuple[Call, Mapping[str, int]]] = {
+    "read": (doc("GET"), READ_ALL),
+    "original": (doc("GET", "/original"), READ_ALL),
+    "archive": (doc("GET", "/archive"), READ_ALL),
+    "preview": (doc("GET", "/preview"), READ_ALL),
+    "text": (doc("GET", "/text"), READ_ALL),
+    "structure": (doc("GET", "/structure"), READ_ALL),
+    "page": (doc("GET", "/pages/1"), READ_ALL),
+    "files": (doc("GET", "/files"), READ_ALL),
     "change": (
         doc("PATCH", body={"title": "Changed"}),
+        {
+            "owner": 200,
+            "reader": 403,
+            "writer": 200,
+            "read_token": 403,
+            "admin": 200,
+            **HIDDEN,
+            **DENIED,
+        },
+    ),
+    "dry_run": (
+        doc("POST", "/dry-run", {"title": "Changed"}),
         {
             "owner": 200,
             "reader": 403,
@@ -382,7 +210,9 @@ HIDDEN_FROM_SHARES = [
     "text",
     "structure",
     "page",
+    "files",
     "change",
+    "dry_run",
     "delete",
     "log",
     "exchanges",
@@ -510,7 +340,7 @@ async def test_lists_show_only_readable_documents(api: Api) -> None:
 async def test_a_cursor_does_not_reveal_hidden_documents(api: Api) -> None:
     """Paging after a hidden document's id works like after any id: only readable ones."""
     scene = await build_scene(api)
-    cursor = base64.urlsafe_b64encode(UUID(scene.yellow).bytes).decode().rstrip("=")
+    cursor = base64url(UUID(scene.yellow).bytes)
     response = await api.client.get(
         f"{PREFIX}/documents", params={"cursor": cursor}, headers=scene.headers["reader"]
     )
@@ -594,6 +424,12 @@ MASTER_DATA = {
     "tags": {"name": "X"},
     "fields": {"name": "X", "data_type": "text"},
 }
+# Changes of an item besides renaming and deleting, also for admins only: (method, path below
+# the item, body).
+ITEM_CHANGES: dict[str, list[tuple[str, str, Any]]] = {
+    "contacts": [("POST", "/identifiers", {"kind": "customer_number", "value": "2004-7718"})],
+    "document-types": [("PUT", "/fields", {"fields": []})],
+}
 NOT_ADMIN = {"owner": 403, "reader": 403, "writer": 403, "stranger": 403, "read_token": 403}
 
 
@@ -614,12 +450,18 @@ async def test_master_data_is_read_by_all_and_changed_by_admins(api: Api, kind: 
     item = f"{url}/{created.json()['id']}"
     for actor in ("owner", "reader", "stranger", "read_token"):
         assert (await api.client.get(item, headers=scene.headers[actor])).status_code == 200
-    for method, change in (("PATCH", {"name": "Y"}), ("DELETE", None)):
+    changes = [("PATCH", "", {"name": "Y"}), ("DELETE", "", None), *ITEM_CHANGES.get(kind, [])]
+    for method, path, change in changes:
         for actor, status in {**NOT_ADMIN, **DENIED}.items():
             response = await api.client.request(
-                method, item, json=change, headers=scene.headers[actor]
+                method, f"{item}{path}", json=change, headers=scene.headers[actor]
             )
-            assert response.status_code == status, (method, actor)
+            assert response.status_code == status, (method, path, actor)
+    for method, path, change in ITEM_CHANGES.get(kind, []):
+        response = await api.client.request(
+            method, f"{item}{path}", json=change, headers=scene.headers["admin"]
+        )
+        assert response.status_code == 200, (method, path, response.text)
     renamed = await api.client.patch(item, json={"name": "Y"}, headers=scene.headers["admin"])
     assert renamed.status_code == 200
     assert (await api.client.delete(item, headers=scene.headers["admin"])).status_code == 204

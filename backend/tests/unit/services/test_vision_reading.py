@@ -17,13 +17,12 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.pipeline import Lane, Node, NodeRun, Outcome, ProcessingStatus
 from papiq.core.domain.reading import PageReading, VisionAdvice
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import OcrResult
+from papiq.core.ports.ocr import OcrResult
 from papiq.core.services.nodes import NO_VISION_MODEL, OcrNode, PagesNode, ParseNode
 from papiq.core.services.objects import archive_key, exchanges_key, original_key
 from papiq.core.services.pipeline import PipelineService
-from tests.builders import incoming
-from tests.contracts.processing import SAMPLES
-from tests.unit.services.conftest import World
+from tests.builders import SAMPLES, incoming
+from tests.unit.services.support import World
 
 
 def pipeline(world: World, ocr: FakeOcr, text: str = "Rechnung") -> PipelineService:
@@ -59,7 +58,7 @@ async def test_the_model_reads_only_when_a_person_asks(world: World) -> None:
     owner, document = await ingest(world, service)
     assert (document.processing.vision, ocr.vision_calls) == (False, [])
 
-    asked = await service.read_with_vision(owner.id, document.id)
+    asked = (await service.read_with_vision(owner.id, document.id)).document
     assert asked.processing.vision
     assert asked.processing.run == document.processing.run + 1
     assert asked.processing.status is ProcessingStatus.PROCESSING
@@ -110,7 +109,7 @@ async def test_reprocessing_reads_with_tesseract_again(world: World) -> None:
     owner, document = await ingest(world, service)
     await service.read_with_vision(owner.id, document.id)
     await world.drain(service)
-    again = await service.reprocess_from(owner.id, document.id, Node.OCR)
+    again = (await service.reprocess_from(owner.id, document.id, Node.OCR)).document
     assert not again.processing.vision
     await world.drain(service)
     assert len(ocr.vision_calls) == 1
@@ -176,7 +175,7 @@ async def test_the_owner_and_admins_ask_for_the_model(world: World) -> None:
     with pytest.raises(NotFoundError):
         await service.reading(stranger.id, document.id)
     admin = await world.user(role=Role.ADMIN)
-    assert (await service.read_with_vision(admin.id, document.id)).processing.vision
+    assert (await service.read_with_vision(admin.id, document.id)).document.processing.vision
 
 
 async def test_no_text_advises_the_model(world: World) -> None:

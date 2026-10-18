@@ -10,10 +10,12 @@ from typing import Any
 
 import httpx2
 import pytest
+from ocrmypdf import OcrOptions
 from ocrmypdf.hocrtransform import BoundingBox
 from PIL import Image
 
-from papiq.adapters.outbound.ocrmypdf.plugin import page_element
+from papiq.adapters.outbound.ocrmypdf import plugin
+from papiq.adapters.outbound.ocrmypdf.plugin import VisionOcrEngine, page_element
 from papiq.adapters.outbound.ocrmypdf.vision import (
     CONFIG_ENV,
     KEY_ENV,
@@ -26,13 +28,21 @@ from papiq.adapters.outbound.ocrmypdf.vision import (
     configuration,
     environment,
     parse_answer,
+    read_error,
     read_page,
     read_records,
     record_path,
     scaled,
+    write_error,
 )
+from papiq.composition.container import VISION_REQUEST_TIMEOUT
 
-SETTINGS = VisionSettings(base_url="https://vlm.example/v1", model="vlm-1", api_key="secret")
+SETTINGS = VisionSettings(
+    base_url="https://vlm.example/v1",
+    model="vlm-1",
+    api_key="secret",
+    timeout=VISION_REQUEST_TIMEOUT,
+)
 
 
 def answer(lines: list[dict[str, Any]] | str, status: int = 200) -> httpx2.Response:
@@ -158,7 +168,7 @@ def test_two_answers_that_do_not_fit_fail(page: Path) -> None:
     ("response", "message"),
     [
         (httpx2.Response(401, json={"error": {"message": "bad key"}}), "HTTP 401: bad key"),
-        (httpx2.Response(200, text="<html>"), "sent no JSON"),
+        (httpx2.Response(200, text="<html>"), "not JSON"),
         (httpx2.Response(200, json={"choices": []}), "unusable response"),
     ],
 )
@@ -197,6 +207,35 @@ def test_the_records_of_the_pages_in_order(tmp_path: Path) -> None:
         record = PageRecord(page=number, words=3, unsure=number - 1, calls=())
         record_path(tmp_path, number).write_text(json.dumps(record.to_json()))
     assert [(record.page, record.unsure) for record in read_records(tmp_path)] == [(1, 0), (2, 1)]
+
+
+def test_the_first_page_the_model_cannot_read_leaves_its_reason(tmp_path: Path) -> None:
+    assert read_error(tmp_path) is None
+    write_error(tmp_path, 2, "page 2: no usable answer")
+    write_error(tmp_path, 1, "the vision language model cannot be reached: ConnectError")
+    assert read_error(tmp_path) == "page 2: no usable answer"
+    assert json.loads((tmp_path / "error.json").read_text()) == {
+        "page": 2,
+        "message": "page 2: no usable answer",
+    }
+
+
+def test_the_plugin_leaves_the_reason_of_a_page_it_cannot_read(
+    tmp_path: Path, page: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name, value in environment(SETTINGS, tmp_path).items():
+        monkeypatch.setenv(name, value)
+
+    def unreachable(*args: object) -> None:
+        raise VisionError("the vision language model cannot be reached: ConnectError")
+
+    monkeypatch.setattr(plugin, "read_page", unreachable)
+    options = OcrOptions(input_file=page, output_file=tmp_path / "out.pdf")
+    with pytest.raises(VisionError):
+        VisionOcrEngine.generate_ocr(page, options, page_number=2)
+    assert read_error(tmp_path) == "the vision language model cannot be reached: ConnectError"
+    assert json.loads((tmp_path / "error.json").read_text())["page"] == 3
+    assert read_records(tmp_path) == []
 
 
 def test_the_words_of_a_line_share_its_box_by_length() -> None:

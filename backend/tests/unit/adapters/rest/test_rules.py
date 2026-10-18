@@ -3,10 +3,12 @@
 from typing import Any
 
 from papiq.adapters.inbound.rest import PREFIX
+from tests import builders
 from tests.api import auth
-from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import Api
-from tests.unit.adapters.rest.test_resources import post
+from tests.builders import SAMPLES
+from tests.unit.adapters.rest.support import Api, post, upload
+
+OTHER = (SAMPLES / "screenshot.png").read_bytes()
 
 
 async def test_a_rule_is_created_changed_disabled_and_deleted(api: Api) -> None:
@@ -117,14 +119,6 @@ async def test_deleting_a_contact_disables_the_rules_that_use_it(api: Api) -> No
     assert response.status_code == 404
 
 
-async def upload(api: Api, headers: dict[str, str]) -> str:
-    files = {"file": ("Bill 2026.pdf", (SAMPLES / "scan.pdf").read_bytes(), "x/y")}
-    response = await api.client.post(f"{PREFIX}/documents", files=files, headers=headers)
-    assert response.status_code == 202, response.text
-    await api.drain()
-    return str(response.json()["id"])
-
-
 async def test_rules_act_on_arrival_and_conflicts_wait_in_the_inbox(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
     a, o = auth(admin), auth(owner)
@@ -164,7 +158,7 @@ async def test_rules_act_on_arrival_and_conflicts_wait_in_the_inbox(api: Api) ->
         },
         o,
     )
-    id = await upload_other(api, o)
+    id = await upload(api, o, content=OTHER, filename="Other.png")
     document = (await api.client.get(f"{PREFIX}/documents/{id}", headers=o)).json()
     assert document["lane"] == "yellow", document
     review = (await api.client.get(f"{PREFIX}/documents/{id}/review", headers=o)).json()
@@ -178,14 +172,6 @@ async def test_rules_act_on_arrival_and_conflicts_wait_in_the_inbox(api: Api) ->
     document = (await api.client.get(f"{PREFIX}/documents/{id}", headers=o)).json()
     assert document["lane"] == "green", document
     assert document["space_id"] == other["id"]
-
-
-async def upload_other(api: Api, headers: dict[str, str]) -> str:
-    files = {"file": ("Other.png", (SAMPLES / "screenshot.png").read_bytes(), "x/y")}
-    response = await api.client.post(f"{PREFIX}/documents", files=files, headers=headers)
-    assert response.status_code == 202, response.text
-    await api.drain()
-    return str(response.json()["id"])
 
 
 async def test_a_change_sets_off_the_rules_that_become_true(api: Api) -> None:
@@ -224,7 +210,7 @@ async def test_a_rule_is_applied_to_existing_documents(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
     a, o = auth(admin), auth(owner)
     tax = await post(api, "/tags", {"name": "tax"}, a)
-    first, second = await upload(api, o), await upload_other(api, o)
+    first, second = await upload(api, o), await upload(api, o, content=OTHER, filename="Other.png")
     await api.client.patch(f"{PREFIX}/documents/{first}", json={"title": "Mine"}, headers=o)
     rule = await post(
         api,
@@ -256,8 +242,7 @@ async def test_a_rule_is_applied_to_existing_documents(api: Api) -> None:
         headers=o,
     )
     assert response.status_code == 202, response.text
-    while await api.services.rule_applications.run_next_job():
-        pass
+    await builders.drain(api.services.rule_applications)
     progress = await api.client.get(response.headers["location"], headers=o)
     assert progress.json()["status"] == "done", progress.text
     assert progress.json()["applied"] == 2
@@ -265,6 +250,36 @@ async def test_a_rule_is_applied_to_existing_documents(api: Api) -> None:
     two = (await api.client.get(f"{PREFIX}/documents/{second}", headers=o)).json()
     assert one["title"] == "Tax Bill 2026" and one["tag_ids"] == [tax["id"]]
     assert two["title"] == "Tax Other" and two["tag_ids"] == [tax["id"]]
+
+
+async def test_the_preview_pages_with_the_cursor_of_the_document_list(api: Api) -> None:
+    owner = await api.user()
+    o = auth(owner)
+    first, second = await upload(api, o), await upload(api, o, content=OTHER, filename="Other.png")
+    rule = await post(
+        api,
+        "/rules",
+        {
+            "name": "Title",
+            "conditions": {"all": [{"field": "channel", "op": "is", "value": "api"}]},
+            "actions": [{"type": "set_title", "template": "Tax {{ filename }}"}],
+        },
+        o,
+    )
+    url = f"{PREFIX}/rules/{rule['id']}/apply/preview"
+    seen: list[str] = []
+    cursor = None
+    while True:
+        page = (await api.client.post(url, json={"cursor": cursor, "limit": 1}, headers=o)).json()
+        seen += [item["document_id"] for item in page["items"]]
+        if (cursor := page["next_cursor"]) is None:
+            break
+        assert cursor not in (first, second)  # not the id as it is
+    assert sorted(seen) == sorted([first, second])
+    for bad in ("!!", first):
+        response = await api.client.post(url, json={"cursor": bad}, headers=o)
+        assert response.status_code == 422
+        assert response.json()["detail"] == "cursor: invalid"
 
 
 async def test_a_dry_run_shows_what_a_change_would_do(api: Api) -> None:

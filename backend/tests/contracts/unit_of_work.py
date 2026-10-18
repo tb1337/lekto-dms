@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Collection
+from collections.abc import Awaitable, Callable, Collection
 from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -20,16 +20,16 @@ from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome,
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import User
 from papiq.core.domain.verdict import KnownLabels
-from papiq.core.ports import (
+from papiq.core.ports.repository import (
     NEWEST_FIRST,
     CountBy,
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
     SortKey,
-    UnitOfWorkFactory,
+    TagSets,
 )
-from papiq.core.ports.repository import TagSets
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from tests import builders
 from tests.builders import FAILED, NOW, OK, UNCERTAIN
 
@@ -45,11 +45,23 @@ async def seed(
         await uow.commit()
 
 
+async def users(uow_factory: UnitOfWorkFactory, count: int) -> list[User]:
+    """Users without spaces (so they can be removed again), stored directly."""
+    created = [builders.user() for _ in range(count)]
+    await seed(uow_factory, *created)
+    return created
+
+
+async def a_user(uow_factory: UnitOfWorkFactory) -> User:
+    """A user without spaces, stored directly."""
+    (user,) = await users(uow_factory, 1)
+    return user
+
+
 async def owner_with_space(uow_factory: UnitOfWorkFactory) -> tuple[User, Space]:
-    owner = builders.user()
-    space = builders.default_space(owner)
-    await seed(uow_factory, owner, spaces=(space,))
-    return owner, space
+    owner = await builders.seed_user(uow_factory)
+    async with uow_factory() as uow:
+        return owner, await uow.spaces.get_default(owner.id)
 
 
 def _repository_of(item: object) -> str:
@@ -1460,6 +1472,68 @@ class UnitOfWorkContract:
             assert await uow.contacts.find_by_name("gone") is None
             with pytest.raises(NotFoundError):
                 await uow.tags.remove(tag.id)
+
+    async def test_a_row_others_refer_to_is_not_removed(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner, space = await owner_with_space(uow_factory)
+        parent = Tag.create(name="parent", now=NOW)
+        child = Tag.create(name="child", now=NOW, parent_id=parent.id)
+        group = Tag.create(name="group", now=NOW, scope=TagScope.CONTACT)
+        grouped = Contact.create(name="Grouped", now=NOW)
+        grouped.group_ids = frozenset({group.id})
+        contact = Contact.create(name="ACME", now=NOW)
+        invoice, scoped = (DocumentType.create(name=name, now=NOW) for name in ("Invoice", "Bill"))
+        tagged = Tag.create(name="tax", now=NOW)
+        note = FieldDefinition.create(name="note", data_type=FieldType.TEXT, now=NOW)
+        typed = FieldDefinition.create(
+            name="amount",
+            data_type=FieldType.TEXT,
+            now=NOW,
+            document_type_ids=frozenset({scoped.id}),
+        )
+        document = builders.document(owner, space)
+        document.apply_changes(
+            DocumentChanges(
+                contact_id=contact.id,
+                document_type_id=invoice.id,
+                tag_ids=frozenset({tagged.id}),
+                fields={note.id: "x"},
+            ),
+            {note.id: note},
+            NOW,
+        )
+        async with uow_factory() as uow:
+            for tag in (parent, child, group, tagged):
+                await uow.tags.add(tag)
+            for item in (grouped, contact):
+                await uow.contacts.add(item)
+            for kind in (invoice, scoped):
+                await uow.document_types.add(kind)
+            for field in (note, typed):
+                await uow.fields.add(field)
+            await uow.documents.add(document)
+            await uow.commit()
+        removals: list[Callable[[UnitOfWork], Awaitable[None]]] = [
+            lambda uow: uow.tags.remove(parent.id),  # a tag's parent
+            lambda uow: uow.tags.remove(group.id),  # a contact's group
+            lambda uow: uow.tags.remove(tagged.id),  # a document's tag
+            lambda uow: uow.contacts.remove(contact.id),
+            lambda uow: uow.document_types.remove(invoice.id),
+            lambda uow: uow.document_types.remove(scoped.id),  # a field's scope
+            lambda uow: uow.fields.remove(note.id),
+            lambda uow: uow.spaces.remove(space.id),
+            lambda uow: uow.users.remove(owner.id),
+        ]
+        for remove in removals:
+            async with uow_factory() as uow:
+                with pytest.raises(ConflictError):
+                    await remove(uow)
+                    await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.tags.find(parent.id) is not None
+            assert await uow.contacts.find(contact.id) is not None
+            assert await uow.users.find(owner.id) is not None
 
     async def test_documents_exist_by_reference(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, space = await owner_with_space(uow_factory)

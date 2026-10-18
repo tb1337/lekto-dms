@@ -8,10 +8,10 @@
   does not answer holds up deliveries, never the pipeline.
 - One loop dispatches the outbox (`EventBus.dispatch`) every `dispatch_interval` while there is
   nothing to deliver, and at once again while there is.
-- After an error, a loop waits longer, doubling up to `MAX_BACKOFF`.
+- After an error, a loop waits longer, doubling up to `backoff.MAX_BACKOFF`.
 
 `stop()` (on SIGTERM) ends the loops after their current job. Jobs still running after
-`shutdown_timeout` are cancelled: the pipeline releases their jobs to run again.
+`shutdown_timeout` are cancelled: each service gives its job back to run again at once.
 
 Each loop runs its units of work one after another, never nested, as SQLite requires.
 """
@@ -22,7 +22,8 @@ import logging
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import timedelta
 
-from papiq.core.ports import EventBus
+from papiq.adapters.inbound.backoff import backoff
+from papiq.core.ports.event_bus import EventBus
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.indexing import IndexingService
 from papiq.core.services.logos import LogoService
@@ -33,8 +34,6 @@ from papiq.core.services.rules.retroactive import RuleApplicationService
 from papiq.core.services.webhooks import WebhookDeliveryService
 
 log = logging.getLogger(__name__)
-
-MAX_BACKOFF = timedelta(seconds=30)
 
 
 class Worker:
@@ -51,7 +50,7 @@ class Worker:
         indexing: IndexingService | None = None,
         rules: RuleApplicationService | None = None,
         webhooks: WebhookDeliveryService | None = None,
-        webhook_concurrency: int = 4,
+        webhook_concurrency: int,
         classifier: ClassifierService | None = None,
         logos: LogoService | None = None,
         master_data: MasterDataService | None = None,
@@ -123,7 +122,7 @@ class Worker:
             except Exception:
                 failures += 1
                 log.exception("worker loop failed", extra={"loop": name, "failures": failures})
-                await self._sleep(min(interval * (1 << min(failures, 10)), MAX_BACKOFF))
+                await self._sleep(backoff(interval, failures))
                 continue
             failures = 0
             if not busy:

@@ -35,9 +35,11 @@ pattern matcher (`regex`, a search with a time limit) and the template renderer 
   a state change, its events and follow-up jobs are committed together (transactional outbox).
   `EventBus` delivers committed events at least once. The identity repositories (credentials,
   sessions, API tokens, external identities, failed sign-ins) are part of the unit of work too.
-  Further ports: `ObjectStore`, `Clock`, `Ocr`, `DocumentParser`, `PreviewRenderer`,
+  Further ports: `ObjectStore`, `Clock`, `Ocr`, `DocumentParser`, `PageRenderer`,
   `PasswordHasher`, `SecretCipher`, `Totp`, `OidcProvider`, `LanguageModel`, `Embeddings`,
   `SearchIndex`, `PatternMatcher`, `WebhookSender`.
+  Each is imported from its module (`papiq.core.ports.repository`, ...); the package
+  re-exports nothing.
 - `core/services`: use cases (users, spaces, master data, documents, pipeline, inbox,
   classification, rules, indexing, search, webhooks, maintenance). Each runs in one unit of work and checks the caller's rights.
 
@@ -205,7 +207,10 @@ jobs of the old run are recognised as stale.
   white, CMYK is converted, all pages of a TIFF are kept. OCRmyPDF shares the CPU cores among
   `PAPIQ_WORKER_CONCURRENCY` jobs.
 - A vision language model (`PAPIQ_VLM_*`, off without) reads a document only when a person
-  asks for it (`POST /documents/{id}/vision`, owner or admin); nothing asks on its own. The
+  asks for it (`POST /documents/{id}/vision`, owner or admin); nothing asks on its own. Without
+  `PAPIQ_VLM_BASE_URL` and `PAPIQ_VLM_MODEL` the request answers `409` ("no vision language
+  model is configured"), and a run that asked before the model was taken away fails at `ocr`
+  ("a person asked for the vision language model, but none is configured"). The
   document is processed again from OCR, and OCRmyPDF runs with `--force-ocr --deskew` and the
   plugin `ocrmypdf/plugin.py` as OCR engine: Tesseract still tells orientation and skew, every
   page image goes to the model at no more than 1.15 megapixels (so that the service does not
@@ -371,7 +376,8 @@ the fields node reads the fields of the decided type and the title
   and of the global ones, each with the quoted passage. The answer must follow a JSON schema
   (`response_format` `json_schema`, or `json_object` for providers without schema support); an
   answer that does not fit is asked for once more, then the signal fails (red). Without a
-  configured model it abstains, and the owner classifies.
+  configured model (`PAPIQ_LLM_BASE_URL` and `PAPIQ_LLM_MODEL`) it abstains with "no language
+  model is configured", and the owner classifies.
 - **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
   (contact, topic, type, each automatic document tag), trained on the confirmed documents
   (`PAPIQ_CLASSIFIER`, see Classifier). It abstains without a trained model.
@@ -477,14 +483,17 @@ fields, taking a document over); green documents do not train. A change that onl
 removes tags set by hand (statuses such as "to pay") confirms nothing: they say nothing about
 contact and type (`documents.confirms`); with an automatic tag or any other confirming value
 it confirms. A recurring job (`classifier.check`,
-every ten minutes) queues the training (`classifier.train`) once `PAPIQ_CLASSIFIER_MIN_EXAMPLES`
+every ten minutes) queues the training (`classifier.train`, which may take an hour before another
+worker takes it over) once `PAPIQ_CLASSIFIER_MIN_EXAMPLES`
 documents are confirmed and no model exists, or `PAPIQ_CLASSIFIER_RETRAIN_AFTER` were confirmed
 since the last one; `python -m papiq.composition train` and `POST /classifier/train` train at
 once. Training also learns identifiers of contacts: one that stands in at least two confirmed
 documents, all of one contact (the household's own IBAN stands on letters of many and is never
 learned); a learned identifier an admin rejected stays rejected. The model is stored as `npz`
 without pickle (`classifier/model-<n>.npz`, the latest three are kept) and predicted with numpy
-alone, so a new scikit-learn version cannot break it. `GET /classifier` tells its state.
+alone, so a new scikit-learn version cannot break it. It sees about the first 8,000 and the last
+4,000 characters of a longer text, a run of spaces counted once (12,000 in all, `TEXT_LIMIT`).
+`GET /classifier` tells its state.
 
 **After the update to 0.2.** Three things, in this order:
 
@@ -510,7 +519,7 @@ alone, so a new scikit-learn version cannot break it. `GET /classifier` tells it
    for them. Run it once `reparse` is through, which changes the text the identifiers are read
    from.
 
-**After the update to 0.3.** Revisions 0024 to 0028 run at start; then four things:
+**After the update to 0.3.** Revisions 0024 to 0029 run at start; then four things:
 
 1. "Drawer" is "space" everywhere, a break of the API: `/api/v1/spaces`, `space_id` (documents,
    upload, move, confirm, filters), the rule action `set_space`, the template variable
@@ -538,11 +547,11 @@ alone, so a new scikit-learn version cannot break it. `GET /classifier` tells it
 
 ## Rules
 
-Rules are data, not code (`core/domain/rules.py`, `core/domain/rule_engine.py`,
-`core/services/rules`). A rule has a name, a priority (0 to 1000, default 100, higher first),
-triggers, a tree of conditions and actions. Changing its content makes a new version; old
-versions stay readable, so the processing log can refer to them. Enabling and disabling make no
-version; deleting is a soft delete.
+Rules are data, not code (`core/domain/rules.py`, `rules_json.py`, `rule_conditions.py`,
+`rule_planner.py`, `core/services/rules`). A rule has a name, a priority (0 to 1000, default
+100, higher first), triggers, a tree of conditions and actions. Changing its content makes a new
+version; old versions stay readable, so the processing log can refer to them. Enabling and
+disabling make no version; deleting is a soft delete.
 
 ```json
 {
@@ -696,9 +705,9 @@ meaning took part.
   also with vectors; document date, arrival and the title's sort key are sortable. Without
   `sort` (or with `relevance`), the hits come by relevance.
 - **Rebuild at any time.** `POST /search/reindex` (admins) or `python -m papiq.composition
-  reindex` builds `<index>-rebuild` from the database and the object store while the active
-  index keeps serving, swaps it in and reconciles what changed meanwhile. The index holds no
-  information that is not in the database.
+  reindex` builds `<index>-rebuild` from the database and the object store, 50 documents per
+  request, while the active index keeps serving, swaps it in and reconciles what changed
+  meanwhile. The index holds no information that is not in the database.
 - **Rights.** The index query contains the rights (own documents in any lane; green documents of
   spaces the caller owns or that are shared with them). Every hit is checked against the
   database once more and the filter applied again, so a withdrawn share ends the search for that
@@ -714,7 +723,8 @@ meaning took part.
   The model is `snowflake-arctic-embed2` with `PAPIQ_EMBEDDING_QUERY_PREFIX=query:` (compared with
   `bge-m3` and `qwen3-embedding:0.6b` in `evaluation/search/reports`).
   `PAPIQ_EMBEDDING_DIMENSIONS` is the length of the vectors and required with Meilisearch and an
-  embedding endpoint; vectors of another length are refused (the query then goes by words).
+  embedding endpoint; vectors of another length are refused ("the vectors of <model> do not
+  have the <n> dimensions configured"; the query then goes by words).
   Changing the model means a rebuild. Some models want a prefix for queries
   and documents (`PAPIQ_EMBEDDING_QUERY_PREFIX`, `PAPIQ_EMBEDDING_DOCUMENT_PREFIX`).
 - **Limits.** Meilisearch ranks the documents nearest in meaning even if no word matches, so
@@ -758,8 +768,9 @@ a temporary Meilisearch index and runs the queries of `evaluation/search/queries
     found leaves it), by an admin (`POST /contacts/{id}/logo/fetch`; all its domains in turn,
     also one that failed; may replace a fetched logo) and for the contacts without a logo with
     `python -m papiq.composition fetch-logos`. A job that runs while `PAPIQ_LOGO_FETCH` is off
-    (switched off after it was queued) ends at once with a note, without waiting or retries;
-    the button answers `503` then. It reads the page of the domain (or of `www.`),
+    (switched off after it was queued) ends at once with the note "not fetched: fetching logos
+    is off", without waiting or retries; the button answers `503` ("Papiq does not fetch
+    logos") then. It reads the page of the domain (or of `www.`),
     the apple-touch-icon, `<link rel="icon">` with sizes and the web app manifest (with the
     standard library's `html.parser`), and `/favicon.ico`, and takes the largest raster icon of
     at least 64 px (at most four tried). The domains whose fetch finds none are noted and
@@ -818,13 +829,13 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/shares/{user_id}` | Spaces and shares (owner) |
 | `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet, `estimated_total`, `next_offset`, `semantic` |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
-| `GET /documents` | Readable documents; `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), documents without a date last either way; filters `contact_id`, `document_type_id`, `tag_id` (with the tags below it), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; these three repeat, all must match), `topic_id` (the topic or one below it; repeats, one of them must match), `space_id`, `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (the last document's id; its sort value is looked up, `422` if it is gone) |
+| `GET /documents` | Readable documents; `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), documents without a date last either way; filters `contact_id`, `document_type_id`, `tag_id` (with the tags below it), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; these three repeat, all must match), `topic_id` (the topic or one below it; repeats, one of them must match), `space_id`, `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (`next_cursor` of the page before, an opaque value naming its last document; its sort value is looked up, `422` if that document is gone) |
 | `POST /documents` | Upload (multipart: `file`, optional `space_id`, optional `channel=migration`; otherwise the channel is `web` with a session, `api` with a token); `202` with `id`, `status_url` |
 | `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`, `topic_id` (see Topics); change (write access; the answer has the change rules' `rules` report for the owner); delete (owner or admin) |
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result and the differences |
 | `POST /documents/{id}/move` | Into another space (owner, or an admin without read access) |
 | `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
-| `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit`; `409` while not parsed |
+| `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit` (at most `PAPIQ_MCP_TEXT_MAX`, the default); `409` while not parsed |
 | `GET /documents/{id}/files` | The files as stored (read access): when the document was added and changed, its original's name and type, and for the original and the archive (null while there is none) size, SHA-256 and metadata: a PDF's version, PDF/A level, pages, document information and XMP; an image's format, size, resolution and EXIF |
 | `GET /documents/{id}/facts` | What the document shows of its contacts (read access): names and identifiers with the contact they belong to now and their spans in the text (characters, as `/text` counts them); the codes on its pages, each once for its format and text, with the pages and boxes where it stands (a box per copy), the GiroCode read, their identifiers and the amount fields of the same value; for admins, on the documents of how many other contacts an identifier stands; `409` while not parsed |
 | `GET /documents/{id}/log` | Processing log (owner or admin) |
@@ -863,8 +874,8 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 - Request bodies other than uploads (documents, logos) are bounded by `PAPIQ_REQUEST_MAX_SIZE`, by
   `Content-Length` before anything is read and by the bytes received otherwise (`413`);
   FastAPI would otherwise read a JSON body of any size into memory.
-- Downloads go through a temporary file and carry `X-Content-Type-Options: nosniff`,
-  `Content-Security-Policy: sandbox` and `Cache-Control: private, no-store`.
+- Downloads go through a temporary file and carry `Content-Security-Policy: sandbox`, besides
+  the `Cache-Control: no-store` and `X-Content-Type-Options: nosniff` of every answer.
 - `401` (with `WWW-Authenticate: Bearer`), `429` (with `Retry-After`) and `502` (identity
   provider) are problems like all errors. The access log shows the OIDC callback without its
   query (code and state).
@@ -1095,7 +1106,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_S3_SECRET_ACCESS_KEY` | both | unset | *secret*; required for `s3` |
 | `PAPIQ_S3_PATH_STYLE` | both | `true` | Path-style addressing (Garage needs it) |
 | `PAPIQ_API_HOST` | API | `0.0.0.0` | Where the API listens |
-| `PAPIQ_API_PORT` | API | `8000` |  |
+| `PAPIQ_API_PORT` | API | `8000` | `0`: the operating system picks a free port, which the log line `api started` names (for tests; the image's health check needs a fixed port) |
 | `PAPIQ_UPLOAD_MAX_SIZE` | API | `100MiB` | Largest upload; bytes or with unit (`50MB`, `1GiB`); a proxy's body limit must allow it |
 | `PAPIQ_REQUEST_MAX_SIZE` | API | `1MiB` | Largest body of every other request (JSON); larger ones get `413` |
 | `PAPIQ_UI_DIR` | API | unset; image: `/opt/papiq/ui` | The built web UI (`web/build`), served below `/ui`; `/` leads there. Must contain `index.html`; unset serves the API only |
@@ -1122,7 +1133,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_WEBHOOK_DISABLE_AFTER` | Worker | `20` | Deliveries given up in a row until a webhook is switched off |
 | `PAPIQ_WEBHOOK_CONCURRENCY` | Worker | `4` | Deliveries at the same time |
 | `PAPIQ_MCP_ENABLED` | API | `true` | Serve MCP at `/api/v1/mcp` |
-| `PAPIQ_MCP_TEXT_MAX` | API | `20000` | Characters one `get_text` call returns at most (1,000 to 1,000,000) |
+| `PAPIQ_MCP_TEXT_MAX` | API | `20000` | Characters one `get_text` call and one piece of `GET /documents/{id}/text` return at most (1,000 to 1,000,000) |
 | `PAPIQ_WORKER_CONCURRENCY` | Worker | `2` | Jobs at the same time, see Worker |
 | `PAPIQ_WORKER_POLL_INTERVAL` | Worker | `1` | Seconds between looks for due jobs |
 | `PAPIQ_WORKER_SHUTDOWN_TIMEOUT` | Worker | `30` | Seconds running jobs get to finish on SIGTERM |

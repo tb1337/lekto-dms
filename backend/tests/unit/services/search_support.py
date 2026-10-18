@@ -3,7 +3,6 @@ the event bus and the jobs keep up to date."""
 
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import timedelta
 
 from papiq.adapters.outbound.memory import FakeEmbeddings, MemoryEventBus, MemorySearchIndex
 from papiq.core.domain.documents import Document
@@ -12,15 +11,15 @@ from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.search import IndexDocument
 from papiq.core.domain.users import User
-from papiq.core.ports import EmbeddingResult, IndexBuild
+from papiq.core.ports.embeddings import EmbeddingResult
+from papiq.core.ports.search_index import IndexBuild
 from papiq.core.services.indexing import INDEX_JOB, SUBSCRIBER, IndexingPolicy, IndexingService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.objects import text_key
+from papiq.core.services.pipeline import PipelineService
 from tests import builders
 from tests.builders import incoming
-from tests.unit.services.conftest import World
-
-HOUR = timedelta(hours=1)
+from tests.unit.services.support import World
 
 
 class BrokenEmbeddings:
@@ -83,10 +82,12 @@ class Setup:
     world: World
     index: MemorySearchIndex = field(default_factory=MemorySearchIndex)
     embeddings: FakeEmbeddings | BrokenEmbeddings | None = field(default_factory=FakeEmbeddings)
-    policy: IndexingPolicy = field(default_factory=IndexingPolicy)
+    policy: IndexingPolicy = builders.INDEXING
 
     def __post_init__(self) -> None:
-        self.bus = MemoryEventBus(self.world.database, clock=self.world.clock)
+        self.bus = MemoryEventBus(
+            self.world.database, clock=self.world.clock, retry=builders.EVENT_RETRY
+        )
         self.bus.subscribe(SUBSCRIBER, self.indexing.on_event)
 
     @property
@@ -96,8 +97,8 @@ class Setup:
             self.world.clock,
             self.world.object_store,
             self.index,
-            self.embeddings,
             self.policy,
+            embeddings=self.embeddings,
         )
 
     @property
@@ -106,15 +107,16 @@ class Setup:
             self.world.uow, self.world.clock, builders.TEMPLATES, index_renames=True
         )
 
-    async def settle(self, *, pipeline: bool = True, pipeline_service: object = None) -> None:
+    async def settle(
+        self, *, pipeline: bool = True, pipeline_service: PipelineService | None = None
+    ) -> None:
         """Deliver events and run jobs until nothing is left to do."""
         indexing = self.indexing
         while True:
             moved = await self.bus.dispatch()
             if pipeline:
-                moved += await self.world.drain(pipeline_service)  # type: ignore[arg-type]
-            while await indexing.run_next_job():
-                moved += 1
+                moved += await self.world.drain(pipeline_service)
+            moved += await builders.drain(indexing)
             if not moved:
                 return
 
@@ -135,10 +137,7 @@ class Setup:
 
 
 async def run_due(indexing: IndexingService) -> int:
-    count = 0
-    while await indexing.run_next_job():
-        count += 1
-    return count
+    return await builders.drain(indexing)
 
 
 def index_jobs(world: World) -> list[Job]:

@@ -3,15 +3,16 @@ network. It checks what a real provider checks (client authentication, redirect 
 single-use codes) and can be told to misbehave (wrong issuer, audience, nonce, expiry, key)."""
 
 import base64
-import hashlib
 import time
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs
 
 import httpx2
 from joserfc import jwt
 from joserfc.jwk import KeySet, RSAKey
+
+from papiq.core.domain.encoding import pkce_challenge, query_parameters
 
 ISSUER = "https://idp.example"
 CLIENT_ID = "papiq"
@@ -58,7 +59,7 @@ class SimulatedIdp:
 
     def consent(self, url: str, subject: str, **claims: Any) -> str:
         """The user signs in at the provider; returns the code for the callback."""
-        query = {key: values[0] for key, values in parse_qs(urlsplit(url).query).items()}
+        query = query_parameters(url)
         assert url.startswith(f"{self.issuer}/authorize?")
         assert query["response_type"] == "code"
         assert query["client_id"] == CLIENT_ID
@@ -111,9 +112,7 @@ class SimulatedIdp:
             return _error(400, "invalid_grant")
         if form.get("redirect_uri") != grant.redirect_uri:
             return _error(400, "invalid_grant")
-        verifier = form.get("code_verifier", "")
-        digest = hashlib.sha256(verifier.encode()).digest()
-        if base64.urlsafe_b64encode(digest).decode().rstrip("=") != grant.challenge:
+        if pkce_challenge(form.get("code_verifier", "")) != grant.challenge:
             return _error(400, "invalid_grant")
         now = int(time.time())
         claims: dict[str, Any] = {

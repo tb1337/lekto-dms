@@ -19,24 +19,40 @@ from papiq.adapters.inbound.problems import (
 from papiq.adapters.inbound.rest.upload import MalformedUploadError, UploadTooLargeError
 from papiq.core.domain.errors import (
     AuthenticationError,
+    ClassifierError,
     ClassifierUnavailableError,
     ConflictError,
+    DomainError,
     DuplicateDocumentError,
+    EmbeddingsError,
     IdentityProviderError,
     InvalidTransitionError,
+    LanguageModelError,
     LogoFetchDisabledError,
+    LogoFetchError,
+    MissingValueError,
     NotFoundError,
     OpenFieldsError,
+    PatternTimeoutError,
     PermissionDeniedError,
     SearchError,
     SecondFactorRequiredError,
     SpaceWriteDeniedError,
     TooManyAttemptsError,
+    UnprocessableDocumentError,
     UnsupportedMediaTypeError,
     ValidationError,
 )
 
-__all__ = ["PROBLEM_JSON", "Problem", "install", "problem", "problem_responses"]
+__all__ = [
+    "NOT_FROM_REQUESTS",
+    "PROBLEM_JSON",
+    "STATUSES",
+    "Problem",
+    "install",
+    "problem",
+    "problem_responses",
+]
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +61,7 @@ def install(app: FastAPI) -> None:
     """Register the handlers that turn errors into problems."""
 
     def status_of(error: Exception) -> int:
-        for kind, status in _STATUSES:
+        for kind, status in STATUSES:
             if isinstance(error, kind):
                 return status
         raise error
@@ -83,7 +99,7 @@ def install(app: FastAPI) -> None:
         log.error("request failed", exc_info=error)
         return problem(500, PROBLEMS[500][1])
 
-    for kind, _ in _STATUSES:
+    for kind, _ in STATUSES:
         app.add_exception_handler(kind, domain_error)
     app.add_exception_handler(Exception, unexpected_error)
     app.add_exception_handler(RequestValidationError, validation_error)
@@ -91,7 +107,7 @@ def install(app: FastAPI) -> None:
 
 
 # Most specific first.
-_STATUSES: list[tuple[type[Exception], int]] = [
+STATUSES: list[tuple[type[Exception], int]] = [
     (AuthenticationError, 401),
     (TooManyAttemptsError, 429),
     (IdentityProviderError, 502),
@@ -107,3 +123,17 @@ _STATUSES: list[tuple[type[Exception], int]] = [
     (ClassifierUnavailableError, 503),
     (LogoFetchDisabledError, 503),
 ]
+
+NOT_FROM_REQUESTS: frozenset[type[DomainError]] = frozenset(
+    {
+        UnprocessableDocumentError,  # fails a node in the worker; the facts tab notes it
+        LanguageModelError,  # a classification node's, in the worker: the node runs again
+        EmbeddingsError,  # the search falls back to words, the index and signals note it
+        ClassifierError,  # training in the worker or the command; the signal abstains
+        LogoFetchError,  # fetching in the worker: the contact keeps no logo
+        PatternTimeoutError,  # the rules skip the pattern and note it
+        MissingValueError,  # a template's: the rules skip the action and note it
+    }
+)
+"""Domain errors no request lets through: the services catch them, or they arise in the worker
+only. One that reached a route would answer 500; a test holds every other one to a status."""

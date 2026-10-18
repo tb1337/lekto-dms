@@ -18,8 +18,7 @@ from papiq.core.domain.codes import Code
 from papiq.core.domain.locations import Box
 from tests import builders
 from tests.api import auth
-from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import Api, make_app
+from tests.unit.adapters.rest.support import DOCUMENTS, Api, make_app, upload
 
 TEXT = """\
 Papiq Test GmbH
@@ -53,15 +52,6 @@ async def facts_api() -> AsyncIterator[Api]:
         yield Api(container, services, app, client, clock)
 
 
-async def upload(api: Api, headers: dict[str, str], *, drain: bool = True) -> str:
-    files = {"file": ("scan.pdf", (SAMPLES / "scan.pdf").read_bytes(), "application/pdf")}
-    response = await api.client.post(f"{PREFIX}/documents", files=files, headers=headers)
-    assert response.status_code == 202, response.text
-    if drain:
-        await api.drain()
-    return f"{PREFIX}/documents/{response.json()['id']}"
-
-
 async def post(api: Api, path: str, body: object, headers: dict[str, str]) -> httpx2.Response:
     return await api.client.post(f"{PREFIX}{path}", json=body, headers=headers)
 
@@ -87,7 +77,7 @@ async def test_names_identifiers_and_codes_with_their_places(facts_api: Api) -> 
         auth(admin),
     )
     assert field.status_code == 201, field.text
-    url = await upload(api, auth(owner))
+    url = f"{DOCUMENTS}/{await upload(api, auth(owner))}"
     changed = await api.client.patch(
         url,
         json={"fields": {field.json()["id"]: {"amount": "123.45", "currency": "EUR"}}},
@@ -148,7 +138,7 @@ async def test_names_identifiers_and_codes_with_their_places(facts_api: Api) -> 
 async def test_facts_need_read_access_and_a_text(facts_api: Api) -> None:
     api = facts_api
     owner, stranger = await api.user(), await api.user()
-    url = await upload(api, auth(owner), drain=False)
+    url = f"{DOCUMENTS}/{await upload(api, auth(owner), drain=False)}"
     assert (await api.client.get(f"{url}/facts", headers=auth(owner))).status_code == 409
     await api.drain()
     assert (await api.client.get(f"{url}/facts", headers=auth(owner))).status_code == 200
@@ -161,7 +151,7 @@ async def test_an_admin_attaches_an_identifier_from_a_document(facts_api: Api) -
     admin, owner = await api.admin(), await api.user()
     utility = (await post(api, "/contacts", {"name": "Stadtwerke"}, auth(admin))).json()
     bank = (await post(api, "/contacts", {"name": "Bank"}, auth(admin))).json()
-    url = await upload(api, auth(owner))
+    url = f"{DOCUMENTS}/{await upload(api, auth(owner))}"
     path = f"/contacts/{utility['id']}/identifiers"
     body = {"kind": "customer_number", "value": "2004-7718"}
 

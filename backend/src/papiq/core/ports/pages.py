@@ -2,7 +2,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-PAGE_MEDIA_TYPE = "image/webp"
+from papiq.core.domain import media_types
+
+PAGE_MEDIA_TYPE = media_types.WEBP
 PREVIEW_FILE = "preview.webp"
 """The file of the first page at preview size, next to the numbered pages."""
 

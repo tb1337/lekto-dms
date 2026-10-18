@@ -16,10 +16,10 @@ from papiq_migration.fake_paperless import FakePaperless, sample_archive
 from papiq.adapters.inbound.rest import PREFIX
 from papiq.core.domain.pipeline import SIGNALS, Node
 from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
-from papiq.core.services.pipeline import PlaceholderNode
 from tests import api as helpers
-from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import Api
+from tests.api import until
+from tests.builders import SAMPLES, PlaceholderNode
+from tests.unit.adapters.rest.support import Api
 
 
 class Migrating:
@@ -40,7 +40,7 @@ class Migrating:
             "state": self.directory / "state.sqlite",
             "report_dir": self.directory / "reports",
             "paperless_token": fake_paperless.TOKEN,
-            "papiq_token": helpers._TOKENS[self.admin.id],
+            "papiq_token": helpers.token(self.admin),
             "concurrency": 3,
         }
         return Config(**{**values, **changes})
@@ -71,11 +71,11 @@ async def migrating(api: Api, directory: Path) -> AsyncIterator[Migrating]:
     and fields node of a migration around nodes that do nothing (there is no language
     model)."""
     uow = api.container.unit_of_work
-    executors = api.services.pipeline._executors
+    pipeline = api.services.pipeline
     for signal in SIGNALS:
-        executors[signal] = ImportedSignal(uow, PlaceholderNode())
-    executors[Node.JUDGE] = ImportedJudgeNode(uow, PlaceholderNode())
-    executors[Node.FIELDS] = ImportedFieldsNode(uow, PlaceholderNode())
+        pipeline.replace_executor(signal, ImportedSignal(uow, PlaceholderNode()))
+    pipeline.replace_executor(Node.JUDGE, ImportedJudgeNode(uow, PlaceholderNode()))
+    pipeline.replace_executor(Node.FIELDS, ImportedFieldsNode(uow, PlaceholderNode()))
     admin = await api.admin()
 
     async def work() -> None:
@@ -157,9 +157,11 @@ async def test_a_stopped_run_continues_against_the_api(api: Api, tmp_path: Path)
     async with migrating(api, tmp_path) as m:
         stop = asyncio.Event()
 
+        async def three() -> bool:
+            return len(await m.documents()) >= 3
+
         async def watch() -> None:
-            while len(await m.documents()) < 3:
-                await asyncio.sleep(0.005)
+            await until(three, 30, every=0.005, what="three documents")
             stop.set()
 
         watcher = asyncio.create_task(watch())

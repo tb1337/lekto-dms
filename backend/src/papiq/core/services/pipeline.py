@@ -4,24 +4,23 @@ import asyncio
 import copy
 import hashlib
 import logging
-import random
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Protocol
-from uuid import UUID
+from typing import Protocol, Self
 
 from papiq.core.domain import media_types
+from papiq.core.domain.classification import CLASSIFIER_LABELS, SPACE
 from papiq.core.domain.documents import (
-    CLASSIFIER_LABELS,
+    MAX_TITLE,
     Channel,
     Document,
     DocumentChanges,
     Sha256,
+    checked_fields,
 )
 from papiq.core.domain.errors import (
-    ConcurrencyError,
     ConflictError,
     DuplicateDocumentError,
     InvalidTransitionError,
@@ -35,37 +34,53 @@ from papiq.core.domain.errors import (
 )
 from papiq.core.domain.ids import DocumentId, JobId, SpaceId, TagId, UserId
 from papiq.core.domain.imports import IMPORTED, ImportedMetadata
-from papiq.core.domain.jobs import Job, JobStatus
+from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.json_value import JsonObject
-from papiq.core.domain.permissions import can_control_document, can_file_into
+from papiq.core.domain.permissions import can_file_into
 from papiq.core.domain.pipeline import (
     CHOSEN_SPACE,
     NODES,
+    TRIGGER_UPLOAD,
     Lane,
     Node,
     NodeResult,
     NodeRun,
     NodeStatus,
     Outcome,
+    ProcessingHistory,
     ProcessingStatus,
 )
 from papiq.core.domain.reading import (
     NO_TEXT_REASON,
     DocumentReading,
-    readings_from_json,
+    OcrOutput,
     vision_advice,
 )
-from papiq.core.domain.rule_engine import SPACE, changed_fields
-from papiq.core.domain.users import User
-from papiq.core.ports import Clock, ObjectStore, UnitOfWork, UnitOfWorkFactory
+from papiq.core.domain.rule_planner import changed_fields
+from papiq.core.domain.validation import require_name
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.object_store import ObjectStore
 from papiq.core.ports.ocr import VisionModel
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import (
+    access_to,
     checked_changes,
+    controllable_document,
+    field_definitions,
     load_actor,
     may_file,
-    readable_document,
+    require_admin,
     visible_space,
 )
+from papiq.core.services._jobs import (
+    STORE_ATTEMPTS,
+    JobRunner,
+    document_payload,
+    payload_document,
+    retrying,
+)
+from papiq.core.services._pages import document_pages
+from papiq.core.services.documents import DocumentView
 from papiq.core.services.inbox import (
     LEARNED_ALIAS,
     alias_to_learn,
@@ -79,20 +94,37 @@ from papiq.core.services.rules.running import corrected_fields, person_record, s
 
 log = logging.getLogger(__name__)
 
-# Attempts to store a node result while the document is changed concurrently: the signals of a
-# document finish side by side, each attempt waits a little longer, at random.
-_RECORD_ATTEMPTS = 10
-_RECORD_BACKOFF = 0.02  # seconds, times the attempt
-
 NODE_JOB = "pipeline.node"
-"""Job kind of a pipeline node; payload: document id, node, processing run."""
+"""Job kind of a pipeline node; payload: `NodeJob`."""
 CATCH_UP_JOB = "pipeline.catch_up"
+"""Job kind of a node skipped in the document's current run that is run afterwards, outside
+processing (`PipelineService.catch_up`); payload: `NodeJob`."""
 REPARSE_JOB = "pipeline.reparse"
+"""Job kind of reading a document's text again (`PipelineService.reparse`); payload: `NodeJob`
+of the node `parse`."""
 FACTS_JOB = "pipeline.facts"
 """Job kind of reading a document's facts outside processing (`read-codes`): the codes on its
 pages and the identifiers it shows; payload: document id. Processing and log stay as they are."""
-"""Job kind of a node skipped in the document's current run that is run afterwards, outside
-processing (`PipelineService.catch_up`); the same payload."""
+
+
+@dataclass(frozen=True)
+class NodeJob:
+    """The payload of a job that runs a node of a document in a processing run."""
+
+    document_id: DocumentId
+    node: Node
+    run: int
+
+    def to_json(self) -> JsonObject:
+        return document_payload(self.document_id) | {"node": self.node.value, "run": self.run}
+
+    @classmethod
+    def from_json(cls, payload: JsonObject) -> Self:
+        """KeyError, TypeError or ValueError for a payload that is none."""
+        run = payload["run"]
+        if not isinstance(run, int):
+            raise ValueError(f"invalid node job payload {payload!r}")
+        return cls(payload_document(payload), Node(str(payload["node"])), run)
 
 
 class DeferredResult(Protocol):
@@ -125,7 +157,7 @@ class MetadataResult:
             changes = replace(changes, tag_ids=frozenset(document.tag_ids | self.add_tags))
         try:
             changes = await checked_changes(uow, changes, document)
-            definitions = {item.id: item for item in await uow.fields.list_all()}
+            definitions = await field_definitions(uow)
             changed = document.apply_changes(changes, definitions, now)
         except (NotFoundError, ValidationError) as error:
             reason = f"the master data changed during the node; nothing was applied ({error})"
@@ -146,30 +178,6 @@ class NodeExecutor(Protocol):
     """
 
     async def run(self, document: Document) -> NodeResult | DeferredResult: ...
-
-
-class PlaceholderNode:
-    """Stands in for nodes whose logic comes in later milestones (M3, M5, M7)."""
-
-    async def run(self, document: Document) -> NodeResult:
-        return NodeResult(outcome=Outcome.OK)
-
-
-@dataclass(frozen=True)
-class RetryPolicy:
-    """Automatic retries of a node that raised: `max_attempts` in total, waiting
-    `delay * 2^(attempt-1)` before the next one."""
-
-    max_attempts: int = 3
-    delay: timedelta = timedelta(seconds=30)
-
-    def next_run(self, attempts: int, now: datetime) -> datetime | None:
-        if attempts >= self.max_attempts:
-            return None
-        return now + self.delay * (1 << max(attempts - 1, 0))
-
-
-DEFAULT_RETRY = RetryPolicy()
 
 
 @dataclass(frozen=True)
@@ -202,13 +210,16 @@ class PipelineService:
         executors: Mapping[Node, NodeExecutor],
         *,
         pipeline_version: str,
-        retry: RetryPolicy = DEFAULT_RETRY,
+        suggest_contact: float,
+        retry: RetryPolicy,
+        poor_reading: float,
         lease: timedelta = timedelta(minutes=10),
         vision: VisionModel | None = None,
-        poor_reading: float = 0.08,
         facts: NodeExecutor | None = None,
     ) -> None:
-        """`vision`: the vision language model the OCR can read pages with, if any;
+        """`suggest_contact`: the similarity from which a name suggests a contact; an alias
+        learned on confirmation must be at least that related to the contact's names;
+        `vision`: the vision language model the OCR can read pages with, if any;
         `poor_reading`: the share of unsure words from which a page counts as poorly read;
         `facts`: the facts signal for reading facts outside processing (`request_facts`)."""
         missing = set(NODES) - {Node.RECEIVE} - set(executors)
@@ -219,8 +230,10 @@ class PipelineService:
         self._store = object_store
         self._executors = dict(executors)
         self._version = pipeline_version
+        self._suggest_contact = suggest_contact
         self._retry = retry
         self._lease = lease
+        self._jobs = JobRunner(uow, clock)
         self._vision = vision
         self._poor_reading = poor_reading
         self._facts = facts
@@ -229,6 +242,16 @@ class PipelineService:
     def vision(self) -> VisionModel | None:
         """The vision language model a person can have documents read with, if any."""
         return self._vision
+
+    @property
+    def retry_policy(self) -> RetryPolicy:
+        """How often and when a node that raised runs again."""
+        return self._retry
+
+    @property
+    def lease(self) -> timedelta:
+        """How long a worker holds the job of a node."""
+        return self._lease
 
     # --- ingest ---------------------------------------------------------------------------------
 
@@ -271,7 +294,7 @@ class PipelineService:
             owner = await self._owner(uow, actor, owner, channel, imported)
             target = await self._target_space(uow, owner, space, sha256)
             if imported is not None:
-                await _check_imported(uow, owner, imported, started)
+                await _check_imported(uow, imported)
         key = original_key(sha256)
         if not await self._store.exists(key):
             await self._store.upload(key, file.path, content_type=media_type)
@@ -348,7 +371,7 @@ class PipelineService:
                         document,
                         node=Node.RECEIVE,
                         actor=actor,
-                        trigger="upload",
+                        trigger=TRIGGER_UPLOAD,
                         version=self._version,
                         now=now,
                     )
@@ -394,29 +417,37 @@ class PipelineService:
             return (await uow.spaces.get_default(actor)).id
         target = await visible_space(uow, user, space)
         if not can_file_into(user, target):
-            raise SpaceWriteDeniedError(space, str(space))
+            raise SpaceWriteDeniedError(target.id, target.name)
         return target.id
 
     # --- retry and reprocess --------------------------------------------------------------------
 
-    async def retry(self, actor: UserId, id: DocumentId) -> Document:
+    async def retry(self, actor: UserId, id: DocumentId) -> DocumentView:
         """Owner or admin: repeat the failed nodes and continue from there."""
         async with self._uow() as uow:
-            document = await _owned_document(uow, await load_actor(uow, actor), id)
+            user = await load_actor(uow, actor)
+            document = await controllable_document(
+                uow, user, id, f"control the processing of document {id}"
+            )
+            access = await access_to(uow, user, document)
             document.retry(self._clock.now())
             await self._restart(uow, document)
-        return document
+        return DocumentView(document, access)
 
-    async def reprocess_from(self, actor: UserId, id: DocumentId, node: Node) -> Document:
+    async def reprocess_from(self, actor: UserId, id: DocumentId, node: Node) -> DocumentView:
         """Owner or admin: discard the results of `node` and the nodes after it and process
         them again."""
         async with self._uow() as uow:
-            document = await _owned_document(uow, await load_actor(uow, actor), id)
+            user = await load_actor(uow, actor)
+            document = await controllable_document(
+                uow, user, id, f"control the processing of document {id}"
+            )
+            access = await access_to(uow, user, document)
             document.reprocess_from(node, self._clock.now())
             await self._restart(uow, document)
-        return document
+        return DocumentView(document, access)
 
-    async def read_with_vision(self, actor: UserId, id: DocumentId) -> Document:
+    async def read_with_vision(self, actor: UserId, id: DocumentId) -> DocumentView:
         """Owner or admin: have the vision language model read every page, and process the
         document again from OCR (`Document.read_with_vision`). Sending the pages out is a
         person's decision; nothing else asks for it. InvalidTransitionError without a model,
@@ -424,22 +455,30 @@ class PipelineService:
         if self._vision is None:
             raise InvalidTransitionError("no vision language model is configured")
         async with self._uow() as uow:
-            document = await _owned_document(uow, await load_actor(uow, actor), id)
+            user = await load_actor(uow, actor)
+            document = await controllable_document(
+                uow, user, id, f"control the processing of document {id}"
+            )
+            access = await access_to(uow, user, document)
             document.read_with_vision(self._clock.now())
             await self._restart(uow, document)
-        return document
+        return DocumentView(document, access)
 
     async def reading(self, actor: UserId, id: DocumentId) -> DocumentReading:
         """Owner or admin, as the log: how the archive's text was read (its latest OCR that
         made one), and whether reading it with the vision language model is advised: the
         document waits for a person because no text was found, or with a poorly read page."""
         async with self._uow() as uow:
-            document = await _owned_document(uow, await load_actor(uow, actor), id)
+            document = await controllable_document(
+                uow, await load_actor(uow, actor), id, f"control the processing of document {id}"
+            )
             log = await uow.processing_log.list_for(id)
-        ocr = _latest(log, Node.OCR, made=True)
-        parse = _latest(log, Node.PARSE)
-        vision = ocr is not None and "vision" in ocr.result.output
-        pages = () if ocr is None else readings_from_json(ocr.result.output.get("readings"))
+        history = ProcessingHistory(log)
+        ocr = history.latest(Node.OCR, made=True)
+        parse = history.latest(Node.PARSE)
+        read = None if ocr is None else OcrOutput.from_json(ocr.result.output)
+        vision = read is not None and read.vision is not None
+        pages = () if read is None else read.readings
         poor = tuple(page.page for page in pages if page.poor(self._poor_reading))
         needs_person = document.lane in (Lane.YELLOW, Lane.RED) and (
             document.processing.status is not ProcessingStatus.PROCESSING
@@ -467,7 +506,7 @@ class PipelineService:
         accept_suggestions: bool = False,
         resume_at: Node = Node.APPLY_RULES,
         space: SpaceId | None = None,
-    ) -> Document:
+    ) -> DocumentView:
         """Owner or admin, for a document in the inbox: decide its open fields, apply `changes`
         (as a metadata change), move it into `space` (one the owner may write to; an admin
         chooses any space, and filing accepts it) and let processing continue from `resume_at`,
@@ -485,7 +524,9 @@ class PipelineService:
         decided values, as long as the document has the machine's title (`titles`)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document = await _owned_document(uow, user, id)
+            document = await controllable_document(
+                uow, user, id, f"control the processing of document {id}"
+            )
             log = await uow.processing_log.list_for(id)
             outcomes = dict(document.processing.outcomes)
             again = {resume_at, *resume_at.descendants}
@@ -497,7 +538,7 @@ class PipelineService:
             ]
             target = None if space is None else await visible_space(uow, user, space)
             if target is not None and not (user.is_active_admin or can_file_into(user, target)):
-                raise SpaceWriteDeniedError(target.id, f"'{target.name}'")
+                raise SpaceWriteDeniedError(target.id, target.name)
             if target is None and not await may_file(
                 uow, document, await uow.spaces.get(document.space_id)
             ):
@@ -506,7 +547,7 @@ class PipelineService:
             now = self._clock.now()
             tags_before = frozenset(document.tag_ids)
             overruled = document.confirm(resume_at, now)
-            definitions = {item.id: item for item in await uow.fields.list_all()}
+            definitions = await field_definitions(uow)
             decision = decide(
                 open,
                 document,
@@ -540,12 +581,16 @@ class PipelineService:
             )
             chosen: JsonObject = {} if target is None else {CHOSEN_SPACE: str(target.id)}
             learned = alias_to_learn(open, decision, document)
-            if learned is not None and await learn_alias(uow, *learned) is not None:
+            if (
+                learned is not None
+                and await learn_alias(uow, *learned, threshold=self._suggest_contact) is not None
+            ):
                 chosen[LEARNED_ALIAS] = {"contact_id": str(learned[0]), "alias": learned[1]}
             result = replace(result, output={**result.output, **person, **chosen})
             await self._log(uow, id, Node.APPLY_RULES, run, result, now, now)
+            access = await access_to(uow, user, document)
             await self._restart(uow, document)
-        return document
+        return DocumentView(document, access)
 
     async def _restart(self, uow: UnitOfWork, document: Document) -> None:
         await uow.documents.update(document)
@@ -559,33 +604,22 @@ class PipelineService:
         Returns how many were queued; a document with such a job already is not queued
         again. A document that starts a new run meanwhile keeps the node skipped; its job is
         stale then, and the next call queues it again."""
-        now = self._clock.now()
-        queued = 0
-        async with self._uow() as uow:
-            for document in await uow.documents.list_all():
-                run = document.processing.run
-                if not document.is_skipped(node, run):
-                    continue
-                payload: JsonObject = {
-                    "document_id": str(document.id),
-                    "node": node.value,
-                    "run": run,
-                }
-                job = await uow.jobs.enqueue(
-                    CATCH_UP_JOB,
-                    payload,
-                    run_at=now,
-                    dedup_key=f"{document.id}:{run}:{node.value}:catch-up",
-                )
-                queued += job is not None
-            await uow.commit()
-        return queued
+
+        def catch_up(document: Document) -> tuple[JsonObject, str] | None:
+            run = document.processing.run
+            if not document.is_skipped(node, run):
+                return None
+            return (
+                NodeJob(document.id, node, run).to_json(),
+                f"{document.id}:{run}:{node.value}:catch-up",
+            )
+
+        return await self._queue_each(CATCH_UP_JOB, catch_up)
 
     async def request_reparse(self, actor: UserId) -> int:
         """Admins only: `reparse`."""
         async with self._uow() as uow:
-            if not (await load_actor(uow, actor)).is_active_admin:
-                raise PermissionDeniedError("only admins read the text of all documents again")
+            await require_admin(uow, actor, "read the text of all documents again")
         return await self.reparse()
 
     async def reparse(self) -> int:
@@ -595,24 +629,14 @@ class PipelineService:
         Its nodes, status, lane and metadata stay as they are; its log gets the new reading, and
         the search index takes up the new text. A document that starts a new run meanwhile has
         its text read there; its job is stale then."""
-        now = self._clock.now()
-        queued = 0
-        async with self._uow() as uow:
-            for document in await uow.documents.list_all():
-                run = document.processing.run
-                if not _reparsable(document, run):
-                    continue
-                payload: JsonObject = {
-                    "document_id": str(document.id),
-                    "node": Node.PARSE.value,
-                    "run": run,
-                }
-                job = await uow.jobs.enqueue(
-                    REPARSE_JOB, payload, run_at=now, dedup_key=f"{document.id}:{run}:reparse"
-                )
-                queued += job is not None
-            await uow.commit()
-        return queued
+
+        def reparse(document: Document) -> tuple[JsonObject, str] | None:
+            run = document.processing.run
+            if not _reparsable(document, run):
+                return None
+            return NodeJob(document.id, Node.PARSE, run).to_json(), f"{document.id}:{run}:reparse"
+
+        return await self._queue_each(REPARSE_JOB, reparse)
 
     async def request_facts(self) -> int:
         """Queue reading the facts of every document whose text was read and that is not being
@@ -621,26 +645,50 @@ class PipelineService:
         queued already is not queued twice."""
         if self._facts is None:
             return 0
-        now = self._clock.now()
+
+        def facts(document: Document) -> tuple[JsonObject, str] | None:
+            processing = document.processing
+            if processing.status is ProcessingStatus.PROCESSING:
+                return None
+            if processing.outcome(Node.PARSE) not in (Outcome.OK, Outcome.UNCERTAIN):
+                return None
+            return document_payload(document.id), f"{document.id}:facts"
+
+        return await self._queue_each(FACTS_JOB, facts)
+
+    async def _queue_each(
+        self, kind: str, job: Callable[[Document], tuple[JsonObject, str] | None]
+    ) -> int:
+        """A `kind` job for each document `job` gives a payload and a dedup key for; returns
+        how many were queued (one queued already is not queued twice)."""
         queued = 0
-        async with self._uow() as uow:
-            for document in await uow.documents.list_all():
-                processing = document.processing
-                if processing.status is ProcessingStatus.PROCESSING:
-                    continue
-                if processing.outcome(Node.PARSE) not in (Outcome.OK, Outcome.UNCERTAIN):
-                    continue
-                job = await uow.jobs.enqueue(
-                    FACTS_JOB,
-                    {"document_id": str(document.id)},
-                    run_at=now,
-                    dedup_key=f"{document.id}:facts",
-                )
-                queued += job is not None
-            await uow.commit()
+        async for page in document_pages(self._uow):
+            async with self._uow() as uow:
+                for document in page:
+                    found = job(document)
+                    if found is None:
+                        continue
+                    payload, dedup = found
+                    queued += (
+                        await uow.jobs.enqueue(
+                            kind, payload, run_at=self._clock.now(), dedup_key=dedup
+                        )
+                        is not None
+                    )
+                await uow.commit()
         return queued
 
     # --- worker ---------------------------------------------------------------------------------
+
+    def executor(self, node: Node) -> NodeExecutor:
+        """What runs `node`."""
+        return self._executors[node]
+
+    def replace_executor(self, node: Node, executor: NodeExecutor) -> NodeExecutor:
+        """Let `executor` run `node` from now on, for tests and tools; returns the one it
+        replaces."""
+        replaced, self._executors[node] = self._executors[node], executor
+        return replaced
 
     async def run_next_job(self) -> bool:
         """Claim the next due node job and run it. Returns False if no job was due.
@@ -660,32 +708,20 @@ class PipelineService:
         A catch-up job (`catch_up`) runs the same way, except that its node is not marked as
         running and its result changes neither the status nor the lane.
         """
-        async with self._uow() as uow:
-            job = await uow.jobs.claim(
-                now=self._clock.now(),
-                lease=self._lease,
-                kinds=[NODE_JOB, CATCH_UP_JOB, REPARSE_JOB, FACTS_JOB],
-            )
-            await uow.commit()
-        if job is None:
-            return False
-        try:
-            await self._run_claimed(job)
-        except asyncio.CancelledError:
-            await asyncio.shield(self._release(job))
-            raise
-        return True
+        return await self._jobs.run_next(
+            [NODE_JOB, CATCH_UP_JOB, REPARSE_JOB, FACTS_JOB], self._lease, self._run_claimed
+        )
 
     async def _run_claimed(self, job: Job) -> None:
         if job.kind == FACTS_JOB:
             await self._read_facts(job)
             return
         try:
-            document_id, node, run = _parse_payload(job.payload)
+            target = NodeJob.from_json(job.payload)
         except (KeyError, TypeError, ValueError) as error:
-            log.error("invalid node job", extra={"job_id": str(job.id), "error": str(error)})
-            await self._finish(job, error=f"invalid payload: {error}")
+            await self._jobs.invalid(job, error)
             return
+        document_id, node, run = target.document_id, target.node, target.run
         if job.kind == REPARSE_JOB:
             await self._reparse(job, document_id, run)
             return
@@ -695,7 +731,7 @@ class PipelineService:
         else:
             document = await self._start(document_id, node, run, started)
         if document is None:
-            await self._finish(job)
+            await self._jobs.end(job)
             return
         if job.tries > self._retry.max_attempts:
             reason = (
@@ -735,73 +771,53 @@ class PipelineService:
     ) -> None:
         """Let the job run again at `retry_at` and show the node as waiting meanwhile (a
         catch-up job has nothing to show). Nothing changes if the job's claim was lost."""
-        for attempt in range(1, _RECORD_ATTEMPTS + 1):
-            try:
-                async with self._uow() as uow:
-                    await uow.jobs.reschedule(job, run_at=retry_at, error=reason)
-                    document = await uow.documents.find(document_id)
-                    if (
-                        job.kind != CATCH_UP_JOB
-                        and document is not None
-                        and document.is_awaiting(node, run)
-                        and document.processing.nodes[node].status is NodeStatus.RUNNING
-                    ):
-                        document.defer_node(node, run, retry_at, self._clock.now())
-                        await uow.documents.update(document)
-                        await uow.outbox.add(document.pull_events())
-                    await uow.commit()
-                return
-            except ConcurrencyError:
-                if not await self._still_claimed(job):
-                    log.warning("lost the claim of a node job", extra={"job_id": str(job.id)})
-                    return
-                if attempt == _RECORD_ATTEMPTS:
-                    raise
-                await _backoff(attempt)
+
+        async def defer() -> None:
+            async with self._uow() as uow:
+                await uow.jobs.reschedule(job, run_at=retry_at, error=reason)
+                document = await uow.documents.find(document_id)
+                if (
+                    job.kind != CATCH_UP_JOB
+                    and document is not None
+                    and document.is_awaiting(node, run)
+                    and document.processing.nodes[node].status is NodeStatus.RUNNING
+                ):
+                    document.defer_node(node, run, retry_at, self._clock.now())
+                    await uow.documents.update(document)
+                    await uow.outbox.add(document.pull_events())
+                await uow.commit()
+
+        await self._jobs.storing(job, defer)
 
     async def _read_facts(self, job: Job) -> None:
         """Read a document's facts outside processing and keep what they apply (the
         identifiers it shows); the result itself is not recorded. An attempt that raises runs
         again later, like a node."""
         try:
-            document_id = DocumentId(UUID(str(job.payload["document_id"])))
+            document_id = payload_document(job.payload)
         except (KeyError, ValueError) as error:
-            await self._finish(job, error=f"invalid payload: {error}")
+            await self._jobs.invalid(job, error)
             return
         async with self._uow() as uow:
             document = await uow.documents.find(document_id)
         if document is None or self._facts is None:
-            await self._finish(job)
+            await self._jobs.end(job)
             return
         try:
             outcome = await self._facts.run(document)
         except Exception as error:
-            reason = f"{type(error).__name__}: {error}"
-            log.warning(
-                "reading the facts failed",
-                extra={"document_id": str(document_id), "attempt": job.tries},
-                exc_info=True,
-            )
-            retry_at = self._retry.next_run(job.tries, self._clock.now())
-            if retry_at is None:
-                await self._finish(job, error=reason)
-                return
-            async with self._uow() as uow:
-                await uow.jobs.reschedule(job, run_at=retry_at, error=reason)
-                await uow.commit()
+            await self._failed_aside(job, "reading the facts failed", document_id, error)
             return
         if isinstance(outcome, NodeResult):
-            await self._finish(job)
+            await self._jobs.end(job)
             return
-        try:
-            async with self._uow() as uow:
-                current = await uow.documents.find(document_id)
-                if current is not None:
-                    await outcome.apply(uow, current, self._clock.now())
-                await uow.jobs.complete(job)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a facts job", extra={"job_id": str(job.id)})
+
+        async def apply(uow: UnitOfWork) -> None:
+            current = await uow.documents.find(document_id)
+            if current is not None:
+                await outcome.apply(uow, current, self._clock.now())
+
+        await self._jobs.end(job, also=apply)
 
     async def _reparse(self, job: Job, document_id: DocumentId, run: int) -> None:
         """Read a document's text again (`reparse`) and record the reading beside processing.
@@ -810,7 +826,7 @@ class PipelineService:
         async with self._uow() as uow:
             document = await uow.documents.find(document_id)
         if document is None or not _reparsable(document, run):
-            await self._finish(job)
+            await self._jobs.end(job)
             return
         started = self._clock.now()
         try:
@@ -818,41 +834,38 @@ class PipelineService:
         except UnprocessableDocumentError as error:
             outcome = _failed(str(error))
         except Exception as error:
-            reason = f"{type(error).__name__}: {error}"
-            log.warning(
-                "reading the text again failed",
-                extra={"document_id": str(document_id), "attempt": job.tries},
-                exc_info=True,
-            )
-            retry_at = self._retry.next_run(job.tries, self._clock.now())
-            if retry_at is None:
-                await self._finish(job, error=reason)
-                return
-            async with self._uow() as uow:
-                await uow.jobs.reschedule(job, run_at=retry_at, error=reason)
-                await uow.commit()
+            await self._failed_aside(job, "reading the text again failed", document_id, error)
             return
         assert isinstance(outcome, NodeResult), "parsing applies nothing"
         result = replace(outcome, input={**outcome.input, "reparse": True})
-        for attempt in range(1, _RECORD_ATTEMPTS + 1):
+
+        async def record() -> None:
             now = self._clock.now()
-            try:
-                async with self._uow() as uow:
-                    document = await uow.documents.find(document_id)
-                    if document is not None and _reparsable(document, run):
-                        document.text_read_again(run, result.outcome, now)
-                        await uow.documents.update(document)
-                        await self._log(uow, document.id, Node.PARSE, run, result, started, now)
-                        await uow.outbox.add(document.pull_events())
-                    if result.outcome is Outcome.FAILED:
-                        await uow.jobs.fail(job, error=result.reason or "failed")
-                    else:
-                        await uow.jobs.complete(job)
-                    await uow.commit()
-                return
-            except ConcurrencyError:
-                if attempt == _RECORD_ATTEMPTS:
-                    raise
+            async with self._uow() as uow:
+                document = await uow.documents.find(document_id)
+                if document is not None and _reparsable(document, run):
+                    document.text_read_again(run, result.outcome, now)
+                    await uow.documents.update(document)
+                    await self._log(uow, document.id, Node.PARSE, run, result, started, now)
+                    await uow.outbox.add(document.pull_events())
+                if result.outcome is Outcome.FAILED:
+                    await uow.jobs.fail(job, error=result.reason or "failed")
+                else:
+                    await uow.jobs.complete(job)
+                await uow.commit()
+
+        await self._jobs.storing(job, record)
+
+    async def _failed_aside(
+        self, job: Job, message: str, document_id: DocumentId, error: Exception
+    ) -> None:
+        """An attempt of a job beside processing (facts, reading again) raised: it runs again
+        later, like a node, and is given up after as many attempts."""
+        log.warning(
+            message, extra={"document_id": str(document_id), "attempt": job.tries}, exc_info=True
+        )
+        reason = f"{type(error).__name__}: {error}"
+        await self._jobs.again(job, reason, self._retry.next_run(job.tries, self._clock.now()))
 
     async def _skipped(self, document_id: DocumentId, node: Node, run: int) -> Document | None:
         """The document, if its `node` is still to catch up on; None if the job is stale."""
@@ -867,22 +880,19 @@ class PipelineService:
     ) -> Document | None:
         """Mark the node as running and return the document; None if the job is stale. A
         concurrent change of the document (another node of it finishing) is retried."""
-        for attempt in range(1, _RECORD_ATTEMPTS + 1):
-            try:
-                async with self._uow() as uow:
-                    document = await uow.documents.find(document_id)
-                    if document is None or not document.is_awaiting(node, run):
-                        return None
-                    document.start_node(node, run, now)
-                    await uow.documents.update(document)
-                    await uow.outbox.add(document.pull_events())
-                    await uow.commit()
-                return document
-            except ConcurrencyError:
-                if attempt == _RECORD_ATTEMPTS:
-                    raise
-                await _backoff(attempt)
-        raise AssertionError("unreachable")
+
+        async def start() -> Document | None:
+            async with self._uow() as uow:
+                document = await uow.documents.find(document_id)
+                if document is None or not document.is_awaiting(node, run):
+                    return None
+                document.start_node(node, run, now)
+                await uow.documents.update(document)
+                await uow.outbox.add(document.pull_events())
+                await uow.commit()
+            return document
+
+        return await retrying(start, attempts=STORE_ATTEMPTS, backoff=True)
 
     async def _record(
         self,
@@ -896,17 +906,9 @@ class PipelineService:
         """Store a node result (completing a deferred one on the stored state). A concurrent
         change of the document (e.g. a metadata edit) is retried; if the job's claim was lost,
         another worker owns the node and nothing is stored."""
-        for attempt in range(1, _RECORD_ATTEMPTS + 1):
-            try:
-                await self._record_once(job, document_id, node, run, result, started)
-                return
-            except ConcurrencyError:
-                if not await self._still_claimed(job):
-                    log.warning("lost the claim of a node job", extra={"job_id": str(job.id)})
-                    return
-                if attempt == _RECORD_ATTEMPTS:
-                    raise
-                await _backoff(attempt)
+        await self._jobs.storing(
+            job, lambda: self._record_once(job, document_id, node, run, result, started)
+        )
 
     async def _record_once(
         self,
@@ -946,41 +948,6 @@ class PipelineService:
             await uow.outbox.add(document.pull_events())
             await uow.commit()
 
-    async def _release(self, job: Job) -> None:
-        """Let an interrupted job run again at once. Nothing to do if it was finished or lost
-        its claim meanwhile."""
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.release(
-                    job, run_at=self._clock.now(), error="interrupted: the worker stopped"
-                )
-                await uow.commit()
-        except ConcurrencyError:
-            pass
-        except Exception:
-            log.warning(
-                "could not release an interrupted job",
-                extra={"job_id": str(job.id)},
-                exc_info=True,
-            )
-
-    async def _still_claimed(self, job: Job) -> bool:
-        async with self._uow() as uow:
-            current = await uow.jobs.get(job.id)
-        return current.status is JobStatus.RUNNING and current.attempts == job.attempts
-
-    async def _finish(self, job: Job, *, error: str | None = None) -> None:
-        """End a job that has nothing (more) to do: completed if stale, failed with `error`."""
-        try:
-            async with self._uow() as uow:
-                if error is None:
-                    await uow.jobs.complete(job)
-                else:
-                    await uow.jobs.fail(job, error=error)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a node job", extra={"job_id": str(job.id)})
-
     async def _log(
         self,
         uow: UnitOfWork,
@@ -1004,29 +971,6 @@ class PipelineService:
         )
 
 
-def _latest(log: Iterable[NodeRun], node: Node, *, made: bool = False) -> NodeRun | None:
-    """The latest run of `node` in the log; with `made`, the latest that did not fail (whose
-    result the document still has)."""
-    runs = [
-        entry
-        for entry in log
-        if entry.node is node and not (made and entry.result.outcome is Outcome.FAILED)
-    ]
-    return runs[-1] if runs else None
-
-
-async def _owned_document(uow: UnitOfWork, user: User, id: DocumentId) -> Document:
-    """The document, if the caller controls its processing: its owner or an admin."""
-    document, _ = await readable_document(uow, user, id)
-    if not can_control_document(user, document):
-        raise PermissionDeniedError(f"only the owner controls processing of document {id}")
-    return document
-
-
-async def _backoff(attempt: int) -> None:
-    await asyncio.sleep(random.uniform(0, _RECORD_BACKOFF * attempt))
-
-
 async def _enqueue(
     uow: UnitOfWork, document: Document, nodes: Iterable[Node], now: datetime
 ) -> list[JobId]:
@@ -1034,35 +978,28 @@ async def _enqueue(
     run = document.processing.run
     jobs = []
     for node in nodes:
-        payload: JsonObject = {"document_id": str(document.id), "node": node.value, "run": run}
         job = await uow.jobs.enqueue(
-            NODE_JOB, payload, run_at=now, dedup_key=f"{document.id}:{run}:{node.value}"
+            NODE_JOB,
+            NodeJob(document.id, node, run).to_json(),
+            run_at=now,
+            dedup_key=f"{document.id}:{run}:{node.value}",
         )
         if job is not None:
             jobs.append(job)
     return jobs
 
 
-async def _check_imported(
-    uow: UnitOfWork, owner: UserId, imported: ImportedMetadata, now: datetime
-) -> None:
+async def _check_imported(uow: UnitOfWork, imported: ImportedMetadata) -> None:
     """ValidationError if the metadata does not fit the master data: unknown contact, type or
-    tag, or field values that do not fit their definition or the document type."""
+    tag, or field values that do not fit their definition or the document type; or if its
+    title is empty or too long."""
     changes = replace(imported.classification(), tag_ids=imported.tag_ids)
     changes = replace(changes, fields=dict(imported.fields))
     try:
-        changes = await checked_changes(uow, changes)
-        definitions = {item.id: item for item in await uow.fields.list_all()}
-        scratch = Document.receive(
-            owner_id=owner,
-            space_id=SpaceId(owner),
-            sha256=Sha256("0" * 64),
-            original_filename="scratch",
-            media_type="application/pdf",
-            result=NodeResult(outcome=Outcome.OK),
-            now=now,
-        )
-        scratch.apply_changes(changes, definitions, now)
+        await checked_changes(uow, changes)
+        if imported.title is not None:
+            require_name(imported.title, "title", max_length=MAX_TITLE)
+        checked_fields(changes, await field_definitions(uow), imported.document_type_id)
     except NotFoundError as error:
         raise ValidationError(f"metadata: {error}") from None
 
@@ -1074,13 +1011,6 @@ def _failed(reason: str) -> NodeResult:
 def _head(path: Path) -> bytes:
     with path.open("rb") as file:
         return file.read(media_types.SNIFF_SIZE)
-
-
-def _parse_payload(payload: JsonObject) -> tuple[DocumentId, Node, int]:
-    run = payload["run"]
-    if not isinstance(run, int):
-        raise ValueError(f"invalid node job payload {payload!r}")
-    return DocumentId(UUID(str(payload["document_id"]))), Node(str(payload["node"])), run
 
 
 def _reparsable(document: Document, run: int) -> bool:

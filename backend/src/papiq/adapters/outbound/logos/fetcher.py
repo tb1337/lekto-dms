@@ -34,17 +34,17 @@ from dataclasses import dataclass
 import httpx2
 from PIL import Image, UnidentifiedImageError
 
+from papiq.adapters.outbound.http_client import CONNECT_TIMEOUT, describe_failure
 from papiq.adapters.outbound.logos.addresses import Resolver, is_public, literal, system_resolver
 from papiq.adapters.outbound.logos.icons import Candidate, manifest_icons, page_icons, ranked
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import LogoFetchError
-from papiq.core.ports.images import LOGO_SIZE
+from papiq.core.ports.images import LOGO_SIZE, MAX_ICON_ENTRIES, MAX_PIXELS
 from papiq.core.ports.logos import MIN_LOGO_SIZE, FetchedLogo
 
 log = logging.getLogger(__name__)
 
 TIMEOUT = 10.0  # seconds per request, with its redirects
-CONNECT_TIMEOUT = 5.0
 DEADLINE = 30.0  # seconds for a whole fetch
 MAX_SIZE = 1024 * 1024
 MAX_REDIRECTS = 3
@@ -52,14 +52,11 @@ MAX_TRIES = 4  # icons fetched at most
 
 PAGES = frozenset({"text/html", "application/xhtml+xml"})
 MANIFESTS = frozenset({"application/manifest+json", "application/json"})
-IMAGES = frozenset(
-    {"image/png", "image/jpeg", "image/webp", "image/x-icon", "image/vnd.microsoft.icon"}
-)
+IMAGES = frozenset({*media_types.LOGO_IMAGES, "image/vnd.microsoft.icon"})
+"""What a logo is made from (`media_types.LOGO_IMAGES`), plus the other name of ICO."""
 _REDIRECTS = {301, 302, 303, 307, 308}
 _DOMAIN = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
 _IMAGE_FORMATS = ("PNG", "JPEG", "WEBP")
-_MAX_PIXELS = 4096 * 4096  # as the normaliser takes
-_MAX_ICON_ENTRIES = 64
 
 
 @dataclass(frozen=True)
@@ -92,6 +89,21 @@ class HttpLogoFetcher:
         self._deadline = deadline
         self._max_size = max_size
 
+    @property
+    def user_agent(self) -> str:
+        """Sent with every request."""
+        return self._user_agent
+
+    @property
+    def resolver(self) -> Resolver:
+        """The name server: the system's unless a test replaces it."""
+        return self._resolve
+
+    @property
+    def transport(self) -> httpx2.AsyncBaseTransport | None:
+        """None: the network."""
+        return self._transport
+
     async def fetch(self, domain: str) -> FetchedLogo:
         if not _DOMAIN.fullmatch(domain):
             raise LogoFetchError(f"'{domain}' is no domain")
@@ -117,12 +129,15 @@ class HttpLogoFetcher:
         candidates: list[Candidate] = []
         base = httpx2.URL(f"https://{domain}/") if page is None else page.url
         if page is not None:
-            icons, manifest = page_icons(page.text, str(page.url))
+            # Parsing a page of up to a megabyte takes a while: not in the loop.
+            icons, manifest = await asyncio.to_thread(page_icons, page.text, str(page.url))
             candidates += icons
             if manifest is not None:
                 try:
                     answer = await self.get(manifest, MANIFESTS)
-                    candidates += manifest_icons(answer.text, str(answer.url))
+                    candidates += await asyncio.to_thread(
+                        manifest_icons, answer.text, str(answer.url)
+                    )
                 except LogoFetchError as error:
                     log.info("logo: the manifest cannot be read", extra={"error": str(error)})
         best: tuple[int, FetchedLogo] | None = None
@@ -156,7 +171,7 @@ class HttpLogoFetcher:
         except httpx2.InvalidURL:
             raise LogoFetchError("an address that cannot be read") from None
         except httpx2.HTTPError as failure:
-            raise LogoFetchError(_describe(failure)) from None
+            raise LogoFetchError(describe_failure(failure)) from None
         except (ssl.SSLError, OSError) as failure:
             raise LogoFetchError(f"cannot connect: {type(failure).__name__}") from None
 
@@ -283,28 +298,12 @@ def _pixels(data: bytes) -> int | None:
         EOFError,
     ):
         return None
-    return max(width, height) if 0 < width * height <= _MAX_PIXELS else None
+    return max(width, height) if 0 < width * height <= MAX_PIXELS else None
 
 
 def _icon_size(data: bytes) -> int | None:
     """The largest side an ICO's directory names (a byte each, 0 for 256)."""
-    count = int.from_bytes(data[4:6], "little")
-    if not 0 < count <= _MAX_ICON_ENTRIES or len(data) < 6 + 16 * count:
+    entries = media_types.icon_entries(data, MAX_ICON_ENTRIES)
+    if entries is None:
         return None
-    entries = [data[6 + 16 * index : 8 + 16 * index] for index in range(count)]
-    return max(side or 256 for entry in entries for side in entry)
-
-
-def _describe(failure: httpx2.HTTPError) -> str:
-    cause: BaseException | None = failure
-    while cause is not None:
-        if isinstance(cause, ssl.SSLCertVerificationError):
-            return "the TLS certificate was not accepted"
-        if isinstance(cause, ssl.SSLError):
-            return "TLS handshake failed"
-        cause = cause.__cause__ or cause.__context__
-    if isinstance(failure, httpx2.TimeoutException):
-        return "no answer in time"
-    if isinstance(failure, httpx2.ConnectError):
-        return "cannot connect"
-    return f"request failed: {type(failure).__name__}"
+    return max(side for entry in entries for side in (entry.width, entry.height))

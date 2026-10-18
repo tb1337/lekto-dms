@@ -9,6 +9,17 @@ from enum import Enum, StrEnum
 from pathlib import PurePath
 from typing import Self
 
+from papiq.core.domain.classification import (
+    CHANGE_FIELDS,
+    CONFIRMING,
+    CONTACT,
+    CUSTOM_FIELDS,
+    DOCUMENT_DATE,
+    DOCUMENT_TYPE,
+    TAGS,
+    TITLE,
+    TOPIC,
+)
 from papiq.core.domain.errors import InvalidTransitionError, NotFoundError, ValidationError
 from papiq.core.domain.events import (
     DocumentDeleted,
@@ -67,6 +78,11 @@ class Sha256:
         return self.hex
 
 
+MAX_TITLE = 500
+"""Characters of a document's title; the REST schemas, the MCP tool and the model's answers
+keep to it."""
+
+
 class Channel(StrEnum):
     """How a document came in (its intake channel). Further connectors (mail, folder) follow."""
 
@@ -100,16 +116,6 @@ class DocumentChanges:
     topic_id: TagId | Unset | None = UNSET
 
 
-CONFIRMING = frozenset(
-    {"contact_id", "document_type_id", "topic_id", "tag_ids", "document_date", "fields"}
-)
-"""Metadata a person confirms by changing it (as `Document.apply_changes` names it); a title
-or a space alone does not, nor do tags set by hand alone (`confirms`)."""
-CLASSIFIER_LABELS = frozenset({"contact_id", "document_type_id", "topic_id", "tag_ids"})
-"""What the classifier learns from confirmed documents: the pipeline deriving them anew ends
-the confirmation."""
-
-
 def confirms(
     changed: Collection[str],
     tags_before: Collection[TagId],
@@ -122,9 +128,29 @@ def confirms(
     and type; a change that also adds or removes an automatic tag, or changes any other
     confirming value, confirms."""
     touched = CONFIRMING & set(changed)
-    if touched != {"tag_ids"}:
+    if touched != {CHANGE_FIELDS[TAGS]}:
         return bool(touched)
     return not set(tags_before) ^ set(tags_after) <= set(manual)
+
+
+def checked_fields(
+    changes: DocumentChanges,
+    definitions: Mapping[FieldId, FieldDefinition],
+    document_type_id: DocumentTypeId | None,
+) -> dict[FieldId, FieldValue]:
+    """The field values `changes` sets, checked against their definitions and the document
+    type after the change; a field it removes (None) needs a definition, but no check.
+    NotFoundError for a field without a definition, ValidationError for a value that does not
+    fit its definition or a field that does not apply to the type."""
+    checked: dict[FieldId, FieldValue] = {}
+    for field_id, raw in changes.fields.items():
+        definition = _definition(definitions, field_id)
+        if raw is None:
+            continue
+        if not definition.applies_to(document_type_id):
+            raise ValidationError(f"field '{definition.name}' does not apply to this document type")
+        checked[field_id] = definition.validate(raw)
+    return checked
 
 
 @dataclass(kw_only=True)
@@ -170,13 +196,21 @@ class Document:
     )
 
     def __post_init__(self) -> None:
-        self.title = require_name(self.title, "title")
-        self.original_filename = require_name(self.original_filename, "original filename")
-        self.media_type = require_name(self.media_type, "media type")
+        self.title = require_name(self.title, "title", max_length=MAX_TITLE)
+        self.original_filename = require_name(
+            self.original_filename, "original filename", max_length=None
+        )
+        self.media_type = require_name(self.media_type, "media type", max_length=None)
         self.created_at = require_utc(self.created_at, "created_at")
         self.updated_at = require_utc(self.updated_at, "updated_at")
 
     # --- creation -------------------------------------------------------------------------------
+
+    @property
+    def file_title(self) -> str:
+        """The name of the file it came in without the extension: the title it is received
+        with."""
+        return file_title(self.original_filename)
 
     @classmethod
     def receive(
@@ -195,13 +229,13 @@ class Document:
         the nodes after it are due."""
         if result.outcome is Outcome.FAILED:
             raise ValidationError("a document whose receive node failed is not created")
-        filename = require_name(original_filename, "original filename")
+        filename = require_name(original_filename, "original filename", max_length=None)
         document = cls(
             id=DocumentId(new_id()),
             owner_id=owner_id,
             space_id=space_id,
             sha256=sha256,
-            title=PurePath(filename).stem or filename,
+            title=file_title(filename),
             original_filename=filename,
             media_type=media_type,
             channel=channel,
@@ -484,24 +518,18 @@ class Document:
         the caller, and so is that the contact enables the topic (`_access.checked_changes`).
         Values of type-bound fields that no longer apply after a type change are removed.
         """
-        title = require_name(_pick(changes.title, self.title), "title")
+        title = require_name(_pick(changes.title, self.title), "title", max_length=MAX_TITLE)
         contact_id = _pick(changes.contact_id, self.contact_id)
         document_type_id = _pick(changes.document_type_id, self.document_type_id)
         topic_id = _pick(changes.topic_id, self.topic_id)
         tag_ids = set(_pick(changes.tag_ids, frozenset(self.tag_ids)))
         document_date = _pick(changes.document_date, self.document_date)
 
+        checked = checked_fields(changes, definitions, document_type_id)
         fields = dict(self.fields)
-        for field_id, raw in changes.fields.items():
-            definition = _definition(definitions, field_id)
-            if raw is None:
-                fields.pop(field_id, None)
-            elif not definition.applies_to(document_type_id):
-                raise ValidationError(
-                    f"field '{definition.name}' does not apply to this document type"
-                )
-            else:
-                fields[field_id] = definition.validate(raw)
+        for field_id in changes.fields.keys() - checked.keys():  # removed
+            fields.pop(field_id, None)
+        fields.update(checked)
         fields = {
             field_id: value
             for field_id, value in fields.items()
@@ -510,13 +538,13 @@ class Document:
 
         # Everything is valid; apply it.
         new_values: dict[str, object] = {
-            "title": title,
-            "contact_id": contact_id,
-            "document_type_id": document_type_id,
-            "topic_id": topic_id,
-            "tag_ids": tag_ids,
-            "document_date": document_date,
-            "fields": fields,
+            CHANGE_FIELDS[TITLE]: title,
+            CHANGE_FIELDS[CONTACT]: contact_id,
+            CHANGE_FIELDS[DOCUMENT_TYPE]: document_type_id,
+            CHANGE_FIELDS[TOPIC]: topic_id,
+            CHANGE_FIELDS[TAGS]: tag_ids,
+            CHANGE_FIELDS[DOCUMENT_DATE]: document_date,
+            CUSTOM_FIELDS: fields,
         }
         changed = [name for name, value in new_values.items() if getattr(self, name) != value]
         self.title = title
@@ -591,3 +619,8 @@ def _definition(
         return definitions[field_id]
     except KeyError:
         raise NotFoundError("field", field_id) from None
+
+
+def file_title(filename: str) -> str:
+    """A file name without its extension (all of it if that leaves nothing)."""
+    return PurePath(filename).stem or filename

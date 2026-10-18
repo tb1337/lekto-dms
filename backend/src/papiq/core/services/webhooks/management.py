@@ -6,7 +6,6 @@ is shown to them, once. The secret is never shown again. Other users do not lear
 else's webhook exists (NotFoundError).
 """
 
-import builtins
 from collections.abc import Collection
 from dataclasses import dataclass, field
 
@@ -14,11 +13,12 @@ from papiq.core.domain.errors import ConflictError, NotFoundError
 from papiq.core.domain.ids import DeliveryId, UserId, WebhookId
 from papiq.core.domain.users import User
 from papiq.core.domain.webhooks import Webhook, WebhookDelivery, new_secret
-from papiq.core.ports import Clock, SecretCipher, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.identity import SecretCipher
+from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import load_actor
 from papiq.core.services.webhooks.policy import WebhookPolicy
-
-MAX_PAGE = 200
 
 
 @dataclass(frozen=True)
@@ -40,12 +40,12 @@ class WebhookService:
         uow: UnitOfWorkFactory,
         clock: Clock,
         cipher: SecretCipher,
-        policy: WebhookPolicy | None = None,
+        policy: WebhookPolicy,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._cipher = cipher
-        self._policy = policy or WebhookPolicy()
+        self._policy = policy
 
     async def create(
         self,
@@ -76,7 +76,7 @@ class WebhookService:
             await uow.commit()
         return CreatedWebhook(webhook, secret)
 
-    async def list(self, actor: UserId, *, owner: UserId | None = None) -> "builtins.list[Webhook]":
+    async def list_webhooks(self, actor: UserId, *, owner: UserId | None = None) -> list[Webhook]:
         """The caller's webhooks, oldest first. Admins get everybody's; `owner` narrows to one
         user's."""
         async with self._uow() as uow:
@@ -134,10 +134,15 @@ class WebhookService:
         return CreatedWebhook(webhook, secret)
 
     async def deliveries(
-        self, actor: UserId, id: WebhookId, *, before: DeliveryId | None = None, limit: int = 50
-    ) -> "builtins.list[WebhookDelivery]":
+        self,
+        actor: UserId,
+        id: WebhookId,
+        *,
+        before: DeliveryId | None = None,
+        limit: int = PAGE_SIZE,
+    ) -> list[WebhookDelivery]:
         """The log of a webhook, newest first."""
-        limit = max(1, min(limit, MAX_PAGE))
+        limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
             webhook = await visible_webhook(uow, await load_actor(uow, actor), id)
             return await uow.webhooks.deliveries(webhook.id, before=before, limit=limit)

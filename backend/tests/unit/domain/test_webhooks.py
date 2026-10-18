@@ -10,6 +10,7 @@ from papiq.core.domain.webhooks import (
     ALL_EVENTS,
     DISABLED_FAILING,
     SIGNATURE_HEADER,
+    DeliveryOutcome,
     Webhook,
     WebhookDelivery,
     event_body,
@@ -200,7 +201,7 @@ def test_a_delivery_keeps_only_a_short_error() -> None:
         attempt=1,
         started_at=NOW,
         duration_ms=5,
-        outcome="retrying",
+        outcome=DeliveryOutcome.RETRYING,
         error="x" * 1000,
     )
     assert delivery.error is not None and len(delivery.error) == 300

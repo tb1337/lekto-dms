@@ -15,8 +15,13 @@ from papiq.core.domain.documents import Document
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId, UserId
 from papiq.core.domain.master_data import Contact, DocumentType, TagScope
 from papiq.core.domain.tag_tree import TagTree
-from papiq.core.ports import CountBy, DocumentFilter, UnitOfWork
-from papiq.core.ports.repository import TagSets
+from papiq.core.ports.repository import CountBy, DocumentFilter, FilterView, TagSets
+from papiq.core.ports.unit_of_work import UnitOfWork
+
+
+async def tag_tree(uow: UnitOfWork) -> TagTree:
+    """All tags, as a tree."""
+    return TagTree.of(await uow.tags.list_all())
 
 
 def expand(filter: DocumentFilter, tree: TagTree) -> DocumentFilter:
@@ -37,7 +42,7 @@ def expand(filter: DocumentFilter, tree: TagTree) -> DocumentFilter:
 async def expanded(uow: UnitOfWork, filter: DocumentFilter) -> DocumentFilter:
     if not (filter.tags or filter.contact_groups or filter.document_type_groups or filter.topics):
         return filter
-    return expand(filter, TagTree.of(await uow.tags.list_all()))
+    return expand(filter, await tag_tree(uow))
 
 
 async def group_lookup(
@@ -63,15 +68,12 @@ def matches(
     groups (`group_lookup`)."""
     contact = contacts.get(document.contact_id) if document.contact_id else None
     kind = types.get(document.document_type_id) if document.document_type_id else None
-    return (
-        (filter.contact is None or document.contact_id == filter.contact)
-        and (filter.document_type is None or document.document_type_id == filter.document_type)
-        and (filter.topics is None or document.topic_id in filter.topics)
-        and all(tags & document.tag_ids for tags in filter.tags)
-        and all(groups & (contact or frozenset()) for groups in filter.contact_groups)
-        and all(groups & (kind or frozenset()) for groups in filter.document_type_groups)
-        and (filter.space is None or document.space_id == filter.space)
-        and (filter.lanes is None or document.lane in filter.lanes)
+    return filter.matches(
+        FilterView.of(
+            document,
+            contact_groups=contact or frozenset(),
+            document_type_groups=kind or frozenset(),
+        )
     )
 
 
@@ -80,7 +82,7 @@ async def tag_counts(uow: UnitOfWork, user: UserId | None) -> dict[UUID, int]:
     document tag counts each document once that carries it or a tag below it; a group the
     documents whose contact (type) is in it or a group below it; a topic those with it or a
     topic below it (a document has one topic at most). Only tags with documents."""
-    tree = TagTree.of(await uow.tags.list_all())
+    tree = await tag_tree(uow)
     counts = dict(await uow.documents.count_by(CountBy.TAG, user))
     parents: dict[UUID, frozenset[TagId]] = {
         tag.id: tree.with_descendants([tag.id])

@@ -46,12 +46,13 @@ class AuthlibOidcProvider:
         client_id: str,
         client_secret: str,
         redirect_uri: str,
-        scopes: Collection[str] = ("openid", "profile", "email"),
-        username_claim: str = "preferred_username",
+        scopes: Collection[str],
+        username_claim: str,
         transport: httpx2.AsyncBaseTransport | None = None,
         now: Callable[[], float] = time.time,
     ) -> None:
-        """`transport` replaces the network in tests; `now` the clock for token times."""
+        """`scopes` and `username_claim` come from the settings. `transport` replaces the
+        network in tests; `now` the clock for token times."""
         self._issuer = issuer
         self._client_id = client_id
         self._client_secret = client_secret

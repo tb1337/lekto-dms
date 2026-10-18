@@ -7,7 +7,7 @@ from papiq.core.domain.identity import ExternalIdentity, LoginMethod, safe_redir
 from papiq.core.domain.users import Role, User
 from papiq.core.services.oidc import OidcOutcome, OidcService, OidcStart
 from tests.builders import NOW
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 
 async def link(world: World, user: User, subject: str) -> None:

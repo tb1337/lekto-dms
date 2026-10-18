@@ -13,6 +13,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import StrEnum
 from typing import Self
+from uuid import UUID
 
 from papiq.core.domain.appearance import (
     ContactLogo,
@@ -62,6 +63,11 @@ class TagScope(StrEnum):
     TOPIC = "topic"
 
     @property
+    def label(self) -> str:
+        """The scope as messages name its tags."""
+        return _SCOPE_LABELS[self]
+
+    @property
     def is_group(self) -> bool:
         """Whether its tags group contacts or document types: static, set by hand only, and
         inherited by documents through their contact and type."""
@@ -79,13 +85,23 @@ class TagScope(StrEnum):
         return not self.is_group
 
 
+_SCOPE_LABELS = {
+    TagScope.DOCUMENT: "document tag",
+    TagScope.CONTACT: "contact group",
+    TagScope.DOCUMENT_TYPE: "document type group",
+    TagScope.TOPIC: "topic",
+}
+
+
 @dataclass(kw_only=True)
 class MasterData:
-    """Common part of all master data: a name unique per kind regardless of case."""
+    """Common part of all master data: a name unique per kind regardless of case, and an id,
+    whose type each kind narrows (`ContactId`, ...)."""
 
     name: str
     created_at: datetime
     version: int = 1
+    id: UUID
 
     def __post_init__(self) -> None:
         self.name = require_name(self.name)

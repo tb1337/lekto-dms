@@ -28,7 +28,6 @@ Secrets are decrypted only for signing; neither they nor the receiver's answer a
 stored.
 """
 
-import asyncio
 import logging
 from collections import deque
 from datetime import datetime, timedelta
@@ -38,7 +37,7 @@ from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import ConcurrencyError, NotFoundError, TooManyAttemptsError
 from papiq.core.domain.events import DocumentDeleted, DocumentEvent, DocumentFiled, DomainEvent
 from papiq.core.domain.ids import DocumentId, EventId, UserId, WebhookId, new_id
-from papiq.core.domain.jobs import Job
+from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.permissions import in_reach
 from papiq.core.domain.users import User
@@ -50,18 +49,12 @@ from papiq.core.domain.webhooks import (
     event_body,
     signed_headers,
 )
-from papiq.core.ports import (
-    Clock,
-    DecryptionError,
-    DeliveryRetry,
-    SecretCipher,
-    UnitOfWork,
-    UnitOfWorkFactory,
-    WebhookRequest,
-    WebhookResponse,
-    WebhookSender,
-)
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.identity import DecryptionError, SecretCipher
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports.webhook_sender import WebhookRequest, WebhookResponse, WebhookSender
 from papiq.core.services._access import load_actor
+from papiq.core.services._jobs import JobRunner, lost
 from papiq.core.services.webhooks.management import manageable_webhook, secret_context
 from papiq.core.services.webhooks.policy import WebhookPolicy
 
@@ -73,7 +66,9 @@ DELIVER_JOB = "webhooks.deliver"
 
 _RETRY_STATUS = frozenset({408, 425, 429})
 _RESULT_ROUNDS = 3  # tries to write the result when the webhook is changed at the same time
-_LEASE_MARGIN = timedelta(seconds=60)  # on top of the timeout of an attempt
+ATTEMPT_LEASE_MARGIN = timedelta(seconds=60)
+"""Time a delivery job may take beyond the timeout of its attempt: one request needs no files,
+only writing its outcome (less than `WORK_LEASE_MARGIN` of the jobs that move files)."""
 
 
 class WebhookDeliveryService:
@@ -83,18 +78,19 @@ class WebhookDeliveryService:
         clock: Clock,
         cipher: SecretCipher,
         sender: WebhookSender,
-        policy: WebhookPolicy | None = None,
+        policy: WebhookPolicy,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._cipher = cipher
         self._sender = sender
-        self._policy = policy or WebhookPolicy()
-        self._retry = DeliveryRetry(
+        self._policy = policy
+        self._retry = RetryPolicy(
             max_attempts=self._policy.max_attempts,
             delay=self._policy.retry_delay,
             max_delay=self._policy.max_retry_delay,
         )
+        self._jobs = JobRunner(uow, clock)
         # When each user sent test requests, for the limit per window (this process only; a
         # second API instance would count on its own).
         self._test_requests: dict[UserId, deque[datetime]] = {}
@@ -136,21 +132,8 @@ class WebhookDeliveryService:
 
     async def run_next_job(self) -> bool:
         """Claim and run a due delivery. Returns False if none was due."""
-        async with self._uow() as uow:
-            job = await uow.jobs.claim(
-                now=self._clock.now(),
-                lease=self._policy.timeout + _LEASE_MARGIN,
-                kinds=[DELIVER_JOB],
-            )
-            await uow.commit()
-        if job is None:
-            return False
-        try:
-            await self._run_claimed(job)
-        except asyncio.CancelledError:
-            await asyncio.shield(self._release(job))
-            raise
-        return True
+        lease = self._policy.timeout + ATTEMPT_LEASE_MARGIN
+        return await self._jobs.run_next([DELIVER_JOB], lease, self._run_claimed)
 
     async def send_test(self, actor: UserId, id: WebhookId) -> WebhookDelivery:
         """Owner or admin: send a `webhook.test` request now, once, and return the log row. Works
@@ -166,12 +149,7 @@ class WebhookDeliveryService:
             secrets = self._decrypt(webhook, now)
             response = await self._send(webhook, secrets, event_id, TEST_EVENT, now, None)
         except (DecryptionError, ValueError):
-            log.error("webhook secret unusable", extra={"webhook_id": str(id)})
-            response = WebhookResponse(
-                status_code=None,
-                duration_ms=0,
-                error="the secret cannot be used (was the secret key changed?)",
-            )
+            response = _unusable_secret(id)
         outcome = DeliveryOutcome.DELIVERED if _is_success(response) else DeliveryOutcome.GAVE_UP
         delivery = _row(webhook, event_id, TEST_EVENT, None, 1, now, response, outcome)
         async with self._uow() as uow:
@@ -197,15 +175,16 @@ class WebhookDeliveryService:
             raw_document = job.payload.get("document_id")
             document_id = None if raw_document is None else DocumentId(UUID(str(raw_document)))
         except (KeyError, TypeError, ValueError) as error:
-            log.error("invalid webhook job", extra={"job_id": str(job.id), "error": str(error)})
-            await self._settle(job, fail=f"invalid payload: {error}")
+            await self._jobs.invalid(job, error)
             return
         try:
             await self._attempt(job, webhook_id, event_id, event_type, occurred_at, document_id)
         except ConcurrencyError:
-            log.warning("lost the claim of a webhook job", extra={"job_id": str(job.id)})
+            lost(job)
         except Exception as error:
-            await self._failed(job, error)
+            log.warning("webhook job failed", extra={"job_id": str(job.id)}, exc_info=True)
+            reason = f"{type(error).__name__}: {error}"
+            await self._jobs.again(job, reason, self._retry.next_run(job.tries, self._clock.now()))
 
     async def _attempt(
         self,
@@ -246,12 +225,7 @@ class WebhookDeliveryService:
                 webhook, secrets, event_id, event_type, occurred_at, document_id
             )
         except (DecryptionError, ValueError):
-            log.error("webhook secret unusable", extra={"webhook_id": str(webhook_id)})
-            response = WebhookResponse(
-                status_code=None,
-                duration_ms=0,
-                error="the secret cannot be used (was the secret key changed?)",
-            )
+            response = _unusable_secret(webhook_id)
             outcome = DeliveryOutcome.GAVE_UP
         else:
             outcome = self._outcome(response, attempt)
@@ -314,9 +288,7 @@ class WebhookDeliveryService:
         for round_ in range(_RESULT_ROUNDS):
             now = self._clock.now()
             next_attempt = (
-                self._retry.next_attempt(attempt, now)
-                if outcome is DeliveryOutcome.RETRYING
-                else None
+                self._retry.next_run(attempt, now) if outcome is DeliveryOutcome.RETRYING else None
             )
             switched_off: bool | None = None
             try:
@@ -369,39 +341,6 @@ class WebhookDeliveryService:
                 return webhook.gave_up(disable_after=self._policy.disable_after, now=now)
             case _:
                 return None
-
-    async def _failed(self, job: Job, error: Exception) -> None:
-        """An unexpected error (database, ...): repeat the job like a failed attempt."""
-        reason = f"{type(error).__name__}: {error}"
-        log.warning("webhook job failed", extra={"job_id": str(job.id)}, exc_info=True)
-        next_attempt = self._retry.next_attempt(job.tries, self._clock.now())
-        if next_attempt is None:
-            log.error("webhook job given up", extra={"job_id": str(job.id), "error": reason})
-            await self._settle(job, fail=reason)
-            return
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.reschedule(job, run_at=next_attempt, error=reason)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a webhook job", extra={"job_id": str(job.id)})
-
-    async def _settle(self, job: Job, *, fail: str) -> None:
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.fail(job, error=fail)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a webhook job", extra={"job_id": str(job.id)})
-
-    async def _release(self, job: Job) -> None:
-        """The worker stops: give the job back to run again at once."""
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.release(job, run_at=self._clock.now(), error="worker stopped")
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a webhook job", extra={"job_id": str(job.id)})
 
 
 # --- rights -------------------------------------------------------------------------------------
@@ -458,6 +397,16 @@ async def _may_read(uow: UnitOfWork, user: User, document: Document) -> bool:
 
 
 # --- answers ------------------------------------------------------------------------------------
+
+
+def _unusable_secret(webhook_id: WebhookId) -> WebhookResponse:
+    """The answer of a request that was not sent: the webhook's secret cannot be decrypted."""
+    log.error("webhook secret unusable", extra={"webhook_id": str(webhook_id)})
+    return WebhookResponse(
+        status_code=None,
+        duration_ms=0,
+        error="the secret cannot be used (was the secret key changed?)",
+    )
 
 
 def _is_success(response: WebhookResponse) -> bool:

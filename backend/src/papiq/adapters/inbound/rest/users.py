@@ -12,6 +12,7 @@ from papiq.adapters.inbound.rest.auth import (
     SessionPrincipal,
 )
 from papiq.adapters.inbound.rest.context import Context
+from papiq.adapters.inbound.rest.params import ADMINS_ONLY, SESSION_ONLY_NOTE
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.account import LinkOut, Removed, UserOut
 from papiq.adapters.inbound.rest.schemas.users import (
@@ -20,17 +21,10 @@ from papiq.adapters.inbound.rest.schemas.users import (
     UserCreate,
     UserPatch,
 )
-from papiq.core.domain.errors import PermissionDeniedError
 from papiq.core.domain.ids import UserId
-from papiq.core.domain.users import Role
 from papiq.core.services.users import Account
 
 router = APIRouter(prefix="/users", tags=["users"], dependencies=PROTECTED)
-
-ADMINS_ONLY = "Admins only."
-SESSION_ONLY = (
-    " Changes sign-in data, so it needs a session; API tokens are refused (403), as for `/auth/*`."
-)
 
 
 def _account(account: Account) -> AccountOut:
@@ -54,7 +48,7 @@ def _account(account: Account) -> AccountOut:
 )
 async def list_users(principal: Authenticated, context: Context) -> list[UserOut]:
     full = principal.user.is_admin
-    return [UserOut.of(user, full=full) for user in await context.users.list(principal.id)]
+    return [UserOut.of(user, full=full) for user in await context.users.list_users(principal.id)]
 
 
 @router.post(
@@ -70,13 +64,10 @@ async def list_users(principal: Authenticated, context: Context) -> list[UserOut
     responses=problem_responses(401, 403, 409, 422),
 )
 async def create_user(body: UserCreate, admin: Authenticated, context: Context) -> UserOut:
-    if admin.session is None and (body.password is not None or body.role is not Role.USER):
-        raise PermissionDeniedError(
-            "this needs a signed-in session: an API token can only create users with the "
-            "role 'user' and no password"
-        )
     password = None if body.password is None else body.password.get_secret_value()
-    created = await context.users.create_user(admin.id, body.username, body.role, password)
+    created = await context.users.create_user(
+        admin.id, body.username, body.role, password, session=admin.session is not None
+    )
     return UserOut.of(created)
 
 
@@ -121,7 +112,7 @@ async def update_user(id: UUID, body: UserPatch, admin: Authenticated, context: 
     summary="Reset a user's password",
     description=ADMINS_ONLY
     + " Ends all the user's sessions; API tokens stay unless `revoke_tokens`. Not for the "
-    "own account (403): that is `POST /auth/password`." + SESSION_ONLY,
+    "own account (403): that is `POST /auth/password`." + SESSION_ONLY_NOTE,
     responses=problem_responses(401, 403, 404, 422),
 )
 async def reset_password(
@@ -138,7 +129,7 @@ async def reset_password(
     summary="Turn a user's TOTP off",
     description=ADMINS_ONLY
     + " For a user who lost authenticator and recovery codes. Not for the own account (403): "
-    "that is `POST /auth/totp/disable`." + SESSION_ONLY,
+    "that is `POST /auth/totp/disable`." + SESSION_ONLY_NOTE,
     responses=problem_responses(401, 403, 404, 422),
 )
 async def disable_totp(id: UUID, admin: SessionPrincipal, context: Context) -> None:
@@ -148,7 +139,7 @@ async def disable_totp(id: UUID, admin: SessionPrincipal, context: Context) -> N
 @router.delete(
     "/{id}/oidc",
     summary="Remove a user's links to the identity provider",
-    description=ADMINS_ONLY + SESSION_ONLY,
+    description=ADMINS_ONLY + SESSION_ONLY_NOTE,
     response_model=Removed,
     responses=problem_responses(401, 403, 404, 422),
 )

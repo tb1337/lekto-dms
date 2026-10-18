@@ -10,7 +10,6 @@ from papiq.core.domain.fields import FieldType
 from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.rules import Rule, SetTitle
 from papiq.core.domain.users import User
-from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (
     Classifies,
     RuleWorld,
@@ -20,6 +19,7 @@ from tests.unit.services.rules_support import (
     notes,
     rule_world,
 )
+from tests.unit.services.support import World
 
 
 async def rule_notes(world: World, owner: User, document: Document) -> list[tuple[str, str]]:
@@ -29,7 +29,7 @@ async def rule_notes(world: World, owner: User, document: Document) -> list[tupl
 
 
 async def title_rules(r: RuleWorld) -> list[Rule]:
-    return [rule for rule in await r.rules.list(r.admin.id) if rule.managed_by is not None]
+    return [rule for rule in await r.rules.list_rules(r.admin.id) if rule.managed_by is not None]
 
 
 async def test_the_pattern_is_a_rule_of_its_type(world: World) -> None:
@@ -45,7 +45,7 @@ async def test_the_pattern_is_a_rule_of_its_type(world: World) -> None:
 
     # It follows the type: a new pattern, a new name.
     await service.change_document_type(r.admin.id, kind.id, title_pattern="{{ filename }}")
-    await service.rename_document_type(r.admin.id, kind.id, "Beleg")
+    await service.change_document_type(r.admin.id, kind.id, name="Beleg")
     (rule,) = await title_rules(r)
     assert rule.current.number == 3 and rule.definition.name == "Beleg"
     assert rule.definition.actions == (SetTitle("{{ filename }}"),)

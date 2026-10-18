@@ -4,7 +4,9 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-Name = Annotated[str, Field(min_length=1, max_length=200, examples=["ACME Energy"])]
+from papiq.core.domain.validation import MAX_NAME
+
+Name = Annotated[str, Field(min_length=1, max_length=MAX_NAME, examples=["ACME Energy"])]
 
 
 class NameIn(BaseModel):

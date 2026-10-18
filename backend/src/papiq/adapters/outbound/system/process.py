@@ -3,6 +3,11 @@
 Compute-heavy steps (OCR, parsing) run in child processes, so the event loop stays free and a
 step that hangs can be stopped. The child starts a new session; on timeout or cancellation the
 whole process group is killed, including the programs it started (Tesseract, Ghostscript).
+
+A child gets the process's environment without Papiq's own settings (`PAPIQ_*`): they carry the
+secret key and the database and storage credentials, and OCRmyPDF, Ghostscript and Tesseract,
+which process documents of unknown origin, have no use for them. What a child needs beyond that
+(the vision plugin's configuration) the caller passes in `env`.
 """
 
 import asyncio
@@ -15,6 +20,9 @@ from datetime import timedelta
 
 # Output kept for error messages.
 _TAIL = 4000
+# The prefix of Papiq's configuration variables (`composition/settings.py`); none of them
+# reaches a child.
+_SETTINGS_PREFIX = "PAPIQ_"
 
 
 @dataclass(frozen=True)
@@ -31,14 +39,15 @@ async def run_process(
     env: Mapping[str, str] | None = None,
 ) -> Completed:
     """Run `args` and wait for it. TimeoutError after `timeout`; the process group is killed
-    then, and also when the caller is cancelled."""
+    then, and also when the caller is cancelled. `env` adds to the child's environment (see the
+    module)."""
     process = await asyncio.create_subprocess_exec(
         *args,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         start_new_session=True,
-        env=None if env is None else {**os.environ, **env},
+        env=child_environment(env),
     )
     try:
         stdout, stderr = await asyncio.wait_for(
@@ -58,6 +67,15 @@ async def run_process(
         stdout=stdout.decode(errors="replace"),
         stderr=stderr.decode(errors="replace")[-_TAIL:],
     )
+
+
+def child_environment(extra: Mapping[str, str] | None = None) -> dict[str, str]:
+    """The environment for a child process: this process's own without Papiq's settings,
+    plus `extra`."""
+    inherited = {
+        name: value for name, value in os.environ.items() if not name.startswith(_SETTINGS_PREFIX)
+    }
+    return {**inherited, **(extra or {})}
 
 
 async def _kill(process: asyncio.subprocess.Process) -> None:

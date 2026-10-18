@@ -4,7 +4,6 @@ the signals, the judge and the fields with a stand-in language model. Without a 
 nothing goes to the vision model; the document is red then, and the advice says why."""
 
 import json
-import shutil
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
@@ -18,20 +17,22 @@ from papiq.adapters.outbound.memory import FakeLanguageModel
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
 from papiq.adapters.outbound.ocrmypdf.vision import VisionSettings
 from papiq.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer, PdfiumTextLocator
-from papiq.composition.container import build_memory_container, build_services
+from papiq.composition.container import (
+    VISION_REQUEST_TIMEOUT,
+    build_memory_container,
+    build_services,
+)
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.master_data import Contact, DocumentType
 from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.reading import VisionAdvice
-from papiq.core.ports import StructuredRequest
+from papiq.core.ports.llm import StructuredRequest
 from papiq.core.services.objects import text_key
-from tests import builders
-from tests.builders import NOW, incoming
-from tests.contracts.processing import SAMPLES
+from tests import builders, probes
+from tests.builders import DEFAULT_SETTINGS, NOW, SAMPLES, incoming
 from tests.vision_stub import Lines, VisionStub, serve
 
-if not (shutil.which("tesseract") and shutil.which("gs")):
-    pytest.skip("Tesseract or Ghostscript not installed", allow_module_level=True)
+pytestmark = probes.requires_ocr
 
 
 @dataclass(frozen=True)
@@ -122,18 +123,25 @@ async def test_the_vision_model_reads_what_tesseract_cannot(
     tmp_path: Path, stub: VisionStub, case: Case
 ) -> None:
     stub.pages = [case.lines]
-    settings = VisionSettings(base_url=stub.url, model=stub.model, api_key="stub-key")
+    settings = VisionSettings(
+        base_url=stub.url, model=stub.model, api_key="stub-key", timeout=VISION_REQUEST_TIMEOUT
+    )
     container = replace(
         build_memory_container(),
         object_store=FilesystemObjectStore(tmp_path / "objects"),
-        ocr=OcrmypdfEngine(languages=["deu", "eng"], timeout=timedelta(minutes=5), vision=settings),
+        ocr=OcrmypdfEngine(
+            languages=["deu", "eng"],
+            timeout=timedelta(minutes=5),
+            vision=settings,
+            vision_timeout=DEFAULT_SETTINGS.vlm_timeout,
+        ),
         parser=LayoutParser(),
         pages=PdfiumPageRenderer(),
         locator=PdfiumTextLocator(),
         language_model=answers(case),
     )
     services = build_services(container)
-    owner = builders.user()
+    owner = await builders.seed_user(container.unit_of_work)
     contact = Contact.create(name=case.contact, now=NOW)
     kind = DocumentType.create(name=case.kind, now=NOW)
     field = FieldDefinition.create(
@@ -144,16 +152,13 @@ async def test_the_vision_model_reads_what_tesseract_cannot(
         now=NOW,
     )
     async with container.unit_of_work() as uow:
-        await uow.users.add(owner)
-        await uow.spaces.add(builders.default_space(owner))
         await uow.contacts.add(contact)
         await uow.document_types.add(kind)
         await uow.fields.add(field)
         await uow.commit()
 
     async def drain() -> None:
-        while await services.pipeline.run_next_job():
-            pass
+        await builders.drain(services.pipeline)
 
     data = (SAMPLES / case.sample).read_bytes()
     received = await services.pipeline.receive(owner.id, incoming(data), filename=case.sample)

@@ -1,12 +1,13 @@
 import asyncio
 import copy
+import functools
 import hashlib
 import json
 import logging
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path, PurePath
+from pathlib import Path
 from uuid import UUID
 
 from papiq.core.domain import media_types
@@ -15,7 +16,6 @@ from papiq.core.domain.documents import Document, DocumentChanges, confirms
 from papiq.core.domain.errors import (
     ConflictError,
     NotFoundError,
-    PermissionDeniedError,
     SpaceWriteDeniedError,
     UnprocessableDocumentError,
     ValidationError,
@@ -29,7 +29,6 @@ from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.master_data import Assignment
 from papiq.core.domain.permissions import (
     can_control_document,
-    can_manage_master_data,
     can_move_document,
     can_read_document,
     document_access,
@@ -38,23 +37,27 @@ from papiq.core.domain.permissions import (
 from papiq.core.domain.pipeline import Lane, Node, NodeRun
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import User
-from papiq.core.ports import (
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.metadata import FileMetadata, MetadataReader
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.pages import PAGE_MEDIA_TYPE
+from papiq.core.ports.repository import (
     NEWEST_FIRST,
-    Clock,
+    PAGE_LIMIT,
+    PAGE_SIZE,
     CountBy,
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
-    FileMetadata,
-    MetadataReader,
-    ObjectStore,
     SortKey,
-    UnitOfWork,
-    UnitOfWorkFactory,
 )
-from papiq.core.ports.pages import PAGE_MEDIA_TYPE
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import (
+    access_to,
+    admin_only,
     checked_changes,
+    controllable_document,
+    field_definitions,
     load_actor,
     readable_document,
     visible_space,
@@ -62,7 +65,7 @@ from papiq.core.services._access import (
 )
 from papiq.core.services._tags import expanded, tag_counts
 from papiq.core.services.inbox import InboxItem, Review, node_reviews, open_nodes
-from papiq.core.services.maintenance import REMOVE_FILES_JOB
+from papiq.core.services.maintenance import REMOVE_FILES_JOB, RemoveFiles
 from papiq.core.services.objects import (
     EXCHANGE_NODES,
     archive_key,
@@ -79,8 +82,6 @@ from papiq.core.services.rules.changes import ChangeRules
 from papiq.core.services.rules.running import Prepared, RuleRun
 
 log = logging.getLogger(__name__)
-
-MAX_PAGE = 200
 
 
 @dataclass(frozen=True)
@@ -236,6 +237,12 @@ class DocumentService:
         self._rules = rules
         self._metadata = metadata
 
+    @property
+    def _object_store(self) -> ObjectStore:
+        """Reading a document's files and what was read from them needs the object store."""
+        assert self._store is not None, "DocumentService needs an object store to read files"
+        return self._store
+
     async def get(self, actor: UserId, id: DocumentId) -> Document:
         async with self._uow() as uow:
             document, _ = await readable_document(uow, await load_actor(uow, actor), id)
@@ -257,11 +264,11 @@ class DocumentService:
         below 1; ConflictError while the document has no text yet (it is not parsed)."""
         if offset < 0 or limit < 1:
             raise ValidationError("offset must be 0 or more and limit 1 or more")
-        assert self._store is not None, "reading text needs the object store"
+        store = self._object_store
         async with self._uow() as uow:
             await readable_document(uow, await load_actor(uow, actor), id)
         try:
-            data = await load_text(self._store, id)
+            data = await load_text(store, id)
         except NotFoundError:
             raise ConflictError("document has no text yet") from None
         text = data.decode("utf-8", errors="replace")
@@ -277,18 +284,21 @@ class DocumentService:
         """The facts of the document's text and codes, as the facts signal finds them now:
         a contact named or an identifier attached since counts at once. NotFoundError if the
         caller may not read the document; ConflictError while it has no text yet."""
-        assert self._store is not None, "reading facts needs the object store"
+        store = self._object_store
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             document, _ = await readable_document(uow, user, id)
             contacts = await uow.contacts.list_all()
-            definitions = {item.id: item for item in await uow.fields.list_all()}
+            definitions = await field_definitions(uow)
         try:
-            text = (await load_text(self._store, id)).decode("utf-8", errors="replace")
+            text = (await load_text(store, id)).decode("utf-8", errors="replace")
         except NotFoundError:
             raise ConflictError("document has no text yet") from None
         codes = await self._codes(id)
-        facts = facts_in(text, contacts, codes or (), places=True)
+        # Matching every contact's names against a long text takes a while: not in the loop.
+        facts = await asyncio.to_thread(
+            functools.partial(facts_in, text, contacts, codes or (), places=True)
+        )
         amounts = {
             field: value
             for field, value in document.fields.items()
@@ -298,7 +308,7 @@ class DocumentService:
         if codes is not None:
             views = _code_facts(codes, amounts)
         others = None
-        if can_manage_master_data(user):
+        if user.is_active_admin:
             async with self._uow() as uow:
                 carrying = await uow.document_identifiers.contacts_of(
                     [item.key for item in facts.identifiers]
@@ -314,9 +324,8 @@ class DocumentService:
     async def _codes(self, id: DocumentId) -> tuple[Code, ...] | None:
         """The codes read from the archive's pages, None while they are not (or of an earlier
         version)."""
-        assert self._store is not None
         try:
-            return codes_from_json(json.loads(await self._store.get(codes_key(id))))
+            return codes_from_json(json.loads(await self._object_store.get(codes_key(id))))
         except NotFoundError:
             return None
         except (ValueError, ValidationError):
@@ -324,14 +333,15 @@ class DocumentService:
             return None
 
     async def read_structure(self, actor: UserId, id: DocumentId) -> bytes:
-        """The parsed structure in the parser's JSON format (Docling's, with page and box of
-        every element). NotFoundError if the caller may not read the document; ConflictError
-        while it is not parsed."""
-        assert self._store is not None, "reading the structure needs the object store"
+        """The structure of the text as JSON: its pages, lines and words with their boxes
+        (`structure_key`; a document parsed before 0.2 has Docling's until it is read again).
+        NotFoundError if the caller may not read the document; ConflictError while it is not
+        parsed."""
+        store = self._object_store
         async with self._uow() as uow:
             await readable_document(uow, await load_actor(uow, actor), id)
         try:
-            return await self._store.get(structure_key(id))
+            return await store.get(structure_key(id))
         except NotFoundError:
             raise ConflictError("document has no structure yet") from None
 
@@ -342,14 +352,14 @@ class DocumentService:
         *,
         order: DocumentOrder = NEWEST_FIRST,
         after: DocumentId | None = None,
-        limit: int = 50,
+        limit: int = PAGE_SIZE,
         all_users: bool = False,
     ) -> list[DocumentView]:
         """Documents within the caller's reach matching `filter`, in `order` (newest first),
         after the page ending at the document `after`; with `all_users` (admins only), every
         document. Each is checked against the permission rules once more. ValidationError if
         `after` is gone while the list sorts by another key than the order of arrival."""
-        limit = max(1, min(limit, MAX_PAGE))
+        limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
             user = await _lister(uow, actor, all_users)
             position = await _position(uow, order, after)
@@ -383,10 +393,10 @@ class DocumentService:
         """Write a file of a readable document to the local path `target`. NotFoundError if
         the caller may not read the document or the file does not exist (yet); for a page,
         also if the document has fewer pages."""
-        assert self._store is not None, "DocumentService needs an object store for downloads"
+        store = self._object_store
         async with self._uow() as uow:
             document, _ = await readable_document(uow, await load_actor(uow, actor), id)
-        stem = PurePath(document.original_filename).stem or "document"
+        stem = document.file_title
         match file:
             case DocumentFile.ORIGINAL:
                 key = original_key(document.sha256)
@@ -399,27 +409,26 @@ class DocumentService:
                 if document.page_count is None or not 1 <= page <= document.page_count:
                     raise NotFoundError(f"page {page} of document", id)
                 key, info = page_key(id, page), FileInfo(PAGE_MEDIA_TYPE, f"{stem}-{page}.webp")
-        if not await self._store.exists(key):
+        if not await store.exists(key):
             raise NotFoundError(f"{file.value} of document", id)
-        await self._store.download(key, target)
+        await store.download(key, target)
         return info
 
     async def files(self, actor: UserId, id: DocumentId) -> DocumentFiles:
         """The files of a readable document as they are stored: size, SHA-256 and their
         metadata (a PDF's document information and XMP, an image's EXIF). NotFoundError if
         the caller may not read the document."""
-        assert self._store is not None, "reading files needs the object store"
+        store = self._object_store
         async with self._uow() as uow:
             document, _ = await readable_document(uow, await load_actor(uow, actor), id)
         original = await self._stored(original_key(document.sha256))
         archive = None
-        if await self._store.exists(archive_key(id)):
+        if await store.exists(archive_key(id)):
             archive = await self._stored(archive_key(id))
         return DocumentFiles(document=document, original=original, archive=archive)
 
     async def _stored(self, key: str) -> StoredFile:
-        assert self._store is not None
-        data = await self._store.get(key)
+        data = await self._object_store.get(key)
         digest = await asyncio.to_thread(lambda: hashlib.sha256(data).hexdigest())
         metadata = None
         if self._metadata is not None:
@@ -485,9 +494,7 @@ class DocumentService:
         """Owner or admin: the log may hold technical details of failed runs."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await readable_document(uow, user, id)
-            if not can_control_document(user, document):
-                raise PermissionDeniedError(f"only the owner reads the processing log of {id}")
+            await controllable_document(uow, user, id, f"read the processing log of {id}")
             return await uow.processing_log.list_for(id)
 
     async def exchanges(self, actor: UserId, id: DocumentId, node: Node) -> list[RunExchange]:
@@ -496,17 +503,15 @@ class DocumentService:
         does not ask the model."""
         if node not in EXCHANGE_NODES:
             raise ValidationError(f"node {node.value} does not ask a language model")
-        assert self._store is not None, "reading model exchanges needs the object store"
+        store = self._object_store
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await readable_document(uow, user, id)
-            if not can_control_document(user, document):
-                raise PermissionDeniedError(f"only the owner reads the model exchanges of {id}")
+            await controllable_document(uow, user, id, f"read the model exchanges of {id}")
         for key in (exchanges_key(id, node), legacy_exchanges_key(id, node)):
             if key is None:
                 continue
             try:
-                data = await self._store.get(key)
+                data = await store.get(key)
             except NotFoundError:
                 continue
             return exchanges_from_json(json.loads(data))
@@ -517,39 +522,43 @@ class DocumentService:
         actor: UserId,
         *,
         before: DocumentId | None = None,
-        limit: int = 50,
+        limit: int = PAGE_SIZE,
         all_users: bool = False,
     ) -> list[InboxItem]:
         """The caller's yellow and red documents, newest first, with what is open in them;
         with `all_users` (admins only), those of every user."""
-        limit = max(1, min(limit, MAX_PAGE))
+        limit = max(1, min(limit, PAGE_LIMIT))
         waiting = DocumentFilter(lanes=frozenset({Lane.YELLOW, Lane.RED}))
         async with self._uow() as uow:
-            await _lister(uow, actor, all_users)
-            after = None if before is None else DocumentPosition(before)
+            user = await _lister(uow, actor, all_users)
+            after = DocumentPosition.after(before)
             if all_users:
                 documents = await uow.documents.query(waiting, after=after, limit=limit)
             else:
                 documents = await uow.documents.query_visible(
                     actor, waiting, after=after, limit=limit
                 )
+            spaces: dict[SpaceId, Space] = {}
             items = []
             for document in documents:
                 if not all_users and document.owner_id != actor:
                     continue  # only owners see their yellow and red documents in their reach
+                if document.space_id not in spaces:
+                    spaces[document.space_id] = await uow.spaces.get(document.space_id)
+                access = document_access(user, document, spaces[document.space_id])
+                assert access is not None  # the owner's, or any to an admin
                 log = await uow.processing_log.list_for(document.id)
-                items.append(InboxItem(document, open_nodes(document, log)))
+                items.append(InboxItem(document, access, open_nodes(document, log)))
         return items
 
     async def review(self, actor: UserId, id: DocumentId) -> Review:
         """Owner or admin: what is open, and what the model proposed and how it was checked."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await readable_document(uow, user, id)
-            if not can_control_document(user, document):
-                raise PermissionDeniedError(f"only the owner reviews document {id}")
+            document = await controllable_document(uow, user, id, f"review document {id}")
+            access = await access_to(uow, user, document)
             log = await uow.processing_log.list_for(id)
-        return Review(document, open_nodes(document, log), node_reviews(log))
+        return Review(document, access, open_nodes(document, log), node_reviews(log))
 
     async def update_metadata(
         self, actor: UserId, id: DocumentId, changes: DocumentChanges
@@ -580,7 +589,7 @@ class DocumentService:
             # new contact does not enable, cleared) is none of their decisions.
             given = changes
             changes = await checked_changes(uow, given, document, user)
-            definitions = {item.id: item for item in await uow.fields.list_all()}
+            definitions = await field_definitions(uow)
             now = self._clock.now()
             before = copy.deepcopy(document)
             changed = document.apply_changes(changes, definitions, now)
@@ -614,12 +623,10 @@ class DocumentService:
         any space."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await readable_document(uow, user, id)
-            if not can_control_document(user, document):
-                raise PermissionDeniedError(f"only the owner moves document {id}")
+            document = await controllable_document(uow, user, id, f"move document {id}")
             target = await visible_space(uow, user, space)
             if not can_move_document(user, document, target):
-                raise SpaceWriteDeniedError(space, str(space))
+                raise SpaceWriteDeniedError(target.id, target.name)
             now = self._clock.now()
             document.move_to(target.id, now)
             if self._rules is not None:
@@ -634,19 +641,13 @@ class DocumentService:
         (derivatives, and the original unless another document has the same file)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await readable_document(uow, user, id)
-            if not can_control_document(user, document):
-                raise PermissionDeniedError(f"only the owner deletes document {id}")
+            document = await controllable_document(uow, user, id, f"delete document {id}")
             document.delete(self._clock.now(), await _readers(uow, document))
             await uow.documents.remove(id)
             await uow.outbox.add(document.pull_events())
             await uow.jobs.enqueue(
                 REMOVE_FILES_JOB,
-                {
-                    "document_id": str(id),
-                    "sha256": document.sha256.hex,
-                    "page_count": document.page_count,
-                },
+                RemoveFiles(id, document.sha256, document.page_count).to_json(),
                 run_at=self._clock.now(),
             )
             await uow.commit()
@@ -654,8 +655,8 @@ class DocumentService:
 
 async def _lister(uow: UnitOfWork, actor: UserId, all_users: bool) -> User:
     user = await load_actor(uow, actor)
-    if all_users and not user.is_active_admin:
-        raise PermissionDeniedError("only admins list the documents of all users")
+    if all_users:
+        admin_only(user, "list the documents of all users")
     return user
 
 

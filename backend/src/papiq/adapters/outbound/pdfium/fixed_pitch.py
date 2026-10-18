@@ -18,22 +18,14 @@ import itertools
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass
-from pathlib import Path
-
-import pypdfium2
 
 from papiq.adapters.outbound.pdfium.chars import (
     Char,
     Font,
-    Geometry,
     Line,
     lines_of,
-    page_chars,
-    reading_turn,
     same,
 )
-from papiq.adapters.outbound.pdfium.library import LOCK
-from papiq.core.domain.errors import UnprocessableDocumentError
 
 MIN_LINES = 3
 """Lines a block needs: one or two lines in a fixed-pitch font are a word set apart (a number,
@@ -46,11 +38,10 @@ _BLANK_LINE = 1.5  # in line distances of the block: a gap that wide is a blank 
 
 @dataclass(frozen=True)
 class FixedPitchBlock:
-    """Lines set in a fixed-pitch font on page `page` (from 1). The box is in points, from the
-    bottom left corner of the visible page (its crop box); `line` is the usual distance from one
-    line to the next."""
+    """Lines set in a fixed-pitch font on one page. The box is in points, from the bottom left
+    corner of the visible page (its crop box); `line` is the usual distance from one line to the
+    next."""
 
-    page: int
     left: float
     bottom: float
     right: float
@@ -59,53 +50,22 @@ class FixedPitchBlock:
     text: str
 
 
-def fixed_pitch_blocks(path: Path) -> list[FixedPitchBlock]:
-    """The blocks of fixed-pitch text in a PDF, page by page from the top (blocking; run it in a
-    thread). A page PDFium cannot read has none."""
-    with LOCK:
-        try:
-            document = pypdfium2.PdfDocument(path)
-        except pypdfium2.PdfiumError as error:
-            raise UnprocessableDocumentError(f"the PDF cannot be read: {error}") from None
-        try:
-            blocks: list[FixedPitchBlock] = []
-            for number in range(1, len(document) + 1):
-                blocks.extend(blocks_of(number, _page_chars(document, number)))
-            return blocks
-        finally:
-            document.close()
+def page_lines(chars: list[Char]) -> list[Line]:
+    """The lines of the upright characters of a page, each with its advance if it is set in
+    fixed-pitch fonts (`fixed_pitch_fonts`): for its text and its blocks alike."""
+    return lines_of(chars, fixed_pitch_fonts(chars))
 
 
-def _page_chars(document: pypdfium2.PdfDocument, number: int) -> list[Char]:
-    try:
-        page = document[number - 1]
-    except pypdfium2.PdfiumError:
-        return []
-    try:
-        textpage = page.get_textpage()
-        try:
-            geometry = Geometry.of(page)
-            upright, _ = page_chars(textpage, geometry.turned(reading_turn(textpage, geometry)))
-            return upright
-        finally:
-            textpage.close()
-    except pypdfium2.PdfiumError:
-        return []
-    finally:
-        page.close()
-
-
-def blocks_of(page: int, chars: list[Char]) -> list[FixedPitchBlock]:
-    """The blocks of fixed-pitch text among the upright characters of page `page`."""
-    advances = fixed_pitch_fonts(chars)
+def blocks_of(lines: list[Line]) -> list[FixedPitchBlock]:
+    """The blocks of fixed-pitch text among the lines of a page (`page_lines`)."""
     blocks: list[FixedPitchBlock] = []
     run: list[Line] = []
-    for line in [*lines_of(chars, advances), None]:
+    for line in [*lines, None]:
         if line is not None and run and _continues(run[-1], line):
             run.append(line)
             continue
         if len(run) >= MIN_LINES:
-            blocks.append(_block(page, run))
+            blocks.append(_block(run))
         run = [line] if line is not None and line.advance is not None else []
     return blocks
 
@@ -135,7 +95,7 @@ def _continues(last: Line, line: Line) -> bool:
     )
 
 
-def _block(page: int, lines: list[Line]) -> FixedPitchBlock:
+def _block(lines: list[Line]) -> FixedPitchBlock:
     chars = [char for line in lines for char in line.chars]
     origin = min(char.left for char in chars)
     pitch = _pitch(lines)
@@ -147,7 +107,6 @@ def _block(page: int, lines: list[Line]) -> FixedPitchBlock:
             text.append("")
         text.append(_columns(line, origin, pitch))
     return FixedPitchBlock(
-        page=page,
         left=origin,
         bottom=min(char.bottom for char in chars),
         right=max(char.right for char in chars),

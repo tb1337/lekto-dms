@@ -13,11 +13,13 @@ from typing import Any
 from uuid import UUID
 
 from papiq.core.domain.classification import (
+    CHANGE_FIELDS,
+    CHECKS,
     CONTACT,
-    DOCUMENT_DATE,
-    DOCUMENT_TYPE,
-    TAGS,
-    TOPIC,
+    REVIEW,
+    SPACE,
+    TITLE,
+    CheckField,
     FieldCheck,
     checks_from_json,
     field_id_of,
@@ -28,16 +30,22 @@ from papiq.core.domain.fields import FieldDefinition, field_from_json
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.pipeline import (
+    ACCEPTED,
+    CONFIRMED_BY,
+    ENTERED,
+    KEPT,
     NODES,
-    OUTSIDE_PIPELINE,
     PERSON,
+    TRUNCATED,
     Node,
     NodeResult,
     NodeRun,
     Outcome,
+    ProcessingHistory,
 )
+from papiq.core.domain.spaces import ShareLevel
 
-ALWAYS_SET = frozenset({"space", "title", "review"})
+ALWAYS_SET = frozenset({SPACE, TITLE, REVIEW})
 """Open fields of the rules that always have a value: confirming keeps it."""
 
 MODEL_NODES = (Node.JUDGE, Node.FIELDS)
@@ -71,12 +79,14 @@ class NodeReview:
 @dataclass(frozen=True)
 class InboxItem:
     document: Document
+    access: ShareLevel  # the caller's, as in `DocumentView`
     open: tuple[OpenNode, ...]
 
 
 @dataclass(frozen=True)
 class Review:
     document: Document
+    access: ShareLevel  # the caller's, as in `DocumentView`
     open: tuple[OpenNode, ...]
     nodes: tuple[NodeReview, ...]
 
@@ -94,16 +104,11 @@ class Decision:
 
 
 def latest_entries(log: Sequence[NodeRun], *, by_model: bool = False) -> dict[Node, NodeRun]:
-    """The latest log entry of each node written by processing; with `by_model`, leaving out
-    confirmations too."""
-    latest: dict[Node, NodeRun] = {}
-    for entry in log:
-        if entry.result.model_version in OUTSIDE_PIPELINE:
-            continue
-        if by_model and entry.result.model_version == PERSON:
-            continue
-        latest[entry.node] = entry
-    return latest
+    """The latest log entry of each node written by processing, in graph order; with
+    `by_model`, leaving out confirmations too (`ProcessingHistory.latest`)."""
+    history = ProcessingHistory(log)
+    latest = {node: history.latest(node, by_model=by_model) for node in NODES}
+    return {node: entry for node, entry in latest.items() if entry is not None}
 
 
 def field_checks(log: Sequence[NodeRun]) -> dict[str, FieldCheck]:
@@ -140,7 +145,7 @@ def node_reviews(log: Sequence[NodeRun]) -> tuple[NodeReview, ...]:
         entry = latest.get(node)
         if entry is None:
             continue
-        truncated = entry.result.input.get("truncated")
+        truncated = entry.result.input.get(TRUNCATED)
         reviews.append(
             NodeReview(
                 node=node,
@@ -178,7 +183,7 @@ def decide(
     undecided: list[str] = []
     for item in open:
         for check in item.fields:
-            field_id = _field_id(check.field)
+            field_id = field_id_of(check.field)
             if field_id is not None and field_id not in definitions:
                 continue
             if _left_empty_by_hand(check, field_id, changes, definitions):
@@ -202,7 +207,7 @@ def decide(
     combined = replace(
         changes,
         fields=fields,
-        **{_CHANGE_FIELDS[name]: value for name, value in suggested.items()},
+        **{CHANGE_FIELDS[name]: value for name, value in suggested.items()},
     )
     return Decision(
         changes=combined,
@@ -246,46 +251,26 @@ def confirmation(
 ) -> NodeResult:
     """The log entry's result for a node the owner confirmed."""
     output: JsonObject = {
-        "confirmed_by": str(confirmed_by),
+        CONFIRMED_BY: str(confirmed_by),
         "outcome_before": None if before is None else before.value,
-        "accepted": list(decision.accepted.get(node, ())),
-        "entered": list(decision.entered.get(node, ())),
-        "kept": list(decision.kept.get(node, ())),
+        ACCEPTED: list(decision.accepted.get(node, ())),
+        ENTERED: list(decision.entered.get(node, ())),
+        KEPT: list(decision.kept.get(node, ())),
     }
     return NodeResult(outcome=Outcome.OK, model_version=PERSON, output=output)
 
 
-_CHANGE_FIELDS = {
-    CONTACT: "contact_id",
-    DOCUMENT_TYPE: "document_type_id",
-    TOPIC: "topic_id",
-    TAGS: "tag_ids",
-    DOCUMENT_DATE: "document_date",
-    "title": "title",
-}
-
-
 def _checks(result: NodeResult) -> list[FieldCheck]:
     try:
-        return checks_from_json(result.output.get("fields"))
+        return checks_from_json(result.output.get(CHECKS))
     except ValidationError:
         return []
-
-
-def _field_id(field: str) -> FieldId | None:
-    id = field_id_of(field)
-    if id is None:
-        return None
-    try:
-        return FieldId(UUID(id))
-    except ValueError:
-        return None
 
 
 def _given(changes: DocumentChanges, field: str, field_id: FieldId | None) -> bool:
     if field_id is not None:
         return field_id in changes.fields
-    name = _CHANGE_FIELDS.get(field)
+    name = CHANGE_FIELDS.get(field)
     return name is not None and not isinstance(getattr(changes, name), Unset)
 
 
@@ -306,7 +291,7 @@ def _has_value(document: Document, field: str, field_id: FieldId | None) -> bool
         return True
     if field_id is not None:
         return field_id in document.fields
-    name = _CHANGE_FIELDS.get(field)
+    name = CHANGE_FIELDS.get(field)
     return name is not None and getattr(document, name) not in (None, set())
 
 
@@ -320,15 +305,15 @@ def _suggested(
         if field_id is not None:
             return field_from_json(definitions[field_id], value)
         match check.field:
-            case "contact":
+            case CheckField.CONTACT:
                 return ContactId(UUID(str(value)))
-            case "document_type":
+            case CheckField.DOCUMENT_TYPE:
                 return DocumentTypeId(UUID(str(value)))
-            case "topic":
+            case CheckField.TOPIC:
                 return TagId(UUID(str(value)))
-            case "tags" if isinstance(value, list):
+            case CheckField.TAGS if isinstance(value, list):
                 return frozenset(TagId(UUID(str(item))) for item in value)
-            case "document_date":
+            case CheckField.DOCUMENT_DATE:
                 return date.fromisoformat(str(value))
     except ValueError:
         pass

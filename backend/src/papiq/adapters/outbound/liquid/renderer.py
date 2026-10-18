@@ -34,6 +34,15 @@ _LOCATION = re.compile(r"' (?P<line>\d+):(?P<column>\d+)\n")
 _FORBIDDEN_TAGS = ("include", "render")
 
 
+def parse_locale(text: str) -> str:
+    """The locale `text` names (`de`, `de-AT`, `de_AT`) as Babel names it; ValueError if it
+    names none."""
+    try:
+        return str(Locale.parse(text.replace("-", "_")))
+    except (ValueError, UnknownLocaleError):
+        raise ValueError(f"unknown locale {text!r}") from None
+
+
 class _Environment(Environment):
     context_depth_limit = 10
     local_namespace_limit = 10_000
@@ -59,10 +68,7 @@ class LiquidTemplateRenderer:
     def __init__(self, *, locale: str, currency: str) -> None:
         """`locale` writes dates and amounts (`PAPIQ_TEMPLATE_LOCALE`); `currency` is that
         of the `currency` filter where a template names none (`PAPIQ_DEFAULT_CURRENCY`)."""
-        try:
-            self._locale = str(Locale.parse(locale.replace("-", "_")))
-        except UnknownLocaleError:
-            raise ValueError(f"unknown locale {locale!r}") from None
+        self._locale = parse_locale(locale)
         environment = _Environment(undefined=FalsyStrictUndefined)
         for tag in _FORBIDDEN_TAGS:
             del environment.tags[tag]

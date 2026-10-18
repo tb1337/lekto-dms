@@ -27,6 +27,7 @@ from papiq.adapters.inbound.evaluation.cases import (
     Run,
     TrainingDocument,
 )
+from papiq.core.domain import media_types
 from papiq.core.domain.classification import (
     CONTACT,
     DOCUMENT_DATE,
@@ -34,6 +35,7 @@ from papiq.core.domain.classification import (
     TAGS,
     TITLE,
     TOPIC,
+    CheckField,
     FieldCheck,
     field_key,
 )
@@ -44,9 +46,10 @@ from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId
 from papiq.core.domain.imports import ImportedMetadata
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.master_data import TagScope
-from papiq.core.domain.pipeline import Lane, Node, NodeRun, ProcessingStatus
+from papiq.core.domain.pipeline import CORRECTED, TRUNCATED, Lane, Node, NodeRun, ProcessingStatus
+from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import ObjectStore
+from papiq.core.ports.object_store import ObjectStore
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.inbox import field_checks, open_nodes
@@ -293,7 +296,7 @@ async def _receive(
     await environment.store.put(
         text_key(received.id),
         text.encode("utf-8"),
-        content_type="text/plain; charset=utf-8",
+        content_type=media_types.TEXT,
     )
     return received
 
@@ -358,7 +361,7 @@ async def _corrected(
         _field_label(name, master)
         for entry in await environment.documents.processing_log(owner.id, id)
         for record in (entry.result.input, entry.result.output)
-        for name in _strings(record.get("corrected"))
+        for name in _strings(record.get(CORRECTED))
     }
     return replace(result, corrected=frozenset(corrected))
 
@@ -425,7 +428,7 @@ def _result(
         if field not in by_hand
     }
     truncated = any(
-        entry.result.input.get("truncated") is True
+        entry.result.input.get(TRUNCATED) is True
         for entry in log
         if entry.node in (Node.JUDGE, Node.FIELDS)
     )
@@ -461,17 +464,16 @@ def _resolved(check: FieldCheck, master: MasterData) -> JsonValue:
     value = check.value if check.ok and check.value is not None else check.suggestion
     names: dict[str, str]
     match check.field:
-        case "contact":
+        case CheckField.CONTACT:
             names = {str(id): name for id, name in master.contacts.items()}
-        case "document_type":
+        case CheckField.DOCUMENT_TYPE:
             names = {str(id): name for id, name in master.document_types.items()}
-        case "topic":
+        case CheckField.TOPIC:
             names = {str(id): name for id, name in master.topics.items()}
-        case "tags":
+        case CheckField.TAGS:
             names = {str(id): name for id, name in master.tags.items()}
-            tags: list[JsonValue] = []
-            tags.extend(sorted(names.get(item, item) for item in _strings(value)))
-            return tags
+            labels = sorted((names.get(item, item) for item in _strings(value)), key=sort_key)
+            return list[JsonValue](labels)
         case _:
             return value
     return names.get(value, value) if isinstance(value, str) else value
@@ -501,19 +503,19 @@ def _violations(
     if after.title != before.title and not backed(TITLE, after.title):
         problems.append("title changed without a passed check")
     if after.contact_id != before.contact_id and not backed(
-        "contact", None if after.contact_id is None else str(after.contact_id)
+        CONTACT, None if after.contact_id is None else str(after.contact_id)
     ):
         problems.append("contact changed without a passed check")
     if after.document_type_id != before.document_type_id and not backed(
-        "document_type", None if after.document_type_id is None else str(after.document_type_id)
+        DOCUMENT_TYPE, None if after.document_type_id is None else str(after.document_type_id)
     ):
         problems.append("document type changed without a passed check")
     if after.topic_id != before.topic_id and not backed(
-        "topic", None if after.topic_id is None else str(after.topic_id)
+        TOPIC, None if after.topic_id is None else str(after.topic_id)
     ):
         problems.append("topic changed without a passed check")
     if after.tag_ids != before.tag_ids:
-        check = checks.get("tags")
+        check = checks.get(TAGS)
         if (
             check is None
             or not check.ok
@@ -521,7 +523,7 @@ def _violations(
         ):
             problems.append("tags changed without a passed check")
     if after.document_date != before.document_date and not backed(
-        "document_date", None if after.document_date is None else after.document_date.isoformat()
+        DOCUMENT_DATE, None if after.document_date is None else after.document_date.isoformat()
     ):
         problems.append("document date changed without a passed check")
     for id, value in after.fields.items():

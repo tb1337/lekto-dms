@@ -6,8 +6,14 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr
 
-from papiq.core.domain.identity import ApiToken, ExternalIdentity, LoginMethod, TokenScope
-from papiq.core.domain.users import Role, User
+from papiq.core.domain.identity import (
+    MAX_TOKEN_NAME,
+    ApiToken,
+    ExternalIdentity,
+    LoginMethod,
+    TokenScope,
+)
+from papiq.core.domain.users import MAX_USERNAME, Role, User
 
 Password = Annotated[SecretStr, Field(min_length=1, max_length=1024)]
 
@@ -23,7 +29,7 @@ class LoginRequest(BaseModel):
         },
     )
 
-    username: str = Field(min_length=1, max_length=150, examples=["alice"])
+    username: str = Field(min_length=1, max_length=MAX_USERNAME, examples=["alice"])
     password: Password = Field(examples=["********"])
     code: str | None = Field(
         default=None, max_length=16, description="TOTP code, if the account has TOTP."
@@ -166,7 +172,7 @@ class TokenCreate(BaseModel):
         },
     )
 
-    name: str = Field(min_length=1, max_length=100, examples=["scanner"])
+    name: str = Field(min_length=1, max_length=MAX_TOKEN_NAME, examples=["scanner"])
     scope: TokenScope
     expires_at: AwareDatetime | None = None
 

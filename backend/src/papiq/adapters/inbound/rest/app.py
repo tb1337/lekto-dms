@@ -3,8 +3,8 @@ one, below `/ui`."""
 
 import asyncio
 import contextlib
-from collections.abc import AsyncIterator, Sequence
-from typing import Any, Protocol
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
+from typing import Protocol
 
 from fastapi import FastAPI
 from fastapi.dependencies.models import Dependant
@@ -37,13 +37,13 @@ from papiq.adapters.inbound.rest.auth import (
 from papiq.adapters.inbound.rest.context import ApiContext
 from papiq.adapters.inbound.rest.events import EventHub, dispatch_forever
 from papiq.adapters.inbound.rest.middleware import LimitRequestBody, NoStore
-from papiq.adapters.inbound.rest.paths import PREFIX
+from papiq.adapters.inbound.rest.paths import HEALTH_PATH, MCP_PATH, PREFIX
 from papiq.adapters.inbound.rest.schemas.events import EventMessage
 from papiq.adapters.inbound.rest.ui import ui_routes
 
 __all__ = ["PREFIX", "create_app"]
 
-DESCRIPTION = """\
+DESCRIPTION = f"""\
 Papiq is a headless document management system; this API is the only way in.
 
 Errors are problem details (RFC 9457, `application/problem+json`).
@@ -57,7 +57,7 @@ creating users or resetting their sign-in need a session; a token gets 403 there
 and spaces the caller may not see are "not found" (404), the same as ones that do not exist.
 
 The same services are available to AI clients over MCP (Streamable HTTP, stateless) at
-`/api/v1/mcp`, with the same API tokens as bearer; it is not part of this OpenAPI document.
+`{MCP_PATH}`, with the same API tokens as bearer; it is not part of this OpenAPI document.
 Tools: `search`, `get_document`, `get_text`, `update_metadata` (needs a `read_write` token),
 `list_tags`.
 """
@@ -131,7 +131,7 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
     app.add_middleware(
         NoStore,
         prefix=PREFIX,
-        public=(f"{PREFIX}/health", f"{PREFIX}/docs", f"{PREFIX}/openapi.json", f"{PREFIX}/redoc"),
+        public=(HEALTH_PATH, f"{PREFIX}/docs", f"{PREFIX}/openapi.json", f"{PREFIX}/redoc"),
         # A logo is master data every user sees; its URL changes with it.
         cacheable=(master_data.LOGO_PATH,),
     )
@@ -179,12 +179,12 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         for unused in ("HTTPValidationError", "ValidationError"):
             components.pop(unused, None)
         schema["components"]["securitySchemes"] = SECURITY_SCHEMES
-        for context in iter_route_contexts(app.routes):
-            route = context.original_route
+        for route_context in iter_route_contexts(app.routes):
+            route = route_context.original_route
             if isinstance(route, APIRoute) and route.include_in_schema:
                 security = security_of(route)
-                for method in context.methods or ():
-                    operation = schema["paths"][context.path_format][method.lower()]
+                for method in route_context.methods or ():
+                    operation = schema["paths"][route_context.path_format][method.lower()]
                     operation["security"] = security
                     responses = operation["responses"]
                     if "requestBody" in operation and "413" not in responses:
@@ -210,7 +210,7 @@ def security_of(route: APIRoute) -> list[dict[str, list[str]]]:
     return []
 
 
-def _calls(dependant: Dependant) -> Any:
+def _calls(dependant: Dependant) -> Iterator[Callable[..., object] | None]:
     for dependency in dependant.dependencies:
         yield dependency.call
         yield from _calls(dependency)

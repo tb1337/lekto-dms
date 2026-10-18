@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid5
 
 from papiq.adapters.outbound.memory.database import RULE_APPLICATIONS, RULE_VERSIONS, Table
-from papiq.adapters.outbound.memory.rows import _REMOVED, MemoryRepository
+from papiq.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from papiq.core.domain.errors import NotFoundError
 from papiq.core.domain.ids import RuleApplicationId, RuleId, UserId
 from papiq.core.domain.rules import Rule, RuleApplication, RuleScope, RuleVersion
@@ -30,7 +30,7 @@ def version_row_id(rule: RuleId, number: int) -> UUID:
 
 
 class MemoryRuleRepository(MemoryRepository[RuleId, Rule]):
-    def __init__(self, uow: "MemoryUnitOfWork", table: Table) -> None:
+    def __init__(self, uow: "MemoryUnitOfWork", table: Table[Rule]) -> None:
         super().__init__(uow, table)
         self._versions = MemoryRepository[UUID, VersionRow](uow, RULE_VERSIONS)
         self._applications = MemoryRepository[RuleApplicationId, RuleApplication](
@@ -50,7 +50,7 @@ class MemoryRuleRepository(MemoryRepository[RuleId, Rule]):
     ) -> list[Rule]:
         wanted = None if owners is None else set(owners)
         return [
-            self._copy(row)
+            _copy(row)
             for row in self._all()
             if row.deleted_at is None
             and (
@@ -61,11 +61,7 @@ class MemoryRuleRepository(MemoryRepository[RuleId, Rule]):
 
     async def versions(self, id: RuleId) -> list[RuleVersion]:
         await self.get(id)
-        found = [
-            self._versions._copy(row).item
-            for row in self._versions._all()
-            if row.item.rule_id == id
-        ]
+        found = [_copy(row).item for row in self._versions._all() if row.item.rule_id == id]
         return sorted(found, key=lambda version: version.number)
 
     async def get_version(self, id: RuleId, number: int) -> RuleVersion:

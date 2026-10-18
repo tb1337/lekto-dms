@@ -17,10 +17,8 @@ from papiq.core.domain.classifier import KEPT_MODELS, ClassifierModel
 from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import (
     ClassifierError,
-    ConcurrencyError,
     ConflictError,
     NotFoundError,
-    PermissionDeniedError,
 )
 from papiq.core.domain.events import ClassifierTrained
 from papiq.core.domain.identifiers import (
@@ -30,21 +28,17 @@ from papiq.core.domain.identifiers import (
     mine_identifiers,
 )
 from papiq.core.domain.ids import ClassifierModelId, ContactId, TagId, UserId
-from papiq.core.domain.jobs import Job
+from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.json_value import JsonObject
-from papiq.core.ports import (
-    Classifier,
-    Clock,
-    DocumentFilter,
-    DocumentPosition,
-    ObjectStore,
-    Prediction,
-    TrainedModel,
-    TrainingExample,
-    UnitOfWork,
-    UnitOfWorkFactory,
-)
-from papiq.core.services._access import load_actor
+from papiq.core.domain.text import shorten
+from papiq.core.ports.classifier import Classifier, Prediction, TrainedModel, TrainingExample
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.repository import DocumentFilter
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from papiq.core.services._access import require_admin
+from papiq.core.services._jobs import LEASE, JobRunner, Step, retrying
+from papiq.core.services._pages import document_pages
 from papiq.core.services.master_data import replace_learned_identifiers
 from papiq.core.services.objects import classifier_key, load_text
 
@@ -52,23 +46,32 @@ log = logging.getLogger(__name__)
 
 CHECK_JOB = "classifier.check"
 TRAIN_JOB = "classifier.train"
-_TRAIN_ATTEMPTS = 3
-_RETRY_DELAY = timedelta(minutes=5)
-_PAGE = 500
+_TRAIN_RETRY = RetryPolicy(max_attempts=3, delay=timedelta(minutes=5))
 _COMMIT_ATTEMPTS = 3  # a contact changed while the learned identifiers were written: again
 _HOLDOUT_FROM = 50  # examples from which a share is held out to measure the model
 _HOLDOUT_EVERY = 5  # every fifth example: a fifth held out
 _MODEL_TYPE = "application/octet-stream"
 
 
-@dataclass(frozen=True)
+TEXT_LIMIT = 12_000
+"""Characters of a document's text the classifier sees: the beginning and the end of a longer
+text, where it says what it is and from whom (`shorten`)."""
+
+
+@dataclass(frozen=True, kw_only=True)
 class ClassifierPolicy:
-    min_examples: int = 20  # confirmed documents before the first model
-    retrain_after: int = 25  # confirmations since the last model before another
-    threshold: float = 0.8  # a prediction this sure names its class (`judge`)
+    """The first three are configuration (the composition sets them from the settings, whose
+    defaults are the one source); the intervals and `text_limit` are constants. `threshold` is
+    the classifier's: the judge takes it from here (`composition.container.thresholds_of`), the
+    status shows it. `text_limit`: characters of a document's text it learns from and predicts
+    on (`shorten`)."""
+
+    min_examples: int  # confirmed documents before the first model
+    retrain_after: int  # confirmations since the last model before another
+    threshold: float  # a prediction this sure names its class
     check_interval: timedelta = timedelta(minutes=10)
     train_lease: timedelta = timedelta(hours=1)
-    text_limit: int = 50_000  # characters of a document's text it learns from
+    text_limit: int = TEXT_LIMIT
 
     def __post_init__(self) -> None:
         if min(self.min_examples, self.retrain_after, self.text_limit) < 1:
@@ -98,7 +101,7 @@ class ClassifierService:
         store: ObjectStore,
         clock: Clock,
         classifier: Classifier,
-        policy: ClassifierPolicy | None = None,
+        policy: ClassifierPolicy,
         *,
         fetch_logos: bool = False,
     ) -> None:
@@ -109,12 +112,18 @@ class ClassifierService:
         self._store = store
         self._clock = clock
         self._classifier = classifier
-        self.policy = policy or ClassifierPolicy()
+        self.policy = policy
         self._cached: tuple[ClassifierModelId, bytes] | None = None
+        self._jobs = JobRunner(uow, clock)
 
     @property
     def name(self) -> str:
         return self._classifier.name
+
+    @property
+    def fetch_logos(self) -> bool:
+        """Whether a domain a contact learns queues fetching its logo."""
+        return self._fetch_logos
 
     # --- jobs -------------------------------------------------------------------------------------
 
@@ -126,21 +135,9 @@ class ClassifierService:
 
     async def run_next_job(self) -> bool:
         """Claim and run a due check or training; False if none was due."""
-        for kind, lease in (
-            (CHECK_JOB, timedelta(minutes=5)),
-            (TRAIN_JOB, self.policy.train_lease),
-        ):
-            async with self._uow() as uow:
-                job = await uow.jobs.claim(now=self._clock.now(), lease=lease, kinds=[kind])
-                await uow.commit()
-            if job is not None:
-                try:
-                    await self._run_claimed(job)
-                except asyncio.CancelledError:
-                    await asyncio.shield(self._release(job))
-                    raise
-                return True
-        return False
+        return await self._jobs.run_next(
+            [CHECK_JOB], LEASE, self._run_claimed
+        ) or await self._jobs.run_next([TRAIN_JOB], self.policy.train_lease, self._run_claimed)
 
     async def check(self) -> bool:
         """Queue a training if one is due; returns whether it is."""
@@ -160,8 +157,7 @@ class ClassifierService:
         """Admins only: queue a training, unless one is queued or running. ConflictError with
         fewer confirmed documents than a first model needs."""
         async with self._uow() as uow:
-            if not (await load_actor(uow, actor)).is_active_admin:
-                raise PermissionDeniedError("only admins train the classifier")
+            await require_admin(uow, actor, "train the classifier")
             confirmed = await uow.documents.count_confirmed()
             if confirmed < self.policy.min_examples:
                 raise ConflictError(
@@ -173,8 +169,7 @@ class ClassifierService:
     async def status(self, actor: UserId) -> ClassifierStatus:
         """Admins only: the latest model and the confirmations since."""
         async with self._uow() as uow:
-            if not (await load_actor(uow, actor)).is_active_admin:
-                raise PermissionDeniedError("only admins see the classifier")
+            await require_admin(uow, actor, "see the classifier")
             latest = await uow.classifier_models.latest()
             confirmed = await uow.documents.count_confirmed()
             since = (
@@ -198,20 +193,11 @@ class ClassifierService:
             (item.document.confirmed_at for item in examples if item.document.confirmed_at),
             default=None,
         )
-        found = [
-            (item.document.contact_id, item.document.topic_id, identifiers_in(item.example.text))
-            for item in examples
-        ]
-        for attempt in range(1, _COMMIT_ATTEMPTS + 1):
-            try:
-                model, learned, old = await self._store_model(
-                    trained, found, accuracy, len(examples), until
-                )
-                break
-            except ConcurrencyError:
-                if attempt == _COMMIT_ATTEMPTS:
-                    raise
-                log.info("a contact changed while the model was stored; storing again")
+        found = await asyncio.to_thread(_identifiers_of, examples)
+        model, learned, old = await retrying(
+            lambda: self._store_model(trained, found, accuracy, len(examples), until),
+            attempts=_COMMIT_ATTEMPTS,
+        )
         for item in old:
             await self._forget(item.object_key)
         log.info(
@@ -279,30 +265,24 @@ class ClassifierService:
 
     async def _examples(self) -> list[_Example]:
         """The confirmed documents with their texts (one without a text yet is left out)."""
-        documents: list[Document] = []
-        after: DocumentPosition | None = None
         async with self._uow() as uow:
             # Only the tags and topics the classification sets are learned, not those set by
             # hand.
             tags = await uow.tags.list_all()
             targets = {tag.id for tag in tags if tag.is_target}
             topics = {tag.id for tag in tags if tag.is_topic_target}
-        while True:
-            async with self._uow() as uow:
-                page = await uow.documents.query(
-                    DocumentFilter(confirmed=True), after=after, limit=_PAGE
-                )
-            documents.extend(page)
-            if len(page) < _PAGE:
-                break
-            after = DocumentPosition(page[-1].id)
+        documents = [
+            document
+            async for page in document_pages(self._uow, DocumentFilter(confirmed=True))
+            for document in page
+        ]
         examples = []
         for document in documents:
             try:
                 raw = await load_text(self._store, document.id)
             except NotFoundError:
                 continue
-            text = _shortened(raw.decode("utf-8", "replace"), self.policy.text_limit)
+            text = shorten(raw.decode("utf-8", "replace"), self.policy.text_limit).text
             example = TrainingExample(
                 text=text,
                 contact=document.contact_id,
@@ -359,7 +339,7 @@ class ClassifierService:
             except NotFoundError:
                 raise ClassifierError(f"the file of model {model.number} is missing") from None
             self._cached = (model.id, data)
-        text = _shortened(text, self.policy.text_limit)
+        text = shorten(text, self.policy.text_limit).text
         return model, await self._classifier.predict(self._cached[1], text)
 
     # --- job bookkeeping --------------------------------------------------------------------------
@@ -372,62 +352,36 @@ class ClassifierService:
                 await self.train()
         except ClassifierError as error:
             log.warning("the classifier cannot be trained", extra={"error": str(error)})
-            await self._finish(job, error=str(error))
+            await self._jobs.end(job, error=str(error), also=self._after(job))
             return
         except Exception as error:
-            await self._failed(job, error)
+            log.warning("classifier job failed", extra={"kind": job.kind}, exc_info=True)
+            reason = f"{type(error).__name__}: {error}"
+            if job.kind == CHECK_JOB:  # the next check comes anyway
+                await self._jobs.end(job, error=reason, also=self._next_check)
+            else:
+                run_at = _TRAIN_RETRY.next_run(job.tries, self._clock.now())
+                await self._jobs.again(job, reason, run_at)
             return
-        await self._finish(job)
+        await self._jobs.end(job, also=self._after(job))
 
-    async def _finish(self, job: Job, *, error: str | None = None) -> None:
-        try:
-            async with self._uow() as uow:
-                if error is None:
-                    await uow.jobs.complete(job)
-                else:
-                    await uow.jobs.fail(job, error=error)
-                if job.kind == CHECK_JOB:
-                    await self._next_check(uow)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a classifier job", extra={"job_id": str(job.id)})
-
-    async def _failed(self, job: Job, error: Exception) -> None:
-        reason = f"{type(error).__name__}: {error}"
-        log.warning("classifier job failed", extra={"kind": job.kind}, exc_info=True)
-        try:
-            async with self._uow() as uow:
-                if job.kind == CHECK_JOB:
-                    await uow.jobs.fail(job, error=reason)
-                    await self._next_check(uow)
-                elif job.tries >= _TRAIN_ATTEMPTS:
-                    await uow.jobs.fail(job, error=reason)
-                else:
-                    run_at = self._clock.now() + _RETRY_DELAY * job.tries
-                    await uow.jobs.reschedule(job, run_at=run_at, error=reason)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a classifier job", extra={"job_id": str(job.id)})
+    def _after(self, job: Job) -> Step | None:
+        """A check queues the next one when it ends."""
+        return self._next_check if job.kind == CHECK_JOB else None
 
     async def _next_check(self, uow: UnitOfWork) -> None:
         run_at = self._clock.now() + self.policy.check_interval
         await uow.jobs.enqueue(CHECK_JOB, {}, run_at=run_at, dedup_key=CHECK_JOB)
 
-    async def _release(self, job: Job) -> None:
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.release(job, run_at=self._clock.now(), error="worker stopped")
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a classifier job", extra={"job_id": str(job.id)})
 
-
-def _shortened(text: str, limit: int) -> str:
-    """The start and the end of a long text: there it says what it is and from whom."""
-    if len(text) <= limit:
-        return text
-    head = limit * 2 // 3
-    return text[:head] + "\n…\n" + text[len(text) - (limit - head) :]
+def _identifiers_of(
+    examples: Sequence[_Example],
+) -> list[tuple[ContactId | None, TagId | None, set[tuple[IdentifierKind, str]]]]:
+    """The identifiers in each example's text, with its contact and topic."""
+    return [
+        (item.document.contact_id, item.document.topic_id, identifiers_in(item.example.text))
+        for item in examples
+    ]
 
 
 def _first_contact(prediction: Prediction) -> object:

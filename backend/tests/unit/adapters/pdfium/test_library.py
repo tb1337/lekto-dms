@@ -4,7 +4,7 @@ import pytest
 
 from papiq.adapters.outbound.pdfium import has_unreadable_text
 from papiq.adapters.outbound.pdfium.library import unreadable_share
-from tests.contracts.processing import SAMPLES
+from tests.builders import SAMPLES
 
 
 @pytest.mark.parametrize(

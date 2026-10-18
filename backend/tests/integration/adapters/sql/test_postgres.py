@@ -13,7 +13,8 @@ from papiq.adapters.outbound.sql.unit_of_work import SqlOutbox
 from papiq.core.domain.errors import ConcurrencyError
 from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.users import User
-from papiq.core.ports import EventBus, UnitOfWorkFactory
+from papiq.core.ports.event_bus import EventBus
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
 from tests.contracts.event_bus import EventBusContract, Recorder, publish, received
 from tests.contracts.identity import IdentityRepositoriesContract

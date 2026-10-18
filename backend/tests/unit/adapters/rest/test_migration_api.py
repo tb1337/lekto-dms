@@ -15,12 +15,10 @@ from papiq.core.domain.identity import TokenScope
 from papiq.core.domain.pipeline import SIGNALS, Node, NodeResult
 from papiq.core.domain.users import User
 from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
-from papiq.core.services.pipeline import DeferredResult, NodeExecutor, PlaceholderNode
+from papiq.core.services.pipeline import DeferredResult, NodeExecutor
 from tests.api import auth, bearer
-from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import Api
-
-DOCUMENTS = f"{PREFIX}/documents"
+from tests.builders import SAMPLES, PlaceholderNode
+from tests.unit.adapters.rest.support import DOCUMENTS, Api, post, sample_file
 
 
 @pytest.fixture(autouse=True)
@@ -28,27 +26,17 @@ def imported_steps(api: Api) -> None:
     """The signals, the judge and the fields node as the container builds them, around nodes
     that do nothing (there is no language model)."""
     uow = api.container.unit_of_work
-    executors = api.services.pipeline._executors
+    pipeline = api.services.pipeline
     for signal in SIGNALS:
-        executors[signal] = ImportedSignal(uow, PlaceholderNode())
-    executors[Node.JUDGE] = ImportedJudgeNode(uow, PlaceholderNode())
-    executors[Node.FIELDS] = ImportedFieldsNode(uow, PlaceholderNode())
-
-
-def file(name: str = "scan.pdf") -> dict[str, tuple[str, bytes, str]]:
-    return {"file": (name, (SAMPLES / name).read_bytes(), "x/y")}
-
-
-async def post(api: Api, path: str, body: Any, headers: dict[str, str]) -> Any:
-    response = await api.client.post(f"{PREFIX}{path}", json=body, headers=headers)
-    assert response.status_code == 201, response.text
-    return response.json()
+        pipeline.replace_executor(signal, ImportedSignal(uow, PlaceholderNode()))
+    pipeline.replace_executor(Node.JUDGE, ImportedJudgeNode(uow, PlaceholderNode()))
+    pipeline.replace_executor(Node.FIELDS, ImportedFieldsNode(uow, PlaceholderNode()))
 
 
 async def upload(
     api: Api, headers: dict[str, str], *, name: str = "scan.pdf", **fields: str
 ) -> Any:
-    return await api.client.post(DOCUMENTS, files=file(name), data=fields, headers=headers)
+    return await api.client.post(DOCUMENTS, files=sample_file(name), data=fields, headers=headers)
 
 
 async def master_data(api: Api, admin: User) -> dict[str, Any]:
@@ -137,8 +125,8 @@ class FailsOnce:
 async def test_a_red_document_keeps_the_metadata_and_gets_them_when_retried(api: Api) -> None:
     """The metadata is applied by the classification nodes, so a document whose OCR fails is
     red without it; the receive entry keeps it, and a retry applies it (decision 8, M13)."""
-    executors = api.services.pipeline._executors
-    executors[Node.OCR] = FailsOnce(executors[Node.OCR])
+    pipeline = api.services.pipeline
+    pipeline.replace_executor(Node.OCR, FailsOnce(pipeline.executor(Node.OCR)))
     admin, owner = await api.admin(), await api.user()
     data = await master_data(api, admin)
     response = await upload(
@@ -221,7 +209,7 @@ async def test_an_owner_who_is_gone_or_inactive_is_not_found(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
     unknown = await upload(api, auth(admin), owner=str(UUID(int=5)))
     assert unknown.status_code == 404
-    await api.services.users.set_active(admin.id, owner.id, False)
+    await api.services.users.update(admin.id, owner.id, active=False)
     inactive = await upload(api, auth(admin), owner=str(owner.id))
     assert inactive.status_code == 404
     assert (await upload(api, auth(admin), owner="not-a-uuid")).status_code == 422
@@ -232,7 +220,7 @@ async def test_a_deactivated_admin_and_a_read_token_can_neither(api: Api) -> Non
     _, token = await api.services.auth.create_api_token(admin.id, "read", TokenScope.READ)
     response = await upload(api, bearer(token), owner=str(owner.id))
     assert response.status_code == 403
-    await api.services.users.set_active(boss.id, admin.id, False)
+    await api.services.users.update(boss.id, admin.id, active=False)
     response = await upload(api, auth(admin), owner=str(owner.id))
     assert response.status_code == 401
 
@@ -264,6 +252,7 @@ async def test_metadata_needs_the_channel_and_must_fit_the_master_data(api: Api)
             "field",
         ),
         ({"channel": "migration", "metadata": metadata(data, unknown=1)}, "unknown"),
+        ({"channel": "migration", "metadata": metadata(data, title="  ")}, "title"),
     ]:
         response = await upload(api, headers, owner=str(owner.id), **fields)
         assert response.status_code == 422, (fields, response.text)

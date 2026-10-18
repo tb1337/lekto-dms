@@ -7,7 +7,7 @@ import time
 import pytest
 
 from papiq.core.domain.errors import PatternTimeoutError, ValidationError
-from papiq.core.ports import PatternMatcher
+from papiq.core.ports.patterns import PatternMatcher
 
 # Catastrophic backtracking: exponential in the number of `a`s, since the `b` never matches.
 CATASTROPHIC = r"(a|aa)+$"
@@ -45,6 +45,16 @@ class PatternMatcherContract:
         for case_sensitive in (False, True):
             with pytest.raises(ValidationError):
                 await pattern_matcher.search(pattern, "text", case_sensitive=case_sensitive)
+
+    @pytest.mark.parametrize("pattern", ["(", "[a-", "a{2,1}", "(?<name"])
+    def test_validate_refuses_an_invalid_pattern(
+        self, pattern_matcher: PatternMatcher, pattern: str
+    ) -> None:
+        with pytest.raises(ValidationError):
+            pattern_matcher.validate(pattern)
+
+    def test_validate_accepts_a_valid_pattern(self, pattern_matcher: PatternMatcher) -> None:
+        pattern_matcher.validate(r"Nr\. \d{4}")
 
     @pytest.mark.parametrize("case_sensitive", [False, True])
     async def test_catastrophic_backtracking_is_stopped(

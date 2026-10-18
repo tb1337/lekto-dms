@@ -32,10 +32,19 @@ from papiq.core.domain.ids import (
     UserId,
     new_id,
 )
-from papiq.core.domain.validation import name_key, require_name, require_utc
+from papiq.core.domain.validation import (
+    MAX_URL_LENGTH,
+    has_control_characters,
+    name_key,
+    require_name,
+    require_utc,
+)
 
 PASSWORD_MIN_LENGTH = 12
 PASSWORD_MAX_LENGTH = 256
+
+MAX_TOKEN_NAME = 100
+"""Characters of an API token's name; the REST schema takes its limit from here."""
 
 API_TOKEN_PREFIX = "papiq_"
 RECOVERY_CODE_COUNT = 10
@@ -227,9 +236,7 @@ class ApiToken:
     version: int = 1
 
     def __post_init__(self) -> None:
-        self.name = require_name(self.name, "token name")
-        if len(self.name) > 100:
-            raise ValidationError("the token name must have at most 100 characters")
+        self.name = require_name(self.name, "token name", max_length=MAX_TOKEN_NAME)
         self.created_at = require_utc(self.created_at, "created_at")
         if self.expires_at is not None:
             self.expires_at = require_utc(self.expires_at, "expires_at")
@@ -281,8 +288,8 @@ class ExternalIdentity:
     def link(cls, *, issuer: str, subject: str, user_id: UserId, now: datetime) -> Self:
         return cls(
             id=ExternalIdentityId(new_id()),
-            issuer=require_name(issuer, "issuer"),
-            subject=require_name(subject, "subject"),
+            issuer=require_name(issuer, "issuer", max_length=None),
+            subject=require_name(subject, "subject", max_length=None),
             user_id=user_id,
             created_at=require_utc(now, "created_at"),
         )
@@ -308,8 +315,8 @@ def safe_redirect(target: str | None) -> str:
         or not target.startswith("/")
         or target.startswith("//")
         or "\\" in target
-        or any(ord(char) < 0x21 or ord(char) == 0x7F for char in target)
-        or len(target) > 2000
+        or has_control_characters(target)
+        or len(target) > MAX_URL_LENGTH
     ):
         return "/"
     return target

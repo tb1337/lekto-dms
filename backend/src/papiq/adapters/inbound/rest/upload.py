@@ -206,6 +206,28 @@ class _State:
             self._error = error
 
 
+def upload_body(file: str, **fields: object) -> dict[str, Any]:
+    """The OpenAPI request body (`openapi_extra`) of an upload read with `read_upload`: the file
+    part, described by `file`, and the optional text `fields` with their schemas."""
+    return {
+        "requestBody": {
+            "required": True,
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "required": [FILE_FIELD],
+                        "properties": {
+                            FILE_FIELD: {"type": "string", "format": "binary", "description": file},
+                            **fields,
+                        },
+                    }
+                }
+            },
+        }
+    }
+
+
 def clean_filename(raw: str) -> str:
     """The last path segment, without control characters; `upload` if nothing is left."""
     name = PurePosixPath(raw.replace("\\", "/")).name

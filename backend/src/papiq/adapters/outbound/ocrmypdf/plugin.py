@@ -5,7 +5,7 @@ OCRmyPDF prepares every page as usual (rasterised, turned upright and deskewed; 
 tells the orientation and the skew) and hands its image to `generate_ocr`. The model's lines
 become the page's OCR tree; the words of a line share its box by their length. OCRmyPDF writes
 the text layer from it (its fpdf2 renderer). Each page leaves its record in the folder the
-configuration names.
+configuration names; a page the model cannot read leaves the reason there (`write_error`).
 """
 
 import json
@@ -21,10 +21,14 @@ from papiq.adapters.outbound.ocrmypdf.vision import (
     PROMPT,
     UNREADABLE,
     Line,
+    VisionError,
     configuration,
     read_page,
     record_path,
+    write_error,
 )
+
+_DEFAULT_DPI = 72  # of an image that states no resolution: a pixel per PDF point
 
 
 def page_element(lines: list[Line], size: tuple[int, int], dpi: float, page: int) -> OcrElement:
@@ -91,11 +95,15 @@ class VisionOcrEngine(TesseractOcrEngine):
     ) -> tuple[OcrElement, str]:
         settings, records = configuration()
         page = page_number + 1
-        lines, record = read_page(input_file, settings, page)
+        try:
+            lines, record = read_page(input_file, settings, page)
+        except VisionError as error:
+            write_error(records, page, str(error))
+            raise
         record_path(records, page).write_text(json.dumps(record.to_json()), encoding="utf-8")
         with Image.open(input_file) as image:
             size = image.size
-            dpi = image.info.get("dpi", (72, 72))
+            dpi = image.info.get("dpi", (_DEFAULT_DPI, _DEFAULT_DPI))
         resolution = float(dpi[0] if isinstance(dpi, tuple) else dpi)
         text = "\n".join(line.text for line in lines)
         return page_element(lines, size, resolution, page_number), text

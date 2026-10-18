@@ -8,6 +8,38 @@ from typing import Self
 
 from papiq.core.domain.errors import ValidationError
 
+MONTH_NAMES: dict[str, tuple[str, ...]] = {
+    "de": (
+        "Januar",
+        "Februar",
+        "März",
+        "April",
+        "Mai",
+        "Juni",
+        "Juli",
+        "August",
+        "September",
+        "Oktober",
+        "November",
+        "Dezember",
+    ),
+    "en": (
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ),
+}
+"""The names of the months, by language, January first."""
+
 
 class PeriodKind(StrEnum):
     """What a period is, by its ends: one day, a calendar week (Monday to Sunday), a month, a
@@ -74,11 +106,23 @@ class Period:
         if start.day == 1 and end.year == start.year:
             if end == Period.month(start.year, start.month).end:
                 return PeriodKind.MONTH
-            if start.month % 3 == 1 and end == Period.quarter(start.year, start.month // 3 + 1).end:
+            if start.month % 3 == 1 and end == Period.quarter(start.year, self.quarter_number).end:
                 return PeriodKind.QUARTER
             if start.month == 1 and end == date(start.year, 12, 31):
                 return PeriodKind.YEAR
         return PeriodKind.SPAN
+
+    @property
+    def quarter_number(self) -> int:
+        """The quarter the start falls in, 1 to 4."""
+        return (self.start.month - 1) // 3 + 1
+
+    @property
+    def iso_week(self) -> tuple[int, int]:
+        """The ISO 8601 year and week of the start (the year of the week, which differs from
+        the calendar year around New Year)."""
+        year, week, _ = self.start.isocalendar()
+        return year, week
 
     @property
     def notation(self) -> str:
@@ -90,12 +134,12 @@ class Period:
             case PeriodKind.DAY:
                 return start.isoformat()
             case PeriodKind.WEEK:
-                year, week, _ = start.isocalendar()
+                year, week = self.iso_week
                 return f"{year}-W{week:02d}"
             case PeriodKind.MONTH:
                 return f"{start:%Y-%m}"
             case PeriodKind.QUARTER:
-                return f"{start.year}-Q{(start.month - 1) // 3 + 1}"
+                return f"{start.year}-Q{self.quarter_number}"
             case PeriodKind.YEAR:
                 return str(start.year)
         return str(self)

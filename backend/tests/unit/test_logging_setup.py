@@ -9,7 +9,7 @@ from papiq.adapters.outbound.webhooks import HttpWebhookSender
 from papiq.composition.logging_setup import configure_logging
 from papiq.composition.settings import Settings
 from tests.contracts.webhook_sender import request
-from tests.unit.adapters.webhooks.receiver import LocalReceiver
+from tests.webhook_receiver import LocalReceiver
 
 
 def settings(**values: Any) -> Settings:
@@ -31,6 +31,19 @@ def test_json_format_writes_one_json_object_per_line(capsys: pytest.CaptureFixtu
     assert second["event"] == "from the core"
     assert second["logger"] == "papiq.stdlib"
     assert second["level"] == "warning"
+
+
+def test_the_extra_fields_of_stdlib_records_are_kept(capsys: pytest.CaptureFixture[str]) -> None:
+    """The core logs through `logging` and passes its context as `extra`."""
+    configure_logging(settings(log_format="json"))
+    logging.getLogger("papiq.core").warning(
+        "lost the claim of a job", extra={"job_id": "7", "document_id": "42"}
+    )
+
+    record = json.loads(capsys.readouterr().err.splitlines()[0])
+    assert record["event"] == "lost the claim of a job"
+    assert record["job_id"] == "7"
+    assert record["document_id"] == "42"
 
 
 def test_console_format_is_readable(capsys: pytest.CaptureFixture[str]) -> None:

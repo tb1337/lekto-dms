@@ -2,9 +2,11 @@
 
 from dataclasses import replace
 from datetime import UTC, datetime
+from functools import partial
 
 import pytest
 
+from papiq.core.domain import verdict
 from papiq.core.domain.classification import CandidateSource, FieldCheck
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId
 from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
@@ -16,11 +18,14 @@ from papiq.core.domain.verdict import (
     ModelProposal,
     Neighbour,
     Signals,
-    judge_contact,
-    judge_tags,
-    judge_topic,
-    judge_type,
 )
+from tests import builders
+
+# The judges with the shipped thresholds (`PAPIQ_*_THRESHOLD` defaults).
+judge_contact = partial(verdict.judge_contact, thresholds=builders.THRESHOLDS)
+judge_type = partial(verdict.judge_type, thresholds=builders.THRESHOLDS)
+judge_tags = partial(verdict.judge_tags, thresholds=builders.THRESHOLDS)
+judge_topic = partial(verdict.judge_topic, thresholds=builders.THRESHOLDS)
 
 NOW = datetime(2026, 10, 13, tzinfo=UTC)
 UTILITY = Contact.create(name="Stadtwerke Musterstadt", now=NOW)
@@ -334,6 +339,12 @@ def test_tags_two_signals_name_are_set_one_is_a_suggestion() -> None:
     assert cold.value == [str(ENERGY.id)]
 
 
+def test_candidates_are_listed_as_lists_sort_names() -> None:
+    dentists, doctors = (Tag.create(name=name, now=NOW) for name in ("Zahnärzte", "Ärzte"))
+    check = judge_tags(Signals(model=model(tags=("Zahnärzte", "Ärzte"))), [dentists, doctors])
+    assert [item.label for item in check.candidates] == ["Ärzte", "Zahnärzte"]
+
+
 def test_tags_set_by_hand_are_never_proposed_and_a_child_beats_its_parent() -> None:
     """A status tag set by hand is no target even when a signal names it; set together with its
     child, a parent is left out (the child says more)."""
@@ -445,6 +456,24 @@ def test_topics_named_against_each_other_leave_it_empty_with_all_candidates(
     assert {item.label for item in check.candidates} == {"Arbeit", "Krankenversicherung"}
     assert all(item.contradicted for item in check.candidates)
     assert check.reason is not None and check.reason.startswith("the signals disagree")
+
+
+def test_tied_topics_are_listed_as_lists_sort_names() -> None:
+    doctors = Tag.create(name="Ärzte", now=NOW, scope=TagScope.TOPIC)
+    dentists = Tag.create(name="Zahnärzte", now=NOW, scope=TagScope.TOPIC)
+    clinic = Contact.create(name="Praxis", now=NOW, topic_ids=[dentists.id, doctors.id])
+    green = FieldCheck(field="contact", outcome=Outcome.OK, confidence=1, value=str(clinic.id))
+    facts = FactsView(
+        identifiers={clinic.id: ("customer_number",) * 2},
+        topics={clinic.id: {topic.id: ("customer_number",) for topic in (dentists, doctors)}},
+    )
+    check = judge_topic(Signals(facts=facts), green, [clinic], [dentists, doctors])
+    assert [item.label for item in check.candidates] == ["Ärzte", "Zahnärzte"]
+
+
+def test_the_model_names_a_type_regardless_of_case_and_outer_spaces() -> None:
+    check = judge_type(Signals(model=model(document_type=" rechnung ")), TYPES)
+    assert (check.outcome, check.value) == (Outcome.OK, str(INVOICE.id))
 
 
 def test_under_a_suggested_contact_the_topic_is_only_suggested() -> None:

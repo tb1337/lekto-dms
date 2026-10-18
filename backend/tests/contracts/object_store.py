@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from papiq.core.domain.errors import NotFoundError
-from papiq.core.ports import ObjectStore
+from papiq.core.ports.object_store import ObjectStore
 
 KEY = "originals/0123abcd"
 
@@ -40,6 +40,9 @@ class ObjectStoreContract:
         assert not await object_store.exists(KEY)
         with pytest.raises(NotFoundError):
             await object_store.get(KEY)
+
+    async def test_a_usable_store_passes_its_check(self, object_store: ObjectStore) -> None:
+        await object_store.check()
 
     async def test_delete_is_idempotent(self, object_store: ObjectStore) -> None:
         await object_store.put(KEY, b"x", content_type="text/plain")

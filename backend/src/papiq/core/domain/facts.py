@@ -18,15 +18,17 @@ from dataclasses import dataclass
 from itertools import islice
 
 from papiq.core.domain.codes import Code, code_identifiers, giro_code
+from papiq.core.domain.evidence import UMLAUTS
 from papiq.core.domain.identifiers import IdentifierKind, identifiers_in, matches
 from papiq.core.domain.ids import ContactId, TagId
 from papiq.core.domain.master_data import Contact
-from papiq.core.domain.names import mentions, name_key
+from papiq.core.domain.names import match_key, mentions
 
 MOST = 20
 """Names and identifiers reported, each."""
 _SPANS = 20  # places of one fact in the text
-_UMLAUTS = {"ae": "(?:ä|ae)", "oe": "(?:ö|oe)", "ue": "(?:ü|ue)", "ss": "(?:ß|ss)"}
+# How a folded name may be written: `ae` as `ä` or `ae`, and so on.
+_SPELLINGS = {plain: f"(?:{letter}|{plain})" for letter, plain in {**UMLAUTS, "ß": "ss"}.items()}
 
 type Key = tuple[IdentifierKind, str]
 
@@ -74,13 +76,13 @@ def facts_in(
     text: str, contacts: Sequence[Contact], codes: Sequence[Code] = (), *, places: bool = False
 ) -> Facts:
     """The facts of `text` and of the `codes` on its pages; with `places`, their spans."""
-    text_key = name_key(text)
-    payees = [name_key(giro.name) for code in codes if (giro := giro_code(code.text))]
+    text_key = match_key(text)
+    payees = [match_key(giro.name) for code in codes if (giro := giro_code(code.text))]
     named: list[NamedContact] = []
     for contact in contacts:
-        own = next((name for name in contact.names() if mentions(text_key, name_key(name))), None)
+        own = next((name for name in contact.names() if mentions(text_key, match_key(name))), None)
         paid = next(
-            (n for n in contact.names() if any(mentions(p, name_key(n)) for p in payees)), None
+            (n for n in contact.names() if any(mentions(p, match_key(n)) for p in payees)), None
         )
         name = own if own is not None else paid
         if name is None:
@@ -133,7 +135,7 @@ def facts_in(
 def name_spans(text: str, name: str) -> tuple[Span, ...]:
     """Where a name stands in `text`: its words in order, anything but letters and digits
     between them, umlauts or their spellings; legal forms aside, as names are compared."""
-    words = name_key(name).split()
+    words = match_key(name).split()
     if not words:
         return ()
     pattern = r"[\W_]+".join(_spelling(word) for word in words)
@@ -154,7 +156,7 @@ def identifier_spans(text: str, kind: IdentifierKind, value: str) -> tuple[Span,
 
 def _spelling(word: str) -> str:
     pattern = re.escape(word)
-    for folded, written in _UMLAUTS.items():
+    for folded, written in _SPELLINGS.items():
         pattern = pattern.replace(folded, written)
     return pattern
 

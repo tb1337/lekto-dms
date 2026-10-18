@@ -99,7 +99,9 @@ class BagOfWordsEmbeddings:
     """Each word, and each three letters in a word of four or more, adds to a few of
     `dimensions` slots chosen by its hash (the hashing trick); the vector has length 1."""
 
-    def __init__(self, *, dimensions: int = 256, model: str = "fake-bag-of-words 1") -> None:
+    DIMENSIONS = 256
+
+    def __init__(self, *, dimensions: int = DIMENSIONS, model: str = "fake-bag-of-words 1") -> None:
         if dimensions < 2:
             raise ValueError("dimensions must be at least 2")
         self._dimensions = dimensions

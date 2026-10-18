@@ -18,7 +18,10 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import URL, event
+from sqlalchemy import URL, Table, event
+from sqlalchemy.dialects import postgresql, sqlite
+from sqlalchemy.dialects.postgresql import Insert as PostgresInsert
+from sqlalchemy.dialects.sqlite import Insert as SqliteInsert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 # SQLite engine settings, applied to every connection.
@@ -62,6 +65,10 @@ class Database:
     @property
     def is_sqlite(self) -> bool:
         return self.engine.dialect.name == "sqlite"
+
+    def insert(self, table: Table) -> PostgresInsert | SqliteInsert:
+        """An INSERT in the database's dialect: one that can take `ON CONFLICT`."""
+        return sqlite.insert(table) if self.is_sqlite else postgresql.insert(table)
 
     async def begin_write(self, connection: AsyncConnection) -> None:
         """Start the write transaction on `connection`; call before its first write and call

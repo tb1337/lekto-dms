@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -28,11 +29,11 @@ from papiq.core.domain.webhooks import (
     Webhook,
     WebhookDelivery,
 )
-from papiq.core.ports import WebhookRequest
-from papiq.core.services.webhooks import DELIVER_JOB, WebhookDeliveryService, WebhookPolicy
+from papiq.core.ports.webhook_sender import WebhookRequest
+from papiq.core.services.webhooks import DELIVER_JOB, WebhookDeliveryService
 from tests import builders
 from tests.builders import NOW
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 URL = "http://n8n.lan:5678/webhook/papiq"
 
@@ -70,10 +71,7 @@ async def log(world: World, webhook: Webhook) -> list[WebhookDelivery]:
 
 
 async def run_all(service: WebhookDeliveryService) -> int:
-    count = 0
-    while await service.run_next_job():
-        count += 1
-    return count
+    return await builders.drain(service)
 
 
 # --- fan-out ------------------------------------------------------------------------------------
@@ -151,7 +149,7 @@ async def test_a_deactivated_owner_is_not_told(world: World) -> None:
     admin, user = await world.user(role=Role.ADMIN), await world.user()
     document = await seed(world, user)
     await hook(world, user)
-    await world.users.set_active(admin.id, user.id, False)
+    await world.users.update(admin.id, user.id, active=False)
     await world.webhook_delivery().on_event(lane_changed(document))
     assert deliveries(world) == []
 
@@ -309,7 +307,7 @@ async def test_it_gives_up_after_the_last_attempt(world: World) -> None:
     user = await world.user()
     document = await seed(world, user)
     webhook, _ = await hook(world, user)
-    service = world.webhook_delivery(WebhookPolicy(max_attempts=3))
+    service = world.webhook_delivery(replace(builders.WEBHOOKS, max_attempts=3))
     await queue(world, document, service)
     for _ in range(3):
         await service.run_next_job()
@@ -346,7 +344,7 @@ async def test_a_webhook_is_switched_off_after_repeated_failures_and_success_res
     user = await world.user()
     document = await seed(world, user)
     webhook, _ = await hook(world, user)
-    service = world.webhook_delivery(WebhookPolicy(disable_after=3))
+    service = world.webhook_delivery(replace(builders.WEBHOOKS, disable_after=3))
 
     async def deliver(answer: int) -> None:
         world.sender.answers = [answer]
@@ -407,7 +405,7 @@ async def test_a_switched_off_webhook_or_deactivated_owner_or_vanished_document_
         hooks.append((await hook(world, owner))[0])
         await queue(world, document, service)
     await world.webhooks.update(a.id, hooks[0].id, active=False)
-    await world.users.set_active(admin.id, b.id, False)
+    await world.users.update(admin.id, b.id, active=False)
     async with world.uow() as uow:
         await uow.documents.remove(docs[2].id)
         await uow.commit()
@@ -527,7 +525,7 @@ async def test_the_owner_and_admins_test_a_webhook(world: World) -> None:
 async def test_test_requests_are_limited_per_user_and_window(world: World) -> None:
     owner, admin = await world.user(), await world.user(role=Role.ADMIN)
     webhook, _ = await hook(world, owner)
-    policy = WebhookPolicy(test_requests=2, test_window=timedelta(minutes=1))
+    policy = replace(builders.WEBHOOKS, test_requests=2, test_window=timedelta(minutes=1))
     service = world.webhook_delivery(policy)
     await service.send_test(owner.id, webhook.id)
     world.clock.advance(timedelta(seconds=20))

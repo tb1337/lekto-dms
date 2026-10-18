@@ -16,6 +16,7 @@ from papiq.adapters.outbound.regex import RegexPatternMatcher
 from papiq.core.domain.classification import TITLE, FieldCheck, checks_from_json, field_key
 from papiq.core.domain.documents import UNSET, Document, DocumentChanges
 from papiq.core.domain.errors import LanguageModelError
+from papiq.core.domain.events import DocumentFiled
 from papiq.core.domain.exchanges import RunExchange, exchanges_from_json
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.identifiers import Identifier, IdentifierKind
@@ -24,7 +25,8 @@ from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
 from papiq.core.domain.reading import PageReading, readings_to_json
 from papiq.core.domain.users import Role
-from papiq.core.ports import StructuredRequest
+from papiq.core.domain.verdict import Thresholds
+from papiq.core.ports.llm import StructuredRequest
 from papiq.core.services.classification.nodes import (
     NO_MODEL,
     ClassificationPolicy,
@@ -41,11 +43,11 @@ from papiq.core.services.classification.signals import (
     NeighboursSignal,
 )
 from papiq.core.services.objects import archive_key, exchanges_key, text_key
-from papiq.core.services.pipeline import MetadataResult, NodeExecutor, PlaceholderNode
+from papiq.core.services.pipeline import MetadataResult, NodeExecutor
 from papiq.core.services.rules.nodes import ApplyRulesNode
 from tests import builders
-from tests.builders import NOW, incoming
-from tests.unit.services.conftest import World
+from tests.builders import NOW, PlaceholderNode, incoming
+from tests.unit.services.support import World
 
 INVOICE = """\
 # Stadtwerke Musterstadt GmbH
@@ -189,14 +191,21 @@ def rules_step(world: World) -> ApplyRulesNode:
     )
 
 
+def policy_with(**overrides: Any) -> ClassificationPolicy:
+    return replace(builders.CLASSIFICATION, **overrides)
+
+
+def thresholds_for(policy: ClassificationPolicy) -> Thresholds:
+    """The judge's thresholds as the composition derives them from the same settings."""
+    return replace(builders.THRESHOLDS, accept=policy.accept, suggest=policy.suggest_contact)
+
+
 def signal_step(world: World, fake: FakeLanguageModel | None, **policy: Any) -> LlmSignal:
-    return LlmSignal(
-        world.uow, world.object_store, fake, world.clock, ClassificationPolicy(**policy)
-    )
+    return LlmSignal(world.uow, world.object_store, fake, world.clock, policy_with(**policy))
 
 
 def fields_step(world: World, fake: FakeLanguageModel | None) -> FieldsNode:
-    return FieldsNode(world.uow, world.object_store, fake, world.clock)
+    return FieldsNode(world.uow, world.object_store, fake, world.clock, builders.CLASSIFICATION)
 
 
 async def record(world: World, document: Document, node: Node, result: NodeResult) -> None:
@@ -235,8 +244,14 @@ async def judge(
         if result.outcome is Outcome.FAILED:
             return result
         await record(world, document, node, result)
+    chosen = policy_with(**policy)
     step = JudgeNode(
-        world.uow, world.object_store, world.clock, ClassificationPolicy(**policy), locator=locator
+        world.uow,
+        world.object_store,
+        world.clock,
+        chosen,
+        thresholds=thresholds_for(chosen),
+        locator=locator,
     )
     return await step.run(document)
 
@@ -516,7 +531,7 @@ async def test_the_contact_is_matched_and_shown_in_the_text(world: World, name: 
     result = await classify(world, proposal(sender={"value": name, "evidence": None}))
     contact = checks(result.result)["contact"]
     assert contact.ok
-    assert contact.confidence >= 0.9
+    assert contact.confidence >= builders.CLASSIFICATION.accept
     assert result.changes.contact_id == seeded.contacts["Stadtwerke Musterstadt GmbH"].id
 
 
@@ -544,7 +559,7 @@ async def test_a_contact_absent_from_the_text_is_only_suggested(world: World) ->
     assert contact.outcome is Outcome.UNCERTAIN
     assert contact.reason == "the contact 'AOK Bayern' does not appear in the text"
     assert contact.suggestion == str(seeded.contacts["AOK Bayern"].id)
-    assert contact.confidence < 0.9
+    assert contact.confidence < builders.CLASSIFICATION.accept
 
 
 async def test_a_similar_contact_is_suggested(world: World) -> None:
@@ -558,7 +573,8 @@ async def test_a_similar_contact_is_suggested(world: World) -> None:
     assert contact.reason == (
         "'Stadtwerk Musterstadt Netz' is only similar to the contact 'Stadtwerke Musterstadt GmbH'"
     )
-    assert 0.75 <= contact.confidence < 0.9
+    policy = builders.CLASSIFICATION
+    assert policy.suggest_contact <= contact.confidence < policy.accept
 
 
 async def test_the_contact_itself_must_be_named(world: World) -> None:
@@ -1013,7 +1029,7 @@ async def test_an_amount_without_any_currency_in_the_text_is_in_the_default_one(
         world.object_store,
         model(answer),
         world.clock,
-        ClassificationPolicy(default_currency=currency),
+        policy_with(default_currency=currency),
     )
     result = await step.run(document)
     assert isinstance(result, MetadataResult)
@@ -1089,6 +1105,7 @@ async def test_a_value_on_a_poorly_read_page_is_only_suggested(
         world.object_store,
         model(extraction()),
         world.clock,
+        builders.CLASSIFICATION,
         locator=FakeTextLocator(pages),
     )
     result = await step.run(document)
@@ -1117,6 +1134,18 @@ async def test_the_document_date_on_a_poorly_read_page_is_only_suggested(world: 
     assert check.reason == "page 1 was poorly read (10% of its words unsure)"
     assert check.suggestion == "2026-03-31"
     assert result.changes.document_date is UNSET
+
+
+async def test_the_readings_are_those_of_the_latest_ocr_that_made_a_text(world: World) -> None:
+    # The rule of `PipelineService.reading`: a failed attempt after it read nothing.
+    await seed(world)
+    document = await document_with(world)
+    await record(world, document, Node.OCR, recognised(PageReading(1, 224, 23)))
+    await record(world, document, Node.OCR, NodeResult(outcome=Outcome.FAILED, reason="timeout"))
+    result = await judge(world, document, model(proposal()))
+    assert isinstance(result, MetadataResult)
+    check = checks(result.result)["document_date"]
+    assert check.reason == "page 1 was poorly read (10% of its words unsure)"
 
 
 async def test_values_are_read_as_written_in_german(world: World) -> None:
@@ -1349,8 +1378,16 @@ async def run(world: World, fake: FakeLanguageModel) -> tuple[Any, Document]:
         Node.SIGNAL_LLM: signal_step(world, fake),
         Node.SIGNAL_FACTS: FactsSignal(world.uow, world.object_store),
         Node.SIGNAL_CLASSIFIER: ClassifierSignal(world.object_store, None),
-        Node.SIGNAL_NEIGHBOURS: NeighboursSignal(world.uow, world.object_store, None, None),
-        Node.JUDGE: JudgeNode(world.uow, world.object_store, world.clock),
+        Node.SIGNAL_NEIGHBOURS: NeighboursSignal(
+            world.uow, world.object_store, None, None, builders.NEIGHBOURS
+        ),
+        Node.JUDGE: JudgeNode(
+            world.uow,
+            world.object_store,
+            world.clock,
+            builders.CLASSIFICATION,
+            thresholds=builders.THRESHOLDS,
+        ),
         Node.FIELDS: fields_step(world, fake),
     }
     pipeline = world.pipeline(executors | {Node.APPLY_RULES: rules_step(world)})
@@ -1373,7 +1410,7 @@ async def test_a_verified_document_is_filed_green(world: World) -> None:
     assert document.document_date == date(2026, 3, 31)
     assert document.fields[seeded.fields["Rechnungsbetrag"].id] == Money(Decimal("84.20"), "EUR")
     assert document.title == "Stromrechnung März 2026"
-    assert "document.filed" in world.event_types()
+    assert DocumentFiled.type in world.event_types()
     assert len(fake.requests) == 1  # one request for the whole document
     log = await world.documents.processing_log(owner.id, document.id)
     proposed = next(entry for entry in log if entry.node is Node.SIGNAL_LLM)
@@ -1396,7 +1433,7 @@ async def test_an_uncertain_document_waits_in_the_inbox(world: World) -> None:
     assert document.processing.status is ProcessingStatus.REVIEW
     assert document.contact_id is None  # only proposed
     assert document.document_type_id == seeded.types["Rechnung"].id  # verified, so applied
-    assert "document.filed" not in world.event_types()
+    assert DocumentFiled.type not in world.event_types()
 
 
 async def test_confirming_renders_the_title_pattern_with_the_decided_values(

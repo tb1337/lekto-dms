@@ -18,7 +18,7 @@ from papiq.core.domain.ids import ContactId, DocumentId, SpaceId, TagId, UserId,
 from papiq.core.domain.pipeline import PERSON_SPACE, Lane, Node
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import DocumentFilter
+from papiq.core.ports.repository import DocumentFilter
 from papiq.core.services.documents import DocumentFile, FileInfo
 from papiq.core.services.objects import (
     archive_key,
@@ -27,8 +27,8 @@ from papiq.core.services.objects import (
     structure_key,
     text_key,
 )
-from tests.builders import UNCERTAIN, incoming
-from tests.unit.services.conftest import Returns, World
+from tests.builders import UNCERTAIN, Returns, incoming
+from tests.unit.services.support import World
 
 
 class Scene:
@@ -212,7 +212,7 @@ async def test_a_deactivated_user_and_a_document_in_the_inbox_have_fewer_readers
     world: World, scene: Scene
 ) -> None:
     admin = await world.user(role=Role.ADMIN)
-    await world.users.set_active(admin.id, scene.reader.id, False)
+    await world.users.update(admin.id, scene.reader.id, active=False)
     await world.documents.delete(scene.owner.id, scene.document.id)
     (event,) = world.events()
     assert isinstance(event, DocumentDeleted)

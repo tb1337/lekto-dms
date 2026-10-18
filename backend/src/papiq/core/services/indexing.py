@@ -33,9 +33,10 @@ import hashlib
 import logging
 import re
 from collections.abc import Awaitable, Callable, Collection
-from dataclasses import dataclass
-from datetime import date, timedelta
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timedelta
 from decimal import Decimal
+from enum import StrEnum
 from uuid import UUID
 
 from papiq.core.domain.documents import Document
@@ -43,7 +44,6 @@ from papiq.core.domain.errors import (
     ConcurrencyError,
     EmbeddingsError,
     NotFoundError,
-    PermissionDeniedError,
     SearchIndexError,
 )
 from papiq.core.domain.events import (
@@ -55,20 +55,21 @@ from papiq.core.domain.events import (
 )
 from papiq.core.domain.fields import FieldValue, Money, Url
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, TagId, UserId
-from papiq.core.domain.jobs import Job
-from papiq.core.domain.periods import Period, PeriodKind
+from papiq.core.domain.jobs import Job, RetryPolicy
+from papiq.core.domain.json_value import JsonObject
+from papiq.core.domain.periods import MONTH_NAMES, Period, PeriodKind
 from papiq.core.domain.pipeline import SIGNALS
 from papiq.core.domain.search import LAYOUT, EmbeddingStamp, IndexDocument, IndexState
-from papiq.core.domain.tag_tree import TagTree
-from papiq.core.ports import (
-    Clock,
-    Embeddings,
-    ObjectStore,
-    SearchIndex,
-    UnitOfWork,
-    UnitOfWorkFactory,
-)
-from papiq.core.services._access import load_actor
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.embeddings import Embeddings
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.repository import DocumentFilter
+from papiq.core.ports.search_index import SearchIndex
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from papiq.core.services._access import require_admin
+from papiq.core.services._jobs import JobRunner, document_payload, lost, payload_document
+from papiq.core.services._pages import document_pages
+from papiq.core.services._tags import tag_tree
 from papiq.core.services.objects import load_text
 
 log = logging.getLogger(__name__)
@@ -77,27 +78,50 @@ SUBSCRIBER = "search.index"
 INDEX_JOB = "search.index"
 """Payload: `document_id`."""
 REFRESH_JOB = "search.refresh"
-"""Payload: `kind` (`contact`, `document_type` or `tag`) and `id` of the changed item."""
+"""Payload (`refresh_payload`): `kind` (`RefreshKind`) and `id` of the changed item."""
 RECONCILE_JOB = "search.reconcile"
 REBUILD_JOB = "search.rebuild"
 
+
+class RefreshKind(StrEnum):
+    """What a refresh job brings the documents of up to date: a contact, a document type or a
+    tag whose name changed."""
+
+    CONTACT = "contact"
+    DOCUMENT_TYPE = "document_type"
+    TAG = "tag"
+
+
+def refresh_payload(kind: RefreshKind, id: UUID) -> JsonObject:
+    """The payload of a `REFRESH_JOB`."""
+    return {"kind": kind.value, "id": str(id)}
+
+
+def _refreshed(payload: JsonObject) -> tuple[RefreshKind, UUID]:
+    """What a `REFRESH_JOB` refreshes (`refresh_payload`)."""
+    return RefreshKind(str(payload["kind"])), UUID(str(payload["id"]))
+
+
 _ROUNDS = 3
-_RETRY_DELAY = timedelta(seconds=30)
-_RETRY_MAX_DELAY = timedelta(hours=1)
-_ATTEMPTS = {INDEX_JOB: 10, REFRESH_JOB: 10, REBUILD_JOB: 3}
+_RETRY = RetryPolicy(max_attempts=10, delay=timedelta(seconds=30), max_delay=timedelta(hours=1))
+_RETRIES = {INDEX_JOB: _RETRY, REFRESH_JOB: _RETRY, REBUILD_JOB: replace(_RETRY, max_attempts=3)}
+"""How often a job is tried; the reconciliation runs again at its next interval instead."""
 _QUEUE_BATCH = 200
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class IndexingPolicy:
-    max_text: int = 200_000  # characters of text per document in the index
-    chunk_size: int = 1500  # characters per section that gets a vector
-    max_chunks: int = 8  # sections per document; 1: one vector per document
+    """All but `batch_size` are configuration: the composition sets them from the settings,
+    whose defaults are the one source."""
+
+    max_text: int  # characters of text per document in the index
+    chunk_size: int  # characters per section that gets a vector
+    max_chunks: int  # sections per document; 1: one vector per document
     document_prefix: str = ""  # put before each section, for models that ask for it
     dimensions: int | None = None  # the length of the vectors; others are refused
-    reconcile_interval: timedelta = timedelta(hours=6)
-    job_lease: timedelta = timedelta(minutes=10)
-    rebuild_lease: timedelta = timedelta(hours=6)
+    reconcile_interval: timedelta
+    job_lease: timedelta
+    rebuild_lease: timedelta
     batch_size: int = 50  # documents per request in a rebuild
 
     def __post_init__(self) -> None:
@@ -159,15 +183,16 @@ class IndexingService:
         clock: Clock,
         object_store: ObjectStore,
         index: SearchIndex,
+        policy: IndexingPolicy,
         embeddings: Embeddings | None = None,
-        policy: IndexingPolicy | None = None,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._store = object_store
         self._index = index
         self._embeddings = embeddings
-        self._policy = policy or IndexingPolicy()
+        self._policy = policy
+        self._jobs = JobRunner(uow, clock)
 
     # --- events and jobs ------------------------------------------------------------------------
 
@@ -181,7 +206,7 @@ class IndexingService:
             return
         async with self._uow() as uow:
             await uow.jobs.enqueue(
-                INDEX_JOB, {"document_id": str(event.document_id)}, run_at=self._clock.now()
+                INDEX_JOB, document_payload(event.document_id), run_at=self._clock.now()
             )
             await uow.commit()
 
@@ -198,114 +223,61 @@ class IndexingService:
     async def request_rebuild(self, actor: UserId) -> None:
         """Admins only: queue a rebuild of the index, unless one is queued or running."""
         async with self._uow() as uow:
-            if not (await load_actor(uow, actor)).is_active_admin:
-                raise PermissionDeniedError("only admins rebuild the search index")
+            await require_admin(uow, actor, "rebuild the search index")
             await uow.jobs.enqueue(REBUILD_JOB, {}, run_at=self._clock.now(), dedup_key=REBUILD_JOB)
             await uow.commit()
 
     async def run_next_job(self) -> bool:
         """Claim and run a due job of this service. Returns False if none was due. The rebuild
         has a lease of its own, as long as a rebuild may take."""
-        for kinds, lease in (
-            ([INDEX_JOB, REFRESH_JOB, RECONCILE_JOB], self._policy.job_lease),
-            ([REBUILD_JOB], self._policy.rebuild_lease),
-        ):
-            async with self._uow() as uow:
-                job = await uow.jobs.claim(now=self._clock.now(), lease=lease, kinds=kinds)
-                await uow.commit()
-            if job is not None:
-                try:
-                    await self._run_claimed(job)
-                except asyncio.CancelledError:
-                    await asyncio.shield(self._release(job))
-                    raise
-                return True
-        return False
+        return await self._jobs.run_next(
+            [INDEX_JOB, REFRESH_JOB, RECONCILE_JOB], self._policy.job_lease, self._run_claimed
+        ) or await self._jobs.run_next([REBUILD_JOB], self._policy.rebuild_lease, self._run_claimed)
 
     async def _run_claimed(self, job: Job) -> None:
         try:
             work = self._work(job)
         except (KeyError, TypeError, ValueError) as error:
-            log.error("invalid search job", extra={"job_id": str(job.id), "error": str(error)})
-            await self._finish(job, error=f"invalid payload: {error}")
+            await self._jobs.invalid(job, error)
             return
         try:
             await work()
         except ConcurrencyError:
-            log.warning("lost the claim of a search job", extra={"job_id": str(job.id)})
+            lost(job)
             return
         except Exception as error:
             await self._failed(job, error)
             return
-        if job.kind == RECONCILE_JOB:
-            await self._finish(job, next_reconcile=job.payload.get("once") is not True)
-        else:
-            await self._finish(job)
+        recurring = job.kind == RECONCILE_JOB and job.payload.get("once") is not True
+        await self._jobs.end(job, also=self._next_reconcile if recurring else None)
 
     def _work(self, job: Job) -> Callable[[], Awaitable[object]]:
-        match job.kind:
-            case "search.index":
-                document_id = DocumentId(UUID(str(job.payload["document_id"])))
-                final = job.tries >= _ATTEMPTS[INDEX_JOB]
-                return lambda: self.index_document(document_id, tolerate_embedding_failure=final)
-            case "search.refresh":
-                kind, item = str(job.payload["kind"]), UUID(str(job.payload["id"]))
-                if kind not in _REFRESH_FIELDS:
-                    raise ValueError(f"unknown kind {kind!r}")
-                return lambda: self._refresh(kind, item)
-            case "search.reconcile":
-                return self.reconcile
-            case _:
-                return self.rebuild
+        if job.kind == INDEX_JOB:
+            document_id = payload_document(job.payload)
+            final = job.tries >= _RETRIES[INDEX_JOB].max_attempts
+            return lambda: self.index_document(document_id, tolerate_embedding_failure=final)
+        if job.kind == REFRESH_JOB:
+            kind, item = _refreshed(job.payload)
+            return lambda: self._refresh(kind, item)
+        if job.kind == RECONCILE_JOB:
+            return self.reconcile
+        return self.rebuild
 
     async def _failed(self, job: Job, error: Exception) -> None:
         reason = f"{type(error).__name__}: {error}"
-        attempts = _ATTEMPTS.get(job.kind)
         log.warning(
             "search job failed", extra={"job_id": str(job.id), "kind": job.kind}, exc_info=True
         )
-        try:
-            async with self._uow() as uow:
-                if job.kind == RECONCILE_JOB:
-                    # Try again at the next interval, like the cleanup.
-                    run_at = self._clock.now() + self._policy.reconcile_interval
-                    await uow.jobs.reschedule(job, run_at=run_at, error=reason)
-                elif attempts is not None and job.tries >= attempts:
-                    log.error("search job given up", extra={"job_id": str(job.id), "error": reason})
-                    await uow.jobs.fail(job, error=reason)
-                else:
-                    delay = min(_RETRY_DELAY * (1 << min(job.tries - 1, 20)), _RETRY_MAX_DELAY)
-                    await uow.jobs.reschedule(job, run_at=self._clock.now() + delay, error=reason)
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a search job", extra={"job_id": str(job.id)})
+        now = self._clock.now()
+        if job.kind == RECONCILE_JOB:  # again at the next interval, like the cleanup
+            run_at: datetime | None = now + self._policy.reconcile_interval
+        else:
+            run_at = _RETRIES[job.kind].next_run(job.tries, now)
+        await self._jobs.again(job, reason, run_at)
 
-    async def _finish(
-        self, job: Job, *, error: str | None = None, next_reconcile: bool = False
-    ) -> None:
-        try:
-            async with self._uow() as uow:
-                if error is None:
-                    await uow.jobs.complete(job)
-                else:
-                    await uow.jobs.fail(job, error=error)
-                if next_reconcile:
-                    run_at = self._clock.now() + self._policy.reconcile_interval
-                    await uow.jobs.enqueue(
-                        RECONCILE_JOB, {}, run_at=run_at, dedup_key=RECONCILE_JOB
-                    )
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a search job", extra={"job_id": str(job.id)})
-
-    async def _release(self, job: Job) -> None:
-        """The worker stops: give the job back to run again at once."""
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.release(job, run_at=self._clock.now(), error="worker stopped")
-                await uow.commit()
-        except ConcurrencyError:
-            log.warning("lost the claim of a search job", extra={"job_id": str(job.id)})
+    async def _next_reconcile(self, uow: UnitOfWork) -> None:
+        run_at = self._clock.now() + self._policy.reconcile_interval
+        await uow.jobs.enqueue(RECONCILE_JOB, {}, run_at=run_at, dedup_key=RECONCILE_JOB)
 
     # --- one document ---------------------------------------------------------------------------
 
@@ -390,7 +362,7 @@ class IndexingService:
                 if wanted is not None and any(len(vector) != wanted for vector in result.vectors):
                     raise EmbeddingsError(
                         f"the vectors of {self._embeddings.model} do not have the "
-                        f"{wanted} numbers of PAPIQ_EMBEDDING_DIMENSIONS"
+                        f"{wanted} dimensions configured"
                     )
                 vectors = tuple(tuple(vector) for vector in result.vectors)
         return IndexDocument(
@@ -445,34 +417,36 @@ class IndexingService:
 
     # --- master data renamed --------------------------------------------------------------------
 
-    async def _refresh(self, kind: str, item: UUID) -> None:
+    async def _refresh(self, kind: RefreshKind, item: UUID) -> None:
         """Queue an index job for every document with the contact, type or tag `item`: for a
         tag, also with a tag below it, with it or one below it as its topic, or with a contact
         or type in it or a group below it."""
-        async with self._uow() as uow:
-            documents = await uow.documents.list_all()
-            if kind in ("contact", "document_type"):
-                carrying = [document.id for document in documents if _carries(document, kind, item)]
-            else:
-                tags = TagTree.of(await uow.tags.list_all()).with_descendants([TagId(item)])
-                contacts = {c.id for c in await uow.contacts.list_all() if c.group_ids & tags}
-                types = {t.id for t in await uow.document_types.list_all() if t.group_ids & tags}
-                carrying = [
-                    document.id
-                    for document in documents
-                    if document.tag_ids & tags
-                    or document.topic_id in tags
-                    or document.contact_id in contacts
-                    or document.document_type_id in types
+        match kind:
+            case RefreshKind.CONTACT:
+                filters = [DocumentFilter(contact=ContactId(item))]
+            case RefreshKind.DOCUMENT_TYPE:
+                filters = [DocumentFilter(document_type=DocumentTypeId(item))]
+            case RefreshKind.TAG:
+                async with self._uow() as uow:
+                    tags = (await tag_tree(uow)).with_descendants([TagId(item)])
+                filters = [
+                    DocumentFilter(tags=(tags,)),
+                    DocumentFilter(topics=tags),
+                    DocumentFilter(contact_groups=(tags,)),
+                    DocumentFilter(document_type_groups=(tags,)),
                 ]
-        await self._queue(carrying)
+        carrying: dict[DocumentId, None] = {}
+        for filter in filters:
+            async for page in document_pages(self._uow, filter):
+                carrying |= dict.fromkeys(document.id for document in page)
+        await self._queue(list(carrying))
 
     async def _queue(self, documents: list[DocumentId]) -> None:
         for start in range(0, len(documents), _QUEUE_BATCH):
             async with self._uow() as uow:
                 for id in documents[start : start + _QUEUE_BATCH]:
                     await uow.jobs.enqueue(
-                        INDEX_JOB, {"document_id": str(id)}, run_at=self._clock.now()
+                        INDEX_JOB, document_payload(id), run_at=self._clock.now()
                     )
                 await uow.commit()
 
@@ -485,24 +459,23 @@ class IndexingService:
         model. `also`: documents to
         queue in any case."""
         indexed = {state.id: state async for state in self._index.states()}
-        async with self._uow() as uow:
-            documents = await uow.documents.list_all()
         model = None if self._embeddings is None else self._embeddings.model
         queue = set(also)
         stale: list[DocumentId] = []
-        for document in documents:
-            state = indexed.pop(document.id, None)
-            if (
-                document.id in queue
-                or state is None
-                or state.version != document.version
-                or state.layout != LAYOUT
-                or (
-                    model is not None
-                    and (state.embedding is None or state.embedding.model != model)
-                )
-            ):
-                stale.append(document.id)
+        async for page in document_pages(self._uow):
+            for document in page:
+                state = indexed.pop(document.id, None)
+                if (
+                    document.id in queue
+                    or state is None
+                    or state.version != document.version
+                    or state.layout != LAYOUT
+                    or (
+                        model is not None
+                        and (state.embedding is None or state.embedding.model != model)
+                    )
+                ):
+                    stale.append(document.id)
         for id in indexed:  # not in the database
             await self._index.remove(id)
         await self._queue(stale)
@@ -512,8 +485,7 @@ class IndexingService:
     async def rebuild(self, progress: Callable[[int, int], None] | None = None) -> Rebuilt:
         """Build a new index from the database and the object store while the active one keeps
         serving, swap it in, and reconcile what changed meanwhile. `progress(done, total)`."""
-        async with self._uow() as uow:
-            ids = sorted(document.id for document in await uow.documents.list_all())
+        ids = sorted([document.id async for page in document_pages(self._uow) for document in page])
         build = await self._index.begin_rebuild()
         built: dict[DocumentId, tuple[object, ...]] = {}
         try:
@@ -547,17 +519,8 @@ class IndexingService:
         return Rebuilt(documents=added, queued=reconciled.queued, removed=reconciled.removed)
 
 
-_REFRESH_FIELDS = {"contact", "document_type", "tag"}
-
-
-def _carries(document: Document, kind: str, item: UUID) -> bool:
-    if kind == "contact":
-        return document.contact_id == ContactId(item)
-    return document.document_type_id == DocumentTypeId(item)
-
-
 async def _snapshot_of(uow: UnitOfWork, document: Document) -> _Snapshot:
-    tree = TagTree.of(await uow.tags.list_all())
+    tree = await tag_tree(uow)
     contact, contact_groups = None, frozenset[TagId]()
     if document.contact_id is not None:
         found = await uow.contacts.find(document.contact_id)
@@ -620,38 +583,6 @@ def _field_text(value: FieldValue) -> str:
             return f"{value.isoformat()} {value:%d.%m.%Y}"
 
 
-_MONTHS = {
-    "de": [
-        "Januar",
-        "Februar",
-        "März",
-        "April",
-        "Mai",
-        "Juni",
-        "Juli",
-        "August",
-        "September",
-        "Oktober",
-        "November",
-        "Dezember",
-    ],
-    "en": [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    ],
-}
-
-
 def _period_text(period: Period) -> str:
     """A period as it is searched for: its ends in both notations, what it is in ISO 8601
     (`2026-09`, `2026-W38`, `2026-Q3`, `2026`) and in words (`September 2026` in German and
@@ -662,14 +593,14 @@ def _period_text(period: Period) -> str:
         words.append(f"{end.isoformat()} {end:%d.%m.%Y}")
     match period.kind:
         case PeriodKind.WEEK:
-            year, week, _ = start.isocalendar()
+            year, week = period.iso_week
             words.append(f"KW {week} {year}")
         case PeriodKind.MONTH:
-            names = {names[start.month - 1] for names in _MONTHS.values()}
+            names = {names[start.month - 1] for names in MONTH_NAMES.values()}
             words += [f"{name} {start.year}" for name in sorted(names)]
             words.append(f"{start:%m/%Y} {start:%m.%Y}")
         case PeriodKind.QUARTER:
-            words.append(f"Q{(start.month - 1) // 3 + 1} {start.year}")
+            words.append(f"Q{period.quarter_number} {start.year}")
     if period.kind not in (PeriodKind.DAY, PeriodKind.SPAN):
         words.append(period.notation)
     return " ".join(words)

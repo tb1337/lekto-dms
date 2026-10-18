@@ -2,14 +2,12 @@
 ports."""
 
 import asyncio
-import base64
-import hashlib
 from collections.abc import Callable
 from datetime import timedelta
-from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+from papiq.core.domain.encoding import pkce_challenge, query_parameters
 from papiq.core.domain.errors import AuthenticationError, ConcurrencyError, ConflictError
 from papiq.core.domain.identity import (
     ACCOUNT_THROTTLE,
@@ -25,25 +23,17 @@ from papiq.core.domain.identity import (
     hash_token,
 )
 from papiq.core.domain.users import User
-from papiq.core.ports import (
+from papiq.core.ports.identity import (
+    TOTP_STEP,
     DecryptionError,
     OidcProvider,
     PasswordHasher,
     SecretCipher,
     Totp,
-    UnitOfWorkFactory,
 )
-from tests import builders
-from tests.builders import NOW
-from tests.contracts.unit_of_work import seed
-
-HOUR = timedelta(hours=1)
-
-
-async def a_user(uow_factory: UnitOfWorkFactory) -> User:
-    user = builders.user()
-    await seed(uow_factory, user)
-    return user
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from tests.builders import HOUR, NOW
+from tests.contracts.unit_of_work import a_user
 
 
 def a_session(user: User, *, at: timedelta = timedelta(0)) -> Session:
@@ -371,13 +361,13 @@ class SecretCipherContract:
 class TotpContract:
     def test_codes_match_their_step_and_neighbours(self, totp: Totp) -> None:
         secret = totp.new_secret()
-        step = int(NOW.timestamp()) // 30
+        step = int(NOW.timestamp()) // TOTP_STEP
         assert totp.matching_step(secret, totp.code(secret, NOW), NOW) == step
-        earlier = totp.code(secret, NOW - timedelta(seconds=30))
-        later = totp.code(secret, NOW + timedelta(seconds=30))
+        earlier = totp.code(secret, NOW - timedelta(seconds=TOTP_STEP))
+        later = totp.code(secret, NOW + timedelta(seconds=TOTP_STEP))
         assert totp.matching_step(secret, earlier, NOW) == step - 1
         assert totp.matching_step(secret, later, NOW) == step + 1
-        too_old = totp.code(secret, NOW - timedelta(seconds=90))
+        too_old = totp.code(secret, NOW - timedelta(seconds=3 * TOTP_STEP))
         assert totp.matching_step(secret, too_old, NOW) is None
 
     def test_wrong_codes_and_secrets(self, totp: Totp) -> None:
@@ -402,10 +392,6 @@ type Consent = Callable[[str, str, str | None], str]
 """Plays the user at the provider: (authorization URL, subject, username) -> code."""
 
 
-def _query(url: str) -> dict[str, str]:
-    return {key: values[0] for key, values in parse_qs(urlsplit(url).query).items()}
-
-
 class OidcProviderContract:
     async def test_the_authorization_url_carries_state_nonce_and_pkce(
         self, oidc_provider: OidcProvider
@@ -413,13 +399,12 @@ class OidcProviderContract:
         url = await oidc_provider.authorization_url(
             state="s" * 43, nonce="n" * 43, code_verifier="v" * 64
         )
-        query = _query(url)
+        query = query_parameters(url)
         assert query["state"] == "s" * 43 and query["nonce"] == "n" * 43
         assert query["response_type"] == "code"
         assert "openid" in query["scope"].split()
         assert query["code_challenge_method"] == "S256"
-        digest = hashlib.sha256(b"v" * 64).digest()
-        assert query["code_challenge"] == base64.urlsafe_b64encode(digest).decode().rstrip("=")
+        assert query["code_challenge"] == pkce_challenge("v" * 64)
         assert "v" * 64 not in url
 
     async def test_a_code_gives_the_identity_once(

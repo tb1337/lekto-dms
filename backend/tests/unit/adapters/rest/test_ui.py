@@ -9,7 +9,7 @@ import pytest
 from papiq.adapters.inbound.rest import PREFIX
 from papiq.adapters.inbound.rest.ui import IMMUTABLE, REVALIDATE, SECURITY_HEADERS
 from papiq.composition.container import build_memory_container, build_services
-from tests.unit.adapters.rest.conftest import make_app
+from tests.unit.adapters.rest.support import make_app
 
 INDEX = "<!doctype html><title>papiq</title>"
 SCRIPT = "export const x = 1;"

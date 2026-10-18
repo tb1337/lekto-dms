@@ -48,10 +48,6 @@ class Prediction:
         return frozenset(kind for kind, _ in self.document_types)
 
     @property
-    def known_tags(self) -> frozenset[TagId]:
-        return frozenset(self.tags)
-
-    @property
     def known_topics(self) -> frozenset[TagId]:
         return frozenset(topic for topic, _ in self.topics)
 

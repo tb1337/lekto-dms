@@ -1,23 +1,94 @@
 """Test data builders shared by unit tests and contract suites."""
 
+import itertools
 import tempfile
 import uuid
-from datetime import UTC, datetime
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from papiq.adapters.outbound.liquid import LiquidTemplateRenderer
+from papiq.composition.container import (
+    classifier_policy_of,
+    event_retry_of,
+    indexing_policy_of,
+    neighbours_policy_of,
+    policy_of,
+    retry_policy_of,
+    search_policy_of,
+    session_policy_of,
+    thresholds_of,
+    webhook_policy_of,
+)
+from papiq.composition.settings import Settings
 from papiq.core.domain.documents import Document, Sha256
+from papiq.core.domain.identity import Credential, check_new_password
 from papiq.core.domain.ids import DocumentId, SpaceId, UserId, new_id
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, Outcome
-from papiq.core.domain.search import IndexDocument
+from papiq.core.domain.search import IndexDocument, Visibility
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import Role, User
-from papiq.core.services.pipeline import IncomingFile, PipelineService, PlaceholderNode
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.identity import PasswordHasher
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.ocr import VisionModel
+from papiq.core.ports.search_index import SearchQuery
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from papiq.core.services.pipeline import (
+    IncomingFile,
+    NodeExecutor,
+    PipelineService,
+)
 
+DEFAULT_SETTINGS = Settings.model_construct()
+"""The shipped defaults (`backend/README.md`, Configuration): tests take thresholds and
+limits from here, so the one source of a default is `composition/settings.py`."""
 # Templates of rules and title patterns, as the memory container renders them.
-TEMPLATES = LiquidTemplateRenderer(locale="de", currency="EUR")
+TEMPLATES = LiquidTemplateRenderer(
+    locale=DEFAULT_SETTINGS.template_locale, currency=DEFAULT_SETTINGS.default_currency
+)
+THRESHOLDS = thresholds_of(DEFAULT_SETTINGS)
+CLASSIFICATION = policy_of(DEFAULT_SETTINGS)
+CLASSIFIER = classifier_policy_of(DEFAULT_SETTINGS)
+INDEXING = indexing_policy_of(DEFAULT_SETTINGS)
+NEIGHBOURS = neighbours_policy_of(DEFAULT_SETTINGS)
+SEARCH = search_policy_of(DEFAULT_SETTINGS)
+WEBHOOKS = webhook_policy_of(DEFAULT_SETTINGS)
+RETRY = retry_policy_of(DEFAULT_SETTINGS)
+SESSIONS = session_policy_of(DEFAULT_SETTINGS)
+EVENT_RETRY = event_retry_of(DEFAULT_SETTINGS)
+
+
+def pipeline_service(
+    uow: UnitOfWorkFactory,
+    clock: Clock,
+    store: ObjectStore,
+    executors: Mapping[Node, NodeExecutor],
+    *,
+    vision: VisionModel | None = None,
+    facts: NodeExecutor | None = None,
+) -> PipelineService:
+    """A pipeline with the shipped defaults for its tuning."""
+    return PipelineService(
+        uow,
+        clock,
+        store,
+        executors,
+        pipeline_version="test",
+        suggest_contact=DEFAULT_SETTINGS.contact_suggest_threshold,
+        retry=RETRY,
+        poor_reading=DEFAULT_SETTINGS.poor_reading_threshold,
+        vision=vision,
+        facts=facts,
+    )
+
+
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
+HOUR = timedelta(hours=1)
+
+# The sample files of the tests (made by `samples/make_samples.py`).
+SAMPLES = Path(__file__).parent / "samples"
 
 # PAPIQ_SECRET_KEY for tests (32 bytes, base64); never use it elsewhere.
 SECRET_KEY = "dGVzdC1rZXktdGVzdC1rZXktdGVzdC1rZXktdGVzdC0="
@@ -29,13 +100,31 @@ OK = NodeResult(outcome=Outcome.OK)
 UNCERTAIN = NodeResult(outcome=Outcome.UNCERTAIN, reason="new contact", confidence=0.4)
 FAILED = NodeResult(outcome=Outcome.FAILED, reason="OCR crashed")
 
-_counter = 0
+
+class PlaceholderNode:
+    """Node executor that does nothing and passes."""
+
+    async def run(self, document: Document) -> NodeResult:
+        return NodeResult(outcome=Outcome.OK)
+
+
+class Returns:
+    """Node executor that returns a fixed result."""
+
+    def __init__(self, result: NodeResult) -> None:
+        self.result = result
+        self.calls = 0
+
+    async def run(self, document: Document) -> NodeResult:
+        self.calls += 1
+        return self.result
+
+
+_numbers = itertools.count(1)
 
 
 def _unique(prefix: str) -> str:
-    global _counter
-    _counter += 1
-    return f"{prefix}-{_counter}"
+    return f"{prefix}-{next(_numbers)}"
 
 
 def user(name: str | None = None, *, role: Role = Role.USER) -> User:
@@ -48,6 +137,39 @@ def admin(name: str | None = None) -> User:
 
 def space(owner: User, name: str | None = None) -> Space:
     return Space.create(owner_id=owner.id, name=name or _unique("space"), now=NOW)
+
+
+async def seed_user(
+    uow: UnitOfWorkFactory, name: str | None = None, *, role: Role = Role.USER
+) -> User:
+    """A user with their default space, stored directly."""
+    seeded = user(name, role=role)
+    async with uow() as unit:
+        await unit.users.add(seeded)
+        await unit.spaces.add(default_space(seeded))
+        await unit.commit()
+    return seeded
+
+
+async def seed_account(
+    uow: UnitOfWorkFactory,
+    hasher: PasswordHasher,
+    name: str | None = None,
+    *,
+    role: Role = Role.USER,
+    password: str = PASSWORD,
+) -> User:
+    """A user with their default space and `password`, stored directly."""
+    seeded = await seed_user(uow, name, role=role)
+    async with uow() as unit:
+        await unit.credentials.add(
+            Credential(
+                user_id=seeded.id,
+                password_hash=await hasher.hash(check_new_password(password, seeded.username)),
+            )
+        )
+        await unit.commit()
+    return seeded
 
 
 def default_space(owner: User) -> Space:
@@ -77,6 +199,12 @@ def document(
     )
     document.pull_events()
     return document
+
+
+def received() -> Document:
+    """A freshly received document of a new user, in their default space."""
+    owner = user()
+    return document(owner, default_space(owner))
 
 
 def run_pipeline(document: Document, results: dict[Node, NodeResult] | None = None) -> Document:
@@ -119,7 +247,7 @@ def skip_classification(pipeline: PipelineService) -> PipelineService:
     """Let classification and field extraction pass as OK, for tests about other things
     (without a language model, they would make every document yellow)."""
     for node in (Node.JUDGE, Node.FIELDS):
-        pipeline._executors[node] = PlaceholderNode()
+        pipeline.replace_executor(node, PlaceholderNode())
     return pipeline
 
 
@@ -138,3 +266,21 @@ def index_document(**fields: Any) -> IndexDocument:
     }
     values.update(fields)
     return IndexDocument(**values)
+
+
+def search_query(text: str, visibility: Visibility, **fields: Any) -> SearchQuery:
+    """A query of the index with the shipped semantic ratio unless `fields` give one."""
+    fields.setdefault("semantic_ratio", SEARCH.semantic_ratio)
+    return SearchQuery(text=text, visibility=visibility, **fields)
+
+
+class RunsJobs(Protocol):
+    async def run_next_job(self) -> bool: ...
+
+
+async def drain(runner: RunsJobs) -> int:
+    """Run `runner`'s due jobs until none is left; returns how many ran."""
+    count = 0
+    while await runner.run_next_job():
+        count += 1
+    return count

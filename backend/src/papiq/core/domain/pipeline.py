@@ -1,6 +1,6 @@
 """Ingest graph: nodes and their dependencies, node results, the state of each node, lanes."""
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -172,24 +172,89 @@ upload into a given space, a move); rules leave the space then."""
 CHOSEN_SPACE = "space_id"
 """Key of the space a person chose, in the input of a `PERSON_SPACE` entry and the output of a
 `PERSON` entry."""
+TRIGGER = "trigger"
+"""Key of what set off an `apply_rules` entry (`rules.Trigger`, or one of the `TRIGGER_`
+values a person sets off), in its input."""
+TRIGGER_APPLY = "apply"
+TRIGGER_MOVE = "move"
+TRIGGER_UPLOAD = "upload"
+"""What a person set off: applying a rule to documents they chose, moving a document, uploading
+it into a space they chose."""
+ACTOR = "actor"
+"""Key of the person who set off an entry (a change, a rule applied on request, a space they
+chose), in its input."""
+CONFIRMED_BY = "confirmed_by"
+"""Key of the owner who confirmed, in the output of a `PERSON` entry."""
+ACCEPTED = "accepted"
+ENTERED = "entered"
+KEPT = "kept"
+"""Keys of the fields the owner decided in the output of a `PERSON` entry: the suggestions they
+accepted, the values they entered, the values they kept."""
+CHANGED = "changed"
+TAGS_ADDED = "tags_added"
+TAGS_REMOVED = "tags_removed"
+CORRECTED = "corrected"
+"""Keys of what a person changed (`rules.running.person_record`): the fields they set, the tags
+they added and removed, the fields whose values they really altered."""
+TRUNCATED = "truncated"
+MODEL = "model"
+ENDPOINT = "endpoint"
+"""Keys of a model node's input: whether the text was shortened for the model, the model and
+where the document went. The judge repeats them from `signal_llm` (`MODEL_RUN`)."""
+MODEL_RUN = (TRUNCATED, MODEL, ENDPOINT)
 OUTSIDE_PIPELINE = frozenset({RULES_CHANGE, RULES_APPLY, PERSON_SPACE})
 """Log entries written outside processing; they say nothing about a node's state."""
 
 
-def space_chooser(log: Sequence[NodeRun], space: UUID) -> UUID | None:
-    """Who last put the document into `space` by hand (confirming, uploading into a given
-    space, moving), if anyone. Entries written before the space was recorded name none."""
-    for entry in reversed(log):
-        result = entry.result
-        if result.model_version == PERSON_SPACE:
-            actor, chosen = result.input.get("actor"), result.input.get(CHOSEN_SPACE)
-        elif result.model_version == PERSON:
-            actor, chosen = result.output.get("confirmed_by"), result.output.get(CHOSEN_SPACE)
-        else:
-            continue
-        if chosen == str(space):
-            return UUID(actor) if isinstance(actor, str) else None
-    return None
+@dataclass(frozen=True)
+class ProcessingHistory:
+    """A document's processing log, read newest first: the latest entries of its nodes
+    (`latest`, `signals`), which leave out the entries written outside processing
+    (`OUTSIDE_PIPELINE`, they say nothing about a node's state), and who chose a space by hand
+    (`space_chooser`)."""
+
+    log: Sequence[NodeRun]
+
+    def newest_first(self) -> Iterator[NodeRun]:
+        """Every entry, the latest first."""
+        return reversed(self.log)
+
+    def space_chooser(self, space: UUID) -> UUID | None:
+        """Who last put the document into `space` by hand (confirming, uploading into a given
+        space, moving), if anyone; read from the entries of people, `PERSON_SPACE` (outside
+        processing) included. Entries written before the space was recorded name none."""
+        for entry in self.newest_first():
+            result = entry.result
+            if result.model_version == PERSON_SPACE:
+                actor, chosen = result.input.get(ACTOR), result.input.get(CHOSEN_SPACE)
+            elif result.model_version == PERSON:
+                actor, chosen = result.output.get(CONFIRMED_BY), result.output.get(CHOSEN_SPACE)
+            else:
+                continue
+            if chosen == str(space):
+                return UUID(actor) if isinstance(actor, str) else None
+        return None
+
+    def latest(self, node: Node, *, made: bool = False, by_model: bool = False) -> NodeRun | None:
+        """The latest entry of `node` written by processing; with `made`, the latest that did
+        not fail (whose result the document still has); with `by_model`, leaving out
+        confirmations too. The OCR's readings are those of its latest entry that made a text."""
+        for entry in self.newest_first():
+            result = entry.result
+            if (
+                entry.node is node
+                and result.model_version not in OUTSIDE_PIPELINE
+                and not (made and result.outcome is Outcome.FAILED)
+                and not (by_model and result.model_version == PERSON)
+            ):
+                return entry
+        return None
+
+    def signals(self) -> dict[Node, NodeRun]:
+        """The latest entry of each signal that did not fail (a signal goes through or fails):
+        a reprocessing from the judge on keeps the signals of an earlier run."""
+        latest = {node: self.latest(node, made=True) for node in NODES if node in SIGNALS}
+        return {node: entry for node, entry in latest.items() if entry is not None}
 
 
 class NodeStatus(StrEnum):

@@ -14,14 +14,15 @@ model's signal fails, when its answers do not fit or it cannot be reached after 
   with their contact, type, topic and tags.
 """
 
+import asyncio
 import json
 import logging
-from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
+from papiq.core.domain import media_types
 from papiq.core.domain.codes import (
     Code,
     code_identifiers,
@@ -39,10 +40,18 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.facts import facts_in
 from papiq.core.domain.identifiers import IdentifierKind, identifiers_in
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import (
+    JsonObject,
+    JsonValue,
+    as_list,
+    as_number,
+    as_object,
+    as_text,
+    as_uuid,
+)
 from papiq.core.domain.master_data import Contact
 from papiq.core.domain.permissions import reach_access
-from papiq.core.domain.pipeline import SIGNALS, Node, NodeResult, NodeRun, Outcome
+from papiq.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
 from papiq.core.domain.search import Visibility
 from papiq.core.domain.verdict import (
     ClassifierView,
@@ -52,26 +61,25 @@ from papiq.core.domain.verdict import (
     Neighbour,
     Signals,
 )
-from papiq.core.ports import (
-    CodeReader,
-    DocumentFilter,
-    Embeddings,
-    ObjectStore,
-    UnitOfWork,
-    UnitOfWorkFactory,
-)
+from papiq.core.ports.codes import CodeReader
+from papiq.core.ports.embeddings import Embeddings
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.repository import DocumentFilter
 from papiq.core.ports.search_index import SearchIndex, SimilarQuery
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from papiq.core.services.classification.answers import StoredProposal
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.indexing import split_sections
-from papiq.core.services.nodes import work_directory
+from papiq.core.services.nodes import ARCHIVE_FILE, work_directory
 from papiq.core.services.objects import archive_key, codes_key, load_text
 
 log = logging.getLogger(__name__)
 
 ABSTAINED = "abstained"
 """Key of the output of a signal that had nothing to say: why."""
+PROPOSAL = "proposal"
+"""Key of the language model's proposal (`StoredProposal`) in the output of `signal_llm`."""
 FACTS = "facts"
-_MOST = 20  # contacts and identifiers a signal reports
 _RANKED = 5  # classes of contact and type the classifier's signal keeps
 
 
@@ -110,10 +118,11 @@ class FactsSignal:
         codes = await self.codes(document)
         async with self._uow() as uow:
             contacts = await uow.contacts.list_all()
-        output = facts_of(text, contacts, codes or ())
+        # Matching every contact's names against a long text takes a while: not in the loop.
+        output = await asyncio.to_thread(facts_of, text, contacts, codes or ())
         if codes is not None:
             output["codes"] = len(codes)
-        found = identifiers_in(text)
+        found = await asyncio.to_thread(identifiers_in, text)
         for code in codes or ():
             found |= code_identifiers(code)
         result = NodeResult(outcome=Outcome.OK, model_version=FACTS, output=output)
@@ -136,7 +145,7 @@ class FactsSignal:
             return kept
         try:
             async with work_directory() as work:
-                archive = work / "archive.pdf"
+                archive = work / ARCHIVE_FILE
                 await self._store.download(archive_key(document.id), archive)
                 reading = await self._codes.read_codes(archive)
         except NotFoundError:
@@ -147,7 +156,7 @@ class FactsSignal:
             )
             return None
         data = json.dumps(codes_to_json(reading.codes), ensure_ascii=False).encode("utf-8")
-        await self._store.put(key, data, content_type="application/json")
+        await self._store.put(key, data, content_type=media_types.JSON)
         return reading.codes
 
 
@@ -227,31 +236,29 @@ class ClassifierSignal:
         if predicted is None:
             return abstained("no model is trained yet")
         model, prediction = predicted
-        output: JsonObject = {
-            "model": model.number,
-            "contacts": [[str(id), round(p, 4)] for id, p in prediction.contacts[:_RANKED]],
-            "document_types": [
-                [str(id), round(p, 4)] for id, p in prediction.document_types[:_RANKED]
-            ],
-            "topics": [[str(id), round(p, 4)] for id, p in prediction.topics[:_RANKED]],
-            "tags": {str(id): round(p, 4) for id, p in prediction.tags.items()},
-            "known": {
-                "contacts": _texts(prediction.known_contacts),
-                "document_types": _texts(prediction.known_types),
-                "topics": _texts(prediction.known_topics),
-            },
-        }
+        view = ClassifierView(
+            contacts=prediction.contacts[:_RANKED],
+            document_types=prediction.document_types[:_RANKED],
+            tags=prediction.tags,
+            known_contacts=prediction.known_contacts,
+            known_types=prediction.known_types,
+            topics=prediction.topics[:_RANKED],
+            known_topics=prediction.known_topics,
+        )
         return NodeResult(
             outcome=Outcome.OK,
             model_version=f"classifier {model.number}",
-            output=output,
+            output={"model": model.number, **_classifier_to_json(view)},
         )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class NeighboursPolicy:
-    count: int = 5  # neighbours asked for; 0: none
-    chunk_size: int = 1500  # of the first section, as the index cuts it
+    """Configuration: the composition sets it from the settings, whose defaults are the one
+    source."""
+
+    count: int  # neighbours asked for; 0: none
+    chunk_size: int  # of the first section, as the index cuts it
     document_prefix: str = ""  # put before it, as the index does
     dimensions: int | None = None  # the length of the vectors the index takes
 
@@ -268,13 +275,13 @@ class NeighboursSignal:
         store: ObjectStore,
         index: SearchIndex | None,
         embeddings: Embeddings | None,
-        policy: NeighboursPolicy | None = None,
+        policy: NeighboursPolicy,
     ) -> None:
         self._uow = uow
         self._store = store
         self._index = index
         self._embeddings = embeddings
-        self._policy = policy or NeighboursPolicy()
+        self._policy = policy
 
     async def run(self, document: Document) -> NodeResult:
         if self._policy.count == 0:
@@ -309,7 +316,7 @@ class NeighboursSignal:
             )
         except SearchError as error:
             return abstained(f"the search index cannot be asked: {error}")
-        neighbours: list[JsonValue] = []
+        neighbours: list[Neighbour] = []
         async with self._uow() as uow:
             known = await uow.documents.confirmed_labels(owner.id)
             # They vote on the tags and topics the classification sets only, not on those set
@@ -325,27 +332,21 @@ class NeighboursSignal:
                 if space is None or reach_access(owner, found, space) is None:
                     continue
                 neighbours.append(
-                    {
-                        "document_id": str(found.id),
-                        "score": None if hit.score is None else round(hit.score, 4),
-                        "contact_id": None if found.contact_id is None else str(found.contact_id),
-                        "document_type_id": (
-                            None if found.document_type_id is None else str(found.document_type_id)
-                        ),
-                        "tag_ids": _texts(found.tag_ids & targets),
-                        "topic_id": (str(found.topic_id) if found.topic_id in topics else None),
-                    }
+                    Neighbour(
+                        document=str(found.id),
+                        contact=found.contact_id,
+                        document_type=found.document_type_id,
+                        tags=frozenset(found.tag_ids & targets),
+                        similarity=None if hit.score is None else round(hit.score, 4),
+                        topic=found.topic_id if found.topic_id in topics else None,
+                    )
                 )
         if not neighbours:
             return abstained("no similar confirmed document")
+        known = replace(known, tags=known.tags & targets, topics=known.topics & topics)
         output: JsonObject = {
-            "neighbours": neighbours,
-            "known": {
-                "contacts": _texts(known.contacts),
-                "document_types": _texts(known.document_types),
-                "tags": _texts(known.tags & targets),
-                "topics": _texts(known.topics & topics),
-            },
+            "neighbours": [_neighbour_to_json(item) for item in neighbours],
+            "known": _known_to_json(known),
         }
         return NodeResult(outcome=Outcome.OK, output=output)
 
@@ -357,21 +358,11 @@ def _texts(ids: Iterable[object]) -> list[JsonValue]:
 # --- what the judge reads ---------------------------------------------------------------------
 
 
-def latest_signals(log: Sequence[NodeRun]) -> dict[Node, NodeRun]:
-    """The latest entry of each signal: a reprocessing from the judge on keeps the signals of
-    an earlier run."""
-    latest: dict[Node, NodeRun] = {}
-    for entry in log:
-        if entry.node in SIGNALS and entry.result.outcome is Outcome.OK:
-            latest[entry.node] = entry
-    return latest
-
-
 def signals_of(entries: Mapping[Node, NodeRun]) -> Signals:
     """The signals as the judge's rules take them; a signal that abstained (or never ran) is
     None."""
 
-    def output(node: Node) -> Mapping[str, Any] | None:
+    def output(node: Node) -> JsonObject | None:
         entry = entries.get(node)
         if entry is None or ABSTAINED in entry.result.output:
             return None
@@ -379,7 +370,7 @@ def signals_of(entries: Mapping[Node, NodeRun]) -> Signals:
 
     neighbours = output(Node.SIGNAL_NEIGHBOURS)
     return Signals(
-        model=_model_view(output(Node.SIGNAL_LLM)),
+        model=_model_view(model_proposal(entries)),
         classifier=_classifier_view(output(Node.SIGNAL_CLASSIFIER)),
         neighbours=_neighbours_view(neighbours),
         facts=_facts_view(output(Node.SIGNAL_FACTS)),
@@ -387,99 +378,168 @@ def signals_of(entries: Mapping[Node, NodeRun]) -> Signals:
     )
 
 
-def model_proposal(entries: Mapping[Node, NodeRun]) -> Mapping[str, Any] | None:
+def model_proposal(entries: Mapping[Node, NodeRun]) -> StoredProposal | None:
     """The language model's proposal as it stored it; None if it gave none."""
     entry = entries.get(Node.SIGNAL_LLM)
     if entry is None or ABSTAINED in entry.result.output:
         return None
-    proposal = entry.result.output.get("proposal")
-    return proposal if isinstance(proposal, dict) else None
+    return StoredProposal.from_json(entry.result.output.get(PROPOSAL))
 
 
-def _model_view(output: Mapping[str, Any] | None) -> ModelProposal | None:
-    proposal = None if output is None else output.get("proposal")
-    if not isinstance(proposal, dict):
+def _model_view(proposal: StoredProposal | None) -> ModelProposal | None:
+    if proposal is None:
         return None
-    sender = proposal.get("sender") or {}
     return ModelProposal(
-        sender=_optional_text(sender.get("value")),
-        sender_quote=_optional_text(sender.get("evidence")),
-        recipient=_optional_text(proposal.get("recipient")),
-        document_type=_optional_text(proposal.get("document_type")),
-        new_document_type=_optional_text(proposal.get("new_document_type")),
-        tags=tuple(item for item in proposal.get("tags") or () if isinstance(item, str)),
-        new_tags=tuple(item for item in proposal.get("new_tags") or () if isinstance(item, str)),
-        topic=_optional_text(proposal.get("topic")),
+        sender=_optional_text(proposal.sender.value),
+        sender_quote=_optional_text(proposal.sender.evidence),
+        recipient=_optional_text(proposal.recipient),
+        document_type=_optional_text(proposal.document_type),
+        new_document_type=_optional_text(proposal.new_document_type),
+        tags=proposal.tags,
+        new_tags=proposal.new_tags,
+        topic=_optional_text(proposal.topic),
     )
 
 
-def _classifier_view(output: Mapping[str, Any] | None) -> ClassifierView | None:
+# Each signal's output is written and read by a pair of functions below, side by side.
+
+
+def _classifier_to_json(view: ClassifierView) -> JsonObject:
+    known = KnownLabels(
+        contacts=view.known_contacts, document_types=view.known_types, topics=view.known_topics
+    )
+    return {
+        "contacts": [[str(id), round(p, 4)] for id, p in view.contacts],
+        "document_types": [[str(id), round(p, 4)] for id, p in view.document_types],
+        "topics": [[str(id), round(p, 4)] for id, p in view.topics],
+        "tags": {str(id): round(p, 4) for id, p in view.tags.items()},
+        "known": _known_to_json(known),
+    }
+
+
+def _classifier_view(output: JsonObject | None) -> ClassifierView | None:
     if output is None:
         return None
-    known = output.get("known") or {}
+    known = _known_from_json(output.get("known")) or KnownLabels()
+    tags = as_object(output.get("tags")) or {}
     return ClassifierView(
-        contacts=[(ContactId(UUID(id)), float(p)) for id, p in output.get("contacts") or ()],
+        contacts=[(ContactId(id), p) for id, p in _ranking(output.get("contacts"))],
         document_types=[
-            (DocumentTypeId(UUID(id)), float(p)) for id, p in output.get("document_types") or ()
+            (DocumentTypeId(id), p) for id, p in _ranking(output.get("document_types"))
         ],
-        tags={TagId(UUID(id)): float(p) for id, p in (output.get("tags") or {}).items()},
-        known_contacts=frozenset(ContactId(UUID(id)) for id in known.get("contacts") or ()),
-        known_types=frozenset(DocumentTypeId(UUID(id)) for id in known.get("document_types") or ()),
-        topics=[(TagId(UUID(id)), float(p)) for id, p in output.get("topics") or ()],
-        known_topics=frozenset(TagId(UUID(id)) for id in known.get("topics") or ()),
+        tags={
+            TagId(id): p
+            for key, value in tags.items()
+            if (id := as_uuid(key)) is not None and (p := as_number(value)) is not None
+        },
+        known_contacts=known.contacts,
+        known_types=known.document_types,
+        topics=[(TagId(id), p) for id, p in _ranking(output.get("topics"))],
+        known_topics=known.topics,
     )
 
 
-def _neighbours_view(output: Mapping[str, Any] | None) -> tuple[Neighbour, ...] | None:
+def _ranking(value: JsonValue) -> list[tuple[UUID, float]]:
+    """The pairs `[id, probability]` as `_classifier_to_json` writes them."""
+    ranked = []
+    for item in as_list(value):
+        pair = as_list(item)
+        if len(pair) == 2:
+            id, p = as_uuid(pair[0]), as_number(pair[1])
+            if id is not None and p is not None:
+                ranked.append((id, p))
+    return ranked
+
+
+def _ids(value: JsonValue) -> list[UUID]:
+    return [id for item in as_list(value) if (id := as_uuid(item)) is not None]
+
+
+def _id_of[I](kind: Callable[[UUID], I], value: JsonValue) -> I | None:
+    found = as_uuid(value)
+    return None if found is None else kind(found)
+
+
+def _neighbour_to_json(neighbour: Neighbour) -> JsonObject:
+    return {
+        "document_id": neighbour.document,
+        "score": neighbour.similarity,
+        "contact_id": _optional_id(neighbour.contact),
+        "document_type_id": _optional_id(neighbour.document_type),
+        "tag_ids": _texts(neighbour.tags),
+        "topic_id": _optional_id(neighbour.topic),
+    }
+
+
+def _neighbours_view(output: JsonObject | None) -> tuple[Neighbour, ...] | None:
     if output is None:
         return None
     return tuple(
         Neighbour(
-            document=str(item["document_id"]),
-            contact=None if item.get("contact_id") is None else ContactId(UUID(item["contact_id"])),
-            document_type=(
-                None
-                if item.get("document_type_id") is None
-                else DocumentTypeId(UUID(item["document_type_id"]))
-            ),
-            tags=frozenset(TagId(UUID(tag)) for tag in item.get("tag_ids") or ()),
-            similarity=float(item["score"]) if isinstance(item.get("score"), int | float) else None,
-            topic=None if item.get("topic_id") is None else TagId(UUID(item["topic_id"])),
+            document=as_text(item.get("document_id")) or "",
+            contact=_id_of(ContactId, item.get("contact_id")),
+            document_type=_id_of(DocumentTypeId, item.get("document_type_id")),
+            tags=frozenset(TagId(id) for id in _ids(item.get("tag_ids"))),
+            similarity=as_number(item.get("score")),
+            topic=_id_of(TagId, item.get("topic_id")),
         )
-        for item in output.get("neighbours") or ()
+        for value in as_list(output.get("neighbours"))
+        if (item := as_object(value)) is not None
     )
 
 
-def _known_view(output: Mapping[str, Any] | None) -> KnownLabels | None:
-    """What the similar documents could have named; None for an entry from before it was
-    kept (then they count as covering every value)."""
-    known = None if output is None else output.get("known")
-    if not isinstance(known, dict):
+def _known_to_json(known: KnownLabels) -> JsonObject:
+    return {
+        "contacts": _texts(known.contacts),
+        "document_types": _texts(known.document_types),
+        "tags": _texts(known.tags),
+        "topics": _texts(known.topics),
+    }
+
+
+def _known_from_json(value: JsonValue) -> KnownLabels | None:
+    known = as_object(value)
+    if known is None:
         return None
     return KnownLabels(
-        contacts=frozenset(ContactId(UUID(id)) for id in known.get("contacts") or ()),
-        document_types=frozenset(
-            DocumentTypeId(UUID(id)) for id in known.get("document_types") or ()
-        ),
-        tags=frozenset(TagId(UUID(id)) for id in known.get("tags") or ()),
-        topics=frozenset(TagId(UUID(id)) for id in known.get("topics") or ()),
+        contacts=frozenset(ContactId(id) for id in _ids(known.get("contacts"))),
+        document_types=frozenset(DocumentTypeId(id) for id in _ids(known.get("document_types"))),
+        tags=frozenset(TagId(id) for id in _ids(known.get("tags"))),
+        topics=frozenset(TagId(id) for id in _ids(known.get("topics"))),
     )
 
 
-def _facts_view(output: Mapping[str, Any] | None) -> FactsView | None:
+def _known_view(output: JsonObject | None) -> KnownLabels | None:
+    """What the similar documents could have named; None for an entry from before it was
+    kept (then they count as covering every value)."""
+    return None if output is None else _known_from_json(output.get("known"))
+
+
+def _optional_id(id: object | None) -> str | None:
+    return None if id is None else str(id)
+
+
+def _facts_view(output: JsonObject | None) -> FactsView | None:
     if output is None:
         return None
     identifiers: dict[ContactId, tuple[str, ...]] = {}
     topics: dict[ContactId, dict[TagId, tuple[str, ...]]] = {}
-    for item in output.get("identifiers") or ():
-        contact, kind = ContactId(UUID(item["contact_id"])), str(item["kind"])
+    for value in as_list(output.get("identifiers")):
+        item = as_object(value) or {}
+        contact, kind = _id_of(ContactId, item.get("contact_id")), as_text(item.get("kind"))
+        if contact is None or kind is None:
+            continue
         identifiers[contact] = (*identifiers.get(contact, ()), kind)
-        if item.get("topic_id") is not None:
+        topic = _id_of(TagId, item.get("topic_id"))
+        if topic is not None:
             pairs = topics.setdefault(contact, {})
-            topic = TagId(UUID(item["topic_id"]))
             pairs[topic] = (*pairs.get(topic, ()), kind)
+    named = (
+        _id_of(ContactId, (as_object(value) or {}).get("contact_id"))
+        for value in as_list(output.get("named"))
+    )
     return FactsView(
-        named=frozenset(ContactId(UUID(item["contact_id"])) for item in output.get("named") or ()),
+        named=frozenset(contact for contact in named if contact is not None),
         identifiers=identifiers,
         topics=topics,
     )

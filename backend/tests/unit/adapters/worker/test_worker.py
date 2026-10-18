@@ -1,10 +1,11 @@
 """The worker service on in-memory adapters: runs jobs, delivers events, stops cleanly."""
 
 import asyncio
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import timedelta
+from typing import Any
 
 import pytest
 
@@ -13,21 +14,28 @@ from papiq.adapters.outbound.memory import MemoryEventBus, MemorySearchIndex
 from papiq.composition.container import Container, Services, build_memory_container
 from papiq.composition.container import build_services as build_all_services
 from papiq.core.domain.documents import Document
-from papiq.core.domain.events import DomainEvent
+from papiq.core.domain.events import DocumentReceived, DomainEvent, LaneChanged
+from papiq.core.domain.jobs import Job
 from papiq.core.domain.pipeline import Lane, Node, NodeResult
-from papiq.core.domain.users import User
+from papiq.core.domain.users import Role, User
 from papiq.core.services.indexing import SUBSCRIBER
 from papiq.core.services.maintenance import CLEANUP_JOB
+from papiq.core.services.pipeline import NODE_JOB
 from tests import builders
-from tests.builders import incoming
-from tests.contracts.processing import SAMPLES
+from tests.api import until
+from tests.builders import DEFAULT_SETTINGS, SAMPLES, incoming
 
 FAST = timedelta(milliseconds=10)
 
 
 def worker(
-    container: Container, services: Services, *, shutdown_timeout: timedelta = timedelta(seconds=5)
+    container: Container,
+    services: Services,
+    *,
+    shutdown_timeout: timedelta = timedelta(seconds=5),
+    **extra: Any,
 ) -> Worker:
+    """A worker that polls often; `extra` are further arguments (`indexing`, `master_data`)."""
     return Worker(
         pipeline=services.pipeline,
         maintenance=services.maintenance,
@@ -36,6 +44,8 @@ def worker(
         poll_interval=FAST,
         dispatch_interval=FAST,
         shutdown_timeout=shutdown_timeout,
+        webhook_concurrency=DEFAULT_SETTINGS.webhook_concurrency,
+        **extra,
     )
 
 
@@ -49,19 +59,8 @@ async def running(service: Worker) -> AsyncIterator[asyncio.Task[None]]:
         await asyncio.wait_for(task, timeout=10)
 
 
-async def until(condition: Callable[[], object], timeout: float = 5) -> None:
-    async with asyncio.timeout(timeout):
-        while not condition():
-            await asyncio.sleep(0.01)
-
-
 async def owner(container: Container) -> User:
-    user = builders.user()
-    async with container.unit_of_work() as uow:
-        await uow.users.add(user)
-        await uow.spaces.add(builders.default_space(user))
-        await uow.commit()
-    return user
+    return await builders.seed_user(container.unit_of_work)
 
 
 async def lane(services: Services, user: User, document: Document) -> Lane | None:
@@ -89,7 +88,7 @@ def build_services(container: Container) -> Services:
 
 def with_ocr(services: Services, executor: Slow) -> Services:
     pipeline = services.pipeline
-    pipeline._executors[Node.OCR] = executor
+    pipeline.replace_executor(Node.OCR, executor)
     return replace(services, pipeline=pipeline)
 
 
@@ -107,9 +106,9 @@ async def test_documents_are_processed_and_events_delivered() -> None:
         document = await services.pipeline.receive(
             user.id, incoming((SAMPLES / "scan.pdf").read_bytes()), filename="a.pdf"
         )
-        await until(lambda: received and received[-1].type == "document.lane_changed")
+        await until(lambda: received and received[-1].type == LaneChanged.type)
     assert await lane(services, user, document) is Lane.GREEN
-    assert received[0].type == "document.received"
+    assert received[0].type == DocumentReceived.type
 
 
 async def test_documents_reach_the_search_index() -> None:
@@ -119,17 +118,7 @@ async def test_documents_reach_the_search_index() -> None:
     assert isinstance(index, MemorySearchIndex) and services.indexing is not None
     container.event_bus.subscribe(SUBSCRIBER, services.indexing.on_event)
     user = await owner(container)
-    service = Worker(
-        pipeline=services.pipeline,
-        maintenance=services.maintenance,
-        event_bus=container.event_bus,
-        concurrency=2,
-        poll_interval=FAST,
-        dispatch_interval=FAST,
-        shutdown_timeout=timedelta(seconds=5),
-        indexing=services.indexing,
-    )
-    async with running(service):
+    async with running(worker(container, services, indexing=services.indexing)):
         document = await services.pipeline.receive(
             user.id, incoming((SAMPLES / "scan.pdf").read_bytes()), filename="invoice.pdf"
         )
@@ -144,10 +133,8 @@ async def test_documents_reach_the_search_index() -> None:
 async def test_a_moved_tag_is_normalised_at_its_documents() -> None:
     container = build_memory_container()
     services = build_services(container)
-    user, admin = await owner(container), builders.admin()
-    async with container.unit_of_work() as uow:
-        await uow.users.add(admin)
-        await uow.commit()
+    user = await owner(container)
+    admin = await builders.seed_user(container.unit_of_work, role=Role.ADMIN)
     master = services.master_data
     insurance = await master.create_tag(admin.id, "Insurance")
     health = await master.create_tag(admin.id, "Health")
@@ -157,30 +144,27 @@ async def test_a_moved_tag_is_normalised_at_its_documents() -> None:
         document.tag_ids = {insurance.id, health.id}
         await uow.documents.add(document)
         await uow.commit()
-    service = Worker(
-        pipeline=services.pipeline,
-        maintenance=services.maintenance,
-        event_bus=container.event_bus,
-        concurrency=2,
-        poll_interval=FAST,
-        dispatch_interval=FAST,
-        shutdown_timeout=timedelta(seconds=5),
-        master_data=master,
-    )
-    async with running(service):
+    async with running(worker(container, services, master_data=master)):
         await master.change_tag(admin.id, health.id, parent_id=insurance.id)
-        async with asyncio.timeout(5):
-            while (await services.documents.get(user.id, document.id)).tag_ids != {health.id}:
-                await asyncio.sleep(0.01)
+
+        async def moved() -> bool:
+            return (await services.documents.get(user.id, document.id)).tag_ids == {health.id}
+
+        await until(moved, every=0.01, what="the tag of the document moved")
 
 
 async def test_the_cleanup_is_scheduled_at_start() -> None:
     container = build_memory_container()
     services = build_services(container)
+
+    async def next_job() -> Job | None:
+        """The job due first, claimed without a commit: it stays queued."""
+        async with container.unit_of_work() as uow:
+            return await uow.jobs.claim(now=container.clock.now() + timedelta(days=1), lease=FAST)
+
     async with running(worker(container, services)):
-        await asyncio.sleep(0.05)
-    async with container.unit_of_work() as uow:
-        job = await uow.jobs.claim(now=container.clock.now() + timedelta(days=1), lease=FAST)
+        await until(next_job, what="a job is queued")
+    job = await next_job()
     assert job is not None and job.kind == CLEANUP_JOB
 
 
@@ -211,7 +195,7 @@ async def test_jobs_still_running_after_the_timeout_are_released() -> None:
     async with running(worker(container, services, shutdown_timeout=FAST)):
         await node.started.wait()
     async with container.unit_of_work() as uow:
-        job = await uow.jobs.claim(now=container.clock.now(), lease=FAST, kinds=["pipeline.node"])
+        job = await uow.jobs.claim(now=container.clock.now(), lease=FAST, kinds=[NODE_JOB])
     assert job is not None
     assert (job.attempts, job.last_error) == (2, "interrupted: the worker stopped")
 

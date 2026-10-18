@@ -10,13 +10,15 @@ import logging
 import time
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from papiq.core.domain.classification import (
+    CHANGE_FIELDS,
     CONTACT,
     DOCUMENT_DATE,
     DOCUMENT_TYPE,
+    SPACE,
     TAGS,
     TITLE,
     TOPIC,
@@ -35,37 +37,51 @@ from papiq.core.domain.ids import (
     TagId,
     UserId,
 )
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import JsonObject, JsonValue, as_list
 from papiq.core.domain.permissions import can_file_into
 from papiq.core.domain.pipeline import (
+    ACCEPTED,
+    ACTOR,
+    CHANGED,
     CHOSEN_SPACE,
+    CORRECTED,
+    ENTERED,
+    KEPT,
     PERSON,
     PERSON_SPACE,
     RULES,
     RULES_CHANGE,
+    TAGS_ADDED,
+    TAGS_REMOVED,
+    TRIGGER,
     Node,
     NodeResult,
     NodeRun,
     Outcome,
 )
-from papiq.core.domain.rule_engine import (
-    SPACE,
+from papiq.core.domain.rule_conditions import (
     TEXT_TARGET,
     Facts,
-    Mode,
-    RulePlan,
-    Situation,
-    SpaceTarget,
     Taxonomy,
     matches,
     pattern_subjects,
     pattern_text,
+)
+from papiq.core.domain.rule_planner import (
+    Mode,
+    RulePlan,
+    Situation,
+    SpaceTarget,
     plan,
+    reviewing_rules,
 )
 from papiq.core.domain.rules import Rule, SetSpace, Trigger
-from papiq.core.domain.tag_tree import TagTree
 from papiq.core.domain.users import User
-from papiq.core.ports import ObjectStore, PatternMatcher, TemplateRenderer, UnitOfWork
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.patterns import PatternMatcher
+from papiq.core.ports.templates import TemplateRenderer
+from papiq.core.ports.unit_of_work import UnitOfWork
+from papiq.core.services._tags import tag_tree
 from papiq.core.services.inbox import MODEL_NODES, field_checks, latest_entries
 from papiq.core.services.objects import load_text
 from papiq.core.services.titles import machine_title
@@ -173,7 +189,7 @@ async def _search(
 
 # --- where values came from -------------------------------------------------------------------
 
-_DECISIONS = ("accepted", "entered", "kept", "changed")
+_DECISIONS = (ACCEPTED, ENTERED, KEPT, CHANGED)
 _PERSON_ENTRIES = (PERSON, RULES_CHANGE, PERSON_SPACE)
 
 
@@ -219,10 +235,10 @@ def provenance(log: Sequence[NodeRun], document: Document) -> Provenance:
         record = {**entry.result.input, **entry.result.output}
         for key in _DECISIONS:
             person.update(_strings(record.get(key)))
-        for tag in _strings(record.get("tags_added")):
+        for tag in _strings(record.get(TAGS_ADDED)):
             added.add(TagId(UUID(tag)))
             removed.discard(TagId(UUID(tag)))
-        for tag in _strings(record.get("tags_removed")):
+        for tag in _strings(record.get(TAGS_REMOVED)):
             removed.add(TagId(UUID(tag)))
             added.discard(TagId(UUID(tag)))
     current = _current_values(document)
@@ -243,7 +259,7 @@ def provenance(log: Sequence[NodeRun], document: Document) -> Provenance:
     open_reviews: set[RuleId] = set()
     for entry in log:  # a confirmation answers the `apply_rules` entry before it
         if entry.result.model_version == RULES:
-            open_reviews = _reviewing(entry.result.output)
+            open_reviews = reviewing_rules(entry.result.output)
         elif entry.result.model_version == PERSON and entry.run == run:
             reviewed |= open_reviews
     given = machine_title(log)
@@ -258,24 +274,8 @@ def provenance(log: Sequence[NodeRun], document: Document) -> Provenance:
     )
 
 
-def _reviewing(output: JsonValue) -> set[RuleId]:
-    """The rules that forced a review in an `apply_rules` entry."""
-    found: set[RuleId] = set()
-    reports = output.get("rules") if isinstance(output, dict) else None
-    for report in reports if isinstance(reports, list) else []:
-        if not isinstance(report, dict):
-            continue
-        notes = report.get("notes")
-        if any(
-            isinstance(note, dict) and note.get("kind") == "review"
-            for note in (notes if isinstance(notes, list) else [])
-        ):
-            found.add(RuleId(UUID(str(report["rule_id"]))))
-    return found
-
-
 def _strings(value: JsonValue) -> list[str]:
-    return [str(item) for item in value] if isinstance(value, list) else []
+    return [str(item) for item in as_list(value)]
 
 
 def person_record(
@@ -291,10 +291,10 @@ def person_record(
     added = sorted(str(tag) for tag in set(tags_after) - set(tags_before))
     removed = sorted(str(tag) for tag in set(tags_before) - set(tags_after))
     return {
-        "changed": list[JsonValue](sorted(changed)),
-        "tags_added": list[JsonValue](added),
-        "tags_removed": list[JsonValue](removed),
-        "corrected": list[JsonValue](sorted(corrected)),
+        CHANGED: list[JsonValue](sorted(changed)),
+        TAGS_ADDED: list[JsonValue](added),
+        TAGS_REMOVED: list[JsonValue](removed),
+        CORRECTED: list[JsonValue](sorted(corrected)),
     }
 
 
@@ -306,14 +306,7 @@ def corrected_fields(
     because the new contact does not enable it is no correction of theirs."""
     names = {
         name
-        for name, attribute in (
-            (TITLE, "title"),
-            (CONTACT, "contact_id"),
-            (DOCUMENT_TYPE, "document_type_id"),
-            (TOPIC, "topic_id"),
-            (TAGS, "tag_ids"),
-            (DOCUMENT_DATE, "document_date"),
-        )
+        for name, attribute in CHANGE_FIELDS.items()
         if getattr(before, attribute) != getattr(after, attribute)
     }
     for field_id in set(before.fields) | set(after.fields):
@@ -324,29 +317,45 @@ def corrected_fields(
     return frozenset(names)
 
 
-def space_choice(
-    document: Document, *, node: Node, actor: UserId, trigger: str, version: str, now: datetime
+def entry_beside(
+    document: Document,
+    *,
+    node: Node,
+    model_version: str,
+    input: JsonObject,
+    output: JsonObject,
+    version: str,
+    now: datetime,
 ) -> NodeRun:
-    """The log entry of a person choosing the document's space outside the inbox."""
+    """A log entry written beside processing, by a person or the rules (`OUTSIDE_PIPELINE`):
+    in the document's current run, at `now`, taking no time."""
     return NodeRun(
         document_id=document.id,
         node=node,
         run=document.processing.run,
         result=NodeResult(
-            outcome=Outcome.OK,
-            model_version=PERSON_SPACE,
-            input={
-                "trigger": trigger,
-                "actor": str(actor),
-                CHOSEN_SPACE: str(document.space_id),
-            },
-            output=person_record(
-                changed=[SPACE], tags_before=document.tag_ids, tags_after=document.tag_ids
-            ),
+            outcome=Outcome.OK, model_version=model_version, input=input, output=output
         ),
         pipeline_version=version,
         started_at=now,
-        duration=now - now,
+        duration=timedelta(0),
+    )
+
+
+def space_choice(
+    document: Document, *, node: Node, actor: UserId, trigger: str, version: str, now: datetime
+) -> NodeRun:
+    """The log entry of a person choosing the document's space outside the inbox."""
+    return entry_beside(
+        document,
+        node=node,
+        model_version=PERSON_SPACE,
+        input={TRIGGER: trigger, ACTOR: str(actor), CHOSEN_SPACE: str(document.space_id)},
+        output=person_record(
+            changed=[SPACE], tags_before=document.tag_ids, tags_after=document.tag_ids
+        ),
+        version=version,
+        now=now,
     )
 
 
@@ -357,7 +366,7 @@ def _current_values(document: Document) -> dict[str, JsonValue]:
         if document.document_type_id is None
         else str(document.document_type_id),
         TOPIC: None if document.topic_id is None else str(document.topic_id),
-        "document_date": None
+        DOCUMENT_DATE: None
         if document.document_date is None
         else document.document_date.isoformat(),
     }
@@ -383,11 +392,19 @@ def facts(
     )
 
 
-async def taxonomy(
-    uow: UnitOfWork, documents: Iterable[Document], rules: Iterable[Rule]
-) -> Taxonomy:
-    """The tag trees, and the groups of the contacts and types of `documents` and of those the
-    rules set, and the topics those contacts enable."""
+@dataclass(frozen=True)
+class Loaded:
+    """The master data a rule run looks at, loaded once (`taxonomy`): the taxonomy, and the
+    names of the contacts and types that exist, by id. The tags' names are in the tree."""
+
+    taxonomy: Taxonomy
+    contacts: Mapping[UUID, str]
+    types: Mapping[UUID, str]
+
+
+async def taxonomy(uow: UnitOfWork, documents: Iterable[Document], rules: Iterable[Rule]) -> Loaded:
+    """The tag trees, and the groups and names of the contacts and types of `documents` and of
+    those the rules refer to, and the topics those contacts enable."""
     contacts: set[UUID] = set()
     types: set[UUID] = set()
     for document in documents:
@@ -401,14 +418,18 @@ async def taxonomy(
         types |= references.document_types
     groups: dict[UUID, frozenset[TagId]] = {}
     topics: dict[UUID, frozenset[TagId]] = {}
+    contact_names: dict[UUID, str] = {}
+    type_names: dict[UUID, str] = {}
     for id in contacts:
         if (contact := await uow.contacts.find(ContactId(id))) is not None:
             groups[id] = contact.group_ids
             topics[id] = contact.topic_ids
+            contact_names[id] = contact.name
     for id in types:
         if (kind := await uow.document_types.find(DocumentTypeId(id))) is not None:
             groups[id] = kind.group_ids
-    return Taxonomy(TagTree.of(await uow.tags.list_all()), groups, topics)
+            type_names[id] = kind.name
+    return Loaded(Taxonomy(await tag_tree(uow), groups, topics), contact_names, type_names)
 
 
 # --- the situation ----------------------------------------------------------------------------
@@ -428,10 +449,11 @@ async def situation(
     person_added_tags: frozenset[TagId] = frozenset(),
     person_removed_tags: frozenset[TagId] = frozenset(),
     accept_conflicts: bool = False,
-    tags: Taxonomy | None = None,
+    loaded: Loaded,
 ) -> Situation:
-    """Everything `plan` needs to know besides the matching rules. `tags`: the taxonomy of the
-    run (`taxonomy`), made here unless given."""
+    """Everything `plan` needs to know besides the matching rules. `loaded`: the master data
+    of the run (`taxonomy`, for the document and at least `rules`); beyond it, only the
+    spaces are read."""
     rules = list(rules)
     references = [rule.definition.references() for rule in rules]
     existing: set[object] = set(definitions)
@@ -443,21 +465,19 @@ async def situation(
     if document.document_type_id is not None:
         types.add(document.document_type_id)
     for contact_id in contacts:
-        contact = await uow.contacts.find(ContactId(contact_id))
-        if contact is not None:
+        if (name := loaded.contacts.get(contact_id)) is not None:
             existing.add(contact_id)
-            names[contact_id] = contact.name
+            names[contact_id] = name
     for type_id in types:
-        document_type = await uow.document_types.find(DocumentTypeId(type_id))
-        if document_type is not None:
+        if (name := loaded.types.get(type_id)) is not None:
             existing.add(type_id)
-            names[type_id] = document_type.name
+            names[type_id] = name
+    tree = loaded.taxonomy.tree
     shown = {*document.tag_ids, *([] if document.topic_id is None else [document.topic_id])}
     for tag_id in {id for refs in references for id in refs.tags} | shown:
-        tag = await uow.tags.find(tag_id)
-        if tag is not None:
+        if tag_id in tree:
             existing.add(tag_id)
-            names[tag_id] = tag.name
+            names[tag_id] = tree.tags[tag_id].name
     spaces: dict[SpaceId, SpaceTarget] = {}
     for rule in rules:
         for action in rule.definition.actions:
@@ -492,7 +512,7 @@ async def situation(
         person_removed_tags=person_removed_tags,
         reviewed=origin.reviewed,
         accept_conflicts=accept_conflicts,
-        taxonomy=tags or await taxonomy(uow, [document], rules),
+        taxonomy=loaded.taxonomy,
     )
 
 
@@ -538,11 +558,11 @@ async def run_rules(
     for a change, the state before it and its field pattern results; only rules that become
     true with the change act."""
     patterns, problems = await field_patterns(matcher, rules, document)
-    tags = await taxonomy(uow, [document, *([] if before is None else [before[0]])], rules)
-    now_facts = facts(document, prepared, patterns, origin, tags)
+    loaded = await taxonomy(uow, [document, *([] if before is None else [before[0]])], rules)
+    now_facts = facts(document, prepared, patterns, origin, loaded.taxonomy)
     before_facts = None
     if before is not None:
-        before_facts = facts(before[0], prepared, before[1], origin, tags)
+        before_facts = facts(before[0], prepared, before[1], origin, loaded.taxonomy)
     matched = matches(rules, now_facts, definitions, before=before_facts)
     context = await situation(
         uow,
@@ -557,7 +577,7 @@ async def run_rules(
         person_added_tags=origin.tags_added,
         person_removed_tags=origin.tags_removed,
         accept_conflicts=accept_conflicts,
-        tags=tags,
+        loaded=loaded,
     )
     return RuleRun(plan(matched, context), prepared.problems + problems)
 

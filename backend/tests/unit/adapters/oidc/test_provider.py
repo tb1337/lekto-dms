@@ -8,6 +8,7 @@ import pytest
 
 from papiq.adapters.outbound.oidc import AuthlibOidcProvider
 from papiq.core.domain.errors import AuthenticationError, IdentityProviderError
+from tests.builders import DEFAULT_SETTINGS
 from tests.contracts.identity import Consent, OidcProviderContract
 from tests.oidc_idp import CLIENT_ID, CLIENT_SECRET, ISSUER, REDIRECT_URI, SimulatedIdp
 
@@ -21,13 +22,18 @@ def idp() -> SimulatedIdp:
 
 
 def provider_for(idp: SimulatedIdp, **options: Any) -> AuthlibOidcProvider:
+    arguments: dict[str, Any] = {
+        "scopes": DEFAULT_SETTINGS.oidc_scopes.split(),
+        "username_claim": DEFAULT_SETTINGS.oidc_username_claim,
+        **options,
+    }
     return AuthlibOidcProvider(
         issuer=ISSUER,
         client_id=CLIENT_ID,
         client_secret=CLIENT_SECRET,
         redirect_uri=REDIRECT_URI,
         transport=idp.transport,
-        **options,
+        **arguments,
     )
 
 
@@ -169,6 +175,8 @@ async def test_a_wrong_client_secret(idp: SimulatedIdp) -> None:
         client_id=CLIENT_ID,
         client_secret="wrong",
         redirect_uri=REDIRECT_URI,
+        scopes=DEFAULT_SETTINGS.oidc_scopes.split(),
+        username_claim=DEFAULT_SETTINGS.oidc_username_claim,
         transport=idp.transport,
     )
     with pytest.raises(AuthenticationError):

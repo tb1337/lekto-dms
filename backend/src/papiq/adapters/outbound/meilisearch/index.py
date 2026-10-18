@@ -26,9 +26,12 @@ from uuid import UUID
 
 import httpx2
 
+from papiq.adapters.outbound.http_client import excerpt
 from papiq.core.domain.errors import SearchIndexError, SearchUnavailableError
 from papiq.core.domain.ids import DocumentId
+from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.search import (
+    FIRST_LAYOUT,
     LAYOUT,
     EmbeddingStamp,
     IndexDocument,
@@ -40,6 +43,7 @@ from papiq.core.domain.search import (
 from papiq.core.domain.sorting import sort_key
 from papiq.core.ports.repository import DocumentFilter, SortKey
 from papiq.core.ports.search_index import (
+    MAX_HITS,
     IndexBuild,
     SearchHit,
     SearchQuery,
@@ -54,7 +58,6 @@ HIGHLIGHT_START = "\ue000"  # private-use characters: they cannot occur in a doc
 HIGHLIGHT_END = "\ue001"
 CROP_WORDS = 30
 FETCH_PAGE = 1000
-_EXCERPT = 300  # characters of an error message from Meilisearch
 
 SEARCHABLE = [
     "title",
@@ -91,7 +94,6 @@ SORTED_BY = {
     SortKey.TITLE: "title_key",
 }
 STATE_FIELDS = ["id", "version", "embedding_model", "embedding_digest", "layout"]
-MAX_TOTAL_HITS = 1000
 READY_FOR = 30.0  # seconds an index counts as set up before its settings are looked at again
 _UNORDERED = {"filterableAttributes", "sortableAttributes"}
 
@@ -102,15 +104,17 @@ class MeilisearchIndex:
         *,
         url: str,
         api_key: str | None = None,
-        index: str = "papiq-documents",
+        index: str,
         dimensions: int | None = None,
-        locales: Sequence[str] = ("deu", "eng"),
-        timeout: float = 30.0,
-        task_timeout: float = 120.0,
+        locales: Sequence[str],
+        timeout: float,
+        task_timeout: float,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
         """`dimensions`: the length of the vectors; without it the index has no embedder and
-        takes no vectors. `transport` replaces the network in tests."""
+        takes no vectors. `timeout` per request, `task_timeout` for a task of the index, in
+        seconds; the composition takes them and `index` and `locales` from the settings.
+        `transport` replaces the network in tests."""
         self._index = index
         self._build_index = f"{index}-rebuild"
         self._dimensions = dimensions
@@ -122,6 +126,11 @@ class MeilisearchIndex:
         )
         self._ready_until = 0.0  # monotonic time until which the index counts as set up
         self._lock = asyncio.Lock()
+
+    @property
+    def task_timeout(self) -> float:
+        """Seconds a task of the index may take."""
+        return self._task_timeout
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -351,7 +360,8 @@ class MeilisearchIndex:
             "sortableAttributes": SORTABLE,
             "rankingRules": RANKING_RULES,
             "localizedAttributes": [{"locales": self._locales, "attributePatterns": ["*"]}],
-            "pagination": {"maxTotalHits": MAX_TOTAL_HITS},
+            # `SearchQuery` promises that `offset + limit` up to `MAX_HITS` is reachable.
+            "pagination": {"maxTotalHits": MAX_HITS},
         }
         if self._dimensions is not None:
             settings["embedders"] = {
@@ -437,7 +447,7 @@ class MeilisearchIndex:
             if status in ("failed", "canceled"):
                 error = data.get("error") or {}
                 code, message = error.get("code", status), error.get("message", "")
-                raise _TaskFailedError(uid, status, code, _shorten(message))
+                raise _TaskFailedError(uid, status, code, excerpt(message))
             if loop.time() >= deadline:
                 raise SearchUnavailableError(
                     f"task {uid} did not finish within {self._task_timeout:g} seconds"
@@ -505,7 +515,8 @@ def _visibility_filter(visibility: Visibility) -> str:
     if not visibility.spaces:
         return f"({own})"
     spaces = ", ".join(_quote(space) for space in sorted(visibility.spaces, key=str))
-    return f'({own} OR (lane = "green" AND space_id IN [{spaces}]))'
+    green = _quote(lane_value(Lane.GREEN))
+    return f"({own} OR (lane = {green} AND space_id IN [{spaces}]))"
 
 
 def _normalised(key: str, setting: Any) -> Any:
@@ -562,11 +573,7 @@ def _message(response: httpx2.Response) -> str:
         text = f"{data['code']}: {data['message']}"
     except (ValueError, KeyError, TypeError):
         text = response.text
-    return _shorten(text) or response.reason_phrase
-
-
-def _shorten(text: str) -> str:
-    return " ".join(text.split())[:_EXCERPT]
+    return excerpt(text) or response.reason_phrase
 
 
 def _state_of(item: Mapping[str, Any]) -> IndexState:
@@ -576,7 +583,7 @@ def _state_of(item: Mapping[str, Any]) -> IndexState:
             id=DocumentId(_uuid(item["id"])),
             version=int(item["version"]),
             embedding=EmbeddingStamp(str(model), str(digest)) if model and digest else None,
-            layout=int(item.get("layout") or 1),
+            layout=int(item.get("layout") or FIRST_LAYOUT),
         )
     except (KeyError, TypeError, ValueError):
         raise SearchIndexError("Meilisearch sent an unusable document") from None

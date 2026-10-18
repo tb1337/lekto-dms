@@ -9,10 +9,10 @@ import sys
 
 import structlog
 
+from papiq.adapters.inbound.rest import HEALTH_PATH, OIDC_CALLBACK_PATH
 from papiq.composition.settings import Settings
 
 HTTP_CLIENT_LOGGERS = ("httpx", "httpx2", "httpcore")
-HEALTH_PATH = "/api/v1/health"
 
 
 def configure_logging(settings: Settings) -> None:
@@ -21,6 +21,9 @@ def configure_logging(settings: Settings) -> None:
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
+        # The core and the adapters pass their context as `extra={"job_id": ...}` (stdlib);
+        # without this processor those fields never reach the output.
+        structlog.stdlib.ExtraAdder(),
         structlog.processors.TimeStamper(fmt="iso", utc=True),
     ]
     renderer: structlog.typing.Processor = (
@@ -74,7 +77,7 @@ class HideCallbackQuery(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         target = _request_target(record)
-        if target is not None and "/oidc/callback" in target and "?" in target:
+        if target is not None and target.startswith(OIDC_CALLBACK_PATH) and "?" in target:
             args = record.args
             assert isinstance(args, tuple)
             record.args = (*args[:2], target.split("?", 1)[0], *args[3:])

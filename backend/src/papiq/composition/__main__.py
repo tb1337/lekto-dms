@@ -1,5 +1,5 @@
-"""`python -m papiq.composition [check | migrate | api | worker | evaluate | evaluate-search |
-reindex | render-pages | read-codes | fetch-logos | reparse | train]`.
+"""`python -m papiq.composition [check | migrate | check-schema | api | worker | evaluate |
+evaluate-search | reindex | render-pages | read-codes | fetch-logos | reparse | train]`.
 
 - `check` (default): validate the configuration and print it without secrets.
 - `migrate`: validate, then bring the configured database to the newest schema. Run before the
@@ -40,19 +40,21 @@ reindex | render-pages | read-codes | fetch-logos | reparse | train]`.
 - `train`: train the classifier from the confirmed documents now, in the foreground, and learn
   identifiers of contacts from them (the worker does it on its own after enough confirmations).
 
-Exits with status 1 and a readable message when the configuration is invalid, the command does
-not fit `PAPIQ_ROLE`, or the migration or the service fails.
+Options follow their command. Exits with status 1 when the command fails: with the message on
+stderr when the configuration (or the evaluation set) does not let it work, otherwise with the
+error in the log, as when the command does not fit `PAPIQ_ROLE`.
 """
 
 import argparse
 import asyncio
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Coroutine, Mapping, Sequence
 from pathlib import Path
 
 import structlog
 
 from papiq.adapters.inbound.evaluation import EvaluationSetError, Run
+from papiq.adapters.outbound.sql import SchemaState
 from papiq.composition.api import run_api
 from papiq.composition.codes import run_read_codes
 from papiq.composition.database import check_schema, migrate_database
@@ -69,66 +71,27 @@ from papiq.composition.search_evaluation import (
     parse_ratios,
     run_search_evaluation,
 )
-from papiq.composition.settings import Settings, find_unknown_variables, load_settings
+from papiq.composition.settings import (
+    API_ROLES,
+    WORKER_ROLES,
+    Settings,
+    find_unknown_variables,
+    load_settings,
+)
 from papiq.composition.train import run_training
 from papiq.composition.worker import run_worker
-from papiq.core.domain.errors import LogoFetchDisabledError
+
+log = structlog.get_logger("papiq.composition")
 
 # Services and the roles that run them.
-SERVICES = {"api": {"all", "api"}, "worker": {"all", "worker"}}
+SERVICES = {"api": API_ROLES, "worker": WORKER_ROLES}
+
+type Command = Callable[[Settings, argparse.Namespace], int]
 
 
 def main(argv: Sequence[str] = ()) -> int:
-    parser = argparse.ArgumentParser(prog="python -m papiq.composition")
-    parser.add_argument(
-        "command",
-        nargs="?",
-        choices=[
-            "check",
-            "migrate",
-            "check-schema",
-            *SERVICES,
-            "evaluate",
-            "evaluate-search",
-            "reindex",
-            "render-pages",
-            "read-codes",
-            "fetch-logos",
-            "reparse",
-            "train",
-        ],
-        default="check",
-    )
-    parser.add_argument(
-        "--fake",
-        action="store_true",
-        help="evaluate: use the fixed answers; evaluate-search: fake embeddings and index",
-    )
-    parser.add_argument(
-        "--cases", type=Path, help="evaluate, evaluate-search: the set (default: evaluation)"
-    )
-    parser.add_argument("--wait", type=float, help="check-schema: seconds to wait (default: 0)")
-    parser.add_argument("--output", type=Path, help="where to write the report")
-    parser.add_argument("--runs", help="evaluate: cold, trained or both (default), comma separated")
-    parser.add_argument("--models", help="evaluate-search: embedding models, comma separated")
-    parser.add_argument("--ratios", help="evaluate-search: semantic ratios (default: 0,0.5,1)")
-    parser.add_argument("--queries", type=Path, help="evaluate-search: the queries file")
-    arguments = parser.parse_args(argv)
-    command = arguments.command
-    if command not in ("evaluate", "evaluate-search") and (
-        arguments.fake or arguments.cases or arguments.output
-    ):
-        parser.error("--fake, --cases and --output only go with evaluate and evaluate-search")
-    if command != "check-schema" and arguments.wait is not None:
-        parser.error("--wait only goes with check-schema")
-    if command != "evaluate-search" and (arguments.models or arguments.ratios or arguments.queries):
-        parser.error("--models, --ratios and --queries only go with evaluate-search")
-    if command != "evaluate" and arguments.runs:
-        parser.error("--runs only goes with evaluate")
-    runs = _names(arguments.runs) or [run.value for run in Run]
-    if unknown := set(runs) - {run.value for run in Run}:
-        parser.error(f"--runs: unknown {', '.join(sorted(unknown))}")
-    arguments.runs = [Run(run) for run in dict.fromkeys(runs)]
+    arguments = _parser().parse_args(argv)
+    command: str = arguments.command or "check"
 
     try:
         settings = load_settings()
@@ -137,7 +100,6 @@ def main(argv: Sequence[str] = ()) -> int:
         return 1
 
     configure_logging(settings)
-    log = structlog.get_logger("papiq.composition")
     for variable in find_unknown_variables():
         log.warning("unknown configuration variable", variable=variable)
     log.info("configuration valid", **settings.describe())
@@ -155,202 +117,223 @@ def main(argv: Sequence[str] = ()) -> int:
             role=settings.role,
         )
         return 1
-
-    if command in SERVICES:
-        run = run_api if command == "api" else run_worker
-        try:
-            asyncio.run(run(settings))
-        except Exception:
-            log.exception(f"{command} failed")
-            return 1
-        return 0
-
-    if command == "evaluate":
-        return _evaluate(settings, arguments)
-
-    if command == "evaluate-search":
-        return _evaluate_search(settings, arguments)
-
-    if command == "render-pages":
-        return _render_pages(settings)
-    if command == "read-codes":
-        return _read_codes(settings)
-    if command == "fetch-logos":
-        return _fetch_logos(settings)
-    if command == "reparse":
-        return _reparse(settings)
-    if command == "reindex":
-        return _reindex(settings)
-    if command == "train":
-        return _train(settings)
-
-    if command == "check-schema":
-        return _check_schema(settings, wait=arguments.wait or 0)
-
-    if command == "migrate":
-        try:
-            asyncio.run(migrate_database(settings))
-        except Exception:
-            log.exception("database migration failed", db_type=settings.db_type)
-            return 1
-        log.info("database migrated", db_type=settings.db_type)
-    return 0
+    return COMMANDS[command](settings, arguments)
 
 
-def _check_schema(settings: Settings, *, wait: float) -> int:
-    log = structlog.get_logger("papiq.composition")
-    state = asyncio.run(check_schema(settings, wait=wait))
-    if state == "current":
-        log.info("database schema is current", db_type=settings.db_type)
-        return 0
-    if state == "newer":
-        log.error("the database was migrated by a newer version of Papiq: update this image")
-    else:
-        log.error("the database schema is not migrated", db_type=settings.db_type)
-    return 1
-
-
-def _reindex(settings: Settings) -> int:
-    log = structlog.get_logger("papiq.composition")
-    try:
-        result = asyncio.run(run_reindex(settings, progress=True))
-    except ConfigurationError as error:
-        print(error, file=sys.stderr)
-        return 1
-    except Exception:
-        log.exception("rebuilding the search index failed")
-        return 1
-    log.info(
-        "reindex finished",
-        documents=result.documents,
-        queued=result.queued,
-        removed=result.removed,
+def _parser() -> argparse.ArgumentParser:
+    """A subcommand each, with its own options; none is `check`."""
+    parser = argparse.ArgumentParser(prog="python -m papiq.composition")
+    commands = parser.add_subparsers(dest="command")
+    parsers = {name: commands.add_parser(name) for name in COMMANDS}
+    parsers["check-schema"].add_argument(
+        "--wait", type=float, default=0, help="seconds to wait (default: 0)"
     )
-    return 0
-
-
-def _train(settings: Settings) -> int:
-    log = structlog.get_logger("papiq.composition")
-    try:
-        model = asyncio.run(run_training(settings))
-    except ConfigurationError as error:
-        print(error, file=sys.stderr)
-        return 1
-    except Exception:
-        log.exception("training the classifier failed")
-        return 1
-    log.info(
-        "classifier trained",
-        number=model.number,
-        examples=model.examples,
-        summary=model.summary,
+    evaluate, evaluate_search = parsers["evaluate"], parsers["evaluate-search"]
+    for each in (evaluate, evaluate_search):
+        each.add_argument("--cases", type=Path, help="the set (default: evaluation)")
+        each.add_argument("--output", type=Path, help="where to write the report")
+    evaluate.add_argument("--fake", action="store_true", help="use the fixed answers")
+    evaluate.add_argument(
+        "--runs",
+        type=_runs,
+        default=list(Run),
+        help="cold, trained or both (default), comma separated",
     )
-    return 0
+    evaluate_search.add_argument("--fake", action="store_true", help="fake embeddings and index")
+    evaluate_search.add_argument("--models", help="embedding models, comma separated")
+    evaluate_search.add_argument("--ratios", help="semantic ratios (default: 0,0.5,1)")
+    evaluate_search.add_argument("--queries", type=Path, help="the queries file")
+    return parser
 
 
-def _render_pages(settings: Settings) -> int:
-    log = structlog.get_logger("papiq.composition")
+def _run[T](
+    settings: Settings,
+    command: Callable[[Settings], Coroutine[object, object, T]],
+    *,
+    failed: str,
+    done: str | None = None,
+    fields: Callable[[T], Mapping[str, object]] = lambda _: {},
+    status: Callable[[T], int] = lambda _: 0,
+) -> int:
+    """Run `command` to its end; log `done` with the `fields` of its result and exit with its
+    `status`. A configuration or an evaluation set it cannot work with exits with 1 and the
+    message on stderr, anything else that goes wrong with 1 and `failed` in the log."""
     try:
-        queued = asyncio.run(run_render_pages(settings))
-    except Exception:
-        log.exception("queueing the page images failed")
-        return 1
-    log.info("render-pages queued", documents=queued)
-    return 0
-
-
-def _read_codes(settings: Settings) -> int:
-    log = structlog.get_logger("papiq.composition")
-    try:
-        queued = asyncio.run(run_read_codes(settings))
-    except Exception:
-        log.exception("queueing the facts failed")
-        return 1
-    log.info("read-codes queued", documents=queued)
-    return 0
-
-
-def _fetch_logos(settings: Settings) -> int:
-    log = structlog.get_logger("papiq.composition")
-    try:
-        queued = asyncio.run(run_fetch_logos(settings))
-    except LogoFetchDisabledError as error:
-        print(f"{error}: set PAPIQ_LOGO_FETCH=true", file=sys.stderr)
-        return 1
-    except Exception:
-        log.exception("queueing the logos failed")
-        return 1
-    log.info("fetch-logos queued", contacts=queued)
-    return 0
-
-
-def _reparse(settings: Settings) -> int:
-    log = structlog.get_logger("papiq.composition")
-    try:
-        queued = asyncio.run(run_reparse(settings))
-    except Exception:
-        log.exception("queueing the texts to read again failed")
-        return 1
-    log.info("reparse queued", documents=queued)
-    return 0
-
-
-def _evaluate(settings: Settings, arguments: argparse.Namespace) -> int:
-    log = structlog.get_logger("papiq.composition")
-    try:
-        result = asyncio.run(
-            run_evaluation(
-                settings,
-                cases=arguments.cases or Path("evaluation"),
-                fake=arguments.fake,
-                output=arguments.output,
-                progress=True,
-                runs=arguments.runs,
-            )
-        )
+        result = asyncio.run(command(settings))
     except (ConfigurationError, EvaluationSetError) as error:
         print(error, file=sys.stderr)
         return 1
-    log.info(
-        "evaluation finished",
-        report=str(result.report),
-        cases=len(result.results),
-        false_green=result.false_green,
-        green_but_wrong=result.green_but_wrong,
-        violations=result.violations,
+    except Exception:
+        log.exception(failed)
+        return 1
+    if done is not None:
+        log.info(done, **fields(result))
+    return status(result)
+
+
+def _check(settings: Settings, arguments: argparse.Namespace) -> int:
+    return 0  # the configuration is valid and logged
+
+
+def _migrate(settings: Settings, arguments: argparse.Namespace) -> int:
+    return _run(
+        settings,
+        migrate_database,
+        failed="database migration failed",
+        done="database migrated",
+        fields=lambda _: {"db_type": settings.db_type},
     )
-    return 1 if result.false_green or result.green_but_wrong or result.violations else 0
+
+
+def _check_schema(settings: Settings, arguments: argparse.Namespace) -> int:
+    def status(state: SchemaState) -> int:
+        if state == "current":
+            log.info("database schema is current", db_type=settings.db_type)
+            return 0
+        if state == "newer":
+            log.error("the database was migrated by a newer version of Papiq: update this image")
+        else:
+            log.error("the database schema is not migrated", db_type=settings.db_type)
+        return 1
+
+    return _run(
+        settings,
+        lambda settings: check_schema(settings, wait=arguments.wait),
+        failed="checking the database schema failed",
+        status=status,
+    )
+
+
+def _service(name: str, run: Callable[[Settings], Coroutine[object, object, None]]) -> Command:
+    """Serve until SIGTERM or SIGINT."""
+    return lambda settings, arguments: _run(settings, run, failed=f"{name} failed")
+
+
+def _reindex(settings: Settings, arguments: argparse.Namespace) -> int:
+    return _run(
+        settings,
+        lambda settings: run_reindex(settings, progress=True),
+        failed="rebuilding the search index failed",
+        done="reindex finished",
+        fields=lambda result: {
+            "documents": result.documents,
+            "queued": result.queued,
+            "removed": result.removed,
+        },
+    )
+
+
+def _train(settings: Settings, arguments: argparse.Namespace) -> int:
+    return _run(
+        settings,
+        run_training,
+        failed="training the classifier failed",
+        done="classifier trained",
+        fields=lambda model: {
+            "number": model.number,
+            "examples": model.examples,
+            "summary": model.summary,
+        },
+    )
+
+
+def _queue(
+    run: Callable[[Settings], Coroutine[object, object, int]],
+    *,
+    counted: str,
+    failed: str,
+) -> Command:
+    """A command that queues jobs for the worker; it logs how many (as `counted`)."""
+
+    def command(settings: Settings, arguments: argparse.Namespace) -> int:
+        name: str = arguments.command
+        done = f"{name} queued"
+        return _run(settings, run, failed=failed, done=done, fields=lambda n: {counted: n})
+
+    return command
+
+
+QUEUES: dict[str, Command] = {
+    "render-pages": _queue(
+        run_render_pages, counted="documents", failed="queueing the page images failed"
+    ),
+    "read-codes": _queue(run_read_codes, counted="documents", failed="queueing the facts failed"),
+    "fetch-logos": _queue(run_fetch_logos, counted="contacts", failed="queueing the logos failed"),
+    "reparse": _queue(
+        run_reparse, counted="documents", failed="queueing the texts to read again failed"
+    ),
+}
+
+
+def _evaluate(settings: Settings, arguments: argparse.Namespace) -> int:
+    return _run(
+        settings,
+        lambda settings: run_evaluation(
+            settings,
+            cases=arguments.cases or Path("evaluation"),
+            fake=arguments.fake,
+            output=arguments.output,
+            progress=True,
+            runs=arguments.runs,
+        ),
+        failed="evaluation failed",
+        done="evaluation finished",
+        fields=lambda result: {
+            "report": str(result.report),
+            "cases": len(result.results),
+            "false_green": result.false_green,
+            "green_but_wrong": result.green_but_wrong,
+            "violations": result.violations,
+        },
+        status=lambda result: (
+            1 if result.false_green or result.green_but_wrong or result.violations else 0
+        ),
+    )
+
+
+def _evaluate_search(settings: Settings, arguments: argparse.Namespace) -> int:
+    return _run(
+        settings,
+        lambda settings: run_search_evaluation(
+            settings,
+            cases=arguments.cases or Path("evaluation"),
+            queries=arguments.queries,
+            fake=arguments.fake,
+            models=_names(arguments.models),
+            ratios=parse_ratios(arguments.ratios) if arguments.ratios else DEFAULT_RATIOS,
+            output=arguments.output,
+            progress=True,
+        ),
+        failed="search evaluation failed",
+        done="search evaluation finished",
+        fields=lambda result: {"report": str(result.report), "models": len(result.models)},
+    )
 
 
 def _names(text: str | None) -> list[str]:
     return [name.strip() for name in (text or "").split(",") if name.strip()]
 
 
-def _evaluate_search(settings: Settings, arguments: argparse.Namespace) -> int:
-    log = structlog.get_logger("papiq.composition")
-    try:
-        result = asyncio.run(
-            run_search_evaluation(
-                settings,
-                cases=arguments.cases or Path("evaluation"),
-                queries=arguments.queries,
-                fake=arguments.fake,
-                models=[
-                    name.strip() for name in (arguments.models or "").split(",") if name.strip()
-                ],
-                ratios=parse_ratios(arguments.ratios) if arguments.ratios else DEFAULT_RATIOS,
-                output=arguments.output,
-                progress=True,
-            )
-        )
-    except (ConfigurationError, EvaluationSetError) as error:
-        print(error, file=sys.stderr)
-        return 1
-    except Exception:
-        log.exception("search evaluation failed")
-        return 1
-    log.info("search evaluation finished", report=str(result.report), models=len(result.models))
-    return 0
+def _runs(text: str) -> list[Run]:
+    """`--runs`: the runs named, each once; all if none is."""
+    names = _names(text)
+    if unknown := set(names) - {run.value for run in Run}:
+        raise argparse.ArgumentTypeError(f"unknown {', '.join(sorted(unknown))}")
+    return [Run(name) for name in dict.fromkeys(names)] or list(Run)
+
+
+COMMANDS: dict[str, Command] = {
+    "check": _check,
+    "migrate": _migrate,
+    "check-schema": _check_schema,
+    "api": _service("api", run_api),
+    "worker": _service("worker", run_worker),
+    "evaluate": _evaluate,
+    "evaluate-search": _evaluate_search,
+    "reindex": _reindex,
+    **QUEUES,
+    "train": _train,
+}
 
 
 if __name__ == "__main__":

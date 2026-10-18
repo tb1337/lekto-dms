@@ -30,7 +30,7 @@ class SqlNamedRepository[K: UUID, E: MasterData](SqlRepository[K, E]):
 
     def _values(self, entity: E) -> Values:
         return {
-            "id": self._id(entity),
+            "id": entity.id,
             "name": entity.name,
             "name_key": name_key(entity.name),
             "created_at": entity.created_at,
@@ -126,7 +126,7 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
             [{"contact_id": entity.id, "tag_id": topic} for topic in entity.topic_ids],
         )
 
-    async def _delete_children(self, ids: list[ContactId]) -> None:
+    async def _delete_children(self, ids: list[UUID]) -> None:
         tables = (t.contact_aliases, t.contact_identifiers, t.contact_groups, t.contact_topics)
         for table in tables:
             await self._tx.write(delete(table).where(table.c.contact_id.in_(ids)))
@@ -167,7 +167,7 @@ class SqlDocumentTypeRepository(SqlNamedRepository[DocumentTypeId, DocumentType]
             [{"document_type_id": entity.id, "tag_id": group} for group in entity.group_ids],
         )
 
-    async def _delete_children(self, ids: list[DocumentTypeId]) -> None:
+    async def _delete_children(self, ids: list[UUID]) -> None:
         table = t.document_type_groups
         await self._tx.write(delete(table).where(table.c.document_type_id.in_(ids)))
 
@@ -271,6 +271,6 @@ class SqlFieldRepository(SqlNamedRepository[FieldId, FieldDefinition]):
             ],
         )
 
-    async def _delete_children(self, ids: list[FieldId]) -> None:
+    async def _delete_children(self, ids: list[UUID]) -> None:
         table = t.field_document_types
         await self._tx.write(delete(table).where(table.c.field_id.in_(ids)))

@@ -10,7 +10,7 @@ from papiq import __version__
 from papiq.adapters.outbound.webhooks import HttpWebhookSender
 from papiq.core.ports.webhook_sender import WebhookRequest, WebhookSender
 from tests.contracts.webhook_sender import Receiver, WebhookSenderContract, request
-from tests.unit.adapters.webhooks.receiver import LocalReceiver
+from tests.webhook_receiver import LocalReceiver
 
 
 class TestHttpWebhookSender(WebhookSenderContract):

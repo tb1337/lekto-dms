@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.ids import ClassifierModelId, new_id
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.validation import require_utc
@@ -31,7 +32,7 @@ class ClassifierModel:
         if self.examples_until is not None:
             self.examples_until = require_utc(self.examples_until, "examples_until")
         if self.number < 1 or self.examples < 0:
-            raise ValueError("a model's number starts at 1, its examples at 0")
+            raise ValidationError("a model's number starts at 1, its examples at 0")
 
     @classmethod
     def create(

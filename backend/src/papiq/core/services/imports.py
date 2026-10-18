@@ -10,7 +10,8 @@ from papiq.core.domain.documents import Channel, Document, DocumentChanges
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.imports import IMPORTED, ImportedMetadata
 from papiq.core.domain.pipeline import Node, NodeResult, Outcome
-from papiq.core.ports import UnitOfWorkFactory
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from papiq.core.services._access import field_definitions
 from papiq.core.services.classification.signals import abstained
 from papiq.core.services.pipeline import DeferredResult, MetadataResult, NodeExecutor
 
@@ -27,7 +28,7 @@ class _ImportedStep:
             return await self._inner.run(document)
         async with self._uow() as uow:
             entries = await uow.processing_log.list_for(document.id)
-            definitions = {item.id: item for item in await uow.fields.list_all()}
+            definitions = await field_definitions(uow)
         stored = next(
             (
                 entry.result.output[IMPORTED]

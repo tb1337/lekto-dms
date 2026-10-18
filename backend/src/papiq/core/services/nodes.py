@@ -11,19 +11,21 @@ import shutil
 import tempfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
 from papiq.core.domain import media_types
 from papiq.core.domain.documents import Document
-from papiq.core.domain.exchanges import ModelCall
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.exchanges import tokens_of
+from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.pipeline import Node, NodeResult, Outcome
-from papiq.core.domain.reading import NO_TEXT_REASON, readings_to_json
-from papiq.core.ports import DocumentParser, ObjectStore, Ocr, PageRenderer, UnitOfWork
-from papiq.core.ports.ocr import VisionReading
-from papiq.core.ports.pages import PAGE_MEDIA_TYPE, PREVIEW_FILE
+from papiq.core.domain.reading import NO_TEXT_REASON, OcrOutput
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.ocr import Ocr, VisionReading
+from papiq.core.ports.pages import PAGE_MEDIA_TYPE, PREVIEW_FILE, PageRenderer
+from papiq.core.ports.parser import DocumentParser
+from papiq.core.ports.unit_of_work import UnitOfWork
 from papiq.core.services.exchanges import keep_calls
 from papiq.core.services.objects import (
     archive_key,
@@ -71,7 +73,7 @@ class OcrNode:
                     output={},
                 )
         async with work_directory() as work:
-            original, archive = work / "original", work / "archive.pdf"
+            original, archive = work / ORIGINAL_FILE, work / ARCHIVE_FILE
             await self._store.download(original_key(document.sha256), original)
             result = await self._ocr.make_archive(
                 original, archive, media_type=document.media_type, vision=vision
@@ -81,23 +83,23 @@ class OcrNode:
             )
         # The codes were read from the archive before: the facts read the new one again.
         await self._store.delete(codes_key(document.id))
-        output: JsonObject = {
-            "archive": archive_key(document.id),
-            "pages": result.pages,
-            "pdfa": result.pdfa,
-        }
-        if result.note is not None:
-            output["note"] = result.note
-        if result.readings:
-            output["readings"] = readings_to_json(result.readings)
-        if result.read_again:
-            output["read_again"] = True
+        output = OcrOutput(
+            archive=archive_key(document.id),
+            pages=result.pages,
+            pdfa=result.pdfa,
+            note=result.note,
+            readings=tuple(result.readings),
+            read_again=result.read_again,
+        )
         note = result.note
         if not result.pdfa:
             note = "the archive could not be made PDF/A" + ("" if note is None else f": {note}")
         if result.vision is not None:
-            output["vision"] = _vision_output(result.vision)
-            output["tokens"] = _tokens(result.vision.calls)
+            output = replace(
+                output,
+                vision=_vision_output(result.vision),
+                tokens=tuple(tokens_of(call.usage for call in result.vision.calls)),
+            )
             note = read_by(result.vision) + ("" if note is None else f"; {note}")
             await keep_calls(self._store, document, Node.OCR, list(result.vision.calls))
         return NodeResult(
@@ -105,14 +107,11 @@ class OcrNode:
             reason=note,
             model_version=result.engine,
             input=input,
-            output=output,
+            output=output.to_json(),
         )
 
 
-NO_VISION_MODEL = (
-    "a person asked for the vision language model, but none is configured "
-    "(PAPIQ_VLM_BASE_URL, PAPIQ_VLM_MODEL)"
-)
+NO_VISION_MODEL = "a person asked for the vision language model, but none is configured"
 
 
 def read_by(vision: VisionReading) -> str:
@@ -128,23 +127,6 @@ def _vision_output(vision: VisionReading) -> JsonObject:
     }
 
 
-def _tokens(calls: tuple[ModelCall, ...]) -> list[JsonValue]:
-    """Per call (a page, or once more after an answer that did not fit) its tokens and the
-    endpoint's report, as the model nodes log theirs."""
-    return [
-        {
-            "prompt": _count(call.usage.get("prompt_tokens")),
-            "completion": _count(call.usage.get("completion_tokens")),
-            "usage": call.usage,
-        }
-        for call in calls
-    ]
-
-
-def _count(value: JsonValue | None) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
-
-
 class PagesNode:
     """Images of every page of the original, and the preview of the first: what the web UI
     shows (and later, what grounding and vision models look at). Runs beside OCR, so it reads
@@ -156,7 +138,7 @@ class PagesNode:
 
     async def run(self, document: Document) -> "PagesResult":
         async with work_directory() as work:
-            original, pages = work / "original", work / "pages"
+            original, pages = work / ORIGINAL_FILE, work / "pages"
             pages.mkdir()
             await self._store.download(original_key(document.sha256), original)
             rendered = await self._renderer.render_pages(
@@ -207,19 +189,13 @@ class ParseNode:
 
     async def run(self, document: Document) -> NodeResult:
         async with work_directory() as work:
-            archive, read, structure = (
-                work / "archive.pdf",
-                work / "content.txt",
-                work / "content.json",
-            )
+            archive, read, structure = work / ARCHIVE_FILE, work / TEXT_FILE, work / STRUCTURE_FILE
             await self._store.download(archive_key(document.id), archive)
             result = await self._parser.parse(archive, text=read, structure=structure)
             text = await asyncio.to_thread(read.read_text, encoding="utf-8")
+            await self._store.upload(text_key(document.id), read, content_type=media_types.TEXT)
             await self._store.upload(
-                text_key(document.id), read, content_type="text/plain; charset=utf-8"
-            )
-            await self._store.upload(
-                structure_key(document.id), structure, content_type="application/json"
+                structure_key(document.id), structure, content_type=media_types.JSON
             )
             await self._store.delete(legacy_text_key(document.id))
         input: JsonObject = {"archive": archive_key(document.id)}
@@ -244,6 +220,13 @@ class ParseNode:
 
 def has_text(text: str) -> bool:
     return _WORD.search(text) is not None
+
+
+# The files of a node's work directory.
+ORIGINAL_FILE = "original"
+ARCHIVE_FILE = "archive.pdf"
+TEXT_FILE = "content.txt"
+STRUCTURE_FILE = "content.json"
 
 
 @asynccontextmanager

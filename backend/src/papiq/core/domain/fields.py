@@ -3,7 +3,7 @@
 import re
 import unicodedata
 from collections.abc import Collection
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
@@ -11,10 +11,12 @@ from typing import Self
 from urllib.parse import urlsplit
 
 from papiq.core.domain.errors import ValidationError
+from papiq.core.domain.evidence import fold_umlauts
 from papiq.core.domain.ids import DocumentTypeId, FieldId, new_id
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.master_data import Assignment, MasterData, checked_description
 from papiq.core.domain.periods import Period
+from papiq.core.domain.sorting import strip_accents
 from papiq.core.domain.validation import require_name
 
 _CURRENCY = re.compile(r"[A-Z]{3}")
@@ -152,7 +154,7 @@ class FieldDefinition(MasterData):
         if self.data_type is not FieldType.CHOICE:
             raise ValidationError("only choice fields have choices")
         old = set(self.choices)
-        changed = FieldDefinition(**{**self.__dict__, "choices": tuple(choices)})
+        changed = replace(self, choices=tuple(choices))
         self.choices = changed.choices
         return frozenset(old - set(self.choices))
 
@@ -302,7 +304,6 @@ def _numeric(value: object) -> bool:
     return isinstance(value, int | float | str) and not isinstance(value, bool)
 
 
-_UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue"})
 _NOT_KEY = re.compile(r"[^a-z0-9]+")
 
 
@@ -310,9 +311,6 @@ def template_key(name: str) -> str:
     """A field's name as templates write it: lower case, umlauts as `ae`, `oe`, `ue`, `ß` as
     `ss`, other accents dropped, anything else an underscore (`LA_Brutto` → `la_brutto`,
     `Fällig am` → `faellig_am`); `f_` before a leading digit."""
-    folded = unicodedata.normalize("NFKC", name).casefold().translate(_UMLAUTS)
-    plain = "".join(
-        char for char in unicodedata.normalize("NFKD", folded) if not unicodedata.combining(char)
-    )
-    key = _NOT_KEY.sub("_", plain).strip("_") or "field"
+    folded = fold_umlauts(unicodedata.normalize("NFKC", name).casefold())
+    key = _NOT_KEY.sub("_", strip_accents(folded)).strip("_") or "field"
     return f"f_{key}" if key[0].isdigit() else key

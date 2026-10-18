@@ -8,8 +8,10 @@ from papiq.core.domain.exchanges import (
     RunExchange,
     exchanges_from_json,
     exchanges_to_json,
+    tokens_of,
     with_run,
 )
+from papiq.core.domain.json_value import JsonObject
 
 
 def call(answer: str = "{}") -> ModelCall:
@@ -46,3 +48,11 @@ def test_damaged_files_are_refused(data: object) -> None:
 def test_runs_start_at_one() -> None:
     with pytest.raises(ValidationError):
         RunExchange(run=0, calls=())
+
+
+def test_the_tokens_of_calls_from_their_usage_reports() -> None:
+    usage: JsonObject = {"prompt_tokens": 12, "completion_tokens": 5, "total_duration": 9}
+    assert tokens_of([usage, {}]) == [
+        {"prompt": 12, "completion": 5, "usage": usage},
+        {"prompt": None, "completion": None, "usage": {}},
+    ]

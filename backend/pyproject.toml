@@ -106,9 +106,43 @@ modules = [
 ]
 
 [[tool.importlinter.contracts]]
+name = "Outbound adapters are independent of each other"
+type = "independence"
+# Shared infrastructure, not adapters: `http_client`, `imaging` and `system`. OCRmyPDF checks
+# the PDFs it makes with PDFium, and ZXing renders pages under PDFium's lock.
+modules = [
+    "papiq.adapters.outbound.crypto",
+    "papiq.adapters.outbound.filesystem",
+    "papiq.adapters.outbound.liquid",
+    "papiq.adapters.outbound.logos",
+    "papiq.adapters.outbound.meilisearch",
+    "papiq.adapters.outbound.memory",
+    "papiq.adapters.outbound.ocrmypdf",
+    "papiq.adapters.outbound.oidc",
+    "papiq.adapters.outbound.openai_compat",
+    "papiq.adapters.outbound.pdfium",
+    "papiq.adapters.outbound.pikepdf",
+    "papiq.adapters.outbound.pillow",
+    "papiq.adapters.outbound.regex",
+    "papiq.adapters.outbound.s3",
+    "papiq.adapters.outbound.sklearn",
+    "papiq.adapters.outbound.sql",
+    "papiq.adapters.outbound.webhooks",
+    "papiq.adapters.outbound.zxing",
+]
+ignore_imports = [
+    "papiq.adapters.outbound.ocrmypdf.engine -> papiq.adapters.outbound.pdfium",
+    "papiq.adapters.outbound.zxing.reader -> papiq.adapters.outbound.pdfium.library",
+]
+
+[[tool.importlinter.contracts]]
 name = "Service helpers do not import use cases"
 type = "forbidden"
-source_modules = ["papiq.core.services._access", "papiq.core.services.objects"]
+source_modules = [
+    "papiq.core.services._access",
+    "papiq.core.services._jobs",
+    "papiq.core.services.objects",
+]
 forbidden_modules = ["papiq.core.services"]
 
 [[tool.importlinter.contracts]]

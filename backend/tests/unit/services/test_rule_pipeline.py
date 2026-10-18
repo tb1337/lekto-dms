@@ -1,26 +1,38 @@
 """The rules on arrival: the nodes `apply_rules` and `file`, and confirming in the inbox."""
 
 import logging
+from collections import Counter
 from decimal import Decimal
+from typing import Any
 
 import pytest
 
 from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.errors import OpenFieldsError
+from papiq.core.domain.events import DocumentFiled
 from papiq.core.domain.fields import FieldType
 from papiq.core.domain.master_data import Assignment
 from papiq.core.domain.pipeline import PERSON, RULES, Lane, Node, Outcome, ProcessingStatus
+from papiq.core.domain.rule_planner import Mode
 from papiq.core.domain.rules import (
     ForceReview,
     SetContact,
+    SetDocumentType,
     SetField,
     SetSpace,
     SetTitle,
     Trigger,
 )
 from papiq.core.domain.spaces import ShareLevel
-from papiq.core.services.rules.running import PatternBudget, prepare
-from tests.unit.services.conftest import World
+from papiq.core.services.rules.running import (
+    PatternBudget,
+    Prepared,
+    active_rules,
+    prepare,
+    provenance,
+    run_rules,
+)
+from tests.builders import TEMPLATES
 from tests.unit.services.rules_support import (
     Classifies,
     Titles,
@@ -35,6 +47,7 @@ from tests.unit.services.rules_support import (
     rule_world,
     text_matches,
 )
+from tests.unit.services.support import World
 
 CHANGE = (Trigger.CHANGE,)
 
@@ -322,7 +335,7 @@ async def test_filing_checks_the_owners_write_access_once_more(world: World) -> 
     document = await r.stored(received)
     assert document.lane is Lane.YELLOW
     assert document.processing.outcomes[Node.FILE] is Outcome.UNCERTAIN
-    assert "document.filed" not in world.event_types()
+    assert DocumentFiled.type not in world.event_types()
     (open,) = (await r.documents.review(owner.id, document.id)).open
     assert (open.node, [check.field for check in open.fields]) == (Node.FILE, ["space"])
 
@@ -434,3 +447,72 @@ async def test_patterns_stop_when_their_time_is_used_up(world: World) -> None:
     assert prepared.patterns == {}
     assert prepared.problems == ("pattern 'Rech' skipped: the time for patterns is used up",)
     assert r.matcher.searched == []
+
+
+class Counting:
+    """A repository that counts the calls of its methods, by name."""
+
+    def __init__(self, inner: object) -> None:
+        self._inner = inner
+        self.calls: Counter[str] = Counter()
+
+    def __getattr__(self, name: str) -> Any:
+        found = getattr(self._inner, name)
+        if not callable(found):
+            return found
+
+        def counted(*args: Any, **kwargs: Any) -> Any:
+            self.calls[name] += 1
+            return found(*args, **kwargs)
+
+        return counted
+
+
+async def test_a_rule_run_loads_contacts_types_and_tags_once(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run loads the contacts and types it looks at and the tag tree once; the names its
+    templates and reasons use come from there."""
+    r = await rule_world(world)
+    owner = await world.user()
+    acme = await r.contact("ACME")
+    invoice = await world.master_data.create_document_type(r.admin.id, "Invoice")
+    tax = await r.tag("tax")
+    document = await r.arrive(owner, classify=Classifies(tags=[tax.id]))
+    await r.user_rule(
+        owner,
+        definition(
+            "Invoice",
+            has_tag(tax.id),
+            SetContact(acme.id),
+            SetDocumentType(invoice.id),
+            SetTitle("{{ contact }} {{ document_type }} {{ tags | join }}"),
+        ),
+    )
+
+    async with world.uow() as uow:
+        counted = {
+            name: Counting(getattr(uow, name)) for name in ("contacts", "document_types", "tags")
+        }
+        for name, repository in counted.items():
+            monkeypatch.setattr(uow, name, repository)
+        stored = await uow.documents.get(document.id)
+        run = await run_rules(
+            uow,
+            r.matcher,
+            TEMPLATES,
+            mode=Mode.INGEST,
+            document=stored,
+            owner=owner,
+            rules=await active_rules(uow, owner, Trigger.INGEST),
+            prepared=Prepared(),
+            origin=provenance(await uow.processing_log.list_for(stored.id), stored),
+            definitions={},
+        )
+
+    changes = run.plan.changes
+    assert (changes.contact_id, changes.document_type_id) == (acme.id, invoice.id)
+    assert changes.title == "ACME Invoice tax"
+    assert counted["contacts"].calls == {"find": 1}
+    assert counted["document_types"].calls == {"find": 1}
+    assert counted["tags"].calls == {"list_all": 1}

@@ -8,11 +8,19 @@ from decimal import Decimal, InvalidOperation
 
 from papiq.adapters.inbound.evaluation.cases import Case, Run
 from papiq.adapters.inbound.evaluation.runner import CaseResult
+from papiq.core.domain.classification import (
+    CONTACT,
+    DOCUMENT_DATE,
+    DOCUMENT_TYPE,
+    TAGS,
+    TITLE,
+    TOPIC,
+)
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.pipeline import Lane
 
-FIELDS = ("contact", "document_type", "topic", "document_date")
-_APPLIED_ONLY = frozenset({"topic"})
+FIELDS = (CONTACT, DOCUMENT_TYPE, TOPIC, DOCUMENT_DATE)
+_APPLIED_ONLY = frozenset({TOPIC})
 """Fields always checked OK, set or only suggested: accepted only when a value was applied."""
 _LANES: tuple[Lane | None, ...] = (Lane.GREEN, Lane.YELLOW, Lane.RED, None)
 
@@ -102,13 +110,13 @@ def summarise(results: Sequence[CaseResult], *, fake: bool) -> Summary:
     for result in results:
         case, expected = result.case, result.case.expected
         wanted: dict[str, JsonValue] = {
-            "contact": expected.contact,
-            "document_type": expected.document_type,
-            "topic": expected.topic,
-            "document_date": expected.document_date,
+            CONTACT: expected.contact,
+            DOCUMENT_TYPE: expected.document_type,
+            TOPIC: expected.topic,
+            DOCUMENT_DATE: expected.document_date,
         }
         # The title is no field of the set: nothing is expected of it.
-        checked = {name for name in result.checks if name not in (*FIELDS, "tags", "title")}
+        checked = {name for name in result.checks if name not in (*FIELDS, TAGS, TITLE)}
         fields = (set(expected.fields) | checked) - result.by_hand
         wanted |= {name: expected.fields.get(name) for name in fields}
         wrong = []
@@ -130,9 +138,9 @@ def summarise(results: Sequence[CaseResult], *, fake: bool) -> Summary:
                     score.accepted_wrong.append(case.name)
                     wrong.append(name)
         applied = result.tags
-        if "tags" in result.automatic and applied:
+        if TAGS in result.automatic and applied:
             summary.tags_set += 1
-            summary.tags_corrected += "tags" in result.corrected
+            summary.tags_corrected += TAGS in result.corrected
         summary.tags_tp += len(applied & expected.tags)
         summary.tags_fp += len(applied - expected.tags)
         summary.tags_fn += len(expected.tags - applied)

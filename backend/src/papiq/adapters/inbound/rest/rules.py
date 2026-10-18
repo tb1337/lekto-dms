@@ -2,10 +2,12 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, Request, Response
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
+from papiq.adapters.inbound.rest.cursors import decode_cursor, encode_cursor
+from papiq.adapters.inbound.rest.params import AllRules
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.rules import (
     ApplyPreviewItemOut,
@@ -22,10 +24,9 @@ from papiq.adapters.inbound.rest.schemas.rules import (
     TemplatePreviewOut,
 )
 from papiq.adapters.inbound.schemas import RuleEffectOut, RuleNoteOut
-from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.ids import DocumentId, DocumentTypeId, RuleApplicationId, RuleId
-from papiq.core.domain.rule_engine import Note
-from papiq.core.domain.rules import RuleScope, definition_from_json
+from papiq.core.domain.rules import RuleScope
+from papiq.core.domain.rules_json import definition_from_json
 
 router = APIRouter(prefix="/rules", tags=["rules"], dependencies=PROTECTED)
 templates = APIRouter(prefix="/templates", tags=["rules"], dependencies=PROTECTED)
@@ -62,11 +63,9 @@ async def list_rules(
     context: Context,
     scope: RuleScope | None = None,
     include_disabled: bool = True,
-    all_users: bool = Query(
-        default=False, description="The rules of every user instead of the caller's (admins)."
-    ),
+    all_users: AllRules = False,
 ) -> list[RuleOut]:
-    rules = await context.rules.list(
+    rules = await context.rules.list_rules(
         user, scope=scope, include_disabled=include_disabled, all_users=all_users
     )
     return [RuleOut.of(rule) for rule in rules]
@@ -184,7 +183,7 @@ async def preview_apply(
     id: UUID, body: ApplyPreviewRequest, user: CurrentUser, context: Context
 ) -> ApplyPreviewOut:
     preview = await context.rule_applications.preview(
-        user, RuleId(id), before=_cursor(body.cursor), limit=body.limit
+        user, RuleId(id), before=decode_cursor(body.cursor), limit=body.limit
     )
     return ApplyPreviewOut(
         rule_id=preview.rule.id,
@@ -193,13 +192,13 @@ async def preview_apply(
             ApplyPreviewItemOut(
                 document_id=item.document.id,
                 title=item.document.title,
-                changes=[RuleEffectOut(field=e.field, old=e.old, new=e.new) for e in item.effects],
-                conflicts=[_note(note) for note in item.conflicts],
-                notes=[_note(note) for note in item.notes],
+                changes=[RuleEffectOut.of(effect) for effect in item.effects],
+                conflicts=[RuleNoteOut.of(note) for note in item.conflicts],
+                notes=[RuleNoteOut.of(note) for note in item.notes],
             )
             for item in preview.items
         ],
-        next_cursor=None if preview.next_cursor is None else str(preview.next_cursor),
+        next_cursor=None if preview.next_cursor is None else encode_cursor(preview.next_cursor),
     )
 
 
@@ -247,21 +246,6 @@ applications = APIRouter(prefix="/rule-applications", tags=["rules"], dependenci
 )
 async def get_application(id: UUID, user: CurrentUser, context: Context) -> RuleApplicationOut:
     return RuleApplicationOut.of(await context.rule_applications.get(user, RuleApplicationId(id)))
-
-
-def _note(note: Note) -> RuleNoteOut:
-    return RuleNoteOut.model_validate(
-        {"field": note.field, "kind": note.kind, "reason": note.reason}
-    )
-
-
-def _cursor(value: str | None) -> DocumentId | None:
-    if value is None or not value.strip():
-        return None
-    try:
-        return DocumentId(UUID(value.strip()))
-    except ValueError:
-        raise ValidationError(f"cursor: not a valid cursor: {value!r}") from None
 
 
 @templates.post(

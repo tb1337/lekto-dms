@@ -11,7 +11,7 @@ from papiq.core.domain.ids import SpaceId, UserId, new_id
 from papiq.core.domain.spaces import DEFAULT_SPACE_NAME, ShareLevel
 from papiq.core.domain.users import Role
 from tests.builders import incoming
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 
 async def test_admin_creates_user_with_default_space(world: World) -> None:
@@ -56,7 +56,7 @@ async def test_owner_creates_renames_and_shares_spaces(world: World) -> None:
     assert renamed.name == "Home"
     shared = await world.spaces.share(owner.id, space.id, other.id, ShareLevel.READ)
     assert shared.shares == {other.id: ShareLevel.READ}
-    assert {d.id for d in await world.spaces.list(other.id)} == {
+    assert {d.id for d in await world.spaces.list_spaces(other.id)} == {
         space.id,
         (await world.default_space(other)).id,
     }
@@ -129,7 +129,7 @@ async def test_spaces_are_not_shared_with_deactivated_users(world: World) -> Non
     """M4-10: a share would take effect unnoticed when the user is activated again."""
     admin, owner, gone = await world.user(role=Role.ADMIN), await world.user(), await world.user()
     space = await world.spaces.create(owner.id, "Household")
-    await world.users.set_active(admin.id, gone.id, False)
+    await world.users.update(admin.id, gone.id, active=False)
     with pytest.raises(NotFoundError):
         await world.spaces.share(owner.id, space.id, gone.id, ShareLevel.READ)
     with pytest.raises(NotFoundError):

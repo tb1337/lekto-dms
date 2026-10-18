@@ -8,7 +8,7 @@ from papiq.core.domain.master_data import Contact
 from papiq.core.services.objects import text_key
 from tests import builders
 from tests.api import auth
-from tests.unit.adapters.rest.conftest import Api
+from tests.unit.adapters.rest.support import Api
 
 
 async def test_status_and_training(api: Api) -> None:

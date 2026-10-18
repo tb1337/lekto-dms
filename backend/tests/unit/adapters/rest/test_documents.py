@@ -10,7 +10,7 @@ from uuid import UUID
 import httpx2
 import pytest
 
-from papiq.adapters.inbound.rest import PREFIX
+from papiq.adapters.inbound.rest.schemas.documents import UploadFields
 from papiq.composition.container import build_memory_container, build_services
 from papiq.core.domain.documents import Sha256
 from papiq.core.domain.errors import UnprocessableDocumentError
@@ -19,23 +19,18 @@ from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.pipeline import Node
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.services.objects import exchanges_key, original_key
+from tests import builders
 from tests.api import auth, issue_token
-from tests.builders import PASSWORD
-from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import MAX_UPLOAD, Api, make_app
+from tests.builders import PASSWORD, SAMPLES
+from tests.unit.adapters.rest.support import DOCUMENTS, MAX_UPLOAD, Api, make_app, sample_file
 
-DOCUMENTS = f"{PREFIX}/documents"
 SIGNALS = ("signal_llm", "signal_classifier", "signal_neighbours", "signal_facts")
 PROBLEM = "application/problem+json"
 
 
-def pdf(name: str = "scan.pdf") -> dict[str, tuple[str, bytes, str]]:
-    return {"file": (name, (SAMPLES / name).read_bytes(), "application/octet-stream")}
-
-
 async def test_upload_is_accepted_and_processed(api: Api) -> None:
     owner = await api.user()
-    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    response = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
     assert response.status_code == 202
     id = response.json()["id"]
     assert response.headers["location"] == response.json()["status_url"] == f"{DOCUMENTS}/{id}"
@@ -91,14 +86,16 @@ async def test_upload_is_accepted_and_processed(api: Api) -> None:
 
 async def test_a_duplicate_of_the_same_owner_is_rejected(api: Api) -> None:
     owner, other = await api.user(), await api.user()
-    first = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
-    again = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    first = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
+    again = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
     assert again.status_code == 409
     assert again.headers["content-type"] == PROBLEM
     assert again.json()["existing_document_id"] == first.json()["id"]
     assert again.json()["title"] == "Conflict"
     # Another owner gets a document of their own for the same file.
-    assert (await api.client.post(DOCUMENTS, files=pdf(), headers=auth(other))).status_code == 202
+    assert (
+        await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(other))
+    ).status_code == 202
 
 
 async def test_unsupported_files_are_rejected(api: Api) -> None:
@@ -111,7 +108,7 @@ async def test_unsupported_files_are_rejected(api: Api) -> None:
 
 async def test_a_photo_is_accepted(api: Api) -> None:
     owner = await api.user()
-    response = await api.client.post(DOCUMENTS, files=pdf("photo.jpg"), headers=auth(owner))
+    response = await api.client.post(DOCUMENTS, files=sample_file("photo.jpg"), headers=auth(owner))
     assert response.status_code == 202
     status = await api.client.get(response.json()["status_url"], headers=auth(owner))
     assert status.json()["media_type"] == "image/jpeg"
@@ -186,7 +183,7 @@ async def test_fields_count_against_the_limit(api: Api) -> None:
             400,
             "multipart",
         ),
-        ({"files": pdf(), "data": {"space_id": "no-uuid"}}, 422, "space_id"),
+        ({"files": sample_file(), "data": {"space_id": "no-uuid"}}, 422, "space_id"),
     ],
 )
 async def test_malformed_uploads(
@@ -207,16 +204,46 @@ async def test_upload_into_a_space(api: Api) -> None:
     await spaces.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
     data = {"space_id": str(shared.id)}
 
-    accepted = await api.client.post(DOCUMENTS, files=pdf(), data=data, headers=auth(writer))
+    accepted = await api.client.post(
+        DOCUMENTS, files=sample_file(), data=data, headers=auth(writer)
+    )
     assert accepted.status_code == 202
     status = await api.client.get(accepted.json()["status_url"], headers=auth(writer))
     assert status.json()["space_id"] == str(shared.id)
-    denied = await api.client.post(DOCUMENTS, files=pdf(), data=data, headers=auth(reader))
+    denied = await api.client.post(DOCUMENTS, files=sample_file(), data=data, headers=auth(reader))
     assert denied.status_code == 403
     assert denied.json()["space_id"] == str(shared.id)
     stranger = await api.user()
-    hidden = await api.client.post(DOCUMENTS, files=pdf(), data=data, headers=auth(stranger))
+    hidden = await api.client.post(
+        DOCUMENTS, files=sample_file(), data=data, headers=auth(stranger)
+    )
     assert hidden.status_code == 404
+
+
+async def test_the_form_fields_are_checked_like_a_body(api: Api) -> None:
+    """Every invalid field is named, as for a JSON body; a blank one counts as not given."""
+    owner = await api.user()
+    data = {"space_id": "no-uuid", "owner": "nobody", "channel": "web"}
+    invalid = await api.client.post(DOCUMENTS, files=sample_file(), data=data, headers=auth(owner))
+    assert invalid.status_code == 422
+    assert [part.split(":")[0] for part in invalid.json()["detail"].split("; ")] == [
+        "space_id",
+        "channel",
+        "owner",
+    ]
+    blank = {"space_id": " ", "owner": "", "channel": " "}
+    accepted = await api.client.post(
+        DOCUMENTS, files=sample_file(), data=blank, headers=auth(owner)
+    )
+    assert accepted.status_code == 202, accepted.text
+    status = await api.client.get(accepted.json()["status_url"], headers=auth(owner))
+    assert status.json()["channel"] == "api"
+
+
+def test_the_form_is_described_by_its_fields() -> None:
+    """Names, limits and the OpenAPI schema of the form come from `UploadFields` alone."""
+    assert set(UploadFields.LIMITS) <= set(UploadFields.model_fields)
+    assert list(UploadFields.form_schema()) == list(UploadFields.model_fields)
 
 
 async def test_the_filename_is_reduced_to_its_last_segment(api: Api) -> None:
@@ -244,9 +271,9 @@ async def test_received_files_are_removed(
 ) -> None:
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     owner = await api.user()
-    await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
-    await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))  # duplicate
-    await api.client.post(DOCUMENTS, files=pdf("unsupported.docx"), headers=auth(owner))
+    await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
+    await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))  # duplicate
+    await api.client.post(DOCUMENTS, files=sample_file("unsupported.docx"), headers=auth(owner))
     big = {"file": ("big.pdf", b"x" * (MAX_UPLOAD + 1), "x/y")}
     await api.client.post(DOCUMENTS, files=big, headers=auth(owner))
     assert list(tmp_path.iterdir()) == []
@@ -254,7 +281,7 @@ async def test_received_files_are_removed(
 
 async def test_the_original_is_stored_by_its_hash(api: Api) -> None:
     owner = await api.user()
-    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    response = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
     log = await api.client.get(f"{response.json()['status_url']}/log", headers=auth(owner))
     key = original_key(Sha256(log.json()[0]["output"]["sha256"]))
     assert await api.container.object_store.get(key) == (SAMPLES / "scan.pdf").read_bytes()
@@ -265,7 +292,7 @@ async def test_others_see_a_document_only_through_a_share_once_green(api: Api) -
     shared = await api.services.spaces.create(owner.id, "Shared")
     await api.services.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
     response = await api.client.post(
-        DOCUMENTS, files=pdf(), data={"space_id": str(shared.id)}, headers=auth(owner)
+        DOCUMENTS, files=sample_file(), data={"space_id": str(shared.id)}, headers=auth(owner)
     )
     url = response.json()["status_url"]
     assert (await api.client.get(url, headers=auth(reader))).status_code == 404  # processing
@@ -280,7 +307,7 @@ async def test_others_see_a_document_only_through_a_share_once_green(api: Api) -
 
 async def test_the_text_is_read_in_pieces(api: Api) -> None:
     owner = await api.user()
-    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    response = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
     url = response.json()["status_url"]
     assert (await api.client.get(f"{url}/text", headers=auth(owner))).status_code == 409
     await api.drain()
@@ -305,9 +332,30 @@ async def test_the_text_is_read_in_pieces(api: Api) -> None:
     assert (await api.client.get(f"{url}/text", headers=auth(other))).status_code == 404
 
 
+async def test_one_piece_of_text_holds_what_the_setting_allows() -> None:
+    """`PAPIQ_MCP_TEXT_MAX` limits a piece over REST as over MCP."""
+    container = build_memory_container()
+    services = build_services(container)
+    builders.skip_classification(services.pipeline)
+    app = make_app(container, services, text_max=4)
+    owner = await services.users.bootstrap_admin("root", PASSWORD)
+    assert owner is not None
+    await issue_token(services.auth, owner)
+    async with httpx2.AsyncClient(
+        transport=httpx2.ASGITransport(app=app), base_url="https://papiq"
+    ) as client:
+        response = await client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
+        await builders.drain(services.pipeline)
+        url = f"{response.json()['status_url']}/text"
+        piece = (await client.get(url, headers=auth(owner))).json()
+        too_long = await client.get(url, params={"limit": 5}, headers=auth(owner))
+    assert (len(piece["text"]), piece["next_offset"]) == (4, 4)
+    assert too_long.status_code == 422
+
+
 async def test_the_structure_is_served_as_stored(api: Api) -> None:
     owner = await api.user()
-    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    response = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
     url = response.json()["status_url"]
     assert (await api.client.get(f"{url}/structure", headers=auth(owner))).status_code == 409
     await api.drain()
@@ -320,7 +368,7 @@ async def test_the_structure_is_served_as_stored(api: Api) -> None:
 
 async def test_the_model_exchanges_are_listed_per_run(api: Api) -> None:
     owner = await api.user()
-    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    response = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
     url = response.json()["status_url"]
     await api.drain()
     # Without a language model nothing was sent.
@@ -355,7 +403,7 @@ async def test_the_model_exchanges_are_listed_per_run(api: Api) -> None:
 
 async def test_page_images_are_served_by_number(api: Api) -> None:
     owner = await api.user()
-    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    response = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
     url = response.json()["status_url"]
     assert (await api.client.get(f"{url}/pages/1", headers=auth(owner))).status_code == 404
     await api.drain()
@@ -377,10 +425,9 @@ async def test_retry_and_reprocess(api: Api) -> None:
             raise UnprocessableDocumentError("the PDF is encrypted")
 
     owner = await api.user()
-    executors = api.services.pipeline._executors
-    working = executors[Node.OCR]
-    executors[Node.OCR] = Broken()  # type: ignore[assignment]
-    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    pipeline = api.services.pipeline
+    working = pipeline.replace_executor(Node.OCR, Broken())  # type: ignore[arg-type]
+    response = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
     url = response.json()["status_url"]
     await api.drain()
     failed = (await api.client.get(url, headers=auth(owner))).json()
@@ -392,7 +439,7 @@ async def test_retry_and_reprocess(api: Api) -> None:
     )
     assert skip.status_code == 409
 
-    executors[Node.OCR] = working
+    pipeline.replace_executor(Node.OCR, working)
     retried = await api.client.post(f"{url}/retry", headers=auth(owner))
     assert retried.status_code == 202
     processing = retried.json()["processing"]
@@ -421,7 +468,7 @@ async def test_retry_and_reprocess(api: Api) -> None:
 
 async def test_reprocess_validates_the_step(api: Api) -> None:
     owner = await api.user()
-    response = await api.client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+    response = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
     url = response.json()["status_url"]
     await api.drain()
     for body in ({"from_node": "receive"}, {"from_node": "nope"}, {}):
@@ -429,6 +476,11 @@ async def test_reprocess_validates_the_step(api: Api) -> None:
         assert invalid.status_code == 422, body
         assert invalid.headers["content-type"] == PROBLEM
         assert "from_node" in invalid.json()["detail"]
+    misspelt = await api.client.post(
+        f"{url}/reprocess", json={"from_node": "parse", "frm_node": "ocr"}, headers=auth(owner)
+    )
+    assert misspelt.status_code == 422
+    assert "frm_node" in misspelt.json()["detail"]
 
 
 async def test_only_the_owner_controls_processing(api: Api) -> None:
@@ -436,7 +488,7 @@ async def test_only_the_owner_controls_processing(api: Api) -> None:
     shared = await api.services.spaces.create(owner.id, "Shared")
     await api.services.spaces.share(owner.id, shared.id, writer.id, ShareLevel.READ_WRITE)
     response = await api.client.post(
-        DOCUMENTS, files=pdf(), data={"space_id": str(shared.id)}, headers=auth(owner)
+        DOCUMENTS, files=sample_file(), data={"space_id": str(shared.id)}, headers=auth(owner)
     )
     url = response.json()["status_url"]
     await api.drain()
@@ -474,7 +526,7 @@ async def test_the_limit_is_configured() -> None:
     async with httpx2.AsyncClient(
         transport=httpx2.ASGITransport(app=app), base_url="http://papiq"
     ) as client:
-        response = await client.post(DOCUMENTS, files=pdf(), headers=auth(owner))
+        response = await client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
     assert response.status_code == 413
 
 

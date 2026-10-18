@@ -59,14 +59,9 @@ from papiq.core.domain.identity import (
 )
 from papiq.core.domain.ids import ApiTokenId, SessionId, UserId
 from papiq.core.domain.users import User
-from papiq.core.ports import (
-    Clock,
-    PasswordHasher,
-    SecretCipher,
-    Totp,
-    UnitOfWork,
-    UnitOfWorkFactory,
-)
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.identity import PasswordHasher, SecretCipher, Totp
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import load_actor
 
 log = logging.getLogger(__name__)
@@ -74,10 +69,13 @@ log = logging.getLogger(__name__)
 TOTP_ISSUER = "Papiq"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class SessionPolicy:
-    idle: timedelta = timedelta(days=1)
-    max_age: timedelta = timedelta(days=30)
+    """`idle` and `max_age` are configuration: the composition sets them from the settings,
+    whose defaults are the one source."""
+
+    idle: timedelta
+    max_age: timedelta
     # Last use is written at most this often, not on every request.
     touch_interval: timedelta = timedelta(minutes=1)
 
@@ -129,14 +127,14 @@ class AuthService:
         hasher: PasswordHasher,
         cipher: SecretCipher,
         totp: Totp,
-        sessions: SessionPolicy | None = None,
+        sessions: SessionPolicy,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._hasher = hasher
         self._cipher = cipher
         self._totp = totp
-        self._policy = sessions or SessionPolicy()
+        self._policy = sessions
         self._dummy_hash: str | None = None
 
     @property

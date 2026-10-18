@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from datetime import timedelta
 
 import pytest
@@ -18,19 +19,17 @@ from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.pipeline import Node
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import (
-    DocumentFilter,
-    EmbeddingResult,
-    Embeddings,
-    SearchQuery,
-    SearchResult,
-)
+from papiq.core.ports.embeddings import EmbeddingResult, Embeddings
+from papiq.core.ports.repository import DocumentFilter
+from papiq.core.ports.search_index import SearchQuery, SearchResult
 from papiq.core.services.search import SearchPolicy, SearchService
-from tests.builders import UNCERTAIN
-from tests.unit.services.conftest import Returns, World
+from tests import builders
+from tests.builders import UNCERTAIN, Returns
 from tests.unit.services.search_support import BrokenEmbeddings, Setup
+from tests.unit.services.support import World
 
 
+@dataclass
 class Scene:
     setup: Setup
     owner: User
@@ -44,7 +43,9 @@ class Scene:
         self, policy: SearchPolicy | None = None, embeddings: Embeddings | str | None = "same"
     ) -> SearchService:
         used = self.setup.embeddings if isinstance(embeddings, str) else embeddings
-        return SearchService(self.setup.world.uow, self.setup.index, used, policy)
+        return SearchService(
+            self.setup.world.uow, self.setup.index, policy or builders.SEARCH, embeddings=used
+        )
 
     async def ids(
         self, user: User, text: str, filter: DocumentFilter | None = None
@@ -55,17 +56,16 @@ class Scene:
 
 @pytest.fixture
 async def scene(world: World) -> Scene:
-    scene = Scene()
-    scene.setup = Setup(world)
-    scene.owner, scene.reader = await world.user("owner"), await world.user("reader")
-    scene.stranger = await world.user("stranger")
-    scene.shared = await world.spaces.create(scene.owner.id, "Household")
-    await world.spaces.share(scene.owner.id, scene.shared.id, scene.reader.id, ShareLevel.READ)
-    scene.shared_document = await scene.setup.document(scene.owner, "Stromrechnung September")
-    await world.documents.move(scene.owner.id, scene.shared_document.id, scene.shared.id)
-    scene.private_document = await scene.setup.document(scene.owner, "Mietvertrag Wohnung")
-    await scene.setup.settle()
-    return scene
+    setup = Setup(world)
+    owner, reader = await world.user("owner"), await world.user("reader")
+    stranger = await world.user("stranger")
+    shared = await world.spaces.create(owner.id, "Household")
+    await world.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
+    shared_document = await setup.document(owner, "Stromrechnung September")
+    await world.documents.move(owner.id, shared_document.id, shared.id)
+    private_document = await setup.document(owner, "Mietvertrag Wohnung")
+    await setup.settle()
+    return Scene(setup, owner, reader, stranger, shared, shared_document, private_document)
 
 
 async def test_the_owner_finds_everything_in_any_lane(scene: Scene) -> None:
@@ -162,7 +162,7 @@ async def test_the_filter_is_applied_to_the_database_state_too(scene: Scene) -> 
 
 async def test_a_deactivated_user_finds_nothing(scene: Scene) -> None:
     admin = await scene.setup.world.user(role=Role.ADMIN)
-    await scene.setup.world.users.set_active(admin.id, scene.reader.id, False)
+    await scene.setup.world.users.update(admin.id, scene.reader.id, active=False)
     with pytest.raises(AuthenticationError):
         await scene.ids(scene.reader, "Stromrechnung")
 
@@ -224,7 +224,9 @@ async def test_a_search_with_meaning_pages_on_whatever_the_words_estimate(scene:
 
     index = Estimating()
     index.replace_all(dict(scene.setup.index.documents))
-    service = SearchService(scene.setup.world.uow, index, scene.setup.embeddings)
+    service = SearchService(
+        scene.setup.world.uow, index, builders.SEARCH, embeddings=scene.setup.embeddings
+    )
     with_meaning = await service.search(scene.owner.id, "Rechnung", limit=1, semantic_ratio=0.5)
     assert (with_meaning.semantic, with_meaning.next_offset) == (True, 1)
     words = await service.search(scene.owner.id, "Rechnung", limit=1, semantic_ratio=0)
@@ -232,7 +234,7 @@ async def test_a_search_with_meaning_pages_on_whatever_the_words_estimate(scene:
 
 
 async def test_a_query_vector_of_another_length_goes_by_words(scene: Scene) -> None:
-    service = scene.search(SearchPolicy(dimensions=3))  # the fake vectors have more
+    service = scene.search(replace(builders.SEARCH, dimensions=3))  # the fake vectors have more
     page = await service.search(scene.owner.id, "Stromrechnung", semantic_ratio=0.5)
     assert page.semantic is False
     assert [item.document.id for item in page.items] == [scene.shared_document.id]
@@ -250,7 +252,9 @@ async def test_with_embeddings_the_meaning_takes_part(scene: Scene) -> None:
 async def test_the_query_gets_its_prefix(scene: Scene) -> None:
     embeddings = scene.setup.embeddings
     assert isinstance(embeddings, FakeEmbeddings)
-    await scene.search(SearchPolicy(query_prefix="query: ")).search(scene.owner.id, "Strom")
+    await scene.search(replace(builders.SEARCH, query_prefix="query: ")).search(
+        scene.owner.id, "Strom"
+    )
     assert embeddings.calls[-1] == ["query: Strom"]
 
 
@@ -283,7 +287,7 @@ async def test_a_slow_embedding_service_leaves_full_text(scene: Scene) -> None:
             await asyncio.sleep(5)
             raise AssertionError("too slow")
 
-    policy = SearchPolicy(embed_timeout=timedelta(milliseconds=20))
+    policy = replace(builders.SEARCH, embed_timeout=timedelta(milliseconds=20))
     page = await scene.search(policy, Slow()).search(scene.owner.id, "Stromrechnung")
     assert not page.semantic
     assert len(page.items) == 1
@@ -294,7 +298,7 @@ async def test_an_unreachable_index_raises(scene: Scene) -> None:
         async def search(self, query: SearchQuery) -> SearchResult:
             raise SearchUnavailableError("connection refused")
 
-    service = SearchService(scene.setup.world.uow, Down())  # type: ignore[arg-type]
+    service = SearchService(scene.setup.world.uow, Down(), builders.SEARCH)  # type: ignore[arg-type]
     with pytest.raises(SearchUnavailableError):
         await service.search(scene.owner.id, "Strom")
 
@@ -320,7 +324,7 @@ async def test_the_index_never_sees_a_query_without_the_callers_rights(scene: Sc
             seen.append(query)
             return SearchResult(hits=[], estimated_total=0, semantic=False)
 
-    service = SearchService(scene.setup.world.uow, Spy())  # type: ignore[arg-type]
+    service = SearchService(scene.setup.world.uow, Spy(), builders.SEARCH)  # type: ignore[arg-type]
     await service.search(scene.reader.id, "Strom")
     (query,) = seen
     assert query.visibility.user == scene.reader.id
@@ -330,7 +334,7 @@ async def test_the_index_never_sees_a_query_without_the_callers_rights(scene: Sc
 
 def test_policy_ratio_is_checked() -> None:
     with pytest.raises(ValueError):
-        SearchPolicy(semantic_ratio=2)
+        replace(builders.SEARCH, semantic_ratio=2)
 
 
 async def test_admins_search_their_reach_or_everything(scene: Scene) -> None:
@@ -351,6 +355,6 @@ async def test_admins_search_their_reach_or_everything(scene: Scene) -> None:
         with pytest.raises(PermissionDeniedError):
             await search.search(user.id, "Stromrechnung", all_users=True)
     other = await scene.setup.world.user("other admin", role=Role.ADMIN)
-    await scene.setup.world.users.set_active(other.id, admin.id, False)
+    await scene.setup.world.users.update(other.id, admin.id, active=False)
     with pytest.raises(AuthenticationError):
         await search.search(admin.id, "Stromrechnung", all_users=True)

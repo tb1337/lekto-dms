@@ -1,7 +1,12 @@
 import pytest
 
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.reading import PageReading, readings_from_json, readings_to_json
+from papiq.core.domain.reading import (
+    OcrOutput,
+    PageReading,
+    readings_from_json,
+    readings_to_json,
+)
 
 
 @pytest.mark.parametrize(
@@ -31,3 +36,18 @@ def test_readings_as_the_log_keeps_them() -> None:
     # Entries from before readings, or with something else in them.
     assert readings_from_json(None) == ()
     assert readings_from_json([{"page": 1}, "x", {"page": 0, "words": 1, "unsure": 0}]) == ()
+
+
+def test_the_ocr_output_round_trip_and_what_an_old_entry_lacks() -> None:
+    output = OcrOutput(
+        archive="documents/x/archive.pdf",
+        pages=2,
+        pdfa=True,
+        readings=(PageReading(page=1, words=10, unsure=1),),
+        vision={"model": "vlm", "endpoint": "vlm.lan", "prompt": "p", "calls": 1},
+        tokens=({"prompt": 3, "completion": 1, "usage": {}},),
+    )
+    assert OcrOutput.from_json(output.to_json()) == output
+    plain = OcrOutput(archive="documents/x/archive.pdf", pages=1, pdfa=False)
+    assert plain.to_json() == {"archive": "documents/x/archive.pdf", "pages": 1, "pdfa": False}
+    assert OcrOutput.from_json({}) == OcrOutput(archive="", pages=0, pdfa=False)

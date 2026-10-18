@@ -10,7 +10,7 @@
   token cannot be used to take over an account.
 """
 
-from typing import Annotated
+from typing import Annotated, Literal, TypedDict
 
 from fastapi import Depends, Request, Response
 
@@ -20,6 +20,7 @@ from papiq.core.domain.errors import AuthenticationError, PermissionDeniedError
 from papiq.core.domain.identity import csrf_matches
 from papiq.core.domain.ids import UserId
 from papiq.core.services.auth import Principal, SignedIn
+from papiq.core.services.oidc import FLOW_LIFETIME
 
 SECURE_SESSION_COOKIE = "__Host-papiq_session"
 SESSION_COOKIE = "papiq_session"  # without `Secure`, for development over plain HTTP
@@ -123,48 +124,44 @@ async def optional_session(request: Request, context: Context) -> Principal | No
         return None
 
 
+class _CookieAttributes(TypedDict):
+    path: str
+    secure: bool
+    httponly: bool
+    samesite: Literal["lax"]
+
+
+def _cookie_attributes(context: ApiContext) -> _CookieAttributes:
+    """Of the session's and the OIDC flow's cookie: for the whole site, `Secure` unless the
+    server runs without, out of reach of scripts, and sent along when a link from elsewhere is
+    followed (the provider's redirect back)."""
+    return {"path": "/", "secure": context.cookie_secure, "httponly": True, "samesite": "lax"}
+
+
 def set_session_cookie(response: Response, context: ApiContext, signed_in: SignedIn) -> None:
     response.set_cookie(
         session_cookie_name(context),
         signed_in.token,
         max_age=int(context.auth.session_policy.max_age.total_seconds()),
-        path="/",
-        secure=context.cookie_secure,
-        httponly=True,
-        samesite="lax",
+        **_cookie_attributes(context),
     )
 
 
 def clear_session_cookie(response: Response, context: ApiContext) -> None:
-    response.delete_cookie(
-        session_cookie_name(context),
-        path="/",
-        secure=context.cookie_secure,
-        httponly=True,
-        samesite="lax",
-    )
+    response.delete_cookie(session_cookie_name(context), **_cookie_attributes(context))
 
 
 def set_flow_cookie(response: Response, context: ApiContext, value: str) -> None:
     response.set_cookie(
         flow_cookie_name(context),
         value,
-        max_age=600,
-        path="/",
-        secure=context.cookie_secure,
-        httponly=True,
-        samesite="lax",
+        max_age=int(FLOW_LIFETIME.total_seconds()),
+        **_cookie_attributes(context),
     )
 
 
 def clear_flow_cookie(response: Response, context: ApiContext) -> None:
-    response.delete_cookie(
-        flow_cookie_name(context),
-        path="/",
-        secure=context.cookie_secure,
-        httponly=True,
-        samesite="lax",
-    )
+    response.delete_cookie(flow_cookie_name(context), **_cookie_attributes(context))
 
 
 def client_address(request: Request) -> str | None:

@@ -28,23 +28,18 @@ from papiq.composition.container import (
     Container,
     build_memory_container,
     build_services,
-    neighbours_policy_of,
+    classification_nodes,
     openai_language_model,
-    policy_of,
+    retry_policy_of,
 )
 from papiq.composition.errors import ConfigurationError
-from papiq.composition.settings import Settings
-from papiq.core.domain.pipeline import NODES, Node
-from papiq.core.ports import LanguageModel
-from papiq.core.services.classification.nodes import FieldsNode, JudgeNode, LlmSignal
+from papiq.composition.settings import Settings, reported
+from papiq.core.domain.documents import Document
+from papiq.core.domain.pipeline import NODES, Node, NodeResult, Outcome
+from papiq.core.ports.llm import LanguageModel
 from papiq.core.services.classification.prompts import EXTRACT_PROMPT, PROPOSE_PROMPT
-from papiq.core.services.classification.signals import (
-    ClassifierSignal,
-    FactsSignal,
-    NeighboursSignal,
-)
-from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
-from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode, RetryPolicy
+from papiq.core.services.classification.signals import FactsSignal
+from papiq.core.services.pipeline import NodeExecutor, PipelineService
 
 FAKE_MODEL = "fixed answers"
 PIPELINE_VERSION = "evaluation"
@@ -59,7 +54,7 @@ class Evaluation:
     violations: int
 
 
-EMBEDDING_DIMENSIONS = 256
+EMBEDDING_DIMENSIONS = BagOfWordsEmbeddings.DIMENSIONS
 """Length of the bag-of-words vectors the trained run indexes with."""
 
 
@@ -75,6 +70,13 @@ def evaluation_container(run: Run) -> Container:
         embeddings=BagOfWordsEmbeddings(dimensions=EMBEDDING_DIMENSIONS),
         classifier=SklearnClassifier(),
     )
+
+
+class _Passes:
+    """A node the evaluation leaves out: it passes without doing anything."""
+
+    async def run(self, document: Document) -> NodeResult:
+        return NodeResult(outcome=Outcome.OK)
 
 
 def build_environment(
@@ -99,7 +101,6 @@ def build_environment(
         )
     services = build_services(container, settings)
     uow, clock, store = container.unit_of_work, container.clock, container.object_store
-    policy = policy_of(settings)
     trained = run is Run.TRAINED
     classifier = services.classifier if trained else None
     index = container.search_index if trained else None
@@ -107,26 +108,20 @@ def build_environment(
 
     def pipeline_for(case: Case | None) -> PipelineService:
         model = None if case is None else model_for(case)
+        # The text is stored: the nodes before the signals pass, and the codes of pages and
+        # the places of quotes are not read (there is no archive).
         executors: dict[Node, NodeExecutor] = {
-            node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE
+            node: _Passes() for node in NODES if node is not Node.RECEIVE
         }
-        signals: dict[Node, NodeExecutor] = {
-            Node.SIGNAL_LLM: LlmSignal(uow, store, model, clock, policy),
-            Node.SIGNAL_FACTS: FactsSignal(uow, store),
-            Node.SIGNAL_CLASSIFIER: ClassifierSignal(store, classifier),
-            Node.SIGNAL_NEIGHBOURS: NeighboursSignal(
-                uow, store, index, embeddings, neighbours_policy_of(settings)
-            ),
-        }
-        executors |= {node: ImportedSignal(uow, signal) for node, signal in signals.items()}
-        executors[Node.JUDGE] = ImportedJudgeNode(
-            uow,
-            JudgeNode(
-                uow, store, clock, policy, classifier_threshold=settings.classifier_threshold
-            ),
-        )
-        executors[Node.FIELDS] = ImportedFieldsNode(
-            uow, FieldsNode(uow, store, model, clock, policy)
+        executors |= classification_nodes(
+            container,
+            settings,
+            model=model,
+            classifier=classifier,
+            index=index,
+            embeddings=embeddings,
+            facts=FactsSignal(uow, store),
+            locator=None,
         )
         return PipelineService(
             uow,
@@ -134,7 +129,9 @@ def build_environment(
             store,
             executors,
             pipeline_version=PIPELINE_VERSION,
-            retry=RetryPolicy(max_attempts=1),
+            suggest_contact=settings.contact_suggest_threshold,
+            retry=replace(retry_policy_of(settings), max_attempts=1),
+            poor_reading=settings.poor_reading_threshold,
         )
 
     return Environment(
@@ -171,11 +168,7 @@ async def run_evaluation(
         model = openai_language_model(settings)
 
     def model_for(case: Case) -> LanguageModel | None:
-        if not fake:
-            return model
-        if case.fake is None:
-            raise ConfigurationError(f"case {case.name} has no fixed answer for --fake")
-        return FakeLanguageModel(case.fake.respond, model=FAKE_MODEL)
+        return model if not fake else fake_model_for(case)
 
     def report_progress(result: CaseResult) -> None:
         lane = "none" if result.lane is None else result.lane.value
@@ -197,21 +190,22 @@ async def run_evaluation(
         endpoint="memory" if model is None else model.endpoint,
         started=started,
         prompts=f"{PROPOSE_PROMPT}, {EXTRACT_PROMPT}",
-        settings={
-            "PAPIQ_LLM_INPUT_BUDGET": settings.llm_input_budget,
-            "PAPIQ_LLM_MAX_TAGS": settings.llm_max_tags,
-            "PAPIQ_LLM_TEMPERATURE": settings.llm_temperature,
-            "PAPIQ_LLM_RESPONSE_FORMAT": settings.llm_response_format,
-            "PAPIQ_CONFIDENCE_THRESHOLD": settings.confidence_threshold,
-            "PAPIQ_CONTACT_SUGGEST_THRESHOLD": settings.contact_suggest_threshold,
-            "PAPIQ_DEFAULT_CURRENCY": settings.default_currency,
-            "PAPIQ_CLASSIFIER_THRESHOLD": settings.classifier_threshold,
-            "PAPIQ_NEIGHBOURS": settings.neighbours,
-        },
+        settings=reported(
+            settings,
+            "llm_input_budget",
+            "llm_max_tags",
+            "llm_temperature",
+            "llm_response_format",
+            "confidence_threshold",
+            "contact_suggest_threshold",
+            "default_currency",
+            "classifier_threshold",
+            "neighbours",
+        ),
         fake=fake,
         training=len(evaluation.training),
     )
-    path = output or cases / "reports" / f"{started:%Y-%m-%d}-{_slug(info.model)}.md"
+    path = output or cases / "reports" / f"{started:%Y-%m-%d}-{slug(info.model)}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render(results, info), encoding="utf-8")
     summaries = [summarise(items, fake=fake) for items in results.values()]
@@ -224,5 +218,13 @@ async def run_evaluation(
     )
 
 
-def _slug(name: str) -> str:
+def fake_model_for(case: Case) -> FakeLanguageModel:
+    """The model that gives the case's fixed answers (`--fake`)."""
+    if case.fake is None:
+        raise ConfigurationError(f"case {case.name} has no fixed answer for --fake")
+    return FakeLanguageModel(case.fake.respond, model=FAKE_MODEL)
+
+
+def slug(name: str) -> str:
+    """A model's name as a report's file name has it."""
     return re.sub(r"[^a-z0-9.]+", "-", name.casefold()).strip("-") or "model"

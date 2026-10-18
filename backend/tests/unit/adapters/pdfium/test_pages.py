@@ -7,7 +7,8 @@ from PIL import Image
 
 from papiq.adapters.outbound.pdfium import PdfiumPageRenderer
 from papiq.core.domain import media_types
-from tests.contracts.processing import SAMPLES, PageRendererContract
+from tests.builders import SAMPLES
+from tests.contracts.processing import PageRendererContract
 
 
 @pytest.fixture

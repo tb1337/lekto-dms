@@ -1,8 +1,11 @@
 """OpenAI-compatible chat completions and embeddings over httpx2.
 
 Works with Ollama (`http://host:11434/v1`) and cloud providers that follow the OpenAI API. The
-base URL includes the version path; `/chat/completions` and `/embeddings` are appended.
+base URL includes the version path; `/chat/completions` and `/embeddings` are appended
+(`http_client.openai`).
 
+- One client per adapter keeps its connections; the composition closes it (`aclose`).
+- `timeout` limits a whole request, from sending to the last byte of the answer.
 - Structured output: `response_format` `json_schema` (strict) by default; `json_object` for
   providers that only promise JSON. The answer is not checked here (see the port).
 - No retries of its own: failures raise, and the pipeline's retry policy repeats the node.
@@ -10,13 +13,22 @@ base URL includes the version path; `/chat/completions` and `/embeddings` are ap
   excerpt of the provider's message.
 """
 
+import asyncio
 import logging
 from collections.abc import Sequence
 from typing import Any, Literal
-from urllib.parse import urlsplit
 
 import httpx2
 
+from papiq.adapters.outbound.http_client import endpoint_of
+from papiq.adapters.outbound.http_client.openai import (
+    ProtocolError,
+    answer_content,
+    auth_headers,
+    chat_url,
+    embeddings_url,
+    response_object,
+)
 from papiq.core.domain.errors import EmbeddingsError, LanguageModelError
 from papiq.core.ports.embeddings import EmbeddingResult
 from papiq.core.ports.llm import StructuredAnswer, StructuredRequest
@@ -24,8 +36,6 @@ from papiq.core.ports.llm import StructuredAnswer, StructuredRequest
 log = logging.getLogger(__name__)
 
 type ResponseFormat = Literal["json_schema", "json_object"]
-
-_EXCERPT = 300  # characters of an error message from the provider
 
 
 class OpenAiCompatLanguageModel:
@@ -35,23 +45,21 @@ class OpenAiCompatLanguageModel:
         base_url: str,
         model: str,
         api_key: str | None = None,
-        temperature: float | None = 0.0,
+        temperature: float | None,
         seed: int | None = None,
-        timeout: float = 300.0,
-        response_format: ResponseFormat = "json_schema",
+        timeout: float,
+        response_format: ResponseFormat,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
-        """`temperature` None leaves it to the endpoint (some models reject one). `transport`
-        replaces the network in tests."""
-        self._url = base_url.rstrip("/") + "/chat/completions"
+        """`temperature` None leaves it to the endpoint (some models reject one); `timeout` in
+        seconds. The composition takes them from the settings. `transport` replaces the
+        network in tests."""
         self._model = model
-        self._headers = _headers(api_key)
         self._temperature = temperature
         self._seed = seed
-        self._timeout = timeout
         self._format = response_format
-        self._transport = transport
         self._endpoint = endpoint_of(base_url)
+        self._client = _Client(chat_url(base_url), api_key, timeout, transport, LanguageModelError)
 
     @property
     def model(self) -> str:
@@ -60,6 +68,9 @@ class OpenAiCompatLanguageModel:
     @property
     def endpoint(self) -> str:
         return self._endpoint
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
 
     async def complete(self, request: StructuredRequest) -> StructuredAnswer:
         body: dict[str, Any] = {
@@ -75,24 +86,19 @@ class OpenAiCompatLanguageModel:
             body["temperature"] = self._temperature
         if self._seed is not None:
             body["seed"] = self._seed
-        data = await _post(
-            self._url, body, self._headers, self._timeout, self._transport, LanguageModelError
-        )
+        data = await self._client.post(body)
         try:
-            choice = data["choices"][0]
-            content = choice["message"].get("content")
-            usage = data.get("usage")
-            usage = usage if isinstance(usage, dict) else {}
-            return StructuredAnswer(
-                content=content if isinstance(content, str) else "",
-                model=str(data.get("model") or self._model),
-                fingerprint=_optional_text(data.get("system_fingerprint")),
-                prompt_tokens=_optional_int(usage.get("prompt_tokens")),
-                completion_tokens=_optional_int(usage.get("completion_tokens")),
-                usage=usage,
-            )
-        except (KeyError, IndexError, TypeError, AttributeError):
+            content = answer_content(data)
+        except ProtocolError:
             raise LanguageModelError("the language model sent an unusable response") from None
+        usage = data.get("usage")
+        usage = usage if isinstance(usage, dict) else {}
+        return StructuredAnswer(
+            content=content,
+            model=str(data.get("model") or self._model),
+            fingerprint=_optional_text(data.get("system_fingerprint")),
+            usage=usage,
+        )
 
     def _response_format(self, request: StructuredRequest) -> dict[str, Any]:
         if self._format == "json_object":
@@ -110,26 +116,28 @@ class OpenAiCompatEmbeddings:
         base_url: str,
         model: str,
         api_key: str | None = None,
-        timeout: float = 60.0,
+        timeout: float,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
-        self._url = base_url.rstrip("/") + "/embeddings"
+        """`timeout` in seconds, from the settings. `transport` replaces the network in
+        tests."""
         self._model = model
-        self._headers = _headers(api_key)
-        self._timeout = timeout
-        self._transport = transport
+        self._client = _Client(
+            embeddings_url(base_url), api_key, timeout, transport, EmbeddingsError
+        )
 
     @property
     def model(self) -> str:
         return self._model
 
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
     async def embed(self, texts: Sequence[str]) -> EmbeddingResult:
         if not texts:
             return EmbeddingResult(vectors=[], model=self._model)
         body = {"model": self._model, "input": list(texts)}
-        data = await _post(
-            self._url, body, self._headers, self._timeout, self._transport, EmbeddingsError
-        )
+        data = await self._client.post(body)
         try:
             items = sorted(data["data"], key=lambda item: int(item["index"]))
             vectors = [tuple(float(value) for value in item["embedding"]) for item in items]
@@ -142,60 +150,42 @@ class OpenAiCompatEmbeddings:
         return EmbeddingResult(vectors=vectors, model=str(data.get("model") or self._model))
 
 
-def endpoint_of(base_url: str) -> str:
-    """Host and port of a URL, without credentials or path."""
-    parts = urlsplit(base_url)
-    host = parts.hostname or ""
-    if ":" in host:  # IPv6
-        host = f"[{host}]"
-    return f"{host}:{parts.port}" if parts.port else host
+class _Client:
+    """POSTs JSON to one URL of an endpoint and returns the JSON object of the answer; `error`
+    for anything else."""
 
+    def __init__(
+        self,
+        url: str,
+        api_key: str | None,
+        timeout: float,
+        transport: httpx2.AsyncBaseTransport | None,
+        error: type[LanguageModelError] | type[EmbeddingsError],
+    ) -> None:
+        self._url = url
+        self._timeout = timeout
+        self._error = error
+        self._client = httpx2.AsyncClient(
+            transport=transport, timeout=timeout, headers=auth_headers(api_key)
+        )
 
-def _headers(api_key: str | None) -> dict[str, str]:
-    return {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    async def aclose(self) -> None:
+        await self._client.aclose()
 
-
-async def _post(
-    url: str,
-    body: dict[str, Any],
-    headers: dict[str, str],
-    timeout: float,
-    transport: httpx2.AsyncBaseTransport | None,
-    error: type[LanguageModelError] | type[EmbeddingsError],
-) -> dict[str, Any]:
-    try:
-        async with httpx2.AsyncClient(transport=transport, timeout=timeout) as client:
-            response = await client.post(url, json=body, headers=headers)
-    except httpx2.TimeoutException:
-        raise error(f"no answer within {timeout:g} seconds") from None
-    except httpx2.HTTPError as failure:
-        raise error(f"cannot reach {endpoint_of(url)}: {type(failure).__name__}") from None
-    if response.status_code >= 400:
-        raise error(f"HTTP {response.status_code}: {_message(response)}")
-    try:
-        data = response.json()
-    except ValueError:
-        raise error("the response is not JSON") from None
-    if not isinstance(data, dict):
-        raise error("the response is not a JSON object")
-    return data
-
-
-def _message(response: httpx2.Response) -> str:
-    """The provider's error message, shortened; the raw body if it is not the usual JSON."""
-    try:
-        data = response.json()
-        detail = data["error"]["message"] if isinstance(data["error"], dict) else data["error"]
-        text = str(detail)
-    except (ValueError, KeyError, TypeError):
-        text = response.text
-    text = " ".join(text.split())
-    return text[:_EXCERPT] or response.reason_phrase
+    async def post(self, body: dict[str, Any]) -> dict[str, Any]:
+        try:
+            async with asyncio.timeout(self._timeout):
+                response = await self._client.post(self._url, json=body)
+        except (TimeoutError, httpx2.TimeoutException):
+            raise self._error(f"no answer within {self._timeout:g} seconds") from None
+        except httpx2.HTTPError as failure:
+            endpoint = endpoint_of(self._url)
+            raise self._error(f"cannot reach {endpoint}: {type(failure).__name__}") from None
+        try:
+            return response_object(response)
+        except ProtocolError as problem:
+            raise self._error(str(problem)) from None
 
 
 def _optional_text(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
-
-
-def _optional_int(value: object) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None

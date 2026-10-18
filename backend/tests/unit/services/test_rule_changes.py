@@ -9,7 +9,7 @@ from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.errors import NotFoundError, ValidationError
 from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.pipeline import RULES_CHANGE, Lane, Outcome, ProcessingStatus
-from papiq.core.domain.rule_engine import Note
+from papiq.core.domain.rule_planner import Note, NoteKind
 from papiq.core.domain.rules import (
     Condition,
     ConditionField,
@@ -22,7 +22,6 @@ from papiq.core.domain.rules import (
 )
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.services.documents import MetadataChange
-from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (
     Classifies,
     add_tags,
@@ -33,6 +32,7 @@ from tests.unit.services.rules_support import (
     has_tag,
     rule_world,
 )
+from tests.unit.services.support import World
 
 CHANGE = (Trigger.CHANGE,)
 
@@ -71,7 +71,7 @@ async def test_a_change_rule_acts_when_it_starts_to_hold(world: World) -> None:
         owner.id, document.id, DocumentChanges(contact_id=acme.id, title="Mine")
     )
     assert applied(change) == ["tags"]
-    assert reported(change) == [Note("title", "overruled", "a person decided this field")]
+    assert reported(change) == [Note("title", NoteKind.OVERRULED, "a person decided this field")]
     stored = await r.stored(document)
     assert (stored.tag_ids, stored.title, stored.lane) == ({tag.id}, "Mine", Lane.GREEN)
     entry = (await r.rule_entries(document, RULES_CHANGE))[-1]
@@ -100,7 +100,9 @@ async def test_a_change_rule_acts_when_it_starts_to_hold(world: World) -> None:
         owner.id, document.id, DocumentChanges(contact_id=acme.id)
     )
     assert change.rules is not None and len(change.rules.plan.reports) == 1
-    assert Note("tags", "overruled", f"a person removed tag '{tag.name}'") in reported(change)
+    assert Note("tags", NoteKind.OVERRULED, f"a person removed tag '{tag.name}'") in reported(
+        change
+    )
     assert (await r.stored(document)).tag_ids == set()
 
 
@@ -119,7 +121,7 @@ async def test_a_change_rule_keeps_what_the_person_decided_earlier(world: World)
     )
 
     assert applied(change) == []
-    assert reported(change) == [Note("title", "overruled", "a person decided this field")]
+    assert reported(change) == [Note("title", NoteKind.OVERRULED, "a person decided this field")]
     assert (await r.stored(document)).title == "Mine"
 
 
@@ -387,7 +389,7 @@ async def test_rules_take_tags_of_the_scope_their_place_asks_for(world: World) -
         definition("C", on(ConditionField.DOCUMENT_TYPE_GROUP, group.id), add_tags(tag.id)),
         definition("D", channel_api(), add_tags(kinds.id)),
     ):
-        with pytest.raises(ValidationError, match="scope"):
+        with pytest.raises(ValidationError, match=r"is a .*, not a "):
             await r.user_rule(owner, wrong)
     await r.user_rule(
         owner, definition("E", on(ConditionField.DOCUMENT_TYPE_GROUP, kinds.id), add_tags(tag.id))

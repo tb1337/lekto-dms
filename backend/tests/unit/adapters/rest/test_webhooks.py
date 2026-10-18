@@ -8,8 +8,7 @@ from papiq.core.domain.identity import TokenScope
 from papiq.core.domain.ids import DocumentId, EventId, WebhookId, new_id
 from papiq.core.domain.webhooks import DeliveryOutcome, WebhookDelivery
 from tests.api import auth, bearer
-from tests.unit.adapters.rest.conftest import Api
-from tests.unit.adapters.rest.test_resources import post
+from tests.unit.adapters.rest.support import Api, post
 
 BODY = {
     "name": "n8n",

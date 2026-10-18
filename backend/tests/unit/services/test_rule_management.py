@@ -3,6 +3,7 @@ references go away."""
 
 import pytest
 
+from papiq.adapters.outbound.regex import RegexPatternMatcher
 from papiq.core.domain.errors import (
     ConflictError,
     NotFoundError,
@@ -23,8 +24,10 @@ from papiq.core.domain.rules import (
     SetTitle,
 )
 from papiq.core.domain.spaces import ShareLevel
-from tests.unit.services.conftest import World
-from tests.unit.services.rules_support import channel_api, definition, rule_world
+from papiq.core.services.rules import RuleService
+from tests.builders import TEMPLATES
+from tests.unit.services.rules_support import channel_api, definition, rule_world, text_matches
+from tests.unit.services.support import World
 
 
 async def test_user_rules_are_their_owners_and_global_rules_the_admins(world: World) -> None:
@@ -71,12 +74,13 @@ async def test_user_rules_are_their_owners_and_global_rules_the_admins(world: Wo
     assert (await r.rules.set_enabled(r.admin.id, mine.id, True)).enabled
 
     # Listing: the caller's rules and the global ones; all users' for admins only.
-    assert {rule.id for rule in await r.rules.list(owner.id)} == {mine.id, shared.id}
-    assert {rule.id for rule in await r.rules.list(owner.id, scope=RuleScope.USER)} == {mine.id}
-    assert {rule.id for rule in await r.rules.list(r.admin.id)} == {shared.id}
+    assert {rule.id for rule in await r.rules.list_rules(owner.id)} == {mine.id, shared.id}
+    user_rules = await r.rules.list_rules(owner.id, scope=RuleScope.USER)
+    assert {rule.id for rule in user_rules} == {mine.id}
+    assert {rule.id for rule in await r.rules.list_rules(r.admin.id)} == {shared.id}
     with pytest.raises(PermissionDeniedError):
-        await r.rules.list(owner.id, all_users=True)
-    everything = await r.rules.list(r.admin.id, all_users=True)
+        await r.rules.list_rules(owner.id, all_users=True)
+    everything = await r.rules.list_rules(r.admin.id, all_users=True)
     assert {rule.id for rule in everything} == {mine.id, theirs.id, shared.id}
     assert everything[0].id == shared.id  # same priority: global rules first
 
@@ -132,8 +136,8 @@ async def test_a_deleted_rule_never_runs_and_its_versions_stay_readable(world: W
         await r.rules.set_enabled(owner.id, rule.id, True)
     with pytest.raises(NotFoundError):
         await r.rules.delete(owner.id, rule.id)
-    assert await r.rules.list(owner.id) == []
-    assert await r.rules.list(r.admin.id, all_users=True) == []
+    assert await r.rules.list_rules(owner.id) == []
+    assert await r.rules.list_rules(r.admin.id, all_users=True) == []
     versions = await r.rules.versions(owner.id, rule.id)
     assert [version.definition.name for version in versions] == ["Tax", "Tax v2"]
 
@@ -222,7 +226,7 @@ async def test_deleting_a_user_removes_their_rules(world: World) -> None:
 
     with pytest.raises(NotFoundError):
         await r.rules.get(r.admin.id, gone.id)
-    assert [rule.id for rule in await r.rules.list(r.admin.id, all_users=True)] == [files.id]
+    assert [rule.id for rule in await r.rules.list_rules(r.admin.id, all_users=True)] == [files.id]
     rule = await r.rules.get(staying.id, files.id)
     assert (rule.enabled, rule.disabled_reason) == (False, "space 'Shared' was deleted")
 
@@ -304,3 +308,20 @@ async def test_a_field_a_template_uses_is_not_deleted(world: World) -> None:
         await service.delete_field(r.admin.id, gross.id)
     await r.rules.delete(owner.id, rule.id)
     await service.delete_field(r.admin.id, gross.id)
+
+
+async def test_a_pattern_is_checked_by_the_matcher_that_runs_it(world: World) -> None:
+    """Of the `regex` package, which knows Unicode properties that `re` refuses."""
+    r = await rule_world(world)
+    rules = RuleService(world.uow, world.clock, TEMPLATES, RegexPatternMatcher(0.2))
+    admin = r.admin.id
+    street = await r.tag("Street")
+    accepted = definition("Umlauts", text_matches(r"\p{L}+straße"), AddTags(frozenset({street.id})))
+    rule = await rules.create(admin, RuleScope.GLOBAL, accepted)
+    assert rule.definition == accepted
+    with pytest.raises(ValidationError, match="invalid pattern"):
+        broken = definition("Broken", text_matches("("), AddTags(frozenset({street.id})))
+        await rules.create(admin, RuleScope.GLOBAL, broken)
+    with pytest.raises(ValidationError, match="invalid pattern"):
+        broken = definition("Broken", text_matches("[a-"), AddTags(frozenset({street.id})))
+        await rules.change(admin, rule.id, broken)

@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from papiq.adapters.inbound.rest.context import Context, HealthCheck
+from papiq.adapters.inbound.rest.paths import HEALTH_PATH, PREFIX
 from papiq.adapters.inbound.rest.schemas.health import Health
 
 log = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ router = APIRouter(tags=["health"])
 
 
 @router.get(
-    "/health",
+    HEALTH_PATH.removeprefix(PREFIX),
     summary="Health of the API",
     response_model=Health,
     responses={

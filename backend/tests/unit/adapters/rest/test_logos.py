@@ -19,7 +19,7 @@ from papiq.core.services.objects import logo_key
 from tests import builders
 from tests.api import auth
 from tests.contracts.images import SVG, image
-from tests.unit.adapters.rest.conftest import Api, make_app
+from tests.unit.adapters.rest.support import Api, make_app
 
 PNG = image((180, 120))
 

@@ -179,6 +179,12 @@ def test_invalid_value_names_the_variable(
     assert value in message
 
 
+@pytest.mark.parametrize("value", ["xx_YY", "de DE"])
+def test_an_unknown_template_locale_is_refused(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    message = error_message(monkeypatch, {"PAPIQ_TEMPLATE_LOCALE": value})
+    assert "PAPIQ_TEMPLATE_LOCALE:" in message and f"unknown locale {value!r}" in message
+
+
 def test_postgres_requires_connection_parameters(monkeypatch: pytest.MonkeyPatch) -> None:
     message = error_message(monkeypatch, {"PAPIQ_DB_TYPE": "postgres"})
     for name in ("HOST", "NAME", "USER", "PASSWORD"):
@@ -231,10 +237,16 @@ def test_url_credentials_are_masked(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_choices_ignore_case_and_whitespace(monkeypatch: pytest.MonkeyPatch) -> None:
     set_env(
         monkeypatch,
-        {"PAPIQ_ROLE": "API", "PAPIQ_LOG_FORMAT": " Console ", "PAPIQ_DB_TYPE": "SQLite"},
+        {
+            "PAPIQ_ROLE": "API",
+            "PAPIQ_LOG_FORMAT": " Console ",
+            "PAPIQ_DB_TYPE": "SQLite",
+            "PAPIQ_CLASSIFIER": "NONE",
+        },
     )
     settings = load_settings()
     assert (settings.role, settings.log_format, settings.db_type) == ("api", "console", "sqlite")
+    assert settings.classifier == "none"
 
 
 def test_blank_values_count_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:

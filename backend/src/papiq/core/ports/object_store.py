@@ -44,9 +44,21 @@ class ObjectStore(Protocol):
         """Remove the object; does nothing if it does not exist."""
         ...
 
+    async def check(self) -> None:
+        """For health checks: raise unless the store can be used (the directory is writable,
+        the bucket exists and the credentials work)."""
+        ...
+
 
 def check_key(key: str) -> str:
     """Return `key` if it is a valid object key, otherwise raise ValueError."""
     if not isinstance(key, str) or not all(_SEGMENT.fullmatch(part) for part in key.split("/")):
         raise ValueError(f"invalid object key {key!r}")
     return key
+
+
+def check_readable(source: Path) -> None:
+    """Raise OSError unless the local file `source` can be read: `upload` checks it before it
+    sends or writes anything."""
+    with source.open("rb"):
+        pass

@@ -11,9 +11,8 @@ from papiq.composition.container import build_memory_container, build_services
 from papiq.core.domain.events import ClassifierTrained
 from papiq.core.domain.spaces import ShareLevel
 from tests.api import Stream, auth, issue_token, listen, serving, until
-from tests.builders import NOW, PASSWORD
-from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import Api, make_app
+from tests.builders import NOW, PASSWORD, SAMPLES
+from tests.unit.adapters.rest.support import Api, make_app
 
 EVENTS = f"{PREFIX}/events"
 
@@ -33,7 +32,6 @@ async def test_events_reach_only_users_who_may_read_the_document(api: Api) -> No
         for stream in streams.values():
             await asyncio.wait_for(stream.ready.wait(), timeout=5)
             assert stream.status == 200
-        await asyncio.sleep(0.05)  # streams are registered once the first byte is out
 
         files = {"file": ("scan.pdf", (SAMPLES / "scan.pdf").read_bytes(), "x/y")}
         response = await client.post(
@@ -86,7 +84,6 @@ async def test_the_end_of_a_training_reaches_only_admins(api: Api) -> None:
         ]
         for stream in streams.values():
             await asyncio.wait_for(stream.ready.wait(), timeout=5)
-        await asyncio.sleep(0.05)
         async with api.container.unit_of_work() as uow:
             await uow.outbox.add([ClassifierTrained(occurred_at=NOW, number=4, examples=120)])
             await uow.commit()
@@ -116,7 +113,6 @@ async def test_a_stream_for_one_document(api: Api) -> None:
         stream = Stream()
         task = asyncio.create_task(listen(client, owner, stream, document_id=first["id"]))
         await asyncio.wait_for(stream.ready.wait(), timeout=5)
-        await asyncio.sleep(0.05)
         await client.post(f"{PREFIX}/documents", files=other, headers=auth(owner))
         await api.drain()
         await until(lambda: stream.types().count("document.lane_changed") == 1)

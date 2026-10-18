@@ -19,6 +19,9 @@ undelivered events; a document whose judge waits gets a job for `classify` again
 text is parsed.
 """
 
+import os
+import time
+import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -27,7 +30,6 @@ import sqlalchemy as sa
 from alembic import op
 
 from papiq.adapters.outbound.sql import types
-from papiq.core.domain.ids import new_id
 
 revision: str = "0016"
 down_revision: str | None = "0015"
@@ -210,7 +212,7 @@ def _queue(connection: sa.Connection, document: Any, run: int, nodes: Sequence[s
     for node in nodes:
         connection.execute(
             sa.insert(_jobs).values(
-                id=new_id(),
+                id=_new_id(),
                 kind="pipeline.node",
                 payload={"document_id": str(document), "node": node, "run": run},
                 dedup_key=f"{document}:{run}:{node}",
@@ -220,3 +222,14 @@ def _queue(connection: sa.Connection, document: Any, run: int, nodes: Sequence[s
                 run_at=now,
             )
         )
+
+
+def _new_id() -> uuid.UUID:
+    """A UUIDv7, as `papiq.core.domain.ids.new_id` makes it today (a revision keeps its own
+    copy)."""
+    milliseconds = time.time_ns() // 1_000_000 & ((1 << 48) - 1)
+    random = int.from_bytes(os.urandom(10))
+    value = milliseconds << 80 | random
+    value = value & ~(0xF << 76) | 0x7 << 76  # version 7
+    value = value & ~(0x3 << 62) | 0x2 << 62  # variant RFC 9562
+    return uuid.UUID(int=value)

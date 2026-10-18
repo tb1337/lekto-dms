@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
@@ -16,30 +17,29 @@ from papiq.core.domain.identifiers import Identifier, IdentifierKind, Identifier
 from papiq.core.domain.ids import ContactId
 from papiq.core.domain.master_data import Assignment, Contact, Tag, TagScope
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import UnitOfWork
+from papiq.core.ports.unit_of_work import UnitOfWork
 from papiq.core.services.classifier import (
     CHECK_JOB,
     TRAIN_JOB,
-    ClassifierPolicy,
     ClassifierService,
 )
 from papiq.core.services.master_data import replace_learned_identifiers
 from papiq.core.services.objects import classifier_key, text_key
 from tests import builders
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 OWN_IBAN = "DE02 1203 0000 0000 2020 51"
 THEIR_IBAN = "DE89 3704 0044 0532 0130 00"
 
 
-def service(world: World, **policy: object) -> ClassifierService:
-    values = {"min_examples": 4, "retrain_after": 2, **policy}
+def service(world: World, **policy: Any) -> ClassifierService:
+    values: dict[str, Any] = {"min_examples": 4, "retrain_after": 2, **policy}
     return ClassifierService(
         world.uow,
         world.object_store,
         world.clock,
         FakeClassifier(),
-        ClassifierPolicy(**values),  # type: ignore[arg-type]
+        replace(builders.CLASSIFIER, **values),
     )
 
 

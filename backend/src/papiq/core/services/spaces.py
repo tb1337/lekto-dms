@@ -4,8 +4,9 @@ from papiq.core.domain.permissions import can_manage_space
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import User
 from papiq.core.domain.validation import name_key
-from papiq.core.ports import Clock, UnitOfWork, UnitOfWorkFactory
-from papiq.core.services._access import load_actor, visible_space
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from papiq.core.services._access import admin_only, load_actor, visible_space
 from papiq.core.services.rules.references import disable_rules, refers_to
 
 
@@ -14,7 +15,7 @@ class SpaceService:
         self._uow = uow
         self._clock = clock
 
-    async def list(self, actor: UserId) -> list[Space]:
+    async def list_spaces(self, actor: UserId) -> list[Space]:
         """Spaces the user owns or that are shared with them; every space for admins."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
@@ -51,8 +52,7 @@ class SpaceService:
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             if owner is not None and owner != actor:
-                if not user.is_active_admin:
-                    raise PermissionDeniedError("only admins create spaces for other users")
+                admin_only(user, "create spaces for other users")
                 target = await uow.users.find(owner)
                 if target is None or not target.active:
                     raise NotFoundError("user", owner)
@@ -101,6 +101,8 @@ async def _managed_space(uow: UnitOfWork, user: User, id: SpaceId) -> Space:
 
 
 async def _check_name_free(uow: UnitOfWork, space: Space) -> None:
+    """Space names are unique per owner. The repository holds that rule too
+    (`core.ports.repository`); this look-up gives the message."""
     for other in await uow.spaces.list_accessible(space.owner_id):
         if (
             other.id != space.id

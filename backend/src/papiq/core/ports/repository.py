@@ -10,7 +10,9 @@ Common rules for every adapter:
 - Uniqueness (raises ConflictError at the latest on commit): usernames; space names per owner;
   one default space per owner; names of contacts, document types and field definitions, and
   of tags per scope; the original (SHA-256) per document owner. Names compare regardless of
-  case.
+  case. The services look a name up before they write, for a message that names it ("'X'
+  already exists"); the adapter's rule is the net for two requests at once, which the look-up
+  cannot see.
 - `get` raises NotFoundError, `find` returns None.
 """
 
@@ -152,6 +154,60 @@ class DocumentFilter:
         if self.topics is not None and not self.topics:
             raise ValueError("a set of topics in a filter is never empty")
 
+    def matches(self, view: "FilterView") -> bool:
+        """Whether a document (as `view` shows it) matches; for the core and the in-memory
+        adapters, where SQL and the search index have their query languages."""
+        return (
+            (self.contact is None or view.contact == self.contact)
+            and (self.document_type is None or view.document_type == self.document_type)
+            and (self.topics is None or bool(self.topics & view.topics))
+            and all(tags & view.tags for tags in self.tags)
+            and all(groups & view.contact_groups for groups in self.contact_groups)
+            and all(groups & view.document_type_groups for groups in self.document_type_groups)
+            and (self.space is None or view.space == self.space)
+            and (self.lanes is None or view.lane in self.lanes)
+            and (self.confirmed is None or view.confirmed is self.confirmed)
+            and (self.field is None or self.field in view.fields)
+        )
+
+
+@dataclass(frozen=True, kw_only=True)
+class FilterView:
+    """What a `DocumentFilter` looks at of a document: from a `Document` and the groups of its
+    contact and type (`of`), or from what the search index holds of it."""
+
+    contact: ContactId | None
+    document_type: DocumentTypeId | None
+    topics: frozenset[TagId]  # the topic (the index: with those above it)
+    tags: frozenset[TagId]
+    contact_groups: frozenset[TagId]
+    document_type_groups: frozenset[TagId]
+    space: SpaceId
+    lane: Lane | None
+    confirmed: bool
+    fields: frozenset[FieldId]
+
+    @classmethod
+    def of(
+        cls,
+        document: Document,
+        *,
+        contact_groups: frozenset[TagId] = frozenset(),
+        document_type_groups: frozenset[TagId] = frozenset(),
+    ) -> "FilterView":
+        return cls(
+            contact=document.contact_id,
+            document_type=document.document_type_id,
+            topics=frozenset() if document.topic_id is None else frozenset({document.topic_id}),
+            tags=frozenset(document.tag_ids),
+            contact_groups=contact_groups,
+            document_type_groups=document_type_groups,
+            space=document.space_id,
+            lane=document.lane,
+            confirmed=document.confirmed_at is not None,
+            fields=frozenset(document.fields),
+        )
+
 
 class SortKey(StrEnum):
     CREATED = "created_at"  # the order documents came in, which is their ids'
@@ -182,6 +238,12 @@ class CountBy(StrEnum):
     FIELD = "field"
 
 
+PAGE_SIZE = 50
+"""Items of a page of a list when the caller names no size."""
+PAGE_LIMIT = 200
+"""Items a page may hold at most; the services clamp to it, the REST parameters declare it."""
+
+
 @dataclass(frozen=True)
 class DocumentPosition:
     """Where a page of a sorted list ended: its last document, and that document's value of
@@ -189,6 +251,12 @@ class DocumentPosition:
 
     id: DocumentId
     value: date | str | None = None
+
+    @classmethod
+    def after(cls, id: DocumentId | None) -> "DocumentPosition | None":
+        """The position after the document `id` in a list sorted by `CREATED`; None: from the
+        start."""
+        return None if id is None else cls(id)
 
     @classmethod
     def of(cls, document: Document, order: DocumentOrder) -> "DocumentPosition":
@@ -205,9 +273,9 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
     async def find_by_sha256(self, owner: UserId, sha256: Sha256) -> Document | None: ...
 
     async def list_visible_to(self, user: UserId) -> list[Document]:
-        """Documents within the user's reach (`papiq.core.domain.permissions.in_reach`): own
+        """Documents within the user's reach (`papiq.core.domain.permissions.within_reach`): own
         documents, and green documents in spaces the user owns or that are shared with them.
-        """
+        Whether the user is active the services check."""
         ...
 
     async def field_in_use(
@@ -424,7 +492,7 @@ class WebhookRepository(Protocol):
         ...
 
     async def deliveries(
-        self, webhook: WebhookId, *, before: DeliveryId | None = None, limit: int = 50
+        self, webhook: WebhookId, *, before: DeliveryId | None = None, limit: int = PAGE_SIZE
     ) -> list[WebhookDelivery]:
         """The log of a webhook, newest first (by id), the page after `before`."""
         ...

@@ -15,10 +15,10 @@ from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.rules import RuleScope, SetSpace
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import DocumentFilter
-from tests.builders import UNCERTAIN, incoming
-from tests.unit.services.conftest import Returns, World
+from papiq.core.ports.repository import DocumentFilter
+from tests.builders import UNCERTAIN, Returns, incoming
 from tests.unit.services.rules_support import add_tags, channel_api, definition, rule_world
+from tests.unit.services.support import World
 
 
 async def _second_admin(world: World) -> tuple[User, User]:
@@ -32,8 +32,8 @@ async def test_admins_list_spaces_of_everyone_and_manage_them(world: World) -> N
     office = await world.spaces.create(owner.id, "Office")
     await world.spaces.share(owner.id, office.id, friend.id, ShareLevel.READ)
 
-    assert office.id in {space.id for space in await world.spaces.list(admin.id)}
-    assert office.id not in {space.id for space in await world.spaces.list(stranger.id)}
+    assert office.id in {space.id for space in await world.spaces.list_spaces(admin.id)}
+    assert office.id not in {space.id for space in await world.spaces.list_spaces(stranger.id)}
     assert (await world.spaces.get(admin.id, office.id)).id == office.id
 
     renamed = await world.spaces.rename(admin.id, office.id, "Büro")
@@ -57,11 +57,11 @@ async def test_admins_list_spaces_of_everyone_and_manage_them(world: World) -> N
 
     # A deactivated admin has no rights.
     other = await world.spaces.create(owner.id, "Other")
-    await world.users.set_active(boss.id, admin.id, False)
+    await world.users.update(boss.id, admin.id, active=False)
     with pytest.raises(AuthenticationError):
         await world.spaces.rename(admin.id, other.id, "Gone")
     with pytest.raises(AuthenticationError):
-        await world.spaces.list(admin.id)
+        await world.spaces.list_spaces(admin.id)
 
 
 async def test_admins_control_other_users_documents_in_every_lane(world: World) -> None:
@@ -108,18 +108,19 @@ async def test_admins_control_other_users_documents_in_every_lane(world: World) 
         accept_suggestions=True,
         space=owners_space.id,
     )
-    assert confirmed.space_id == owners_space.id
+    assert confirmed.document.space_id == owners_space.id
+    assert confirmed.access is ShareLevel.READ_WRITE
     await world.drain()
     assert (await world.documents.get(owner.id, yellow.id)).lane is Lane.GREEN
 
     await world.pipeline().reprocess_from(admin.id, yellow.id, Node.PARSE)
     await world.drain()
-    await world.users.set_active(boss.id, admin.id, False)
+    await world.users.update(boss.id, admin.id, active=False)
     with pytest.raises(AuthenticationError):
         await world.documents.get(admin.id, yellow.id)
     with pytest.raises(AuthenticationError):
         await world.documents.delete(admin.id, yellow.id)
-    await world.users.set_active(boss.id, admin.id, True)
+    await world.users.update(boss.id, admin.id, active=True)
     await world.documents.delete(admin.id, yellow.id)
     with pytest.raises(NotFoundError):
         await world.documents.get(owner.id, yellow.id)
@@ -171,7 +172,7 @@ async def test_admins_confirm_into_any_space(world: World) -> None:
     await pipeline.reprocess_from(owner.id, received.id, Node.APPLY_RULES)
     await world.drain(pipeline)
     assert (await world.documents.get(owner.id, received.id)).lane is Lane.GREEN
-    await world.users.set_active(boss.id, admin.id, False)
+    await world.users.update(boss.id, admin.id, active=False)
     await pipeline.reprocess_from(owner.id, received.id, Node.APPLY_RULES)
     await world.drain(pipeline)
     assert (await world.documents.get(owner.id, received.id)).lane is Lane.YELLOW

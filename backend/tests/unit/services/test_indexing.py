@@ -1,6 +1,7 @@
 """The search index follows the documents: events lead to jobs, jobs write the index."""
 
 from collections.abc import Awaitable, Sequence
+from dataclasses import replace
 from datetime import date
 from uuid import UUID
 
@@ -25,13 +26,11 @@ from papiq.core.services.indexing import (
     INDEX_JOB,
     RECONCILE_JOB,
     REFRESH_JOB,
-    IndexingPolicy,
     split_sections,
 )
-from tests.builders import NOW, UNCERTAIN, incoming, index_document
-from tests.unit.services.conftest import Returns, World
+from tests import builders
+from tests.builders import HOUR, NOW, UNCERTAIN, Returns, incoming, index_document
 from tests.unit.services.search_support import (
-    HOUR,
     BrokenEmbeddings,
     HookedIndex,
     RacingIndex,
@@ -39,6 +38,7 @@ from tests.unit.services.search_support import (
     index_jobs,
     run_due,
 )
+from tests.unit.services.support import World
 
 OK = Outcome.OK
 
@@ -173,8 +173,8 @@ async def test_renaming_master_data_updates_the_documents_that_carry_it(setup: S
         await setup.world.documents.update_metadata(owner.id, id, changes)
     await setup.settle()
 
-    await setup.master_data.rename_contact(admin.id, contact.id, "Energie AG")
-    await setup.master_data.rename_tag(admin.id, tag.id, "Strom")
+    await setup.master_data.change_contact(admin.id, contact.id, name="Energie AG")
+    await setup.master_data.change_tag(admin.id, tag.id, name="Strom")
     assert sorted(
         job.kind for job in setup.world.database.jobs.values() if job.status.is_active
     ) == [
@@ -307,7 +307,7 @@ async def test_an_entry_holds_the_topic_with_those_above_it(setup: Setup) -> Non
 async def test_renaming_queues_nothing_without_a_search_index(world: World) -> None:
     admin = await world.user(role=Role.ADMIN)
     contact = await world.master_data.create_contact(admin.id, "Stadtwerke")
-    await world.master_data.rename_contact(admin.id, contact.id, "Energie AG")
+    await world.master_data.change_contact(admin.id, contact.id, name="Energie AG")
     assert not world.database.jobs
 
 
@@ -341,7 +341,9 @@ async def test_without_embeddings_the_index_has_no_vectors(world: World) -> None
 
 
 async def test_a_long_text_gets_one_vector_per_section(world: World) -> None:
-    setup = Setup(world, policy=IndexingPolicy(chunk_size=20, max_chunks=3, max_text=70))
+    setup = Setup(
+        world, policy=replace(builders.INDEXING, chunk_size=20, max_chunks=3, max_text=70)
+    )
     text = "\n\n".join(f"paragraph number {n}" for n in range(10))
     document = await setup.document(await world.user(), text)
     entry = setup.entry(document.id)
@@ -435,11 +437,13 @@ async def test_an_embedding_failure_keeps_the_vectors_that_are_there(world: Worl
 
 
 async def test_vectors_of_another_length_are_refused(world: World) -> None:
-    setup = Setup(world, policy=IndexingPolicy(dimensions=3))  # the fake vectors have more
+    setup = Setup(
+        world, policy=replace(builders.INDEXING, dimensions=3)
+    )  # the fake vectors have more
     owner = await world.user()
     received = await world.pipeline().receive(owner.id, incoming(b"%PDF-1 f"), filename="f.pdf")
     await setup.put_text(received.id, "Text")
-    with pytest.raises(EmbeddingsError, match="PAPIQ_EMBEDDING_DIMENSIONS"):
+    with pytest.raises(EmbeddingsError, match="do not have the 3 dimensions configured"):
         await setup.indexing.index_document(received.id)
     assert setup.entry(received.id).vectors == ()  # still found by its words
     await setup.indexing.index_document(received.id, tolerate_embedding_failure=True)
@@ -558,8 +562,7 @@ async def test_the_reconciliation_repeats_itself(setup: Setup) -> None:
     # One that recurs, and one for each start of a worker, which runs once.
     assert sorted(j.payload.get("once") is True for j in jobs) == [False, True, True]
     assert all(j.kind == RECONCILE_JOB for j in jobs)
-    while await setup.indexing.run_next_job():
-        pass
+    await builders.drain(setup.indexing)
     queued = [j for j in setup.world.database.jobs.values() if j.status is JobStatus.QUEUED]
     assert [j.kind for j in queued] == [RECONCILE_JOB]
     assert queued[0].run_at == setup.world.clock.now() + setup.policy.reconcile_interval
@@ -581,7 +584,7 @@ async def test_a_rebuild_replaces_the_index_from_database_and_store(setup: Setup
 
 async def test_a_rebuild_notices_changes_made_while_it_ran(world: World) -> None:
     index = HookedIndex()
-    setup = Setup(world, index=index, policy=IndexingPolicy(batch_size=1))
+    setup = Setup(world, index=index, policy=replace(builders.INDEXING, batch_size=1))
     owner = await world.user()
     first, second = await setup.document(owner, "one"), await setup.document(owner, "two")
     earlier = min(first.id, second.id)  # the build takes the documents in the order of the ids
@@ -598,7 +601,7 @@ async def test_a_rebuild_notices_changes_made_while_it_ran(world: World) -> None
 
 async def test_a_rebuild_notices_a_rename_made_while_it_ran(world: World) -> None:
     index = HookedIndex()
-    setup = Setup(world, index=index, policy=IndexingPolicy(batch_size=1))
+    setup = Setup(world, index=index, policy=replace(builders.INDEXING, batch_size=1))
     owner, admin = await world.user(), await world.user(role=Role.ADMIN)
     first, second = await setup.document(owner, "one"), await setup.document(owner, "two")
     contact = await setup.master_data.create_contact(admin.id, "Stadtwerke")
@@ -609,7 +612,7 @@ async def test_a_rebuild_notices_a_rename_made_while_it_ran(world: World) -> Non
 
     async def rename() -> None:
         # The refresh and index jobs run now and write to the index that is about to be replaced.
-        await setup.master_data.rename_contact(admin.id, contact.id, "Energie AG")
+        await setup.master_data.change_contact(admin.id, contact.id, name="Energie AG")
         await setup.settle(pipeline=False)
 
     index.after_first_batch = rename
@@ -667,4 +670,4 @@ def test_the_number_of_sections_is_limited() -> None:
 
 def test_limits_must_be_positive() -> None:
     with pytest.raises(ValueError):
-        IndexingPolicy(max_chunks=0)
+        replace(builders.INDEXING, max_chunks=0)

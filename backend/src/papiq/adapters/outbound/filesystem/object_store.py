@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from papiq.core.domain.errors import NotFoundError
-from papiq.core.ports.object_store import check_key
+from papiq.core.ports.object_store import check_key, check_readable
 
 _CHUNK = 1024 * 1024
 
@@ -48,7 +48,7 @@ class FilesystemObjectStore:
                 shutil.copyfileobj(file, out, _CHUNK)
 
         # Open the source first: a missing source must not leave anything behind.
-        await asyncio.to_thread(_check_readable, source)
+        await asyncio.to_thread(check_readable, source)
         await asyncio.to_thread(_write_atomically, path, copy)
 
     async def download(self, key: str, target: Path) -> None:
@@ -90,11 +90,6 @@ class FilesystemObjectStore:
     def _path(self, key: str) -> Path:
         # Valid keys have no empty, `.` or `..` segments, so the path stays below the root.
         return self._root.joinpath(*check_key(key).split("/"))
-
-
-def _check_readable(source: Path) -> None:
-    with source.open("rb"):
-        pass
 
 
 def _write_atomically(path: Path, write: Callable[[BinaryIO], object]) -> None:

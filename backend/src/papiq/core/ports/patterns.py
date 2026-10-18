@@ -9,6 +9,10 @@ from typing import Protocol
 
 
 class PatternMatcher(Protocol):
+    def validate(self, pattern: str) -> None:
+        """ValidationError if `pattern` is no pattern this matcher can run."""
+        ...
+
     async def search(self, pattern: str, text: str, *, case_sensitive: bool) -> bool:
         """Whether `pattern` occurs anywhere in `text`. PatternTimeoutError if the search takes
         longer than the configured limit; ValidationError if the pattern is invalid."""

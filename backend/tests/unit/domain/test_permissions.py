@@ -4,9 +4,7 @@ from papiq.core.domain.documents import Document
 from papiq.core.domain.permissions import (
     can_control_document,
     can_file_into,
-    can_manage_master_data,
     can_manage_space,
-    can_manage_users,
     can_move_document,
     can_read_document,
     can_write_document,
@@ -140,14 +138,6 @@ def test_only_the_document_owner_controls_it(owner: User, writer: User, shared: 
     assert not is_document_owner(writer, document)
 
 
-def test_only_admins_manage_master_data_and_users() -> None:
-    admin, user = builders.admin(), builders.user()
-    assert can_manage_master_data(admin)
-    assert can_manage_users(admin)
-    assert not can_manage_master_data(user)
-    assert not can_manage_users(user)
-
-
 @pytest.mark.parametrize(
     "results",
     [None, {Node.JUDGE: UNCERTAIN}, {Node.OCR: FAILED}, "processing"],
@@ -230,5 +220,4 @@ def test_deactivated_users_have_no_rights() -> None:
     assert not can_manage_space(admin, space)
     assert not can_control_document(admin, document)
     assert not can_control_document(owner, document)
-    assert not can_manage_master_data(admin)
-    assert not can_manage_users(admin)
+    assert not admin.is_active_admin

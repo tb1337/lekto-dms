@@ -17,14 +17,16 @@ from functools import cached_property
 from itertools import pairwise
 
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.periods import Period
+from papiq.core.domain.periods import MONTH_NAMES, Period
 
 # Markdown markup that may sit inside a value (`**84,20 €**`, table pipes).
 _MARKUP = re.compile(r"[*_#|`>~]+")
 # A word broken at the end of a line: `Rech-\nnung`.
 _HYPHENATION = re.compile(r"(?<=[^\W\d_])-[ \t]*\n[ \t]*(?=[^\W\d_])")
 _WHITESPACE = re.compile(r"\s+")
-_UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue"})
+UMLAUTS = {"ä": "ae", "ö": "oe", "ü": "ue"}
+"""Umlauts (case folded) and how they are written without them."""
+_UMLAUTS = str.maketrans(UMLAUTS)
 
 
 def normalise(text: str) -> str:
@@ -37,6 +39,11 @@ def normalise(text: str) -> str:
     return _WHITESPACE.sub(" ", text.casefold()).strip()
 
 
+def without_markup(text: str) -> str:
+    """Markdown markup removed and whitespace collapsed; case kept."""
+    return _WHITESPACE.sub(" ", _MARKUP.sub(" ", text)).strip()
+
+
 def fold_umlauts(text: str) -> str:
     """`ä` as `ae` and so on, for names written either way; expects normalised text."""
     return text.translate(_UMLAUTS)
@@ -44,19 +51,32 @@ def fold_umlauts(text: str) -> str:
 
 # --- dates ------------------------------------------------------------------------------------
 
+# Other ways to write the months than their names: Austrian, without umlauts, abbreviated.
+_OTHER_SPELLINGS = (
+    ("jänner", "jaenner", "jan"),
+    ("feb",),
+    ("maerz", "mär", "mrz", "mar"),
+    ("apr",),
+    (),
+    ("jun",),
+    ("jul",),
+    ("aug",),
+    ("sept", "sep"),
+    ("okt", "oct"),
+    ("nov",),
+    ("dez", "dec"),
+)
 _MONTHS = {
-    **dict.fromkeys(("januar", "jänner", "jaenner", "january", "jan"), 1),
-    **dict.fromkeys(("februar", "february", "feb"), 2),
-    **dict.fromkeys(("märz", "maerz", "march", "mär", "mrz", "mar"), 3),
-    **dict.fromkeys(("april", "apr"), 4),
-    **dict.fromkeys(("mai", "may"), 5),
-    **dict.fromkeys(("juni", "june", "jun"), 6),
-    **dict.fromkeys(("juli", "july", "jul"), 7),
-    **dict.fromkeys(("august", "aug"), 8),
-    **dict.fromkeys(("september", "sept", "sep"), 9),
-    **dict.fromkeys(("oktober", "october", "okt", "oct"), 10),
-    **dict.fromkeys(("november", "nov"), 11),
-    **dict.fromkeys(("dezember", "december", "dez", "dec"), 12),
+    **{
+        name.casefold(): number
+        for names in MONTH_NAMES.values()
+        for number, name in enumerate(names, 1)
+    },
+    **{
+        spelling: number
+        for number, spellings in enumerate(_OTHER_SPELLINGS, 1)
+        for spelling in spellings
+    },
 }
 _MONTH = "(" + "|".join(sorted(_MONTHS, key=len, reverse=True)) + r")\.?"
 _DAY = r"(\d{1,2})(?:st|nd|rd|th|\.)?"
@@ -74,19 +94,7 @@ _DATE_PATTERNS: tuple[tuple[re.Pattern[str], tuple[str, str, str]], ...] = (
 
 def dates_in(text: str) -> set[date]:
     """All dates written in the normalised `text`. Two-digit years: 00 to 69 are 20xx."""
-    found: set[date] = set()
-    for pattern, order in _DATE_PATTERNS:
-        for match in pattern.finditer(text):
-            parts = dict(zip(order, match.groups(), strict=True))
-            month = int(parts["m"]) if parts["m"].isdigit() else _MONTHS[parts["m"]]
-            year = int(parts["y"])
-            if len(parts["y"]) == 2:
-                year += 2000 if year < 70 else 1900
-            try:
-                found.add(date(year, month, int(parts["d"])))
-            except ValueError:
-                continue
-    return found
+    return {day for _, _, day in _dated(text)}
 
 
 def _dated(text: str) -> Iterator[tuple[int, int, date]]:
@@ -278,6 +286,14 @@ def read_period(raw: str, reference: date | None = None) -> tuple[Period, bool] 
 # --- numbers ----------------------------------------------------------------------------------
 
 # Digits with separators between them: `1.234,56`, `1,234.56`, `1 234,56`, `1'234.56`, `84,20`.
+_TRUTH = {"true": True, "yes": True, "ja": True, "false": False, "no": False, "nein": False}
+
+
+def truth_value(text: str) -> bool | None:
+    """Yes or no as a document or a model writes it (German, English); None for other text."""
+    return _TRUTH.get(text.strip().casefold())
+
+
 _NUMBER = re.compile(r"(?<![\d])\d(?:[\d]|[.,'](?=\d)| (?=\d{3}(?!\d)))*")
 
 
@@ -508,6 +524,16 @@ class DocumentText:
     """A document's text with what has been found in it, computed once."""
 
     raw: str
+
+    @classmethod
+    def read(cls, raw: str) -> "DocumentText":
+        """The text with everything in it found at once: for a worker thread, so that the
+        event loop does not wait for long texts."""
+        text = cls(raw)
+        for name, member in vars(cls).items():
+            if isinstance(member, cached_property):
+                getattr(text, name)
+        return text
 
     @cached_property
     def normalised(self) -> str:

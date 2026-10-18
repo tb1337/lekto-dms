@@ -23,17 +23,21 @@ from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.ids import FieldId
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.pipeline import (
+    ACTOR,
     RULES_CHANGE,
+    TRIGGER,
+    TRIGGER_MOVE,
     Node,
-    NodeResult,
     NodeRun,
-    Outcome,
     ProcessingStatus,
 )
-from papiq.core.domain.rule_engine import Mode, changed_fields
+from papiq.core.domain.rule_planner import Mode, changed_fields
 from papiq.core.domain.rules import Rule, Trigger
 from papiq.core.domain.users import User
-from papiq.core.ports import ObjectStore, PatternMatcher, TemplateRenderer, UnitOfWork
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.patterns import PatternMatcher
+from papiq.core.ports.templates import TemplateRenderer
+from papiq.core.ports.unit_of_work import UnitOfWork
 from papiq.core.services.rules.running import (
     Prepared,
     RuleRun,
@@ -41,6 +45,7 @@ from papiq.core.services.rules.running import (
     apply_plan,
     checked_rules,
     corrected_fields,
+    entry_beside,
     field_patterns,
     person_record,
     prepare,
@@ -85,7 +90,7 @@ class ChangeRules:
             document,
             node=Node.APPLY_RULES,
             actor=actor.id,
-            trigger="move",
+            trigger=TRIGGER_MOVE,
             version=self._version,
             now=now,
         )
@@ -115,8 +120,8 @@ class ChangeRules:
             corrected=corrected_fields(before, document, decided=changed),
         )
         input: dict[str, JsonValue] = {
-            "trigger": Trigger.CHANGE.value,
-            "actor": str(actor.id),
+            TRIGGER: Trigger.CHANGE.value,
+            ACTOR: str(actor.id),
             **record,
         }
         rules = await self.rules(uow, document)
@@ -163,16 +168,14 @@ class ChangeRules:
                 output["problem"] = reason
         if log:
             await uow.processing_log.append(
-                NodeRun(
-                    document_id=document.id,
+                entry_beside(
+                    document,
                     node=Node.APPLY_RULES,
-                    run=document.processing.run,
-                    result=NodeResult(
-                        outcome=Outcome.OK, model_version=RULES_CHANGE, input=input, output=output
-                    ),
-                    pipeline_version=self._version,
-                    started_at=now,
-                    duration=now - now,
+                    model_version=RULES_CHANGE,
+                    input=input,
+                    output=output,
+                    version=self._version,
+                    now=now,
                 )
             )
         return run

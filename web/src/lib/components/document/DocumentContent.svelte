@@ -56,7 +56,6 @@
 		onfactschanged?: () => void;
 	} = $props();
 
-	const PIECE = 20_000;
 	// More than this is not shown (the download has all of it).
 	const MOST_TEXT = 2_000_000;
 
@@ -70,7 +69,8 @@
 
 	type Piece = { text: string; total_length: number; next_offset: number | null };
 
-	/** The text from `offset` on, up to `most` characters; with the total length. */
+	/** The text from the start, up to `most` characters, in pieces as large as the API gives
+	 * them; with the total length. */
 	async function readText(id: string, most: number): Promise<{ text: string; total: number }> {
 		let offset: number | null = 0;
 		let collected = '';
@@ -78,7 +78,7 @@
 		while (offset !== null && collected.length < most) {
 			const piece: Piece = await unwrap(
 				api.GET('/api/v1/documents/{id}/text', {
-					params: { path: { id }, query: { offset, limit: PIECE } }
+					params: { path: { id }, query: { offset } }
 				})
 			);
 			collected += piece.text;

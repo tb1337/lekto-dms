@@ -3,106 +3,20 @@ another space of the owner and tags them; the processing log names the rule and 
 Real API server (Uvicorn) and worker; OCR and parser are fakes that bring the text of the test.
 Two set-ups: SQLite with the filesystem, Postgres with S3 (Garage)."""
 
-import asyncio
-import json
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, replace
-from datetime import timedelta
-from pathlib import Path
 from typing import Any
 
-import httpx2
 import pytest
 
 from papiq.adapters.inbound.rest import PREFIX
-from papiq.adapters.inbound.worker import Worker
-from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory
-from papiq.composition.api import build_app
-from papiq.composition.container import (
-    Container,
-    Services,
-    build_memory_container,
-    build_services,
-)
-from papiq.composition.settings import Settings
+from papiq.adapters.outbound.sql import Database
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import ObjectStore, OcrResult, ParseResult
-from tests import builders
-from tests.api import auth, issue_token, serving
-
-DOCUMENTS = f"{PREFIX}/documents"
-TIMEOUT = 60.0  # seconds a document may take here
+from papiq.core.ports.object_store import ObjectStore
+from tests.api import auth
+from tests.integration.e2e import DOCUMENTS, System, TextOcr, TextParser, running_system
 
 
-class TextOcr:
-    """OCR that keeps the file as it is: the archive holds the text line for the parser."""
-
-    vision = None
-
-    async def make_archive(
-        self, source: Path, target: Path, *, media_type: str, vision: bool = False
-    ) -> OcrResult:
-        target.write_bytes(source.read_bytes())
-        return OcrResult(pages=1, engine="text-ocr 1", pdfa=True)
-
-
-class TextParser:
-    """A parser that takes the text of a document from a line of the file: `%text: …`."""
-
-    async def parse(self, source: Path, *, text: Path, structure: Path) -> ParseResult:
-        data = source.read_bytes()
-        content = next(
-            line.removeprefix(b"%text: ").decode()
-            for line in data.splitlines()
-            if line.startswith(b"%text: ")
-        )
-        text.write_text(content, encoding="utf-8")
-        structure.write_text(json.dumps({"text": content}), encoding="utf-8")
-        return ParseResult(pages=1, parser="text-parser 1")
-
-
-def pdf(text: str) -> bytes:
-    return f"%PDF-1.7\n%text: {text}\n%%EOF\n".encode()
-
-
-@dataclass
-class System:
-    container: Container
-    services: Services
-    client: httpx2.AsyncClient
-
-    async def user(self, role: Role = Role.USER) -> User:
-        user = builders.user(role=role)
-        async with self.container.unit_of_work() as uow:
-            await uow.users.add(user)
-            await uow.spaces.add(builders.default_space(user))
-            await uow.commit()
-        await issue_token(self.services.auth, user)
-        return user
-
-    async def post(self, user: User, path: str, body: dict[str, Any]) -> dict[str, Any]:
-        response = await self.client.post(f"{PREFIX}{path}", json=body, headers=auth(user))
-        assert response.status_code == 201, response.text
-        created: dict[str, Any] = response.json()
-        return created
-
-    async def upload(self, user: User, text: str) -> str:
-        files = {"file": ("bill.pdf", pdf(text), "application/pdf")}
-        response = await self.client.post(DOCUMENTS, files=files, headers=auth(user))
-        assert response.status_code == 202, response.text
-        return str(response.json()["id"])
-
-    async def settled(self, user: User, id: str) -> dict[str, Any]:
-        """The document once processing has ended."""
-        async with asyncio.timeout(TIMEOUT):
-            while True:
-                response = await self.client.get(f"{DOCUMENTS}/{id}", headers=auth(user))
-                assert response.status_code == 200, response.text
-                document: dict[str, Any] = response.json()
-                if document["lane"] is not None:
-                    return document
-                await asyncio.sleep(0.2)
-
+class RulesSystem(System):
     async def rules_entry(self, user: User, id: str) -> dict[str, Any]:
         """The log entry of the node `apply_rules`."""
         response = await self.client.get(f"{DOCUMENTS}/{id}/log", headers=auth(user))
@@ -113,41 +27,12 @@ class System:
 
 
 @pytest.fixture
-async def system(stores: tuple[Database, ObjectStore]) -> AsyncIterator[System]:
-    database, object_store = stores
-    container = replace(
-        build_memory_container(),
-        unit_of_work=SqlUnitOfWorkFactory(database),
-        event_bus=SqlEventBus(database),
-        object_store=object_store,
-        ocr=TextOcr(),
-        parser=TextParser(),
-    )
-    tuning = Settings.model_construct(
-        worker_concurrency=2, events_poll_interval=timedelta(milliseconds=50)
-    )
-    services = build_services(container, tuning)
-    builders.skip_classification(services.pipeline)
-    worker = Worker(
-        pipeline=services.pipeline,
-        maintenance=services.maintenance,
-        event_bus=container.event_bus,
-        concurrency=2,
-        poll_interval=timedelta(milliseconds=50),
-        dispatch_interval=timedelta(milliseconds=50),
-        shutdown_timeout=timedelta(seconds=30),
-    )
-    app = build_app(container, tuning, services)
-    running = asyncio.create_task(worker.run())
-    try:
-        async with serving(app) as url, httpx2.AsyncClient(base_url=url, timeout=30) as client:
-            yield System(container, services, client)
-    finally:
-        worker.stop()
-        await asyncio.wait_for(running, timeout=60)
+async def system(stores: tuple[Database, ObjectStore]) -> AsyncIterator[RulesSystem]:
+    async with running_system(RulesSystem, stores, ocr=TextOcr(), parser=TextParser()) as system:
+        yield system
 
 
-async def test_a_user_rule_files_and_tags_arriving_documents(system: System) -> None:
+async def test_a_user_rule_files_and_tags_arriving_documents(system: RulesSystem) -> None:
     admin, owner = await system.user(Role.ADMIN), await system.user()
     energy = await system.post(admin, "/tags", {"name": "Energie"})
     space = await system.post(owner, "/spaces", {"name": "Strom"})

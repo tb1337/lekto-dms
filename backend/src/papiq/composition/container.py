@@ -8,11 +8,12 @@ import os
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import timedelta
+from typing import Protocol
 
 from pydantic import SecretStr
 
 from papiq import __version__
-from papiq.adapters.inbound.rest import PREFIX
+from papiq.adapters.inbound.rest import OIDC_CALLBACK_PATH
 from papiq.adapters.outbound.crypto import (
     AesGcmCipher,
     Argon2PasswordHasher,
@@ -59,33 +60,29 @@ from papiq.adapters.outbound.zxing import ZxingCodeReader
 from papiq.composition.database import open_database
 from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
-from papiq.core.domain.pipeline import NODES, Node
-from papiq.core.ports import (
-    Classifier,
-    Clock,
-    CodeReader,
-    DeliveryRetry,
-    DocumentParser,
-    Embeddings,
-    EventBus,
-    ImageNormaliser,
-    LanguageModel,
-    LogoFetcher,
-    MetadataReader,
-    ObjectStore,
-    Ocr,
-    OidcProvider,
-    PageRenderer,
-    PasswordHasher,
-    PatternMatcher,
-    SearchIndex,
-    SecretCipher,
-    TemplateRenderer,
-    TextLocator,
-    Totp,
-    UnitOfWorkFactory,
-    WebhookSender,
-)
+from papiq.core.domain.jobs import WORK_LEASE_MARGIN, RetryPolicy
+from papiq.core.domain.pipeline import Node
+from papiq.core.domain.verdict import Thresholds
+from papiq.core.ports.classifier import Classifier
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.codes import CodeReader
+from papiq.core.ports.embeddings import Embeddings
+from papiq.core.ports.event_bus import DELIVERY_DELAY, DELIVERY_MAX_DELAY, EventBus
+from papiq.core.ports.identity import OidcProvider, PasswordHasher, SecretCipher, Totp
+from papiq.core.ports.images import ImageNormaliser
+from papiq.core.ports.llm import LanguageModel
+from papiq.core.ports.locator import TextLocator
+from papiq.core.ports.logos import LogoFetcher
+from papiq.core.ports.metadata import MetadataReader
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.ocr import Ocr
+from papiq.core.ports.pages import PageRenderer
+from papiq.core.ports.parser import DocumentParser
+from papiq.core.ports.patterns import PatternMatcher
+from papiq.core.ports.search_index import SearchIndex
+from papiq.core.ports.templates import TemplateRenderer
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from papiq.core.ports.webhook_sender import WebhookSender
 from papiq.core.services.auth import AuthService, SessionPolicy
 from papiq.core.services.classification.nodes import (
     ClassificationPolicy,
@@ -108,7 +105,7 @@ from papiq.core.services.maintenance import MaintenanceService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.nodes import OcrNode, PagesNode, ParseNode
 from papiq.core.services.oidc import OidcService
-from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode, RetryPolicy
+from papiq.core.services.pipeline import NodeExecutor, PipelineService
 from papiq.core.services.rules import RuleService
 from papiq.core.services.rules.changes import ChangeRules
 from papiq.core.services.rules.nodes import ApplyRulesNode, FileNode
@@ -127,6 +124,27 @@ type Closer = Callable[[], Awaitable[None]]
 
 
 @dataclass(frozen=True)
+class Opened[T]:
+    """An adapter and, if it holds something to release (a client, connections), its closer."""
+
+    adapter: T
+    close: Closer | None = None
+
+
+class _Closable(Protocol):
+    async def aclose(self) -> None: ...
+
+
+def _closing[T: _Closable](adapter: T) -> Opened[T]:
+    """`adapter`, released by its `aclose`."""
+    return Opened(adapter, adapter.aclose)
+
+
+USER_AGENT = f"Papiq/{__version__}"
+"""How Papiq names itself in requests to other sites: logo fetches and webhooks."""
+
+
+@dataclass(frozen=True)
 class Persistence:
     """The database-backed ports. They share one database: repositories, processing log,
     outbox and job queue through the unit of work, and the event bus reading the outbox."""
@@ -139,29 +157,30 @@ class Persistence:
 def sql_persistence(settings: Settings) -> Persistence:
     """SQLite or Postgres, per `PAPIQ_DB_TYPE`; the schema must be migrated."""
     database = open_database(settings)
-    retry = DeliveryRetry(max_attempts=settings.events_max_attempts)
     return Persistence(
         unit_of_work=SqlUnitOfWorkFactory(database),
-        event_bus=SqlEventBus(database, retry=retry),
+        event_bus=SqlEventBus(database, retry=event_retry_of(settings)),
         close=database.dispose,
     )
 
 
-def filesystem_store(settings: Settings) -> FilesystemObjectStore:
-    return FilesystemObjectStore(settings.storage_path)
+def filesystem_store(settings: Settings) -> Opened[FilesystemObjectStore]:
+    return Opened(FilesystemObjectStore(settings.storage_path))
 
 
-def s3_store(settings: Settings) -> S3ObjectStore:
+def s3_store(settings: Settings) -> Opened[S3ObjectStore]:
     # Settings guarantee these for s3.
     assert settings.s3_endpoint_url and settings.s3_bucket
     assert settings.s3_access_key_id and settings.s3_secret_access_key
-    return S3ObjectStore(
-        endpoint_url=str(settings.s3_endpoint_url),
-        region=settings.s3_region,
-        bucket=settings.s3_bucket,
-        access_key_id=settings.s3_access_key_id.get_secret_value(),
-        secret_access_key=settings.s3_secret_access_key.get_secret_value(),
-        path_style=settings.s3_path_style,
+    return _closing(
+        S3ObjectStore(
+            endpoint_url=str(settings.s3_endpoint_url),
+            region=settings.s3_region,
+            bucket=settings.s3_bucket,
+            access_key_id=settings.s3_access_key_id.get_secret_value(),
+            secret_access_key=settings.s3_secret_access_key.get_secret_value(),
+            path_style=settings.s3_path_style,
+        )
     )
 
 
@@ -171,7 +190,7 @@ PERSISTENCE: dict[str, Factory[Persistence]] = {
     "sqlite": sql_persistence,
     "postgres": sql_persistence,
 }
-OBJECT_STORES: dict[str, Factory[ObjectStore]] = {
+OBJECT_STORES: dict[str, Factory[Opened[ObjectStore]]] = {
     "filesystem": filesystem_store,
     "s3": s3_store,
 }
@@ -205,23 +224,29 @@ def _secret(value: SecretStr | None) -> str | None:
     return None if value is None else value.get_secret_value()
 
 
-def meilisearch_index(settings: Settings) -> MeilisearchIndex:
+def meilisearch_index(settings: Settings) -> Opened[MeilisearchIndex]:
     assert settings.meilisearch_url is not None  # the adapter is only selected with a URL
-    return MeilisearchIndex(
-        url=str(settings.meilisearch_url),
-        api_key=_secret(settings.meilisearch_api_key),
-        index=settings.meilisearch_index,
-        # Vectors only where there is a model to compute them (settings guarantee the length).
-        dimensions=settings.embedding_dimensions if settings.embedding_base_url else None,
-        locales=settings.search_locales.split("+"),
-        timeout=settings.meilisearch_timeout.total_seconds(),
-        task_timeout=settings.meilisearch_task_timeout.total_seconds(),
+    return _closing(
+        MeilisearchIndex(
+            url=str(settings.meilisearch_url),
+            api_key=_secret(settings.meilisearch_api_key),
+            index=settings.meilisearch_index,
+            # Vectors only where there is a model to compute them (settings guarantee the length).
+            dimensions=settings.embedding_dimensions if settings.embedding_base_url else None,
+            locales=settings.search_locales.split("+"),
+            timeout=settings.meilisearch_timeout.total_seconds(),
+            task_timeout=settings.meilisearch_task_timeout.total_seconds(),
+        )
     )
 
 
-SEARCH_INDEXES: dict[str, Factory[SearchIndex]] = {"meilisearch": meilisearch_index}
-LANGUAGE_MODELS: dict[str, Factory[LanguageModel]] = {"openai-compatible": openai_language_model}
-EMBEDDINGS: dict[str, Factory[Embeddings]] = {"openai-compatible": openai_embeddings}
+SEARCH_INDEXES: dict[str, Factory[Opened[SearchIndex]]] = {"meilisearch": meilisearch_index}
+LANGUAGE_MODELS: dict[str, Factory[Opened[LanguageModel]]] = {
+    "openai-compatible": lambda settings: _closing(openai_language_model(settings))
+}
+EMBEDDINGS: dict[str, Factory[Opened[Embeddings]]] = {
+    "openai-compatible": lambda settings: _closing(openai_embeddings(settings))
+}
 
 
 def _cores_per_job(settings: Settings) -> int:
@@ -262,14 +287,14 @@ IMAGE_NORMALISERS: dict[str, Factory[ImageNormaliser]] = {
 }
 CLASSIFIERS: dict[str, Factory[Classifier]] = {"scikit-learn": lambda _: SklearnClassifier()}
 LOGO_FETCHERS: dict[str, Factory[LogoFetcher]] = {
-    "httpx2": lambda _: HttpLogoFetcher(user_agent=f"Papiq/{__version__}")
+    "httpx2": lambda _: HttpLogoFetcher(user_agent=USER_AGENT)
 }
 
 
 def redirect_uri(settings: Settings) -> str:
     """Where the provider sends the browser back: the API's OIDC callback."""
     assert settings.public_url is not None
-    return str(settings.public_url).rstrip("/") + PREFIX + "/auth/oidc/callback"
+    return str(settings.public_url).rstrip("/") + OIDC_CALLBACK_PATH
 
 
 def oidc_provider(settings: Settings) -> OidcProvider:
@@ -344,16 +369,29 @@ def build_container(settings: Settings) -> Container:
     """Create the adapter for every port. Raises AdapterNotAvailableError for a missing one."""
     persistence = _select("persistence", settings.db_type, PERSISTENCE, settings)
     closers: list[Closer] = [persistence.close]
-    object_store = _select("object_store", settings.storage_type, OBJECT_STORES, settings)
-    if isinstance(object_store, S3ObjectStore):
-        closers.append(object_store.aclose)
+
+    def opened[T](port: str, adapter: str, factories: Mapping[str, Factory[Opened[T]]]) -> T:
+        built = _select(port, adapter, factories, settings)
+        if built.close is not None:
+            closers.append(built.close)
+        return built.adapter
+
+    object_store = opened("object_store", settings.storage_type, OBJECT_STORES)
     search_index = (
-        _select("search_index", "meilisearch", SEARCH_INDEXES, settings)
+        opened("search_index", "meilisearch", SEARCH_INDEXES)
         if settings.meilisearch_url is not None
         else None
     )
-    if isinstance(search_index, MeilisearchIndex):
-        closers.append(search_index.aclose)
+    language_model = (
+        opened("llm", "openai-compatible", LANGUAGE_MODELS)
+        if settings.llm_base_url is not None
+        else None
+    )
+    embeddings = (
+        opened("embeddings", "openai-compatible", EMBEDDINGS)
+        if settings.embedding_base_url is not None
+        else None
+    )
     return Container(
         unit_of_work=persistence.unit_of_work,
         event_bus=persistence.event_bus,
@@ -368,7 +406,7 @@ def build_container(settings: Settings) -> Container:
         images=_select("images", "pillow", IMAGE_NORMALISERS, settings),
         password_hasher=Argon2PasswordHasher(),
         cipher=secret_cipher(settings),
-        webhook_sender=HttpWebhookSender(user_agent=f"Papiq/{__version__}"),
+        webhook_sender=HttpWebhookSender(user_agent=USER_AGENT),
         totp=PyotpTotp(),
         patterns=RegexPatternMatcher(settings.rules_pattern_timeout.total_seconds()),
         templates=LiquidTemplateRenderer(
@@ -378,16 +416,8 @@ def build_container(settings: Settings) -> Container:
             _select("oidc", "authlib", OIDC_PROVIDERS, settings) if settings.oidc_enabled else None
         ),
         search_index=search_index,
-        language_model=(
-            _select("llm", "openai-compatible", LANGUAGE_MODELS, settings)
-            if settings.llm_base_url is not None
-            else None
-        ),
-        embeddings=(
-            _select("embeddings", "openai-compatible", EMBEDDINGS, settings)
-            if settings.embedding_base_url is not None
-            else None
-        ),
+        language_model=language_model,
+        embeddings=embeddings,
         classifier=(
             None
             if settings.classifier == "none"
@@ -402,21 +432,16 @@ def build_container(settings: Settings) -> Container:
     )
 
 
-# Seconds; as `PAPIQ_RULES_PATTERN_TIMEOUT` by default.
-DEFAULT_PATTERN_TIMEOUT = 0.2
-
-
-def _default(setting: str) -> str:
-    """The default of a setting, for the memory container, which reads no environment."""
-    return str(Settings.model_fields[setting].default)
-
-
-def build_memory_container(clock: Clock | None = None) -> Container:
-    """All ports on in-memory adapters, for tests and local experiments. Nothing persists."""
+def build_memory_container(
+    clock: Clock | None = None, settings: Settings | None = None
+) -> Container:
+    """All ports on in-memory adapters, for tests and local experiments. Nothing persists.
+    `settings`: for the two adapters that take tuning; the shipped defaults without."""
+    settings = settings or Settings.model_construct()
     database = MemoryDatabase()
     return Container(
         unit_of_work=MemoryUnitOfWorkFactory(database),
-        event_bus=MemoryEventBus(database),
+        event_bus=MemoryEventBus(database, retry=event_retry_of(settings)),
         object_store=MemoryObjectStore(),
         clock=clock or SystemClock(),
         ocr=FakeOcr(),
@@ -430,9 +455,9 @@ def build_memory_container(clock: Clock | None = None) -> Container:
         cipher=FakeCipher(),
         webhook_sender=FakeWebhookSender(),
         totp=FakeTotp(),
-        patterns=RegexPatternMatcher(DEFAULT_PATTERN_TIMEOUT),
+        patterns=RegexPatternMatcher(settings.rules_pattern_timeout.total_seconds()),
         templates=LiquidTemplateRenderer(
-            locale=_default("template_locale"), currency=_default("default_currency")
+            locale=settings.template_locale, currency=settings.default_currency
         ),
         oidc=None,
         search_index=MemorySearchIndex(),
@@ -464,8 +489,6 @@ class Services:
     classifier: ClassifierService | None  # with a classifier
 
 
-# Time a node job may take beyond its time limit: downloads, uploads, preview, bookkeeping.
-LEASE_MARGIN = timedelta(minutes=2)
 VISION_REQUEST_TIMEOUT = timedelta(minutes=5)
 """How long the vision language model may take for one page."""
 
@@ -475,7 +498,7 @@ def node_lease(settings: Settings) -> timedelta:
     longest = max(settings.ocr_timeout, 2 * settings.llm_timeout)
     if settings.vlm_base_url is not None:
         longest = max(longest, settings.vlm_timeout)
-    return longest + LEASE_MARGIN
+    return longest + WORK_LEASE_MARGIN
 
 
 def classifier_policy_of(settings: Settings) -> ClassifierPolicy:
@@ -483,8 +506,34 @@ def classifier_policy_of(settings: Settings) -> ClassifierPolicy:
         min_examples=settings.classifier_min_examples,
         retrain_after=settings.classifier_retrain_after,
         threshold=settings.classifier_threshold,
-        text_limit=settings.llm_input_budget,
     )
+
+
+def thresholds_of(settings: Settings) -> Thresholds:
+    """The judge's thresholds; the classifier's is the one of its policy."""
+    return Thresholds(
+        accept=settings.confidence_threshold,
+        suggest=settings.contact_suggest_threshold,
+        classifier=classifier_policy_of(settings).threshold,
+    )
+
+
+def retry_policy_of(settings: Settings) -> RetryPolicy:
+    """Automatic retries of a node that raised."""
+    return RetryPolicy(max_attempts=settings.node_max_attempts, delay=settings.node_retry_delay)
+
+
+def event_retry_of(settings: Settings) -> RetryPolicy:
+    """Repeated delivery of an event whose handler failed."""
+    return RetryPolicy(
+        max_attempts=settings.events_max_attempts,
+        delay=DELIVERY_DELAY,
+        max_delay=DELIVERY_MAX_DELAY,
+    )
+
+
+def session_policy_of(settings: Settings) -> SessionPolicy:
+    return SessionPolicy(idle=settings.session_idle_timeout, max_age=settings.session_max_age)
 
 
 def policy_of(settings: Settings) -> ClassificationPolicy:
@@ -534,7 +583,7 @@ def indexing_policy_of(settings: Settings) -> IndexingPolicy:
         reconcile_interval=settings.search_reconcile_interval,
         # An indexing job may embed and write up to three times (see `IndexingService`).
         job_lease=3 * (settings.embedding_timeout + settings.meilisearch_task_timeout)
-        + LEASE_MARGIN,
+        + WORK_LEASE_MARGIN,
         rebuild_lease=settings.search_rebuild_timeout,
     )
 
@@ -546,6 +595,43 @@ def search_policy_of(settings: Settings) -> SearchPolicy:
         query_prefix=_prefix(settings.embedding_query_prefix),
         dimensions=settings.embedding_dimensions,
     )
+
+
+def classification_nodes(
+    container: Container,
+    settings: Settings,
+    *,
+    model: LanguageModel | None,
+    classifier: ClassifierService | None,
+    index: SearchIndex | None,
+    embeddings: Embeddings | None,
+    facts: FactsSignal,
+    locator: TextLocator | None,
+) -> dict[Node, NodeExecutor]:
+    """The signals, the judge and the fields node, each taking over the metadata a document
+    came in with (`ImportedSignal`, ...): for the container and, with a model per case, for
+    the evaluation."""
+    uow, clock, store = container.unit_of_work, container.clock, container.object_store
+    policy = policy_of(settings)
+    signals: dict[Node, NodeExecutor] = {
+        Node.SIGNAL_LLM: LlmSignal(uow, store, model, clock, policy),
+        Node.SIGNAL_FACTS: facts,
+        Node.SIGNAL_CLASSIFIER: ClassifierSignal(store, classifier),
+        Node.SIGNAL_NEIGHBOURS: NeighboursSignal(
+            uow, store, index, embeddings, neighbours_policy_of(settings)
+        ),
+    }
+    return {node: ImportedSignal(uow, signal) for node, signal in signals.items()} | {
+        Node.JUDGE: ImportedJudgeNode(
+            uow,
+            JudgeNode(
+                uow, store, clock, policy, thresholds=thresholds_of(settings), locator=locator
+            ),
+        ),
+        Node.FIELDS: ImportedFieldsNode(
+            uow, FieldsNode(uow, store, model, clock, policy, locator=locator)
+        ),
+    }
 
 
 def build_services(container: Container, settings: Settings | None = None) -> Services:
@@ -569,50 +655,33 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         )
     )
     index, embeddings = container.search_index, container.embeddings
-    executors: dict[Node, NodeExecutor] = {
-        node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE
-    }
-    executors[Node.OCR] = OcrNode(store, container.ocr)
-    executors[Node.PAGES] = PagesNode(store, container.pages)
-    executors[Node.PARSE] = ParseNode(store, container.parser)
-    policy = policy_of(settings)
-    model = container.language_model
-    locator = container.locator
-    executors[Node.SIGNAL_LLM] = ImportedSignal(uow, LlmSignal(uow, store, model, clock, policy))
-    executors[Node.JUDGE] = ImportedJudgeNode(
-        uow,
-        JudgeNode(
-            uow,
-            store,
-            clock,
-            policy,
-            locator=locator,
-            classifier_threshold=settings.classifier_threshold,
-        ),
-    )
-    executors[Node.FIELDS] = ImportedFieldsNode(
-        uow, FieldsNode(uow, store, model, clock, policy, locator=locator)
-    )
     facts = FactsSignal(uow, store, container.codes)
-    executors[Node.SIGNAL_FACTS] = ImportedSignal(uow, facts)
-    executors[Node.SIGNAL_CLASSIFIER] = ImportedSignal(uow, ClassifierSignal(store, classifier))
-    executors[Node.SIGNAL_NEIGHBOURS] = ImportedSignal(
-        uow,
-        NeighboursSignal(uow, store, index, embeddings, neighbours_policy_of(settings)),
-    )
-    executors[Node.APPLY_RULES] = ApplyRulesNode(
-        uow, store, container.patterns, container.templates, max_text=settings.rules_max_text
-    )
-    executors[Node.FILE] = FileNode()
+    executors: dict[Node, NodeExecutor] = {
+        Node.OCR: OcrNode(store, container.ocr),
+        Node.PAGES: PagesNode(store, container.pages),
+        Node.PARSE: ParseNode(store, container.parser),
+        **classification_nodes(
+            container,
+            settings,
+            model=container.language_model,
+            classifier=classifier,
+            index=index,
+            embeddings=embeddings,
+            facts=facts,
+            locator=container.locator,
+        ),
+        Node.APPLY_RULES: ApplyRulesNode(
+            uow, store, container.patterns, container.templates, max_text=settings.rules_max_text
+        ),
+        Node.FILE: FileNode(),
+    }
     auth = AuthService(
         uow,
         clock,
         hasher=container.password_hasher,
         cipher=container.cipher,
         totp=container.totp,
-        sessions=SessionPolicy(
-            idle=settings.session_idle_timeout, max_age=settings.session_max_age
-        ),
+        sessions=session_policy_of(settings),
     )
     return Services(
         auth=auth,
@@ -640,7 +709,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             fetch_logos=container.logo_fetcher is not None,
         ),
         logos=LogoService(uow, clock, store, container.images, container.logo_fetcher),
-        rules=RuleService(uow, clock, container.templates),
+        rules=RuleService(uow, clock, container.templates, container.patterns),
         webhooks=WebhookService(uow, clock, container.cipher, webhook_policy_of(settings)),
         webhook_delivery=WebhookDeliveryService(
             uow, clock, container.cipher, container.webhook_sender, webhook_policy_of(settings)
@@ -674,9 +743,8 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             store,
             executors,
             pipeline_version=__version__,
-            retry=RetryPolicy(
-                max_attempts=settings.node_max_attempts, delay=settings.node_retry_delay
-            ),
+            suggest_contact=settings.contact_suggest_threshold,
+            retry=retry_policy_of(settings),
             # Longer than any node may take, so a running node never loses its claim.
             # A classification node may ask the model twice (once more after an invalid answer);
             # the OCR node may read a document with the vision model.
@@ -697,12 +765,14 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         indexing=(
             None
             if index is None
-            else IndexingService(uow, clock, store, index, embeddings, indexing_policy_of(settings))
+            else IndexingService(
+                uow, clock, store, index, indexing_policy_of(settings), embeddings=embeddings
+            )
         ),
         search=(
             None
             if index is None
-            else SearchService(uow, index, embeddings, search_policy_of(settings))
+            else SearchService(uow, index, search_policy_of(settings), embeddings=embeddings)
         ),
         classifier=classifier,
     )

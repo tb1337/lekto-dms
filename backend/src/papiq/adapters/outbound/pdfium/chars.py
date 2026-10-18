@@ -21,9 +21,14 @@ from dataclasses import dataclass
 import pypdfium2
 import pypdfium2.raw as pdfium_c
 
+from papiq.core.domain.locations import Box
+
 REPLACEMENT = "�"
 UPRIGHT = 10.0  # degrees: a character turned less than this is upright
 SAME = 0.02  # advances within this fraction of each other are the same
+SAME_LINE = 0.5
+"""Characters (or word boxes) whose middles lie within this share of a height of each other
+stand in one line."""
 _FIXED_PITCH_FLAG = 1  # bit of the flags of a font descriptor
 
 type Font = tuple[str, float]  # name and height of its characters' boxes
@@ -115,6 +120,32 @@ class Geometry:
             case _:
                 return left - self.left, bottom - self.bottom, right - self.left, top - self.bottom
 
+    def fraction_box(self, left: float, bottom: float, right: float, top: float) -> Box | None:
+        """A box of the unrotated page (in points) on the page as shown, in fractions of it
+        from its top left; None on a page without area."""
+        width, height = self.size
+        if width <= 0 or height <= 0:
+            return None
+        return Box.clamped(*page_fractions(*self.turn(left, bottom, right, top), (width, height)))
+
+
+def page_fractions(
+    left: float, bottom: float, right: float, top: float, size: tuple[float, float]
+) -> tuple[float, float, float, float]:
+    """A box on the page as shown (points from its bottom left) in fractions of the page `size`
+    from its top left: left, top, right, bottom, each cut to 0 to 1."""
+    width, height = size
+    return (
+        _unit(left / width),
+        _unit((height - top) / height),
+        _unit(right / width),
+        _unit((height - bottom) / height),
+    )
+
+
+def _unit(value: float) -> float:
+    return min(max(value, 0.0), 1.0)
+
 
 def reading_turn(textpage: pypdfium2.PdfTextPage, geometry: Geometry) -> int:
     """How far to turn the page as shown, clockwise, for most of its text to be upright: 0, or
@@ -171,9 +202,7 @@ def page_chars(
             right=right,
             top=top,
         )
-        angle = (
-            math.degrees(pdfium_c.FPDFText_GetCharAngle(textpage, index)) + geometry.rotation
-        ) % 360
+        angle = _angle(textpage, index, geometry)
         if min(angle, 360 - angle) < UPRIGHT:
             upright.append(char)
         else:
@@ -188,7 +217,8 @@ def lines_of(chars: list[Char], advances: dict[Font, float]) -> list[Line]:
     rows: list[list[Char]] = []
     for char in sorted(chars, key=lambda char: -char.middle):
         first = rows[-1][0] if rows else None
-        if first is not None and first.middle - char.middle <= min(first.height, char.height) / 2:
+        spread = min(first.height, char.height) * SAME_LINE if first is not None else 0.0
+        if first is not None and first.middle - char.middle <= spread:
             rows[-1].append(char)
         else:
             rows.append([char])

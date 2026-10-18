@@ -1,13 +1,13 @@
 """Search: `GET /documents/search` (words and meaning in one call) and `POST /search/reindex`."""
 
 from typing import Annotated, Literal
-from uuid import UUID
 
 from fastapi import APIRouter, Query, Response
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
-from papiq.adapters.inbound.rest.context import Context
-from papiq.adapters.inbound.rest.documents import DocumentSort, LaneFilter, document_filter
+from papiq.adapters.inbound.rest.context import Indexing, Search
+from papiq.adapters.inbound.rest.documents import DocumentSort
+from papiq.adapters.inbound.rest.params import ADMINS_ONLY, AllDocuments, Filter
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails
 from papiq.adapters.inbound.rest.schemas.search import (
@@ -15,8 +15,7 @@ from papiq.adapters.inbound.rest.schemas.search import (
     SearchResultPage,
     SnippetSegment,
 )
-from papiq.core.domain.errors import SearchUnavailableError
-from papiq.core.ports.search_index import MAX_HITS, MAX_LIMIT
+from papiq.core.ports.search_index import MAX_HITS, MAX_LIMIT, SEARCH_PAGE
 
 router = APIRouter(tags=["search"], dependencies=PROTECTED)
 
@@ -32,7 +31,7 @@ router = APIRouter(tags=["search"], dependencies=PROTECTED)
         "document with `all_users` (others: 403). Each hit is checked "
         "against the permissions once more before it is returned. The index follows the "
         "documents a moment later, so a new document may take a few seconds to turn up. "
-        "Pages are by `offset`; at most 1000 hits can be reached. `sort`: by relevance (the "
+        f"Pages are by `offset`; at most {MAX_HITS} hits can be reached. `sort`: by relevance (the "
         "default), or by a key as in `GET /documents`, relevance breaking ties."
     ),
     response_model=SearchResultPage,
@@ -40,21 +39,13 @@ router = APIRouter(tags=["search"], dependencies=PROTECTED)
 )
 async def search_documents(
     user: CurrentUser,
-    context: Context,
+    search: Search,
     q: Annotated[str, Query(min_length=1, max_length=500, description="What to look for.")],
-    contact_id: UUID | None = None,
-    document_type_id: UUID | None = None,
-    tag_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
-    space_id: UUID | None = None,
-    lane: Annotated[list[LaneFilter] | None, Query(max_length=4)] = None,
-    field_id: UUID | None = None,
-    contact_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
-    document_type_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
-    topic_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
+    filter: Filter,
     sort: Annotated[
         DocumentSort | Literal["relevance"], Query(description="`relevance` or a key.")
     ] = "relevance",
-    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 20,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = SEARCH_PAGE,
     offset: Annotated[int, Query(ge=0, le=MAX_HITS)] = 0,
     semantic_ratio: Annotated[
         float | None,
@@ -65,26 +56,12 @@ async def search_documents(
             "only. Default: the installation's setting.",
         ),
     ] = None,
-    all_users: Annotated[
-        bool, Query(description="Every user's documents instead of the caller's reach (admins).")
-    ] = False,
+    all_users: AllDocuments = False,
 ) -> SearchResultPage:
-    if context.search is None:
-        raise SearchUnavailableError("search is not configured")
-    page = await context.search.search(
+    page = await search.search(
         user,
         q,
-        document_filter(
-            contact_id,
-            document_type_id,
-            tag_id,
-            space_id,
-            lane,
-            field_id,
-            contact_group_id,
-            document_type_group_id,
-            topic_id,
-        ),
+        filter,
         offset=offset,
         limit=limit,
         semantic_ratio=semantic_ratio,
@@ -111,7 +88,7 @@ async def search_documents(
     status_code=202,
     summary="Rebuild the search index",
     description=(
-        "Admins only. Builds a new index from the database and the stored files next to the "
+        ADMINS_ONLY + " Builds a new index from the database and the stored files next to the "
         "active one and swaps it in when it is complete; the search keeps working meanwhile. "
         "Runs in the background and may take long; a rebuild that is queued or running is not "
         "queued twice."
@@ -119,8 +96,6 @@ async def search_documents(
     response_class=Response,
     responses={202: {"description": "Queued."}, **problem_responses(401, 403, 503)},
 )
-async def reindex(user: CurrentUser, context: Context) -> Response:
-    if context.indexing is None:
-        raise SearchUnavailableError("search is not configured")
-    await context.indexing.request_rebuild(user)
+async def reindex(user: CurrentUser, indexing: Indexing) -> Response:
+    await indexing.request_rebuild(user)
     return Response(status_code=202)

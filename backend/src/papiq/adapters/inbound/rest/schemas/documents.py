@@ -1,17 +1,18 @@
 """Documents: upload, details, changes, processing."""
 
+from collections.abc import Mapping
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, ClassVar, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, Json, field_validator
 
 from papiq.adapters.inbound.rest.schemas.spaces import ShareOut
 from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
-from papiq.core.domain.documents import Channel, Document
+from papiq.core.domain.documents import MAX_TITLE, Channel, Document
 from papiq.core.domain.exchanges import ModelCall, RunExchange
-from papiq.core.domain.permissions import can_manage_space
+from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.pipeline import (
     Lane,
     Node,
@@ -249,7 +250,7 @@ class DocumentPatch(BaseModel):
         },
     )
 
-    title: str | None = Field(default=None, min_length=1, max_length=500)
+    title: str | None = Field(default=None, min_length=1, max_length=MAX_TITLE)
     contact_id: UUID | None = None
     document_type_id: UUID | None = None
     topic_id: UUID | None = None
@@ -280,7 +281,7 @@ class ImportedMetadataIn(BaseModel):
         },
     )
 
-    title: str | None = Field(default=None, min_length=1, max_length=500)
+    title: str | None = Field(default=None, min_length=1, max_length=MAX_TITLE)
     contact_id: UUID | None = None
     document_type_id: UUID | None = None
     tag_ids: list[UUID] = Field(default_factory=list, max_length=500)
@@ -288,6 +289,69 @@ class ImportedMetadataIn(BaseModel):
     fields: dict[UUID, Any] = Field(
         default_factory=dict, description="Values by field id, as in `PATCH /documents/{id}`."
     )
+
+
+METADATA_LIMIT = 48 * 1024  # bytes of the metadata field
+
+
+class UploadFields(BaseModel):
+    """The text fields of the form of `POST /documents`; a blank one counts as not given. The
+    form's field names, their OpenAPI schema (`form_schema`) and size limits (`LIMITS`) are
+    taken from here."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    LIMITS: ClassVar[Mapping[str, int]] = {"metadata": METADATA_LIMIT}
+    """Bytes a field may have; the others up to 1 KiB (`read_upload`)."""
+
+    space_id: UUID | None = Field(
+        default=None,
+        description="Target space; default: the owner's default space.",
+        json_schema_extra={"format": "uuid"},
+    )
+    channel: Literal["migration"] | None = Field(
+        default=None,
+        description=(
+            "The intake channel, for rules. Default: `web` with a session, `api` with an "
+            "API token; `migration` for imports from another system."
+        ),
+        json_schema_extra={"enum": [Channel.MIGRATION.value]},
+    )
+    owner: UUID | None = Field(
+        default=None,
+        description=(
+            "Admins only: the active user who owns the document. Default: the caller. The "
+            "duplicate check, the default space and the write access to `space_id` are the "
+            "owner's."
+        ),
+        json_schema_extra={"format": "uuid"},
+    )
+    metadata: Json[ImportedMetadataIn] | None = Field(
+        default=None,
+        description=(
+            "Admins only, with `channel=migration`: JSON of the metadata the document comes "
+            f"with (up to {METADATA_LIMIT // 1024} KiB), as `ImportedMetadataIn`. "
+            "Classification and field extraction apply it instead of asking the language "
+            "model; the other nodes and the rules run as usual."
+        ),
+    )
+
+    @classmethod
+    def form_schema(cls) -> dict[str, JsonObject]:
+        """The OpenAPI schema of each field (`upload_body`): text, as a form sends it."""
+        schemas: dict[str, JsonObject] = {}
+        for name, field in cls.model_fields.items():
+            extra = field.json_schema_extra
+            assert extra is None or isinstance(extra, dict)
+            schemas[name] = {"type": "string", **(extra or {}), "description": field.description}
+        return schemas
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _blank_is_none(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
 
 
 class MoveRequest(BaseModel):
@@ -386,7 +450,9 @@ class RunExchangeOut(BaseModel):
 
 
 class ReprocessRequest(BaseModel):
-    model_config = ConfigDict(json_schema_extra={"examples": [{"from_node": "judge"}]})
+    model_config = ConfigDict(
+        extra="forbid", json_schema_extra={"examples": [{"from_node": "judge"}]}
+    )
 
     from_node: ReprocessNode = Field(
         description="Discard the results from this node on and process again from there."
@@ -428,9 +494,7 @@ class VisibilityOut(BaseModel):
     @classmethod
     def of(cls, document: Document, space: Space, viewer: User) -> "VisibilityOut":
         green = document.lane is Lane.GREEN
-        shares = None
-        if green and can_manage_space(viewer, space):
-            shares = [ShareOut(user_id=u, level=level) for u, level in sorted(space.shares.items())]
+        shares = ShareOut.of_space(space, viewer) if green else None
         return cls(
             owner_id=document.owner_id,
             space_id=space.id,

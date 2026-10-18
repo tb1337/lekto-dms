@@ -18,9 +18,11 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.identity import TokenScope, csrf_token, hash_token
 from papiq.core.domain.ids import ApiTokenId, new_id
 from papiq.core.domain.users import Role, User
+from papiq.core.ports.identity import PasswordHasher
 from papiq.core.services.auth import AuthService
+from tests import builders
 from tests.builders import PASSWORD
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 NEW_PASSWORD = "another long passphrase"
 SOURCE = "203.0.113.1"
@@ -204,26 +206,33 @@ class GatedHasher:
     """Verifies only once `release` is set, so that many sign-ins can be in flight at once;
     counts how many callers wait."""
 
-    def __init__(self, inner: object) -> None:
+    def __init__(self, inner: PasswordHasher) -> None:
         self._inner = inner
         self.release = asyncio.Event()
         self.waiting = 0
 
     async def hash(self, password: str) -> str:
-        return await self._inner.hash(password)  # type: ignore[attr-defined, no-any-return]
+        return await self._inner.hash(password)
 
     async def verify(self, hash: str, password: str) -> bool:
         self.waiting += 1
         await self.release.wait()
-        return await self._inner.verify(hash, password)  # type: ignore[attr-defined, no-any-return]
+        return await self._inner.verify(hash, password)
 
     def needs_rehash(self, hash: str) -> bool:
-        return self._inner.needs_rehash(hash)  # type: ignore[attr-defined, no-any-return]
+        return self._inner.needs_rehash(hash)
 
 
 async def _burst(world: World, attempts: int) -> tuple[list[object], GatedHasher]:
     gate = GatedHasher(world.hasher)
-    auth = AuthService(world.uow, world.clock, hasher=gate, cipher=world.cipher, totp=world.totp)
+    auth = AuthService(
+        world.uow,
+        world.clock,
+        hasher=gate,
+        cipher=world.cipher,
+        totp=world.totp,
+        sessions=builders.SESSIONS,
+    )
     tasks = [
         asyncio.create_task(auth.login("alice", "wrong password!", source=SOURCE))
         for _ in range(attempts)
@@ -429,13 +438,20 @@ async def test_a_sign_in_does_not_outlive_a_reset_or_deactivation(
     admin, user = await world.account("root", Role.ADMIN), await world.account("alice")
     world.hasher.round = 2  # the sign-in would also rehash the old password
     hasher = ChangingHasher(world.hasher)
-    auth = AuthService(world.uow, world.clock, hasher=hasher, cipher=world.cipher, totp=world.totp)
+    auth = AuthService(
+        world.uow,
+        world.clock,
+        hasher=hasher,
+        cipher=world.cipher,
+        totp=world.totp,
+        sessions=builders.SESSIONS,
+    )
 
     async def meanwhile() -> None:
         if change == "reset":
             await world.users.reset_password(admin.id, user.id, NEW_PASSWORD)
         else:
-            await world.users.set_active(admin.id, user.id, False)
+            await world.users.update(admin.id, user.id, active=False)
 
     hasher.meanwhile = meanwhile
     with pytest.raises(AuthenticationError):

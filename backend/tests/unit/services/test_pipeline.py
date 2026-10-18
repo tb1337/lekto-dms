@@ -21,12 +21,14 @@ from papiq.core.domain.events import (
     DocumentReceived,
     LaneChanged,
     NodeCompleted,
+    NodeDeferred,
     NodeStarted,
 )
 from papiq.core.domain.ids import ContactId, TagId
-from papiq.core.domain.jobs import JobStatus
+from papiq.core.domain.jobs import JobStatus, RetryPolicy
 from papiq.core.domain.master_data import Tag
 from papiq.core.domain.pipeline import (
+    CURRENT_SIGNALS,
     NODES,
     Lane,
     Node,
@@ -45,22 +47,19 @@ from papiq.core.services.pipeline import (
     REPARSE_JOB,
     MetadataResult,
     PipelineService,
-    PlaceholderNode,
-    RetryPolicy,
 )
 from tests import builders
-from tests.builders import FAILED, NOW, UNCERTAIN, incoming
-from tests.contracts.processing import SAMPLES
-from tests.unit.services.conftest import Raises, Returns, World
+from tests.builders import FAILED, NOW, SAMPLES, UNCERTAIN, PlaceholderNode, Returns, incoming
+from tests.unit.services.support import Raises, World
 
 PDF = b"%PDF-1.7 invoice"
 
 
-def postpone(world: World, node: str, by: timedelta) -> None:
+def postpone(world: World, node: Node, by: timedelta) -> None:
     """Let the job of `node` run later, so a test runs the other due jobs first: the jobs of
     `ocr` and `pages` are due at the same moment, in no fixed order."""
     for id, job in world.database.jobs.items():
-        if job.payload.get("node") == node:
+        if job.payload.get("node") == node.value:
             world.database.jobs[id] = dataclasses.replace(job, run_at=job.run_at + by)
 
 
@@ -90,7 +89,7 @@ async def test_receive_stores_original_document_events_and_job(world: World) -> 
     assert document.processing.due() == (Node.OCR, Node.PAGES)
     assert document.lane is None
 
-    assert world.event_types() == ["document.received", "document.node_completed"]
+    assert world.event_types() == [DocumentReceived.type, NodeCompleted.type]
     async with world.uow() as uow:
         assert await uow.documents.get(document.id) == document
         (entry,) = await uow.processing_log.list_for(document.id)
@@ -107,8 +106,8 @@ async def test_receive_stores_original_document_events_and_job(world: World) -> 
     assert {first.kind, second.kind} == {NODE_JOB}
     payloads = sorted([first.payload, second.payload], key=lambda payload: str(payload["node"]))
     assert payloads == [
-        {"document_id": str(document.id), "node": "ocr", "run": 1},
-        {"document_id": str(document.id), "node": "pages", "run": 1},
+        {"document_id": str(document.id), "node": Node.OCR.value, "run": 1},
+        {"document_id": str(document.id), "node": Node.PAGES.value, "run": 1},
     ]
 
 
@@ -137,7 +136,7 @@ async def test_pipeline_runs_to_green(world: World) -> None:
 
 async def test_a_running_node_is_visible_until_its_result_is_stored(world: World) -> None:
     owner, document = await receive(world)
-    postpone(world, "pages", timedelta(hours=1))
+    postpone(world, Node.PAGES, timedelta(hours=1))
     seen: list[tuple[Node, ...]] = []
 
     class Looks:
@@ -150,7 +149,7 @@ async def test_a_running_node_is_visible_until_its_result_is_stored(world: World
     pipeline = world.pipeline({Node.OCR: Looks()})
     assert await pipeline.run_next_job()
     assert seen == [(Node.OCR,)]
-    assert world.event_types()[-2:] == ["document.node_started", "document.node_completed"]
+    assert world.event_types()[-2:] == [NodeStarted.type, NodeCompleted.type]
     stored = await world.documents.get(owner.id, document.id)
     assert stored.processing.nodes[Node.OCR] == NodeState(
         status=NodeStatus.DONE, outcome=Outcome.OK, started_at=NOW, finished_at=NOW
@@ -173,7 +172,9 @@ async def test_uncertain_step_ends_yellow(world: World) -> None:
 async def test_failed_result_stops_red(world: World) -> None:
     pipeline = world.pipeline({Node.PARSE: Returns(FAILED)})
     owner, document = await receive(world, pipeline)
-    assert await world.drain(pipeline) == 3  # ocr, pages, parse
+    # The nodes after receiving, up to the one that fails.
+    ran = Node.RECEIVE.successors | Node.PARSE.ancestors | {Node.PARSE}
+    assert await world.drain(pipeline) == len(ran - {Node.RECEIVE})
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.RED
     assert stored.processing.status is ProcessingStatus.FAILED
@@ -189,7 +190,7 @@ async def test_a_node_still_queued_after_a_failure_is_dropped_and_retried_later(
     pages = Returns(builders.OK)
     pipeline = world.pipeline({Node.OCR: Returns(FAILED), Node.PAGES: pages})
     owner, document = await receive(world, pipeline)
-    postpone(world, "pages", timedelta(seconds=1))
+    postpone(world, Node.PAGES, timedelta(seconds=1))
     assert await pipeline.run_next_job()  # ocr fails
     world.clock.advance(timedelta(seconds=1))
     assert await pipeline.run_next_job()  # the pages job is stale now: nothing new starts
@@ -199,7 +200,7 @@ async def test_a_node_still_queued_after_a_failure_is_dropped_and_retried_later(
     assert all(job.status is not JobStatus.QUEUED for job in world.database.jobs.values())
 
     working = world.pipeline({Node.PAGES: pages})
-    retried = await working.retry(owner.id, document.id)
+    retried = (await working.retry(owner.id, document.id)).document
     assert retried.processing.due() == (Node.OCR, Node.PAGES)
     await world.drain(working)
     assert pages.calls == 1
@@ -210,11 +211,12 @@ async def test_exceptions_are_retried_with_backoff(world: World) -> None:
     flaky = Raises(times=2)
     pipeline = world.pipeline({Node.OCR: flaky})
     owner, document = await receive(world, pipeline)
-    assert await world.drain(pipeline) == 2  # the pages, and attempt 1 fails
+    # The pages, and the first attempt of the OCR, which fails.
+    assert await world.drain(pipeline) == len(Node.RECEIVE.successors)
     assert not await pipeline.run_next_job()  # waits 30 s
     waiting = await world.documents.get(owner.id, document.id)
     assert waiting.processing.nodes[Node.OCR] == NodeState()  # not shown as running meanwhile
-    assert "document.node_deferred" in world.event_types()
+    assert NodeDeferred.type in world.event_types()
     world.clock.advance(timedelta(seconds=30))
     assert await pipeline.run_next_job()  # attempt 2 fails
     world.clock.advance(timedelta(seconds=59))
@@ -224,7 +226,9 @@ async def test_exceptions_are_retried_with_backoff(world: World) -> None:
     assert flaky.calls == 3
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.GREEN
-    ocr_job = next(job for job in world.database.jobs.values() if job.payload["node"] == "ocr")
+    ocr_job = next(
+        job for job in world.database.jobs.values() if job.payload["node"] == Node.OCR.value
+    )
     assert (ocr_job.attempts, ocr_job.status) == (3, JobStatus.DONE)
     assert ocr_job.last_error == "OSError: scanner glitch"
 
@@ -242,10 +246,12 @@ async def test_exhausted_retries_end_red_and_retry_recovers(world: World) -> Non
     log = await world.documents.processing_log(owner.id, stored.id)
     assert log[-1].result.outcome is Outcome.FAILED
     assert log[-1].result.reason == "OSError: scanner glitch"
-    ocr_job = next(job for job in world.database.jobs.values() if job.payload["node"] == "ocr")
+    ocr_job = next(
+        job for job in world.database.jobs.values() if job.payload["node"] == Node.OCR.value
+    )
     assert ocr_job.status is JobStatus.FAILED
 
-    retried = await pipeline.retry(owner.id, stored.id)
+    retried = (await pipeline.retry(owner.id, stored.id)).document
     assert retried.processing.run == 2
     assert retried.lane is None
     await world.drain(pipeline)
@@ -274,8 +280,8 @@ async def test_skipped_pages_are_caught_up_on_without_a_new_run(world: World) ->
     pipeline = world.pipeline({Node.PAGES: pages})
     assert await pipeline.catch_up(Node.PAGES) == 3  # also the one being processed
     assert await pipeline.catch_up(Node.PAGES) == 0  # queued already
-    # And the processing one: eleven nodes, its pages job stale.
-    assert await world.drain(pipeline) == 3 + 11
+    # And the processing one: every node after receiving, its pages job stale.
+    assert await world.drain(pipeline) == 3 + len(Node.RECEIVE.descendants)
     assert pages.calls == 3
     caught_up = await world.documents.get(owner.id, processing.id)
     assert caught_up.lane is Lane.GREEN
@@ -292,7 +298,7 @@ async def test_skipped_pages_are_caught_up_on_without_a_new_run(world: World) ->
         assert log[-1].node is Node.PAGES and log[-1].run == 1
     kinds = [job.kind for job in world.database.jobs.values() if job.status is JobStatus.DONE]
     assert kinds.count(CATCH_UP_JOB) == 3
-    assert "document.lane_changed" not in [
+    assert LaneChanged.type not in [
         event.type
         for event in world.events()
         if isinstance(event, DocumentEvent) and event.document_id in (document.id, red.id)
@@ -369,7 +375,7 @@ async def test_the_text_is_read_again_beside_processing(world: World) -> None:
         for event in world.events()
         if isinstance(event, DocumentEvent) and event.document_id == document.id
     ]
-    assert types == ["document.node_completed"]
+    assert types == [NodeCompleted.type]
     assert (await world.documents.get(owner.id, busy.id)).lane is Lane.GREEN
     assert (await world.documents.get(owner.id, red.id)).lane is Lane.RED
 
@@ -402,8 +408,9 @@ async def test_reprocess_from_a_step(world: World) -> None:
     world.database.outbox.clear()
     pipeline = world.pipeline({Node.FIELDS: Returns(UNCERTAIN)})
     await pipeline.reprocess_from(owner.id, document.id, Node.JUDGE)
-    # The three signals without a model call, judge, fields, rules; it waits before filing.
-    assert await world.drain(pipeline) == 6
+    # The signals without a model call, judge, fields, rules; it waits before filing.
+    again = CURRENT_SIGNALS | {Node.JUDGE} | Node.JUDGE.descendants - {Node.FILE}
+    assert await world.drain(pipeline) == len(again)
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.YELLOW
     assert stored.processing.status is ProcessingStatus.REVIEW
@@ -468,7 +475,7 @@ async def test_stale_jobs_are_skipped(world: World) -> None:
     await world.documents.delete(owner.id, document.id)
     calls = Returns(FAILED)
     pipeline = world.pipeline({Node.OCR: calls})
-    assert await world.drain(pipeline) == 2  # ocr and pages, both stale
+    assert await world.drain(pipeline) == len(Node.RECEIVE.successors)  # both stale
     assert calls.calls == 0
     nodes = [job for job in world.database.jobs.values() if job.kind == NODE_JOB]
     assert all(job.status is JobStatus.DONE for job in nodes)
@@ -484,7 +491,7 @@ async def crash(world: World) -> None:
 
 async def test_a_step_that_keeps_killing_the_worker_ends_red(world: World) -> None:
     owner, document = await receive(world)
-    postpone(world, "pages", timedelta(hours=1))
+    postpone(world, Node.PAGES, timedelta(hours=1))
     for _ in range(3):
         await crash(world)
     ocr = Returns(FAILED)
@@ -511,19 +518,19 @@ async def test_a_worker_that_lost_its_claim_stores_nothing(world: World) -> None
                 await uow.commit()
             return FAILED
 
-    postpone(world, "pages", timedelta(hours=1))
+    postpone(world, Node.PAGES, timedelta(hours=1))
     assert await world.pipeline({Node.OCR: Slow()}).run_next_job()
     stored = await world.documents.get(owner.id, document.id)
     assert stored.processing.nodes[Node.OCR].status is NodeStatus.RUNNING
     assert stored.processing.outcome(Node.OCR) is None
     assert stored.lane is None
-    (job,) = [job for job in world.database.jobs.values() if job.payload["node"] == "ocr"]
+    (job,) = [job for job in world.database.jobs.values() if job.payload["node"] == Node.OCR.value]
     assert (job.status, job.attempts) == (JobStatus.RUNNING, 2)
 
 
 async def test_invalid_job_payload_fails_the_job(world: World) -> None:
     async with world.uow() as uow:
-        await uow.jobs.enqueue(NODE_JOB, {"node": "ocr"}, run_at=world.clock.now())
+        await uow.jobs.enqueue(NODE_JOB, {"node": Node.OCR.value}, run_at=world.clock.now())
         await uow.commit()
     assert await world.pipeline().run_next_job()
     (job,) = world.database.jobs.values()
@@ -533,12 +540,8 @@ async def test_invalid_job_payload_fails_the_job(world: World) -> None:
 
 async def test_every_step_needs_an_executor(world: World) -> None:
     with pytest.raises(ValueError, match="no executor"):
-        PipelineService(
-            world.uow,
-            world.clock,
-            world.object_store,
-            {Node.OCR: PlaceholderNode()},
-            pipeline_version="test",
+        builders.pipeline_service(
+            world.uow, world.clock, world.object_store, {Node.OCR: PlaceholderNode()}
         )
 
 
@@ -547,6 +550,14 @@ def test_retry_policy() -> None:
     assert policy.next_run(1, NOW) == NOW + timedelta(seconds=10)
     assert policy.next_run(2, NOW) == NOW + timedelta(seconds=20)
     assert policy.next_run(3, NOW) is None
+    capped = RetryPolicy(
+        max_attempts=10, delay=timedelta(seconds=10), max_delay=timedelta(seconds=30)
+    )
+    assert [capped.next_run(n, NOW) for n in (2, 3, 4)] == [
+        NOW + timedelta(seconds=20),
+        NOW + timedelta(seconds=30),
+        NOW + timedelta(seconds=30),
+    ]
 
 
 class Blocks:
@@ -580,7 +591,7 @@ async def test_an_unprocessable_document_fails_at_once(world: World) -> None:
     assert ocr.calls == 1  # no automatic retry
     log = await world.documents.processing_log(owner.id, document.id)
     assert (log[-1].node, log[-1].result.reason) == (Node.OCR, "the PDF is encrypted")
-    (job,) = [job for job in world.database.jobs.values() if job.payload["node"] == "ocr"]
+    (job,) = [job for job in world.database.jobs.values() if job.payload["node"] == Node.OCR.value]
     assert job.status is JobStatus.FAILED
 
 
@@ -589,7 +600,7 @@ async def test_a_cancelled_step_releases_its_job_at_once(world: World) -> None:
     blocking = Blocks()
     pipeline = world.pipeline({Node.OCR: blocking})
     owner, document = await receive(world, pipeline)
-    postpone(world, "pages", timedelta(hours=1))
+    postpone(world, Node.PAGES, timedelta(hours=1))
     for _ in range(5):  # more than RetryPolicy.max_attempts
         blocking.started.clear()
         task = asyncio.create_task(pipeline.run_next_job())
@@ -598,7 +609,7 @@ async def test_a_cancelled_step_releases_its_job_at_once(world: World) -> None:
         with pytest.raises(asyncio.CancelledError):
             await task
 
-    (job,) = [job for job in world.database.jobs.values() if job.payload["node"] == "ocr"]
+    (job,) = [job for job in world.database.jobs.values() if job.payload["node"] == Node.OCR.value]
     assert (job.status, job.tries, job.run_at, job.last_error) == (
         JobStatus.QUEUED,
         0,

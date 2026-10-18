@@ -5,15 +5,24 @@ import json
 import pkgutil
 import re
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from typing import Any
 
 import httpx2
 from pydantic import BaseModel
 
-from papiq.adapters.inbound.rest import PREFIX, ApiContext, create_app, schemas
+from papiq.adapters.inbound.rest import (
+    HEALTH_PATH,
+    OIDC_CALLBACK_PATH,
+    PREFIX,
+    create_app,
+    schemas,
+)
+from papiq.composition.api import api_context
 from papiq.composition.container import build_memory_container, build_services
+from tests import builders
 from tests.builders import PASSWORD, SECRET_KEY
-from tests.unit.adapters.rest.conftest import Api
+from tests.unit.adapters.rest.support import Api
 
 PROBLEM = "application/problem+json"
 
@@ -21,7 +30,13 @@ PROBLEM = "application/problem+json"
 async def test_health_is_ok_without_authentication(api: Api) -> None:
     response = await api.client.get(f"{PREFIX}/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "checks": {"database": "ok", "object_store": "ok"}}
+    checks = {"database": "ok", "object_store": "ok", "search": "ok"}
+    assert response.json() == {"status": "ok", "checks": checks}
+
+
+def test_the_paths_known_outside_the_routes_are_routes(api: Api) -> None:
+    """The access log filters and the OIDC redirect URI name these paths."""
+    assert {HEALTH_PATH, OIDC_CALLBACK_PATH} <= set(api.app.openapi()["paths"])
 
 
 async def test_a_failing_check_makes_the_api_unavailable() -> None:
@@ -34,24 +49,9 @@ async def test_a_failing_check_makes_the_api_unavailable() -> None:
     async def broken() -> None:
         raise OSError("connection refused")
 
-    app = create_app(
-        ApiContext(
-            auth=services.auth,
-            users=services.users,
-            spaces=services.spaces,
-            master_data=services.master_data,
-            logos=services.logos,
-            pipeline=services.pipeline,
-            documents=services.documents,
-            rules=services.rules,
-            rule_applications=services.rule_applications,
-            webhooks=services.webhooks,
-            webhook_delivery=services.webhook_delivery,
-            event_bus=container.event_bus,
-            health_checks={"database": broken, "object_store": ok},
-            max_upload_size=1,
-        )
-    )
+    context = api_context(container, builders.DEFAULT_SETTINGS, services)
+    checks = {"database": broken, "object_store": ok}
+    app = create_app(replace(context, health_checks=checks))
     async with httpx2.AsyncClient(
         transport=httpx2.ASGITransport(app=app), base_url="http://papiq"
     ) as client:
@@ -73,25 +73,8 @@ async def test_a_failing_search_only_degrades_the_api() -> None:
     async def health(checks: dict[str, Callable[[], Awaitable[None]]]) -> httpx2.Response:
         container = build_memory_container()
         services = build_services(container)
-        app = create_app(
-            ApiContext(
-                auth=services.auth,
-                users=services.users,
-                spaces=services.spaces,
-                master_data=services.master_data,
-                logos=services.logos,
-                pipeline=services.pipeline,
-                documents=services.documents,
-                rules=services.rules,
-                rule_applications=services.rule_applications,
-                webhooks=services.webhooks,
-                webhook_delivery=services.webhook_delivery,
-                event_bus=container.event_bus,
-                health_checks=checks,
-                max_upload_size=1,
-                optional_checks=frozenset({"search"}),
-            )
-        )
+        context = api_context(container, builders.DEFAULT_SETTINGS, services)
+        app = create_app(replace(context, health_checks=checks))
         async with httpx2.AsyncClient(
             transport=httpx2.ASGITransport(app=app), base_url="http://papiq"
         ) as client:

@@ -27,8 +27,9 @@ _LEGAL_FORMS = frozenset(
 _PUNCTUATION = re.compile(r"[^\w\s]|_")
 
 
-def name_key(name: str) -> str:
-    """The comparable form of a name; empty if nothing but legal forms and punctuation."""
+def match_key(name: str) -> str:
+    """The form in which names are compared and found in text (not `validation.name_key`, which
+    keeps names apart); empty if nothing but legal forms and punctuation."""
     text = _DOTTED_FORMS.sub(" ", normalise(name)).replace("&", " und ")
     text = fold_umlauts(_PUNCTUATION.sub(" ", text))
     return " ".join(word for word in text.split() if word not in _LEGAL_FORMS)
@@ -48,8 +49,12 @@ def similarity(a: str, b: str) -> float:
 
 
 def mentions(text_key: str, key: str) -> bool:
-    """Whether the name key appears as whole words in a text turned into a key."""
-    return bool(key) and re.search(rf"(?<!\w){re.escape(key)}(?!\w)", text_key) is not None
+    """Whether the name key appears as whole words in a text turned into a key. The plain
+    substring test first: it rules out almost every name at C speed, where the pattern's
+    lookbehind would scan the whole text in Python's regex engine."""
+    if not key or key not in text_key:
+        return False
+    return re.search(rf"(?<!\w){re.escape(key)}(?!\w)", text_key) is not None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -65,10 +70,10 @@ def best_match[T](name: str, candidates: Iterable[tuple[T, str]]) -> NameMatch[T
     """The candidate whose name (second item) is most similar to `name`. A candidate may come
     with several names (its aliases): its best one counts, and the runner-up is always another
     candidate (the same object)."""
-    key = name_key(name)
+    key = match_key(name)
     best: dict[int, tuple[float, int, T]] = {}
     for index, (item, other) in enumerate(candidates):
-        score = similarity(key, name_key(other))
+        score = similarity(key, match_key(other))
         known = best.get(id(item))
         if known is None or score > known[0]:
             best[id(item)] = (score, known[1] if known else index, item)
@@ -80,15 +85,16 @@ def best_match[T](name: str, candidates: Iterable[tuple[T, str]]) -> NameMatch[T
 
 
 _SHORTEST_WORD = 3  # letters of a word that counts for `named_share` and `related`
-RELATED = 0.75  # similarity of two names that are related without sharing a word
 
 
-def related(a: str, b: str) -> bool:
+def related(a: str, b: str, *, threshold: float) -> bool:
     """Whether two name keys belong together: they share a word of at least three letters, or
-    are at least `RELATED` similar (the model read "Nord Krankenversicherung AG" for "Nord
-    Versicherungsgruppe"; "Max Mustermann" is something else)."""
+    are at least `threshold` similar (the model read "Nord Krankenversicherung AG" for "Nord
+    Versicherungsgruppe"; "Max Mustermann" is something else). The threshold is the one from
+    which a name suggests a contact (`PAPIQ_CONTACT_SUGGEST_THRESHOLD`), so a related name is
+    one that would have been suggested."""
     words = {word for word in a.split() if len(word) >= _SHORTEST_WORD}
-    return bool(words & set(b.split())) or similarity(a, b) >= RELATED
+    return bool(words & set(b.split())) or similarity(a, b) >= threshold
 
 
 def named_share(text_key: str, text_words: Collection[str], key: str) -> float:

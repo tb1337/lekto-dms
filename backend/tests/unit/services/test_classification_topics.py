@@ -11,7 +11,7 @@ from papiq.core.domain.pipeline import NodeResult, Outcome
 from papiq.core.services.classification.signals import FactsResult, FactsSignal
 from papiq.core.services.pipeline import MetadataResult
 from tests.builders import NOW
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 from tests.unit.services.test_classification import (
     checks,
     document_with,

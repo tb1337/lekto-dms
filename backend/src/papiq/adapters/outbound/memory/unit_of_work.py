@@ -8,11 +8,11 @@ still has the version it had when the unit first touched it, and that uniqueness
 import asyncio
 import copy
 import dataclasses
-from collections.abc import Collection, Hashable, Iterable, Mapping
+from collections.abc import Callable, Collection, Hashable, Iterable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, Self, cast
 from uuid import UUID
 
 from papiq.adapters.outbound.memory.classifier_models import MemoryClassifierModelRepository
@@ -34,6 +34,7 @@ from papiq.adapters.outbound.memory.database import (
     TAGS,
     USERS,
     WEBHOOKS,
+    IdentifiersRow,
     MemoryDatabase,
     Table,
 )
@@ -44,6 +45,7 @@ from papiq.adapters.outbound.memory.identity import (
     MemoryLoginFailureRepository,
     MemorySessionRepository,
 )
+from papiq.adapters.outbound.memory.ordering import Rank, rank
 from papiq.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from papiq.adapters.outbound.memory.rules import (
     MemoryRuleApplicationRepository,
@@ -51,6 +53,7 @@ from papiq.adapters.outbound.memory.rules import (
 )
 from papiq.adapters.outbound.memory.webhooks import MemoryWebhookRepository
 from papiq.core.domain.documents import Document, Sha256
+from papiq.core.domain.entity import Entity
 from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.fields import FieldDefinition
@@ -69,7 +72,8 @@ from papiq.core.domain.ids import (
 from papiq.core.domain.jobs import Job, JobStatus
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag, TagScope
-from papiq.core.domain.pipeline import Lane, NodeRun
+from papiq.core.domain.permissions import within_reach
+from papiq.core.domain.pipeline import NodeRun
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import User
 from papiq.core.domain.validation import name_key, require_utc
@@ -80,7 +84,7 @@ from papiq.core.ports.repository import (
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
-    SortKey,
+    FilterView,
 )
 
 
@@ -88,8 +92,8 @@ class MemoryUnitOfWork:
     def __init__(self, database: MemoryDatabase) -> None:
         self._db = database
         self._closed = False
-        self._writes: dict[str, dict[UUID, Any]] = {}
-        self._tables: dict[str, Table] = {}
+        self._writes: dict[str, dict[UUID, Entity[UUID] | None]] = {}
+        self._tables: dict[str, Table[Any]] = {}  # the tables written to, of any kind
         self._base_versions: dict[tuple[str, UUID], int | None] = {}
         self._log: list[NodeRun] = []
         self._events: list[DomainEvent] = []
@@ -168,7 +172,9 @@ class MemoryUnitOfWork:
                 else:
                     rows[id] = row
         self._db.processing_log.extend(self._log)
-        removed = {id for id, row in self._writes.get(DOCUMENTS.name, {}).items() if row is None}
+        removed = {
+            id for id, row in self._writes.get(DOCUMENTS.name, {}).items() if row is _REMOVED
+        }
         self._db.processing_log[:] = [
             entry for entry in self._db.processing_log if entry.document_id not in removed
         ]
@@ -215,22 +221,22 @@ class MemoryUnitOfWork:
                         raise ConflictError(f"an active job with key {job.dedup_key} exists")
 
     # --- rows -----------------------------------------------------------------------------------
+    # A table holds rows of its own kind only: those of `Table[E]` are `E`.
 
-    def _rows(self, table: Table) -> list[Any]:
+    def _rows[E: Entity[UUID]](self, table: Table[E]) -> list[E]:
         """Committed rows with this unit's changes applied (not copied)."""
         committed = self._db.tables.get(table.name, {})
         writes = self._writes.get(table.name, {})
         rows = [writes.get(id, row) for id, row in committed.items()]
         rows += [row for id, row in writes.items() if id not in committed]
-        return [row for row in rows if row is not _REMOVED]
+        return cast(list[E], [row for row in rows if row is not _REMOVED])
 
-    def _row(self, table: Table, id: UUID) -> Any:
+    def _row[E: Entity[UUID]](self, table: Table[E], id: UUID) -> E | None:
         writes = self._writes.get(table.name, {})
-        if id in writes:
-            return writes[id]
-        return self._db.tables.get(table.name, {}).get(id)
+        row = writes[id] if id in writes else self._db.tables.get(table.name, {}).get(id)
+        return cast(E | None, row)
 
-    def _write(self, table: Table, id: UUID, row: Any) -> None:
+    def _write[E: Entity[UUID]](self, table: Table[E], id: UUID, row: E | None) -> None:
         self._check_open()
         key = (table.name, id)
         if key not in self._base_versions:
@@ -239,8 +245,15 @@ class MemoryUnitOfWork:
         self._tables[table.name] = table
         self._writes.setdefault(table.name, {})[id] = row
 
+    def _check_unreferenced[E: Entity[UUID]](self, table: Table[E], id: UUID) -> None:
+        """ConflictError if a row refers to the row `id` of `table`: the SQL schema's foreign
+        keys without a cascade refuse its removal so."""
+        for referring, refers in _REFERRERS.get(table.name, ()):
+            if any(refers(row, id) for row in self._rows(referring)):
+                raise ConflictError(f"a {referring.name} still refers to {table.name} {id}")
+
     @staticmethod
-    def _unique_or_fail(table: Table, rows: Iterable[Any]) -> None:
+    def _unique_or_fail[E: Entity[UUID]](table: Table[E], rows: Iterable[E]) -> None:
         seen: set[Hashable] = set()
         for row in rows:
             for key in table.unique_keys(row):
@@ -249,14 +262,40 @@ class MemoryUnitOfWork:
                 seen.add(key)
 
 
+# What refers to a row, as the SQL schema's foreign keys without ON DELETE CASCADE do.
+_REFERRERS: dict[str, tuple[tuple[Table[Any], Callable[[Any, UUID], bool]], ...]] = {
+    USERS.name: (
+        (SPACES, lambda space, id: space.owner_id == id or id in space.shares),
+        (DOCUMENTS, lambda document, id: document.owner_id == id),
+        (RULES, lambda rule, id: rule.owner_id == id),
+    ),
+    SPACES.name: ((DOCUMENTS, lambda document, id: document.space_id == id),),
+    CONTACTS.name: ((DOCUMENTS, lambda document, id: document.contact_id == id),),
+    DOCUMENT_TYPES.name: (
+        (DOCUMENTS, lambda document, id: document.document_type_id == id),
+        (FIELDS, lambda field, id: id in (field.document_type_ids or ())),
+    ),
+    TAGS.name: (
+        (TAGS, lambda tag, id: tag.parent_id == id),
+        (
+            CONTACTS,
+            lambda contact, id: (
+                id in contact.group_ids
+                or id in contact.topic_ids
+                or any(item.topic_id == id for item in contact.identifiers)
+            ),
+        ),
+        (DOCUMENT_TYPES, lambda kind, id: id in kind.group_ids),
+        (DOCUMENTS, lambda document, id: document.topic_id == id or id in document.tag_ids),
+    ),
+    FIELDS.name: ((DOCUMENTS, lambda document, id: id in document.fields),),
+}
+
+
 class MemoryNamedRepository[K: UUID, E: MasterData](MemoryRepository[K, E]):
     async def find_by_name(self, name: str) -> E | None:
         key = name_key(name)
         return next((_copy(row) for row in self._all() if name_key(row.name) == key), None)
-
-    async def remove(self, id: K) -> None:
-        await self.get(id)
-        self._uow._write(self._table, id, _REMOVED)
 
 
 class MemoryTagRepository(MemoryNamedRepository[TagId, Tag]):
@@ -273,10 +312,6 @@ class MemoryUserRepository(MemoryRepository[UserId, User]):
         key = name_key(username)
         return next((_copy(row) for row in self._all() if name_key(row.username) == key), None)
 
-    async def remove(self, id: UserId) -> None:
-        await self.get(id)
-        self._uow._write(self._table, id, _REMOVED)
-
 
 class MemorySpaceRepository(MemoryRepository[SpaceId, Space]):
     async def get_default(self, owner: UserId) -> Space:
@@ -288,10 +323,6 @@ class MemorySpaceRepository(MemoryRepository[SpaceId, Space]):
     async def list_accessible(self, user: UserId) -> list[Space]:
         return [_copy(row) for row in self._all() if row.owner_id == user or user in row.shares]
 
-    async def remove(self, id: SpaceId) -> None:
-        await self.get(id)
-        self._uow._write(self._table, id, _REMOVED)
-
 
 class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
     async def find_by_sha256(self, owner: UserId, sha256: Sha256) -> Document | None:
@@ -302,16 +333,7 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
 
     async def list_visible_to(self, user: UserId) -> list[Document]:
         readable = {space.id for space in await self._uow.spaces.list_accessible(user)}
-        return [
-            _copy(row)
-            for row in self._all()
-            if row.owner_id == user or (row.lane is Lane.GREEN and row.space_id in readable)
-        ]
-
-    async def remove(self, id: DocumentId) -> None:
-        if self._uow._row(self._table, id) is _REMOVED:
-            raise NotFoundError(self._table.name, id)
-        self._uow._write(self._table, id, _REMOVED)
+        return [_copy(row) for row in self._all() if within_reach(user, readable, row)]
 
     async def field_in_use(
         self,
@@ -455,15 +477,6 @@ class MemoryProcessingLog:
         return [entry for entry in entries if entry.document_id == document]
 
 
-@dataclass
-class _Shown:
-    """The identifiers one document shows (a row keyed by the document's id)."""
-
-    id: DocumentId
-    identifiers: frozenset[tuple[IdentifierKind, str]]
-    version: int
-
-
 class MemoryDocumentIdentifierRepository:
     def __init__(self, uow: MemoryUnitOfWork) -> None:
         self._uow = uow
@@ -473,8 +486,8 @@ class MemoryDocumentIdentifierRepository:
     ) -> None:
         self._uow._check_open()
         current = self._uow._row(DOCUMENT_IDENTIFIERS, document)
-        version = 1 if current is None else current.version + 1
-        row = _Shown(id=document, identifiers=frozenset(identifiers), version=version)
+        version = 1 if current is _REMOVED else current.version + 1
+        row = IdentifiersRow(id=document, identifiers=frozenset(identifiers), version=version)
         self._uow._write(DOCUMENT_IDENTIFIERS, document, row)
 
     async def contacts_of(
@@ -487,7 +500,7 @@ class MemoryDocumentIdentifierRepository:
             if document.confirmed_at is None or document.contact_id is None:
                 continue
             shown = self._uow._row(DOCUMENT_IDENTIFIERS, document.id)
-            for key in wanted & (set() if shown is None else shown.identifiers):
+            for key in wanted & (set() if shown is _REMOVED else shown.identifiers):
                 found.setdefault(key, set()).add(document.contact_id)
         return {key: frozenset(contacts) for key, contacts in found.items()}
 
@@ -642,11 +655,13 @@ class _Groups:
     contacts: Mapping[UUID, frozenset[TagId]]
     document_types: Mapping[UUID, frozenset[TagId]]
 
-    def match(self, document: Document, filter: DocumentFilter) -> bool:
-        contact = self.contacts.get(document.contact_id or UUID(int=0), frozenset())
-        kind = self.document_types.get(document.document_type_id or UUID(int=0), frozenset())
-        return all(groups & contact for groups in filter.contact_groups) and all(
-            groups & kind for groups in filter.document_type_groups
+    def view(self, document: Document) -> FilterView:
+        return FilterView.of(
+            document,
+            contact_groups=self.contacts.get(document.contact_id or UUID(int=0), frozenset()),
+            document_type_groups=self.document_types.get(
+                document.document_type_id or UUID(int=0), frozenset()
+            ),
         )
 
 
@@ -659,19 +674,7 @@ def _query(
     after: DocumentPosition | None,
     limit: int,
 ) -> list[Document]:
-    matching = [
-        document
-        for document in documents
-        if (filter.contact is None or document.contact_id == filter.contact)
-        and (filter.document_type is None or document.document_type_id == filter.document_type)
-        and (filter.topics is None or document.topic_id in filter.topics)
-        and all(tags & document.tag_ids for tags in filter.tags)
-        and groups.match(document, filter)
-        and (filter.space is None or document.space_id == filter.space)
-        and (filter.lanes is None or document.lane in filter.lanes)
-        and (filter.confirmed is None or (document.confirmed_at is not None) is filter.confirmed)
-        and (filter.field is None or filter.field in document.fields)
-    ]
+    matching = [document for document in documents if filter.matches(groups.view(document))]
     ranked = sorted(matching, key=lambda document: _rank(document, order))
     if after is not None:
         # The documents after `after`: its rank is the one it had (the cursor's value).
@@ -680,24 +683,9 @@ def _query(
     return ranked[:limit]
 
 
-def _rank(document: Document, order: DocumentOrder) -> tuple[Any, ...]:
+def _rank(document: Document, order: DocumentOrder) -> Rank:
     return _rank_of(DocumentPosition.of(document, order), order)
 
 
-def _rank_of(position: DocumentPosition, order: DocumentOrder) -> tuple[Any, ...]:
-    """A key that sorts ascending as `order` sorts: documents without a date last."""
-    sign = 1 if order.ascending else -1
-    id_ = sign * position.id.int
-    match order.key:
-        case SortKey.CREATED:
-            return (id_,)
-        case SortKey.DOCUMENT_DATE:
-            day = position.value
-            if not isinstance(day, date):
-                return (1, 0, id_)
-            return (0, sign * day.toordinal(), id_)
-        case SortKey.TITLE:
-            title = str(position.value)
-            # Text cannot be negated: descending compares the code points negated.
-            letters = tuple(ord(char) for char in title)
-            return (letters if order.ascending else (*(-code for code in letters), 1), id_)
+def _rank_of(position: DocumentPosition, order: DocumentOrder) -> Rank:
+    return rank(order, position.id, position.value, ties_by_id=True)

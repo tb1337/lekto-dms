@@ -1,5 +1,6 @@
 """Managing webhooks: who sees and changes what, the secret, the limit."""
 
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -13,9 +14,10 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.ids import WebhookId, new_id
 from papiq.core.domain.users import Role
 from papiq.core.domain.webhooks import DISABLED_FAILING, new_secret
-from papiq.core.services.webhooks import WebhookPolicy, WebhookService
+from papiq.core.services.webhooks import WebhookService
 from papiq.core.services.webhooks.management import secret_context
-from tests.unit.services.conftest import World
+from tests import builders
+from tests.unit.services.support import World
 
 URL = "http://n8n.lan:5678/webhook/papiq"
 
@@ -35,7 +37,7 @@ async def test_a_user_creates_a_webhook_and_sees_the_secret_once(world: World) -
         world.cipher.decrypt(stored.encrypted_secret, context=secret_context(stored.id)).decode()
         == created.secret
     )
-    listed = await world.webhooks.list(user.id)
+    listed = await world.webhooks.list_webhooks(user.id)
     assert [webhook.id for webhook in listed] == [created.webhook.id]
 
 
@@ -45,12 +47,14 @@ async def test_a_bad_url_or_event_type_is_refused(world: World) -> None:
         await world.webhooks.create(user.id, name="x", url="ftp://x", event_types=["*"])
     with pytest.raises(ValidationError):
         await world.webhooks.create(user.id, name="x", url=URL, event_types=["nonsense"])
-    assert await world.webhooks.list(user.id) == []
+    assert await world.webhooks.list_webhooks(user.id) == []
 
 
 async def test_the_number_of_webhooks_per_user_is_limited(world: World) -> None:
     user, other = await world.user(), await world.user()
-    service = WebhookService(world.uow, world.clock, world.cipher, WebhookPolicy(per_user=2))
+    service = WebhookService(
+        world.uow, world.clock, world.cipher, replace(builders.WEBHOOKS, per_user=2)
+    )
     for _ in range(2):
         await service.create(user.id, name="x", url=URL, event_types=["*"])
     with pytest.raises(ConflictError):
@@ -69,13 +73,14 @@ async def test_others_do_not_find_a_webhook_but_admins_read_it(world: World) -> 
         await service.deliveries(other.id, hook.id)
     with pytest.raises(NotFoundError):
         await service.update(other.id, hook.id, name="mine")
-    assert await service.list(other.id) == []
+    assert await service.list_webhooks(other.id) == []
     assert (await service.get(admin.id, hook.id)).id == hook.id
     assert await service.deliveries(admin.id, hook.id) == []
-    assert [webhook.id for webhook in await service.list(admin.id)] == [hook.id]
-    assert [webhook.id for webhook in await service.list(admin.id, owner=owner.id)] == [hook.id]
-    assert await service.list(admin.id, owner=other.id) == []
-    assert await service.list(other.id, owner=owner.id) == []
+    assert [webhook.id for webhook in await service.list_webhooks(admin.id)] == [hook.id]
+    owned = await service.list_webhooks(admin.id, owner=owner.id)
+    assert [webhook.id for webhook in owned] == [hook.id]
+    assert await service.list_webhooks(admin.id, owner=other.id) == []
+    assert await service.list_webhooks(other.id, owner=owner.id) == []
 
 
 async def test_admins_change_renew_and_delete_other_users_webhooks(world: World) -> None:
@@ -152,9 +157,9 @@ async def test_delete_removes_the_webhook_and_a_deleted_user_loses_theirs(world:
 async def test_a_deactivated_user_cannot_use_webhooks(world: World) -> None:
     admin, user = await world.user(role=Role.ADMIN), await world.user()
     await world.webhooks.create(user.id, name="x", url=URL, event_types=["*"])
-    await world.users.set_active(admin.id, user.id, False)
+    await world.users.update(admin.id, user.id, active=False)
     with pytest.raises(AuthenticationError):
-        await world.webhooks.list(user.id)
+        await world.webhooks.list_webhooks(user.id)
     with pytest.raises(AuthenticationError):
         await world.webhooks.create(user.id, name="y", url=URL, event_types=["*"])
 

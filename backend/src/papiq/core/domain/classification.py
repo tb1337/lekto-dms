@@ -6,21 +6,76 @@ processing log (output of the judge and the fields node), so what was proposed s
 after a person corrected it; the inbox and the rules (M7) read them from there.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Self
+from uuid import UUID
 
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.ids import FieldId
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import (
+    JsonObject,
+    JsonValue,
+    as_bool,
+    as_int,
+    as_list,
+    as_number,
+    as_text,
+    as_texts,
+)
 from papiq.core.domain.locations import Location, locations_from_json, locations_to_json
 from papiq.core.domain.pipeline import Outcome
 
-CONTACT = "contact"
-DOCUMENT_TYPE = "document_type"
-TOPIC = "topic"
-TAGS = "tags"
-DOCUMENT_DATE = "document_date"
-TITLE = "title"
+
+class CheckField(StrEnum):
+    """The names of a document's fields in checks, decisions, rule reports and the log. A
+    custom field is named `field:<id>` (`field_key`, `field_id_of`)."""
+
+    CONTACT = "contact"
+    DOCUMENT_TYPE = "document_type"
+    TOPIC = "topic"
+    TAGS = "tags"
+    DOCUMENT_DATE = "document_date"
+    TITLE = "title"
+    SPACE = "space"  # set by rules and people, never checked by the signals
+    REVIEW = "review"  # a review a rule forces; no field of the document
+
+
+CONTACT = CheckField.CONTACT
+DOCUMENT_TYPE = CheckField.DOCUMENT_TYPE
+TOPIC = CheckField.TOPIC
+TAGS = CheckField.TAGS
+DOCUMENT_DATE = CheckField.DOCUMENT_DATE
+TITLE = CheckField.TITLE
+SPACE = CheckField.SPACE
+REVIEW = CheckField.REVIEW
+
+CHANGE_FIELDS: Mapping[str, str] = {
+    TITLE: "title",
+    CONTACT: "contact_id",
+    DOCUMENT_TYPE: "document_type_id",
+    TOPIC: "topic_id",
+    TAGS: "tag_ids",
+    DOCUMENT_DATE: "document_date",
+}
+"""The fields a person sets in one change, and the attribute of `Document` and
+`DocumentChanges` that holds each; custom fields are `CUSTOM_FIELDS`."""
+CUSTOM_FIELDS = "fields"
+"""The attribute of `Document` and `DocumentChanges` that holds the custom field values."""
+CHECKS = "fields"
+"""Key of the field checks (`checks_to_json`) in the output of the judge, the fields node and
+the rules node."""
+CONFIRMING = frozenset(
+    {CHANGE_FIELDS[name] for name in (CONTACT, DOCUMENT_TYPE, TOPIC, TAGS, DOCUMENT_DATE)}
+    | {CUSTOM_FIELDS}
+)
+"""Metadata a person confirms by changing it (as `Document.apply_changes` names it); a title
+or a space alone does not, nor do tags set by hand alone (`documents.confirms`)."""
+CLASSIFIER_LABELS = frozenset(CHANGE_FIELDS[name] for name in (CONTACT, DOCUMENT_TYPE, TOPIC, TAGS))
+"""What the classifier learns from confirmed documents: the pipeline deriving them anew ends
+the confirmation."""
+
 _FIELD_PREFIX = "field:"
 
 
@@ -28,9 +83,15 @@ def field_key(id: FieldId) -> str:
     return f"{_FIELD_PREFIX}{id}"
 
 
-def field_id_of(field: str) -> str | None:
-    """The field id named by a check name, or None for the other checks."""
-    return field.removeprefix(_FIELD_PREFIX) if field.startswith(_FIELD_PREFIX) else None
+def field_id_of(field: str) -> FieldId | None:
+    """The field a check name `field:<id>` is about; None for the other checks (and for a
+    malformed id)."""
+    if not field.startswith(_FIELD_PREFIX):
+        return None
+    try:
+        return FieldId(UUID(field.removeprefix(_FIELD_PREFIX)))
+    except ValueError:
+        return None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -81,14 +142,14 @@ class CandidateSource:
         return cls(
             signal=str(data["signal"]),
             names=data.get("names") is True,
-            score=_optional_number(data.get("score")),
-            threshold=_optional_number(data.get("threshold")),
-            similarity=_optional_number(data.get("similarity")),
-            votes=_optional_int(data.get("votes")),
-            of=_optional_int(data.get("of")),
-            quote=_optional_text(data.get("quote")),
-            identifiers=_texts(data.get("identifiers")),
-            documents=_texts(data.get("documents")),
+            score=as_number(data.get("score")),
+            threshold=as_number(data.get("threshold")),
+            similarity=as_number(data.get("similarity")),
+            votes=as_int(data.get("votes")),
+            of=as_int(data.get("of")),
+            quote=as_text(data.get("quote")),
+            identifiers=as_texts(data.get("identifiers")),
+            documents=as_texts(data.get("documents")),
             named_in_text=data.get("named_in_text") is True,
         )
 
@@ -120,10 +181,7 @@ class Candidate:
         return cls(
             value=data.get("value"),
             label=str(data["label"]),
-            sources=tuple(
-                CandidateSource.from_json(item)
-                for item in (sources if isinstance(sources, list) else [])
-            ),
+            sources=tuple(CandidateSource.from_json(item) for item in as_list(sources)),
             contradicted=data.get("contradicted") is True,
         )
 
@@ -195,20 +253,20 @@ class FieldCheck:
         if not isinstance(data, dict):
             raise ValidationError(f"invalid field check {data!r}")
         try:
-            confidence = data["confidence"]
-            if not isinstance(confidence, int | float) or isinstance(confidence, bool):
-                raise ValidationError(f"invalid confidence {confidence!r}")
+            confidence = as_number(data["confidence"])
+            if confidence is None:
+                raise ValidationError(f"invalid confidence {data['confidence']!r}")
             return cls(
                 field=str(data["field"]),
                 outcome=Outcome(str(data["outcome"])),
                 confidence=float(confidence),
-                reason=_optional_text(data.get("reason")),
+                reason=as_text(data.get("reason")),
                 proposed=data.get("proposed"),
-                evidence=_optional_text(data.get("evidence")),
+                evidence=as_text(data.get("evidence")),
                 value=data.get("value"),
                 suggestion=data.get("suggestion"),
-                new_name=_optional_text(data.get("new_name")),
-                quote_shows_value=_optional_bool(data.get("quote_shows_value")),
+                new_name=as_text(data.get("new_name")),
+                quote_shows_value=as_bool(data.get("quote_shows_value")),
                 locations=locations_from_json(data.get("locations")),
                 candidates=_candidates(data.get("candidates")),
             )
@@ -227,25 +285,5 @@ def checks_from_json(data: JsonValue) -> list[FieldCheck]:
     return [FieldCheck.from_json(item) for item in data]
 
 
-def _optional_text(value: JsonValue) -> str | None:
-    return value if isinstance(value, str) else None
-
-
-def _optional_bool(value: JsonValue) -> bool | None:
-    return value if isinstance(value, bool) else None
-
-
-def _optional_number(value: JsonValue) -> float | None:
-    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
-
-
-def _optional_int(value: JsonValue) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
-
-
-def _texts(value: JsonValue) -> tuple[str, ...]:
-    return tuple(item for item in value if isinstance(item, str)) if isinstance(value, list) else ()
-
-
 def _candidates(value: JsonValue) -> tuple[Candidate, ...]:
-    return tuple(Candidate.from_json(item) for item in value) if isinstance(value, list) else ()
+    return tuple(Candidate.from_json(item) for item in as_list(value))

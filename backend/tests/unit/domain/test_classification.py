@@ -1,15 +1,21 @@
+import dataclasses
 from datetime import date
 from decimal import Decimal
 
 import pytest
 
 from papiq.core.domain.classification import (
+    CHANGE_FIELDS,
+    CLASSIFIER_LABELS,
+    CONFIRMING,
+    CUSTOM_FIELDS,
     FieldCheck,
     checks_from_json,
     checks_to_json,
     field_id_of,
     field_key,
 )
+from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.fields import (
     FieldDefinition,
@@ -57,8 +63,9 @@ def test_field_check_rules() -> None:
 def test_field_keys() -> None:
     definition = FieldDefinition.create(name="Betrag", data_type=FieldType.AMOUNT, now=NOW)
     field = field_key(definition.id)
-    assert field_id_of(field) == str(definition.id)
+    assert field_id_of(field) == definition.id
     assert field_id_of("contact") is None
+    assert field_id_of("field:nonsense") is None
 
 
 @pytest.mark.parametrize(
@@ -99,3 +106,15 @@ def test_field_values_from_json_are_checked() -> None:
     for definition, data in cases:
         with pytest.raises(ValidationError):
             field_from_json(definition, data)
+
+
+def test_the_change_table_names_every_attribute_a_change_sets() -> None:
+    names = {*CHANGE_FIELDS.values(), CUSTOM_FIELDS}
+    assert names == {item.name for item in dataclasses.fields(DocumentChanges)}
+    assert names <= {item.name for item in dataclasses.fields(Document)}
+
+
+def test_what_confirms_and_what_the_classifier_learns() -> None:
+    labels = ["contact_id", "document_type_id", "tag_ids", "topic_id"]
+    assert sorted(CLASSIFIER_LABELS) == labels
+    assert sorted(CONFIRMING) == sorted([*labels, "document_date", "fields"])

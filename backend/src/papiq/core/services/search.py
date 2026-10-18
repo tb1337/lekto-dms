@@ -14,30 +14,34 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from papiq.core.domain.documents import Document
-from papiq.core.domain.errors import EmbeddingsError, PermissionDeniedError, ValidationError
+from papiq.core.domain.errors import EmbeddingsError
 from papiq.core.domain.ids import SpaceId, UserId
 from papiq.core.domain.permissions import document_access, reach_access
 from papiq.core.domain.search import Segment, Visibility
 from papiq.core.domain.spaces import ShareLevel, Space
-from papiq.core.ports import (
-    DocumentFilter,
-    DocumentOrder,
-    Embeddings,
+from papiq.core.ports.embeddings import Embeddings
+from papiq.core.ports.repository import DocumentFilter, DocumentOrder
+from papiq.core.ports.search_index import (
+    MAX_HITS,
+    SEARCH_PAGE,
     SearchIndex,
     SearchQuery,
-    UnitOfWorkFactory,
+    check_search,
 )
-from papiq.core.ports.search_index import MAX_HITS, MAX_LIMIT
-from papiq.core.services._access import load_actor
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from papiq.core.services._access import admin_only, load_actor
 from papiq.core.services._tags import expanded, group_lookup, matches
 
 log = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class SearchPolicy:
-    semantic_ratio: float = 0.5  # weight of the meaning against the words, 0 to 1
-    embed_timeout: timedelta = timedelta(seconds=5)  # for the query; then plain full text
+    """Configuration: the composition sets it from the settings, whose defaults are the one
+    source."""
+
+    semantic_ratio: float  # weight of the meaning against the words, 0 to 1
+    embed_timeout: timedelta  # for the query; then plain full text
     query_prefix: str = ""  # put before the query, for models that ask for it
     dimensions: int | None = None  # the length of the vectors; a query of another goes by words
 
@@ -67,13 +71,13 @@ class SearchService:
         self,
         uow: UnitOfWorkFactory,
         index: SearchIndex,
+        policy: SearchPolicy,
         embeddings: Embeddings | None = None,
-        policy: SearchPolicy | None = None,
     ) -> None:
         self._uow = uow
         self._index = index
         self._embeddings = embeddings
-        self._policy = policy or SearchPolicy()
+        self._policy = policy
 
     async def search(
         self,
@@ -82,7 +86,7 @@ class SearchService:
         filter: DocumentFilter | None = None,
         *,
         offset: int = 0,
-        limit: int = 20,
+        limit: int = SEARCH_PAGE,
         semantic_ratio: float | None = None,
         order: DocumentOrder | None = None,
         all_users: bool = False,
@@ -96,16 +100,11 @@ class SearchService:
         """
         filter = filter or DocumentFilter()
         ratio = self._policy.semantic_ratio if semantic_ratio is None else semantic_ratio
-        if not text.strip():
-            raise ValidationError("the search text is empty")
-        if not 0 <= ratio <= 1:
-            raise ValidationError("semantic_ratio must be between 0 and 1")
-        if offset < 0 or not 1 <= limit <= MAX_LIMIT:
-            raise ValidationError(f"offset must be 0 or more and limit between 1 and {MAX_LIMIT}")
+        check_search(text, ratio, offset, limit)
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            if all_users and not user.is_active_admin:
-                raise PermissionDeniedError("only admins search the documents of all users")
+            if all_users:
+                admin_only(user, "search the documents of all users")
             spaces = await uow.spaces.list_accessible(actor)
             filter = await expanded(uow, filter)
         if offset >= MAX_HITS:

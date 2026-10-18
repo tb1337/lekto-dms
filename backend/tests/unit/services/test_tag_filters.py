@@ -6,13 +6,15 @@ from dataclasses import dataclass
 import pytest
 
 from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.ids import DocumentId, TagId
+from papiq.core.domain.ids import DocumentId, FieldId, TagId, new_id
 from papiq.core.domain.master_data import Tag, TagScope
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import CountBy, DocumentFilter
+from papiq.core.ports.repository import CountBy, DocumentFilter
+from papiq.core.services._tags import matches
 from papiq.core.services.search import SearchService
-from tests.unit.services.conftest import World
+from tests import builders
 from tests.unit.services.search_support import Setup
+from tests.unit.services.support import World
 
 
 @dataclass
@@ -37,7 +39,7 @@ class Tags:
         return {view.document.id for view in views}
 
     async def searched(self, filter: DocumentFilter) -> set[DocumentId]:
-        search = SearchService(self.setup.world.uow, self.setup.index)
+        search = SearchService(self.setup.world.uow, self.setup.index, builders.SEARCH)
         page = await search.search(self.owner.id, "Schreiben", filter)
         return {item.document.id for item in page.items}
 
@@ -148,3 +150,15 @@ async def test_counts_take_each_document_once_at_a_tag_above(tags: Tags) -> None
     assert await documents.document_counts(stranger.id, CountBy.TAG) == {}
     every = await documents.document_counts(tags.admin.id, CountBy.TAG, all_users=True)
     assert every == counts
+
+
+def test_the_core_checks_a_document_against_every_criterion() -> None:
+    owner = builders.user()
+    document = builders.processed(owner, builders.space(owner))
+    assert matches(document, DocumentFilter(), {}, {})
+    # What the repository and the index check, the core checks too.
+    assert not matches(document, DocumentFilter(confirmed=True), {}, {})
+    assert matches(document, DocumentFilter(confirmed=False), {}, {})
+    assert not matches(document, DocumentFilter(field=FieldId(new_id())), {}, {})
+    document.mark_confirmed(builders.NOW)
+    assert matches(document, DocumentFilter(confirmed=True), {}, {})

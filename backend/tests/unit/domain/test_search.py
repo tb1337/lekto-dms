@@ -2,6 +2,7 @@ import itertools
 
 import pytest
 
+from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.permissions import can_read_document, in_reach
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.search import (
@@ -67,15 +68,15 @@ def test_no_spaces_leave_only_own_documents() -> None:
 def test_vectors_need_a_stamp_and_one_length() -> None:
     stamp = EmbeddingStamp("model", "digest")
     builders.index_document(vectors=((1.0, 2.0), (3.0, 4.0)), embedding=stamp)
-    with pytest.raises(ValueError, match="stamp"):
+    with pytest.raises(ValidationError, match="stamp"):
         builders.index_document(vectors=((1.0,),))
-    with pytest.raises(ValueError, match="one length"):
+    with pytest.raises(ValidationError, match="one length"):
         builders.index_document(vectors=((1.0,), (1.0, 2.0)), embedding=stamp)
-    with pytest.raises(ValueError, match="one length"):
+    with pytest.raises(ValidationError, match="one length"):
         builders.index_document(vectors=((),), embedding=stamp)
 
 
 def test_kept_vectors_keep_their_stamp() -> None:
     assert builders.index_document(vectors=None).vectors is None
-    with pytest.raises(ValueError, match="keep their stamp"):
+    with pytest.raises(ValidationError, match="keep their stamp"):
         builders.index_document(vectors=None, embedding=EmbeddingStamp("m", "d"))

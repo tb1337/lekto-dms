@@ -4,14 +4,15 @@ Secrets can also be passed as `PAPIQ_<NAME>_FILE` (Docker secrets): the file con
 Setting both `PAPIQ_<NAME>` and `PAPIQ_<NAME>_FILE` is an error.
 """
 
+import functools
 import os
 import re
 from collections.abc import Mapping
 from datetime import timedelta
 from pathlib import Path
-from typing import Annotated, Any, Literal, get_args
+from types import UnionType
+from typing import Annotated, Any, Literal, Union, get_args, get_origin
 
-from babel import Locale, UnknownLocaleError
 from pydantic import (
     AfterValidator,
     AnyHttpUrl,
@@ -29,6 +30,7 @@ from pydantic_settings import (
 )
 
 from papiq.adapters.outbound.crypto import decode_key
+from papiq.adapters.outbound.liquid import parse_locale
 from papiq.composition.errors import ConfigurationError
 
 ENV_PREFIX = "PAPIQ_"
@@ -37,8 +39,9 @@ FILE_SUFFIX = "_FILE"
 # The secret key of the devcontainer (`.devcontainer/dev.env`); public, so never for production.
 DEVELOPMENT_SECRET_KEY = "ZGV2LWtleS1kZXYta2V5LWRldi1rZXktZGV2LWtleS0="
 
-# Choices are written in lower case; `PAPIQ_ROLE=API` is accepted.
-_LOWERCASE_FIELDS = {"role", "log_format", "db_type", "storage_type", "llm_response_format"}
+# The roles that run the API and the worker (`PAPIQ_ROLE`).
+API_ROLES = frozenset({"all", "api"})
+WORKER_ROLES = frozenset({"all", "worker"})
 # Credentials in URLs (`http://user:password@host`) must not reach logs or error messages.
 _URL_USERINFO = re.compile(r"(?<=://)[^/@\s]+@")
 
@@ -49,6 +52,24 @@ LogLevel = Annotated[
 
 
 _NUMBER = re.compile(r"\d+(\.\d+)?")
+
+
+@functools.cache
+def _lowercase_choices(settings_cls: type[BaseSettings]) -> frozenset[str]:
+    """The fields whose value is one of a few lower-case words (`Literal[...]`); for them
+    `PAPIQ_ROLE=API` is accepted. Derived from the annotations, so a new choice field needs no
+    entry anywhere."""
+    names: set[str] = set()
+    for name, field in settings_cls.model_fields.items():
+        annotation = field.annotation
+        members = (
+            get_args(annotation) if get_origin(annotation) in (Union, UnionType) else (annotation,)
+        )
+        for member in members:
+            choices = get_args(member) if get_origin(member) is Literal else ()
+            if choices and all(isinstance(c, str) and c == c.lower() for c in choices):
+                names.add(name)
+    return frozenset(names)
 
 
 def _seconds(value: Any) -> Any:
@@ -63,10 +84,7 @@ Seconds = Annotated[timedelta, BeforeValidator(_seconds), Field(gt=timedelta(0))
 
 
 def _locale(value: str) -> str:
-    try:
-        Locale.parse(value.replace("-", "_"))
-    except (ValueError, UnknownLocaleError):
-        raise ValueError(f"unknown locale {value!r}") from None
+    parse_locale(value)
     return value
 
 
@@ -114,7 +132,8 @@ class Settings(BaseSettings):
 
     # API (Uvicorn).
     api_host: str = "0.0.0.0"
-    api_port: Annotated[int, Field(ge=1, le=65535)] = 8000
+    # 0: the operating system picks a free port; the start line `api started` names it.
+    api_port: Annotated[int, Field(ge=0, le=65535)] = 8000
     upload_max_size: Annotated[ByteSize, Field(gt=0)] = ByteSize(100 * 1024 * 1024)
     # Every other request body (JSON).
     request_max_size: Annotated[ByteSize, Field(gt=0)] = ByteSize(1024 * 1024)
@@ -283,7 +302,7 @@ class Settings(BaseSettings):
             if isinstance(value, str):
                 if not value.strip():
                     continue
-                if name in _LOWERCASE_FIELDS:
+                if name in _lowercase_choices(cls):
                     value = value.strip().lower()
                 elif name not in _secret_fields(cls):
                     value = value.strip()
@@ -304,7 +323,7 @@ class Settings(BaseSettings):
                 "s3_access_key_id",
                 "s3_secret_access_key",
             )
-        if self.role in ("all", "api") and self.cookie_secure and self.forwarded_allow_ips is None:
+        if self.role in API_ROLES and self.cookie_secure and self.forwarded_allow_ips is None:
             problems.append(
                 f"{_env('forwarded_allow_ips')} is required with {_env('cookie_secure')}=true: "
                 "secure cookies need a TLS-terminating proxy in front of Papiq; name its address "
@@ -312,7 +331,7 @@ class Settings(BaseSettings):
                 f"send). For development over plain HTTP set {_env('cookie_secure')}=false"
             )
         if (
-            self.role in ("all", "api")
+            self.role in API_ROLES
             and self.ui_dir is not None
             and not (self.ui_dir / "index.html").is_file()
         ):
@@ -460,7 +479,15 @@ def _mask_userinfo(text: str) -> str:
 
 
 def _env(field_name: str) -> str:
+    """The variable of a setting: `llm_input_budget` is `PAPIQ_LLM_INPUT_BUDGET`."""
     return ENV_PREFIX + field_name.upper()
+
+
+def reported(settings: Settings, *field_names: str) -> dict[str, object]:
+    """The values of settings under the names of their variables, for a report; a setting
+    without a value as empty text."""
+    values = {_env(name): getattr(settings, name) for name in field_names}
+    return {name: "" if value is None else value for name, value in values.items()}
 
 
 def _missing(settings: Settings, selector: str, *names: str) -> list[str]:
@@ -500,13 +527,12 @@ RENAMED: dict[str, str] = {
 value does not fall back to the default unnoticed."""
 
 
-def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
-    """Read and validate the configuration from the environment.
+def load_settings() -> Settings:
+    """Read and validate the configuration from the process environment.
 
     Raises ConfigurationError with a message that names the offending variables.
     """
-    environ = os.environ if environ is None else environ
-    renamed = [f"{old} was renamed to {new}" for old, new in RENAMED.items() if old in environ]
+    renamed = [f"{old} was renamed to {new}" for old, new in RENAMED.items() if old in os.environ]
     if renamed:
         raise ConfigurationError("; ".join(renamed))
     try:

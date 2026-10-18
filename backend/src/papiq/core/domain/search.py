@@ -8,6 +8,7 @@ a test keeps both in line, and every search needs a `Visibility`.
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -17,6 +18,7 @@ from papiq.core.domain.ids import (
     TagId,
     UserId,
 )
+from papiq.core.domain.permissions import within_reach
 from papiq.core.domain.pipeline import Lane
 
 PROCESSING = "processing"
@@ -26,6 +28,8 @@ LAYOUT = 5
 anew by the reconciliation (2: the ids of the fields with a value, and the title's sort key;
 3: `space_id` instead of `drawer_id`; 4: tags with their ancestors, and the groups of the
 contact and the type; 5: the topic with its ancestors)."""
+FIRST_LAYOUT = 1
+"""The layout of an entry that names none: written before layouts were counted."""
 
 
 def lane_value(lane: Lane | None) -> str:
@@ -88,14 +92,14 @@ class IndexDocument:
     def __post_init__(self) -> None:
         if self.vectors is None:
             if self.embedding is not None:
-                raise ValueError("kept vectors keep their stamp: give none")
+                raise ValidationError("kept vectors keep their stamp: give none")
             return
         if self.vectors and self.embedding is None:
-            raise ValueError("vectors need an embedding stamp")
+            raise ValidationError("vectors need an embedding stamp")
         if len({len(vector) for vector in self.vectors}) > 1 or any(
             not vector for vector in self.vectors
         ):
-            raise ValueError("vectors must be non-empty and of one length")
+            raise ValidationError("vectors must be non-empty and of one length")
 
     @property
     def lane_value(self) -> str:
@@ -115,18 +119,15 @@ class IndexState:
 @dataclass(frozen=True)
 class Visibility:
     """Who is searching and which spaces they can read from: the spaces they own and those
-    shared with them. Own documents are visible in every lane; other users' documents only when
-    green and in one of `spaces` (the user's reach, `permissions.in_reach`). `everything`: every
-    document, for an admin who asks for all users' documents."""
+    shared with them (`permissions.within_reach`). `everything`: every document, for an admin who
+    asks for all users' documents."""
 
     user: UserId
     spaces: frozenset[SpaceId]
     everything: bool = False
 
     def allows(self, document: IndexDocument) -> bool:
-        if self.everything or document.owner_id == self.user:
-            return True
-        return document.lane is Lane.GREEN and document.space_id in self.spaces
+        return self.everything or within_reach(self.user, self.spaces, document)
 
 
 @dataclass(frozen=True)

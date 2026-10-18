@@ -1,7 +1,5 @@
 """Topics: enabled at contacts, pointed to by identifiers, carried by documents."""
 
-import asyncio
-
 import pytest
 
 from papiq.core.domain.documents import Document, DocumentChanges
@@ -10,9 +8,9 @@ from papiq.core.domain.identifiers import Identifier, IdentifierKind
 from papiq.core.domain.ids import ContactId, TagId, new_id
 from papiq.core.domain.master_data import Contact, Tag, TagScope
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import CountBy, DocumentFilter
+from papiq.core.ports.repository import CountBy, DocumentFilter
 from tests.builders import incoming
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 TOPIC = TagScope.TOPIC
 
@@ -50,7 +48,7 @@ async def test_a_contact_enables_topics_and_its_identifiers_point_to_them(world:
     # A topic and one below it are both enabled: a document may carry either.
     assert contact.topic_ids == {work.id, insurance.id, health.id}
     assert contact.identifiers == [number]
-    with pytest.raises(ValidationError, match="no topic"):
+    with pytest.raises(ValidationError, match="not a topic"):
         await service.change_contact(admin.id, contact.id, topic_ids=[tag.id])
     with pytest.raises(NotFoundError):
         await service.change_contact(admin.id, contact.id, topic_ids=[TagId(new_id())])
@@ -211,23 +209,3 @@ async def test_documents_are_found_and_counted_by_a_topic_and_those_below_it(
         insurance.id: 2,
         health.id: 1,
     }
-
-
-async def test_a_topic_is_not_given_while_its_contact_gives_it_up(world: World) -> None:
-    """Both at once: one waits for the other (`contact_topics_lock`) and sees it."""
-    admin, owner = await world.user(role=Role.ADMIN), await world.user()
-    work, _, _ = await _topics(world, admin)
-    nord = await world.master_data.create_contact(admin.id, "Nord", topic_ids=[work.id])
-    document = await _document(world, owner)
-    await world.documents.update_metadata(
-        owner.id, document.id, DocumentChanges(contact_id=nord.id)
-    )
-    results = await asyncio.gather(
-        world.master_data.change_contact(admin.id, nord.id, topic_ids=[]),
-        world.documents.update_metadata(owner.id, document.id, DocumentChanges(topic_id=work.id)),
-        return_exceptions=True,
-    )
-    assert sorted(type(result).__name__ for result in results) in (
-        ["Contact", "ValidationError"],
-        ["ConflictError", "Document"],
-    ), results

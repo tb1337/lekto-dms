@@ -12,15 +12,15 @@ from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.master_data import DocumentType
 from papiq.core.domain.periods import Period
 from papiq.core.domain.pipeline import Outcome
+from papiq.core.domain.text import shorten
 from papiq.core.services.classification.answers import extract_schema, field_keys
 from papiq.core.services.classification.prompts import (
     extract_message,
     propose_message,
-    shorten,
 )
 from papiq.core.services.pipeline import MetadataResult
 from tests.builders import NOW
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 from tests.unit.services.test_classification import checks, document_with, fields_step, model
 
 TIMESHEET = """\

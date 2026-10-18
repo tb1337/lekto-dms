@@ -15,7 +15,6 @@ The flow (Authorization Code with PKCE):
 Signing in through the provider asks for no local TOTP code: the provider handles that.
 """
 
-import base64
 import hmac
 import json
 import logging
@@ -24,17 +23,14 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from papiq.core.domain.encoding import base64url, from_base64url
 from papiq.core.domain.errors import AuthenticationError, ConflictError
 from papiq.core.domain.identity import ExternalIdentity, LoginMethod, safe_redirect
 from papiq.core.domain.ids import SessionId, UserId
 from papiq.core.domain.users import Role
-from papiq.core.ports import (
-    Clock,
-    DecryptionError,
-    OidcProvider,
-    SecretCipher,
-    UnitOfWorkFactory,
-)
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.identity import DecryptionError, OidcProvider, SecretCipher
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from papiq.core.services._access import load_actor
 
 # Signing in through a provider composes the sign-in and the account use cases.
@@ -205,14 +201,14 @@ class OidcService:
             }
         ).encode()
         sealed = self._cipher.encrypt(data, context=_FLOW_CONTEXT)
-        return base64.urlsafe_b64encode(sealed).decode().rstrip("=")
+        return base64url(sealed)
 
     def _open(self, sealed: str | None) -> _Flow:
         expired = AuthenticationError("the sign-in has expired or was not started here")
         if not sealed:
             raise expired
         try:
-            raw = base64.urlsafe_b64decode(sealed + "=" * (-len(sealed) % 4))
+            raw = from_base64url(sealed)
             data = json.loads(self._cipher.decrypt(raw, context=_FLOW_CONTEXT))
             flow = _Flow(
                 state=data["state"],

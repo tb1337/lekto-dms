@@ -2,6 +2,7 @@
 which arguments go out, and what the result says. The real program runs in the integration
 tests."""
 
+import json
 from collections.abc import Sequence
 from datetime import timedelta
 from pathlib import Path
@@ -10,11 +11,13 @@ import pytest
 
 from papiq.adapters.outbound.ocrmypdf import engine as module
 from papiq.adapters.outbound.ocrmypdf.engine import SIGNATURE_NOTE, OcrmypdfEngine, pdfa_reasons
+from papiq.adapters.outbound.ocrmypdf.vision import CONFIG_ENV, VisionSettings, write_error
 from papiq.adapters.outbound.system import Completed
 from papiq.core.domain import media_types
-from papiq.core.domain.errors import UnprocessableDocumentError
+from papiq.core.domain.errors import LanguageModelError, UnprocessableDocumentError
 from papiq.core.domain.reading import PageReading
 from papiq.core.ports.ocr import OcrResult
+from tests.builders import DEFAULT_SETTINGS
 
 SIGNATURE = (
     "DigitalSignatureError: Input PDF has a digital signature. OCR would alter the document,\n"
@@ -72,6 +75,7 @@ class Runs:
         self.calls: list[list[str]] = []
         self.hidden_text = False  # the source carries the invisible layer of another OCR
         self.unreadable_text = False  # the source has text in a font without a character map
+        self.vision_error: str | None = None  # what the vision plugin leaves of a failed page
 
     async def __call__(
         self, args: Sequence[str], *, timeout: timedelta, env: dict[str, str] | None = None
@@ -87,6 +91,8 @@ class Runs:
             (kept / f"{page:06d}_ocr_hocr.hocr").write_text(content)
         if code in (0, 10):
             Path(args[-1]).write_bytes(b"%PDF-1.7\n%%EOF\n")
+        if self.vision_error is not None:
+            write_error(Path(json.loads(env[CONFIG_ENV])["records"]), 1, self.vision_error)
         # As OCRmyPDF prints it: before the error, in a container with a line more.
         stderr = (
             f"Temporary working files retained at:\n{kept}\n"
@@ -106,8 +112,22 @@ def runs(monkeypatch: pytest.MonkeyPatch) -> Runs:
     return runs
 
 
-def engine() -> OcrmypdfEngine:
-    return OcrmypdfEngine(languages=["deu"], timeout=timedelta(minutes=1))
+def engine(vision: VisionSettings | None = None) -> OcrmypdfEngine:
+    return OcrmypdfEngine(
+        languages=["deu"],
+        timeout=timedelta(minutes=1),
+        vision=vision,
+        vision_timeout=DEFAULT_SETTINGS.vlm_timeout,
+    )
+
+
+async def read_with_the_model(tmp_path: Path) -> None:
+    vision = VisionSettings(
+        base_url="https://vlm.example/v1", model="vlm-1", timeout=timedelta(seconds=30)
+    )
+    await engine(vision).make_archive(
+        tmp_path / "source.pdf", tmp_path / "archive.pdf", media_type=media_types.PDF, vision=True
+    )
 
 
 def options(call: list[str]) -> tuple[str, bool]:
@@ -241,3 +261,24 @@ async def test_a_second_failure_is_an_error(runs: Runs, tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="exit code 1"):
         await convert(runs, tmp_path)
     assert len(runs.calls) == 2
+
+
+async def test_a_page_the_model_cannot_read_fails_with_the_plugin_s_reason(
+    runs: Runs, tmp_path: Path
+) -> None:
+    """From the plugin's file: the end of OCRmyPDF's output need not hold its exception."""
+    runs.outcomes = [(15, "Traceback (most recent call last):\nBrokenProcessPool: a worker died\n")]
+    runs.vision_error = "page 2: the vision language model: HTTP 503: down"
+    with pytest.raises(LanguageModelError, match=r"^page 2: the vision language model: HTTP 503"):
+        await read_with_the_model(tmp_path)
+    assert list(tmp_path.iterdir()) == []
+
+
+async def test_without_the_plugin_s_file_its_reason_comes_from_the_output(
+    runs: Runs, tmp_path: Path
+) -> None:
+    runs.outcomes = [
+        (15, "papiq.adapters.outbound.ocrmypdf.vision.VisionError: no usable configuration\n")
+    ]
+    with pytest.raises(LanguageModelError, match=r"^no usable configuration$"):
+        await read_with_the_model(tmp_path)

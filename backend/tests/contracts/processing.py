@@ -1,5 +1,5 @@
 """Contracts of the processing ports: OCR, parser, page renderer, text locator. The samples
-are in `tests/samples` (see `make_samples.py`)."""
+are in `tests/samples` (`builders.SAMPLES`, see `make_samples.py`)."""
 
 import json
 from pathlib import Path
@@ -10,16 +10,13 @@ from papiq.core.domain import media_types
 from papiq.core.domain.codes import giro_code
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.domain.locations import Location
-from papiq.core.ports import (
-    CodeReader,
-    DocumentParser,
-    MetadataReader,
-    Ocr,
-    PageRenderer,
-    TextLocator,
-)
-
-SAMPLES = Path(__file__).parent.parent / "samples"
+from papiq.core.ports.codes import CodeReader
+from papiq.core.ports.locator import TextLocator
+from papiq.core.ports.metadata import MetadataReader
+from papiq.core.ports.ocr import Ocr
+from papiq.core.ports.pages import PageRenderer
+from papiq.core.ports.parser import DocumentParser
+from tests.builders import SAMPLES
 
 
 class OcrContract:

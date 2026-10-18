@@ -40,10 +40,8 @@ class Space:
     def __post_init__(self) -> None:
         self.name = require_name(self.name, "space name")
         self.created_at = require_utc(self.created_at, "created_at")
-        if self.owner_id in self.shares:
-            raise ValidationError("a space cannot be shared with its owner")
-        if self.is_default and self.shares:
-            raise ValidationError("the default space cannot be shared")
+        for user_id in self.shares:
+            self._check_share(user_id)
 
     @classmethod
     def create(cls, *, owner_id: UserId, name: str, now: datetime) -> Self:
@@ -63,11 +61,14 @@ class Space:
         self.name = require_name(name, "space name")
 
     def share(self, user_id: UserId, level: ShareLevel) -> None:
+        self._check_share(user_id)
+        self.shares[user_id] = level
+
+    def _check_share(self, user_id: UserId) -> None:
         if self.is_default:
             raise ValidationError("the default space cannot be shared")
         if user_id == self.owner_id:
             raise ValidationError("a space cannot be shared with its owner")
-        self.shares[user_id] = level
 
     def unshare(self, user_id: UserId) -> None:
         self.shares.pop(user_id, None)

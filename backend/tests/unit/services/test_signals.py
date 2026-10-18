@@ -16,19 +16,18 @@ from papiq.core.domain.master_data import Assignment, Contact, Tag
 from papiq.core.domain.pipeline import NodeResult
 from papiq.core.domain.search import EmbeddingStamp, IndexDocument
 from papiq.core.domain.users import User
-from papiq.core.ports import EmbeddingResult
+from papiq.core.ports.embeddings import EmbeddingResult
 from papiq.core.services.classification.signals import (
     ABSTAINED,
     ClassifierSignal,
     FactsResult,
     FactsSignal,
-    NeighboursPolicy,
     NeighboursSignal,
 )
-from papiq.core.services.classifier import ClassifierPolicy, ClassifierService
+from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.objects import text_key
 from tests import builders
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 THEIR_IBAN = "DE89 3704 0044 0532 0130 00"
 OTHER_IBAN = "DE02 1203 0000 0000 2020 51"
@@ -110,7 +109,7 @@ async def test_the_classifier_proposes_with_its_probabilities(world: World) -> N
     bank = Contact.create(name="Beispielbank", now=builders.NOW)
     await contacts(world, utility, bank)
     service = ClassifierService(
-        world.uow, world.object_store, world.clock, FakeClassifier(), ClassifierPolicy()
+        world.uow, world.object_store, world.clock, FakeClassifier(), builders.CLASSIFIER
     )
     signal = ClassifierSignal(world.object_store, service)
     document = await stored(world, owner, "Stadtwerke Stromrechnung Zählerstand")
@@ -188,7 +187,11 @@ async def test_neighbours_are_the_confirmed_documents_the_owner_may_read(world: 
     await indexed(document, confirmed=False)
 
     signal = NeighboursSignal(
-        world.uow, world.object_store, index, embeddings, NeighboursPolicy(dimensions=DIMENSIONS)
+        world.uow,
+        world.object_store,
+        index,
+        embeddings,
+        replace(builders.NEIGHBOURS, dimensions=DIMENSIONS),
     )
     result = await signal.run(document)
     (neighbour,) = output(result)["neighbours"]
@@ -217,14 +220,14 @@ async def test_neighbours_are_the_confirmed_documents_the_owner_may_read(world: 
     assert tagged["known"]["tags"] == [str(electricity.id)]
 
     for unavailable in (
-        NeighboursSignal(world.uow, world.object_store, None, embeddings),
-        NeighboursSignal(world.uow, world.object_store, index, Broken()),
+        NeighboursSignal(world.uow, world.object_store, None, embeddings, builders.NEIGHBOURS),
+        NeighboursSignal(world.uow, world.object_store, index, Broken(), builders.NEIGHBOURS),
         NeighboursSignal(
             world.uow,
             world.object_store,
             index,
             embeddings,
-            replace(NeighboursPolicy(), count=0),
+            replace(builders.NEIGHBOURS, count=0),
         ),
     ):
         assert ABSTAINED in (await unavailable.run(document)).output

@@ -9,7 +9,6 @@ Who may do what:
 - Global rules are read by everyone and changed by admins only.
 """
 
-import builtins
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 
@@ -46,8 +45,12 @@ from papiq.core.domain.templates import (
 )
 from papiq.core.domain.templates import uses_field as field_used
 from papiq.core.domain.users import User
-from papiq.core.ports import Clock, TemplateRenderer, UnitOfWork, UnitOfWorkFactory
-from papiq.core.services._access import load_actor, readable_document
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.patterns import PatternMatcher
+from papiq.core.ports.templates import TemplateRenderer
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from papiq.core.services._access import admin_only, field_definitions, load_actor, readable_document
+from papiq.core.services._tags import tag_tree
 
 
 @dataclass(frozen=True)
@@ -65,12 +68,19 @@ class TemplatePreview:
 
 
 class RuleService:
-    def __init__(self, uow: UnitOfWorkFactory, clock: Clock, templates: TemplateRenderer) -> None:
+    def __init__(
+        self,
+        uow: UnitOfWorkFactory,
+        clock: Clock,
+        templates: TemplateRenderer,
+        patterns: PatternMatcher,
+    ) -> None:
         self._uow = uow
         self._clock = clock
         self._templates = templates
+        self._patterns = patterns
 
-    async def list(
+    async def list_rules(
         self,
         actor: UserId,
         *,
@@ -82,8 +92,8 @@ class RuleService:
         `all_users`: the rules of every user instead of the caller's (admins only)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            if all_users and not user.is_active_admin:
-                raise PermissionDeniedError("only admins list the rules of all users")
+            if all_users:
+                admin_only(user, "list the rules of all users")
             rules = await uow.rules.list_for(
                 owners=None if all_users else (user.id,),
                 include_global=scope is not RuleScope.USER,
@@ -104,7 +114,7 @@ class RuleService:
                 raise NotFoundError("rule", id)
             return rule
 
-    async def versions(self, actor: UserId, id: RuleId) -> "builtins.list[RuleVersion]":
+    async def versions(self, actor: UserId, id: RuleId) -> list[RuleVersion]:
         """All versions, oldest first; also of a deleted rule, so the processing log can be
         read."""
         async with self._uow() as uow:
@@ -120,8 +130,8 @@ class RuleService:
         """A global rule needs an admin; a user rule belongs to the caller."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            if scope is RuleScope.GLOBAL and not user.is_active_admin:
-                raise PermissionDeniedError("only admins create global rules")
+            if scope is RuleScope.GLOBAL:
+                admin_only(user, "create global rules")
             rule = Rule.create(
                 scope=scope,
                 owner_id=None if scope is RuleScope.GLOBAL else user.id,
@@ -130,6 +140,7 @@ class RuleService:
                 now=self._clock.now(),
             )
             await check_references(uow, rule.definition, owner=user if rule.owner_id else None)
+            check_patterns(self._patterns, rule.definition)
             await check_templates(uow, self._templates, rule.definition)
             await uow.rules.add(rule)
             await uow.commit()
@@ -191,6 +202,7 @@ class RuleService:
             rule = await _managed_rule(uow, user, id)
             rule.change(definition, user.id, self._clock.now())
             await check_references(uow, definition, owner=await _owner(uow, rule))
+            check_patterns(self._patterns, definition)
             await check_templates(uow, self._templates, definition)
             await uow.rules.update(rule)
             await uow.commit()
@@ -234,18 +246,13 @@ async def check_references(
     for document_type in references.document_types:
         await uow.document_types.get(document_type)
     if references.tags:
-        tags = {tag.id: tag for tag in await uow.tags.list_all()}
+        tree = await tag_tree(uow)
         for id in references.tags:
-            if id not in tags:
-                raise NotFoundError("tag", id)
+            tree.get(id)
         for id, scope in references.tag_scopes:
-            if tags[id].scope is not scope:
-                raise ValidationError(
-                    f"'{tags[id].name}' is a tag of scope {tags[id].scope}, where a tag of "
-                    f"scope {scope} belongs"
-                )
+            tree.require(id, scope)
     if references.fields:
-        fields = {field.id: field for field in await uow.fields.list_all()}
+        fields = await field_definitions(uow)
         for field_id in references.fields:
             if field_id not in fields:
                 raise NotFoundError("field", field_id)
@@ -256,7 +263,14 @@ async def check_references(
         if space is None or access is None:
             raise NotFoundError("space", space_id)
         if not access.can_write:
-            raise SpaceWriteDeniedError(space.id, f"'{space.name}'")
+            raise SpaceWriteDeniedError(space.id, space.name)
+
+
+def check_patterns(patterns: PatternMatcher, definition: RuleDefinition) -> None:
+    """The regular expressions of the conditions are patterns the matcher that runs them can
+    run (ValidationError)."""
+    for _, pattern, _ in sorted(definition.patterns()):
+        patterns.validate(pattern)
 
 
 async def check_templates(
@@ -355,7 +369,7 @@ async def _managed_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
     if rule.scope is RuleScope.GLOBAL:
         raise PermissionDeniedError("only admins change global rules")
     if rule.owner_id != user.id:
-        raise PermissionDeniedError("only the owner changes a user rule")
+        raise PermissionDeniedError("only the owner and admins change a user rule")
     return rule
 
 

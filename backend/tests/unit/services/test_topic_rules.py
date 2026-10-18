@@ -18,7 +18,6 @@ from papiq.core.domain.rules import (
     Trigger,
 )
 from papiq.core.domain.spaces import ShareLevel
-from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (
     Classifies,
     channel_api,
@@ -27,6 +26,7 @@ from tests.unit.services.rules_support import (
     notes,
     rule_world,
 )
+from tests.unit.services.support import World
 
 
 def topic_is(topic: TagId) -> Condition:

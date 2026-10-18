@@ -8,10 +8,11 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from papiq.adapters.outbound.memory.database import WEBHOOK_DELIVERIES, Table
-from papiq.adapters.outbound.memory.rows import _REMOVED, MemoryRepository
+from papiq.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from papiq.core.domain.errors import NotFoundError
 from papiq.core.domain.ids import DeliveryId, UserId, WebhookId
 from papiq.core.domain.webhooks import Webhook, WebhookDelivery
+from papiq.core.ports.repository import PAGE_SIZE
 
 if TYPE_CHECKING:
     from papiq.adapters.outbound.memory.unit_of_work import MemoryUnitOfWork
@@ -27,7 +28,7 @@ class DeliveryRow:
 
 
 class MemoryWebhookRepository(MemoryRepository[WebhookId, Webhook]):
-    def __init__(self, uow: "MemoryUnitOfWork", table: Table) -> None:
+    def __init__(self, uow: "MemoryUnitOfWork", table: Table[Webhook]) -> None:
         super().__init__(uow, table)
         self._deliveries = MemoryRepository[UUID, DeliveryRow](uow, WEBHOOK_DELIVERIES)
 
@@ -66,7 +67,7 @@ class MemoryWebhookRepository(MemoryRepository[WebhookId, Webhook]):
         await self._deliveries.add(DeliveryRow(delivery.id, delivery))
 
     async def deliveries(
-        self, webhook: WebhookId, *, before: DeliveryId | None = None, limit: int = 50
+        self, webhook: WebhookId, *, before: DeliveryId | None = None, limit: int = PAGE_SIZE
     ) -> list[WebhookDelivery]:
         rows = [
             row.item
@@ -83,4 +84,4 @@ class MemoryWebhookRepository(MemoryRepository[WebhookId, Webhook]):
 
     def _oldest_first(self, rows: Iterable[Webhook]) -> list[Webhook]:
         found = sorted(rows, key=lambda row: (row.created_at, row.id))
-        return [self._copy(row) for row in found]
+        return [_copy(row) for row in found]

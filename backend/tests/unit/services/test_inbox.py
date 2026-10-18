@@ -16,6 +16,7 @@ from papiq.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
+from papiq.core.domain.events import DocumentFiled
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.ids import ContactId, SpaceId, UserId
 from papiq.core.domain.master_data import Assignment, Contact
@@ -24,8 +25,8 @@ from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import Role, User
 from papiq.core.services.inbox import OpenNode, decide, field_checks
 from papiq.core.services.pipeline import MetadataResult, PipelineService
-from tests.builders import FAILED, NOW, document, incoming
-from tests.unit.services.conftest import Returns, World
+from tests.builders import FAILED, NOW, Returns, document, incoming
+from tests.unit.services.support import World
 
 UNSURE = "not shown in the text"
 OK = NodeResult(outcome=Outcome.OK)
@@ -224,12 +225,14 @@ async def test_confirming_needs_a_decision_on_every_open_field(world: World) -> 
 
 async def test_a_confirmed_document_is_filed(world: World) -> None:
     s = await scene(world)
-    confirmed = await s.pipeline.confirm(
+    view = await s.pipeline.confirm(
         s.owner.id,
         s.document.id,
         DocumentChanges(document_date=date(2026, 3, 31)),
         accept_suggestions=True,
     )
+    confirmed = view.document
+    assert view.access is ShareLevel.READ_WRITE
     assert confirmed.processing.status is ProcessingStatus.PROCESSING
     assert confirmed.processing.due() == (Node.APPLY_RULES,)
     assert confirmed.lane is None
@@ -240,7 +243,7 @@ async def test_a_confirmed_document_is_filed(world: World) -> None:
     assert document.contact_id == s.contact.id
     assert document.document_date == date(2026, 3, 31)
     assert document.fields[s.amount.id] == Money(Decimal("84.20"), "EUR")
-    assert "document.filed" in world.event_types()
+    assert DocumentFiled.type in world.event_types()
     assert await world.documents.inbox(s.owner.id) == []
 
     log = await world.documents.processing_log(s.owner.id, s.document.id)

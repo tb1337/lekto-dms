@@ -5,9 +5,7 @@ import hmac
 import secrets
 from datetime import datetime
 
-from papiq.core.ports import DecryptionError
-
-_STEP = 30
+from papiq.core.ports.identity import TOTP_STEP, DecryptionError
 
 
 class FakePasswordHasher:
@@ -80,10 +78,10 @@ class FakeTotp:
         return f"FAKESECRET{self._count:06d}"
 
     def code(self, secret: str, at: datetime) -> str:
-        return self._code(secret, int(at.timestamp()) // _STEP)
+        return self._code(secret, int(at.timestamp()) // TOTP_STEP)
 
     def matching_step(self, secret: str, code: str, at: datetime) -> int | None:
-        now = int(at.timestamp()) // _STEP
+        now = int(at.timestamp()) // TOTP_STEP
         for step in (now - 1, now, now + 1):
             if hmac.compare_digest(self._code(secret, step), code.strip()):
                 return step

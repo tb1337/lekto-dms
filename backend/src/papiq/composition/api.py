@@ -2,7 +2,9 @@
 
 import asyncio
 import contextlib
+import logging
 import signal
+import socket
 import types
 from collections.abc import Iterator
 from uuid import UUID
@@ -12,18 +14,18 @@ from fastapi import FastAPI
 
 from papiq.adapters.inbound.mcp import McpEndpoint
 from papiq.adapters.inbound.rest import (
-    PREFIX,
+    MCP_PATH,
     ApiContext,
     HealthCheck,
     close_event_streams,
     create_app,
 )
-from papiq.adapters.outbound.filesystem import FilesystemObjectStore
-from papiq.adapters.outbound.s3 import S3ObjectStore
 from papiq.composition.bootstrap import ensure_first_admin
 from papiq.composition.container import Container, Services, build_container, build_services
 from papiq.composition.settings import Settings
 from papiq.core.domain.ids import UserId
+
+log = logging.getLogger(__name__)
 
 _SIGNALS = (signal.SIGTERM, signal.SIGINT)
 
@@ -39,15 +41,10 @@ def health_checks(container: Container) -> dict[str, HealthCheck]:
         async with container.unit_of_work() as uow:
             await uow.users.find(UserId(UUID(int=0)))
 
-    store = container.object_store
-
-    async def object_store() -> None:
-        if isinstance(store, FilesystemObjectStore | S3ObjectStore):
-            await store.check()  # the root directory or the bucket
-        else:
-            await store.exists("health/probe")
-
-    checks: dict[str, HealthCheck] = {"database": database, "object_store": object_store}
+    checks: dict[str, HealthCheck] = {
+        "database": database,
+        "object_store": container.object_store.check,
+    }
     if container.search_index is not None:
         checks["search"] = container.search_index.check
     return checks
@@ -58,7 +55,15 @@ def build_app(
 ) -> FastAPI:
     """The API with, if enabled, the MCP endpoint below its prefix."""
     services = services or build_services(container, settings)
-    context = ApiContext(
+    context = api_context(container, settings, services)
+    mounts = [McpEndpoint(context, path=MCP_PATH)] if settings.mcp_enabled else []
+    return create_app(context, mounts)
+
+
+def api_context(container: Container, settings: Settings, services: Services) -> ApiContext:
+    """What the REST and MCP adapters work with: the services, the container's event bus and
+    health checks, and the tuning of the API from `settings`."""
+    return ApiContext(
         auth=services.auth,
         users=services.users,
         spaces=services.spaces,
@@ -81,14 +86,9 @@ def build_app(
         max_upload_size=int(settings.upload_max_size),
         max_request_size=int(settings.request_max_size),
         events_poll_interval=settings.events_poll_interval,
+        text_max=settings.mcp_text_max,
         ui_directory=settings.ui_dir,
     )
-    mounts = (
-        [McpEndpoint(context, path=f"{PREFIX}/mcp", text_max=settings.mcp_text_max)]
-        if settings.mcp_enabled
-        else []
-    )
-    return create_app(context, mounts)
 
 
 class _Server(uvicorn.Server):
@@ -98,11 +98,20 @@ class _Server(uvicorn.Server):
       timeout.
     - The signal is handled in the event loop and not raised again after shutdown (Uvicorn's
       default), so the caller can still close the database engine and exits normally.
+
+    Once it listens, it logs `api started` with the port it bound (with `PAPIQ_API_PORT=0`, the
+    one the operating system picked).
     """
 
     def __init__(self, config: uvicorn.Config, app: FastAPI) -> None:
         super().__init__(config)
         self._app = app
+
+    async def startup(self, sockets: list[socket.socket] | None = None) -> None:
+        await super().startup(sockets)
+        if self.started:
+            port = self.servers[0].sockets[0].getsockname()[1]
+            log.info("api started", extra={"host": self.config.host, "port": port})
 
     @contextlib.contextmanager
     def capture_signals(self) -> Iterator[None]:

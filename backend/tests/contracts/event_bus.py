@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
@@ -18,13 +19,15 @@ from papiq.core.domain.events import (
     NodeStarted,
 )
 from papiq.core.domain.ids import DocumentId, SpaceId, UserId, new_id
+from papiq.core.domain.jobs import RetryPolicy
 from papiq.core.domain.pipeline import Lane, Node, Outcome
-from papiq.core.ports import Clock, DeliveryRetry, EventBus, UnitOfWorkFactory
-from papiq.core.ports.event_bus import DEFAULT_DELIVERY_RETRY
-from tests.builders import NOW
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.event_bus import EventBus
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from tests.builders import EVENT_RETRY, NOW
 
 # Failed deliveries are due again at once: most tests are about what is delivered, not when.
-IMMEDIATE = DeliveryRetry(delay=timedelta(0))
+IMMEDIATE = replace(EVENT_RETRY, delay=timedelta(0))
 FAR_FUTURE = datetime(2100, 1, 1, tzinfo=UTC)
 
 
@@ -32,7 +35,7 @@ class EventBusFactory(Protocol):
     """Creates a bus on the same database as `uow_factory`."""
 
     def __call__(
-        self, *, clock: Clock | None = None, retry: DeliveryRetry = DEFAULT_DELIVERY_RETRY
+        self, *, clock: Clock | None = None, retry: RetryPolicy = EVENT_RETRY
     ) -> EventBus: ...
 
 
@@ -260,7 +263,7 @@ class EventBusContract:
     ) -> None:
         clock = ManualClock(NOW)
         bus = event_bus_factory(
-            clock=clock, retry=DeliveryRetry(max_attempts=3, delay=timedelta(seconds=10))
+            clock=clock, retry=replace(EVENT_RETRY, max_attempts=3, delay=timedelta(seconds=10))
         )
         attempts = 0
 
@@ -286,7 +289,7 @@ class EventBusContract:
         self, uow_factory: UnitOfWorkFactory, event_bus_factory: EventBusFactory
     ) -> None:
         clock = ManualClock(NOW)
-        bus = event_bus_factory(clock=clock, retry=DeliveryRetry(delay=timedelta(seconds=1)))
+        bus = event_bus_factory(clock=clock, retry=replace(EVENT_RETRY, delay=timedelta(seconds=1)))
         flaky = Recorder(failures=2)
         bus.subscribe("flaky", flaky)
         event = received()
@@ -325,7 +328,7 @@ class EventBusContract:
     async def test_purge_counts_given_up_events_as_handled(
         self, uow_factory: UnitOfWorkFactory, event_bus_factory: EventBusFactory
     ) -> None:
-        bus = event_bus_factory(retry=DeliveryRetry(max_attempts=1))
+        bus = event_bus_factory(retry=replace(EVENT_RETRY, max_attempts=1))
 
         async def failing(event: DomainEvent) -> None:
             raise RuntimeError("receiver down")

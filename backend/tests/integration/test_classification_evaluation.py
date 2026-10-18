@@ -12,7 +12,8 @@ from papiq.adapters.outbound.memory import FakeLanguageModel
 from papiq.adapters.outbound.sql import Database, SqlUnitOfWorkFactory
 from papiq.composition.evaluation import build_environment, evaluation_container
 from papiq.composition.settings import Settings
-from papiq.core.ports import LanguageModel, ObjectStore
+from papiq.core.ports.llm import LanguageModel
+from papiq.core.ports.object_store import ObjectStore
 
 SET = Path(__file__).parents[2] / "evaluation"
 

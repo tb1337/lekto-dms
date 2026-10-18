@@ -70,6 +70,12 @@ def test_tags_of_a_scope_in_the_order_of_the_tree(insurance: dict[str, Tag]) -> 
     assert tree.of_scope(TagScope.DOCUMENT_TYPE) == []
 
 
+def test_an_umlaut_sorts_as_its_letter() -> None:
+    tree = TagTree.of([tag("Zahnarzt"), tag("Ärzte"), tag("Arzt"), tag("Bank")])
+    names = [item.name for item in tree.of_scope(TagScope.DOCUMENT)]
+    assert names == ["Arzt", "Ärzte", "Bank", "Zahnarzt"]
+
+
 def test_a_parent_of_another_scope_or_below_is_refused(insurance: dict[str, Tag]) -> None:
     tree = TagTree.of(insurance.values())
     top, dental = insurance["insurance"], insurance["dental"]

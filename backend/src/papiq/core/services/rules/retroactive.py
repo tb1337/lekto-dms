@@ -13,11 +13,10 @@
   and continues in a new job, so processing and indexing do not wait.
 """
 
-import asyncio
 import logging
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import datetime
 from uuid import UUID
 
 from papiq.core.domain.documents import Document
@@ -31,21 +30,25 @@ from papiq.core.domain.ids import DocumentId, RuleApplicationId, RuleId, UserId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.permissions import can_write_document
-from papiq.core.domain.pipeline import RULES_APPLY, Lane, Node, NodeResult, NodeRun, Outcome
-from papiq.core.domain.rule_engine import Effect, Mode, Note
+from papiq.core.domain.pipeline import (
+    ACTOR,
+    RULES_APPLY,
+    TRIGGER,
+    TRIGGER_APPLY,
+    Lane,
+    Node,
+)
+from papiq.core.domain.rule_planner import Effect, Mode, Note, NoteKind
 from papiq.core.domain.rules import Rule, RuleApplication, RuleScope
 from papiq.core.domain.users import User
-from papiq.core.ports import (
-    Clock,
-    DocumentFilter,
-    DocumentPosition,
-    ObjectStore,
-    PatternMatcher,
-    TemplateRenderer,
-    UnitOfWork,
-    UnitOfWorkFactory,
-)
-from papiq.core.services._access import load_actor
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.patterns import PatternMatcher
+from papiq.core.ports.repository import PAGE_SIZE, DocumentFilter, DocumentPosition
+from papiq.core.ports.templates import TemplateRenderer
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from papiq.core.services._access import field_definitions, load_actor
+from papiq.core.services._jobs import LEASE, JobRunner, lost
 from papiq.core.services.rules.management import visible_rule
 from papiq.core.services.rules.running import (
     PatternBudget,
@@ -53,6 +56,7 @@ from papiq.core.services.rules.running import (
     RuleRun,
     apply_plan,
     checked_rules,
+    entry_beside,
     prepare,
     provenance,
     run_rules,
@@ -68,7 +72,7 @@ SCAN = 200
 """Documents a preview page looks at, at most."""
 PREVIEW_BUDGET = 20.0
 """Seconds the patterns of a preview page may take together; the page ends early then."""
-_LANES = frozenset({Lane.GREEN, Lane.YELLOW, Lane.RED})
+_WITH_LANE = DocumentFilter(lanes=frozenset({Lane.GREEN, Lane.YELLOW, Lane.RED}))
 
 
 @dataclass(frozen=True)
@@ -101,7 +105,6 @@ class RuleApplicationService:
         max_text: int,
         max_documents: int,
         pipeline_version: str,
-        lease: timedelta = timedelta(minutes=10),
     ) -> None:
         self._uow = uow
         self._clock = clock
@@ -111,7 +114,7 @@ class RuleApplicationService:
         self._max_text = max_text
         self._max_documents = max_documents
         self._version = pipeline_version
-        self._lease = lease
+        self._jobs = JobRunner(uow, clock)
 
     # --- preview ---------------------------------------------------------------------------------
 
@@ -121,7 +124,7 @@ class RuleApplicationService:
         id: RuleId,
         *,
         before: DocumentId | None = None,
-        limit: int = 50,
+        limit: int = PAGE_SIZE,
     ) -> ApplyPreview:
         """The documents the rule's current version would change, newest first, from the page
         ending at `before` on. A page looks at `SCAN` documents at most: it may hold fewer than
@@ -131,11 +134,11 @@ class RuleApplicationService:
             rule = await _applicable_rule(uow, user, id)
             if user.is_active_admin:
                 documents = await uow.documents.query(
-                    DocumentFilter(lanes=_LANES), after=_position(before), limit=SCAN
+                    _WITH_LANE, after=_position(before), limit=SCAN
                 )
             else:
                 documents = await uow.documents.query_visible(
-                    actor, DocumentFilter(lanes=_LANES), after=_position(before), limit=SCAN
+                    actor, _WITH_LANE, after=_position(before), limit=SCAN
                 )
         items: list[PreviewItem] = []
         next_cursor = documents[-1].id if len(documents) == SCAN else None
@@ -163,8 +166,8 @@ class RuleApplicationService:
             if run is None:
                 continue
             report = run.plan.reports[0]
-            conflicts = tuple(note for note in report.notes if note.kind == "conflict")
-            others = tuple(note for note in report.notes if note.kind != "conflict")
+            conflicts = tuple(note for note in report.notes if note.kind is NoteKind.CONFLICT)
+            others = tuple(note for note in report.notes if note.kind is not NoteKind.CONFLICT)
             if report.applied or conflicts:
                 items.append(PreviewItem(current, tuple(report.applied), conflicts, others))
         return ApplyPreview(rule, tuple(items), next_cursor)
@@ -213,22 +216,16 @@ class RuleApplicationService:
 
     async def run_next_job(self) -> bool:
         """Claim and run a due application job. Returns False if none was due."""
-        async with self._uow() as uow:
-            job = await uow.jobs.claim(now=self._clock.now(), lease=self._lease, kinds=[APPLY_JOB])
-            await uow.commit()
-        if job is None:
-            return False
+        return await self._jobs.run_next([APPLY_JOB], LEASE, self._attempt)
+
+    async def _attempt(self, job: Job) -> None:
         try:
             await self._run(job)
-        except asyncio.CancelledError:
-            await asyncio.shield(self._give_back(job))
-            raise
         except ConcurrencyError:
-            log.warning("lost the claim of a rule job", extra={"job_id": str(job.id)})
+            lost(job)
         except Exception as error:
             log.exception("rule application failed", extra={"job_id": str(job.id)})
             await self._abort(job, error)
-        return True
 
     async def _abort(self, job: Job, error: Exception) -> None:
         """An unexpected error: end the application, so it does not run again and again."""
@@ -249,9 +246,7 @@ class RuleApplicationService:
         try:
             id = RuleApplicationId(UUID(str(job.payload["application_id"])))
         except (KeyError, ValueError) as error:
-            async with self._uow() as uow:
-                await uow.jobs.fail(job, error=f"invalid payload: {error}")
-                await uow.commit()
+            await self._jobs.invalid(job, error)
             return
         for _ in range(BATCH):
             done = await self._next_document(id)
@@ -295,9 +290,7 @@ class RuleApplicationService:
         try:
             async with self._uow() as uow:
                 application = await uow.rule_applications.get(id)
-                document_id = application.remaining[0]
-                outcome = await self._apply_one(uow, user, rule, document_id, prepared, application)
-                application.record(document_id, outcome)
+                await self._apply_one(uow, user, rule, prepared, application)
                 await uow.rule_applications.update(application)
                 await uow.commit()
         except ConcurrencyError:
@@ -305,7 +298,9 @@ class RuleApplicationService:
             # then this fails again and the claim is lost).
             async with self._uow() as uow:
                 application = await uow.rule_applications.get(id)
-                application.record(application.remaining[0], "changed meanwhile; not applied")
+                application.record_skipped(
+                    application.remaining[0], "changed meanwhile; not applied"
+                )
                 await uow.rule_applications.update(application)
                 await uow.commit()
         return False
@@ -315,47 +310,46 @@ class RuleApplicationService:
         uow: UnitOfWork,
         user: User,
         rule: Rule,
-        id: DocumentId,
         prepared: Prepared,
         application: RuleApplication,
-    ) -> str:
+    ) -> None:
+        """Apply the rule to the next document of `application` and record what it did."""
+        id = application.remaining[0]
         document = await uow.documents.find(id)
         if document is None or not await _candidate(uow, user, rule, document):
-            return "not available"
+            application.record_skipped(id, "not available")
+            return
         run = await self._evaluate(
             uow, rule, document, prepared, accept=id in application.accept_conflicts
         )
         if run is None or not run.plan.effects:
-            return "unchanged"
+            application.record_unchanged()
+            return
         now = self._clock.now()
-        definitions = {item.id: item for item in await uow.fields.list_all()}
+        definitions = await field_definitions(uow)
         problem = apply_plan(document, run.plan, definitions, now)
         if problem is not None:
-            return problem
+            application.record_skipped(id, problem)
+            return
         await uow.processing_log.append(
-            NodeRun(
-                document_id=document.id,
+            entry_beside(
+                document,
                 node=Node.APPLY_RULES,
-                run=document.processing.run,
-                result=NodeResult(
-                    outcome=Outcome.OK,
-                    model_version=RULES_APPLY,
-                    input={
-                        "trigger": "apply",
-                        "actor": str(user.id),
-                        "application_id": str(application.id),
-                        "rules": checked_rules([rule]),
-                    },
-                    output=run.output(),
-                ),
-                pipeline_version=self._version,
-                started_at=now,
-                duration=now - now,
+                model_version=RULES_APPLY,
+                input={
+                    TRIGGER: TRIGGER_APPLY,
+                    ACTOR: str(user.id),
+                    "application_id": str(application.id),
+                    "rules": checked_rules([rule]),
+                },
+                output=run.output(),
+                version=self._version,
+                now=now,
             )
         )
         await uow.documents.update(document)
         await uow.outbox.add(document.pull_events())
-        return "applied"
+        application.record_applied()
 
     async def _evaluate(
         self,
@@ -368,7 +362,7 @@ class RuleApplicationService:
     ) -> RuleRun | None:
         """The rule on the document; None if it does not hold."""
         owner = await uow.users.get(document.owner_id)
-        definitions = {item.id: item for item in await uow.fields.list_all()}
+        definitions = await field_definitions(uow)
         run = await run_rules(
             uow,
             self._matcher,
@@ -384,14 +378,6 @@ class RuleApplicationService:
         )
         return run if run.plan.reports else None
 
-    async def _give_back(self, job: Job) -> None:
-        try:
-            async with self._uow() as uow:
-                await uow.jobs.release(job, run_at=self._clock.now(), error="worker stopped")
-                await uow.commit()
-        except ConcurrencyError:
-            pass
-
 
 async def _applicable_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
     """A user rule its owner or an admin applies; a global rule anyone applies."""
@@ -399,7 +385,7 @@ async def _applicable_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
     if rule.deleted_at is not None:
         raise NotFoundError("rule", id)
     if rule.scope is RuleScope.USER and not (rule.owner_id == user.id or user.is_active_admin):
-        raise PermissionDeniedError("only the owner applies a user rule")
+        raise PermissionDeniedError("only the owner and admins apply a user rule")
     return rule
 
 
@@ -420,4 +406,4 @@ async def _enqueue(uow: UnitOfWork, id: RuleApplicationId, now: datetime) -> Non
 
 
 def _position(before: DocumentId | None) -> DocumentPosition | None:
-    return None if before is None else DocumentPosition(before)
+    return DocumentPosition.after(before)

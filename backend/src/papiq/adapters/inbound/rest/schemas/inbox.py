@@ -10,7 +10,6 @@ from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails, Docum
 from papiq.core.domain.classification import Candidate, CandidateSource, FieldCheck
 from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.pipeline import Node, Outcome
-from papiq.core.domain.spaces import ShareLevel
 from papiq.core.services.inbox import InboxItem, NodeReview, OpenNode, Review
 
 ResumeNode = StrEnum(  # type: ignore[misc]
@@ -264,7 +263,7 @@ class InboxItemOut(BaseModel):
     @classmethod
     def of(cls, item: InboxItem) -> "InboxItemOut":
         return cls(
-            document=DocumentDetails.of(item.document, ShareLevel.READ_WRITE),
+            document=DocumentDetails.of(item.document, item.access),
             open=[OpenNodeOut.of(node) for node in item.open],
         )
 
@@ -308,7 +307,7 @@ class ReviewOut(BaseModel):
     @classmethod
     def of(cls, review: Review) -> "ReviewOut":
         return cls(
-            document=DocumentDetails.of(review.document, ShareLevel.READ_WRITE),
+            document=DocumentDetails.of(review.document, review.access),
             open=[OpenNodeOut.of(node) for node in review.open],
             nodes=[NodeReviewOut.of(node) for node in review.nodes],
         )

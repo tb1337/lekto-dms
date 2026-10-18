@@ -27,6 +27,13 @@ class ShareOut(BaseModel):
     user_id: UUID
     level: ShareLevel
 
+    @classmethod
+    def of_space(cls, space: Space, viewer: User) -> "list[ShareOut] | None":
+        """The space's shares, by user, if `viewer` owns the space or is an admin."""
+        if not can_manage_space(viewer, space):
+            return None
+        return [cls(user_id=user, level=level) for user, level in sorted(space.shares.items())]
+
 
 class SpaceOut(BaseModel):
     id: UUID
@@ -44,15 +51,13 @@ class SpaceOut(BaseModel):
         """As `viewer` sees it, who owns it, has a share or is an admin."""
         access = space_access(viewer, space)
         assert access is not None  # the service returns visible spaces only
-        manager = can_manage_space(viewer, space)
-        shares = sorted(space.shares.items())
         return cls(
             id=space.id,
             name=space.name,
             owner_id=space.owner_id,
             is_default=space.is_default,
             access=access,
-            shares=[ShareOut(user_id=u, level=level) for u, level in shares] if manager else None,
+            shares=ShareOut.of_space(space, viewer),
             created_at=space.created_at,
         )
 

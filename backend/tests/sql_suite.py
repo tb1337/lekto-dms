@@ -6,7 +6,8 @@ Test modules subclass the suites and provide the fixtures `database` (migrated, 
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -16,6 +17,7 @@ import sqlalchemy as sa
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import Connection, insert, inspect, select
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from papiq.adapters.outbound.memory import ManualClock, MemoryObjectStore
 from papiq.adapters.outbound.sql import Database, SqlUnitOfWorkFactory, migrate, schema_state
@@ -28,23 +30,23 @@ from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.ids import new_id
 from papiq.core.domain.jobs import Job
-from papiq.core.domain.master_data import TagScope
-from papiq.core.domain.pipeline import NODES, Lane, Node
+from papiq.core.domain.pipeline import NODES, Node
+from papiq.core.domain.templates import TemplateValue
 from papiq.core.domain.users import User
-from papiq.core.ports import DeliveryRetry, EventBus, UnitOfWorkFactory
-from papiq.core.services import master_data
-from papiq.core.services.documents import DocumentService
-from papiq.core.services.master_data import MasterDataService
-from papiq.core.services.pipeline import PipelineService, PlaceholderNode
+from papiq.core.ports.event_bus import EventBus
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
-from tests.builders import NOW, incoming
+from tests.builders import NOW, PlaceholderNode, incoming
 from tests.contracts.event_bus import EventBusFactory, Recorder, publish, received
 from tests.contracts.unit_of_work import owner_with_space
+from tests.service_suite import ServicesOverPersistence
 
 LEASE = timedelta(minutes=5)
 
 
-class SqlAdapterSuite:
+class SqlAdapterSuite(ServicesOverPersistence):
+    """The SQL adapter's own tests, and those of services over persistence."""
+
     # --- types ----------------------------------------------------------------------------------
 
     async def test_decimals_keep_their_exact_value_and_scale(
@@ -160,12 +162,11 @@ class SqlAdapterSuite:
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
         owner, _ = await owner_with_space(uow_factory)
-        pipeline = PipelineService(
+        pipeline = builders.pipeline_service(
             uow_factory,
             ManualClock(NOW),
             MemoryObjectStore(),
             {node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE},
-            pipeline_version="test",
         )
 
         async def upload() -> Document:
@@ -176,141 +177,6 @@ class SqlAdapterSuite:
         assert all(isinstance(r, Document | DuplicateDocumentError) for r in results), results
         async with uow_factory() as uow:
             assert len(await uow.documents.list_visible_to(owner.id)) == 1
-
-    async def test_concurrent_tag_moves_make_no_cycle(self, uow_factory: UnitOfWorkFactory) -> None:
-        """Moving A under B and B under A at once: one move waits for the other and sees it."""
-        admin = builders.admin()
-        await _seed_user(uow_factory, admin)
-        service = MasterDataService(uow_factory, ManualClock(NOW), builders.TEMPLATES)
-        a = await service.create_tag(admin.id, "A")
-        b = await service.create_tag(admin.id, "B")
-        results = await asyncio.gather(
-            service.change_tag(admin.id, a.id, parent_id=b.id),
-            service.change_tag(admin.id, b.id, parent_id=a.id),
-            return_exceptions=True,
-        )
-        assert sorted(type(result).__name__ for result in results) == ["Tag", "ValidationError"]
-        async with uow_factory() as uow:
-            tags = {tag.id: tag for tag in await uow.tags.list_all()}
-        assert None in {tags[a.id].parent_id, tags[b.id].parent_id}
-
-    async def test_a_moved_tag_leaves_documents_and_groups_the_tag_below(
-        self, uow_factory: UnitOfWorkFactory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The job after a move, a page of documents at a time: what carries a tag and one now
-        above it keeps the one below; the lane, the confirmation and other documents stay."""
-        monkeypatch.setattr(master_data, "_NORMALISE_BATCH", 2)
-        owner, space = await owner_with_space(uow_factory)
-        admin = builders.admin()
-        await _seed_user(uow_factory, admin)
-        service = MasterDataService(uow_factory, ManualClock(NOW), builders.TEMPLATES)
-        insurance = await service.create_tag(admin.id, "Insurance")
-        health = await service.create_tag(admin.id, "Health")
-        dental = await service.create_tag(admin.id, "Dental", parent_id=health.id)
-        insurer = await service.create_tag(admin.id, "Insurer", scope=TagScope.CONTACT)
-        kassen = await service.create_tag(admin.id, "Kassen", scope=TagScope.CONTACT)
-        bills = await service.create_tag(admin.id, "Bills", scope=TagScope.DOCUMENT_TYPE)
-        medical = await service.create_tag(admin.id, "Medical", scope=TagScope.DOCUMENT_TYPE)
-        nord = await service.create_contact(admin.id, "Nord", group_ids=[insurer.id, kassen.id])
-        invoice = await service.create_document_type(
-            admin.id, "Invoice", group_ids=[bills.id, medical.id]
-        )
-        carried = [
-            {insurance.id, health.id},
-            {insurance.id, dental.id},
-            {insurance.id},
-            {health.id},
-            {insurance.id, health.id},
-        ]
-        documents = []
-        async with uow_factory() as uow:
-            for number, tags in enumerate(carried):
-                document = builders.run_pipeline(
-                    builders.document(owner, space, content=str(number))
-                )
-                document.tag_ids = set(tags)
-                if number == 0:
-                    document.mark_confirmed(NOW)
-                await uow.documents.add(document)
-                documents.append(document)
-            await uow.commit()
-        await service.change_tag(admin.id, health.id, parent_id=insurance.id)
-        await service.change_tag(admin.id, kassen.id, parent_id=insurer.id)
-        await service.change_tag(admin.id, medical.id, parent_id=bills.id)
-        # Health: four documents carry it or Dental, two per step, and a last step finds none.
-        assert [await service.run_next_job() for _ in range(6)] == [True] * 5 + [False]
-        async with uow_factory() as uow:
-            stored = [await uow.documents.get(document.id) for document in documents]
-            assert (await uow.contacts.get(nord.id)).group_ids == {kassen.id}
-            assert (await uow.document_types.get(invoice.id)).group_ids == {medical.id}
-        assert [document.tag_ids for document in stored] == [
-            {health.id},
-            {dental.id},
-            {insurance.id},
-            {health.id},
-            {health.id},
-        ]
-        assert [document.version for document in stored] == [2, 2, 1, 1, 2]
-        assert {document.lane for document in stored} == {Lane.GREEN}
-        assert [document.confirmed_at for document in stored[:2]] == [NOW, None]
-
-    async def test_groups_and_topics_count_their_contacts_and_types(
-        self, uow_factory: UnitOfWorkFactory
-    ) -> None:
-        """Each contact (type) once at its group or topic and at those above it, from the
-        stored groups and topics of contacts and types."""
-        admin = builders.admin()
-        await _seed_user(uow_factory, admin)
-        service = MasterDataService(uow_factory, ManualClock(NOW), builders.TEMPLATES)
-        insurer = await service.create_tag(admin.id, "Insurer", scope=TagScope.CONTACT)
-        health = await service.create_tag(
-            admin.id, "Health insurer", scope=TagScope.CONTACT, parent_id=insurer.id
-        )
-        work = await service.create_tag(admin.id, "Work", scope=TagScope.TOPIC)
-        bills = await service.create_tag(admin.id, "Bills", scope=TagScope.DOCUMENT_TYPE)
-        medical = await service.create_tag(
-            admin.id, "Medical", scope=TagScope.DOCUMENT_TYPE, parent_id=bills.id
-        )
-        await service.create_contact(
-            admin.id, "Nord", group_ids=[insurer.id, health.id], topic_ids=[work.id]
-        )
-        await service.create_contact(admin.id, "Süd", group_ids=[health.id], topic_ids=[work.id])
-        await service.create_document_type(admin.id, "Invoice", group_ids=[medical.id])
-        members = await service.tag_members(admin.id)
-        assert members.contacts == {insurer.id: 2, health.id: 2, work.id: 2}
-        assert members.document_types == {bills.id: 1, medical.id: 1}
-
-    async def test_a_topic_is_not_given_while_its_contact_gives_it_up(
-        self, uow_factory: UnitOfWorkFactory
-    ) -> None:
-        """Taking a topic away from a contact and giving it to one of its documents at once:
-        one waits for the other and sees it, so no document keeps a topic its contact does
-        not enable."""
-        owner, space = await owner_with_space(uow_factory)
-        admin = builders.admin()
-        await _seed_user(uow_factory, admin)
-        master = MasterDataService(uow_factory, ManualClock(NOW), builders.TEMPLATES)
-        documents = DocumentService(uow_factory, ManualClock(NOW), MemoryObjectStore())
-        work = await master.create_tag(admin.id, "Work", scope=TagScope.TOPIC)
-        nord = await master.create_contact(admin.id, "Nord", topic_ids=[work.id])
-        document = builders.document(owner, space)
-        async with uow_factory() as uow:
-            await uow.documents.add(document)
-            await uow.commit()
-        await documents.update_metadata(owner.id, document.id, DocumentChanges(contact_id=nord.id))
-        results = await asyncio.gather(
-            master.change_contact(admin.id, nord.id, topic_ids=[]),
-            documents.update_metadata(owner.id, document.id, DocumentChanges(topic_id=work.id)),
-            return_exceptions=True,
-        )
-        assert sorted(type(result).__name__ for result in results) in (
-            ["Contact", "ValidationError"],
-            ["ConflictError", "Document"],
-        ), results
-        async with uow_factory() as uow:
-            stored = await uow.documents.get(document.id)
-            contact = await uow.contacts.get(nord.id)
-        assert stored.topic_id is None or stored.topic_id in contact.topic_ids
 
     async def test_a_failed_write_leaves_only_rollback(
         self, uow_factory: UnitOfWorkFactory
@@ -381,7 +247,9 @@ class SqlAdapterSuite:
         database: Database,
     ) -> None:
         clock = ManualClock(NOW)
-        bus = event_bus_factory(clock=clock, retry=DeliveryRetry(delay=timedelta(seconds=10)))
+        bus = event_bus_factory(
+            clock=clock, retry=replace(builders.EVENT_RETRY, delay=timedelta(seconds=10))
+        )
         failing = Recorder(failures=3)
         bus.subscribe("failing", failing)
         await publish(uow_factory, received(1))
@@ -512,11 +380,7 @@ class MigrationSuite:
                 },
             ),
         ]
-        async with empty_database.writing() as connection:
-            for table, values in rows:
-                columns = table.c
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in columns}
-                await connection.execute(insert(table).values({**defaults, **values}))
+        await _insert(empty_database, rows)
         before = await _stored(empty_database, old=True)
 
         await migrate(empty_database, "0015")  # 0016 renames the nodes it reads
@@ -618,10 +482,7 @@ class MigrationSuite:
                 },
             ),
         ]
-        async with empty_database.writing() as connection:
-            for table, values in rows:
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
-                await connection.execute(insert(table).values({**defaults, **values}))
+        await _insert(empty_database, rows)
         before = await _node_names(empty_database, old=True)
 
         await migrate(empty_database)
@@ -705,10 +566,7 @@ class MigrationSuite:
                 },
             ),
         ]
-        async with empty_database.writing() as connection:
-            for table, values in rows:
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
-                await connection.execute(insert(table).values({**defaults, **values}))
+        await _insert(empty_database, rows)
 
         await migrate(empty_database, "0015")  # 0016 renames the nodes it reads
 
@@ -857,10 +715,7 @@ class MigrationSuite:
                 },
             ),
         ]
-        async with empty_database.writing() as connection:
-            for table, values in rows:
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
-                await connection.execute(insert(table).values({**defaults, **values}))
+        await _insert(empty_database, rows)
 
         await migrate(empty_database)
         async with empty_database.reading() as connection:
@@ -876,6 +731,13 @@ class MigrationSuite:
             ids["model"]: None,
         }
         await downgrade(empty_database, "0013")
+        async with empty_database.reading() as connection:
+            columns = await connection.run_sync(
+                lambda sync: {item["name"] for item in sa.inspect(sync).get_columns("documents")}
+            )
+            kept = set((await connection.execute(sa.text("SELECT id FROM documents"))).scalars())
+        assert "confirmed_at" not in columns
+        assert len(kept) == len(found)
 
     async def test_signals_come_before_the_judge_and_back(self, empty_database: Database) -> None:
         """Revision 0016 renames `classify` and `extract_fields` in the node states, the log,
@@ -937,10 +799,7 @@ class MigrationSuite:
                 },
             ),
         ]
-        async with empty_database.writing() as connection:
-            for table, values in rows:
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
-                await connection.execute(insert(table).values({**defaults, **values}))
+        await _insert(empty_database, rows)
 
         async def stored() -> tuple[dict[Any, Any], list[Any], list[Any], list[Any]]:
             async with empty_database.reading() as connection:
@@ -1009,10 +868,7 @@ class MigrationSuite:
                 {"rule_id": rule, "number": 1, "conditions": {"all": []}, "actions": old_actions},
             ),
         ]
-        async with empty_database.writing() as connection:
-            for table, values in rows:
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
-                await connection.execute(insert(table).values({**defaults, **values}))
+        await _insert(empty_database, rows)
 
         async def stored() -> list[Any]:
             async with empty_database.reading() as connection:
@@ -1030,7 +886,7 @@ class MigrationSuite:
         assert actions[3]["value"] == "{% raw %}Nr. {% 1 %}{% endraw %}"
         assert actions[4:] == old_actions[4:]
         # As before: a missing value leaves its gap, the date is written as it was.
-        values = {"filename": "scan", "document_date": date(2026, 3, 31)}
+        values: dict[str, TemplateValue] = {"filename": "scan", "document_date": date(2026, 3, 31)}
         assert " ".join(builders.TEMPLATES.render(title, values).split()) == "Lohn 2026-03 (scan)"
         assert builders.TEMPLATES.render(actions[2]["reason"], {}) == "check {{x}}"
 
@@ -1057,10 +913,7 @@ class MigrationSuite:
                 {"id": field, "name": "LA Brutto", "name_key": "la brutto", "data_type": "amount"},
             ),
         ]
-        async with empty_database.writing() as connection:
-            for table, values in rows:
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
-                await connection.execute(insert(table).values({**defaults, **values}))
+        await _insert(empty_database, rows)
 
         await migrate(empty_database)
         async with empty_database.reading() as connection:
@@ -1077,6 +930,7 @@ class MigrationSuite:
         new = "Lohn {{ contact }} {{ document_date | date: '%Y-%m' }} {{ field.la_brutto }}"
         assert patterns == {payslip: new, letter: None}
         assert link.document_type_id == payslip and link.rule_id == rule["id"]
+        assert rule["id"].version == 7  # time-ordered, as every id
         assert (rule["scope"], rule["owner_id"], rule["enabled"]) == ("global", None, True)
         assert version["name"] == "Lohn" and version["actions"] == [
             {"type": "set_title", "template": new}
@@ -1105,11 +959,13 @@ class MigrationSuite:
         self, empty_database: Database
     ) -> None:
         await migrate(empty_database, "0018")
-        async with empty_database.writing() as connection:
-            for name in ("LA Brutto", "LA_Brutto"):
-                values = {"id": new_id(), "name": name, "name_key": name.casefold()}
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in t.field_definitions.c}
-                await connection.execute(insert(t.field_definitions).values({**defaults, **values}))
+        await _insert(
+            empty_database,
+            [
+                (t.field_definitions, {"id": new_id(), "name": name, "name_key": name.casefold()})
+                for name in ("LA Brutto", "LA_Brutto")
+            ],
+        )
         with pytest.raises(RuntimeError, match=r"would both be field\.la_brutto"):
             await migrate(empty_database)
 
@@ -1132,14 +988,9 @@ class MigrationSuite:
                 "sha256": str(number) * 64,
                 "title": title,
                 "processing_nodes": {},
-                "processing_vision": False,
             }
             rows.append((_drawer(documents), values))
-        async with empty_database.writing() as connection:
-            for table, values in rows:
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
-                columns = {k: v for k, v in {**defaults, **values}.items() if k in table.c}
-                await connection.execute(insert(table).values(columns))
+        await _insert(empty_database, rows)
 
         await migrate(empty_database)
         async with empty_database.reading() as connection:
@@ -1280,10 +1131,7 @@ class MigrationSuite:
             )
             for node, (version, input_, output) in log.items()
         ]
-        async with empty_database.writing() as connection:
-            for table, values in rows:
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
-                await connection.execute(insert(table).values({**defaults, **values}))
+        await _insert(empty_database, rows)
 
         async def stored(old: bool) -> dict[str, Any]:
             spaces = _OLD["drawers"] if old else t.spaces
@@ -1291,19 +1139,19 @@ class MigrationSuite:
             documents = _drawer(_before_0021(t.documents)) if old else t.documents
             space_column = documents.c.drawer_id if old else documents.c.space_id
             async with empty_database.reading() as connection:
-
-                async def all_(query: Any) -> list[Any]:
-                    return [tuple(row) for row in (await connection.execute(query)).all()]
-
                 return {
-                    "spaces": sorted(await all_(select(spaces.c.id, spaces.c.is_default))),
-                    "shares": await all_(select(shares)),
-                    "document": await all_(select(documents.c.id, space_column)),
-                    "tags": await all_(select(t.document_tags)),
-                    "fields": await all_(select(t.document_fields.c.field_id)),
-                    "pattern": await all_(select(t.document_types.c.title_pattern)),
-                    "actions": await all_(select(t.rule_versions.c.actions)),
-                    "event": await all_(select(t.outbox.c.payload)),
+                    "spaces": sorted(
+                        await _read_all(connection, select(spaces.c.id, spaces.c.is_default))
+                    ),
+                    "shares": await _read_all(connection, select(shares)),
+                    "document": await _read_all(connection, select(documents.c.id, space_column)),
+                    "tags": await _read_all(connection, select(t.document_tags)),
+                    "fields": await _read_all(connection, select(t.document_fields.c.field_id)),
+                    "pattern": await _read_all(
+                        connection, select(t.document_types.c.title_pattern)
+                    ),
+                    "actions": await _read_all(connection, select(t.rule_versions.c.actions)),
+                    "event": await _read_all(connection, select(t.outbox.c.payload)),
                     "log": {
                         row.node: (row.model_version, row.input, row.output)
                         for row in (await connection.execute(select(t.processing_log))).all()
@@ -1373,10 +1221,8 @@ class MigrationSuite:
     ) -> None:
         await migrate(empty_database, "0023")
         pattern = "{% for space in tags %}{{ drawer }}{% endfor %}"
-        async with empty_database.writing() as connection:
-            values = {"id": new_id(), "name": "L", "name_key": "l", "title_pattern": pattern}
-            defaults = {k: v for k, v in _DEFAULTS.items() if k in t.document_types.c}
-            await connection.execute(insert(t.document_types).values({**defaults, **values}))
+        values = {"id": new_id(), "name": "L", "name_key": "l", "title_pattern": pattern}
+        await _insert(empty_database, [(t.document_types, values)])
         with pytest.raises(RuntimeError, match=r"uses 'space' already"):
             await migrate(empty_database)
 
@@ -1405,10 +1251,7 @@ class MigrationSuite:
             (t.document_tags, {"document_id": ids["first"], "tag_id": ids["paid"]}),
             (t.document_tags, {"document_id": ids["second"], "tag_id": ids["tax"]}),
         ]
-        async with empty_database.writing() as connection:
-            for table, values in rows:
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
-                await connection.execute(insert(table).values({**defaults, **values}))
+        await _insert(empty_database, rows)
         flat = sa.table(
             "tags",
             sa.column("id", sa.Uuid()),
@@ -1419,13 +1262,9 @@ class MigrationSuite:
 
         async def stored(table: sa.TableClause | sa.Table) -> dict[str, Any]:
             async with empty_database.reading() as connection:
-
-                async def all_(query: Any) -> list[tuple[Any, ...]]:
-                    return sorted(tuple(row) for row in (await connection.execute(query)).all())
-
                 return {
-                    "tags": await all_(select(table)),
-                    "document_tags": await all_(select(t.document_tags)),
+                    "tags": sorted(await _read_all(connection, select(table))),
+                    "document_tags": sorted(await _read_all(connection, select(t.document_tags))),
                 }
 
         before = await stored(flat)
@@ -1453,17 +1292,10 @@ class MigrationSuite:
             ),
             (t.document_tags, {"document_id": ids["second"], "tag_id": ids["child"]}),
         ]
-        async with empty_database.writing() as connection:
-            for table, values in new_rows:
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
-                await connection.execute(insert(table).values({**defaults, **values}))
+        await _insert(empty_database, new_rows)
+        same = {"id": new_id(), "name": "tax", "name_key": "tax", "scope": "contact"}
         with pytest.raises(sa.exc.IntegrityError):
-            async with empty_database.writing() as connection:
-                same: dict[str, Any] = {"name": "tax", "name_key": "tax", "scope": "contact"}
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in t.tags.c}
-                await connection.execute(
-                    insert(t.tags).values({**defaults, **same, "id": new_id()})
-                )
+            await _insert(empty_database, [(t.tags, same)])
 
         await downgrade(empty_database, "0025")
         child = (ids["child"], "C", "c", NOW)
@@ -1506,10 +1338,7 @@ class MigrationSuite:
                 {"contact_id": ids["contact"], "kind": "vat_id", "value": "Y", "source": "learned"},
             ),
         ]
-        async with empty_database.writing() as connection:
-            for table, values in rows:
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
-                await connection.execute(insert(table).values({**defaults, **values}))
+        await _insert(empty_database, rows)
         documents = sa.table(
             "documents",
             *(sa.column(name) for name in ("id", "owner_id", "space_id", "sha256", "title")),
@@ -1520,21 +1349,19 @@ class MigrationSuite:
             *(sa.column(c) for c in ("contact_id", "kind", "value", "source")),
         )
 
+        queries = {
+            "documents": select(documents),
+            "identifiers": select(identifiers),
+            "document_tags": select(t.document_tags),
+            "document_identifiers": select(t.document_identifiers),
+            "tags": select(t.tags.c.id, t.tags.c.scope),
+        }
+
         async def stored() -> dict[str, list[tuple[Any, ...]]]:
             async with empty_database.reading() as connection:
-
-                async def all_(query: Any) -> list[tuple[Any, ...]]:
-                    return sorted(
-                        tuple(str(value) for value in row)
-                        for row in (await connection.execute(query)).all()
-                    )
-
                 return {
-                    "documents": await all_(select(documents)),
-                    "identifiers": await all_(select(identifiers)),
-                    "document_tags": await all_(select(t.document_tags)),
-                    "document_identifiers": await all_(select(t.document_identifiers)),
-                    "tags": await all_(select(t.tags.c.id, t.tags.c.scope)),
+                    name: sorted(tuple(map(str, row)) for row in await _read_all(connection, query))
+                    for name, query in queries.items()
                 }
 
         before = await stored()
@@ -1556,10 +1383,8 @@ class MigrationSuite:
             ),
             (t.contact_topics, {"contact_id": ids["contact"], "tag_id": ids["health"]}),
         ]
+        await _insert(empty_database, new_rows)
         async with empty_database.writing() as connection:
-            for table, values in new_rows:
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
-                await connection.execute(insert(table).values({**defaults, **values}))
             await connection.execute(
                 t.documents.update()
                 .where(t.documents.c.id == ids["first"])
@@ -1600,10 +1425,7 @@ class MigrationSuite:
             (t.contacts, {"id": ids["other"], "name": "Süd", "name_key": "süd"}),
             (t.contact_topics, {"contact_id": ids["contact"], "tag_id": ids["topic"]}),
         ]
-        async with empty_database.writing() as connection:
-            for table, values in rows:
-                defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
-                await connection.execute(insert(table).values({**defaults, **values}))
+        await _insert(empty_database, rows)
         columns = ("id", "name", "name_key", "created_at", "version")
         tables = {
             name: sa.table(name, *(sa.column(column) for column in columns))
@@ -1658,6 +1480,20 @@ class MigrationSuite:
 
         await downgrade(empty_database, "0027")
         assert await stored() == before
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+
+    async def test_the_indexes_of_revision_0029_come_and_go(self, empty_database: Database) -> None:
+        await migrate(empty_database, "0028")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        await migrate(empty_database)
+        async with empty_database.reading() as connection:
+            indexes = await connection.run_sync(
+                lambda sync: {item["name"] for item in sa.inspect(sync).get_indexes("documents")}
+            )
+        assert {"ix_documents_lane", "ix_documents_contact_id"} <= indexes
+        await downgrade(empty_database, "0028")
         async with empty_database.reading() as connection:
             assert await connection.run_sync(_schema) == schema
 
@@ -1758,6 +1594,26 @@ _DEFAULTS: dict[str, Any] = {
 }
 
 
+async def _insert(
+    database: Database, rows: Iterable[tuple[sa.TableClause, Mapping[str, Any]]]
+) -> None:
+    """Write `rows` in one transaction, each with the `_DEFAULTS` its table has columns for."""
+    async with database.writing() as connection:
+        for table, values in rows:
+            defaults = {k: v for k, v in _DEFAULTS.items() if k in table.c}
+            await connection.execute(insert(table).values({**defaults, **values}))
+
+
+async def _read_all(connection: AsyncConnection, query: Any) -> list[tuple[Any, ...]]:
+    """The rows of `query` as tuples, in the order the database returns them."""
+    return [tuple(row) for row in (await connection.execute(query)).all()]
+
+
+async def _only_rows(connection: AsyncConnection, *tables: sa.TableClause) -> list[Any]:
+    """The one row of each of `tables`."""
+    return [(await connection.execute(select(table))).one() for table in tables]
+
+
 async def _stored(database: Database, *, old: bool) -> dict[str, Any]:
     """The rows of `test_attributes_become_fields_and_back`, under the old or new names."""
     prefix = "attribute" if old else "field"
@@ -1776,16 +1632,12 @@ async def _stored(database: Database, *, old: bool) -> dict[str, Any]:
         sa.column("kind", sa.Text()),
         sa.column("value_text", sa.Text()),
     )
+    documents = _before_0009(t.documents) if old else _before_0021(t.documents)
+    log_table = _before_0009(t.processing_log) if old else t.processing_log
     async with database.reading() as connection:
-
-        async def one(table: Any) -> Any:
-            return (await connection.execute(select(table))).one()
-
-        definition, scope, value = await one(definitions), await one(types), await one(values)
-        documents = _before_0009(t.documents) if old else _before_0021(t.documents)
-        log_table = _before_0009(t.processing_log) if old else t.processing_log
-        document, log = await one(documents), await one(log_table)
-        rule, job, event = await one(t.rule_versions), await one(t.jobs), await one(t.outbox)
+        definition, scope, value = await _only_rows(connection, definitions, types, values)
+        document, log = await _only_rows(connection, documents, log_table)
+        rule, job, event = await _only_rows(connection, t.rule_versions, t.jobs, t.outbox)
     return {
         "definition": tuple(definition),
         "scope": tuple(scope),
@@ -1807,13 +1659,9 @@ async def _node_names(database: Database, *, old: bool) -> dict[str, Any]:
     documents = _before_0009(t.documents) if old else _before_0021(t.documents)
     log_table = _before_0009(t.processing_log) if old else t.processing_log
     async with database.reading() as connection:
-
-        async def one(table: Any) -> Any:
-            return (await connection.execute(select(table))).one()
-
-        document, log = await one(documents), await one(log_table)
-        job, event = await one(t.jobs), await one(t.outbox)
-        webhook, delivery = await one(t.webhooks), await one(t.webhook_deliveries)
+        document, log = await _only_rows(connection, documents, log_table)
+        job, event = await _only_rows(connection, t.jobs, t.outbox)
+        webhook, delivery = await _only_rows(connection, t.webhooks, t.webhook_deliveries)
     return {
         "document": (
             document.processing_step if old else _current_and_outcomes(document.processing_nodes)[0]

@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.search import IndexDocument, IndexState, Segment, Visibility
 from papiq.core.ports.repository import DocumentFilter, DocumentOrder
@@ -16,6 +17,20 @@ from papiq.core.ports.repository import DocumentFilter, DocumentOrder
 MAX_LIMIT = 100
 MAX_HITS = 1000
 """Hits a search can reach: `offset + limit` may not be larger."""
+SEARCH_PAGE = 20
+"""Hits on a page of a search unless the caller asks for another number."""
+
+
+def check_search(text: str, semantic_ratio: float, offset: int, limit: int) -> None:
+    """The limits of every search: a text, a semantic ratio from 0 to 1, an offset from 0 and
+    a limit from 1 to `MAX_LIMIT`; ValidationError otherwise. The service checks them before it
+    asks the index, `SearchQuery` again."""
+    if not text.strip():
+        raise ValidationError("the search text is empty")
+    if not 0 <= semantic_ratio <= 1:
+        raise ValidationError("semantic_ratio must be between 0 and 1")
+    if offset < 0 or not 1 <= limit <= MAX_LIMIT:
+        raise ValidationError(f"offset must be 0 or more and limit between 1 and {MAX_LIMIT}")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -23,7 +38,8 @@ class SearchQuery:
     """`visibility` has no default: a query cannot be built without the rights filter.
 
     `vector`: the embedding of `text`; without it the search is plain full text. With it,
-    `semantic_ratio` (0 to 1) weighs the vectors against the words. `order`: sorted by it
+    `semantic_ratio` (0 to 1) weighs the vectors against the words (the service takes it from
+    the request or the setting). `order`: sorted by it
     instead of by relevance (ties by relevance); documents without a date come last.
     """
 
@@ -31,20 +47,15 @@ class SearchQuery:
     visibility: Visibility
     filter: DocumentFilter = field(default_factory=DocumentFilter)
     vector: tuple[float, ...] | None = None
-    semantic_ratio: float = 0.5
+    semantic_ratio: float
     order: DocumentOrder | None = None
     offset: int = 0
-    limit: int = 20
+    limit: int = SEARCH_PAGE
 
     def __post_init__(self) -> None:
-        if not self.text.strip():
-            raise ValueError("the query text is empty")
-        if not 0 <= self.semantic_ratio <= 1:
-            raise ValueError("semantic_ratio must be between 0 and 1")
-        if self.offset < 0 or not 1 <= self.limit <= MAX_LIMIT:
-            raise ValueError(f"offset must be 0 or more and limit between 1 and {MAX_LIMIT}")
+        check_search(self.text, self.semantic_ratio, self.offset, self.limit)
         if self.offset + self.limit > MAX_HITS:
-            raise ValueError(f"offset + limit may not exceed {MAX_HITS}")
+            raise ValidationError(f"offset + limit may not exceed {MAX_HITS}")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -56,7 +67,7 @@ class SimilarQuery:
     visibility: Visibility
     filter: DocumentFilter = field(default_factory=DocumentFilter)
     exclude: DocumentId | None = None
-    limit: int = 5
+    limit: int
 
     def __post_init__(self) -> None:
         if not self.vector:

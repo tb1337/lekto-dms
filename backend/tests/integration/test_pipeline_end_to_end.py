@@ -2,7 +2,6 @@
 and on S3 (Garage); archive PDF, preview, text and structure end up in the object store.
 Metadata stays in memory."""
 
-import shutil
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import timedelta
@@ -17,15 +16,13 @@ from papiq.composition.container import build_memory_container, build_services
 from papiq.composition.settings import Settings
 from papiq.core.domain import media_types
 from papiq.core.domain.pipeline import Lane, Node
-from papiq.core.ports import ObjectStore
+from papiq.core.ports.object_store import ObjectStore
 from papiq.core.services.objects import archive_key, preview_key, structure_key, text_key
-from tests import builders
-from tests.builders import incoming
-from tests.contracts.processing import SAMPLES
-from tests.integration.conftest import s3_test_store
+from tests import builders, probes
+from tests.builders import DEFAULT_SETTINGS, SAMPLES, incoming
+from tests.integration.services import s3_test_store
 
-if not (shutil.which("tesseract") and shutil.which("gs")):
-    pytest.skip("Tesseract or Ghostscript not installed", allow_module_level=True)
+pytestmark = probes.requires_ocr
 
 
 @pytest.fixture(params=["filesystem", "s3"])
@@ -49,23 +46,22 @@ async def test_scan_and_photo_are_processed(
     container = replace(
         build_memory_container(),
         object_store=object_store,
-        ocr=OcrmypdfEngine(languages=["deu", "eng"], timeout=timedelta(minutes=5)),
+        ocr=OcrmypdfEngine(
+            languages=["deu", "eng"],
+            timeout=timedelta(minutes=5),
+            vision_timeout=DEFAULT_SETTINGS.vlm_timeout,
+        ),
         parser=LayoutParser(),
         pages=PdfiumPageRenderer(),
     )
     services = build_services(container)
     builders.skip_classification(services.pipeline)
-    owner = builders.user()
-    async with container.unit_of_work() as uow:
-        await uow.users.add(owner)
-        await uow.spaces.add(builders.default_space(owner))
-        await uow.commit()
+    owner = await builders.seed_user(container.unit_of_work)
 
     document = await services.pipeline.receive(
         owner.id, incoming((SAMPLES / sample).read_bytes()), filename=sample
     )
-    while await services.pipeline.run_next_job():
-        pass
+    await builders.drain(services.pipeline)
 
     stored = await services.documents.get(owner.id, document.id)
     log = await services.documents.processing_log(owner.id, document.id)

@@ -1,7 +1,6 @@
 import json
 import os
 import signal
-import socket
 import sqlite3
 import subprocess
 import sys
@@ -16,6 +15,15 @@ from papiq.adapters.outbound.memory import FakeLogoFetcher, FakeOcr, FakeParser,
 from papiq.composition import container
 from papiq.composition.__main__ import main
 from tests.builders import PASSWORD, SECRET_KEY, TRUSTED_PROXY
+
+
+@pytest.fixture
+def sqlite_instance(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A migrated SQLite database in `tmp_path`; OCR and parser are fakes."""
+    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
+    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
+    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
+    assert main(["migrate"]) == 0
 
 
 def test_valid_configuration_exits_zero_and_masks_secrets(
@@ -93,55 +101,38 @@ def test_train_needs_a_classifier(
     assert "PAPIQ_CLASSIFIER is none" in capsys.readouterr().err
 
 
-def test_train_without_confirmed_documents_fails(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
-    assert main(["migrate"]) == 0
-
+@pytest.mark.usefixtures("sqlite_instance")
+def test_train_without_confirmed_documents_fails(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["train"]) == 1
     events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
     assert "training the classifier failed" in [event["event"] for event in events]
 
 
+@pytest.mark.usefixtures("sqlite_instance")
 def test_render_pages_queues_the_documents_without_page_images(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
-    assert main(["migrate"]) == 0
-
     assert main(["render-pages"]) == 0
 
     events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
     assert [e["documents"] for e in events if e["event"] == "render-pages queued"] == [0]
 
 
+@pytest.mark.usefixtures("sqlite_instance")
 def test_read_codes_queues_the_documents_to_read_the_facts_of(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
-    assert main(["migrate"]) == 0
-
     assert main(["read-codes"]) == 0
 
     events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
     assert [e["documents"] for e in events if e["event"] == "read-codes queued"] == [0]
 
 
+@pytest.mark.usefixtures("sqlite_instance")
 def test_fetch_logos_queues_the_contacts_without_a_logo(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
     monkeypatch.setitem(container.LOGO_FETCHERS, "httpx2", lambda _: FakeLogoFetcher())
-    assert main(["migrate"]) == 0
 
     # Off by default: Papiq asks no website.
     assert main(["fetch-logos"]) == 1
@@ -153,30 +144,21 @@ def test_fetch_logos_queues_the_contacts_without_a_logo(
     assert [e["contacts"] for e in events if e["event"] == "fetch-logos queued"] == [0]
 
 
-def test_reparse_queues_the_documents_to_read_again(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
-    assert main(["migrate"]) == 0
-
+@pytest.mark.usefixtures("sqlite_instance")
+def test_reparse_queues_the_documents_to_read_again(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["reparse"]) == 0
 
     events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
     assert [e["documents"] for e in events if e["event"] == "reparse queued"] == [0]
 
 
+@pytest.mark.usefixtures("sqlite_instance")
 def test_reindex_rebuilds_the_index(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
     monkeypatch.setenv("PAPIQ_MEILISEARCH_URL", "http://meilisearch:7700")
     index = MemorySearchIndex()
-    monkeypatch.setitem(container.SEARCH_INDEXES, "meilisearch", lambda _: index)
-    monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
-    monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
-    assert main(["migrate"]) == 0
+    monkeypatch.setitem(container.SEARCH_INDEXES, "meilisearch", lambda _: container.Opened(index))
 
     assert main(["reindex"]) == 0
 
@@ -246,17 +228,10 @@ def test_the_worker_stops_cleanly_on_sigterm(tmp_path: Path) -> None:
     assert events[-2:] == ["worker stopping", "worker stopped"]
 
 
-def free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port: int = probe.getsockname()[1]
-        return port
-
-
 def test_the_api_serves_health_and_stops_on_sigterm(tmp_path: Path) -> None:
-    """In a process of its own: start on SQLite and the filesystem, ask /health, SIGTERM. The
-    first admin is created from the configuration; the password never shows in the log."""
-    port = free_port()
+    """In a process of its own: start on SQLite and the filesystem, on the port the operating
+    system picks, which the start line names; ask /health, SIGTERM. The first admin is created
+    from the configuration; the password never shows in the log."""
     password_file = tmp_path / "admin-password"
     password_file.write_text(PASSWORD + "\n")
     environment = {key: value for key, value in os.environ.items() if not key.startswith("PAPIQ_")}
@@ -264,7 +239,7 @@ def test_the_api_serves_health_and_stops_on_sigterm(tmp_path: Path) -> None:
         "PAPIQ_DB_SQLITE_PATH": str(tmp_path / "papiq.db"),
         "PAPIQ_STORAGE_PATH": str(tmp_path / "objects"),
         "PAPIQ_API_HOST": "127.0.0.1",
-        "PAPIQ_API_PORT": str(port),
+        "PAPIQ_API_PORT": "0",
         "PAPIQ_SECRET_KEY": SECRET_KEY,
         "PAPIQ_FORWARDED_ALLOW_IPS": TRUSTED_PROXY,
         "PAPIQ_ADMIN_USERNAME": "admin",
@@ -278,14 +253,17 @@ def test_the_api_serves_health_and_stops_on_sigterm(tmp_path: Path) -> None:
         [*command, "api"], env=environment, stderr=subprocess.PIPE, text=True
     ) as process:
         assert process.stderr is not None
-        deadline = time.monotonic() + 30
-        health = None
-        while time.monotonic() < deadline and health is None:
-            try:
-                with opener.open(f"http://127.0.0.1:{port}/api/v1/health", timeout=1) as answer:
-                    health = json.load(answer)
-            except OSError:
-                time.sleep(0.1)
+        lines: list[str] = []
+        port = None
+        for line in process.stderr:
+            lines.append(line)
+            event = json.loads(line)
+            if event["event"] == "api started":
+                port = event["port"]
+                break
+        assert port is not None, "".join(lines)
+        with opener.open(f"http://127.0.0.1:{port}/api/v1/health", timeout=5) as answer:
+            health = json.load(answer)
         login = urllib.request.Request(
             f"http://127.0.0.1:{port}/api/v1/auth/login",
             data=json.dumps({"username": "admin", "password": PASSWORD}).encode(),
@@ -295,7 +273,7 @@ def test_the_api_serves_health_and_stops_on_sigterm(tmp_path: Path) -> None:
             signed_in = json.load(answer)
             cookie = answer.headers["Set-Cookie"]
         process.send_signal(signal.SIGTERM)
-        output = process.stderr.read()
+        output = "".join(lines) + process.stderr.read()
         assert process.wait(timeout=30) == 0, output
     assert health == {"status": "ok", "checks": {"database": "ok", "object_store": "ok"}}
     assert signed_in["user"]["role"] == "admin"
@@ -361,4 +339,26 @@ def test_check_schema_waits_for_the_migration(
 def test_wait_only_goes_with_check_schema(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         main(["migrate", "--wait", "5"])
-    assert "--wait only goes with check-schema" in capsys.readouterr().err
+    assert "unrecognized arguments: --wait" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("command", "target"),
+    [
+        (["evaluate", "--fake"], "papiq.composition.__main__.run_evaluation"),
+        (["check-schema"], "papiq.composition.__main__.check_schema"),
+    ],
+)
+def test_a_command_that_breaks_logs_why_and_exits_one(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: list[str],
+    target: str,
+) -> None:
+    async def broken(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("broken")
+
+    monkeypatch.setattr(target, broken)
+    assert main(command) == 1
+    failed = [json.loads(line) for line in capsys.readouterr().err.splitlines()][-1]
+    assert failed["level"] == "error" and "RuntimeError: broken" in failed["exception"]

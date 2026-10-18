@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from papiq.core.domain.errors import NotFoundError, ValidationError
 from papiq.core.domain.ids import TagId
 from papiq.core.domain.master_data import Tag, TagScope
+from papiq.core.domain.sorting import sort_key
 
 MAX_LEVELS = 5
 """Levels of a tree, its top-level tag included."""
@@ -33,7 +34,7 @@ class TagTree:
     def of(cls, tags: Iterable[Tag]) -> "TagTree":
         by_id = {tag.id: tag for tag in tags}
         children: dict[TagId | None, list[TagId]] = {}
-        for tag in sorted(by_id.values(), key=lambda item: item.name.casefold()):
+        for tag in sorted(by_id.values(), key=lambda item: sort_key(item.name)):
             parent = tag.parent_id if tag.parent_id in by_id else None
             children.setdefault(parent, []).append(tag.id)
         return cls(by_id, {parent: tuple(ids) for parent, ids in children.items()})
@@ -47,6 +48,14 @@ class TagTree:
             return self.tags[id]
         except KeyError:
             raise NotFoundError("tag", id) from None
+
+    def require(self, id: TagId, scope: TagScope) -> Tag:
+        """The tag, which a place takes of `scope` only: NotFoundError if there is no such tag,
+        ValidationError if it is of another scope."""
+        tag = self.get(id)
+        if tag.scope is not scope:
+            raise ValidationError(f"'{tag.name}' is a {tag.scope.label}, not a {scope.label}")
+        return tag
 
     def of_scope(self, scope: TagScope) -> list[Tag]:
         """The tags of `scope`, in the order of the tree: each after its parent, siblings by
@@ -157,7 +166,7 @@ class TagTree:
         stacks = [list(reversed(self.children.get(parent, ())))]
         if parent is None:
             stacks += [
-                [id] for id in sorted(self.tags, key=lambda id: self.tags[id].name.casefold())
+                [id] for id in sorted(self.tags, key=lambda id: sort_key(self.tags[id].name))
             ]
         for stack in stacks:
             while stack:

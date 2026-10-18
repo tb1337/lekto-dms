@@ -3,6 +3,7 @@ and a reader for server-sent events."""
 
 import asyncio
 import contextlib
+import inspect
 import json
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -30,9 +31,14 @@ async def issue_token(auth_service: AuthService, user: User) -> str:
     return token
 
 
+def token(user: User) -> str:
+    """The test token of `user` (`issue_token`)."""
+    return _TOKENS[user.id]
+
+
 def auth(user: User) -> dict[str, str]:
     """Headers that authenticate `user` with their test token."""
-    return bearer(_TOKENS[user.id])
+    return bearer(token(user))
 
 
 def bearer(token: str) -> dict[str, str]:
@@ -58,7 +64,8 @@ async def serving(app: FastAPI) -> AsyncIterator[str]:
 
 @dataclass
 class Stream:
-    """The events of one open `GET /events`."""
+    """The events of one open `GET /events`. `ready` is set once the server registered the
+    stream (its first line, `: ready`), or answered with something else than a stream."""
 
     events: list[dict[str, Any]] = field(default_factory=list)
     status: int | None = None
@@ -84,10 +91,13 @@ async def _listen(
         "GET", f"{PREFIX}/events", headers=auth(user), params=params
     ) as response:
         stream.status = response.status_code
-        stream.ready.set()
+        if response.status_code != 200:
+            stream.ready.set()
         name = None
         async for line in response.aiter_lines():
-            if line.startswith("event: "):
+            if line == ": ready":
+                stream.ready.set()
+            elif line.startswith("event: "):
                 name = line.removeprefix("event: ")
             elif line.startswith("data: "):
                 data = json.loads(line.removeprefix("data: "))
@@ -95,7 +105,23 @@ async def _listen(
                 stream.events.append(data)
 
 
-async def until(condition: Callable[[], object], timeout: float = 5) -> None:
-    async with asyncio.timeout(timeout):
-        while not condition():
-            await asyncio.sleep(0.02)
+async def until(
+    condition: Callable[[], object],
+    timeout: float = 5,
+    *,
+    every: float = 0.02,
+    what: str = "the condition",
+) -> None:
+    """Wait until `condition()` holds; a condition may also return an awaitable. TimeoutError
+    naming `what` after `timeout` seconds."""
+    try:
+        async with asyncio.timeout(timeout):
+            while not await _holds(condition):
+                await asyncio.sleep(every)
+    except TimeoutError:
+        raise TimeoutError(f"timeout: {what} did not happen within {timeout} s") from None
+
+
+async def _holds(condition: Callable[[], object]) -> bool:
+    result = condition()
+    return bool(await result if inspect.isawaitable(result) else result)

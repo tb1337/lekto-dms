@@ -26,14 +26,16 @@ from starlette.requests import Request
 from papiq import __version__
 from papiq.adapters.inbound.context import ApiContext
 from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
-from papiq.core.domain.documents import UNSET, Document, DocumentChanges
+from papiq.core.domain.documents import MAX_TITLE, UNSET, Document, DocumentChanges, Unset
 from papiq.core.domain.errors import DomainError, SearchUnavailableError, ValidationError
 from papiq.core.domain.fields import FieldDefinition, field_from_json
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from papiq.core.domain.master_data import TagScope
+from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.tag_tree import TagTree
-from papiq.core.ports import DocumentFilter
+from papiq.core.domain.validation import name_key
+from papiq.core.ports.repository import DocumentFilter
 from papiq.core.ports.search_index import MAX_HITS
 from papiq.core.services.auth import Principal
 
@@ -51,20 +53,6 @@ READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 CHANGES = ToolAnnotations(
     read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False
 )
-
-
-class _Unset:
-    """Default of a parameter that was not given, as opposed to given as null."""
-
-    def __repr__(self) -> str:
-        return "UNSET"
-
-
-NOT_GIVEN: Any = _Unset()
-
-
-def not_given() -> Any:
-    return NOT_GIVEN
 
 
 class NameRef(BaseModel):
@@ -194,7 +182,7 @@ class Names:
 
     def tag_refs(self, ids: Any) -> list[NameRef]:
         refs = [NameRef(id=i, name=self.tags.get(i, str(i))) for i in ids]
-        return sorted(refs, key=lambda ref: ref.name.casefold())
+        return sorted(refs, key=lambda ref: sort_key(ref.name))
 
     def field_name(self, id: FieldId) -> str:
         definition = self.fields.get(id)
@@ -215,17 +203,17 @@ class Names:
         return TagId(_find("topic", name, self.topics))
 
     def find_field(self, name: str) -> FieldDefinition:
-        wanted = name.strip().casefold()
+        wanted = name_key(name)
         for definition in self.fields.values():
-            if definition.name.casefold() == wanted:
+            if name_key(definition.name) == wanted:
                 return definition
         raise ValidationError(f"no field named {name!r}")
 
 
 def _find(kind: str, name: str, names: dict[UUID, str]) -> UUID:
-    wanted = name.strip().casefold()
+    wanted = name_key(name)
     for id, existing in names.items():
-        if existing.casefold() == wanted:
+        if name_key(existing) == wanted:
             return id
     raise ValidationError(f"no {kind} named {name!r}")
 
@@ -282,8 +270,14 @@ def guarded[**P, R](tool: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]
     return run
 
 
-def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
+SEARCH_HITS = 10
+"""Hits one `search` call returns unless the client asks for more: fewer than a page of the
+web UI, so that the answer leaves room in a model's context."""
+
+
+def build_server(context: ApiContext) -> MCPServer:
     """The server with its five tools, on the services of `context`."""
+    text_max = context.text_max
     server = MCPServer("papiq", instructions=INSTRUCTIONS, version=__version__)
 
     @server.tool(
@@ -301,7 +295,7 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
     async def search(
         ctx: Context,
         query: Annotated[str, Field(min_length=1, max_length=500, description="What to look for.")],
-        limit: Annotated[int, Field(ge=1, le=SEARCH_MAX_LIMIT)] = 10,
+        limit: Annotated[int, Field(ge=1, le=SEARCH_MAX_LIMIT)] = SEARCH_HITS,
         offset: Annotated[int, Field(ge=0, le=MAX_HITS)] = 0,
         contact: Annotated[str | None, Field(description="Name of a contact.")] = None,
         document_type: Annotated[str | None, Field(description="Name of a document type.")] = None,
@@ -313,10 +307,9 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
         ] = None,
     ) -> SearchOut:
         user = principal_of(ctx).id
-        if context.search is None:
-            raise SearchUnavailableError("search is not configured")
+        searching = context.require_search()
         names = await Names.load(context, user)
-        page = await context.search.search(
+        page = await searching.search(
             user,
             query,
             DocumentFilter(
@@ -412,13 +405,17 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
     async def update_metadata(
         ctx: Context,
         id: UUID,
-        title: Annotated[str, Field(min_length=1, default_factory=not_given)],
-        contact: Annotated[str | None, Field(default_factory=not_given)],
-        document_type: Annotated[str | None, Field(default_factory=not_given)],
-        topic: Annotated[str | None, Field(default_factory=not_given)],
-        tags: Annotated[list[str], Field(default_factory=not_given, max_length=50)],
-        document_date: Annotated[date | None, Field(default_factory=not_given)],
-        fields: Annotated[dict[str, Any], Field(default_factory=not_given)],
+        # A parameter left out is `UNSET` (pydantic neither checks a `default_factory`'s value
+        # nor shows it in the schema), unlike one given as null.
+        title: Annotated[
+            str, Field(min_length=1, max_length=MAX_TITLE, default_factory=lambda: UNSET)
+        ],
+        contact: Annotated[str | None, Field(default_factory=lambda: UNSET)],
+        document_type: Annotated[str | None, Field(default_factory=lambda: UNSET)],
+        topic: Annotated[str | None, Field(default_factory=lambda: UNSET)],
+        tags: Annotated[list[str], Field(default_factory=lambda: UNSET, max_length=50)],
+        document_date: Annotated[date | None, Field(default_factory=lambda: UNSET)],
+        fields: Annotated[dict[str, Any], Field(default_factory=lambda: UNSET)],
     ) -> UpdateOut:
         principal = principal_of(ctx)
         if not principal.can_write:
@@ -426,14 +423,14 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
         user = principal.id
         names = await Names.load(context, user)
         changes = DocumentChanges(
-            title=UNSET if title is NOT_GIVEN else title,
+            title=title,
             contact_id=_reference(contact, names.find_contact),
             document_type_id=_reference(document_type, names.find_document_type),
             topic_id=_reference(topic, names.find_topic),
             tag_ids=(
-                UNSET if tags is NOT_GIVEN else frozenset(names.find_tag(tag) for tag in tags)
+                UNSET if isinstance(tags, Unset) else frozenset(names.find_tag(t) for t in tags)
             ),
-            document_date=UNSET if document_date is NOT_GIVEN else document_date,
+            document_date=document_date,
             fields=_fields(fields, names),
         )
         change = await context.documents.change_metadata(user, DocumentId(id), changes)
@@ -442,7 +439,8 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
         return UpdateOut(
             id=change.document.id,
             access=change.access,
-            document=document_out(change.document, change.access, await Names.load(context, user)),
+            # A change of a document leaves the master data as it is.
+            document=document_out(change.document, change.access, names),
             rules=(
                 None
                 if change.rules is None
@@ -481,15 +479,15 @@ def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
     return server
 
 
-def _reference[T](name: str | None, find: Callable[[str], T]) -> Any:
+def _reference[T](name: str | Unset | None, find: Callable[[str], T]) -> T | Unset | None:
     """Not given: unchanged; null: removed; else the named item."""
-    if name is NOT_GIVEN:
+    if isinstance(name, Unset):
         return UNSET
     return None if name is None else find(name)
 
 
-def _fields(given: dict[str, Any], names: Names) -> dict[FieldId, object]:
-    if given is NOT_GIVEN:
+def _fields(given: dict[str, Any] | Unset, names: Names) -> dict[FieldId, object]:
+    if isinstance(given, Unset):
         return {}
     changes: dict[FieldId, object] = {}
     for name, value in given.items():

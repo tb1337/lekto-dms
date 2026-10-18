@@ -11,6 +11,7 @@ import PIL
 import pypdfium2
 from PIL import Image, ImageOps, ImageSequence
 
+from papiq.adapters.outbound.imaging import flatten_on_white
 from papiq.adapters.outbound.pdfium.library import LOCK
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import UnprocessableDocumentError
@@ -67,11 +68,12 @@ def _pdf_pages(source: Path) -> Iterator[Iterator[Image.Image]]:
     try:
         with LOCK:
             document = pypdfium2.PdfDocument(source)
+            count = len(document)  # a library call too: under the lock
     except pypdfium2.PdfiumError as error:
         raise UnprocessableDocumentError(f"the PDF cannot be read: {error}") from None
 
     def pages() -> Iterator[Image.Image]:
-        for index in range(len(document)):
+        for index in range(count):
             with LOCK:
                 page = document[index]
                 try:
@@ -99,7 +101,8 @@ def _image_pages(source: Path) -> Iterator[Iterator[Image.Image]]:
     def frames() -> Iterator[Image.Image]:
         try:
             for frame in ImageSequence.Iterator(opened):
-                yield _on_white(ImageOps.exif_transpose(frame) or frame)
+                upright = ImageOps.exif_transpose(frame) or frame
+                yield flatten_on_white(upright).convert("RGB")
         except OSError as error:
             raise UnprocessableDocumentError(f"the image cannot be read: {error}") from None
 
@@ -107,15 +110,6 @@ def _image_pages(source: Path) -> Iterator[Iterator[Image.Image]]:
         yield frames()
     finally:
         opened.close()
-
-
-def _on_white(image: Image.Image) -> Image.Image:
-    if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
-        rgba = image.convert("RGBA")
-        white = Image.new("RGB", rgba.size, "white")
-        white.paste(rgba, mask=rgba.getchannel("A"))
-        return white
-    return image.convert("RGB")
 
 
 def _fit(image: Image.Image, width: int) -> Image.Image:

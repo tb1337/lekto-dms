@@ -4,100 +4,33 @@ worker and Meilisearch; fake embeddings (vectors of 16 numbers); OCR and parser 
 bring the text of the test. Two set-ups: SQLite with the filesystem, Postgres with S3 (Garage)."""
 
 import asyncio
-import json
 import secrets
-from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass, replace
-from datetime import timedelta
-from pathlib import Path
+from collections.abc import AsyncIterator
 from typing import Any
 
-import httpx2
 import pytest
 from sqlalchemy import func, select
 
 from papiq.adapters.inbound.rest import PREFIX
-from papiq.adapters.inbound.worker import Worker
-from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.adapters.outbound.memory import FakeEmbeddings
-from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory
+from papiq.adapters.outbound.sql import Database
 from papiq.adapters.outbound.sql.tables import jobs
-from papiq.composition.api import build_app
-from papiq.composition.container import (
-    Container,
-    Services,
-    build_memory_container,
-    build_services,
-)
 from papiq.composition.settings import Settings
+from papiq.core.domain.jobs import JobStatus
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import ObjectStore, OcrResult, ParseResult
-from papiq.core.services.indexing import SUBSCRIBER
-from tests import builders, probes
-from tests.api import auth, issue_token, serving
-from tests.integration.adapters.meilisearch.conftest import drop
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.services.indexing import INDEX_JOB, REBUILD_JOB, REFRESH_JOB
+from tests import builders
+from tests.api import auth, until
+from tests.integration.e2e import DOCUMENTS, System, TextOcr, TextParser, running_system
+from tests.integration.services import drop, new_index
 
-DOCUMENTS = f"{PREFIX}/documents"
 SEARCH = f"{DOCUMENTS}/search"
 TIMEOUT = 60.0  # seconds a document may take here
 
 
-class TextOcr:
-    """OCR that keeps the file as it is: the archive holds the text line for the parser."""
-
-    vision = None
-
-    async def make_archive(
-        self, source: Path, target: Path, *, media_type: str, vision: bool = False
-    ) -> OcrResult:
-        target.write_bytes(source.read_bytes())
-        return OcrResult(pages=1, engine="text-ocr 1", pdfa=True)
-
-
-class TextParser:
-    """A parser that takes the text of a document from a line of the file: `%text: …`."""
-
-    async def parse(self, source: Path, *, text: Path, structure: Path) -> ParseResult:
-        data = source.read_bytes()
-        content = next(
-            line.removeprefix(b"%text: ").decode()
-            for line in data.splitlines()
-            if line.startswith(b"%text: ")
-        )
-        text.write_text(content, encoding="utf-8")
-        structure.write_text(json.dumps({"text": content}), encoding="utf-8")
-        return ParseResult(pages=1, parser="text-parser 1")
-
-
-def pdf(text: str) -> bytes:
-    return f"%PDF-1.7\n%text: {text}\n%%EOF\n".encode()
-
-
-@dataclass
-class System:
-    container: Container
-    services: Services
-    client: httpx2.AsyncClient
-    settings: Settings
-    index_name: str
-    database: Database
-
-    async def user(self, role: Role = Role.USER) -> User:
-        user = builders.user(role=role)
-        async with self.container.unit_of_work() as uow:
-            await uow.users.add(user)
-            await uow.spaces.add(builders.default_space(user))
-            await uow.commit()
-        await issue_token(self.services.auth, user)
-        return user
-
-    async def upload(self, user: User, text: str, **data: str) -> str:
-        files = {"file": ("document.pdf", pdf(text), "application/pdf")}
-        response = await self.client.post(DOCUMENTS, files=files, data=data, headers=auth(user))
-        assert response.status_code == 202, response.text
-        return str(response.json()["id"])
-
+class SearchSystem(System):
     async def search(self, user: User, text: str, **params: Any) -> dict[str, Any]:
         """By words unless the test asks for more: a search by meaning ranks every document, so
         it would find documents that are not about the text."""
@@ -112,17 +45,7 @@ class System:
         page = await self.search(user, text, **params)
         return {item["document"]["id"] for item in page["items"]}
 
-    async def eventually(
-        self, condition: Callable[[], Awaitable[bool]], what: str, timeout: float = TIMEOUT
-    ) -> None:
-        try:
-            async with asyncio.timeout(timeout):
-                while not await condition():
-                    await asyncio.sleep(0.2)
-        except TimeoutError:
-            pytest.fail(f"timeout: {what}")
-
-    async def settled(self) -> None:
+    async def idle(self) -> None:
         """Wait until no search job is queued or running."""
 
         async def active() -> int:
@@ -130,8 +53,8 @@ class System:
                 select(func.count())
                 .select_from(jobs)
                 .where(
-                    jobs.c.status.in_(["queued", "running"]),
-                    jobs.c.kind.in_(["search.index", "search.refresh", "search.rebuild"]),
+                    jobs.c.status.in_([JobStatus.QUEUED.value, JobStatus.RUNNING.value]),
+                    jobs.c.kind.in_([INDEX_JOB, REFRESH_JOB, REBUILD_JOB]),
                 )
             )
             async with self.database.engine.connect() as connection:
@@ -143,7 +66,7 @@ class System:
             await asyncio.sleep(0.5)  # events that are still on their way
             return not await active()
 
-        await self.eventually(idle, "the worker is idle")
+        await until(idle, TIMEOUT, every=0.2, what="the worker is idle")
 
     async def processed(self, user: User, id: str) -> None:
         """Wait until the pipeline is done with the document: the search finds it earlier, and
@@ -153,7 +76,7 @@ class System:
             response = await self.client.get(f"{DOCUMENTS}/{id}", headers=auth(user))
             return bool(response.json()["processing"]["status"] != "processing")
 
-        await self.eventually(done, f"{id} processed")
+        await until(done, TIMEOUT, every=0.2, what=f"{id} processed")
 
     async def found(self, user: User, text: str, expected: set[str], **params: Any) -> None:
         """Wait until the search finds exactly `expected` (the index follows a moment later)."""
@@ -161,64 +84,35 @@ class System:
         async def condition() -> bool:
             return await self.ids(user, text, **params) == expected
 
-        await self.eventually(condition, f"{text!r} finds {expected}")
+        await until(condition, TIMEOUT, every=0.2, what=f"{text!r} finds {expected}")
 
 
 @pytest.fixture
-async def system(stores: tuple[Database, ObjectStore], settings: Settings) -> AsyncIterator[System]:
-    if settings.meilisearch_url is None:
-        pytest.skip("PAPIQ_MEILISEARCH_URL is not set")
-    if probes.meilisearch_health(str(settings.meilisearch_url)) is None:
-        pytest.skip(f"Meilisearch not reachable at {settings.meilisearch_url}")
-    database, object_store = stores
-    name = f"papiq-test-{secrets.token_hex(6)}"
-    key = settings.meilisearch_api_key
-    index = MeilisearchIndex(
-        url=str(settings.meilisearch_url),
-        api_key=None if key is None else key.get_secret_value(),
-        index=name,
-        dimensions=FakeEmbeddings.DIMENSIONS,
-    )
-    container = replace(
-        build_memory_container(),
-        unit_of_work=SqlUnitOfWorkFactory(database),
-        event_bus=SqlEventBus(database),
-        object_store=object_store,
-        ocr=TextOcr(),
-        parser=TextParser(),
-        search_index=index,
-        embeddings=FakeEmbeddings(),
-    )
-    tuning = Settings.model_construct(
-        worker_concurrency=2, events_poll_interval=timedelta(milliseconds=50)
-    )
-    services = build_services(container, tuning)
-    builders.skip_classification(services.pipeline)
-    assert services.indexing is not None
-    container.event_bus.subscribe(SUBSCRIBER, services.indexing.on_event)
-    worker = Worker(
-        pipeline=services.pipeline,
-        maintenance=services.maintenance,
-        event_bus=container.event_bus,
-        concurrency=2,
-        poll_interval=timedelta(milliseconds=50),
-        dispatch_interval=timedelta(milliseconds=50),
-        shutdown_timeout=timedelta(seconds=30),
-        indexing=services.indexing,
-    )
-    app = build_app(container, tuning, services)
-    running = asyncio.create_task(worker.run())
+def index_name() -> str:
+    return f"papiq-test-{secrets.token_hex(6)}"
+
+
+@pytest.fixture
+async def system(
+    stores: tuple[Database, ObjectStore], meilisearch_settings: Settings, index_name: str
+) -> AsyncIterator[SearchSystem]:
+    index = new_index(meilisearch_settings, index_name, dimensions=FakeEmbeddings.DIMENSIONS)
     try:
-        async with serving(app) as url, httpx2.AsyncClient(base_url=url, timeout=30) as client:
-            yield System(container, services, client, settings, name, database)
+        async with running_system(
+            SearchSystem,
+            stores,
+            ocr=TextOcr(),
+            parser=TextParser(),
+            search_index=index,
+            embeddings=FakeEmbeddings(),
+        ) as system:
+            yield system
     finally:
-        worker.stop()
-        await asyncio.wait_for(running, timeout=60)
         await index.aclose()
-        await drop(settings, name, f"{name}-rebuild")
+        await drop(meilisearch_settings, index_name, f"{index_name}-rebuild")
 
 
-async def test_documents_are_found_by_those_who_may_read_them(system: System) -> None:
+async def test_documents_are_found_by_those_who_may_read_them(system: SearchSystem) -> None:
     owner, reader, stranger = await system.user(), await system.user(), await system.user()
     admin = await system.user(Role.ADMIN)
     async with system.container.unit_of_work() as uow:
@@ -278,7 +172,9 @@ async def test_documents_are_found_by_those_who_may_read_them(system: System) ->
     assert health.json()["status"] == "ok"
 
 
-async def test_the_index_is_rebuilt_on_an_empty_meilisearch(system: System) -> None:
+async def test_the_index_is_rebuilt_on_an_empty_meilisearch(
+    system: SearchSystem, meilisearch_settings: Settings, index_name: str
+) -> None:
     owner, admin = await system.user(), await system.user(Role.ADMIN)
     first = await system.upload(owner, "Steuerbescheid Finanzamt")
     second = await system.upload(owner, "Versicherungspolice Hausrat")
@@ -286,8 +182,8 @@ async def test_the_index_is_rebuilt_on_an_empty_meilisearch(system: System) -> N
     await system.found(owner, "Versicherungspolice", {second})
 
     # Meilisearch loses everything, while no job is at work.
-    await system.settled()
-    await drop(system.settings, system.index_name)
+    await system.idle()
+    await drop(meilisearch_settings, index_name)
 
     async def gone() -> bool:
         """The search fails (503) or, once the adapter has set up an empty index, finds nothing."""
@@ -296,7 +192,7 @@ async def test_the_index_is_rebuilt_on_an_empty_meilisearch(system: System) -> N
         )
         return response.status_code == 503 or response.json()["items"] == []
 
-    await system.eventually(gone, "the loss shows", timeout=10)
+    await until(gone, 10, every=0.2, what="the loss shows")
 
     denied = await system.client.post(f"{PREFIX}/search/reindex", headers=auth(owner))
     assert denied.status_code == 403

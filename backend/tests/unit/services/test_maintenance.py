@@ -1,6 +1,7 @@
 """The cleanup job removes old finished jobs, delivered events, ended sessions and stale counts
 of failed sign-ins, and schedules itself."""
 
+import asyncio
 from datetime import datetime, timedelta
 
 import pytest
@@ -12,8 +13,9 @@ from papiq.core.domain.jobs import JobStatus
 from papiq.core.domain.webhooks import DeliveryOutcome, WebhookDelivery
 from papiq.core.services.maintenance import CLEANUP_JOB, REMOVE_FILES_JOB, MaintenanceService
 from papiq.core.services.objects import derivative_keys, original_key
+from tests import builders
 from tests.builders import PASSWORD, incoming
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 INTERVAL = timedelta(hours=1)
 RETENTION = timedelta(days=7)
@@ -23,9 +25,10 @@ def maintenance(world: World, bus: MemoryEventBus | None = None) -> MaintenanceS
     return MaintenanceService(
         world.uow,
         world.clock,
-        bus or MemoryEventBus(world.database, clock=world.clock),
+        bus or MemoryEventBus(world.database, clock=world.clock, retry=builders.EVENT_RETRY),
         interval=INTERVAL,
         retention=RETENTION,
+        session_idle=builders.DEFAULT_SETTINGS.session_idle_timeout,
         object_store=world.object_store,
     )
 
@@ -62,7 +65,7 @@ async def test_cleanup_runs_and_schedules_the_next_one(world: World) -> None:
 
 
 async def test_delivered_events_are_purged(world: World) -> None:
-    bus = MemoryEventBus(world.database, clock=world.clock)
+    bus = MemoryEventBus(world.database, clock=world.clock, retry=builders.EVENT_RETRY)
     received: list[object] = []
 
     async def handler(event: object) -> None:
@@ -84,7 +87,7 @@ async def test_a_failed_cleanup_is_tried_again_later(world: World) -> None:
         async def purge(self, *, before: datetime) -> int:
             raise OSError("disk full")
 
-    service = maintenance(world, BrokenBus(world.database))
+    service = maintenance(world, BrokenBus(world.database, retry=builders.EVENT_RETRY))
     await service.schedule()
     assert await service.run_next_job()
     (job,) = world.database.jobs.values()
@@ -217,3 +220,27 @@ async def test_cleanup_drops_previous_webhook_secrets_after_the_grace_period(wor
     assert first.previous_secret is None and first.previous_valid_until is None
     assert second.previous_secret is not None
     assert first.updated_at == world.clock.now()
+
+
+async def test_a_cancelled_cleanup_gives_its_job_back_at_once(world: World) -> None:
+    started = asyncio.Event()
+
+    class SlowBus(MemoryEventBus):
+        async def purge(self, *, before: datetime) -> int:
+            started.set()
+            await asyncio.Event().wait()  # until cancelled
+            return 0
+
+    service = maintenance(world, SlowBus(world.database, retry=builders.EVENT_RETRY))
+    await service.schedule()
+    task = asyncio.create_task(service.run_next_job())
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    (job,) = world.database.jobs.values()
+    assert (job.status, job.tries, job.last_error) == (
+        JobStatus.QUEUED,
+        0,
+        "interrupted: the worker stopped",
+    )

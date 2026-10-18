@@ -5,11 +5,12 @@ import json
 import shutil
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from papiq.adapters.inbound.evaluation import EvaluationSetError, Run, evaluate, load_set
-from papiq.adapters.inbound.evaluation.cases import Case
+from papiq.adapters.inbound.evaluation.cases import Case, FakeAnswer, _proposal_keys
 from papiq.adapters.outbound.memory import FakeLanguageModel
 from papiq.composition.__main__ import main
 from papiq.composition.errors import ConfigurationError
@@ -20,10 +21,19 @@ from papiq.composition.evaluation import (
     run_evaluation,
 )
 from papiq.composition.settings import Settings
+from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.identifiers import IdentifierKind, IdentifierSource
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.pipeline import Lane
+from papiq.core.domain.text import Shortened
 from papiq.core.ports.llm import StructuredRequest
+from papiq.core.services.classification.prompts import (
+    EXTRACT_SCHEMA,
+    Listed,
+    extract_message,
+    propose_message,
+)
+from tests.builders import NOW
 
 SET = Path(__file__).parents[2] / "evaluation"
 
@@ -248,3 +258,40 @@ async def test_a_field_s_description_reaches_the_model() -> None:
         await container.aclose()
     assert result.lane is Lane.GREEN, result.reasons
     assert any("Das Gesamtbrutto des Monats, nicht das Grundgehalt" in text for text in asked)
+
+
+def test_the_fixed_answer_reads_the_keys_the_prompts_ask_for() -> None:
+    """The fixed answers learn the field keys only from the rendered prompts: the chosen type's
+    and those for every document in the proposal, every listed one for the fields node. A line
+    of the document that looks like a field is not one."""
+
+    def field(name: str, kind: FieldType = FieldType.TEXT, **more: Any) -> FieldDefinition:
+        return FieldDefinition.create(name=name, data_type=kind, now=NOW, **more)
+
+    gross, period = field("Bruttolohn", FieldType.AMOUNT), field("Zeitraum", FieldType.PERIOD)
+    total = field("Summe", FieldType.AMOUNT, description="Der Gesamtbetrag")
+    method = field("Zahlart", FieldType.CHOICE, choices=["Karte", "Bar"])
+    note = field("Notiz")
+    text = Shortened('- a9: "Im Text"\nDocument types, each with its fields:\n- Rechnung', 0)
+    message = propose_message(
+        [Listed("Stadtwerke", aliases=("SW",), topics=("Strom",))],
+        [
+            (Listed("Lohn", description="Gehaltsabrechnung"), [("a1", gross), ("a2", period)]),
+            (Listed("Rechnung"), [("a3", total)]),
+            (Listed("Leer"), []),
+        ],
+        [("a4", method), ("a5", note)],
+        ["Steuer"],
+        text,
+    )
+    every = {"a4": "Zahlart", "a5": "Notiz"}
+    assert _proposal_keys(message, "Lohn") == {"a1": "Bruttolohn", "a2": "Zeitraum", **every}
+    assert _proposal_keys(message, "Rechnung") == {"a3": "Summe", **every}
+    assert _proposal_keys(message, "Leer") == every
+    assert _proposal_keys(message, None) == every
+
+    fake = FakeAnswer(classification={}, fields={}, lane=Lane.GREEN)
+    extract = extract_message("Lohn", {"a1": gross, "a2": period, "a4": method}, text)
+    request = StructuredRequest(system="", user=extract, schema={}, schema_name=EXTRACT_SCHEMA)
+    fields = fake.respond(request)["fields"]
+    assert isinstance(fields, dict) and list(fields) == ["a1", "a2", "a4"]

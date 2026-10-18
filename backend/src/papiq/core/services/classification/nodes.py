@@ -10,8 +10,9 @@ document; uncertain ones are only proposed, and the node is uncertain (the docum
 the inbox).
 """
 
+import asyncio
 import logging
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
@@ -19,6 +20,7 @@ from typing import Any
 from uuid import UUID
 
 from papiq.core.domain.classification import (
+    CHECKS,
     DOCUMENT_DATE,
     TITLE,
     FieldCheck,
@@ -38,8 +40,9 @@ from papiq.core.domain.evidence import (
     read_date,
     read_number,
     read_period,
+    truth_value,
 )
-from papiq.core.domain.exchanges import ModelCall
+from papiq.core.domain.exchanges import ModelCall, tokens_of
 from papiq.core.domain.fields import (
     FieldDefinition,
     FieldType,
@@ -49,26 +52,42 @@ from papiq.core.domain.fields import (
     field_from_json,
     field_to_json,
 )
-from papiq.core.domain.ids import ContactId, FieldId
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.ids import ContactId, DocumentId, FieldId
+from papiq.core.domain.json_value import JsonObject, JsonValue, as_list
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
-from papiq.core.domain.names import mentions, name_key, named_share
+from papiq.core.domain.names import match_key, mentions, named_share
 from papiq.core.domain.periods import Period, PeriodKind
-from papiq.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
-from papiq.core.domain.reading import PageReading, readings_from_json
+from papiq.core.domain.pipeline import (
+    ENDPOINT,
+    MODEL,
+    MODEL_RUN,
+    TRUNCATED,
+    Node,
+    NodeResult,
+    NodeRun,
+    Outcome,
+    ProcessingHistory,
+)
+from papiq.core.domain.reading import OcrOutput, PageReading
+from papiq.core.domain.sorting import sort_key
+from papiq.core.domain.text import Shortened, shorten
+from papiq.core.domain.validation import name_key
 from papiq.core.domain.verdict import (
-    DEFAULT_THRESHOLDS,
     Thresholds,
     judge_contact,
     judge_tags,
     judge_topic,
     judge_type,
 )
-from papiq.core.ports import Clock, LanguageModel, ObjectStore, TextLocator, UnitOfWorkFactory
-from papiq.core.ports.llm import StructuredAnswer, StructuredRequest
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.llm import LanguageModel, StructuredAnswer, StructuredRequest
+from papiq.core.ports.locator import TextLocator
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from papiq.core.services.classification.answers import (
     AnswerError,
     Proposal,
+    StoredProposal,
     extract_schema,
     field_keys,
     parse_extract,
@@ -77,25 +96,25 @@ from papiq.core.services.classification.answers import (
 )
 from papiq.core.services.classification.prompts import (
     EXTRACT_PROMPT,
+    EXTRACT_SCHEMA,
     EXTRACT_SYSTEM,
     PROPOSE_PROMPT,
+    PROPOSE_SCHEMA,
     PROPOSE_SYSTEM,
     Listed,
-    Shortened,
     extract_message,
     propose_message,
     retry_message,
-    shorten,
 )
 from papiq.core.services.classification.signals import (
     ABSTAINED,
+    PROPOSAL,
     abstained,
-    latest_signals,
     model_proposal,
     signals_of,
 )
 from papiq.core.services.exchanges import keep_calls
-from papiq.core.services.nodes import work_directory
+from papiq.core.services.nodes import ARCHIVE_FILE, work_directory
 from papiq.core.services.objects import archive_key, load_text, text_key
 from papiq.core.services.pipeline import MetadataResult
 from papiq.core.services.titles import has_machine_title
@@ -106,9 +125,14 @@ _RAW_LENGTH = 4000  # characters of an unfit answer kept in the log
 _EARLIEST = date(1900, 1, 1)
 _LATEST_AHEAD = timedelta(days=366)
 
-NO_MODEL = "no language model is configured (PAPIQ_LLM_BASE_URL)"
+NO_MODEL = "no language model is configured"
 JUDGE = "judge"
 """`model_version` of the judge's entry when the language model gave nothing."""
+
+
+MAX_CONTACTS = 20
+"""Contacts a prompt lists, those the text names most: enough for every sender a letter
+names, few enough that the list does not crowd out the document (`architektur.md`)."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -118,18 +142,16 @@ class ClassificationPolicy:
     characters are shortened; at most `max_tags` tags and `max_contacts` contacts (those the
     text names most) are listed in a prompt. `default_currency`: the currency of an amount in
     a text that shows none. `poor_reading`: the share of unsure words from which a recognised
-    page counts as poorly read (`PageReading.poor`)."""
+    page counts as poorly read (`PageReading.poor`). All but `max_contacts` are configuration:
+    the composition sets them from the settings, whose defaults are the one source."""
 
-    accept: float = 0.9
-    suggest_contact: float = 0.75
-    input_budget: int = 12_000
-    max_tags: int = 200
-    max_contacts: int = 20
-    default_currency: str = "EUR"
-    poor_reading: float = 0.08
-
-
-DEFAULT_POLICY = ClassificationPolicy()
+    accept: float
+    suggest_contact: float
+    input_budget: int
+    max_tags: int
+    max_contacts: int = MAX_CONTACTS
+    default_currency: str
+    poor_reading: float
 
 
 class _UnfitAnswerError(Exception):
@@ -141,27 +163,55 @@ class _UnfitAnswerError(Exception):
         self.answers = answers
 
 
+async def _document_text(store: ObjectStore, id: DocumentId) -> str:
+    return (await load_text(store, id)).decode("utf-8")
+
+
+async def _locate_quotes(
+    store: ObjectStore, locator: TextLocator | None, document: Document, checks: list[FieldCheck]
+) -> list[FieldCheck]:
+    """Each quote's page and boxes in the archive PDF. Without a locator, an archive or a
+    readable PDF the checks stay as they are: the places help a person find the passage, they
+    are not part of the check."""
+    quotes = sorted({(check.evidence or "").strip() for check in checks} - {""})
+    if locator is None or not quotes:
+        return checks
+    async with work_directory() as work:
+        archive = work / ARCHIVE_FILE
+        try:
+            await store.download(archive_key(document.id), archive)
+            places = await locator.locate(archive, quotes)
+        except Exception as error:
+            log.warning(
+                "the quotes were not located: %s",
+                error,
+                exc_info=not isinstance(error, (NotFoundError, UnprocessableDocumentError)),
+                extra={"document_id": str(document.id)},
+            )
+            return checks
+    found = dict(zip(quotes, places, strict=True))
+    return [
+        replace(check, locations=found.get((check.evidence or "").strip(), ())) for check in checks
+    ]
+
+
 class _ModelStep:
+    """A node that asks the language model (`_ask`); without one (None) the node decides what
+    it does."""
+
     def __init__(
         self,
         uow: UnitOfWorkFactory,
         store: ObjectStore,
         model: LanguageModel | None,
         clock: Clock,
-        policy: ClassificationPolicy = DEFAULT_POLICY,
-        *,
-        locator: TextLocator | None = None,
+        policy: ClassificationPolicy,
     ) -> None:
-        """`locator`: find each quote on the pages of the archive PDF (`FieldCheck.locations`)."""
         self._uow = uow
         self._store = store
         self._model = model
         self._clock = clock
         self._policy = policy
-        self._locator = locator
-
-    async def _text(self, document: Document) -> str:
-        return (await load_text(self._store, document.id)).decode("utf-8")
 
     async def _ask[T](
         self,
@@ -205,42 +255,16 @@ class _ModelStep:
             if calls:
                 await keep_calls(self._store, document, node, calls)
 
-    async def _locate(self, document: Document, checks: list[FieldCheck]) -> list[FieldCheck]:
-        """Each quote's page and boxes in the archive PDF. Without a locator, an archive or a
-        readable PDF the checks stay as they are: the places help a person find the passage,
-        they are not part of the check."""
-        quotes = sorted({(check.evidence or "").strip() for check in checks} - {""})
-        if self._locator is None or not quotes:
-            return checks
-        async with work_directory() as work:
-            archive = work / "archive.pdf"
-            try:
-                await self._store.download(archive_key(document.id), archive)
-                places = await self._locator.locate(archive, quotes)
-            except Exception as error:
-                log.warning(
-                    "the quotes were not located: %s",
-                    error,
-                    exc_info=not isinstance(error, (NotFoundError, UnprocessableDocumentError)),
-                    extra={"document_id": str(document.id)},
-                )
-                return checks
-        found = dict(zip(quotes, places, strict=True))
-        return [
-            replace(check, locations=found.get((check.evidence or "").strip(), ()))
-            for check in checks
-        ]
-
     def _input(self, document: Document, text: str, sent: Shortened, prompt: str) -> JsonObject:
         assert self._model is not None
         return {
             "text": text_key(document.id),
             "characters": len(text),
             "sent": len(sent.text),
-            "truncated": sent.omitted > 0,
+            TRUNCATED: sent.omitted > 0,
             "prompt": prompt,
-            "model": self._model.model,
-            "endpoint": self._model.endpoint,
+            MODEL: self._model.model,
+            ENDPOINT: self._model.endpoint,
         }
 
     def _unfit(self, error: _UnfitAnswerError, input: JsonObject) -> NodeResult:
@@ -267,29 +291,36 @@ class LlmSignal(_ModelStep):
     async def run(self, document: Document) -> NodeResult:
         if self._model is None:
             return abstained(NO_MODEL)
-        text = await self._text(document)
+        text = await _document_text(self._store, document.id)
         async with self._uow() as uow:
             contacts = await uow.contacts.list_all()
-            types = sorted(await uow.document_types.list_all(), key=lambda item: item.name)
+            types = sorted(
+                await uow.document_types.list_all(), key=lambda item: sort_key(item.name)
+            )
             every = await uow.tags.list_all()
             # Only the tags the classification sets: document tags, not those set by hand.
-            tags = sorted((item for item in every if item.is_target), key=lambda item: item.name)
+            tags = sorted(
+                (item for item in every if item.is_target), key=lambda item: sort_key(item.name)
+            )
             topics = {item.id: item.name for item in every if item.is_topic_target}
             definitions = sorted(
                 (item for item in await uow.fields.list_all() if item.is_read),
                 key=lambda item: item.name,
             )
-        facts = DocumentText(text)
-        listed = _listed_tags(tags, facts, self._policy.max_tags)
-        candidates = _listed_contacts(contacts, facts, self._policy.max_contacts)
+        # Matching every name against a long text takes a while: not in the loop.
+        facts = await asyncio.to_thread(DocumentText.read, text)
+        listed = await asyncio.to_thread(_listed_tags, tags, facts, self._policy.max_tags)
+        candidates = await asyncio.to_thread(
+            _listed_contacts, contacts, facts, self._policy.max_contacts
+        )
         # The topics of each contact listed: the answer names one of the sender's.
         enabled = {
             contact.id: tuple(
-                sorted((topics[id] for id in contact.topic_ids if id in topics), key=str.casefold)
+                sorted((topics[id] for id in contact.topic_ids if id in topics), key=sort_key)
             )
             for contact in candidates
         }
-        topic_names = sorted({name for names in enabled.values() for name in names})
+        topic_names = sorted({name for names in enabled.values() for name in names}, key=sort_key)
         keys = field_keys(definitions)
         key_of = {definition.id: key for key, definition in keys.items()}
         typed = [
@@ -331,40 +362,21 @@ class LlmSignal(_ModelStep):
                     sent,
                 ),
                 propose_schema([item.name for item in types], tag_names, list(keys), topic_names),
-                "proposal",
+                PROPOSE_SCHEMA,
                 lambda content: parse_propose(content, list(keys)),
             )
         except _UnfitAnswerError as error:
             return self._unfit(error, input)
-        proposal: JsonObject = {
-            "sender": _proposal_json(answer.sender),
-            "recipient": answer.recipient,
-            "document_type": answer.document_type,
-            "new_document_type": answer.new_document_type,
-            "topic": answer.topic,
-            "tags": list[JsonValue](answer.tags),
-            "new_tags": list[JsonValue](answer.new_tags),
-            "document_date": _proposal_json(answer.document_date),
-            "title": answer.title,
-            "language": answer.language,
-            "fields": {
-                str(keys[key].id): _proposal_json(value) for key, value in answer.fields.items()
-            },
-        }
         return NodeResult(
             outcome=Outcome.OK,
             model_version=_model_version(answers[-1]),
             input=input,
-            output={
-                "attempts": len(answers),
-                "answer": answer.raw,
-                "tokens": _tokens(answers),
-                "proposal": proposal,
-            },
+            output=_answered(answers, answer.raw)
+            | {PROPOSAL: StoredProposal.of(answer, keys).to_json()},
         )
 
 
-class JudgeNode(_ModelStep):
+class JudgeNode:
     """The judge (`judge`): contact, document type, topic and tags from the signals' proposals
     by the rules of `domain.verdict`, and the document date the model read, checked against the
     text. What is green is applied; tags are added. A document the model answered for, but no
@@ -376,17 +388,19 @@ class JudgeNode(_ModelStep):
         uow: UnitOfWorkFactory,
         store: ObjectStore,
         clock: Clock,
-        policy: ClassificationPolicy = DEFAULT_POLICY,
+        policy: ClassificationPolicy,
         *,
+        thresholds: Thresholds,
         locator: TextLocator | None = None,
-        classifier_threshold: float = DEFAULT_THRESHOLDS.classifier,
     ) -> None:
-        super().__init__(uow, store, None, clock, policy, locator=locator)
-        self._thresholds = Thresholds(
-            accept=policy.accept,
-            suggest=policy.suggest_contact,
-            classifier=classifier_threshold,
-        )
+        """`thresholds`: those of the judge, from the same settings as `policy`; `locator`:
+        find each quote on the pages of the archive PDF (`FieldCheck.locations`)."""
+        self._uow = uow
+        self._store = store
+        self._clock = clock
+        self._policy = policy
+        self._thresholds = thresholds
+        self._locator = locator
 
     async def run(self, document: Document) -> NodeResult | MetadataResult:
         async with self._uow() as uow:
@@ -394,11 +408,11 @@ class JudgeNode(_ModelStep):
             contacts = await uow.contacts.list_all()
             types = await uow.document_types.list_all()
             tags = await uow.tags.list_all()
-        entries = latest_signals(log)
+        entries = ProcessingHistory(log).signals()
         signals = signals_of(entries)
         proposal = model_proposal(entries)
-        text = await self._text(document)
-        facts = DocumentText(text)
+        text = await _document_text(self._store, document.id)
+        facts = await asyncio.to_thread(DocumentText.read, text)
         if proposal is None:
             silent = entries.get(Node.SIGNAL_LLM)
             why = (
@@ -413,22 +427,14 @@ class JudgeNode(_ModelStep):
                 reason=f"no date recognised: the language model gave none ({why})",
             )
         else:
-            written = proposal.get("document_date") or {}
-            date_check = _check_date(
-                DOCUMENT_DATE,
-                Proposal(value=written.get("value"), evidence=written.get("evidence")),
-                facts,
-                self._today(),
-            )
+            date_check = _check_date(DOCUMENT_DATE, proposal.document_date, facts, self._today())
         contact = judge_contact(signals, contacts, self._thresholds)
         kind = judge_type(signals, types, self._thresholds)
         topic = judge_topic(signals, contact, contacts, tags, self._thresholds)
         tagged = judge_tags(signals, tags, self._thresholds)
         model_entry = entries.get(Node.SIGNAL_LLM)
         llm_input = model_entry.result.input if model_entry is not None else {}
-        input: JsonObject = {
-            key: llm_input[key] for key in ("truncated", "model", "endpoint") if key in llm_input
-        }
+        input: JsonObject = {key: llm_input[key] for key in MODEL_RUN if key in llm_input}
         input["signals"] = {
             node.value: (
                 "abstained" if ABSTAINED in entry.result.output else entry.result.model_version
@@ -449,10 +455,10 @@ class JudgeNode(_ModelStep):
                 reason="nothing recognised: no contact, document type or date",
                 model_version=model_version,
                 input=input,
-                output={"fields": checks_to_json([contact, kind, topic, tagged, date_check])},
+                output={CHECKS: checks_to_json([contact, kind, topic, tagged, date_check])},
             )
-        contact, kind, topic, tagged, date_check = await self._locate(
-            document, [contact, kind, topic, tagged, date_check]
+        contact, kind, topic, tagged, date_check = await _locate_quotes(
+            self._store, self._locator, document, [contact, kind, topic, tagged, date_check]
         )
         date_check = _readable(date_check, _ocr_readings(log), self._policy.poor_reading)
         checks = [contact, kind, topic, tagged, date_check]
@@ -465,7 +471,7 @@ class JudgeNode(_ModelStep):
             document_date=_applied(date_check, date.fromisoformat),
         )
         # Tags are added: those the document has (set by its owner) stay.
-        add_tags = frozenset(_by_id(tags, value).id for value in _list(tagged.value))
+        add_tags = frozenset(_by_id(tags, value).id for value in as_list(tagged.value))
         uncertain = [check for check in checks if not check.ok]
         result = NodeResult(
             outcome=Outcome.UNCERTAIN if uncertain else Outcome.OK,
@@ -473,7 +479,7 @@ class JudgeNode(_ModelStep):
             confidence=min(check.confidence for check in checks),
             model_version=model_version,
             input=input,
-            output={"fields": checks_to_json(checks)},
+            output={CHECKS: checks_to_json(checks)},
         )
         return MetadataResult(result, changes, add_tags)
 
@@ -496,6 +502,20 @@ class FieldsNode(_ModelStep):
     The title comes from the type's title pattern, or from the model's proposal, as long as
     the document's title is still the file name or the one set here before."""
 
+    def __init__(
+        self,
+        uow: UnitOfWorkFactory,
+        store: ObjectStore,
+        model: LanguageModel | None,
+        clock: Clock,
+        policy: ClassificationPolicy,
+        *,
+        locator: TextLocator | None = None,
+    ) -> None:
+        """`locator`: find each quote on the pages of the archive PDF (`FieldCheck.locations`)."""
+        super().__init__(uow, store, model, clock, policy)
+        self._locator = locator
+
     async def run(self, document: Document) -> NodeResult | MetadataResult:
         async with self._uow() as uow:
             log = await uow.processing_log.list_for(document.id)
@@ -512,23 +532,25 @@ class FieldsNode(_ModelStep):
                 if document.document_type_id is None
                 else await uow.document_types.find(document.document_type_id)
             )
-        entries = latest_signals(log)
+        entries = ProcessingHistory(log).signals()
         proposal = model_proposal(entries)
         given: dict[FieldId, Proposal] = {}
         if proposal is not None:
             same_type = document_type is not None and _same_name(
-                proposal.get("document_type"), document_type.name
+                proposal.document_type, document_type.name
             )
-            proposed = proposal.get("fields") or {}
             for definition in definitions:
                 if definition.is_read and (definition.is_global or same_type):
-                    written = proposed.get(str(definition.id)) or {}
-                    given[definition.id] = Proposal(
-                        value=written.get("value"), evidence=written.get("evidence")
+                    given[definition.id] = proposal.fields.get(
+                        definition.id, Proposal(value=None, evidence=None)
                     )
         missing = [item for item in definitions if item.is_read and item.id not in given]
         answers: list[StructuredAnswer] = []
-        text = await self._text(document) if any(item.is_read for item in definitions) else ""
+        text = (
+            await _document_text(self._store, document.id)
+            if any(item.is_read for item in definitions)
+            else ""
+        )
         taken_over = len(given)
         input: JsonObject = {"taken_over": taken_over}
         unread: set[FieldId] = set()
@@ -551,14 +573,14 @@ class FieldsNode(_ModelStep):
                         None if document_type is None else document_type.name, keys, sent
                     ),
                     extract_schema(keys),
-                    "fields",
+                    EXTRACT_SCHEMA,
                     lambda content: parse_extract(content, list(keys)),
                 )
             except _UnfitAnswerError as error:
                 return self._unfit(error, input)
             given |= {keys[key].id: value for key, value in proposals.items()}
-        facts = DocumentText(text)
-        language = _text_value(proposal.get("language")) if proposal else None
+        facts = await asyncio.to_thread(DocumentText.read, text)
+        language = _text_value(proposal.language) if proposal else None
         checks = [
             _check_field(
                 definition,
@@ -580,7 +602,7 @@ class FieldsNode(_ModelStep):
             else check
             for check, definition in zip(checks, definitions, strict=True)
         ]
-        checks = await self._locate(document, checks)
+        checks = await _locate_quotes(self._store, self._locator, document, checks)
         readings = _ocr_readings(log)
         checks = [
             _readable(check, readings, self._policy.poor_reading, definition.name)
@@ -596,7 +618,7 @@ class FieldsNode(_ModelStep):
         changes = DocumentChanges(fields=values)
         if title is not None and title.value is not None:
             changes = replace(changes, title=str(title.value))
-        raw: JsonObject = {str(id): _proposal_json(value) for id, value in given.items()}
+        raw: JsonObject = {str(id): value.to_json() for id, value in given.items()}
         all_checks = [*checks, *([title] if title is not None else [])]
         model_version = (
             _model_version(answers[-1])
@@ -610,25 +632,20 @@ class FieldsNode(_ModelStep):
             confidence=min((check.confidence for check in checks), default=1.0),
             model_version=model_version,
             input=input,
-            output={
-                "attempts": len(answers),
-                "answer": {"fields": raw},
-                "fields": checks_to_json(all_checks),
-                "tokens": _tokens(answers),
-            },
+            output=_answered(answers, {"fields": raw}) | {CHECKS: checks_to_json(all_checks)},
         )
         return MetadataResult(result, changes)
 
 
 def _title(
-    document: Document, proposal: Mapping[str, Any] | None, log: Sequence[NodeRun]
+    document: Document, proposal: StoredProposal | None, log: Sequence[NodeRun]
 ) -> FieldCheck | None:
     """The title check: the model's title; None if the document has a title of its own (a
     person's or a rule's), or the model gave none. A type's title pattern is a rule
     (`rules.title_rule`): it replaces this title when the rules run."""
     if not has_machine_title(document, log):
         return None
-    proposed = _text_value(proposal.get("title")) if proposal else None
+    proposed = _text_value(proposal.title) if proposal else None
     if not proposed:
         return None
     return FieldCheck(
@@ -640,8 +657,8 @@ def _text_value(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
-def _same_name(proposed: object, name: str) -> bool:
-    return isinstance(proposed, str) and proposed.casefold() == name.casefold()
+def _same_name(proposed: str | None, name: str) -> bool:
+    return proposed is not None and name_key(proposed) == name_key(name)
 
 
 # --- checks -----------------------------------------------------------------------------------
@@ -894,12 +911,11 @@ def _literally(value: FieldValue, quote: DocumentText) -> bool:
 
 
 def _ocr_readings(log: Sequence[NodeRun]) -> tuple[PageReading, ...]:
-    """How well the OCR read the pages, by its latest entry; none for a document recognised
-    before readings, or with text of its own."""
-    for entry in reversed(log):
-        if entry.node is Node.OCR:
-            return readings_from_json(entry.result.output.get("readings"))
-    return ()
+    """How well the OCR read the pages, by its latest entry that made a text (as
+    `PipelineService.reading` tells it); none for a document recognised before readings, or
+    with text of its own."""
+    entry = ProcessingHistory(log).latest(Node.OCR, made=True)
+    return () if entry is None else OcrOutput.from_json(entry.result.output).readings
 
 
 def _readable(
@@ -971,9 +987,6 @@ def _verified(
 # --- values -----------------------------------------------------------------------------------
 
 
-_YES_NO = {"true": True, "yes": True, "ja": True, "false": False, "no": False, "nein": False}
-
-
 def _parse_value(
     definition: FieldDefinition,
     raw: JsonValue,
@@ -999,7 +1012,8 @@ def _parse_value(
         case FieldType.DATE if isinstance(raw, str):
             value = read_date(raw, facts)
         case FieldType.BOOLEAN if isinstance(raw, str):
-            value = _YES_NO.get(raw.strip().casefold(), raw)
+            truth = truth_value(raw)
+            value = raw if truth is None else truth
         case FieldType.LINK if isinstance(raw, str):
             value = Url(raw.strip())
         case FieldType.TEXT | FieldType.CHOICE if isinstance(raw, str):
@@ -1024,24 +1038,24 @@ def _listed_tags(tags: Sequence[Tag], facts: DocumentText, limit: int) -> list[T
     """All tags if they fit the limit; otherwise first those named in the text."""
     if len(tags) <= limit:
         return list(tags)
-    text_key = name_key(facts.raw)
-    named = [tag for tag in tags if mentions(text_key, name_key(tag.name))]
+    text_key = match_key(facts.raw)
+    named = [tag for tag in tags if mentions(text_key, match_key(tag.name))]
     rest = [tag for tag in tags if tag not in named]
-    return sorted((named + rest)[:limit], key=lambda tag: tag.name)
+    return sorted((named + rest)[:limit], key=lambda tag: sort_key(tag.name))
 
 
 def _listed_contacts(contacts: Sequence[Contact], facts: DocumentText, limit: int) -> list[Contact]:
     """The contacts whose names or aliases the text shows most (see `named_share`), at most
     `limit`; none the text does not show at all."""
-    text_key = name_key(facts.raw)
+    text_key = match_key(facts.raw)
     words = frozenset(text_key.split())
     scored = [
-        (max(named_share(text_key, words, name_key(own)) for own in contact.names()), contact)
+        (max(named_share(text_key, words, match_key(own)) for own in contact.names()), contact)
         for contact in contacts
     ]
     ranked = sorted(
         ((score, contact) for score, contact in scored if score > 0),
-        key=lambda entry: (-entry[0], entry[1].name.casefold()),
+        key=lambda entry: (-entry[0], sort_key(entry[1].name)),
     )
     return [contact for _, contact in ranked[:limit]]
 
@@ -1056,25 +1070,22 @@ def _applied[T](check: FieldCheck, convert: Callable[[str], T]) -> T | Unset:
     return UNSET
 
 
-def _list(value: JsonValue) -> list[JsonValue]:
-    return value if isinstance(value, list) else []
-
-
 def _model_version(answer: StructuredAnswer) -> str:
     return f"{answer.model} ({answer.fingerprint})" if answer.fingerprint else answer.model
 
 
-def _proposal_json(proposal: Proposal) -> JsonObject:
-    return {"value": proposal.value, "evidence": proposal.evidence}
-
-
-def _tokens(answers: Sequence[StructuredAnswer]) -> list[JsonValue]:
-    return [
-        {"prompt": item.prompt_tokens, "completion": item.completion_tokens, "usage": item.usage}
-        for item in answers
-    ]
+def _answered(answers: Sequence[StructuredAnswer], answer: JsonValue) -> JsonObject:
+    """The output of a model node that got its answer: how many requests it took, the answer
+    and the tokens of each request."""
+    return {
+        "attempts": len(answers),
+        "answer": answer,
+        "tokens": tokens_of(item.usage for item in answers),
+    }
 
 
 def _reason(check: FieldCheck) -> str:
     """Reasons of field checks name the field already."""
-    return str(check.reason) if field_id_of(check.field) else f"{check.field}: {check.reason}"
+    if field_id_of(check.field) is not None:
+        return str(check.reason)
+    return f"{check.field}: {check.reason}"

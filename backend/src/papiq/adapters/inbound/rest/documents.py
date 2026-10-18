@@ -6,23 +6,25 @@ the list leaves them out, filters and pages only ever see readable ones.
 """
 
 import asyncio
-import base64
-import binascii
 import os
 import tempfile
+from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response
 from fastapi import Path as FastApiPath
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse
 from pydantic import ValidationError as PydanticValidationError
 from starlette.background import BackgroundTask
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, Authenticated, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
+from papiq.adapters.inbound.rest.cursors import Cursor, decode_cursor, encode_cursor
+from papiq.adapters.inbound.rest.params import AllDocuments, Filter
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.documents import (
     DocumentAccepted,
@@ -40,6 +42,7 @@ from papiq.adapters.inbound.rest.schemas.documents import (
     ReadingOut,
     ReprocessRequest,
     RunExchangeOut,
+    UploadFields,
     VisibilityOut,
 )
 from papiq.adapters.inbound.rest.schemas.facts import FactsOut
@@ -50,9 +53,10 @@ from papiq.adapters.inbound.rest.schemas.inbox import (
     InboxPage,
     ReviewOut,
 )
-from papiq.adapters.inbound.rest.upload import FILE_FIELD, read_upload
+from papiq.adapters.inbound.rest.upload import read_upload, upload_body
 from papiq.adapters.inbound.schemas import RuleReportOut
-from papiq.core.domain.documents import UNSET, Channel, Document, DocumentChanges
+from papiq.core.domain.classification import CHANGE_FIELDS, SPACE, field_key
+from papiq.core.domain.documents import UNSET, Channel, Document, DocumentChanges, Unset
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.fields import field_from_json
 from papiq.core.domain.ids import (
@@ -65,28 +69,13 @@ from papiq.core.domain.ids import (
     UserId,
 )
 from papiq.core.domain.imports import ImportedMetadata
-from papiq.core.domain.pipeline import Lane, Node
-from papiq.core.domain.spaces import ShareLevel
-from papiq.core.ports import DocumentFilter, DocumentOrder, SortKey
-from papiq.core.services.documents import MAX_PAGE, DocumentFile, MetadataChange
+from papiq.core.domain.pipeline import Node
+from papiq.core.ports.pages import PAGE_MEDIA_TYPE
+from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE, DocumentOrder, SortKey
+from papiq.core.services.documents import DocumentFile, DocumentView, MetadataChange
 
 router = APIRouter(prefix="/documents", tags=["documents"], dependencies=PROTECTED)
 inbox = APIRouter(prefix="/inbox", tags=["inbox"], dependencies=PROTECTED)
-
-
-class LaneFilter(StrEnum):
-    GREEN = "green"
-    YELLOW = "yellow"
-    RED = "red"
-    PROCESSING = "processing"
-
-
-_LANES: dict[LaneFilter, Lane | None] = {
-    LaneFilter.GREEN: Lane.GREEN,
-    LaneFilter.YELLOW: Lane.YELLOW,
-    LaneFilter.RED: Lane.RED,
-    LaneFilter.PROCESSING: None,
-}
 
 
 class DocumentSort(StrEnum):
@@ -105,97 +94,9 @@ class DocumentSort(StrEnum):
         return DocumentOrder(SortKey(self.value.lstrip("-")), ascending=not self.startswith("-"))
 
 
-SPACE_FIELD = "space_id"
-CHANNEL_FIELD = "channel"
-OWNER_FIELD = "owner"
-METADATA_FIELD = "metadata"
-METADATA_LIMIT = 48 * 1024  # bytes of the metadata field
-
-
-def document_filter(
-    contact_id: UUID | None,
-    document_type_id: UUID | None,
-    tag_id: list[UUID] | None,
-    space_id: UUID | None,
-    lane: list[LaneFilter] | None,
-    field_id: UUID | None = None,
-    contact_group_id: list[UUID] | None = None,
-    document_type_group_id: list[UUID] | None = None,
-    topic_id: list[UUID] | None = None,
-) -> DocumentFilter:
-    """The query parameters of the document list as a filter (also used by the search). Each
-    tag or group is one set, the topics one more (a document has one topic: one of them); the
-    service adds the tags below them."""
-
-    def sets(ids: list[UUID] | None) -> tuple[frozenset[TagId], ...]:
-        return tuple(frozenset({TagId(id)}) for id in dict.fromkeys(ids or ()))
-
-    return DocumentFilter(
-        contact=None if contact_id is None else ContactId(contact_id),
-        document_type=None if document_type_id is None else DocumentTypeId(document_type_id),
-        tags=sets(tag_id),
-        contact_groups=sets(contact_group_id),
-        document_type_groups=sets(document_type_group_id),
-        topics=frozenset(TagId(id) for id in topic_id) if topic_id else None,
-        space=None if space_id is None else SpaceId(space_id),
-        lanes=None if not lane else frozenset(_LANES[item] for item in lane),
-        field=None if field_id is None else FieldId(field_id),
-    )
-
-
-_UPLOAD_BODY: dict[str, Any] = {
-    "requestBody": {
-        "required": True,
-        "content": {
-            "multipart/form-data": {
-                "schema": {
-                    "type": "object",
-                    "required": [FILE_FIELD],
-                    "properties": {
-                        FILE_FIELD: {
-                            "type": "string",
-                            "format": "binary",
-                            "description": "PDF, JPEG, PNG or TIFF; recognised by content.",
-                        },
-                        SPACE_FIELD: {
-                            "type": "string",
-                            "format": "uuid",
-                            "description": "Target space; default: the owner's default space.",
-                        },
-                        CHANNEL_FIELD: {
-                            "type": "string",
-                            "enum": [Channel.MIGRATION.value],
-                            "description": (
-                                "The intake channel, for rules. Default: `web` with a session, "
-                                "`api` with an API token; `migration` for imports from another "
-                                "system."
-                            ),
-                        },
-                        OWNER_FIELD: {
-                            "type": "string",
-                            "format": "uuid",
-                            "description": (
-                                "Admins only: the active user who owns the document. Default: "
-                                "the caller. The duplicate check, the default space and the "
-                                "write access to `space_id` are the owner's."
-                            ),
-                        },
-                        METADATA_FIELD: {
-                            "type": "string",
-                            "description": (
-                                "Admins only, with `channel=migration`: JSON of the metadata "
-                                "the document comes with (up to 48 KiB), as `ImportedMetadataIn`. "
-                                "Classification and field extraction apply it instead of "
-                                "asking the language model; the other nodes and the rules run "
-                                "as usual."
-                            ),
-                        },
-                    },
-                }
-            }
-        },
-    }
-}
+_UPLOAD_BODY = upload_body(
+    "PDF, JPEG, PNG or TIFF; recognised by content.", **UploadFields.form_schema()
+)
 
 
 @router.post(
@@ -236,21 +137,33 @@ async def upload(
     received = await read_upload(
         request,
         max_size=context.max_upload_size,
-        fields=[SPACE_FIELD, CHANNEL_FIELD, OWNER_FIELD, METADATA_FIELD],
-        limits={METADATA_FIELD: METADATA_LIMIT},
+        fields=UploadFields.model_fields,
+        limits=UploadFields.LIMITS,
     )
     try:
-        space = _space(received.fields.get(SPACE_FIELD))
-        channel = _channel(received.fields.get(CHANNEL_FIELD), session=principal.session)
-        owner = _owner(received.fields.get(OWNER_FIELD))
-        imported = await _imported(received.fields.get(METADATA_FIELD), principal.id, context)
+        try:
+            form = UploadFields.model_validate(received.fields)
+        except PydanticValidationError as error:
+            # The form is the body: its errors read as those of a JSON body.
+            raise RequestValidationError(
+                [{**item, "loc": ("body", *item["loc"])} for item in error.errors()]
+            ) from None
+        # The intake channel: as the caller says (`migration` only), else by credentials.
+        channel = Channel.API if principal.session is None else Channel.WEB
+        if form.channel is not None:
+            channel = Channel(form.channel)
+        imported = (
+            None
+            if form.metadata is None
+            else await _imported_metadata(form.metadata, principal.id, context)
+        )
         document = await context.pipeline.receive(
             principal.id,
             received.file,
             filename=received.filename,
-            space=space,
+            space=None if form.space_id is None else SpaceId(form.space_id),
             channel=channel,
-            owner=owner,
+            owner=None if form.owner is None else UserId(form.owner),
             imported=imported,
         )
     finally:
@@ -282,42 +195,21 @@ async def upload(
 async def list_documents(
     user: CurrentUser,
     context: Context,
-    contact_id: UUID | None = None,
-    document_type_id: UUID | None = None,
-    tag_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
-    space_id: UUID | None = None,
-    lane: Annotated[list[LaneFilter] | None, Query(max_length=4)] = None,
-    field_id: UUID | None = None,
-    contact_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
-    document_type_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
-    topic_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
+    filter: Filter,
     sort: DocumentSort = DocumentSort.CREATED_DESC,
-    limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
-    cursor: Annotated[str | None, Query(max_length=64, description="`next_cursor`.")] = None,
-    all_users: Annotated[
-        bool, Query(description="Every user's documents instead of the caller's reach (admins).")
-    ] = False,
+    limit: Annotated[int, Query(ge=1, le=PAGE_LIMIT)] = PAGE_SIZE,
+    cursor: Cursor = None,
+    all_users: AllDocuments = False,
 ) -> DocumentPage:
-    filter = document_filter(
-        contact_id,
-        document_type_id,
-        tag_id,
-        space_id,
-        lane,
-        field_id,
-        contact_group_id,
-        document_type_group_id,
-        topic_id,
-    )
     views = await context.documents.query(
         user,
         filter,
         order=sort.order,
-        after=_decode_cursor(cursor),
+        after=decode_cursor(cursor),
         limit=limit,
         all_users=all_users,
     )
-    next_cursor = _encode_cursor(views[-1].document.id) if len(views) == limit else None
+    next_cursor = encode_cursor(views[-1].document.id) if len(views) == limit else None
     return DocumentPage(
         items=[DocumentDetails.of(view.document, view.access) for view in views],
         next_cursor=next_cursor,
@@ -437,7 +329,7 @@ _file_route(DocumentFile.ORIGINAL, "The original file", "application/octet-strea
 _file_route(
     DocumentFile.ARCHIVE, "The archive PDF (PDF/A with text layer)", "application/pdf", "inline"
 )
-_file_route(DocumentFile.PREVIEW, "The preview image of the first page", "image/webp", "inline")
+_file_route(DocumentFile.PREVIEW, "The preview image of the first page", PAGE_MEDIA_TYPE, "inline")
 
 
 @router.get(
@@ -449,7 +341,7 @@ _file_route(DocumentFile.PREVIEW, "The preview image of the first page", "image/
     ),
     response_class=FileResponse,
     responses={
-        200: {"content": {"image/webp": {"schema": {"type": "string", "format": "binary"}}}},
+        200: {"content": {PAGE_MEDIA_TYPE: {"schema": {"type": "string", "format": "binary"}}}},
         **problem_responses(401, 404, 422),
     },
 )
@@ -481,18 +373,12 @@ async def _download(
         media_type=info.media_type,
         filename=info.filename,
         content_disposition_type=disposition,
-        headers={
-            "X-Content-Type-Options": "nosniff",
-            # A file shown in the browser runs no scripts and reaches nothing of this site.
-            "Content-Security-Policy": "sandbox; default-src 'none'",
-            "Cache-Control": "private, no-store",
-        },
+        # `Cache-Control: no-store` and `nosniff` come from the `NoStore` middleware, as for
+        # every answer. A file shown in the browser runs no scripts and reaches nothing of
+        # this site.
+        headers={"Content-Security-Policy": "sandbox; default-src 'none'"},
         background=BackgroundTask(path.unlink, missing_ok=True),
     )
-
-
-TEXT_MAX = 20_000
-"""Characters of text one answer holds at most."""
 
 
 @router.get(
@@ -501,9 +387,9 @@ TEXT_MAX = 20_000
     description=(
         "Needs read access. The text read from the archive, plain text as it is set (the "
         "pages apart by a form feed on a line of its own; a document parsed before 0.2 has "
-        "Markdown until it is read again), in pieces of at most "
-        f"{TEXT_MAX} characters; continue with `next_offset`. 409 while the document has no "
-        "text yet (it is not parsed)."
+        "Markdown until it is read again), in pieces of at most `PAPIQ_MCP_TEXT_MAX` "
+        "characters; continue with `next_offset`. 409 while the document has no text yet (it "
+        "is not parsed), 422 for a larger `limit`."
     ),
     response_model=DocumentTextOut,
     responses=problem_responses(401, 404, 409, 422),
@@ -513,8 +399,14 @@ async def document_text(
     user: CurrentUser,
     context: Context,
     offset: Annotated[int, Query(ge=0, description="First character.")] = 0,
-    limit: Annotated[int, Query(ge=1, le=TEXT_MAX, description="Characters.")] = TEXT_MAX,
+    limit: Annotated[
+        int | None, Query(ge=1, description="Characters; without it, as many as one answer holds.")
+    ] = None,
 ) -> DocumentTextOut:
+    if limit is None:
+        limit = context.text_max
+    elif limit > context.text_max:
+        raise ValidationError(f"limit is at most {context.text_max} characters")
     piece = await context.documents.read_text(user, DocumentId(id), offset=offset, limit=limit)
     return DocumentTextOut(
         text=piece.text,
@@ -542,11 +434,7 @@ async def document_text(
 )
 async def document_structure(id: UUID, user: CurrentUser, context: Context) -> Response:
     data = await context.documents.read_structure(user, DocumentId(id))
-    return Response(
-        data,
-        media_type="application/json",
-        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
-    )
+    return Response(data, media_type="application/json")
 
 
 @router.get(
@@ -720,7 +608,7 @@ async def confirm(
     id: UUID, body: ConfirmRequest, user: CurrentUser, context: Context
 ) -> DocumentDetails:
     changes = await _changes(body.changes, user, context)
-    document = await context.pipeline.confirm(
+    view = await context.pipeline.confirm(
         user,
         DocumentId(id),
         changes,
@@ -728,7 +616,7 @@ async def confirm(
         resume_at=Node(body.resume_at.value),
         space=None if body.space_id is None else SpaceId(body.space_id),
     )
-    return _details(document)
+    return _details(view)
 
 
 @inbox.get(
@@ -745,34 +633,25 @@ async def confirm(
 async def list_inbox(
     user: CurrentUser,
     context: Context,
-    limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
-    cursor: Annotated[str | None, Query(max_length=64, description="`next_cursor`.")] = None,
-    all_users: Annotated[
-        bool, Query(description="Every user's documents instead of the caller's reach (admins).")
-    ] = False,
+    limit: Annotated[int, Query(ge=1, le=PAGE_LIMIT)] = PAGE_SIZE,
+    cursor: Cursor = None,
+    all_users: AllDocuments = False,
 ) -> InboxPage:
     items = await context.documents.inbox(
-        user, before=_decode_cursor(cursor), limit=limit, all_users=all_users
+        user, before=decode_cursor(cursor), limit=limit, all_users=all_users
     )
-    next_cursor = _encode_cursor(items[-1].document.id) if len(items) == limit else None
+    next_cursor = encode_cursor(items[-1].document.id) if len(items) == limit else None
     return InboxPage(items=[InboxItemOut.of(item) for item in items], next_cursor=next_cursor)
 
 
 def _differences(before: Document, after: Document) -> list[str]:
     fields: dict[str, tuple[object, object]] = {
-        "title": (before.title, after.title),
-        "contact": (before.contact_id, after.contact_id),
-        "document_type": (before.document_type_id, after.document_type_id),
-        "topic": (before.topic_id, after.topic_id),
-        "tags": (before.tag_ids, after.tag_ids),
-        "document_date": (before.document_date, after.document_date),
-        "space": (before.space_id, after.space_id),
+        name: (getattr(before, attribute), getattr(after, attribute))
+        for name, attribute in CHANGE_FIELDS.items()
     }
+    fields[SPACE] = (before.space_id, after.space_id)
     for field in sorted(set(before.fields) | set(after.fields)):
-        fields[f"field:{field}"] = (
-            before.fields.get(field),
-            after.fields.get(field),
-        )
+        fields[field_key(field)] = (before.fields.get(field), after.fields.get(field))
     return [name for name, (old, new) in fields.items() if old != new]
 
 
@@ -786,9 +665,8 @@ def _changed(change: MetadataChange) -> DocumentChanged | DocumentOutOfReach:
     return DocumentChanged(**details.model_dump(), rules=rules)
 
 
-def _details(document: Any) -> DocumentDetails:
-    """Retry and reprocessing are the owner's: full access."""
-    return DocumentDetails.of(document, ShareLevel.READ_WRITE)
+def _details(view: DocumentView) -> DocumentDetails:
+    return DocumentDetails.of(view.document, view.access)
 
 
 async def _changes(body: DocumentPatch, user: UserId, context: Context) -> DocumentChanges:
@@ -816,55 +694,18 @@ async def _changes(body: DocumentPatch, user: UserId, context: Context) -> Docum
     )
 
 
-def _given[T](given: set[str], name: str, value: UUID | None, kind: type[T]) -> Any:
+def _given[T](
+    given: set[str], name: str, value: UUID | None, kind: Callable[[UUID], T]
+) -> T | Unset | None:
     if name not in given:
         return UNSET
-    return None if value is None else kind(value)  # type: ignore[call-arg]
+    return None if value is None else kind(value)
 
 
-def _encode_cursor(id: DocumentId) -> str:
-    return base64.urlsafe_b64encode(id.bytes).decode().rstrip("=")
-
-
-def _decode_cursor(cursor: str | None) -> DocumentId | None:
-    if not cursor:
-        return None
-    try:
-        return DocumentId(UUID(bytes=base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))))
-    except (ValueError, binascii.Error):
-        raise ValidationError("cursor: invalid") from None
-
-
-def _space(value: str | None) -> SpaceId | None:
-    if value is None or not value.strip():
-        return None
-    try:
-        return SpaceId(UUID(value.strip()))
-    except ValueError:
-        raise ValidationError(f"space_id: not a UUID: {value!r}") from None
-
-
-def _owner(value: str | None) -> UserId | None:
-    if value is None or not value.strip():
-        return None
-    try:
-        return UserId(UUID(value.strip()))
-    except ValueError:
-        raise ValidationError(f"owner: not a UUID: {value!r}") from None
-
-
-async def _imported(value: str | None, user: UserId, context: Context) -> ImportedMetadata | None:
+async def _imported_metadata(
+    body: ImportedMetadataIn, user: UserId, context: Context
+) -> ImportedMetadata:
     """The metadata field as domain values (field values by their definitions)."""
-    if value is None or not value.strip():
-        return None
-    try:
-        body = ImportedMetadataIn.model_validate_json(value)
-    except PydanticValidationError as error:
-        first = error.errors()[0]
-        place = ".".join(str(part) for part in first["loc"])
-        raise ValidationError(
-            f"metadata.{place}: {first['msg']}" if place else "metadata: invalid"
-        ) from None
     definitions = {a.id: a for a in await context.master_data.list_fields(user)}
     fields = {}
     for field_id, raw in body.fields.items():
@@ -887,12 +728,3 @@ async def _imported(value: str | None, user: UserId, context: Context) -> Import
         )
     except ValidationError as error:
         raise ValidationError(f"metadata: {error}") from None
-
-
-def _channel(value: str | None, *, session: object | None) -> Channel:
-    """The intake channel: as the caller says (`migration` only), else by credentials."""
-    if value is None or not value.strip():
-        return Channel.API if session is None else Channel.WEB
-    if value.strip() != Channel.MIGRATION.value:
-        raise ValidationError(f"channel: only '{Channel.MIGRATION.value}' can be given")
-    return Channel.MIGRATION

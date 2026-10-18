@@ -12,50 +12,13 @@ from sqlalchemy import text
 from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory, migrate
 from papiq.adapters.outbound.sql.tables import metadata
 from papiq.composition.settings import Settings
-from papiq.core.ports import Clock, DeliveryRetry, EventBus, UnitOfWorkFactory
-from papiq.core.ports.event_bus import DEFAULT_DELIVERY_RETRY
-from tests import probes
+from papiq.core.domain.jobs import RetryPolicy
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.event_bus import EventBus
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from tests import builders
 from tests.contracts.event_bus import EventBusFactory
-
-
-def postgres(settings: Settings, name: str | None = None) -> Database:
-    assert settings.db_host and settings.db_name and settings.db_user and settings.db_password
-    return Database.postgres(
-        host=settings.db_host,
-        port=settings.db_port,
-        name=name or settings.db_name,
-        user=settings.db_user,
-        password=settings.db_password.get_secret_value(),
-    )
-
-
-async def create_database(settings: Settings, name: str) -> None:
-    admin = postgres(settings)
-    try:
-        async with admin.engine.connect() as connection:
-            connection = await connection.execution_options(isolation_level="AUTOCOMMIT")
-            await connection.exec_driver_sql(f'CREATE DATABASE "{name}"')
-    finally:
-        await admin.dispose()
-
-
-async def drop_database(settings: Settings, name: str) -> None:
-    admin = postgres(settings)
-    try:
-        async with admin.engine.connect() as connection:
-            connection = await connection.execution_options(isolation_level="AUTOCOMMIT")
-            await connection.exec_driver_sql(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
-    finally:
-        await admin.dispose()
-
-
-@pytest.fixture(scope="session")
-def postgres_settings(settings: Settings) -> Settings:
-    if settings.db_type != "postgres" or settings.db_host is None:
-        pytest.skip("PAPIQ_DB_TYPE is not postgres")
-    if not probes.postgres_answers(settings.db_host, settings.db_port):
-        pytest.skip(f"Postgres not reachable at {settings.db_host}:{settings.db_port}")
-    return settings
+from tests.integration.services import create_database, drop_database, postgres
 
 
 @pytest.fixture
@@ -107,7 +70,7 @@ def uow_factory(database: Database) -> UnitOfWorkFactory:
 @pytest.fixture
 def event_bus_factory(database: Database) -> EventBusFactory:
     def create(
-        *, clock: Clock | None = None, retry: DeliveryRetry = DEFAULT_DELIVERY_RETRY
+        *, clock: Clock | None = None, retry: RetryPolicy = builders.EVENT_RETRY
     ) -> EventBus:
         return SqlEventBus(database, clock=clock, retry=retry)
 

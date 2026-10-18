@@ -148,21 +148,26 @@ class SecretCipher(Protocol):
         ...
 
 
+TOTP_STEP = 30
+"""Seconds per time step of a one-time password (RFC 6238); the adapters and the contract
+count with it."""
+
+
 class Totp(Protocol):
-    """Time-based one-time passwords (RFC 6238: 6 digits, 30-second steps). First adapter:
-    pyotp."""
+    """Time-based one-time passwords (RFC 6238: 6 digits, steps of `TOTP_STEP` seconds).
+    First adapter: pyotp."""
 
     def new_secret(self) -> str:
         """A new random secret, base32."""
         ...
 
     def code(self, secret: str, at: datetime) -> str:
-        """The code valid at `at`."""
+        """The code valid at `at`. For tests: the core only verifies codes (`matching_step`)."""
         ...
 
     def matching_step(self, secret: str, code: str, at: datetime) -> int | None:
-        """The time step (Unix time // 30) whose code is `code`, looking one step before and
-        after `at` to allow for clock drift; None if none matches."""
+        """The time step (Unix time // `TOTP_STEP`) whose code is `code`, looking one step
+        before and after `at` to allow for clock drift; None if none matches."""
         ...
 
     def provisioning_uri(self, secret: str, *, account: str, issuer: str) -> str:

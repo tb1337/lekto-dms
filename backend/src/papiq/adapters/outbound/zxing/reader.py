@@ -23,6 +23,7 @@ from papiq.core.domain.locations import Box
 from papiq.core.ports.codes import CodeReading
 
 DPI = 300
+POINTS_PER_INCH = 72  # the unit of a PDF page's size
 MAX_EDGE = 5000  # pixels: A4 at 300 dpi is 3508
 MAX_PAGES = 50
 
@@ -42,11 +43,12 @@ class ZxingCodeReader:
         try:
             with LOCK:
                 document = pypdfium2.PdfDocument(source)
+                total = len(document)  # a library call too: under the lock
         except pypdfium2.PdfiumError as error:
             raise UnprocessableDocumentError(f"the PDF cannot be read: {error}") from None
         codes: list[Code] = []
         try:
-            pages = min(len(document), self._max_pages)
+            pages = min(total, self._max_pages)
             for index in range(pages):
                 image = _render(document, index)
                 codes.extend(_codes_of(image, index + 1))
@@ -61,7 +63,7 @@ def _render(document: pypdfium2.PdfDocument, index: int) -> Image.Image:
         page = document[index]
         try:
             width, height = page.get_size()
-            scale = min(DPI / 72, MAX_EDGE / max(width, height, 1))
+            scale = min(DPI / POINTS_PER_INCH, MAX_EDGE / max(width, height, 1))
             bitmap = page.render(scale=scale, grayscale=True)
             image: Image.Image = bitmap.to_pil().convert("L")
         finally:

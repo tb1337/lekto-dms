@@ -10,7 +10,7 @@ from papiq.adapters.outbound.memory.processing import FAKE_PDF, FAKE_READING
 from papiq.core.domain.documents import Document
 from papiq.core.domain.pipeline import Lane, Node, NodeRun, Outcome
 from papiq.core.domain.users import User
-from papiq.core.ports import OcrResult
+from papiq.core.ports.ocr import OcrResult
 from papiq.core.services.nodes import OcrNode, PagesNode, ParseNode, has_text
 from papiq.core.services.objects import (
     archive_key,
@@ -23,9 +23,8 @@ from papiq.core.services.objects import (
     text_key,
 )
 from papiq.core.services.pipeline import PipelineService
-from tests.builders import incoming
-from tests.contracts.processing import SAMPLES
-from tests.unit.services.conftest import World
+from tests.builders import SAMPLES, incoming
+from tests.unit.services.support import World
 
 
 class NotPdfa(FakeOcr):

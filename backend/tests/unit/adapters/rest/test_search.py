@@ -12,21 +12,9 @@ from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.pipeline import Node
 from papiq.core.domain.spaces import ShareLevel
 from tests.api import auth
-from tests.unit.adapters.rest.conftest import Api
-from tests.unit.adapters.rest.test_permission_matrix import ACTORS, DENIED, Scene, build_scene
+from tests.unit.adapters.rest.support import ACTORS, DENIED, Api, Scene, indexed_scene
 
 SEARCH = f"{PREFIX}/documents/search"
-
-
-async def indexed_scene(api: Api) -> Scene:
-    """The scene of the permission matrix, with its documents in the search index."""
-    scene = await build_scene(api)
-    indexing = api.services.indexing
-    assert indexing is not None
-    await indexing.reconcile()
-    while await indexing.run_next_job():
-        pass
-    return scene
 
 
 async def found(scene: Scene, actor: str, **params: Any) -> set[str]:
@@ -148,8 +136,10 @@ async def test_without_a_search_index_the_endpoints_answer_503(api: Api) -> None
     admin = await api.admin()
     api.app.state.context = replace(api.app.state.context, search=None, indexing=None)
     found = await api.client.get(SEARCH, params={"q": "x"}, headers=auth(admin))
+    # Without the service, the query is not looked at.
+    unchecked = await api.client.get(SEARCH, headers=auth(admin))
     rebuild = await api.client.post(f"{PREFIX}/search/reindex", headers=auth(admin))
-    for response in (found, rebuild):
+    for response in (found, unchecked, rebuild):
         assert response.status_code == 503
         assert response.json()["detail"] == "search is not configured"
 

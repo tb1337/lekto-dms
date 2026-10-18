@@ -4,22 +4,20 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 
-from papiq.core.domain.classification import FieldCheck, field_key
+from papiq.core.domain.classification import CHECKS, SPACE, FieldCheck, field_key
 from papiq.core.domain.documents import Document
 from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.ids import FieldId
-from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.pipeline import RULES, NodeResult, Outcome
-from papiq.core.domain.rule_engine import SPACE, Mode
+from papiq.core.domain.json_value import JsonValue, as_list
+from papiq.core.domain.pipeline import RULES, TRIGGER, NodeResult, Outcome
+from papiq.core.domain.rule_planner import Mode
 from papiq.core.domain.rules import Trigger
-from papiq.core.ports import (
-    ObjectStore,
-    PatternMatcher,
-    TemplateRenderer,
-    UnitOfWork,
-    UnitOfWorkFactory,
-)
-from papiq.core.services._access import may_file
+from papiq.core.domain.sorting import sort_key
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.patterns import PatternMatcher
+from papiq.core.ports.templates import TemplateRenderer
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from papiq.core.services._access import field_definitions, may_file
 from papiq.core.services.rules.running import (
     Prepared,
     active_rules,
@@ -75,10 +73,10 @@ class RulesResult:
         owner = await uow.users.get(document.owner_id)
         rules = await active_rules(uow, owner, Trigger.INGEST)
         input: dict[str, JsonValue] = {
-            "trigger": Trigger.INGEST.value,
+            TRIGGER: Trigger.INGEST.value,
             "rules": checked_rules(rules),
         }
-        definitions = {item.id: item for item in await uow.fields.list_all()}
+        definitions = await field_definitions(uow)
         if not rules:
             ok = NodeResult(outcome=Outcome.OK, model_version=RULES, input=input)
             return _waiting_for_hand(document, definitions, ok)
@@ -124,7 +122,7 @@ def _waiting_for_hand(
             confidence=0,
             reason=f"'{definition.name}' is set by hand and has no value yet",
         )
-        for definition in sorted(definitions.values(), key=lambda item: item.name)
+        for definition in sorted(definitions.values(), key=lambda item: sort_key(item.name))
         if not definition.is_read
         and definition.applies_to(document.document_type_id)
         and definition.is_required_for(document.document_type_id)
@@ -132,10 +130,10 @@ def _waiting_for_hand(
     ]
     if not waiting:
         return result
-    checks = result.output.get("fields")
+    checks = result.output.get(CHECKS)
     output = {
         **result.output,
-        "fields": [*(checks if isinstance(checks, list) else []), *(c.to_json() for c in waiting)],
+        CHECKS: [*as_list(checks), *(c.to_json() for c in waiting)],
     }
     reasons = [*([result.reason] if result.reason else []), *(c.reason or "" for c in waiting)]
     return replace(result, outcome=Outcome.UNCERTAIN, reason="; ".join(reasons), output=output)
@@ -159,6 +157,6 @@ class FileResult:
             reason = f"the owner may not file into space '{space.name}' (any more)"
             check = FieldCheck(field=SPACE, outcome=Outcome.UNCERTAIN, confidence=0, reason=reason)
             return NodeResult(
-                outcome=Outcome.UNCERTAIN, reason=reason, output={"fields": [check.to_json()]}
+                outcome=Outcome.UNCERTAIN, reason=reason, output={CHECKS: [check.to_json()]}
             )
         return NodeResult(outcome=Outcome.OK)

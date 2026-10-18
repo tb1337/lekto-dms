@@ -1,8 +1,9 @@
 """Documents with their field values, and the processing log."""
 
 from collections.abc import Collection, Mapping, Sequence
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from sqlalchemy import (
     ColumnElement,
     FromClause,
     Row,
+    Table,
     and_,
     case,
     delete,
@@ -21,7 +23,7 @@ from sqlalchemy import (
 )
 
 from papiq.adapters.outbound.sql import tables as t
-from papiq.adapters.outbound.sql.repositories import MICROSECOND, SqlRepository, Values
+from papiq.adapters.outbound.sql.repositories import KEYS_PER_QUERY, SqlRepository, Values
 from papiq.adapters.outbound.sql.spaces import visible_to
 from papiq.adapters.outbound.sql.transaction import Transaction
 from papiq.core.domain.documents import Channel, Document, Sha256
@@ -58,8 +60,8 @@ from papiq.core.ports.repository import (
     SortKey,
 )
 
-_COUNTED = 200
-"""Keys of `count_tagged` per query (a column each)."""
+MICROSECOND = timedelta(microseconds=1)
+"""The unit of the durations the processing log stores."""
 
 
 class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
@@ -125,18 +127,25 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         documents = t.documents
         criteria: list[ColumnElement[bool]] = [] if user is None else [visible_to(user)]
         column: ColumnElement[Any]
-        source: FromClause
-        if by in (CountBy.TAG, CountBy.FIELD):
-            table = t.document_tags if by is CountBy.TAG else t.document_fields
-            column = table.c.tag_id if by is CountBy.TAG else table.c.field_id
-            source = table.join(documents, documents.c.id == table.c.document_id)
-        else:
-            source = documents
-            column = documents.c.contact_id
-            if by is CountBy.DOCUMENT_TYPE:
+        source: FromClause = documents
+
+        def joined(table: Table) -> FromClause:
+            return table.join(documents, documents.c.id == table.c.document_id)
+
+        match by:
+            case CountBy.CONTACT:
+                column = documents.c.contact_id
+            case CountBy.DOCUMENT_TYPE:
                 column = documents.c.document_type_id
-            elif by is CountBy.TOPIC:
+            case CountBy.TOPIC:
                 column = documents.c.topic_id
+            case CountBy.TAG:
+                column = t.document_tags.c.tag_id
+                source = joined(t.document_tags)
+            case CountBy.FIELD:
+                column = t.document_fields.c.field_id
+                source = joined(t.document_fields)
+        if source is documents:  # a document may have no contact, type or topic
             criteria.append(column.is_not(None))
         statement = (
             select(column.label("key"), func.count().label("documents"))
@@ -145,19 +154,19 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             .group_by(column)
         )
         rows = (await self._tx.read(statement)).all()
-        return {UUID(str(row.key)): int(row.documents) for row in rows}
+        return {row.key: int(row.documents) for row in rows}
 
     async def count_tagged(
         self, sets: Mapping[UUID, Collection[TagId]], user: UserId | None
     ) -> dict[UUID, int]:
-        """One query per `_COUNTED` keys: each a count of the distinct documents among the
+        """One query per `KEYS_PER_QUERY` keys: each a count of the distinct documents among the
         rows of the key's tags."""
         documents, tags = t.documents, t.document_tags
         criteria: list[ColumnElement[bool]] = [] if user is None else [visible_to(user)]
         keys = list(sets)
         counts: dict[UUID, int] = {}
-        for start in range(0, len(keys), _COUNTED):
-            batch = keys[start : start + _COUNTED]
+        for start in range(0, len(keys), KEYS_PER_QUERY):
+            batch = keys[start : start + KEYS_PER_QUERY]
             columns = [
                 func.count(
                     distinct(case((tags.c.tag_id.in_(sorted(sets[key])), tags.c.document_id)))
@@ -247,7 +256,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         confirmed = documents.c.confirmed_at.is_not(None)
         readable = visible_to(reader)
 
-        async def values(column: Any, source: Any) -> list[Any]:
+        async def values(column: ColumnElement[Any], source: FromClause) -> list[UUID]:
             statement = (
                 select(column)
                 .select_from(source)
@@ -391,7 +400,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             ],
         )
 
-    async def _delete_children(self, ids: list[DocumentId]) -> None:
+    async def _delete_children(self, ids: list[UUID]) -> None:
         for table in (t.document_tags, t.document_fields):
             await self._tx.write(delete(table).where(table.c.document_id.in_(ids)))
 
@@ -406,41 +415,54 @@ _EMPTY_VALUE: Values = {
 }
 
 
+class ValueKind(StrEnum):
+    """The kind of a stored field value (`document_fields.kind`): which typed column holds it
+    and how to read it back."""
+
+    TEXT = "text"
+    URL = "url"
+    DECIMAL = "decimal"
+    MONEY = "money"
+    DATE = "date"
+    PERIOD = "period"
+    BOOLEAN = "boolean"
+
+
 def _value_columns(value: FieldValue) -> Values:
     """The columns of `document_fields` that hold a field value."""
     match value:
         case bool():
-            columns: Values = {"kind": "boolean", "value_boolean": value}
+            columns: Values = {"kind": ValueKind.BOOLEAN, "value_boolean": value}
         case Money(amount=amount, currency=currency):
-            columns = {"kind": "money", "value_decimal": amount, "value_currency": currency}
+            columns = {"kind": ValueKind.MONEY, "value_decimal": amount, "value_currency": currency}
         case Decimal():
-            columns = {"kind": "decimal", "value_decimal": value}
+            columns = {"kind": ValueKind.DECIMAL, "value_decimal": value}
         case Url(value=url):
-            columns = {"kind": "url", "value_text": url}
+            columns = {"kind": ValueKind.URL, "value_text": url}
         case str():
-            columns = {"kind": "text", "value_text": value}
+            columns = {"kind": ValueKind.TEXT, "value_text": value}
         case Period(start=start, end=end):
-            columns = {"kind": "period", "value_date": start, "value_date_end": end}
+            columns = {"kind": ValueKind.PERIOD, "value_date": start, "value_date_end": end}
         case date():  # datetime is no field value
-            columns = {"kind": "date", "value_date": value}
+            columns = {"kind": ValueKind.DATE, "value_date": value}
     return {**_EMPTY_VALUE, **columns}
 
 
 def _field_value(row: Row[Any]) -> FieldValue:
     match row.kind:
-        case "boolean":
+        case ValueKind.BOOLEAN:
             return bool(row.value_boolean)
-        case "money":
+        case ValueKind.MONEY:
             return Money(row.value_decimal, row.value_currency)
-        case "decimal":
+        case ValueKind.DECIMAL:
             return row.value_decimal  # type: ignore[no-any-return]
-        case "url":
+        case ValueKind.URL:
             return Url(row.value_text)
-        case "text":
+        case ValueKind.TEXT:
             return row.value_text  # type: ignore[no-any-return]
-        case "date":
+        case ValueKind.DATE:
             return row.value_date  # type: ignore[no-any-return]
-        case "period":
+        case ValueKind.PERIOD:
             return Period(row.value_date, row.value_date_end)
     raise ValueError(f"unknown field value kind {row.kind!r}")
 

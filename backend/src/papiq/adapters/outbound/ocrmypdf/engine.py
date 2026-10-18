@@ -38,8 +38,8 @@ is read from its image, text of its own or not, and the archive holds the pages 
 the model's text. The plugin runs in OCRmyPDF's process; its configuration goes there in the
 environment, and it leaves a record of each page in a folder of our own: its words, the ones the
 model could not read, and what was sent. Such a run has a time limit of its own
-(`vision_timeout`). A page the model cannot read fails the run (exit code 15) with the plugin's
-reason.
+(`vision_timeout`). A page the model cannot read fails the run (exit code 15) with the reason
+the plugin leaves in that folder.
 
 How well a page was read comes from Tesseract's hOCR, which OCRmyPDF keeps in its work folder
 with `--keep-temporary-files` (`*_ocr_hocr.hocr`, one per page it recognised): the words with
@@ -62,14 +62,16 @@ from pathlib import Path
 
 from PIL import Image, ImageSequence
 
+from papiq.adapters.outbound.http_client import endpoint_of
+from papiq.adapters.outbound.imaging import flatten_on_white
 from papiq.adapters.outbound.ocrmypdf.vision import (
     PROMPT,
     PageRecord,
     VisionSettings,
     environment,
+    read_error,
     read_records,
 )
-from papiq.adapters.outbound.openai_compat import endpoint_of
 from papiq.adapters.outbound.pdfium import count_pages, has_hidden_text, has_unreadable_text
 from papiq.adapters.outbound.system import Completed, run_process
 from papiq.core.domain import media_types
@@ -136,11 +138,11 @@ class OcrmypdfEngine:
         timeout: timedelta,
         jobs: int = 1,
         vision: VisionSettings | None = None,
-        vision_timeout: timedelta = timedelta(minutes=30),
+        vision_timeout: timedelta,
     ) -> None:
         """`languages`: Tesseract language codes, e.g. `deu`, `eng`. `jobs`: CPU cores for
         the pages of one document. `vision`: the model that reads pages when asked to, all
-        pages of a document within `vision_timeout`."""
+        pages of a document within `vision_timeout` (a setting, like `timeout`)."""
         if not languages:
             raise ValueError("at least one OCR language is needed")
         self._languages = "+".join(languages)
@@ -189,7 +191,13 @@ class OcrmypdfEngine:
             else:
                 mode = ["--skip-text", "--deskew"]
             pdfa, notes = await self._convert(
-                source, temporary, [*mode, *extra], work, env=env, timeout=timeout
+                source,
+                temporary,
+                [*mode, *extra],
+                work,
+                env=env,
+                timeout=timeout,
+                records=records if vision else None,
             )
             if unreadable:
                 notes = [UNREADABLE_NOTE, *notes]
@@ -239,10 +247,11 @@ class OcrmypdfEngine:
         *,
         env: dict[str, str],
         timeout: timedelta,
+        records: Path | None,
     ) -> tuple[bool, list[str]]:
         """Run OCRmyPDF, with a second run where it helps (see the module). Returns whether the
         output is PDF/A, and the notes for the processing log; `work` keeps the files of the
-        last run."""
+        last run, `records` those of the vision plugin."""
         notes: list[str] = []
         invalidate = False
 
@@ -274,8 +283,14 @@ class OcrmypdfEngine:
                 f"{_UNPROCESSABLE[code]}: {_last_line(completed.stderr)}"
             )
         if code not in (0, _PDFA_CONVERSION_FAILED):
-            if failure := _VISION_ERROR.findall(completed.stderr):
-                raise LanguageModelError(failure[-1].strip())
+            # A page the model could not read: the plugin leaves the reason in `records`; its
+            # exception in the output only counts without it, as the output's end may hold
+            # other things.
+            failure = None if records is None else await asyncio.to_thread(read_error, records)
+            if failure is None and (found := _VISION_ERROR.findall(completed.stderr)):
+                failure = found[-1].strip()
+            if failure is not None:
+                raise LanguageModelError(failure)
             raise RuntimeError(
                 f"ocrmypdf failed with exit code {code}: {_last_line(completed.stderr)}"
             )
@@ -433,13 +448,7 @@ def _join(notes: Sequence[str]) -> str | None:
 
 def _ocr_ready(image: Image.Image) -> Image.Image:
     """`image` itself if OCRmyPDF takes it, otherwise a converted copy."""
-    if image.mode == "P" and "transparency" in image.info:
-        image = image.convert("RGBA")
-    if image.mode in ("RGBA", "LA", "PA", "RGBa", "La"):
-        rgba = image.convert("RGBA")
-        flat = Image.new("RGB", rgba.size, "white")
-        flat.paste(rgba, mask=rgba.getchannel("A"))
-        return flat
+    image = flatten_on_white(image)
     if image.mode in ("1", "L", "RGB", "P"):
         return image
     if image.mode.startswith(("I", "F")):

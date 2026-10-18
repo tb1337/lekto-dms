@@ -12,8 +12,7 @@ from papiq.adapters.outbound.memory import FAKE_VISION, FakeOcr, ManualClock
 from papiq.composition.container import build_memory_container, build_services
 from tests import builders
 from tests.api import auth
-from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import Api, make_app
+from tests.unit.adapters.rest.support import DOCUMENTS, Api, make_app, upload
 
 
 @pytest.fixture
@@ -28,14 +27,6 @@ async def vision_api() -> AsyncIterator[Api]:
         yield Api(container, services, app, client, clock)
 
 
-async def upload(api: Api, headers: dict[str, str]) -> str:
-    files = {"file": ("scan.pdf", (SAMPLES / "scan.pdf").read_bytes(), "application/pdf")}
-    response = await api.client.post(f"{PREFIX}/documents", files=files, headers=headers)
-    assert response.status_code == 202, response.text
-    await api.drain()
-    return f"{PREFIX}/documents/{response.json()['id']}"
-
-
 async def test_the_pipeline_names_the_model(api: Api, vision_api: Api) -> None:
     without = await api.client.get(f"{PREFIX}/pipeline", headers=auth(await api.user()))
     assert without.json()["vision"] is None
@@ -47,7 +38,7 @@ async def test_the_pipeline_names_the_model(api: Api, vision_api: Api) -> None:
 async def test_the_owner_has_the_document_read_with_the_model(vision_api: Api) -> None:
     api = vision_api
     owner = await api.user()
-    url = await upload(api, auth(owner))
+    url = f"{DOCUMENTS}/{await upload(api, auth(owner))}"
     before = (await api.client.get(url, headers=auth(owner))).json()
     assert before["processing"]["vision"] is False
     reading = await api.client.get(f"{url}/reading", headers=auth(owner))
@@ -82,7 +73,7 @@ async def test_the_owner_has_the_document_read_with_the_model(vision_api: Api) -
 async def test_only_the_owner_and_admins(vision_api: Api) -> None:
     api = vision_api
     owner, other, admin = await api.user(), await api.user(), await api.admin()
-    url = await upload(api, auth(owner))
+    url = f"{DOCUMENTS}/{await upload(api, auth(owner))}"
     assert (await api.client.post(f"{url}/vision")).status_code == 401
     assert (await api.client.post(f"{url}/vision", headers=auth(other))).status_code == 404
     assert (await api.client.get(f"{url}/reading", headers=auth(other))).status_code == 404
@@ -92,7 +83,7 @@ async def test_only_the_owner_and_admins(vision_api: Api) -> None:
 
 async def test_without_a_model_it_cannot_be_asked_for(api: Api) -> None:
     owner = await api.user()
-    url = await upload(api, auth(owner))
+    url = f"{DOCUMENTS}/{await upload(api, auth(owner))}"
     response = await api.client.post(f"{url}/vision", headers=auth(owner))
     assert response.status_code == 409
     assert "no vision language model is configured" in response.json()["detail"]

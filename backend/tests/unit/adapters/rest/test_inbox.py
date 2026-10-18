@@ -12,10 +12,8 @@ from papiq.core.domain.classification import (
 from papiq.core.domain.master_data import Contact
 from papiq.core.domain.pipeline import Node, NodeResult, Outcome
 from tests.api import auth
-from tests.builders import NOW
-from tests.unit.adapters.rest.conftest import Api
-from tests.unit.adapters.rest.test_documents import pdf
-from tests.unit.services.conftest import Returns
+from tests.builders import NOW, Returns
+from tests.unit.adapters.rest.support import DOCUMENTS, Api, sample_file
 
 PROBLEM = "application/problem+json"
 NEIGHBOUR = UUID("01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b")
@@ -74,8 +72,8 @@ async def test_confirm_from_the_inbox(api: Api) -> None:
     async with api.container.unit_of_work() as uow:
         await uow.contacts.add(contact)
         await uow.commit()
-    api.services.pipeline._executors[Node.JUDGE] = Returns(uncertain(contact))
-    response = await api.client.post(f"{PREFIX}/documents", files=pdf(), headers=auth(owner))
+    api.services.pipeline.replace_executor(Node.JUDGE, Returns(uncertain(contact)))
+    response = await api.client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
     url = response.json()["status_url"]
     await api.drain()
 

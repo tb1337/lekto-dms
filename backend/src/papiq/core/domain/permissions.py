@@ -19,10 +19,36 @@ default and what webhooks report: own documents, and green documents in spaces t
 that are shared with them.
 """
 
+from collections.abc import Collection
+from typing import Protocol
+
 from papiq.core.domain.documents import Document
+from papiq.core.domain.ids import SpaceId, UserId
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import User
+
+
+class Placed(Protocol):
+    """Whose a document is and where it lies (a `Document`, an `IndexDocument`)."""
+
+    @property
+    def owner_id(self) -> UserId: ...
+
+    @property
+    def space_id(self) -> SpaceId: ...
+
+    @property
+    def lane(self) -> Lane | None: ...
+
+
+def within_reach(user: UserId, spaces: Collection[SpaceId], document: Placed) -> bool:
+    """Whether `document` is within the reach of `user`, who reads `spaces` (their own and
+    those shared with them): their own documents in every lane, other users' only when green
+    and in one of `spaces`. Whether the user is active the services check (`load_actor`)."""
+    return document.owner_id == user or (
+        document.lane is Lane.GREEN and document.space_id in spaces
+    )
 
 
 def space_access(user: User, space: Space) -> ShareLevel | None:
@@ -54,11 +80,10 @@ def reach_access(user: User, document: Document, space: Space) -> ShareLevel | N
         raise ValueError(f"document {document.id} is not in space {space.id}")
     if not user.active:
         return None
-    if document.owner_id == user.id:
-        return ShareLevel.READ_WRITE
-    if document.lane is not Lane.GREEN:
+    access = reach_space_access(user, space)
+    if not within_reach(user.id, () if access is None else (space.id,), document):
         return None
-    return reach_space_access(user, space)
+    return ShareLevel.READ_WRITE if document.owner_id == user.id else access
 
 
 def can_read_document(user: User, document: Document, space: Space) -> bool:
@@ -98,11 +123,3 @@ def is_document_owner(user: User, document: Document) -> bool:
 def can_control_document(user: User, document: Document) -> bool:
     """Delete, retry and reprocess a document, read its processing log, review and confirm it."""
     return is_document_owner(user, document) or user.is_active_admin
-
-
-def can_manage_master_data(user: User) -> bool:
-    return user.is_active_admin
-
-
-def can_manage_users(user: User) -> bool:
-    return user.is_active_admin

@@ -1,6 +1,7 @@
 """The OpenAI-compatible adapter against a simulated endpoint: the contracts, the requests it
 sends and how it handles errors. No network."""
 
+import asyncio
 import hashlib
 import json
 from collections.abc import Callable
@@ -9,12 +10,13 @@ from typing import Any
 import httpx2
 import pytest
 
+from papiq.adapters.outbound.http_client import endpoint_of
 from papiq.adapters.outbound.openai_compat import (
     OpenAiCompatEmbeddings,
     OpenAiCompatLanguageModel,
-    endpoint_of,
 )
 from papiq.core.domain.errors import EmbeddingsError, LanguageModelError
+from tests.builders import DEFAULT_SETTINGS
 from tests.contracts.language_model import REQUEST, EmbeddingsContract, LanguageModelContract
 
 BASE_URL = "http://ollama:11434/v1"
@@ -75,13 +77,25 @@ def failing(status: int = 503, **body: Any) -> httpx2.MockTransport:
 def language_model(
     transport: httpx2.AsyncBaseTransport, **options: Any
 ) -> OpenAiCompatLanguageModel:
+    arguments: dict[str, Any] = {
+        "temperature": DEFAULT_SETTINGS.llm_temperature,
+        "timeout": DEFAULT_SETTINGS.llm_timeout.total_seconds(),
+        "response_format": DEFAULT_SETTINGS.llm_response_format,
+        **options,
+    }
     return OpenAiCompatLanguageModel(
-        base_url=BASE_URL, model="qwen3", transport=transport, **options
+        base_url=BASE_URL, model="qwen3", transport=transport, **arguments
     )
 
 
 def embeddings_for(transport: httpx2.AsyncBaseTransport, **options: Any) -> OpenAiCompatEmbeddings:
-    return OpenAiCompatEmbeddings(base_url=BASE_URL, model="bge-m3", transport=transport, **options)
+    arguments: dict[str, Any] = {
+        "timeout": DEFAULT_SETTINGS.embedding_timeout.total_seconds(),
+        **options,
+    }
+    return OpenAiCompatEmbeddings(
+        base_url=BASE_URL, model="bge-m3", transport=transport, **arguments
+    )
 
 
 @pytest.fixture
@@ -139,7 +153,6 @@ async def test_sends_a_strict_json_schema_request(endpoint: SimulatedEndpoint) -
     }
     assert answer.model == "qwen3:latest"
     assert answer.fingerprint == "fp_ollama"
-    assert (answer.prompt_tokens, answer.completion_tokens) == (12, 5)
     # The whole report, also what only some endpoints send (here a duration of Ollama).
     assert answer.usage == {
         "prompt_tokens": 12,
@@ -214,6 +227,19 @@ async def test_unreachable_and_slow_endpoints() -> None:
         await language_model(httpx2.MockTransport(refuse)).complete(REQUEST)
     with pytest.raises(LanguageModelError, match=r"no answer within 2\.5 seconds"):
         await language_model(httpx2.MockTransport(slow), timeout=2.5).complete(REQUEST)
+
+
+async def test_the_timeout_limits_the_whole_request() -> None:
+    """Not each socket operation: an endpoint that trickles its answer still runs out."""
+
+    async def trickle(request: httpx2.Request) -> httpx2.Response:
+        await asyncio.sleep(1)
+        return httpx2.Response(200, json={})
+
+    model = language_model(httpx2.MockTransport(trickle), timeout=0.05)
+    with pytest.raises(LanguageModelError, match=r"no answer within 0\.05 seconds"):
+        await model.complete(REQUEST)
+    await model.aclose()
 
 
 async def test_errors_do_not_show_the_key() -> None:

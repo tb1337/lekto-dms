@@ -11,7 +11,7 @@ import os
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from papiq.core.ports import DecryptionError
+from papiq.core.ports.identity import DecryptionError
 
 KEY_BYTES = 32
 _VERSION = b"\x01"

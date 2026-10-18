@@ -1,5 +1,4 @@
 from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Protocol
 
@@ -15,6 +14,10 @@ class Outbox(Protocol):
     async def add(self, events: Iterable[DomainEvent]) -> None: ...
 
 
+DISPATCH_BATCH = 100
+"""Events a dispatch delivers to each subscriber at most, new ones and due ones each."""
+
+
 class EventBus(Protocol):
     """Delivers committed events to subscribers, at least once per subscriber.
 
@@ -26,7 +29,7 @@ class EventBus(Protocol):
     - Events of one transaction arrive in the order they were added; across transactions the
       order is not guaranteed. Events are thin: receivers fetch the current state.
     - If a handler raises, that event is delivered to it again on a later dispatch, after a
-      growing delay (`DeliveryRetry`); it does not hold back later events. After the last
+      growing delay (a `RetryPolicy`); it does not hold back later events. After the last
       attempt the event is given up for that subscriber and logged as an error. Receivers
       recognise repetitions by the event id.
 
@@ -39,7 +42,7 @@ class EventBus(Protocol):
         create the durable subscription lazily on the next dispatch."""
         ...
 
-    async def dispatch(self, *, limit: int = 100) -> int:
+    async def dispatch(self, *, limit: int = DISPATCH_BATCH) -> int:
         """Deliver to each subscriber up to `limit` new events and up to `limit` events that
         failed before and are due again; returns the number of successful deliveries."""
         ...
@@ -52,24 +55,7 @@ class EventBus(Protocol):
         ...
 
 
-@dataclass(frozen=True)
-class DeliveryRetry:
-    """Repeated delivery of events whose handler failed: at most `max_attempts` attempts in
-    total; before attempt n+1 the bus waits `delay * 2^(n-1)`, at most `max_delay`."""
-
-    max_attempts: int = 10
-    delay: timedelta = timedelta(seconds=1)
-    max_delay: timedelta = timedelta(hours=1)
-
-    def __post_init__(self) -> None:
-        if self.max_attempts < 1:
-            raise ValueError("max_attempts must be at least 1")
-
-    def next_attempt(self, attempts: int, now: datetime) -> datetime | None:
-        """When to try again after `attempts` failed attempts; None to give up."""
-        if attempts >= self.max_attempts:
-            return None
-        return now + min(self.delay * (1 << min(attempts - 1, 40)), self.max_delay)
-
-
-DEFAULT_DELIVERY_RETRY = DeliveryRetry()
+DELIVERY_DELAY = timedelta(seconds=1)
+DELIVERY_MAX_DELAY = timedelta(hours=1)
+"""Before the next delivery of an event whose handler failed the bus waits `DELIVERY_DELAY`,
+doubling, at most `DELIVERY_MAX_DELAY`; the number of attempts is a setting."""

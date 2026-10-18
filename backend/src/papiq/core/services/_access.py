@@ -1,4 +1,4 @@
-"""Loading entities together with the caller's rights."""
+"""Loading entities, together with the caller's rights where they matter."""
 
 from dataclasses import replace
 
@@ -9,19 +9,22 @@ from papiq.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
-from papiq.core.domain.ids import ContactId, DocumentId, SpaceId, UserId
+from papiq.core.domain.fields import FieldDefinition
+from papiq.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId, UserId
 from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.permissions import (
+    can_control_document,
     can_file_into,
     can_read_document,
     can_write_document,
+    document_access,
     space_access,
 )
-from papiq.core.domain.pipeline import space_chooser
-from papiq.core.domain.spaces import Space
-from papiq.core.domain.tag_tree import TagTree
+from papiq.core.domain.pipeline import ProcessingHistory
+from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import User
-from papiq.core.ports import UnitOfWork
+from papiq.core.ports.unit_of_work import UnitOfWork
+from papiq.core.services._tags import tag_tree
 
 
 async def load_actor(uow: UnitOfWork, actor: UserId) -> User:
@@ -30,6 +33,24 @@ async def load_actor(uow: UnitOfWork, actor: UserId) -> User:
     user = await uow.users.find(actor)
     if user is None or not user.active:
         raise AuthenticationError("authentication is required")
+    return user
+
+
+async def field_definitions(uow: UnitOfWork) -> dict[FieldId, FieldDefinition]:
+    """Every field definition, by id."""
+    return {item.id: item for item in await uow.fields.list_all()}
+
+
+def admin_only(user: User, action: str) -> None:
+    """PermissionDeniedError ("only admins <action>") unless `user` is an active admin."""
+    if not user.is_active_admin:
+        raise PermissionDeniedError(f"only admins {action}")
+
+
+async def require_admin(uow: UnitOfWork, actor: UserId, action: str) -> User:
+    """The caller, if an active admin (`admin_only`)."""
+    user = await load_actor(uow, actor)
+    admin_only(user, action)
     return user
 
 
@@ -50,6 +71,25 @@ async def writable_document(uow: UnitOfWork, user: User, id: DocumentId) -> tupl
     return document, space
 
 
+async def controllable_document(
+    uow: UnitOfWork, user: User, id: DocumentId, action: str
+) -> Document:
+    """The document, if `user` controls it (`can_control_document`: its owner or an admin);
+    NotFoundError if they cannot read it, PermissionDeniedError ("only the owner and admins
+    <action>") if they only read it."""
+    document, _ = await readable_document(uow, user, id)
+    if not can_control_document(user, document):
+        raise PermissionDeniedError(f"only the owner and admins {action}")
+    return document
+
+
+async def access_to(uow: UnitOfWork, user: User, document: Document) -> ShareLevel:
+    """The access of `user`, who may read `document`, to it in the space it lies in now."""
+    access = document_access(user, document, await uow.spaces.get(document.space_id))
+    assert access is not None  # readable
+    return access
+
+
 async def visible_space(uow: UnitOfWork, user: User, id: SpaceId) -> Space:
     space = await uow.spaces.find(id)
     if space is None or space_access(user, space) is None:
@@ -63,7 +103,8 @@ async def may_file(uow: UnitOfWork, document: Document, space: Space) -> bool:
     owner = await uow.users.get(document.owner_id)
     if can_file_into(owner, space):
         return True
-    chooser = space_chooser(await uow.processing_log.list_for(document.id), space.id)
+    log = await uow.processing_log.list_for(document.id)
+    chooser = ProcessingHistory(log).space_chooser(space.id)
     if chooser is None:
         return False
     user = await uow.users.find(UserId(chooser))
@@ -102,25 +143,14 @@ async def checked_changes(
     topic_given = not isinstance(changes.topic_id, Unset)
     if isinstance(changes.tag_ids, Unset) and not topic_given:
         return await _fitted_topic(uow, changes, document, actor)
-    tree = TagTree.of(await uow.tags.list_all())
+    tree = await tag_tree(uow)
     if not isinstance(changes.tag_ids, Unset):
         for id in changes.tag_ids:
-            tag = tree.get(id)
-            if tag.scope is not TagScope.DOCUMENT:
-                raise ValidationError(f"'{tag.name}' is a {_SCOPES[tag.scope]}, not a document tag")
+            tree.require(id, TagScope.DOCUMENT)
         changes = replace(changes, tag_ids=tree.normalise(changes.tag_ids))
     if not isinstance(changes.topic_id, Unset) and changes.topic_id is not None:
-        topic = tree.get(changes.topic_id)
-        if topic.scope is not TagScope.TOPIC:
-            raise ValidationError(f"'{topic.name}' is no topic")
+        tree.require(changes.topic_id, TagScope.TOPIC)
     return await _fitted_topic(uow, changes, document, actor)
-
-
-_SCOPES = {
-    TagScope.CONTACT: "contact group",
-    TagScope.DOCUMENT_TYPE: "document type group",
-    TagScope.TOPIC: "topic",
-}
 
 
 async def _fitted_topic(

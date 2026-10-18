@@ -286,11 +286,49 @@ jobs of the old run are recognised as stale.
   on SQLite the write lock); under that lock the upload stores the original again if it is
   gone, so no document is left without its original.
 - A document with an uncertain step stops before filing with status `review` (yellow) and waits
-  in its owner's inbox; `document.filed` comes only when it is green. Confirming it (see the
-  inbox below) lets processing continue up to filing.
+  in its owner's inbox; `document.filed` comes only when it is green. Confirming it (see
+  Inbox) lets processing continue up to filing.
 - Known gap: an original is stored before its document is created; if creating fails (e.g.
   the space's rights changed meanwhile), the object stays without a document. Removing such
   objects is left to a later cleanup of the object store.
+
+## Inbox
+
+The inbox is the way in (`core/domain/inbox.py`, `core/services/inbox.py`, `GET /inbox`): what
+waits for a user stands there, their own documents only; an admin with `all_users` has every
+user's, with their own seen. A document someone reaches through a shared space never stands in
+their inbox.
+
+- **Open**, newest first, in the one cursor format: in processing (`processing`, no lane yet),
+  yellow (`review`) and red (`intervene`) until a person confirms them, and new documents
+  (`new`) until the caller has seen them. Nothing leaves by itself. Each item keeps its open
+  nodes and fields.
+- **New** (`documents.new_at`): a processing run that ends green makes the document new, unless
+  a person decided in it: confirmed it in the inbox, set its metadata while it ran, or it was
+  taken over with the source system's metadata (`processing_decided`). Its first run always
+  does; a retry or a reprocessing only if contact, type, topic, tags, date or fields differ from
+  when it started (`processing_baseline`, a digest of them). Confirming out of yellow or red,
+  by the owner or an admin, makes it new for no one.
+- **Seen** is per user (`inbox_seen`, when each user saw a document last; new for them again
+  once it became new after). The web UI reports it when the document view opens
+  (`PUT /documents/{id}/seen`); reading through the API or MCP sets nothing. `DELETE` marks a
+  document new again, `POST /inbox/seen` marks everything new in the inbox as seen. Seen counts
+  for documents that can stand in the caller's inbox while they are new, and changes nothing
+  else: not `confirmed_at`, the training, rules or the lane.
+- **Done** (`tab=done`): what left the caller's inbox in the last 14 days, with how
+  (`confirmed` out of yellow or red, for everyone, or `seen` by the caller), when and by whom.
+  It comes from the seen marks and the latest confirmation of each document
+  (`inbox_confirmations`, written with the confirmation); no history is kept. The cleanup
+  removes the confirmations after 14 days, and the seen marks that tell nothing any more (their
+  document became new again since, or is new for no one).
+- **Summary** (`GET /inbox/summary`): the count of each tab, everything open together (what the
+  badge counts), and the worst lane among the open documents, red before yellow before green;
+  null with nothing open but documents in processing.
+- Lists and search mark what stands open in the caller's inbox (`in_inbox`), with one query
+  for the seen marks of a page.
+- Seen sends no event: it is the caller's own, so the web UI refreshes after its own action;
+  another tab or device of the same user sees it with its next refresh. The other changes of
+  what is open come with a document event (`document.lane_changed`, `document.deleted`).
 
 ## Tags
 
@@ -541,6 +579,13 @@ alone, so a new scikit-learn version cannot break it. It sees about the first 8,
    `PAPIQ_LOGO_FETCH=true` a contact without a logo that gets a domain has it fetched, and
    `python -m papiq.composition fetch-logos` fetches them for the contacts from before
    (outgoing HTTPS to their domains only).
+
+**After the update to 0.4.** Revision 0030 runs at start. Nothing is new then: the documents
+from before stand in an inbox only while they are processed, yellow or red, and a run that
+started before the update makes no document new unless it is its first. `GET /inbox` lists
+everything open, not only yellow and red documents: a client that wants those asks for
+`tab=review` or `tab=intervene`. Documents taken over from Paperless-ngx with their metadata
+(`migration`) are not new: the metadata are a person's (see Inbox).
 
 **Evaluation.** `python -m papiq.composition evaluate [--fake]` runs the synthetic documents in
 `evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).
@@ -827,9 +872,9 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `PUT /document-types/{id}/fields` | The fields of a document type, each required or optional, set from the type in one transaction (admins); answers its fields. A global field is `422`; taking off a field that has values on its documents or that the type's title pattern uses is `409` |
 | `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins), optionally with a `topic_id` the contact enables; the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |
 | `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/shares/{user_id}` | Spaces and shares (owner) |
-| `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet, `estimated_total`, `next_offset`, `semantic` |
+| `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet (the document with `in_inbox`, as in `GET /documents`), `estimated_total`, `next_offset`, `semantic` |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
-| `GET /documents` | Readable documents; `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), documents without a date last either way; filters `contact_id`, `document_type_id`, `tag_id` (with the tags below it), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; these three repeat, all must match), `topic_id` (the topic or one below it; repeats, one of them must match), `space_id`, `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (`next_cursor` of the page before, an opaque value naming its last document; its sort value is looked up, `422` if that document is gone) |
+| `GET /documents` | Readable documents, each with `in_inbox` (it stands open in the caller's inbox); `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), documents without a date last either way; filters `contact_id`, `document_type_id`, `tag_id` (with the tags below it), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; these three repeat, all must match), `topic_id` (the topic or one below it; repeats, one of them must match), `space_id`, `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (`next_cursor` of the page before, an opaque value naming its last document; its sort value is looked up, `422` if that document is gone) |
 | `POST /documents` | Upload (multipart: `file`, optional `space_id`, optional `channel=migration`; otherwise the channel is `web` with a session, `api` with a token); `202` with `id`, `status_url` |
 | `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`, `topic_id` (see Topics); change (write access; the answer has the change rules' `rules` report for the owner); delete (owner or admin) |
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result and the differences |
@@ -845,7 +890,9 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /documents/{id}/reading` | How the archive's text was read: by the vision model or not, each recognised page, the advice to read with the model (owner or admin) |
 | `GET /pipeline` | The graph: every node and what it needs, in graph order; the vision model, if one is configured; whether logos are fetched (`logo_fetch`) |
 | `POST /pipeline/reparse` | Read the text of every document again in the background (admins, after the update to 0.2); `202` with `queued` |
-| `GET /inbox` | The caller's yellow and red documents, newest first, with their open nodes and fields; `limit`, `cursor` |
+| `GET /inbox` | The caller's inbox (see Inbox), newest first, with open nodes and fields: everything open, or one `tab` (`new`, `review`, `intervene`, `processing`, `done` with how, when and by whom); `limit`, `cursor`, `all_users` (admins) |
+| `GET /inbox/summary` | The count of each tab, `open` (all but done) and the worst lane among the open documents; `all_users` (admins) |
+| `PUT/DELETE /documents/{id}/seen`, `POST /inbox/seen` | Seen per user (read access): the caller saw a document (the web UI, when its view opens), new again, everything new as seen (`marked`; `all_users` for admins) |
 | `GET /documents/{id}/review` | What the model proposed and how each field was checked (owner or admin) |
 | `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `space_id`), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (owner or admin); undecided fields: `422` with `open_fields` |
 | `GET/POST /rules`, `GET/PUT/PATCH/DELETE /rules/{id}`, `GET /rules/{id}/versions`, `/versions/{number}` | Rules: list (`scope`, `include_disabled`, `all_users` for admins), create, change (new version), enable or disable, delete; see Rules |
@@ -907,9 +954,9 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   steps when due) runs every
   `PAPIQ_CLEANUP_INTERVAL` and removes finished jobs and delivered events older than
   `PAPIQ_RETENTION`, webhook delivery log rows of that age, ended sessions, stale counts of
-  failed sign-ins and the previous secrets of webhooks whose grace period
-  (`PAPIQ_WEBHOOK_SECRET_GRACE`) is over. The same loop runs the removal of a deleted
-  document's files.
+  failed sign-ins, the previous secrets of webhooks whose grace period
+  (`PAPIQ_WEBHOOK_SECRET_GRACE`) is over, and what only the inbox's done needs after 14 days
+  (see Inbox). The same loop runs the removal of a deleted document's files.
 - Rule applications (`rules.apply`) run 25 documents per job, then queue the next job, so
   pipeline nodes do not wait behind them.
 - After a tag moved, `tags.normalise` leaves what carries it and a tag now above it the one

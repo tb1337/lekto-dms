@@ -9,10 +9,11 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, Self
 from uuid import UUID
 
 from papiq.core.domain import media_types
+from papiq.core.domain.classification import SPACE
 from papiq.core.domain.documents import (
     CLASSIFIER_LABELS,
     Channel,
@@ -55,7 +56,7 @@ from papiq.core.domain.reading import (
     readings_from_json,
     vision_advice,
 )
-from papiq.core.domain.rule_engine import SPACE, changed_fields
+from papiq.core.domain.rule_engine import changed_fields
 from papiq.core.domain.users import User
 from papiq.core.ports import Clock, ObjectStore, UnitOfWork, UnitOfWorkFactory
 from papiq.core.ports.ocr import VisionModel
@@ -85,14 +86,36 @@ _RECORD_ATTEMPTS = 10
 _RECORD_BACKOFF = 0.02  # seconds, times the attempt
 
 NODE_JOB = "pipeline.node"
-"""Job kind of a pipeline node; payload: document id, node, processing run."""
+"""Job kind of a pipeline node; payload: `NodeJob`."""
 CATCH_UP_JOB = "pipeline.catch_up"
+"""Job kind of a node skipped in the document's current run that is run afterwards, outside
+processing (`PipelineService.catch_up`); payload: `NodeJob`."""
 REPARSE_JOB = "pipeline.reparse"
+"""Job kind of reading a document's text again (`PipelineService.reparse`); payload: `NodeJob`
+of the node `parse`."""
 FACTS_JOB = "pipeline.facts"
 """Job kind of reading a document's facts outside processing (`read-codes`): the codes on its
 pages and the identifiers it shows; payload: document id. Processing and log stay as they are."""
-"""Job kind of a node skipped in the document's current run that is run afterwards, outside
-processing (`PipelineService.catch_up`); the same payload."""
+
+
+@dataclass(frozen=True)
+class NodeJob:
+    """The payload of a job that runs a node of a document in a processing run."""
+
+    document_id: DocumentId
+    node: Node
+    run: int
+
+    def to_json(self) -> JsonObject:
+        return {"document_id": str(self.document_id), "node": self.node.value, "run": self.run}
+
+    @classmethod
+    def from_json(cls, payload: JsonObject) -> Self:
+        """KeyError, TypeError or ValueError for a payload that is none."""
+        run = payload["run"]
+        if not isinstance(run, int):
+            raise ValueError(f"invalid node job payload {payload!r}")
+        return cls(DocumentId(UUID(str(payload["document_id"]))), Node(str(payload["node"])), run)
 
 
 class DeferredResult(Protocol):
@@ -571,14 +594,9 @@ class PipelineService:
                 run = document.processing.run
                 if not document.is_skipped(node, run):
                     continue
-                payload: JsonObject = {
-                    "document_id": str(document.id),
-                    "node": node.value,
-                    "run": run,
-                }
                 job = await uow.jobs.enqueue(
                     CATCH_UP_JOB,
-                    payload,
+                    NodeJob(document.id, node, run).to_json(),
                     run_at=now,
                     dedup_key=f"{document.id}:{run}:{node.value}:catch-up",
                 )
@@ -607,13 +625,11 @@ class PipelineService:
                 run = document.processing.run
                 if not _reparsable(document, run):
                     continue
-                payload: JsonObject = {
-                    "document_id": str(document.id),
-                    "node": Node.PARSE.value,
-                    "run": run,
-                }
                 job = await uow.jobs.enqueue(
-                    REPARSE_JOB, payload, run_at=now, dedup_key=f"{document.id}:{run}:reparse"
+                    REPARSE_JOB,
+                    NodeJob(document.id, Node.PARSE, run).to_json(),
+                    run_at=now,
+                    dedup_key=f"{document.id}:{run}:reparse",
                 )
                 queued += job is not None
             await uow.commit()
@@ -686,11 +702,12 @@ class PipelineService:
             await self._read_facts(job)
             return
         try:
-            document_id, node, run = _parse_payload(job.payload)
+            target = NodeJob.from_json(job.payload)
         except (KeyError, TypeError, ValueError) as error:
             log.error("invalid node job", extra={"job_id": str(job.id), "error": str(error)})
             await self._finish(job, error=f"invalid payload: {error}")
             return
+        document_id, node, run = target.document_id, target.node, target.run
         if job.kind == REPARSE_JOB:
             await self._reparse(job, document_id, run)
             return
@@ -1039,9 +1056,11 @@ async def _enqueue(
     run = document.processing.run
     jobs = []
     for node in nodes:
-        payload: JsonObject = {"document_id": str(document.id), "node": node.value, "run": run}
         job = await uow.jobs.enqueue(
-            NODE_JOB, payload, run_at=now, dedup_key=f"{document.id}:{run}:{node.value}"
+            NODE_JOB,
+            NodeJob(document.id, node, run).to_json(),
+            run_at=now,
+            dedup_key=f"{document.id}:{run}:{node.value}",
         )
         if job is not None:
             jobs.append(job)
@@ -1079,13 +1098,6 @@ def _failed(reason: str) -> NodeResult:
 def _head(path: Path) -> bytes:
     with path.open("rb") as file:
         return file.read(media_types.SNIFF_SIZE)
-
-
-def _parse_payload(payload: JsonObject) -> tuple[DocumentId, Node, int]:
-    run = payload["run"]
-    if not isinstance(run, int):
-        raise ValueError(f"invalid node job payload {payload!r}")
-    return DocumentId(UUID(str(payload["document_id"]))), Node(str(payload["node"])), run
 
 
 def _reparsable(document: Document, run: int) -> bool:

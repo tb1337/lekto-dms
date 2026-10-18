@@ -48,7 +48,7 @@ from papiq.core.ports import (
 from papiq.core.services._access import contact_topics_lock, load_actor
 
 # A rename queues the indexing service's refresh job; the worker runs it through that service.
-from papiq.core.services.indexing import REFRESH_JOB
+from papiq.core.services.indexing import REFRESH_JOB, RefreshKind, refresh_payload
 from papiq.core.services.logos import drop_logo, queue_logo_fetch
 from papiq.core.services.rules.management import renamed_field, uses_field
 from papiq.core.services.rules.references import disable_rules, misfits, refers_to
@@ -208,7 +208,7 @@ class MasterDataService:
             change,
             check=check,
             after=lambda uow, item: self._logo_for(uow, item, known),
-            index_as="contact",
+            index_as=RefreshKind.CONTACT,
             indexed=lambda item: (item.name, item.group_ids),
             # A document that gets a topic meanwhile is seen, or sees it gone.
             lock=None if topic_ids is None else contact_topics_lock(id),
@@ -323,7 +323,7 @@ class MasterDataService:
             change,
             check=check,
             after=lambda uow, item: self._keep_title_rule(uow, actor, item),
-            index_as="document_type",
+            index_as=RefreshKind.DOCUMENT_TYPE,
             indexed=lambda item: (item.name, item.group_ids),
         )
 
@@ -401,7 +401,7 @@ class MasterDataService:
             await _check_tag_name_free(uow, tag)
             await uow.tags.update(tag)
             if (tag.name, tag.parent_id) != before:
-                await self._refresh(uow, "tag", id)
+                await self._refresh(uow, RefreshKind.TAG, id)
             # A topic needs no normalising: a document has one, a contact may enable both.
             moved = tag.parent_id != before[1] and tag.parent_id is not None
             if moved and tag.scope is not TagScope.TOPIC:
@@ -949,7 +949,7 @@ class MasterDataService:
         *,
         check: Callable[[UnitOfWork, E], Awaitable[None]] | None = None,
         after: Callable[[UnitOfWork, E], Awaitable[None]] | None = None,
-        index_as: str | None = None,
+        index_as: RefreshKind | None = None,
         indexed: Callable[[E], object] = lambda item: item.name,
         lock: str | None = None,
     ) -> E:
@@ -974,13 +974,11 @@ class MasterDataService:
             await uow.commit()
         return item
 
-    async def _refresh(self, uow: UnitOfWork, kind: str, id: Any) -> None:
+    async def _refresh(self, uow: UnitOfWork, kind: RefreshKind, id: UUID) -> None:
         """Queue the refresh of the search index of the documents of the contact, type or tag
         (`IndexingService`), with a search index."""
         if self._index_renames:
-            await uow.jobs.enqueue(
-                REFRESH_JOB, {"kind": kind, "id": str(id)}, run_at=self._clock.now()
-            )
+            await uow.jobs.enqueue(REFRESH_JOB, refresh_payload(kind, id), run_at=self._clock.now())
 
 
 async def normalise_tagged(

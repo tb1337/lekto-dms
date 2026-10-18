@@ -36,6 +36,7 @@ from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+from enum import StrEnum
 from uuid import UUID
 
 from papiq.core.domain.documents import Document
@@ -56,6 +57,7 @@ from papiq.core.domain.events import (
 from papiq.core.domain.fields import FieldValue, Money, Url
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, TagId, UserId
 from papiq.core.domain.jobs import Job
+from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.periods import Period, PeriodKind
 from papiq.core.domain.pipeline import SIGNALS
 from papiq.core.domain.search import LAYOUT, EmbeddingStamp, IndexDocument, IndexState
@@ -77,9 +79,24 @@ SUBSCRIBER = "search.index"
 INDEX_JOB = "search.index"
 """Payload: `document_id`."""
 REFRESH_JOB = "search.refresh"
-"""Payload: `kind` (`contact`, `document_type` or `tag`) and `id` of the changed item."""
+"""Payload (`refresh_payload`): `kind` (`RefreshKind`) and `id` of the changed item."""
 RECONCILE_JOB = "search.reconcile"
 REBUILD_JOB = "search.rebuild"
+
+
+class RefreshKind(StrEnum):
+    """What a refresh job brings the documents of up to date: a contact, a document type or a
+    tag whose name changed."""
+
+    CONTACT = "contact"
+    DOCUMENT_TYPE = "document_type"
+    TAG = "tag"
+
+
+def refresh_payload(kind: RefreshKind, id: UUID) -> JsonObject:
+    """The payload of a `REFRESH_JOB`."""
+    return {"kind": kind.value, "id": str(id)}
+
 
 _ROUNDS = 3
 _RETRY_DELAY = timedelta(seconds=30)
@@ -246,20 +263,16 @@ class IndexingService:
             await self._finish(job)
 
     def _work(self, job: Job) -> Callable[[], Awaitable[object]]:
-        match job.kind:
-            case "search.index":
-                document_id = DocumentId(UUID(str(job.payload["document_id"])))
-                final = job.tries >= _ATTEMPTS[INDEX_JOB]
-                return lambda: self.index_document(document_id, tolerate_embedding_failure=final)
-            case "search.refresh":
-                kind, item = str(job.payload["kind"]), UUID(str(job.payload["id"]))
-                if kind not in _REFRESH_FIELDS:
-                    raise ValueError(f"unknown kind {kind!r}")
-                return lambda: self._refresh(kind, item)
-            case "search.reconcile":
-                return self.reconcile
-            case _:
-                return self.rebuild
+        if job.kind == INDEX_JOB:
+            document_id = DocumentId(UUID(str(job.payload["document_id"])))
+            final = job.tries >= _ATTEMPTS[INDEX_JOB]
+            return lambda: self.index_document(document_id, tolerate_embedding_failure=final)
+        if job.kind == REFRESH_JOB:
+            kind, item = RefreshKind(str(job.payload["kind"])), UUID(str(job.payload["id"]))
+            return lambda: self._refresh(kind, item)
+        if job.kind == RECONCILE_JOB:
+            return self.reconcile
+        return self.rebuild
 
     async def _failed(self, job: Job, error: Exception) -> None:
         reason = f"{type(error).__name__}: {error}"
@@ -448,13 +461,13 @@ class IndexingService:
 
     # --- master data renamed --------------------------------------------------------------------
 
-    async def _refresh(self, kind: str, item: UUID) -> None:
+    async def _refresh(self, kind: RefreshKind, item: UUID) -> None:
         """Queue an index job for every document with the contact, type or tag `item`: for a
         tag, also with a tag below it, with it or one below it as its topic, or with a contact
         or type in it or a group below it."""
         async with self._uow() as uow:
             documents = await uow.documents.list_all()
-            if kind in ("contact", "document_type"):
+            if kind is not RefreshKind.TAG:
                 carrying = [document.id for document in documents if _carries(document, kind, item)]
             else:
                 tags = TagTree.of(await uow.tags.list_all()).with_descendants([TagId(item)])
@@ -550,11 +563,8 @@ class IndexingService:
         return Rebuilt(documents=added, queued=reconciled.queued, removed=reconciled.removed)
 
 
-_REFRESH_FIELDS = {"contact", "document_type", "tag"}
-
-
-def _carries(document: Document, kind: str, item: UUID) -> bool:
-    if kind == "contact":
+def _carries(document: Document, kind: RefreshKind, item: UUID) -> bool:
+    if kind is RefreshKind.CONTACT:
         return document.contact_id == ContactId(item)
     return document.document_type_id == DocumentTypeId(item)
 

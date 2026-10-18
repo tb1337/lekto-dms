@@ -23,7 +23,9 @@ from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.ids import FieldId
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.pipeline import (
+    ACTOR,
     RULES_CHANGE,
+    TRIGGER,
     Node,
     NodeResult,
     NodeRun,
@@ -115,8 +117,8 @@ class ChangeRules:
             corrected=corrected_fields(before, document, decided=changed),
         )
         input: dict[str, JsonValue] = {
-            "trigger": Trigger.CHANGE.value,
-            "actor": str(actor.id),
+            TRIGGER: Trigger.CHANGE.value,
+            ACTOR: str(actor.id),
             **record,
         }
         rules = await self.rules(uow, document)

@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from papiq.core.domain import media_types
 from papiq.core.domain.codes import (
     Code,
     code_identifiers,
@@ -63,7 +64,7 @@ from papiq.core.ports import (
 from papiq.core.ports.search_index import SearchIndex, SimilarQuery
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.indexing import split_sections
-from papiq.core.services.nodes import work_directory
+from papiq.core.services.nodes import ARCHIVE_FILE, work_directory
 from papiq.core.services.objects import archive_key, codes_key, load_text
 
 log = logging.getLogger(__name__)
@@ -136,7 +137,7 @@ class FactsSignal:
             return kept
         try:
             async with work_directory() as work:
-                archive = work / "archive.pdf"
+                archive = work / ARCHIVE_FILE
                 await self._store.download(archive_key(document.id), archive)
                 reading = await self._codes.read_codes(archive)
         except NotFoundError:
@@ -147,7 +148,7 @@ class FactsSignal:
             )
             return None
         data = json.dumps(codes_to_json(reading.codes), ensure_ascii=False).encode("utf-8")
-        await self._store.put(key, data, content_type="application/json")
+        await self._store.put(key, data, content_type=media_types.JSON)
         return reading.codes
 
 

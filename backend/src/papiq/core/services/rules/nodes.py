@@ -4,13 +4,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 
-from papiq.core.domain.classification import FieldCheck, field_key
+from papiq.core.domain.classification import SPACE, FieldCheck, field_key
 from papiq.core.domain.documents import Document
 from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.ids import FieldId
 from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.pipeline import RULES, NodeResult, Outcome
-from papiq.core.domain.rule_engine import SPACE, Mode
+from papiq.core.domain.pipeline import RULES, TRIGGER, NodeResult, Outcome
+from papiq.core.domain.rule_engine import Mode
 from papiq.core.domain.rules import Trigger
 from papiq.core.ports import (
     ObjectStore,
@@ -75,7 +75,7 @@ class RulesResult:
         owner = await uow.users.get(document.owner_id)
         rules = await active_rules(uow, owner, Trigger.INGEST)
         input: dict[str, JsonValue] = {
-            "trigger": Trigger.INGEST.value,
+            TRIGGER: Trigger.INGEST.value,
             "rules": checked_rules(rules),
         }
         definitions = {item.id: item for item in await uow.fields.list_all()}

@@ -14,9 +14,11 @@ from datetime import datetime
 from uuid import UUID
 
 from papiq.core.domain.classification import (
+    CHANGE_FIELDS,
     CONTACT,
     DOCUMENT_DATE,
     DOCUMENT_TYPE,
+    SPACE,
     TAGS,
     TITLE,
     TOPIC,
@@ -38,21 +40,30 @@ from papiq.core.domain.ids import (
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.permissions import can_file_into
 from papiq.core.domain.pipeline import (
+    ACCEPTED,
+    ACTOR,
+    CHANGED,
     CHOSEN_SPACE,
+    CORRECTED,
+    ENTERED,
+    KEPT,
     PERSON,
     PERSON_SPACE,
     RULES,
     RULES_CHANGE,
+    TAGS_ADDED,
+    TAGS_REMOVED,
+    TRIGGER,
     Node,
     NodeResult,
     NodeRun,
     Outcome,
 )
 from papiq.core.domain.rule_engine import (
-    SPACE,
     TEXT_TARGET,
     Facts,
     Mode,
+    NoteKind,
     RulePlan,
     Situation,
     SpaceTarget,
@@ -173,7 +184,7 @@ async def _search(
 
 # --- where values came from -------------------------------------------------------------------
 
-_DECISIONS = ("accepted", "entered", "kept", "changed")
+_DECISIONS = (ACCEPTED, ENTERED, KEPT, CHANGED)
 _PERSON_ENTRIES = (PERSON, RULES_CHANGE, PERSON_SPACE)
 
 
@@ -219,10 +230,10 @@ def provenance(log: Sequence[NodeRun], document: Document) -> Provenance:
         record = {**entry.result.input, **entry.result.output}
         for key in _DECISIONS:
             person.update(_strings(record.get(key)))
-        for tag in _strings(record.get("tags_added")):
+        for tag in _strings(record.get(TAGS_ADDED)):
             added.add(TagId(UUID(tag)))
             removed.discard(TagId(UUID(tag)))
-        for tag in _strings(record.get("tags_removed")):
+        for tag in _strings(record.get(TAGS_REMOVED)):
             removed.add(TagId(UUID(tag)))
             added.discard(TagId(UUID(tag)))
     current = _current_values(document)
@@ -267,7 +278,7 @@ def _reviewing(output: JsonValue) -> set[RuleId]:
             continue
         notes = report.get("notes")
         if any(
-            isinstance(note, dict) and note.get("kind") == "review"
+            isinstance(note, dict) and note.get("kind") == NoteKind.REVIEW
             for note in (notes if isinstance(notes, list) else [])
         ):
             found.add(RuleId(UUID(str(report["rule_id"]))))
@@ -291,10 +302,10 @@ def person_record(
     added = sorted(str(tag) for tag in set(tags_after) - set(tags_before))
     removed = sorted(str(tag) for tag in set(tags_before) - set(tags_after))
     return {
-        "changed": list[JsonValue](sorted(changed)),
-        "tags_added": list[JsonValue](added),
-        "tags_removed": list[JsonValue](removed),
-        "corrected": list[JsonValue](sorted(corrected)),
+        CHANGED: list[JsonValue](sorted(changed)),
+        TAGS_ADDED: list[JsonValue](added),
+        TAGS_REMOVED: list[JsonValue](removed),
+        CORRECTED: list[JsonValue](sorted(corrected)),
     }
 
 
@@ -306,14 +317,7 @@ def corrected_fields(
     because the new contact does not enable it is no correction of theirs."""
     names = {
         name
-        for name, attribute in (
-            (TITLE, "title"),
-            (CONTACT, "contact_id"),
-            (DOCUMENT_TYPE, "document_type_id"),
-            (TOPIC, "topic_id"),
-            (TAGS, "tag_ids"),
-            (DOCUMENT_DATE, "document_date"),
-        )
+        for name, attribute in CHANGE_FIELDS.items()
         if getattr(before, attribute) != getattr(after, attribute)
     }
     for field_id in set(before.fields) | set(after.fields):
@@ -336,8 +340,8 @@ def space_choice(
             outcome=Outcome.OK,
             model_version=PERSON_SPACE,
             input={
-                "trigger": trigger,
-                "actor": str(actor),
+                TRIGGER: trigger,
+                ACTOR: str(actor),
                 CHOSEN_SPACE: str(document.space_id),
             },
             output=person_record(
@@ -357,7 +361,7 @@ def _current_values(document: Document) -> dict[str, JsonValue]:
         if document.document_type_id is None
         else str(document.document_type_id),
         TOPIC: None if document.topic_id is None else str(document.topic_id),
-        "document_date": None
+        DOCUMENT_DATE: None
         if document.document_date is None
         else document.document_date.isoformat(),
     }

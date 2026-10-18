@@ -6,8 +6,11 @@ processing log (output of the judge and the fields node), so what was proposed s
 after a person corrected it; the inbox and the rules (M7) read them from there.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Self
+from uuid import UUID
 
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.ids import FieldId
@@ -15,12 +18,41 @@ from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.locations import Location, locations_from_json, locations_to_json
 from papiq.core.domain.pipeline import Outcome
 
-CONTACT = "contact"
-DOCUMENT_TYPE = "document_type"
-TOPIC = "topic"
-TAGS = "tags"
-DOCUMENT_DATE = "document_date"
-TITLE = "title"
+
+class CheckField(StrEnum):
+    """The names of a document's fields in checks, decisions, rule reports and the log. A
+    custom field is named `field:<id>` (`field_key`, `field_id_of`)."""
+
+    CONTACT = "contact"
+    DOCUMENT_TYPE = "document_type"
+    TOPIC = "topic"
+    TAGS = "tags"
+    DOCUMENT_DATE = "document_date"
+    TITLE = "title"
+    SPACE = "space"  # set by rules and people, never checked by the signals
+    REVIEW = "review"  # a review a rule forces; no field of the document
+
+
+CONTACT = CheckField.CONTACT
+DOCUMENT_TYPE = CheckField.DOCUMENT_TYPE
+TOPIC = CheckField.TOPIC
+TAGS = CheckField.TAGS
+DOCUMENT_DATE = CheckField.DOCUMENT_DATE
+TITLE = CheckField.TITLE
+SPACE = CheckField.SPACE
+REVIEW = CheckField.REVIEW
+
+CHANGE_FIELDS: Mapping[str, str] = {
+    TITLE: "title",
+    CONTACT: "contact_id",
+    DOCUMENT_TYPE: "document_type_id",
+    TOPIC: "topic_id",
+    TAGS: "tag_ids",
+    DOCUMENT_DATE: "document_date",
+}
+"""The fields a person sets in one change, and the attribute of `Document` and
+`DocumentChanges` that holds each; custom fields are `DocumentChanges.fields`."""
+
 _FIELD_PREFIX = "field:"
 
 
@@ -28,9 +60,15 @@ def field_key(id: FieldId) -> str:
     return f"{_FIELD_PREFIX}{id}"
 
 
-def field_id_of(field: str) -> str | None:
-    """The field id named by a check name, or None for the other checks."""
-    return field.removeprefix(_FIELD_PREFIX) if field.startswith(_FIELD_PREFIX) else None
+def field_id_of(field: str) -> FieldId | None:
+    """The field a check name `field:<id>` is about; None for the other checks (and for a
+    malformed id)."""
+    if not field.startswith(_FIELD_PREFIX):
+        return None
+    try:
+        return FieldId(UUID(field.removeprefix(_FIELD_PREFIX)))
+    except ValueError:
+        return None
 
 
 @dataclass(frozen=True, kw_only=True)

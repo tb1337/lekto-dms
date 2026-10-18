@@ -3,6 +3,7 @@
 import json
 import logging
 
+from papiq.core.domain import media_types
 from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import NotFoundError, ValidationError
 from papiq.core.domain.exchanges import (
@@ -51,4 +52,4 @@ async def _write(
         )
     runs = with_run(runs, RunExchange(run=document.processing.run, calls=tuple(calls)))
     data = json.dumps(exchanges_to_json(runs), ensure_ascii=False).encode("utf-8")
-    await store.put(key, data, content_type="application/json")
+    await store.put(key, data, content_type=media_types.JSON)

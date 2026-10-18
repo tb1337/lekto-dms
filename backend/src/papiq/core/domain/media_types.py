@@ -6,6 +6,8 @@ PNG = "image/png"
 TIFF = "image/tiff"
 WEBP = "image/webp"
 ICO = "image/x-icon"
+TEXT = "text/plain; charset=utf-8"
+JSON = "application/json"
 
 SUPPORTED: tuple[str, ...] = (PDF, JPEG, PNG, TIFF)
 """PDFs and photos or scans as images. Office files and e-mails are not supported yet."""

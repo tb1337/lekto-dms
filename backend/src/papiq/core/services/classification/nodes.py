@@ -94,7 +94,7 @@ from papiq.core.services.classification.signals import (
     signals_of,
 )
 from papiq.core.services.exchanges import keep_calls
-from papiq.core.services.nodes import work_directory
+from papiq.core.services.nodes import ARCHIVE_FILE, work_directory
 from papiq.core.services.objects import archive_key, load_text, text_key
 from papiq.core.services.pipeline import MetadataResult
 from papiq.core.services.titles import has_machine_title
@@ -210,7 +210,7 @@ class _ModelStep:
         if self._locator is None or not quotes:
             return checks
         async with work_directory() as work:
-            archive = work / "archive.pdf"
+            archive = work / ARCHIVE_FILE
             try:
                 await self._store.download(archive_key(document.id), archive)
                 places = await self._locator.locate(archive, quotes)
@@ -1071,4 +1071,6 @@ def _tokens(answers: Sequence[StructuredAnswer]) -> list[JsonValue]:
 
 def _reason(check: FieldCheck) -> str:
     """Reasons of field checks name the field already."""
-    return str(check.reason) if field_id_of(check.field) else f"{check.field}: {check.reason}"
+    if field_id_of(check.field) is not None:
+        return str(check.reason)
+    return f"{check.field}: {check.reason}"

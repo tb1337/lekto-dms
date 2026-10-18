@@ -52,6 +52,7 @@ from papiq.adapters.inbound.rest.schemas.inbox import (
 )
 from papiq.adapters.inbound.rest.upload import FILE_FIELD, read_upload
 from papiq.adapters.inbound.schemas import RuleReportOut
+from papiq.core.domain.classification import CHANGE_FIELDS, SPACE, field_key
 from papiq.core.domain.documents import UNSET, Channel, Document, DocumentChanges
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.fields import field_from_json
@@ -77,17 +78,16 @@ inbox = APIRouter(prefix="/inbox", tags=["inbox"], dependencies=PROTECTED)
 
 
 class LaneFilter(StrEnum):
+    """A lane, or `processing`: documents that have no lane yet."""
+
     GREEN = "green"
     YELLOW = "yellow"
     RED = "red"
     PROCESSING = "processing"
 
 
-_LANES: dict[LaneFilter, Lane | None] = {
-    LaneFilter.GREEN: Lane.GREEN,
-    LaneFilter.YELLOW: Lane.YELLOW,
-    LaneFilter.RED: Lane.RED,
-    LaneFilter.PROCESSING: None,
+_LANES: dict[LaneFilter, Lane | None] = {LaneFilter(lane): lane for lane in Lane} | {
+    LaneFilter.PROCESSING: None
 }
 
 
@@ -756,19 +756,12 @@ async def list_inbox(
 
 def _differences(before: Document, after: Document) -> list[str]:
     fields: dict[str, tuple[object, object]] = {
-        "title": (before.title, after.title),
-        "contact": (before.contact_id, after.contact_id),
-        "document_type": (before.document_type_id, after.document_type_id),
-        "topic": (before.topic_id, after.topic_id),
-        "tags": (before.tag_ids, after.tag_ids),
-        "document_date": (before.document_date, after.document_date),
-        "space": (before.space_id, after.space_id),
+        name: (getattr(before, attribute), getattr(after, attribute))
+        for name, attribute in CHANGE_FIELDS.items()
     }
+    fields[SPACE] = (before.space_id, after.space_id)
     for field in sorted(set(before.fields) | set(after.fields)):
-        fields[f"field:{field}"] = (
-            before.fields.get(field),
-            after.fields.get(field),
-        )
+        fields[field_key(field)] = (before.fields.get(field), after.fields.get(field))
     return [name for name, (old, new) in fields.items() if old != new]
 
 

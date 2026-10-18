@@ -13,11 +13,12 @@ from typing import Any
 from uuid import UUID
 
 from papiq.core.domain.classification import (
+    CHANGE_FIELDS,
     CONTACT,
-    DOCUMENT_DATE,
-    DOCUMENT_TYPE,
-    TAGS,
-    TOPIC,
+    REVIEW,
+    SPACE,
+    TITLE,
+    CheckField,
     FieldCheck,
     checks_from_json,
     field_id_of,
@@ -28,6 +29,10 @@ from papiq.core.domain.fields import FieldDefinition, field_from_json
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.pipeline import (
+    ACCEPTED,
+    CONFIRMED_BY,
+    ENTERED,
+    KEPT,
     NODES,
     OUTSIDE_PIPELINE,
     PERSON,
@@ -37,7 +42,7 @@ from papiq.core.domain.pipeline import (
     Outcome,
 )
 
-ALWAYS_SET = frozenset({"space", "title", "review"})
+ALWAYS_SET = frozenset({SPACE, TITLE, REVIEW})
 """Open fields of the rules that always have a value: confirming keeps it."""
 
 MODEL_NODES = (Node.JUDGE, Node.FIELDS)
@@ -178,7 +183,7 @@ def decide(
     undecided: list[str] = []
     for item in open:
         for check in item.fields:
-            field_id = _field_id(check.field)
+            field_id = field_id_of(check.field)
             if field_id is not None and field_id not in definitions:
                 continue
             if _left_empty_by_hand(check, field_id, changes, definitions):
@@ -202,7 +207,7 @@ def decide(
     combined = replace(
         changes,
         fields=fields,
-        **{_CHANGE_FIELDS[name]: value for name, value in suggested.items()},
+        **{CHANGE_FIELDS[name]: value for name, value in suggested.items()},
     )
     return Decision(
         changes=combined,
@@ -246,23 +251,13 @@ def confirmation(
 ) -> NodeResult:
     """The log entry's result for a node the owner confirmed."""
     output: JsonObject = {
-        "confirmed_by": str(confirmed_by),
+        CONFIRMED_BY: str(confirmed_by),
         "outcome_before": None if before is None else before.value,
-        "accepted": list(decision.accepted.get(node, ())),
-        "entered": list(decision.entered.get(node, ())),
-        "kept": list(decision.kept.get(node, ())),
+        ACCEPTED: list(decision.accepted.get(node, ())),
+        ENTERED: list(decision.entered.get(node, ())),
+        KEPT: list(decision.kept.get(node, ())),
     }
     return NodeResult(outcome=Outcome.OK, model_version=PERSON, output=output)
-
-
-_CHANGE_FIELDS = {
-    CONTACT: "contact_id",
-    DOCUMENT_TYPE: "document_type_id",
-    TOPIC: "topic_id",
-    TAGS: "tag_ids",
-    DOCUMENT_DATE: "document_date",
-    "title": "title",
-}
 
 
 def _checks(result: NodeResult) -> list[FieldCheck]:
@@ -272,20 +267,10 @@ def _checks(result: NodeResult) -> list[FieldCheck]:
         return []
 
 
-def _field_id(field: str) -> FieldId | None:
-    id = field_id_of(field)
-    if id is None:
-        return None
-    try:
-        return FieldId(UUID(id))
-    except ValueError:
-        return None
-
-
 def _given(changes: DocumentChanges, field: str, field_id: FieldId | None) -> bool:
     if field_id is not None:
         return field_id in changes.fields
-    name = _CHANGE_FIELDS.get(field)
+    name = CHANGE_FIELDS.get(field)
     return name is not None and not isinstance(getattr(changes, name), Unset)
 
 
@@ -306,7 +291,7 @@ def _has_value(document: Document, field: str, field_id: FieldId | None) -> bool
         return True
     if field_id is not None:
         return field_id in document.fields
-    name = _CHANGE_FIELDS.get(field)
+    name = CHANGE_FIELDS.get(field)
     return name is not None and getattr(document, name) not in (None, set())
 
 
@@ -320,15 +305,15 @@ def _suggested(
         if field_id is not None:
             return field_from_json(definitions[field_id], value)
         match check.field:
-            case "contact":
+            case CheckField.CONTACT:
                 return ContactId(UUID(str(value)))
-            case "document_type":
+            case CheckField.DOCUMENT_TYPE:
                 return DocumentTypeId(UUID(str(value)))
-            case "topic":
+            case CheckField.TOPIC:
                 return TagId(UUID(str(value)))
-            case "tags" if isinstance(value, list):
+            case CheckField.TAGS if isinstance(value, list):
                 return frozenset(TagId(UUID(str(item))) for item in value)
-            case "document_date":
+            case CheckField.DOCUMENT_DATE:
                 return date.fromisoformat(str(value))
     except ValueError:
         pass

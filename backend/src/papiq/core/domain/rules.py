@@ -31,6 +31,7 @@ from enum import StrEnum
 from typing import Literal, Self
 from uuid import UUID
 
+from papiq.core.domain.classification import field_key
 from papiq.core.domain.documents import Channel
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.fields import FieldDefinition, FieldType, FieldValue, field_from_json
@@ -497,7 +498,7 @@ def _single_key(action: Action) -> str | None:
     """The field an action sets alone; two such actions in one rule contradict each other."""
     match action:
         case SetField(field_id=field):
-            return f"field:{field}"
+            return field_key(field)
         case AddTags() | RemoveTags() | ForceReview():
             return None
     return action.type

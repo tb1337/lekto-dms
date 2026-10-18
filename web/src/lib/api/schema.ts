@@ -3452,6 +3452,7 @@ export interface components {
 		Lane: 'green' | 'yellow' | 'red';
 		/**
 		 * LaneFilter
+		 * @description A lane, or `processing`: documents that have no lane yet.
 		 * @enum {string}
 		 */
 		LaneFilter: 'green' | 'yellow' | 'red' | 'processing';
@@ -3833,6 +3834,12 @@ export interface components {
 		 * @enum {string}
 		 */
 		NodeStatus: 'waiting' | 'running' | 'done' | 'skipped';
+		/**
+		 * NoteKind
+		 * @description Why a rule's action was not applied, or a review the rule forces.
+		 * @enum {string}
+		 */
+		NoteKind: 'skipped' | 'overruled' | 'refused' | 'conflict' | 'review' | 'yielded';
 		/** OidcInfo */
 		OidcInfo: {
 			/** Enabled */
@@ -4352,12 +4359,8 @@ export interface components {
 		RuleNoteOut: {
 			/** Field */
 			field: string;
-			/**
-			 * Kind
-			 * @description `overruled`: a person decided the field; `refused`: not allowed (rights, scope, unconfirmed values); `conflict`: rules or values disagree; `skipped`: something it refers to is gone or does not apply, or a template writes a missing value; `review`: the rule holds the document for a review; `yielded`: a document type's title pattern gave way to another rule that sets the title.
-			 * @enum {string}
-			 */
-			kind: 'skipped' | 'overruled' | 'refused' | 'conflict' | 'review' | 'yielded';
+			/** @description `overruled`: a person decided the field; `refused`: not allowed (rights, scope, unconfirmed values); `conflict`: rules or values disagree; `skipped`: something it refers to is gone or does not apply, or a template writes a missing value; `review`: the rule holds the document for a review; `yielded`: a document type's title pattern gave way to another rule that sets the title. */
+			kind: components['schemas']['NoteKind'];
 			/** Reason */
 			reason: string;
 		};

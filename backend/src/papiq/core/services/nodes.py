@@ -71,7 +71,7 @@ class OcrNode:
                     output={},
                 )
         async with work_directory() as work:
-            original, archive = work / "original", work / "archive.pdf"
+            original, archive = work / ORIGINAL_FILE, work / ARCHIVE_FILE
             await self._store.download(original_key(document.sha256), original)
             result = await self._ocr.make_archive(
                 original, archive, media_type=document.media_type, vision=vision
@@ -156,7 +156,7 @@ class PagesNode:
 
     async def run(self, document: Document) -> "PagesResult":
         async with work_directory() as work:
-            original, pages = work / "original", work / "pages"
+            original, pages = work / ORIGINAL_FILE, work / "pages"
             pages.mkdir()
             await self._store.download(original_key(document.sha256), original)
             rendered = await self._renderer.render_pages(
@@ -207,19 +207,13 @@ class ParseNode:
 
     async def run(self, document: Document) -> NodeResult:
         async with work_directory() as work:
-            archive, read, structure = (
-                work / "archive.pdf",
-                work / "content.txt",
-                work / "content.json",
-            )
+            archive, read, structure = work / ARCHIVE_FILE, work / TEXT_FILE, work / STRUCTURE_FILE
             await self._store.download(archive_key(document.id), archive)
             result = await self._parser.parse(archive, text=read, structure=structure)
             text = await asyncio.to_thread(read.read_text, encoding="utf-8")
+            await self._store.upload(text_key(document.id), read, content_type=media_types.TEXT)
             await self._store.upload(
-                text_key(document.id), read, content_type="text/plain; charset=utf-8"
-            )
-            await self._store.upload(
-                structure_key(document.id), structure, content_type="application/json"
+                structure_key(document.id), structure, content_type=media_types.JSON
             )
             await self._store.delete(legacy_text_key(document.id))
         input: JsonObject = {"archive": archive_key(document.id)}
@@ -244,6 +238,13 @@ class ParseNode:
 
 def has_text(text: str) -> bool:
     return _WORD.search(text) is not None
+
+
+# The files of a node's work directory.
+ORIGINAL_FILE = "original"
+ARCHIVE_FILE = "archive.pdf"
+TEXT_FILE = "content.txt"
+STRUCTURE_FILE = "content.json"
 
 
 @asynccontextmanager

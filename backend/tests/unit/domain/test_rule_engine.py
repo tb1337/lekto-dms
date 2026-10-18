@@ -28,6 +28,7 @@ from papiq.core.domain.rule_engine import (
     Match,
     Mode,
     Note,
+    NoteKind,
     RulePlan,
     Situation,
     SpaceTarget,
@@ -1028,7 +1029,7 @@ def test_a_missing_value_leaves_the_title() -> None:
     result = run([rule(SetTitle("Invoice {{ contact }}"))], situation(doc()))
 
     assert result.changes.title is UNSET
-    assert result.reports[0].notes == [Note("title", "skipped", "contact has no value")]
+    assert result.reports[0].notes == [Note("title", NoteKind.SKIPPED, "contact has no value")]
     assert check_or_none(result, "title") is None  # nothing to decide: not yellow
 
 

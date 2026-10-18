@@ -18046,7 +18046,8 @@
           "red",
           "processing"
         ],
-        "title": "LaneFilter"
+        "title": "LaneFilter",
+        "description": "A lane, or `processing`: documents that have no lane yet."
       },
       "LinkOut": {
         "properties": {
@@ -18782,6 +18783,19 @@
           "skipped"
         ],
         "title": "NodeStatus"
+      },
+      "NoteKind": {
+        "type": "string",
+        "enum": [
+          "skipped",
+          "overruled",
+          "refused",
+          "conflict",
+          "review",
+          "yielded"
+        ],
+        "title": "NoteKind",
+        "description": "Why a rule's action was not applied, or a review the rule forces."
       },
       "OidcInfo": {
         "properties": {
@@ -19721,16 +19735,7 @@
             "title": "Field"
           },
           "kind": {
-            "type": "string",
-            "enum": [
-              "skipped",
-              "overruled",
-              "refused",
-              "conflict",
-              "review",
-              "yielded"
-            ],
-            "title": "Kind",
+            "$ref": "#/components/schemas/NoteKind",
             "description": "`overruled`: a person decided the field; `refused`: not allowed (rights, scope, unconfirmed values); `conflict`: rules or values disagree; `skipped`: something it refers to is gone or does not apply, or a template writes a missing value; `review`: the rule holds the document for a review; `yielded`: a document type's title pattern gave way to another rule that sets the title."
           },
           "reason": {

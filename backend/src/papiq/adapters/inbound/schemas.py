@@ -1,13 +1,13 @@
 """Response bodies that more than one inbound adapter (REST, MCP) returns."""
 
 from datetime import date
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, TypeAdapter
 
 from papiq.core.domain.fields import FieldValue, field_to_json
-from papiq.core.domain.rule_engine import RuleReport
+from papiq.core.domain.rule_engine import NoteKind, RuleReport
 from papiq.core.domain.rules import RuleScope
 
 
@@ -54,7 +54,7 @@ class RuleEffectOut(BaseModel):
 
 class RuleNoteOut(BaseModel):
     field: str
-    kind: Literal["skipped", "overruled", "refused", "conflict", "review", "yielded"] = Field(
+    kind: NoteKind = Field(
         description=(
             "`overruled`: a person decided the field; `refused`: not allowed (rights, scope, "
             "unconfirmed values); `conflict`: rules or values disagree; `skipped`: something "

@@ -31,8 +31,17 @@ from papiq.core.domain.ids import DocumentId, RuleApplicationId, RuleId, UserId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.permissions import can_write_document
-from papiq.core.domain.pipeline import RULES_APPLY, Lane, Node, NodeResult, NodeRun, Outcome
-from papiq.core.domain.rule_engine import Effect, Mode, Note
+from papiq.core.domain.pipeline import (
+    ACTOR,
+    RULES_APPLY,
+    TRIGGER,
+    Lane,
+    Node,
+    NodeResult,
+    NodeRun,
+    Outcome,
+)
+from papiq.core.domain.rule_engine import Effect, Mode, Note, NoteKind
 from papiq.core.domain.rules import Rule, RuleApplication, RuleScope
 from papiq.core.domain.users import User
 from papiq.core.ports import (
@@ -164,8 +173,8 @@ class RuleApplicationService:
             if run is None:
                 continue
             report = run.plan.reports[0]
-            conflicts = tuple(note for note in report.notes if note.kind == "conflict")
-            others = tuple(note for note in report.notes if note.kind != "conflict")
+            conflicts = tuple(note for note in report.notes if note.kind is NoteKind.CONFLICT)
+            others = tuple(note for note in report.notes if note.kind is not NoteKind.CONFLICT)
             if report.applied or conflicts:
                 items.append(PreviewItem(current, tuple(report.applied), conflicts, others))
         return ApplyPreview(rule, tuple(items), next_cursor)
@@ -342,8 +351,8 @@ class RuleApplicationService:
                     outcome=Outcome.OK,
                     model_version=RULES_APPLY,
                     input={
-                        "trigger": "apply",
-                        "actor": str(user.id),
+                        TRIGGER: "apply",
+                        ACTOR: str(user.id),
                         "application_id": str(application.id),
                         "rules": checked_rules([rule]),
                     },

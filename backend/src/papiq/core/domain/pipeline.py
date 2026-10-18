@@ -172,6 +172,24 @@ upload into a given space, a move); rules leave the space then."""
 CHOSEN_SPACE = "space_id"
 """Key of the space a person chose, in the input of a `PERSON_SPACE` entry and the output of a
 `PERSON` entry."""
+TRIGGER = "trigger"
+"""Key of what set off an `apply_rules` entry (`rules.Trigger`, or `apply`), in its input."""
+ACTOR = "actor"
+"""Key of the person who set off an entry (a change, a rule applied on request, a space they
+chose), in its input."""
+CONFIRMED_BY = "confirmed_by"
+"""Key of the owner who confirmed, in the output of a `PERSON` entry."""
+ACCEPTED = "accepted"
+ENTERED = "entered"
+KEPT = "kept"
+"""Keys of the fields the owner decided in the output of a `PERSON` entry: the suggestions they
+accepted, the values they entered, the values they kept."""
+CHANGED = "changed"
+TAGS_ADDED = "tags_added"
+TAGS_REMOVED = "tags_removed"
+CORRECTED = "corrected"
+"""Keys of what a person changed (`rules.running.person_record`): the fields they set, the tags
+they added and removed, the fields whose values they really altered."""
 OUTSIDE_PIPELINE = frozenset({RULES_CHANGE, RULES_APPLY, PERSON_SPACE})
 """Log entries written outside processing; they say nothing about a node's state."""
 
@@ -182,9 +200,9 @@ def space_chooser(log: Sequence[NodeRun], space: UUID) -> UUID | None:
     for entry in reversed(log):
         result = entry.result
         if result.model_version == PERSON_SPACE:
-            actor, chosen = result.input.get("actor"), result.input.get(CHOSEN_SPACE)
+            actor, chosen = result.input.get(ACTOR), result.input.get(CHOSEN_SPACE)
         elif result.model_version == PERSON:
-            actor, chosen = result.output.get("confirmed_by"), result.output.get(CHOSEN_SPACE)
+            actor, chosen = result.output.get(CONFIRMED_BY), result.output.get(CHOSEN_SPACE)
         else:
             continue
         if chosen == str(space):

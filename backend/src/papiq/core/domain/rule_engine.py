@@ -46,12 +46,17 @@ from pathlib import PurePath
 from uuid import UUID
 
 from papiq.core.domain.classification import (
+    CHANGE_FIELDS,
     CONTACT,
     DOCUMENT_TYPE,
+    REVIEW,
+    SPACE,
     TAGS,
     TITLE,
     TOPIC,
+    CheckField,
     FieldCheck,
+    field_id_of,
     field_key,
 )
 from papiq.core.domain.documents import Channel, Document, DocumentChanges, Unset
@@ -100,8 +105,6 @@ from papiq.core.domain.rules import (
 from papiq.core.domain.tag_tree import TagTree
 from papiq.core.domain.templates import Render, TemplateValue, template_values
 
-SPACE = "space"
-REVIEW = "review"
 TEXT_TARGET = "text"
 
 type Truth = bool | None
@@ -511,14 +514,23 @@ class Effect:
     new: JsonValue
 
 
+class NoteKind(StrEnum):
+    """Why a rule's action was not applied, or a review the rule forces."""
+
+    SKIPPED = "skipped"  # gone, does not apply, or a template writes a missing value
+    OVERRULED = "overruled"  # a person decided the field
+    REFUSED = "refused"  # rights, scope, unconfirmed values
+    CONFLICT = "conflict"  # rules or values disagree
+    REVIEW = "review"  # the rule holds the document for a review
+    YIELDED = "yielded"  # the type's title pattern gave way to another rule
+
+
 @dataclass(frozen=True)
 class Note:
-    """An action that was not applied, and why (`kind`: skipped, overruled, refused,
-    conflict, yielded: the title pattern gave way to another rule), or a review the rule
-    forces (`review`)."""
+    """An action that was not applied, and why, or a review the rule forces."""
 
     field: str
-    kind: str
+    kind: NoteKind
     reason: str
 
 
@@ -630,24 +642,25 @@ class _Planner:
                 self._collect(match, report, action)
         result: dict[str, JsonValue] = {}
         self._person_topic()
-        for field_name in (DOCUMENT_TYPE, CONTACT, SPACE):
-            self._single(field_name, result)
+        for single in (DOCUMENT_TYPE, CONTACT, SPACE):
+            self._single(single, result)
         self._topic(result)
         type_after = self._type_after(result)
         self._text_fields(result, type_after)
         fields: dict[FieldId, object] = {}
-        for field_name in [name for name in self._candidates if name.startswith("field:")]:
-            field = FieldId(UUID(field_name.removeprefix("field:")))
-            definition = self._s.definitions[field]
+        for field_name, field_id in [
+            (name, id) for name in self._candidates if (id := field_id_of(name)) is not None
+        ]:
+            definition = self._s.definitions[field_id]
             if not definition.applies_to(type_after):
                 for candidate in self._candidates[field_name]:
                     candidate.report.notes.append(
-                        Note(field_name, "skipped", f"'{definition.name}' does not apply")
+                        Note(field_name, NoteKind.SKIPPED, f"'{definition.name}' does not apply")
                     )
                 continue
             self._single(field_name, result)
             if field_name in result:
-                fields[field] = field_from_json(definition, result[field_name])
+                fields[field_id] = field_from_json(definition, result[field_name])
         tags = self._tags()
         values = self._values(result, type_after, fields, tags)
         self._title(result, values)
@@ -678,7 +691,7 @@ class _Planner:
             labels={
                 name: f"'{definitions[id].name}'"
                 for name in self._checks
-                if (id := _field_id(name)) is not None and id in definitions
+                if (id := field_id_of(name)) is not None and id in definitions
             },
         )
 
@@ -702,17 +715,19 @@ class _Planner:
                 tree = s.taxonomy.tree
                 for tag in sorted(tags):
                     if tag not in s.existing:
-                        report.notes.append(Note(TAGS, "skipped", f"tag {tag} no longer exists"))
+                        report.notes.append(
+                            Note(TAGS, NoteKind.SKIPPED, f"tag {tag} no longer exists")
+                        )
                     elif tag in tree and tree.tags[tag].scope is not TagScope.DOCUMENT:
                         reason = f"tag {self._tag(tag)} is a group, not a document tag"
-                        report.notes.append(Note(TAGS, "skipped", reason))
+                        report.notes.append(Note(TAGS, NoteKind.SKIPPED, reason))
                     else:
                         target.setdefault(tag, []).append(report)
             case SetField(field_id=field, value=value):
                 name = field_key(field)
                 definition = s.definitions.get(field)
                 if definition is None:
-                    report.notes.append(Note(name, "skipped", "the field no longer exists"))
+                    report.notes.append(Note(name, NoteKind.SKIPPED, "the field no longer exists"))
                     return
                 if definition.data_type is FieldType.TEXT and isinstance(value, str):
                     self._texts.append((report, action, match))
@@ -720,7 +735,7 @@ class _Planner:
                 try:
                     field_from_json(definition, value)
                 except ValidationError as error:
-                    report.notes.append(Note(name, "skipped", str(error)))
+                    report.notes.append(Note(name, NoteKind.SKIPPED, str(error)))
                     return
                 self._candidates.setdefault(name, []).append(_Candidate(report, value, match))
             case ForceReview(reason=reason):
@@ -730,10 +745,10 @@ class _Planner:
         self, field_name: str, value: str, id: object, match: Match, report: RuleReport
     ) -> None:
         if match.rule.scope is RuleScope.GLOBAL:
-            report.notes.append(Note(field_name, "refused", "global rules cannot set it"))
+            report.notes.append(Note(field_name, NoteKind.REFUSED, "global rules cannot set it"))
         elif id not in self._s.existing:
             report.notes.append(
-                Note(field_name, "skipped", f"{field_name} {value} no longer exists")
+                Note(field_name, NoteKind.SKIPPED, f"{field_name} {value} no longer exists")
             )
         else:
             self._candidates.setdefault(field_name, []).append(_Candidate(report, value, match))
@@ -742,14 +757,16 @@ class _Planner:
         s = self._s
         target = s.spaces.get(space)
         if match.rule.scope is RuleScope.GLOBAL:
-            report.notes.append(Note(SPACE, "refused", "global rules never change visibility"))
+            report.notes.append(
+                Note(SPACE, NoteKind.REFUSED, "global rules never change visibility")
+            )
         elif match.rule.owner_id != self._document.owner_id:
-            report.notes.append(Note(SPACE, "refused", "the rule's owner does not own it"))
+            report.notes.append(Note(SPACE, NoteKind.REFUSED, "the rule's owner does not own it"))
         elif target is None:
-            report.notes.append(Note(SPACE, "skipped", f"space {space} no longer exists"))
+            report.notes.append(Note(SPACE, NoteKind.SKIPPED, f"space {space} no longer exists"))
         elif not target.writable:
             reason = f"no write access to space '{target.name}' (any more)"
-            report.notes.append(Note(SPACE, "refused", reason))
+            report.notes.append(Note(SPACE, NoteKind.REFUSED, reason))
             if s.mode is Mode.INGEST and SPACE not in s.locked:
                 self._uncertain(SPACE, f"rule '{report.name}': {reason}", suggestion=None)
         elif target.shared and not match.trusted and s.mode is Mode.RETROACTIVE:
@@ -762,11 +779,11 @@ class _Planner:
                     f"files into the shared space '{target.name}' with an unconfirmed "
                     f"{fields}; not accepted"
                 )
-                report.notes.append(Note(SPACE, "conflict", reason))
+                report.notes.append(Note(SPACE, NoteKind.CONFLICT, reason))
         elif target.shared and not match.trusted:
             fields = ", ".join(match.distrusted)
             reason = f"files into the shared space '{target.name}' only with a confirmed {fields}"
-            report.notes.append(Note(SPACE, "refused", reason))
+            report.notes.append(Note(SPACE, NoteKind.REFUSED, reason))
             if s.mode is Mode.INGEST:
                 for name in match.distrusted:
                     self._uncertain(
@@ -780,11 +797,13 @@ class _Planner:
     def _review(self, report: RuleReport, reason: str) -> None:
         s = self._s
         if s.mode is not Mode.INGEST:
-            report.notes.append(Note(REVIEW, "skipped", "reviews are forced on arrival only"))
+            report.notes.append(
+                Note(REVIEW, NoteKind.SKIPPED, "reviews are forced on arrival only")
+            )
         elif report.rule_id in s.reviewed:
-            report.notes.append(Note(REVIEW, "overruled", "a person confirmed the review"))
+            report.notes.append(Note(REVIEW, NoteKind.OVERRULED, "a person confirmed the review"))
         else:
-            report.notes.append(Note(REVIEW, "review", reason))
+            report.notes.append(Note(REVIEW, NoteKind.REVIEW, reason))
             self._reviews.append(f"rule '{report.name}': {reason}")
             self._uncertain(REVIEW, f"rule '{report.name}': {reason}", suggestion=None)
 
@@ -804,7 +823,7 @@ class _Planner:
             )
             disagree = f"rules set different values ({listed})"
             for candidate in candidates:
-                candidate.report.notes.append(Note(field_name, "conflict", disagree))
+                candidate.report.notes.append(Note(field_name, NoteKind.CONFLICT, disagree))
             if s.mode is Mode.INGEST and field_name not in s.locked:
                 self._uncertain(field_name, disagree, suggestion=candidates[0].value)
             return
@@ -812,7 +831,7 @@ class _Planner:
         if _key(value) == _key(current):
             return
         reason: str | None = None
-        kind = "conflict"
+        kind = NoteKind.CONFLICT
         if s.mode is Mode.RETROACTIVE:
             if not self._empty(field_name, current) and not s.accept_conflicts:
                 reason = (
@@ -820,7 +839,7 @@ class _Planner:
                     "not accepted"
                 )
         elif field_name in s.locked:
-            kind, reason = "overruled", "a person decided this field"
+            kind, reason = NoteKind.OVERRULED, "a person decided this field"
         elif field_name in s.model_values and _key(s.model_values[field_name]) == _key(current):
             reason = f"the model set another value ({self._shown(field_name, current)})"
             if s.mode is Mode.INGEST:
@@ -852,7 +871,7 @@ class _Planner:
                 kept.append(candidate)
             else:
                 reason = f"a person chose the topic {self._tag(topic)}, which it does not enable"
-                candidate.report.notes.append(Note(CONTACT, "overruled", reason))
+                candidate.report.notes.append(Note(CONTACT, NoteKind.OVERRULED, reason))
         if kept:
             self._candidates[CONTACT] = kept
         else:
@@ -874,7 +893,7 @@ class _Planner:
                     if contact_id is None
                     else f"its contact does not enable the topic {named}"
                 )
-                candidate.report.notes.append(Note(TOPIC, "skipped", reason))
+                candidate.report.notes.append(Note(TOPIC, NoteKind.SKIPPED, reason))
         kept = [item for item in candidates if TagId(UUID(str(item.value))) in enabled]
         if kept:
             self._candidates[TOPIC] = kept
@@ -895,7 +914,7 @@ class _Planner:
         for tag in sorted(both):
             reason = f"tag {self._tag(tag)} is added and removed by rules"
             for report in self._adds[tag] + self._removes[tag]:
-                report.notes.append(Note(TAGS, "conflict", reason))
+                report.notes.append(Note(TAGS, NoteKind.CONFLICT, reason))
             if s.mode is Mode.INGEST and TAGS not in s.locked:
                 self._uncertain(TAGS, reason, suggestion=None)
         added: set[TagId] = set()
@@ -906,7 +925,7 @@ class _Planner:
             if tag in s.person_removed_tags:
                 for report in reports:
                     reason = f"a person removed tag {self._tag(tag)}"
-                    report.notes.append(Note(TAGS, "overruled", reason))
+                    report.notes.append(Note(TAGS, NoteKind.OVERRULED, reason))
                 continue
             added.add(tag)
         for tag, reports in self._removes.items():
@@ -915,7 +934,7 @@ class _Planner:
             if tag in s.person_added_tags:
                 for report in reports:
                     reason = f"a person set tag {self._tag(tag)}"
-                    report.notes.append(Note(TAGS, "overruled", reason))
+                    report.notes.append(Note(TAGS, NoteKind.OVERRULED, reason))
                 continue
             removed.add(tag)
             for report in reports:
@@ -930,7 +949,7 @@ class _Planner:
                     report.applied.append(Effect(TAGS, None, str(tag)))
                 else:
                     reason = f"tag {self._tag(tag)} is above a tag the document has"
-                    report.notes.append(Note(TAGS, "skipped", reason))
+                    report.notes.append(Note(TAGS, NoteKind.SKIPPED, reason))
         return None if result == current else result
 
     def _title(self, result: dict[str, JsonValue], values: Mapping[str, TemplateValue]) -> None:
@@ -940,14 +959,14 @@ class _Planner:
         for report, action, match in self._titles:
             pattern = match.rule.managed_by is not None
             if match.rule.scope is RuleScope.GLOBAL and not pattern:
-                report.notes.append(Note(TITLE, "refused", "global rules cannot set it"))
+                report.notes.append(Note(TITLE, NoteKind.REFUSED, "global rules cannot set it"))
                 continue
             rendered = self._render(report, TITLE, action.template, values)
             if rendered is None:
                 continue
             title = " ".join(rendered.split())
             if not title:
-                report.notes.append(Note(TITLE, "skipped", "the title would be empty"))
+                report.notes.append(Note(TITLE, NoteKind.SKIPPED, "the title would be empty"))
                 continue
             candidate = _Candidate(report, title, match)
             if pattern:
@@ -957,7 +976,9 @@ class _Planner:
         # The type's title pattern gives way to a rule of its own that sets the title.
         if TITLE in self._candidates:
             for candidate in patterns:
-                candidate.report.notes.append(Note(TITLE, "yielded", "another rule sets the title"))
+                candidate.report.notes.append(
+                    Note(TITLE, NoteKind.YIELDED, "another rule sets the title")
+                )
         elif patterns:
             self._candidates[TITLE] = patterns
         self._single(TITLE, result)
@@ -976,13 +997,13 @@ class _Planner:
             if rendered is None:
                 continue
             if not rendered.strip():
-                report.notes.append(Note(name, "skipped", "the value would be empty"))
+                report.notes.append(Note(name, NoteKind.SKIPPED, "the value would be empty"))
                 continue
             value = rendered.strip()
             try:
                 field_from_json(self._s.definitions[action.field_id], value)
             except ValidationError as error:
-                report.notes.append(Note(name, "skipped", str(error)))
+                report.notes.append(Note(name, NoteKind.SKIPPED, str(error)))
                 continue
             self._candidates.setdefault(name, []).append(_Candidate(report, value, match))
 
@@ -1047,7 +1068,7 @@ class _Planner:
         try:
             return self._s.render(template, values)
         except (MissingValueError, ValidationError) as error:
-            report.notes.append(Note(field_name, "skipped", str(error)))
+            report.notes.append(Note(field_name, NoteKind.SKIPPED, str(error)))
             return None
 
     # --- helpers ------------------------------------------------------------------------------
@@ -1070,7 +1091,7 @@ class _Planner:
             return str(value) if name is None else f"'{name}'"
         if field_name == TITLE:
             return f"'{value}'"
-        field = _field_id(field_name)
+        field = field_id_of(field_name)
         definition = None if field is None else s.definitions.get(field)
         return str(value) if definition is None else _value_text(definition, value)
 
@@ -1088,20 +1109,19 @@ class _Planner:
     def _current(self, field_name: str) -> JsonValue:
         document = self._document
         match field_name:
-            case "contact":
+            case CheckField.CONTACT:
                 return None if document.contact_id is None else str(document.contact_id)
-            case "document_type":
+            case CheckField.DOCUMENT_TYPE:
                 return None if document.document_type_id is None else str(document.document_type_id)
-            case "topic":
+            case CheckField.TOPIC:
                 return None if document.topic_id is None else str(document.topic_id)
-            case "space":
+            case CheckField.SPACE:
                 return str(document.space_id)
-            case "title":
+            case CheckField.TITLE:
                 return document.title
-            case "tags":
+            case CheckField.TAGS:
                 return [str(tag) for tag in sorted(document.tag_ids)]
-        if field_name.startswith("field:"):
-            field = FieldId(UUID(field_name.removeprefix("field:")))
+        if (field := field_id_of(field_name)) is not None:
             value = document.fields.get(field)
             return None if value is None else field_to_json(value)
         return None
@@ -1133,16 +1153,6 @@ class _Planner:
 def _key(value: JsonValue) -> str:
     """Comparable form of a JSON value."""
     return repr(value)
-
-
-def _field_id(field_name: str) -> FieldId | None:
-    """The field a check of `field:<id>` is about; None for the others."""
-    if not field_name.startswith("field:"):
-        return None
-    try:
-        return FieldId(UUID(field_name.removeprefix("field:")))
-    except ValueError:
-        return None
 
 
 def _value_text(definition: FieldDefinition, value: JsonValue) -> str:
@@ -1182,18 +1192,10 @@ def _default_title(document: Document) -> str:
 
 def changed_fields(changes: DocumentChanges) -> frozenset[str]:
     """The fields a change sets (given, not left unset), named as in field checks."""
-    names = {
-        "title": TITLE,
-        "contact_id": CONTACT,
-        "document_type_id": DOCUMENT_TYPE,
-        "topic_id": TOPIC,
-        "tag_ids": TAGS,
-        "document_date": "document_date",
-    }
-    given = {
+    given: set[str] = {
         field_name
-        for field, field_name in names.items()
-        if not isinstance(getattr(changes, field), Unset)
+        for field_name, attribute in CHANGE_FIELDS.items()
+        if not isinstance(getattr(changes, attribute), Unset)
     }
     given.update(field_key(id) for id in changes.fields)
     return frozenset(given)

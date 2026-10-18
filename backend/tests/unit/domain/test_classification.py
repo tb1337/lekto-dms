@@ -57,8 +57,9 @@ def test_field_check_rules() -> None:
 def test_field_keys() -> None:
     definition = FieldDefinition.create(name="Betrag", data_type=FieldType.AMOUNT, now=NOW)
     field = field_key(definition.id)
-    assert field_id_of(field) == str(definition.id)
+    assert field_id_of(field) == definition.id
     assert field_id_of("contact") is None
+    assert field_id_of("field:nonsense") is None
 
 
 @pytest.mark.parametrize(

@@ -32,6 +32,7 @@ from papiq.core.ports.logos import FetchedLogo
 from papiq.core.services.logos import FETCHING_OFF, LOGO_JOB, LOGO_MAX_SIZE, LogoService
 from papiq.core.services.master_data import replace_learned_identifiers
 from papiq.core.services.objects import logo_key
+from tests import builders
 from tests.builders import NOW
 from tests.contracts.images import SVG, image
 from tests.unit.services.conftest import World
@@ -114,10 +115,7 @@ async def queued(world: World) -> list[dict[str, object]]:
 
 
 async def run_all(logos: LogoService) -> int:
-    count = 0
-    while await logos.run_next_job():
-        count += 1
-    return count
+    return await builders.drain(logos)
 
 
 async def stored(world: World, id: ContactId) -> Contact:

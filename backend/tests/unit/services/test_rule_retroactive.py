@@ -9,6 +9,7 @@ from papiq.core.domain.pipeline import RULES_APPLY, Lane
 from papiq.core.domain.rules import ApplicationStatus, ForceReview, SetSpace, SetTitle
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.services.rules.retroactive import BATCH
+from tests import builders
 from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (
     MAX_DOCUMENTS,
@@ -25,10 +26,7 @@ from tests.unit.services.rules_support import (
 
 
 async def run_jobs(r: RuleWorld) -> int:
-    count = 0
-    while await r.applications.run_next_job():
-        count += 1
-    return count
+    return await builders.drain(r.applications)
 
 
 async def test_the_preview_lists_changes_and_the_job_applies_the_pinned_version(

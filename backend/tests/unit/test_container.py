@@ -364,10 +364,7 @@ async def test_memory_container_runs_the_core() -> None:
     assert built.clock is clock
     services = build_services(built)
 
-    admin = builders.admin()
-    async with built.unit_of_work() as uow:
-        await uow.users.add(admin)
-        await uow.commit()
+    admin = await builders.seed_user(built.unit_of_work, role=Role.ADMIN)
     user = await services.users.create_user(admin.id, "dana", Role.USER)
 
     received: list[DomainEvent] = []
@@ -379,8 +376,7 @@ async def test_memory_container_runs_the_core() -> None:
     document = await services.pipeline.receive(
         user.id, incoming((SAMPLES / "scan.pdf").read_bytes()), filename="a.pdf"
     )
-    while await services.pipeline.run_next_job():
-        pass
+    await builders.drain(services.pipeline)
     # Without a language model, a person classifies the document.
     stored = await services.documents.get(user.id, document.id)
     assert stored.lane is Lane.YELLOW

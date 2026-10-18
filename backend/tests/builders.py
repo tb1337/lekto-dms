@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from papiq.adapters.outbound.liquid import LiquidTemplateRenderer
 from papiq.composition.container import (
@@ -257,3 +257,15 @@ def search_query(text: str, visibility: Visibility, **fields: Any) -> SearchQuer
     """A query of the index with the shipped semantic ratio unless `fields` give one."""
     fields.setdefault("semantic_ratio", SEARCH.semantic_ratio)
     return SearchQuery(text=text, visibility=visibility, **fields)
+
+
+class RunsJobs(Protocol):
+    async def run_next_job(self) -> bool: ...
+
+
+async def drain(runner: RunsJobs) -> int:
+    """Run `runner`'s due jobs until none is left; returns how many ran."""
+    count = 0
+    while await runner.run_next_job():
+        count += 1
+    return count

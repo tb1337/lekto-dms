@@ -353,9 +353,10 @@ async def test_search_filters_by_name(api: Api, scene: Scene) -> None:
         DocumentId(UUID(scene.green)),
         DocumentChanges(tag_ids=frozenset({tag.id})),
     )
-    await api.services.indexing.reconcile()  # type: ignore[union-attr]
-    while await api.services.indexing.run_next_job():  # type: ignore[union-attr]
-        pass
+    indexing = api.services.indexing
+    assert indexing is not None
+    await indexing.reconcile()
+    await builders.drain(indexing)
     assert await found(api, scene.headers["owner"], tags=["strom"]) == {scene.green}
     # A tag finds the documents with a tag below it.
     assert await found(api, scene.headers["owner"], tags=["Energie"]) == {scene.green}
@@ -384,9 +385,10 @@ async def test_search_filters_by_topics(api: Api, scene: Scene) -> None:
             DocumentId(UUID(which)),
             DocumentChanges(contact_id=nord.id, topic_id=topic.id),
         )
-    await api.services.indexing.reconcile()  # type: ignore[union-attr]
-    while await api.services.indexing.run_next_job():  # type: ignore[union-attr]
-        pass
+    indexing = api.services.indexing
+    assert indexing is not None
+    await indexing.reconcile()
+    await builders.drain(indexing)
     owner = scene.headers["owner"]
     assert await found(api, owner, topics=["arbeit"]) == {scene.green}
     assert await found(api, owner, topics=["Versicherung"]) == {scene.yellow}

@@ -319,8 +319,7 @@ async def test_one_piece_of_text_holds_what_the_setting_allows() -> None:
         transport=httpx2.ASGITransport(app=app), base_url="https://papiq"
     ) as client:
         response = await client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
-        while await services.pipeline.run_next_job():
-            pass
+        await builders.drain(services.pipeline)
         url = f"{response.json()['status_url']}/text"
         piece = (await client.get(url, headers=auth(owner))).json()
         too_long = await client.get(url, params={"limit": 5}, headers=auth(owner))

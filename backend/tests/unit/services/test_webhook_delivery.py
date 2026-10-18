@@ -71,10 +71,7 @@ async def log(world: World, webhook: Webhook) -> list[WebhookDelivery]:
 
 
 async def run_all(service: WebhookDeliveryService) -> int:
-    count = 0
-    while await service.run_next_job():
-        count += 1
-    return count
+    return await builders.drain(service)
 
 
 # --- fan-out ------------------------------------------------------------------------------------

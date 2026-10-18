@@ -19,6 +19,7 @@ from papiq.composition.settings import Settings
 from papiq.core.domain.webhooks import DeliveryOutcome
 from papiq.core.services.webhooks import SUBSCRIBER
 from tests import builders
+from tests.api import until
 from tests.builders import incoming
 from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.webhooks.receiver import LocalReceiver, Received
@@ -76,9 +77,7 @@ async def test_a_green_document_reaches_the_receiver_signed_after_a_failed_try()
             document = await services.pipeline.receive(
                 user.id, incoming((SAMPLES / "scan.pdf").read_bytes()), filename="a.pdf"
             )
-            async with asyncio.timeout(10):
-                while len(receiver.received) < 2:
-                    await asyncio.sleep(0.01)
+            await until(lambda: len(receiver.received) >= 2, 10, every=0.01, what="two requests")
         finally:
             worker.stop()
             await asyncio.wait_for(task, timeout=10)

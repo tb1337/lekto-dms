@@ -62,8 +62,7 @@ async def test_scan_and_photo_are_processed(
     document = await services.pipeline.receive(
         owner.id, incoming((SAMPLES / sample).read_bytes()), filename=sample
     )
-    while await services.pipeline.run_next_job():
-        pass
+    await builders.drain(services.pipeline)
 
     stored = await services.documents.get(owner.id, document.id)
     log = await services.documents.processing_log(owner.id, document.id)

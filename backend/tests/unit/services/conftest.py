@@ -164,11 +164,7 @@ class World:
 
     async def drain(self, pipeline: PipelineService | None = None) -> int:
         """Run due jobs until none is left; returns how many ran."""
-        pipeline = pipeline or self.pipeline()
-        count = 0
-        while await pipeline.run_next_job():
-            count += 1
-        return count
+        return await builders.drain(pipeline or self.pipeline())
 
     def events(self) -> list[DomainEvent]:
         return list(self.database.outbox)

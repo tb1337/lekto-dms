@@ -17,6 +17,7 @@ from papiq.adapters.inbound.rest import PREFIX
 from papiq.core.domain.pipeline import SIGNALS, Node
 from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from tests import api as helpers
+from tests.api import until
 from tests.builders import PlaceholderNode
 from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.rest.support import Api
@@ -157,9 +158,11 @@ async def test_a_stopped_run_continues_against_the_api(api: Api, tmp_path: Path)
     async with migrating(api, tmp_path) as m:
         stop = asyncio.Event()
 
+        async def three() -> bool:
+            return len(await m.documents()) >= 3
+
         async def watch() -> None:
-            while len(await m.documents()) < 3:
-                await asyncio.sleep(0.005)
+            await until(three, 30, every=0.005, what="three documents")
             stop.set()
 
         watcher = asyncio.create_task(watch())

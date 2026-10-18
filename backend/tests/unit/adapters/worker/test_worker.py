@@ -1,7 +1,7 @@
 """The worker service on in-memory adapters: runs jobs, delivers events, stops cleanly."""
 
 import asyncio
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import timedelta
@@ -15,10 +15,11 @@ from papiq.composition.container import build_services as build_all_services
 from papiq.core.domain.documents import Document
 from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.pipeline import Lane, Node, NodeResult
-from papiq.core.domain.users import User
+from papiq.core.domain.users import Role, User
 from papiq.core.services.indexing import SUBSCRIBER
 from papiq.core.services.maintenance import CLEANUP_JOB
 from tests import builders
+from tests.api import until
 from tests.builders import DEFAULT_SETTINGS, incoming
 from tests.contracts.processing import SAMPLES
 
@@ -48,12 +49,6 @@ async def running(service: Worker) -> AsyncIterator[asyncio.Task[None]]:
     finally:
         service.stop()
         await asyncio.wait_for(task, timeout=10)
-
-
-async def until(condition: Callable[[], object], timeout: float = 5) -> None:
-    async with asyncio.timeout(timeout):
-        while not condition():
-            await asyncio.sleep(0.01)
 
 
 async def owner(container: Container) -> User:
@@ -141,10 +136,8 @@ async def test_documents_reach_the_search_index() -> None:
 async def test_a_moved_tag_is_normalised_at_its_documents() -> None:
     container = build_memory_container()
     services = build_services(container)
-    user, admin = await owner(container), builders.admin()
-    async with container.unit_of_work() as uow:
-        await uow.users.add(admin)
-        await uow.commit()
+    user = await owner(container)
+    admin = await builders.seed_user(container.unit_of_work, role=Role.ADMIN)
     master = services.master_data
     insurance = await master.create_tag(admin.id, "Insurance")
     health = await master.create_tag(admin.id, "Health")
@@ -167,9 +160,11 @@ async def test_a_moved_tag_is_normalised_at_its_documents() -> None:
     )
     async with running(service):
         await master.change_tag(admin.id, health.id, parent_id=insurance.id)
-        async with asyncio.timeout(5):
-            while (await services.documents.get(user.id, document.id)).tag_ids != {health.id}:
-                await asyncio.sleep(0.01)
+
+        async def moved() -> bool:
+            return (await services.documents.get(user.id, document.id)).tag_ids == {health.id}
+
+        await until(moved, every=0.01, what="the tag of the document moved")
 
 
 async def test_the_cleanup_is_scheduled_at_start() -> None:

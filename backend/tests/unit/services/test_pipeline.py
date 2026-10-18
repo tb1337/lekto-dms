@@ -27,6 +27,7 @@ from papiq.core.domain.ids import ContactId, TagId
 from papiq.core.domain.jobs import JobStatus, RetryPolicy
 from papiq.core.domain.master_data import Tag
 from papiq.core.domain.pipeline import (
+    CURRENT_SIGNALS,
     NODES,
     Lane,
     Node,
@@ -171,7 +172,9 @@ async def test_uncertain_step_ends_yellow(world: World) -> None:
 async def test_failed_result_stops_red(world: World) -> None:
     pipeline = world.pipeline({Node.PARSE: Returns(FAILED)})
     owner, document = await receive(world, pipeline)
-    assert await world.drain(pipeline) == 3  # ocr, pages, parse
+    # The nodes after receiving, up to the one that fails.
+    ran = Node.RECEIVE.successors | Node.PARSE.ancestors | {Node.PARSE}
+    assert await world.drain(pipeline) == len(ran - {Node.RECEIVE})
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.RED
     assert stored.processing.status is ProcessingStatus.FAILED
@@ -272,8 +275,8 @@ async def test_skipped_pages_are_caught_up_on_without_a_new_run(world: World) ->
     pipeline = world.pipeline({Node.PAGES: pages})
     assert await pipeline.catch_up(Node.PAGES) == 3  # also the one being processed
     assert await pipeline.catch_up(Node.PAGES) == 0  # queued already
-    # And the processing one: eleven nodes, its pages job stale.
-    assert await world.drain(pipeline) == 3 + 11
+    # And the processing one: every node after receiving, its pages job stale.
+    assert await world.drain(pipeline) == 3 + len(Node.RECEIVE.descendants)
     assert pages.calls == 3
     caught_up = await world.documents.get(owner.id, processing.id)
     assert caught_up.lane is Lane.GREEN
@@ -400,8 +403,9 @@ async def test_reprocess_from_a_step(world: World) -> None:
     world.database.outbox.clear()
     pipeline = world.pipeline({Node.FIELDS: Returns(UNCERTAIN)})
     await pipeline.reprocess_from(owner.id, document.id, Node.JUDGE)
-    # The three signals without a model call, judge, fields, rules; it waits before filing.
-    assert await world.drain(pipeline) == 6
+    # The signals without a model call, judge, fields, rules; it waits before filing.
+    again = CURRENT_SIGNALS | {Node.JUDGE} | Node.JUDGE.descendants - {Node.FILE}
+    assert await world.drain(pipeline) == len(again)
     stored = await world.documents.get(owner.id, document.id)
     assert stored.lane is Lane.YELLOW
     assert stored.processing.status is ProcessingStatus.REVIEW
@@ -466,7 +470,7 @@ async def test_stale_jobs_are_skipped(world: World) -> None:
     await world.documents.delete(owner.id, document.id)
     calls = Returns(FAILED)
     pipeline = world.pipeline({Node.OCR: calls})
-    assert await world.drain(pipeline) == 2  # ocr and pages, both stale
+    assert await world.drain(pipeline) == len(Node.RECEIVE.successors)  # both stale
     assert calls.calls == 0
     nodes = [job for job in world.database.jobs.values() if job.kind == NODE_JOB]
     assert all(job.status is JobStatus.DONE for job in nodes)

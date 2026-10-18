@@ -142,7 +142,7 @@ async def test_the_vision_model_reads_what_tesseract_cannot(
         language_model=answers(case),
     )
     services = build_services(container)
-    owner = builders.user()
+    owner = await builders.seed_user(container.unit_of_work)
     contact = Contact.create(name=case.contact, now=NOW)
     kind = DocumentType.create(name=case.kind, now=NOW)
     field = FieldDefinition.create(
@@ -153,16 +153,13 @@ async def test_the_vision_model_reads_what_tesseract_cannot(
         now=NOW,
     )
     async with container.unit_of_work() as uow:
-        await uow.users.add(owner)
-        await uow.spaces.add(builders.default_space(owner))
         await uow.contacts.add(contact)
         await uow.document_types.add(kind)
         await uow.fields.add(field)
         await uow.commit()
 
     async def drain() -> None:
-        while await services.pipeline.run_next_job():
-            pass
+        await builders.drain(services.pipeline)
 
     data = (SAMPLES / case.sample).read_bytes()
     received = await services.pipeline.receive(owner.id, incoming(data), filename=case.sample)

@@ -508,8 +508,7 @@ async def test_a_tag_move_announces_each_document_it_changes(world: World) -> No
         await uow.commit()
     world.database.outbox.clear()
     await service.change_tag(admin.id, health.id, parent_id=insurance.id)
-    while await service.run_next_job():
-        pass
+    await builders.drain(service)
     assert world.event_types() == ["document.updated"]
 
 
@@ -557,8 +556,7 @@ async def test_each_step_of_the_normalising_sees_the_tree_as_it_is(
     await service.change_tag(admin.id, health.id, parent_id=insurance.id)
     assert await service.run_next_job()  # the first two by id
     await service.change_tag(admin.id, health.id, parent_id=None)
-    while await service.run_next_job():
-        pass
+    await builders.drain(service)
     async with world.uow() as uow:
         stored = {
             document.id: (await uow.documents.get(document.id)).tag_ids for document in documents

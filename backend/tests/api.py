@@ -3,6 +3,7 @@ and a reader for server-sent events."""
 
 import asyncio
 import contextlib
+import inspect
 import json
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -95,7 +96,23 @@ async def _listen(
                 stream.events.append(data)
 
 
-async def until(condition: Callable[[], object], timeout: float = 5) -> None:
-    async with asyncio.timeout(timeout):
-        while not condition():
-            await asyncio.sleep(0.02)
+async def until(
+    condition: Callable[[], object],
+    timeout: float = 5,
+    *,
+    every: float = 0.02,
+    what: str = "the condition",
+) -> None:
+    """Wait until `condition()` holds; a condition may also return an awaitable. TimeoutError
+    naming `what` after `timeout` seconds."""
+    try:
+        async with asyncio.timeout(timeout):
+            while not await _holds(condition):
+                await asyncio.sleep(every)
+    except TimeoutError:
+        raise TimeoutError(f"timeout: {what} did not happen within {timeout} s") from None
+
+
+async def _holds(condition: Callable[[], object]) -> bool:
+    result = condition()
+    return bool(await result if inspect.isawaitable(result) else result)

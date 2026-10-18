@@ -22,7 +22,7 @@ from papiq.composition.worker import build_worker
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import ObjectStore, OcrResult, ParseResult
 from tests import builders
-from tests.api import auth, issue_token, serving
+from tests.api import auth, issue_token, serving, until
 
 DOCUMENTS = f"{PREFIX}/documents"
 POLL = timedelta(milliseconds=50)
@@ -101,9 +101,13 @@ class System:
 
     async def settled(self, user: User, id: str) -> dict[str, Any]:
         """The document once processing has ended (it has a lane)."""
-        async with asyncio.timeout(self.processing):
-            while (document := await self.document(user, id))["lane"] is None:
-                await asyncio.sleep(0.2)
+        document: dict[str, Any] = {}
+
+        async def ended() -> bool:
+            document.update(await self.document(user, id))
+            return document["lane"] is not None
+
+        await until(ended, self.processing, every=0.2, what=f"the processing of {id}")
         return document
 
 

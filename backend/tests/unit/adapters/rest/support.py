@@ -106,8 +106,7 @@ class Api:
             yield Session(client, response.json()["csrf_token"])
 
     async def drain(self) -> None:
-        while await self.services.pipeline.run_next_job():
-            pass
+        await builders.drain(self.services.pipeline)
 
 
 DOCUMENTS = f"{PREFIX}/documents"
@@ -260,6 +259,5 @@ async def indexed_scene(api: Api) -> Scene:
     indexing = api.services.indexing
     assert indexing is not None
     await indexing.reconcile()
-    while await indexing.run_next_job():
-        pass
+    await builders.drain(indexing)
     return scene

@@ -115,8 +115,7 @@ class Setup:
             moved = await self.bus.dispatch()
             if pipeline:
                 moved += await self.world.drain(pipeline_service)  # type: ignore[arg-type]
-            while await indexing.run_next_job():
-                moved += 1
+            moved += await builders.drain(indexing)
             if not moved:
                 return
 
@@ -137,10 +136,7 @@ class Setup:
 
 
 async def run_due(indexing: IndexingService) -> int:
-    count = 0
-    while await indexing.run_next_job():
-        count += 1
-    return count
+    return await builders.drain(indexing)
 
 
 def index_jobs(world: World) -> list[Job]:

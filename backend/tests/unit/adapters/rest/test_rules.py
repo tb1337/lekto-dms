@@ -3,6 +3,7 @@
 from typing import Any
 
 from papiq.adapters.inbound.rest import PREFIX
+from tests import builders
 from tests.api import auth
 from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.rest.support import Api, post, upload
@@ -241,8 +242,7 @@ async def test_a_rule_is_applied_to_existing_documents(api: Api) -> None:
         headers=o,
     )
     assert response.status_code == 202, response.text
-    while await api.services.rule_applications.run_next_job():
-        pass
+    await builders.drain(api.services.rule_applications)
     progress = await api.client.get(response.headers["location"], headers=o)
     assert progress.json()["status"] == "done", progress.text
     assert progress.json()["applied"] == 2

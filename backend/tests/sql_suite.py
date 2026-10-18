@@ -741,6 +741,13 @@ class MigrationSuite:
             ids["model"]: None,
         }
         await downgrade(empty_database, "0013")
+        async with empty_database.reading() as connection:
+            columns = await connection.run_sync(
+                lambda sync: {item["name"] for item in sa.inspect(sync).get_columns("documents")}
+            )
+            kept = set((await connection.execute(sa.text("SELECT id FROM documents"))).scalars())
+        assert "confirmed_at" not in columns
+        assert len(kept) == len(found)
 
     async def test_signals_come_before_the_judge_and_back(self, empty_database: Database) -> None:
         """Revision 0016 renames `classify` and `extract_fields` in the node states, the log,

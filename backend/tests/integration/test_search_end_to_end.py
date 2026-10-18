@@ -5,7 +5,7 @@ bring the text of the test. Two set-ups: SQLite with the filesystem, Postgres wi
 
 import asyncio
 import secrets
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
@@ -20,7 +20,7 @@ from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import ObjectStore
 from tests import builders
-from tests.api import auth
+from tests.api import auth, until
 from tests.integration.adapters.meilisearch.conftest import drop, new_index
 from tests.integration.e2e import DOCUMENTS, System, TextOcr, TextParser, running_system
 
@@ -43,16 +43,6 @@ class SearchSystem(System):
         page = await self.search(user, text, **params)
         return {item["document"]["id"] for item in page["items"]}
 
-    async def eventually(
-        self, condition: Callable[[], Awaitable[bool]], what: str, timeout: float = TIMEOUT
-    ) -> None:
-        try:
-            async with asyncio.timeout(timeout):
-                while not await condition():
-                    await asyncio.sleep(0.2)
-        except TimeoutError:
-            pytest.fail(f"timeout: {what}")
-
     async def idle(self) -> None:
         """Wait until no search job is queued or running."""
 
@@ -74,7 +64,7 @@ class SearchSystem(System):
             await asyncio.sleep(0.5)  # events that are still on their way
             return not await active()
 
-        await self.eventually(idle, "the worker is idle")
+        await until(idle, TIMEOUT, every=0.2, what="the worker is idle")
 
     async def processed(self, user: User, id: str) -> None:
         """Wait until the pipeline is done with the document: the search finds it earlier, and
@@ -84,7 +74,7 @@ class SearchSystem(System):
             response = await self.client.get(f"{DOCUMENTS}/{id}", headers=auth(user))
             return bool(response.json()["processing"]["status"] != "processing")
 
-        await self.eventually(done, f"{id} processed")
+        await until(done, TIMEOUT, every=0.2, what=f"{id} processed")
 
     async def found(self, user: User, text: str, expected: set[str], **params: Any) -> None:
         """Wait until the search finds exactly `expected` (the index follows a moment later)."""
@@ -92,7 +82,7 @@ class SearchSystem(System):
         async def condition() -> bool:
             return await self.ids(user, text, **params) == expected
 
-        await self.eventually(condition, f"{text!r} finds {expected}")
+        await until(condition, TIMEOUT, every=0.2, what=f"{text!r} finds {expected}")
 
 
 @pytest.fixture
@@ -200,7 +190,7 @@ async def test_the_index_is_rebuilt_on_an_empty_meilisearch(
         )
         return response.status_code == 503 or response.json()["items"] == []
 
-    await system.eventually(gone, "the loss shows", timeout=10)
+    await until(gone, 10, every=0.2, what="the loss shows")
 
     denied = await system.client.post(f"{PREFIX}/search/reindex", headers=auth(owner))
     assert denied.status_code == 403

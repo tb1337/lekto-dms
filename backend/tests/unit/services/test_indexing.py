@@ -563,8 +563,7 @@ async def test_the_reconciliation_repeats_itself(setup: Setup) -> None:
     # One that recurs, and one for each start of a worker, which runs once.
     assert sorted(j.payload.get("once") is True for j in jobs) == [False, True, True]
     assert all(j.kind == RECONCILE_JOB for j in jobs)
-    while await setup.indexing.run_next_job():
-        pass
+    await builders.drain(setup.indexing)
     queued = [j for j in setup.world.database.jobs.values() if j.status is JobStatus.QUEUED]
     assert [j.kind for j in queued] == [RECONCILE_JOB]
     assert queued[0].run_at == setup.world.clock.now() + setup.policy.reconcile_interval

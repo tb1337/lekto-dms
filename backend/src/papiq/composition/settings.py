@@ -481,7 +481,15 @@ def _mask_userinfo(text: str) -> str:
 
 
 def _env(field_name: str) -> str:
+    """The variable of a setting: `llm_input_budget` is `PAPIQ_LLM_INPUT_BUDGET`."""
     return ENV_PREFIX + field_name.upper()
+
+
+def reported(settings: Settings, *field_names: str) -> dict[str, object]:
+    """The values of settings under the names of their variables, for a report; a setting
+    without a value as empty text."""
+    values = {_env(name): getattr(settings, name) for name in field_names}
+    return {name: "" if value is None else value for name, value in values.items()}
 
 
 def _missing(settings: Settings, selector: str, *names: str) -> list[str]:

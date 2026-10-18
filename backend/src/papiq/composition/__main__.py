@@ -47,7 +47,7 @@ not fit `PAPIQ_ROLE`, or the migration or the service fails.
 import argparse
 import asyncio
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Coroutine, Sequence
 from pathlib import Path
 
 import structlog
@@ -254,51 +254,68 @@ def _train(settings: Settings) -> int:
     return 0
 
 
-def _render_pages(settings: Settings) -> int:
+def _queue(
+    settings: Settings,
+    run: Callable[[Settings], Coroutine[object, object, int]],
+    *,
+    done: str,
+    counted: str,
+    failed: str,
+) -> int:
+    """A command that queues jobs: `run`, then `done` with how many were queued (as `counted`);
+    1 with `failed` if it raised. Without logo fetching, `fetch-logos` says how to turn it
+    on."""
     log = structlog.get_logger("papiq.composition")
     try:
-        queued = asyncio.run(run_render_pages(settings))
-    except Exception:
-        log.exception("queueing the page images failed")
-        return 1
-    log.info("render-pages queued", documents=queued)
-    return 0
-
-
-def _read_codes(settings: Settings) -> int:
-    log = structlog.get_logger("papiq.composition")
-    try:
-        queued = asyncio.run(run_read_codes(settings))
-    except Exception:
-        log.exception("queueing the facts failed")
-        return 1
-    log.info("read-codes queued", documents=queued)
-    return 0
-
-
-def _fetch_logos(settings: Settings) -> int:
-    log = structlog.get_logger("papiq.composition")
-    try:
-        queued = asyncio.run(run_fetch_logos(settings))
+        queued = asyncio.run(run(settings))
     except LogoFetchDisabledError as error:
         print(f"{error}: set PAPIQ_LOGO_FETCH=true", file=sys.stderr)
         return 1
     except Exception:
-        log.exception("queueing the logos failed")
+        log.exception(failed)
         return 1
-    log.info("fetch-logos queued", contacts=queued)
+    log.info(done, **{counted: queued})
     return 0
+
+
+def _render_pages(settings: Settings) -> int:
+    return _queue(
+        settings,
+        run_render_pages,
+        done="render-pages queued",
+        counted="documents",
+        failed="queueing the page images failed",
+    )
+
+
+def _read_codes(settings: Settings) -> int:
+    return _queue(
+        settings,
+        run_read_codes,
+        done="read-codes queued",
+        counted="documents",
+        failed="queueing the facts failed",
+    )
+
+
+def _fetch_logos(settings: Settings) -> int:
+    return _queue(
+        settings,
+        run_fetch_logos,
+        done="fetch-logos queued",
+        counted="contacts",
+        failed="queueing the logos failed",
+    )
 
 
 def _reparse(settings: Settings) -> int:
-    log = structlog.get_logger("papiq.composition")
-    try:
-        queued = asyncio.run(run_reparse(settings))
-    except Exception:
-        log.exception("queueing the texts to read again failed")
-        return 1
-    log.info("reparse queued", documents=queued)
-    return 0
+    return _queue(
+        settings,
+        run_reparse,
+        done="reparse queued",
+        counted="documents",
+        failed="queueing the texts to read again failed",
+    )
 
 
 def _evaluate(settings: Settings, arguments: argparse.Namespace) -> int:

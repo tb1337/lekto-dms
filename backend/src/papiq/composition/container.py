@@ -128,6 +128,10 @@ type Factory[T] = Callable[[Settings], T]
 type Closer = Callable[[], Awaitable[None]]
 
 
+USER_AGENT = f"Papiq/{__version__}"
+"""How Papiq names itself in requests to other sites: logo fetches and webhooks."""
+
+
 @dataclass(frozen=True)
 class Persistence:
     """The database-backed ports. They share one database: repositories, processing log,
@@ -263,7 +267,7 @@ IMAGE_NORMALISERS: dict[str, Factory[ImageNormaliser]] = {
 }
 CLASSIFIERS: dict[str, Factory[Classifier]] = {"scikit-learn": lambda _: SklearnClassifier()}
 LOGO_FETCHERS: dict[str, Factory[LogoFetcher]] = {
-    "httpx2": lambda _: HttpLogoFetcher(user_agent=f"Papiq/{__version__}")
+    "httpx2": lambda _: HttpLogoFetcher(user_agent=USER_AGENT)
 }
 
 
@@ -382,7 +386,7 @@ def build_container(settings: Settings) -> Container:
         images=_select("images", "pillow", IMAGE_NORMALISERS, settings),
         password_hasher=Argon2PasswordHasher(),
         cipher=secret_cipher(settings),
-        webhook_sender=HttpWebhookSender(user_agent=f"Papiq/{__version__}"),
+        webhook_sender=HttpWebhookSender(user_agent=USER_AGENT),
         totp=PyotpTotp(),
         patterns=RegexPatternMatcher(settings.rules_pattern_timeout.total_seconds()),
         templates=LiquidTemplateRenderer(

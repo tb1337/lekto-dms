@@ -34,7 +34,7 @@ from papiq.composition.container import (
 )
 from papiq.composition.errors import ConfigurationError
 from papiq.composition.evaluation import build_environment, fake_model_for, slug
-from papiq.composition.settings import Settings
+from papiq.composition.settings import Settings, reported
 from papiq.core.ports import LanguageModel, SearchIndex
 from papiq.core.services.indexing import IndexingService
 from papiq.core.services.search import SearchService
@@ -132,14 +132,15 @@ async def run_search_evaluation(
         endpoint=endpoint,
         index=index,
         started=started,
-        settings={
-            "PAPIQ_SEARCH_CHUNK_SIZE": settings.search_chunk_size,
-            "PAPIQ_SEARCH_MAX_CHUNKS": settings.search_max_chunks,
-            "PAPIQ_SEARCH_MAX_TEXT": settings.search_max_text,
-            "PAPIQ_SEARCH_SEMANTIC_RATIO": settings.search_semantic_ratio,
-            "PAPIQ_EMBEDDING_DOCUMENT_PREFIX": settings.embedding_document_prefix or "",
-            "PAPIQ_EMBEDDING_QUERY_PREFIX": settings.embedding_query_prefix or "",
-        },
+        settings=reported(
+            settings,
+            "search_chunk_size",
+            "search_max_chunks",
+            "search_max_text",
+            "search_semantic_ratio",
+            "embedding_document_prefix",
+            "embedding_query_prefix",
+        ),
         fake=fake,
         default_ratio=settings.search_semantic_ratio,
     )

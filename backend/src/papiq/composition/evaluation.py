@@ -33,7 +33,7 @@ from papiq.composition.container import (
     retry_policy_of,
 )
 from papiq.composition.errors import ConfigurationError
-from papiq.composition.settings import Settings
+from papiq.composition.settings import Settings, reported
 from papiq.core.domain.documents import Document
 from papiq.core.domain.pipeline import NODES, Node, NodeResult, Outcome
 from papiq.core.ports import LanguageModel
@@ -54,7 +54,7 @@ class Evaluation:
     violations: int
 
 
-EMBEDDING_DIMENSIONS = 256
+EMBEDDING_DIMENSIONS = BagOfWordsEmbeddings.DIMENSIONS
 """Length of the bag-of-words vectors the trained run indexes with."""
 
 
@@ -190,17 +190,18 @@ async def run_evaluation(
         endpoint="memory" if model is None else model.endpoint,
         started=started,
         prompts=f"{PROPOSE_PROMPT}, {EXTRACT_PROMPT}",
-        settings={
-            "PAPIQ_LLM_INPUT_BUDGET": settings.llm_input_budget,
-            "PAPIQ_LLM_MAX_TAGS": settings.llm_max_tags,
-            "PAPIQ_LLM_TEMPERATURE": settings.llm_temperature,
-            "PAPIQ_LLM_RESPONSE_FORMAT": settings.llm_response_format,
-            "PAPIQ_CONFIDENCE_THRESHOLD": settings.confidence_threshold,
-            "PAPIQ_CONTACT_SUGGEST_THRESHOLD": settings.contact_suggest_threshold,
-            "PAPIQ_DEFAULT_CURRENCY": settings.default_currency,
-            "PAPIQ_CLASSIFIER_THRESHOLD": settings.classifier_threshold,
-            "PAPIQ_NEIGHBOURS": settings.neighbours,
-        },
+        settings=reported(
+            settings,
+            "llm_input_budget",
+            "llm_max_tags",
+            "llm_temperature",
+            "llm_response_format",
+            "confidence_threshold",
+            "contact_suggest_threshold",
+            "default_currency",
+            "classifier_threshold",
+            "neighbours",
+        ),
         fake=fake,
         training=len(evaluation.training),
     )

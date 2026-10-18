@@ -790,7 +790,13 @@ class UnitOfWorkContract:
         read_again.read_with_vision(NOW)
         read_again.pull_events()
         assert read_again.processing.vision
-        documents = (failed, received, in_review, read_again)
+        # New since its first run; the run now compares with what it had (`metadata_digest`).
+        assert read_again.new_at == NOW and read_again.processing.baseline is not None
+        confirmed = builders.processed(owner, space, {Node.JUDGE: UNCERTAIN})
+        confirmed.confirm(Node.APPLY_RULES, NOW)
+        confirmed.pull_events()
+        assert confirmed.processing.decided
+        documents = (failed, received, in_review, read_again, confirmed)
         async with uow_factory() as uow:
             for document in documents:
                 await uow.documents.add(document)

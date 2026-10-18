@@ -288,10 +288,17 @@ documents = Table(
     Column("processing_nodes", json_type(), nullable=False, server_default="{}"),
     # The current run reads the pages with the vision language model (`Processing.vision`).
     Column("processing_vision", Boolean, nullable=False, server_default=false()),
+    # What decides whether the current run makes the document new (`Processing.baseline`,
+    # `Processing.decided`); runs started before revision 0030 have no baseline.
+    Column("processing_baseline", Text, nullable=True),
+    Column("processing_decided", Boolean, nullable=False, server_default=false()),
     # Set once the pages node rendered the page images.
     Column("page_count", Integer, nullable=True),
     # When a person last set or confirmed the metadata (see `Document.confirmed_at`).
     Column("confirmed_at", UtcDateTime, nullable=True, index=True),
+    # When processing last made it new for the inbox (see `Document.new_at`); the inbox
+    # queries look for the documents that have it.
+    Column("new_at", UtcDateTime, nullable=True, index=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("updated_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),

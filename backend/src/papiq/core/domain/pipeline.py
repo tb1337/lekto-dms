@@ -313,12 +313,21 @@ class Processing:
     earlier run are recognised as stale. `nodes` holds the state of every node in the current
     run. `vision`: a person asked that this run read the pages with the vision language model
     (`Document.read_with_vision`); a retry keeps it, another reprocessing does not.
+
+    What decides whether the run makes the document new when it ends green (the inbox,
+    `Document.new_at`): `decided`, a person decided in this run (confirmed the document in the
+    inbox, set its metadata, or they were taken over from the source system), and then it does
+    not; otherwise its first run always does, and a later one if the document's metadata differ
+    from `baseline`, their digest when the run started (`documents.metadata_digest`). Runs
+    started before 0.4 have no baseline and make no document new, except a first run.
     """
 
     status: ProcessingStatus
     run: int
     nodes: dict[Node, NodeState]
     vision: bool = False
+    baseline: str | None = None
+    decided: bool = False
 
     def __post_init__(self) -> None:
         missing = [node.value for node in NODES if node not in self.nodes]

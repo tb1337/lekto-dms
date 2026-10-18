@@ -1,6 +1,7 @@
 """The document aggregate: metadata, processing state machine and lane."""
 
 import hashlib
+import json
 import re
 from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
@@ -32,7 +33,7 @@ from papiq.core.domain.events import (
     NodeDeferred,
     NodeStarted,
 )
-from papiq.core.domain.fields import FieldDefinition, FieldValue
+from papiq.core.domain.fields import FieldDefinition, FieldValue, field_to_json
 from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -188,6 +189,12 @@ class Document:
     # it was taken over with the source system's; None while its metadata is the pipeline's
     # own. Confirmed documents train the classifier.
     confirmed_at: datetime | None = None
+    # When processing last made it new for the inbox: a run ended green without a person's
+    # decision in it (`Processing.decided`), its first, or a later one after which its
+    # metadata differ from before (`Processing.baseline`). None: new for no one (a person
+    # confirmed it out of yellow or red since, or it never was; documents from before 0.4).
+    # Who saw it since is per user (`domain.inbox`).
+    new_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     version: int = 1
@@ -203,6 +210,8 @@ class Document:
         self.media_type = require_name(self.media_type, "media type", max_length=None)
         self.created_at = require_utc(self.created_at, "created_at")
         self.updated_at = require_utc(self.updated_at, "updated_at")
+        if self.new_at is not None:
+            self.new_at = require_utc(self.new_at, "new_at")
 
     # --- creation -------------------------------------------------------------------------------
 
@@ -315,7 +324,10 @@ class Document:
             if processing.is_open():
                 return ()  # the rest waits for nodes still running
             processing.status = ProcessingStatus.COMPLETED
-            self._set_lane(Lane.from_outcomes(processing.outcomes.values()), now)
+            lane = Lane.from_outcomes(processing.outcomes.values())
+            self._set_lane(lane, now)
+            if lane is Lane.GREEN and self._becomes_new():
+                self.new_at = now
             return ()
         if Node.FILE in due and self._uncertain_before(Node.FILE):
             # Filed only once the owner has confirmed what is uncertain.
@@ -373,7 +385,8 @@ class Document:
         nodes that are not run again count as OK from now on, processing runs again from
         `resume_at` (applying rules, or extracting fields after a type correction) up to filing.
         Nodes that never ran and are not needed to resume (the pages after a failed OCR) run
-        now. The metadata counts as confirmed. Returns the nodes whose results the owner
+        now. The metadata counts as confirmed, and the document is new for no one: the run a
+        person decided in never makes it new. Returns the nodes whose results the owner
         overruled.
 
         Only for documents in the inbox (yellow or red, not being processed, no node still
@@ -415,6 +428,8 @@ class Document:
             )
         self._reset({resume_at}, now)
         self.confirmed_at = require_utc(now, "confirmed_at")
+        processing.decided = True
+        self.new_at = None
         return tuple(overruled)
 
     def set_page_count(self, count: int, now: datetime) -> None:
@@ -494,6 +509,8 @@ class Document:
             processing.nodes[node] = NodeState()
         processing.run += 1
         processing.status = ProcessingStatus.PROCESSING
+        processing.baseline = metadata_digest(self)
+        processing.decided = False
         self._set_lane(None, now)
         self._touch(now)
         return processing.due()
@@ -502,6 +519,15 @@ class Document:
         return any(
             self.processing.outcome(earlier) is Outcome.UNCERTAIN for earlier in node.ancestors
         )
+
+    def _becomes_new(self) -> bool:
+        """Whether the run that just ended green makes the document new (`Processing`)."""
+        processing = self.processing
+        if processing.decided:
+            return False
+        if processing.run == 1:
+            return True
+        return processing.baseline is not None and processing.baseline != metadata_digest(self)
 
     # --- metadata -------------------------------------------------------------------------------
 
@@ -562,8 +588,11 @@ class Document:
         return tuple(changed)
 
     def mark_confirmed(self, now: datetime) -> None:
-        """A person set or confirmed the metadata (or it was taken over)."""
+        """A person set or confirmed the metadata (or it was taken over); during processing,
+        a decision in its run (`Processing.decided`)."""
         self.confirmed_at = require_utc(now, "confirmed_at")
+        if self.processing.status is ProcessingStatus.PROCESSING:
+            self.processing.decided = True
         self._touch(now)
 
     def drop_confirmation(self) -> None:
@@ -624,3 +653,23 @@ def _definition(
 def file_title(filename: str) -> str:
     """A file name without its extension (all of it if that leaves nothing)."""
     return PurePath(filename).stem or filename
+
+
+def metadata_digest(document: Document) -> str:
+    """A digest of the metadata a person confirms (`CONFIRMING`): contact, type, topic, tags,
+    date and fields. Equal metadata, equal digest; any change of them changes it."""
+    values = {
+        CHANGE_FIELDS[CONTACT]: _text(document.contact_id),
+        CHANGE_FIELDS[DOCUMENT_TYPE]: _text(document.document_type_id),
+        CHANGE_FIELDS[TOPIC]: _text(document.topic_id),
+        CHANGE_FIELDS[TAGS]: sorted(str(tag) for tag in document.tag_ids),
+        CHANGE_FIELDS[DOCUMENT_DATE]: _text(document.document_date),
+        CUSTOM_FIELDS: {str(id): field_to_json(value) for id, value in document.fields.items()},
+    }
+    assert set(values) == CONFIRMING
+    data = json.dumps(values, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(data.encode()).hexdigest()
+
+
+def _text(value: object | None) -> str | None:
+    return None if value is None else str(value)

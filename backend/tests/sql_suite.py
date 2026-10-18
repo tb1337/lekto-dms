@@ -1497,6 +1497,60 @@ class MigrationSuite:
         async with empty_database.reading() as connection:
             assert await connection.run_sync(_schema) == schema
 
+    async def test_nothing_is_new_after_revision_0030_and_back(
+        self, empty_database: Database
+    ) -> None:
+        """Revision 0030 leaves every document as it is and new for no one; the downgrade
+        drops what the inbox keeps, and the schema is that of 0029."""
+        await migrate(empty_database, "0029")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        ids = {name: new_id() for name in ("user", "space", "green", "yellow")}
+        rows: list[tuple[sa.TableClause, dict[str, Any]]] = [
+            (t.users, {"id": ids["user"], "username": "u", "username_key": "u", "role": "user"}),
+            (t.spaces, {"id": ids["space"], "owner_id": ids["user"], "name_key": "n"}),
+            *(
+                (
+                    _before_0030(t.documents),
+                    {
+                        "id": ids[lane],
+                        "owner_id": ids["user"],
+                        "space_id": ids["space"],
+                        "sha256": lane.ljust(64, "0"),
+                        "lane": lane,
+                        "processing_status": "completed",
+                    },
+                )
+                for lane in ("green", "yellow")
+            ),
+        ]
+        await _insert(empty_database, rows)
+        old = _before_0030(t.documents)
+
+        async def stored() -> list[tuple[Any, ...]]:
+            async with empty_database.reading() as connection:
+                return sorted(await _read_all(connection, select(old)))
+
+        before = await stored()
+        await migrate(empty_database)
+        assert await stored() == before
+        inbox = (t.documents.c.new_at, t.documents.c.processing_baseline)
+        async with empty_database.reading() as connection:
+            assert set(await _read_all(connection, select(*inbox))) == {(None, None)}
+            decided = select(t.documents.c.processing_decided)
+            assert set(await _read_all(connection, decided)) == {(False,)}
+        async with empty_database.writing() as connection:
+            await connection.execute(
+                t.documents.update()
+                .where(t.documents.c.id == ids["green"])
+                .values(new_at=NOW, processing_baseline="0" * 64, processing_decided=True)
+            )
+
+        await downgrade(empty_database, "0029")
+        assert await stored() == before
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:
@@ -1697,10 +1751,22 @@ def _drawer(table: sa.TableClause) -> sa.TableClause:
     return sa.table(table.name, *columns, sa.column("drawer_id", sa.Uuid()))
 
 
+# The columns of `documents` revision 0030 added for the inbox.
+_INBOX_COLUMNS = frozenset({"new_at", "processing_baseline", "processing_decided"})
+
+
+def _before_0030(table: sa.Table) -> sa.TableClause:
+    """`table` (documents) as the revisions before 0030 had it: nothing for the inbox."""
+    return sa.table(
+        table.name, *(sa.column(c.name, c.type) for c in table.c if c.name not in _INBOX_COLUMNS)
+    )
+
+
 def _before_0021(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0021 had it: no vision reading of the run, no sort key
-    of the title (0023) and no topic (0027); without the space column (see `_drawer`)."""
-    later = {"processing_vision", "title_key", "space_id", "topic_id"}
+    of the title (0023), no topic (0027) and nothing for the inbox (0030); without the space
+    column (see `_drawer`)."""
+    later = {"processing_vision", "title_key", "space_id", "topic_id", *_INBOX_COLUMNS}
     return sa.table(
         table.name, *(sa.column(c.name, c.type) for c in table.c if c.name not in later)
     )
@@ -1709,8 +1775,8 @@ def _before_0021(table: sa.Table) -> sa.TableClause:
 def _before_0010(table: sa.Table) -> sa.TableClause:
     """`table` as the revisions before 0010 had it: the current node and the outcomes instead
     of the state of every node, and no page count (0011), confirmation (0014), vision reading
-    (0021), sort key of the title (0023) or topic (0027); without the space column (see
-    `_drawer`)."""
+    (0021), sort key of the title (0023), topic (0027) or inbox (0030); without the space
+    column (see `_drawer`)."""
     later = {
         "processing_nodes",
         "page_count",
@@ -1719,6 +1785,7 @@ def _before_0010(table: sa.Table) -> sa.TableClause:
         "title_key",
         "space_id",
         "topic_id",
+        *_INBOX_COLUMNS,
     }
     columns = [sa.column(c.name, c.type) for c in table.c if c.name not in later]
     if table.name == "documents":

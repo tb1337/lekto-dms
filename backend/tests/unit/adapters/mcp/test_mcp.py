@@ -27,8 +27,7 @@ from papiq.core.services.objects import text_key
 from tests import builders
 from tests.api import auth, serving
 from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import Api, make_app
-from tests.unit.adapters.rest.support import Scene, indexed_scene, post, upload
+from tests.unit.adapters.rest.support import Api, Scene, indexed_scene, make_app, post, upload
 
 URL = f"https://papiq{PREFIX}/mcp"
 TEXT = "Strom Rechnung März\n" + "Zeile mit Inhalt\n" * 20

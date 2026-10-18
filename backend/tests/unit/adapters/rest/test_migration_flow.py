@@ -19,7 +19,7 @@ from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, I
 from papiq.core.services.pipeline import PlaceholderNode
 from tests import api as helpers
 from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import Api
+from tests.unit.adapters.rest.support import Api
 
 
 class Migrating:

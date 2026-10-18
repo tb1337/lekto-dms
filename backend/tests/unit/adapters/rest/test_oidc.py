@@ -16,7 +16,7 @@ from papiq.core.domain.ids import UserId
 from tests import builders
 from tests.api import auth
 from tests.builders import NOW
-from tests.unit.adapters.rest.conftest import Api, make_app
+from tests.unit.adapters.rest.support import Api, make_app
 
 OIDC = f"{PREFIX}/auth/oidc"
 

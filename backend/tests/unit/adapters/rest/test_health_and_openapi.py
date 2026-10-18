@@ -16,7 +16,7 @@ from papiq.composition.api import api_context
 from papiq.composition.container import build_memory_container, build_services
 from tests import builders
 from tests.builders import PASSWORD, SECRET_KEY
-from tests.unit.adapters.rest.conftest import Api
+from tests.unit.adapters.rest.support import Api
 
 PROBLEM = "application/problem+json"
 

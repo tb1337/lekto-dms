@@ -13,7 +13,7 @@ from papiq.core.domain.spaces import ShareLevel
 from tests.api import Stream, auth, issue_token, listen, serving, until
 from tests.builders import NOW, PASSWORD
 from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import Api, make_app
+from tests.unit.adapters.rest.support import Api, make_app
 
 EVENTS = f"{PREFIX}/events"
 

@@ -4,8 +4,7 @@ import hashlib
 
 from tests.api import auth
 from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import Api
-from tests.unit.adapters.rest.support import DOCUMENTS, FILENAME, upload
+from tests.unit.adapters.rest.support import DOCUMENTS, FILENAME, Api, upload
 
 
 async def test_the_original_and_the_archive_with_their_metadata(api: Api) -> None:

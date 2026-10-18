@@ -12,8 +12,7 @@ from papiq.adapters.outbound.memory import FAKE_VISION, FakeOcr, ManualClock
 from papiq.composition.container import build_memory_container, build_services
 from tests import builders
 from tests.api import auth
-from tests.unit.adapters.rest.conftest import Api, make_app
-from tests.unit.adapters.rest.support import DOCUMENTS, upload
+from tests.unit.adapters.rest.support import DOCUMENTS, Api, make_app, upload
 
 
 @pytest.fixture

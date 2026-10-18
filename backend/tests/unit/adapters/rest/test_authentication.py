@@ -16,7 +16,7 @@ from papiq.core.domain.errors import AuthenticationError
 from papiq.core.domain.identity import TokenScope
 from tests.api import auth, bearer
 from tests.builders import PASSWORD
-from tests.unit.adapters.rest.conftest import Api, make_app
+from tests.unit.adapters.rest.support import Api, make_app
 
 PUBLIC = {
     ("POST", f"{PREFIX}/auth/login"),

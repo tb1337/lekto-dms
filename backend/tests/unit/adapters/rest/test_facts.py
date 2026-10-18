@@ -18,8 +18,7 @@ from papiq.core.domain.codes import Code
 from papiq.core.domain.locations import Box
 from tests import builders
 from tests.api import auth
-from tests.unit.adapters.rest.conftest import Api, make_app
-from tests.unit.adapters.rest.support import DOCUMENTS, upload
+from tests.unit.adapters.rest.support import DOCUMENTS, Api, make_app, upload
 
 TEXT = """\
 Papiq Test GmbH

@@ -18,8 +18,7 @@ from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, I
 from papiq.core.services.pipeline import DeferredResult, NodeExecutor, PlaceholderNode
 from tests.api import auth, bearer
 from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import Api
-from tests.unit.adapters.rest.support import DOCUMENTS, post, sample_file
+from tests.unit.adapters.rest.support import DOCUMENTS, Api, post, sample_file
 
 
 @pytest.fixture(autouse=True)

@@ -9,8 +9,7 @@ from papiq.core.services.objects import archive_key
 from tests.api import auth
 from tests.builders import PASSWORD
 from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import Api
-from tests.unit.adapters.rest.support import post, unique_pdf, upload
+from tests.unit.adapters.rest.support import Api, post, unique_pdf, upload
 
 
 async def test_metadata_with_master_data_and_fields(api: Api) -> None:

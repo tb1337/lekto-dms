@@ -2,7 +2,7 @@
 
 from papiq.adapters.inbound.rest import PREFIX
 from tests.api import auth
-from tests.unit.adapters.rest.conftest import Api
+from tests.unit.adapters.rest.support import Api
 
 PIPELINE = f"{PREFIX}/pipeline"
 REPARSE = f"{PIPELINE}/reparse"

@@ -21,8 +21,7 @@ from papiq.core.services.objects import exchanges_key, original_key
 from tests.api import auth, issue_token
 from tests.builders import PASSWORD
 from tests.contracts.processing import SAMPLES
-from tests.unit.adapters.rest.conftest import MAX_UPLOAD, Api, make_app
-from tests.unit.adapters.rest.support import DOCUMENTS, sample_file
+from tests.unit.adapters.rest.support import DOCUMENTS, MAX_UPLOAD, Api, make_app, sample_file
 
 SIGNALS = ("signal_llm", "signal_classifier", "signal_neighbours", "signal_facts")
 PROBLEM = "application/problem+json"

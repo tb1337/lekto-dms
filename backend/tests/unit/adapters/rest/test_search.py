@@ -12,8 +12,7 @@ from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.pipeline import Node
 from papiq.core.domain.spaces import ShareLevel
 from tests.api import auth
-from tests.unit.adapters.rest.conftest import Api
-from tests.unit.adapters.rest.support import ACTORS, DENIED, Scene, indexed_scene
+from tests.unit.adapters.rest.support import ACTORS, DENIED, Api, Scene, indexed_scene
 
 SEARCH = f"{PREFIX}/documents/search"
 

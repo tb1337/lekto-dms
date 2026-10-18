@@ -21,8 +21,7 @@ import pytest
 
 from papiq.adapters.inbound.rest import PREFIX
 from tests.contracts.images import image
-from tests.unit.adapters.rest.conftest import Api
-from tests.unit.adapters.rest.support import ACTORS, DENIED, Scene, build_scene
+from tests.unit.adapters.rest.support import ACTORS, DENIED, Api, Scene, build_scene
 
 type Call = Callable[[Scene, httpx2.AsyncClient, dict[str, str], str], Awaitable[httpx2.Response]]
 

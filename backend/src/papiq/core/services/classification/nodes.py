@@ -39,6 +39,7 @@ from papiq.core.domain.evidence import (
     read_date,
     read_number,
     read_period,
+    truth_value,
 )
 from papiq.core.domain.exchanges import ModelCall
 from papiq.core.domain.fields import (
@@ -950,9 +951,6 @@ def _verified(
 # --- values -----------------------------------------------------------------------------------
 
 
-_YES_NO = {"true": True, "yes": True, "ja": True, "false": False, "no": False, "nein": False}
-
-
 def _parse_value(
     definition: FieldDefinition,
     raw: JsonValue,
@@ -978,7 +976,8 @@ def _parse_value(
         case FieldType.DATE if isinstance(raw, str):
             value = read_date(raw, facts)
         case FieldType.BOOLEAN if isinstance(raw, str):
-            value = _YES_NO.get(raw.strip().casefold(), raw)
+            truth = truth_value(raw)
+            value = raw if truth is None else truth
         case FieldType.LINK if isinstance(raw, str):
             value = Url(raw.strip())
         case FieldType.TEXT | FieldType.CHOICE if isinstance(raw, str):

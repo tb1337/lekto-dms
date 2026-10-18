@@ -11,10 +11,10 @@ from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.core.domain.ids import DeliveryId, UserId, WebhookId
+from papiq.core.domain.validation import MAX_URL_LENGTH
 from papiq.core.domain.webhooks import (
     ALL_EVENTS,
     MAX_NAME_LENGTH,
-    MAX_URL_LENGTH,
     DeliveryOutcome,
     Webhook,
     WebhookDelivery,

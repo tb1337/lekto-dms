@@ -32,15 +32,19 @@ from papiq.core.domain.ids import (
     UserId,
     new_id,
 )
-from papiq.core.domain.validation import has_control_characters, name_key, require_name, require_utc
+from papiq.core.domain.validation import (
+    MAX_URL_LENGTH,
+    has_control_characters,
+    name_key,
+    require_name,
+    require_utc,
+)
 
 PASSWORD_MIN_LENGTH = 12
 PASSWORD_MAX_LENGTH = 256
 
 MAX_TOKEN_NAME = 100
 """Characters of an API token's name; the REST schema takes its limit from here."""
-MAX_REDIRECT_TARGET = 2000
-"""Characters of the path a sign-in returns to (`safe_redirect`)."""
 
 API_TOKEN_PREFIX = "papiq_"
 RECOVERY_CODE_COUNT = 10
@@ -312,7 +316,7 @@ def safe_redirect(target: str | None) -> str:
         or target.startswith("//")
         or "\\" in target
         or has_control_characters(target)
-        or len(target) > MAX_REDIRECT_TARGET
+        or len(target) > MAX_URL_LENGTH
     ):
         return "/"
     return target

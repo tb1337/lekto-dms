@@ -3,7 +3,7 @@
 import re
 import unicodedata
 from collections.abc import Collection
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
@@ -16,6 +16,7 @@ from papiq.core.domain.ids import DocumentTypeId, FieldId, new_id
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.master_data import Assignment, MasterData, checked_description
 from papiq.core.domain.periods import Period
+from papiq.core.domain.sorting import strip_accents
 from papiq.core.domain.validation import require_name
 
 _CURRENCY = re.compile(r"[A-Z]{3}")
@@ -153,7 +154,7 @@ class FieldDefinition(MasterData):
         if self.data_type is not FieldType.CHOICE:
             raise ValidationError("only choice fields have choices")
         old = set(self.choices)
-        changed = FieldDefinition(**{**self.__dict__, "choices": tuple(choices)})
+        changed = replace(self, choices=tuple(choices))
         self.choices = changed.choices
         return frozenset(old - set(self.choices))
 
@@ -311,8 +312,5 @@ def template_key(name: str) -> str:
     `ss`, other accents dropped, anything else an underscore (`LA_Brutto` → `la_brutto`,
     `Fällig am` → `faellig_am`); `f_` before a leading digit."""
     folded = fold_umlauts(unicodedata.normalize("NFKC", name).casefold())
-    plain = "".join(
-        char for char in unicodedata.normalize("NFKD", folded) if not unicodedata.combining(char)
-    )
-    key = _NOT_KEY.sub("_", plain).strip("_") or "field"
+    key = _NOT_KEY.sub("_", strip_accents(folded)).strip("_") or "field"
     return f"f_{key}" if key[0].isdigit() else key

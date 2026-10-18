@@ -595,14 +595,14 @@ def _period_text(period: Period) -> str:
         words.append(f"{end.isoformat()} {end:%d.%m.%Y}")
     match period.kind:
         case PeriodKind.WEEK:
-            year, week, _ = start.isocalendar()
+            year, week = period.iso_week
             words.append(f"KW {week} {year}")
         case PeriodKind.MONTH:
             names = {names[start.month - 1] for names in MONTH_NAMES.values()}
             words += [f"{name} {start.year}" for name in sorted(names)]
             words.append(f"{start:%m/%Y} {start:%m.%Y}")
         case PeriodKind.QUARTER:
-            words.append(f"Q{(start.month - 1) // 3 + 1} {start.year}")
+            words.append(f"Q{period.quarter_number} {start.year}")
     if period.kind not in (PeriodKind.DAY, PeriodKind.SPAN):
         words.append(period.notation)
     return " ".join(words)

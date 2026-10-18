@@ -2,6 +2,7 @@
 does not have is left out, not given as None: the template tests it with `{% if %}` or
 `| default`, and writing it is a missing value (`MissingValueError`)."""
 
+import dataclasses
 import re
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from datetime import date
@@ -28,25 +29,30 @@ type Render = Callable[[str, Mapping[str, TemplateValue]], str]
 """A template renderer's `render` (the port `TemplateRenderer`), as the rule planner takes it."""
 
 
-# What a template can use; `field.<key>` names a field (`FieldDefinition.key`).
-NAMES = (
-    "title",
-    "filename",
-    "original_filename",
-    "contact",
-    "document_type",
-    "document_date",
-    "added",
-    "tags",
-    "topic",
-    "contact_groups",
-    "document_type_groups",
-    "space",
-    "owner",
-    "channel",
-    "pages",
-    "field",
-)
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class _Given:
+    """What a template can use, one attribute per name; `field.<key>` names a field
+    (`FieldDefinition.key`). None: the document does not have it."""
+
+    title: TemplateValue | None
+    filename: TemplateValue | None
+    original_filename: TemplateValue | None
+    contact: TemplateValue | None
+    document_type: TemplateValue | None
+    document_date: TemplateValue | None
+    added: TemplateValue | None
+    tags: TemplateValue | None
+    topic: TemplateValue | None
+    contact_groups: TemplateValue | None
+    document_type_groups: TemplateValue | None
+    space: TemplateValue | None
+    owner: TemplateValue | None
+    channel: TemplateValue | None
+    pages: TemplateValue | None
+    field: TemplateValue | None
+
+
+NAMES = tuple(item.name for item in dataclasses.fields(_Given))
 FIELD = "field"
 
 
@@ -72,26 +78,25 @@ def template_values(
     def ordered(items: Iterable[str]) -> list[TemplateValue]:
         return [*sorted(items, key=sort_key)]
 
-    names = ordered(tags)
-    given: dict[str, TemplateValue | None] = {
-        "title": document.title,
-        "filename": document.file_title,
-        "original_filename": document.original_filename,
-        "contact": contact,
-        "document_type": document_type,
-        "document_date": document_date,
-        "added": document.created_at.date(),
-        "tags": names,
-        "topic": topic,
-        "contact_groups": ordered(contact_groups),
-        "document_type_groups": ordered(document_type_groups),
-        "space": space,
-        "owner": owner,
-        "channel": document.channel.value,
-        "pages": document.page_count,
-        FIELD: {definition.key: _field(value) for definition, value in fields if value is not None},
-    }
-    return {name: value for name, value in given.items() if value is not None}
+    given = _Given(
+        title=document.title,
+        filename=document.file_title,
+        original_filename=document.original_filename,
+        contact=contact,
+        document_type=document_type,
+        document_date=document_date,
+        added=document.created_at.date(),
+        tags=ordered(tags),
+        topic=topic,
+        contact_groups=ordered(contact_groups),
+        document_type_groups=ordered(document_type_groups),
+        space=space,
+        owner=owner,
+        channel=document.channel.value,
+        pages=document.page_count,
+        field={definition.key: _field(value) for definition, value in fields if value is not None},
+    )
+    return {name: value for name in NAMES if (value := getattr(given, name)) is not None}
 
 
 def _field(value: FieldValue) -> TemplateValue:

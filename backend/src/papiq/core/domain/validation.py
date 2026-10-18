@@ -27,6 +27,11 @@ def require_name(value: str, what: str = "name", *, max_length: int | None = MAX
     return name
 
 
+MAX_URL_LENGTH = 2000
+"""Characters of a URL or a path on this site: a webhook's target, where to go after signing
+in."""
+
+
 def has_control_characters(text: str) -> bool:
     """Whether `text` holds a space, a control character or DEL: nothing a URL or a path on
     this site may contain."""

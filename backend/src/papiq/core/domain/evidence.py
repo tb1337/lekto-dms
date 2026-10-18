@@ -94,19 +94,7 @@ _DATE_PATTERNS: tuple[tuple[re.Pattern[str], tuple[str, str, str]], ...] = (
 
 def dates_in(text: str) -> set[date]:
     """All dates written in the normalised `text`. Two-digit years: 00 to 69 are 20xx."""
-    found: set[date] = set()
-    for pattern, order in _DATE_PATTERNS:
-        for match in pattern.finditer(text):
-            parts = dict(zip(order, match.groups(), strict=True))
-            month = int(parts["m"]) if parts["m"].isdigit() else _MONTHS[parts["m"]]
-            year = int(parts["y"])
-            if len(parts["y"]) == 2:
-                year += 2000 if year < 70 else 1900
-            try:
-                found.add(date(year, month, int(parts["d"])))
-            except ValueError:
-                continue
-    return found
+    return {day for _, _, day in _dated(text)}
 
 
 def _dated(text: str) -> Iterator[tuple[int, int, date]]:
@@ -298,6 +286,14 @@ def read_period(raw: str, reference: date | None = None) -> tuple[Period, bool] 
 # --- numbers ----------------------------------------------------------------------------------
 
 # Digits with separators between them: `1.234,56`, `1,234.56`, `1 234,56`, `1'234.56`, `84,20`.
+_TRUTH = {"true": True, "yes": True, "ja": True, "false": False, "no": False, "nein": False}
+
+
+def truth_value(text: str) -> bool | None:
+    """Yes or no as a document or a model writes it (German, English); None for other text."""
+    return _TRUTH.get(text.strip().casefold())
+
+
 _NUMBER = re.compile(r"(?<![\d])\d(?:[\d]|[.,'](?=\d)| (?=\d{3}(?!\d)))*")
 
 

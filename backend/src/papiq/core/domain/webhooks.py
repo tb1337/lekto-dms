@@ -27,7 +27,12 @@ from uuid import UUID
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.events import DOCUMENT_EVENT_TYPES
 from papiq.core.domain.ids import DeliveryId, DocumentId, EventId, UserId, WebhookId, new_id
-from papiq.core.domain.validation import has_control_characters, require_name, require_utc
+from papiq.core.domain.validation import (
+    MAX_URL_LENGTH,
+    has_control_characters,
+    require_name,
+    require_utc,
+)
 
 ALL_EVENTS = "*"
 """In `event_types`: every event type, also those that come later."""
@@ -36,7 +41,6 @@ TEST_EVENT = "webhook.test"
 
 SECRET_PREFIX = "whsec_"
 SECRET_BYTES = 32
-MAX_URL_LENGTH = 2000
 MAX_NAME_LENGTH = 100
 MAX_ERROR_LENGTH = 300
 DISABLED_FAILING = "failing"
@@ -290,5 +294,33 @@ class WebhookDelivery:
             self.error = self.error[:MAX_ERROR_LENGTH]
 
     @classmethod
-    def record(cls, **fields: object) -> "WebhookDelivery":
-        return cls(id=DeliveryId(new_id()), **fields)  # type: ignore[arg-type]
+    def record(
+        cls,
+        *,
+        webhook_id: WebhookId,
+        event_id: EventId,
+        event_type: str,
+        document_id: DocumentId | None,
+        attempt: int,
+        started_at: datetime,
+        duration_ms: int,
+        outcome: DeliveryOutcome,
+        status_code: int | None = None,
+        error: str | None = None,
+        next_attempt_at: datetime | None = None,
+    ) -> "WebhookDelivery":
+        """A new attempt, with an id of its own."""
+        return cls(
+            id=DeliveryId(new_id()),
+            webhook_id=webhook_id,
+            event_id=event_id,
+            event_type=event_type,
+            document_id=document_id,
+            attempt=attempt,
+            started_at=started_at,
+            duration_ms=duration_ms,
+            outcome=outcome,
+            status_code=status_code,
+            error=error,
+            next_attempt_at=next_attempt_at,
+        )

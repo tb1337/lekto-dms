@@ -140,6 +140,14 @@ def test_a_period_is_written_in_iso_8601(period: Period, notation: str) -> None:
     assert period.notation == notation
 
 
+def test_a_period_knows_its_quarter_and_iso_week() -> None:
+    assert [Period.quarter(2026, q).quarter_number for q in (1, 2, 3, 4)] == [1, 2, 3, 4]
+    assert Period.month(2026, 9).quarter_number == 3
+    # The week of 1 January 2027 is the 53rd of 2026.
+    week = Period(date(2026, 12, 28), date(2027, 1, 3))
+    assert (week.iso_week, week.notation) == ((2026, 53), "2026-W53")
+
+
 def test_a_period_has_dates_for_ends_and_does_not_end_before_it_starts() -> None:
     assert Period.week(2026, 38) == Period(date(2026, 9, 14), date(2026, 9, 20))
     assert Period.month(2028, 2).end == date(2028, 2, 29)

@@ -19,6 +19,7 @@ from papiq.core.domain.identity import TokenScope, csrf_token, hash_token
 from papiq.core.domain.ids import ApiTokenId, new_id
 from papiq.core.domain.users import Role, User
 from papiq.core.services.auth import AuthService
+from tests import builders
 from tests.builders import PASSWORD
 from tests.unit.services.conftest import World
 
@@ -223,7 +224,14 @@ class GatedHasher:
 
 async def _burst(world: World, attempts: int) -> tuple[list[object], GatedHasher]:
     gate = GatedHasher(world.hasher)
-    auth = AuthService(world.uow, world.clock, hasher=gate, cipher=world.cipher, totp=world.totp)
+    auth = AuthService(
+        world.uow,
+        world.clock,
+        hasher=gate,
+        cipher=world.cipher,
+        totp=world.totp,
+        sessions=builders.SESSIONS,
+    )
     tasks = [
         asyncio.create_task(auth.login("alice", "wrong password!", source=SOURCE))
         for _ in range(attempts)
@@ -429,7 +437,14 @@ async def test_a_sign_in_does_not_outlive_a_reset_or_deactivation(
     admin, user = await world.account("root", Role.ADMIN), await world.account("alice")
     world.hasher.round = 2  # the sign-in would also rehash the old password
     hasher = ChangingHasher(world.hasher)
-    auth = AuthService(world.uow, world.clock, hasher=hasher, cipher=world.cipher, totp=world.totp)
+    auth = AuthService(
+        world.uow,
+        world.clock,
+        hasher=hasher,
+        cipher=world.cipher,
+        totp=world.totp,
+        sessions=builders.SESSIONS,
+    )
 
     async def meanwhile() -> None:
         if change == "reset":

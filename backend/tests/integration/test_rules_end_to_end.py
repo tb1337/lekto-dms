@@ -29,6 +29,7 @@ from papiq.core.domain.users import Role, User
 from papiq.core.ports import ObjectStore, OcrResult, ParseResult
 from tests import builders
 from tests.api import auth, issue_token, serving
+from tests.builders import DEFAULT_SETTINGS
 
 DOCUMENTS = f"{PREFIX}/documents"
 TIMEOUT = 60.0  # seconds a document may take here
@@ -136,6 +137,7 @@ async def system(stores: tuple[Database, ObjectStore]) -> AsyncIterator[System]:
         poll_interval=timedelta(milliseconds=50),
         dispatch_interval=timedelta(milliseconds=50),
         shutdown_timeout=timedelta(seconds=30),
+        webhook_concurrency=DEFAULT_SETTINGS.webhook_concurrency,
     )
     app = build_app(container, tuning, services)
     running = asyncio.create_task(worker.run())

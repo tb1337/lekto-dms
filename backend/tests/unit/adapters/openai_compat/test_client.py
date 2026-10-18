@@ -15,6 +15,7 @@ from papiq.adapters.outbound.openai_compat import (
     endpoint_of,
 )
 from papiq.core.domain.errors import EmbeddingsError, LanguageModelError
+from tests.builders import DEFAULT_SETTINGS
 from tests.contracts.language_model import REQUEST, EmbeddingsContract, LanguageModelContract
 
 BASE_URL = "http://ollama:11434/v1"
@@ -75,13 +76,25 @@ def failing(status: int = 503, **body: Any) -> httpx2.MockTransport:
 def language_model(
     transport: httpx2.AsyncBaseTransport, **options: Any
 ) -> OpenAiCompatLanguageModel:
+    arguments: dict[str, Any] = {
+        "temperature": DEFAULT_SETTINGS.llm_temperature,
+        "timeout": DEFAULT_SETTINGS.llm_timeout.total_seconds(),
+        "response_format": DEFAULT_SETTINGS.llm_response_format,
+        **options,
+    }
     return OpenAiCompatLanguageModel(
-        base_url=BASE_URL, model="qwen3", transport=transport, **options
+        base_url=BASE_URL, model="qwen3", transport=transport, **arguments
     )
 
 
 def embeddings_for(transport: httpx2.AsyncBaseTransport, **options: Any) -> OpenAiCompatEmbeddings:
-    return OpenAiCompatEmbeddings(base_url=BASE_URL, model="bge-m3", transport=transport, **options)
+    arguments: dict[str, Any] = {
+        "timeout": DEFAULT_SETTINGS.embedding_timeout.total_seconds(),
+        **options,
+    }
+    return OpenAiCompatEmbeddings(
+        base_url=BASE_URL, model="bge-m3", transport=transport, **arguments
+    )
 
 
 @pytest.fixture

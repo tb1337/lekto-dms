@@ -83,7 +83,7 @@ class Setup:
     world: World
     index: MemorySearchIndex = field(default_factory=MemorySearchIndex)
     embeddings: FakeEmbeddings | BrokenEmbeddings | None = field(default_factory=FakeEmbeddings)
-    policy: IndexingPolicy = field(default_factory=IndexingPolicy)
+    policy: IndexingPolicy = builders.INDEXING
 
     def __post_init__(self) -> None:
         self.bus = MemoryEventBus(self.world.database, clock=self.world.clock)
@@ -96,8 +96,8 @@ class Setup:
             self.world.clock,
             self.world.object_store,
             self.index,
-            self.embeddings,
             self.policy,
+            embeddings=self.embeddings,
         )
 
     @property

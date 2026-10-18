@@ -88,7 +88,7 @@ class VisionSettings:
     base_url: str
     model: str
     api_key: str | None = None
-    timeout: timedelta = timedelta(minutes=5)
+    timeout: timedelta
 
 
 class VisionError(RuntimeError):

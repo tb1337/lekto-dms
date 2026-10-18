@@ -1,6 +1,7 @@
 """The search index follows the documents: events lead to jobs, jobs write the index."""
 
 from collections.abc import Awaitable, Sequence
+from dataclasses import replace
 from datetime import date
 from uuid import UUID
 
@@ -25,9 +26,9 @@ from papiq.core.services.indexing import (
     INDEX_JOB,
     RECONCILE_JOB,
     REFRESH_JOB,
-    IndexingPolicy,
     split_sections,
 )
+from tests import builders
 from tests.builders import NOW, UNCERTAIN, incoming, index_document
 from tests.unit.services.conftest import Returns, World
 from tests.unit.services.search_support import (
@@ -341,7 +342,9 @@ async def test_without_embeddings_the_index_has_no_vectors(world: World) -> None
 
 
 async def test_a_long_text_gets_one_vector_per_section(world: World) -> None:
-    setup = Setup(world, policy=IndexingPolicy(chunk_size=20, max_chunks=3, max_text=70))
+    setup = Setup(
+        world, policy=replace(builders.INDEXING, chunk_size=20, max_chunks=3, max_text=70)
+    )
     text = "\n\n".join(f"paragraph number {n}" for n in range(10))
     document = await setup.document(await world.user(), text)
     entry = setup.entry(document.id)
@@ -435,7 +438,9 @@ async def test_an_embedding_failure_keeps_the_vectors_that_are_there(world: Worl
 
 
 async def test_vectors_of_another_length_are_refused(world: World) -> None:
-    setup = Setup(world, policy=IndexingPolicy(dimensions=3))  # the fake vectors have more
+    setup = Setup(
+        world, policy=replace(builders.INDEXING, dimensions=3)
+    )  # the fake vectors have more
     owner = await world.user()
     received = await world.pipeline().receive(owner.id, incoming(b"%PDF-1 f"), filename="f.pdf")
     await setup.put_text(received.id, "Text")
@@ -581,7 +586,7 @@ async def test_a_rebuild_replaces_the_index_from_database_and_store(setup: Setup
 
 async def test_a_rebuild_notices_changes_made_while_it_ran(world: World) -> None:
     index = HookedIndex()
-    setup = Setup(world, index=index, policy=IndexingPolicy(batch_size=1))
+    setup = Setup(world, index=index, policy=replace(builders.INDEXING, batch_size=1))
     owner = await world.user()
     first, second = await setup.document(owner, "one"), await setup.document(owner, "two")
     earlier = min(first.id, second.id)  # the build takes the documents in the order of the ids
@@ -598,7 +603,7 @@ async def test_a_rebuild_notices_changes_made_while_it_ran(world: World) -> None
 
 async def test_a_rebuild_notices_a_rename_made_while_it_ran(world: World) -> None:
     index = HookedIndex()
-    setup = Setup(world, index=index, policy=IndexingPolicy(batch_size=1))
+    setup = Setup(world, index=index, policy=replace(builders.INDEXING, batch_size=1))
     owner, admin = await world.user(), await world.user(role=Role.ADMIN)
     first, second = await setup.document(owner, "one"), await setup.document(owner, "two")
     contact = await setup.master_data.create_contact(admin.id, "Stadtwerke")
@@ -667,4 +672,4 @@ def test_the_number_of_sections_is_limited() -> None:
 
 def test_limits_must_be_positive() -> None:
     with pytest.raises(ValueError):
-        IndexingPolicy(max_chunks=0)
+        replace(builders.INDEXING, max_chunks=0)

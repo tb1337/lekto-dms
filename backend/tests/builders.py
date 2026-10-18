@@ -2,11 +2,23 @@
 
 import tempfile
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from papiq.adapters.outbound.liquid import LiquidTemplateRenderer
+from papiq.composition.container import (
+    classifier_policy_of,
+    indexing_policy_of,
+    neighbours_policy_of,
+    policy_of,
+    retry_policy_of,
+    search_policy_of,
+    session_policy_of,
+    thresholds_of,
+    webhook_policy_of,
+)
 from papiq.composition.settings import Settings
 from papiq.core.domain.documents import Document, Sha256
 from papiq.core.domain.ids import DocumentId, SpaceId, UserId, new_id
@@ -14,13 +26,55 @@ from papiq.core.domain.pipeline import Lane, Node, NodeResult, Outcome
 from papiq.core.domain.search import IndexDocument
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import Role, User
-from papiq.core.services.pipeline import IncomingFile, PipelineService, PlaceholderNode
+from papiq.core.ports import Clock, ObjectStore, UnitOfWorkFactory
+from papiq.core.ports.ocr import VisionModel
+from papiq.core.services.pipeline import (
+    IncomingFile,
+    NodeExecutor,
+    PipelineService,
+    PlaceholderNode,
+)
 
 # Templates of rules and title patterns, as the memory container renders them.
 TEMPLATES = LiquidTemplateRenderer(locale="de", currency="EUR")
 DEFAULT_SETTINGS = Settings.model_construct()
 """The shipped defaults (`backend/README.md`, Configuration): tests take thresholds and
 limits from here, so the one source of a default is `composition/settings.py`."""
+THRESHOLDS = thresholds_of(DEFAULT_SETTINGS)
+CLASSIFICATION = policy_of(DEFAULT_SETTINGS)
+CLASSIFIER = classifier_policy_of(DEFAULT_SETTINGS)
+INDEXING = indexing_policy_of(DEFAULT_SETTINGS)
+NEIGHBOURS = neighbours_policy_of(DEFAULT_SETTINGS)
+SEARCH = search_policy_of(DEFAULT_SETTINGS)
+WEBHOOKS = webhook_policy_of(DEFAULT_SETTINGS)
+RETRY = retry_policy_of(DEFAULT_SETTINGS)
+SESSIONS = session_policy_of(DEFAULT_SETTINGS)
+
+
+def pipeline_service(
+    uow: UnitOfWorkFactory,
+    clock: Clock,
+    store: ObjectStore,
+    executors: Mapping[Node, NodeExecutor],
+    *,
+    vision: VisionModel | None = None,
+    facts: NodeExecutor | None = None,
+) -> PipelineService:
+    """A pipeline with the shipped defaults for its tuning."""
+    return PipelineService(
+        uow,
+        clock,
+        store,
+        executors,
+        pipeline_version="test",
+        suggest_contact=DEFAULT_SETTINGS.contact_suggest_threshold,
+        retry=RETRY,
+        poor_reading=DEFAULT_SETTINGS.poor_reading_threshold,
+        vision=vision,
+        facts=facts,
+    )
+
+
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 
 # PAPIQ_SECRET_KEY for tests (32 bytes, base64); never use it elsewhere.

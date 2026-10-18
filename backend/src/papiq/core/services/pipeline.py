@@ -155,21 +155,19 @@ class PlaceholderNode:
         return NodeResult(outcome=Outcome.OK)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class RetryPolicy:
     """Automatic retries of a node that raised: `max_attempts` in total, waiting
-    `delay * 2^(attempt-1)` before the next one."""
+    `delay * 2^(attempt-1)` before the next one. Configuration: the composition sets it from
+    the settings, whose defaults are the one source."""
 
-    max_attempts: int = 3
-    delay: timedelta = timedelta(seconds=30)
+    max_attempts: int
+    delay: timedelta
 
     def next_run(self, attempts: int, now: datetime) -> datetime | None:
         if attempts >= self.max_attempts:
             return None
         return now + self.delay * (1 << max(attempts - 1, 0))
-
-
-DEFAULT_RETRY = RetryPolicy()
 
 
 @dataclass(frozen=True)
@@ -203,10 +201,10 @@ class PipelineService:
         *,
         pipeline_version: str,
         suggest_contact: float,
-        retry: RetryPolicy = DEFAULT_RETRY,
+        retry: RetryPolicy,
+        poor_reading: float,
         lease: timedelta = timedelta(minutes=10),
         vision: VisionModel | None = None,
-        poor_reading: float = 0.08,
         facts: NodeExecutor | None = None,
     ) -> None:
         """`suggest_contact`: the similarity from which a name suggests a contact; an alias

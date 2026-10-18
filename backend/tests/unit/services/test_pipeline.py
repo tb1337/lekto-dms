@@ -533,13 +533,8 @@ async def test_invalid_job_payload_fails_the_job(world: World) -> None:
 
 async def test_every_step_needs_an_executor(world: World) -> None:
     with pytest.raises(ValueError, match="no executor"):
-        PipelineService(
-            world.uow,
-            world.clock,
-            world.object_store,
-            {Node.OCR: PlaceholderNode()},
-            pipeline_version="test",
-            suggest_contact=builders.DEFAULT_SETTINGS.contact_suggest_threshold,
+        builders.pipeline_service(
+            world.uow, world.clock, world.object_store, {Node.OCR: PlaceholderNode()}
         )
 
 

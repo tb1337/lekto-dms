@@ -136,11 +136,11 @@ class OcrmypdfEngine:
         timeout: timedelta,
         jobs: int = 1,
         vision: VisionSettings | None = None,
-        vision_timeout: timedelta = timedelta(minutes=30),
+        vision_timeout: timedelta,
     ) -> None:
         """`languages`: Tesseract language codes, e.g. `deu`, `eng`. `jobs`: CPU cores for
         the pages of one document. `vision`: the model that reads pages when asked to, all
-        pages of a document within `vision_timeout`."""
+        pages of a document within `vision_timeout` (a setting, like `timeout`)."""
         if not languages:
             raise ValueError("at least one OCR language is needed")
         self._languages = "+".join(languages)

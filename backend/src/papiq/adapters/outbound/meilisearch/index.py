@@ -102,15 +102,17 @@ class MeilisearchIndex:
         *,
         url: str,
         api_key: str | None = None,
-        index: str = "papiq-documents",
+        index: str,
         dimensions: int | None = None,
-        locales: Sequence[str] = ("deu", "eng"),
-        timeout: float = 30.0,
-        task_timeout: float = 120.0,
+        locales: Sequence[str],
+        timeout: float,
+        task_timeout: float,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
         """`dimensions`: the length of the vectors; without it the index has no embedder and
-        takes no vectors. `transport` replaces the network in tests."""
+        takes no vectors. `timeout` per request, `task_timeout` for a task of the index, in
+        seconds; the composition takes them and `index` and `locales` from the settings.
+        `transport` replaces the network in tests."""
         self._index = index
         self._build_index = f"{index}-rebuild"
         self._dimensions = dimensions

@@ -24,6 +24,7 @@ from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
 from papiq.core.domain.reading import PageReading, readings_to_json
 from papiq.core.domain.users import Role
+from papiq.core.domain.verdict import Thresholds
 from papiq.core.ports import StructuredRequest
 from papiq.core.services.classification.nodes import (
     NO_MODEL,
@@ -189,14 +190,21 @@ def rules_step(world: World) -> ApplyRulesNode:
     )
 
 
+def policy_with(**overrides: Any) -> ClassificationPolicy:
+    return replace(builders.CLASSIFICATION, **overrides)
+
+
+def thresholds_for(policy: ClassificationPolicy) -> Thresholds:
+    """The judge's thresholds as the composition derives them from the same settings."""
+    return replace(builders.THRESHOLDS, accept=policy.accept, suggest=policy.suggest_contact)
+
+
 def signal_step(world: World, fake: FakeLanguageModel | None, **policy: Any) -> LlmSignal:
-    return LlmSignal(
-        world.uow, world.object_store, fake, world.clock, ClassificationPolicy(**policy)
-    )
+    return LlmSignal(world.uow, world.object_store, fake, world.clock, policy_with(**policy))
 
 
 def fields_step(world: World, fake: FakeLanguageModel | None) -> FieldsNode:
-    return FieldsNode(world.uow, world.object_store, fake, world.clock)
+    return FieldsNode(world.uow, world.object_store, fake, world.clock, builders.CLASSIFICATION)
 
 
 async def record(world: World, document: Document, node: Node, result: NodeResult) -> None:
@@ -235,8 +243,14 @@ async def judge(
         if result.outcome is Outcome.FAILED:
             return result
         await record(world, document, node, result)
+    chosen = policy_with(**policy)
     step = JudgeNode(
-        world.uow, world.object_store, world.clock, ClassificationPolicy(**policy), locator=locator
+        world.uow,
+        world.object_store,
+        world.clock,
+        chosen,
+        thresholds=thresholds_for(chosen),
+        locator=locator,
     )
     return await step.run(document)
 
@@ -1013,7 +1027,7 @@ async def test_an_amount_without_any_currency_in_the_text_is_in_the_default_one(
         world.object_store,
         model(answer),
         world.clock,
-        ClassificationPolicy(default_currency=currency),
+        policy_with(default_currency=currency),
     )
     result = await step.run(document)
     assert isinstance(result, MetadataResult)
@@ -1089,6 +1103,7 @@ async def test_a_value_on_a_poorly_read_page_is_only_suggested(
         world.object_store,
         model(extraction()),
         world.clock,
+        builders.CLASSIFICATION,
         locator=FakeTextLocator(pages),
     )
     result = await step.run(document)
@@ -1349,8 +1364,16 @@ async def run(world: World, fake: FakeLanguageModel) -> tuple[Any, Document]:
         Node.SIGNAL_LLM: signal_step(world, fake),
         Node.SIGNAL_FACTS: FactsSignal(world.uow, world.object_store),
         Node.SIGNAL_CLASSIFIER: ClassifierSignal(world.object_store, None),
-        Node.SIGNAL_NEIGHBOURS: NeighboursSignal(world.uow, world.object_store, None, None),
-        Node.JUDGE: JudgeNode(world.uow, world.object_store, world.clock),
+        Node.SIGNAL_NEIGHBOURS: NeighboursSignal(
+            world.uow, world.object_store, None, None, builders.NEIGHBOURS
+        ),
+        Node.JUDGE: JudgeNode(
+            world.uow,
+            world.object_store,
+            world.clock,
+            builders.CLASSIFICATION,
+            thresholds=builders.THRESHOLDS,
+        ),
         Node.FIELDS: fields_step(world, fake),
     }
     pipeline = world.pipeline(executors | {Node.APPLY_RULES: rules_step(world)})

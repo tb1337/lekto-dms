@@ -114,9 +114,11 @@ async def run_search_evaluation(
     )
     services = SearchServices(
         indexing=lambda index, embeddings: IndexingService(
-            uow, clock, store, index, embeddings, indexing_policy
+            uow, clock, store, index, indexing_policy, embeddings=embeddings
         ),
-        search=lambda index, embeddings: SearchService(uow, index, embeddings, search_policy),
+        search=lambda index, embeddings: SearchService(
+            uow, index, search_policy, embeddings=embeddings
+        ),
     )
     started = datetime.now(UTC)
     try:
@@ -184,6 +186,7 @@ def _backends(
             api_key=None if key is None else key.get_secret_value(),
             index=f"papiq-eval-{secrets.token_hex(4)}",
             dimensions=dimensions,
+            locales=settings.search_locales.split("+"),
             timeout=settings.meilisearch_timeout.total_seconds(),
             task_timeout=settings.meilisearch_task_timeout.total_seconds(),
         )

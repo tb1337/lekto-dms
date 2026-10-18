@@ -48,7 +48,7 @@ class MaintenanceService:
         *,
         interval: timedelta,
         retention: timedelta,
-        session_idle: timedelta = timedelta(days=1),
+        session_idle: timedelta,
         lease: timedelta = timedelta(minutes=5),
         object_store: ObjectStore | None = None,
     ) -> None:

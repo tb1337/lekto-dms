@@ -18,7 +18,11 @@ from papiq.adapters.outbound.memory import FakeLanguageModel
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
 from papiq.adapters.outbound.ocrmypdf.vision import VisionSettings
 from papiq.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer, PdfiumTextLocator
-from papiq.composition.container import build_memory_container, build_services
+from papiq.composition.container import (
+    VISION_REQUEST_TIMEOUT,
+    build_memory_container,
+    build_services,
+)
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.master_data import Contact, DocumentType
 from papiq.core.domain.pipeline import Lane, Node
@@ -26,7 +30,7 @@ from papiq.core.domain.reading import VisionAdvice
 from papiq.core.ports import StructuredRequest
 from papiq.core.services.objects import text_key
 from tests import builders
-from tests.builders import NOW, incoming
+from tests.builders import DEFAULT_SETTINGS, NOW, incoming
 from tests.contracts.processing import SAMPLES
 from tests.vision_stub import Lines, VisionStub, serve
 
@@ -122,11 +126,18 @@ async def test_the_vision_model_reads_what_tesseract_cannot(
     tmp_path: Path, stub: VisionStub, case: Case
 ) -> None:
     stub.pages = [case.lines]
-    settings = VisionSettings(base_url=stub.url, model=stub.model, api_key="stub-key")
+    settings = VisionSettings(
+        base_url=stub.url, model=stub.model, api_key="stub-key", timeout=VISION_REQUEST_TIMEOUT
+    )
     container = replace(
         build_memory_container(),
         object_store=FilesystemObjectStore(tmp_path / "objects"),
-        ocr=OcrmypdfEngine(languages=["deu", "eng"], timeout=timedelta(minutes=5), vision=settings),
+        ocr=OcrmypdfEngine(
+            languages=["deu", "eng"],
+            timeout=timedelta(minutes=5),
+            vision=settings,
+            vision_timeout=DEFAULT_SETTINGS.vlm_timeout,
+        ),
         parser=LayoutParser(),
         pages=PdfiumPageRenderer(),
         locator=PdfiumTextLocator(),

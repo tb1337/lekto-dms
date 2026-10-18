@@ -15,6 +15,7 @@ from papiq.core.domain import media_types
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.domain.reading import PageReading
 from papiq.core.ports.ocr import OcrResult
+from tests.builders import DEFAULT_SETTINGS
 
 SIGNATURE = (
     "DigitalSignatureError: Input PDF has a digital signature. OCR would alter the document,\n"
@@ -107,7 +108,9 @@ def runs(monkeypatch: pytest.MonkeyPatch) -> Runs:
 
 
 def engine() -> OcrmypdfEngine:
-    return OcrmypdfEngine(languages=["deu"], timeout=timedelta(minutes=1))
+    return OcrmypdfEngine(
+        languages=["deu"], timeout=timedelta(minutes=1), vision_timeout=DEFAULT_SETTINGS.vlm_timeout
+    )
 
 
 def options(call: list[str]) -> tuple[str, bool]:

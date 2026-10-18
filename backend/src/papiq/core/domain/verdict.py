@@ -67,15 +67,15 @@ FACTS = Node.SIGNAL_FACTS.value
 _UNSURE = 0.89  # the confidence of an uncertain field stays below acceptance
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Thresholds:
-    accept: float = 0.9  # the model's sender matches a contact this well: it names it
-    suggest: float = 0.75  # this well: a weak match, a suggestion
-    classifier: float = 0.8  # the classifier this sure: it names the class
+    """The judge's thresholds. The first three are configuration (the composition sets them
+    from the settings, whose defaults are the one source); `ambiguity` is a constant."""
+
+    accept: float  # the model's sender matches a contact this well: it names it
+    suggest: float  # this well: a weak match, a suggestion
+    classifier: float  # the classifier this sure: it names the class
     ambiguity: float = 0.05  # two contacts this close: the model names neither
-
-
-DEFAULT_THRESHOLDS = Thresholds()
 
 
 @dataclass(frozen=True)
@@ -236,7 +236,7 @@ class _ContactView:
 def judge_contact(
     signals: Signals,
     contacts: Sequence[Contact],
-    thresholds: Thresholds = DEFAULT_THRESHOLDS,
+    thresholds: Thresholds,
 ) -> FieldCheck:
     view = _contact_view(signals, contacts, thresholds)
     names = view.names
@@ -412,7 +412,7 @@ def _quote_names(quote: str | None, contact: Contact | None, sender: str | None)
 def judge_type(
     signals: Signals,
     types: Sequence[DocumentType],
-    thresholds: Thresholds = DEFAULT_THRESHOLDS,
+    thresholds: Thresholds,
 ) -> FieldCheck:
     names = {kind.id: kind for kind in types}
     model = signals.model
@@ -548,7 +548,7 @@ def _type_reason(
 def judge_tags(
     signals: Signals,
     tags: Sequence[Tag],
-    thresholds: Thresholds = DEFAULT_THRESHOLDS,
+    thresholds: Thresholds,
 ) -> FieldCheck:
     """Always OK: tags set are those two signals name, or the model alone where no other
     signal could have, without the ancestors of others set (`TagTree.normalise`); those one
@@ -628,7 +628,7 @@ def judge_topic(
     contact: FieldCheck,
     contacts: Sequence[Contact],
     tags: Sequence[Tag],
-    thresholds: Thresholds = DEFAULT_THRESHOLDS,
+    thresholds: Thresholds,
 ) -> FieldCheck:
     """Always OK, as tags: the topic of the contact the judge decided (`contact`, the check of
     `judge_contact`), among the topics it enables that the classification sets

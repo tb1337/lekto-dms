@@ -36,6 +36,7 @@ from papiq.core.ports import ObjectStore, OcrResult, ParseResult
 from papiq.core.services.indexing import SUBSCRIBER
 from tests import builders, probes
 from tests.api import auth, issue_token, serving
+from tests.builders import DEFAULT_SETTINGS
 from tests.integration.adapters.meilisearch.conftest import drop
 
 DOCUMENTS = f"{PREFIX}/documents"
@@ -178,6 +179,9 @@ async def system(stores: tuple[Database, ObjectStore], settings: Settings) -> As
         api_key=None if key is None else key.get_secret_value(),
         index=name,
         dimensions=FakeEmbeddings.DIMENSIONS,
+        locales=DEFAULT_SETTINGS.search_locales.split("+"),
+        timeout=DEFAULT_SETTINGS.meilisearch_timeout.total_seconds(),
+        task_timeout=DEFAULT_SETTINGS.meilisearch_task_timeout.total_seconds(),
     )
     container = replace(
         build_memory_container(),
@@ -204,6 +208,7 @@ async def system(stores: tuple[Database, ObjectStore], settings: Settings) -> As
         poll_interval=timedelta(milliseconds=50),
         dispatch_interval=timedelta(milliseconds=50),
         shutdown_timeout=timedelta(seconds=30),
+        webhook_concurrency=DEFAULT_SETTINGS.webhook_concurrency,
         indexing=services.indexing,
     )
     app = build_app(container, tuning, services)

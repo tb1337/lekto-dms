@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -29,7 +30,7 @@ from papiq.core.domain.webhooks import (
     WebhookDelivery,
 )
 from papiq.core.ports import WebhookRequest
-from papiq.core.services.webhooks import DELIVER_JOB, WebhookDeliveryService, WebhookPolicy
+from papiq.core.services.webhooks import DELIVER_JOB, WebhookDeliveryService
 from tests import builders
 from tests.builders import NOW
 from tests.unit.services.conftest import World
@@ -309,7 +310,7 @@ async def test_it_gives_up_after_the_last_attempt(world: World) -> None:
     user = await world.user()
     document = await seed(world, user)
     webhook, _ = await hook(world, user)
-    service = world.webhook_delivery(WebhookPolicy(max_attempts=3))
+    service = world.webhook_delivery(replace(builders.WEBHOOKS, max_attempts=3))
     await queue(world, document, service)
     for _ in range(3):
         await service.run_next_job()
@@ -346,7 +347,7 @@ async def test_a_webhook_is_switched_off_after_repeated_failures_and_success_res
     user = await world.user()
     document = await seed(world, user)
     webhook, _ = await hook(world, user)
-    service = world.webhook_delivery(WebhookPolicy(disable_after=3))
+    service = world.webhook_delivery(replace(builders.WEBHOOKS, disable_after=3))
 
     async def deliver(answer: int) -> None:
         world.sender.answers = [answer]
@@ -527,7 +528,7 @@ async def test_the_owner_and_admins_test_a_webhook(world: World) -> None:
 async def test_test_requests_are_limited_per_user_and_window(world: World) -> None:
     owner, admin = await world.user(), await world.user(role=Role.ADMIN)
     webhook, _ = await hook(world, owner)
-    policy = WebhookPolicy(test_requests=2, test_window=timedelta(minutes=1))
+    policy = replace(builders.WEBHOOKS, test_requests=2, test_window=timedelta(minutes=1))
     service = world.webhook_delivery(policy)
     await service.send_test(owner.id, webhook.id)
     world.clock.advance(timedelta(seconds=20))

@@ -7,6 +7,7 @@ import pytest
 from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.composition.settings import Settings
 from tests import probes
+from tests.builders import DEFAULT_SETTINGS
 from tests.contracts.search_index import DIMENSIONS
 
 
@@ -29,6 +30,9 @@ def new_index(
         api_key=None if key is None else key.get_secret_value(),
         index=name,
         dimensions=dimensions,
+        locales=DEFAULT_SETTINGS.search_locales.split("+"),
+        timeout=DEFAULT_SETTINGS.meilisearch_timeout.total_seconds(),
+        task_timeout=DEFAULT_SETTINGS.meilisearch_task_timeout.total_seconds(),
     )
 
 

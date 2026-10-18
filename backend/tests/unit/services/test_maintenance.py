@@ -12,6 +12,7 @@ from papiq.core.domain.jobs import JobStatus
 from papiq.core.domain.webhooks import DeliveryOutcome, WebhookDelivery
 from papiq.core.services.maintenance import CLEANUP_JOB, REMOVE_FILES_JOB, MaintenanceService
 from papiq.core.services.objects import derivative_keys, original_key
+from tests import builders
 from tests.builders import PASSWORD, incoming
 from tests.unit.services.conftest import World
 
@@ -26,6 +27,7 @@ def maintenance(world: World, bus: MemoryEventBus | None = None) -> MaintenanceS
         bus or MemoryEventBus(world.database, clock=world.clock),
         interval=INTERVAL,
         retention=RETENTION,
+        session_idle=builders.DEFAULT_SETTINGS.session_idle_timeout,
         object_store=world.object_store,
     )
 

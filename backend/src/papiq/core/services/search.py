@@ -34,10 +34,13 @@ from papiq.core.services._tags import expanded, group_lookup, matches
 log = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class SearchPolicy:
-    semantic_ratio: float = 0.5  # weight of the meaning against the words, 0 to 1
-    embed_timeout: timedelta = timedelta(seconds=5)  # for the query; then plain full text
+    """Configuration: the composition sets it from the settings, whose defaults are the one
+    source."""
+
+    semantic_ratio: float  # weight of the meaning against the words, 0 to 1
+    embed_timeout: timedelta  # for the query; then plain full text
     query_prefix: str = ""  # put before the query, for models that ask for it
     dimensions: int | None = None  # the length of the vectors; a query of another goes by words
 
@@ -67,13 +70,13 @@ class SearchService:
         self,
         uow: UnitOfWorkFactory,
         index: SearchIndex,
+        policy: SearchPolicy,
         embeddings: Embeddings | None = None,
-        policy: SearchPolicy | None = None,
     ) -> None:
         self._uow = uow
         self._index = index
         self._embeddings = embeddings
-        self._policy = policy or SearchPolicy()
+        self._policy = policy
 
     async def search(
         self,

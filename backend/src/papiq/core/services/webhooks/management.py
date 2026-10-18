@@ -40,12 +40,12 @@ class WebhookService:
         uow: UnitOfWorkFactory,
         clock: Clock,
         cipher: SecretCipher,
-        policy: WebhookPolicy | None = None,
+        policy: WebhookPolicy,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._cipher = cipher
-        self._policy = policy or WebhookPolicy()
+        self._policy = policy
 
     async def create(
         self,

@@ -51,7 +51,7 @@ class Worker:
         indexing: IndexingService | None = None,
         rules: RuleApplicationService | None = None,
         webhooks: WebhookDeliveryService | None = None,
-        webhook_concurrency: int = 4,
+        webhook_concurrency: int,
         classifier: ClassifierService | None = None,
         logos: LogoService | None = None,
         master_data: MasterDataService | None = None,

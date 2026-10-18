@@ -24,7 +24,7 @@ from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, SpaceId
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.search import EmbeddingStamp, Segment, Visibility
 from papiq.core.ports import DocumentFilter, SearchQuery
-from tests.builders import NOW, index_document
+from tests.builders import DEFAULT_SETTINGS, NOW, index_document
 
 URL = "http://meilisearch:7700"
 
@@ -94,11 +94,14 @@ class SimulatedMeilisearch:
         return httpx2.Response(202, json={"taskUid": 1, "status": "enqueued"})
 
     def index(self, **arguments: Any) -> MeilisearchIndex:
-        return MeilisearchIndex(
-            url=URL,
-            transport=httpx2.MockTransport(self.handle),
-            index="papiq-test",
+        tuning: dict[str, Any] = {
+            "locales": DEFAULT_SETTINGS.search_locales.split("+"),
+            "timeout": DEFAULT_SETTINGS.meilisearch_timeout.total_seconds(),
+            "task_timeout": DEFAULT_SETTINGS.meilisearch_task_timeout.total_seconds(),
             **arguments,
+        }
+        return MeilisearchIndex(
+            url=URL, transport=httpx2.MockTransport(self.handle), index="papiq-test", **tuning
         )
 
     def calls(self, method: str, suffix: str = "") -> list[httpx2.Request]:

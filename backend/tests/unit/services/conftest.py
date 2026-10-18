@@ -91,7 +91,12 @@ class World:
     @property
     def auth(self) -> AuthService:
         return AuthService(
-            self.uow, self.clock, hasher=self.hasher, cipher=self.cipher, totp=self.totp
+            self.uow,
+            self.clock,
+            hasher=self.hasher,
+            cipher=self.cipher,
+            totp=self.totp,
+            sessions=builders.SESSIONS,
         )
 
     def oidc(self, *, auto_create: bool = False) -> OidcService:
@@ -130,10 +135,12 @@ class World:
 
     @property
     def webhooks(self) -> WebhookService:
-        return WebhookService(self.uow, self.clock, self.cipher)
+        return WebhookService(self.uow, self.clock, self.cipher, builders.WEBHOOKS)
 
     def webhook_delivery(self, policy: WebhookPolicy | None = None) -> WebhookDeliveryService:
-        return WebhookDeliveryService(self.uow, self.clock, self.cipher, self.sender, policy)
+        return WebhookDeliveryService(
+            self.uow, self.clock, self.cipher, self.sender, policy or builders.WEBHOOKS
+        )
 
     def pipeline(
         self,
@@ -142,13 +149,11 @@ class World:
         vision: VisionModel | None = None,
         facts: NodeExecutor | None = None,
     ) -> PipelineService:
-        return PipelineService(
+        return builders.pipeline_service(
             self.uow,
             self.clock,
             self.object_store,
             {**self.executors, **(executors or {})},
-            pipeline_version="test",
-            suggest_contact=builders.DEFAULT_SETTINGS.contact_suggest_threshold,
             vision=vision,
             facts=facts,
         )

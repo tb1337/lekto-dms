@@ -31,6 +31,8 @@ from papiq.composition.container import (
     neighbours_policy_of,
     openai_language_model,
     policy_of,
+    retry_policy_of,
+    thresholds_of,
 )
 from papiq.composition.errors import ConfigurationError
 from papiq.composition.settings import Settings
@@ -44,7 +46,7 @@ from papiq.core.services.classification.signals import (
     NeighboursSignal,
 )
 from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
-from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode, RetryPolicy
+from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode
 
 FAKE_MODEL = "fixed answers"
 PIPELINE_VERSION = "evaluation"
@@ -121,9 +123,7 @@ def build_environment(
         executors |= {node: ImportedSignal(uow, signal) for node, signal in signals.items()}
         executors[Node.JUDGE] = ImportedJudgeNode(
             uow,
-            JudgeNode(
-                uow, store, clock, policy, classifier_threshold=settings.classifier_threshold
-            ),
+            JudgeNode(uow, store, clock, policy, thresholds=thresholds_of(settings)),
         )
         executors[Node.FIELDS] = ImportedFieldsNode(
             uow, FieldsNode(uow, store, model, clock, policy)
@@ -135,7 +135,8 @@ def build_environment(
             executors,
             pipeline_version=PIPELINE_VERSION,
             suggest_contact=policy.suggest_contact,
-            retry=RetryPolicy(max_attempts=1),
+            retry=replace(retry_policy_of(settings), max_attempts=1),
+            poor_reading=settings.poor_reading_threshold,
         )
 
     return Environment(

@@ -2,9 +2,11 @@
 
 from dataclasses import replace
 from datetime import UTC, datetime
+from functools import partial
 
 import pytest
 
+from papiq.core.domain import verdict
 from papiq.core.domain.classification import CandidateSource, FieldCheck
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId
 from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
@@ -16,11 +18,14 @@ from papiq.core.domain.verdict import (
     ModelProposal,
     Neighbour,
     Signals,
-    judge_contact,
-    judge_tags,
-    judge_topic,
-    judge_type,
 )
+from tests import builders
+
+# The judges with the shipped thresholds (`PAPIQ_*_THRESHOLD` defaults).
+judge_contact = partial(verdict.judge_contact, thresholds=builders.THRESHOLDS)
+judge_type = partial(verdict.judge_type, thresholds=builders.THRESHOLDS)
+judge_tags = partial(verdict.judge_tags, thresholds=builders.THRESHOLDS)
+judge_topic = partial(verdict.judge_topic, thresholds=builders.THRESHOLDS)
 
 NOW = datetime(2026, 10, 13, tzinfo=UTC)
 UTILITY = Contact.create(name="Stadtwerke Musterstadt", now=NOW)

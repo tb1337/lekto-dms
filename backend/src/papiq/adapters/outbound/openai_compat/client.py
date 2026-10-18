@@ -35,14 +35,15 @@ class OpenAiCompatLanguageModel:
         base_url: str,
         model: str,
         api_key: str | None = None,
-        temperature: float | None = 0.0,
+        temperature: float | None,
         seed: int | None = None,
-        timeout: float = 300.0,
-        response_format: ResponseFormat = "json_schema",
+        timeout: float,
+        response_format: ResponseFormat,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
-        """`temperature` None leaves it to the endpoint (some models reject one). `transport`
-        replaces the network in tests."""
+        """`temperature` None leaves it to the endpoint (some models reject one); `timeout` in
+        seconds. The composition takes them from the settings. `transport` replaces the
+        network in tests."""
         self._url = base_url.rstrip("/") + "/chat/completions"
         self._model = model
         self._headers = _headers(api_key)
@@ -110,9 +111,11 @@ class OpenAiCompatEmbeddings:
         base_url: str,
         model: str,
         api_key: str | None = None,
-        timeout: float = 60.0,
+        timeout: float,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
+        """`timeout` in seconds, from the settings. `transport` replaces the network in
+        tests."""
         self._url = base_url.rstrip("/") + "/embeddings"
         self._model = model
         self._headers = _headers(api_key)

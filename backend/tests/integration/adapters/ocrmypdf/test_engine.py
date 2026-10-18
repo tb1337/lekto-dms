@@ -15,8 +15,10 @@ from papiq.adapters.outbound.ocrmypdf.engine import UNREADABLE_NOTE
 from papiq.adapters.outbound.ocrmypdf.vision import VisionSettings
 from papiq.adapters.outbound.pdfium import has_hidden_text
 from papiq.adapters.outbound.pdfium.library import unreadable_share
+from papiq.composition.container import VISION_REQUEST_TIMEOUT
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import LanguageModelError
+from tests.builders import DEFAULT_SETTINGS
 from tests.contracts.processing import SAMPLES, OcrContract
 from tests.vision_stub import VisionStub, serve
 
@@ -29,8 +31,18 @@ def engine(
 ) -> OcrmypdfEngine:
     settings = None
     if vision is not None:
-        settings = VisionSettings(base_url=vision.url, model=vision.model, api_key="stub-key")
-    return OcrmypdfEngine(languages=["deu", "eng"], timeout=timeout, vision=settings)
+        settings = VisionSettings(
+            base_url=vision.url,
+            model=vision.model,
+            api_key="stub-key",
+            timeout=VISION_REQUEST_TIMEOUT,
+        )
+    return OcrmypdfEngine(
+        languages=["deu", "eng"],
+        timeout=timeout,
+        vision=settings,
+        vision_timeout=DEFAULT_SETTINGS.vlm_timeout,
+    )
 
 
 @pytest.fixture

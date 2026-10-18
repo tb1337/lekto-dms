@@ -61,14 +61,17 @@ _HOLDOUT_EVERY = 5  # every fifth example: a fifth held out
 _MODEL_TYPE = "application/octet-stream"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class ClassifierPolicy:
-    min_examples: int = 20  # confirmed documents before the first model
-    retrain_after: int = 25  # confirmations since the last model before another
-    threshold: float = 0.8  # a prediction this sure names its class (`judge`)
+    """The first three and `text_limit` are configuration (the composition sets them from the
+    settings, whose defaults are the one source); the intervals are constants."""
+
+    min_examples: int  # confirmed documents before the first model
+    retrain_after: int  # confirmations since the last model before another
+    threshold: float  # a prediction this sure names its class (`judge`)
     check_interval: timedelta = timedelta(minutes=10)
     train_lease: timedelta = timedelta(hours=1)
-    text_limit: int = 50_000  # characters of a document's text it learns from
+    text_limit: int  # characters of a document's text it learns from
 
     def __post_init__(self) -> None:
         if min(self.min_examples, self.retrain_after, self.text_limit) < 1:
@@ -98,7 +101,7 @@ class ClassifierService:
         store: ObjectStore,
         clock: Clock,
         classifier: Classifier,
-        policy: ClassifierPolicy | None = None,
+        policy: ClassifierPolicy,
         *,
         fetch_logos: bool = False,
     ) -> None:
@@ -109,7 +112,7 @@ class ClassifierService:
         self._store = store
         self._clock = clock
         self._classifier = classifier
-        self.policy = policy or ClassifierPolicy()
+        self.policy = policy
         self._cached: tuple[ClassifierModelId, bytes] | None = None
 
     @property

@@ -11,6 +11,7 @@ from papiq.core.domain.master_data import Tag, TagScope
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import CountBy, DocumentFilter
 from papiq.core.services.search import SearchService
+from tests import builders
 from tests.unit.services.conftest import World
 from tests.unit.services.search_support import Setup
 
@@ -37,7 +38,7 @@ class Tags:
         return {view.document.id for view in views}
 
     async def searched(self, filter: DocumentFilter) -> set[DocumentId]:
-        search = SearchService(self.setup.world.uow, self.setup.index)
+        search = SearchService(self.setup.world.uow, self.setup.index, builders.SEARCH)
         page = await search.search(self.owner.id, "Schreiben", filter)
         return {item.document.id for item in page.items}
 

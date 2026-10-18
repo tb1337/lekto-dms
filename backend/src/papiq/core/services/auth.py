@@ -74,10 +74,13 @@ log = logging.getLogger(__name__)
 TOTP_ISSUER = "Papiq"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class SessionPolicy:
-    idle: timedelta = timedelta(days=1)
-    max_age: timedelta = timedelta(days=30)
+    """`idle` and `max_age` are configuration: the composition sets them from the settings,
+    whose defaults are the one source."""
+
+    idle: timedelta
+    max_age: timedelta
     # Last use is written at most this often, not on every request.
     touch_interval: timedelta = timedelta(minutes=1)
 
@@ -129,14 +132,14 @@ class AuthService:
         hasher: PasswordHasher,
         cipher: SecretCipher,
         totp: Totp,
-        sessions: SessionPolicy | None = None,
+        sessions: SessionPolicy,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._hasher = hasher
         self._cipher = cipher
         self._totp = totp
-        self._policy = sessions or SessionPolicy()
+        self._policy = sessions
         self._dummy_hash: str | None = None
 
     @property

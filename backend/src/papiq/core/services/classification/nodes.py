@@ -57,7 +57,6 @@ from papiq.core.domain.periods import Period, PeriodKind
 from papiq.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
 from papiq.core.domain.reading import PageReading, readings_from_json
 from papiq.core.domain.verdict import (
-    DEFAULT_THRESHOLDS,
     Thresholds,
     judge_contact,
     judge_tags,
@@ -118,18 +117,16 @@ class ClassificationPolicy:
     characters are shortened; at most `max_tags` tags and `max_contacts` contacts (those the
     text names most) are listed in a prompt. `default_currency`: the currency of an amount in
     a text that shows none. `poor_reading`: the share of unsure words from which a recognised
-    page counts as poorly read (`PageReading.poor`)."""
+    page counts as poorly read (`PageReading.poor`). All but `max_contacts` are configuration:
+    the composition sets them from the settings, whose defaults are the one source."""
 
-    accept: float = 0.9
-    suggest_contact: float = 0.75
-    input_budget: int = 12_000
-    max_tags: int = 200
+    accept: float
+    suggest_contact: float
+    input_budget: int
+    max_tags: int
     max_contacts: int = 20
-    default_currency: str = "EUR"
-    poor_reading: float = 0.08
-
-
-DEFAULT_POLICY = ClassificationPolicy()
+    default_currency: str
+    poor_reading: float
 
 
 class _UnfitAnswerError(Exception):
@@ -148,7 +145,7 @@ class _ModelStep:
         store: ObjectStore,
         model: LanguageModel | None,
         clock: Clock,
-        policy: ClassificationPolicy = DEFAULT_POLICY,
+        policy: ClassificationPolicy,
         *,
         locator: TextLocator | None = None,
     ) -> None:
@@ -376,17 +373,14 @@ class JudgeNode(_ModelStep):
         uow: UnitOfWorkFactory,
         store: ObjectStore,
         clock: Clock,
-        policy: ClassificationPolicy = DEFAULT_POLICY,
+        policy: ClassificationPolicy,
         *,
+        thresholds: Thresholds,
         locator: TextLocator | None = None,
-        classifier_threshold: float = DEFAULT_THRESHOLDS.classifier,
     ) -> None:
+        """`thresholds`: those of the judge, from the same settings as `policy`."""
         super().__init__(uow, store, None, clock, policy, locator=locator)
-        self._thresholds = Thresholds(
-            accept=policy.accept,
-            suggest=policy.suggest_contact,
-            classifier=classifier_threshold,
-        )
+        self._thresholds = thresholds
 
     async def run(self, document: Document) -> NodeResult | MetadataResult:
         async with self._uow() as uow:

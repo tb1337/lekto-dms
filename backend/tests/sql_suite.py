@@ -35,7 +35,7 @@ from papiq.core.ports import DeliveryRetry, EventBus, UnitOfWorkFactory
 from papiq.core.services import master_data
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.master_data import MasterDataService
-from papiq.core.services.pipeline import PipelineService, PlaceholderNode
+from papiq.core.services.pipeline import PlaceholderNode
 from tests import builders
 from tests.builders import NOW, incoming
 from tests.contracts.event_bus import EventBusFactory, Recorder, publish, received
@@ -160,13 +160,11 @@ class SqlAdapterSuite:
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
         owner, _ = await owner_with_space(uow_factory)
-        pipeline = PipelineService(
+        pipeline = builders.pipeline_service(
             uow_factory,
             ManualClock(NOW),
             MemoryObjectStore(),
             {node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE},
-            pipeline_version="test",
-            suggest_contact=builders.DEFAULT_SETTINGS.contact_suggest_threshold,
         )
 
         async def upload() -> Document:

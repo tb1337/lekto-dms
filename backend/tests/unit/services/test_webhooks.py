@@ -1,5 +1,6 @@
 """Managing webhooks: who sees and changes what, the secret, the limit."""
 
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -13,8 +14,9 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.ids import WebhookId, new_id
 from papiq.core.domain.users import Role
 from papiq.core.domain.webhooks import DISABLED_FAILING, new_secret
-from papiq.core.services.webhooks import WebhookPolicy, WebhookService
+from papiq.core.services.webhooks import WebhookService
 from papiq.core.services.webhooks.management import secret_context
+from tests import builders
 from tests.unit.services.conftest import World
 
 URL = "http://n8n.lan:5678/webhook/papiq"
@@ -50,7 +52,9 @@ async def test_a_bad_url_or_event_type_is_refused(world: World) -> None:
 
 async def test_the_number_of_webhooks_per_user_is_limited(world: World) -> None:
     user, other = await world.user(), await world.user()
-    service = WebhookService(world.uow, world.clock, world.cipher, WebhookPolicy(per_user=2))
+    service = WebhookService(
+        world.uow, world.clock, world.cipher, replace(builders.WEBHOOKS, per_user=2)
+    )
     for _ in range(2):
         await service.create(user.id, name="x", url=URL, event_types=["*"])
     with pytest.raises(ConflictError):

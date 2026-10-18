@@ -248,10 +248,13 @@ class ClassifierSignal:
         )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class NeighboursPolicy:
-    count: int = 5  # neighbours asked for; 0: none
-    chunk_size: int = 1500  # of the first section, as the index cuts it
+    """Configuration: the composition sets it from the settings, whose defaults are the one
+    source."""
+
+    count: int  # neighbours asked for; 0: none
+    chunk_size: int  # of the first section, as the index cuts it
     document_prefix: str = ""  # put before it, as the index does
     dimensions: int | None = None  # the length of the vectors the index takes
 
@@ -268,13 +271,13 @@ class NeighboursSignal:
         store: ObjectStore,
         index: SearchIndex | None,
         embeddings: Embeddings | None,
-        policy: NeighboursPolicy | None = None,
+        policy: NeighboursPolicy,
     ) -> None:
         self._uow = uow
         self._store = store
         self._index = index
         self._embeddings = embeddings
-        self._policy = policy or NeighboursPolicy()
+        self._policy = policy
 
     async def run(self, document: Document) -> NodeResult:
         if self._policy.count == 0:

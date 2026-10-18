@@ -31,8 +31,14 @@ from papiq.adapters.outbound.ocrmypdf.vision import (
     record_path,
     scaled,
 )
+from papiq.composition.container import VISION_REQUEST_TIMEOUT
 
-SETTINGS = VisionSettings(base_url="https://vlm.example/v1", model="vlm-1", api_key="secret")
+SETTINGS = VisionSettings(
+    base_url="https://vlm.example/v1",
+    model="vlm-1",
+    api_key="secret",
+    timeout=VISION_REQUEST_TIMEOUT,
+)
 
 
 def answer(lines: list[dict[str, Any]] | str, status: int = 200) -> httpx2.Response:

@@ -60,6 +60,7 @@ from papiq.composition.database import open_database
 from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
 from papiq.core.domain.pipeline import NODES, Node
+from papiq.core.domain.verdict import Thresholds
 from papiq.core.ports import (
     Classifier,
     Clock,
@@ -402,17 +403,12 @@ def build_container(settings: Settings) -> Container:
     )
 
 
-# Seconds; as `PAPIQ_RULES_PATTERN_TIMEOUT` by default.
-DEFAULT_PATTERN_TIMEOUT = 0.2
-
-
-def _default(setting: str) -> str:
-    """The default of a setting, for the memory container, which reads no environment."""
-    return str(Settings.model_fields[setting].default)
-
-
-def build_memory_container(clock: Clock | None = None) -> Container:
-    """All ports on in-memory adapters, for tests and local experiments. Nothing persists."""
+def build_memory_container(
+    clock: Clock | None = None, settings: Settings | None = None
+) -> Container:
+    """All ports on in-memory adapters, for tests and local experiments. Nothing persists.
+    `settings`: for the two adapters that take tuning; the shipped defaults without."""
+    settings = settings or Settings.model_construct()
     database = MemoryDatabase()
     return Container(
         unit_of_work=MemoryUnitOfWorkFactory(database),
@@ -430,9 +426,9 @@ def build_memory_container(clock: Clock | None = None) -> Container:
         cipher=FakeCipher(),
         webhook_sender=FakeWebhookSender(),
         totp=FakeTotp(),
-        patterns=RegexPatternMatcher(DEFAULT_PATTERN_TIMEOUT),
+        patterns=RegexPatternMatcher(settings.rules_pattern_timeout.total_seconds()),
         templates=LiquidTemplateRenderer(
-            locale=_default("template_locale"), currency=_default("default_currency")
+            locale=settings.template_locale, currency=settings.default_currency
         ),
         oidc=None,
         search_index=MemorySearchIndex(),
@@ -485,6 +481,24 @@ def classifier_policy_of(settings: Settings) -> ClassifierPolicy:
         threshold=settings.classifier_threshold,
         text_limit=settings.llm_input_budget,
     )
+
+
+def thresholds_of(settings: Settings) -> Thresholds:
+    """The judge's thresholds."""
+    return Thresholds(
+        accept=settings.confidence_threshold,
+        suggest=settings.contact_suggest_threshold,
+        classifier=settings.classifier_threshold,
+    )
+
+
+def retry_policy_of(settings: Settings) -> RetryPolicy:
+    """Automatic retries of a node that raised."""
+    return RetryPolicy(max_attempts=settings.node_max_attempts, delay=settings.node_retry_delay)
+
+
+def session_policy_of(settings: Settings) -> SessionPolicy:
+    return SessionPolicy(idle=settings.session_idle_timeout, max_age=settings.session_max_age)
 
 
 def policy_of(settings: Settings) -> ClassificationPolicy:
@@ -581,14 +595,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
     executors[Node.SIGNAL_LLM] = ImportedSignal(uow, LlmSignal(uow, store, model, clock, policy))
     executors[Node.JUDGE] = ImportedJudgeNode(
         uow,
-        JudgeNode(
-            uow,
-            store,
-            clock,
-            policy,
-            locator=locator,
-            classifier_threshold=settings.classifier_threshold,
-        ),
+        JudgeNode(uow, store, clock, policy, thresholds=thresholds_of(settings), locator=locator),
     )
     executors[Node.FIELDS] = ImportedFieldsNode(
         uow, FieldsNode(uow, store, model, clock, policy, locator=locator)
@@ -610,9 +617,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         hasher=container.password_hasher,
         cipher=container.cipher,
         totp=container.totp,
-        sessions=SessionPolicy(
-            idle=settings.session_idle_timeout, max_age=settings.session_max_age
-        ),
+        sessions=session_policy_of(settings),
     )
     return Services(
         auth=auth,
@@ -675,9 +680,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             executors,
             pipeline_version=__version__,
             suggest_contact=settings.contact_suggest_threshold,
-            retry=RetryPolicy(
-                max_attempts=settings.node_max_attempts, delay=settings.node_retry_delay
-            ),
+            retry=retry_policy_of(settings),
             # Longer than any node may take, so a running node never loses its claim.
             # A classification node may ask the model twice (once more after an invalid answer);
             # the OCR node may read a document with the vision model.
@@ -698,12 +701,14 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
         indexing=(
             None
             if index is None
-            else IndexingService(uow, clock, store, index, embeddings, indexing_policy_of(settings))
+            else IndexingService(
+                uow, clock, store, index, indexing_policy_of(settings), embeddings=embeddings
+            )
         ),
         search=(
             None
             if index is None
-            else SearchService(uow, index, embeddings, search_policy_of(settings))
+            else SearchService(uow, index, search_policy_of(settings), embeddings=embeddings)
         ),
         classifier=classifier,
     )

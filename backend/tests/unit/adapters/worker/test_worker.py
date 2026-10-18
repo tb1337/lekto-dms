@@ -19,7 +19,7 @@ from papiq.core.domain.users import User
 from papiq.core.services.indexing import SUBSCRIBER
 from papiq.core.services.maintenance import CLEANUP_JOB
 from tests import builders
-from tests.builders import incoming
+from tests.builders import DEFAULT_SETTINGS, incoming
 from tests.contracts.processing import SAMPLES
 
 FAST = timedelta(milliseconds=10)
@@ -36,6 +36,7 @@ def worker(
         poll_interval=FAST,
         dispatch_interval=FAST,
         shutdown_timeout=shutdown_timeout,
+        webhook_concurrency=DEFAULT_SETTINGS.webhook_concurrency,
     )
 
 
@@ -127,6 +128,7 @@ async def test_documents_reach_the_search_index() -> None:
         poll_interval=FAST,
         dispatch_interval=FAST,
         shutdown_timeout=timedelta(seconds=5),
+        webhook_concurrency=DEFAULT_SETTINGS.webhook_concurrency,
         indexing=services.indexing,
     )
     async with running(service):
@@ -165,6 +167,7 @@ async def test_a_moved_tag_is_normalised_at_its_documents() -> None:
         poll_interval=FAST,
         dispatch_interval=FAST,
         shutdown_timeout=timedelta(seconds=5),
+        webhook_concurrency=DEFAULT_SETTINGS.webhook_concurrency,
         master_data=master,
     )
     async with running(service):

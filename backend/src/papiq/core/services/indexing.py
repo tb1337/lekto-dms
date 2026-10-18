@@ -88,16 +88,19 @@ _ATTEMPTS = {INDEX_JOB: 10, REFRESH_JOB: 10, REBUILD_JOB: 3}
 _QUEUE_BATCH = 200
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class IndexingPolicy:
-    max_text: int = 200_000  # characters of text per document in the index
-    chunk_size: int = 1500  # characters per section that gets a vector
-    max_chunks: int = 8  # sections per document; 1: one vector per document
+    """All but `batch_size` are configuration: the composition sets them from the settings,
+    whose defaults are the one source."""
+
+    max_text: int  # characters of text per document in the index
+    chunk_size: int  # characters per section that gets a vector
+    max_chunks: int  # sections per document; 1: one vector per document
     document_prefix: str = ""  # put before each section, for models that ask for it
     dimensions: int | None = None  # the length of the vectors; others are refused
-    reconcile_interval: timedelta = timedelta(hours=6)
-    job_lease: timedelta = timedelta(minutes=10)
-    rebuild_lease: timedelta = timedelta(hours=6)
+    reconcile_interval: timedelta
+    job_lease: timedelta
+    rebuild_lease: timedelta
     batch_size: int = 50  # documents per request in a rebuild
 
     def __post_init__(self) -> None:
@@ -159,15 +162,15 @@ class IndexingService:
         clock: Clock,
         object_store: ObjectStore,
         index: SearchIndex,
+        policy: IndexingPolicy,
         embeddings: Embeddings | None = None,
-        policy: IndexingPolicy | None = None,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._store = object_store
         self._index = index
         self._embeddings = embeddings
-        self._policy = policy or IndexingPolicy()
+        self._policy = policy
 
     # --- events and jobs ------------------------------------------------------------------------
 

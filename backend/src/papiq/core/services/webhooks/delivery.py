@@ -83,13 +83,13 @@ class WebhookDeliveryService:
         clock: Clock,
         cipher: SecretCipher,
         sender: WebhookSender,
-        policy: WebhookPolicy | None = None,
+        policy: WebhookPolicy,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._cipher = cipher
         self._sender = sender
-        self._policy = policy or WebhookPolicy()
+        self._policy = policy
         self._retry = DeliveryRetry(
             max_attempts=self._policy.max_attempts,
             delay=self._policy.retry_delay,

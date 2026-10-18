@@ -33,6 +33,7 @@ from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.objects import archive_key, preview_key, structure_key, text_key
 from tests import builders
 from tests.api import Stream, auth, issue_token, listen, serving, until
+from tests.builders import DEFAULT_SETTINGS
 from tests.contracts.processing import SAMPLES
 
 if not (shutil.which("tesseract") and shutil.which("gs")):
@@ -98,7 +99,13 @@ class System:
 @pytest.fixture
 async def system(stores: tuple[Database, ObjectStore], settings: Settings) -> AsyncIterator[System]:
     database, object_store = stores
-    ocr = Interruptible(OcrmypdfEngine(languages=["deu", "eng"], timeout=timedelta(minutes=5)))
+    ocr = Interruptible(
+        OcrmypdfEngine(
+            languages=["deu", "eng"],
+            timeout=timedelta(minutes=5),
+            vision_timeout=DEFAULT_SETTINGS.vlm_timeout,
+        )
+    )
     container = replace(
         build_memory_container(),
         unit_of_work=SqlUnitOfWorkFactory(database),
@@ -123,6 +130,7 @@ async def system(stores: tuple[Database, ObjectStore], settings: Settings) -> As
         poll_interval=timedelta(milliseconds=50),
         dispatch_interval=timedelta(milliseconds=50),
         shutdown_timeout=timedelta(seconds=30),
+        webhook_concurrency=DEFAULT_SETTINGS.webhook_concurrency,
     )
     app = build_app(container, tuning, services)
     running = asyncio.create_task(worker.run())

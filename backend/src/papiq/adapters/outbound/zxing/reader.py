@@ -42,11 +42,12 @@ class ZxingCodeReader:
         try:
             with LOCK:
                 document = pypdfium2.PdfDocument(source)
+                total = len(document)  # a library call too: under the lock
         except pypdfium2.PdfiumError as error:
             raise UnprocessableDocumentError(f"the PDF cannot be read: {error}") from None
         codes: list[Code] = []
         try:
-            pages = min(len(document), self._max_pages)
+            pages = min(total, self._max_pages)
             for index in range(pages):
                 image = _render(document, index)
                 codes.extend(_codes_of(image, index + 1))

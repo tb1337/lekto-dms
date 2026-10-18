@@ -67,11 +67,12 @@ def _pdf_pages(source: Path) -> Iterator[Iterator[Image.Image]]:
     try:
         with LOCK:
             document = pypdfium2.PdfDocument(source)
+            count = len(document)  # a library call too: under the lock
     except pypdfium2.PdfiumError as error:
         raise UnprocessableDocumentError(f"the PDF cannot be read: {error}") from None
 
     def pages() -> Iterator[Image.Image]:
-        for index in range(len(document)):
+        for index in range(count):
             with LOCK:
                 page = document[index]
                 try:

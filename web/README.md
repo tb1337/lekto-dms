@@ -143,18 +143,23 @@ those (`lib/icons/load.ts`).
 
 `/ui/documents/{id}` serves the inbox and the document list (`/ui/inbox/{id}` leads there with
 `?from=inbox`, which keeps the place among the inbox's documents) with the tabs details,
-content, metadata and log (`?tab=`). Opening it reports the document seen
-(`PUT /documents/{id}/seen`), from wherever it was opened, and again when the open document
-turns green (seen while it is processed does not count); the counter follows. A document
-that leaves the inbox while open keeps its place among the inbox's (`keepPlace`). After
-confirming, it offers to open the inbox's next document that waits for a decision, yellow or
-red, never a new one or one in processing (`nextDecision`); without one, back to the inbox. From the desktop width on (`lg`) the view fills the window
+content, metadata and log (`?tab=`). From the desktop width on (`lg`) the view fills the window
 and only its cards scroll; on narrow screens the page scrolls.
 
+Opening the view reports the document seen (`PUT /documents/{id}/seen`), from wherever it was
+opened, and again when the open document turns green (seen while it is processed does not
+count); the counter follows. Opened from the inbox, the inbox is loaded again for every
+document shown, and a document that leaves it while open keeps its place there
+(`keepPlace`). After confirming, the view offers to open the inbox's next document that waits
+for a decision, yellow or red, the first before it if none follows, never a new one or one in
+processing (`nextDecision`); without one, back to the inbox.
+
 - **Details:** the archive PDF with PDF.js; until the archive exists (the text is still being
-  recognised), the page images from the API stand in. Both are shown by `PageViewer`: the
-  pages side by side, wrapping into rows, their width following the zoom (100 % is a page's
-  printed size), so the zoom decides how many stand in a row. The layouts one page, two pages
+  recognised), the page images from the API stand in, and before they exist the original of a
+  PDF (an image shows nothing yet; `viewerSources`: nothing is asked for that cannot be there).
+  Both are shown by `PageViewer`: the pages side by side, wrapping into rows, their width
+  following the zoom (100 % is a page's printed size), so the zoom decides how many stand in a
+  row. The layouts one page, two pages
   (the start; one on a narrow screen) and overview (four in a row, as far out as the zoom
   goes) are buttons, marked once zooming reaches them (`lib/viewer/zoom.ts`). Ctrl or ⌘ with
   the wheel, a pinch on a trackpad, Safari's gestures and two fingers zoom around the pointer
@@ -163,7 +168,9 @@ and only its cards scroll; on narrow screens the page scrolls.
   marks it on the page while hovered or focused (the places come from `/review`, owner and
   admins), a click on its page jumps there; so does a code from the content tab.
 - **Content:** the text as it is set, page by page, and beside it the facts and codes
-  (`FactsPanel`, from `/facts`).
+  (`FactsPanel`, from `/facts`). Text and facts are asked for once the document has its text
+  (`hasText`: `parse` done in the first run; a later run keeps the text of the one before), not
+  while it is processed for the first time or failed before its text was read (409).
 - **Metadata:** the files from `/files`: size, SHA-256, a PDF's information and XMP, an
   image's EXIF.
 

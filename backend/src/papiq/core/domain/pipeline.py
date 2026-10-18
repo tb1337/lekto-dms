@@ -206,32 +206,34 @@ OUTSIDE_PIPELINE = frozenset({RULES_CHANGE, RULES_APPLY, PERSON_SPACE})
 """Log entries written outside processing; they say nothing about a node's state."""
 
 
-def space_chooser(log: Sequence[NodeRun], space: UUID) -> UUID | None:
-    """Who last put the document into `space` by hand (confirming, uploading into a given
-    space, moving), if anyone. Entries written before the space was recorded name none."""
-    for entry in reversed(log):
-        result = entry.result
-        if result.model_version == PERSON_SPACE:
-            actor, chosen = result.input.get(ACTOR), result.input.get(CHOSEN_SPACE)
-        elif result.model_version == PERSON:
-            actor, chosen = result.output.get(CONFIRMED_BY), result.output.get(CHOSEN_SPACE)
-        else:
-            continue
-        if chosen == str(space):
-            return UUID(actor) if isinstance(actor, str) else None
-    return None
-
-
 @dataclass(frozen=True)
 class ProcessingHistory:
-    """A document's processing log, read for the latest entries of its nodes. Entries written
-    outside processing (`OUTSIDE_PIPELINE`) say nothing about a node's state and are left out."""
+    """A document's processing log, read newest first: the latest entries of its nodes
+    (`latest`, `signals`), which leave out the entries written outside processing
+    (`OUTSIDE_PIPELINE`, they say nothing about a node's state), and who chose a space by hand
+    (`space_chooser`)."""
 
     log: Sequence[NodeRun]
 
     def newest_first(self) -> Iterator[NodeRun]:
         """Every entry, the latest first."""
         return reversed(self.log)
+
+    def space_chooser(self, space: UUID) -> UUID | None:
+        """Who last put the document into `space` by hand (confirming, uploading into a given
+        space, moving), if anyone; read from the entries of people, `PERSON_SPACE` (outside
+        processing) included. Entries written before the space was recorded name none."""
+        for entry in self.newest_first():
+            result = entry.result
+            if result.model_version == PERSON_SPACE:
+                actor, chosen = result.input.get(ACTOR), result.input.get(CHOSEN_SPACE)
+            elif result.model_version == PERSON:
+                actor, chosen = result.output.get(CONFIRMED_BY), result.output.get(CHOSEN_SPACE)
+            else:
+                continue
+            if chosen == str(space):
+                return UUID(actor) if isinstance(actor, str) else None
+        return None
 
     def latest(self, node: Node, *, made: bool = False, by_model: bool = False) -> NodeRun | None:
         """The latest entry of `node` written by processing; with `made`, the latest that did

@@ -20,7 +20,7 @@ from papiq.core.domain.permissions import (
     document_access,
     space_access,
 )
-from papiq.core.domain.pipeline import space_chooser
+from papiq.core.domain.pipeline import ProcessingHistory
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import User
 from papiq.core.ports.unit_of_work import UnitOfWork
@@ -103,7 +103,8 @@ async def may_file(uow: UnitOfWork, document: Document, space: Space) -> bool:
     owner = await uow.users.get(document.owner_id)
     if can_file_into(owner, space):
         return True
-    chooser = space_chooser(await uow.processing_log.list_for(document.id), space.id)
+    log = await uow.processing_log.list_for(document.id)
+    chooser = ProcessingHistory(log).space_chooser(space.id)
     if chooser is None:
         return False
     user = await uow.users.find(UserId(chooser))

@@ -63,7 +63,7 @@ from papiq.core.services._access import (
     writable_document,
 )
 from papiq.core.services._tags import expanded, tag_counts
-from papiq.core.services.inbox import Review, node_reviews, open_nodes
+from papiq.core.services.inbox import Review, in_inbox, node_reviews, open_nodes
 from papiq.core.services.maintenance import REMOVE_FILES_JOB, RemoveFiles
 from papiq.core.services.objects import (
     EXCHANGE_NODES,
@@ -102,6 +102,16 @@ class DocumentView:
 
     document: Document
     access: ShareLevel
+
+
+@dataclass(frozen=True)
+class ListedDocument:
+    """A document of a list with the caller's access to it, and whether it stands open in the
+    caller's inbox (`inbox.in_inbox`)."""
+
+    document: Document
+    access: ShareLevel
+    in_inbox: bool
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -353,11 +363,12 @@ class DocumentService:
         after: DocumentId | None = None,
         limit: int = PAGE_SIZE,
         all_users: bool = False,
-    ) -> list[DocumentView]:
+    ) -> list[ListedDocument]:
         """Documents within the caller's reach matching `filter`, in `order` (newest first),
         after the page ending at the document `after`; with `all_users` (admins only), every
-        document. Each is checked against the permission rules once more. ValidationError if
-        `after` is gone while the list sorts by another key than the order of arrival."""
+        document. Each is checked against the permission rules once more, and says whether it
+        stands open in the caller's inbox (with `all_users`, in every user's). ValidationError
+        if `after` is gone while the list sorts by another key than the order of arrival."""
         limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
             user = await load_lister(uow, actor, all_users, "list the documents of all users")
@@ -372,7 +383,7 @@ class DocumentService:
                     actor, filter, order=order, after=position, limit=limit
                 )
             spaces: dict[SpaceId, Space] = {}
-            views = []
+            readable = []
             for document in documents:
                 if document.space_id not in spaces:
                     spaces[document.space_id] = await uow.spaces.get(document.space_id)
@@ -383,8 +394,14 @@ class DocumentService:
                         extra={"document_id": str(document.id), "user_id": str(actor)},
                     )
                     continue
-                views.append(DocumentView(document, access))
-        return views
+                readable.append((document, access))
+            waiting = await in_inbox(
+                uow, actor, [document for document, _ in readable], all_users=all_users
+            )
+        return [
+            ListedDocument(document, access, document.id in waiting)
+            for document, access in readable
+        ]
 
     async def download(
         self, actor: UserId, id: DocumentId, file: DocumentFile, target: Path, *, page: int = 1

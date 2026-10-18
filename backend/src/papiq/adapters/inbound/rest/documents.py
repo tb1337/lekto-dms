@@ -37,6 +37,7 @@ from papiq.adapters.inbound.rest.schemas.documents import (
     DocumentTextOut,
     ExchangeNode,
     ImportedMetadataIn,
+    ListedDocument,
     LogEntry,
     MoveRequest,
     ReadingOut,
@@ -189,8 +190,9 @@ async def upload(
         "group below it; a topic the documents with it or one below it. "
         "`field_id`: a value for the field is set. `sort` orders by arrival (the default, "
         "newest first), "
-        "document date or title; documents without a date come last. To search by words and "
-        "meaning use `GET /documents/search`."
+        "document date or title; documents without a date come last. Each document says whether "
+        "it stands in the caller's inbox (`in_inbox`). To search by words and meaning use "
+        "`GET /documents/search`."
     ),
     response_model=DocumentPage,
     responses=problem_responses(401, 403, 422),
@@ -214,7 +216,7 @@ async def list_documents(
     )
     next_cursor = encode_cursor(views[-1].document.id) if len(views) == limit else None
     return DocumentPage(
-        items=[DocumentDetails.of(view.document, view.access) for view in views],
+        items=[ListedDocument.listed(view.document, view.access, view.in_inbox) for view in views],
         next_cursor=next_cursor,
     )
 

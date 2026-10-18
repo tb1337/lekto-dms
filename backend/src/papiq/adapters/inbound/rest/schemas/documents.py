@@ -89,63 +89,61 @@ class Processing(BaseModel):
     )
 
 
+# A document as the API shows it, for the examples of the schemas.
+_DOCUMENT_EXAMPLE: dict[str, Any] = {
+    "id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b",
+    "title": "Electricity bill March",
+    "original_filename": "scan_0042.pdf",
+    "media_type": "application/pdf",
+    "channel": "web",
+    "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+    "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
+    "space_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
+    "access": "read_write",
+    "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
+    "document_type_id": None,
+    "topic_id": None,
+    "tag_ids": [],
+    "document_date": "2026-03-31",
+    "fields": {
+        "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b": {
+            "amount": "84.20",
+            "currency": "EUR",
+        }
+    },
+    "lane": "green",
+    "page_count": 2,
+    "confirmed_at": None,
+    "processing": {
+        "status": "completed",
+        "run": 1,
+        "vision": False,
+        "nodes": [
+            {
+                "node": "receive",
+                "status": "done",
+                "outcome": "ok",
+                "started_at": "2026-04-02T08:15:00Z",
+                "finished_at": "2026-04-02T08:15:00Z",
+            },
+            {
+                "node": "ocr",
+                "status": "done",
+                "outcome": "ok",
+                "started_at": "2026-04-02T08:15:01Z",
+                "finished_at": "2026-04-02T08:15:40Z",
+            },
+        ],
+    },
+    "created_at": "2026-04-02T08:15:00Z",
+    "updated_at": "2026-04-02T08:16:10Z",
+}
+
+
 class DocumentDetails(BaseModel):
     """A document's metadata and processing state, with the caller's access."""
 
-    model_config = ConfigDict(
-        json_schema_extra={
-            "examples": [
-                {
-                    "id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b",
-                    "title": "Electricity bill March",
-                    "original_filename": "scan_0042.pdf",
-                    "media_type": "application/pdf",
-                    "channel": "web",
-                    "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-                    "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
-                    "space_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
-                    "access": "read_write",
-                    "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
-                    "document_type_id": None,
-                    "topic_id": None,
-                    "tag_ids": [],
-                    "document_date": "2026-03-31",
-                    "fields": {
-                        "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b": {
-                            "amount": "84.20",
-                            "currency": "EUR",
-                        }
-                    },
-                    "lane": "green",
-                    "page_count": 2,
-                    "confirmed_at": None,
-                    "processing": {
-                        "status": "completed",
-                        "run": 1,
-                        "vision": False,
-                        "nodes": [
-                            {
-                                "node": "receive",
-                                "status": "done",
-                                "outcome": "ok",
-                                "started_at": "2026-04-02T08:15:00Z",
-                                "finished_at": "2026-04-02T08:15:00Z",
-                            },
-                            {
-                                "node": "ocr",
-                                "status": "done",
-                                "outcome": "ok",
-                                "started_at": "2026-04-02T08:15:01Z",
-                                "finished_at": "2026-04-02T08:15:40Z",
-                            },
-                        ],
-                    },
-                    "created_at": "2026-04-02T08:15:00Z",
-                    "updated_at": "2026-04-02T08:16:10Z",
-                }
-            ]
-        }
-    )
+    model_config = ConfigDict(json_schema_extra={"examples": [_DOCUMENT_EXAMPLE]})
 
     id: UUID
     title: str
@@ -218,8 +216,27 @@ class DocumentDetails(BaseModel):
         )
 
 
+class ListedDocument(DocumentDetails):
+    """A document of a list or a search, with whether it stands in the caller's inbox."""
+
+    model_config = ConfigDict(
+        json_schema_extra={"examples": [{**_DOCUMENT_EXAMPLE, "in_inbox": True}]}
+    )
+
+    in_inbox: bool = Field(
+        description=(
+            "It stands open in the caller's inbox (`GET /inbox`; with `all_users`, in every "
+            "user's): in processing, yellow, red, or new and not seen by the caller."
+        )
+    )
+
+    @classmethod
+    def listed(cls, document: Document, access: ShareLevel, in_inbox: bool) -> "ListedDocument":
+        return cls(**DocumentDetails.of(document, access).model_dump(), in_inbox=in_inbox)
+
+
 class DocumentPage(BaseModel):
-    items: list[DocumentDetails]
+    items: list[ListedDocument]
     next_cursor: str | None = Field(
         description="Pass as `cursor` for the next page; null on the last page."
     )

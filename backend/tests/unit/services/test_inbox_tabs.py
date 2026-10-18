@@ -13,6 +13,7 @@ from papiq.core.domain.master_data import Contact
 from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import Role, User
+from papiq.core.ports.repository import DocumentFilter
 from papiq.core.services.inbox import InboxItem
 from papiq.core.services.pipeline import MetadataResult, NodeExecutor
 from tests.builders import FAILED, NOW, OK, UNCERTAIN, Returns, incoming
@@ -279,3 +280,37 @@ async def test_pages_of_the_inbox(world: World) -> None:
     assert [item.document.id for item in [*first, *rest]] == [
         document.id for document in reversed(documents)
     ]
+
+
+async def test_lists_say_whether_a_document_stands_in_the_callers_inbox(world: World) -> None:
+    """In processing, yellow, red, or new and unseen: in the owner's inbox, and in an admin's
+    of every user; never in the inbox of someone it is shared with."""
+    owner, reader = await world.user(), await world.user()
+    admin = await world.user(role=Role.ADMIN)
+    shared = await world.spaces.create(owner.id, "Shared")
+    await world.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
+    seen, new = await arrive(world, owner), await arrive(world, owner)
+    yellow = await arrive(world, owner, {Node.JUDGE: Returns(UNCERTAIN)})
+    await world.documents.move(owner.id, new.id, shared.id)
+    await world.inbox.mark_seen(owner.id, seen.id)
+    processing = await world.pipeline().receive(owner.id, incoming(b"%PDF-1.7 p"), filename="p.pdf")
+
+    async def listed(user: User, *, all_users: bool = False) -> dict[str, bool]:
+        names = {seen.id: "seen", new.id: "new", yellow.id: "yellow", processing.id: "processing"}
+        views = await world.documents.query(user.id, DocumentFilter(), all_users=all_users)
+        return {names[view.document.id]: view.in_inbox for view in views}
+
+    assert await listed(owner) == {
+        "processing": True,
+        "yellow": True,
+        "new": True,
+        "seen": False,
+    }
+    assert await listed(reader) == {"new": False}
+    assert await listed(admin) == {}
+    assert await listed(admin, all_users=True) == {
+        "processing": True,
+        "yellow": True,
+        "new": True,
+        "seen": True,  # the owner's seen is not the admin's
+    }

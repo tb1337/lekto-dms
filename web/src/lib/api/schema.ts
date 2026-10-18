@@ -1046,7 +1046,7 @@ export interface paths {
 		};
 		/**
 		 * List documents
-		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (all tags and groups, any topic, any lane; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. To search by words and meaning use `GET /documents/search`.
+		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (all tags and groups, any topic, any lane; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `GET /documents/search`.
 		 */
 		get: operations['list_documents_api_v1_documents_get'];
 		put?: never;
@@ -2826,7 +2826,7 @@ export interface components {
 		/** DocumentPage */
 		DocumentPage: {
 			/** Items */
-			items: components['schemas']['DocumentDetails'][];
+			items: components['schemas']['ListedDocument'][];
 			/**
 			 * Next Cursor
 			 * @description Pass as `cursor` for the next page; null on the last page.
@@ -3614,6 +3614,144 @@ export interface components {
 			 * Format: date-time
 			 */
 			created_at: string;
+		};
+		/**
+		 * ListedDocument
+		 * @description A document of a list or a search, with whether it stands in the caller's inbox.
+		 * @example {
+		 *       "access": "read_write",
+		 *       "channel": "web",
+		 *       "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "created_at": "2026-04-02T08:15:00Z",
+		 *       "document_date": "2026-03-31",
+		 *       "fields": {
+		 *         "01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b": {
+		 *           "amount": "84.20",
+		 *           "currency": "EUR"
+		 *         }
+		 *       },
+		 *       "id": "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "in_inbox": true,
+		 *       "lane": "green",
+		 *       "media_type": "application/pdf",
+		 *       "original_filename": "scan_0042.pdf",
+		 *       "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "page_count": 2,
+		 *       "processing": {
+		 *         "nodes": [
+		 *           {
+		 *             "finished_at": "2026-04-02T08:15:00Z",
+		 *             "node": "receive",
+		 *             "outcome": "ok",
+		 *             "started_at": "2026-04-02T08:15:00Z",
+		 *             "status": "done"
+		 *           },
+		 *           {
+		 *             "finished_at": "2026-04-02T08:15:40Z",
+		 *             "node": "ocr",
+		 *             "outcome": "ok",
+		 *             "started_at": "2026-04-02T08:15:01Z",
+		 *             "status": "done"
+		 *           }
+		 *         ],
+		 *         "run": 1,
+		 *         "status": "completed",
+		 *         "vision": false
+		 *       },
+		 *       "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+		 *       "space_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
+		 *       "tag_ids": [],
+		 *       "title": "Electricity bill March",
+		 *       "updated_at": "2026-04-02T08:16:10Z"
+		 *     }
+		 */
+		ListedDocument: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Title */
+			title: string;
+			/** Original Filename */
+			original_filename: string;
+			/**
+			 * Media Type
+			 * @example application/pdf
+			 */
+			media_type: string;
+			/** @description How the document arrived: `web` (web UI), `api`, `migration`. */
+			channel: components['schemas']['Channel'];
+			/**
+			 * Sha256
+			 * @description SHA-256 of the original file, in lower-case hex.
+			 * @example 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+			 */
+			sha256: string;
+			/**
+			 * Owner Id
+			 * Format: uuid
+			 */
+			owner_id: string;
+			/**
+			 * Space Id
+			 * Format: uuid
+			 */
+			space_id: string;
+			/** @description What the caller may do: read, or read and write. */
+			access: components['schemas']['ShareLevel'];
+			/** Contact Id */
+			contact_id: string | null;
+			/** Document Type Id */
+			document_type_id: string | null;
+			/**
+			 * Topic Id
+			 * @description A topic (tag of scope `topic`) the contact enables; at most one.
+			 */
+			topic_id: string | null;
+			/** Tag Ids */
+			tag_ids: string[];
+			/** Document Date */
+			document_date: string | null;
+			/**
+			 * Fields
+			 * @description Values by field id.
+			 */
+			fields: {
+				[key: string]:
+					| string
+					| boolean
+					| components['schemas']['MoneyValue']
+					| components['schemas']['PeriodValue'];
+			};
+			/** @description None while processing runs. */
+			lane: components['schemas']['Lane'] | null;
+			/**
+			 * Page Count
+			 * @description Pages of the document, once its page images are rendered (`pages` node).
+			 */
+			page_count: number | null;
+			/**
+			 * Confirmed At
+			 * @description When a person last set or confirmed the metadata (in the inbox, or by changing contact, type, topic, tags, date or fields; adding or removing tags set by hand alone does not count), or it was taken over with the source system's; null while it is the pipeline's own. Confirmed documents train the classifier.
+			 */
+			confirmed_at: string | null;
+			processing: components['schemas']['Processing'];
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/**
+			 * Updated At
+			 * Format: date-time
+			 */
+			updated_at: string;
+			/**
+			 * In Inbox
+			 * @description It stands open in the caller's inbox (`GET /inbox`; with `all_users`, in every user's): in processing, yellow, red, or new and not seen by the caller.
+			 */
+			in_inbox: boolean;
 		};
 		/**
 		 * LocationOut
@@ -4661,7 +4799,7 @@ export interface components {
 		};
 		/** SearchResultItem */
 		SearchResultItem: {
-			document: components['schemas']['DocumentDetails'];
+			document: components['schemas']['ListedDocument'];
 			/**
 			 * Score
 			 * @description 0 to 1, higher is better; only comparable within one result.

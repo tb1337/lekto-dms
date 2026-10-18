@@ -59,7 +59,18 @@ CHANGE_FIELDS: Mapping[str, str] = {
     DOCUMENT_DATE: "document_date",
 }
 """The fields a person sets in one change, and the attribute of `Document` and
-`DocumentChanges` that holds each; custom fields are `DocumentChanges.fields`."""
+`DocumentChanges` that holds each; custom fields are `CUSTOM_FIELDS`."""
+CUSTOM_FIELDS = "fields"
+"""The attribute of `Document` and `DocumentChanges` that holds the custom field values."""
+CONFIRMING = frozenset(
+    {CHANGE_FIELDS[name] for name in (CONTACT, DOCUMENT_TYPE, TOPIC, TAGS, DOCUMENT_DATE)}
+    | {CUSTOM_FIELDS}
+)
+"""Metadata a person confirms by changing it (as `Document.apply_changes` names it); a title
+or a space alone does not, nor do tags set by hand alone (`documents.confirms`)."""
+CLASSIFIER_LABELS = frozenset(CHANGE_FIELDS[name] for name in (CONTACT, DOCUMENT_TYPE, TOPIC, TAGS))
+"""What the classifier learns from confirmed documents: the pipeline deriving them anew ends
+the confirmation."""
 
 _FIELD_PREFIX = "field:"
 

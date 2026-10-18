@@ -9,6 +9,7 @@ from enum import Enum, StrEnum
 from pathlib import PurePath
 from typing import Self
 
+from papiq.core.domain.classification import CONFIRMING
 from papiq.core.domain.errors import InvalidTransitionError, NotFoundError, ValidationError
 from papiq.core.domain.events import (
     DocumentDeleted,
@@ -103,16 +104,6 @@ class DocumentChanges:
     document_date: date | Unset | None = UNSET
     fields: Mapping[FieldId, object] = field(default_factory=dict)
     topic_id: TagId | Unset | None = UNSET
-
-
-CONFIRMING = frozenset(
-    {"contact_id", "document_type_id", "topic_id", "tag_ids", "document_date", "fields"}
-)
-"""Metadata a person confirms by changing it (as `Document.apply_changes` names it); a title
-or a space alone does not, nor do tags set by hand alone (`confirms`)."""
-CLASSIFIER_LABELS = frozenset({"contact_id", "document_type_id", "topic_id", "tag_ids"})
-"""What the classifier learns from confirmed documents: the pipeline deriving them anew ends
-the confirmation."""
 
 
 def confirms(

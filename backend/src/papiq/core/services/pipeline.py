@@ -12,9 +12,8 @@ from typing import Protocol, Self
 from uuid import UUID
 
 from papiq.core.domain import media_types
-from papiq.core.domain.classification import SPACE
+from papiq.core.domain.classification import CLASSIFIER_LABELS, SPACE
 from papiq.core.domain.documents import (
-    CLASSIFIER_LABELS,
     Channel,
     Document,
     DocumentChanges,

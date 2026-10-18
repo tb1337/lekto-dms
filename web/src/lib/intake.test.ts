@@ -105,6 +105,28 @@ describe('a drop', () => {
 		expect(outer.reads).toBe(4);
 	});
 
+	it('skips what cannot be read and keeps the rest of the drop', async () => {
+		const gone = {
+			...fileEntry('/Scans/gone.pdf', pdf('gone.pdf')),
+			file: (_: unknown, reject: (error: Error) => void) => reject(new Error('NotFoundError'))
+		} as unknown as Entry;
+		const locked = {
+			...folder('/Scans/locked', []),
+			createReader: () => ({
+				readEntries: (_: unknown, reject: (error: Error) => void) =>
+					reject(new Error('NotReadableError'))
+			})
+		} as unknown as Entry;
+		const found = await readDrop(
+			transfer([folder('/Scans', [fileEntry('/Scans/a.pdf', pdf('a.pdf')), gone, locked])])
+		);
+		expect(found.files.map((entry) => entry.name)).toEqual(['Scans/a.pdf']);
+		expect(found.skipped).toEqual([
+			{ name: 'Scans/gone.pdf', reason: 'unreadable' },
+			{ name: 'Scans/locked/', reason: 'unreadable' }
+		]);
+	});
+
 	it('takes the files of a browser without entries', async () => {
 		const found = await readDrop({
 			items: [],

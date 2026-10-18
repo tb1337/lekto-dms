@@ -17,8 +17,9 @@ const ACCEPTED: Record<string, readonly string[]> = {
 /** For the `accept` of a file input. */
 export const ACCEPT = Object.keys(ACCEPTED).join(',');
 
-/** Why a file is not uploaded: another type, hidden, or larger than the API takes (413). */
-export type SkipReason = 'type' | 'hidden' | 'too_large';
+/** Why a file is not uploaded: another type, hidden, larger than the API takes (413), or the
+ * browser could not read it (a folder without permission, a file gone meanwhile). */
+export type SkipReason = 'type' | 'hidden' | 'too_large' | 'unreadable';
 
 export interface Skipped {
 	/** The file's name, within a dropped folder its path there. */
@@ -81,13 +82,25 @@ async function walk(entry: FileSystemEntry, found: Intake): Promise<void> {
 			found.skipped.push({ name: `${name}/`, reason: 'hidden' });
 			return;
 		}
-		for (const child of await entriesIn(entry as FileSystemDirectoryEntry)) {
-			await walk(child, found);
+		let children: FileSystemEntry[];
+		try {
+			children = await entriesIn(entry as FileSystemDirectoryEntry);
+		} catch {
+			// One unreadable folder leaves the rest of the drop as it is.
+			found.skipped.push({ name: `${name}/`, reason: 'unreadable' });
+			return;
 		}
+		for (const child of children) await walk(child, found);
 	} else if (entry.isFile) {
-		const file = await new Promise<File>((resolve, reject) =>
-			(entry as FileSystemFileEntry).file(resolve, reject)
-		);
+		let file: File;
+		try {
+			file = await new Promise<File>((resolve, reject) =>
+				(entry as FileSystemFileEntry).file(resolve, reject)
+			);
+		} catch {
+			found.skipped.push({ name, reason: 'unreadable' });
+			return;
+		}
 		sort(found, file, name);
 	}
 }

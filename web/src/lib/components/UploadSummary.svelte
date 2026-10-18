@@ -32,7 +32,8 @@
 	const REASONS: Record<SkipReason, () => string> = {
 		type: m.upload_skipped_type,
 		hidden: m.upload_skipped_hidden,
-		too_large: m.upload_skipped_too_large
+		too_large: m.upload_skipped_too_large,
+		unreadable: m.upload_skipped_unreadable
 	};
 </script>
 

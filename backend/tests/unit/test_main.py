@@ -361,4 +361,26 @@ def test_check_schema_waits_for_the_migration(
 def test_wait_only_goes_with_check_schema(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         main(["migrate", "--wait", "5"])
-    assert "--wait only goes with check-schema" in capsys.readouterr().err
+    assert "unrecognized arguments: --wait" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("command", "target"),
+    [
+        (["evaluate", "--fake"], "papiq.composition.__main__.run_evaluation"),
+        (["check-schema"], "papiq.composition.__main__.check_schema"),
+    ],
+)
+def test_a_command_that_breaks_logs_why_and_exits_one(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: list[str],
+    target: str,
+) -> None:
+    async def broken(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("broken")
+
+    monkeypatch.setattr(target, broken)
+    assert main(command) == 1
+    failed = [json.loads(line) for line in capsys.readouterr().err.splitlines()][-1]
+    assert failed["level"] == "error" and "RuntimeError: broken" in failed["exception"]

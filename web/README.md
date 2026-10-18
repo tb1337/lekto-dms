@@ -60,6 +60,21 @@ in (the editor's theme holds its colours), and bits-ui's focus trap does not see
 a listener keeps `focusin` from the editor away from it. Component tests get a plain text area in
 place of the editor (`tests/setup.ts`); `codemirror.test.ts` runs the real one.
 
+## Inbox
+
+`/ui/inbox` is the start page and the way in: everything new stands there until a person saw it
+or decided. Its tabs are in `?tab=` (`lib/inbox-view.ts`): all that is open (none), new,
+review, intervene, processing, done; an unknown one counts as none. Each row (`InboxRow`) says
+where its document stands: in processing with its progress bar, yellow or red with the lane and
+why, new calmly with a marker and "Seen" (no call to act), done (the last 14 days) with how
+(confirmed or seen), when and by whom, and "Mark as new" for a seen one. "Mark all as seen"
+asks first. Events refresh the list, also while documents are processed.
+
+The counter at the menu entry (`lib/inbox.svelte.ts`) shows everything open from
+`/inbox/summary`, on the colour of the worst lane in it (grey with only documents in
+processing); its label names what stands there. The tabs show the same counts. The summary is
+fetched again after events and when the window comes back into view.
+
 ## Documents and search
 
 `/ui/documents` is the archive: it lists the documents and, with words in `?q=`, searches them

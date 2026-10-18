@@ -2,17 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { m } from '#lib/paraglide/messages.js';
 import { scope } from '#lib/scope.svelte.ts';
 import { session } from '#lib/session.svelte.ts';
-import { badgeLabel, badgeText, badgeTone, inbox, type InboxSummary } from './inbox.svelte.ts';
+import { summaryOf } from '#lib/testing/documents.ts';
+import { badgeLabel, badgeText, badgeTone, inbox } from './inbox.svelte.ts';
 
-function summary(counts: Partial<InboxSummary> = {}): InboxSummary {
-	const base = { new: 0, review: 0, intervene: 0, processing: 0, done: 0, ...counts };
-	return {
-		...base,
-		open: base.new + base.review + base.intervene + base.processing,
-		worst_lane: base.intervene ? 'red' : base.review ? 'yellow' : base.new ? 'green' : null,
-		...counts
-	};
-}
+const summary = summaryOf;
 
 describe('inbox badge', () => {
 	it.each([

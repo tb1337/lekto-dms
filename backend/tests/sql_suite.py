@@ -1663,6 +1663,20 @@ class MigrationSuite:
         async with empty_database.reading() as connection:
             assert await connection.run_sync(_schema) == schema
 
+    async def test_the_indexes_of_revision_0029_come_and_go(self, empty_database: Database) -> None:
+        await migrate(empty_database, "0028")
+        async with empty_database.reading() as connection:
+            schema = await connection.run_sync(_schema)
+        await migrate(empty_database)
+        async with empty_database.reading() as connection:
+            indexes = await connection.run_sync(
+                lambda sync: {item["name"] for item in sa.inspect(sync).get_indexes("documents")}
+            )
+        assert {"ix_documents_lane", "ix_documents_contact_id"} <= indexes
+        await downgrade(empty_database, "0028")
+        async with empty_database.reading() as connection:
+            assert await connection.run_sync(_schema) == schema
+
     async def test_migrations_match_the_table_definitions(
         self, empty_database: Database, model_database: Database
     ) -> None:

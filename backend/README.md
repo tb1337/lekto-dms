@@ -510,7 +510,7 @@ alone, so a new scikit-learn version cannot break it. `GET /classifier` tells it
    for them. Run it once `reparse` is through, which changes the text the identifiers are read
    from.
 
-**After the update to 0.3.** Revisions 0024 to 0028 run at start; then four things:
+**After the update to 0.3.** Revisions 0024 to 0029 run at start; then four things:
 
 1. "Drawer" is "space" everywhere, a break of the API: `/api/v1/spaces`, `space_id` (documents,
    upload, move, confirm, filters), the rule action `set_space`, the template variable

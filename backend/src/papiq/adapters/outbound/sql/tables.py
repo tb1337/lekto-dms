@@ -31,6 +31,9 @@ from sqlalchemy import (
 )
 
 from papiq.adapters.outbound.sql.types import ExactDecimal, UtcDateTime, json_type
+from papiq.core.domain.documents import Channel
+from papiq.core.domain.jobs import JobStatus
+from papiq.core.domain.master_data import Assignment, TagScope
 
 metadata = MetaData(
     naming_convention={
@@ -44,8 +47,8 @@ metadata = MetaData(
 # Auto-increment primary keys. On SQLite, BIGINT would not become an alias of the rowid.
 _SEQUENCE = BigInteger().with_variant(Integer(), "sqlite")
 
-# Job statuses that block another job with the same dedup key (`JobStatus.is_active`).
-ACTIVE_JOB_STATUSES = ("queued", "running")
+# Job statuses that block another job with the same dedup key.
+ACTIVE_JOB_STATUSES = tuple(status.value for status in JobStatus if status.is_active)
 
 users = Table(
     "users",
@@ -130,11 +133,11 @@ tags = Table(
     Column("name_key", Text, nullable=False),
     # `document`, `contact` (a contact group), `document_type` (a type group) or `topic`:
     # `TagScope`.
-    Column("scope", Text, nullable=False, server_default="document"),
+    Column("scope", Text, nullable=False, server_default=TagScope.DOCUMENT.value),
     # The tag it is nested under, of the same scope (checked by the service, as cycles are).
     Column("parent_id", Uuid, ForeignKey("tags.id"), nullable=True, index=True),
     # `auto` (classification proposes it) or `manual` (`Assignment`; groups always).
-    Column("assignment", Text, nullable=False, server_default="auto"),
+    Column("assignment", Text, nullable=False, server_default=Assignment.AUTO.value),
     # Whether documents show it.
     Column("shown", Boolean, nullable=False, server_default=true()),
     # The name of a Lucide icon; a colour of the palette or `#rrggbb`.
@@ -237,7 +240,7 @@ field_definitions = Table(
     # What belongs in the field, for the language model.
     Column("description", Text, nullable=True),
     # `auto` (the language model reads it) or `manual` (set by hand only, `Assignment`).
-    Column("assignment", Text, nullable=False, server_default="auto"),
+    Column("assignment", Text, nullable=False, server_default=Assignment.AUTO.value),
     Column("created_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),
 )
@@ -269,14 +272,14 @@ documents = Table(
     Column("title_key", Text, nullable=False, server_default=""),
     Column("original_filename", Text, nullable=False),
     Column("media_type", Text, nullable=False),
-    Column("contact_id", Uuid, ForeignKey("contacts.id"), nullable=True),
-    Column("document_type_id", Uuid, ForeignKey("document_types.id"), nullable=True),
+    Column("contact_id", Uuid, ForeignKey("contacts.id"), nullable=True, index=True),
+    Column("document_type_id", Uuid, ForeignKey("document_types.id"), nullable=True, index=True),
     # A tag of scope `topic` the contact enables (checked by the services).
     Column("topic_id", Uuid, ForeignKey("tags.id"), nullable=True, index=True),
     Column("document_date", Date, nullable=True),
     # Intake channel (`Channel`); documents from before M7 count as `api`.
-    Column("channel", Text, nullable=False, server_default="api"),
-    Column("lane", Text, nullable=True),
+    Column("channel", Text, nullable=False, server_default=Channel.API.value),
+    Column("lane", Text, nullable=True, index=True),
     Column("processing_status", Text, nullable=False),
     Column("processing_run", Integer, nullable=False),
     # State of every node in the current run: {node: {status, outcome, started_at, finished_at}}.
@@ -302,7 +305,7 @@ document_tags = Table(
     "document_tags",
     metadata,
     Column("document_id", Uuid, ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
-    Column("tag_id", Uuid, ForeignKey("tags.id"), primary_key=True),
+    Column("tag_id", Uuid, ForeignKey("tags.id"), primary_key=True, index=True),
 )
 
 # One typed column per kind of value; `kind` says which one is set and how to read it.
@@ -310,7 +313,7 @@ document_fields = Table(
     "document_fields",
     metadata,
     Column("document_id", Uuid, ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
-    Column("field_id", Uuid, ForeignKey("field_definitions.id"), primary_key=True),
+    Column("field_id", Uuid, ForeignKey("field_definitions.id"), primary_key=True, index=True),
     Column("kind", Text, nullable=False),  # text, url, decimal, money, date, period, boolean
     Column("value_text", Text, nullable=True),
     Column("value_decimal", ExactDecimal, nullable=True),
@@ -448,6 +451,8 @@ jobs = Table(
     Column("locked_until", UtcDateTime, nullable=True),
     Column("last_error", Text, nullable=True),
     Index(None, "status", "run_at"),
+    # Claims of running jobs whose lease ran out.
+    Index(None, "status", "locked_until"),
 )
 # At most one queued or running job per dedup key.
 Index(
@@ -469,7 +474,7 @@ outbox = Table(
     Column("occurred_at", UtcDateTime, nullable=False),
     Column("payload", json_type(), nullable=False),
     # When the event was written (system time); places new subscriptions, see `event_bus`.
-    Column("recorded_at", UtcDateTime, nullable=False),
+    Column("recorded_at", UtcDateTime, nullable=False, index=True),
     sqlite_autoincrement=True,
 )
 
@@ -496,7 +501,7 @@ event_retries = Table(
     Column("attempts", Integer, nullable=False),
     Column("last_error", Text, nullable=False),
     # When the delivery is due again; NULL: at once.
-    Column("retry_at", UtcDateTime, nullable=True),
+    Column("retry_at", UtcDateTime, nullable=True, index=True),
 )
 
 # --- identity: rows go with their user (ON DELETE CASCADE) ---------------------------------------
@@ -534,8 +539,8 @@ sessions = Table(
     Column("token_hash", String(64), nullable=False, unique=True),
     Column("method", Text, nullable=False),
     Column("created_at", UtcDateTime, nullable=False),
-    Column("last_seen_at", UtcDateTime, nullable=False),
-    Column("expires_at", UtcDateTime, nullable=False),
+    Column("last_seen_at", UtcDateTime, nullable=False, index=True),
+    Column("expires_at", UtcDateTime, nullable=False, index=True),
     Column("version", Integer, nullable=False),
 )
 

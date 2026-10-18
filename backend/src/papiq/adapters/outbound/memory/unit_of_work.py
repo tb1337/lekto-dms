@@ -8,7 +8,7 @@ still has the version it had when the unit first touched it, and that uniqueness
 import asyncio
 import copy
 import dataclasses
-from collections.abc import Collection, Hashable, Iterable, Mapping
+from collections.abc import Callable, Collection, Hashable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from types import TracebackType
@@ -241,6 +241,13 @@ class MemoryUnitOfWork:
         self._tables[table.name] = table
         self._writes.setdefault(table.name, {})[id] = row
 
+    def _check_unreferenced(self, table: Table, id: UUID) -> None:
+        """ConflictError if a row refers to the row `id` of `table`: the SQL schema's foreign
+        keys without a cascade refuse its removal so."""
+        for referring, refers in _REFERRERS.get(table.name, ()):
+            if any(refers(row, id) for row in self._rows(referring)):
+                raise ConflictError(f"a {referring.name} still refers to {table.name} {id}")
+
     @staticmethod
     def _unique_or_fail(table: Table, rows: Iterable[Any]) -> None:
         seen: set[Hashable] = set()
@@ -251,6 +258,36 @@ class MemoryUnitOfWork:
                 seen.add(key)
 
 
+# What refers to a row, as the SQL schema's foreign keys without ON DELETE CASCADE do.
+_REFERRERS: dict[str, tuple[tuple[Table, Callable[[Any, UUID], bool]], ...]] = {
+    USERS.name: (
+        (SPACES, lambda space, id: space.owner_id == id or id in space.shares),
+        (DOCUMENTS, lambda document, id: document.owner_id == id),
+        (RULES, lambda rule, id: rule.owner_id == id),
+    ),
+    SPACES.name: ((DOCUMENTS, lambda document, id: document.space_id == id),),
+    CONTACTS.name: ((DOCUMENTS, lambda document, id: document.contact_id == id),),
+    DOCUMENT_TYPES.name: (
+        (DOCUMENTS, lambda document, id: document.document_type_id == id),
+        (FIELDS, lambda field, id: id in (field.document_type_ids or ())),
+    ),
+    TAGS.name: (
+        (TAGS, lambda tag, id: tag.parent_id == id),
+        (
+            CONTACTS,
+            lambda contact, id: (
+                id in contact.group_ids
+                or id in contact.topic_ids
+                or any(item.topic_id == id for item in contact.identifiers)
+            ),
+        ),
+        (DOCUMENT_TYPES, lambda kind, id: id in kind.group_ids),
+        (DOCUMENTS, lambda document, id: document.topic_id == id or id in document.tag_ids),
+    ),
+    FIELDS.name: ((DOCUMENTS, lambda document, id: id in document.fields),),
+}
+
+
 class MemoryNamedRepository[K: UUID, E: MasterData](MemoryRepository[K, E]):
     async def find_by_name(self, name: str) -> E | None:
         key = name_key(name)
@@ -258,6 +295,7 @@ class MemoryNamedRepository[K: UUID, E: MasterData](MemoryRepository[K, E]):
 
     async def remove(self, id: K) -> None:
         await self.get(id)
+        self._uow._check_unreferenced(self._table, id)
         self._uow._write(self._table, id, _REMOVED)
 
 
@@ -277,6 +315,7 @@ class MemoryUserRepository(MemoryRepository[UserId, User]):
 
     async def remove(self, id: UserId) -> None:
         await self.get(id)
+        self._uow._check_unreferenced(self._table, id)
         self._uow._write(self._table, id, _REMOVED)
 
 
@@ -292,6 +331,7 @@ class MemorySpaceRepository(MemoryRepository[SpaceId, Space]):
 
     async def remove(self, id: SpaceId) -> None:
         await self.get(id)
+        self._uow._check_unreferenced(self._table, id)
         self._uow._write(self._table, id, _REMOVED)
 
 

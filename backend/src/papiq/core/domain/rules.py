@@ -789,14 +789,22 @@ class RuleApplication:
     def remaining(self) -> tuple[DocumentId, ...]:
         return self.documents[self.position :]
 
-    def record(self, document: DocumentId, outcome: Literal["applied", "unchanged"] | str) -> None:
-        """One more document done: applied, unchanged, or skipped with a reason."""
-        if outcome == "applied":
-            self.applied += 1
-        elif outcome == "unchanged":
-            self.unchanged += 1
-        else:
-            self.skipped.append((document, outcome))
+    def record_applied(self) -> None:
+        """One more document done: the rule changed it."""
+        self.applied += 1
+        self._next()
+
+    def record_unchanged(self) -> None:
+        """One more document done: the rule did not hold or changed nothing."""
+        self.unchanged += 1
+        self._next()
+
+    def record_skipped(self, document: DocumentId, reason: str) -> None:
+        """One more document done: left as it was, for `reason`."""
+        self.skipped.append((document, reason))
+        self._next()
+
+    def _next(self) -> None:
         self.position += 1
         self.status = ApplicationStatus.RUNNING
 

@@ -294,9 +294,7 @@ class RuleApplicationService:
         try:
             async with self._uow() as uow:
                 application = await uow.rule_applications.get(id)
-                document_id = application.remaining[0]
-                outcome = await self._apply_one(uow, user, rule, document_id, prepared, application)
-                application.record(document_id, outcome)
+                await self._apply_one(uow, user, rule, prepared, application)
                 await uow.rule_applications.update(application)
                 await uow.commit()
         except ConcurrencyError:
@@ -304,7 +302,9 @@ class RuleApplicationService:
             # then this fails again and the claim is lost).
             async with self._uow() as uow:
                 application = await uow.rule_applications.get(id)
-                application.record(application.remaining[0], "changed meanwhile; not applied")
+                application.record_skipped(
+                    application.remaining[0], "changed meanwhile; not applied"
+                )
                 await uow.rule_applications.update(application)
                 await uow.commit()
         return False
@@ -314,23 +314,27 @@ class RuleApplicationService:
         uow: UnitOfWork,
         user: User,
         rule: Rule,
-        id: DocumentId,
         prepared: Prepared,
         application: RuleApplication,
-    ) -> str:
+    ) -> None:
+        """Apply the rule to the next document of `application` and record what it did."""
+        id = application.remaining[0]
         document = await uow.documents.find(id)
         if document is None or not await _candidate(uow, user, rule, document):
-            return "not available"
+            application.record_skipped(id, "not available")
+            return
         run = await self._evaluate(
             uow, rule, document, prepared, accept=id in application.accept_conflicts
         )
         if run is None or not run.plan.effects:
-            return "unchanged"
+            application.record_unchanged()
+            return
         now = self._clock.now()
         definitions = await field_definitions(uow)
         problem = apply_plan(document, run.plan, definitions, now)
         if problem is not None:
-            return problem
+            application.record_skipped(id, problem)
+            return
         await uow.processing_log.append(
             entry_beside(
                 document,
@@ -349,7 +353,7 @@ class RuleApplicationService:
         )
         await uow.documents.update(document)
         await uow.outbox.add(document.pull_events())
-        return "applied"
+        application.record_applied()
 
     async def _evaluate(
         self,

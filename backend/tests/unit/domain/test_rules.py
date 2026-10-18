@@ -988,15 +988,15 @@ def test_application_progress() -> None:
     run = application(a, b, c, d, accept=frozenset({b}))
     assert (run.status, run.remaining) == (ApplicationStatus.QUEUED, (a, b, c, d))
 
-    run.record(a, "applied")
-    run.record(b, "unchanged")
-    run.record(c, "the space is read-only")
+    run.record_applied()
+    run.record_unchanged()
+    run.record_skipped(c, "the space is read-only")
 
     assert (run.position, run.applied, run.unchanged) == (3, 1, 1)
     assert run.skipped == [(c, "the space is read-only")]
     assert (run.status, run.remaining) == (ApplicationStatus.RUNNING, (d,))
 
-    run.record(d, "applied")
+    run.record_applied()
     later = NOW + timedelta(minutes=1)
     run.finish(later)
 

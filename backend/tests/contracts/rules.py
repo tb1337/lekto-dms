@@ -620,13 +620,13 @@ class RuleRepositoriesContract:
         owner, _ = await owner_with_space(uow_factory)
         rule = user_rule(owner)
         item = application(rule, owner, documents=5)
-        first, second, third, *rest = item.documents
+        _, _, third, *rest = item.documents
         await store(uow_factory, rule, applications=(item,))
         async with uow_factory() as uow:
             running = await uow.rule_applications.get(item.id)
-            running.record(first, "applied")
-            running.record(second, "unchanged")
-            running.record(third, "the document was deleted")
+            running.record_applied()
+            running.record_unchanged()
+            running.record_skipped(third, "the document was deleted")
             await uow.rule_applications.update(running)
             assert running.version == 2
             await uow.commit()
@@ -661,7 +661,7 @@ class RuleRepositoriesContract:
         owner, _ = await owner_with_space(uow_factory)
         rule = user_rule(owner)
         item = application(rule, owner, documents=1)
-        item.record(item.documents[0], "applied")
+        item.record_applied()
         item.finish(LATER)
         await store(uow_factory, rule, applications=(item,))
         async with uow_factory() as uow:
@@ -691,7 +691,7 @@ class RuleRepositoriesContract:
         async with uow_factory() as first, uow_factory() as second:
             mine = await first.rule_applications.get(item.id)
             theirs = await second.rule_applications.get(item.id)
-            mine.record(item.documents[0], "applied")
+            mine.record_applied()
             await first.rule_applications.update(mine)
             await first.commit()
             theirs.finish(LATER, error="cancelled")
@@ -709,7 +709,7 @@ class RuleRepositoriesContract:
         await store(uow_factory, rule, applications=(item,))
         async with uow_factory() as uow:
             loaded = await uow.rule_applications.get(item.id)
-            loaded.record(item.documents[0], "skipped for a reason")
+            loaded.record_skipped(item.documents[0], "skipped for a reason")
             loaded.skipped.append((item.documents[1], "changed"))
             assert await uow.rule_applications.get(item.id) == item
             await uow.commit()

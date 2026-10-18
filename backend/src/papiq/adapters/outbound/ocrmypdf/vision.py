@@ -15,6 +15,8 @@ OCRmyPDF's process and its workers. Neither the key nor the page's text is logge
 """
 
 import base64
+import contextlib
+import functools
 import io
 import json
 import math
@@ -28,6 +30,13 @@ from typing import Any
 import httpx2
 from PIL import Image
 
+from papiq.adapters.outbound.http_client.openai import (
+    ProtocolError,
+    answer_content,
+    auth_headers,
+    chat_url,
+    response_object,
+)
 from papiq.core.domain.exchanges import ModelCall
 
 PROMPT = "read-1"
@@ -39,7 +48,6 @@ MAX_EDGE = 1568
 MAX_TOKENS = 16_000  # a dense page with its boxes takes about 2,500
 UNREADABLE = "[unreadable]"
 _ATTEMPTS = 2
-_EXCERPT = 300
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$")
 
 SYSTEM = """\
@@ -195,8 +203,7 @@ def read_page(
     errors: list[str] = []
     for _ in range(_ATTEMPTS):
         asked = text if not errors else f"{text}\n\n{_retry_hint(errors[-1])}"
-        data = _post(settings, asked, picture, transport)
-        content = _content(data)
+        content, data = _ask(settings, asked, picture, transport)
         usage = data.get("usage")
         calls.append(
             ModelCall(
@@ -280,9 +287,11 @@ def _retry_hint(error: str) -> str:
     return f"Your previous answer could not be used ({error}). Answer with the JSON only."
 
 
-def _post(
+def _ask(
     settings: VisionSettings, text: str, picture: str, transport: httpx2.BaseTransport | None
-) -> dict[str, Any]:
+) -> tuple[str, dict[str, Any]]:
+    """The text of the model's answer to the page, and the whole answer; VisionError if there
+    is none to read."""
     body = {
         "model": settings.model,
         "max_tokens": MAX_TOKENS,
@@ -302,12 +311,17 @@ def _post(
             },
         ],
     }
-    headers = {"Authorization": f"Bearer {settings.api_key}"} if settings.api_key else {}
     timeout = settings.timeout.total_seconds()
-    url = settings.base_url.rstrip("/") + "/chat/completions"
+    client = (
+        contextlib.nullcontext(_client(timeout))
+        if transport is None
+        else httpx2.Client(transport=transport, timeout=timeout)
+    )
     try:
-        with httpx2.Client(transport=transport, timeout=timeout) as client:
-            response = client.post(url, json=body, headers=headers)
+        with client as http:
+            response = http.post(
+                chat_url(settings.base_url), json=body, headers=auth_headers(settings.api_key)
+            )
     except httpx2.TimeoutException:
         raise VisionError(f"the vision language model gave no answer within {timeout:g} s") from (
             None
@@ -316,33 +330,15 @@ def _post(
         raise VisionError(
             f"the vision language model cannot be reached: {type(failure).__name__}"
         ) from None
-    if response.status_code >= 400:
-        raise VisionError(
-            f"the vision language model answered HTTP {response.status_code}: {_message(response)}"
-        )
     try:
-        data = response.json()
-    except ValueError:
-        raise VisionError("the vision language model sent no JSON") from None
-    if not isinstance(data, dict):
-        raise VisionError("the vision language model sent no JSON object")
-    return data
+        data = response_object(response)
+        return answer_content(data), data
+    except ProtocolError as problem:
+        raise VisionError(f"the vision language model: {problem}") from None
 
 
-def _content(data: dict[str, Any]) -> str:
-    try:
-        content = data["choices"][0]["message"].get("content")
-    except (KeyError, IndexError, TypeError, AttributeError):
-        raise VisionError("the vision language model sent an unusable response") from None
-    return content if isinstance(content, str) else ""
-
-
-def _message(response: httpx2.Response) -> str:
-    """The provider's error message, shortened."""
-    try:
-        data = response.json()
-        detail = data["error"]["message"] if isinstance(data["error"], dict) else data["error"]
-        text = str(detail)
-    except (ValueError, KeyError, TypeError):
-        text = response.text
-    return " ".join(text.split())[:_EXCERPT] or response.reason_phrase
+@functools.cache
+def _client(timeout: float) -> httpx2.Client:
+    """One client per process (OCRmyPDF's workers each have theirs): its connections stay open
+    from page to page."""
+    return httpx2.Client(timeout=timeout)

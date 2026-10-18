@@ -231,14 +231,15 @@ def test_language_model_and_embeddings_from_settings(monkeypatch: pytest.MonkeyP
     model = built.language_model
     assert isinstance(model, OpenAiCompatLanguageModel)
     assert (model.model, model.endpoint) == ("qwen3", "ollama:11434")
-    assert model._url == "http://ollama:11434/v1/chat/completions"
-    assert model._headers == {"Authorization": "Bearer sk-1"}
-    assert (model._temperature, model._seed, model._timeout) == (0.1, 3, 120)
+    assert model._client._url == "http://ollama:11434/v1/chat/completions"
+    assert model._client._client.headers["Authorization"] == "Bearer sk-1"
+    assert (model._temperature, model._seed, model._client._timeout) == (0.1, 3, 120)
     assert model._format == "json_object"
     embeddings = built.embeddings
     assert isinstance(embeddings, OpenAiCompatEmbeddings)
     assert embeddings.model == "bge-m3"
-    assert (embeddings._headers, embeddings._timeout) == ({}, 20)
+    assert "Authorization" not in embeddings._client._client.headers
+    assert embeddings._client._timeout == 20
 
 
 def test_templates_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:

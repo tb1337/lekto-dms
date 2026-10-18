@@ -164,7 +164,7 @@ def test_two_answers_that_do_not_fit_fail(page: Path) -> None:
     ("response", "message"),
     [
         (httpx2.Response(401, json={"error": {"message": "bad key"}}), "HTTP 401: bad key"),
-        (httpx2.Response(200, text="<html>"), "sent no JSON"),
+        (httpx2.Response(200, text="<html>"), "not JSON"),
         (httpx2.Response(200, json={"choices": []}), "unusable response"),
     ],
 )

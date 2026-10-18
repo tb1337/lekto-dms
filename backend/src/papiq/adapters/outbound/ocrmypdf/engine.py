@@ -62,6 +62,7 @@ from pathlib import Path
 
 from PIL import Image, ImageSequence
 
+from papiq.adapters.outbound.http_client import endpoint_of
 from papiq.adapters.outbound.ocrmypdf.vision import (
     PROMPT,
     PageRecord,
@@ -69,7 +70,6 @@ from papiq.adapters.outbound.ocrmypdf.vision import (
     environment,
     read_records,
 )
-from papiq.adapters.outbound.openai_compat import endpoint_of
 from papiq.adapters.outbound.pdfium import count_pages, has_hidden_text, has_unreadable_text
 from papiq.adapters.outbound.system import Completed, run_process
 from papiq.core.domain import media_types

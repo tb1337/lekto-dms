@@ -34,6 +34,7 @@ from dataclasses import dataclass
 import httpx2
 from PIL import Image, UnidentifiedImageError
 
+from papiq.adapters.outbound.http_client import CONNECT_TIMEOUT, describe_failure
 from papiq.adapters.outbound.logos.addresses import Resolver, is_public, literal, system_resolver
 from papiq.adapters.outbound.logos.icons import Candidate, manifest_icons, page_icons, ranked
 from papiq.core.domain import media_types
@@ -44,7 +45,6 @@ from papiq.core.ports.logos import MIN_LOGO_SIZE, FetchedLogo
 log = logging.getLogger(__name__)
 
 TIMEOUT = 10.0  # seconds per request, with its redirects
-CONNECT_TIMEOUT = 5.0
 DEADLINE = 30.0  # seconds for a whole fetch
 MAX_SIZE = 1024 * 1024
 MAX_REDIRECTS = 3
@@ -158,7 +158,7 @@ class HttpLogoFetcher:
         except httpx2.InvalidURL:
             raise LogoFetchError("an address that cannot be read") from None
         except httpx2.HTTPError as failure:
-            raise LogoFetchError(_describe(failure)) from None
+            raise LogoFetchError(describe_failure(failure)) from None
         except (ssl.SSLError, OSError) as failure:
             raise LogoFetchError(f"cannot connect: {type(failure).__name__}") from None
 
@@ -295,18 +295,3 @@ def _icon_size(data: bytes) -> int | None:
         return None
     entries = [data[6 + 16 * index : 8 + 16 * index] for index in range(count)]
     return max(side or 256 for entry in entries for side in entry)
-
-
-def _describe(failure: httpx2.HTTPError) -> str:
-    cause: BaseException | None = failure
-    while cause is not None:
-        if isinstance(cause, ssl.SSLCertVerificationError):
-            return "the TLS certificate was not accepted"
-        if isinstance(cause, ssl.SSLError):
-            return "TLS handshake failed"
-        cause = cause.__cause__ or cause.__context__
-    if isinstance(failure, httpx2.TimeoutException):
-        return "no answer in time"
-    if isinstance(failure, httpx2.ConnectError):
-        return "cannot connect"
-    return f"request failed: {type(failure).__name__}"

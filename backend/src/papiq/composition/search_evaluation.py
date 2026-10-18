@@ -21,13 +21,13 @@ from papiq.adapters.inbound.evaluation import (
     load_set,
     render_search,
 )
+from papiq.adapters.outbound.http_client import endpoint_of
 from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.adapters.outbound.memory import (
     BagOfWordsEmbeddings,
     FakeLanguageModel,
     MemorySearchIndex,
 )
-from papiq.adapters.outbound.openai_compat import endpoint_of
 from papiq.composition.container import (
     build_memory_container,
     indexing_policy_of,

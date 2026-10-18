@@ -355,6 +355,19 @@ def build_container(settings: Settings) -> Container:
     )
     if isinstance(search_index, MeilisearchIndex):
         closers.append(search_index.aclose)
+    language_model = (
+        _select("llm", "openai-compatible", LANGUAGE_MODELS, settings)
+        if settings.llm_base_url is not None
+        else None
+    )
+    embeddings = (
+        _select("embeddings", "openai-compatible", EMBEDDINGS, settings)
+        if settings.embedding_base_url is not None
+        else None
+    )
+    for client in (language_model, embeddings):
+        if isinstance(client, OpenAiCompatLanguageModel | OpenAiCompatEmbeddings):
+            closers.append(client.aclose)
     return Container(
         unit_of_work=persistence.unit_of_work,
         event_bus=persistence.event_bus,
@@ -379,16 +392,8 @@ def build_container(settings: Settings) -> Container:
             _select("oidc", "authlib", OIDC_PROVIDERS, settings) if settings.oidc_enabled else None
         ),
         search_index=search_index,
-        language_model=(
-            _select("llm", "openai-compatible", LANGUAGE_MODELS, settings)
-            if settings.llm_base_url is not None
-            else None
-        ),
-        embeddings=(
-            _select("embeddings", "openai-compatible", EMBEDDINGS, settings)
-            if settings.embedding_base_url is not None
-            else None
-        ),
+        language_model=language_model,
+        embeddings=embeddings,
         classifier=(
             None
             if settings.classifier == "none"

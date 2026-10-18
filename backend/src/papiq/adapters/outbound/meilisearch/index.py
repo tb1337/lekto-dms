@@ -26,6 +26,7 @@ from uuid import UUID
 
 import httpx2
 
+from papiq.adapters.outbound.http_client import excerpt
 from papiq.core.domain.errors import SearchIndexError, SearchUnavailableError
 from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.search import (
@@ -55,7 +56,6 @@ HIGHLIGHT_START = "\ue000"  # private-use characters: they cannot occur in a doc
 HIGHLIGHT_END = "\ue001"
 CROP_WORDS = 30
 FETCH_PAGE = 1000
-_EXCERPT = 300  # characters of an error message from Meilisearch
 
 SEARCHABLE = [
     "title",
@@ -440,7 +440,7 @@ class MeilisearchIndex:
             if status in ("failed", "canceled"):
                 error = data.get("error") or {}
                 code, message = error.get("code", status), error.get("message", "")
-                raise _TaskFailedError(uid, status, code, _shorten(message))
+                raise _TaskFailedError(uid, status, code, excerpt(message))
             if loop.time() >= deadline:
                 raise SearchUnavailableError(
                     f"task {uid} did not finish within {self._task_timeout:g} seconds"
@@ -565,11 +565,7 @@ def _message(response: httpx2.Response) -> str:
         text = f"{data['code']}: {data['message']}"
     except (ValueError, KeyError, TypeError):
         text = response.text
-    return _shorten(text) or response.reason_phrase
-
-
-def _shorten(text: str) -> str:
-    return " ".join(text.split())[:_EXCERPT]
+    return excerpt(text) or response.reason_phrase
 
 
 def _state_of(item: Mapping[str, Any]) -> IndexState:

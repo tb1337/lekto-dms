@@ -1,6 +1,7 @@
 """The OpenAI-compatible adapter against a simulated endpoint: the contracts, the requests it
 sends and how it handles errors. No network."""
 
+import asyncio
 import hashlib
 import json
 from collections.abc import Callable
@@ -9,10 +10,10 @@ from typing import Any
 import httpx2
 import pytest
 
+from papiq.adapters.outbound.http_client import endpoint_of
 from papiq.adapters.outbound.openai_compat import (
     OpenAiCompatEmbeddings,
     OpenAiCompatLanguageModel,
-    endpoint_of,
 )
 from papiq.core.domain.errors import EmbeddingsError, LanguageModelError
 from tests.builders import DEFAULT_SETTINGS
@@ -227,6 +228,19 @@ async def test_unreachable_and_slow_endpoints() -> None:
         await language_model(httpx2.MockTransport(refuse)).complete(REQUEST)
     with pytest.raises(LanguageModelError, match=r"no answer within 2\.5 seconds"):
         await language_model(httpx2.MockTransport(slow), timeout=2.5).complete(REQUEST)
+
+
+async def test_the_timeout_limits_the_whole_request() -> None:
+    """Not each socket operation: an endpoint that trickles its answer still runs out."""
+
+    async def trickle(request: httpx2.Request) -> httpx2.Response:
+        await asyncio.sleep(1)
+        return httpx2.Response(200, json={})
+
+    model = language_model(httpx2.MockTransport(trickle), timeout=0.05)
+    with pytest.raises(LanguageModelError, match=r"no answer within 0\.05 seconds"):
+        await model.complete(REQUEST)
+    await model.aclose()
 
 
 async def test_errors_do_not_show_the_key() -> None:

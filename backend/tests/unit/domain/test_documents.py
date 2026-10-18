@@ -3,7 +3,14 @@ from decimal import Decimal
 
 import pytest
 
-from papiq.core.domain.documents import UNSET, Document, DocumentChanges, Sha256, confirms
+from papiq.core.domain.documents import (
+    UNSET,
+    Document,
+    DocumentChanges,
+    Sha256,
+    checked_fields,
+    confirms,
+)
 from papiq.core.domain.errors import NotFoundError, ValidationError
 from papiq.core.domain.events import (
     DocumentDeleted,
@@ -144,6 +151,21 @@ def test_field_values_are_validated_and_scoped() -> None:
 
     document.apply_changes(DocumentChanges(fields={note.id: None}), definitions, LATER)
     assert document.fields == {}
+
+
+def test_field_values_are_checked_without_a_document() -> None:
+    invoice = DocumentTypeId(new_id())
+    total = FieldDefinition.create(
+        name="Total", data_type=FieldType.NUMBER, now=NOW, document_type_ids=[invoice]
+    )
+    note = FieldDefinition.create(name="Note", data_type=FieldType.TEXT, now=NOW)
+    definitions = {total.id: total, note.id: note}
+    changes = DocumentChanges(fields={total.id: 10, note.id: None})
+    assert checked_fields(changes, definitions, invoice) == {total.id: Decimal(10)}
+    with pytest.raises(ValidationError, match="does not apply"):
+        checked_fields(changes, definitions, None)
+    with pytest.raises(NotFoundError):
+        checked_fields(changes, {total.id: total}, invoice)  # removing needs a definition too
 
 
 def test_failed_validation_changes_nothing() -> None:

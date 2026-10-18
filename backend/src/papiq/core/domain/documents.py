@@ -133,6 +133,26 @@ def confirms(
     return not set(tags_before) ^ set(tags_after) <= set(manual)
 
 
+def checked_fields(
+    changes: DocumentChanges,
+    definitions: Mapping[FieldId, FieldDefinition],
+    document_type_id: DocumentTypeId | None,
+) -> dict[FieldId, FieldValue]:
+    """The field values `changes` sets, checked against their definitions and the document
+    type after the change; a field it removes (None) needs a definition, but no check.
+    NotFoundError for a field without a definition, ValidationError for a value that does not
+    fit its definition or a field that does not apply to the type."""
+    checked: dict[FieldId, FieldValue] = {}
+    for field_id, raw in changes.fields.items():
+        definition = _definition(definitions, field_id)
+        if raw is None:
+            continue
+        if not definition.applies_to(document_type_id):
+            raise ValidationError(f"field '{definition.name}' does not apply to this document type")
+        checked[field_id] = definition.validate(raw)
+    return checked
+
+
 @dataclass(kw_only=True)
 class Document:
     """A file with metadata.
@@ -505,17 +525,11 @@ class Document:
         tag_ids = set(_pick(changes.tag_ids, frozenset(self.tag_ids)))
         document_date = _pick(changes.document_date, self.document_date)
 
+        checked = checked_fields(changes, definitions, document_type_id)
         fields = dict(self.fields)
-        for field_id, raw in changes.fields.items():
-            definition = _definition(definitions, field_id)
-            if raw is None:
-                fields.pop(field_id, None)
-            elif not definition.applies_to(document_type_id):
-                raise ValidationError(
-                    f"field '{definition.name}' does not apply to this document type"
-                )
-            else:
-                fields[field_id] = definition.validate(raw)
+        for field_id in changes.fields.keys() - checked.keys():  # removed
+            fields.pop(field_id, None)
+        fields.update(checked)
         fields = {
             field_id: value
             for field_id, value in fields.items()

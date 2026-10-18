@@ -13,10 +13,12 @@ from typing import Protocol, Self
 from papiq.core.domain import media_types
 from papiq.core.domain.classification import CLASSIFIER_LABELS, SPACE
 from papiq.core.domain.documents import (
+    MAX_TITLE,
     Channel,
     Document,
     DocumentChanges,
     Sha256,
+    checked_fields,
 )
 from papiq.core.domain.errors import (
     ConflictError,
@@ -55,6 +57,7 @@ from papiq.core.domain.reading import (
     vision_advice,
 )
 from papiq.core.domain.rule_planner import changed_fields
+from papiq.core.domain.validation import require_name
 from papiq.core.ports import Clock, ObjectStore, UnitOfWork, UnitOfWorkFactory
 from papiq.core.ports.ocr import VisionModel
 from papiq.core.services._access import (
@@ -277,7 +280,7 @@ class PipelineService:
             owner = await self._owner(uow, actor, owner, channel, imported)
             target = await self._target_space(uow, owner, space, sha256)
             if imported is not None:
-                await _check_imported(uow, owner, imported, started)
+                await _check_imported(uow, imported)
         key = original_key(sha256)
         if not await self._store.exists(key):
             await self._store.upload(key, file.path, content_type=media_type)
@@ -965,26 +968,17 @@ async def _enqueue(
     return jobs
 
 
-async def _check_imported(
-    uow: UnitOfWork, owner: UserId, imported: ImportedMetadata, now: datetime
-) -> None:
+async def _check_imported(uow: UnitOfWork, imported: ImportedMetadata) -> None:
     """ValidationError if the metadata does not fit the master data: unknown contact, type or
-    tag, or field values that do not fit their definition or the document type."""
+    tag, or field values that do not fit their definition or the document type; or if its
+    title is empty or too long."""
     changes = replace(imported.classification(), tag_ids=imported.tag_ids)
     changes = replace(changes, fields=dict(imported.fields))
     try:
-        changes = await checked_changes(uow, changes)
-        definitions = await field_definitions(uow)
-        scratch = Document.receive(
-            owner_id=owner,
-            space_id=SpaceId(owner),
-            sha256=Sha256("0" * 64),
-            original_filename="scratch",
-            media_type="application/pdf",
-            result=NodeResult(outcome=Outcome.OK),
-            now=now,
-        )
-        scratch.apply_changes(changes, definitions, now)
+        await checked_changes(uow, changes)
+        if imported.title is not None:
+            require_name(imported.title, "title", max_length=MAX_TITLE)
+        checked_fields(changes, await field_definitions(uow), imported.document_type_id)
     except NotFoundError as error:
         raise ValidationError(f"metadata: {error}") from None
 

@@ -253,6 +253,7 @@ async def test_metadata_needs_the_channel_and_must_fit_the_master_data(api: Api)
             "field",
         ),
         ({"channel": "migration", "metadata": metadata(data, unknown=1)}, "unknown"),
+        ({"channel": "migration", "metadata": metadata(data, title="  ")}, "title"),
     ]:
         response = await upload(api, headers, owner=str(owner.id), **fields)
         assert response.status_code == 422, (fields, response.text)

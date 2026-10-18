@@ -36,9 +36,6 @@ from papiq.core.domain.pipeline import (
     TRIGGER,
     Lane,
     Node,
-    NodeResult,
-    NodeRun,
-    Outcome,
 )
 from papiq.core.domain.rule_engine import Effect, Mode, Note, NoteKind
 from papiq.core.domain.rules import Rule, RuleApplication, RuleScope
@@ -54,7 +51,7 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
 )
 from papiq.core.ports.repository import PAGE_SIZE
-from papiq.core.services._access import load_actor
+from papiq.core.services._access import field_definitions, load_actor
 from papiq.core.services._jobs import LEASE, JobRunner, lost
 from papiq.core.services.rules.management import visible_rule
 from papiq.core.services.rules.running import (
@@ -63,6 +60,7 @@ from papiq.core.services.rules.running import (
     RuleRun,
     apply_plan,
     checked_rules,
+    entry_beside,
     prepare,
     provenance,
     run_rules,
@@ -329,29 +327,24 @@ class RuleApplicationService:
         if run is None or not run.plan.effects:
             return "unchanged"
         now = self._clock.now()
-        definitions = {item.id: item for item in await uow.fields.list_all()}
+        definitions = await field_definitions(uow)
         problem = apply_plan(document, run.plan, definitions, now)
         if problem is not None:
             return problem
         await uow.processing_log.append(
-            NodeRun(
-                document_id=document.id,
+            entry_beside(
+                document,
                 node=Node.APPLY_RULES,
-                run=document.processing.run,
-                result=NodeResult(
-                    outcome=Outcome.OK,
-                    model_version=RULES_APPLY,
-                    input={
-                        TRIGGER: "apply",
-                        ACTOR: str(user.id),
-                        "application_id": str(application.id),
-                        "rules": checked_rules([rule]),
-                    },
-                    output=run.output(),
-                ),
-                pipeline_version=self._version,
-                started_at=now,
-                duration=now - now,
+                model_version=RULES_APPLY,
+                input={
+                    TRIGGER: "apply",
+                    ACTOR: str(user.id),
+                    "application_id": str(application.id),
+                    "rules": checked_rules([rule]),
+                },
+                output=run.output(),
+                version=self._version,
+                now=now,
             )
         )
         await uow.documents.update(document)
@@ -369,7 +362,7 @@ class RuleApplicationService:
     ) -> RuleRun | None:
         """The rule on the document; None if it does not hold."""
         owner = await uow.users.get(document.owner_id)
-        definitions = {item.id: item for item in await uow.fields.list_all()}
+        definitions = await field_definitions(uow)
         run = await run_rules(
             uow,
             self._matcher,
@@ -413,4 +406,4 @@ async def _enqueue(uow: UnitOfWork, id: RuleApplicationId, now: datetime) -> Non
 
 
 def _position(before: DocumentId | None) -> DocumentPosition | None:
-    return None if before is None else DocumentPosition(before)
+    return DocumentPosition.after(before)

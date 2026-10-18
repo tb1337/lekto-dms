@@ -19,7 +19,7 @@ from papiq.core.ports import (
     UnitOfWork,
     UnitOfWorkFactory,
 )
-from papiq.core.services._access import may_file
+from papiq.core.services._access import field_definitions, may_file
 from papiq.core.services.rules.running import (
     Prepared,
     active_rules,
@@ -78,7 +78,7 @@ class RulesResult:
             TRIGGER: Trigger.INGEST.value,
             "rules": checked_rules(rules),
         }
-        definitions = {item.id: item for item in await uow.fields.list_all()}
+        definitions = await field_definitions(uow)
         if not rules:
             ok = NodeResult(outcome=Outcome.OK, model_version=RULES, input=input)
             return _waiting_for_hand(document, definitions, ok)

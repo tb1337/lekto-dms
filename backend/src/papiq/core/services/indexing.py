@@ -60,7 +60,6 @@ from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.periods import MONTH_NAMES, Period, PeriodKind
 from papiq.core.domain.pipeline import SIGNALS
 from papiq.core.domain.search import LAYOUT, EmbeddingStamp, IndexDocument, IndexState
-from papiq.core.domain.tag_tree import TagTree
 from papiq.core.ports import (
     Clock,
     Embeddings,
@@ -71,6 +70,7 @@ from papiq.core.ports import (
 )
 from papiq.core.services._access import require_admin
 from papiq.core.services._jobs import JobRunner, lost
+from papiq.core.services._tags import tag_tree
 from papiq.core.services.objects import load_text
 
 log = logging.getLogger(__name__)
@@ -422,7 +422,7 @@ class IndexingService:
             if kind is not RefreshKind.TAG:
                 carrying = [document.id for document in documents if _carries(document, kind, item)]
             else:
-                tags = TagTree.of(await uow.tags.list_all()).with_descendants([TagId(item)])
+                tags = (await tag_tree(uow)).with_descendants([TagId(item)])
                 contacts = {c.id for c in await uow.contacts.list_all() if c.group_ids & tags}
                 types = {t.id for t in await uow.document_types.list_all() if t.group_ids & tags}
                 carrying = [
@@ -522,7 +522,7 @@ def _carries(document: Document, kind: RefreshKind, item: UUID) -> bool:
 
 
 async def _snapshot_of(uow: UnitOfWork, document: Document) -> _Snapshot:
-    tree = TagTree.of(await uow.tags.list_all())
+    tree = await tag_tree(uow)
     contact, contact_groups = None, frozenset[TagId]()
     if document.contact_id is not None:
         found = await uow.contacts.find(document.contact_id)

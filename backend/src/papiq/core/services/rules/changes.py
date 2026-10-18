@@ -27,9 +27,7 @@ from papiq.core.domain.pipeline import (
     RULES_CHANGE,
     TRIGGER,
     Node,
-    NodeResult,
     NodeRun,
-    Outcome,
     ProcessingStatus,
 )
 from papiq.core.domain.rule_engine import Mode, changed_fields
@@ -43,6 +41,7 @@ from papiq.core.services.rules.running import (
     apply_plan,
     checked_rules,
     corrected_fields,
+    entry_beside,
     field_patterns,
     person_record,
     prepare,
@@ -165,16 +164,14 @@ class ChangeRules:
                 output["problem"] = reason
         if log:
             await uow.processing_log.append(
-                NodeRun(
-                    document_id=document.id,
+                entry_beside(
+                    document,
                     node=Node.APPLY_RULES,
-                    run=document.processing.run,
-                    result=NodeResult(
-                        outcome=Outcome.OK, model_version=RULES_CHANGE, input=input, output=output
-                    ),
-                    pipeline_version=self._version,
-                    started_at=now,
-                    duration=now - now,
+                    model_version=RULES_CHANGE,
+                    input=input,
+                    output=output,
+                    version=self._version,
+                    now=now,
                 )
             )
         return run

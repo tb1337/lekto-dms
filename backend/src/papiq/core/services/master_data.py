@@ -28,7 +28,6 @@ from papiq.core.domain.master_data import (
 from papiq.core.domain.names import match_key, related
 from papiq.core.domain.rules import References, Rule, RuleScope, definition_to_json, title_rule
 from papiq.core.domain.sorting import sort_key
-from papiq.core.domain.tag_tree import TagTree
 from papiq.core.domain.templates import rename_field_key, unknown_values
 from papiq.core.domain.templates import uses_field as field_used
 from papiq.core.ports import (
@@ -41,8 +40,14 @@ from papiq.core.ports import (
     UnitOfWork,
     UnitOfWorkFactory,
 )
-from papiq.core.services._access import contact_topics_lock, load_actor, require_admin
+from papiq.core.services._access import (
+    contact_topics_lock,
+    field_definitions,
+    load_actor,
+    require_admin,
+)
 from papiq.core.services._jobs import LEASE, JobRunner
+from papiq.core.services._tags import tag_tree
 
 # A rename queues the indexing service's refresh job; the worker runs it through that service.
 from papiq.core.services.indexing import REFRESH_JOB, RefreshKind, refresh_payload
@@ -352,7 +357,7 @@ class MasterDataService:
         async with self._uow() as uow:
             await uow.lock(TAG_TREE_LOCK)
             await require_admin(uow, actor, "change master data")
-            TagTree.of(await uow.tags.list_all()).check_parent(tag, parent_id)
+            (await tag_tree(uow)).check_parent(tag, parent_id)
             await _check_tag_name_free(uow, tag)
             await uow.tags.add(tag)
             await uow.commit()
@@ -384,7 +389,7 @@ class MasterDataService:
             if name is not None:
                 tag.rename(name)
             if not isinstance(parent_id, Unset):
-                TagTree.of(await uow.tags.list_all()).check_parent(tag, parent_id)
+                (await tag_tree(uow)).check_parent(tag, parent_id)
                 tag.move(parent_id)
             if assignment is not None:
                 tag.assign(assignment)
@@ -539,7 +544,7 @@ class MasterDataService:
                 definition.assignment = assignment
             await uow.fields.update(definition)
             if choices is not None:
-                fields = {item.id: item for item in await uow.fields.list_all()}
+                fields = await field_definitions(uow)
                 fields[definition.id] = definition
                 await disable_rules(
                     uow,
@@ -565,7 +570,7 @@ class MasterDataService:
         async with self._uow() as uow:
             await require_admin(uow, actor, "change master data")
             document_type = await uow.document_types.get(id)
-            definitions = {item.id: item for item in await uow.fields.list_all()}
+            definitions = await field_definitions(uow)
             for field in fields:
                 if field not in definitions:
                     raise NotFoundError("field", field)
@@ -632,7 +637,7 @@ class MasterDataService:
         the document types of each type group. Master data are global: no reach."""
         async with self._uow() as uow:
             await load_actor(uow, actor)
-            tree = TagTree.of(await uow.tags.list_all())
+            tree = await tag_tree(uow)
             contacts = await uow.contacts.list_all()
             types = await uow.document_types.list_all()
         return TagMembers(
@@ -945,7 +950,7 @@ async def normalise_tagged(
     groups with ancestors, what the index holds, stay the same). Neither lane nor confirmation
     changes. Returns how many were changed, and the last document of a full batch: the next
     step starts after it (None: done; also for a tag that is gone)."""
-    tree = TagTree.of(await uow.tags.list_all())
+    tree = await tag_tree(uow)
     if id not in tree:
         return 0, None
     scope = tree.tags[id].scope
@@ -954,7 +959,7 @@ async def normalise_tagged(
     if scope is TagScope.DOCUMENT:
         page = await uow.documents.query(
             DocumentFilter(tags=(below,)),
-            after=None if after is None else DocumentPosition(after),
+            after=DocumentPosition.after(after),
             limit=_NORMALISE_BATCH,
         )
         definitions = None
@@ -963,7 +968,7 @@ async def normalise_tagged(
             if tags == document.tag_ids:
                 continue
             if definitions is None:
-                definitions = {item.id: item for item in await uow.fields.list_all()}
+                definitions = await field_definitions(uow)
             document.apply_changes(DocumentChanges(tag_ids=tags), definitions, now)
             await uow.documents.update(document)
             await uow.outbox.add(document.pull_events())
@@ -1008,7 +1013,7 @@ async def _groups(uow: UnitOfWork, ids: Collection[TagId], scope: TagScope) -> f
     that does not exist, ValidationError for one of another scope), normalised."""
     if not ids:
         return frozenset()
-    tree = TagTree.of(await uow.tags.list_all())
+    tree = await tag_tree(uow)
     for id in ids:
         tree.require(id, scope)
     return tree.normalise(ids)
@@ -1020,7 +1025,7 @@ async def _topics(uow: UnitOfWork, ids: Collection[TagId]) -> frozenset[TagId]:
     both enabled: a document may carry either."""
     if not ids:
         return frozenset()
-    tree = TagTree.of(await uow.tags.list_all())
+    tree = await tag_tree(uow)
     for id in ids:
         tree.require(id, TagScope.TOPIC)
     return frozenset(ids)

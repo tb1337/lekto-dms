@@ -75,7 +75,6 @@ ABSTAINED = "abstained"
 PROPOSAL = "proposal"
 """Key of the language model's proposal (`StoredProposal`) in the output of `signal_llm`."""
 FACTS = "facts"
-_MOST = 20  # contacts and identifiers a signal reports
 _RANKED = 5  # classes of contact and type the classifier's signal keeps
 
 

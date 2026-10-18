@@ -60,6 +60,7 @@ from papiq.core.ports.ocr import VisionModel
 from papiq.core.services._access import (
     checked_changes,
     controllable_document,
+    field_definitions,
     load_actor,
     may_file,
     require_admin,
@@ -142,7 +143,7 @@ class MetadataResult:
             changes = replace(changes, tag_ids=frozenset(document.tag_ids | self.add_tags))
         try:
             changes = await checked_changes(uow, changes, document)
-            definitions = {item.id: item for item in await uow.fields.list_all()}
+            definitions = await field_definitions(uow)
             changed = document.apply_changes(changes, definitions, now)
         except (NotFoundError, ValidationError) as error:
             reason = f"the master data changed during the node; nothing was applied ({error})"
@@ -166,7 +167,8 @@ class NodeExecutor(Protocol):
 
 
 class PlaceholderNode:
-    """Stands in for nodes whose logic comes in later milestones (M3, M5, M7)."""
+    """A node that does nothing and passes: for tests, and for nodes a composition leaves
+    out."""
 
     async def run(self, document: Document) -> NodeResult:
         return NodeResult(outcome=Outcome.OK)
@@ -521,7 +523,7 @@ class PipelineService:
             now = self._clock.now()
             tags_before = frozenset(document.tag_ids)
             overruled = document.confirm(resume_at, now)
-            definitions = {item.id: item for item in await uow.fields.list_all()}
+            definitions = await field_definitions(uow)
             decision = decide(
                 open,
                 document,
@@ -971,7 +973,7 @@ async def _check_imported(
     changes = replace(changes, fields=dict(imported.fields))
     try:
         changes = await checked_changes(uow, changes)
-        definitions = {item.id: item for item in await uow.fields.list_all()}
+        definitions = await field_definitions(uow)
         scratch = Document.receive(
             owner_id=owner,
             space_id=SpaceId(owner),

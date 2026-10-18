@@ -56,6 +56,7 @@ from papiq.core.services._access import (
     admin_only,
     checked_changes,
     controllable_document,
+    field_definitions,
     load_actor,
     readable_document,
     visible_space,
@@ -281,7 +282,7 @@ class DocumentService:
             user = await load_actor(uow, actor)
             document, _ = await readable_document(uow, user, id)
             contacts = await uow.contacts.list_all()
-            definitions = {item.id: item for item in await uow.fields.list_all()}
+            definitions = await field_definitions(uow)
         try:
             text = (await load_text(self._store, id)).decode("utf-8", errors="replace")
         except NotFoundError:
@@ -521,7 +522,7 @@ class DocumentService:
         waiting = DocumentFilter(lanes=frozenset({Lane.YELLOW, Lane.RED}))
         async with self._uow() as uow:
             await _lister(uow, actor, all_users)
-            after = None if before is None else DocumentPosition(before)
+            after = DocumentPosition.after(before)
             if all_users:
                 documents = await uow.documents.query(waiting, after=after, limit=limit)
             else:
@@ -573,7 +574,7 @@ class DocumentService:
             # new contact does not enable, cleared) is none of their decisions.
             given = changes
             changes = await checked_changes(uow, given, document, user)
-            definitions = {item.id: item for item in await uow.fields.list_all()}
+            definitions = await field_definitions(uow)
             now = self._clock.now()
             before = copy.deepcopy(document)
             changed = document.apply_changes(changes, definitions, now)

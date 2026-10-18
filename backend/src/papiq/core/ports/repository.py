@@ -251,6 +251,12 @@ class DocumentPosition:
     value: date | str | None = None
 
     @classmethod
+    def after(cls, id: DocumentId | None) -> "DocumentPosition | None":
+        """The position after the document `id` in a list sorted by `CREATED`; None: from the
+        start."""
+        return None if id is None else cls(id)
+
+    @classmethod
     def of(cls, document: Document, order: DocumentOrder) -> "DocumentPosition":
         match order.key:
             case SortKey.CREATED:

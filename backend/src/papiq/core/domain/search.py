@@ -8,6 +8,7 @@ a test keeps both in line, and every search needs a `Visibility`.
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -89,14 +90,14 @@ class IndexDocument:
     def __post_init__(self) -> None:
         if self.vectors is None:
             if self.embedding is not None:
-                raise ValueError("kept vectors keep their stamp: give none")
+                raise ValidationError("kept vectors keep their stamp: give none")
             return
         if self.vectors and self.embedding is None:
-            raise ValueError("vectors need an embedding stamp")
+            raise ValidationError("vectors need an embedding stamp")
         if len({len(vector) for vector in self.vectors}) > 1 or any(
             not vector for vector in self.vectors
         ):
-            raise ValueError("vectors must be non-empty and of one length")
+            raise ValidationError("vectors must be non-empty and of one length")
 
     @property
     def lane_value(self) -> str:

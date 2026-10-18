@@ -10,7 +10,7 @@ import logging
 import time
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from papiq.core.domain.classification import (
@@ -74,9 +74,9 @@ from papiq.core.domain.rule_engine import (
     plan,
 )
 from papiq.core.domain.rules import Rule, SetSpace, Trigger
-from papiq.core.domain.tag_tree import TagTree
 from papiq.core.domain.users import User
 from papiq.core.ports import ObjectStore, PatternMatcher, TemplateRenderer, UnitOfWork
+from papiq.core.services._tags import tag_tree
 from papiq.core.services.inbox import MODEL_NODES, field_checks, latest_entries
 from papiq.core.services.objects import load_text
 from papiq.core.services.titles import machine_title
@@ -328,29 +328,45 @@ def corrected_fields(
     return frozenset(names)
 
 
-def space_choice(
-    document: Document, *, node: Node, actor: UserId, trigger: str, version: str, now: datetime
+def entry_beside(
+    document: Document,
+    *,
+    node: Node,
+    model_version: str,
+    input: JsonObject,
+    output: JsonObject,
+    version: str,
+    now: datetime,
 ) -> NodeRun:
-    """The log entry of a person choosing the document's space outside the inbox."""
+    """A log entry written beside processing, by a person or the rules (`OUTSIDE_PIPELINE`):
+    in the document's current run, at `now`, taking no time."""
     return NodeRun(
         document_id=document.id,
         node=node,
         run=document.processing.run,
         result=NodeResult(
-            outcome=Outcome.OK,
-            model_version=PERSON_SPACE,
-            input={
-                TRIGGER: trigger,
-                ACTOR: str(actor),
-                CHOSEN_SPACE: str(document.space_id),
-            },
-            output=person_record(
-                changed=[SPACE], tags_before=document.tag_ids, tags_after=document.tag_ids
-            ),
+            outcome=Outcome.OK, model_version=model_version, input=input, output=output
         ),
         pipeline_version=version,
         started_at=now,
-        duration=now - now,
+        duration=timedelta(0),
+    )
+
+
+def space_choice(
+    document: Document, *, node: Node, actor: UserId, trigger: str, version: str, now: datetime
+) -> NodeRun:
+    """The log entry of a person choosing the document's space outside the inbox."""
+    return entry_beside(
+        document,
+        node=node,
+        model_version=PERSON_SPACE,
+        input={TRIGGER: trigger, ACTOR: str(actor), CHOSEN_SPACE: str(document.space_id)},
+        output=person_record(
+            changed=[SPACE], tags_before=document.tag_ids, tags_after=document.tag_ids
+        ),
+        version=version,
+        now=now,
     )
 
 
@@ -412,7 +428,7 @@ async def taxonomy(
     for id in types:
         if (kind := await uow.document_types.find(DocumentTypeId(id))) is not None:
             groups[id] = kind.group_ids
-    return Taxonomy(TagTree.of(await uow.tags.list_all()), groups, topics)
+    return Taxonomy(await tag_tree(uow), groups, topics)
 
 
 # --- the situation ----------------------------------------------------------------------------

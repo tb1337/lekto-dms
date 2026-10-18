@@ -1,4 +1,4 @@
-"""Loading entities together with the caller's rights."""
+"""Loading entities, together with the caller's rights where they matter."""
 
 from dataclasses import replace
 
@@ -9,7 +9,8 @@ from papiq.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
-from papiq.core.domain.ids import ContactId, DocumentId, SpaceId, UserId
+from papiq.core.domain.fields import FieldDefinition
+from papiq.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId, UserId
 from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.permissions import (
     can_control_document,
@@ -20,9 +21,9 @@ from papiq.core.domain.permissions import (
 )
 from papiq.core.domain.pipeline import space_chooser
 from papiq.core.domain.spaces import Space
-from papiq.core.domain.tag_tree import TagTree
 from papiq.core.domain.users import User
 from papiq.core.ports import UnitOfWork
+from papiq.core.services._tags import tag_tree
 
 
 async def load_actor(uow: UnitOfWork, actor: UserId) -> User:
@@ -32,6 +33,11 @@ async def load_actor(uow: UnitOfWork, actor: UserId) -> User:
     if user is None or not user.active:
         raise AuthenticationError("authentication is required")
     return user
+
+
+async def field_definitions(uow: UnitOfWork) -> dict[FieldId, FieldDefinition]:
+    """Every field definition, by id."""
+    return {item.id: item for item in await uow.fields.list_all()}
 
 
 def admin_only(user: User, action: str) -> None:
@@ -128,7 +134,7 @@ async def checked_changes(
     topic_given = not isinstance(changes.topic_id, Unset)
     if isinstance(changes.tag_ids, Unset) and not topic_given:
         return await _fitted_topic(uow, changes, document, actor)
-    tree = TagTree.of(await uow.tags.list_all())
+    tree = await tag_tree(uow)
     if not isinstance(changes.tag_ids, Unset):
         for id in changes.tag_ids:
             tree.require(id, TagScope.DOCUMENT)

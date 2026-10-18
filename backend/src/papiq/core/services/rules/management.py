@@ -35,7 +35,6 @@ from papiq.core.domain.rules import (
     SetTitle,
     check_fields,
 )
-from papiq.core.domain.tag_tree import TagTree
 from papiq.core.domain.templates import (
     FIELD,
     NAMES,
@@ -48,7 +47,8 @@ from papiq.core.domain.templates import (
 from papiq.core.domain.templates import uses_field as field_used
 from papiq.core.domain.users import User
 from papiq.core.ports import Clock, TemplateRenderer, UnitOfWork, UnitOfWorkFactory
-from papiq.core.services._access import admin_only, load_actor, readable_document
+from papiq.core.services._access import admin_only, field_definitions, load_actor, readable_document
+from papiq.core.services._tags import tag_tree
 
 
 @dataclass(frozen=True)
@@ -235,13 +235,13 @@ async def check_references(
     for document_type in references.document_types:
         await uow.document_types.get(document_type)
     if references.tags:
-        tree = TagTree.of(await uow.tags.list_all())
+        tree = await tag_tree(uow)
         for id in references.tags:
             tree.get(id)
         for id, scope in references.tag_scopes:
             tree.require(id, scope)
     if references.fields:
-        fields = {field.id: field for field in await uow.fields.list_all()}
+        fields = await field_definitions(uow)
         for field_id in references.fields:
             if field_id not in fields:
                 raise NotFoundError("field", field_id)

@@ -19,6 +19,11 @@ from papiq.core.ports import CountBy, DocumentFilter, UnitOfWork
 from papiq.core.ports.repository import FilterView, TagSets
 
 
+async def tag_tree(uow: UnitOfWork) -> TagTree:
+    """All tags, as a tree."""
+    return TagTree.of(await uow.tags.list_all())
+
+
 def expand(filter: DocumentFilter, tree: TagTree) -> DocumentFilter:
     """`filter` with each set of tags and groups widened by their descendants."""
 
@@ -37,7 +42,7 @@ def expand(filter: DocumentFilter, tree: TagTree) -> DocumentFilter:
 async def expanded(uow: UnitOfWork, filter: DocumentFilter) -> DocumentFilter:
     if not (filter.tags or filter.contact_groups or filter.document_type_groups or filter.topics):
         return filter
-    return expand(filter, TagTree.of(await uow.tags.list_all()))
+    return expand(filter, await tag_tree(uow))
 
 
 async def group_lookup(
@@ -77,7 +82,7 @@ async def tag_counts(uow: UnitOfWork, user: UserId | None) -> dict[UUID, int]:
     document tag counts each document once that carries it or a tag below it; a group the
     documents whose contact (type) is in it or a group below it; a topic those with it or a
     topic below it (a document has one topic at most). Only tags with documents."""
-    tree = TagTree.of(await uow.tags.list_all())
+    tree = await tag_tree(uow)
     counts = dict(await uow.documents.count_by(CountBy.TAG, user))
     parents: dict[UUID, frozenset[TagId]] = {
         tag.id: tree.with_descendants([tag.id])

@@ -28,7 +28,7 @@ class DeliveryRow:
 
 
 class MemoryWebhookRepository(MemoryRepository[WebhookId, Webhook]):
-    def __init__(self, uow: "MemoryUnitOfWork", table: Table) -> None:
+    def __init__(self, uow: "MemoryUnitOfWork", table: Table[Webhook]) -> None:
         super().__init__(uow, table)
         self._deliveries = MemoryRepository[UUID, DeliveryRow](uow, WEBHOOK_DELIVERIES)
 

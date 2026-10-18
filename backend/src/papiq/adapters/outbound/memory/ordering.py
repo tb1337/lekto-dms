@@ -1,15 +1,15 @@
 """How the in-memory repository and search index sort documents, as the real ones do."""
 
 from datetime import date
-from typing import Any
 from uuid import UUID
 
 from papiq.core.ports.repository import DocumentOrder, SortKey
 
+type Rank = tuple[int | tuple[int, ...], ...]
+"""Numbers, and the code points of a title, compared in turn."""
 
-def rank(
-    order: DocumentOrder, id: UUID, value: date | str | None, *, ties_by_id: bool
-) -> tuple[Any, ...]:
+
+def rank(order: DocumentOrder, id: UUID, value: date | str | None, *, ties_by_id: bool) -> Rank:
     """A key that sorts ascending as `order` sorts a document with `id` and its `value` of the
     sort key (`DocumentPosition.value`): documents without a date last. Ties go by id the same
     way (`ties_by_id`, the repository) or stay as they come (the search index: by relevance)."""

@@ -66,7 +66,7 @@ class MemoryApiTokenRepository(MemoryRepository[ApiTokenId, ApiToken]):
 
 
 class MemoryExternalIdentityRepository:
-    def __init__(self, uow: "MemoryUnitOfWork", table: Table) -> None:
+    def __init__(self, uow: "MemoryUnitOfWork", table: Table[ExternalIdentity]) -> None:
         self._rows = MemoryRepository[ExternalIdentityId, ExternalIdentity](uow, table)
 
     async def add(self, identity: ExternalIdentity) -> None:
@@ -96,7 +96,7 @@ class MemoryExternalIdentityRepository:
 class MemoryLoginFailureRepository:
     """Atomic, since nothing in a call waits for anything else."""
 
-    def __init__(self, uow: "MemoryUnitOfWork", table: Table) -> None:
+    def __init__(self, uow: "MemoryUnitOfWork", table: Table[LoginFailures]) -> None:
         self._rows = MemoryRepository[UUID, LoginFailures](uow, table)
 
     async def find(self, key: str) -> LoginFailures | None:

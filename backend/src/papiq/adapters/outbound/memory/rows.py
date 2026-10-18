@@ -3,10 +3,12 @@ with optimistic locking on `version`."""
 
 import copy
 import dataclasses
-from typing import TYPE_CHECKING, Any
+from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from papiq.adapters.outbound.memory.database import Table
+from papiq.core.domain.entity import Entity
 from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 
 if TYPE_CHECKING:
@@ -20,8 +22,8 @@ def _copy[E](entity: E) -> E:
     return copy.deepcopy(dataclasses.replace(entity))  # type: ignore[type-var]
 
 
-class MemoryRepository[K: UUID, E]:
-    def __init__(self, uow: "MemoryUnitOfWork", table: Table) -> None:
+class MemoryRepository[K: UUID, E: Entity[UUID]]:
+    def __init__(self, uow: "MemoryUnitOfWork", table: Table[E]) -> None:
         self._uow = uow
         self._table = table
 
@@ -37,7 +39,7 @@ class MemoryRepository[K: UUID, E]:
         return None if row is _REMOVED else _copy(row)
 
     async def add(self, entity: E) -> None:
-        id = self._id(entity)
+        id = entity.id
         if self._uow._row(self._table, id) is not _REMOVED:
             raise ConflictError(f"{self._table.name} {id} already exists")
         self._uow._unique_or_fail(self._table, [*self._uow._rows(self._table), entity])
@@ -45,15 +47,15 @@ class MemoryRepository[K: UUID, E]:
 
     async def update(self, entity: E) -> None:
         self._uow._check_open()
-        id = self._id(entity)
+        id = entity.id
         current = self._uow._row(self._table, id)
         if current is _REMOVED:
             raise NotFoundError(self._table.name, id)
-        if current.version != entity.version:  # type: ignore[attr-defined]
+        if current.version != entity.version:
             raise ConcurrencyError(f"{self._table.name} {id} was changed concurrently")
         others = [row for row in self._uow._rows(self._table) if row is not current]
         self._uow._unique_or_fail(self._table, [*others, entity])
-        entity.version += 1  # type: ignore[attr-defined]
+        entity.version += 1
         self._uow._write(self._table, id, _copy(entity))
 
     async def list_all(self) -> list[E]:
@@ -69,17 +71,13 @@ class MemoryRepository[K: UUID, E]:
         self._uow._check_open()
         return self._uow._rows(self._table)
 
-    @staticmethod
-    def _id(entity: E) -> K:
-        return entity.id  # type: ignore[attr-defined, no-any-return]
-
-    def _remove_rows(self, rows: list[Any]) -> int:
+    def _remove_rows(self, rows: list[E]) -> int:
         """Remove the given rows (from `_all`); returns how many."""
         for row in rows:
-            self._uow._write(self._table, self._id(row), _REMOVED)
+            self._uow._write(self._table, row.id, _REMOVED)
         return len(rows)
 
-    def _touch(self, id: K, field: str, value: Any) -> None:
+    def _touch(self, id: K, field: str, value: datetime) -> None:
         """Move a usage timestamp forward without changing the version."""
         row = self._uow._row(self._table, id)
         if row is _REMOVED:

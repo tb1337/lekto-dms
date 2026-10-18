@@ -1,7 +1,8 @@
 """Contacts, document types, tags and field definitions: named master data."""
 
 from collections.abc import Sequence
-from typing import Any
+from datetime import datetime
+from typing import Any, Protocol
 from uuid import UUID
 
 from sqlalchemy import Row, and_, delete
@@ -9,6 +10,7 @@ from sqlalchemy import Row, and_, delete
 from papiq.adapters.outbound.sql import tables as t
 from papiq.adapters.outbound.sql.repositories import SqlRepository, Values
 from papiq.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
+from papiq.core.domain.entity import Entity
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId
@@ -16,21 +18,30 @@ from papiq.core.domain.master_data import (
     Assignment,
     Contact,
     DocumentType,
-    MasterData,
     Tag,
     TagScope,
 )
 from papiq.core.domain.validation import name_key
 
 
-class SqlNamedRepository[K: UUID, E: MasterData](SqlRepository[K, E]):
+class Named(Entity[UUID], Protocol):
+    """Master data as stored: `MasterData` with its id."""
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def created_at(self) -> datetime: ...
+
+
+class SqlNamedRepository[K: UUID, E: Named](SqlRepository[K, E]):
     async def find_by_name(self, name: str) -> E | None:
         found = await self._load(self.table.c.name_key == name_key(name))
         return found[0] if found else None
 
     def _values(self, entity: E) -> Values:
         return {
-            "id": self._id(entity),
+            "id": entity.id,
             "name": entity.name,
             "name_key": name_key(entity.name),
             "created_at": entity.created_at,
@@ -126,7 +137,7 @@ class SqlContactRepository(SqlNamedRepository[ContactId, Contact]):
             [{"contact_id": entity.id, "tag_id": topic} for topic in entity.topic_ids],
         )
 
-    async def _delete_children(self, ids: list[ContactId]) -> None:
+    async def _delete_children(self, ids: list[UUID]) -> None:
         tables = (t.contact_aliases, t.contact_identifiers, t.contact_groups, t.contact_topics)
         for table in tables:
             await self._tx.write(delete(table).where(table.c.contact_id.in_(ids)))
@@ -167,7 +178,7 @@ class SqlDocumentTypeRepository(SqlNamedRepository[DocumentTypeId, DocumentType]
             [{"document_type_id": entity.id, "tag_id": group} for group in entity.group_ids],
         )
 
-    async def _delete_children(self, ids: list[DocumentTypeId]) -> None:
+    async def _delete_children(self, ids: list[UUID]) -> None:
         table = t.document_type_groups
         await self._tx.write(delete(table).where(table.c.document_type_id.in_(ids)))
 
@@ -271,6 +282,6 @@ class SqlFieldRepository(SqlNamedRepository[FieldId, FieldDefinition]):
             ],
         )
 
-    async def _delete_children(self, ids: list[FieldId]) -> None:
+    async def _delete_children(self, ids: list[UUID]) -> None:
         table = t.field_document_types
         await self._tx.write(delete(table).where(table.c.field_id.in_(ids)))

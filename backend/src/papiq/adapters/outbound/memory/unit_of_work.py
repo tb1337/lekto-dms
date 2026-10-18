@@ -12,7 +12,7 @@ from collections.abc import Callable, Collection, Hashable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, Self, cast
 from uuid import UUID
 
 from papiq.adapters.outbound.memory.classifier_models import MemoryClassifierModelRepository
@@ -34,7 +34,9 @@ from papiq.adapters.outbound.memory.database import (
     TAGS,
     USERS,
     WEBHOOKS,
+    IdentifiersRow,
     MemoryDatabase,
+    Named,
     Table,
 )
 from papiq.adapters.outbound.memory.identity import (
@@ -44,7 +46,7 @@ from papiq.adapters.outbound.memory.identity import (
     MemoryLoginFailureRepository,
     MemorySessionRepository,
 )
-from papiq.adapters.outbound.memory.ordering import rank
+from papiq.adapters.outbound.memory.ordering import Rank, rank
 from papiq.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from papiq.adapters.outbound.memory.rules import (
     MemoryRuleApplicationRepository,
@@ -52,6 +54,7 @@ from papiq.adapters.outbound.memory.rules import (
 )
 from papiq.adapters.outbound.memory.webhooks import MemoryWebhookRepository
 from papiq.core.domain.documents import Document, Sha256
+from papiq.core.domain.entity import Entity
 from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.fields import FieldDefinition
@@ -69,7 +72,7 @@ from papiq.core.domain.ids import (
 )
 from papiq.core.domain.jobs import Job, JobStatus
 from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag, TagScope
+from papiq.core.domain.master_data import Contact, DocumentType, Tag, TagScope
 from papiq.core.domain.permissions import within_reach
 from papiq.core.domain.pipeline import NodeRun
 from papiq.core.domain.spaces import Space
@@ -90,8 +93,8 @@ class MemoryUnitOfWork:
     def __init__(self, database: MemoryDatabase) -> None:
         self._db = database
         self._closed = False
-        self._writes: dict[str, dict[UUID, Any]] = {}
-        self._tables: dict[str, Table] = {}
+        self._writes: dict[str, dict[UUID, Entity[UUID] | None]] = {}
+        self._tables: dict[str, Table[Any]] = {}  # the tables written to, of any kind
         self._base_versions: dict[tuple[str, UUID], int | None] = {}
         self._log: list[NodeRun] = []
         self._events: list[DomainEvent] = []
@@ -219,22 +222,22 @@ class MemoryUnitOfWork:
                         raise ConflictError(f"an active job with key {job.dedup_key} exists")
 
     # --- rows -----------------------------------------------------------------------------------
+    # A table holds rows of its own kind only: those of `Table[E]` are `E`.
 
-    def _rows(self, table: Table) -> list[Any]:
+    def _rows[E: Entity[UUID]](self, table: Table[E]) -> list[E]:
         """Committed rows with this unit's changes applied (not copied)."""
         committed = self._db.tables.get(table.name, {})
         writes = self._writes.get(table.name, {})
         rows = [writes.get(id, row) for id, row in committed.items()]
         rows += [row for id, row in writes.items() if id not in committed]
-        return [row for row in rows if row is not _REMOVED]
+        return cast(list[E], [row for row in rows if row is not _REMOVED])
 
-    def _row(self, table: Table, id: UUID) -> Any:
+    def _row[E: Entity[UUID]](self, table: Table[E], id: UUID) -> E | None:
         writes = self._writes.get(table.name, {})
-        if id in writes:
-            return writes[id]
-        return self._db.tables.get(table.name, {}).get(id)
+        row = writes[id] if id in writes else self._db.tables.get(table.name, {}).get(id)
+        return cast(E | None, row)
 
-    def _write(self, table: Table, id: UUID, row: Any) -> None:
+    def _write[E: Entity[UUID]](self, table: Table[E], id: UUID, row: E | None) -> None:
         self._check_open()
         key = (table.name, id)
         if key not in self._base_versions:
@@ -243,7 +246,7 @@ class MemoryUnitOfWork:
         self._tables[table.name] = table
         self._writes.setdefault(table.name, {})[id] = row
 
-    def _check_unreferenced(self, table: Table, id: UUID) -> None:
+    def _check_unreferenced[E: Entity[UUID]](self, table: Table[E], id: UUID) -> None:
         """ConflictError if a row refers to the row `id` of `table`: the SQL schema's foreign
         keys without a cascade refuse its removal so."""
         for referring, refers in _REFERRERS.get(table.name, ()):
@@ -251,7 +254,7 @@ class MemoryUnitOfWork:
                 raise ConflictError(f"a {referring.name} still refers to {table.name} {id}")
 
     @staticmethod
-    def _unique_or_fail(table: Table, rows: Iterable[Any]) -> None:
+    def _unique_or_fail[E: Entity[UUID]](table: Table[E], rows: Iterable[E]) -> None:
         seen: set[Hashable] = set()
         for row in rows:
             for key in table.unique_keys(row):
@@ -261,7 +264,7 @@ class MemoryUnitOfWork:
 
 
 # What refers to a row, as the SQL schema's foreign keys without ON DELETE CASCADE do.
-_REFERRERS: dict[str, tuple[tuple[Table, Callable[[Any, UUID], bool]], ...]] = {
+_REFERRERS: dict[str, tuple[tuple[Table[Any], Callable[[Any, UUID], bool]], ...]] = {
     USERS.name: (
         (SPACES, lambda space, id: space.owner_id == id or id in space.shares),
         (DOCUMENTS, lambda document, id: document.owner_id == id),
@@ -290,7 +293,7 @@ _REFERRERS: dict[str, tuple[tuple[Table, Callable[[Any, UUID], bool]], ...]] = {
 }
 
 
-class MemoryNamedRepository[K: UUID, E: MasterData](MemoryRepository[K, E]):
+class MemoryNamedRepository[K: UUID, E: Named](MemoryRepository[K, E]):
     async def find_by_name(self, name: str) -> E | None:
         key = name_key(name)
         return next((_copy(row) for row in self._all() if name_key(row.name) == key), None)
@@ -475,15 +478,6 @@ class MemoryProcessingLog:
         return [entry for entry in entries if entry.document_id == document]
 
 
-@dataclass
-class _Shown:
-    """The identifiers one document shows (a row keyed by the document's id)."""
-
-    id: DocumentId
-    identifiers: frozenset[tuple[IdentifierKind, str]]
-    version: int
-
-
 class MemoryDocumentIdentifierRepository:
     def __init__(self, uow: MemoryUnitOfWork) -> None:
         self._uow = uow
@@ -494,7 +488,7 @@ class MemoryDocumentIdentifierRepository:
         self._uow._check_open()
         current = self._uow._row(DOCUMENT_IDENTIFIERS, document)
         version = 1 if current is _REMOVED else current.version + 1
-        row = _Shown(id=document, identifiers=frozenset(identifiers), version=version)
+        row = IdentifiersRow(id=document, identifiers=frozenset(identifiers), version=version)
         self._uow._write(DOCUMENT_IDENTIFIERS, document, row)
 
     async def contacts_of(
@@ -690,9 +684,9 @@ def _query(
     return ranked[:limit]
 
 
-def _rank(document: Document, order: DocumentOrder) -> tuple[Any, ...]:
+def _rank(document: Document, order: DocumentOrder) -> Rank:
     return _rank_of(DocumentPosition.of(document, order), order)
 
 
-def _rank_of(position: DocumentPosition, order: DocumentOrder) -> tuple[Any, ...]:
+def _rank_of(position: DocumentPosition, order: DocumentOrder) -> Rank:
     return rank(order, position.id, position.value, ties_by_id=True)

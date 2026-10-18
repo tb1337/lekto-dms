@@ -2,8 +2,9 @@
 
 from collections.abc import Sequence
 from typing import Any
+from uuid import UUID
 
-from sqlalchemy import ColumnElement, Row, and_, delete, or_, select
+from sqlalchemy import ColumnElement, CompoundSelect, Row, and_, delete, or_, select
 
 from papiq.adapters.outbound.sql import tables as t
 from papiq.adapters.outbound.sql.repositories import SqlRepository, Values
@@ -62,7 +63,7 @@ class SqlSpaceRepository(SqlRepository[SpaceId, Space]):
             ],
         )
 
-    async def _delete_children(self, ids: list[SpaceId]) -> None:
+    async def _delete_children(self, ids: list[UUID]) -> None:
         await self._tx.write(delete(t.space_shares).where(t.space_shares.c.space_id.in_(ids)))
 
 
@@ -79,7 +80,7 @@ def visible_to(user: UserId) -> ColumnElement[bool]:
     )
 
 
-def accessible_space_ids(user: UserId) -> Any:
+def accessible_space_ids(user: UserId) -> CompoundSelect[UUID]:
     """Subquery: ids of the spaces the user owns or that are shared with them."""
     return (
         select(t.spaces.c.id)

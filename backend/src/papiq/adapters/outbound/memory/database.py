@@ -4,16 +4,19 @@ import asyncio
 from collections.abc import Callable, Hashable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Protocol
 from uuid import UUID
 
 from papiq.core.domain.classifier import ClassifierModel
 from papiq.core.domain.documents import Document
+from papiq.core.domain.entity import Entity
 from papiq.core.domain.events import DomainEvent
+from papiq.core.domain.fields import FieldDefinition
+from papiq.core.domain.identifiers import IdentifierKind
 from papiq.core.domain.identity import ApiToken, ExternalIdentity, Session
-from papiq.core.domain.ids import EventId, JobId
+from papiq.core.domain.ids import DocumentId, EventId, JobId
 from papiq.core.domain.jobs import Job
-from papiq.core.domain.master_data import Contact, MasterData, Tag
+from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.pipeline import NodeRun
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import User
@@ -21,11 +24,27 @@ from papiq.core.domain.validation import name_key
 
 
 @dataclass(frozen=True)
-class Table:
+class Table[E: Entity[UUID]]:
     """A kind of entity: its name in errors and the keys that must be unique across the table."""
 
     name: str
-    unique_keys: Callable[[Any], Iterable[Hashable]]
+    unique_keys: Callable[[E], Iterable[Hashable]]
+
+
+class Named(Entity[UUID], Protocol):
+    """Master data as a table holds it: an entity with a name unique per kind."""
+
+    @property
+    def name(self) -> str: ...
+
+
+@dataclass
+class IdentifiersRow:
+    """The identifiers one document shows (a row keyed by the document's id)."""
+
+    id: DocumentId
+    identifiers: frozenset[tuple[IdentifierKind, str]]
+    version: int
 
 
 def _user_keys(user: User) -> Iterable[Hashable]:
@@ -39,7 +58,7 @@ def _space_keys(space: Space) -> Iterable[Hashable]:
     return keys
 
 
-def _name_keys(item: MasterData) -> Iterable[Hashable]:
+def _name_keys(item: Named) -> Iterable[Hashable]:
     return [("name", name_key(item.name))]
 
 
@@ -59,7 +78,7 @@ def _document_keys(document: Document) -> Iterable[Hashable]:
     return [("sha256", document.owner_id, document.sha256)]
 
 
-def _no_keys(item: object) -> Iterable[Hashable]:
+def _no_keys(item: Entity[UUID]) -> Iterable[Hashable]:
     return []
 
 
@@ -82,9 +101,9 @@ def _classifier_model_keys(model: ClassifierModel) -> Iterable[Hashable]:
 USERS = Table("user", _user_keys)
 SPACES = Table("space", _space_keys)
 CONTACTS = Table("contact", _contact_keys)
-DOCUMENT_TYPES = Table("document type", _name_keys)
+DOCUMENT_TYPES = Table[DocumentType]("document type", _name_keys)
 TAGS = Table("tag", _tag_keys)
-FIELDS = Table("field", _name_keys)
+FIELDS = Table[FieldDefinition]("field", _name_keys)
 DOCUMENTS = Table("document", _document_keys)
 CREDENTIALS = Table("credential", _no_keys)
 SESSIONS = Table("session", _session_keys)
@@ -94,7 +113,7 @@ LOGIN_FAILURES = Table("login failures", _no_keys)
 RULES = Table("rule", _no_keys)
 RULE_VERSIONS = Table("rule version", _no_keys)
 RULE_APPLICATIONS = Table("rule application", _no_keys)
-DOCUMENT_IDENTIFIERS = Table("document identifiers", _no_keys)
+DOCUMENT_IDENTIFIERS = Table[IdentifiersRow]("document identifiers", _no_keys)
 CLASSIFIER_MODELS = Table("classifier model", _classifier_model_keys)
 WEBHOOKS = Table("webhook", _no_keys)
 WEBHOOK_DELIVERIES = Table("webhook delivery", _no_keys)
@@ -121,7 +140,7 @@ class SubscriptionState:
 class MemoryDatabase:
     """What has been committed. Rows are private copies; insertion order is creation order."""
 
-    tables: dict[str, dict[UUID, Any]] = field(default_factory=dict)
+    tables: dict[str, dict[UUID, Entity[UUID]]] = field(default_factory=dict)
     processing_log: list[NodeRun] = field(default_factory=list)
     outbox: list[DomainEvent] = field(default_factory=list)
     recorded_at: dict[EventId, datetime] = field(default_factory=dict)  # when committed
@@ -129,6 +148,3 @@ class MemoryDatabase:
     jobs: dict[JobId, Job] = field(default_factory=dict)
     subscriptions: dict[str, SubscriptionState] = field(default_factory=dict)
     locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # see MemoryUnitOfWork.lock
-
-    def rows(self, table: Table) -> dict[UUID, Any]:
-        return self.tables.setdefault(table.name, {})

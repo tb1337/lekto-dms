@@ -11,6 +11,7 @@ from sqlalchemy import (
     ColumnElement,
     FromClause,
     Row,
+    Table,
     and_,
     case,
     delete,
@@ -126,18 +127,25 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         documents = t.documents
         criteria: list[ColumnElement[bool]] = [] if user is None else [visible_to(user)]
         column: ColumnElement[Any]
-        source: FromClause
-        if by in (CountBy.TAG, CountBy.FIELD):
-            table = t.document_tags if by is CountBy.TAG else t.document_fields
-            column = table.c.tag_id if by is CountBy.TAG else table.c.field_id
-            source = table.join(documents, documents.c.id == table.c.document_id)
-        else:
-            source = documents
-            column = documents.c.contact_id
-            if by is CountBy.DOCUMENT_TYPE:
+        source: FromClause = documents
+
+        def joined(table: Table) -> FromClause:
+            return table.join(documents, documents.c.id == table.c.document_id)
+
+        match by:
+            case CountBy.CONTACT:
+                column = documents.c.contact_id
+            case CountBy.DOCUMENT_TYPE:
                 column = documents.c.document_type_id
-            elif by is CountBy.TOPIC:
+            case CountBy.TOPIC:
                 column = documents.c.topic_id
+            case CountBy.TAG:
+                column = t.document_tags.c.tag_id
+                source = joined(t.document_tags)
+            case CountBy.FIELD:
+                column = t.document_fields.c.field_id
+                source = joined(t.document_fields)
+        if source is documents:  # a document may have no contact, type or topic
             criteria.append(column.is_not(None))
         statement = (
             select(column.label("key"), func.count().label("documents"))
@@ -146,7 +154,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             .group_by(column)
         )
         rows = (await self._tx.read(statement)).all()
-        return {UUID(str(row.key)): int(row.documents) for row in rows}
+        return {row.key: int(row.documents) for row in rows}
 
     async def count_tagged(
         self, sets: Mapping[UUID, Collection[TagId]], user: UserId | None
@@ -248,7 +256,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         confirmed = documents.c.confirmed_at.is_not(None)
         readable = visible_to(reader)
 
-        async def values(column: Any, source: Any) -> list[Any]:
+        async def values(column: ColumnElement[Any], source: FromClause) -> list[UUID]:
             statement = (
                 select(column)
                 .select_from(source)
@@ -392,7 +400,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             ],
         )
 
-    async def _delete_children(self, ids: list[DocumentId]) -> None:
+    async def _delete_children(self, ids: list[UUID]) -> None:
         for table in (t.document_tags, t.document_fields):
             await self._tx.write(delete(table).where(table.c.document_id.in_(ids)))
 

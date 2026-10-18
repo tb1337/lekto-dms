@@ -30,7 +30,7 @@ def version_row_id(rule: RuleId, number: int) -> UUID:
 
 
 class MemoryRuleRepository(MemoryRepository[RuleId, Rule]):
-    def __init__(self, uow: "MemoryUnitOfWork", table: Table) -> None:
+    def __init__(self, uow: "MemoryUnitOfWork", table: Table[Rule]) -> None:
         super().__init__(uow, table)
         self._versions = MemoryRepository[UUID, VersionRow](uow, RULE_VERSIONS)
         self._applications = MemoryRepository[RuleApplicationId, RuleApplication](

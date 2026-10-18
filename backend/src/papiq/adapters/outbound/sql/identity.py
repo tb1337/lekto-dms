@@ -5,6 +5,7 @@ only a timestamp and leaves the version alone."""
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import (
     ColumnElement,
@@ -47,10 +48,6 @@ class SqlCredentialRepository(SqlRepository[UserId, Credential]):
         """Nothing to do if the user has none."""
         await self._tx.write(delete(self.table).where(self.table.c.user_id == user))
 
-    @staticmethod
-    def _id(credential: Credential) -> UserId:
-        return credential.user_id
-
     def _values(self, credential: Credential) -> Values:
         return {**_credential_values(credential), "version": credential.version}
 
@@ -85,7 +82,7 @@ class SqlCredentialRepository(SqlRepository[UserId, Credential]):
             ],
         )
 
-    async def _delete_children(self, ids: list[UserId]) -> None:
+    async def _delete_children(self, ids: list[UUID]) -> None:
         codes = t.recovery_codes
         await self._tx.write(delete(codes).where(codes.c.user_id.in_(ids)))
 

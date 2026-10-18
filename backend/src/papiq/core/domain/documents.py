@@ -589,11 +589,17 @@ class Document:
 
     def mark_confirmed(self, now: datetime) -> None:
         """A person set or confirmed the metadata (or it was taken over); during processing,
-        a decision in its run (`Processing.decided`)."""
+        a decision in its run (`decided`)."""
         self.confirmed_at = require_utc(now, "confirmed_at")
+        self.record_decision()
+        self._touch(now)
+
+    def record_decision(self) -> None:
+        """A person changed what is confirmed (`CONFIRMING`), also tags set by hand alone, or
+        it was taken over: while processing runs, a decision in its run (`Processing.decided`),
+        which never makes the document new."""
         if self.processing.status is ProcessingStatus.PROCESSING:
             self.processing.decided = True
-        self._touch(now)
 
     def drop_confirmation(self) -> None:
         """The pipeline derived contact, type, topic or tags anew: they are no longer a

@@ -44,6 +44,7 @@ from papiq.core.domain.inbox import (
     InboxState,
     InboxTab,
     inbox_state,
+    is_unseen,
     open_tab,
     worst_lane,
 )
@@ -448,12 +449,17 @@ class InboxService:
     async def mark_seen(self, actor: UserId, id: DocumentId) -> None:
         """The caller saw the document: the web UI reports it when the document view opens
         (reading a document through the API or MCP does not). NotFoundError if they cannot read
-        it. Nothing changes for a document that is new for no one, or one that cannot stand in
-        the caller's inbox (a document in reach through a share only)."""
+        it. Only a document that is new and unseen by the caller counts: one they saw since it
+        became new keeps when they saw it (it left their inbox then), and nothing changes for
+        one that is new for no one, or that cannot stand in the caller's inbox (a document in
+        reach through a share only)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             document, _ = await readable_document(uow, user, id)
             if document.new_at is None or not can_control_document(user, document):
+                return
+            seen = await uow.inbox.seen(actor, [id])
+            if not is_unseen(document, seen.get(id)):
                 return
             await uow.inbox.mark_seen(actor, id, self._clock.now())
             await uow.commit()

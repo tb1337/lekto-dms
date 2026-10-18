@@ -9,7 +9,7 @@ import pytest
 from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.errors import NotFoundError, PermissionDeniedError
 from papiq.core.domain.inbox import DONE_PERIOD, Departure, Done, InboxTab
-from papiq.core.domain.master_data import Contact
+from papiq.core.domain.master_data import Assignment, Contact
 from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import Role, User
@@ -17,20 +17,11 @@ from papiq.core.ports.repository import DocumentFilter
 from papiq.core.services.inbox import InboxItem
 from papiq.core.services.pipeline import MetadataResult, NodeExecutor
 from tests.builders import FAILED, NOW, OK, UNCERTAIN, Returns, incoming
+from tests.unit.services.rules_support import Classifies
 from tests.unit.services.support import World
 
 MINUTE = timedelta(minutes=1)
 _numbers = itertools.count()
-
-
-class Decides:
-    """The judge, deciding `changes`."""
-
-    def __init__(self, changes: DocumentChanges) -> None:
-        self.changes = changes
-
-    async def run(self, document: Document) -> MetadataResult:
-        return MetadataResult(OK, self.changes)
 
 
 async def arrive(
@@ -45,11 +36,8 @@ async def arrive(
 
 
 async def contact(world: World, name: str) -> Contact:
-    created = Contact.create(name=name, now=NOW)
-    async with world.uow() as uow:
-        await uow.contacts.add(created)
-        await uow.commit()
-    return created
+    admin = await world.user(role=Role.ADMIN)
+    return await world.master_data.create_contact(admin.id, name)
 
 
 def tabs(items: list[InboxItem]) -> list[tuple[str, InboxTab]]:
@@ -125,7 +113,7 @@ async def test_reprocessing_makes_it_new_again_only_if_the_metadata_changed(
     assert await world.inbox.items(owner.id) == []  # seen, and nothing changed
 
     world.clock.advance(MINUTE)
-    changed = world.pipeline({Node.JUDGE: Decides(DocumentChanges(contact_id=acme.id))})
+    changed = world.pipeline({Node.JUDGE: Classifies(contact=acme.id)})
     await changed.reprocess_from(owner.id, document.id, Node.JUDGE)
     await world.drain(changed)
     (item,) = await world.inbox.items(owner.id)
@@ -175,7 +163,7 @@ async def test_a_retry_from_red_ending_green_by_itself(world: World) -> None:
     assert (await world.inbox.summary(owner.id)).worst_lane is Lane.RED
 
     world.clock.advance(MINUTE)
-    pipeline = world.pipeline({Node.JUDGE: Decides(DocumentChanges(contact_id=acme.id))})
+    pipeline = world.pipeline({Node.JUDGE: Classifies(contact=acme.id)})
     for document in (filing, reading):
         await pipeline.retry(owner.id, document.id)
     await world.drain(pipeline)
@@ -223,6 +211,57 @@ async def test_a_share_never_brings_a_document_into_an_inbox(world: World) -> No
     assert await world.inbox.items(reader.id) == []
     assert (await world.inbox.summary(reader.id)).open == 0
     assert tabs(await world.inbox.items(owner.id)) == [("s", InboxTab.NEW)]
+
+
+async def test_seeing_it_again_keeps_when_it_left(world: World) -> None:
+    """The web UI reports seen on every open: once seen since it became new, the time stays."""
+    owner = await world.user()
+    document = await arrive(world, owner)
+    world.clock.advance(MINUTE)
+    await world.inbox.mark_seen(owner.id, document.id)
+    world.clock.advance(MINUTE)
+    await world.inbox.mark_seen(owner.id, document.id)
+    (done,) = await world.inbox.items(owner.id, tab=InboxTab.DONE)
+    assert done.state.done == Done(Departure.SEEN, NOW + MINUTE, owner.id)
+    world.clock.advance(DONE_PERIOD - 2 * MINUTE)
+    await world.inbox.mark_seen(owner.id, document.id)
+    world.clock.advance(2 * MINUTE)
+    assert await world.inbox.items(owner.id, tab=InboxTab.DONE) == []  # gone after its 14 days
+
+
+async def test_metadata_a_person_sets_during_the_run_is_their_decision(world: World) -> None:
+    """Set by its owner while processing runs, taken over from the source system, or tags set
+    by hand alone: the run ends green, and the document is not new."""
+    owner = await world.user()
+    admin = await world.user(role=Role.ADMIN)
+    acme = await world.master_data.create_contact(admin.id, "ACME")
+    paid = await world.master_data.create_tag(admin.id, "Paid", assignment=Assignment.MANUAL)
+    pipeline = world.pipeline()
+    by_hand = []
+    for number, change in enumerate(
+        (DocumentChanges(contact_id=acme.id), DocumentChanges(tag_ids=frozenset({paid.id})))
+    ):
+        content = f"%PDF-1.7 by hand {number}".encode()
+        received = await pipeline.receive(owner.id, incoming(content), filename="h.pdf")
+        await world.documents.change_metadata(owner.id, received.id, change)
+        by_hand.append(received.id)
+    imported = MetadataResult(OK, DocumentChanges(contact_id=acme.id), confirms=True)
+    taken_over = await arrive(world, owner, {Node.JUDGE: Returns(imported)})
+    await world.drain(pipeline)
+    for id in (*by_hand, taken_over.id):
+        document = await world.documents.get(owner.id, id)
+        assert (document.lane, document.new_at) == (Lane.GREEN, None)
+    assert await world.inbox.items(owner.id) == []
+
+
+async def test_a_deleted_users_seen_marks_go(world: World) -> None:
+    owner = await world.user()
+    admin, other = await world.user(role=Role.ADMIN), await world.user(role=Role.ADMIN)
+    document = await arrive(world, owner)
+    await world.inbox.mark_seen(admin.id, document.id)
+    await world.inbox.mark_seen(owner.id, document.id)
+    await world.users.delete_user(other.id, admin.id)
+    assert list(world.database.seen) == [(owner.id, document.id)]
 
 
 async def test_seen_needs_read_access_and_counts_for_new_documents_only(world: World) -> None:

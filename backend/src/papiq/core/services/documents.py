@@ -11,6 +11,7 @@ from pathlib import Path
 from uuid import UUID
 
 from papiq.core.domain import media_types
+from papiq.core.domain.classification import CONFIRMING
 from papiq.core.domain.codes import Code, GiroCode, code_identifiers, codes_from_json, giro_code
 from papiq.core.domain.documents import Document, DocumentChanges, confirms
 from papiq.core.domain.errors import (
@@ -579,6 +580,8 @@ class DocumentService:
                 changed, before.tag_ids, document.tag_ids, await _manual(uow, before, document)
             ):
                 document.mark_confirmed(now)
+            elif CONFIRMING & set(changed):
+                document.record_decision()  # tags set by hand: no confirmation, but a decision
             run = None
             if rules is not None:
                 run = await rules.after_change(

@@ -20,7 +20,7 @@ from papiq.core.domain.inbox import (
 )
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, ProcessingStatus
 from tests import builders
-from tests.builders import FAILED, NOW, OK, UNCERTAIN
+from tests.builders import FAILED, NOW, UNCERTAIN
 
 LATER = NOW + timedelta(hours=1)
 LAST = NOW + timedelta(hours=2)
@@ -34,17 +34,13 @@ def finish(
     *,
     change: DocumentChanges | None = None,
 ) -> Document:
-    """Run the due nodes at `now`, one at a time in graph order, until processing stops; the
-    judge applies `change` (the metadata it decides)."""
-    results = results or {}
-    while True:
-        run = document.processing.run
-        due = [node for node in document.processing.due() if document.is_awaiting(node, run)]
-        if not due:
-            return document
-        if due[0] is Node.JUDGE and change is not None:
+    """Process the document at `now`; the judge applies `change` (the metadata it decides)."""
+
+    def judge(node: Node) -> None:
+        if node is Node.JUDGE and change is not None:
             document.apply_changes(change, {}, now)
-        document.record_result(due[0], run, results.get(due[0], OK), now)
+
+    return builders.run_pipeline(document, results, now=now, before=judge)
 
 
 def green() -> Document:

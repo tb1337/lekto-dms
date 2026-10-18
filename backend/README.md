@@ -301,8 +301,9 @@ their inbox.
 
 - **Open**, newest first, in the one cursor format: in processing (`processing`, no lane yet),
   yellow (`review`) and red (`intervene`) until a person confirms them, and new documents
-  (`new`) until the caller has seen them. Nothing leaves by itself. Each item keeps its open
-  nodes and fields.
+  (`new`) until the caller has seen them. Nothing leaves with time: a document leaves when a
+  person confirms it or the caller sees it, or when a retry or reprocessing ends green with its
+  metadata unchanged (it is not new then). Each item keeps its open nodes and fields.
 - **New** (`documents.new_at`): a processing run that ends green makes the document new, unless
   a person decided in it: confirmed it in the inbox, set its metadata while it ran, or it was
   taken over with the source system's metadata (`processing_decided`). Its first run always
@@ -312,9 +313,10 @@ their inbox.
 - **Seen** is per user (`inbox_seen`, when each user saw a document last; new for them again
   once it became new after). The web UI reports it when the document view opens
   (`PUT /documents/{id}/seen`); reading through the API or MCP sets nothing. `DELETE` marks a
-  document new again, `POST /inbox/seen` marks everything new in the inbox as seen. Seen counts
-  for documents that can stand in the caller's inbox while they are new, and changes nothing
-  else: not `confirmed_at`, the training, rules or the lane.
+  document new again, `POST /inbox/seen` marks everything new in the inbox as seen. Seeing
+  counts for a document that is new and unseen by the caller, in their inbox or an admin's of
+  every user (one they saw since keeps when they saw it), and changes nothing else: not
+  `confirmed_at`, the training, rules or the lane.
 - **Done** (`tab=done`): what left the caller's inbox in the last 14 days, with how
   (`confirmed` out of yellow or red, for everyone, or `seen` by the caller), when and by whom.
   It comes from the seen marks and the latest confirmation of each document
@@ -892,7 +894,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /pipeline/reparse` | Read the text of every document again in the background (admins, after the update to 0.2); `202` with `queued` |
 | `GET /inbox` | The caller's inbox (see Inbox), newest first, with open nodes and fields: everything open, or one `tab` (`new`, `review`, `intervene`, `processing`, `done` with how, when and by whom); `limit`, `cursor`, `all_users` (admins) |
 | `GET /inbox/summary` | The count of each tab, `open` (all but done) and the worst lane among the open documents; `all_users` (admins) |
-| `PUT/DELETE /documents/{id}/seen`, `POST /inbox/seen` | Seen per user (read access): the caller saw a document (the web UI, when its view opens), new again, everything new as seen (`marked`; `all_users` for admins) |
+| `PUT/DELETE /documents/{id}/seen`, `POST /inbox/seen` | Seen per user: the caller saw a document (read access; the web UI, when its view opens), it is new again (read access), everything new in the inbox as seen (`marked`; `all_users` for admins) |
 | `GET /documents/{id}/review` | What the model proposed and how each field was checked (owner or admin) |
 | `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `space_id`), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (owner or admin); undecided fields: `422` with `open_fields` |
 | `GET/POST /rules`, `GET/PUT/PATCH/DELETE /rules/{id}`, `GET /rules/{id}/versions`, `/versions/{number}` | Rules: list (`scope`, `include_disabled`, `all_users` for admins), create, change (new version), enable or disable, delete; see Rules |

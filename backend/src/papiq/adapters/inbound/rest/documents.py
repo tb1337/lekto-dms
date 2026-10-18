@@ -580,7 +580,8 @@ async def reprocess(
     summary="Mark a document as seen",
     description=(
         "The caller saw the document: if it stands in their inbox as new, it leaves it (`done`, "
-        "`GET /inbox`). The web UI calls it when the document view opens; reading a document "
+        "`GET /inbox`); seen again later, it keeps that time. The web UI calls it when the "
+        "document view opens; reading a document "
         "(`GET /documents/{id}`, MCP) does not. Needs read access; nothing changes for a "
         "document that is new for no one, or one the caller reaches through a share only (it "
         "never stands in their inbox). Seen is per user and changes nothing else: not "

@@ -6,7 +6,7 @@ document instead, one file per node with every run. A person checking a document
 there; nothing in the pipeline reads them back.
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from papiq.core.domain.errors import ValidationError
@@ -87,3 +87,16 @@ def with_run(runs: Sequence[RunExchange], exchange: RunExchange) -> list[RunExch
     again within its run, e.g. after a lost lease), oldest first."""
     kept = [run for run in runs if run.run != exchange.run]
     return sorted([*kept, exchange], key=lambda run: run.run)
+
+
+def tokens_of(usages: Iterable[JsonObject]) -> list[JsonValue]:
+    """Per model call (a page, or once more after an answer that did not fit) its tokens and
+    the endpoint's usage report as it came, as the log keeps them."""
+    return [
+        {
+            "prompt": as_int(usage.get("prompt_tokens")),
+            "completion": as_int(usage.get("completion_tokens")),
+            "usage": usage,
+        }
+        for usage in usages
+    ]

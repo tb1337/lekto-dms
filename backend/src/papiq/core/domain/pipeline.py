@@ -190,6 +190,12 @@ TAGS_REMOVED = "tags_removed"
 CORRECTED = "corrected"
 """Keys of what a person changed (`rules.running.person_record`): the fields they set, the tags
 they added and removed, the fields whose values they really altered."""
+TRUNCATED = "truncated"
+MODEL = "model"
+ENDPOINT = "endpoint"
+"""Keys of a model node's input: whether the text was shortened for the model, the model and
+where the document went. The judge repeats them from `signal_llm` (`MODEL_RUN`)."""
+MODEL_RUN = (TRUNCATED, MODEL, ENDPOINT)
 OUTSIDE_PIPELINE = frozenset({RULES_CHANGE, RULES_APPLY, PERSON_SPACE})
 """Log entries written outside processing; they say nothing about a node's state."""
 

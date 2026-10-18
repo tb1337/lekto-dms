@@ -50,7 +50,7 @@ from papiq.core.domain.pipeline import (
 from papiq.core.domain.reading import (
     NO_TEXT_REASON,
     DocumentReading,
-    readings_from_json,
+    OcrOutput,
     vision_advice,
 )
 from papiq.core.domain.rule_engine import changed_fields
@@ -452,8 +452,9 @@ class PipelineService:
             log = await uow.processing_log.list_for(id)
         ocr = _latest(log, Node.OCR, made=True)
         parse = _latest(log, Node.PARSE)
-        vision = ocr is not None and "vision" in ocr.result.output
-        pages = () if ocr is None else readings_from_json(ocr.result.output.get("readings"))
+        read = None if ocr is None else OcrOutput.from_json(ocr.result.output)
+        vision = read is not None and read.vision is not None
+        pages = () if read is None else read.readings
         poor = tuple(page.page for page in pages if page.poor(self._poor_reading))
         needs_person = document.lane in (Lane.YELLOW, Lane.RED) and (
             document.processing.status is not ProcessingStatus.PROCESSING

@@ -17,10 +17,9 @@ model's signal fails, when its answers do not fit or it cannot be reached after 
 import asyncio
 import json
 import logging
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
 from papiq.core.domain import media_types
@@ -41,7 +40,15 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.facts import facts_in
 from papiq.core.domain.identifiers import IdentifierKind, identifiers_in
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import (
+    JsonObject,
+    JsonValue,
+    as_list,
+    as_number,
+    as_object,
+    as_text,
+    as_uuid,
+)
 from papiq.core.domain.master_data import Contact
 from papiq.core.domain.permissions import reach_access
 from papiq.core.domain.pipeline import SIGNALS, Node, NodeResult, NodeRun, Outcome
@@ -368,7 +375,7 @@ def signals_of(entries: Mapping[Node, NodeRun]) -> Signals:
     """The signals as the judge's rules take them; a signal that abstained (or never ran) is
     None."""
 
-    def output(node: Node) -> Mapping[str, Any] | None:
+    def output(node: Node) -> JsonObject | None:
         entry = entries.get(node)
         if entry is None or ABSTAINED in entry.result.output:
             return None
@@ -423,21 +430,47 @@ def _classifier_to_json(view: ClassifierView) -> JsonObject:
     }
 
 
-def _classifier_view(output: Mapping[str, Any] | None) -> ClassifierView | None:
+def _classifier_view(output: JsonObject | None) -> ClassifierView | None:
     if output is None:
         return None
     known = _known_from_json(output.get("known")) or KnownLabels()
+    tags = as_object(output.get("tags")) or {}
     return ClassifierView(
-        contacts=[(ContactId(UUID(id)), float(p)) for id, p in output.get("contacts") or ()],
+        contacts=[(ContactId(id), p) for id, p in _ranking(output.get("contacts"))],
         document_types=[
-            (DocumentTypeId(UUID(id)), float(p)) for id, p in output.get("document_types") or ()
+            (DocumentTypeId(id), p) for id, p in _ranking(output.get("document_types"))
         ],
-        tags={TagId(UUID(id)): float(p) for id, p in (output.get("tags") or {}).items()},
+        tags={
+            TagId(id): p
+            for key, value in tags.items()
+            if (id := as_uuid(key)) is not None and (p := as_number(value)) is not None
+        },
         known_contacts=known.contacts,
         known_types=known.document_types,
-        topics=[(TagId(UUID(id)), float(p)) for id, p in output.get("topics") or ()],
+        topics=[(TagId(id), p) for id, p in _ranking(output.get("topics"))],
         known_topics=known.topics,
     )
+
+
+def _ranking(value: JsonValue) -> list[tuple[UUID, float]]:
+    """The pairs `[id, probability]` as `_classifier_to_json` writes them."""
+    ranked = []
+    for item in as_list(value):
+        pair = as_list(item)
+        if len(pair) == 2:
+            id, p = as_uuid(pair[0]), as_number(pair[1])
+            if id is not None and p is not None:
+                ranked.append((id, p))
+    return ranked
+
+
+def _ids(value: JsonValue) -> list[UUID]:
+    return [id for item in as_list(value) if (id := as_uuid(item)) is not None]
+
+
+def _id_of[I](kind: Callable[[UUID], I], value: JsonValue) -> I | None:
+    found = as_uuid(value)
+    return None if found is None else kind(found)
 
 
 def _neighbour_to_json(neighbour: Neighbour) -> JsonObject:
@@ -451,23 +484,20 @@ def _neighbour_to_json(neighbour: Neighbour) -> JsonObject:
     }
 
 
-def _neighbours_view(output: Mapping[str, Any] | None) -> tuple[Neighbour, ...] | None:
+def _neighbours_view(output: JsonObject | None) -> tuple[Neighbour, ...] | None:
     if output is None:
         return None
     return tuple(
         Neighbour(
-            document=str(item["document_id"]),
-            contact=None if item.get("contact_id") is None else ContactId(UUID(item["contact_id"])),
-            document_type=(
-                None
-                if item.get("document_type_id") is None
-                else DocumentTypeId(UUID(item["document_type_id"]))
-            ),
-            tags=frozenset(TagId(UUID(tag)) for tag in item.get("tag_ids") or ()),
-            similarity=float(item["score"]) if isinstance(item.get("score"), int | float) else None,
-            topic=None if item.get("topic_id") is None else TagId(UUID(item["topic_id"])),
+            document=as_text(item.get("document_id")) or "",
+            contact=_id_of(ContactId, item.get("contact_id")),
+            document_type=_id_of(DocumentTypeId, item.get("document_type_id")),
+            tags=frozenset(TagId(id) for id in _ids(item.get("tag_ids"))),
+            similarity=as_number(item.get("score")),
+            topic=_id_of(TagId, item.get("topic_id")),
         )
-        for item in output.get("neighbours") or ()
+        for value in as_list(output.get("neighbours"))
+        if (item := as_object(value)) is not None
     )
 
 
@@ -480,20 +510,19 @@ def _known_to_json(known: KnownLabels) -> JsonObject:
     }
 
 
-def _known_from_json(known: object) -> KnownLabels | None:
-    if not isinstance(known, dict):
+def _known_from_json(value: JsonValue) -> KnownLabels | None:
+    known = as_object(value)
+    if known is None:
         return None
     return KnownLabels(
-        contacts=frozenset(ContactId(UUID(id)) for id in known.get("contacts") or ()),
-        document_types=frozenset(
-            DocumentTypeId(UUID(id)) for id in known.get("document_types") or ()
-        ),
-        tags=frozenset(TagId(UUID(id)) for id in known.get("tags") or ()),
-        topics=frozenset(TagId(UUID(id)) for id in known.get("topics") or ()),
+        contacts=frozenset(ContactId(id) for id in _ids(known.get("contacts"))),
+        document_types=frozenset(DocumentTypeId(id) for id in _ids(known.get("document_types"))),
+        tags=frozenset(TagId(id) for id in _ids(known.get("tags"))),
+        topics=frozenset(TagId(id) for id in _ids(known.get("topics"))),
     )
 
 
-def _known_view(output: Mapping[str, Any] | None) -> KnownLabels | None:
+def _known_view(output: JsonObject | None) -> KnownLabels | None:
     """What the similar documents could have named; None for an entry from before it was
     kept (then they count as covering every value)."""
     return None if output is None else _known_from_json(output.get("known"))
@@ -503,20 +532,27 @@ def _optional_id(id: object | None) -> str | None:
     return None if id is None else str(id)
 
 
-def _facts_view(output: Mapping[str, Any] | None) -> FactsView | None:
+def _facts_view(output: JsonObject | None) -> FactsView | None:
     if output is None:
         return None
     identifiers: dict[ContactId, tuple[str, ...]] = {}
     topics: dict[ContactId, dict[TagId, tuple[str, ...]]] = {}
-    for item in output.get("identifiers") or ():
-        contact, kind = ContactId(UUID(item["contact_id"])), str(item["kind"])
+    for value in as_list(output.get("identifiers")):
+        item = as_object(value) or {}
+        contact, kind = _id_of(ContactId, item.get("contact_id")), as_text(item.get("kind"))
+        if contact is None or kind is None:
+            continue
         identifiers[contact] = (*identifiers.get(contact, ()), kind)
-        if item.get("topic_id") is not None:
+        topic = _id_of(TagId, item.get("topic_id"))
+        if topic is not None:
             pairs = topics.setdefault(contact, {})
-            topic = TagId(UUID(item["topic_id"]))
             pairs[topic] = (*pairs.get(topic, ()), kind)
+    named = (
+        _id_of(ContactId, (as_object(value) or {}).get("contact_id"))
+        for value in as_list(output.get("named"))
+    )
     return FactsView(
-        named=frozenset(ContactId(UUID(item["contact_id"])) for item in output.get("named") or ()),
+        named=frozenset(contact for contact in named if contact is not None),
         identifiers=identifiers,
         topics=topics,
     )

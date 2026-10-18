@@ -306,3 +306,9 @@ def test_yes_and_no_as_written() -> None:
         False,
     ]
     assert truth_value("vielleicht") is None
+
+
+def test_a_text_read_at_once_has_found_everything() -> None:
+    text = DocumentText.read("Rechnung vom 31.03.2026 über 84,20 EUR")
+    assert {"normalised", "dates", "periods", "numbers", "amounts", "currencies"} <= set(vars(text))
+    assert text.has_date(date(2026, 3, 31)) and text.has_currency("EUR")

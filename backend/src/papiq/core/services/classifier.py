@@ -7,6 +7,7 @@ learns identifiers of contacts from the same documents (`identifiers.mine_identi
 keeps the latest `KEPT_MODELS` models.
 """
 
+import asyncio
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -29,6 +30,7 @@ from papiq.core.domain.identifiers import (
 from papiq.core.domain.ids import ClassifierModelId, ContactId, TagId, UserId
 from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.json_value import JsonObject
+from papiq.core.domain.text import shorten
 from papiq.core.ports import (
     Classifier,
     Clock,
@@ -58,17 +60,25 @@ _HOLDOUT_EVERY = 5  # every fifth example: a fifth held out
 _MODEL_TYPE = "application/octet-stream"
 
 
+TEXT_LIMIT = 12_000
+"""Characters of a document's text the classifier sees: the beginning and the end of a longer
+text, where it says what it is and from whom (`shorten`)."""
+
+
 @dataclass(frozen=True, kw_only=True)
 class ClassifierPolicy:
-    """The first three and `text_limit` are configuration (the composition sets them from the
-    settings, whose defaults are the one source); the intervals are constants."""
+    """The first three are configuration (the composition sets them from the settings, whose
+    defaults are the one source); the intervals and `text_limit` are constants. `threshold` is
+    the classifier's: the judge takes it from here (`composition.container.thresholds_of`), the
+    status shows it. `text_limit`: characters of a document's text it learns from and predicts
+    on (`shorten`)."""
 
     min_examples: int  # confirmed documents before the first model
     retrain_after: int  # confirmations since the last model before another
-    threshold: float  # a prediction this sure names its class (`judge`)
+    threshold: float  # a prediction this sure names its class
     check_interval: timedelta = timedelta(minutes=10)
     train_lease: timedelta = timedelta(hours=1)
-    text_limit: int  # characters of a document's text it learns from
+    text_limit: int = TEXT_LIMIT
 
     def __post_init__(self) -> None:
         if min(self.min_examples, self.retrain_after, self.text_limit) < 1:
@@ -185,10 +195,7 @@ class ClassifierService:
             (item.document.confirmed_at for item in examples if item.document.confirmed_at),
             default=None,
         )
-        found = [
-            (item.document.contact_id, item.document.topic_id, identifiers_in(item.example.text))
-            for item in examples
-        ]
+        found = await asyncio.to_thread(_identifiers_of, examples)
         model, learned, old = await retrying(
             lambda: self._store_model(trained, found, accuracy, len(examples), until),
             attempts=_COMMIT_ATTEMPTS,
@@ -283,7 +290,7 @@ class ClassifierService:
                 raw = await load_text(self._store, document.id)
             except NotFoundError:
                 continue
-            text = _shortened(raw.decode("utf-8", "replace"), self.policy.text_limit)
+            text = shorten(raw.decode("utf-8", "replace"), self.policy.text_limit).text
             example = TrainingExample(
                 text=text,
                 contact=document.contact_id,
@@ -340,7 +347,7 @@ class ClassifierService:
             except NotFoundError:
                 raise ClassifierError(f"the file of model {model.number} is missing") from None
             self._cached = (model.id, data)
-        text = _shortened(text, self.policy.text_limit)
+        text = shorten(text, self.policy.text_limit).text
         return model, await self._classifier.predict(self._cached[1], text)
 
     # --- job bookkeeping --------------------------------------------------------------------------
@@ -375,12 +382,14 @@ class ClassifierService:
         await uow.jobs.enqueue(CHECK_JOB, {}, run_at=run_at, dedup_key=CHECK_JOB)
 
 
-def _shortened(text: str, limit: int) -> str:
-    """The start and the end of a long text: there it says what it is and from whom."""
-    if len(text) <= limit:
-        return text
-    head = limit * 2 // 3
-    return text[:head] + "\n…\n" + text[len(text) - (limit - head) :]
+def _identifiers_of(
+    examples: Sequence[_Example],
+) -> list[tuple[ContactId | None, TagId | None, set[tuple[IdentifierKind, str]]]]:
+    """The identifiers in each example's text, with its contact and topic."""
+    return [
+        (item.document.contact_id, item.document.topic_id, identifiers_in(item.example.text))
+        for item in examples
+    ]
 
 
 def _first_contact(prediction: Prediction) -> object:

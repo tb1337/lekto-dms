@@ -98,6 +98,21 @@ def refresh_payload(kind: RefreshKind, id: UUID) -> JsonObject:
     return {"kind": kind.value, "id": str(id)}
 
 
+def index_payload(id: DocumentId) -> JsonObject:
+    """The payload of an `INDEX_JOB`."""
+    return {"document_id": str(id)}
+
+
+def _indexed(payload: JsonObject) -> DocumentId:
+    """The document of an `INDEX_JOB` (`index_payload`)."""
+    return DocumentId(UUID(str(payload["document_id"])))
+
+
+def _refreshed(payload: JsonObject) -> tuple[RefreshKind, UUID]:
+    """What a `REFRESH_JOB` refreshes (`refresh_payload`)."""
+    return RefreshKind(str(payload["kind"])), UUID(str(payload["id"]))
+
+
 _ROUNDS = 3
 _RETRY = RetryPolicy(max_attempts=10, delay=timedelta(seconds=30), max_delay=timedelta(hours=1))
 _RETRIES = {INDEX_JOB: _RETRY, REFRESH_JOB: _RETRY, REBUILD_JOB: replace(_RETRY, max_attempts=3)}
@@ -202,7 +217,7 @@ class IndexingService:
             return
         async with self._uow() as uow:
             await uow.jobs.enqueue(
-                INDEX_JOB, {"document_id": str(event.document_id)}, run_at=self._clock.now()
+                INDEX_JOB, index_payload(event.document_id), run_at=self._clock.now()
             )
             await uow.commit()
 
@@ -249,11 +264,11 @@ class IndexingService:
 
     def _work(self, job: Job) -> Callable[[], Awaitable[object]]:
         if job.kind == INDEX_JOB:
-            document_id = DocumentId(UUID(str(job.payload["document_id"])))
+            document_id = _indexed(job.payload)
             final = job.tries >= _RETRIES[INDEX_JOB].max_attempts
             return lambda: self.index_document(document_id, tolerate_embedding_failure=final)
         if job.kind == REFRESH_JOB:
-            kind, item = RefreshKind(str(job.payload["kind"])), UUID(str(job.payload["id"]))
+            kind, item = _refreshed(job.payload)
             return lambda: self._refresh(kind, item)
         if job.kind == RECONCILE_JOB:
             return self.reconcile
@@ -439,9 +454,7 @@ class IndexingService:
         for start in range(0, len(documents), _QUEUE_BATCH):
             async with self._uow() as uow:
                 for id in documents[start : start + _QUEUE_BATCH]:
-                    await uow.jobs.enqueue(
-                        INDEX_JOB, {"document_id": str(id)}, run_at=self._clock.now()
-                    )
+                    await uow.jobs.enqueue(INDEX_JOB, index_payload(id), run_at=self._clock.now())
                 await uow.commit()
 
     # --- the whole index ------------------------------------------------------------------------

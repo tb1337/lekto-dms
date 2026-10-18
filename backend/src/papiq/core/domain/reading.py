@@ -9,9 +9,18 @@ broken scan, and a number read there may be anything.
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Self
 
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.json_value import JsonObject, JsonValue, as_int
+from papiq.core.domain.json_value import (
+    JsonObject,
+    JsonValue,
+    as_bool,
+    as_int,
+    as_list,
+    as_object,
+    as_text,
+)
 
 # Fewer words say too little about a page: a blank back side, a page number.
 MIN_WORDS = 10
@@ -105,3 +114,46 @@ def vision_advice(
     if poor:
         return VisionAdvice.POOR_PAGE
     return None
+
+
+@dataclass(frozen=True, kw_only=True)
+class OcrOutput:
+    """What the OCR node logs: the archive and its pages, whether it is PDF/A, the engine's
+    note, how each recognised page was read, whether another OCR's text layer was replaced, and
+    a vision model's run (`vision`: model, endpoint, prompt, calls; `tokens` per call)."""
+
+    archive: str
+    pages: int
+    pdfa: bool
+    note: str | None = None
+    readings: tuple[PageReading, ...] = ()
+    read_again: bool = False
+    vision: JsonObject | None = None
+    tokens: tuple[JsonValue, ...] = ()
+
+    def to_json(self) -> JsonObject:
+        output: JsonObject = {"archive": self.archive, "pages": self.pages, "pdfa": self.pdfa}
+        if self.note is not None:
+            output["note"] = self.note
+        if self.readings:
+            output["readings"] = readings_to_json(self.readings)
+        if self.read_again:
+            output["read_again"] = True
+        if self.vision is not None:
+            output["vision"] = self.vision
+            output["tokens"] = list(self.tokens)
+        return output
+
+    @classmethod
+    def from_json(cls, data: JsonObject) -> Self:
+        """What `to_json` wrote; what an entry lacks is empty."""
+        return cls(
+            archive=as_text(data.get("archive")) or "",
+            pages=as_int(data.get("pages")) or 0,
+            pdfa=as_bool(data.get("pdfa")) is True,
+            note=as_text(data.get("note")),
+            readings=readings_from_json(data.get("readings")),
+            read_again=as_bool(data.get("read_again")) is True,
+            vision=as_object(data.get("vision")),
+            tokens=tuple(as_list(data.get("tokens"))),
+        )

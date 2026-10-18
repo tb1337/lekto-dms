@@ -484,7 +484,9 @@ once. Training also learns identifiers of contacts: one that stands in at least 
 documents, all of one contact (the household's own IBAN stands on letters of many and is never
 learned); a learned identifier an admin rejected stays rejected. The model is stored as `npz`
 without pickle (`classifier/model-<n>.npz`, the latest three are kept) and predicted with numpy
-alone, so a new scikit-learn version cannot break it. `GET /classifier` tells its state.
+alone, so a new scikit-learn version cannot break it. It sees about the first 8,000 and the last
+4,000 characters of a longer text, a run of spaces counted once (12,000 in all, `TEXT_LIMIT`).
+`GET /classifier` tells its state.
 
 **After the update to 0.2.** Three things, in this order:
 

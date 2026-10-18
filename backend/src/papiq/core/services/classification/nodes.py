@@ -41,7 +41,7 @@ from papiq.core.domain.evidence import (
     read_period,
     truth_value,
 )
-from papiq.core.domain.exchanges import ModelCall
+from papiq.core.domain.exchanges import ModelCall, tokens_of
 from papiq.core.domain.fields import (
     FieldDefinition,
     FieldType,
@@ -56,9 +56,19 @@ from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.names import match_key, mentions, named_share
 from papiq.core.domain.periods import Period, PeriodKind
-from papiq.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
-from papiq.core.domain.reading import PageReading, readings_from_json
+from papiq.core.domain.pipeline import (
+    ENDPOINT,
+    MODEL,
+    MODEL_RUN,
+    TRUNCATED,
+    Node,
+    NodeResult,
+    NodeRun,
+    Outcome,
+)
+from papiq.core.domain.reading import OcrOutput, PageReading
 from papiq.core.domain.sorting import sort_key
+from papiq.core.domain.text import Shortened, shorten
 from papiq.core.domain.validation import name_key
 from papiq.core.domain.verdict import (
     Thresholds,
@@ -81,15 +91,15 @@ from papiq.core.services.classification.answers import (
 )
 from papiq.core.services.classification.prompts import (
     EXTRACT_PROMPT,
+    EXTRACT_SCHEMA,
     EXTRACT_SYSTEM,
     PROPOSE_PROMPT,
+    PROPOSE_SCHEMA,
     PROPOSE_SYSTEM,
     Listed,
-    Shortened,
     extract_message,
     propose_message,
     retry_message,
-    shorten,
 )
 from papiq.core.services.classification.signals import (
     ABSTAINED,
@@ -116,6 +126,11 @@ JUDGE = "judge"
 """`model_version` of the judge's entry when the language model gave nothing."""
 
 
+MAX_CONTACTS = 20
+"""Contacts a prompt lists, those the text names most: enough for every sender a letter
+names, few enough that the list does not crowd out the document (`architektur.md`)."""
+
+
 @dataclass(frozen=True, kw_only=True)
 class ClassificationPolicy:
     """`accept`: a field with at least this confidence is applied; `suggest_contact`: an
@@ -130,7 +145,7 @@ class ClassificationPolicy:
     suggest_contact: float
     input_budget: int
     max_tags: int
-    max_contacts: int = 20
+    max_contacts: int = MAX_CONTACTS
     default_currency: str
     poor_reading: float
 
@@ -240,10 +255,10 @@ class _ModelStep:
             "text": text_key(document.id),
             "characters": len(text),
             "sent": len(sent.text),
-            "truncated": sent.omitted > 0,
+            TRUNCATED: sent.omitted > 0,
             "prompt": prompt,
-            "model": self._model.model,
-            "endpoint": self._model.endpoint,
+            MODEL: self._model.model,
+            ENDPOINT: self._model.endpoint,
         }
 
     def _unfit(self, error: _UnfitAnswerError, input: JsonObject) -> NodeResult:
@@ -283,7 +298,7 @@ class LlmSignal(_ModelStep):
                 key=lambda item: item.name,
             )
         # Matching every name against a long text takes a while: not in the loop.
-        facts = DocumentText(text)
+        facts = await asyncio.to_thread(DocumentText.read, text)
         listed = await asyncio.to_thread(_listed_tags, tags, facts, self._policy.max_tags)
         candidates = await asyncio.to_thread(
             _listed_contacts, contacts, facts, self._policy.max_contacts
@@ -337,7 +352,7 @@ class LlmSignal(_ModelStep):
                     sent,
                 ),
                 propose_schema([item.name for item in types], tag_names, list(keys), topic_names),
-                "proposal",
+                PROPOSE_SCHEMA,
                 lambda content: parse_propose(content, list(keys)),
             )
         except _UnfitAnswerError as error:
@@ -346,12 +361,8 @@ class LlmSignal(_ModelStep):
             outcome=Outcome.OK,
             model_version=_model_version(answers[-1]),
             input=input,
-            output={
-                "attempts": len(answers),
-                "answer": answer.raw,
-                "tokens": _tokens(answers),
-                PROPOSAL: StoredProposal.of(answer, keys).to_json(),
-            },
+            output=_answered(answers, answer.raw)
+            | {PROPOSAL: StoredProposal.of(answer, keys).to_json()},
         )
 
 
@@ -386,7 +397,7 @@ class JudgeNode(_ModelStep):
         signals = signals_of(entries)
         proposal = model_proposal(entries)
         text = await self._text(document)
-        facts = DocumentText(text)
+        facts = await asyncio.to_thread(DocumentText.read, text)
         if proposal is None:
             silent = entries.get(Node.SIGNAL_LLM)
             why = (
@@ -408,9 +419,7 @@ class JudgeNode(_ModelStep):
         tagged = judge_tags(signals, tags, self._thresholds)
         model_entry = entries.get(Node.SIGNAL_LLM)
         llm_input = model_entry.result.input if model_entry is not None else {}
-        input: JsonObject = {
-            key: llm_input[key] for key in ("truncated", "model", "endpoint") if key in llm_input
-        }
+        input: JsonObject = {key: llm_input[key] for key in MODEL_RUN if key in llm_input}
         input["signals"] = {
             node.value: (
                 "abstained" if ABSTAINED in entry.result.output else entry.result.model_version
@@ -531,13 +540,13 @@ class FieldsNode(_ModelStep):
                         None if document_type is None else document_type.name, keys, sent
                     ),
                     extract_schema(keys),
-                    "fields",
+                    EXTRACT_SCHEMA,
                     lambda content: parse_extract(content, list(keys)),
                 )
             except _UnfitAnswerError as error:
                 return self._unfit(error, input)
             given |= {keys[key].id: value for key, value in proposals.items()}
-        facts = DocumentText(text)
+        facts = await asyncio.to_thread(DocumentText.read, text)
         language = _text_value(proposal.language) if proposal else None
         checks = [
             _check_field(
@@ -590,12 +599,7 @@ class FieldsNode(_ModelStep):
             confidence=min((check.confidence for check in checks), default=1.0),
             model_version=model_version,
             input=input,
-            output={
-                "attempts": len(answers),
-                "answer": {"fields": raw},
-                "fields": checks_to_json(all_checks),
-                "tokens": _tokens(answers),
-            },
+            output=_answered(answers, {"fields": raw}) | {"fields": checks_to_json(all_checks)},
         )
         return MetadataResult(result, changes)
 
@@ -878,7 +882,7 @@ def _ocr_readings(log: Sequence[NodeRun]) -> tuple[PageReading, ...]:
     before readings, or with text of its own."""
     for entry in reversed(log):
         if entry.node is Node.OCR:
-            return readings_from_json(entry.result.output.get("readings"))
+            return OcrOutput.from_json(entry.result.output).readings
     return ()
 
 
@@ -1042,11 +1046,14 @@ def _model_version(answer: StructuredAnswer) -> str:
     return f"{answer.model} ({answer.fingerprint})" if answer.fingerprint else answer.model
 
 
-def _tokens(answers: Sequence[StructuredAnswer]) -> list[JsonValue]:
-    return [
-        {"prompt": item.prompt_tokens, "completion": item.completion_tokens, "usage": item.usage}
-        for item in answers
-    ]
+def _answered(answers: Sequence[StructuredAnswer], answer: JsonValue) -> JsonObject:
+    """The output of a model node that got its answer: how many requests it took, the answer
+    and the tokens of each request."""
+    return {
+        "attempts": len(answers),
+        "answer": answer,
+        "tokens": tokens_of(item.usage for item in answers),
+    }
 
 
 def _reason(check: FieldCheck) -> str:

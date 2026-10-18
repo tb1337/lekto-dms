@@ -33,7 +33,6 @@ from papiq.core.ports.classifier import Prediction, TrainedModel, TrainingExampl
 
 FORMAT = "papiq-tfidf-logreg/1"
 MAX_TERMS = 20_000
-MAX_CHARACTERS = 100_000  # of a text: the start and the end of a long one say what it is
 # A word in more than half of the documents (the owner's name and address) tells nothing; one
 # in a single document is a typo or a number. Small corpora keep every word.
 MIN_DF, MAX_DF, SMALL = 2, 0.5, 20
@@ -46,10 +45,7 @@ type _Array = NDArray[Any]
 
 def analyze(text: str) -> list[str]:
     """Words with at least one letter (`R-2026` counts, `31.03.2026` not), in lower case, and
-    the pairs of neighbouring words."""
-    if len(text) > MAX_CHARACTERS:
-        half = MAX_CHARACTERS // 2
-        text = text[:half] + " " + text[-half:]
+    the pairs of neighbouring words. The service shortens long texts before (`TEXT_LIMIT`)."""
     words = [word for word in _TOKEN.findall(text.casefold()) if len(word) >= 2]
     return words + [f"{left} {right}" for left, right in itertools.pairwise(words)]
 

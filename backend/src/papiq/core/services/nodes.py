@@ -11,16 +11,16 @@ import shutil
 import tempfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
 from papiq.core.domain import media_types
 from papiq.core.domain.documents import Document
-from papiq.core.domain.exchanges import ModelCall
-from papiq.core.domain.json_value import JsonObject, JsonValue, as_int
+from papiq.core.domain.exchanges import tokens_of
+from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.pipeline import Node, NodeResult, Outcome
-from papiq.core.domain.reading import NO_TEXT_REASON, readings_to_json
+from papiq.core.domain.reading import NO_TEXT_REASON, OcrOutput
 from papiq.core.ports import DocumentParser, ObjectStore, Ocr, PageRenderer, UnitOfWork
 from papiq.core.ports.ocr import VisionReading
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE, PREVIEW_FILE
@@ -81,23 +81,23 @@ class OcrNode:
             )
         # The codes were read from the archive before: the facts read the new one again.
         await self._store.delete(codes_key(document.id))
-        output: JsonObject = {
-            "archive": archive_key(document.id),
-            "pages": result.pages,
-            "pdfa": result.pdfa,
-        }
-        if result.note is not None:
-            output["note"] = result.note
-        if result.readings:
-            output["readings"] = readings_to_json(result.readings)
-        if result.read_again:
-            output["read_again"] = True
+        output = OcrOutput(
+            archive=archive_key(document.id),
+            pages=result.pages,
+            pdfa=result.pdfa,
+            note=result.note,
+            readings=tuple(result.readings),
+            read_again=result.read_again,
+        )
         note = result.note
         if not result.pdfa:
             note = "the archive could not be made PDF/A" + ("" if note is None else f": {note}")
         if result.vision is not None:
-            output["vision"] = _vision_output(result.vision)
-            output["tokens"] = _tokens(result.vision.calls)
+            output = replace(
+                output,
+                vision=_vision_output(result.vision),
+                tokens=tuple(tokens_of(call.usage for call in result.vision.calls)),
+            )
             note = read_by(result.vision) + ("" if note is None else f"; {note}")
             await keep_calls(self._store, document, Node.OCR, list(result.vision.calls))
         return NodeResult(
@@ -105,7 +105,7 @@ class OcrNode:
             reason=note,
             model_version=result.engine,
             input=input,
-            output=output,
+            output=output.to_json(),
         )
 
 
@@ -126,19 +126,6 @@ def _vision_output(vision: VisionReading) -> JsonObject:
         "prompt": vision.prompt,
         "calls": len(vision.calls),
     }
-
-
-def _tokens(calls: tuple[ModelCall, ...]) -> list[JsonValue]:
-    """Per call (a page, or once more after an answer that did not fit) its tokens and the
-    endpoint's report, as the model nodes log theirs."""
-    return [
-        {
-            "prompt": as_int(call.usage.get("prompt_tokens")),
-            "completion": as_int(call.usage.get("completion_tokens")),
-            "usage": call.usage,
-        }
-        for call in calls
-    ]
 
 
 class PagesNode:

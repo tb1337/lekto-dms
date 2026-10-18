@@ -525,6 +525,16 @@ class DocumentText:
 
     raw: str
 
+    @classmethod
+    def read(cls, raw: str) -> "DocumentText":
+        """The text with everything in it found at once: for a worker thread, so that the
+        event loop does not wait for long texts."""
+        text = cls(raw)
+        for name, member in vars(cls).items():
+            if isinstance(member, cached_property):
+                getattr(text, name)
+        return text
+
     @cached_property
     def normalised(self) -> str:
         return normalise(self.raw)

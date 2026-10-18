@@ -484,16 +484,15 @@ def classifier_policy_of(settings: Settings) -> ClassifierPolicy:
         min_examples=settings.classifier_min_examples,
         retrain_after=settings.classifier_retrain_after,
         threshold=settings.classifier_threshold,
-        text_limit=settings.llm_input_budget,
     )
 
 
 def thresholds_of(settings: Settings) -> Thresholds:
-    """The judge's thresholds."""
+    """The judge's thresholds; the classifier's is the one of its policy."""
     return Thresholds(
         accept=settings.confidence_threshold,
         suggest=settings.contact_suggest_threshold,
-        classifier=settings.classifier_threshold,
+        classifier=classifier_policy_of(settings).threshold,
     )
 
 

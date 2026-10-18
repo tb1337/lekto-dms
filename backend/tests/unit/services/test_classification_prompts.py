@@ -8,6 +8,7 @@ import pytest
 from papiq.adapters.outbound.memory.language_model import minimal_instance
 from papiq.core.domain.documents import MAX_TITLE
 from papiq.core.domain.fields import FieldDefinition, FieldType
+from papiq.core.domain.text import shorten, weight
 from papiq.core.services.classification.answers import (
     AnswerError,
     Proposal,
@@ -23,8 +24,6 @@ from papiq.core.services.classification.prompts import (
     extract_message,
     propose_message,
     retry_message,
-    shorten,
-    weight,
 )
 from tests.builders import NOW
 

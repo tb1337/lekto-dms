@@ -36,6 +36,7 @@ from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Assignment
 from papiq.core.domain.pipeline import Lane
 from papiq.core.ports import StructuredRequest
+from papiq.core.services.classification.prompts import PROPOSE_SCHEMA
 
 
 class EvaluationSetError(Exception):
@@ -117,7 +118,7 @@ class FakeAnswer:
     def respond(self, request: StructuredRequest) -> JsonObject:
         """The answer to a request of the language model's signal (`proposal`) or of the fields
         node."""
-        if request.schema_name == "proposal":
+        if request.schema_name == PROPOSE_SCHEMA:
             return self._proposal(request.user)
         keys = dict(_KEY_LINE.findall(_before_document(request.user)))
         empty: JsonObject = {"value": None, "evidence": None}

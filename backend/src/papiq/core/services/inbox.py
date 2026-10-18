@@ -36,6 +36,7 @@ from papiq.core.domain.pipeline import (
     NODES,
     OUTSIDE_PIPELINE,
     PERSON,
+    TRUNCATED,
     Node,
     NodeResult,
     NodeRun,
@@ -145,7 +146,7 @@ def node_reviews(log: Sequence[NodeRun]) -> tuple[NodeReview, ...]:
         entry = latest.get(node)
         if entry is None:
             continue
-        truncated = entry.result.input.get("truncated")
+        truncated = entry.result.input.get(TRUNCATED)
         reviews.append(
             NodeReview(
                 node=node,

@@ -10,6 +10,8 @@ from papiq.core.domain.documents import MAX_TITLE
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.services.classification.answers import (
     AnswerError,
+    Proposal,
+    StoredProposal,
     extract_schema,
     field_keys,
     parse_extract,
@@ -88,6 +90,24 @@ def test_parse_propose() -> None:
     assert list(answer.fields) == ["a1"]
     assert answer.fields["a1"].value == "84,20 €"
     assert answer.raw == ANSWER
+
+
+def test_the_proposal_is_kept_with_its_fields_by_id() -> None:
+    amount = FieldDefinition.create(name="Betrag", data_type=FieldType.AMOUNT, now=NOW)
+    answer = parse_propose(json.dumps(ANSWER), ["a1"])
+    stored = StoredProposal.of(answer, {"a1": amount})
+    assert stored.fields == {amount.id: Proposal(value="84,20 €", evidence="Betrag 84,20 €")}
+    assert StoredProposal.from_json(json.loads(json.dumps(stored.to_json()))) == stored
+
+
+def test_a_stored_proposal_is_read_leniently() -> None:
+    assert StoredProposal.from_json(None) is None
+    stored = StoredProposal.from_json(
+        {"sender": "Stadtwerke", "tags": ["Strom", 3], "title": 7, "fields": {"nonsense": {}}}
+    )
+    assert stored is not None
+    assert stored.sender == Proposal(value=None, evidence=None)
+    assert (stored.tags, stored.title, stored.fields) == (("Strom",), None, {})
 
 
 def test_the_title_comes_on_one_line_and_short() -> None:

@@ -11,11 +11,14 @@ value that cannot be read makes only its field uncertain.
 
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Self
+from uuid import UUID
 
 from papiq.core.domain.documents import MAX_TITLE
 from papiq.core.domain.fields import FieldDefinition, FieldType
+from papiq.core.domain.ids import FieldId
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import one_line
 
@@ -38,6 +41,19 @@ class Proposal:
     value: JsonValue
     evidence: str | None
 
+    def to_json(self) -> JsonObject:
+        return {"value": self.value, "evidence": self.evidence}
+
+    @classmethod
+    def from_json(cls, data: JsonValue) -> Self:
+        """Lenient: what is missing (or no text, for the evidence) is None."""
+        if not isinstance(data, dict):
+            return cls(value=None, evidence=None)
+        evidence = data.get("evidence")
+        return cls(
+            value=data.get("value"), evidence=evidence if isinstance(evidence, str) else None
+        )
+
 
 # --- the proposal (`signal_llm`) --------------------------------------------------------------
 
@@ -56,6 +72,96 @@ class ProposeAnswer:
     language: str | None
     fields: dict[str, Proposal]  # by key; only the fields the model gave
     raw: JsonObject
+
+
+@dataclass(frozen=True, kw_only=True)
+class StoredProposal:
+    """The proposal as `signal_llm` keeps it in its output, the fields by id (so a renamed
+    field or a new key order does not mix them up). Read leniently: what a stored proposal
+    lacks, or holds of another type, counts as not proposed."""
+
+    sender: Proposal
+    recipient: str | None
+    document_type: str | None
+    new_document_type: str | None
+    topic: str | None
+    tags: tuple[str, ...]
+    new_tags: tuple[str, ...]
+    document_date: Proposal
+    title: str | None
+    language: str | None
+    fields: Mapping[FieldId, Proposal]
+
+    @classmethod
+    def of(cls, answer: ProposeAnswer, keys: Mapping[str, FieldDefinition]) -> Self:
+        """The answer, its fields (by the keys sent) by id."""
+        return cls(
+            sender=answer.sender,
+            recipient=answer.recipient,
+            document_type=answer.document_type,
+            new_document_type=answer.new_document_type,
+            topic=answer.topic,
+            tags=tuple(answer.tags),
+            new_tags=tuple(answer.new_tags),
+            document_date=answer.document_date,
+            title=answer.title,
+            language=answer.language,
+            fields={keys[key].id: value for key, value in answer.fields.items()},
+        )
+
+    def to_json(self) -> JsonObject:
+        return {
+            "sender": self.sender.to_json(),
+            "recipient": self.recipient,
+            "document_type": self.document_type,
+            "new_document_type": self.new_document_type,
+            "topic": self.topic,
+            "tags": list[JsonValue](self.tags),
+            "new_tags": list[JsonValue](self.new_tags),
+            "document_date": self.document_date.to_json(),
+            "title": self.title,
+            "language": self.language,
+            "fields": {str(id): value.to_json() for id, value in self.fields.items()},
+        }
+
+    @classmethod
+    def from_json(cls, data: JsonValue) -> Self | None:
+        """None for anything but an object."""
+        if not isinstance(data, dict):
+            return None
+        fields = data.get("fields")
+        return cls(
+            sender=Proposal.from_json(data.get("sender")),
+            recipient=_stored_text(data.get("recipient")),
+            document_type=_stored_text(data.get("document_type")),
+            new_document_type=_stored_text(data.get("new_document_type")),
+            topic=_stored_text(data.get("topic")),
+            tags=_stored_texts(data.get("tags")),
+            new_tags=_stored_texts(data.get("new_tags")),
+            document_date=Proposal.from_json(data.get("document_date")),
+            title=_stored_text(data.get("title")),
+            language=_stored_text(data.get("language")),
+            fields={
+                id: Proposal.from_json(value)
+                for key, value in (fields.items() if isinstance(fields, dict) else ())
+                if (id := _stored_id(key)) is not None
+            },
+        )
+
+
+def _stored_text(value: JsonValue) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _stored_texts(value: JsonValue) -> tuple[str, ...]:
+    return tuple(item for item in value if isinstance(item, str)) if isinstance(value, list) else ()
+
+
+def _stored_id(value: str) -> FieldId | None:
+    try:
+        return FieldId(UUID(value))
+    except ValueError:
+        return None
 
 
 _PROPOSE_FIELDS = (

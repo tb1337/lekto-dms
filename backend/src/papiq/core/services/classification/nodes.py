@@ -11,7 +11,7 @@ the inbox).
 """
 
 import logging
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
@@ -68,6 +68,7 @@ from papiq.core.ports.llm import StructuredAnswer, StructuredRequest
 from papiq.core.services.classification.answers import (
     AnswerError,
     Proposal,
+    StoredProposal,
     extract_schema,
     field_keys,
     parse_extract,
@@ -88,6 +89,7 @@ from papiq.core.services.classification.prompts import (
 )
 from papiq.core.services.classification.signals import (
     ABSTAINED,
+    PROPOSAL,
     abstained,
     latest_signals,
     model_proposal,
@@ -333,21 +335,6 @@ class LlmSignal(_ModelStep):
             )
         except _UnfitAnswerError as error:
             return self._unfit(error, input)
-        proposal: JsonObject = {
-            "sender": _proposal_json(answer.sender),
-            "recipient": answer.recipient,
-            "document_type": answer.document_type,
-            "new_document_type": answer.new_document_type,
-            "topic": answer.topic,
-            "tags": list[JsonValue](answer.tags),
-            "new_tags": list[JsonValue](answer.new_tags),
-            "document_date": _proposal_json(answer.document_date),
-            "title": answer.title,
-            "language": answer.language,
-            "fields": {
-                str(keys[key].id): _proposal_json(value) for key, value in answer.fields.items()
-            },
-        }
         return NodeResult(
             outcome=Outcome.OK,
             model_version=_model_version(answers[-1]),
@@ -356,7 +343,7 @@ class LlmSignal(_ModelStep):
                 "attempts": len(answers),
                 "answer": answer.raw,
                 "tokens": _tokens(answers),
-                "proposal": proposal,
+                PROPOSAL: StoredProposal.of(answer, keys).to_json(),
             },
         )
 
@@ -407,13 +394,7 @@ class JudgeNode(_ModelStep):
                 reason=f"no date recognised: the language model gave none ({why})",
             )
         else:
-            written = proposal.get("document_date") or {}
-            date_check = _check_date(
-                DOCUMENT_DATE,
-                Proposal(value=written.get("value"), evidence=written.get("evidence")),
-                facts,
-                self._today(),
-            )
+            date_check = _check_date(DOCUMENT_DATE, proposal.document_date, facts, self._today())
         contact = judge_contact(signals, contacts, self._thresholds)
         kind = judge_type(signals, types, self._thresholds)
         topic = judge_topic(signals, contact, contacts, tags, self._thresholds)
@@ -511,14 +492,12 @@ class FieldsNode(_ModelStep):
         given: dict[FieldId, Proposal] = {}
         if proposal is not None:
             same_type = document_type is not None and _same_name(
-                proposal.get("document_type"), document_type.name
+                proposal.document_type, document_type.name
             )
-            proposed = proposal.get("fields") or {}
             for definition in definitions:
                 if definition.is_read and (definition.is_global or same_type):
-                    written = proposed.get(str(definition.id)) or {}
-                    given[definition.id] = Proposal(
-                        value=written.get("value"), evidence=written.get("evidence")
+                    given[definition.id] = proposal.fields.get(
+                        definition.id, Proposal(value=None, evidence=None)
                     )
         missing = [item for item in definitions if item.is_read and item.id not in given]
         answers: list[StructuredAnswer] = []
@@ -552,7 +531,7 @@ class FieldsNode(_ModelStep):
                 return self._unfit(error, input)
             given |= {keys[key].id: value for key, value in proposals.items()}
         facts = DocumentText(text)
-        language = _text_value(proposal.get("language")) if proposal else None
+        language = _text_value(proposal.language) if proposal else None
         checks = [
             _check_field(
                 definition,
@@ -590,7 +569,7 @@ class FieldsNode(_ModelStep):
         changes = DocumentChanges(fields=values)
         if title is not None and title.value is not None:
             changes = replace(changes, title=str(title.value))
-        raw: JsonObject = {str(id): _proposal_json(value) for id, value in given.items()}
+        raw: JsonObject = {str(id): value.to_json() for id, value in given.items()}
         all_checks = [*checks, *([title] if title is not None else [])]
         model_version = (
             _model_version(answers[-1])
@@ -615,14 +594,14 @@ class FieldsNode(_ModelStep):
 
 
 def _title(
-    document: Document, proposal: Mapping[str, Any] | None, log: Sequence[NodeRun]
+    document: Document, proposal: StoredProposal | None, log: Sequence[NodeRun]
 ) -> FieldCheck | None:
     """The title check: the model's title; None if the document has a title of its own (a
     person's or a rule's), or the model gave none. A type's title pattern is a rule
     (`rules.title_rule`): it replaces this title when the rules run."""
     if not has_machine_title(document, log):
         return None
-    proposed = _text_value(proposal.get("title")) if proposal else None
+    proposed = _text_value(proposal.title) if proposal else None
     if not proposed:
         return None
     return FieldCheck(
@@ -634,8 +613,8 @@ def _text_value(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
-def _same_name(proposed: object, name: str) -> bool:
-    return isinstance(proposed, str) and proposed.casefold() == name.casefold()
+def _same_name(proposed: str | None, name: str) -> bool:
+    return proposed is not None and proposed.casefold() == name.casefold()
 
 
 # --- checks -----------------------------------------------------------------------------------
@@ -1056,10 +1035,6 @@ def _list(value: JsonValue) -> list[JsonValue]:
 
 def _model_version(answer: StructuredAnswer) -> str:
     return f"{answer.model} ({answer.fingerprint})" if answer.fingerprint else answer.model
-
-
-def _proposal_json(proposal: Proposal) -> JsonObject:
-    return {"value": proposal.value, "evidence": proposal.evidence}
 
 
 def _tokens(answers: Sequence[StructuredAnswer]) -> list[JsonValue]:

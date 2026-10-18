@@ -256,7 +256,7 @@ async def check_references(
         if space is None or access is None:
             raise NotFoundError("space", space_id)
         if not access.can_write:
-            raise SpaceWriteDeniedError(space.id, f"'{space.name}'")
+            raise SpaceWriteDeniedError(space.id, space.name)
 
 
 async def check_templates(

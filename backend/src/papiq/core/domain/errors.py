@@ -25,8 +25,8 @@ class SpaceWriteDeniedError(PermissionDeniedError):
     """Filing into a space or moving a document there needs write access to it; `space_id`
     names the space, so a caller can tell which of its choices was refused."""
 
-    def __init__(self, space_id: object, label: str) -> None:
-        super().__init__(f"no write access to space {label}")
+    def __init__(self, space_id: object, name: str) -> None:
+        super().__init__(f"no write access to space '{name}'")
         self.space_id = space_id
 
 

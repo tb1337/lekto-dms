@@ -619,7 +619,7 @@ class DocumentService:
                 raise PermissionDeniedError(f"only the owner moves document {id}")
             target = await visible_space(uow, user, space)
             if not can_move_document(user, document, target):
-                raise SpaceWriteDeniedError(space, str(space))
+                raise SpaceWriteDeniedError(target.id, target.name)
             now = self._clock.now()
             document.move_to(target.id, now)
             if self._rules is not None:

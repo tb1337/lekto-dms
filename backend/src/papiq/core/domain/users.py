@@ -11,7 +11,7 @@ from papiq.core.domain.validation import require_name, require_utc
 
 
 class Role(StrEnum):
-    ADMIN = "admin"  # manages users and master data; no extra rights on documents
+    ADMIN = "admin"  # all rights: users, master data, every document and space (`permissions`)
     USER = "user"
 
 

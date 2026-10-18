@@ -154,6 +154,9 @@ class Effect:
     old: JsonValue
     new: JsonValue
 
+    def to_json(self) -> JsonObject:
+        return {"field": self.field, "old": self.old, "new": self.new}
+
 
 class NoteKind(StrEnum):
     """Why a rule's action was not applied, or a review the rule forces."""
@@ -174,6 +177,9 @@ class Note:
     kind: NoteKind
     reason: str
 
+    def to_json(self) -> JsonObject:
+        return {"field": self.field, "kind": self.kind, "reason": self.reason}
+
 
 @dataclass
 class RuleReport:
@@ -189,13 +195,8 @@ class RuleReport:
             "rule_id": str(self.rule_id),
             "version": self.version,
             "scope": self.scope.value,
-            "applied": [
-                {"field": item.field, "old": item.old, "new": item.new} for item in self.applied
-            ],
-            "notes": [
-                {"field": item.field, "kind": item.kind, "reason": item.reason}
-                for item in self.notes
-            ],
+            "applied": [item.to_json() for item in self.applied],
+            "notes": [item.to_json() for item in self.notes],
         }
         if names:
             data["name"] = self.name

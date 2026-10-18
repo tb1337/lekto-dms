@@ -25,7 +25,6 @@ from papiq.adapters.inbound.rest.schemas.rules import (
 )
 from papiq.adapters.inbound.schemas import RuleEffectOut, RuleNoteOut
 from papiq.core.domain.ids import DocumentId, DocumentTypeId, RuleApplicationId, RuleId
-from papiq.core.domain.rule_planner import Note
 from papiq.core.domain.rules import RuleScope
 from papiq.core.domain.rules_json import definition_from_json
 
@@ -193,9 +192,9 @@ async def preview_apply(
             ApplyPreviewItemOut(
                 document_id=item.document.id,
                 title=item.document.title,
-                changes=[RuleEffectOut(field=e.field, old=e.old, new=e.new) for e in item.effects],
-                conflicts=[_note(note) for note in item.conflicts],
-                notes=[_note(note) for note in item.notes],
+                changes=[RuleEffectOut.of(effect) for effect in item.effects],
+                conflicts=[RuleNoteOut.of(note) for note in item.conflicts],
+                notes=[RuleNoteOut.of(note) for note in item.notes],
             )
             for item in preview.items
         ],
@@ -247,12 +246,6 @@ applications = APIRouter(prefix="/rule-applications", tags=["rules"], dependenci
 )
 async def get_application(id: UUID, user: CurrentUser, context: Context) -> RuleApplicationOut:
     return RuleApplicationOut.of(await context.rule_applications.get(user, RuleApplicationId(id)))
-
-
-def _note(note: Note) -> RuleNoteOut:
-    return RuleNoteOut.model_validate(
-        {"field": note.field, "kind": note.kind, "reason": note.reason}
-    )
 
 
 @templates.post(

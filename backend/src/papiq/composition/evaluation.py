@@ -160,11 +160,7 @@ async def run_evaluation(
         model = openai_language_model(settings)
 
     def model_for(case: Case) -> LanguageModel | None:
-        if not fake:
-            return model
-        if case.fake is None:
-            raise ConfigurationError(f"case {case.name} has no fixed answer for --fake")
-        return FakeLanguageModel(case.fake.respond, model=FAKE_MODEL)
+        return model if not fake else fake_model_for(case)
 
     def report_progress(result: CaseResult) -> None:
         lane = "none" if result.lane is None else result.lane.value
@@ -200,7 +196,7 @@ async def run_evaluation(
         fake=fake,
         training=len(evaluation.training),
     )
-    path = output or cases / "reports" / f"{started:%Y-%m-%d}-{_slug(info.model)}.md"
+    path = output or cases / "reports" / f"{started:%Y-%m-%d}-{slug(info.model)}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render(results, info), encoding="utf-8")
     summaries = [summarise(items, fake=fake) for items in results.values()]
@@ -213,5 +209,13 @@ async def run_evaluation(
     )
 
 
-def _slug(name: str) -> str:
+def fake_model_for(case: Case) -> FakeLanguageModel:
+    """The model that gives the case's fixed answers (`--fake`)."""
+    if case.fake is None:
+        raise ConfigurationError(f"case {case.name} has no fixed answer for --fake")
+    return FakeLanguageModel(case.fake.respond, model=FAKE_MODEL)
+
+
+def slug(name: str) -> str:
+    """A model's name as a report's file name has it."""
     return re.sub(r"[^a-z0-9.]+", "-", name.casefold()).strip("-") or "model"

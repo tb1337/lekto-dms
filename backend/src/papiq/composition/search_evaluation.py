@@ -1,7 +1,6 @@
 """`python -m papiq.composition evaluate-search`: index the evaluation set with one or more
 embedding models and measure which queries find which documents; write a Markdown report."""
 
-import re
 import secrets
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
@@ -25,7 +24,6 @@ from papiq.adapters.outbound.http_client import endpoint_of
 from papiq.adapters.outbound.meilisearch import MeilisearchIndex
 from papiq.adapters.outbound.memory import (
     BagOfWordsEmbeddings,
-    FakeLanguageModel,
     MemorySearchIndex,
 )
 from papiq.composition.container import (
@@ -35,7 +33,7 @@ from papiq.composition.container import (
     search_policy_of,
 )
 from papiq.composition.errors import ConfigurationError
-from papiq.composition.evaluation import build_environment
+from papiq.composition.evaluation import build_environment, fake_model_for, slug
 from papiq.composition.settings import Settings
 from papiq.core.ports import LanguageModel, SearchIndex
 from papiq.core.services.indexing import IndexingService
@@ -43,7 +41,6 @@ from papiq.core.services.search import SearchService
 
 DEFAULT_RATIOS = (0.0, 0.5, 1.0)
 QUERY_TIMEOUT = timedelta(minutes=2)  # a model may be loaded into memory on the first query
-FAKE_MODEL = "fixed answers"
 
 
 @dataclass(frozen=True)
@@ -97,9 +94,7 @@ async def run_search_evaluation(
     def model_for(case: Case) -> LanguageModel | None:
         # The documents are classified with the fixed answers: the metadata is not what is
         # measured here, and the same documents go to every model.
-        if case.fake is None:
-            raise ConfigurationError(f"case {case.name} has no fixed answer")
-        return FakeLanguageModel(case.fake.respond, model=FAKE_MODEL)
+        return fake_model_for(case)
 
     def say(message: str) -> None:
         print(message, flush=True)
@@ -148,7 +143,7 @@ async def run_search_evaluation(
         fake=fake,
         default_ratio=settings.search_semantic_ratio,
     )
-    names = "-".join(_slug(model.name) for model in run.models)
+    names = "-".join(slug(model.name) for model in run.models)
     path = output or cases / "search" / "reports" / f"{started:%Y-%m-%d}-{names}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render_search(run, query_set, info), encoding="utf-8")
@@ -212,11 +207,3 @@ def _backends(
         endpoint_of(str(settings.embedding_base_url)),
         f"Meilisearch at {endpoint_of(str(settings.meilisearch_url))}, a temporary index per model",
     )
-
-
-def _with_model(settings: Settings, model: str) -> Settings:
-    return settings.model_copy(update={"embedding_model": model})
-
-
-def _slug(name: str) -> str:
-    return re.sub(r"[^a-z0-9.]+", "-", name.casefold()).strip("-") or "model"

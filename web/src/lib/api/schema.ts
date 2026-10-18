@@ -1218,7 +1218,7 @@ export interface paths {
 		};
 		/**
 		 * The recognised text of a document
-		 * @description Needs read access. The text read from the archive, plain text as it is set (the pages apart by a form feed on a line of its own; a document parsed before 0.2 has Markdown until it is read again), in pieces of at most 20000 characters; continue with `next_offset`. 409 while the document has no text yet (it is not parsed).
+		 * @description Needs read access. The text read from the archive, plain text as it is set (the pages apart by a form feed on a line of its own; a document parsed before 0.2 has Markdown until it is read again), in pieces of at most `PAPIQ_MCP_TEXT_MAX` characters (20,000 unless configured); continue with `next_offset`. 409 while the document has no text yet (it is not parsed), 422 for a larger `limit`.
 		 */
 		get: operations['document_text_api_v1_documents__id__text_get'];
 		put?: never;
@@ -1632,7 +1632,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Send a test request
-		 * @description Sends a `webhook.test` request to the URL now, signed like any other, without repetition; works for a switched-off webhook too. The answer is the entry of the delivery log: `delivered` for a 2xx answer, else `gave_up` with status or error. At most 10 test requests per user and minute; beyond that `429` with `Retry-After`. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).
+		 * @description Sends a `webhook.test` request to the URL now, signed like any other, without repetition; works for a switched-off webhook too. The answer is the entry of the delivery log: `delivered` for a 2xx answer, else `gave_up` with status or error. At most 10 test requests per user in 60 seconds; beyond that `429` with `Retry-After`. Its owner, or an admin (who also changes, deletes and tests other users' webhooks and sees the secret only when renewing it). Other users' webhooks are not found (404).
 		 */
 		post: operations['test_webhook_api_v1_webhooks__id__test_post'];
 		delete?: never;
@@ -15006,8 +15006,8 @@ export interface operations {
 			query?: {
 				/** @description First character. */
 				offset?: number;
-				/** @description Characters. */
-				limit?: number;
+				/** @description Characters; without it, as many as one answer holds. */
+				limit?: number | null;
 			};
 			header?: never;
 			path: {

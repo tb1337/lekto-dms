@@ -61,7 +61,7 @@ async def api() -> AsyncIterator[Api]:
     container = build_memory_container(clock)
     services = build_services(container)
     builders.skip_classification(services.pipeline)
-    app = make_app(container, services, mcp=True, mcp_text_max=100)
+    app = make_app(container, services, mcp=True, text_max=100)
     async with running(app):
         transport = httpx2.ASGITransport(app=app)
         async with httpx2.AsyncClient(transport=transport, base_url="https://papiq") as client:

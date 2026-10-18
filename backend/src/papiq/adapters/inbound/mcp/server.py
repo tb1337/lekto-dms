@@ -284,8 +284,9 @@ def guarded[**P, R](tool: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]
     return run
 
 
-def build_server(context: ApiContext, *, text_max: int) -> MCPServer:
+def build_server(context: ApiContext) -> MCPServer:
     """The server with its five tools, on the services of `context`."""
+    text_max = context.text_max
     server = MCPServer("papiq", instructions=INSTRUCTIONS, version=__version__)
 
     @server.tool(

@@ -31,7 +31,7 @@ from papiq.adapters.inbound.rest.schemas.master_data import (
     TagOut,
     TagPatch,
 )
-from papiq.adapters.inbound.rest.upload import FILE_FIELD, read_upload
+from papiq.adapters.inbound.rest.upload import read_upload, upload_body
 from papiq.core.domain.documents import UNSET, Unset
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.identifiers import Identifier, IdentifierKind
@@ -207,27 +207,9 @@ async def attach_identifier(
 
 
 LOGO_PATH = f"{PREFIX}/contacts/{{id}}/logo"
-_LOGO_BODY = {
-    "requestBody": {
-        "required": True,
-        "content": {
-            "multipart/form-data": {
-                "schema": {
-                    "type": "object",
-                    "required": [FILE_FIELD],
-                    "properties": {
-                        FILE_FIELD: {
-                            "type": "string",
-                            "format": "binary",
-                            "description": "PNG, JPEG or WebP, recognised by content; at most "
-                            f"{LOGO_MAX_SIZE} bytes.",
-                        }
-                    },
-                }
-            }
-        },
-    }
-}
+_LOGO_BODY = upload_body(
+    f"PNG, JPEG or WebP, recognised by content; at most {LOGO_MAX_SIZE} bytes."
+)
 
 
 @contacts.put(

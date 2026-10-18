@@ -18,6 +18,7 @@ from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.pipeline import Node
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.services.objects import exchanges_key, original_key
+from tests import builders
 from tests.api import auth, issue_token
 from tests.builders import PASSWORD
 from tests.contracts.processing import SAMPLES
@@ -303,6 +304,28 @@ async def test_the_text_is_read_in_pieces(api: Api) -> None:
     assert (await api.client.get(f"{url}/text")).status_code == 401
     other = await api.user()
     assert (await api.client.get(f"{url}/text", headers=auth(other))).status_code == 404
+
+
+async def test_one_piece_of_text_holds_what_the_setting_allows() -> None:
+    """`PAPIQ_MCP_TEXT_MAX` limits a piece over REST as over MCP."""
+    container = build_memory_container()
+    services = build_services(container)
+    builders.skip_classification(services.pipeline)
+    app = make_app(container, services, text_max=4)
+    owner = await services.users.bootstrap_admin("root", PASSWORD)
+    assert owner is not None
+    await issue_token(services.auth, owner)
+    async with httpx2.AsyncClient(
+        transport=httpx2.ASGITransport(app=app), base_url="https://papiq"
+    ) as client:
+        response = await client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
+        while await services.pipeline.run_next_job():
+            pass
+        url = f"{response.json()['status_url']}/text"
+        piece = (await client.get(url, headers=auth(owner))).json()
+        too_long = await client.get(url, params={"limit": 5}, headers=auth(owner))
+    assert (len(piece["text"]), piece["next_offset"]) == (4, 4)
+    assert too_long.status_code == 422
 
 
 async def test_the_structure_is_served_as_stored(api: Api) -> None:

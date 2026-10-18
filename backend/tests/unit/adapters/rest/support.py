@@ -41,7 +41,7 @@ def make_app(
     cookie_secure: bool = True,
     recheck: timedelta = timedelta(seconds=30),
     mcp: bool = False,
-    mcp_text_max: int = 20_000,
+    text_max: int = builders.DEFAULT_SETTINGS.mcp_text_max,
     ui_directory: Path | None = None,
 ) -> FastAPI:
     """The app as `composition.api` builds it from the shipped settings, with what a test
@@ -52,9 +52,10 @@ def make_app(
         events_poll_interval=poll,
         cookie_secure=cookie_secure,
         stream_recheck_interval=recheck,
+        text_max=text_max,
         ui_directory=ui_directory,
     )
-    mounts = [McpEndpoint(context, path=f"{PREFIX}/mcp", text_max=mcp_text_max)] if mcp else []
+    mounts = [McpEndpoint(context, path=f"{PREFIX}/mcp")] if mcp else []
     return create_app(context, mounts)
 
 

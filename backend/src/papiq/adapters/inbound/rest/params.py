@@ -1,5 +1,6 @@
-"""Query parameters that several routes share: the filter of documents (`GET /documents`,
-`GET /documents/search`), the switch to every user's documents, and document counts."""
+"""Query parameters that routes share: the filter of documents (`GET /documents`,
+`GET /documents/search`), the switches to every user's documents and rules (`all_users`), and
+document counts."""
 
 from enum import StrEnum
 from typing import Annotated
@@ -70,6 +71,9 @@ AllDocuments = Annotated[
 ]
 CountAll = Annotated[
     bool, Query(description="Count every user's documents instead of the caller's reach (admins).")
+]
+AllRules = Annotated[
+    bool, Query(description="The rules of every user instead of the caller's (admins).")
 ]
 DocumentCounts = Annotated[
     bool, Query(description="Count the documents of each (`document_count`).")

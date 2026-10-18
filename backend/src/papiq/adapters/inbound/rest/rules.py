@@ -2,10 +2,11 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, Request, Response
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
+from papiq.adapters.inbound.rest.params import AllRules
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.rules import (
     ApplyPreviewItemOut,
@@ -62,9 +63,7 @@ async def list_rules(
     context: Context,
     scope: RuleScope | None = None,
     include_disabled: bool = True,
-    all_users: bool = Query(
-        default=False, description="The rules of every user instead of the caller's (admins)."
-    ),
+    all_users: AllRules = False,
 ) -> list[RuleOut]:
     rules = await context.rules.list(
         user, scope=scope, include_disabled=include_disabled, all_users=all_users

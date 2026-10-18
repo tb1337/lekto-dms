@@ -22,6 +22,7 @@ from papiq.core.domain.webhooks import (
 )
 from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from papiq.core.services.webhooks import CreatedWebhook
+from papiq.core.services.webhooks.policy import TEST_REQUESTS, TEST_WINDOW
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"], dependencies=PROTECTED)
 
@@ -286,7 +287,8 @@ async def list_deliveries(
         "Sends a `webhook.test` request to the URL now, signed like any other, without "
         "repetition; works for a switched-off webhook too. The answer is the entry of the "
         "delivery log: `delivered` for a 2xx answer, else `gave_up` with status or error. "
-        "At most 10 test requests per user and minute; beyond that `429` with `Retry-After`. " + WHO
+        f"At most {TEST_REQUESTS} test requests per user in {TEST_WINDOW.total_seconds():g} "
+        "seconds; beyond that `429` with `Retry-After`. " + WHO
     ),
     response_model=DeliveryOut,
     responses=problem_responses(401, 403, 404, 422, 429),

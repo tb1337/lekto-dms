@@ -3,6 +3,10 @@
 from dataclasses import dataclass
 from datetime import timedelta
 
+TEST_REQUESTS = 10
+TEST_WINDOW = timedelta(minutes=1)
+"""Test requests a user may send per window: they go out at once, to any address."""
+
 
 @dataclass(frozen=True, kw_only=True)
 class WebhookPolicy:
@@ -16,9 +20,8 @@ class WebhookPolicy:
     max_retry_delay: timedelta = timedelta(hours=1)
     disable_after: int  # deliveries given up in a row until the webhook is switched off
     timeout: timedelta  # per attempt
-    # Test requests a user may send per window (they go out at once, to any address).
-    test_requests: int = 10
-    test_window: timedelta = timedelta(minutes=1)
+    test_requests: int = TEST_REQUESTS
+    test_window: timedelta = TEST_WINDOW
 
     def __post_init__(self) -> None:
         if min(self.per_user, self.max_attempts, self.disable_after, self.test_requests) < 1:

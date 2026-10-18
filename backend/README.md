@@ -827,7 +827,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result and the differences |
 | `POST /documents/{id}/move` | Into another space (owner, or an admin without read access) |
 | `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
-| `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit`; `409` while not parsed |
+| `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit` (at most `PAPIQ_MCP_TEXT_MAX`, the default); `409` while not parsed |
 | `GET /documents/{id}/files` | The files as stored (read access): when the document was added and changed, its original's name and type, and for the original and the archive (null while there is none) size, SHA-256 and metadata: a PDF's version, PDF/A level, pages, document information and XMP; an image's format, size, resolution and EXIF |
 | `GET /documents/{id}/facts` | What the document shows of its contacts (read access): names and identifiers with the contact they belong to now and their spans in the text (characters, as `/text` counts them); the codes on its pages, each once for its format and text, with the pages and boxes where it stands (a box per copy), the GiroCode read, their identifiers and the amount fields of the same value; for admins, on the documents of how many other contacts an identifier stands; `409` while not parsed |
 | `GET /documents/{id}/log` | Processing log (owner or admin) |
@@ -1125,7 +1125,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_WEBHOOK_DISABLE_AFTER` | Worker | `20` | Deliveries given up in a row until a webhook is switched off |
 | `PAPIQ_WEBHOOK_CONCURRENCY` | Worker | `4` | Deliveries at the same time |
 | `PAPIQ_MCP_ENABLED` | API | `true` | Serve MCP at `/api/v1/mcp` |
-| `PAPIQ_MCP_TEXT_MAX` | API | `20000` | Characters one `get_text` call returns at most (1,000 to 1,000,000) |
+| `PAPIQ_MCP_TEXT_MAX` | API | `20000` | Characters one `get_text` call and one piece of `GET /documents/{id}/text` return at most (1,000 to 1,000,000) |
 | `PAPIQ_WORKER_CONCURRENCY` | Worker | `2` | Jobs at the same time, see Worker |
 | `PAPIQ_WORKER_POLL_INTERVAL` | Worker | `1` | Seconds between looks for due jobs |
 | `PAPIQ_WORKER_SHUTDOWN_TIMEOUT` | Worker | `30` | Seconds running jobs get to finish on SIGTERM |

@@ -51,7 +51,7 @@ from papiq.adapters.inbound.rest.schemas.inbox import (
     InboxPage,
     ReviewOut,
 )
-from papiq.adapters.inbound.rest.upload import FILE_FIELD, read_upload
+from papiq.adapters.inbound.rest.upload import read_upload, upload_body
 from papiq.adapters.inbound.schemas import RuleReportOut
 from papiq.core.domain.classification import CHANGE_FIELDS, SPACE, field_key
 from papiq.core.domain.documents import UNSET, Channel, Document, DocumentChanges
@@ -101,59 +101,42 @@ METADATA_FIELD = "metadata"
 METADATA_LIMIT = 48 * 1024  # bytes of the metadata field
 
 
-_UPLOAD_BODY: dict[str, Any] = {
-    "requestBody": {
-        "required": True,
-        "content": {
-            "multipart/form-data": {
-                "schema": {
-                    "type": "object",
-                    "required": [FILE_FIELD],
-                    "properties": {
-                        FILE_FIELD: {
-                            "type": "string",
-                            "format": "binary",
-                            "description": "PDF, JPEG, PNG or TIFF; recognised by content.",
-                        },
-                        SPACE_FIELD: {
-                            "type": "string",
-                            "format": "uuid",
-                            "description": "Target space; default: the owner's default space.",
-                        },
-                        CHANNEL_FIELD: {
-                            "type": "string",
-                            "enum": [Channel.MIGRATION.value],
-                            "description": (
-                                "The intake channel, for rules. Default: `web` with a session, "
-                                "`api` with an API token; `migration` for imports from another "
-                                "system."
-                            ),
-                        },
-                        OWNER_FIELD: {
-                            "type": "string",
-                            "format": "uuid",
-                            "description": (
-                                "Admins only: the active user who owns the document. Default: "
-                                "the caller. The duplicate check, the default space and the "
-                                "write access to `space_id` are the owner's."
-                            ),
-                        },
-                        METADATA_FIELD: {
-                            "type": "string",
-                            "description": (
-                                "Admins only, with `channel=migration`: JSON of the metadata "
-                                "the document comes with (up to 48 KiB), as `ImportedMetadataIn`. "
-                                "Classification and field extraction apply it instead of "
-                                "asking the language model; the other nodes and the rules run "
-                                "as usual."
-                            ),
-                        },
-                    },
-                }
-            }
+_UPLOAD_BODY = upload_body(
+    "PDF, JPEG, PNG or TIFF; recognised by content.",
+    **{
+        SPACE_FIELD: {
+            "type": "string",
+            "format": "uuid",
+            "description": "Target space; default: the owner's default space.",
         },
-    }
-}
+        CHANNEL_FIELD: {
+            "type": "string",
+            "enum": [Channel.MIGRATION.value],
+            "description": (
+                "The intake channel, for rules. Default: `web` with a session, `api` with an "
+                "API token; `migration` for imports from another system."
+            ),
+        },
+        OWNER_FIELD: {
+            "type": "string",
+            "format": "uuid",
+            "description": (
+                "Admins only: the active user who owns the document. Default: the caller. The "
+                "duplicate check, the default space and the write access to `space_id` are the "
+                "owner's."
+            ),
+        },
+        METADATA_FIELD: {
+            "type": "string",
+            "description": (
+                "Admins only, with `channel=migration`: JSON of the metadata the document comes "
+                f"with (up to {METADATA_LIMIT // 1024} KiB), as `ImportedMetadataIn`. "
+                "Classification and field extraction apply it instead of asking the language "
+                "model; the other nodes and the rules run as usual."
+            ),
+        },
+    },
+)
 
 
 @router.post(
@@ -426,19 +409,15 @@ async def _download(
     )
 
 
-TEXT_MAX = 20_000
-"""Characters of text one answer holds at most."""
-
-
 @router.get(
     "/{id}/text",
     summary="The recognised text of a document",
     description=(
         "Needs read access. The text read from the archive, plain text as it is set (the "
         "pages apart by a form feed on a line of its own; a document parsed before 0.2 has "
-        "Markdown until it is read again), in pieces of at most "
-        f"{TEXT_MAX} characters; continue with `next_offset`. 409 while the document has no "
-        "text yet (it is not parsed)."
+        "Markdown until it is read again), in pieces of at most `PAPIQ_MCP_TEXT_MAX` "
+        "characters (20,000 unless configured); continue with `next_offset`. 409 while the "
+        "document has no text yet (it is not parsed), 422 for a larger `limit`."
     ),
     response_model=DocumentTextOut,
     responses=problem_responses(401, 404, 409, 422),
@@ -448,8 +427,14 @@ async def document_text(
     user: CurrentUser,
     context: Context,
     offset: Annotated[int, Query(ge=0, description="First character.")] = 0,
-    limit: Annotated[int, Query(ge=1, le=TEXT_MAX, description="Characters.")] = TEXT_MAX,
+    limit: Annotated[
+        int | None, Query(ge=1, description="Characters; without it, as many as one answer holds.")
+    ] = None,
 ) -> DocumentTextOut:
+    if limit is None:
+        limit = context.text_max
+    elif limit > context.text_max:
+        raise ValidationError(f"limit is at most {context.text_max} characters")
     piece = await context.documents.read_text(user, DocumentId(id), offset=offset, limit=limit)
     return DocumentTextOut(
         text=piece.text,

@@ -59,11 +59,7 @@ def build_app(
     """The API with, if enabled, the MCP endpoint below its prefix."""
     services = services or build_services(container, settings)
     context = api_context(container, settings, services)
-    mounts = (
-        [McpEndpoint(context, path=f"{PREFIX}/mcp", text_max=settings.mcp_text_max)]
-        if settings.mcp_enabled
-        else []
-    )
+    mounts = [McpEndpoint(context, path=f"{PREFIX}/mcp")] if settings.mcp_enabled else []
     return create_app(context, mounts)
 
 
@@ -93,6 +89,7 @@ def api_context(container: Container, settings: Settings, services: Services) ->
         max_upload_size=int(settings.upload_max_size),
         max_request_size=int(settings.request_max_size),
         events_poll_interval=settings.events_poll_interval,
+        text_max=settings.mcp_text_max,
         ui_directory=settings.ui_dir,
     )
 

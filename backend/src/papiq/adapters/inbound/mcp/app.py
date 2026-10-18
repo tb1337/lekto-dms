@@ -70,9 +70,9 @@ class McpEndpoint:
     """The server, ready to be added to the API: `routes` for the two spellings of its path,
     `run()` around the app's lifetime."""
 
-    def __init__(self, context: ApiContext, *, path: str, text_max: int) -> None:
+    def __init__(self, context: ApiContext, *, path: str) -> None:
         self._path = path
-        server = build_server(context, text_max=text_max)
+        server = build_server(context)
         asgi = server.streamable_http_app(
             streamable_http_path=path,
             json_response=True,

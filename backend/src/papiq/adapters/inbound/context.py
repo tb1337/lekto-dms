@@ -54,6 +54,8 @@ class ApiContext:
     # With a classifier; without, its endpoints answer 503.
     classifier: ClassifierService | None = None
     events_poll_interval: timedelta
+    # Characters of a document's text one answer holds at most (REST `/text`, MCP `get_text`).
+    text_max: int
     # `False` only for development over plain HTTP: cookies without `Secure`.
     cookie_secure: bool
     # Event streams check every so often that their session or token is still valid.

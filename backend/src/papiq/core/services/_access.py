@@ -131,22 +131,11 @@ async def checked_changes(
     tree = TagTree.of(await uow.tags.list_all())
     if not isinstance(changes.tag_ids, Unset):
         for id in changes.tag_ids:
-            tag = tree.get(id)
-            if tag.scope is not TagScope.DOCUMENT:
-                raise ValidationError(f"'{tag.name}' is a {_SCOPES[tag.scope]}, not a document tag")
+            tree.require(id, TagScope.DOCUMENT)
         changes = replace(changes, tag_ids=tree.normalise(changes.tag_ids))
     if not isinstance(changes.topic_id, Unset) and changes.topic_id is not None:
-        topic = tree.get(changes.topic_id)
-        if topic.scope is not TagScope.TOPIC:
-            raise ValidationError(f"'{topic.name}' is no topic")
+        tree.require(changes.topic_id, TagScope.TOPIC)
     return await _fitted_topic(uow, changes, document, actor)
-
-
-_SCOPES = {
-    TagScope.CONTACT: "contact group",
-    TagScope.DOCUMENT_TYPE: "document type group",
-    TagScope.TOPIC: "topic",
-}
 
 
 async def _fitted_topic(

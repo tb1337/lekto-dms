@@ -62,6 +62,11 @@ class TagScope(StrEnum):
     TOPIC = "topic"
 
     @property
+    def label(self) -> str:
+        """The scope as messages name its tags."""
+        return _SCOPE_LABELS[self]
+
+    @property
     def is_group(self) -> bool:
         """Whether its tags group contacts or document types: static, set by hand only, and
         inherited by documents through their contact and type."""
@@ -77,6 +82,14 @@ class TagScope(StrEnum):
         """Whether a new tag of the scope is shown at documents unless told otherwise: groups
         are not, document tags and topics are."""
         return not self.is_group
+
+
+_SCOPE_LABELS = {
+    TagScope.DOCUMENT: "document tag",
+    TagScope.CONTACT: "contact group",
+    TagScope.DOCUMENT_TYPE: "document type group",
+    TagScope.TOPIC: "topic",
+}
 
 
 @dataclass(kw_only=True)

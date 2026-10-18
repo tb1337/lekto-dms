@@ -49,6 +49,14 @@ class TagTree:
         except KeyError:
             raise NotFoundError("tag", id) from None
 
+    def require(self, id: TagId, scope: TagScope) -> Tag:
+        """The tag, which a place takes of `scope` only: NotFoundError if there is no such tag,
+        ValidationError if it is of another scope."""
+        tag = self.get(id)
+        if tag.scope is not scope:
+            raise ValidationError(f"'{tag.name}' is a {tag.scope.label}, not a {scope.label}")
+        return tag
+
     def of_scope(self, scope: TagScope) -> list[Tag]:
         """The tags of `scope`, in the order of the tree: each after its parent, siblings by
         name."""

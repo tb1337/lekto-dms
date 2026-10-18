@@ -50,7 +50,7 @@ async def test_a_contact_enables_topics_and_its_identifiers_point_to_them(world:
     # A topic and one below it are both enabled: a document may carry either.
     assert contact.topic_ids == {work.id, insurance.id, health.id}
     assert contact.identifiers == [number]
-    with pytest.raises(ValidationError, match="no topic"):
+    with pytest.raises(ValidationError, match="not a topic"):
         await service.change_contact(admin.id, contact.id, topic_ids=[tag.id])
     with pytest.raises(NotFoundError):
         await service.change_contact(admin.id, contact.id, topic_ids=[TagId(new_id())])

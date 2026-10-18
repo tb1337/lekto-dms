@@ -35,6 +35,7 @@ from papiq.core.domain.rules import (
     SetTitle,
     check_fields,
 )
+from papiq.core.domain.tag_tree import TagTree
 from papiq.core.domain.templates import (
     FIELD,
     NAMES,
@@ -234,16 +235,11 @@ async def check_references(
     for document_type in references.document_types:
         await uow.document_types.get(document_type)
     if references.tags:
-        tags = {tag.id: tag for tag in await uow.tags.list_all()}
+        tree = TagTree.of(await uow.tags.list_all())
         for id in references.tags:
-            if id not in tags:
-                raise NotFoundError("tag", id)
+            tree.get(id)
         for id, scope in references.tag_scopes:
-            if tags[id].scope is not scope:
-                raise ValidationError(
-                    f"'{tags[id].name}' is a tag of scope {tags[id].scope}, where a tag of "
-                    f"scope {scope} belongs"
-                )
+            tree.require(id, scope)
     if references.fields:
         fields = {field.id: field for field in await uow.fields.list_all()}
         for field_id in references.fields:

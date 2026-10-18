@@ -389,7 +389,7 @@ async def test_rules_take_tags_of_the_scope_their_place_asks_for(world: World) -
         definition("C", on(ConditionField.DOCUMENT_TYPE_GROUP, group.id), add_tags(tag.id)),
         definition("D", channel_api(), add_tags(kinds.id)),
     ):
-        with pytest.raises(ValidationError, match="scope"):
+        with pytest.raises(ValidationError, match=r"is a .*, not a "):
             await r.user_rule(owner, wrong)
     await r.user_rule(
         owner, definition("E", on(ConditionField.DOCUMENT_TYPE_GROUP, kinds.id), add_tags(tag.id))

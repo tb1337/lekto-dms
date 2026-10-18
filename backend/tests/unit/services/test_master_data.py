@@ -404,7 +404,7 @@ async def test_contacts_and_types_are_in_groups_of_their_scope(world: World) -> 
     }
     kind = await service.create_document_type(admin.id, "Invoice", group_ids=[bills.id])
     assert kind.group_ids == {bills.id}
-    with pytest.raises(ValidationError, match="document_type group"):
+    with pytest.raises(ValidationError, match="not a document type group"):
         await service.change_document_type(admin.id, kind.id, group_ids=[insurer.id])
     assert (await service.change_document_type(admin.id, kind.id, group_ids=[])).group_ids == (
         frozenset()

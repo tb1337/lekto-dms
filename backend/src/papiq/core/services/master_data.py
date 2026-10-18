@@ -1010,9 +1010,7 @@ async def _groups(uow: UnitOfWork, ids: Collection[TagId], scope: TagScope) -> f
         return frozenset()
     tree = TagTree.of(await uow.tags.list_all())
     for id in ids:
-        tag = tree.get(id)
-        if tag.scope is not scope:
-            raise ValidationError(f"'{tag.name}' is no {scope} group")
+        tree.require(id, scope)
     return tree.normalise(ids)
 
 
@@ -1024,9 +1022,7 @@ async def _topics(uow: UnitOfWork, ids: Collection[TagId]) -> frozenset[TagId]:
         return frozenset()
     tree = TagTree.of(await uow.tags.list_all())
     for id in ids:
-        tag = tree.get(id)
-        if tag.scope is not TagScope.TOPIC:
-            raise ValidationError(f"'{tag.name}' is no topic")
+        tree.require(id, TagScope.TOPIC)
     return frozenset(ids)
 
 

@@ -15,7 +15,7 @@ from papiq.core.services.maintenance import CLEANUP_JOB, REMOVE_FILES_JOB, Maint
 from papiq.core.services.objects import derivative_keys, original_key
 from tests import builders
 from tests.builders import PASSWORD, incoming
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 INTERVAL = timedelta(hours=1)
 RETENTION = timedelta(days=7)

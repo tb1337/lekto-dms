@@ -22,7 +22,6 @@ from papiq.core.domain.rules import (
 )
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.services.documents import MetadataChange
-from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (
     Classifies,
     add_tags,
@@ -33,6 +32,7 @@ from tests.unit.services.rules_support import (
     has_tag,
     rule_world,
 )
+from tests.unit.services.support import World
 
 CHANGE = (Trigger.CHANGE,)
 

@@ -3,7 +3,7 @@
 from papiq.core.ports.repository import DocumentFilter
 from papiq.core.services._pages import document_pages
 from tests import builders
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 
 async def test_every_document_once_a_page_at_a_time(world: World) -> None:

@@ -35,7 +35,7 @@ from papiq.core.services.objects import logo_key
 from tests import builders
 from tests.builders import NOW
 from tests.contracts.images import SVG, image
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 PNG = image((200, 100))
 

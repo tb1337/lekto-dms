@@ -17,7 +17,7 @@ from papiq.core.services.classification.signals import FactsResult, FactsSignal
 from papiq.core.services.nodes import OcrNode
 from papiq.core.services.objects import archive_key, codes_key, original_key
 from tests import builders
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 from tests.unit.services.test_signals import contacts, stored
 
 GIRO_IBAN = "DE89370400440532013000"

@@ -2,7 +2,6 @@
 
 from collections.abc import AsyncIterator
 from dataclasses import replace
-from urllib.parse import parse_qs, urlsplit
 
 import httpx2
 import pytest
@@ -10,6 +9,7 @@ import pytest
 from papiq.adapters.inbound.rest import PREFIX
 from papiq.adapters.outbound.memory import FakeOidcProvider, ManualClock
 from papiq.composition.container import build_memory_container, build_services
+from papiq.core.domain.encoding import query_parameters
 from papiq.core.domain.errors import AuthenticationError
 from papiq.core.domain.identity import ExternalIdentity
 from papiq.core.domain.ids import UserId
@@ -34,7 +34,7 @@ async def oidc_api() -> AsyncIterator[tuple[Api, FakeOidcProvider]]:
 
 
 def state(url: str) -> str:
-    return parse_qs(urlsplit(url).query)["state"][0]
+    return query_parameters(url)["state"]
 
 
 async def link(api: Api, subject: str, user_id: UserId) -> None:

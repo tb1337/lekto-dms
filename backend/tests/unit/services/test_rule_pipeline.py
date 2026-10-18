@@ -33,7 +33,6 @@ from papiq.core.services.rules.running import (
     run_rules,
 )
 from tests.builders import TEMPLATES
-from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (
     Classifies,
     Titles,
@@ -48,6 +47,7 @@ from tests.unit.services.rules_support import (
     rule_world,
     text_matches,
 )
+from tests.unit.services.support import World
 
 CHANGE = (Trigger.CHANGE,)
 

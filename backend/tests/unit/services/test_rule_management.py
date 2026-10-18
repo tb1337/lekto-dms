@@ -26,8 +26,8 @@ from papiq.core.domain.rules import (
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.services.rules import RuleService
 from tests.builders import TEMPLATES
-from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import channel_api, definition, rule_world, text_matches
+from tests.unit.services.support import World
 
 
 async def test_user_rules_are_their_owners_and_global_rules_the_admins(world: World) -> None:

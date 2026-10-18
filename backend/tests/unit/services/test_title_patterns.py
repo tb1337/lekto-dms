@@ -10,7 +10,6 @@ from papiq.core.domain.fields import FieldType
 from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.rules import Rule, SetTitle
 from papiq.core.domain.users import User
-from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (
     Classifies,
     RuleWorld,
@@ -20,6 +19,7 @@ from tests.unit.services.rules_support import (
     notes,
     rule_world,
 )
+from tests.unit.services.support import World
 
 
 async def rule_notes(world: World, owner: User, document: Document) -> list[tuple[str, str]]:

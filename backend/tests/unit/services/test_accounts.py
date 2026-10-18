@@ -16,7 +16,7 @@ from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import Role
 from tests import builders
 from tests.builders import NOW, PASSWORD
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 NEW_PASSWORD = "another long passphrase"
 

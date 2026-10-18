@@ -11,7 +11,7 @@ from papiq.core.domain.ids import SpaceId, UserId, new_id
 from papiq.core.domain.spaces import DEFAULT_SPACE_NAME, ShareLevel
 from papiq.core.domain.users import Role
 from tests.builders import incoming
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 
 async def test_admin_creates_user_with_default_space(world: World) -> None:

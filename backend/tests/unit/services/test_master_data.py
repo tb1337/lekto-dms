@@ -27,7 +27,7 @@ from papiq.core.services import master_data
 from papiq.core.services.master_data import learn_alias, replace_learned_identifiers
 from tests import builders
 from tests.builders import incoming
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 SUGGEST = builders.DEFAULT_SETTINGS.contact_suggest_threshold
 

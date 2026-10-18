@@ -19,7 +19,7 @@ from papiq.core.services.objects import text_key
 from papiq.core.services.pipeline import PipelineService
 from tests import builders
 from tests.builders import incoming
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 
 class BrokenEmbeddings:

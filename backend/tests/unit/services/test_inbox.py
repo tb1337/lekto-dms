@@ -26,7 +26,7 @@ from papiq.core.domain.users import Role, User
 from papiq.core.services.inbox import OpenNode, decide, field_checks
 from papiq.core.services.pipeline import MetadataResult, PipelineService
 from tests.builders import FAILED, NOW, Returns, document, incoming
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 UNSURE = "not shown in the text"
 OK = NodeResult(outcome=Outcome.OK)

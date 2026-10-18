@@ -22,7 +22,7 @@ from papiq.core.ports.identity import PasswordHasher
 from papiq.core.services.auth import AuthService
 from tests import builders
 from tests.builders import PASSWORD
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 NEW_PASSWORD = "another long passphrase"
 SOURCE = "203.0.113.1"

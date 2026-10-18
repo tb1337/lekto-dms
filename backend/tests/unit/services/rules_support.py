@@ -40,7 +40,7 @@ from papiq.core.services.rules.changes import ChangeRules
 from papiq.core.services.rules.nodes import ApplyRulesNode, FileNode
 from papiq.core.services.rules.retroactive import RuleApplicationService
 from tests.builders import TEMPLATES, incoming
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 MAX_TEXT = 10_000
 MAX_DOCUMENTS = 100

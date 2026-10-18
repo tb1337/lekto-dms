@@ -10,7 +10,6 @@ from papiq.core.domain.rules import ApplicationStatus, ForceReview, SetSpace, Se
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.services.rules.retroactive import BATCH
 from tests import builders
-from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (
     MAX_DOCUMENTS,
     Classifies,
@@ -23,6 +22,7 @@ from tests.unit.services.rules_support import (
     rule_world,
     text_matches,
 )
+from tests.unit.services.support import World
 
 
 async def run_jobs(r: RuleWorld) -> int:

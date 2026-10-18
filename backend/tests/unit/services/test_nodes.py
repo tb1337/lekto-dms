@@ -24,7 +24,7 @@ from papiq.core.services.objects import (
 )
 from papiq.core.services.pipeline import PipelineService
 from tests.builders import SAMPLES, incoming
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 
 class NotPdfa(FakeOcr):

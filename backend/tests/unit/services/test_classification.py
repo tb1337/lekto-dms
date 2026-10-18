@@ -47,7 +47,7 @@ from papiq.core.services.pipeline import MetadataResult, NodeExecutor
 from papiq.core.services.rules.nodes import ApplyRulesNode
 from tests import builders
 from tests.builders import NOW, PlaceholderNode, incoming
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 INVOICE = """\
 # Stadtwerke Musterstadt GmbH

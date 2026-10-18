@@ -17,7 +17,7 @@ from papiq.core.domain.webhooks import DISABLED_FAILING, new_secret
 from papiq.core.services.webhooks import WebhookService
 from papiq.core.services.webhooks.management import secret_context
 from tests import builders
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 URL = "http://n8n.lan:5678/webhook/papiq"
 

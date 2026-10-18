@@ -30,7 +30,6 @@ from papiq.core.services.indexing import (
 )
 from tests import builders
 from tests.builders import HOUR, NOW, UNCERTAIN, Returns, incoming, index_document
-from tests.unit.services.conftest import World
 from tests.unit.services.search_support import (
     BrokenEmbeddings,
     HookedIndex,
@@ -39,6 +38,7 @@ from tests.unit.services.search_support import (
     index_jobs,
     run_due,
 )
+from tests.unit.services.support import World
 
 OK = Outcome.OK
 

@@ -8,7 +8,6 @@ from papiq.core.domain.rule_planner import Note, NoteKind
 from papiq.core.domain.rules import ForceReview, RemoveTags, SetSpace, Trigger
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.services.pipeline import MetadataResult
-from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import (
     channel_api,
     contact_is,
@@ -17,6 +16,7 @@ from tests.unit.services.rules_support import (
     notes,
     rule_world,
 )
+from tests.unit.services.support import World
 
 CHANGE = (Trigger.CHANGE,)
 INGEST = (Trigger.INGEST,)

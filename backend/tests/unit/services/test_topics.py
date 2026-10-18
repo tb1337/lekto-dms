@@ -10,7 +10,7 @@ from papiq.core.domain.master_data import Contact, Tag, TagScope
 from papiq.core.domain.users import Role, User
 from papiq.core.ports.repository import CountBy, DocumentFilter
 from tests.builders import incoming
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 TOPIC = TagScope.TOPIC
 

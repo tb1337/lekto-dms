@@ -13,8 +13,8 @@ from papiq.core.ports.repository import CountBy, DocumentFilter
 from papiq.core.services._tags import matches
 from papiq.core.services.search import SearchService
 from tests import builders
-from tests.unit.services.conftest import World
 from tests.unit.services.search_support import Setup
+from tests.unit.services.support import World
 
 
 @dataclass

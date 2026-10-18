@@ -25,8 +25,8 @@ from papiq.core.ports.search_index import SearchQuery, SearchResult
 from papiq.core.services.search import SearchPolicy, SearchService
 from tests import builders
 from tests.builders import UNCERTAIN, Returns
-from tests.unit.services.conftest import World
 from tests.unit.services.search_support import BrokenEmbeddings, Setup
+from tests.unit.services.support import World
 
 
 @dataclass

@@ -33,7 +33,7 @@ from papiq.core.ports.webhook_sender import WebhookRequest
 from papiq.core.services.webhooks import DELIVER_JOB, WebhookDeliveryService
 from tests import builders
 from tests.builders import NOW
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 URL = "http://n8n.lan:5678/webhook/papiq"
 

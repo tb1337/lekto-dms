@@ -11,6 +11,7 @@ from papiq.adapters.outbound.crypto import (
     PyotpTotp,
     decode_key,
 )
+from papiq.core.domain.encoding import base64url
 from papiq.core.ports.identity import DecryptionError
 from tests.contracts.identity import PasswordHasherContract, SecretCipherContract, TotpContract
 
@@ -73,7 +74,7 @@ def test_every_encryption_uses_a_new_nonce() -> None:
 def test_keys_are_32_bytes_of_base64() -> None:
     key = bytes(range(32))
     assert decode_key(base64.b64encode(key).decode()) == key
-    assert decode_key(base64.urlsafe_b64encode(key).decode().rstrip("=")) == key
+    assert decode_key(base64url(key)) == key
     for bad in ("", "not base64!", base64.b64encode(bytes(16)).decode()):
         with pytest.raises(ValueError):
             decode_key(bad)

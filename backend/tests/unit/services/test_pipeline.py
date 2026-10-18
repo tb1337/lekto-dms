@@ -50,7 +50,7 @@ from papiq.core.services.pipeline import (
 )
 from tests import builders
 from tests.builders import FAILED, NOW, SAMPLES, UNCERTAIN, PlaceholderNode, Returns, incoming
-from tests.unit.services.conftest import Raises, World
+from tests.unit.services.support import Raises, World
 
 PDF = b"%PDF-1.7 invoice"
 
@@ -106,8 +106,8 @@ async def test_receive_stores_original_document_events_and_job(world: World) -> 
     assert {first.kind, second.kind} == {NODE_JOB}
     payloads = sorted([first.payload, second.payload], key=lambda payload: str(payload["node"]))
     assert payloads == [
-        {"document_id": str(document.id), "node": "ocr", "run": 1},
-        {"document_id": str(document.id), "node": "pages", "run": 1},
+        {"document_id": str(document.id), "node": Node.OCR.value, "run": 1},
+        {"document_id": str(document.id), "node": Node.PAGES.value, "run": 1},
     ]
 
 

@@ -27,7 +27,7 @@ from papiq.core.services.classification.signals import (
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.objects import text_key
 from tests import builders
-from tests.unit.services.conftest import World
+from tests.unit.services.support import World
 
 THEIR_IBAN = "DE89 3704 0044 0532 0130 00"
 OTHER_IBAN = "DE02 1203 0000 0000 2020 51"

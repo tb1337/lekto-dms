@@ -1,13 +1,13 @@
 """Search: `GET /documents/search` (words and meaning in one call) and `POST /search/reindex`."""
 
 from typing import Annotated, Literal
-from uuid import UUID
 
 from fastapi import APIRouter, Query, Response
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
-from papiq.adapters.inbound.rest.documents import DocumentSort, LaneFilter, document_filter
+from papiq.adapters.inbound.rest.documents import DocumentSort
+from papiq.adapters.inbound.rest.params import AllDocuments, Filter
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails
 from papiq.adapters.inbound.rest.schemas.search import (
@@ -42,15 +42,7 @@ async def search_documents(
     user: CurrentUser,
     context: Context,
     q: Annotated[str, Query(min_length=1, max_length=500, description="What to look for.")],
-    contact_id: UUID | None = None,
-    document_type_id: UUID | None = None,
-    tag_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
-    space_id: UUID | None = None,
-    lane: Annotated[list[LaneFilter] | None, Query(max_length=4)] = None,
-    field_id: UUID | None = None,
-    contact_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
-    document_type_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
-    topic_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
+    filter: Filter,
     sort: Annotated[
         DocumentSort | Literal["relevance"], Query(description="`relevance` or a key.")
     ] = "relevance",
@@ -65,26 +57,14 @@ async def search_documents(
             "only. Default: the installation's setting.",
         ),
     ] = None,
-    all_users: Annotated[
-        bool, Query(description="Every user's documents instead of the caller's reach (admins).")
-    ] = False,
+    all_users: AllDocuments = False,
 ) -> SearchResultPage:
     if context.search is None:
         raise SearchUnavailableError("search is not configured")
     page = await context.search.search(
         user,
         q,
-        document_filter(
-            contact_id,
-            document_type_id,
-            tag_id,
-            space_id,
-            lane,
-            field_id,
-            contact_group_id,
-            document_type_group_id,
-            topic_id,
-        ),
+        filter,
         offset=offset,
         limit=limit,
         semantic_ratio=semantic_ratio,

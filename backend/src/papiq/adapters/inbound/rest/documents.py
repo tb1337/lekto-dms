@@ -23,6 +23,7 @@ from starlette.background import BackgroundTask
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, Authenticated, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
+from papiq.adapters.inbound.rest.params import AllDocuments, Filter
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.documents import (
     DocumentAccepted,
@@ -66,29 +67,15 @@ from papiq.core.domain.ids import (
     UserId,
 )
 from papiq.core.domain.imports import ImportedMetadata
-from papiq.core.domain.pipeline import Lane, Node
+from papiq.core.domain.pipeline import Node
 from papiq.core.domain.spaces import ShareLevel
-from papiq.core.ports import DocumentFilter, DocumentOrder, SortKey
+from papiq.core.ports import DocumentOrder, SortKey
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE
 from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
 from papiq.core.services.documents import DocumentFile, MetadataChange
 
 router = APIRouter(prefix="/documents", tags=["documents"], dependencies=PROTECTED)
 inbox = APIRouter(prefix="/inbox", tags=["inbox"], dependencies=PROTECTED)
-
-
-class LaneFilter(StrEnum):
-    """A lane, or `processing`: documents that have no lane yet."""
-
-    GREEN = "green"
-    YELLOW = "yellow"
-    RED = "red"
-    PROCESSING = "processing"
-
-
-_LANES: dict[LaneFilter, Lane | None] = {LaneFilter(lane): lane for lane in Lane} | {
-    LaneFilter.PROCESSING: None
-}
 
 
 class DocumentSort(StrEnum):
@@ -112,37 +99,6 @@ CHANNEL_FIELD = "channel"
 OWNER_FIELD = "owner"
 METADATA_FIELD = "metadata"
 METADATA_LIMIT = 48 * 1024  # bytes of the metadata field
-
-
-def document_filter(
-    contact_id: UUID | None,
-    document_type_id: UUID | None,
-    tag_id: list[UUID] | None,
-    space_id: UUID | None,
-    lane: list[LaneFilter] | None,
-    field_id: UUID | None = None,
-    contact_group_id: list[UUID] | None = None,
-    document_type_group_id: list[UUID] | None = None,
-    topic_id: list[UUID] | None = None,
-) -> DocumentFilter:
-    """The query parameters of the document list as a filter (also used by the search). Each
-    tag or group is one set, the topics one more (a document has one topic: one of them); the
-    service adds the tags below them."""
-
-    def sets(ids: list[UUID] | None) -> tuple[frozenset[TagId], ...]:
-        return tuple(frozenset({TagId(id)}) for id in dict.fromkeys(ids or ()))
-
-    return DocumentFilter(
-        contact=None if contact_id is None else ContactId(contact_id),
-        document_type=None if document_type_id is None else DocumentTypeId(document_type_id),
-        tags=sets(tag_id),
-        contact_groups=sets(contact_group_id),
-        document_type_groups=sets(document_type_group_id),
-        topics=frozenset(TagId(id) for id in topic_id) if topic_id else None,
-        space=None if space_id is None else SpaceId(space_id),
-        lanes=None if not lane else frozenset(_LANES[item] for item in lane),
-        field=None if field_id is None else FieldId(field_id),
-    )
 
 
 _UPLOAD_BODY: dict[str, Any] = {
@@ -284,33 +240,12 @@ async def upload(
 async def list_documents(
     user: CurrentUser,
     context: Context,
-    contact_id: UUID | None = None,
-    document_type_id: UUID | None = None,
-    tag_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
-    space_id: UUID | None = None,
-    lane: Annotated[list[LaneFilter] | None, Query(max_length=4)] = None,
-    field_id: UUID | None = None,
-    contact_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
-    document_type_group_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
-    topic_id: Annotated[list[UUID] | None, Query(max_length=50)] = None,
+    filter: Filter,
     sort: DocumentSort = DocumentSort.CREATED_DESC,
     limit: Annotated[int, Query(ge=1, le=PAGE_LIMIT)] = PAGE_SIZE,
     cursor: Annotated[str | None, Query(max_length=64, description="`next_cursor`.")] = None,
-    all_users: Annotated[
-        bool, Query(description="Every user's documents instead of the caller's reach (admins).")
-    ] = False,
+    all_users: AllDocuments = False,
 ) -> DocumentPage:
-    filter = document_filter(
-        contact_id,
-        document_type_id,
-        tag_id,
-        space_id,
-        lane,
-        field_id,
-        contact_group_id,
-        document_type_group_id,
-        topic_id,
-    )
     views = await context.documents.query(
         user,
         filter,
@@ -743,9 +678,7 @@ async def list_inbox(
     context: Context,
     limit: Annotated[int, Query(ge=1, le=PAGE_LIMIT)] = PAGE_SIZE,
     cursor: Annotated[str | None, Query(max_length=64, description="`next_cursor`.")] = None,
-    all_users: Annotated[
-        bool, Query(description="Every user's documents instead of the caller's reach (admins).")
-    ] = False,
+    all_users: AllDocuments = False,
 ) -> InboxPage:
     items = await context.documents.inbox(
         user, before=_decode_cursor(cursor), limit=limit, all_users=all_users

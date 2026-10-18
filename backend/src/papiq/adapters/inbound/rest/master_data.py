@@ -3,14 +3,15 @@ admins change them. Deleting works only for what nothing uses."""
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Annotated, Any, cast
+from typing import Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import ApiContext, Context
+from papiq.adapters.inbound.rest.params import CountAll, DocumentCounts
 from papiq.adapters.inbound.rest.paths import PREFIX
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.master_data import (
@@ -46,12 +47,6 @@ COUNTS = (
     "the caller's reach have it (a field: a value for it), counted in one query; admins count "
     "every document with `all_users` (others: 403)."
 )
-DocumentCounts = Annotated[
-    bool, Query(description="Count the documents of each (`document_count`).")
-]
-AllUsers = Annotated[
-    bool, Query(description="Count every user's documents instead of the caller's reach (admins).")
-]
 
 type Operation = Callable[..., Awaitable[Any]]
 
@@ -90,7 +85,7 @@ def _simple(
         user: CurrentUser,
         context: Context,
         document_counts: DocumentCounts = False,
-        all_users: AllUsers = False,
+        all_users: CountAll = False,
     ) -> list[MasterDataOut]:
         operation: Operation = getattr(context.master_data, f"list_{plural}")
         items: list[MasterData] = await operation(user)
@@ -351,7 +346,7 @@ async def list_tags(
     context: Context,
     scope: TagScope | None = None,
     document_counts: DocumentCounts = False,
-    all_users: AllUsers = False,
+    all_users: CountAll = False,
 ) -> list[TagOut]:
     tree = await _tree(context, user)
     scopes = list(TagScope) if scope is None else [scope]
@@ -494,7 +489,7 @@ async def list_fields(
     user: CurrentUser,
     context: Context,
     document_counts: DocumentCounts = False,
-    all_users: AllUsers = False,
+    all_users: CountAll = False,
 ) -> list[FieldOut]:
     found = [FieldOut.of(item) for item in await context.master_data.list_fields(user)]
     if not document_counts:

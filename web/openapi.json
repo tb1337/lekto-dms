@@ -8879,6 +8879,82 @@
             "description": "What to look for."
           },
           {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DocumentSort"
+                },
+                {
+                  "const": "relevance",
+                  "type": "string"
+                }
+              ],
+              "description": "`relevance` or a key.",
+              "default": "relevance",
+              "title": "Sort"
+            },
+            "description": "`relevance` or a key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "semantic_ratio",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Weight of the meaning against the words: 0 words only, 1 meaning only. Default: the installation's setting.",
+              "title": "Semantic Ratio"
+            },
+            "description": "Weight of the meaning against the words: 0 words only, 1 meaning only. Default: the installation's setting."
+          },
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Every user's documents instead of the caller's reach (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Every user's documents instead of the caller's reach (admins)."
+          },
+          {
             "name": "contact_id",
             "in": "query",
             "required": false,
@@ -9049,82 +9125,6 @@
               ],
               "title": "Topic Id"
             }
-          },
-          {
-            "name": "sort",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/DocumentSort"
-                },
-                {
-                  "const": "relevance",
-                  "type": "string"
-                }
-              ],
-              "description": "`relevance` or a key.",
-              "default": "relevance",
-              "title": "Sort"
-            },
-            "description": "`relevance` or a key."
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 100,
-              "minimum": 1,
-              "default": 20,
-              "title": "Limit"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 1000,
-              "minimum": 0,
-              "default": 0,
-              "title": "Offset"
-            }
-          },
-          {
-            "name": "semantic_ratio",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "number",
-                  "maximum": 1,
-                  "minimum": 0
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Weight of the meaning against the words: 0 words only, 1 meaning only. Default: the installation's setting.",
-              "title": "Semantic Ratio"
-            },
-            "description": "Weight of the meaning against the words: 0 words only, 1 meaning only. Default: the installation's setting."
-          },
-          {
-            "name": "all_users",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "description": "Every user's documents instead of the caller's reach (admins).",
-              "default": false,
-              "title": "All Users"
-            },
-            "description": "Every user's documents instead of the caller's reach (admins)."
           }
         ],
         "responses": {
@@ -9748,6 +9748,58 @@
         "operationId": "list_documents_api_v1_documents_get",
         "parameters": [
           {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentSort",
+              "default": "-created_at"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor`.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor`."
+          },
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Every user's documents instead of the caller's reach (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Every user's documents instead of the caller's reach (admins)."
+          },
+          {
             "name": "contact_id",
             "in": "query",
             "required": false,
@@ -9918,58 +9970,6 @@
               ],
               "title": "Topic Id"
             }
-          },
-          {
-            "name": "sort",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/DocumentSort",
-              "default": "-created_at"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 200,
-              "minimum": 1,
-              "default": 50,
-              "title": "Limit"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "maxLength": 64
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "`next_cursor`.",
-              "title": "Cursor"
-            },
-            "description": "`next_cursor`."
-          },
-          {
-            "name": "all_users",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "description": "Every user's documents instead of the caller's reach (admins).",
-              "default": false,
-              "title": "All Users"
-            },
-            "description": "Every user's documents instead of the caller's reach (admins)."
           }
         ],
         "responses": {

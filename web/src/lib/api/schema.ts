@@ -13319,6 +13319,14 @@ export interface operations {
 			query: {
 				/** @description What to look for. */
 				q: string;
+				/** @description `relevance` or a key. */
+				sort?: components['schemas']['DocumentSort'] | 'relevance';
+				limit?: number;
+				offset?: number;
+				/** @description Weight of the meaning against the words: 0 words only, 1 meaning only. Default: the installation's setting. */
+				semantic_ratio?: number | null;
+				/** @description Every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
 				contact_id?: string | null;
 				document_type_id?: string | null;
 				tag_id?: string[] | null;
@@ -13328,14 +13336,6 @@ export interface operations {
 				contact_group_id?: string[] | null;
 				document_type_group_id?: string[] | null;
 				topic_id?: string[] | null;
-				/** @description `relevance` or a key. */
-				sort?: components['schemas']['DocumentSort'] | 'relevance';
-				limit?: number;
-				offset?: number;
-				/** @description Weight of the meaning against the words: 0 words only, 1 meaning only. Default: the installation's setting. */
-				semantic_ratio?: number | null;
-				/** @description Every user's documents instead of the caller's reach (admins). */
-				all_users?: boolean;
 			};
 			header?: never;
 			path?: never;
@@ -13719,6 +13719,12 @@ export interface operations {
 	list_documents_api_v1_documents_get: {
 		parameters: {
 			query?: {
+				sort?: components['schemas']['DocumentSort'];
+				limit?: number;
+				/** @description `next_cursor`. */
+				cursor?: string | null;
+				/** @description Every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
 				contact_id?: string | null;
 				document_type_id?: string | null;
 				tag_id?: string[] | null;
@@ -13728,12 +13734,6 @@ export interface operations {
 				contact_group_id?: string[] | null;
 				document_type_group_id?: string[] | null;
 				topic_id?: string[] | null;
-				sort?: components['schemas']['DocumentSort'];
-				limit?: number;
-				/** @description `next_cursor`. */
-				cursor?: string | null;
-				/** @description Every user's documents instead of the caller's reach (admins). */
-				all_users?: boolean;
 			};
 			header?: never;
 			path?: never;

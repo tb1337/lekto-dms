@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Query, Response
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
-from papiq.adapters.inbound.rest.context import Context
+from papiq.adapters.inbound.rest.context import Indexing, Search
 from papiq.adapters.inbound.rest.documents import DocumentSort
 from papiq.adapters.inbound.rest.params import AllDocuments, Filter
 from papiq.adapters.inbound.rest.problems import problem_responses
@@ -15,7 +15,6 @@ from papiq.adapters.inbound.rest.schemas.search import (
     SearchResultPage,
     SnippetSegment,
 )
-from papiq.core.domain.errors import SearchUnavailableError
 from papiq.core.ports.search_index import MAX_HITS, MAX_LIMIT, SEARCH_PAGE
 
 router = APIRouter(tags=["search"], dependencies=PROTECTED)
@@ -40,7 +39,7 @@ router = APIRouter(tags=["search"], dependencies=PROTECTED)
 )
 async def search_documents(
     user: CurrentUser,
-    context: Context,
+    search: Search,
     q: Annotated[str, Query(min_length=1, max_length=500, description="What to look for.")],
     filter: Filter,
     sort: Annotated[
@@ -59,9 +58,7 @@ async def search_documents(
     ] = None,
     all_users: AllDocuments = False,
 ) -> SearchResultPage:
-    if context.search is None:
-        raise SearchUnavailableError("search is not configured")
-    page = await context.search.search(
+    page = await search.search(
         user,
         q,
         filter,
@@ -99,8 +96,6 @@ async def search_documents(
     response_class=Response,
     responses={202: {"description": "Queued."}, **problem_responses(401, 403, 503)},
 )
-async def reindex(user: CurrentUser, context: Context) -> Response:
-    if context.indexing is None:
-        raise SearchUnavailableError("search is not configured")
-    await context.indexing.request_rebuild(user)
+async def reindex(user: CurrentUser, indexing: Indexing) -> Response:
+    await indexing.request_rebuild(user)
     return Response(status_code=202)

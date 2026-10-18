@@ -3,10 +3,9 @@
 from fastapi import APIRouter, Response
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
-from papiq.adapters.inbound.rest.context import Context
+from papiq.adapters.inbound.rest.context import Classifier
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.classifier import ClassifierStatusOut
-from papiq.core.domain.errors import ClassifierUnavailableError
 
 router = APIRouter(prefix="/classifier", tags=["classifier"], dependencies=PROTECTED)
 
@@ -21,10 +20,8 @@ router = APIRouter(prefix="/classifier", tags=["classifier"], dependencies=PROTE
     response_model=ClassifierStatusOut,
     responses=problem_responses(401, 403, 503),
 )
-async def status(user: CurrentUser, context: Context) -> ClassifierStatusOut:
-    if context.classifier is None:
-        raise ClassifierUnavailableError("no classifier is configured")
-    return ClassifierStatusOut.of(await context.classifier.status(user))
+async def status(user: CurrentUser, classifier: Classifier) -> ClassifierStatusOut:
+    return ClassifierStatusOut.of(await classifier.status(user))
 
 
 @router.post(
@@ -39,8 +36,6 @@ async def status(user: CurrentUser, context: Context) -> ClassifierStatusOut:
     response_class=Response,
     responses={202: {"description": "Queued."}, **problem_responses(401, 403, 409, 503)},
 )
-async def train(user: CurrentUser, context: Context) -> Response:
-    if context.classifier is None:
-        raise ClassifierUnavailableError("no classifier is configured")
-    await context.classifier.request_training(user)
+async def train(user: CurrentUser, classifier: Classifier) -> Response:
+    await classifier.request_training(user)
     return Response(status_code=202)

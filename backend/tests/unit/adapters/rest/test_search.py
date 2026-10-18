@@ -136,8 +136,10 @@ async def test_without_a_search_index_the_endpoints_answer_503(api: Api) -> None
     admin = await api.admin()
     api.app.state.context = replace(api.app.state.context, search=None, indexing=None)
     found = await api.client.get(SEARCH, params={"q": "x"}, headers=auth(admin))
+    # Without the service, the query is not looked at.
+    unchecked = await api.client.get(SEARCH, headers=auth(admin))
     rebuild = await api.client.post(f"{PREFIX}/search/reindex", headers=auth(admin))
-    for response in (found, rebuild):
+    for response in (found, unchecked, rebuild):
         assert response.status_code == 503
         assert response.json()["detail"] == "search is not configured"
 

@@ -2,8 +2,8 @@
 admins change them. Deleting works only for what nothing uses."""
 
 import asyncio
-from collections.abc import Awaitable, Callable
-from typing import Any, cast
+from collections.abc import Awaitable, Callable, Mapping
+from typing import Any, Protocol, Self, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
@@ -93,9 +93,7 @@ def _simple(
         if not document_counts:
             return found
         counts = await context.documents.document_counts(user, counted, all_users=all_users)
-        return [
-            item.model_copy(update={"document_count": counts.get(item.id, 0)}) for item in found
-        ]
+        return _with_counts(found, counts)
 
     @router.post(
         "",
@@ -158,6 +156,21 @@ def _simple(
         await service(context, "delete")(user, id)
 
     return router
+
+
+class _Counted(Protocol):
+    """An answer with a `document_count`."""
+
+    id: UUID
+
+    def model_copy(
+        self, *, update: Mapping[str, Any] | None = None, deep: bool = False
+    ) -> Self: ...
+
+
+def _with_counts[O: _Counted](items: list[O], counts: Mapping[UUID, int]) -> list[O]:
+    """The items with their `document_count` from `counts` (0 for one not counted)."""
+    return [item.model_copy(update={"document_count": counts.get(item.id, 0)}) for item in items]
 
 
 def _contact_arguments(given: dict[str, Any]) -> dict[str, Any]:
@@ -338,15 +351,18 @@ async def list_tags(
     counts = await context.documents.document_counts(user, CountBy.TAG, all_users=all_users)
     members = await context.master_data.tag_members(user)
 
-    def counted(item: TagOut) -> TagOut:
-        update: dict[str, int] = {"document_count": counts.get(item.id, 0)}
+    def with_members(item: TagOut) -> TagOut:
         if item.scope in (TagScope.CONTACT, TagScope.TOPIC):
-            update["contact_count"] = members.contacts.get(TagId(item.id), 0)
-        elif item.scope is TagScope.DOCUMENT_TYPE:
-            update["document_type_count"] = members.document_types.get(TagId(item.id), 0)
-        return item.model_copy(update=update)
+            return item.model_copy(
+                update={"contact_count": members.contacts.get(TagId(item.id), 0)}
+            )
+        if item.scope is TagScope.DOCUMENT_TYPE:
+            return item.model_copy(
+                update={"document_type_count": members.document_types.get(TagId(item.id), 0)}
+            )
+        return item
 
-    return [counted(item) for item in found]
+    return [with_members(item) for item in _with_counts(found, counts)]
 
 
 @tags.post(
@@ -477,7 +493,7 @@ async def list_fields(
     if not document_counts:
         return found
     counts = await context.documents.document_counts(user, CountBy.FIELD, all_users=all_users)
-    return [item.model_copy(update={"document_count": counts.get(item.id, 0)}) for item in found]
+    return _with_counts(found, counts)
 
 
 @fields.post(

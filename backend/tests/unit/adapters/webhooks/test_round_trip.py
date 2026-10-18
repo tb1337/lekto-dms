@@ -21,7 +21,7 @@ from papiq.core.services.webhooks import SUBSCRIBER
 from tests import builders
 from tests.api import until
 from tests.builders import SAMPLES, incoming
-from tests.unit.adapters.webhooks.receiver import LocalReceiver, Received
+from tests.webhook_receiver import LocalReceiver, Received
 
 TOLERANCE = 5 * 60  # seconds a request may be old
 

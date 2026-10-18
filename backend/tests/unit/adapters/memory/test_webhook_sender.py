@@ -5,7 +5,7 @@ import pytest
 from papiq.adapters.outbound.memory import FakeWebhookSender
 from papiq.core.ports.webhook_sender import WebhookRequest, WebhookSender
 from tests.contracts.webhook_sender import Receiver, WebhookSenderContract
-from tests.unit.adapters.webhooks.receiver import Received, default_answer
+from tests.webhook_receiver import Received, default_answer
 
 BASE = "http://receiver.test"
 NOBODY = "http://nobody.test"

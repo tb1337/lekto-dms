@@ -9,7 +9,7 @@ from papiq.adapters.outbound.webhooks import HttpWebhookSender
 from papiq.composition.logging_setup import configure_logging
 from papiq.composition.settings import Settings
 from tests.contracts.webhook_sender import request
-from tests.unit.adapters.webhooks.receiver import LocalReceiver
+from tests.webhook_receiver import LocalReceiver
 
 
 def settings(**values: Any) -> Settings:

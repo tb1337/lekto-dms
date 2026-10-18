@@ -32,17 +32,8 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
 )
 from papiq.core.ports.identity import TOTP_STEP
-from tests import builders
-from tests.builders import NOW
-from tests.contracts.unit_of_work import seed
-
-HOUR = timedelta(hours=1)
-
-
-async def a_user(uow_factory: UnitOfWorkFactory) -> User:
-    user = builders.user()
-    await seed(uow_factory, user)
-    return user
+from tests.builders import HOUR, NOW
+from tests.contracts.unit_of_work import a_user
 
 
 def a_session(user: User, *, at: timedelta = timedelta(0)) -> Session:

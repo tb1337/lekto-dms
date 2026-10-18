@@ -41,9 +41,8 @@ from papiq.core.domain.rules import (
 from papiq.core.domain.rules_json import definition_to_json
 from papiq.core.domain.users import User
 from papiq.core.ports import UnitOfWorkFactory
-from tests import builders
 from tests.builders import NOW
-from tests.contracts.unit_of_work import owner_with_space, seed
+from tests.contracts.unit_of_work import owner_with_space, users
 
 LATER = NOW + timedelta(hours=1)
 
@@ -175,13 +174,6 @@ async def store(
         for item in applications:
             await uow.rule_applications.add(item)
         await uow.commit()
-
-
-async def users(uow_factory: UnitOfWorkFactory, count: int) -> list[User]:
-    """Users without spaces (so they can be removed again)."""
-    created = [builders.user() for _ in range(count)]
-    await seed(uow_factory, *created)
-    return created
 
 
 async def change(

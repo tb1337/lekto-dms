@@ -46,6 +46,19 @@ async def seed(
         await uow.commit()
 
 
+async def users(uow_factory: UnitOfWorkFactory, count: int) -> list[User]:
+    """Users without spaces (so they can be removed again), stored directly."""
+    created = [builders.user() for _ in range(count)]
+    await seed(uow_factory, *created)
+    return created
+
+
+async def a_user(uow_factory: UnitOfWorkFactory) -> User:
+    """A user without spaces, stored directly."""
+    (user,) = await users(uow_factory, 1)
+    return user
+
+
 async def owner_with_space(uow_factory: UnitOfWorkFactory) -> tuple[User, Space]:
     owner = await builders.seed_user(uow_factory)
     async with uow_factory() as uow:

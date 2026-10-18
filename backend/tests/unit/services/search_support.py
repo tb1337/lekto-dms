@@ -3,7 +3,6 @@ the event bus and the jobs keep up to date."""
 
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import timedelta
 
 from papiq.adapters.outbound.memory import FakeEmbeddings, MemoryEventBus, MemorySearchIndex
 from papiq.core.domain.documents import Document
@@ -20,8 +19,6 @@ from papiq.core.services.pipeline import PipelineService
 from tests import builders
 from tests.builders import incoming
 from tests.unit.services.conftest import World
-
-HOUR = timedelta(hours=1)
 
 
 class BrokenEmbeddings:

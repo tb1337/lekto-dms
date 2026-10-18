@@ -4,7 +4,7 @@ import itertools
 import tempfile
 import uuid
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -81,6 +81,7 @@ def pipeline_service(
 
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
+HOUR = timedelta(hours=1)
 
 # The sample files of the tests (made by `samples/make_samples.py`).
 SAMPLES = Path(__file__).parent / "samples"

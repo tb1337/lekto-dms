@@ -162,7 +162,7 @@ class Totp(Protocol):
         ...
 
     def code(self, secret: str, at: datetime) -> str:
-        """The code valid at `at`."""
+        """The code valid at `at`. For tests: the core only verifies codes (`matching_step`)."""
         ...
 
     def matching_step(self, secret: str, code: str, at: datetime) -> int | None:

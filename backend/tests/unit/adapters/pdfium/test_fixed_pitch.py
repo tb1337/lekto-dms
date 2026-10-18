@@ -8,7 +8,7 @@ import pytest
 from papiq.adapters.outbound.pdfium.chars import Char, Geometry, page_chars, reading_turn
 from papiq.adapters.outbound.pdfium.fixed_pitch import FixedPitchBlock, blocks_of, page_lines
 from papiq.adapters.outbound.pdfium.library import LOCK
-from tests.contracts.processing import SAMPLES
+from tests.builders import SAMPLES
 from tests.samples.make_samples import PRINTOUT, pdf, text_lines
 
 FONTS = ("Helvetica", "Courier")

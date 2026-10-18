@@ -18,6 +18,7 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.identity import TokenScope, csrf_token, hash_token
 from papiq.core.domain.ids import ApiTokenId, new_id
 from papiq.core.domain.users import Role, User
+from papiq.core.ports import PasswordHasher
 from papiq.core.services.auth import AuthService
 from tests import builders
 from tests.builders import PASSWORD
@@ -205,21 +206,21 @@ class GatedHasher:
     """Verifies only once `release` is set, so that many sign-ins can be in flight at once;
     counts how many callers wait."""
 
-    def __init__(self, inner: object) -> None:
+    def __init__(self, inner: PasswordHasher) -> None:
         self._inner = inner
         self.release = asyncio.Event()
         self.waiting = 0
 
     async def hash(self, password: str) -> str:
-        return await self._inner.hash(password)  # type: ignore[attr-defined, no-any-return]
+        return await self._inner.hash(password)
 
     async def verify(self, hash: str, password: str) -> bool:
         self.waiting += 1
         await self.release.wait()
-        return await self._inner.verify(hash, password)  # type: ignore[attr-defined, no-any-return]
+        return await self._inner.verify(hash, password)
 
     def needs_rehash(self, hash: str) -> bool:
-        return self._inner.needs_rehash(hash)  # type: ignore[attr-defined, no-any-return]
+        return self._inner.needs_rehash(hash)
 
 
 async def _burst(world: World, attempts: int) -> tuple[list[object], GatedHasher]:

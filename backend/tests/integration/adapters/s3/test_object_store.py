@@ -8,7 +8,7 @@ import pytest
 from papiq.adapters.outbound.s3 import S3ObjectStore
 from papiq.composition.settings import Settings
 from tests.contracts.object_store import ObjectStoreContract
-from tests.integration.conftest import s3_store, s3_test_store
+from tests.integration.services import s3_store, s3_test_store
 
 
 @pytest.fixture

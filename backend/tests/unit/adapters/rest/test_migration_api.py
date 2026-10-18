@@ -17,8 +17,7 @@ from papiq.core.domain.users import User
 from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from papiq.core.services.pipeline import DeferredResult, NodeExecutor
 from tests.api import auth, bearer
-from tests.builders import PlaceholderNode
-from tests.contracts.processing import SAMPLES
+from tests.builders import SAMPLES, PlaceholderNode
 from tests.unit.adapters.rest.support import DOCUMENTS, Api, post, sample_file
 
 

@@ -3,7 +3,7 @@
 import hashlib
 
 from tests.api import auth
-from tests.contracts.processing import SAMPLES
+from tests.builders import SAMPLES
 from tests.unit.adapters.rest.support import DOCUMENTS, FILENAME, Api, upload
 
 

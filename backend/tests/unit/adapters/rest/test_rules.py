@@ -5,7 +5,7 @@ from typing import Any
 from papiq.adapters.inbound.rest import PREFIX
 from tests import builders
 from tests.api import auth
-from tests.contracts.processing import SAMPLES
+from tests.builders import SAMPLES
 from tests.unit.adapters.rest.support import Api, post, upload
 
 OTHER = (SAMPLES / "screenshot.png").read_bytes()

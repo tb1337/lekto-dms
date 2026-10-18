@@ -26,7 +26,7 @@ from papiq.core.domain.master_data import TagScope
 from papiq.core.services.objects import text_key
 from tests import builders
 from tests.api import auth, serving
-from tests.contracts.processing import SAMPLES
+from tests.builders import SAMPLES
 from tests.unit.adapters.rest.support import Api, Scene, indexed_scene, make_app, post, upload
 
 URL = f"https://papiq{PREFIX}/mcp"

@@ -16,37 +16,7 @@ from papiq.core.domain.jobs import RetryPolicy
 from papiq.core.ports import Clock, EventBus, UnitOfWorkFactory
 from tests import builders
 from tests.contracts.event_bus import EventBusFactory
-
-
-def postgres(settings: Settings, name: str | None = None) -> Database:
-    assert settings.db_host and settings.db_name and settings.db_user and settings.db_password
-    return Database.postgres(
-        host=settings.db_host,
-        port=settings.db_port,
-        name=name or settings.db_name,
-        user=settings.db_user,
-        password=settings.db_password.get_secret_value(),
-    )
-
-
-async def create_database(settings: Settings, name: str) -> None:
-    admin = postgres(settings)
-    try:
-        async with admin.engine.connect() as connection:
-            connection = await connection.execution_options(isolation_level="AUTOCOMMIT")
-            await connection.exec_driver_sql(f'CREATE DATABASE "{name}"')
-    finally:
-        await admin.dispose()
-
-
-async def drop_database(settings: Settings, name: str) -> None:
-    admin = postgres(settings)
-    try:
-        async with admin.engine.connect() as connection:
-            connection = await connection.execution_options(isolation_level="AUTOCOMMIT")
-            await connection.exec_driver_sql(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
-    finally:
-        await admin.dispose()
+from tests.integration.services import create_database, drop_database, postgres
 
 
 @pytest.fixture

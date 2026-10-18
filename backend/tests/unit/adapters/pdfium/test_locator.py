@@ -7,7 +7,8 @@ import pytest
 
 from papiq.adapters.outbound.pdfium import PdfiumTextLocator
 from papiq.core.domain.locations import Box
-from tests.contracts.processing import SAMPLES, TextLocatorContract
+from tests.builders import SAMPLES
+from tests.contracts.processing import TextLocatorContract
 from tests.samples.make_samples import LINES, text_pdf
 
 

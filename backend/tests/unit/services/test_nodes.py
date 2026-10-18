@@ -23,8 +23,7 @@ from papiq.core.services.objects import (
     text_key,
 )
 from papiq.core.services.pipeline import PipelineService
-from tests.builders import incoming
-from tests.contracts.processing import SAMPLES
+from tests.builders import SAMPLES, incoming
 from tests.unit.services.conftest import World
 
 

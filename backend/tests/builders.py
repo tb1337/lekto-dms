@@ -1,5 +1,6 @@
 """Test data builders shared by unit tests and contract suites."""
 
+import itertools
 import tempfile
 import uuid
 from collections.abc import Mapping
@@ -36,11 +37,13 @@ from papiq.core.services.pipeline import (
     PipelineService,
 )
 
-# Templates of rules and title patterns, as the memory container renders them.
-TEMPLATES = LiquidTemplateRenderer(locale="de", currency="EUR")
 DEFAULT_SETTINGS = Settings.model_construct()
 """The shipped defaults (`backend/README.md`, Configuration): tests take thresholds and
 limits from here, so the one source of a default is `composition/settings.py`."""
+# Templates of rules and title patterns, as the memory container renders them.
+TEMPLATES = LiquidTemplateRenderer(
+    locale=DEFAULT_SETTINGS.template_locale, currency=DEFAULT_SETTINGS.default_currency
+)
 THRESHOLDS = thresholds_of(DEFAULT_SETTINGS)
 CLASSIFICATION = policy_of(DEFAULT_SETTINGS)
 CLASSIFIER = classifier_policy_of(DEFAULT_SETTINGS)
@@ -79,6 +82,9 @@ def pipeline_service(
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 
+# The sample files of the tests (made by `samples/make_samples.py`).
+SAMPLES = Path(__file__).parent / "samples"
+
 # PAPIQ_SECRET_KEY for tests (32 bytes, base64); never use it elsewhere.
 SECRET_KEY = "dGVzdC1rZXktdGVzdC1rZXktdGVzdC1rZXktdGVzdC0="
 PASSWORD = "correct horse battery"
@@ -109,13 +115,11 @@ class Returns:
         return self.result
 
 
-_counter = 0
+_numbers = itertools.count(1)
 
 
 def _unique(prefix: str) -> str:
-    global _counter
-    _counter += 1
-    return f"{prefix}-{_counter}"
+    return f"{prefix}-{next(_numbers)}"
 
 
 def user(name: str | None = None, *, role: Role = Role.USER) -> User:
@@ -190,6 +194,12 @@ def document(
     )
     document.pull_events()
     return document
+
+
+def received() -> Document:
+    """A freshly received document of a new user, in their default space."""
+    owner = user()
+    return document(owner, default_space(owner))
 
 
 def run_pipeline(document: Document, results: dict[Node, NodeResult] | None = None) -> Document:

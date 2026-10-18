@@ -8,8 +8,7 @@ from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
 from papiq.adapters.outbound.pdfium import LayoutParser
 from papiq.core.domain import media_types
 from tests import probes
-from tests.builders import DEFAULT_SETTINGS
-from tests.contracts.processing import SAMPLES
+from tests.builders import DEFAULT_SETTINGS, SAMPLES
 from tests.samples.make_samples import LINES
 
 pytestmark = probes.requires_ocr

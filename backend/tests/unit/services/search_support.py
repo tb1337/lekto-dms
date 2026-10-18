@@ -16,6 +16,7 @@ from papiq.core.ports import EmbeddingResult, IndexBuild
 from papiq.core.services.indexing import INDEX_JOB, SUBSCRIBER, IndexingPolicy, IndexingService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.objects import text_key
+from papiq.core.services.pipeline import PipelineService
 from tests import builders
 from tests.builders import incoming
 from tests.unit.services.conftest import World
@@ -108,13 +109,15 @@ class Setup:
             self.world.uow, self.world.clock, builders.TEMPLATES, index_renames=True
         )
 
-    async def settle(self, *, pipeline: bool = True, pipeline_service: object = None) -> None:
+    async def settle(
+        self, *, pipeline: bool = True, pipeline_service: PipelineService | None = None
+    ) -> None:
         """Deliver events and run jobs until nothing is left to do."""
         indexing = self.indexing
         while True:
             moved = await self.bus.dispatch()
             if pipeline:
-                moved += await self.world.drain(pipeline_service)  # type: ignore[arg-type]
+                moved += await self.world.drain(pipeline_service)
             moved += await builders.drain(indexing)
             if not moved:
                 return

@@ -19,9 +19,8 @@ from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.ports import ObjectStore
 from papiq.core.services.objects import archive_key, preview_key, structure_key, text_key
 from tests import builders, probes
-from tests.builders import DEFAULT_SETTINGS, incoming
-from tests.contracts.processing import SAMPLES
-from tests.integration.conftest import s3_test_store
+from tests.builders import DEFAULT_SETTINGS, SAMPLES, incoming
+from tests.integration.services import s3_test_store
 
 pytestmark = probes.requires_ocr
 

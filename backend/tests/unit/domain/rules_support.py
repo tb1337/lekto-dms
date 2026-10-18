@@ -2,6 +2,7 @@
 field definitions, tag trees, and helpers that build conditions, rules, documents and
 situations."""
 
+import itertools
 from datetime import timedelta
 from typing import Any
 from uuid import UUID
@@ -77,7 +78,7 @@ IS_WEB = cond(ConditionField.CHANNEL, Operator.IS, "web")  # false for them
 ALWAYS = all_(IS_API)
 FROM_ACME = all_(cond(ConditionField.CONTACT, Operator.IS, str(ACME)))
 
-_rules = 0
+_numbers = itertools.count(1)
 
 
 def rule(
@@ -89,16 +90,15 @@ def rule(
     name: str | None = None,
 ) -> Rule:
     """A rule; each is created a minute after the previous one."""
-    global _rules
-    _rules += 1
+    number = next(_numbers)
     return Rule.create(
         scope=scope,
         owner_id=None if scope is RuleScope.GLOBAL else owner,
         definition=RuleDefinition(
-            name=name or f"rule {_rules}", conditions=when, actions=actions, priority=priority
+            name=name or f"rule {number}", conditions=when, actions=actions, priority=priority
         ),
         by=OWNER,
-        now=NOW + timedelta(minutes=_rules),
+        now=NOW + timedelta(minutes=number),
     )
 
 

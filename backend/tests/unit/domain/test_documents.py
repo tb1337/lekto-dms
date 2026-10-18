@@ -69,7 +69,7 @@ def test_receive_cannot_fail() -> None:
 
 
 def test_metadata_change_records_changed_fields() -> None:
-    document = builders.document(builders.user(), builders.space(builders.user()))
+    document = builders.received()
     contact, tag = ContactId(new_id()), TagId(new_id())
     changed = document.apply_changes(
         DocumentChanges(
@@ -93,7 +93,7 @@ def test_metadata_change_records_changed_fields() -> None:
 
 
 def test_unchanged_metadata_records_nothing() -> None:
-    document = builders.document(builders.user(), builders.space(builders.user()))
+    document = builders.received()
     assert document.apply_changes(DocumentChanges(title="scan", contact_id=None), {}, LATER) == ()
     assert document.pull_events() == []
     assert document.updated_at == NOW
@@ -121,7 +121,7 @@ def test_field_values_are_validated_and_scoped() -> None:
     )
     note = FieldDefinition.create(name="Note", data_type=FieldType.TEXT, now=NOW)
     definitions = {total.id: total, note.id: note}
-    document = builders.document(builders.user(), builders.space(builders.user()))
+    document = builders.received()
 
     with pytest.raises(ValidationError, match="does not apply"):
         document.apply_changes(DocumentChanges(fields={total.id: 10}), definitions, LATER)
@@ -170,7 +170,7 @@ def test_field_values_are_checked_without_a_document() -> None:
 
 def test_failed_validation_changes_nothing() -> None:
     note = FieldDefinition.create(name="Note", data_type=FieldType.TEXT, now=NOW)
-    document = builders.document(builders.user(), builders.space(builders.user()))
+    document = builders.received()
     with pytest.raises(ValidationError):
         document.apply_changes(
             DocumentChanges(title="New", fields={note.id: 5}), {note.id: note}, LATER
@@ -193,7 +193,7 @@ def test_move_records_filed() -> None:
 
 
 def test_delete_records_deleted() -> None:
-    document = builders.document(builders.user(), builders.space(builders.user()))
+    document = builders.received()
     document.delete(LATER)
     (event,) = document.pull_events()
     assert isinstance(event, DocumentDeleted)

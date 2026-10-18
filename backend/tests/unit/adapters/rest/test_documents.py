@@ -20,8 +20,7 @@ from papiq.core.domain.spaces import ShareLevel
 from papiq.core.services.objects import exchanges_key, original_key
 from tests import builders
 from tests.api import auth, issue_token
-from tests.builders import PASSWORD
-from tests.contracts.processing import SAMPLES
+from tests.builders import PASSWORD, SAMPLES
 from tests.unit.adapters.rest.support import DOCUMENTS, MAX_UPLOAD, Api, make_app, sample_file
 
 SIGNALS = ("signal_llm", "signal_classifier", "signal_neighbours", "signal_facts")

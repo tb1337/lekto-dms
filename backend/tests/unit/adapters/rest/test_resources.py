@@ -5,10 +5,10 @@ from typing import Any
 from uuid import UUID
 
 from papiq.adapters.inbound.rest import PREFIX
+from papiq.core.domain.ids import DocumentId
 from papiq.core.services.objects import archive_key
 from tests.api import auth
-from tests.builders import PASSWORD
-from tests.contracts.processing import SAMPLES
+from tests.builders import PASSWORD, SAMPLES
 from tests.unit.adapters.rest.support import Api, post, unique_pdf, upload
 
 
@@ -261,11 +261,11 @@ async def test_downloads(api: Api) -> None:
     assert "Bill%202026.pdf" in original.headers["content-disposition"]
     assert original.headers["x-content-type-options"] == "nosniff"
     assert original.headers["content-security-policy"].startswith("sandbox")
-    await api.container.object_store.delete(archive_key(UUID(document)))  # type: ignore[arg-type]
+    await api.container.object_store.delete(archive_key(DocumentId(UUID(document))))
     missing = await api.client.get(f"{PREFIX}/documents/{document}/archive", headers=auth(owner))
     assert missing.status_code == 404
     await api.container.object_store.put(
-        archive_key(UUID(document)),  # type: ignore[arg-type]
+        archive_key(DocumentId(UUID(document))),
         b"%PDF-1.7 archive",
         content_type="application/pdf",
     )

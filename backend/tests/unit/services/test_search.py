@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import timedelta
 
 import pytest
@@ -33,6 +33,7 @@ from tests.unit.services.conftest import World
 from tests.unit.services.search_support import BrokenEmbeddings, Setup
 
 
+@dataclass
 class Scene:
     setup: Setup
     owner: User
@@ -59,17 +60,16 @@ class Scene:
 
 @pytest.fixture
 async def scene(world: World) -> Scene:
-    scene = Scene()
-    scene.setup = Setup(world)
-    scene.owner, scene.reader = await world.user("owner"), await world.user("reader")
-    scene.stranger = await world.user("stranger")
-    scene.shared = await world.spaces.create(scene.owner.id, "Household")
-    await world.spaces.share(scene.owner.id, scene.shared.id, scene.reader.id, ShareLevel.READ)
-    scene.shared_document = await scene.setup.document(scene.owner, "Stromrechnung September")
-    await world.documents.move(scene.owner.id, scene.shared_document.id, scene.shared.id)
-    scene.private_document = await scene.setup.document(scene.owner, "Mietvertrag Wohnung")
-    await scene.setup.settle()
-    return scene
+    setup = Setup(world)
+    owner, reader = await world.user("owner"), await world.user("reader")
+    stranger = await world.user("stranger")
+    shared = await world.spaces.create(owner.id, "Household")
+    await world.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
+    shared_document = await setup.document(owner, "Stromrechnung September")
+    await world.documents.move(owner.id, shared_document.id, shared.id)
+    private_document = await setup.document(owner, "Mietvertrag Wohnung")
+    await setup.settle()
+    return Scene(setup, owner, reader, stranger, shared, shared_document, private_document)
 
 
 async def test_the_owner_finds_everything_in_any_lane(scene: Scene) -> None:

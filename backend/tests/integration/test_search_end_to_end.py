@@ -23,8 +23,8 @@ from papiq.core.ports import ObjectStore
 from papiq.core.services.indexing import INDEX_JOB, REBUILD_JOB, REFRESH_JOB
 from tests import builders
 from tests.api import auth, until
-from tests.integration.adapters.meilisearch.conftest import drop, new_index
 from tests.integration.e2e import DOCUMENTS, System, TextOcr, TextParser, running_system
+from tests.integration.services import drop, new_index
 
 SEARCH = f"{DOCUMENTS}/search"
 TIMEOUT = 60.0  # seconds a document may take here

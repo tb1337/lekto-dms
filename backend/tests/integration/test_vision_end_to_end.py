@@ -29,8 +29,7 @@ from papiq.core.domain.reading import VisionAdvice
 from papiq.core.ports import StructuredRequest
 from papiq.core.services.objects import text_key
 from tests import builders, probes
-from tests.builders import DEFAULT_SETTINGS, NOW, incoming
-from tests.contracts.processing import SAMPLES
+from tests.builders import DEFAULT_SETTINGS, NOW, SAMPLES, incoming
 from tests.vision_stub import Lines, VisionStub, serve
 
 pytestmark = probes.requires_ocr

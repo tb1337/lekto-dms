@@ -9,7 +9,8 @@ import pikepdf
 import pytest
 
 from papiq.adapters.outbound.pdfium.layout import PAGE_BREAK, LayoutParser
-from tests.contracts.processing import SAMPLES, ParserContract
+from tests.builders import SAMPLES
+from tests.contracts.processing import ParserContract
 from tests.samples.make_samples import PRINTOUT, PRINTOUT_TITLE, pdf
 
 

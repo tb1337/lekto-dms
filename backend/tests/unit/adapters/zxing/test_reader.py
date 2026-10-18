@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from papiq.adapters.outbound.zxing import ZxingCodeReader
-from tests.contracts.processing import SAMPLES, CodeReaderContract
+from tests.builders import SAMPLES
+from tests.contracts.processing import CodeReaderContract
 
 
 @pytest.fixture

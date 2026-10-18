@@ -18,8 +18,8 @@ from papiq.composition.container import VISION_REQUEST_TIMEOUT
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import LanguageModelError
 from tests import probes
-from tests.builders import DEFAULT_SETTINGS
-from tests.contracts.processing import SAMPLES, OcrContract
+from tests.builders import DEFAULT_SETTINGS, SAMPLES
+from tests.contracts.processing import OcrContract
 from tests.vision_stub import VisionStub, serve
 
 pytestmark = probes.requires_ocr

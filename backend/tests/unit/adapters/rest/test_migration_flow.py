@@ -18,8 +18,7 @@ from papiq.core.domain.pipeline import SIGNALS, Node
 from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from tests import api as helpers
 from tests.api import until
-from tests.builders import PlaceholderNode
-from tests.contracts.processing import SAMPLES
+from tests.builders import SAMPLES, PlaceholderNode
 from tests.unit.adapters.rest.support import Api
 
 

@@ -20,14 +20,14 @@ from papiq.adapters.outbound.memory import ManualClock
 from papiq.composition.api import api_context
 from papiq.composition.container import Container, Services
 from papiq.core.domain.identity import TokenScope
+from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.pipeline import Node
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import Role, User
 from papiq.core.services.objects import archive_key, preview_key
 from tests import builders
 from tests.api import auth, bearer, issue_token
-from tests.builders import PASSWORD, UNCERTAIN, Returns
-from tests.contracts.processing import SAMPLES
+from tests.builders import PASSWORD, SAMPLES, UNCERTAIN, Returns
 
 MAX_UPLOAD = 1024 * 1024
 
@@ -215,7 +215,7 @@ async def build_scene(api: Api) -> Scene:
 
     green = await put("green")
     yellow = await put("yellow")
-    await api.services.pipeline.reprocess_from(owner.id, UUID(yellow), Node.JUDGE)  # type: ignore[arg-type]
+    await api.services.pipeline.reprocess_from(owner.id, DocumentId(UUID(yellow)), Node.JUDGE)
     pipeline = api.services.pipeline
     # yellow: the classification is uncertain
     judge = pipeline.replace_executor(Node.JUDGE, Returns(UNCERTAIN))
@@ -223,8 +223,9 @@ async def build_scene(api: Api) -> Scene:
     pipeline.replace_executor(Node.JUDGE, judge)
     processing = await put("new", drain=False)
     for id in (green, yellow):
-        await api.container.object_store.put(archive_key(UUID(id)), b"%PDF", content_type="x")  # type: ignore[arg-type]
-        await api.container.object_store.put(preview_key(UUID(id)), b"RIFF", content_type="x")  # type: ignore[arg-type]
+        document = DocumentId(UUID(id))
+        await api.container.object_store.put(archive_key(document), b"%PDF", content_type="x")
+        await api.container.object_store.put(preview_key(document), b"RIFF", content_type="x")
     contact = await api.services.master_data.create_contact(admin.id, "ACME")
 
     _, read_token = await api.services.auth.create_api_token(owner.id, "r", TokenScope.READ)

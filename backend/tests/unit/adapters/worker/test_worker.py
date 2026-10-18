@@ -23,8 +23,7 @@ from papiq.core.services.maintenance import CLEANUP_JOB
 from papiq.core.services.pipeline import NODE_JOB
 from tests import builders
 from tests.api import until
-from tests.builders import DEFAULT_SETTINGS, incoming
-from tests.contracts.processing import SAMPLES
+from tests.builders import DEFAULT_SETTINGS, SAMPLES, incoming
 
 FAST = timedelta(milliseconds=10)
 

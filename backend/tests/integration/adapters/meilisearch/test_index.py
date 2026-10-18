@@ -10,7 +10,7 @@ from papiq.core.domain.ids import UserId, new_id
 from papiq.core.domain.search import Visibility
 from tests.builders import index_document, search_query
 from tests.contracts.search_index import SearchIndexContract
-from tests.integration.adapters.meilisearch.conftest import drop, new_index
+from tests.integration.services import drop, new_index
 
 
 class TestMeilisearchIndex(SearchIndexContract):

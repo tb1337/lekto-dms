@@ -39,8 +39,7 @@ from papiq.core.domain.users import Role
 from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.nodes import OcrNode, ParseNode
 from tests import builders
-from tests.builders import NOW, incoming
-from tests.contracts.processing import SAMPLES
+from tests.builders import NOW, SAMPLES, incoming
 
 
 def settings(**values: Any) -> Settings:

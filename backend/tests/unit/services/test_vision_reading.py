@@ -21,8 +21,7 @@ from papiq.core.ports import OcrResult
 from papiq.core.services.nodes import NO_VISION_MODEL, OcrNode, PagesNode, ParseNode
 from papiq.core.services.objects import archive_key, exchanges_key, original_key
 from papiq.core.services.pipeline import PipelineService
-from tests.builders import incoming
-from tests.contracts.processing import SAMPLES
+from tests.builders import SAMPLES, incoming
 from tests.unit.services.conftest import World
 
 

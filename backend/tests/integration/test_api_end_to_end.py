@@ -21,8 +21,7 @@ from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.objects import archive_key, preview_key, structure_key, text_key
 from tests import builders, probes
 from tests.api import Stream, auth, listen, until
-from tests.builders import DEFAULT_SETTINGS
-from tests.contracts.processing import SAMPLES
+from tests.builders import DEFAULT_SETTINGS, SAMPLES
 from tests.integration.e2e import DOCUMENTS, TUNING, System, running_system
 
 pytestmark = probes.requires_ocr

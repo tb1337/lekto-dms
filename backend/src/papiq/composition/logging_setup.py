@@ -21,6 +21,9 @@ def configure_logging(settings: Settings) -> None:
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
+        # The core and the adapters pass their context as `extra={"job_id": ...}` (stdlib);
+        # without this processor those fields never reach the output.
+        structlog.stdlib.ExtraAdder(),
         structlog.processors.TimeStamper(fmt="iso", utc=True),
     ]
     renderer: structlog.typing.Processor = (

@@ -33,6 +33,19 @@ def test_json_format_writes_one_json_object_per_line(capsys: pytest.CaptureFixtu
     assert second["level"] == "warning"
 
 
+def test_the_extra_fields_of_stdlib_records_are_kept(capsys: pytest.CaptureFixture[str]) -> None:
+    """The core logs through `logging` and passes its context as `extra`."""
+    configure_logging(settings(log_format="json"))
+    logging.getLogger("papiq.core").warning(
+        "lost the claim of a job", extra={"job_id": "7", "document_id": "42"}
+    )
+
+    record = json.loads(capsys.readouterr().err.splitlines()[0])
+    assert record["event"] == "lost the claim of a job"
+    assert record["job_id"] == "7"
+    assert record["document_id"] == "42"
+
+
 def test_console_format_is_readable(capsys: pytest.CaptureFixture[str]) -> None:
     configure_logging(settings(log_format="console"))
     structlog.get_logger("papiq.test").info("document received", document_id="42")

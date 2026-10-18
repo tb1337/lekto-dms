@@ -12,7 +12,7 @@ from fastapi import FastAPI
 
 from papiq.adapters.inbound.mcp import McpEndpoint
 from papiq.adapters.inbound.rest import (
-    PREFIX,
+    MCP_PATH,
     ApiContext,
     HealthCheck,
     close_event_streams,
@@ -52,7 +52,7 @@ def build_app(
     """The API with, if enabled, the MCP endpoint below its prefix."""
     services = services or build_services(container, settings)
     context = api_context(container, settings, services)
-    mounts = [McpEndpoint(context, path=f"{PREFIX}/mcp")] if settings.mcp_enabled else []
+    mounts = [McpEndpoint(context, path=MCP_PATH)] if settings.mcp_enabled else []
     return create_app(context, mounts)
 
 

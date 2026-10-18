@@ -22,6 +22,7 @@ from papiq.adapters.inbound.rest.auth import (
     set_session_cookie,
 )
 from papiq.adapters.inbound.rest.context import ApiContext, Context
+from papiq.adapters.inbound.rest.paths import OIDC_CALLBACK_PATH, PREFIX
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.account import (
     AuthorizationUrl,
@@ -345,7 +346,7 @@ async def oidc_login(context: Context, next: Next = None) -> RedirectResponse:
 
 
 @public.get(
-    "/oidc/callback",
+    OIDC_CALLBACK_PATH.removeprefix(PREFIX + public.prefix),
     status_code=303,
     summary="Return from the identity provider",
     description=(

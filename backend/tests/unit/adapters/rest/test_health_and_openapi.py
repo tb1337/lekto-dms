@@ -11,7 +11,13 @@ from typing import Any
 import httpx2
 from pydantic import BaseModel
 
-from papiq.adapters.inbound.rest import PREFIX, create_app, schemas
+from papiq.adapters.inbound.rest import (
+    HEALTH_PATH,
+    OIDC_CALLBACK_PATH,
+    PREFIX,
+    create_app,
+    schemas,
+)
 from papiq.composition.api import api_context
 from papiq.composition.container import build_memory_container, build_services
 from tests import builders
@@ -26,6 +32,11 @@ async def test_health_is_ok_without_authentication(api: Api) -> None:
     assert response.status_code == 200
     checks = {"database": "ok", "object_store": "ok", "search": "ok"}
     assert response.json() == {"status": "ok", "checks": checks}
+
+
+def test_the_paths_known_outside_the_routes_are_routes(api: Api) -> None:
+    """The access log filters and the OIDC redirect URI name these paths."""
+    assert {HEALTH_PATH, OIDC_CALLBACK_PATH} <= set(api.app.openapi()["paths"])
 
 
 async def test_a_failing_check_makes_the_api_unavailable() -> None:

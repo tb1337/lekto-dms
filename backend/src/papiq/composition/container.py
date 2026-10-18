@@ -13,7 +13,7 @@ from typing import Protocol
 from pydantic import SecretStr
 
 from papiq import __version__
-from papiq.adapters.inbound.rest import PREFIX
+from papiq.adapters.inbound.rest import OIDC_CALLBACK_PATH
 from papiq.adapters.outbound.crypto import (
     AesGcmCipher,
     Argon2PasswordHasher,
@@ -300,7 +300,7 @@ LOGO_FETCHERS: dict[str, Factory[LogoFetcher]] = {
 def redirect_uri(settings: Settings) -> str:
     """Where the provider sends the browser back: the API's OIDC callback."""
     assert settings.public_url is not None
-    return str(settings.public_url).rstrip("/") + PREFIX + "/auth/oidc/callback"
+    return str(settings.public_url).rstrip("/") + OIDC_CALLBACK_PATH
 
 
 def oidc_provider(settings: Settings) -> OidcProvider:

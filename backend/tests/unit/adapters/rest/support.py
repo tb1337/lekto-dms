@@ -14,7 +14,7 @@ import httpx2
 from fastapi import FastAPI
 
 from papiq.adapters.inbound.mcp import McpEndpoint
-from papiq.adapters.inbound.rest import PREFIX, create_app
+from papiq.adapters.inbound.rest import MCP_PATH, PREFIX, create_app
 from papiq.adapters.inbound.rest.auth import CSRF_HEADER
 from papiq.adapters.outbound.memory import ManualClock
 from papiq.composition.api import api_context
@@ -55,7 +55,7 @@ def make_app(
         text_max=text_max,
         ui_directory=ui_directory,
     )
-    mounts = [McpEndpoint(context, path=f"{PREFIX}/mcp")] if mcp else []
+    mounts = [McpEndpoint(context, path=MCP_PATH)] if mcp else []
     return create_app(context, mounts)
 
 

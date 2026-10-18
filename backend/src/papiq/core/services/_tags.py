@@ -15,8 +15,8 @@ from papiq.core.domain.documents import Document
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId, UserId
 from papiq.core.domain.master_data import Contact, DocumentType, TagScope
 from papiq.core.domain.tag_tree import TagTree
-from papiq.core.ports import CountBy, DocumentFilter, UnitOfWork
-from papiq.core.ports.repository import FilterView, TagSets
+from papiq.core.ports.repository import CountBy, DocumentFilter, FilterView, TagSets
+from papiq.core.ports.unit_of_work import UnitOfWork
 
 
 async def tag_tree(uow: UnitOfWork) -> TagTree:

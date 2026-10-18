@@ -19,7 +19,8 @@ from typing import Any
 from papiq.adapters.inbound.evaluation.cases import EvaluationSet, EvaluationSetError
 from papiq.adapters.inbound.evaluation.runner import Environment, evaluate
 from papiq.core.domain.ids import DocumentId, UserId
-from papiq.core.ports import EmbeddingResult, Embeddings, SearchIndex
+from papiq.core.ports.embeddings import EmbeddingResult, Embeddings
+from papiq.core.ports.search_index import SearchIndex
 from papiq.core.services.indexing import IndexingService
 from papiq.core.services.search import SearchService
 

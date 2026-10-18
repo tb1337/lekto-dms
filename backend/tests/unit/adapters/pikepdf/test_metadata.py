@@ -9,7 +9,7 @@ from PIL import ExifTags, Image
 
 from papiq.adapters.outbound.pikepdf import FileMetadataReader
 from papiq.core.domain.errors import UnprocessableDocumentError
-from papiq.core.ports import MetadataSource
+from papiq.core.ports.metadata import MetadataSource
 from tests.builders import SAMPLES
 from tests.contracts.processing import MetadataReaderContract
 

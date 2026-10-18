@@ -11,7 +11,7 @@ from fastapi import Depends, Query
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.search import PROCESSING, lane_value
-from papiq.core.ports import DocumentFilter
+from papiq.core.ports.repository import DocumentFilter
 
 ADMINS_ONLY = "Admins only."
 SESSION_ONLY_NOTE = " Needs a session; API tokens are refused (403)."

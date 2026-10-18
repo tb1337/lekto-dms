@@ -29,8 +29,12 @@ from papiq.core.domain.pipeline import Lane, Node, NodeResult, Outcome
 from papiq.core.domain.search import IndexDocument, Visibility
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import Clock, ObjectStore, PasswordHasher, SearchQuery, UnitOfWorkFactory
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.identity import PasswordHasher
+from papiq.core.ports.object_store import ObjectStore
 from papiq.core.ports.ocr import VisionModel
+from papiq.core.ports.search_index import SearchQuery
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from papiq.core.services.pipeline import (
     IncomingFile,
     NodeExecutor,

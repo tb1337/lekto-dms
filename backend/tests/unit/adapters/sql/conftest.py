@@ -6,7 +6,9 @@ import pytest
 
 from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory, migrate
 from papiq.core.domain.jobs import RetryPolicy
-from papiq.core.ports import Clock, EventBus, UnitOfWorkFactory
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.event_bus import EventBus
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
 from tests.contracts.event_bus import EventBusFactory
 

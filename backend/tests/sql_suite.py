@@ -33,7 +33,8 @@ from papiq.core.domain.jobs import Job
 from papiq.core.domain.pipeline import NODES, Node
 from papiq.core.domain.templates import TemplateValue
 from papiq.core.domain.users import User
-from papiq.core.ports import EventBus, UnitOfWorkFactory
+from papiq.core.ports.event_bus import EventBus
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
 from tests.builders import NOW, PlaceholderNode, incoming
 from tests.contracts.event_bus import EventBusFactory, Recorder, publish, received

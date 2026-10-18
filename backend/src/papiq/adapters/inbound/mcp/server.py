@@ -35,7 +35,7 @@ from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.tag_tree import TagTree
 from papiq.core.domain.validation import name_key
-from papiq.core.ports import DocumentFilter
+from papiq.core.ports.repository import DocumentFilter
 from papiq.core.ports.search_index import MAX_HITS
 from papiq.core.services.auth import Principal
 

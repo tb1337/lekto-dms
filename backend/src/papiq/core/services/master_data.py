@@ -30,16 +30,11 @@ from papiq.core.domain.rules_json import definition_to_json
 from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.templates import rename_field_key, unknown_values
 from papiq.core.domain.templates import uses_field as field_used
-from papiq.core.ports import (
-    Clock,
-    DocumentFilter,
-    DocumentPosition,
-    NamedRepository,
-    ObjectStore,
-    TemplateRenderer,
-    UnitOfWork,
-    UnitOfWorkFactory,
-)
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.repository import DocumentFilter, DocumentPosition, NamedRepository
+from papiq.core.ports.templates import TemplateRenderer
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import (
     contact_topics_lock,
     field_definitions,

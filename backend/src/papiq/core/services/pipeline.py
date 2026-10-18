@@ -58,8 +58,10 @@ from papiq.core.domain.reading import (
 )
 from papiq.core.domain.rule_planner import changed_fields
 from papiq.core.domain.validation import require_name
-from papiq.core.ports import Clock, ObjectStore, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.object_store import ObjectStore
 from papiq.core.ports.ocr import VisionModel
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import (
     access_to,
     checked_changes,

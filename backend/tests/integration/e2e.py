@@ -20,7 +20,9 @@ from papiq.composition.container import Container, Services, build_memory_contai
 from papiq.composition.settings import Settings
 from papiq.composition.worker import build_worker
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import ObjectStore, OcrResult, ParseResult
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.ocr import OcrResult
+from papiq.core.ports.parser import ParseResult
 from tests import builders
 from tests.api import auth, issue_token, serving, until
 

@@ -26,7 +26,7 @@ from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome,
 from papiq.core.domain.reading import PageReading, readings_to_json
 from papiq.core.domain.users import Role
 from papiq.core.domain.verdict import Thresholds
-from papiq.core.ports import StructuredRequest
+from papiq.core.ports.llm import StructuredRequest
 from papiq.core.services.classification.nodes import (
     NO_MODEL,
     ClassificationPolicy,

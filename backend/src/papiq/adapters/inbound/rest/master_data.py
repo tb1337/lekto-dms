@@ -39,7 +39,7 @@ from papiq.core.domain.identifiers import Identifier
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId, UserId
 from papiq.core.domain.master_data import MasterData, TagScope
 from papiq.core.domain.tag_tree import TagTree
-from papiq.core.ports import CountBy
+from papiq.core.ports.repository import CountBy
 from papiq.core.services.logos import LOGO_MAX_SIZE, LOGO_TYPE
 from papiq.core.services.master_data import MasterDataService
 

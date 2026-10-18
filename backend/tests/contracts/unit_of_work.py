@@ -20,17 +20,16 @@ from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome,
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import User
 from papiq.core.domain.verdict import KnownLabels
-from papiq.core.ports import (
+from papiq.core.ports.repository import (
     NEWEST_FIRST,
     CountBy,
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
     SortKey,
-    UnitOfWork,
-    UnitOfWorkFactory,
+    TagSets,
 )
-from papiq.core.ports.repository import TagSets
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from tests import builders
 from tests.builders import FAILED, NOW, OK, UNCERTAIN
 

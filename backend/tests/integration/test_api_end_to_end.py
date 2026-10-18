@@ -16,8 +16,8 @@ from papiq.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer
 from papiq.adapters.outbound.sql import Database
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import User
-from papiq.core.ports import ObjectStore, OcrResult
-from papiq.core.ports.ocr import VisionModel
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.ocr import OcrResult, VisionModel
 from papiq.core.services.objects import archive_key, preview_key, structure_key, text_key
 from tests import builders, probes
 from tests.api import Stream, auth, listen, until

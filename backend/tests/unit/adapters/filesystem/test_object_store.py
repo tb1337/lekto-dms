@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from papiq.adapters.outbound.filesystem import FilesystemObjectStore
-from papiq.core.ports import ObjectStore
+from papiq.core.ports.object_store import ObjectStore
 from tests.contracts.object_store import ObjectStoreContract
 
 

@@ -77,7 +77,10 @@ from papiq.core.domain.rule_planner import (
 )
 from papiq.core.domain.rules import Rule, SetSpace, Trigger
 from papiq.core.domain.users import User
-from papiq.core.ports import ObjectStore, PatternMatcher, TemplateRenderer, UnitOfWork
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.patterns import PatternMatcher
+from papiq.core.ports.templates import TemplateRenderer
+from papiq.core.ports.unit_of_work import UnitOfWork
 from papiq.core.services._tags import tag_tree
 from papiq.core.services.inbox import MODEL_NODES, field_checks, latest_entries
 from papiq.core.services.objects import load_text

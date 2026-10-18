@@ -18,7 +18,7 @@ from papiq.core.domain.ids import ContactId, DocumentId, SpaceId, TagId, UserId,
 from papiq.core.domain.pipeline import PERSON_SPACE, Lane, Node
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import DocumentFilter
+from papiq.core.ports.repository import DocumentFilter
 from papiq.core.services.documents import DocumentFile, FileInfo
 from papiq.core.services.objects import (
     archive_key,

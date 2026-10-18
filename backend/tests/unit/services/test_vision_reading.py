@@ -17,7 +17,7 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.pipeline import Lane, Node, NodeRun, Outcome, ProcessingStatus
 from papiq.core.domain.reading import PageReading, VisionAdvice
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import OcrResult
+from papiq.core.ports.ocr import OcrResult
 from papiq.core.services.nodes import NO_VISION_MODEL, OcrNode, PagesNode, ParseNode
 from papiq.core.services.objects import archive_key, exchanges_key, original_key
 from papiq.core.services.pipeline import PipelineService

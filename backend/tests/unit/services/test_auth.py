@@ -18,7 +18,7 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.identity import TokenScope, csrf_token, hash_token
 from papiq.core.domain.ids import ApiTokenId, new_id
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import PasswordHasher
+from papiq.core.ports.identity import PasswordHasher
 from papiq.core.services.auth import AuthService
 from tests import builders
 from tests.builders import PASSWORD

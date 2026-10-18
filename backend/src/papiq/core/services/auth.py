@@ -59,14 +59,9 @@ from papiq.core.domain.identity import (
 )
 from papiq.core.domain.ids import ApiTokenId, SessionId, UserId
 from papiq.core.domain.users import User
-from papiq.core.ports import (
-    Clock,
-    PasswordHasher,
-    SecretCipher,
-    Totp,
-    UnitOfWork,
-    UnitOfWorkFactory,
-)
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.identity import PasswordHasher, SecretCipher, Totp
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import load_actor
 
 log = logging.getLogger(__name__)

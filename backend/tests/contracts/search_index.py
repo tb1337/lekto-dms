@@ -19,9 +19,8 @@ from papiq.core.domain.ids import (
 )
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.search import EmbeddingStamp, IndexDocument, Visibility
-from papiq.core.ports import DocumentFilter, DocumentOrder, SearchIndex, SearchQuery, SortKey
-from papiq.core.ports.repository import TagSets
-from papiq.core.ports.search_index import SimilarQuery
+from papiq.core.ports.repository import DocumentFilter, DocumentOrder, SortKey, TagSets
+from papiq.core.ports.search_index import SearchIndex, SearchQuery, SimilarQuery
 from tests.builders import index_document, search_query
 
 DIMENSIONS = 3

@@ -31,17 +31,11 @@ from papiq.core.domain.ids import ClassifierModelId, ContactId, TagId, UserId
 from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.text import shorten
-from papiq.core.ports import (
-    Classifier,
-    Clock,
-    DocumentFilter,
-    ObjectStore,
-    Prediction,
-    TrainedModel,
-    TrainingExample,
-    UnitOfWork,
-    UnitOfWorkFactory,
-)
+from papiq.core.ports.classifier import Classifier, Prediction, TrainedModel, TrainingExample
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.repository import DocumentFilter
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import require_admin
 from papiq.core.services._jobs import LEASE, JobRunner, Step, retrying
 from papiq.core.services._pages import document_pages

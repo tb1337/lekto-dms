@@ -19,7 +19,7 @@ from papiq.composition.settings import Settings
 from papiq.core.domain.jobs import JobStatus
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import ObjectStore
+from papiq.core.ports.object_store import ObjectStore
 from papiq.core.services.indexing import INDEX_JOB, REBUILD_JOB, REFRESH_JOB
 from tests import builders
 from tests.api import auth, until

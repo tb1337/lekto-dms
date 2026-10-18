@@ -19,13 +19,9 @@ from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.pipeline import Node
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import (
-    DocumentFilter,
-    EmbeddingResult,
-    Embeddings,
-    SearchQuery,
-    SearchResult,
-)
+from papiq.core.ports.embeddings import EmbeddingResult, Embeddings
+from papiq.core.ports.repository import DocumentFilter
+from papiq.core.ports.search_index import SearchQuery, SearchResult
 from papiq.core.services.search import SearchPolicy, SearchService
 from tests import builders
 from tests.builders import UNCERTAIN, Returns

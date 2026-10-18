@@ -23,7 +23,8 @@ from papiq.core.domain.errors import SearchIndexError, SearchUnavailableError
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, SpaceId, TagId, UserId
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.search import EmbeddingStamp, Segment, Visibility
-from papiq.core.ports import DocumentFilter, SearchQuery
+from papiq.core.ports.repository import DocumentFilter
+from papiq.core.ports.search_index import SearchQuery
 from tests.builders import DEFAULT_SETTINGS, NOW, index_document, search_query
 
 URL = "http://meilisearch:7700"

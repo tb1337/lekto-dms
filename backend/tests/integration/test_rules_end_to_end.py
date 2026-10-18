@@ -11,7 +11,7 @@ import pytest
 from papiq.adapters.inbound.rest import PREFIX
 from papiq.adapters.outbound.sql import Database
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import ObjectStore
+from papiq.core.ports.object_store import ObjectStore
 from tests.api import auth
 from tests.integration.e2e import DOCUMENTS, System, TextOcr, TextParser, running_system
 

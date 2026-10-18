@@ -61,15 +61,12 @@ from papiq.core.domain.verdict import (
     Neighbour,
     Signals,
 )
-from papiq.core.ports import (
-    CodeReader,
-    DocumentFilter,
-    Embeddings,
-    ObjectStore,
-    UnitOfWork,
-    UnitOfWorkFactory,
-)
+from papiq.core.ports.codes import CodeReader
+from papiq.core.ports.embeddings import Embeddings
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.repository import DocumentFilter
 from papiq.core.ports.search_index import SearchIndex, SimilarQuery
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services.classification.answers import StoredProposal
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.indexing import split_sections

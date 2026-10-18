@@ -36,7 +36,7 @@ from papiq.composition.errors import ConfigurationError
 from papiq.composition.settings import Settings, reported
 from papiq.core.domain.documents import Document
 from papiq.core.domain.pipeline import NODES, Node, NodeResult, Outcome
-from papiq.core.ports import LanguageModel
+from papiq.core.ports.llm import LanguageModel
 from papiq.core.services.classification.prompts import EXTRACT_PROMPT, PROPOSE_PROMPT
 from papiq.core.services.classification.signals import FactsSignal
 from papiq.core.services.pipeline import NodeExecutor, PipelineService

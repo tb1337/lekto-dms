@@ -13,7 +13,9 @@ from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFact
 from papiq.adapters.outbound.sql.tables import metadata
 from papiq.composition.settings import Settings
 from papiq.core.domain.jobs import RetryPolicy
-from papiq.core.ports import Clock, EventBus, UnitOfWorkFactory
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.event_bus import EventBus
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
 from tests.contracts.event_bus import EventBusFactory
 from tests.integration.services import create_database, drop_database, postgres

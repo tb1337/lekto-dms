@@ -10,14 +10,12 @@ from papiq.core.domain import media_types
 from papiq.core.domain.codes import giro_code
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.domain.locations import Location
-from papiq.core.ports import (
-    CodeReader,
-    DocumentParser,
-    MetadataReader,
-    Ocr,
-    PageRenderer,
-    TextLocator,
-)
+from papiq.core.ports.codes import CodeReader
+from papiq.core.ports.locator import TextLocator
+from papiq.core.ports.metadata import MetadataReader
+from papiq.core.ports.ocr import Ocr
+from papiq.core.ports.pages import PageRenderer
+from papiq.core.ports.parser import DocumentParser
 from tests.builders import SAMPLES
 
 

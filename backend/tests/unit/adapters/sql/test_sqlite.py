@@ -9,7 +9,7 @@ from sqlalchemy import text
 from papiq.adapters.outbound.sql import Database
 from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
-from papiq.core.ports import UnitOfWorkFactory
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
 from tests.builders import NOW
 from tests.contracts.event_bus import EventBusContract

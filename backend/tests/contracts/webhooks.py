@@ -14,7 +14,7 @@ from papiq.core.domain.webhooks import (
     Webhook,
     WebhookDelivery,
 )
-from papiq.core.ports import UnitOfWorkFactory
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
 from tests.builders import HOUR, NOW
 from tests.contracts.unit_of_work import a_user

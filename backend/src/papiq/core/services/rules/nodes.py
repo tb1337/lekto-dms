@@ -13,13 +13,10 @@ from papiq.core.domain.pipeline import RULES, TRIGGER, NodeResult, Outcome
 from papiq.core.domain.rule_planner import Mode
 from papiq.core.domain.rules import Trigger
 from papiq.core.domain.sorting import sort_key
-from papiq.core.ports import (
-    ObjectStore,
-    PatternMatcher,
-    TemplateRenderer,
-    UnitOfWork,
-    UnitOfWorkFactory,
-)
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.patterns import PatternMatcher
+from papiq.core.ports.templates import TemplateRenderer
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import field_definitions, may_file
 from papiq.core.services.rules.running import (
     Prepared,

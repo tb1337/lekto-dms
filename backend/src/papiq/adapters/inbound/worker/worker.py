@@ -23,7 +23,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import timedelta
 
 from papiq.adapters.inbound.backoff import backoff
-from papiq.core.ports import EventBus
+from papiq.core.ports.event_bus import EventBus
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.indexing import IndexingService
 from papiq.core.services.logos import LogoService

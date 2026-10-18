@@ -19,15 +19,16 @@ from papiq.core.domain.ids import SpaceId, UserId
 from papiq.core.domain.permissions import document_access, reach_access
 from papiq.core.domain.search import Segment, Visibility
 from papiq.core.domain.spaces import ShareLevel, Space
-from papiq.core.ports import (
-    DocumentFilter,
-    DocumentOrder,
-    Embeddings,
+from papiq.core.ports.embeddings import Embeddings
+from papiq.core.ports.repository import DocumentFilter, DocumentOrder
+from papiq.core.ports.search_index import (
+    MAX_HITS,
+    SEARCH_PAGE,
     SearchIndex,
     SearchQuery,
-    UnitOfWorkFactory,
+    check_search,
 )
-from papiq.core.ports.search_index import MAX_HITS, SEARCH_PAGE, check_search
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from papiq.core.services._access import admin_only, load_actor
 from papiq.core.services._tags import expanded, group_lookup, matches
 

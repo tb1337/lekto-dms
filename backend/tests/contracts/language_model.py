@@ -6,7 +6,8 @@ import pytest
 
 from papiq.core.domain.errors import EmbeddingsError, LanguageModelError
 from papiq.core.domain.json_value import JsonObject
-from papiq.core.ports import Embeddings, LanguageModel, StructuredRequest
+from papiq.core.ports.embeddings import Embeddings
+from papiq.core.ports.llm import LanguageModel, StructuredRequest
 
 SCHEMA: JsonObject = {
     "type": "object",

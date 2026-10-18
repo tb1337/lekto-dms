@@ -38,6 +38,8 @@ pattern matcher (`regex`, a search with a time limit) and the template renderer 
   Further ports: `ObjectStore`, `Clock`, `Ocr`, `DocumentParser`, `PreviewRenderer`,
   `PasswordHasher`, `SecretCipher`, `Totp`, `OidcProvider`, `LanguageModel`, `Embeddings`,
   `SearchIndex`, `PatternMatcher`, `WebhookSender`.
+  Each is imported from its module (`papiq.core.ports.repository`, ...); the package
+  re-exports nothing.
 - `core/services`: use cases (users, spaces, master data, documents, pipeline, inbox,
   classification, rules, indexing, search, webhooks, maintenance). Each runs in one unit of work and checks the caller's rights.
 

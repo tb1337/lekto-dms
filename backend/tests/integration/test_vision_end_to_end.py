@@ -26,7 +26,7 @@ from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.master_data import Contact, DocumentType
 from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.reading import VisionAdvice
-from papiq.core.ports import StructuredRequest
+from papiq.core.ports.llm import StructuredRequest
 from papiq.core.services.objects import text_key
 from tests import builders, probes
 from tests.builders import DEFAULT_SETTINGS, NOW, SAMPLES, incoming

@@ -4,8 +4,8 @@ without holding them in memory at once or one transaction open."""
 from collections.abc import AsyncIterator
 
 from papiq.core.domain.documents import Document
-from papiq.core.ports import UnitOfWorkFactory
 from papiq.core.ports.repository import DocumentFilter, DocumentPosition
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 
 PAGE = 500
 """Documents read in one transaction."""

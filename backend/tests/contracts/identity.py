@@ -23,15 +23,15 @@ from papiq.core.domain.identity import (
     hash_token,
 )
 from papiq.core.domain.users import User
-from papiq.core.ports import (
+from papiq.core.ports.identity import (
+    TOTP_STEP,
     DecryptionError,
     OidcProvider,
     PasswordHasher,
     SecretCipher,
     Totp,
-    UnitOfWorkFactory,
 )
-from papiq.core.ports.identity import TOTP_STEP
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from tests.builders import HOUR, NOW
 from tests.contracts.unit_of_work import a_user
 

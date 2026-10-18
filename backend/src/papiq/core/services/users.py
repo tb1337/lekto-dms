@@ -15,7 +15,9 @@ from papiq.core.domain.ids import UserId
 from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import Clock, PasswordHasher, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.identity import PasswordHasher
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import load_actor, require_admin
 from papiq.core.services.rules.references import disable_rules, refers_to
 

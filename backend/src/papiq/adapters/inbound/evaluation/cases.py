@@ -35,7 +35,7 @@ from papiq.core.domain.fields import FieldType
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Assignment
 from papiq.core.domain.pipeline import Lane
-from papiq.core.ports import StructuredRequest
+from papiq.core.ports.llm import StructuredRequest
 from papiq.core.services.classification.prompts import PROPOSE_SCHEMA
 
 

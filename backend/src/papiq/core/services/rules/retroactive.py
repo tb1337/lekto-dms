@@ -41,17 +41,12 @@ from papiq.core.domain.pipeline import (
 from papiq.core.domain.rule_planner import Effect, Mode, Note, NoteKind
 from papiq.core.domain.rules import Rule, RuleApplication, RuleScope
 from papiq.core.domain.users import User
-from papiq.core.ports import (
-    Clock,
-    DocumentFilter,
-    DocumentPosition,
-    ObjectStore,
-    PatternMatcher,
-    TemplateRenderer,
-    UnitOfWork,
-    UnitOfWorkFactory,
-)
-from papiq.core.ports.repository import PAGE_SIZE
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.patterns import PatternMatcher
+from papiq.core.ports.repository import PAGE_SIZE, DocumentFilter, DocumentPosition
+from papiq.core.ports.templates import TemplateRenderer
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import field_definitions, load_actor
 from papiq.core.services._jobs import LEASE, JobRunner, lost
 from papiq.core.services.rules.management import visible_rule

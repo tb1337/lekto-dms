@@ -32,7 +32,7 @@ from papiq.core.domain.events import (
     DomainEvent,
 )
 from papiq.core.domain.ids import DocumentId, UserId
-from papiq.core.ports import EventBus
+from papiq.core.ports.event_bus import EventBus
 from papiq.core.services.documents import DocumentService
 
 log = logging.getLogger(__name__)

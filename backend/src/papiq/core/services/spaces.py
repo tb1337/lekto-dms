@@ -4,7 +4,8 @@ from papiq.core.domain.permissions import can_manage_space
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import User
 from papiq.core.domain.validation import name_key
-from papiq.core.ports import Clock, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import admin_only, load_actor, visible_space
 from papiq.core.services.rules.references import disable_rules, refers_to
 

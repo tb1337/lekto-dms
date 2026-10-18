@@ -28,13 +28,9 @@ from papiq.core.domain.errors import AuthenticationError, ConflictError
 from papiq.core.domain.identity import ExternalIdentity, LoginMethod, safe_redirect
 from papiq.core.domain.ids import SessionId, UserId
 from papiq.core.domain.users import Role
-from papiq.core.ports import (
-    Clock,
-    DecryptionError,
-    OidcProvider,
-    SecretCipher,
-    UnitOfWorkFactory,
-)
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.identity import DecryptionError, OidcProvider, SecretCipher
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from papiq.core.services._access import load_actor
 
 # Signing in through a provider composes the sign-in and the account use cases.

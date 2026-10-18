@@ -17,7 +17,7 @@ from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.ids import FieldId
 from papiq.core.domain.rules import References, Rule, check_fields
-from papiq.core.ports import UnitOfWork
+from papiq.core.ports.unit_of_work import UnitOfWork
 
 
 async def disable_rules(

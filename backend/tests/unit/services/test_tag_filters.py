@@ -9,7 +9,7 @@ from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.ids import DocumentId, FieldId, TagId, new_id
 from papiq.core.domain.master_data import Tag, TagScope
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import CountBy, DocumentFilter
+from papiq.core.ports.repository import CountBy, DocumentFilter
 from papiq.core.services._tags import matches
 from papiq.core.services.search import SearchService
 from tests import builders

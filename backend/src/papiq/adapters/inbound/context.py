@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
-from papiq.core.ports import EventBus
+from papiq.core.ports.event_bus import EventBus
 from papiq.core.services.auth import AuthService
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.documents import DocumentService

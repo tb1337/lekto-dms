@@ -29,7 +29,7 @@ from papiq.core.domain.webhooks import (
     Webhook,
     WebhookDelivery,
 )
-from papiq.core.ports import WebhookRequest
+from papiq.core.ports.webhook_sender import WebhookRequest
 from papiq.core.services.webhooks import DELIVER_JOB, WebhookDeliveryService
 from tests import builders
 from tests.builders import NOW

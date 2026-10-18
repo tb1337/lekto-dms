@@ -63,32 +63,26 @@ from papiq.composition.settings import Settings
 from papiq.core.domain.jobs import WORK_LEASE_MARGIN, RetryPolicy
 from papiq.core.domain.pipeline import Node
 from papiq.core.domain.verdict import Thresholds
-from papiq.core.ports import (
-    Classifier,
-    Clock,
-    CodeReader,
-    DocumentParser,
-    Embeddings,
-    EventBus,
-    ImageNormaliser,
-    LanguageModel,
-    LogoFetcher,
-    MetadataReader,
-    ObjectStore,
-    Ocr,
-    OidcProvider,
-    PageRenderer,
-    PasswordHasher,
-    PatternMatcher,
-    SearchIndex,
-    SecretCipher,
-    TemplateRenderer,
-    TextLocator,
-    Totp,
-    UnitOfWorkFactory,
-    WebhookSender,
-)
-from papiq.core.ports.event_bus import DELIVERY_DELAY, DELIVERY_MAX_DELAY
+from papiq.core.ports.classifier import Classifier
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.codes import CodeReader
+from papiq.core.ports.embeddings import Embeddings
+from papiq.core.ports.event_bus import DELIVERY_DELAY, DELIVERY_MAX_DELAY, EventBus
+from papiq.core.ports.identity import OidcProvider, PasswordHasher, SecretCipher, Totp
+from papiq.core.ports.images import ImageNormaliser
+from papiq.core.ports.llm import LanguageModel
+from papiq.core.ports.locator import TextLocator
+from papiq.core.ports.logos import LogoFetcher
+from papiq.core.ports.metadata import MetadataReader
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.ocr import Ocr
+from papiq.core.ports.pages import PageRenderer
+from papiq.core.ports.parser import DocumentParser
+from papiq.core.ports.patterns import PatternMatcher
+from papiq.core.ports.search_index import SearchIndex
+from papiq.core.ports.templates import TemplateRenderer
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from papiq.core.ports.webhook_sender import WebhookSender
 from papiq.core.services.auth import AuthService, SessionPolicy
 from papiq.core.services.classification.nodes import (
     ClassificationPolicy,

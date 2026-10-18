@@ -23,7 +23,7 @@ from papiq.core.domain.permissions import (
 from papiq.core.domain.pipeline import space_chooser
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.domain.users import User
-from papiq.core.ports import UnitOfWork
+from papiq.core.ports.unit_of_work import UnitOfWork
 from papiq.core.services._tags import tag_tree
 
 

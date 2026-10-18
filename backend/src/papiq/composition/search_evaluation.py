@@ -35,7 +35,8 @@ from papiq.composition.container import (
 from papiq.composition.errors import ConfigurationError
 from papiq.composition.evaluation import build_environment, fake_model_for, slug
 from papiq.composition.settings import Settings, reported
-from papiq.core.ports import LanguageModel, SearchIndex
+from papiq.core.ports.llm import LanguageModel
+from papiq.core.ports.search_index import SearchIndex
 from papiq.core.services.indexing import IndexingService
 from papiq.core.services.search import SearchService
 

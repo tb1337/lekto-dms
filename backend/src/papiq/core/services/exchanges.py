@@ -14,7 +14,7 @@ from papiq.core.domain.exchanges import (
     with_run,
 )
 from papiq.core.domain.pipeline import Node
-from papiq.core.ports import ObjectStore
+from papiq.core.ports.object_store import ObjectStore
 from papiq.core.services.objects import exchanges_key
 
 log = logging.getLogger(__name__)

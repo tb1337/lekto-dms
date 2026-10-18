@@ -9,7 +9,7 @@ from papiq.core.domain.documents import Document, DocumentChanges
 from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.users import User
-from papiq.core.ports import UnitOfWorkFactory
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.master_data import MasterDataService
 from tests import builders

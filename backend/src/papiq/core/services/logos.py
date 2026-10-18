@@ -38,14 +38,11 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.ids import ContactId, UserId
 from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.master_data import Contact
-from papiq.core.ports import (
-    Clock,
-    ImageNormaliser,
-    LogoFetcher,
-    ObjectStore,
-    UnitOfWork,
-    UnitOfWorkFactory,
-)
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.images import ImageNormaliser
+from papiq.core.ports.logos import LogoFetcher
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import load_actor, require_admin
 from papiq.core.services._jobs import LEASE, JobRunner, retrying
 from papiq.core.services.objects import logo_key

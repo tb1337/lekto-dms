@@ -40,7 +40,7 @@ from papiq.core.domain.rules import (
 )
 from papiq.core.domain.rules_json import definition_to_json
 from papiq.core.domain.users import User
-from papiq.core.ports import UnitOfWorkFactory
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from tests.builders import NOW
 from tests.contracts.unit_of_work import owner_with_space, users
 

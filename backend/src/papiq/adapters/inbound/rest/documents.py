@@ -70,9 +70,8 @@ from papiq.core.domain.ids import (
 )
 from papiq.core.domain.imports import ImportedMetadata
 from papiq.core.domain.pipeline import Node
-from papiq.core.ports import DocumentOrder, SortKey
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE
-from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
+from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE, DocumentOrder, SortKey
 from papiq.core.services.documents import DocumentFile, DocumentView, MetadataChange
 
 router = APIRouter(prefix="/documents", tags=["documents"], dependencies=PROTECTED)

@@ -1,7 +1,7 @@
 import pytest
 
 from papiq.adapters.outbound.system import SystemClock
-from papiq.core.ports import Clock
+from papiq.core.ports.clock import Clock
 from tests.contracts.clock import ClockContract
 
 

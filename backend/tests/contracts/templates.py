@@ -9,7 +9,7 @@ import pytest
 from papiq.core.domain.errors import MissingValueError, ValidationError
 from papiq.core.domain.fields import Money
 from papiq.core.domain.templates import TemplateValue
-from papiq.core.ports import TemplateRenderer
+from papiq.core.ports.templates import TemplateRenderer
 
 VALUES: dict[str, TemplateValue] = {
     "contact": "Stadtwerke Musterstadt",

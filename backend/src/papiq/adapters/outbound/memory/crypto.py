@@ -5,8 +5,7 @@ import hmac
 import secrets
 from datetime import datetime
 
-from papiq.core.ports import DecryptionError
-from papiq.core.ports.identity import TOTP_STEP
+from papiq.core.ports.identity import TOTP_STEP, DecryptionError
 
 
 class FakePasswordHasher:

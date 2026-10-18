@@ -45,7 +45,10 @@ from papiq.core.domain.templates import (
 )
 from papiq.core.domain.templates import uses_field as field_used
 from papiq.core.domain.users import User
-from papiq.core.ports import Clock, PatternMatcher, TemplateRenderer, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.patterns import PatternMatcher
+from papiq.core.ports.templates import TemplateRenderer
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import admin_only, field_definitions, load_actor, readable_document
 from papiq.core.services._tags import tag_tree
 

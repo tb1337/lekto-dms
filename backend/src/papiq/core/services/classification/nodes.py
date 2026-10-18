@@ -79,8 +79,11 @@ from papiq.core.domain.verdict import (
     judge_topic,
     judge_type,
 )
-from papiq.core.ports import Clock, LanguageModel, ObjectStore, TextLocator, UnitOfWorkFactory
-from papiq.core.ports.llm import StructuredAnswer, StructuredRequest
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.llm import LanguageModel, StructuredAnswer, StructuredRequest
+from papiq.core.ports.locator import TextLocator
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from papiq.core.services.classification.answers import (
     AnswerError,
     Proposal,

@@ -11,7 +11,7 @@ from papiq.adapters.outbound.crypto import (
     PyotpTotp,
     decode_key,
 )
-from papiq.core.ports import DecryptionError
+from papiq.core.ports.identity import DecryptionError
 from tests.contracts.identity import PasswordHasherContract, SecretCipherContract, TotpContract
 
 # Low cost, so the tests stay fast; production uses the RFC 9106 low-memory profile.

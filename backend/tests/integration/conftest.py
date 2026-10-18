@@ -8,7 +8,7 @@ import pytest
 from papiq.adapters.outbound.filesystem import FilesystemObjectStore
 from papiq.adapters.outbound.sql import Database, migrate
 from papiq.composition.settings import Settings, load_settings
-from papiq.core.ports import ObjectStore
+from papiq.core.ports.object_store import ObjectStore
 from tests import probes
 from tests.builders import SECRET_KEY, TRUSTED_PROXY
 from tests.integration.services import create_database, drop_database, postgres, s3_test_store

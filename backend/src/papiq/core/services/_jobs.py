@@ -17,7 +17,8 @@ from papiq.core.domain.errors import ConcurrencyError
 from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.jobs import Job, JobStatus
 from papiq.core.domain.json_value import JsonObject
-from papiq.core.ports import Clock, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 
 log = logging.getLogger(__name__)
 

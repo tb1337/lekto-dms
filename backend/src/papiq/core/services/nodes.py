@@ -21,9 +21,11 @@ from papiq.core.domain.exchanges import tokens_of
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.pipeline import Node, NodeResult, Outcome
 from papiq.core.domain.reading import NO_TEXT_REASON, OcrOutput
-from papiq.core.ports import DocumentParser, ObjectStore, Ocr, PageRenderer, UnitOfWork
-from papiq.core.ports.ocr import VisionReading
-from papiq.core.ports.pages import PAGE_MEDIA_TYPE, PREVIEW_FILE
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.ocr import Ocr, VisionReading
+from papiq.core.ports.pages import PAGE_MEDIA_TYPE, PREVIEW_FILE, PageRenderer
+from papiq.core.ports.parser import DocumentParser
+from papiq.core.ports.unit_of_work import UnitOfWork
 from papiq.core.services.exchanges import keep_calls
 from papiq.core.services.objects import (
     archive_key,

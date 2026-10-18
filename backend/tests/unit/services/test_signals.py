@@ -16,7 +16,7 @@ from papiq.core.domain.master_data import Assignment, Contact, Tag
 from papiq.core.domain.pipeline import NodeResult
 from papiq.core.domain.search import EmbeddingStamp, IndexDocument
 from papiq.core.domain.users import User
-from papiq.core.ports import EmbeddingResult
+from papiq.core.ports.embeddings import EmbeddingResult
 from papiq.core.services.classification.signals import (
     ABSTAINED,
     ClassifierSignal,

@@ -11,7 +11,8 @@ from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.search import IndexDocument
 from papiq.core.domain.users import User
-from papiq.core.ports import EmbeddingResult, IndexBuild
+from papiq.core.ports.embeddings import EmbeddingResult
+from papiq.core.ports.search_index import IndexBuild
 from papiq.core.services.indexing import INDEX_JOB, SUBSCRIBER, IndexingPolicy, IndexingService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.objects import text_key

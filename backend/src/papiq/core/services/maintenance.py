@@ -23,7 +23,10 @@ from papiq.core.domain.identity import ACCOUNT_THROTTLE, SOURCE_THROTTLE
 from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.json_value import JsonObject, as_int
-from papiq.core.ports import Clock, EventBus, ObjectStore, UnitOfWork, UnitOfWorkFactory
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.event_bus import EventBus
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._jobs import LEASE, JobRunner, document_payload, lost, payload_document
 from papiq.core.services.objects import derivative_keys, original_key
 

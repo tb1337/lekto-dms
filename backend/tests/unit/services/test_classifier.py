@@ -17,7 +17,7 @@ from papiq.core.domain.identifiers import Identifier, IdentifierKind, Identifier
 from papiq.core.domain.ids import ContactId
 from papiq.core.domain.master_data import Assignment, Contact, Tag, TagScope
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import UnitOfWork
+from papiq.core.ports.unit_of_work import UnitOfWork
 from papiq.core.services.classifier import (
     CHECK_JOB,
     TRAIN_JOB,

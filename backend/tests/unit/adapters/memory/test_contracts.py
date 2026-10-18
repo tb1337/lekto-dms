@@ -33,14 +33,12 @@ from papiq.adapters.outbound.memory import (
 )
 from papiq.core.domain.errors import EmbeddingsError, LanguageModelError
 from papiq.core.domain.jobs import RetryPolicy
-from papiq.core.ports import (
-    Clock,
-    EmbeddingResult,
-    EventBus,
-    ObjectStore,
-    StructuredRequest,
-    UnitOfWorkFactory,
-)
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.embeddings import EmbeddingResult
+from papiq.core.ports.event_bus import EventBus
+from papiq.core.ports.llm import StructuredRequest
+from papiq.core.ports.object_store import ObjectStore
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
 from tests.contracts.classifier import ClassifierContract
 from tests.contracts.clock import ClockContract

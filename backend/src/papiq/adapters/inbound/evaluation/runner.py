@@ -49,7 +49,7 @@ from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.pipeline import CORRECTED, TRUNCATED, Lane, Node, NodeRun, ProcessingStatus
 from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import ObjectStore
+from papiq.core.ports.object_store import ObjectStore
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.inbox import field_checks, open_nodes

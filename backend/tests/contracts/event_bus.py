@@ -21,7 +21,9 @@ from papiq.core.domain.events import (
 from papiq.core.domain.ids import DocumentId, SpaceId, UserId, new_id
 from papiq.core.domain.jobs import RetryPolicy
 from papiq.core.domain.pipeline import Lane, Node, Outcome
-from papiq.core.ports import Clock, EventBus, UnitOfWorkFactory
+from papiq.core.ports.clock import Clock
+from papiq.core.ports.event_bus import EventBus
+from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from tests.builders import EVENT_RETRY, NOW
 
 # Failed deliveries are due again at once: most tests are about what is delivered, not when.

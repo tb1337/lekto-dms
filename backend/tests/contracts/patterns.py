@@ -7,7 +7,7 @@ import time
 import pytest
 
 from papiq.core.domain.errors import PatternTimeoutError, ValidationError
-from papiq.core.ports import PatternMatcher
+from papiq.core.ports.patterns import PatternMatcher
 
 # Catastrophic backtracking: exponential in the number of `a`s, since the `b` never matches.
 CATASTROPHIC = r"(a|aa)+$"

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	descendants,
 	durationSeconds,
+	hasText,
 	levels,
 	progress,
 	reprocessable,
@@ -128,5 +129,20 @@ describe('durationSeconds', () => {
 		expect(durationSeconds({ ...waiting, started_at, finished_at: null }, now)).toBe(7);
 		const finished_at = '2026-10-06T12:00:05.500Z';
 		expect(durationSeconds({ ...waiting, started_at, finished_at }, now)).toBe(2.5);
+	});
+});
+
+describe('hasText', () => {
+	it('knows the text once the first run read it', () => {
+		expect(hasText(processing('processing', { receive: 'ok' }))).toBe(false);
+		expect(hasText(processing('failed', { receive: 'ok', ocr: 'failed' }))).toBe(false);
+		expect(hasText(processing('failed', { receive: 'ok', ocr: 'ok', parse: 'failed' }))).toBe(
+			false
+		);
+		expect(hasText(processing('processing', { receive: 'ok', ocr: 'ok', parse: 'ok' }))).toBe(true);
+	});
+
+	it('takes a later run for one with the text of a run before', () => {
+		expect(hasText({ ...processing('processing', { receive: 'ok' }), run: 2 })).toBe(true);
 	});
 });

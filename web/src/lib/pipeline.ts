@@ -85,3 +85,14 @@ export function durationSeconds(state: NodeState, now: Date): number | null {
 	const end = state.finished_at === null ? now : new Date(state.finished_at);
 	return Math.max(0, (end.getTime() - new Date(state.started_at).getTime()) / 1000);
 }
+
+/**
+ * Whether the document may have its text, so its facts can be asked for (409 before): once
+ * `parse` read it in the first run. A later run keeps the text of the runs before.
+ */
+export function hasText(processing: Processing): boolean {
+	if (processing.run > 1) return true;
+	return processing.nodes.some(
+		(state) => state.node === 'parse' && state.status === 'done' && state.outcome !== 'failed'
+	);
+}

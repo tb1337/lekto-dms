@@ -38,7 +38,7 @@
 	import { canEdit, canManage } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
-	import type { GraphNode } from '#lib/pipeline.ts';
+	import { hasText, type GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 	import { factCounts, type CodeFacts, type CodePlace, type Facts } from '#lib/facts.ts';
@@ -107,7 +107,8 @@
 						unwrap(api.GET('/api/v1/documents/{id}/reading', params))
 					])
 				: [null, null];
-			const found = await loadFacts(wanted);
+			// Not asked for before there is a text (in processing, or failed before it was read).
+			const found = hasText(loaded.processing) ? await loadFacts(wanted) : null;
 			if (wanted === id && request === latest) {
 				document = loaded;
 				review = reviewed;

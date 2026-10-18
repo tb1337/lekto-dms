@@ -113,6 +113,13 @@ describe('the document view and seen', () => {
 		expect(seen(api)).toHaveLength(1);
 	});
 
+	it('asks for no facts before the document has its text', async () => {
+		const api = serve(() => documentOf({ lane: null }));
+		render(Page);
+		await waitFor(() => expect(seen(api)).toHaveLength(1));
+		expect(calls(api)).not.toContain('GET /api/v1/documents/doc-1/facts');
+	});
+
 	it('reports seen again when the open document turns green', async () => {
 		let current = documentOf({ lane: null });
 		const api = serve(() => current);

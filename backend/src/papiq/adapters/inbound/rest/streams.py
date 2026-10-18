@@ -16,6 +16,10 @@ from papiq.core.domain.ids import DocumentId
 
 router = APIRouter(tags=["events"], dependencies=PROTECTED)
 
+# The first line of a stream (an SSE comment, which EventSource clients ignore): from here on,
+# the stream receives the events. Without it, a client could not tell when that is.
+READY = "ready"
+
 
 def _hub(request: Request) -> EventHub:
     hub: EventHub = request.app.state.hub
@@ -47,7 +51,8 @@ async def _visible_document(
         "`examples`), unless the stream follows one document. "
         "Each event has the event type as `event`, the event id as `id`, and JSON as `data` "
         "(see `EventMessage`). Events are thin: fetch the document for its state. There is "
-        "no replay; after reconnecting, fetch the current state. The stream checks "
+        "no replay; after reconnecting, fetch the current state. The stream starts with the "
+        f"comment `: {READY}` once it is registered: every event after that reaches it. It checks "
         "regularly that its session or token is still valid and ends otherwise."
     ),
     response_class=EventSourceResponse,
@@ -82,5 +87,6 @@ async def events(
         return await still_authenticated(request, context, user)
 
     async with hub.listen(user, document) as listener:
+        yield ServerSentEvent(comment=READY)
         async for event in listener.events(still_allowed, context.stream_recheck_interval):
             yield ServerSentEvent(event=event.type, id=str(event.id), data=message(event))

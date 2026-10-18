@@ -14,6 +14,7 @@ from papiq.composition.container import Container, Services, build_memory_contai
 from papiq.composition.container import build_services as build_all_services
 from papiq.core.domain.documents import Document
 from papiq.core.domain.events import DocumentReceived, DomainEvent, LaneChanged
+from papiq.core.domain.jobs import Job
 from papiq.core.domain.pipeline import Lane, Node, NodeResult
 from papiq.core.domain.users import Role, User
 from papiq.core.services.indexing import SUBSCRIBER
@@ -171,10 +172,15 @@ async def test_a_moved_tag_is_normalised_at_its_documents() -> None:
 async def test_the_cleanup_is_scheduled_at_start() -> None:
     container = build_memory_container()
     services = build_services(container)
+
+    async def next_job() -> Job | None:
+        """The job due first, claimed without a commit: it stays queued."""
+        async with container.unit_of_work() as uow:
+            return await uow.jobs.claim(now=container.clock.now() + timedelta(days=1), lease=FAST)
+
     async with running(worker(container, services)):
-        await asyncio.sleep(0.05)
-    async with container.unit_of_work() as uow:
-        job = await uow.jobs.claim(now=container.clock.now() + timedelta(days=1), lease=FAST)
+        await until(next_job, what="a job is queued")
+    job = await next_job()
     assert job is not None and job.kind == CLEANUP_JOB
 
 

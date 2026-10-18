@@ -94,7 +94,6 @@ async def test_documents_go_through_the_api(
     ]
     for stream in streams.values():
         await asyncio.wait_for(stream.ready.wait(), timeout=10)
-    await asyncio.sleep(0.1)
 
     # A scan into the shared space and a photo into the owner's default space.
     scan = await system.upload_sample(owner, "scan.pdf", space_id=str(shared.id))

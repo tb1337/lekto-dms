@@ -59,7 +59,8 @@ async def serving(app: FastAPI) -> AsyncIterator[str]:
 
 @dataclass
 class Stream:
-    """The events of one open `GET /events`."""
+    """The events of one open `GET /events`. `ready` is set once the server registered the
+    stream (its first line, `: ready`), or answered with something else than a stream."""
 
     events: list[dict[str, Any]] = field(default_factory=list)
     status: int | None = None
@@ -85,10 +86,13 @@ async def _listen(
         "GET", f"{PREFIX}/events", headers=auth(user), params=params
     ) as response:
         stream.status = response.status_code
-        stream.ready.set()
+        if response.status_code != 200:
+            stream.ready.set()
         name = None
         async for line in response.aiter_lines():
-            if line.startswith("event: "):
+            if line == ": ready":
+                stream.ready.set()
+            elif line.startswith("event: "):
                 name = line.removeprefix("event: ")
             elif line.startswith("data: "):
                 data = json.loads(line.removeprefix("data: "))

@@ -1,8 +1,8 @@
 """Housekeeping as jobs.
 
 - The recurring cleanup removes finished jobs, delivered events, ended sessions, stale counts
-  of failed sign-ins, old webhook deliveries and the previous secrets of webhooks whose grace
-  period is over.
+  of failed sign-ins, old webhook deliveries, the previous secrets of webhooks whose grace
+  period is over, and what only the inbox's done needs once it is older than `DONE_PERIOD`.
 - `documents.remove_files`, queued with the deletion of a document, removes its derivatives
   and its original, unless another document (of any owner) has the same file. Deleting the
   original and storing it for a new upload lock the original's key (`UnitOfWork.lock`), so an
@@ -21,6 +21,7 @@ from papiq.core.domain.documents import Sha256
 from papiq.core.domain.errors import ConcurrencyError, ValidationError
 from papiq.core.domain.identity import ACCOUNT_THROTTLE, SOURCE_THROTTLE
 from papiq.core.domain.ids import DocumentId
+from papiq.core.domain.inbox import DONE_PERIOD
 from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.json_value import JsonObject, as_int
 from papiq.core.ports.clock import Clock
@@ -163,6 +164,7 @@ class MaintenanceService:
                 failures = await uow.login_failures.purge(before=now - _FAILURE_RETENTION)
                 deliveries = await uow.webhooks.purge_deliveries(before=before)
                 secrets = await _drop_expired_secrets(uow, now)
+                inbox = await uow.inbox.purge(before=now - DONE_PERIOD)
                 await uow.jobs.complete(job)
                 await uow.jobs.enqueue(CLEANUP_JOB, {}, run_at=next_run, dedup_key=CLEANUP_JOB)
                 await uow.commit()
@@ -182,6 +184,7 @@ class MaintenanceService:
                 "login_failures_removed": failures,
                 "webhook_deliveries_removed": deliveries,
                 "webhook_secrets_dropped": secrets,
+                "inbox_marks_removed": inbox,
             },
         )
 

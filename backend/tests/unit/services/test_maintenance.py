@@ -1,5 +1,5 @@
-"""The cleanup job removes old finished jobs, delivered events, ended sessions and stale counts
-of failed sign-ins, and schedules itself."""
+"""The cleanup job removes old finished jobs, delivered events, ended sessions, stale counts
+of failed sign-ins and what only the inbox's done needs, and schedules itself."""
 
 import asyncio
 from datetime import datetime, timedelta
@@ -9,6 +9,7 @@ import pytest
 from papiq.adapters.outbound.memory import MemoryEventBus
 from papiq.core.domain.errors import AuthenticationError
 from papiq.core.domain.ids import DocumentId, EventId, new_id
+from papiq.core.domain.inbox import DONE_PERIOD, Confirmation
 from papiq.core.domain.jobs import JobStatus
 from papiq.core.domain.webhooks import DeliveryOutcome, WebhookDelivery
 from papiq.core.services.maintenance import CLEANUP_JOB, REMOVE_FILES_JOB, MaintenanceService
@@ -220,6 +221,31 @@ async def test_cleanup_drops_previous_webhook_secrets_after_the_grace_period(wor
     assert first.previous_secret is None and first.previous_valid_until is None
     assert second.previous_secret is not None
     assert first.updated_at == world.clock.now()
+
+
+async def test_cleanup_removes_what_only_done_needs_after_its_period(world: World) -> None:
+    """Who confirmed a document is kept for the inbox's done, 14 days; a seen mark as long as
+    it tells that the document is not new."""
+    service = maintenance(world)
+    owner = await world.user()
+    space = await world.default_space(owner)
+    confirmed, seen = builders.processed(owner, space), builders.processed(owner, space)
+    confirmed.new_at = None
+    async with world.uow() as uow:
+        for document in (confirmed, seen):
+            await uow.documents.add(document)
+        await uow.inbox.record_confirmation(confirmed.id, Confirmation(owner.id, world.clock.now()))
+        await uow.inbox.mark_seen(owner.id, seen.id, world.clock.now())
+        await uow.inbox.mark_seen(owner.id, confirmed.id, world.clock.now())  # tells nothing
+        await uow.commit()
+    world.clock.advance(DONE_PERIOD)
+    await service.schedule()
+    assert await service.run_next_job()
+    assert world.database.confirmations == {confirmed.id: Confirmation(owner.id, builders.NOW)}
+    world.clock.advance(INTERVAL)
+    assert await service.run_next_job()
+    assert world.database.confirmations == {}
+    assert world.database.seen == {(owner.id, seen.id): builders.NOW}
 
 
 async def test_a_cancelled_cleanup_gives_its_job_back_at_once(world: World) -> None:

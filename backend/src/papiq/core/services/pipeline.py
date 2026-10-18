@@ -34,6 +34,7 @@ from papiq.core.domain.errors import (
 )
 from papiq.core.domain.ids import DocumentId, JobId, SpaceId, TagId, UserId
 from papiq.core.domain.imports import IMPORTED, ImportedMetadata
+from papiq.core.domain.inbox import Confirmation
 from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.permissions import can_file_into
@@ -520,6 +521,9 @@ class PipelineService:
         Choosing a contact for an open contact field teaches it the name the model read as an
         alias (`master_data.learn_alias`), so the next document with that name finds it.
 
+        The document leaves the inbox for everyone and is new for no one; who confirmed it, and
+        when, is kept for done (`domain.inbox`).
+
         If the fields node does not run again, the type's title pattern is rendered with the
         decided values, as long as the document has the machine's title (`titles`)."""
         async with self._uow() as uow:
@@ -547,6 +551,7 @@ class PipelineService:
             now = self._clock.now()
             tags_before = frozenset(document.tag_ids)
             overruled = document.confirm(resume_at, now)
+            await uow.inbox.record_confirmation(id, Confirmation(user.id, now))
             definitions = await field_definitions(uow)
             decision = decide(
                 open,

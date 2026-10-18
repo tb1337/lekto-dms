@@ -19,6 +19,7 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.events import DocumentFiled
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.ids import ContactId, SpaceId, UserId
+from papiq.core.domain.inbox import Confirmation
 from papiq.core.domain.master_data import Assignment, Contact
 from papiq.core.domain.pipeline import PERSON, Lane, Node, NodeResult, Outcome, ProcessingStatus
 from papiq.core.domain.spaces import ShareLevel
@@ -245,6 +246,9 @@ async def test_a_confirmed_document_is_filed(world: World) -> None:
     assert document.fields[s.amount.id] == Money(Decimal("84.20"), "EUR")
     assert DocumentFiled.type in world.event_types()
     assert await world.documents.inbox(s.owner.id) == []
+    # Who confirmed it, for the inbox's done; new it is for no one.
+    assert world.database.confirmations == {s.document.id: Confirmation(s.owner.id, NOW)}
+    assert document.new_at is None
 
     log = await world.documents.processing_log(s.owner.id, s.document.id)
     confirmations = [entry for entry in log if entry.result.model_version == PERSON]

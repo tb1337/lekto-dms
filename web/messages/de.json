@@ -201,6 +201,7 @@
 	"inbox_badge_yellow": "{count} gelb",
 	"inbox_badge_new": "{count} neu",
 	"inbox_badge_processing": "{count} in Verarbeitung",
+	"in_inbox": "Im Posteingang",
 	"review_proposed": "Antwort des Modells",
 	"review_evidence": "Zitat",
 	"review_new_name": "Gibt es noch nicht",

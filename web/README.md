@@ -62,10 +62,14 @@ place of the editor (`tests/setup.ts`); `codemirror.test.ts` runs the real one.
 
 ## Documents and search
 
-`/ui/documents` lists the documents and, with words in `?q=`, searches them
+`/ui/documents` is the archive: it lists the documents and, with words in `?q=`, searches them
 (`/documents/search`, with snippets), with the same filters (`lib/filters.ts`: contact, type,
-tags, contact and type groups, topics, space, lane, a field with a value; tags, groups and topics
-as chips, several topics meaning one of them); there is no search page of its own. The field in the
+tags, contact and type groups, topics, space, a field with a value; tags, groups and topics as
+chips, several topics meaning one of them); there is no search page of its own. It shows no
+lanes and no progress: a document that stands open in the inbox (`in_inbox`) carries "In the
+inbox", a link to the inbox tab it stands under (`InboxMark`); the document view keeps the lane
+in its head. A row or card asks for the preview only of a document with page images
+(`page_count`). The field in the
 header leads there; on narrow screens its icon opens the view with the field focused
 (`#search`). `?sort=` holds the sort: a search by relevance, a list by the newest document date
 unless chosen otherwise; the last choice of each, and grid or list (grid by default), stay in

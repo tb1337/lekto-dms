@@ -201,6 +201,7 @@
 	"inbox_badge_yellow": "{count} yellow",
 	"inbox_badge_new": "{count} new",
 	"inbox_badge_processing": "{count} processing",
+	"in_inbox": "In the inbox",
 	"review_proposed": "Model answered",
 	"review_evidence": "Quoted",
 	"review_new_name": "Does not exist yet",

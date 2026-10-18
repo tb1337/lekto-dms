@@ -13,6 +13,7 @@
 	import DocumentCard from '#lib/components/DocumentCard.svelte';
 	import DocumentFilters from '#lib/components/DocumentFilters.svelte';
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
+	import InboxMark from '#lib/components/InboxMark.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import UploadDialog from '#lib/components/UploadDialog.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -38,10 +39,11 @@
 	import { uploads } from '#lib/upload.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 
-	// The documents: listed (newest document date first) or, with words in `q`, searched (by
-	// relevance), with the same filters; sorted as chosen, as a grid or a list. The URL holds
-	// the words, the filters and the sort; grid or list and the last sort are remembered.
-	type Document = components['schemas']['DocumentDetails'];
+	// The documents (the archive): listed (newest document date first) or, with words in `q`,
+	// searched (by relevance), with the same filters; sorted as chosen, as a grid or a list. The
+	// URL holds the words, the filters and the sort; grid or list and the last sort are
+	// remembered. No lanes here: a document that stands open in the inbox says so, with a link.
+	type Document = components['schemas']['ListedDocument'];
 	type Segment = components['schemas']['SnippetSegment'];
 	type Item = { document: Document; snippet: Segment[] };
 
@@ -307,6 +309,9 @@
 					<li>
 						<DocumentRow document={item.document} {lookup}>
 							{@render snippetLine(item)}
+							{#snippet aside()}
+								{#if item.document.in_inbox}<InboxMark lane={item.document.lane} />{/if}
+							{/snippet}
 						</DocumentRow>
 					</li>
 				{/each}

@@ -3,9 +3,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
 	import DocumentThumb from '#lib/components/DocumentThumb.svelte';
-	import LaneBadge from '#lib/components/LaneBadge.svelte';
 	import NamesLine from '#lib/components/NamesLine.svelte';
-	import ProcessingProgress from '#lib/components/ProcessingProgress.svelte';
 	import TagChips from '#lib/components/TagChips.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { formatDate } from '#lib/i18n.ts';
@@ -13,18 +11,21 @@
 	import { session } from '#lib/session.svelte.ts';
 
 	// One document in a list: preview, title, contact (with its logo or initials) and type
-	// (with its icon) each with its shown groups, date, its shown tags, lane, for admins the
-	// owner of another user's document; `children` adds a line.
+	// (with its icon) each with its shown groups, date, its shown tags, for admins the owner of
+	// another user's document. `children` adds a line; `aside` stands at the end of the row,
+	// beside its link (a button, a link of its own).
 	let {
 		document,
 		lookup,
 		href = `${BASE}/documents/${document.id}`,
-		children
+		children,
+		aside
 	}: {
 		document: components['schemas']['DocumentDetails'];
 		lookup: Lookup | null;
 		href?: string;
 		children?: Snippet;
+		aside?: Snippet;
 	} = $props();
 
 	const contact = $derived(lookup?.contacts.find((entry) => entry.id === document.contact_id));
@@ -38,34 +39,32 @@
 	);
 </script>
 
-<a
-	{href}
-	class="flex items-center gap-4 rounded-2xl border bg-card p-3 transition-colors hover:border-primary"
+<div
+	class="flex items-center gap-3 rounded-2xl border bg-card p-3 transition-colors has-[>a:hover]:border-primary"
 >
-	<DocumentThumb
-		id={document.id}
-		pages={document.page_count}
-		class="h-20 w-14 shrink-0 rounded-lg border"
-	/>
-	<div class="flex min-w-0 flex-1 flex-col gap-1">
-		<span class="flex min-w-0 items-center gap-2">
-			<span class="truncate font-medium">{document.title}</span>
-			{#if owner}<Badge variant="outline" class="shrink-0">{owner}</Badge>{/if}
-		</span>
-		<NamesLine
-			parts={[
-				{ name: contact?.name, groupIds: contact?.group_ids, avatar: contact },
-				{ name: kind?.name, groupIds: kind?.group_ids, icon: kind?.icon }
-			]}
-			date={formatDate(document.document_date ?? document.created_at)}
-			tags={lookup?.tags ?? []}
-			class="text-sm text-muted-foreground"
+	<a {href} class="flex min-w-0 flex-1 items-center gap-4 rounded-lg">
+		<DocumentThumb
+			id={document.id}
+			pages={document.page_count}
+			class="h-20 w-14 shrink-0 rounded-lg border"
 		/>
-		<TagChips {document} {lookup} />
-		{#if document.processing.status === 'processing'}
-			<ProcessingProgress processing={document.processing} compact class="mt-1 max-w-48" />
-		{/if}
-		{@render children?.()}
-	</div>
-	<LaneBadge lane={document.lane} />
-</a>
+		<div class="flex min-w-0 flex-1 flex-col gap-1">
+			<span class="flex min-w-0 items-center gap-2">
+				<span class="truncate font-medium">{document.title}</span>
+				{#if owner}<Badge variant="outline" class="shrink-0">{owner}</Badge>{/if}
+			</span>
+			<NamesLine
+				parts={[
+					{ name: contact?.name, groupIds: contact?.group_ids, avatar: contact },
+					{ name: kind?.name, groupIds: kind?.group_ids, icon: kind?.icon }
+				]}
+				date={formatDate(document.document_date ?? document.created_at)}
+				tags={lookup?.tags ?? []}
+				class="text-sm text-muted-foreground"
+			/>
+			<TagChips {document} {lookup} />
+			{@render children?.()}
+		</div>
+	</a>
+	{@render aside?.()}
+</div>

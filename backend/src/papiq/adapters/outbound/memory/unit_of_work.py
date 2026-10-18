@@ -10,7 +10,7 @@ import copy
 import dataclasses
 from collections.abc import Callable, Collection, Hashable, Iterable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import TracebackType
 from typing import Any, Self
 from uuid import UUID
@@ -44,6 +44,7 @@ from papiq.adapters.outbound.memory.identity import (
     MemoryLoginFailureRepository,
     MemorySessionRepository,
 )
+from papiq.adapters.outbound.memory.ordering import rank
 from papiq.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from papiq.adapters.outbound.memory.rules import (
     MemoryRuleApplicationRepository,
@@ -82,7 +83,6 @@ from papiq.core.ports.repository import (
     DocumentOrder,
     DocumentPosition,
     FilterView,
-    SortKey,
 )
 
 
@@ -713,19 +713,4 @@ def _rank(document: Document, order: DocumentOrder) -> tuple[Any, ...]:
 
 
 def _rank_of(position: DocumentPosition, order: DocumentOrder) -> tuple[Any, ...]:
-    """A key that sorts ascending as `order` sorts: documents without a date last."""
-    sign = 1 if order.ascending else -1
-    id_ = sign * position.id.int
-    match order.key:
-        case SortKey.CREATED:
-            return (id_,)
-        case SortKey.DOCUMENT_DATE:
-            day = position.value
-            if not isinstance(day, date):
-                return (1, 0, id_)
-            return (0, sign * day.toordinal(), id_)
-        case SortKey.TITLE:
-            title = str(position.value)
-            # Text cannot be negated: descending compares the code points negated.
-            letters = tuple(ord(char) for char in title)
-            return (letters if order.ascending else (*(-code for code in letters), 1), id_)
+    return rank(order, position.id, position.value, ties_by_id=True)

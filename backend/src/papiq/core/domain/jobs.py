@@ -44,6 +44,12 @@ class Job:
         return self.attempts - self.releases
 
 
+WORK_LEASE_MARGIN = timedelta(minutes=2)
+"""Time a node or indexing job may take beyond the time limits of what it calls (OCR, a model,
+the search index): downloading and uploading its files, the preview, the bookkeeping in the
+database."""
+
+
 @dataclass(frozen=True, kw_only=True)
 class RetryPolicy:
     """Repeating work whose attempt failed (a job, an event's delivery): at most

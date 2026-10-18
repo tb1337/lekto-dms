@@ -72,7 +72,9 @@ DELIVER_JOB = "webhooks.deliver"
 
 _RETRY_STATUS = frozenset({408, 425, 429})
 _RESULT_ROUNDS = 3  # tries to write the result when the webhook is changed at the same time
-_LEASE_MARGIN = timedelta(seconds=60)  # on top of the timeout of an attempt
+ATTEMPT_LEASE_MARGIN = timedelta(seconds=60)
+"""Time a delivery job may take beyond the timeout of its attempt: one request needs no files,
+only writing its outcome (less than `WORK_LEASE_MARGIN` of the jobs that move files)."""
 
 
 class WebhookDeliveryService:
@@ -136,7 +138,7 @@ class WebhookDeliveryService:
 
     async def run_next_job(self) -> bool:
         """Claim and run a due delivery. Returns False if none was due."""
-        lease = self._policy.timeout + _LEASE_MARGIN
+        lease = self._policy.timeout + ATTEMPT_LEASE_MARGIN
         return await self._jobs.run_next([DELIVER_JOB], lease, self._run_claimed)
 
     async def send_test(self, actor: UserId, id: WebhookId) -> WebhookDelivery:

@@ -31,7 +31,7 @@ from papiq.composition.container import (
 from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
 from papiq.core.domain.events import DomainEvent
-from papiq.core.domain.jobs import RetryPolicy
+from papiq.core.domain.jobs import WORK_LEASE_MARGIN, RetryPolicy
 from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.templates import TemplateValue
 from papiq.core.domain.users import Role
@@ -130,9 +130,9 @@ def test_a_vision_model_reads_pages_when_configured() -> None:
     assert ocr._vision.timeout == timedelta(minutes=5)
     assert ocr._vision_timeout == timedelta(minutes=10)
     # Reading a document with the model may take longer than OCR: the lease grows with it.
-    assert container.node_lease(configured) == timedelta(minutes=10) + container.LEASE_MARGIN
+    assert container.node_lease(configured) == timedelta(minutes=10) + WORK_LEASE_MARGIN
     quick = settings(vlm_base_url="https://chat.example/api", vlm_model="m", vlm_timeout="60")
-    assert container.node_lease(quick) == timedelta(minutes=10) + container.LEASE_MARGIN
+    assert container.node_lease(quick) == timedelta(minutes=10) + WORK_LEASE_MARGIN
 
 
 def test_services_take_their_tuning_from_the_settings() -> None:
@@ -147,10 +147,10 @@ def test_services_take_their_tuning_from_the_settings() -> None:
     services = build_services(build_memory_container(), configured)
     pipeline = services.pipeline
     assert pipeline._retry == RetryPolicy(max_attempts=5, delay=timedelta(seconds=10))
-    assert pipeline._lease == timedelta(minutes=5) + container.LEASE_MARGIN
+    assert pipeline._lease == timedelta(minutes=5) + WORK_LEASE_MARGIN
     # A classification node may ask the model twice.
     longer = build_services(build_memory_container(), settings(llm_timeout="400")).pipeline
-    assert longer._lease == timedelta(seconds=800) + container.LEASE_MARGIN
+    assert longer._lease == timedelta(seconds=800) + WORK_LEASE_MARGIN
     assert isinstance(pipeline.executor(Node.OCR), OcrNode)
     assert isinstance(pipeline.executor(Node.PARSE), ParseNode)
     maintenance = services.maintenance
@@ -354,7 +354,7 @@ def test_the_services_are_tuned_by_the_settings() -> None:
     assert policy.reconcile_interval == timedelta(hours=2)
     assert policy.rebuild_lease == timedelta(hours=9)
     # Three rounds of embedding and writing, and a margin.
-    assert policy.job_lease == 3 * timedelta(minutes=3) + container.LEASE_MARGIN
+    assert policy.job_lease == 3 * timedelta(minutes=3) + WORK_LEASE_MARGIN
     assert container.indexing_policy_of(settings()).document_prefix == ""
 
 

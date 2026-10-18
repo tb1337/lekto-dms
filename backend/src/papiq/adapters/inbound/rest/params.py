@@ -9,6 +9,7 @@ from fastapi import Depends, Query
 
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId
 from papiq.core.domain.pipeline import Lane
+from papiq.core.domain.search import PROCESSING, lane_value
 from papiq.core.ports import DocumentFilter
 
 MAX_IDS = 50
@@ -18,14 +19,15 @@ MAX_IDS = 50
 class LaneFilter(StrEnum):
     """A lane, or `processing`: documents that have no lane yet."""
 
-    GREEN = "green"
-    YELLOW = "yellow"
-    RED = "red"
-    PROCESSING = "processing"
+    GREEN = Lane.GREEN.value
+    YELLOW = Lane.YELLOW.value
+    RED = Lane.RED.value
+    PROCESSING = PROCESSING
 
 
-_LANES: dict[LaneFilter, Lane | None] = {LaneFilter(lane): lane for lane in Lane} | {
-    LaneFilter.PROCESSING: None
+# Every lane, and none, as the API names it (a lane without a member fails here, at import).
+_LANES: dict[LaneFilter, Lane | None] = {
+    LaneFilter(lane_value(lane)): lane for lane in (*Lane, None)
 }
 
 type Ids = Annotated[list[UUID] | None, Query(max_length=MAX_IDS)]

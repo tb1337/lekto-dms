@@ -3,6 +3,7 @@
 from collections.abc import Collection, Mapping, Sequence
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
@@ -406,41 +407,54 @@ _EMPTY_VALUE: Values = {
 }
 
 
+class ValueKind(StrEnum):
+    """The kind of a stored field value (`document_fields.kind`): which typed column holds it
+    and how to read it back."""
+
+    TEXT = "text"
+    URL = "url"
+    DECIMAL = "decimal"
+    MONEY = "money"
+    DATE = "date"
+    PERIOD = "period"
+    BOOLEAN = "boolean"
+
+
 def _value_columns(value: FieldValue) -> Values:
     """The columns of `document_fields` that hold a field value."""
     match value:
         case bool():
-            columns: Values = {"kind": "boolean", "value_boolean": value}
+            columns: Values = {"kind": ValueKind.BOOLEAN, "value_boolean": value}
         case Money(amount=amount, currency=currency):
-            columns = {"kind": "money", "value_decimal": amount, "value_currency": currency}
+            columns = {"kind": ValueKind.MONEY, "value_decimal": amount, "value_currency": currency}
         case Decimal():
-            columns = {"kind": "decimal", "value_decimal": value}
+            columns = {"kind": ValueKind.DECIMAL, "value_decimal": value}
         case Url(value=url):
-            columns = {"kind": "url", "value_text": url}
+            columns = {"kind": ValueKind.URL, "value_text": url}
         case str():
-            columns = {"kind": "text", "value_text": value}
+            columns = {"kind": ValueKind.TEXT, "value_text": value}
         case Period(start=start, end=end):
-            columns = {"kind": "period", "value_date": start, "value_date_end": end}
+            columns = {"kind": ValueKind.PERIOD, "value_date": start, "value_date_end": end}
         case date():  # datetime is no field value
-            columns = {"kind": "date", "value_date": value}
+            columns = {"kind": ValueKind.DATE, "value_date": value}
     return {**_EMPTY_VALUE, **columns}
 
 
 def _field_value(row: Row[Any]) -> FieldValue:
     match row.kind:
-        case "boolean":
+        case ValueKind.BOOLEAN:
             return bool(row.value_boolean)
-        case "money":
+        case ValueKind.MONEY:
             return Money(row.value_decimal, row.value_currency)
-        case "decimal":
+        case ValueKind.DECIMAL:
             return row.value_decimal  # type: ignore[no-any-return]
-        case "url":
+        case ValueKind.URL:
             return Url(row.value_text)
-        case "text":
+        case ValueKind.TEXT:
             return row.value_text  # type: ignore[no-any-return]
-        case "date":
+        case ValueKind.DATE:
             return row.value_date  # type: ignore[no-any-return]
-        case "period":
+        case ValueKind.PERIOD:
             return Period(row.value_date, row.value_date_end)
     raise ValueError(f"unknown field value kind {row.kind!r}")
 

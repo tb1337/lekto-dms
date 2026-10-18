@@ -8,7 +8,9 @@ import math
 import re
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import replace
+from datetime import date
 
+from papiq.adapters.outbound.memory.ordering import rank
 from papiq.core.domain.errors import SearchIndexError
 from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.search import LAYOUT, IndexDocument, IndexState, Segment
@@ -250,21 +252,21 @@ def _matches_filter(document: IndexDocument, criteria: DocumentFilter) -> bool:
 def _ordered(
     scored: list[tuple[float, IndexDocument]], order: DocumentOrder
 ) -> list[tuple[float, IndexDocument]]:
-    """`scored` in `order`, as Meilisearch sorts: documents without the value last."""
+    """`scored` in `order`, as Meilisearch sorts: documents without a date last, ties by
+    relevance."""
 
-    def value(document: IndexDocument) -> object:
+    def value(document: IndexDocument) -> date | str | None:
         match order.key:
-            case SortKey.CREATED:
-                return document.created_at
             case SortKey.DOCUMENT_DATE:
                 return document.document_date
             case SortKey.TITLE:
                 return sort_key(document.title)
+        return None  # the id is the order of arrival
 
-    present = [item for item in scored if value(item[1]) is not None]
-    missing = [item for item in scored if value(item[1]) is None]
-    present.sort(key=lambda item: value(item[1]), reverse=not order.ascending)  # type: ignore[arg-type, return-value]
-    return present + missing
+    return sorted(
+        scored,
+        key=lambda item: rank(order, item[1].id, value(item[1]), ties_by_id=False),
+    )
 
 
 def _snippet(text: str, terms: list[str]) -> tuple[Segment, ...]:

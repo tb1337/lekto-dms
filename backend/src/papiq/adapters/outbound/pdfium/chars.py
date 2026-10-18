@@ -202,9 +202,7 @@ def page_chars(
             right=right,
             top=top,
         )
-        angle = (
-            math.degrees(pdfium_c.FPDFText_GetCharAngle(textpage, index)) + geometry.rotation
-        ) % 360
+        angle = _angle(textpage, index, geometry)
         if min(angle, 360 - angle) < UPRIGHT:
             upright.append(char)
         else:

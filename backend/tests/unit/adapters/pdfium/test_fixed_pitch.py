@@ -2,13 +2,43 @@
 
 from pathlib import Path
 
+import pypdfium2
 import pytest
 
-from papiq.adapters.outbound.pdfium.fixed_pitch import fixed_pitch_blocks
+from papiq.adapters.outbound.pdfium.chars import Char, Geometry, page_chars, reading_turn
+from papiq.adapters.outbound.pdfium.fixed_pitch import FixedPitchBlock, blocks_of, page_lines
+from papiq.adapters.outbound.pdfium.library import LOCK
 from tests.contracts.processing import SAMPLES
 from tests.samples.make_samples import PRINTOUT, pdf, text_lines
 
 FONTS = ("Helvetica", "Courier")
+
+
+def fixed_pitch_blocks(path: Path) -> list[FixedPitchBlock]:
+    """The blocks of fixed-pitch text in a PDF, page by page from the top, as the layout
+    parser finds them on each page."""
+    with LOCK:
+        document = pypdfium2.PdfDocument(path)
+        try:
+            return [
+                block
+                for number in range(1, len(document) + 1)
+                for block in blocks_of(number, page_lines(_page_chars(document, number)))
+            ]
+        finally:
+            document.close()
+
+
+def _page_chars(document: pypdfium2.PdfDocument, number: int) -> list[Char]:
+    page = document[number - 1]
+    textpage = page.get_textpage()
+    try:
+        geometry = Geometry.of(page)
+        upright, _ = page_chars(textpage, geometry.turned(reading_turn(textpage, geometry)))
+        return upright
+    finally:
+        textpage.close()
+        page.close()
 
 
 def write(tmp_path: Path, content: str, page: str = "") -> Path:

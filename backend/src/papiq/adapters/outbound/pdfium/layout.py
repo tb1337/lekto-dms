@@ -36,12 +36,11 @@ from papiq.adapters.outbound.pdfium.chars import (
     Angled,
     Char,
     Geometry,
-    lines_of,
     page_chars,
     page_fractions,
     reading_turn,
 )
-from papiq.adapters.outbound.pdfium.fixed_pitch import FixedPitchBlock, blocks_of
+from papiq.adapters.outbound.pdfium.fixed_pitch import FixedPitchBlock, blocks_of, page_lines
 from papiq.adapters.outbound.pdfium.library import LOCK
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.ports.parser import ParseResult
@@ -132,23 +131,23 @@ def _page(
     text: list[str] = []
     structure: list[dict[str, Any]] = []
     if chars:
-        lines = lines_of(chars, {})
-        blocks = blocks_of(0, chars)
+        lines = page_lines(chars)
+        blocks = blocks_of(0, lines)
         origin = min(char.left for char in chars)
         unit = statistics.median(char.right - char.left for char in chars)
         distances = [above.middle - below.middle for above, below in itertools.pairwise(lines)]
         usual = statistics.median(distances) if distances else 0.0
-        written: set[int] = set()
+        written: set[FixedPitchBlock] = set()
         for index, line in enumerate(lines):
             words = _words(line.chars, lambda char: (char.left, char.right), _height)
             structure.append(_line(words, width, height))
             block = _block(line.chars, blocks)
-            if block is not None and id(block) in written:
+            if block is not None and block in written:
                 continue
             if index and usual and distances[index - 1] > BLANK_LINE * usual:
                 text.append("")
             if block is not None:
-                written.add(id(block))
+                written.add(block)
                 text.extend(block.text.split("\n"))
             else:
                 text.append(_columns(words, origin, unit))

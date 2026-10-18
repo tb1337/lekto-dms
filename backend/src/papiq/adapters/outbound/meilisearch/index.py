@@ -29,7 +29,9 @@ import httpx2
 from papiq.adapters.outbound.http_client import excerpt
 from papiq.core.domain.errors import SearchIndexError, SearchUnavailableError
 from papiq.core.domain.ids import DocumentId
+from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.search import (
+    FIRST_LAYOUT,
     LAYOUT,
     EmbeddingStamp,
     IndexDocument,
@@ -508,7 +510,8 @@ def _visibility_filter(visibility: Visibility) -> str:
     if not visibility.spaces:
         return f"({own})"
     spaces = ", ".join(_quote(space) for space in sorted(visibility.spaces, key=str))
-    return f'({own} OR (lane = "green" AND space_id IN [{spaces}]))'
+    green = _quote(lane_value(Lane.GREEN))
+    return f"({own} OR (lane = {green} AND space_id IN [{spaces}]))"
 
 
 def _normalised(key: str, setting: Any) -> Any:
@@ -575,7 +578,7 @@ def _state_of(item: Mapping[str, Any]) -> IndexState:
             id=DocumentId(_uuid(item["id"])),
             version=int(item["version"]),
             embedding=EmbeddingStamp(str(model), str(digest)) if model and digest else None,
-            layout=int(item.get("layout") or 1),
+            layout=int(item.get("layout") or FIRST_LAYOUT),
         )
     except (KeyError, TypeError, ValueError):
         raise SearchIndexError("Meilisearch sent an unusable document") from None

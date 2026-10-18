@@ -28,6 +28,8 @@ LAYOUT = 5
 anew by the reconciliation (2: the ids of the fields with a value, and the title's sort key;
 3: `space_id` instead of `drawer_id`; 4: tags with their ancestors, and the groups of the
 contact and the type; 5: the topic with its ancestors)."""
+FIRST_LAYOUT = 1
+"""The layout of an entry that names none: written before layouts were counted."""
 
 
 def lane_value(lane: Lane | None) -> str:

@@ -59,7 +59,7 @@ from papiq.adapters.outbound.zxing import ZxingCodeReader
 from papiq.composition.database import open_database
 from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
-from papiq.core.domain.jobs import RetryPolicy
+from papiq.core.domain.jobs import WORK_LEASE_MARGIN, RetryPolicy
 from papiq.core.domain.pipeline import Node
 from papiq.core.domain.verdict import Thresholds
 from papiq.core.ports import (
@@ -465,8 +465,6 @@ class Services:
     classifier: ClassifierService | None  # with a classifier
 
 
-# Time a node job may take beyond its time limit: downloads, uploads, preview, bookkeeping.
-LEASE_MARGIN = timedelta(minutes=2)
 VISION_REQUEST_TIMEOUT = timedelta(minutes=5)
 """How long the vision language model may take for one page."""
 
@@ -476,7 +474,7 @@ def node_lease(settings: Settings) -> timedelta:
     longest = max(settings.ocr_timeout, 2 * settings.llm_timeout)
     if settings.vlm_base_url is not None:
         longest = max(longest, settings.vlm_timeout)
-    return longest + LEASE_MARGIN
+    return longest + WORK_LEASE_MARGIN
 
 
 def classifier_policy_of(settings: Settings) -> ClassifierPolicy:
@@ -561,7 +559,7 @@ def indexing_policy_of(settings: Settings) -> IndexingPolicy:
         reconcile_interval=settings.search_reconcile_interval,
         # An indexing job may embed and write up to three times (see `IndexingService`).
         job_lease=3 * (settings.embedding_timeout + settings.meilisearch_task_timeout)
-        + LEASE_MARGIN,
+        + WORK_LEASE_MARGIN,
         rebuild_lease=settings.search_rebuild_timeout,
     )
 

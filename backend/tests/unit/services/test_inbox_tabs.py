@@ -7,7 +7,7 @@ from datetime import timedelta
 import pytest
 
 from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.errors import NotFoundError, PermissionDeniedError
+from papiq.core.domain.errors import NotFoundError, PermissionDeniedError, ValidationError
 from papiq.core.domain.inbox import DONE_PERIOD, Departure, Done, InboxTab
 from papiq.core.domain.master_data import Assignment, Contact
 from papiq.core.domain.pipeline import Lane, Node
@@ -333,6 +333,40 @@ async def test_pages_of_the_inbox(world: World) -> None:
     assert [item.document.id for item in [*first, *rest]] == [
         document.id for document in reversed(documents)
     ]
+
+
+async def test_done_goes_by_when_documents_left(world: World) -> None:
+    """Newest first by when they left the inbox, not by arrival (Tobi, 18.10.2026); the pages
+    stay in that order. A page after a document that is no longer done cannot be told."""
+    owner = await world.user()
+    older, newer, confirmed = (
+        await arrive(world, owner),
+        await arrive(world, owner),
+        await arrive(world, owner, {Node.JUDGE: Returns(UNCERTAIN)}),
+    )
+    world.clock.advance(MINUTE)
+    await world.inbox.mark_seen(owner.id, newer.id)
+    world.clock.advance(MINUTE)
+    await world.pipeline().confirm(owner.id, confirmed.id, DocumentChanges())
+    await world.drain()
+    world.clock.advance(MINUTE)
+    await world.inbox.mark_seen(owner.id, older.id)
+    done = await world.inbox.items(owner.id, tab=InboxTab.DONE)
+    expected = [older.id, confirmed.id, newer.id]
+    assert [item.document.id for item in done] == expected
+    assert [item.state.done.at for item in done if item.state.done] == [
+        NOW + 3 * MINUTE,
+        NOW + 2 * MINUTE,
+        NOW + MINUTE,
+    ]
+    found, after = [], None
+    while page := await world.inbox.items(owner.id, tab=InboxTab.DONE, after=after, limit=1):
+        found.append(page[0].document.id)
+        after = page[0].document.id
+    assert found == expected
+    await world.inbox.mark_unseen(owner.id, older.id)
+    with pytest.raises(ValidationError, match="cursor"):
+        await world.inbox.items(owner.id, tab=InboxTab.DONE, after=older.id)
 
 
 async def test_lists_say_whether_a_document_stands_in_the_callers_inbox(world: World) -> None:

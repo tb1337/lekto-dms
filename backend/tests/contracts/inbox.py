@@ -11,10 +11,11 @@ import pytest
 from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import ConflictError
 from papiq.core.domain.ids import DocumentId, UserId, new_id
-from papiq.core.domain.inbox import DONE_PERIOD, Confirmation, InboxTab
+from papiq.core.domain.inbox import DONE_PERIOD, Confirmation, InboxTab, left_at
 from papiq.core.domain.pipeline import Node
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import User
+from papiq.core.ports.repository import InboxPosition
 from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from tests import builders
 from tests.builders import FAILED, NOW, UNCERTAIN
@@ -212,8 +213,54 @@ class InboxRepositoryContract:
                 found += [entry.document.id for entry in page]
                 if len(page) < 2:
                     break
-                after = page[-1].document.id
+                after = InboxPosition(page[-1].document.id)
         assert found == open
+
+    async def test_done_goes_by_when_documents_left(self, uow_factory: UnitOfWorkFactory) -> None:
+        """Newest first by when they left (`left_at`), ties by id, whenever they arrived; the
+        pages after a position (when its document left, and its id) stay stable."""
+        owner, space = await owner_with_space(uow_factory)
+        first, confirmed, third, fourth = (green(owner, space) for _ in range(4))
+        confirmed.new_at = None
+        await store(uow_factory, first, confirmed, third, fourth)
+        async with uow_factory() as uow:
+            await uow.inbox.mark_seen(owner.id, first.id, LAST)
+            await uow.inbox.record_confirmation(confirmed.id, Confirmation(owner.id, NOW))
+            await uow.inbox.mark_seen(owner.id, third.id, LATER)
+            await uow.inbox.mark_seen(owner.id, fourth.id, LATER)
+            await uow.commit()
+        expected = [first.id, *sorted((third.id, fourth.id), reverse=True), confirmed.id]
+        async with uow_factory() as uow:
+            done = await uow.inbox.query(
+                owner.id, owner=owner.id, tab=InboxTab.DONE, since=SINCE, limit=9
+            )
+            assert [entry.document.id for entry in done] == expected
+            found: list[DocumentId] = []
+            after = None
+            while page := await uow.inbox.query(
+                owner.id, owner=owner.id, tab=InboxTab.DONE, since=SINCE, after=after, limit=1
+            ):
+                (entry,) = page
+                found.append(entry.document.id)
+                left = left_at(entry.document, entry.seen_at, entry.confirmation)
+                after = InboxPosition(entry.document.id, left)
+        assert found == expected
+
+    async def test_an_entry_of_one_document(self, uow_factory: UnitOfWorkFactory) -> None:
+        scene = await inbox(uow_factory)
+        admin = await builders.seed_user(uow_factory)
+        seen, confirmed = scene.documents["seen"], scene.documents["confirmed"]
+        async with uow_factory() as uow:
+            entry = await uow.inbox.entry(scene.owner.id, seen.id)
+            assert entry is not None
+            assert (entry.document, entry.seen_at, entry.confirmation) == (seen, LATER, None)
+            other = await uow.inbox.entry(admin.id, confirmed.id)  # whoever owns it
+            assert other is not None
+            assert (other.seen_at, other.confirmation) == (
+                None,
+                Confirmation(scene.other.id, LATER),
+            )
+            assert await uow.inbox.entry(scene.owner.id, DocumentId(new_id())) is None
 
     async def test_all_as_seen_marks_what_is_new_in_the_inbox(
         self, uow_factory: UnitOfWorkFactory
@@ -260,9 +307,11 @@ class InboxRepositoryContract:
             confirmed = await uow.inbox.query(
                 owner, owner=owner, tab=InboxTab.DONE, since=LONG_AGO, limit=9
             )
-            assert [entry.document.id for entry in confirmed] == scene.ids(
-                "seen", "seen_long_ago", "confirmed"
-            )
+            # By when they left: seen and confirmed at LATER (ties by id), then long ago.
+            assert [entry.document.id for entry in confirmed] == [
+                *scene.ids("seen", "confirmed"),
+                documents["seen_long_ago"].id,
+            ]
             assert await uow.inbox.purge(before=LATER) == 0
 
     async def test_marks_go_with_their_document_and_user(

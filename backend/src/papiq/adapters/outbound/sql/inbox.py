@@ -2,10 +2,22 @@
 and the inbox's queries. `domain.inbox.inbox_state` is written here once more, as conditions on
 the documents joined with the viewer's mark and the document's confirmation."""
 
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import ColumnElement, FromClause, and_, case, delete, func, or_, select
+from sqlalchemy import (
+    ColumnElement,
+    FromClause,
+    Row,
+    Select,
+    and_,
+    case,
+    delete,
+    func,
+    or_,
+    select,
+)
 
 from papiq.adapters.outbound.sql import tables as t
 from papiq.adapters.outbound.sql.documents import SqlDocumentRepository
@@ -14,7 +26,7 @@ from papiq.adapters.outbound.sql.transaction import Transaction
 from papiq.core.domain.ids import DocumentId, UserId
 from papiq.core.domain.inbox import OPEN_TABS, Confirmation, InboxTab
 from papiq.core.domain.pipeline import Lane
-from papiq.core.ports.repository import InboxEntry
+from papiq.core.ports.repository import InboxEntry, InboxPosition
 
 _documents, _seen, _confirmations = t.documents, t.inbox_seen, t.inbox_confirmations
 
@@ -31,27 +43,35 @@ class SqlInboxRepository:
         owner: UserId | None,
         tab: InboxTab | None,
         since: datetime,
-        after: DocumentId | None = None,
+        after: InboxPosition | None = None,
         limit: int,
     ) -> list[InboxEntry]:
         conditions = _conditions(since)
         wanted = or_(*(conditions[item] for item in OPEN_TABS)) if tab is None else conditions[tab]
         criteria = [wanted, *_whose(owner)]
-        if after is not None:
-            criteria.append(_documents.c.id < after)
-        statement = (
-            select(
-                _documents,
-                _seen.c.seen_at.label("inbox_seen_at"),
-                _confirmations.c.confirmed_by.label("inbox_confirmed_by"),
-                _confirmations.c.confirmed_at.label("inbox_confirmed_at"),
-            )
-            .select_from(_joined(viewer))
-            .where(*criteria)
-            .order_by(_documents.c.id.desc())
-            .limit(limit)
-        )
-        rows = (await self._tx.read(statement)).all()
+        id_ = _documents.c.id
+        order = [id_.desc()]
+        if tab is InboxTab.DONE:  # by when they left, newest first, ties by id
+            left = _left_at()
+            order = [left.desc(), id_.desc()]
+            if after is not None:
+                assert after.left_at is not None, "a position under done names when it left"
+                criteria.append(
+                    or_(left < after.left_at, and_(left == after.left_at, id_ < after.id))
+                )
+        elif after is not None:
+            criteria.append(id_ < after.id)
+        rows = (
+            await self._tx.read(_entry_rows(viewer).where(*criteria).order_by(*order).limit(limit))
+        ).all()
+        return await self._entries(rows)
+
+    async def entry(self, viewer: UserId, document: DocumentId) -> InboxEntry | None:
+        rows = (await self._tx.read(_entry_rows(viewer).where(_documents.c.id == document))).all()
+        found = await self._entries(rows)
+        return found[0] if found else None
+
+    async def _entries(self, rows: Sequence[Row[Any]]) -> list[InboxEntry]:
         documents = await self._documents._entities(rows)
         return [
             InboxEntry(
@@ -172,6 +192,25 @@ def _joined(viewer: UserId) -> FromClause:
 
 def _whose(owner: UserId | None) -> list[ColumnElement[bool]]:
     return [] if owner is None else [_documents.c.owner_id == owner]
+
+
+def _entry_rows(viewer: UserId) -> Select[Any]:
+    """The documents with the viewer's seen mark and their confirmation, as entries read them."""
+    return select(
+        _documents,
+        _seen.c.seen_at.label("inbox_seen_at"),
+        _confirmations.c.confirmed_by.label("inbox_confirmed_by"),
+        _confirmations.c.confirmed_at.label("inbox_confirmed_at"),
+    ).select_from(_joined(viewer))
+
+
+def _left_at() -> ColumnElement[Any]:
+    """When a document under done left the inbox, on `_joined` (`domain.inbox.left_at`): the
+    viewer's seen while it is new, else its confirmation."""
+    return case(
+        (_documents.c.new_at.is_not(None), _seen.c.seen_at),
+        else_=_confirmations.c.confirmed_at,
+    )
 
 
 def _new() -> ColumnElement[bool]:

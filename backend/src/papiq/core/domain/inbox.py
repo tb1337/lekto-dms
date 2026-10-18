@@ -89,6 +89,20 @@ def open_tab(document: Document, seen_at: datetime | None) -> InboxTab | None:
     return InboxTab.NEW if is_unseen(document, seen_at) else None
 
 
+def left_at(
+    document: Document, seen_at: datetime | None, confirmation: Confirmation | None
+) -> datetime | None:
+    """When the document last left the inbox of a viewer who saw it last at `seen_at`, however
+    long ago: when they saw it since it became new, or, if it is new for no one, when a person
+    confirmed it; None if it did not. A confirmation makes a document new for no one, so one
+    that is new now was confirmed before it became new, and the viewer's seen is the latest.
+    Done is sorted by it, newest first (Tobi, 18.10.2026)."""
+    new_at = document.new_at
+    if new_at is not None:
+        return seen_at if seen_at is not None and seen_at >= new_at else None
+    return None if confirmation is None else confirmation.at
+
+
 def departure(
     document: Document,
     *,
@@ -97,20 +111,14 @@ def departure(
     confirmation: Confirmation | None,
     since: datetime,
 ) -> Done | None:
-    """How the green document left `viewer`'s inbox from `since` on, if it did: the viewer saw
-    it since it became new, or (it is new for no one) a person confirmed it. A confirmation
-    makes it new for no one, so one that is new now was confirmed before it became new, and
-    the viewer's seen is the latest."""
-    if document.lane is not Lane.GREEN:
+    """How the green document left `viewer`'s inbox from `since` on (`left_at`), if it did:
+    the viewer saw it since it became new, or a person confirmed it."""
+    at = left_at(document, seen_at, confirmation)
+    if document.lane is not Lane.GREEN or at is None or at < since:
         return None
-    new_at = document.new_at
-    if new_at is not None:
-        if seen_at is not None and seen_at >= new_at and seen_at >= since:
-            return Done(Departure.SEEN, seen_at, viewer)
-        return None
-    if confirmation is not None and confirmation.at >= since:
-        return Done(Departure.CONFIRMED, confirmation.at, confirmation.by)
-    return None
+    if document.new_at is None and confirmation is not None:
+        return Done(Departure.CONFIRMED, at, confirmation.by)
+    return Done(Departure.SEEN, at, viewer)
 
 
 def inbox_state(

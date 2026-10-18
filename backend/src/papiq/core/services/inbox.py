@@ -45,6 +45,7 @@ from papiq.core.domain.inbox import (
     InboxTab,
     inbox_state,
     is_unseen,
+    left_at,
     open_tab,
     worst_lane,
 )
@@ -67,7 +68,7 @@ from papiq.core.domain.pipeline import (
 )
 from papiq.core.domain.spaces import ShareLevel, Space
 from papiq.core.ports.clock import Clock
-from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE
+from papiq.core.ports.repository import PAGE_LIMIT, PAGE_SIZE, InboxPosition
 from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from papiq.core.services._access import load_actor, load_lister, readable_document
 
@@ -396,8 +397,10 @@ class InboxService:
         all_users: bool = False,
     ) -> list[InboxItem]:
         """The documents under `tab` of the caller's inbox (None: under any open tab), newest
-        first, after the document `after`; with `all_users` (admins only), of every user. Each
-        with what is open in it, and under done how, when and by whom it left."""
+        first (by arrival; under done by when they left), after the page ending at the document
+        `after`; with `all_users` (admins only), of every user. Each with what is open in it,
+        and under done how, when and by whom it left. ValidationError for a page of done after
+        a document that is no longer done (seen marks taken back)."""
         limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
             user = await load_lister(uow, actor, all_users, "see the inboxes of all users")
@@ -407,7 +410,7 @@ class InboxService:
                 owner=None if all_users else actor,
                 tab=tab,
                 since=since,
-                after=after,
+                after=await _position(uow, actor, tab, after),
                 limit=limit,
             )
             spaces: dict[SpaceId, Space] = {}
@@ -494,6 +497,23 @@ async def in_inbox(
     new = [item.id for item in theirs if item.lane is Lane.GREEN and item.new_at is not None]
     seen = await uow.inbox.seen(viewer, new) if new else {}
     return {item.id for item in theirs if open_tab(item, seen.get(item.id)) is not None}
+
+
+async def _position(
+    uow: UnitOfWork, viewer: UserId, tab: InboxTab | None, after: DocumentId | None
+) -> InboxPosition | None:
+    """Where a page of the inbox ended: by the last document's id, and under done when it left
+    the viewer's inbox (`domain.inbox.left_at`), looked up as `GET /documents` looks up a sort
+    value."""
+    if after is None:
+        return None
+    if tab is not InboxTab.DONE:
+        return InboxPosition(after)
+    entry = await uow.inbox.entry(viewer, after)
+    left = None if entry is None else left_at(entry.document, entry.seen_at, entry.confirmation)
+    if left is None:
+        raise ValidationError("cursor: its document is no longer done; start from the first page")
+    return InboxPosition(after, left)
 
 
 async def _open(uow: UnitOfWork, document: Document) -> tuple[OpenNode, ...]:

@@ -14,7 +14,7 @@ from papiq.core.domain.errors import ConflictError
 from papiq.core.domain.ids import DocumentId, UserId
 from papiq.core.domain.inbox import Confirmation, InboxState, InboxTab, inbox_state, open_tab
 from papiq.core.domain.validation import require_utc
-from papiq.core.ports.repository import InboxEntry
+from papiq.core.ports.repository import InboxEntry, InboxPosition
 
 if TYPE_CHECKING:
     from papiq.adapters.outbound.memory.unit_of_work import MemoryUnitOfWork
@@ -33,18 +33,32 @@ class MemoryInboxRepository:
         owner: UserId | None,
         tab: InboxTab | None,
         since: datetime,
-        after: DocumentId | None = None,
+        after: InboxPosition | None = None,
         limit: int,
     ) -> list[InboxEntry]:
+        found = [
+            (document, state, seen_at, confirmation)
+            for document, state, seen_at, confirmation in self._states(viewer, owner, since)
+            if (state.tab is not InboxTab.DONE if tab is None else state.tab is tab)
+        ]
+        if tab is InboxTab.DONE:  # by when they left, newest first, ties by id
+            found.sort(key=lambda item: (_left(item[1]), item[0].id), reverse=True)
         entries: list[InboxEntry] = []
-        for document, state, seen_at, confirmation in self._states(viewer, owner, since):
-            wanted = state.tab is not InboxTab.DONE if tab is None else state.tab is tab
-            if not wanted or (after is not None and document.id >= after):
+        for document, state, seen_at, confirmation in found:
+            if after is not None and not _before(document, state, after, tab):
                 continue
             entries.append(InboxEntry(_copy(document), seen_at, confirmation))
             if len(entries) == limit:
                 break
         return entries
+
+    async def entry(self, viewer: UserId, document: DocumentId) -> InboxEntry | None:
+        row = self._uow._row(DOCUMENTS, document)
+        if row is None:
+            return None
+        return InboxEntry(
+            _copy(row), self._marks().get((viewer, document)), self._confirmations().get(document)
+        )
 
     async def count(
         self, viewer: UserId, *, owner: UserId | None, since: datetime
@@ -160,3 +174,18 @@ class MemoryInboxRepository:
             else:
                 confirmations[document] = confirmation
         return confirmations
+
+
+def _left(state: InboxState) -> datetime:
+    assert state.done is not None  # under done
+    return state.done.at
+
+
+def _before(
+    document: Document, state: InboxState, after: InboxPosition, tab: InboxTab | None
+) -> bool:
+    """Whether the document comes after `after` in the order of `tab`."""
+    if tab is not InboxTab.DONE:
+        return document.id < after.id
+    assert after.left_at is not None, "a position under done names when its document left"
+    return (_left(state), document.id) < (after.left_at, after.id)

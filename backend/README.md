@@ -321,7 +321,9 @@ their inbox.
   every user (one they saw since keeps when they saw it), and changes nothing else: not
   `confirmed_at`, the training, rules or the lane.
 - **Done** (`tab=done`): what left the caller's inbox in the last 14 days, with how
-  (`confirmed` out of yellow or red, for everyone, or `seen` by the caller), when and by whom.
+  (`confirmed` out of yellow or red, for everyone, or `seen` by the caller), when and by whom;
+  newest first by when it left, ties by id (the cursor names the last document, and when it
+  left is looked up; `422` once that document is no longer done). The other tabs go by arrival.
   It comes from the seen marks and the latest confirmation of each document
   (`inbox_confirmations`, written with the confirmation); no history is kept. The cleanup
   removes the confirmations after 14 days, and the seen marks that tell nothing any more (their
@@ -895,7 +897,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /documents/{id}/reading` | How the archive's text was read: by the vision model or not, each recognised page, the advice to read with the model (owner or admin) |
 | `GET /pipeline` | The graph: every node and what it needs, in graph order; the vision model, if one is configured; whether logos are fetched (`logo_fetch`) |
 | `POST /pipeline/reparse` | Read the text of every document again in the background (admins, after the update to 0.2); `202` with `queued` |
-| `GET /inbox` | The caller's inbox (see Inbox), newest first, with open nodes and fields: everything open, or one `tab` (`new`, `review`, `intervene`, `processing`, `done` with how, when and by whom); `limit`, `cursor`, `all_users` (admins) |
+| `GET /inbox` | The caller's inbox (see Inbox), newest first, with open nodes and fields: everything open, or one `tab` (`new`, `review`, `intervene`, `processing`, `done` with how, when and by whom, newest first by when it left); `limit`, `cursor`, `all_users` (admins) |
 | `GET /inbox/summary` | The count of each tab, `open` (all but done) and the worst lane among the open documents; `all_users` (admins) |
 | `PUT/DELETE /documents/{id}/seen`, `POST /inbox/seen` | Seen per user: the caller saw a document (read access; the web UI, when its view opens), it is new again (read access), everything new in the inbox as seen (`marked`; `all_users` for admins) |
 | `GET /documents/{id}/review` | What the model proposed and how each field was checked (owner or admin) |

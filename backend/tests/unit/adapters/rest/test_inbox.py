@@ -4,12 +4,14 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from papiq.adapters.inbound.rest import PREFIX
+from papiq.adapters.inbound.rest.cursors import encode_cursor
 from papiq.core.domain.classification import (
     Candidate,
     CandidateSource,
     FieldCheck,
     checks_to_json,
 )
+from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.master_data import Contact
 from papiq.core.domain.pipeline import Node, NodeResult, Outcome
 from tests.api import auth
@@ -176,6 +178,34 @@ async def test_the_tabs_the_summary_and_seen(api: Api) -> None:
     assert marked.json() == {"marked": 2}
     summary = (await api.client.get(f"{inbox}/summary", headers=auth(owner))).json()
     assert (summary["open"], summary["done"], summary["worst_lane"]) == (0, 2, None)
+
+
+async def test_done_goes_by_when_documents_left(api: Api) -> None:
+    owner = await api.user()
+    first = await upload(api, auth(owner), content=unique_pdf("first"))
+    second = await upload(api, auth(owner), content=unique_pdf("second"))
+    for document in (second, first):  # the older one is seen last
+        api.clock.advance(timedelta(minutes=1))
+        seen = await api.client.put(f"{DOCUMENTS}/{document}/seen", headers=auth(owner))
+        assert seen.status_code == 204
+    found, cursor = [], None
+    while True:
+        params: dict[str, str | int] = {"tab": "done", "limit": 1}
+        if cursor:
+            params["cursor"] = cursor
+        page = (await api.client.get(f"{PREFIX}/inbox", params=params, headers=auth(owner))).json()
+        found += [item["document"]["id"] for item in page["items"]]
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+    assert found == [first, second]
+    await api.client.delete(f"{DOCUMENTS}/{first}/seen", headers=auth(owner))
+    gone = await api.client.get(
+        f"{PREFIX}/inbox",
+        params={"tab": "done", "cursor": encode_cursor(DocumentId(UUID(first)))},
+        headers=auth(owner),
+    )
+    assert gone.status_code == 422  # its document is no longer done
 
 
 async def test_the_inbox_refuses_what_it_does_not_know(api: Api) -> None:

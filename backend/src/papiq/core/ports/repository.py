@@ -390,6 +390,16 @@ class InboxEntry:
     confirmation: Confirmation | None
 
 
+@dataclass(frozen=True)
+class InboxPosition:
+    """Where a page of an inbox ended: its last document, and under done when that document
+    left the inbox (`domain.inbox.left_at`), which done is sorted by; the other tabs go by
+    arrival, the id."""
+
+    id: DocumentId
+    left_at: datetime | None = None
+
+
 class InboxRepository(Protocol):
     """What the inbox keeps beside the documents (`domain.inbox`): when each user saw a
     document last, and who confirmed a document out of yellow or red last; and the inbox's
@@ -407,12 +417,18 @@ class InboxRepository(Protocol):
         owner: UserId | None,
         tab: InboxTab | None,
         since: datetime,
-        after: DocumentId | None = None,
+        after: InboxPosition | None = None,
         limit: int,
     ) -> list[InboxEntry]:
         """The documents of `owner` that stand under `tab` in the inbox (`inbox_state`; None:
-        under any open tab), newest first (by id), those after the document `after`, at most
+        under any open tab), newest first: by id, and under done by when they left
+        (`domain.inbox.left_at`), ties by id; those after `after` in that order, at most
         `limit`."""
+        ...
+
+    async def entry(self, viewer: UserId, document: DocumentId) -> InboxEntry | None:
+        """The document with `viewer`'s seen mark and its confirmation, whoever owns it and
+        wherever it stands; None if it does not exist."""
         ...
 
     async def count(

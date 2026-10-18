@@ -51,6 +51,16 @@ describe('colors', () => {
 		}
 	});
 
+	it.each(['light', 'dark'] as const)('keeps the lanes readable in %s', (theme) => {
+		// Lane badges and the inbox counter write in the lane's colour on its ground.
+		const found = THEME_TOKENS[theme];
+		for (const lane of ['green', 'yellow', 'red', 'running']) {
+			const ground = parseHex(found.get(`lane-${lane}`)!);
+			const text = parseHex(found.get(`lane-${lane}-foreground`)!);
+			expect(contrast(ground, text), lane).toBeGreaterThanOrEqual(4.5);
+		}
+	});
+
 	it.each(['light', 'dark'] as const)('mixes against the colours of %s', (theme) => {
 		expect(THEME_TOKENS[theme].get('card')).toBe(THEMES[theme].card);
 		expect(THEME_TOKENS[theme].get('foreground')).toBe(THEMES[theme].text);

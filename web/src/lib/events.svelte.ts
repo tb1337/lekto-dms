@@ -22,10 +22,9 @@ export type DocumentEventType = (typeof DOCUMENT_EVENT_TYPES)[number];
 export const ADMIN_EVENT_TYPES = ['classifier.trained'] as const;
 export type AdminEventType = (typeof ADMIN_EVENT_TYPES)[number];
 
-/** Events about a node of the graph; the inbox does not change with them. */
+/** Events about a node of the graph: how far processing is, not where a document stands. */
 // eslint-disable-next-line svelte/prefer-svelte-reactivity -- never changes
 export const NODE_EVENTS: ReadonlySet<DocumentEventType> = new Set<DocumentEventType>([
-	'document.received',
 	'document.node_started',
 	'document.node_deferred',
 	'document.node_completed'

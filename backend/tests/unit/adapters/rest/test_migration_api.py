@@ -19,8 +19,7 @@ from papiq.core.services.pipeline import DeferredResult, NodeExecutor, Placehold
 from tests.api import auth, bearer
 from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.rest.conftest import Api
-
-DOCUMENTS = f"{PREFIX}/documents"
+from tests.unit.adapters.rest.support import DOCUMENTS, post, sample_file
 
 
 @pytest.fixture(autouse=True)
@@ -35,20 +34,10 @@ def imported_steps(api: Api) -> None:
     pipeline.replace_executor(Node.FIELDS, ImportedFieldsNode(uow, PlaceholderNode()))
 
 
-def file(name: str = "scan.pdf") -> dict[str, tuple[str, bytes, str]]:
-    return {"file": (name, (SAMPLES / name).read_bytes(), "x/y")}
-
-
-async def post(api: Api, path: str, body: Any, headers: dict[str, str]) -> Any:
-    response = await api.client.post(f"{PREFIX}{path}", json=body, headers=headers)
-    assert response.status_code == 201, response.text
-    return response.json()
-
-
 async def upload(
     api: Api, headers: dict[str, str], *, name: str = "scan.pdf", **fields: str
 ) -> Any:
-    return await api.client.post(DOCUMENTS, files=file(name), data=fields, headers=headers)
+    return await api.client.post(DOCUMENTS, files=sample_file(name), data=fields, headers=headers)
 
 
 async def master_data(api: Api, admin: User) -> dict[str, Any]:

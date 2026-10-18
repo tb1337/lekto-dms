@@ -10,21 +10,7 @@ from tests.api import auth
 from tests.builders import PASSWORD
 from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.rest.conftest import Api
-
-
-async def green_document(api: Api, headers: dict[str, str], space: str | None = None) -> str:
-    files = {"file": ("Bill 2026.pdf", (SAMPLES / "scan.pdf").read_bytes(), "x/y")}
-    data = {} if space is None else {"space_id": space}
-    response = await api.client.post(f"{PREFIX}/documents", files=files, data=data, headers=headers)
-    assert response.status_code == 202, response.text
-    await api.drain()
-    return str(response.json()["id"])
-
-
-async def post(api: Api, path: str, body: Any, headers: dict[str, str]) -> Any:
-    response = await api.client.post(f"{PREFIX}{path}", json=body, headers=headers)
-    assert response.status_code == 201, response.text
-    return response.json()
+from tests.unit.adapters.rest.support import post, unique_pdf, upload
 
 
 async def test_metadata_with_master_data_and_fields(api: Api) -> None:
@@ -45,7 +31,7 @@ async def test_metadata_with_master_data_and_fields(api: Api) -> None:
         api, "/fields", {"name": "Kind", "data_type": "choice", "choices": ["a", "b"]}, a
     )
     assert amount["document_type_ids"] == [invoice["id"]]
-    document = await green_document(api, o)
+    document = await upload(api, o)
 
     response = await api.client.patch(
         f"{PREFIX}/documents/{document}",
@@ -110,9 +96,10 @@ async def test_listing_filters_and_pages(api: Api) -> None:
     tag = await post(api, "/tags", {"name": "tax"}, auth(admin))
     ids = []
     for number in range(3):
-        files = {"file": (f"{number}.pdf", _pdf(number), "x/y")}
-        response = await api.client.post(f"{PREFIX}/documents", files=files, headers=auth(owner))
-        ids.append(response.json()["id"])
+        content = unique_pdf(str(number))
+        ids.append(
+            await upload(api, auth(owner), content=content, filename=f"{number}.pdf", drain=False)
+        )
     await api.drain()
     await api.client.patch(
         f"{PREFIX}/documents/{ids[1]}", json={"tag_ids": [tag["id"]]}, headers=auth(owner)
@@ -139,9 +126,10 @@ async def test_listing_sorts_by_date_and_title_and_filters_by_field(api: Api) ->
     note = await post(api, "/fields", definition, auth(admin))
     ids = []
     for number in range(3):
-        files = {"file": (f"{number}.pdf", _pdf(10 + number), "x/y")}
-        response = await api.client.post(f"{PREFIX}/documents", files=files, headers=auth(owner))
-        ids.append(response.json()["id"])
+        content = unique_pdf(str(10 + number))
+        ids.append(
+            await upload(api, auth(owner), content=content, filename=f"{number}.pdf", drain=False)
+        )
     await api.drain()
     changes = [
         {"title": "Zahnarzt", "document_date": "2026-03-01", "fields": {note["id"]: "x"}},
@@ -181,7 +169,7 @@ async def test_master_data_with_their_document_counts(api: Api) -> None:
     unused = await post(api, "/contacts", {"name": "Nobody"}, auth(admin))
     definition = {"name": "Note", "data_type": "text", "document_type_ids": None}
     note = await post(api, "/fields", definition, auth(admin))
-    document = await green_document(api, auth(owner))
+    document = await upload(api, auth(owner))
     changed = await api.client.patch(
         f"{PREFIX}/documents/{document}",
         json={"contact_id": contact["id"], "fields": {note["id"]: "x"}},
@@ -250,7 +238,7 @@ async def test_the_fields_of_a_document_type_from_the_type(api: Api) -> None:
     assert (await assign([{"field_id": global_["id"]}], auth(admin))).status_code == 422
     assert (await assign([], auth(owner))).status_code == 403
     # A document of the invoice with a value for Amount keeps it there.
-    document = await green_document(api, auth(owner))
+    document = await upload(api, auth(owner))
     changed = await api.client.patch(
         f"{PREFIX}/documents/{document}",
         json={"document_type_id": invoice["id"], "fields": {amount["id"]: "12"}},
@@ -260,13 +248,9 @@ async def test_the_fields_of_a_document_type_from_the_type(api: Api) -> None:
     assert (await assign([{"field_id": only["id"]}], auth(admin))).status_code == 409
 
 
-def _pdf(number: int) -> bytes:
-    return (SAMPLES / "scan.pdf").read_bytes().rstrip() + f"\n%{number}\n%%EOF\n".encode()
-
-
 async def test_downloads(api: Api) -> None:
     owner = await api.user()
-    document = await green_document(api, auth(owner))
+    document = await upload(api, auth(owner))
     original = await api.client.get(f"{PREFIX}/documents/{document}/original", headers=auth(owner))
     assert original.status_code == 200
     assert original.content == (SAMPLES / "scan.pdf").read_bytes()
@@ -290,7 +274,7 @@ async def test_downloads(api: Api) -> None:
 
 async def test_moving_and_deleting(api: Api) -> None:
     owner = await api.user()
-    document = await green_document(api, auth(owner))
+    document = await upload(api, auth(owner))
     target = await post(api, "/spaces", {"name": "Archive"}, auth(owner))
     moved = await api.client.post(
         f"{PREFIX}/documents/{document}/move", json={"space_id": target["id"]}, headers=auth(owner)
@@ -306,7 +290,7 @@ async def test_moving_and_deleting(api: Api) -> None:
 
 async def test_moving_into_a_space_one_only_reads_names_it(api: Api) -> None:
     owner, friend = await api.user(), await api.user()
-    document = await green_document(api, auth(friend))
+    document = await upload(api, auth(friend))
     space = await post(api, "/spaces", {"name": "Household"}, auth(owner))
     await api.client.put(
         f"{PREFIX}/spaces/{space['id']}/shares/{friend.id}",
@@ -423,7 +407,7 @@ async def test_field_definitions_change(api: Api) -> None:
         api, "/fields", {"name": "Kind", "data_type": "choice", "choices": ["a", "b"]}, a
     )
     invoice = await post(api, "/document-types", {"name": "Invoice"}, a)
-    document = await green_document(api, auth(owner))
+    document = await upload(api, auth(owner))
     await api.client.patch(
         f"{PREFIX}/documents/{document}",
         json={"fields": {kind["id"]: "a"}},
@@ -658,7 +642,7 @@ async def test_tags_with_scopes_trees_and_groups(api: Api) -> None:
     )
     assert unknown.status_code == 404, unknown.text
 
-    document = await green_document(api, o)
+    document = await upload(api, o)
     changed = await api.client.patch(
         f"{PREFIX}/documents/{document}",
         json={
@@ -833,7 +817,7 @@ async def test_topics_at_contacts_identifiers_and_documents(api: Api) -> None:
     wrong = await api.client.patch(path, json={"topic_ids": [insurance["id"], "x"]}, headers=a)
     assert wrong.status_code == 422
 
-    document = await green_document(api, o)
+    document = await upload(api, o)
     url = f"{PREFIX}/documents/{document}"
     no_contact = await api.client.patch(url, json={"topic_id": work["id"]}, headers=o)
     assert no_contact.status_code == 422, no_contact.text
@@ -855,10 +839,7 @@ async def test_topics_at_contacts_identifiers_and_documents(api: Api) -> None:
             f"{PREFIX}/documents", params={"topic_id": topic["id"]}, headers=o
         )
         assert [item["id"] for item in page.json()["items"]] == found
-    upload = {"file": ("second.pdf", _pdf(1), "x/y")}
-    accepted = await api.client.post(f"{PREFIX}/documents", files=upload, headers=o)
-    await api.drain()
-    second = accepted.json()["id"]
+    second = await upload(api, o, content=unique_pdf("1"), filename="second.pdf")
     await api.client.patch(
         f"{PREFIX}/documents/{second}",
         json={"contact_id": contact["id"], "topic_id": work["id"]},

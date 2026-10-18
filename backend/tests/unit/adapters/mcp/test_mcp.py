@@ -28,10 +28,7 @@ from tests import builders
 from tests.api import auth, serving
 from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.rest.conftest import Api, make_app
-from tests.unit.adapters.rest.test_permission_matrix import Scene
-from tests.unit.adapters.rest.test_resources import post
-from tests.unit.adapters.rest.test_rules import upload
-from tests.unit.adapters.rest.test_search import indexed_scene
+from tests.unit.adapters.rest.support import Scene, indexed_scene, post, upload
 
 URL = f"https://papiq{PREFIX}/mcp"
 TEXT = "Strom Rechnung März\n" + "Zeile mit Inhalt\n" * 20

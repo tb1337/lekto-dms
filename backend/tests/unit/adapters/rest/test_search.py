@@ -13,20 +13,9 @@ from papiq.core.domain.pipeline import Node
 from papiq.core.domain.spaces import ShareLevel
 from tests.api import auth
 from tests.unit.adapters.rest.conftest import Api
-from tests.unit.adapters.rest.test_permission_matrix import ACTORS, DENIED, Scene, build_scene
+from tests.unit.adapters.rest.support import ACTORS, DENIED, Scene, indexed_scene
 
 SEARCH = f"{PREFIX}/documents/search"
-
-
-async def indexed_scene(api: Api) -> Scene:
-    """The scene of the permission matrix, with its documents in the search index."""
-    scene = await build_scene(api)
-    indexing = api.services.indexing
-    assert indexing is not None
-    await indexing.reconcile()
-    while await indexing.run_next_job():
-        pass
-    return scene
 
 
 async def found(scene: Scene, actor: str, **params: Any) -> set[str]:

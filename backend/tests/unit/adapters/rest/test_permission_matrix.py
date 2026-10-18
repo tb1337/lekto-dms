@@ -13,8 +13,6 @@ exactly as missing ones.
 
 import base64
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
@@ -22,128 +20,9 @@ import httpx2
 import pytest
 
 from papiq.adapters.inbound.rest import PREFIX
-from papiq.core.domain.identity import TokenScope
-from papiq.core.domain.pipeline import Node
-from papiq.core.domain.spaces import ShareLevel, Space
-from papiq.core.domain.users import User
-from papiq.core.services.objects import archive_key, preview_key
-from tests.api import auth, bearer
-from tests.builders import UNCERTAIN
 from tests.contracts.images import image
-from tests.contracts.processing import SAMPLES
 from tests.unit.adapters.rest.conftest import Api
-
-ACTORS = [
-    "owner",
-    "reader",
-    "writer",
-    "stranger",
-    "admin",
-    "read_token",
-    "expired_token",
-    "revoked_token",
-    "deactivated",
-    "deactivated_admin",
-]
-
-
-@dataclass
-class Scene:
-    api: Api
-    headers: dict[str, dict[str, str]]
-    owner: User
-    shared: Space
-    own_space: Space  # another space of the owner, target for moving
-    green: str
-    yellow: str
-    processing: str
-    contact: str
-
-    def document(self, which: str) -> str:
-        return str(getattr(self, which))
-
-
-async def build_scene(api: Api) -> Scene:
-    owner, reader, writer = await api.user("owner"), await api.user("reader"), await api.user()
-    stranger, admin = await api.user("stranger"), await api.admin("admin")
-    gone = await api.user("deactivated")
-    retired = await api.admin("retired")
-    spaces = api.services.spaces
-    shared = await spaces.create(owner.id, "Shared")
-    for user, level in [(reader, ShareLevel.READ), (writer, ShareLevel.READ_WRITE)]:
-        await spaces.share(owner.id, shared.id, user.id, level)
-    await spaces.share(owner.id, shared.id, gone.id, ShareLevel.READ_WRITE)
-    own_space = await spaces.create(owner.id, "Private")
-
-    async def upload(name: str) -> str:
-        files = {"file": (name, unique_pdf(name), "x/y")}
-        response = await api.client.post(
-            f"{PREFIX}/documents",
-            files=files,
-            data={"space_id": str(shared.id)},
-            headers=auth(owner),
-        )
-        assert response.status_code == 202, response.text
-        await api.drain()
-        return str(response.json()["id"])
-
-    green = await upload("green.pdf")
-    yellow = await upload("yellow.pdf")
-    await api.services.pipeline.reprocess_from(owner.id, UUID(yellow), Node.JUDGE)  # type: ignore[arg-type]
-    pipeline = api.services.pipeline
-    # yellow: the classification is uncertain
-    judge = pipeline.replace_executor(Node.JUDGE, _Returns())
-    await api.drain()
-    pipeline.replace_executor(Node.JUDGE, judge)
-    processing = await upload_without_processing(api, owner, shared)
-    for id in (green, yellow):
-        await api.container.object_store.put(archive_key(UUID(id)), b"%PDF", content_type="x")  # type: ignore[arg-type]
-        await api.container.object_store.put(preview_key(UUID(id)), b"RIFF", content_type="x")  # type: ignore[arg-type]
-    contact = await api.services.master_data.create_contact(admin.id, "ACME")
-
-    _, read_token = await api.services.auth.create_api_token(owner.id, "r", TokenScope.READ)
-    _, expired = await api.services.auth.create_api_token(
-        owner.id, "e", TokenScope.READ_WRITE, expires_at=api.clock.now() + timedelta(seconds=1)
-    )
-    revoked_token, revoked = await api.services.auth.create_api_token(
-        owner.id, "x", TokenScope.READ_WRITE
-    )
-    await api.services.auth.revoke_api_token(owner.id, revoked_token.id)
-    api.clock.advance(timedelta(seconds=1))
-    await api.services.users.set_active(admin.id, gone.id, False)
-    await api.services.users.set_active(admin.id, retired.id, False)
-    headers = {
-        "owner": auth(owner),
-        "reader": auth(reader),
-        "writer": auth(writer),
-        "stranger": auth(stranger),
-        "admin": auth(admin),
-        "read_token": bearer(read_token),
-        "expired_token": bearer(expired),
-        "revoked_token": bearer(revoked),
-        "deactivated": auth(gone),
-        "deactivated_admin": auth(retired),
-    }
-    return Scene(api, headers, owner, shared, own_space, green, yellow, processing, str(contact.id))
-
-
-def unique_pdf(name: str) -> bytes:
-    """The sample scan with a comment, so that every upload is a file of its own."""
-    return (SAMPLES / "scan.pdf").read_bytes().rstrip() + f"\n%{name}\n%%EOF\n".encode()
-
-
-class _Returns:
-    async def run(self, document: object) -> Any:
-        return UNCERTAIN
-
-
-async def upload_without_processing(api: Api, owner: User, space: Space) -> str:
-    files = {"file": ("new.pdf", unique_pdf("new"), "x/y")}
-    response = await api.client.post(
-        f"{PREFIX}/documents", files=files, data={"space_id": str(space.id)}, headers=auth(owner)
-    )
-    return str(response.json()["id"])
-
+from tests.unit.adapters.rest.support import ACTORS, DENIED, Scene, build_scene
 
 type Call = Callable[[Scene, httpx2.AsyncClient, dict[str, str], str], Awaitable[httpx2.Response]]
 
@@ -159,7 +38,6 @@ def doc(method: str, suffix: str = "", body: Any = None) -> Call:
     return call
 
 
-DENIED = {"expired_token": 401, "revoked_token": 401, "deactivated": 401, "deactivated_admin": 401}
 HIDDEN = {"stranger": 404}
 
 # For the green document in the shared space.

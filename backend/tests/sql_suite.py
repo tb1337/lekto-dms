@@ -166,6 +166,7 @@ class SqlAdapterSuite:
             MemoryObjectStore(),
             {node: PlaceholderNode() for node in NODES if node is not Node.RECEIVE},
             pipeline_version="test",
+            suggest_contact=builders.DEFAULT_SETTINGS.contact_suggest_threshold,
         )
 
         async def upload() -> Document:

@@ -539,6 +539,7 @@ async def test_every_step_needs_an_executor(world: World) -> None:
             world.object_store,
             {Node.OCR: PlaceholderNode()},
             pipeline_version="test",
+            suggest_contact=builders.DEFAULT_SETTINGS.contact_suggest_threshold,
         )
 
 

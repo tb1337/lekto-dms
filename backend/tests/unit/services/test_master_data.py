@@ -13,7 +13,7 @@ from papiq.core.domain.errors import (
 from papiq.core.domain.fields import FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
-from papiq.core.domain.master_data import Assignment, TagScope
+from papiq.core.domain.master_data import Assignment, Contact, TagScope
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.rules import (
     AddTags,
@@ -31,6 +31,8 @@ from papiq.core.services.master_data import learn_alias, replace_learned_identif
 from tests import builders
 from tests.builders import incoming
 from tests.unit.services.conftest import World
+
+SUGGEST = builders.DEFAULT_SETTINGS.contact_suggest_threshold
 
 MANUAL, LEARNED = IdentifierSource.MANUAL, IdentifierSource.LEARNED
 REJECTED = IdentifierSource.REJECTED
@@ -221,14 +223,18 @@ async def test_learn_alias(world: World) -> None:
     example = await service.create_contact(admin.id, "Nord Versicherungsgruppe")
     other = await service.create_contact(admin.id, "Muster", ["Nord Kranken"])
     async with world.uow() as uow:
-        learned = await learn_alias(uow, example.id, "Nord Krankenversicherung AG")
+
+        async def learn(alias: str) -> Contact | None:
+            return await learn_alias(uow, example.id, alias, threshold=SUGGEST)
+
+        learned = await learn("Nord Krankenversicherung AG")
         assert learned is not None and learned.aliases == ["Nord Krankenversicherung AG"]
-        assert await learn_alias(uow, example.id, "nord versicherungsgruppe") is None  # its name
-        assert await learn_alias(uow, example.id, "MUSTER") is None  # another contact's name
-        assert await learn_alias(uow, example.id, "Muster SE") is None  # the same, compared
-        assert await learn_alias(uow, example.id, "Max Mustermann") is None  # unrelated
-        assert await learn_alias(uow, example.id, "GmbH") is None  # nothing to compare
-        assert await learn_alias(uow, example.id, "Nord\nKranken") is not None  # moves
+        assert await learn("nord versicherungsgruppe") is None  # its name
+        assert await learn("MUSTER") is None  # another contact's name
+        assert await learn("Muster SE") is None  # the same, compared
+        assert await learn("Max Mustermann") is None  # unrelated
+        assert await learn("GmbH") is None  # nothing to compare
+        assert await learn("Nord\nKranken") is not None  # moves
         await uow.commit()
     async with world.uow() as uow:
         assert (await uow.contacts.get(example.id)).aliases == [

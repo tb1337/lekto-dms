@@ -134,6 +134,7 @@ def build_environment(
             store,
             executors,
             pipeline_version=PIPELINE_VERSION,
+            suggest_contact=policy.suggest_contact,
             retry=RetryPolicy(max_attempts=1),
         )
 

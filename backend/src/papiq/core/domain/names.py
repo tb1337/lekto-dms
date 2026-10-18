@@ -80,15 +80,16 @@ def best_match[T](name: str, candidates: Iterable[tuple[T, str]]) -> NameMatch[T
 
 
 _SHORTEST_WORD = 3  # letters of a word that counts for `named_share` and `related`
-RELATED = 0.75  # similarity of two names that are related without sharing a word
 
 
-def related(a: str, b: str) -> bool:
+def related(a: str, b: str, *, threshold: float) -> bool:
     """Whether two name keys belong together: they share a word of at least three letters, or
-    are at least `RELATED` similar (the model read "Nord Krankenversicherung AG" for "Nord
-    Versicherungsgruppe"; "Max Mustermann" is something else)."""
+    are at least `threshold` similar (the model read "Nord Krankenversicherung AG" for "Nord
+    Versicherungsgruppe"; "Max Mustermann" is something else). The threshold is the one from
+    which a name suggests a contact (`PAPIQ_CONTACT_SUGGEST_THRESHOLD`), so a related name is
+    one that would have been suggested."""
     words = {word for word in a.split() if len(word) >= _SHORTEST_WORD}
-    return bool(words & set(b.split())) or similarity(a, b) >= RELATED
+    return bool(words & set(b.split())) or similarity(a, b) >= threshold
 
 
 def named_share(text_key: str, text_words: Collection[str], key: str) -> float:

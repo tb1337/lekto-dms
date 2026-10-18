@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from papiq.adapters.outbound.liquid import LiquidTemplateRenderer
+from papiq.composition.settings import Settings
 from papiq.core.domain.documents import Document, Sha256
 from papiq.core.domain.ids import DocumentId, SpaceId, UserId, new_id
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, Outcome
@@ -17,6 +18,9 @@ from papiq.core.services.pipeline import IncomingFile, PipelineService, Placehol
 
 # Templates of rules and title patterns, as the memory container renders them.
 TEMPLATES = LiquidTemplateRenderer(locale="de", currency="EUR")
+DEFAULT_SETTINGS = Settings.model_construct()
+"""The shipped defaults (`backend/README.md`, Configuration): tests take thresholds and
+limits from here, so the one source of a default is `composition/settings.py`."""
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 
 # PAPIQ_SECRET_KEY for tests (32 bytes, base64); never use it elsewhere.

@@ -202,13 +202,16 @@ class PipelineService:
         executors: Mapping[Node, NodeExecutor],
         *,
         pipeline_version: str,
+        suggest_contact: float,
         retry: RetryPolicy = DEFAULT_RETRY,
         lease: timedelta = timedelta(minutes=10),
         vision: VisionModel | None = None,
         poor_reading: float = 0.08,
         facts: NodeExecutor | None = None,
     ) -> None:
-        """`vision`: the vision language model the OCR can read pages with, if any;
+        """`suggest_contact`: the similarity from which a name suggests a contact; an alias
+        learned on confirmation must be at least that related to the contact's names;
+        `vision`: the vision language model the OCR can read pages with, if any;
         `poor_reading`: the share of unsure words from which a page counts as poorly read;
         `facts`: the facts signal for reading facts outside processing (`request_facts`)."""
         missing = set(NODES) - {Node.RECEIVE} - set(executors)
@@ -219,6 +222,7 @@ class PipelineService:
         self._store = object_store
         self._executors = dict(executors)
         self._version = pipeline_version
+        self._suggest_contact = suggest_contact
         self._retry = retry
         self._lease = lease
         self._vision = vision
@@ -394,7 +398,7 @@ class PipelineService:
             return (await uow.spaces.get_default(actor)).id
         target = await visible_space(uow, user, space)
         if not can_file_into(user, target):
-            raise SpaceWriteDeniedError(space, str(space))
+            raise SpaceWriteDeniedError(target.id, target.name)
         return target.id
 
     # --- retry and reprocess --------------------------------------------------------------------
@@ -497,7 +501,7 @@ class PipelineService:
             ]
             target = None if space is None else await visible_space(uow, user, space)
             if target is not None and not (user.is_active_admin or can_file_into(user, target)):
-                raise SpaceWriteDeniedError(target.id, f"'{target.name}'")
+                raise SpaceWriteDeniedError(target.id, target.name)
             if target is None and not await may_file(
                 uow, document, await uow.spaces.get(document.space_id)
             ):
@@ -540,7 +544,10 @@ class PipelineService:
             )
             chosen: JsonObject = {} if target is None else {CHOSEN_SPACE: str(target.id)}
             learned = alias_to_learn(open, decision, document)
-            if learned is not None and await learn_alias(uow, *learned) is not None:
+            if (
+                learned is not None
+                and await learn_alias(uow, *learned, threshold=self._suggest_contact) is not None
+            ):
                 chosen[LEARNED_ALIAS] = {"contact_id": str(learned[0]), "alias": learned[1]}
             result = replace(result, output={**result.output, **person, **chosen})
             await self._log(uow, id, Node.APPLY_RULES, run, result, now, now)

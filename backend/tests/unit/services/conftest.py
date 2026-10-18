@@ -148,6 +148,7 @@ class World:
             self.object_store,
             {**self.executors, **(executors or {})},
             pipeline_version="test",
+            suggest_contact=builders.DEFAULT_SETTINGS.contact_suggest_threshold,
             vision=vision,
             facts=facts,
         )

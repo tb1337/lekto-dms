@@ -1195,14 +1195,17 @@ def _alias_pairs(contact: Contact, other: Contact) -> Iterator[tuple[str, str]]:
                 yield mine, theirs
 
 
-async def learn_alias(uow: UnitOfWork, contact_id: ContactId, alias: str) -> Contact | None:
+async def learn_alias(
+    uow: UnitOfWork, contact_id: ContactId, alias: str, *, threshold: float
+) -> Contact | None:
     """Make `alias` an alias of the contact, in `uow` without committing: a person chose the
     contact for a document in which the language model read `alias`. The contact with the new
     alias, or None if nothing is learned:
 
     - it is a name or an alias of the contact already, or the contact has all aliases it may;
-    - it is not related to the contact's names (`names.related`): the model read something
-      else, often the recipient, and the person corrected it;
+    - it is not related to the contact's names (`names.related` with `threshold`, the one
+      from which a name suggests a contact): the model read something else, often the
+      recipient, and the person corrected it;
     - it matches another contact's name (see `names.name_key`).
 
     An alias of another contact that it matches moves (the person's choice is the newer word).
@@ -1213,7 +1216,7 @@ async def learn_alias(uow: UnitOfWork, contact_id: ContactId, alias: str) -> Con
     target = next((item for item in contacts if item.id == contact_id), None)
     if not key or target is None or target.is_named(alias):
         return None
-    if len(target.aliases) >= MAX_ALIASES or not _related(key, target):
+    if len(target.aliases) >= MAX_ALIASES or not _related(key, target, threshold):
         return None
     others = [item for item in contacts if item.id != contact_id]
     if any(match_key(other.name) == key for other in others):
@@ -1228,5 +1231,5 @@ async def learn_alias(uow: UnitOfWork, contact_id: ContactId, alias: str) -> Con
     return target
 
 
-def _related(key: str, contact: Contact) -> bool:
-    return any(related(key, match_key(own)) for own in contact.names())
+def _related(key: str, contact: Contact, threshold: float) -> bool:
+    return any(related(key, match_key(own), threshold=threshold) for own in contact.names())

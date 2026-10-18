@@ -674,6 +674,7 @@ def build_services(container: Container, settings: Settings | None = None) -> Se
             store,
             executors,
             pipeline_version=__version__,
+            suggest_contact=settings.contact_suggest_threshold,
             retry=RetryPolicy(
                 max_attempts=settings.node_max_attempts, delay=settings.node_retry_delay
             ),

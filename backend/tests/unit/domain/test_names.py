@@ -1,6 +1,13 @@
 import pytest
 
-from papiq.core.domain.names import best_match, mentions, name_key, named_share, similarity
+from papiq.core.domain.names import (
+    best_match,
+    mentions,
+    name_key,
+    named_share,
+    related,
+    similarity,
+)
 
 
 @pytest.mark.parametrize(
@@ -73,3 +80,12 @@ def test_mentions_whole_words() -> None:
 
 def test_entities_do_not_hide_a_name() -> None:
     assert mentions(name_key("Brief von Müller &amp; Söhne GmbH"), name_key("Müller & Söhne"))
+
+
+def test_related_shares_a_word_or_reaches_the_threshold() -> None:
+    """A shared word of three letters relates names at any threshold; otherwise the
+    similarity must reach the suggest threshold, which is the operator's setting."""
+    assert related("nord krankenversicherung", "nord versicherungsgruppe", threshold=0.9)
+    assert related("nordversicherung", "nordversicherer", threshold=0.75)
+    assert not related("nordversicherung", "nordversicherer", threshold=0.9)
+    assert not related("max mustermann", "nord versicherungsgruppe", threshold=0.75)

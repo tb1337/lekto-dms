@@ -182,7 +182,8 @@ class _ContactView:
             self.sender is not None
             and self.matched is None
             and not any(
-                related(name_key(self.sender), name_key(own)) for own in self.names[id].names()
+                related(name_key(self.sender), name_key(own), threshold=self.thresholds.suggest)
+                for own in self.names[id].names()
             )
         )
         return (

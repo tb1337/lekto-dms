@@ -296,9 +296,10 @@ documents = Table(
     Column("page_count", Integer, nullable=True),
     # When a person last set or confirmed the metadata (see `Document.confirmed_at`).
     Column("confirmed_at", UtcDateTime, nullable=True, index=True),
-    # When processing last made it new for the inbox (see `Document.new_at`); the inbox
-    # queries look for the documents that have it.
-    Column("new_at", UtcDateTime, nullable=True, index=True),
+    # When processing last made it new for the inbox (see `Document.new_at`). No index: most
+    # green documents keep it, and the inbox queries go by owner and lane with the viewer's
+    # seen marks.
+    Column("new_at", UtcDateTime, nullable=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("updated_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),

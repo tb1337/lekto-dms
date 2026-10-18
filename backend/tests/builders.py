@@ -90,6 +90,19 @@ OK = NodeResult(outcome=Outcome.OK)
 UNCERTAIN = NodeResult(outcome=Outcome.UNCERTAIN, reason="new contact", confidence=0.4)
 FAILED = NodeResult(outcome=Outcome.FAILED, reason="OCR crashed")
 
+
+class Returns:
+    """Node executor that returns a fixed result."""
+
+    def __init__(self, result: NodeResult) -> None:
+        self.result = result
+        self.calls = 0
+
+    async def run(self, document: Document) -> NodeResult:
+        self.calls += 1
+        return self.result
+
+
 _counter = 0
 
 

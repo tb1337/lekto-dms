@@ -27,8 +27,8 @@ from papiq.core.services.objects import (
     structure_key,
     text_key,
 )
-from tests.builders import UNCERTAIN, incoming
-from tests.unit.services.conftest import Returns, World
+from tests.builders import UNCERTAIN, Returns, incoming
+from tests.unit.services.conftest import World
 
 
 class Scene:

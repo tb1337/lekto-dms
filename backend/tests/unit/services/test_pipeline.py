@@ -48,9 +48,9 @@ from papiq.core.services.pipeline import (
     PlaceholderNode,
 )
 from tests import builders
-from tests.builders import FAILED, NOW, UNCERTAIN, incoming
+from tests.builders import FAILED, NOW, UNCERTAIN, Returns, incoming
 from tests.contracts.processing import SAMPLES
-from tests.unit.services.conftest import Raises, Returns, World
+from tests.unit.services.conftest import Raises, World
 
 PDF = b"%PDF-1.7 invoice"
 

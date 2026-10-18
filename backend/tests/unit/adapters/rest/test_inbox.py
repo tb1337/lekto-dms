@@ -12,10 +12,9 @@ from papiq.core.domain.classification import (
 from papiq.core.domain.master_data import Contact
 from papiq.core.domain.pipeline import Node, NodeResult, Outcome
 from tests.api import auth
-from tests.builders import NOW
+from tests.builders import NOW, Returns
 from tests.unit.adapters.rest.conftest import Api
 from tests.unit.adapters.rest.test_documents import pdf
-from tests.unit.services.conftest import Returns
 
 PROBLEM = "application/problem+json"
 NEIGHBOUR = UUID("01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b")

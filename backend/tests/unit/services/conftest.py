@@ -34,18 +34,6 @@ from papiq.core.services.webhooks import WebhookDeliveryService, WebhookPolicy, 
 from tests import builders
 
 
-class Returns:
-    """Node executor that returns a fixed result."""
-
-    def __init__(self, result: NodeResult) -> None:
-        self.result = result
-        self.calls = 0
-
-    async def run(self, document: Document) -> NodeResult:
-        self.calls += 1
-        return self.result
-
-
 class Raises:
     """Node executor that raises `times` times, then returns OK."""
 

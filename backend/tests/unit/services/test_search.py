@@ -28,8 +28,8 @@ from papiq.core.ports import (
 )
 from papiq.core.services.search import SearchPolicy, SearchService
 from tests import builders
-from tests.builders import UNCERTAIN
-from tests.unit.services.conftest import Returns, World
+from tests.builders import UNCERTAIN, Returns
+from tests.unit.services.conftest import World
 from tests.unit.services.search_support import BrokenEmbeddings, Setup
 
 

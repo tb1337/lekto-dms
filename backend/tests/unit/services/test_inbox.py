@@ -24,8 +24,8 @@ from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import Role, User
 from papiq.core.services.inbox import OpenNode, decide, field_checks
 from papiq.core.services.pipeline import MetadataResult, PipelineService
-from tests.builders import FAILED, NOW, document, incoming
-from tests.unit.services.conftest import Returns, World
+from tests.builders import FAILED, NOW, Returns, document, incoming
+from tests.unit.services.conftest import World
 
 UNSURE = "not shown in the text"
 OK = NodeResult(outcome=Outcome.OK)

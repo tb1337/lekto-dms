@@ -16,8 +16,8 @@ from papiq.core.domain.rules import RuleScope, SetSpace
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import DocumentFilter
-from tests.builders import UNCERTAIN, incoming
-from tests.unit.services.conftest import Returns, World
+from tests.builders import UNCERTAIN, Returns, incoming
+from tests.unit.services.conftest import World
 from tests.unit.services.rules_support import add_tags, channel_api, definition, rule_world
 
 

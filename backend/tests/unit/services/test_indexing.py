@@ -29,8 +29,8 @@ from papiq.core.services.indexing import (
     split_sections,
 )
 from tests import builders
-from tests.builders import NOW, UNCERTAIN, incoming, index_document
-from tests.unit.services.conftest import Returns, World
+from tests.builders import NOW, UNCERTAIN, Returns, incoming, index_document
+from tests.unit.services.conftest import World
 from tests.unit.services.search_support import (
     HOUR,
     BrokenEmbeddings,

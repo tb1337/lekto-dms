@@ -2,7 +2,6 @@ import logging
 from collections.abc import Awaitable, Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
 from uuid import UUID
 
 from papiq.core.domain.documents import UNSET, DocumentChanges, Unset
@@ -58,7 +57,9 @@ from papiq.core.services.rules.references import disable_rules, misfits, refers_
 
 log = logging.getLogger(__name__)
 
-type Repo[E] = Callable[[UnitOfWork], NamedRepository[Any, E]]
+type Repo[K, E] = Callable[[UnitOfWork], NamedRepository[K, E]]
+type NameCheck[E] = Callable[[UnitOfWork, E], Awaitable[None]]
+"""Raises ConflictError if another item of the kind has the item's name."""
 
 MANUAL = IdentifierSource.MANUAL
 TAG_TREE_LOCK = "tags"
@@ -347,14 +348,13 @@ class MasterDataService:
             icon=icon,
             color=color,
         )
-        async with self._uow() as uow:
-            await uow.lock(TAG_TREE_LOCK)
-            await require_admin(uow, actor, "change master data")
+
+        async def check(uow: UnitOfWork) -> None:
             (await tag_tree(uow)).check_parent(tag, parent_id)
-            await _check_tag_name_free(uow, tag)
-            await uow.tags.add(tag)
-            await uow.commit()
-        return tag
+
+        return await self._create(
+            actor, _tags, tag, check, lock=TAG_TREE_LOCK, name_free=_check_tag_name_free
+        )
 
     async def change_tag(
         self,
@@ -374,13 +374,14 @@ class MasterDataService:
         refresh of the search index of the documents concerned (they hold the tag's
         ancestors). A new parent of a document tag or a group queues normalising what carries
         the tag and one now above it (`NORMALISE_JOB`, `normalise_tagged`)."""
-        async with self._uow() as uow:
-            await uow.lock(TAG_TREE_LOCK)
-            await require_admin(uow, actor, "change master data")
-            tag = await uow.tags.get(id)
-            before = (tag.name, tag.parent_id)
+        parents: list[TagId | None] = []
+
+        def change(tag: Tag) -> None:
+            parents.append(tag.parent_id)
             if name is not None:
                 tag.rename(name)
+
+        async def check(uow: UnitOfWork, tag: Tag) -> None:
             if not isinstance(parent_id, Unset):
                 (await tag_tree(uow)).check_parent(tag, parent_id)
                 tag.move(parent_id)
@@ -392,16 +393,25 @@ class MasterDataService:
                 tag.set_icon(icon)
             if not isinstance(color, Unset):
                 tag.set_color(color)
-            await _check_tag_name_free(uow, tag)
-            await uow.tags.update(tag)
-            if (tag.name, tag.parent_id) != before:
-                await self._refresh(uow, RefreshKind.TAG, id)
+
+        async def normalise(uow: UnitOfWork, tag: Tag) -> None:
             # A topic needs no normalising: a document has one, a contact may enable both.
-            moved = tag.parent_id != before[1] and tag.parent_id is not None
+            moved = tag.parent_id != parents[0] and tag.parent_id is not None
             if moved and tag.scope is not TagScope.TOPIC:
                 await uow.jobs.enqueue(NORMALISE_JOB, {"tag_id": str(id)}, run_at=self._clock.now())
-            await uow.commit()
-        return tag
+
+        return await self._change(
+            actor,
+            _tags,
+            id,
+            change,
+            check=check,
+            after=normalise,
+            index_as=RefreshKind.TAG,
+            indexed=lambda tag: (tag.name, tag.parent_id),
+            lock=TAG_TREE_LOCK,
+            name_free=_check_tag_name_free,
+        )
 
     # --- normalising after a move ---------------------------------------------------------------
 
@@ -494,13 +504,16 @@ class MasterDataService:
         narrowing only while no document outside the new scope has a value; the types it is
         required for narrow with it); required (global) or the types it is required for. The
         data type never changes. ConflictError if values are in use."""
-        async with self._uow() as uow:
-            await require_admin(uow, actor, "change master data")
-            definition = await uow.fields.get(id)
-            old_key = definition.key
+        old_keys: list[str] = []
+
+        def change(definition: FieldDefinition) -> None:
+            old_keys.append(definition.key)
             if name is not None:
                 definition.rename(name)
-                await _check_name_free(uow.fields, definition)
+
+        async def check(uow: UnitOfWork, definition: FieldDefinition) -> None:
+            old_key = old_keys[0]
+            if name is not None:
                 await _check_key_free(uow, definition)
                 if definition.key != old_key:
                     await self._rename_in_patterns(uow, actor, old_key, definition.key)
@@ -532,7 +545,8 @@ class MasterDataService:
                 definition.describe(description)
             if assignment is not None:
                 definition.assignment = assignment
-            await uow.fields.update(definition)
+
+        async def after(uow: UnitOfWork, definition: FieldDefinition) -> None:
             if choices is not None:
                 fields = await field_definitions(uow)
                 fields[definition.id] = definition
@@ -542,8 +556,8 @@ class MasterDataService:
                     f"field '{definition.name}' no longer allows a value the rule uses",
                     misfits(definition.id, fields),
                 )
-            await uow.commit()
-        return definition
+
+        return await self._change(actor, _fields, id, change, check=check, after=after)
 
     async def assign_fields(
         self, actor: UserId, id: DocumentTypeId, fields: Mapping[FieldId, bool]
@@ -827,24 +841,24 @@ class MasterDataService:
             rule.change(renamed_field(rule.definition, fields, old, new), actor, self._now())
             await uow.rules.update(rule)
 
-    async def _list[E: MasterData](self, actor: UserId, repository: Repo[E]) -> list[E]:
+    async def _list[K, E: MasterData](self, actor: UserId, repository: Repo[K, E]) -> list[E]:
         async with self._uow() as uow:
             await load_actor(uow, actor)
             items = await repository(uow).list_all()
         return sorted(items, key=lambda item: sort_key(item.name))
 
-    async def _get[E: MasterData](self, actor: UserId, repository: Repo[E], id: Any) -> E:
+    async def _get[K, E: MasterData](self, actor: UserId, repository: Repo[K, E], id: K) -> E:
         async with self._uow() as uow:
             await load_actor(uow, actor)
             return await repository(uow).get(id)
 
-    async def _delete[E: MasterData](
+    async def _delete[K, E: MasterData](
         self,
         actor: UserId,
-        repository: Repo[E],
-        id: Any,
+        repository: Repo[K, E],
+        id: K,
         used: Callable[[UnitOfWork], Awaitable[bool]],
-        referenced: tuple[str, Callable[[References], frozenset[Any]]],
+        referenced: tuple[str, Callable[[References], frozenset[K]]],
         *,
         before: Callable[[UnitOfWork], Awaitable[None]] | None = None,
     ) -> None:
@@ -867,32 +881,41 @@ class MasterDataService:
     def _now(self) -> datetime:
         return self._clock.now()
 
-    async def _create[E: MasterData](
+    async def _create[K, E: MasterData](
         self,
         actor: UserId,
-        repository: Repo[E],
+        repository: Repo[K, E],
         item: E,
         check: Callable[[UnitOfWork], Awaitable[None]] | None = None,
         *,
         after: Callable[[UnitOfWork], Awaitable[None]] | None = None,
+        lock: str | None = None,
+        name_free: NameCheck[E] | None = None,
     ) -> E:
-        """`after`: what follows from the new item, in the same unit of work."""
+        """`after`: what follows from the new item, in the same unit of work. `lock`: a name
+        the unit locks before it reads. `name_free`: the check that no other item has the name
+        (None: `_check_name_free`, unique per kind)."""
         async with self._uow() as uow:
+            if lock is not None:
+                await uow.lock(lock)
             await require_admin(uow, actor, "change master data")
             if check is not None:
                 await check(uow)
-            await _check_name_free(repository(uow), item)
+            if name_free is None:
+                await _check_name_free(repository(uow), item)
+            else:
+                await name_free(uow, item)
             await repository(uow).add(item)
             if after is not None:
                 await after(uow)
             await uow.commit()
         return item
 
-    async def _change[E: MasterData](
+    async def _change[K, E: MasterData](
         self,
         actor: UserId,
-        repository: Repo[E],
-        id: Any,
+        repository: Repo[K, E],
+        id: K,
         change: Callable[[E], None],
         *,
         check: Callable[[UnitOfWork, E], Awaitable[None]] | None = None,
@@ -900,10 +923,13 @@ class MasterDataService:
         index_as: RefreshKind | None = None,
         indexed: Callable[[E], object] = lambda item: item.name,
         lock: str | None = None,
+        name_free: NameCheck[E] | None = None,
     ) -> E:
-        """`after`: what follows from the change, in the same unit of work. `index_as`: the
-        kind whose documents' search index is brought up to date when what the index holds of
-        it (`indexed`: the name) changed. `lock`: a name the unit locks before it reads."""
+        """`change`, then the name's check (`name_free` as for `_create`), then `check`: the
+        part of the change that reads the unit of work. `after`: what follows from the change,
+        in the same unit of work. `index_as`: the kind whose documents' search index is brought
+        up to date when what the index holds of it (`indexed`: the name) changed. `lock`: a
+        name the unit locks before it reads."""
         async with self._uow() as uow:
             if lock is not None:
                 await uow.lock(lock)
@@ -911,14 +937,17 @@ class MasterDataService:
             item = await repository(uow).get(id)
             before = indexed(item)
             change(item)
-            await _check_name_free(repository(uow), item)
+            if name_free is None:
+                await _check_name_free(repository(uow), item)
+            else:
+                await name_free(uow, item)
             if check is not None:
                 await check(uow, item)
             await repository(uow).update(item)
             if after is not None:
                 await after(uow, item)
             if index_as is not None and indexed(item) != before:
-                await self._refresh(uow, index_as, id)
+                await self._refresh(uow, index_as, item.id)
             await uow.commit()
         return item
 
@@ -985,10 +1014,10 @@ async def normalise_tagged(
     return changed, None
 
 
-async def _check_name_free[E: MasterData](repository: NamedRepository[Any, E], item: E) -> None:
+async def _check_name_free[K, E: MasterData](repository: NamedRepository[K, E], item: E) -> None:
+    """Names are unique per kind."""
     existing = await repository.find_by_name(item.name)
-    # Every kind of master data has an `id`; the base class leaves its type to the kinds.
-    if existing is not None and getattr(existing, "id") != getattr(item, "id"):  # noqa: B009
+    if existing is not None and existing.id != item.id:
         raise ConflictError(f"'{item.name}' already exists")
 
 

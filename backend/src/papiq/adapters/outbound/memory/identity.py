@@ -28,7 +28,7 @@ class MemoryCredentialRepository(MemoryRepository[UserId, Credential]):
 
 class MemorySessionRepository(MemoryRepository[SessionId, Session]):
     async def find_by_token(self, token_hash: str) -> Session | None:
-        return next((self._copy(row) for row in self._all() if row.token_hash == token_hash), None)
+        return next((_copy(row) for row in self._all() if row.token_hash == token_hash), None)
 
     async def touch(self, id: SessionId, last_seen_at: datetime) -> None:
         self._touch(id, "last_seen_at", last_seen_at)
@@ -49,11 +49,11 @@ class MemorySessionRepository(MemoryRepository[SessionId, Session]):
 
 class MemoryApiTokenRepository(MemoryRepository[ApiTokenId, ApiToken]):
     async def find_by_token(self, token_hash: str) -> ApiToken | None:
-        return next((self._copy(row) for row in self._all() if row.token_hash == token_hash), None)
+        return next((_copy(row) for row in self._all() if row.token_hash == token_hash), None)
 
     async def list_for(self, user: UserId) -> list[ApiToken]:
         rows = [row for row in self._all() if row.user_id == user]
-        return [self._copy(row) for row in sorted(rows, key=lambda row: (row.created_at, row.id))]
+        return [_copy(row) for row in sorted(rows, key=lambda row: (row.created_at, row.id))]
 
     async def touch(self, id: ApiTokenId, last_used_at: datetime) -> None:
         self._touch(id, "last_used_at", last_used_at)

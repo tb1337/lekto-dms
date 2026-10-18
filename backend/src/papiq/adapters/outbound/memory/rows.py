@@ -59,13 +59,15 @@ class MemoryRepository[K: UUID, E]:
     async def list_all(self) -> list[E]:
         return [_copy(row) for row in self._all()]
 
+    async def remove(self, id: K) -> None:
+        """NotFoundError if missing; ConflictError if a row still refers to it."""
+        await self.get(id)
+        self._uow._check_unreferenced(self._table, id)
+        self._uow._write(self._table, id, _REMOVED)
+
     def _all(self) -> list[E]:
         self._uow._check_open()
         return self._uow._rows(self._table)
-
-    @staticmethod
-    def _copy(row: E) -> E:
-        return _copy(row)
 
     @staticmethod
     def _id(entity: E) -> K:

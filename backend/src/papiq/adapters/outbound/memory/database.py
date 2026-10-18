@@ -7,9 +7,9 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from papiq.core.domain.classifier import ClassifierModel
 from papiq.core.domain.documents import Document
 from papiq.core.domain.events import DomainEvent
-from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.identity import ApiToken, ExternalIdentity, Session
 from papiq.core.domain.ids import EventId, JobId
 from papiq.core.domain.jobs import Job
@@ -55,10 +55,6 @@ def _tag_keys(tag: Tag) -> Iterable[Hashable]:
     return [("name", tag.scope, name_key(tag.name))]
 
 
-def _field_keys(item: FieldDefinition) -> Iterable[Hashable]:
-    return _name_keys(item)
-
-
 def _document_keys(document: Document) -> Iterable[Hashable]:
     return [("sha256", document.owner_id, document.sha256)]
 
@@ -79,12 +75,16 @@ def _external_identity_keys(identity: ExternalIdentity) -> Iterable[Hashable]:
     return [("subject", identity.issuer, identity.subject)]
 
 
+def _classifier_model_keys(model: ClassifierModel) -> Iterable[Hashable]:
+    return [("number", model.number)]
+
+
 USERS = Table("user", _user_keys)
 SPACES = Table("space", _space_keys)
 CONTACTS = Table("contact", _contact_keys)
 DOCUMENT_TYPES = Table("document type", _name_keys)
 TAGS = Table("tag", _tag_keys)
-FIELDS = Table("field", _field_keys)
+FIELDS = Table("field", _name_keys)
 DOCUMENTS = Table("document", _document_keys)
 CREDENTIALS = Table("credential", _no_keys)
 SESSIONS = Table("session", _session_keys)
@@ -95,7 +95,7 @@ RULES = Table("rule", _no_keys)
 RULE_VERSIONS = Table("rule version", _no_keys)
 RULE_APPLICATIONS = Table("rule application", _no_keys)
 DOCUMENT_IDENTIFIERS = Table("document identifiers", _no_keys)
-CLASSIFIER_MODELS = Table("classifier model", lambda model: [("number", model.number)])
+CLASSIFIER_MODELS = Table("classifier model", _classifier_model_keys)
 WEBHOOKS = Table("webhook", _no_keys)
 WEBHOOK_DELIVERIES = Table("webhook delivery", _no_keys)
 

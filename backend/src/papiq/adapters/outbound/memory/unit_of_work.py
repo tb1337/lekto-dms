@@ -170,7 +170,9 @@ class MemoryUnitOfWork:
                 else:
                     rows[id] = row
         self._db.processing_log.extend(self._log)
-        removed = {id for id, row in self._writes.get(DOCUMENTS.name, {}).items() if row is None}
+        removed = {
+            id for id, row in self._writes.get(DOCUMENTS.name, {}).items() if row is _REMOVED
+        }
         self._db.processing_log[:] = [
             entry for entry in self._db.processing_log if entry.document_id not in removed
         ]
@@ -293,11 +295,6 @@ class MemoryNamedRepository[K: UUID, E: MasterData](MemoryRepository[K, E]):
         key = name_key(name)
         return next((_copy(row) for row in self._all() if name_key(row.name) == key), None)
 
-    async def remove(self, id: K) -> None:
-        await self.get(id)
-        self._uow._check_unreferenced(self._table, id)
-        self._uow._write(self._table, id, _REMOVED)
-
 
 class MemoryTagRepository(MemoryNamedRepository[TagId, Tag]):
     async def find_by_name(self, name: str, scope: TagScope = TagScope.DOCUMENT) -> Tag | None:
@@ -313,11 +310,6 @@ class MemoryUserRepository(MemoryRepository[UserId, User]):
         key = name_key(username)
         return next((_copy(row) for row in self._all() if name_key(row.username) == key), None)
 
-    async def remove(self, id: UserId) -> None:
-        await self.get(id)
-        self._uow._check_unreferenced(self._table, id)
-        self._uow._write(self._table, id, _REMOVED)
-
 
 class MemorySpaceRepository(MemoryRepository[SpaceId, Space]):
     async def get_default(self, owner: UserId) -> Space:
@@ -328,11 +320,6 @@ class MemorySpaceRepository(MemoryRepository[SpaceId, Space]):
 
     async def list_accessible(self, user: UserId) -> list[Space]:
         return [_copy(row) for row in self._all() if row.owner_id == user or user in row.shares]
-
-    async def remove(self, id: SpaceId) -> None:
-        await self.get(id)
-        self._uow._check_unreferenced(self._table, id)
-        self._uow._write(self._table, id, _REMOVED)
 
 
 class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
@@ -345,11 +332,6 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
     async def list_visible_to(self, user: UserId) -> list[Document]:
         readable = {space.id for space in await self._uow.spaces.list_accessible(user)}
         return [_copy(row) for row in self._all() if within_reach(user, readable, row)]
-
-    async def remove(self, id: DocumentId) -> None:
-        if self._uow._row(self._table, id) is _REMOVED:
-            raise NotFoundError(self._table.name, id)
-        self._uow._write(self._table, id, _REMOVED)
 
     async def field_in_use(
         self,
@@ -511,7 +493,7 @@ class MemoryDocumentIdentifierRepository:
     ) -> None:
         self._uow._check_open()
         current = self._uow._row(DOCUMENT_IDENTIFIERS, document)
-        version = 1 if current is None else current.version + 1
+        version = 1 if current is _REMOVED else current.version + 1
         row = _Shown(id=document, identifiers=frozenset(identifiers), version=version)
         self._uow._write(DOCUMENT_IDENTIFIERS, document, row)
 
@@ -525,7 +507,7 @@ class MemoryDocumentIdentifierRepository:
             if document.confirmed_at is None or document.contact_id is None:
                 continue
             shown = self._uow._row(DOCUMENT_IDENTIFIERS, document.id)
-            for key in wanted & (set() if shown is None else shown.identifiers):
+            for key in wanted & (set() if shown is _REMOVED else shown.identifiers):
                 found.setdefault(key, set()).add(document.contact_id)
         return {key: frozenset(contacts) for key, contacts in found.items()}
 

@@ -1,6 +1,6 @@
 """Query parameters that routes share: the filter of documents (`GET /documents`,
 `GET /documents/search`), the switches to every user's documents and rules (`all_users`), and
-document counts."""
+document counts; and how their descriptions say who may call them."""
 
 from enum import StrEnum
 from typing import Annotated
@@ -12,6 +12,9 @@ from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, T
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.search import PROCESSING, lane_value
 from papiq.core.ports import DocumentFilter
+
+ADMINS_ONLY = "Admins only."
+SESSION_ONLY_NOTE = " Needs a session; API tokens are refused (403)."
 
 MAX_IDS = 50
 """Ids of one kind a filter names at most."""

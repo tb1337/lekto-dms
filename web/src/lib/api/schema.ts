@@ -375,7 +375,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Reset a user's password
-		 * @description Admins only. Ends all the user's sessions; API tokens stay unless `revoke_tokens`. Not for the own account (403): that is `POST /auth/password`. Changes sign-in data, so it needs a session; API tokens are refused (403), as for `/auth/*`.
+		 * @description Admins only. Ends all the user's sessions; API tokens stay unless `revoke_tokens`. Not for the own account (403): that is `POST /auth/password`. Needs a session; API tokens are refused (403).
 		 */
 		post: operations['reset_password_api_v1_users__id__password_post'];
 		delete?: never;
@@ -396,7 +396,7 @@ export interface paths {
 		post?: never;
 		/**
 		 * Turn a user's TOTP off
-		 * @description Admins only. For a user who lost authenticator and recovery codes. Not for the own account (403): that is `POST /auth/totp/disable`. Changes sign-in data, so it needs a session; API tokens are refused (403), as for `/auth/*`.
+		 * @description Admins only. For a user who lost authenticator and recovery codes. Not for the own account (403): that is `POST /auth/totp/disable`. Needs a session; API tokens are refused (403).
 		 */
 		delete: operations['disable_totp_api_v1_users__id__totp_delete'];
 		options?: never;
@@ -416,7 +416,7 @@ export interface paths {
 		post?: never;
 		/**
 		 * Remove a user's links to the identity provider
-		 * @description Admins only. Changes sign-in data, so it needs a session; API tokens are refused (403), as for `/auth/*`.
+		 * @description Admins only. Needs a session; API tokens are refused (403).
 		 */
 		delete: operations['unlink_api_v1_users__id__oidc_delete'];
 		options?: never;
@@ -3018,7 +3018,10 @@ export interface components {
 		 *     }
 		 */
 		FieldAssignmentsIn: {
-			/** Fields */
+			/**
+			 * Fields
+			 * @description Each field once.
+			 */
 			fields: components['schemas']['FieldAssignmentIn'][];
 		};
 		/**

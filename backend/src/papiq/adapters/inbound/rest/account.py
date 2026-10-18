@@ -22,6 +22,7 @@ from papiq.adapters.inbound.rest.auth import (
     set_session_cookie,
 )
 from papiq.adapters.inbound.rest.context import ApiContext, Context
+from papiq.adapters.inbound.rest.params import SESSION_ONLY_NOTE
 from papiq.adapters.inbound.rest.paths import OIDC_CALLBACK_PATH, PREFIX
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.account import (
@@ -58,8 +59,6 @@ from papiq.core.services.oidc import OidcService
 
 public = APIRouter(prefix="/auth", tags=["auth"])
 router = APIRouter(prefix="/auth", tags=["auth"], dependencies=PROTECTED)
-
-SESSION_ONLY_NOTE = " Needs a session; API tokens are refused (403)."
 
 
 def _session_out(signed_in: SignedIn) -> SessionOut:
@@ -399,11 +398,10 @@ async def oidc_callback(
     return response
 
 
-def _oidc_failure(path: str, code: str, context: ApiContext | None = None) -> RedirectResponse:
+def _oidc_failure(path: str, code: str, context: ApiContext) -> RedirectResponse:
     """Back to the web UI with the reason, and the flow's cookie gone."""
     response = RedirectResponse(f"{path}?{urlencode({'error': code})}", status_code=303)
-    if context is not None:
-        clear_flow_cookie(response, context)
+    clear_flow_cookie(response, context)
     return response
 
 

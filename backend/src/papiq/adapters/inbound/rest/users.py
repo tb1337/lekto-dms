@@ -12,6 +12,7 @@ from papiq.adapters.inbound.rest.auth import (
     SessionPrincipal,
 )
 from papiq.adapters.inbound.rest.context import Context
+from papiq.adapters.inbound.rest.params import ADMINS_ONLY, SESSION_ONLY_NOTE
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.account import LinkOut, Removed, UserOut
 from papiq.adapters.inbound.rest.schemas.users import (
@@ -24,11 +25,6 @@ from papiq.core.domain.ids import UserId
 from papiq.core.services.users import Account
 
 router = APIRouter(prefix="/users", tags=["users"], dependencies=PROTECTED)
-
-ADMINS_ONLY = "Admins only."
-SESSION_ONLY = (
-    " Changes sign-in data, so it needs a session; API tokens are refused (403), as for `/auth/*`."
-)
 
 
 def _account(account: Account) -> AccountOut:
@@ -116,7 +112,7 @@ async def update_user(id: UUID, body: UserPatch, admin: Authenticated, context: 
     summary="Reset a user's password",
     description=ADMINS_ONLY
     + " Ends all the user's sessions; API tokens stay unless `revoke_tokens`. Not for the "
-    "own account (403): that is `POST /auth/password`." + SESSION_ONLY,
+    "own account (403): that is `POST /auth/password`." + SESSION_ONLY_NOTE,
     responses=problem_responses(401, 403, 404, 422),
 )
 async def reset_password(
@@ -133,7 +129,7 @@ async def reset_password(
     summary="Turn a user's TOTP off",
     description=ADMINS_ONLY
     + " For a user who lost authenticator and recovery codes. Not for the own account (403): "
-    "that is `POST /auth/totp/disable`." + SESSION_ONLY,
+    "that is `POST /auth/totp/disable`." + SESSION_ONLY_NOTE,
     responses=problem_responses(401, 403, 404, 422),
 )
 async def disable_totp(id: UUID, admin: SessionPrincipal, context: Context) -> None:
@@ -143,7 +139,7 @@ async def disable_totp(id: UUID, admin: SessionPrincipal, context: Context) -> N
 @router.delete(
     "/{id}/oidc",
     summary="Remove a user's links to the identity provider",
-    description=ADMINS_ONLY + SESSION_ONLY,
+    description=ADMINS_ONLY + SESSION_ONLY_NOTE,
     response_model=Removed,
     responses=problem_responses(401, 403, 404, 422),
 )

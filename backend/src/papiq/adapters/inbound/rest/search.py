@@ -7,7 +7,7 @@ from fastapi import APIRouter, Query, Response
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import Indexing, Search
 from papiq.adapters.inbound.rest.documents import DocumentSort
-from papiq.adapters.inbound.rest.params import AllDocuments, Filter
+from papiq.adapters.inbound.rest.params import ADMINS_ONLY, AllDocuments, Filter
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails
 from papiq.adapters.inbound.rest.schemas.search import (
@@ -88,7 +88,7 @@ async def search_documents(
     status_code=202,
     summary="Rebuild the search index",
     description=(
-        "Admins only. Builds a new index from the database and the stored files next to the "
+        ADMINS_ONLY + " Builds a new index from the database and the stored files next to the "
         "active one and swaps it in when it is complete; the search keeps working meanwhile. "
         "Runs in the background and may take long; a rebuild that is queued or running is not "
         "queued twice."

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Response
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import Classifier
+from papiq.adapters.inbound.rest.params import ADMINS_ONLY
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.classifier import ClassifierStatusOut
 
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/classifier", tags=["classifier"], dependencies=PROTE
     "",
     summary="The classifier's status",
     description=(
-        "Admins only. The latest model (trained from the documents a person confirmed or that "
+        ADMINS_ONLY + " The latest model (trained from the documents a person confirmed or that "
         "were taken over with metadata) and the confirmations since. 503 without a classifier."
     ),
     response_model=ClassifierStatusOut,
@@ -29,7 +30,7 @@ async def status(user: CurrentUser, classifier: Classifier) -> ClassifierStatusO
     status_code=202,
     summary="Train the classifier",
     description=(
-        "Admins only. Trains a new model in the background (it also happens on its own after "
+        ADMINS_ONLY + " Trains a new model in the background (it also happens on its own after "
         "enough confirmations); one that is queued or running is not queued twice. 409 with "
         "fewer confirmed documents than the first model needs, 503 without a classifier."
     ),

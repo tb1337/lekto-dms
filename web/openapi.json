@@ -2416,7 +2416,7 @@
           "users"
         ],
         "summary": "Reset a user's password",
-        "description": "Admins only. Ends all the user's sessions; API tokens stay unless `revoke_tokens`. Not for the own account (403): that is `POST /auth/password`. Changes sign-in data, so it needs a session; API tokens are refused (403), as for `/auth/*`.",
+        "description": "Admins only. Ends all the user's sessions; API tokens stay unless `revoke_tokens`. Not for the own account (403): that is `POST /auth/password`. Needs a session; API tokens are refused (403).",
         "operationId": "reset_password_api_v1_users__id__password_post",
         "parameters": [
           {
@@ -2554,7 +2554,7 @@
           "users"
         ],
         "summary": "Turn a user's TOTP off",
-        "description": "Admins only. For a user who lost authenticator and recovery codes. Not for the own account (403): that is `POST /auth/totp/disable`. Changes sign-in data, so it needs a session; API tokens are refused (403), as for `/auth/*`.",
+        "description": "Admins only. For a user who lost authenticator and recovery codes. Not for the own account (403): that is `POST /auth/totp/disable`. Needs a session; API tokens are refused (403).",
         "operationId": "disable_totp_api_v1_users__id__totp_delete",
         "parameters": [
           {
@@ -2666,7 +2666,7 @@
           "users"
         ],
         "summary": "Remove a user's links to the identity provider",
-        "description": "Admins only. Changes sign-in data, so it needs a session; API tokens are refused (403), as for `/auth/*`.",
+        "description": "Admins only. Needs a session; API tokens are refused (403).",
         "operationId": "unlink_api_v1_users__id__oidc_delete",
         "parameters": [
           {
@@ -17048,7 +17048,8 @@
             },
             "type": "array",
             "maxItems": 500,
-            "title": "Fields"
+            "title": "Fields",
+            "description": "Each field once."
           }
         },
         "additionalProperties": false,

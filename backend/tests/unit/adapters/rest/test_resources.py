@@ -235,6 +235,9 @@ async def test_the_fields_of_a_document_type_from_the_type(api: Api) -> None:
     # Only the invoice has Only; a global field belongs to every type; admins only.
     assert (await assign([{"field_id": amount["id"]}], auth(admin))).status_code == 422
     assert (await assign([{"field_id": global_["id"]}], auth(admin))).status_code == 422
+    twice = await assign([{"field_id": only["id"]}, {"field_id": only["id"]}], auth(admin))
+    assert twice.status_code == 422
+    assert twice.json()["detail"] == "fields: Value error, each field once"
     assert (await assign([], auth(owner))).status_code == 403
     # A document of the invoice with a value for Amount keeps it there.
     document = await upload(api, auth(owner))

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from papiq.adapters.inbound.rest.paths import logo_url
 from papiq.adapters.inbound.rest.schemas.common import Name, NameIn
@@ -660,4 +660,11 @@ class FieldAssignmentsIn(BaseModel):
         },
     )
 
-    fields: list[FieldAssignmentIn] = Field(max_length=500)
+    fields: list[FieldAssignmentIn] = Field(max_length=500, description="Each field once.")
+
+    @field_validator("fields")
+    @classmethod
+    def _each_once(cls, fields: list[FieldAssignmentIn]) -> list[FieldAssignmentIn]:
+        if len({item.field_id for item in fields}) != len(fields):
+            raise ValueError("each field once")
+        return fields

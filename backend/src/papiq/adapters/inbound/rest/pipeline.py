@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import Context
+from papiq.adapters.inbound.rest.params import ADMINS_ONLY
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.pipeline import (
     GraphNodeOut,
@@ -44,7 +45,7 @@ async def pipeline(user: CurrentUser, context: Context) -> PipelineOut:
     status_code=202,
     summary="Read the text of every document again",
     description=(
-        "Admins only. After an update of the parser (0.2 reads the text as it is set instead "
+        ADMINS_ONLY + " After an update of the parser (0.2 reads the text as it is set instead "
         "of Docling's Markdown): the worker reads the text of every document again whose text "
         "was read in its current run and that is not being processed. Nodes, lane and metadata "
         "stay as they are; the processing log gets the new reading (`input.reparse`), the "

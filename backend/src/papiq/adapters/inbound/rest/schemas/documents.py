@@ -11,7 +11,6 @@ from papiq.adapters.inbound.rest.schemas.spaces import ShareOut
 from papiq.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
 from papiq.core.domain.documents import MAX_TITLE, Channel, Document
 from papiq.core.domain.exchanges import ModelCall, RunExchange
-from papiq.core.domain.permissions import can_manage_space
 from papiq.core.domain.pipeline import (
     Lane,
     Node,
@@ -448,9 +447,7 @@ class VisibilityOut(BaseModel):
     @classmethod
     def of(cls, document: Document, space: Space, viewer: User) -> "VisibilityOut":
         green = document.lane is Lane.GREEN
-        shares = None
-        if green and can_manage_space(viewer, space):
-            shares = [ShareOut(user_id=u, level=level) for u, level in sorted(space.shares.items())]
+        shares = ShareOut.of_space(space, viewer) if green else None
         return cls(
             owner_id=document.owner_id,
             space_id=space.id,

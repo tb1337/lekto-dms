@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from papiq.adapters.inbound.rest.auth import PROTECTED, CurrentUser
 from papiq.adapters.inbound.rest.context import ApiContext, Context
-from papiq.adapters.inbound.rest.params import CountAll, DocumentCounts
+from papiq.adapters.inbound.rest.params import ADMINS_ONLY, CountAll, DocumentCounts
 from papiq.adapters.inbound.rest.paths import PREFIX
 from papiq.adapters.inbound.rest.problems import problem_responses
 from papiq.adapters.inbound.rest.schemas.master_data import (
@@ -35,8 +35,7 @@ from papiq.adapters.inbound.rest.schemas.master_data import (
 )
 from papiq.adapters.inbound.rest.upload import read_upload, upload_body
 from papiq.core.domain.documents import UNSET, Unset
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.identifiers import Identifier, IdentifierKind
+from papiq.core.domain.identifiers import Identifier
 from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, TagId, UserId
 from papiq.core.domain.master_data import MasterData, TagScope
 from papiq.core.domain.tag_tree import TagTree
@@ -44,7 +43,6 @@ from papiq.core.ports import CountBy
 from papiq.core.services.logos import LOGO_MAX_SIZE, LOGO_TYPE
 from papiq.core.services.master_data import MasterDataService
 
-ADMINS_ONLY = "Admins only."
 COUNTS = (
     "Everyone reads them. With `document_counts`, each comes with how many documents within "
     "the caller's reach have it (a field: a value for it), counted in one query; admins count "
@@ -56,7 +54,8 @@ COUNTS = (
 class Kind[K: UUID, E: MasterData, C: BaseModel, P: BaseModel, O: MasterDataOut]:
     """One kind of named master data for `_simple`: the service's methods for it, the bodies
     that create (`C`) and change it (`P`), and its answer (`O`, made with `of`). The bodies'
-    fields are the methods' keyword arguments, as `arguments` turns them."""
+    fields, as validated (a nested body stays a model), are the methods' keyword arguments, as
+    `arguments` turns them."""
 
     path: str
     noun: str  # in summaries: "List document types"
@@ -116,7 +115,7 @@ def _simple[K: UUID, E: MasterData, C: BaseModel, P: BaseModel, O: MasterDataOut
     )
     @_body(kind.create_in)
     async def create(body: C, user: CurrentUser, context: Context) -> O:
-        given = kind.arguments(body.model_dump())
+        given = kind.arguments(dict(body))
         return kind.of(await kind.create(context.master_data, user, **given))
 
     @router.get(
@@ -141,7 +140,9 @@ def _simple[K: UUID, E: MasterData, C: BaseModel, P: BaseModel, O: MasterDataOut
     )
     @_body(kind.patch_in)
     async def patch(id: UUID, body: P, user: CurrentUser, context: Context) -> O:
-        given = kind.arguments(body.model_dump(include=body.model_fields_set))
+        given = kind.arguments(
+            {name: value for name, value in body if name in body.model_fields_set}
+        )
         return kind.of(await kind.change(context.master_data, user, kind.id(id), **given))
 
     @router.delete(
@@ -184,21 +185,19 @@ def _with_counts[O: _Counted](items: list[O], counts: Mapping[UUID, int]) -> lis
     return [item.model_copy(update={"document_count": counts.get(item.id, 0)}) for item in items]
 
 
+def _identifier(item: IdentifierIn, *, rejected: bool = False) -> Identifier:
+    """As written, normalised (ValidationError, 422, if it is none), with its topic; a rejected
+    one has none."""
+    topic = None if rejected or item.topic_id is None else TagId(item.topic_id)
+    return Identifier.parse(item.kind, item.value, topic_id=topic)
+
+
 def _contact_arguments(given: dict[str, Any]) -> dict[str, Any]:
-    """Identifiers as written, normalised (ValidationError, 422, if one is none), with their
-    topic; a rejected one has none."""
+    """The identifiers of a contact's body as `Identifier`s."""
     for key in ("identifiers", "rejected_identifiers"):
         if given.get(key) is not None:
-            given[key] = [
-                Identifier.parse(
-                    IdentifierKind(item["kind"]),
-                    item["value"],
-                    topic_id=None
-                    if key == "rejected_identifiers" or item.get("topic_id") is None
-                    else TagId(item["topic_id"]),
-                )
-                for item in given[key]
-            ]
+            rejected = key == "rejected_identifiers"
+            given[key] = [_identifier(item, rejected=rejected) for item in given[key]]
     return given
 
 
@@ -241,8 +240,7 @@ contacts = _simple(
 async def attach_identifier(
     id: UUID, body: IdentifierIn, user: CurrentUser, context: Context
 ) -> ContactOut:
-    topic = None if body.topic_id is None else TagId(body.topic_id)
-    identifier = Identifier.parse(body.kind, body.value, topic_id=topic)
+    identifier = _identifier(body)
     return ContactOut.of(await context.master_data.add_identifier(user, ContactId(id), identifier))
 
 
@@ -496,8 +494,6 @@ async def assign_fields(
     id: UUID, body: FieldAssignmentsIn, user: CurrentUser, context: Context
 ) -> list[FieldOut]:
     type_id = DocumentTypeId(id)
-    if len({item.field_id for item in body.fields}) != len(body.fields):
-        raise ValidationError("each field once")
     await context.master_data.assign_fields(
         user, type_id, {FieldId(item.field_id): item.required for item in body.fields}
     )

@@ -29,7 +29,7 @@ from papiq.core.ports.search_index import (
     check_search,
 )
 from papiq.core.ports.unit_of_work import UnitOfWorkFactory
-from papiq.core.services._access import admin_only, load_actor
+from papiq.core.services._access import load_lister
 from papiq.core.services._tags import expanded, group_lookup, matches
 from papiq.core.services.inbox import in_inbox
 
@@ -105,9 +105,7 @@ class SearchService:
         ratio = self._policy.semantic_ratio if semantic_ratio is None else semantic_ratio
         check_search(text, ratio, offset, limit)
         async with self._uow() as uow:
-            user = await load_actor(uow, actor)
-            if all_users:
-                admin_only(user, "search the documents of all users")
+            user = await load_lister(uow, actor, all_users, "search the documents of all users")
             spaces = await uow.spaces.list_accessible(actor)
             filter = await expanded(uow, filter)
         if offset >= MAX_HITS:

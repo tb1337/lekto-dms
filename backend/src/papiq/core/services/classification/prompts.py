@@ -105,6 +105,12 @@ class Listed:
     topics: tuple[str, ...] = ()
 
 
+# The fixed answers of the evaluation (`adapters/inbound/evaluation/cases.py`, `_proposal_keys`
+# and `_KEY_LINE`) read the field keys from the wording of the two messages: the line that opens
+# the document, the field lines `- a1: "Name"` and the headings "Document types" and "Fields for
+# every document". A test renders the messages to hold the two together.
+
+
 def propose_message(
     contacts: Sequence[Listed],
     document_types: Sequence[tuple[Listed, Sequence[tuple[str, FieldDefinition]]]],

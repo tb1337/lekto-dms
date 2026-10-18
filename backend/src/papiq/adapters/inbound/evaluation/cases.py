@@ -198,6 +198,14 @@ def load_set(path: Path) -> EvaluationSet:
     return EvaluationSet(path, master, cases, training)
 
 
+# The fixed answer learns the field keys it is asked for only from the rendered prompt, so the
+# three below follow the wording of `core/services/classification/prompts.py` (`propose_message`,
+# `extract_message`): the line that opens the document, the field lines `- a1: "Name"` and the
+# headings "Document types" and "Fields for every document". A change there leaves the fields of
+# the fixed answers empty; `tests/unit/test_evaluation.py` renders the prompts to hold the two
+# together.
+
+
 def _before_document(message: str) -> str:
     return message.split("The document follows", 1)[0]
 

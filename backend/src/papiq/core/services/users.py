@@ -284,7 +284,8 @@ def _not_own(actor: UserId, id: UserId, what: str) -> None:
 
 
 async def add_user(uow: UnitOfWork, username: str, role: Role, now: datetime) -> User:
-    """Add a user with their default space; ConflictError if the name is taken."""
+    """Add a user with their default space; ConflictError if the name is taken (looked up for
+    the message; the repository's rule catches two requests at once, `core.ports.repository`)."""
     user = User.create(username=username, role=role, now=now)
     if await uow.users.find_by_username(user.username) is not None:
         raise ConflictError(f"username '{user.username}' is taken")

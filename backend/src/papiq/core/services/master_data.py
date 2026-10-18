@@ -1015,14 +1015,15 @@ async def normalise_tagged(
 
 
 async def _check_name_free[K, E: MasterData](repository: NamedRepository[K, E], item: E) -> None:
-    """Names are unique per kind."""
+    """Names are unique per kind. The repository holds that rule too (`core.ports.repository`);
+    this look-up gives the message."""
     existing = await repository.find_by_name(item.name)
     if existing is not None and existing.id != item.id:
         raise ConflictError(f"'{item.name}' already exists")
 
 
 async def _check_tag_name_free(uow: UnitOfWork, tag: Tag) -> None:
-    """Names are unique per scope."""
+    """Names are unique per scope (as `_check_name_free`)."""
     existing = await uow.tags.find_by_name(tag.name, tag.scope)
     if existing is not None and existing.id != tag.id:
         raise ConflictError(f"'{tag.name}' already exists")

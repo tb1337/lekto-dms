@@ -100,6 +100,8 @@ async def _managed_space(uow: UnitOfWork, user: User, id: SpaceId) -> Space:
 
 
 async def _check_name_free(uow: UnitOfWork, space: Space) -> None:
+    """Space names are unique per owner. The repository holds that rule too
+    (`core.ports.repository`); this look-up gives the message."""
     for other in await uow.spaces.list_accessible(space.owner_id):
         if (
             other.id != space.id

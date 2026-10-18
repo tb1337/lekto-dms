@@ -10,7 +10,9 @@ Common rules for every adapter:
 - Uniqueness (raises ConflictError at the latest on commit): usernames; space names per owner;
   one default space per owner; names of contacts, document types and field definitions, and
   of tags per scope; the original (SHA-256) per document owner. Names compare regardless of
-  case.
+  case. The services look a name up before they write, for a message that names it ("'X'
+  already exists"); the adapter's rule is the net for two requests at once, which the look-up
+  cannot see.
 - `get` raises NotFoundError, `find` returns None.
 """
 

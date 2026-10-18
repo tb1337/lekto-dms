@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
+from papiq.core.domain.errors import (
+    ClassifierUnavailableError,
+    NotFoundError,
+    SearchUnavailableError,
+)
 from papiq.core.ports.event_bus import EventBus
 from papiq.core.services.auth import AuthService
 from papiq.core.services.classifier import ClassifierService
@@ -62,3 +67,26 @@ class ApiContext:
     stream_recheck_interval: timedelta = timedelta(seconds=30)
     # The built web UI, served below `/ui`; None: the API only.
     ui_directory: Path | None = None
+
+    # The services the API works without, for an endpoint or tool that needs them: REST answers
+    # the errors with 503 (search, classifier) or 404 (identity provider), MCP with its text.
+
+    def require_search(self) -> SearchService:
+        if self.search is None:
+            raise SearchUnavailableError("search is not configured")
+        return self.search
+
+    def require_indexing(self) -> IndexingService:
+        if self.indexing is None:
+            raise SearchUnavailableError("search is not configured")
+        return self.indexing
+
+    def require_classifier(self) -> ClassifierService:
+        if self.classifier is None:
+            raise ClassifierUnavailableError("no classifier is configured")
+        return self.classifier
+
+    def require_oidc(self) -> OidcService:
+        if self.oidc is None:
+            raise NotFoundError("identity provider", "oidc")
+        return self.oidc

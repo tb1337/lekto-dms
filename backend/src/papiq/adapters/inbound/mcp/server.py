@@ -307,10 +307,9 @@ def build_server(context: ApiContext) -> MCPServer:
         ] = None,
     ) -> SearchOut:
         user = principal_of(ctx).id
-        if context.search is None:
-            raise SearchUnavailableError("search is not configured")
+        searching = context.require_search()
         names = await Names.load(context, user)
-        page = await context.search.search(
+        page = await searching.search(
             user,
             query,
             DocumentFilter(

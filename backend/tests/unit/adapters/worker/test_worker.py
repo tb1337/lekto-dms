@@ -57,12 +57,7 @@ async def until(condition: Callable[[], object], timeout: float = 5) -> None:
 
 
 async def owner(container: Container) -> User:
-    user = builders.user()
-    async with container.unit_of_work() as uow:
-        await uow.users.add(user)
-        await uow.spaces.add(builders.default_space(user))
-        await uow.commit()
-    return user
+    return await builders.seed_user(container.unit_of_work)
 
 
 async def lane(services: Services, user: User, document: Document) -> Lane | None:

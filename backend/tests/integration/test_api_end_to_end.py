@@ -70,11 +70,7 @@ class System:
     client: httpx2.AsyncClient
 
     async def user(self) -> User:
-        user = builders.user()
-        async with self.container.unit_of_work() as uow:
-            await uow.users.add(user)
-            await uow.spaces.add(builders.default_space(user))
-            await uow.commit()
+        user = await builders.seed_user(self.container.unit_of_work)
         await issue_token(self.services.auth, user)
         return user
 

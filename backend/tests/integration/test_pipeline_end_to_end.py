@@ -59,11 +59,7 @@ async def test_scan_and_photo_are_processed(
     )
     services = build_services(container)
     builders.skip_classification(services.pipeline)
-    owner = builders.user()
-    async with container.unit_of_work() as uow:
-        await uow.users.add(owner)
-        await uow.spaces.add(builders.default_space(owner))
-        await uow.commit()
+    owner = await builders.seed_user(container.unit_of_work)
 
     document = await services.pipeline.receive(
         owner.id, incoming((SAMPLES / sample).read_bytes()), filename=sample

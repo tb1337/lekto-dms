@@ -22,12 +22,13 @@ from papiq.composition.container import (
 )
 from papiq.composition.settings import Settings
 from papiq.core.domain.documents import Document, Sha256
+from papiq.core.domain.identity import Credential, check_new_password
 from papiq.core.domain.ids import DocumentId, SpaceId, UserId, new_id
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, Outcome
 from papiq.core.domain.search import IndexDocument
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import Clock, ObjectStore, UnitOfWorkFactory
+from papiq.core.ports import Clock, ObjectStore, PasswordHasher, UnitOfWorkFactory
 from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.pipeline import (
     IncomingFile,
@@ -108,6 +109,39 @@ def admin(name: str | None = None) -> User:
 
 def space(owner: User, name: str | None = None) -> Space:
     return Space.create(owner_id=owner.id, name=name or _unique("space"), now=NOW)
+
+
+async def seed_user(
+    uow: UnitOfWorkFactory, name: str | None = None, *, role: Role = Role.USER
+) -> User:
+    """A user with their default space, stored directly."""
+    seeded = user(name, role=role)
+    async with uow() as unit:
+        await unit.users.add(seeded)
+        await unit.spaces.add(default_space(seeded))
+        await unit.commit()
+    return seeded
+
+
+async def seed_account(
+    uow: UnitOfWorkFactory,
+    hasher: PasswordHasher,
+    name: str | None = None,
+    *,
+    role: Role = Role.USER,
+    password: str = PASSWORD,
+) -> User:
+    """A user with their default space and `password`, stored directly."""
+    seeded = await seed_user(uow, name, role=role)
+    async with uow() as unit:
+        await unit.credentials.add(
+            Credential(
+                user_id=seeded.id,
+                password_hash=await hasher.hash(check_new_password(password, seeded.username)),
+            )
+        )
+        await unit.commit()
+    return seeded
 
 
 def default_space(owner: User) -> Space:

@@ -22,7 +22,6 @@ from papiq.composition.container import (
     build_memory_container,
     build_services,
 )
-from papiq.core.domain.identity import Credential, check_new_password
 from papiq.core.domain.users import Role, User
 from tests import builders
 from tests.api import issue_token
@@ -79,19 +78,10 @@ class Api:
 
     async def user(self, name: str | None = None, role: Role = Role.USER) -> User:
         """A user with default space, password `PASSWORD` and an API token (`auth`)."""
-        user = builders.user(name, role=role)
-        async with self.container.unit_of_work() as uow:
-            await uow.users.add(user)
-            await uow.spaces.add(builders.default_space(user))
-            await uow.credentials.add(
-                Credential(
-                    user_id=user.id,
-                    password_hash=await self.container.password_hasher.hash(
-                        check_new_password(PASSWORD, user.username)
-                    ),
-                )
-            )
-            await uow.commit()
+        container = self.container
+        user = await builders.seed_account(
+            container.unit_of_work, container.password_hasher, name, role=role
+        )
         await issue_token(self.services.auth, user)
         return user
 

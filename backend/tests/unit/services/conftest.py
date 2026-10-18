@@ -17,7 +17,6 @@ from papiq.adapters.outbound.memory import (
 )
 from papiq.core.domain.documents import Document
 from papiq.core.domain.events import DomainEvent
-from papiq.core.domain.identity import Credential, check_new_password
 from papiq.core.domain.pipeline import NODES, Node, NodeResult
 from papiq.core.domain.spaces import Space
 from papiq.core.domain.users import Role, User
@@ -160,27 +159,15 @@ class World:
 
     async def user(self, name: str | None = None, role: Role = Role.USER) -> User:
         """A user with their default space, seeded directly."""
-        user = builders.user(name, role=role)
-        async with self.uow() as uow:
-            await uow.users.add(user)
-            await uow.spaces.add(builders.default_space(user))
-            await uow.commit()
-        return user
+        return await builders.seed_user(self.uow, name, role=role)
 
     async def account(
         self, name: str | None = None, role: Role = Role.USER, password: str = builders.PASSWORD
     ) -> User:
         """A user with default space and password."""
-        user = await self.user(name, role)
-        async with self.uow() as uow:
-            await uow.credentials.add(
-                Credential(
-                    user_id=user.id,
-                    password_hash=await self.hasher.hash(check_new_password(password, "-")),
-                )
-            )
-            await uow.commit()
-        return user
+        return await builders.seed_account(
+            self.uow, self.hasher, name, role=role, password=password
+        )
 
     async def default_space(self, user: User) -> Space:
         async with self.uow() as uow:

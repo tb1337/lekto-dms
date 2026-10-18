@@ -863,8 +863,8 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 - Request bodies other than uploads (documents, logos) are bounded by `PAPIQ_REQUEST_MAX_SIZE`, by
   `Content-Length` before anything is read and by the bytes received otherwise (`413`);
   FastAPI would otherwise read a JSON body of any size into memory.
-- Downloads go through a temporary file and carry `X-Content-Type-Options: nosniff`,
-  `Content-Security-Policy: sandbox` and `Cache-Control: private, no-store`.
+- Downloads go through a temporary file and carry `Content-Security-Policy: sandbox`, besides
+  the `Cache-Control: no-store` and `X-Content-Type-Options: nosniff` of every answer.
 - `401` (with `WWW-Authenticate: Bearer`), `429` (with `Retry-After`) and `502` (identity
   provider) are problems like all errors. The access log shows the OIDC callback without its
   query (code and state).

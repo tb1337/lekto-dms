@@ -481,12 +481,10 @@ async def _download(
         media_type=info.media_type,
         filename=info.filename,
         content_disposition_type=disposition,
-        headers={
-            "X-Content-Type-Options": "nosniff",
-            # A file shown in the browser runs no scripts and reaches nothing of this site.
-            "Content-Security-Policy": "sandbox; default-src 'none'",
-            "Cache-Control": "private, no-store",
-        },
+        # `Cache-Control: no-store` and `nosniff` come from the `NoStore` middleware, as for
+        # every answer. A file shown in the browser runs no scripts and reaches nothing of
+        # this site.
+        headers={"Content-Security-Policy": "sandbox; default-src 'none'"},
         background=BackgroundTask(path.unlink, missing_ok=True),
     )
 
@@ -542,11 +540,7 @@ async def document_text(
 )
 async def document_structure(id: UUID, user: CurrentUser, context: Context) -> Response:
     data = await context.documents.read_structure(user, DocumentId(id))
-    return Response(
-        data,
-        media_type="application/json",
-        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
-    )
+    return Response(data, media_type="application/json")
 
 
 @router.get(

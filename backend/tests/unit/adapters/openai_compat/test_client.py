@@ -153,7 +153,6 @@ async def test_sends_a_strict_json_schema_request(endpoint: SimulatedEndpoint) -
     }
     assert answer.model == "qwen3:latest"
     assert answer.fingerprint == "fp_ollama"
-    assert (answer.prompt_tokens, answer.completion_tokens) == (12, 5)
     # The whole report, also what only some endpoints send (here a duration of Ollama).
     assert answer.usage == {
         "prompt_tokens": 12,

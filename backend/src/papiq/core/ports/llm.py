@@ -26,8 +26,6 @@ class StructuredAnswer:
     content: str  # the model's text; expected to be JSON, not checked
     model: str  # the model as the endpoint reports it
     fingerprint: str | None = None  # the endpoint's system fingerprint, if any
-    prompt_tokens: int | None = None
-    completion_tokens: int | None = None
     # The endpoint's usage report as it sent it: the token counts, and with some endpoints
     # (Ollama through OpenWebUI) durations and speeds; empty if it sent none.
     usage: JsonObject = field(default_factory=dict)

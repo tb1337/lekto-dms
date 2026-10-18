@@ -30,7 +30,6 @@ from papiq.adapters.outbound.http_client.openai import (
     response_object,
 )
 from papiq.core.domain.errors import EmbeddingsError, LanguageModelError
-from papiq.core.domain.json_value import as_int
 from papiq.core.ports.embeddings import EmbeddingResult
 from papiq.core.ports.llm import StructuredAnswer, StructuredRequest
 
@@ -98,8 +97,6 @@ class OpenAiCompatLanguageModel:
             content=content,
             model=str(data.get("model") or self._model),
             fingerprint=_optional_text(data.get("system_fingerprint")),
-            prompt_tokens=as_int(usage.get("prompt_tokens")),
-            completion_tokens=as_int(usage.get("completion_tokens")),
             usage=usage,
         )
 

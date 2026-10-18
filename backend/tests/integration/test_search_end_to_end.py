@@ -4,96 +4,31 @@ worker and Meilisearch; fake embeddings (vectors of 16 numbers); OCR and parser 
 bring the text of the test. Two set-ups: SQLite with the filesystem, Postgres with S3 (Garage)."""
 
 import asyncio
-import json
 import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass, replace
-from datetime import timedelta
-from pathlib import Path
 from typing import Any
 
-import httpx2
 import pytest
 from sqlalchemy import func, select
 
 from papiq.adapters.inbound.rest import PREFIX
-from papiq.adapters.inbound.worker import Worker
 from papiq.adapters.outbound.memory import FakeEmbeddings
-from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory
+from papiq.adapters.outbound.sql import Database
 from papiq.adapters.outbound.sql.tables import jobs
-from papiq.composition.api import build_app
-from papiq.composition.container import (
-    Container,
-    Services,
-    build_memory_container,
-    build_services,
-)
 from papiq.composition.settings import Settings
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import Role, User
-from papiq.core.ports import ObjectStore, OcrResult, ParseResult
-from papiq.core.services.indexing import SUBSCRIBER
+from papiq.core.ports import ObjectStore
 from tests import builders
-from tests.api import auth, issue_token, serving
-from tests.builders import DEFAULT_SETTINGS
+from tests.api import auth
 from tests.integration.adapters.meilisearch.conftest import drop, new_index
+from tests.integration.e2e import DOCUMENTS, System, TextOcr, TextParser, running_system
 
-DOCUMENTS = f"{PREFIX}/documents"
 SEARCH = f"{DOCUMENTS}/search"
 TIMEOUT = 60.0  # seconds a document may take here
 
 
-class TextOcr:
-    """OCR that keeps the file as it is: the archive holds the text line for the parser."""
-
-    vision = None
-
-    async def make_archive(
-        self, source: Path, target: Path, *, media_type: str, vision: bool = False
-    ) -> OcrResult:
-        target.write_bytes(source.read_bytes())
-        return OcrResult(pages=1, engine="text-ocr 1", pdfa=True)
-
-
-class TextParser:
-    """A parser that takes the text of a document from a line of the file: `%text: …`."""
-
-    async def parse(self, source: Path, *, text: Path, structure: Path) -> ParseResult:
-        data = source.read_bytes()
-        content = next(
-            line.removeprefix(b"%text: ").decode()
-            for line in data.splitlines()
-            if line.startswith(b"%text: ")
-        )
-        text.write_text(content, encoding="utf-8")
-        structure.write_text(json.dumps({"text": content}), encoding="utf-8")
-        return ParseResult(pages=1, parser="text-parser 1")
-
-
-def pdf(text: str) -> bytes:
-    return f"%PDF-1.7\n%text: {text}\n%%EOF\n".encode()
-
-
-@dataclass
-class System:
-    container: Container
-    services: Services
-    client: httpx2.AsyncClient
-    settings: Settings
-    index_name: str
-    database: Database
-
-    async def user(self, role: Role = Role.USER) -> User:
-        user = await builders.seed_user(self.container.unit_of_work, role=role)
-        await issue_token(self.services.auth, user)
-        return user
-
-    async def upload(self, user: User, text: str, **data: str) -> str:
-        files = {"file": ("document.pdf", pdf(text), "application/pdf")}
-        response = await self.client.post(DOCUMENTS, files=files, data=data, headers=auth(user))
-        assert response.status_code == 202, response.text
-        return str(response.json()["id"])
-
+class SearchSystem(System):
     async def search(self, user: User, text: str, **params: Any) -> dict[str, Any]:
         """By words unless the test asks for more: a search by meaning ranks every document, so
         it would find documents that are not about the text."""
@@ -118,7 +53,7 @@ class System:
         except TimeoutError:
             pytest.fail(f"timeout: {what}")
 
-    async def settled(self) -> None:
+    async def idle(self) -> None:
         """Wait until no search job is queued or running."""
 
         async def active() -> int:
@@ -161,54 +96,31 @@ class System:
 
 
 @pytest.fixture
+def index_name() -> str:
+    return f"papiq-test-{secrets.token_hex(6)}"
+
+
+@pytest.fixture
 async def system(
-    stores: tuple[Database, ObjectStore], meilisearch_settings: Settings
-) -> AsyncIterator[System]:
-    settings = meilisearch_settings
-    database, object_store = stores
-    name = f"papiq-test-{secrets.token_hex(6)}"
-    index = new_index(settings, name, dimensions=FakeEmbeddings.DIMENSIONS)
-    container = replace(
-        build_memory_container(),
-        unit_of_work=SqlUnitOfWorkFactory(database),
-        event_bus=SqlEventBus(database, retry=builders.EVENT_RETRY),
-        object_store=object_store,
-        ocr=TextOcr(),
-        parser=TextParser(),
-        search_index=index,
-        embeddings=FakeEmbeddings(),
-    )
-    tuning = Settings.model_construct(
-        worker_concurrency=2, events_poll_interval=timedelta(milliseconds=50)
-    )
-    services = build_services(container, tuning)
-    builders.skip_classification(services.pipeline)
-    assert services.indexing is not None
-    container.event_bus.subscribe(SUBSCRIBER, services.indexing.on_event)
-    worker = Worker(
-        pipeline=services.pipeline,
-        maintenance=services.maintenance,
-        event_bus=container.event_bus,
-        concurrency=2,
-        poll_interval=timedelta(milliseconds=50),
-        dispatch_interval=timedelta(milliseconds=50),
-        shutdown_timeout=timedelta(seconds=30),
-        webhook_concurrency=DEFAULT_SETTINGS.webhook_concurrency,
-        indexing=services.indexing,
-    )
-    app = build_app(container, tuning, services)
-    running = asyncio.create_task(worker.run())
+    stores: tuple[Database, ObjectStore], meilisearch_settings: Settings, index_name: str
+) -> AsyncIterator[SearchSystem]:
+    index = new_index(meilisearch_settings, index_name, dimensions=FakeEmbeddings.DIMENSIONS)
     try:
-        async with serving(app) as url, httpx2.AsyncClient(base_url=url, timeout=30) as client:
-            yield System(container, services, client, settings, name, database)
+        async with running_system(
+            SearchSystem,
+            stores,
+            ocr=TextOcr(),
+            parser=TextParser(),
+            search_index=index,
+            embeddings=FakeEmbeddings(),
+        ) as system:
+            yield system
     finally:
-        worker.stop()
-        await asyncio.wait_for(running, timeout=60)
         await index.aclose()
-        await drop(settings, name, f"{name}-rebuild")
+        await drop(meilisearch_settings, index_name, f"{index_name}-rebuild")
 
 
-async def test_documents_are_found_by_those_who_may_read_them(system: System) -> None:
+async def test_documents_are_found_by_those_who_may_read_them(system: SearchSystem) -> None:
     owner, reader, stranger = await system.user(), await system.user(), await system.user()
     admin = await system.user(Role.ADMIN)
     async with system.container.unit_of_work() as uow:
@@ -268,7 +180,9 @@ async def test_documents_are_found_by_those_who_may_read_them(system: System) ->
     assert health.json()["status"] == "ok"
 
 
-async def test_the_index_is_rebuilt_on_an_empty_meilisearch(system: System) -> None:
+async def test_the_index_is_rebuilt_on_an_empty_meilisearch(
+    system: SearchSystem, meilisearch_settings: Settings, index_name: str
+) -> None:
     owner, admin = await system.user(), await system.user(Role.ADMIN)
     first = await system.upload(owner, "Steuerbescheid Finanzamt")
     second = await system.upload(owner, "Versicherungspolice Hausrat")
@@ -276,8 +190,8 @@ async def test_the_index_is_rebuilt_on_an_empty_meilisearch(system: System) -> N
     await system.found(owner, "Versicherungspolice", {second})
 
     # Meilisearch loses everything, while no job is at work.
-    await system.settled()
-    await drop(system.settings, system.index_name)
+    await system.idle()
+    await drop(meilisearch_settings, index_name)
 
     async def gone() -> bool:
         """The search fails (503) or, once the adapter has set up an empty index, finds nothing."""

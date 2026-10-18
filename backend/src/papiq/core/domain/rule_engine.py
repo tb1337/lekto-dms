@@ -78,7 +78,7 @@ from papiq.core.domain.ids import (
     SpaceId,
     TagId,
 )
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import JsonObject, JsonValue, require_date
 from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.periods import Period
 from papiq.core.domain.pipeline import Outcome
@@ -272,7 +272,11 @@ def _condition(
                 return facts.patterns.get(key, False)
             return facts.text.contains(str(condition.value))
         case ConditionField.DOCUMENT_DATE:
-            return _ordered(op, facts.document_date, [_date(value) for value in values])
+            return _ordered(
+                op,
+                facts.document_date,
+                [require_date(value, ConditionField.DOCUMENT_DATE) for value in values],
+            )
         case ConditionField.FIELD:
             assert condition.field_id is not None
             definition = definitions.get(condition.field_id)
@@ -386,10 +390,6 @@ def _period(op: Operator, value: Period, wanted: list[FieldValue]) -> bool:
 
 def _text_of(value: FieldValue) -> str:
     return value.value if isinstance(value, Url) else str(value)
-
-
-def _date(value: JsonValue) -> date:
-    return date.fromisoformat(str(value))
 
 
 def pattern_subjects(

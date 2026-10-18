@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.json_value import JsonObject, JsonValue, as_int
+from papiq.core.domain.json_value import JsonObject, JsonValue, as_int, as_object
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -37,13 +37,12 @@ class ModelCall:
     def from_json(cls, data: JsonValue) -> "ModelCall":
         if not isinstance(data, dict):
             raise ValidationError(f"invalid model call {data!r}")
-        usage = data.get("usage")
         return cls(
             system=str(data.get("system", "")),
             user=str(data.get("user", "")),
             answer=str(data.get("answer", "")),
             model=str(data.get("model", "")),
-            usage=usage if isinstance(usage, dict) else {},
+            usage=as_object(data.get("usage")) or {},
         )
 
 

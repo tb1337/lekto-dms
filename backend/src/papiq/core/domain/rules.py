@@ -25,7 +25,7 @@ them) and are read with the field definitions where needed (`check_fields`).
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal, Self
 from uuid import UUID
@@ -46,7 +46,13 @@ from papiq.core.domain.ids import (
     UserId,
     new_id,
 )
-from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.json_value import (
+    JsonObject,
+    JsonValue,
+    require_date,
+    require_object,
+    require_uuid,
+)
 from papiq.core.domain.master_data import DocumentType, TagScope
 from papiq.core.domain.validation import require_name, require_utc
 
@@ -201,13 +207,13 @@ class Condition:
             self._check_value(item)
         if self.field in _ID_FIELDS:
             # One spelling of every id, so conditions compare ids as text.
-            ids = [str(_uuid(item, self.field.value)) for item in items]
+            ids = [str(require_uuid(item, self.field.value)) for item in items]
             object.__setattr__(self, "value", ids if self.op is Operator.IN else ids[0])
 
     def _check_value(self, value: JsonValue) -> None:
         match self.field:
             case id_field if id_field in _ID_FIELDS:
-                _uuid(value, self.field.value)
+                require_uuid(value, self.field.value)
             case ConditionField.CHANNEL:
                 if not isinstance(value, str) or value not in {
                     channel.value for channel in Channel
@@ -217,7 +223,7 @@ class Condition:
                 # A pattern is checked by the pattern matcher that runs it (`check_patterns`).
                 _text(value, MAX_PATTERN if self.op is Operator.MATCHES else MAX_TEXT)
             case ConditionField.DOCUMENT_DATE:
-                _date(value)
+                require_date(value, self.field.value)
             case ConditionField.FIELD:
                 # Checked against the definition by `check_fields`; here only patterns.
                 if self.op is Operator.MATCHES:
@@ -561,7 +567,7 @@ def condition_value(field: FieldDefinition, op: Operator, value: JsonValue) -> F
     """A value a condition on `field` compares with, in the field's type; for a period's `gt`
     and `lt` a date (it starts after, it ends before). ValidationError if it does not fit."""
     if field.data_type is FieldType.PERIOD and op in (Operator.GT, Operator.LT):
-        return _date(value)
+        return require_date(value, field.name)
     return field_from_json(field, value)
 
 
@@ -872,7 +878,7 @@ def action_to_json(action: Action) -> JsonObject:
 
 def definition_from_json(data: JsonValue) -> RuleDefinition:
     """ValidationError, naming the place, if `data` is no valid definition."""
-    object_ = _object(data, "rule")
+    object_ = require_object(data, "rule")
     _only(object_, {"name", "priority", "triggers", "conditions", "actions"}, "rule")
     triggers = object_.get("triggers", [trigger.value for trigger in Trigger])
     if not isinstance(triggers, list):
@@ -898,7 +904,7 @@ def definition_from_json(data: JsonValue) -> RuleDefinition:
 
 
 def group_from_json(data: JsonValue, where: str = "conditions") -> Group:
-    object_ = _object(data, where)
+    object_ = require_object(data, where)
     modes = [mode for mode in ("all", "any") if mode in object_]
     if len(modes) != 1:
         raise ValidationError(f"{where}: a group has exactly one of 'all' and 'any'")
@@ -924,7 +930,7 @@ def group_from_json(data: JsonValue, where: str = "conditions") -> Group:
 
 
 def condition_from_json(data: JsonValue, where: str = "condition") -> Condition:
-    object_ = _object(data, where)
+    object_ = require_object(data, where)
     _only(object_, {"field", "op", "value", "field_id", "case_sensitive"}, where)
     field_id = object_.get("field_id")
     case_sensitive = object_.get("case_sensitive", False)
@@ -935,7 +941,7 @@ def condition_from_json(data: JsonValue, where: str = "condition") -> Condition:
             field=_enum(ConditionField, object_.get("field"), f"{where}.field"),
             op=_enum(Operator, object_.get("op"), f"{where}.op"),
             value=object_.get("value"),
-            field_id=None if field_id is None else FieldId(_uuid(field_id, "field_id")),
+            field_id=None if field_id is None else FieldId(require_uuid(field_id, "field_id")),
             case_sensitive=case_sensitive,
         )
     except ValidationError as error:
@@ -943,24 +949,23 @@ def condition_from_json(data: JsonValue, where: str = "condition") -> Condition:
 
 
 def action_from_json(data: JsonValue, where: str = "action") -> Action:
-    object_ = _object(data, where)
+    object_ = require_object(data, where)
     kind = object_.get("type")
     try:
         match kind:
             case "set_space":
                 _only(object_, {"type", "space_id"}, where)
-                return SetSpace(SpaceId(_uuid(object_.get("space_id"), "space_id")))
+                return SetSpace(SpaceId(require_uuid(object_.get("space_id"), "space_id")))
             case "set_contact":
                 _only(object_, {"type", "contact_id"}, where)
-                return SetContact(ContactId(_uuid(object_.get("contact_id"), "contact_id")))
+                return SetContact(ContactId(require_uuid(object_.get("contact_id"), "contact_id")))
             case "set_document_type":
                 _only(object_, {"type", "document_type_id"}, where)
-                return SetDocumentType(
-                    DocumentTypeId(_uuid(object_.get("document_type_id"), "document_type_id"))
-                )
+                type_id = require_uuid(object_.get("document_type_id"), "document_type_id")
+                return SetDocumentType(DocumentTypeId(type_id))
             case "set_topic":
                 _only(object_, {"type", "topic_id"}, where)
-                return SetTopic(TagId(_uuid(object_.get("topic_id"), "topic_id")))
+                return SetTopic(TagId(require_uuid(object_.get("topic_id"), "topic_id")))
             case "set_title":
                 _only(object_, {"type", "template"}, where)
                 template = object_.get("template")
@@ -972,12 +977,12 @@ def action_from_json(data: JsonValue, where: str = "action") -> Action:
                 ids = object_.get("tag_ids")
                 if not isinstance(ids, list):
                     raise ValidationError("tag_ids: expected a list")
-                tags = frozenset(TagId(_uuid(item, "tag_ids")) for item in ids)
+                tags = frozenset(TagId(require_uuid(item, "tag_ids")) for item in ids)
                 return AddTags(tags) if kind == "add_tags" else RemoveTags(tags)
             case "set_field":
                 _only(object_, {"type", "field_id", "value"}, where)
                 return SetField(
-                    FieldId(_uuid(object_.get("field_id"), "field_id")),
+                    FieldId(require_uuid(object_.get("field_id"), "field_id")),
                     object_.get("value"),
                 )
             case "force_review":
@@ -998,12 +1003,6 @@ def _strings(items: list[str]) -> list[JsonValue]:
     return list(items)
 
 
-def _object(data: JsonValue, where: str) -> dict[str, JsonValue]:
-    if not isinstance(data, dict):
-        raise ValidationError(f"{where}: expected an object")
-    return data
-
-
 def _only(data: Mapping[str, JsonValue], allowed: set[str], where: str) -> None:
     unknown = sorted(set(data) - allowed)
     if unknown:
@@ -1017,30 +1016,12 @@ def _enum[E: StrEnum](kind: type[E], value: JsonValue, where: str) -> E:
         raise ValidationError(f"{where}: unknown value {value!r}") from None
 
 
-def _uuid(value: JsonValue, what: str) -> UUID:
-    try:
-        if isinstance(value, str):
-            return UUID(value)
-    except ValueError:
-        pass
-    raise ValidationError(f"{what}: {value!r} is no id")
-
-
 def _text(value: JsonValue, limit: int) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValidationError(f"expected non-empty text, got {value!r}")
     if len(value) > limit:
         raise ValidationError(f"text longer than {limit} characters")
     return value
-
-
-def _date(value: JsonValue) -> date:
-    try:
-        if isinstance(value, str):
-            return date.fromisoformat(value)
-    except ValueError:
-        pass
-    raise ValidationError(f"{value!r} is no date (YYYY-MM-DD)")
 
 
 def _tag_list(tags: frozenset[TagId]) -> None:

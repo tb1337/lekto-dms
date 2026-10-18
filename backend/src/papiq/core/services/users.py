@@ -251,8 +251,7 @@ class UserService:
     async def bootstrap_admin(self, username: str, password: str) -> User | None:
         """Create the first admin, if there is no active admin; otherwise do nothing and return
         None (an existing account is never changed, also not a deactivated admin: the operator
-        names a new one to get back in). ConflictError if the name belongs to an existing
-        user."""
+        names a new one to get back in). ConflictError if the name is taken (`add_user`)."""
         async with self._uow() as uow:
             if any(user.is_active_admin for user in await uow.users.list_all()):
                 return None
@@ -262,8 +261,6 @@ class UserService:
         async with self._uow() as uow:
             if any(user.is_active_admin for user in await uow.users.list_all()):
                 return None
-            if await uow.users.find_by_username(username) is not None:
-                raise ConflictError(f"username '{username}' belongs to an existing user")
             user = await add_user(uow, username, Role.ADMIN, now)
             await uow.credentials.add(
                 Credential(user_id=user.id, password_hash=password_hash, password_changed_at=now)

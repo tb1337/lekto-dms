@@ -3,8 +3,8 @@ one, below `/ui`."""
 
 import asyncio
 import contextlib
-from collections.abc import AsyncIterator, Sequence
-from typing import Any, Protocol
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
+from typing import Protocol
 
 from fastapi import FastAPI
 from fastapi.dependencies.models import Dependant
@@ -179,12 +179,12 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
         for unused in ("HTTPValidationError", "ValidationError"):
             components.pop(unused, None)
         schema["components"]["securitySchemes"] = SECURITY_SCHEMES
-        for context in iter_route_contexts(app.routes):
-            route = context.original_route
+        for route_context in iter_route_contexts(app.routes):
+            route = route_context.original_route
             if isinstance(route, APIRoute) and route.include_in_schema:
                 security = security_of(route)
-                for method in context.methods or ():
-                    operation = schema["paths"][context.path_format][method.lower()]
+                for method in route_context.methods or ():
+                    operation = schema["paths"][route_context.path_format][method.lower()]
                     operation["security"] = security
                     responses = operation["responses"]
                     if "requestBody" in operation and "413" not in responses:
@@ -210,7 +210,7 @@ def security_of(route: APIRoute) -> list[dict[str, list[str]]]:
     return []
 
 
-def _calls(dependant: Dependant) -> Any:
+def _calls(dependant: Dependant) -> Iterator[Callable[..., object] | None]:
     for dependency in dependant.dependencies:
         yield dependency.call
         yield from _calls(dependency)

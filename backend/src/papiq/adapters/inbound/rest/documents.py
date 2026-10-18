@@ -8,9 +8,10 @@ the list leaves them out, filters and pages only ever see readable ones.
 import asyncio
 import os
 import tempfile
+from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response
@@ -52,7 +53,7 @@ from papiq.adapters.inbound.rest.schemas.inbox import (
 from papiq.adapters.inbound.rest.upload import read_upload, upload_body
 from papiq.adapters.inbound.schemas import RuleReportOut
 from papiq.core.domain.classification import CHANGE_FIELDS, SPACE, field_key
-from papiq.core.domain.documents import UNSET, Channel, Document, DocumentChanges
+from papiq.core.domain.documents import UNSET, Channel, Document, DocumentChanges, Unset
 from papiq.core.domain.encoding import base64url, from_base64url
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.fields import field_from_json
@@ -692,7 +693,7 @@ def _changed(change: MetadataChange) -> DocumentChanged | DocumentOutOfReach:
     return DocumentChanged(**details.model_dump(), rules=rules)
 
 
-def _details(document: Any) -> DocumentDetails:
+def _details(document: Document) -> DocumentDetails:
     """Retry and reprocessing are the owner's: full access."""
     return DocumentDetails.of(document, ShareLevel.READ_WRITE)
 
@@ -722,10 +723,12 @@ async def _changes(body: DocumentPatch, user: UserId, context: Context) -> Docum
     )
 
 
-def _given[T](given: set[str], name: str, value: UUID | None, kind: type[T]) -> Any:
+def _given[T](
+    given: set[str], name: str, value: UUID | None, kind: Callable[[UUID], T]
+) -> T | Unset | None:
     if name not in given:
         return UNSET
-    return None if value is None else kind(value)  # type: ignore[call-arg]
+    return None if value is None else kind(value)
 
 
 def _encode_cursor(id: DocumentId) -> str:

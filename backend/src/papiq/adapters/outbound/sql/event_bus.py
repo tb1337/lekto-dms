@@ -9,7 +9,7 @@ A dispatch reads events, calls the handler outside of any transaction (handlers 
 units of work themselves), then records the outcome in a short transaction. The position
 moves by compare-and-set: if another dispatcher moved it meanwhile, nothing is recorded and
 the events may be delivered twice, which at-least-once delivery allows. Failed events are
-due again at `retry_at` (`DeliveryRetry`: growing delay, limited attempts; given up events are
+due again at `retry_at` (`RetryPolicy`: growing delay, limited attempts; given up events are
 removed from `event_retries` and logged). Due retries go fewest attempts first, so events that
 keep failing do not starve newer failures.
 
@@ -38,8 +38,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from papiq.adapters.outbound.sql import events, tables
 from papiq.adapters.outbound.sql.database import Database
+from papiq.core.domain.jobs import RetryPolicy
 from papiq.core.ports.clock import Clock
-from papiq.core.ports.event_bus import DEFAULT_DELIVERY_RETRY, DeliveryRetry, EventHandler
+from papiq.core.ports.event_bus import EventHandler
 
 log = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ class SqlEventBus:
         database: Database,
         *,
         clock: Clock | None = None,
-        retry: DeliveryRetry = DEFAULT_DELIVERY_RETRY,
+        retry: RetryPolicy,
     ) -> None:
         self._db = database
         self._clock = clock
@@ -212,7 +213,7 @@ class SqlEventBus:
                 await handler(event)
             except Exception as error:
                 tries = attempts.get(row.seq, 0) + 1
-                retry_at = self._retry.next_attempt(tries, self._now())
+                retry_at = self._retry.next_run(tries, self._now())
                 extra = {"subscriber": name, "event_id": str(row.event_id), "attempts": tries}
                 if retry_at is None:
                     log.exception("event delivery given up", extra=extra)

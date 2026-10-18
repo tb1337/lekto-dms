@@ -36,7 +36,7 @@ from papiq.core.domain.errors import (
 )
 from papiq.core.domain.ids import DocumentId, JobId, SpaceId, TagId, UserId
 from papiq.core.domain.imports import IMPORTED, ImportedMetadata
-from papiq.core.domain.jobs import Job, JobStatus
+from papiq.core.domain.jobs import Job, JobStatus, RetryPolicy
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.permissions import can_control_document, can_file_into
 from papiq.core.domain.pipeline import (
@@ -176,21 +176,6 @@ class PlaceholderNode:
 
     async def run(self, document: Document) -> NodeResult:
         return NodeResult(outcome=Outcome.OK)
-
-
-@dataclass(frozen=True, kw_only=True)
-class RetryPolicy:
-    """Automatic retries of a node that raised: `max_attempts` in total, waiting
-    `delay * 2^(attempt-1)` before the next one. Configuration: the composition sets it from
-    the settings, whose defaults are the one source."""
-
-    max_attempts: int
-    delay: timedelta
-
-    def next_run(self, attempts: int, now: datetime) -> datetime | None:
-        if attempts >= self.max_attempts:
-            return None
-        return now + self.delay * (1 << max(attempts - 1, 0))
 
 
 @dataclass(frozen=True)

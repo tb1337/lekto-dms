@@ -4,7 +4,7 @@ from papiq.core.ports.classifier import Classifier, Prediction, TrainedModel, Tr
 from papiq.core.ports.clock import Clock
 from papiq.core.ports.codes import CodeReader, CodeReading
 from papiq.core.ports.embeddings import EmbeddingResult, Embeddings
-from papiq.core.ports.event_bus import DeliveryRetry, EventBus, EventHandler, Outbox
+from papiq.core.ports.event_bus import EventBus, EventHandler, Outbox
 from papiq.core.ports.identity import (
     ApiTokenRepository,
     CredentialRepository,
@@ -74,7 +74,6 @@ __all__ = [
     "CountBy",
     "CredentialRepository",
     "DecryptionError",
-    "DeliveryRetry",
     "DocumentFilter",
     "DocumentIdentifierRepository",
     "DocumentOrder",

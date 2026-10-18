@@ -32,16 +32,16 @@ from papiq.adapters.outbound.memory import (
     MemoryUnitOfWorkFactory,
 )
 from papiq.core.domain.errors import EmbeddingsError, LanguageModelError
+from papiq.core.domain.jobs import RetryPolicy
 from papiq.core.ports import (
     Clock,
-    DeliveryRetry,
     EmbeddingResult,
     EventBus,
     ObjectStore,
     StructuredRequest,
     UnitOfWorkFactory,
 )
-from papiq.core.ports.event_bus import DEFAULT_DELIVERY_RETRY
+from tests import builders
 from tests.contracts.classifier import ClassifierContract
 from tests.contracts.clock import ClockContract
 from tests.contracts.event_bus import EventBusContract, EventBusFactory
@@ -85,7 +85,7 @@ def uow_factory(database: MemoryDatabase) -> UnitOfWorkFactory:
 @pytest.fixture
 def event_bus_factory(database: MemoryDatabase) -> EventBusFactory:
     def create(
-        *, clock: Clock | None = None, retry: DeliveryRetry = DEFAULT_DELIVERY_RETRY
+        *, clock: Clock | None = None, retry: RetryPolicy = builders.EVENT_RETRY
     ) -> EventBus:
         return MemoryEventBus(database, clock=clock, retry=retry)
 

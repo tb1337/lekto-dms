@@ -86,7 +86,9 @@ class Setup:
     policy: IndexingPolicy = builders.INDEXING
 
     def __post_init__(self) -> None:
-        self.bus = MemoryEventBus(self.world.database, clock=self.world.clock)
+        self.bus = MemoryEventBus(
+            self.world.database, clock=self.world.clock, retry=builders.EVENT_RETRY
+        )
         self.bus.subscribe(SUBSCRIBER, self.indexing.on_event)
 
     @property

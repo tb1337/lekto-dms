@@ -24,7 +24,7 @@ def maintenance(world: World, bus: MemoryEventBus | None = None) -> MaintenanceS
     return MaintenanceService(
         world.uow,
         world.clock,
-        bus or MemoryEventBus(world.database, clock=world.clock),
+        bus or MemoryEventBus(world.database, clock=world.clock, retry=builders.EVENT_RETRY),
         interval=INTERVAL,
         retention=RETENTION,
         session_idle=builders.DEFAULT_SETTINGS.session_idle_timeout,
@@ -64,7 +64,7 @@ async def test_cleanup_runs_and_schedules_the_next_one(world: World) -> None:
 
 
 async def test_delivered_events_are_purged(world: World) -> None:
-    bus = MemoryEventBus(world.database, clock=world.clock)
+    bus = MemoryEventBus(world.database, clock=world.clock, retry=builders.EVENT_RETRY)
     received: list[object] = []
 
     async def handler(event: object) -> None:
@@ -86,7 +86,7 @@ async def test_a_failed_cleanup_is_tried_again_later(world: World) -> None:
         async def purge(self, *, before: datetime) -> int:
             raise OSError("disk full")
 
-    service = maintenance(world, BrokenBus(world.database))
+    service = maintenance(world, BrokenBus(world.database, retry=builders.EVENT_RETRY))
     await service.schedule()
     assert await service.run_next_job()
     (job,) = world.database.jobs.values()

@@ -1,7 +1,7 @@
 """Background jobs: retryable units of work, e.g. one pipeline node for one document."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 
 from papiq.core.domain.ids import JobId
@@ -42,3 +42,25 @@ class Job:
     def tries(self) -> int:
         """Claims that counted: the attempts without the released ones."""
         return self.attempts - self.releases
+
+
+@dataclass(frozen=True, kw_only=True)
+class RetryPolicy:
+    """Repeating work whose attempt failed (a job, an event's delivery): at most
+    `max_attempts` attempts in total; before attempt n+1 it waits `delay * 2^(n-1)`, at most
+    `max_delay` if one is given."""
+
+    max_attempts: int
+    delay: timedelta
+    max_delay: timedelta | None = None
+
+    def __post_init__(self) -> None:
+        if self.max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
+
+    def next_run(self, attempts: int, now: datetime) -> datetime | None:
+        """When to try again after `attempts` attempts; None to give up."""
+        if attempts >= self.max_attempts:
+            return None
+        wait = self.delay * (1 << min(max(attempts - 1, 0), 40))
+        return now + (wait if self.max_delay is None else min(wait, self.max_delay))

@@ -31,12 +31,12 @@ from papiq.composition.container import (
 from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
 from papiq.core.domain.events import DomainEvent
+from papiq.core.domain.jobs import RetryPolicy
 from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.templates import TemplateValue
 from papiq.core.domain.users import Role
 from papiq.core.ports.ocr import VisionModel
 from papiq.core.services.nodes import OcrNode, ParseNode
-from papiq.core.services.pipeline import RetryPolicy
 from tests import builders
 from tests.builders import NOW, incoming
 from tests.contracts.processing import SAMPLES

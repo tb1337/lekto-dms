@@ -59,13 +59,13 @@ from papiq.adapters.outbound.zxing import ZxingCodeReader
 from papiq.composition.database import open_database
 from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
+from papiq.core.domain.jobs import RetryPolicy
 from papiq.core.domain.pipeline import NODES, Node
 from papiq.core.domain.verdict import Thresholds
 from papiq.core.ports import (
     Classifier,
     Clock,
     CodeReader,
-    DeliveryRetry,
     DocumentParser,
     Embeddings,
     EventBus,
@@ -87,6 +87,7 @@ from papiq.core.ports import (
     UnitOfWorkFactory,
     WebhookSender,
 )
+from papiq.core.ports.event_bus import DELIVERY_DELAY, DELIVERY_MAX_DELAY
 from papiq.core.services.auth import AuthService, SessionPolicy
 from papiq.core.services.classification.nodes import (
     ClassificationPolicy,
@@ -109,7 +110,7 @@ from papiq.core.services.maintenance import MaintenanceService
 from papiq.core.services.master_data import MasterDataService
 from papiq.core.services.nodes import OcrNode, PagesNode, ParseNode
 from papiq.core.services.oidc import OidcService
-from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode, RetryPolicy
+from papiq.core.services.pipeline import NodeExecutor, PipelineService, PlaceholderNode
 from papiq.core.services.rules import RuleService
 from papiq.core.services.rules.changes import ChangeRules
 from papiq.core.services.rules.nodes import ApplyRulesNode, FileNode
@@ -140,10 +141,9 @@ class Persistence:
 def sql_persistence(settings: Settings) -> Persistence:
     """SQLite or Postgres, per `PAPIQ_DB_TYPE`; the schema must be migrated."""
     database = open_database(settings)
-    retry = DeliveryRetry(max_attempts=settings.events_max_attempts)
     return Persistence(
         unit_of_work=SqlUnitOfWorkFactory(database),
-        event_bus=SqlEventBus(database, retry=retry),
+        event_bus=SqlEventBus(database, retry=event_retry_of(settings)),
         close=database.dispose,
     )
 
@@ -412,7 +412,7 @@ def build_memory_container(
     database = MemoryDatabase()
     return Container(
         unit_of_work=MemoryUnitOfWorkFactory(database),
-        event_bus=MemoryEventBus(database),
+        event_bus=MemoryEventBus(database, retry=event_retry_of(settings)),
         object_store=MemoryObjectStore(),
         clock=clock or SystemClock(),
         ocr=FakeOcr(),
@@ -495,6 +495,15 @@ def thresholds_of(settings: Settings) -> Thresholds:
 def retry_policy_of(settings: Settings) -> RetryPolicy:
     """Automatic retries of a node that raised."""
     return RetryPolicy(max_attempts=settings.node_max_attempts, delay=settings.node_retry_delay)
+
+
+def event_retry_of(settings: Settings) -> RetryPolicy:
+    """Repeated delivery of an event whose handler failed."""
+    return RetryPolicy(
+        max_attempts=settings.events_max_attempts,
+        delay=DELIVERY_DELAY,
+        max_delay=DELIVERY_MAX_DELAY,
+    )
 
 
 def session_policy_of(settings: Settings) -> SessionPolicy:

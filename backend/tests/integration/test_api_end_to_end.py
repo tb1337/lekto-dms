@@ -109,7 +109,7 @@ async def system(stores: tuple[Database, ObjectStore], settings: Settings) -> As
     container = replace(
         build_memory_container(),
         unit_of_work=SqlUnitOfWorkFactory(database),
-        event_bus=SqlEventBus(database),
+        event_bus=SqlEventBus(database, retry=builders.EVENT_RETRY),
         object_store=object_store,
         ocr=ocr,
         parser=LayoutParser(),

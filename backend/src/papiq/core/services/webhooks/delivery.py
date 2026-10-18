@@ -38,7 +38,7 @@ from papiq.core.domain.documents import Document
 from papiq.core.domain.errors import ConcurrencyError, NotFoundError, TooManyAttemptsError
 from papiq.core.domain.events import DocumentDeleted, DocumentEvent, DocumentFiled, DomainEvent
 from papiq.core.domain.ids import DocumentId, EventId, UserId, WebhookId, new_id
-from papiq.core.domain.jobs import Job
+from papiq.core.domain.jobs import Job, RetryPolicy
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.permissions import in_reach
 from papiq.core.domain.users import User
@@ -53,7 +53,6 @@ from papiq.core.domain.webhooks import (
 from papiq.core.ports import (
     Clock,
     DecryptionError,
-    DeliveryRetry,
     SecretCipher,
     UnitOfWork,
     UnitOfWorkFactory,
@@ -90,7 +89,7 @@ class WebhookDeliveryService:
         self._cipher = cipher
         self._sender = sender
         self._policy = policy
-        self._retry = DeliveryRetry(
+        self._retry = RetryPolicy(
             max_attempts=self._policy.max_attempts,
             delay=self._policy.retry_delay,
             max_delay=self._policy.max_retry_delay,
@@ -314,9 +313,7 @@ class WebhookDeliveryService:
         for round_ in range(_RESULT_ROUNDS):
             now = self._clock.now()
             next_attempt = (
-                self._retry.next_attempt(attempt, now)
-                if outcome is DeliveryOutcome.RETRYING
-                else None
+                self._retry.next_run(attempt, now) if outcome is DeliveryOutcome.RETRYING else None
             )
             switched_off: bool | None = None
             try:
@@ -374,7 +371,7 @@ class WebhookDeliveryService:
         """An unexpected error (database, ...): repeat the job like a failed attempt."""
         reason = f"{type(error).__name__}: {error}"
         log.warning("webhook job failed", extra={"job_id": str(job.id)}, exc_info=True)
-        next_attempt = self._retry.next_attempt(job.tries, self._clock.now())
+        next_attempt = self._retry.next_run(job.tries, self._clock.now())
         if next_attempt is None:
             log.error("webhook job given up", extra={"job_id": str(job.id), "error": reason})
             await self._settle(job, fail=reason)

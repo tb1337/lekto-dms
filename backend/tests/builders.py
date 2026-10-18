@@ -10,6 +10,7 @@ from typing import Any
 from papiq.adapters.outbound.liquid import LiquidTemplateRenderer
 from papiq.composition.container import (
     classifier_policy_of,
+    event_retry_of,
     indexing_policy_of,
     neighbours_policy_of,
     policy_of,
@@ -49,6 +50,7 @@ SEARCH = search_policy_of(DEFAULT_SETTINGS)
 WEBHOOKS = webhook_policy_of(DEFAULT_SETTINGS)
 RETRY = retry_policy_of(DEFAULT_SETTINGS)
 SESSIONS = session_policy_of(DEFAULT_SETTINGS)
+EVENT_RETRY = event_retry_of(DEFAULT_SETTINGS)
 
 
 def pipeline_service(

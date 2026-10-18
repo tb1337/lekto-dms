@@ -7,6 +7,7 @@ Test modules subclass the suites and provide the fixtures `database` (migrated, 
 import asyncio
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -31,7 +32,7 @@ from papiq.core.domain.jobs import Job
 from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.pipeline import NODES, Lane, Node
 from papiq.core.domain.users import User
-from papiq.core.ports import DeliveryRetry, EventBus, UnitOfWorkFactory
+from papiq.core.ports import EventBus, UnitOfWorkFactory
 from papiq.core.services import master_data
 from papiq.core.services.documents import DocumentService
 from papiq.core.services.master_data import MasterDataService
@@ -380,7 +381,9 @@ class SqlAdapterSuite:
         database: Database,
     ) -> None:
         clock = ManualClock(NOW)
-        bus = event_bus_factory(clock=clock, retry=DeliveryRetry(delay=timedelta(seconds=10)))
+        bus = event_bus_factory(
+            clock=clock, retry=replace(builders.EVENT_RETRY, delay=timedelta(seconds=10))
+        )
         failing = Recorder(failures=3)
         bus.subscribe("failing", failing)
         await publish(uow_factory, received(1))

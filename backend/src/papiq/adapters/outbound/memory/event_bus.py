@@ -10,8 +10,9 @@ import logging
 from datetime import UTC, datetime
 
 from papiq.adapters.outbound.memory.database import MemoryDatabase, Retry, SubscriptionState
+from papiq.core.domain.jobs import RetryPolicy
 from papiq.core.ports.clock import Clock
-from papiq.core.ports.event_bus import DEFAULT_DELIVERY_RETRY, DeliveryRetry, EventHandler
+from papiq.core.ports.event_bus import EventHandler
 
 log = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class MemoryEventBus:
         database: MemoryDatabase,
         *,
         clock: Clock | None = None,
-        retry: DeliveryRetry = DEFAULT_DELIVERY_RETRY,
+        retry: RetryPolicy,
     ) -> None:
         self._db = database
         self._clock = clock
@@ -84,7 +85,7 @@ class MemoryEventBus:
                 await handler(event)
             except Exception:
                 tries = attempts.get(position, 0) + 1
-                retry_at = self._retry.next_attempt(tries, self._now())
+                retry_at = self._retry.next_run(tries, self._now())
                 if retry_at is None:
                     log.exception(
                         "event delivery given up",

@@ -12,9 +12,9 @@ from sqlalchemy import text
 from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory, migrate
 from papiq.adapters.outbound.sql.tables import metadata
 from papiq.composition.settings import Settings
-from papiq.core.ports import Clock, DeliveryRetry, EventBus, UnitOfWorkFactory
-from papiq.core.ports.event_bus import DEFAULT_DELIVERY_RETRY
-from tests import probes
+from papiq.core.domain.jobs import RetryPolicy
+from papiq.core.ports import Clock, EventBus, UnitOfWorkFactory
+from tests import builders, probes
 from tests.contracts.event_bus import EventBusFactory
 
 
@@ -107,7 +107,7 @@ def uow_factory(database: Database) -> UnitOfWorkFactory:
 @pytest.fixture
 def event_bus_factory(database: Database) -> EventBusFactory:
     def create(
-        *, clock: Clock | None = None, retry: DeliveryRetry = DEFAULT_DELIVERY_RETRY
+        *, clock: Clock | None = None, retry: RetryPolicy = builders.EVENT_RETRY
     ) -> EventBus:
         return SqlEventBus(database, clock=clock, retry=retry)
 

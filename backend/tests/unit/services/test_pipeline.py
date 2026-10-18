@@ -24,7 +24,7 @@ from papiq.core.domain.events import (
     NodeStarted,
 )
 from papiq.core.domain.ids import ContactId, TagId
-from papiq.core.domain.jobs import JobStatus
+from papiq.core.domain.jobs import JobStatus, RetryPolicy
 from papiq.core.domain.master_data import Tag
 from papiq.core.domain.pipeline import (
     NODES,
@@ -46,7 +46,6 @@ from papiq.core.services.pipeline import (
     MetadataResult,
     PipelineService,
     PlaceholderNode,
-    RetryPolicy,
 )
 from tests import builders
 from tests.builders import FAILED, NOW, UNCERTAIN, incoming

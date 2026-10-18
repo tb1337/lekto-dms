@@ -1,4 +1,5 @@
-"""Table definitions. The domain classes are not mapped; `mapping` converts rows explicitly.
+"""Table definitions. The domain classes are not mapped: the repositories convert rows
+explicitly (`repositories` and the modules by area).
 
 Names that are unique regardless of case are stored twice: as entered, and as `name_key`
 (`papiq.core.domain.validation.name_key`, Unicode case folding) with a unique index. The key is

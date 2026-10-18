@@ -9,7 +9,6 @@ the new version; on SQLite, writers are serialized by the write lock.
 
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from datetime import timedelta
 from typing import Any, ClassVar
 from uuid import UUID
 
@@ -21,14 +20,18 @@ from papiq.core.domain.errors import ConcurrencyError, NotFoundError
 type Values = dict[str, Any]
 
 
-MICROSECOND = timedelta(microseconds=1)
+KEYS_PER_QUERY = 200
+"""Keys a query takes as parameters at most, so that their number and the statement's length
+stay bounded (SQLite allows 32 766 parameters, asyncpg 32 767)."""
 
 
 class SqlRepository[K: UUID, E]:
-    """Common part: a main table with `id` and `version`, optionally child tables."""
+    """Common part: a main table with its key (`key`, `id` unless a table names it otherwise)
+    and `version`, optionally child tables."""
 
     kind: ClassVar[str]
     table: ClassVar[Table]
+    key: ClassVar[str] = "id"
 
     def __init__(self, transaction: Transaction) -> None:
         self._tx = transaction
@@ -40,7 +43,7 @@ class SqlRepository[K: UUID, E]:
         return entity
 
     async def find(self, id: K) -> E | None:
-        found = await self._load(self.table.c.id == id)
+        found = await self._load(self.table.c[self.key] == id)
         return found[0] if found else None
 
     async def add(self, entity: E) -> None:
@@ -49,13 +52,14 @@ class SqlRepository[K: UUID, E]:
 
     async def update(self, entity: E) -> None:
         id, version = self._id(entity), self._version(entity)
+        key = self.table.c[self.key]
         result = await self._tx.write(
             update(self.table)
-            .where(self.table.c.id == id, self.table.c.version == version)
+            .where(key == id, self.table.c.version == version)
             .values({**self._values(entity), "version": version + 1})
         )
         if result.rowcount == 0:
-            exists = await self._tx.read(select(self.table.c.id).where(self.table.c.id == id))
+            exists = await self._tx.read(select(key).where(key == id))
             if exists.first() is None:
                 raise NotFoundError(self.kind, id)
             raise ConcurrencyError(f"{self.kind} {id} was changed concurrently")
@@ -68,7 +72,7 @@ class SqlRepository[K: UUID, E]:
 
     async def remove(self, id: K) -> None:
         """Child tables go with the row (ON DELETE CASCADE)."""
-        result = await self._tx.write(delete(self.table).where(self.table.c.id == id))
+        result = await self._tx.write(delete(self.table).where(self.table.c[self.key] == id))
         if result.rowcount == 0:
             raise NotFoundError(self.kind, id)
 

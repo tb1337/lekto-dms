@@ -2,13 +2,13 @@
 providers and failed sign-ins. Updates are optimistic as in `repositories`; `touch` updates
 only a timestamp and leaves the version alone."""
 
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import (
     ColumnElement,
     Row,
-    Table,
     and_,
     case,
     delete,
@@ -18,12 +18,10 @@ from sqlalchemy import (
     select,
     update,
 )
-from sqlalchemy.dialects.postgresql import insert as postgresql_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from papiq.adapters.outbound.sql import tables as t
+from papiq.adapters.outbound.sql.repositories import SqlRepository, Values
 from papiq.adapters.outbound.sql.transaction import Transaction
-from papiq.core.domain.errors import ConcurrencyError, NotFoundError
 from papiq.core.domain.identity import (
     ApiToken,
     Credential,
@@ -38,96 +36,58 @@ from papiq.core.domain.identity import (
 from papiq.core.domain.ids import ApiTokenId, ExternalIdentityId, SessionId, UserId
 
 
-async def _versioned_update(
-    tx: Transaction,
-    table: Table,
-    kind: str,
-    key: tuple[str, Any],
-    version: int,
-    values: dict[str, Any],
-) -> None:
-    """`UPDATE ... WHERE <key> AND version = :version`, as in `repositories.SqlRepository`."""
-    column, id = table.c[key[0]], key[1]
-    result = await tx.write(
-        update(table)
-        .where(column == id, table.c.version == version)
-        .values({**values, "version": version + 1})
-    )
-    if result.rowcount == 0:
-        exists = await tx.read(select(column).where(column == id))
-        if exists.first() is None:
-            raise NotFoundError(kind, str(id))
-        raise ConcurrencyError(f"{kind} {id} was changed concurrently")
+class SqlCredentialRepository(SqlRepository[UserId, Credential]):
+    """One credential per user, keyed by the user's id; its recovery codes as child rows."""
 
-
-class SqlCredentialRepository:
-    def __init__(self, transaction: Transaction) -> None:
-        self._tx = transaction
-
-    async def get(self, user: UserId) -> Credential:
-        credential = await self.find(user)
-        if credential is None:
-            raise NotFoundError("credential", user)
-        return credential
-
-    async def find(self, user: UserId) -> Credential | None:
-        table = t.credentials
-        row = (await self._tx.read(select(table).where(table.c.user_id == user))).first()
-        if row is None:
-            return None
-        codes = t.recovery_codes
-        hashes = await self._tx.read(select(codes.c.code_hash).where(codes.c.user_id == user))
-        return Credential(
-            user_id=UserId(row.user_id),
-            password_hash=row.password_hash,
-            password_changed_at=row.password_changed_at,
-            totp=(
-                None
-                if row.totp_secret is None
-                else TotpSetting(
-                    secret=bytes(row.totp_secret),
-                    confirmed=row.totp_confirmed,
-                    last_step=row.totp_last_step,
-                )
-            ),
-            recovery_codes={code for (code,) in hashes},
-            version=row.version,
-        )
-
-    async def add(self, credential: Credential) -> None:
-        await self._tx.write(
-            insert(t.credentials).values(
-                **_credential_values(credential), version=credential.version
-            )
-        )
-        await self._write_codes(credential)
-
-    async def update(self, credential: Credential) -> None:
-        await _versioned_update(
-            self._tx,
-            t.credentials,
-            "credential",
-            ("user_id", credential.user_id),
-            credential.version,
-            _credential_values(credential),
-        )
-        credential.version += 1
-        codes = t.recovery_codes
-        await self._tx.write(delete(codes).where(codes.c.user_id == credential.user_id))
-        await self._write_codes(credential)
+    kind = "credential"
+    table = t.credentials
+    key = "user_id"
 
     async def remove(self, user: UserId) -> None:
-        await self._tx.write(delete(t.credentials).where(t.credentials.c.user_id == user))
+        """Nothing to do if the user has none."""
+        await self._tx.write(delete(self.table).where(self.table.c.user_id == user))
 
-    async def _write_codes(self, credential: Credential) -> None:
-        if credential.recovery_codes:
-            await self._tx.write(
-                insert(t.recovery_codes),
-                [
-                    {"user_id": credential.user_id, "code_hash": code}
-                    for code in sorted(credential.recovery_codes)
-                ],
+    @staticmethod
+    def _id(credential: Credential) -> UserId:
+        return credential.user_id
+
+    def _values(self, credential: Credential) -> Values:
+        return {**_credential_values(credential), "version": credential.version}
+
+    async def _entities(self, rows: Sequence[Row[Any]]) -> list[Credential]:
+        codes = await self._children(t.recovery_codes, "user_id", [row.user_id for row in rows])
+        return [
+            Credential(
+                user_id=UserId(row.user_id),
+                password_hash=row.password_hash,
+                password_changed_at=row.password_changed_at,
+                totp=(
+                    None
+                    if row.totp_secret is None
+                    else TotpSetting(
+                        secret=bytes(row.totp_secret),
+                        confirmed=row.totp_confirmed,
+                        last_step=row.totp_last_step,
+                    )
+                ),
+                recovery_codes={code.code_hash for code in codes[row.user_id]},
+                version=row.version,
             )
+            for row in rows
+        ]
+
+    async def _write_children(self, credential: Credential) -> None:
+        await self._insert_many(
+            t.recovery_codes,
+            [
+                {"user_id": credential.user_id, "code_hash": code}
+                for code in sorted(credential.recovery_codes)
+            ],
+        )
+
+    async def _delete_children(self, ids: list[UserId]) -> None:
+        codes = t.recovery_codes
+        await self._tx.write(delete(codes).where(codes.c.user_id.in_(ids)))
 
 
 def _credential_values(credential: Credential) -> dict[str, Any]:
@@ -347,11 +307,10 @@ class SqlLoginFailureRepository:
         locked and SQLite the database until the unit ends, so the block set next is seen by
         every later attempt."""
         table = t.login_failures
-        insert_ = sqlite_insert if self._tx.database.is_sqlite else postgresql_insert
         at = literal(now, table.c.first_failure_at.type)
         new_window = table.c.first_failure_at <= now - rule.window
         statement = (
-            insert_(table)
+            self._tx.database.insert(table)
             .values(key=key, failures=1, first_failure_at=now, blocked_until=None, version=1)
             .on_conflict_do_update(
                 index_elements=[table.c.key],

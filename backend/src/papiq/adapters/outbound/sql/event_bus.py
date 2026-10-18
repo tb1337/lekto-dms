@@ -33,7 +33,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import Row, delete, exists, func, insert, or_, select, update
-from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from papiq.adapters.outbound.sql import events, tables
@@ -240,9 +239,8 @@ class SqlEventBus:
                 .where(_outbox.c.recorded_at < since)
                 .scalar_subquery()
             )
-            dialect = sqlite if self._db.is_sqlite else postgresql
             await connection.execute(
-                dialect.insert(_subscriptions)
+                self._db.insert(_subscriptions)
                 .values(name=name, position=start, created_at=datetime.now(UTC))
                 .on_conflict_do_nothing(index_elements=[_subscriptions.c.name])
             )

@@ -1,7 +1,7 @@
 """Documents with their field values, and the processing log."""
 
 from collections.abc import Collection, Mapping, Sequence
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -21,7 +21,7 @@ from sqlalchemy import (
 )
 
 from papiq.adapters.outbound.sql import tables as t
-from papiq.adapters.outbound.sql.repositories import MICROSECOND, SqlRepository, Values
+from papiq.adapters.outbound.sql.repositories import KEYS_PER_QUERY, SqlRepository, Values
 from papiq.adapters.outbound.sql.spaces import visible_to
 from papiq.adapters.outbound.sql.transaction import Transaction
 from papiq.core.domain.documents import Channel, Document, Sha256
@@ -58,8 +58,8 @@ from papiq.core.ports.repository import (
     SortKey,
 )
 
-_COUNTED = 200
-"""Keys of `count_tagged` per query (a column each)."""
+MICROSECOND = timedelta(microseconds=1)
+"""The unit of the durations the processing log stores."""
 
 
 class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
@@ -150,14 +150,14 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
     async def count_tagged(
         self, sets: Mapping[UUID, Collection[TagId]], user: UserId | None
     ) -> dict[UUID, int]:
-        """One query per `_COUNTED` keys: each a count of the distinct documents among the
+        """One query per `KEYS_PER_QUERY` keys: each a count of the distinct documents among the
         rows of the key's tags."""
         documents, tags = t.documents, t.document_tags
         criteria: list[ColumnElement[bool]] = [] if user is None else [visible_to(user)]
         keys = list(sets)
         counts: dict[UUID, int] = {}
-        for start in range(0, len(keys), _COUNTED):
-            batch = keys[start : start + _COUNTED]
+        for start in range(0, len(keys), KEYS_PER_QUERY):
+            batch = keys[start : start + KEYS_PER_QUERY]
             columns = [
                 func.count(
                     distinct(case((tags.c.tag_id.in_(sorted(sets[key])), tags.c.document_id)))

@@ -18,7 +18,6 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import Row, and_, delete, insert, or_, select, text, update
-from sqlalchemy.dialects import postgresql, sqlite
 
 from papiq.adapters.outbound.sql import tables as t
 from papiq.adapters.outbound.sql.transaction import Transaction
@@ -62,9 +61,8 @@ class SqlJobQueue:
         if dedup_key is None:
             await self._tx.write(insert(_jobs).values(values))
             return id
-        dialect = postgresql if not self._tx.database.is_sqlite else sqlite
         statement = (
-            dialect.insert(_jobs)
+            self._tx.database.insert(_jobs)
             .values(values)
             .on_conflict_do_nothing(
                 index_elements=[_jobs.c.dedup_key],

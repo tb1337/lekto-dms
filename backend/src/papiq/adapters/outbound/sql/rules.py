@@ -80,8 +80,9 @@ class SqlRuleRepository(SqlRepository[RuleId, Rule]):
         return _version(row)
 
     async def remove_for_owner(self, owner: UserId) -> int:
-        """Versions and applications go with their rule (ON DELETE CASCADE); the user's
-        applications of other rules go with the user."""
+        """The user's rules and their applications of any rule. Versions and applications go
+        with their rule (ON DELETE CASCADE); the user's applications of other rules are
+        removed here, as the port asks."""
         applications = t.rule_applications
         await self._tx.write(delete(applications).where(applications.c.user_id == owner))
         result = await self._tx.write(delete(t.rules).where(t.rules.c.owner_id == owner))

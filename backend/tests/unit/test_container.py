@@ -31,7 +31,7 @@ from papiq.composition.container import (
 )
 from papiq.composition.errors import AdapterNotAvailableError
 from papiq.composition.settings import Settings
-from papiq.core.domain.events import DomainEvent
+from papiq.core.domain.events import DocumentReceived, DomainEvent, LaneChanged
 from papiq.core.domain.jobs import WORK_LEASE_MARGIN, RetryPolicy
 from papiq.core.domain.pipeline import Lane, Node
 from papiq.core.domain.templates import TemplateValue
@@ -388,8 +388,8 @@ async def test_memory_container_runs_the_core() -> None:
     classify = next(entry for entry in log if entry.node is Node.JUDGE)
     assert "no language model" in (classify.result.reason or "")
     await built.event_bus.dispatch()
-    assert received[0].type == "document.received"
-    assert received[-1].type == "document.lane_changed"
+    assert received[0].type == DocumentReceived.type
+    assert received[-1].type == LaneChanged.type
 
 
 def test_memory_containers_are_independent() -> None:

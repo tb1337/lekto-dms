@@ -9,6 +9,7 @@ import pytest
 
 from papiq.core.domain.documents import DocumentChanges
 from papiq.core.domain.errors import OpenFieldsError
+from papiq.core.domain.events import DocumentFiled
 from papiq.core.domain.fields import FieldType
 from papiq.core.domain.master_data import Assignment
 from papiq.core.domain.pipeline import PERSON, RULES, Lane, Node, Outcome, ProcessingStatus
@@ -334,7 +335,7 @@ async def test_filing_checks_the_owners_write_access_once_more(world: World) -> 
     document = await r.stored(received)
     assert document.lane is Lane.YELLOW
     assert document.processing.outcomes[Node.FILE] is Outcome.UNCERTAIN
-    assert "document.filed" not in world.event_types()
+    assert DocumentFiled.type not in world.event_types()
     (open,) = (await r.documents.review(owner.id, document.id)).open
     assert (open.node, [check.field for check in open.fields]) == (Node.FILE, ["space"])
 

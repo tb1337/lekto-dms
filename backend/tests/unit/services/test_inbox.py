@@ -16,6 +16,7 @@ from papiq.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
+from papiq.core.domain.events import DocumentFiled
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.ids import ContactId, SpaceId, UserId
 from papiq.core.domain.master_data import Assignment, Contact
@@ -242,7 +243,7 @@ async def test_a_confirmed_document_is_filed(world: World) -> None:
     assert document.contact_id == s.contact.id
     assert document.document_date == date(2026, 3, 31)
     assert document.fields[s.amount.id] == Money(Decimal("84.20"), "EUR")
-    assert "document.filed" in world.event_types()
+    assert DocumentFiled.type in world.event_types()
     assert await world.documents.inbox(s.owner.id) == []
 
     log = await world.documents.processing_log(s.owner.id, s.document.id)

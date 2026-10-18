@@ -16,6 +16,7 @@ from papiq.adapters.outbound.regex import RegexPatternMatcher
 from papiq.core.domain.classification import TITLE, FieldCheck, checks_from_json, field_key
 from papiq.core.domain.documents import UNSET, Document, DocumentChanges
 from papiq.core.domain.errors import LanguageModelError
+from papiq.core.domain.events import DocumentFiled
 from papiq.core.domain.exchanges import RunExchange, exchanges_from_json
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.identifiers import Identifier, IdentifierKind
@@ -530,7 +531,7 @@ async def test_the_contact_is_matched_and_shown_in_the_text(world: World, name: 
     result = await classify(world, proposal(sender={"value": name, "evidence": None}))
     contact = checks(result.result)["contact"]
     assert contact.ok
-    assert contact.confidence >= 0.9
+    assert contact.confidence >= builders.CLASSIFICATION.accept
     assert result.changes.contact_id == seeded.contacts["Stadtwerke Musterstadt GmbH"].id
 
 
@@ -558,7 +559,7 @@ async def test_a_contact_absent_from_the_text_is_only_suggested(world: World) ->
     assert contact.outcome is Outcome.UNCERTAIN
     assert contact.reason == "the contact 'AOK Bayern' does not appear in the text"
     assert contact.suggestion == str(seeded.contacts["AOK Bayern"].id)
-    assert contact.confidence < 0.9
+    assert contact.confidence < builders.CLASSIFICATION.accept
 
 
 async def test_a_similar_contact_is_suggested(world: World) -> None:
@@ -572,7 +573,8 @@ async def test_a_similar_contact_is_suggested(world: World) -> None:
     assert contact.reason == (
         "'Stadtwerk Musterstadt Netz' is only similar to the contact 'Stadtwerke Musterstadt GmbH'"
     )
-    assert 0.75 <= contact.confidence < 0.9
+    policy = builders.CLASSIFICATION
+    assert policy.suggest_contact <= contact.confidence < policy.accept
 
 
 async def test_the_contact_itself_must_be_named(world: World) -> None:
@@ -1408,7 +1410,7 @@ async def test_a_verified_document_is_filed_green(world: World) -> None:
     assert document.document_date == date(2026, 3, 31)
     assert document.fields[seeded.fields["Rechnungsbetrag"].id] == Money(Decimal("84.20"), "EUR")
     assert document.title == "Stromrechnung März 2026"
-    assert "document.filed" in world.event_types()
+    assert DocumentFiled.type in world.event_types()
     assert len(fake.requests) == 1  # one request for the whole document
     log = await world.documents.processing_log(owner.id, document.id)
     proposed = next(entry for entry in log if entry.node is Node.SIGNAL_LLM)
@@ -1431,7 +1433,7 @@ async def test_an_uncertain_document_waits_in_the_inbox(world: World) -> None:
     assert document.processing.status is ProcessingStatus.REVIEW
     assert document.contact_id is None  # only proposed
     assert document.document_type_id == seeded.types["Rechnung"].id  # verified, so applied
-    assert "document.filed" not in world.event_types()
+    assert DocumentFiled.type not in world.event_types()
 
 
 async def test_confirming_renders_the_title_pattern_with_the_decided_values(

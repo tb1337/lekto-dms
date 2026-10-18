@@ -13,11 +13,12 @@ from papiq.adapters.outbound.memory import MemoryEventBus, MemorySearchIndex
 from papiq.composition.container import Container, Services, build_memory_container
 from papiq.composition.container import build_services as build_all_services
 from papiq.core.domain.documents import Document
-from papiq.core.domain.events import DomainEvent
+from papiq.core.domain.events import DocumentReceived, DomainEvent, LaneChanged
 from papiq.core.domain.pipeline import Lane, Node, NodeResult
 from papiq.core.domain.users import Role, User
 from papiq.core.services.indexing import SUBSCRIBER
 from papiq.core.services.maintenance import CLEANUP_JOB
+from papiq.core.services.pipeline import NODE_JOB
 from tests import builders
 from tests.api import until
 from tests.builders import DEFAULT_SETTINGS, incoming
@@ -98,9 +99,9 @@ async def test_documents_are_processed_and_events_delivered() -> None:
         document = await services.pipeline.receive(
             user.id, incoming((SAMPLES / "scan.pdf").read_bytes()), filename="a.pdf"
         )
-        await until(lambda: received and received[-1].type == "document.lane_changed")
+        await until(lambda: received and received[-1].type == LaneChanged.type)
     assert await lane(services, user, document) is Lane.GREEN
-    assert received[0].type == "document.received"
+    assert received[0].type == DocumentReceived.type
 
 
 async def test_documents_reach_the_search_index() -> None:
@@ -204,7 +205,7 @@ async def test_jobs_still_running_after_the_timeout_are_released() -> None:
     async with running(worker(container, services, shutdown_timeout=FAST)):
         await node.started.wait()
     async with container.unit_of_work() as uow:
-        job = await uow.jobs.claim(now=container.clock.now(), lease=FAST, kinds=["pipeline.node"])
+        job = await uow.jobs.claim(now=container.clock.now(), lease=FAST, kinds=[NODE_JOB])
     assert job is not None
     assert (job.attempts, job.last_error) == (2, "interrupted: the worker stopped")
 

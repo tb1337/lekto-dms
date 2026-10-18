@@ -7,6 +7,7 @@ from papiq.core.domain.errors import (
     PermissionDeniedError,
     ValidationError,
 )
+from papiq.core.domain.events import DocumentUpdated
 from papiq.core.domain.fields import FieldType
 from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
 from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
@@ -509,7 +510,7 @@ async def test_a_tag_move_announces_each_document_it_changes(world: World) -> No
     world.database.outbox.clear()
     await service.change_tag(admin.id, health.id, parent_id=insurance.id)
     await builders.drain(service)
-    assert world.event_types() == ["document.updated"]
+    assert world.event_types() == [DocumentUpdated.type]
 
 
 async def test_only_a_new_parent_of_a_tag_or_group_normalises(world: World) -> None:

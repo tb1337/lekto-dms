@@ -16,9 +16,11 @@ from papiq.adapters.outbound.memory import FakeEmbeddings
 from papiq.adapters.outbound.sql import Database
 from papiq.adapters.outbound.sql.tables import jobs
 from papiq.composition.settings import Settings
+from papiq.core.domain.jobs import JobStatus
 from papiq.core.domain.spaces import ShareLevel
 from papiq.core.domain.users import Role, User
 from papiq.core.ports import ObjectStore
+from papiq.core.services.indexing import INDEX_JOB, REBUILD_JOB, REFRESH_JOB
 from tests import builders
 from tests.api import auth, until
 from tests.integration.adapters.meilisearch.conftest import drop, new_index
@@ -51,8 +53,8 @@ class SearchSystem(System):
                 select(func.count())
                 .select_from(jobs)
                 .where(
-                    jobs.c.status.in_(["queued", "running"]),
-                    jobs.c.kind.in_(["search.index", "search.refresh", "search.rebuild"]),
+                    jobs.c.status.in_([JobStatus.QUEUED.value, JobStatus.RUNNING.value]),
+                    jobs.c.kind.in_([INDEX_JOB, REFRESH_JOB, REBUILD_JOB]),
                 )
             )
             async with self.database.engine.connect() as connection:

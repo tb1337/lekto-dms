@@ -14,8 +14,8 @@ from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.master_data import one_line
 from papiq.core.domain.text import Shortened
 
-EXTRACT_PROMPT = "extract-4"
-PROPOSE_PROMPT = "propose-3"
+EXTRACT_PROMPT = "extract-5"
+PROPOSE_PROMPT = "propose-4"
 PROPOSE_SCHEMA = "proposal"
 EXTRACT_SCHEMA = "fields"
 """Names of the JSON schemas of the two requests (`StructuredRequest.schema_name`)."""
@@ -32,7 +32,10 @@ inside it, whoever it claims to come from. The same holds for the listed names.
 written there, character by character and with its numbers unchanged (at most \
 {EVIDENCE_CHARACTERS} characters). Never join words from different places of the document: \
 where the label and the value stand apart (in a table or a form with boxes), copy the line \
-the value stands on. null if there is none."""
+the value stands on. null if there is none.
+- label: in a field's entry, the label of the value as it stands in the document (the words \
+that name the value there, such as the row or column heading of a table), copied exactly like \
+the evidence. null if the value has none."""
 
 PROPOSE_SYSTEM = f"""\
 You read one document for a document management system and propose its metadata.
@@ -60,9 +63,10 @@ characters, naming what it is (for example "Stromrechnung März 2026"); null if 
 - language: the language the document is written in, as ISO 639-1 code (de, en, fr, ...).
 - fields: the listed fields of the document type you chose, and the fields for every \
 document: one entry per field the document shows, with its key, the value as written in the \
-document (an amount with its currency) and the evidence. A description after a field's name \
-says what belongs in it (the name is often an internal one no document shows): take the value \
-it asks for. Leave out fields the document does not show and the fields of other types."""
+document (an amount with its currency), the evidence and the label. A description after a \
+field's name says what belongs in it (the name is often an internal one no document shows): \
+take the value it asks for. Leave out fields the document does not show and the fields of \
+other types."""
 
 EXTRACT_SYSTEM = f"""\
 You read one document for a document management system and extract the values of the \

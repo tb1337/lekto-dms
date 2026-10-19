@@ -6,7 +6,9 @@ accept (Claude's too): one of a list or null as `anyOf`, no limits on arrays. Th
 strict about structure (an answer with a missing or an extra field is invalid, since an extra
 field may be an instruction from the document at work) and lenient about values: a document
 type outside the list counts as a proposed new type, unknown tags as proposed new tags, and a
-value that cannot be read makes only its field uncertain.
+value that cannot be read makes only its field uncertain. The one exception is a field's
+`label` (`propose-4`, `extract-5`): an entry without it reads as without a label, as an answer
+to the prompts before did.
 """
 
 import json
@@ -36,22 +38,30 @@ class AnswerError(ValueError):
 
 @dataclass(frozen=True, kw_only=True)
 class Proposal:
-    """A proposed value with the passage the model quoted for it."""
+    """A proposed value with the passage the model quoted for it and, for a field, the label
+    of the value as it stands in the document (None for none, and for sender and date)."""
 
     value: JsonValue
     evidence: str | None
+    label: str | None = None
 
     def to_json(self) -> JsonObject:
-        return {"value": self.value, "evidence": self.evidence}
+        """The label only where there is one."""
+        data: JsonObject = {"value": self.value, "evidence": self.evidence}
+        if self.label is not None:
+            data["label"] = self.label
+        return data
 
     @classmethod
     def from_json(cls, data: JsonValue) -> Self:
-        """Lenient: what is missing (or no text, for the evidence) is None."""
+        """Lenient: what is missing (or no text, for the evidence and the label) is None."""
         if not isinstance(data, dict):
             return cls(value=None, evidence=None)
-        evidence = data.get("evidence")
+        evidence, label = data.get("evidence"), data.get("label")
         return cls(
-            value=data.get("value"), evidence=evidence if isinstance(evidence, str) else None
+            value=data.get("value"),
+            evidence=evidence if isinstance(evidence, str) else None,
+            label=label if isinstance(label, str) else None,
         )
 
 
@@ -170,6 +180,7 @@ _PROPOSE_FIELDS = (
     "fields",
 )
 _FIELD_ENTRY = ("key", "value", "evidence")
+_LABEL = "label"  # of a field's entry; one without it reads as without a label (`_parse_proposal`)
 
 
 def propose_schema(
@@ -188,7 +199,14 @@ def propose_schema(
     key: JsonObject = {"type": "string"}
     if keys:
         key["enum"] = list(keys)
-    entry = _object({"key": key, "value": dict(_TEXT_OR_NULL), "evidence": dict(_TEXT_OR_NULL)})
+    entry = _object(
+        {
+            "key": key,
+            "value": dict(_TEXT_OR_NULL),
+            "evidence": dict(_TEXT_OR_NULL),
+            _LABEL: dict(_TEXT_OR_NULL),
+        }
+    )
     return _object(
         {
             "sender": _proposal(dict(_TEXT_OR_NULL)),
@@ -218,13 +236,14 @@ def parse_propose(content: str, keys: Sequence[str]) -> ProposeAnswer:
     for index, entry in enumerate(entries):
         if not isinstance(entry, dict):
             raise AnswerError(f"fields[{index}]: expected an object")
-        _require_fields(entry, _FIELD_ENTRY, f"fields[{index}]")
+        _require_fields(entry, _FIELD_ENTRY, f"fields[{index}]", optional=(_LABEL,))
         key = entry["key"]
         if isinstance(key, str) and key in keys and key not in fields:
-            proposal = _parse_proposal(
-                {"value": entry["value"], "evidence": entry["evidence"]}, f"fields[{index}]"
+            fields[key] = _parse_proposal(
+                {name: value for name, value in entry.items() if name != "key"},
+                f"fields[{index}]",
+                labelled=True,
             )
-            fields[key] = proposal
     # The title becomes the document's: on one line, without control characters, not too long.
     title = _text_or_null(data["title"], "title")
     title = one_line(title)[:MAX_TITLE].strip() or None if title else None
@@ -257,7 +276,10 @@ def extract_schema(keys: dict[str, FieldDefinition]) -> JsonObject:
     return _object(
         {
             "fields": _object(
-                {key: _proposal(_value_schema(definition)) for key, definition in keys.items()}
+                {
+                    key: _proposal(_value_schema(definition), labelled=True)
+                    for key, definition in keys.items()
+                }
             )
         }
     )
@@ -270,7 +292,7 @@ def parse_extract(content: str, keys: Sequence[str]) -> dict[str, Proposal]:
     if not isinstance(fields, dict):
         raise AnswerError("fields: expected an object")
     _require_fields(fields, keys, "fields")
-    return {key: _parse_proposal(fields[key], f"fields.{key}") for key in keys}
+    return {key: _parse_proposal(fields[key], f"fields.{key}", labelled=True) for key in keys}
 
 
 def _value_schema(definition: FieldDefinition) -> JsonObject:
@@ -318,8 +340,12 @@ def _one_of_or_null(names: Sequence[str]) -> JsonObject:
     return {"anyOf": [{"type": "string", "enum": list(names)}, {"type": "null"}]}
 
 
-def _proposal(value: JsonObject) -> JsonObject:
-    return _object({"value": value, "evidence": dict(_TEXT_OR_NULL)})
+def _proposal(value: JsonObject, *, labelled: bool = False) -> JsonObject:
+    """A value with its evidence; a field's (`labelled`) also with its label."""
+    properties: JsonObject = {"value": value, "evidence": dict(_TEXT_OR_NULL)}
+    if labelled:
+        properties[_LABEL] = dict(_TEXT_OR_NULL)
+    return _object(properties)
 
 
 def _load(content: str) -> JsonObject:
@@ -334,24 +360,36 @@ def _load(content: str) -> JsonObject:
     return data
 
 
-def _require_fields(data: JsonObject, fields: Sequence[str], where: str) -> None:
+def _require_fields(
+    data: JsonObject, fields: Sequence[str], where: str, *, optional: Sequence[str] = ()
+) -> None:
+    """`data` has `fields` and nothing else but the `optional` ones."""
     missing = [name for name in fields if name not in data]
-    extra = sorted(set(data) - set(fields))
+    extra = sorted(set(data) - set(fields) - set(optional))
     if missing:
         raise AnswerError(f"{where}: missing {', '.join(missing)}")
     if extra:
         raise AnswerError(f"{where}: unexpected {', '.join(extra)}")
 
 
-def _parse_proposal(data: JsonValue, where: str, *, text: bool = False) -> Proposal:
+def _parse_proposal(
+    data: JsonValue, where: str, *, text: bool = False, labelled: bool = False
+) -> Proposal:
+    """A value with its evidence; a field's (`labelled`) may also have its label, as text on
+    one line."""
     if not isinstance(data, dict):
         raise AnswerError(f"{where}: expected an object with value and evidence")
-    _require_fields(data, ("value", "evidence"), where)
+    _require_fields(data, ("value", "evidence"), where, optional=(_LABEL,) if labelled else ())
     value = data["value"]
     if text:
         value = _text_or_null(value, f"{where}.value")
     evidence = _text_or_null(data["evidence"], f"{where}.evidence")
-    return Proposal(value=value, evidence=evidence[:_EVIDENCE_LENGTH] if evidence else None)
+    label = _text_or_null(data.get(_LABEL), f"{where}.label")
+    return Proposal(
+        value=value,
+        evidence=evidence[:_EVIDENCE_LENGTH] if evidence else None,
+        label=one_line(label)[:_EVIDENCE_LENGTH].strip() or None if label else None,
+    )
 
 
 def _text_or_null(value: JsonValue, where: str) -> str | None:

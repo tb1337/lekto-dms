@@ -144,6 +144,46 @@ def test_unfit_answers(content: str, error: str) -> None:
         parse_propose(content, ["a1"])
 
 
+def test_a_field_s_entry_gives_the_label_of_its_value() -> None:
+    schema: Any = propose_schema([], [], ["a1"])
+    entry = schema["properties"]["fields"]["items"]
+    assert entry["properties"]["label"] == {"type": ["string", "null"]}
+    assert entry["required"] == ["key", "value", "evidence", "label"]
+    # Sender and date carry no label.
+    assert "label" not in schema["properties"]["sender"]["properties"]
+    labelled = {"key": "a1", "value": "84,20 €", "evidence": "84,20 €", "label": " Gesamt\nbetrag "}
+    answer = parse_propose(json.dumps(ANSWER | {"fields": [labelled]}), ["a1"])
+    assert answer.fields["a1"] == Proposal(
+        value="84,20 €", evidence="84,20 €", label="Gesamt betrag"
+    )
+    unlabelled = labelled | {"label": None}
+    assert (
+        parse_propose(json.dumps(ANSWER | {"fields": [unlabelled]}), ["a1"]).fields["a1"].label
+        is None
+    )
+    # An answer as to the prompt before (propose-3) reads as without labels.
+    assert parse_propose(json.dumps(ANSWER), ["a1"]).fields["a1"].label is None
+    with pytest.raises(AnswerError, match="label: expected text"):
+        parse_propose(json.dumps(ANSWER | {"fields": [labelled | {"label": 1}]}), ["a1"])
+    sender = {"value": None, "evidence": None, "label": "Von"}
+    with pytest.raises(AnswerError, match="sender: unexpected label"):
+        parse_propose(json.dumps(ANSWER | {"sender": sender}), [])
+
+
+def test_a_label_is_kept_with_the_proposal_and_read_from_older_ones() -> None:
+    labelled = Proposal(value="84,20 €", evidence="Gesamt 84,20 €", label="Gesamt")
+    assert labelled.to_json() == {
+        "value": "84,20 €",
+        "evidence": "Gesamt 84,20 €",
+        "label": "Gesamt",
+    }
+    assert Proposal.from_json(labelled.to_json()) == labelled
+    # Without a label (and in a proposal kept before labels) there is none.
+    assert Proposal(value=1, evidence=None).to_json() == {"value": 1, "evidence": None}
+    assert Proposal.from_json({"value": 1, "evidence": None}).label is None
+    assert Proposal.from_json({"value": 1, "evidence": None, "label": 2}).label is None
+
+
 def definitions() -> list[FieldDefinition]:
     return [
         FieldDefinition.create(name="Betrag", data_type=FieldType.AMOUNT, now=NOW),
@@ -183,6 +223,15 @@ def test_extract_schema_and_answer() -> None:
         parse_extract(json.dumps({"fields": {"a1": answer["fields"]["a1"]}}), ["a1", "a4"])
     with pytest.raises(AnswerError, match="unexpected a9"):
         parse_extract(json.dumps({"fields": answer["fields"] | {"a9": None}}), list(keys))
+    # extract-5 asks for each value's label; an answer as to extract-4 reads as without.
+    assert fields["properties"]["a1"]["required"] == ["value", "evidence", "label"]
+    assert parsed["a1"].label is None
+    entries: Any = answer["fields"]
+    labelled = {"fields": entries | {"a1": entries["a1"] | {"label": "Betrag"}}}
+    assert parse_extract(json.dumps(labelled), list(keys))["a1"].label == "Betrag"
+    wrong = {"fields": entries | {"a1": entries["a1"] | {"note": "x"}}}
+    with pytest.raises(AnswerError, match="unexpected note"):
+        parse_extract(json.dumps(wrong), list(keys))
 
 
 def test_shorten_keeps_beginning_and_end() -> None:

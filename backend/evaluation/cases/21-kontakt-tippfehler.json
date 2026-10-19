@@ -43,15 +43,18 @@
           "amount": "96.00",
           "currency": "EUR"
         },
-        "evidence": "Gesamtbetrag dieser Rechnung: 96,00 €"
+        "evidence": "Gesamtbetrag dieser Rechnung: 96,00 €",
+        "label": "Gesamtbetrag dieser Rechnung"
       },
       "Rechnungsnummer": {
         "value": "R-2026-005522",
-        "evidence": "Rechnungsnummer: R-2026-005522"
+        "evidence": "Rechnungsnummer: R-2026-005522",
+        "label": "Rechnungsnummer"
       },
       "Kundennummer": {
         "value": "100 200 300",
-        "evidence": "Kundennummer: 100 200 300"
+        "evidence": "Kundennummer: 100 200 300",
+        "label": "Kundennummer"
       }
     }
   }

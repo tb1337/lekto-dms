@@ -35,7 +35,8 @@
     "fields": {
       "Vertragsbeginn": {
         "value": "2026-05-01",
-        "evidence": "beginnt am 01.05.2026"
+        "evidence": "beginnt am 01.05.2026",
+        "label": null
       }
     }
   }

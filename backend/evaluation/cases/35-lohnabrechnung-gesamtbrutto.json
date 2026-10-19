@@ -46,21 +46,24 @@
           "amount": "2401.12",
           "currency": "EUR"
         },
-        "evidence": "Nettoverdienst: 2.401,12 €"
+        "evidence": "Nettoverdienst: 2.401,12 €",
+        "label": "Nettoverdienst"
       },
       "Bruttolohn": {
         "value": {
           "amount": "3650.00",
           "currency": "EUR"
         },
-        "evidence": "Gesamtbrutto | 3.650,00 €"
+        "evidence": "Gesamtbrutto | 3.650,00 €",
+        "label": "Gesamtbrutto"
       },
       "Bezugszeitraum": {
         "value": {
           "start": "2026-04-01",
           "end": "2026-04-30"
         },
-        "evidence": "Entgeltabrechnung April 2026"
+        "evidence": "Entgeltabrechnung April 2026",
+        "label": null
       }
     }
   }

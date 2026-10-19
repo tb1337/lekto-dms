@@ -56,6 +56,7 @@ from papiq.core.domain.fields import (
 )
 from papiq.core.domain.ids import ContactId, DocumentId, FieldId
 from papiq.core.domain.json_value import JsonObject, JsonValue, as_list
+from papiq.core.domain.labels import LabelCheck, LabelOutcome, LaidWord, check_label, layout_words
 from papiq.core.domain.locations import Location
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.names import match_key, mentions, named_share
@@ -127,7 +128,13 @@ from papiq.core.services.classification.signals import (
 )
 from papiq.core.services.exchanges import keep_calls
 from papiq.core.services.nodes import ARCHIVE_FILE, work_directory
-from papiq.core.services.objects import archive_key, load_text, reading_key, text_key
+from papiq.core.services.objects import (
+    archive_key,
+    load_text,
+    reading_key,
+    structure_key,
+    text_key,
+)
 from papiq.core.services.pipeline import MetadataResult
 from papiq.core.services.titles import has_machine_title
 
@@ -634,6 +641,7 @@ class FieldsNode(_ModelStep):
             else check
             for check, definition in zip(checks, definitions, strict=True)
         ]
+        checks = await _labelled(self._store, document, checks, definitions, given)
         values: dict[FieldId, object] = {}
         for check, definition in zip(checks, definitions, strict=True):
             if check.ok and check.value is not None:
@@ -820,7 +828,7 @@ def _check_period(
     today: date,
     document_date: date | None,
 ) -> FieldCheck:
-    """A period as the model gives it: `{start, end}` (extract-4) or as written (propose-3:
+    """A period as the model gives it: `{start, end}` (extract-5) or as written (propose-4:
     `September 2026`, `KW 38/2026`, `01.09.-30.09.2026`). Its quoted passage must show it. One
     without a year takes that of the document date and is only suggested, as is a single day
     equal to the document date (models put the document date where the text shows none)."""
@@ -1042,6 +1050,80 @@ def _readable(
         suggestion=check.value,
         value=None,
     )
+
+
+_LABELLED = frozenset({FieldType.AMOUNT, FieldType.NUMBER, FieldType.DATE, FieldType.PERIOD})
+"""The types whose label is checked (issue #55): values a pay slip or a form lists among others
+of their kind, where the quote of the wrong line passes every other check."""
+
+
+async def _labelled(
+    store: ObjectStore,
+    document: Document,
+    checks: Sequence[FieldCheck],
+    definitions: Sequence[FieldDefinition],
+    given: Mapping[FieldId, Proposal],
+) -> list[FieldCheck]:
+    """Each check of a field the model gave a value for, with its label check (`check_label`):
+    recorded only, it changes no outcome (issue #55, step 1). The value is the checked one, or
+    else the suggestion; a type other than `_LABELLED` is not checked (unknown). The words of
+    the parsed text are loaded only where a field of such a type has a label."""
+    read = [
+        definition.id in given and given[definition.id].value is not None
+        for definition in definitions
+    ]
+    if not any(read):
+        return list(checks)
+    wanted = any(
+        asked and definition.data_type in _LABELLED and given[definition.id].label is not None
+        for asked, definition in zip(read, definitions, strict=True)
+    )
+    pages = await _layout_words(store, document) if wanted else {}
+
+    def label(check: FieldCheck, definition: FieldDefinition) -> LabelCheck:
+        text = given[definition.id].label
+        if definition.data_type not in _LABELLED:
+            return LabelCheck(text, LabelOutcome.UNKNOWN)
+        value = check.value if check.value is not None else check.suggestion
+        shows = None if value is None else _field_shown(definition, value)
+        return check_label(text, pages, check.locations, shows)
+
+    def all_labelled() -> list[FieldCheck]:
+        return [
+            replace(check, label=label(check, definition)) if asked else check
+            for check, definition, asked in zip(checks, definitions, read, strict=True)
+        ]
+
+    try:
+        return await asyncio.to_thread(all_labelled)
+    except Exception:  # recorded only: a failure of the check must not fail the node
+        log.warning(
+            "the labels were not checked", exc_info=True, extra={"document_id": str(document.id)}
+        )
+        return list(checks)
+
+
+async def _layout_words(
+    store: ObjectStore, document: Document
+) -> Mapping[int, tuple[LaidWord, ...]]:
+    """The words of the document's parsed text by page; none without it, for one of another
+    kind (`layout_words`), or where it cannot be read (the label check is recorded only, so a
+    store that fails leaves it unknown instead of failing the node)."""
+    key = structure_key(document.id)
+    try:
+        data = await store.get(key)
+        pages = await asyncio.to_thread(lambda: layout_words(json.loads(data)))
+    except NotFoundError:
+        return {}
+    except Exception as error:
+        log.warning(
+            "the structure of the text cannot be read: %s",
+            error,
+            exc_info=not isinstance(error, ValueError),
+            extra={"key": key},
+        )
+        return {}
+    return pages or {}
 
 
 type _Place = tuple[Location, Sequence[ReadWord], tuple[ReadWord, ...] | None]

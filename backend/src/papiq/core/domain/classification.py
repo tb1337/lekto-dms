@@ -24,6 +24,7 @@ from papiq.core.domain.json_value import (
     as_text,
     as_texts,
 )
+from papiq.core.domain.labels import LabelCheck
 from papiq.core.domain.locations import Location, locations_from_json, locations_to_json
 from papiq.core.domain.pipeline import Outcome
 
@@ -205,6 +206,9 @@ class FieldCheck:
       found there (or before this was recorded).
     - `candidates`: the values the signals proposed, best first, with their sources (the
       judge's checks; none in others, and in entries from before the signals).
+    - `label`: the label the model gave for the value and whether the value stands by it
+      (`labels.check_label`); recorded for fields the model read a value for, it changes no
+      outcome (issue #55, step 1). None for other checks and entries from before it.
     """
 
     field: str
@@ -219,6 +223,7 @@ class FieldCheck:
     quote_shows_value: bool | None = None
     locations: tuple[Location, ...] = ()
     candidates: tuple[Candidate, ...] = ()
+    label: LabelCheck | None = None
 
     def __post_init__(self) -> None:
         if self.outcome is Outcome.FAILED:
@@ -246,6 +251,7 @@ class FieldCheck:
             "quote_shows_value": self.quote_shows_value,
             "locations": locations_to_json(self.locations),
             "candidates": [candidate.to_json() for candidate in self.candidates],
+            "label": None if self.label is None else self.label.to_json(),
         }
 
     @classmethod
@@ -269,6 +275,7 @@ class FieldCheck:
                 quote_shows_value=as_bool(data.get("quote_shows_value")),
                 locations=locations_from_json(data.get("locations")),
                 candidates=_candidates(data.get("candidates")),
+                label=LabelCheck.from_json(data.get("label")),
             )
         except (KeyError, ValueError) as error:
             raise ValidationError(f"invalid field check: {error}") from None

@@ -414,14 +414,16 @@ the fields node reads the fields of the decided type and the title
 (`core/services/classification`, the rules in `core/domain/verdict.py`).
 
 - **`signal_llm`**: one request to an OpenAI-compatible chat completions endpoint
-  (`adapters/outbound/openai_compat`, `PAPIQ_LLM_*`, prompt `propose-3`) for sender and recipient,
+  (`adapters/outbound/openai_compat`, `PAPIQ_LLM_*`, prompt `propose-4`) for sender and recipient,
   the topic (one of the automatic topics the listed contacts enable, or none; the prompt lists
   them at each of the at most 20 preselected contacts), type, tags (the automatic document
   tags), date, a title, the language, and the values of the fields of the type it chooses
-  and of the global ones, each with the quoted passage. The answer must follow a JSON schema
-  (`response_format` `json_schema`, or `json_object` for providers without schema support); an
-  answer that does not fit is asked for once more, then the signal fails (red). Without a
-  configured model (`PAPIQ_LLM_BASE_URL` and `PAPIQ_LLM_MODEL`) it abstains with "no language
+  and of the global ones, each with the quoted passage and its label. The prompt describes each
+  field once and lists only its key at every type it belongs to (a field may serve several
+  types). The answer must follow a
+  JSON schema (`response_format` `json_schema`, or `json_object` for providers without schema
+  support); an answer that does not fit is asked for once more, then the signal fails (red).
+  Without a configured model (`PAPIQ_LLM_BASE_URL` and `PAPIQ_LLM_MODEL`) it abstains with "no language
   model is configured", and the owner classifies.
 - **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
   (contact, topic, type, each automatic document tag), trained on the confirmed documents
@@ -464,7 +466,7 @@ and no signal recognised anything.
 The fields node reads the fields of the decided type and the global ones. If the model asked
 for the type the judge decided, its values are taken over; otherwise (after a type correction,
 or for a document from before the signals) it asks the model for the missing ones (prompt
-`extract-4`). Each field is required or optional per type it is assigned to, a global one by its
+`extract-5`). Each field is required or optional per type it is assigned to, a global one by its
 own switch:
 
 | Field | Check | Not passed |
@@ -544,6 +546,29 @@ in the field, whose name is often an internal one no document shows (`LA_Brutto`
 gross total, not the base salary). The model is told to copy the quoted passage exactly as it
 stands, numbers unchanged, and where the label and the value stand apart (a table, a form with
 boxes), the line the value stands on; the check stays strict.
+
+The model also gives each field value's label as it stands in the document (`label`,
+`Gesamtbrutto`, or null), and the fields node checks whether the value stands by it
+(`core/domain/labels.py`; issue #55, step 1: **recorded, not enforced**, it changes no outcome,
+lane or reason). Only amounts, numbers, dates and periods are checked, the values a pay slip or
+a form lists among others of their kind, where the quote of the wrong line passes every check
+above. The label is looked for among the words of the parsed text (`content.json`, which every
+document has, digital or scanned), as quotes are located, but as whole words: case and spacing
+evened out, then on letters and digits alone (`Brutto` is not in `Steuerbrutto`; `Gesamtbrutto`
+is in `**Gesamtbrutto:**`). A label over two lines is measured by the line it ends on. The value's words are those at its quote's place that show it, or,
+where it has none, where the value stands just once on the pages. The value stands by its label
+on the label's line to its right, or below it in its column (overlapping it, or starting within
+four characters of its left edge) within three lines (`LABEL_LINES`); the line (the usual
+distance between the page's lines) and the character (the median width of one) are measured on
+the page itself. Where the label stands more than once, any place with the value by it passes.
+The outcome goes into the field's check (`label`: `text` and `outcome`, in the processing log,
+`FieldCheckOut.label` of the review and the inbox, and a line of the fields node in the web
+UI's log): `beside`, `apart` (the label stands in the text, the value not by it),
+`label_missing`, `no_label` (the model gave none) or `unknown` (no words with boxes, the value
+not found or not just once, or a type that is not checked). A field the model gave no value for
+has none. An answer without labels (to `propose-3` or `extract-4`) still reads, as without
+them, and a label that is no text counts as none. A failure of the check (a store that cannot
+be read, an error in it) leaves the labels unknown or out and never fails the node. The evaluation counts the outcomes per case and in total.
 
 The title is the model's while the document still has its file name or the title the machine
 gave it; a rule replaces the machine's title without making the document yellow. A document

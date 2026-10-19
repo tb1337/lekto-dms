@@ -40,14 +40,16 @@
     "fields": {
       "Versicherungsnummer": {
         "value": "KV-2026-77310",
-        "evidence": "Versicherungsschein-Nr.: KV-2026-77310"
+        "evidence": "Versicherungsschein-Nr.: KV-2026-77310",
+        "label": "Versicherungsschein-Nr."
       },
       "Beitrag": {
         "value": {
           "amount": "24.90",
           "currency": "EUR"
         },
-        "evidence": "| Zahn Plus | 24,90 € |"
+        "evidence": "| Zahn Plus | 24,90 € |",
+        "label": "Zahn Plus"
       }
     }
   }

@@ -35,7 +35,8 @@
     "fields": {
       "Ablagenummer": {
         "value": "4711",
-        "evidence": "Abgelegt unter 4711"
+        "evidence": "Abgelegt unter 4711",
+        "label": null
       }
     }
   }

@@ -39,11 +39,13 @@
           "amount": "456.78",
           "currency": "USD"
         },
-        "evidence": "Neuer Saldo: 456,78"
+        "evidence": "Neuer Saldo: 456,78",
+        "label": "Neuer Saldo"
       },
       "Fällig am": {
         "value": "2026-05-15",
-        "evidence": "am 15.05.2026 von Ihrem Girokonto"
+        "evidence": "am 15.05.2026 von Ihrem Girokonto",
+        "label": null
       }
     },
     "lane": "yellow"

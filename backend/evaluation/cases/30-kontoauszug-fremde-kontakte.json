@@ -21,7 +21,7 @@
       "document_date": {"value": "2026-03-31", "evidence": "erstellt am 31.03.2026"}
     },
     "fields": {
-      "Kontostand": {"value": "5.476,46 EUR", "evidence": "Neuer Kontostand | 5.476,46 EUR"}
+      "Kontostand": {"value": "5.476,46 EUR", "evidence": "Neuer Kontostand | 5.476,46 EUR", "label": "Neuer Kontostand"}
     }
   }
 }

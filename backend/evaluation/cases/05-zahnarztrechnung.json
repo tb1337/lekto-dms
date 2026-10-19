@@ -39,11 +39,13 @@
           "amount": "312.40",
           "currency": "EUR"
         },
-        "evidence": "Gesamt 312,40 €"
+        "evidence": "Gesamt 312,40 €",
+        "label": "Gesamt"
       },
       "Rechnungsnummer": {
         "value": "Z-3141",
-        "evidence": "Rechnung Z-3141"
+        "evidence": "Rechnung Z-3141",
+        "label": null
       }
     },
     "lane": "yellow"

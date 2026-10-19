@@ -18,10 +18,10 @@ Layout of a set directory:
   `topic`, `tags`, `document_date`, `fields` by name, in the JSON form of the API) and `fake`
   (`classification`: `contact`, `document_type`, `new_document_type`, `tags`, `new_tags`,
   `document_date`, optionally `recipient`, `topic`, `title` and `language`, from which the
-  answer of the language model's signal is built; `fields`: proposals by field name, in that
-  answer as text; `lane`: the lane this answer leads to, if not the expected one). `expected`
-  and `fake` may give `lanes` by run where a run differs; `runs` names the runs a case belongs
-  to (default: both).
+  answer of the language model's signal is built; `fields`: proposals by field name
+  (`value`, `evidence`, `label`), in that answer as text; `lane`: the lane this answer leads
+  to, if not the expected one). `expected` and `fake` may give `lanes` by run where a run
+  differs; `runs` names the runs a case belongs to (default: both).
 """
 
 import json
@@ -36,7 +36,7 @@ from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Assignment
 from papiq.core.domain.pipeline import Lane
 from papiq.core.ports.llm import StructuredRequest
-from papiq.core.services.classification.prompts import PROPOSE_SCHEMA
+from papiq.core.services.classification.prompts import FIELDS_OF_TYPE, PROPOSE_SCHEMA
 
 
 class EvaluationSetError(Exception):
@@ -121,7 +121,7 @@ class FakeAnswer:
         if request.schema_name == PROPOSE_SCHEMA:
             return self._proposal(request.user)
         keys = dict(_KEY_LINE.findall(_before_document(request.user)))
-        empty: JsonObject = {"value": None, "evidence": None}
+        empty: JsonObject = {"value": None, "evidence": None, "label": None}
         return {"fields": {key: self.fields.get(name, empty) for key, name in keys.items()}}
 
     def _proposal(self, message: str) -> JsonObject:
@@ -138,7 +138,14 @@ class FakeAnswer:
             proposal = self.fields.get(name)
             if isinstance(proposal, dict) and proposal.get("value") is not None:
                 value = _written(proposal["value"])
-                fields.append({"key": key, "value": value, "evidence": proposal.get("evidence")})
+                fields.append(
+                    {
+                        "key": key,
+                        "value": value,
+                        "evidence": proposal.get("evidence"),
+                        "label": proposal.get("label"),
+                    }
+                )
         return {
             "recipient": None,
             "title": None,
@@ -200,10 +207,10 @@ def load_set(path: Path) -> EvaluationSet:
 
 # The fixed answer learns the field keys it is asked for only from the rendered prompt, so the
 # three below follow the wording of `core/services/classification/prompts.py` (`propose_message`,
-# `extract_message`): the line that opens the document, the field lines `- a1: "Name"` and the
-# headings "Document types" and "Fields for every document". A change there leaves the fields of
-# the fixed answers empty; `tests/unit/test_evaluation.py` renders the prompts to hold the two
-# together.
+# `extract_message`): the line that opens the document, the field lines `- a1: "Name"`, the
+# headings "Fields", "Document types" and "Fields for every document", and a type's keys after
+# `FIELDS_OF_TYPE`. A change there leaves the fields of the fixed answers empty;
+# `tests/unit/test_evaluation.py` renders the prompts to hold the two together.
 
 
 def _before_document(message: str) -> str:
@@ -214,23 +221,31 @@ _KEY_LINE = re.compile(r'^\s*- (a\d+): "([^"\n]*)"', re.M)
 
 
 def _proposal_keys(message: str, document_type: JsonValue) -> dict[str, str]:
-    """Field names by key in the signal's request: those listed under `document_type` and
-    those for every document."""
-    keys: dict[str, str] = {}
-    section, chosen = None, False
+    """Field names by key in the signal's request: of the keys listed with `document_type` and
+    of those for every document, each named once under "Fields"."""
+    names: dict[str, str] = {}
+    wanted: list[str] = []
+    section = None
     for line in _before_document(message).splitlines():
         if not line.startswith(" ") and line.endswith(":"):
             section = line
             continue
-        if section and section.startswith("Document types") and line.startswith("- "):
-            chosen = isinstance(document_type, str) and (
-                line == f"- {document_type}" or line.startswith(f"- {document_type}: ")
-            )
-            continue
-        found = _KEY_LINE.match(line)
-        if found and (chosen or (section or "").startswith("Fields for every document")):
-            keys[found[1]] = found[2]
-    return keys
+        if section == "Fields:" and (found := _KEY_LINE.match(line)):
+            names[found[1]] = found[2]
+        elif section and section.startswith("Document types") and line.startswith("- "):
+            listed, _, keys = line[2:].rpartition(FIELDS_OF_TYPE)
+            name = listed if keys and listed else line[2:]
+            if isinstance(document_type, str) and (
+                name == document_type or name.startswith(f"{document_type}: ")
+            ):
+                wanted.extend(_keys(keys) if listed else [])
+        elif section and section.startswith("Fields for every document"):
+            wanted.extend(_keys(line))
+    return {key: names[key] for key in wanted if key in names}
+
+
+def _keys(line: str) -> list[str]:
+    return [key for key in (part.strip() for part in line.split(",")) if re.fullmatch(r"a\d+", key)]
 
 
 def _written(value: JsonValue) -> JsonValue:

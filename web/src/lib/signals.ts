@@ -1,11 +1,12 @@
 /**
  * What a signal said in a run, for the protocol: the language model's proposal, the
  * classifier's best classes, the similar documents, the names and identifiers in the text, or
- * why it abstained. For the OCR, how well it read each page it recognised.
+ * why it abstained. For the OCR, how well it read each page it recognised; for the fields node,
+ * whether each value stands by its label.
  */
 import type { components } from '#lib/api/schema.ts';
 import { documentHref } from '#lib/candidates.ts';
-import { describeValue } from '#lib/describe.ts';
+import { describeValue, fieldLabel } from '#lib/describe.ts';
 import { formatNumber } from '#lib/i18n.ts';
 import { IDENTIFIER_KINDS, kindLabel, type IdentifierKind } from '#lib/identifiers.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
@@ -100,9 +101,36 @@ function readings(output: Json): SummaryRow[] {
 	return [{ label: m.log_reading(), items }];
 }
 
-/** The rows of a signal's entry, or of the OCR's; none for other nodes. */
+const LABEL_TEXTS: Record<string, (inputs: { label: string }) => string> = {
+	beside: m.log_label_beside,
+	apart: m.log_label_apart,
+	label_missing: m.log_label_missing,
+	unknown: m.log_label_unknown
+};
+
+/** The label the model gave for each value the fields node read, and whether the value stands
+ * by it; only recorded, so without a colour. None for checks without one. */
+function labels(output: Json, lookup: Lookup | null): SummaryRow[] {
+	return list(output.fields)
+		.map(object)
+		.flatMap((check) => {
+			const found = object(check.label);
+			const outcome = text(found.outcome);
+			if (outcome === null) return [];
+			const label = text(found.text);
+			const said =
+				label === null || outcome === 'no_label'
+					? m.log_label_none()
+					: (LABEL_TEXTS[outcome] ?? m.log_label_unknown)({ label });
+			return [{ label: fieldLabel(String(check.field), lookup), items: [{ text: said }] }];
+		});
+}
+
+/** The rows of a signal's entry, of the OCR's, or the labels of the fields node's; none for
+ * other nodes. */
 export function signalSummary(entry: LogEntry, lookup: Lookup | null): SummaryRow[] {
 	if (entry.node === 'ocr') return readings(object(entry.output));
+	if (entry.node === 'fields') return labels(object(entry.output), lookup);
 	if (!(SIGNAL_NODES as readonly string[]).includes(entry.node)) return [];
 	const output = object(entry.output);
 	const abstained = text(output.abstained);

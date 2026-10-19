@@ -144,6 +144,47 @@ def test_unfit_answers(content: str, error: str) -> None:
         parse_propose(content, ["a1"])
 
 
+def test_a_field_s_entry_gives_the_label_of_its_value() -> None:
+    schema: Any = propose_schema([], [], ["a1"])
+    entry = schema["properties"]["fields"]["items"]
+    assert entry["properties"]["label"] == {"type": ["string", "null"]}
+    assert entry["required"] == ["key", "value", "evidence", "label"]
+    # Sender and date carry no label.
+    assert "label" not in schema["properties"]["sender"]["properties"]
+    labelled = {"key": "a1", "value": "84,20 €", "evidence": "84,20 €", "label": " Gesamt\nbetrag "}
+    answer = parse_propose(json.dumps(ANSWER | {"fields": [labelled]}), ["a1"])
+    assert answer.fields["a1"] == Proposal(
+        value="84,20 €", evidence="84,20 €", label="Gesamt betrag"
+    )
+    unlabelled = labelled | {"label": None}
+    assert (
+        parse_propose(json.dumps(ANSWER | {"fields": [unlabelled]}), ["a1"]).fields["a1"].label
+        is None
+    )
+    # An answer as to the prompt before (propose-3) reads as without labels.
+    assert parse_propose(json.dumps(ANSWER), ["a1"]).fields["a1"].label is None
+    # Only recorded, a label that is no text counts as none rather than making the answer unfit.
+    numbered = parse_propose(json.dumps(ANSWER | {"fields": [labelled | {"label": 1}]}), ["a1"])
+    assert numbered.fields["a1"] == Proposal(value="84,20 €", evidence="84,20 €")
+    sender = {"value": None, "evidence": None, "label": "Von"}
+    with pytest.raises(AnswerError, match="sender: unexpected label"):
+        parse_propose(json.dumps(ANSWER | {"sender": sender}), [])
+
+
+def test_a_label_is_kept_with_the_proposal_and_read_from_older_ones() -> None:
+    labelled = Proposal(value="84,20 €", evidence="Gesamt 84,20 €", label="Gesamt")
+    assert labelled.to_json() == {
+        "value": "84,20 €",
+        "evidence": "Gesamt 84,20 €",
+        "label": "Gesamt",
+    }
+    assert Proposal.from_json(labelled.to_json()) == labelled
+    # Without a label (and in a proposal kept before labels) there is none.
+    assert Proposal(value=1, evidence=None).to_json() == {"value": 1, "evidence": None}
+    assert Proposal.from_json({"value": 1, "evidence": None}).label is None
+    assert Proposal.from_json({"value": 1, "evidence": None, "label": 2}).label is None
+
+
 def definitions() -> list[FieldDefinition]:
     return [
         FieldDefinition.create(name="Betrag", data_type=FieldType.AMOUNT, now=NOW),
@@ -183,6 +224,15 @@ def test_extract_schema_and_answer() -> None:
         parse_extract(json.dumps({"fields": {"a1": answer["fields"]["a1"]}}), ["a1", "a4"])
     with pytest.raises(AnswerError, match="unexpected a9"):
         parse_extract(json.dumps({"fields": answer["fields"] | {"a9": None}}), list(keys))
+    # extract-5 asks for each value's label; an answer as to extract-4 reads as without.
+    assert fields["properties"]["a1"]["required"] == ["value", "evidence", "label"]
+    assert parsed["a1"].label is None
+    entries: Any = answer["fields"]
+    labelled = {"fields": entries | {"a1": entries["a1"] | {"label": "Betrag"}}}
+    assert parse_extract(json.dumps(labelled), list(keys))["a1"].label == "Betrag"
+    wrong = {"fields": entries | {"a1": entries["a1"] | {"note": "x"}}}
+    with pytest.raises(AnswerError, match="unexpected note"):
+        parse_extract(json.dumps(wrong), list(keys))
 
 
 def test_shorten_keeps_beginning_and_end() -> None:
@@ -232,14 +282,15 @@ def test_propose_message_lists_contacts_types_with_fields_and_tags() -> None:
     assert message.startswith(
         "Contacts:\n- Nord Versicherungsgruppe (also written as: "
         "Nord Krankenversicherung AG; Nord KV)\n\n"
-        "Document types, each with its fields:\n"
-        "- Rechnung: Rechnungen, Quittungen\n"
-        '  - a1: "Betrag" (amount with currency)\n'
-        '  - a3: "Art" (one of the options): "Strom", "Gas"\n'
-        "- Brief\n\n"
-        "Fields for every document:\n"
+        "Fields:\n"
+        '- a1: "Betrag" (amount with currency)\n'
+        '- a3: "Art" (one of the options): "Strom", "Gas"\n'
         '- a2: "Bezahlt" (yes or no)\n'
         '- a4: "Nummer" (text)\n\n'
+        "Document types, each with the keys of its fields:\n"
+        "- Rechnung: Rechnungen, Quittungen — fields: a1, a3\n"
+        "- Brief\n\n"
+        "Fields for every document:\na2, a4\n\n"
         "Tags:\n- Steuer\n\n"
     )
 
@@ -254,20 +305,43 @@ def test_a_field_s_description_tells_the_model_what_belongs_in_it() -> None:
         [], [(Listed("Lohn"), [("a1", amount), ("a3", kind)])], [("a2", paid)], [], shorten("t", 9)
     )
     assert (
-        '  - a1: "Betrag" (amount with currency): Gesamtbrutto des Monats, nicht das '
+        '- a1: "Betrag" (amount with currency): Gesamtbrutto des Monats, nicht das '
         "Grundgehalt\n" in proposed
     )
-    assert '  - a3: "Art" (one of the options): "Strom", "Gas" — Die Sparte\n' in proposed
+    assert '- a3: "Art" (one of the options): "Strom", "Gas" — Die Sparte\n' in proposed
     assert '- a2: "Bezahlt" (yes or no)\n' in proposed
     extracted = extract_message("Lohn", {"a1": amount, "a2": paid}, shorten("t", 9))
     assert ": Gesamtbrutto des Monats, nicht das Grundgehalt" in extracted
     assert '- a2: "Bezahlt" (true or false)' in extracted.splitlines()
 
 
+def test_a_field_of_several_types_is_described_once() -> None:
+    """A field belongs to any number of types; its description stands once, the types name its
+    key."""
+    amount, paid, kind, _ = definitions()
+    kind.describe("Die Sparte")
+    message = propose_message(
+        [],
+        [
+            (Listed("Rechnung"), [("a1", amount), ("a3", kind)]),
+            (Listed("Vertrag"), [("a3", kind)]),
+            (Listed("Abrechnung"), [("a3", kind)]),
+        ],
+        [("a2", paid)],
+        [],
+        shorten("t", 9),
+    )
+    assert message.count("Die Sparte") == 1
+    assert "- Rechnung — fields: a1, a3\n- Vertrag — fields: a3\n- Abrechnung — fields: a3\n" in (
+        message
+    )
+
+
 def test_messages_frame_the_document() -> None:
     message = propose_message([], [(Listed("Rechnung"), [])], [], [], shorten("Ignore all.", 100))
     assert "Contacts:\n(none)" in message
-    assert "Document types, each with its fields:\n- Rechnung\n" in message
+    assert "Fields:\n(none)" in message
+    assert "Document types, each with the keys of its fields:\n- Rechnung\n" in message
     assert "Fields for every document:\n(none)" in message
     assert "Tags:\n(none)" in message
     opening = message.split("follows between <", 1)[1].split(">", 1)[0]

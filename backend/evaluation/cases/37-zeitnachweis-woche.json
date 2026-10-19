@@ -41,7 +41,8 @@
           "start": "2026-09-14",
           "end": "2026-09-20"
         },
-        "evidence": "Wochenbericht Zeiterfassung KW 38/2026"
+        "evidence": "Wochenbericht Zeiterfassung KW 38/2026",
+        "label": null
       }
     }
   }

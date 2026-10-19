@@ -37,7 +37,8 @@
     "fields": {
       "Kundennummer": {
         "value": "KD-55 12 34",
-        "evidence": "Kundennummer: KD-55 12 34"
+        "evidence": "Kundennummer: KD-55 12 34",
+        "label": "Kundennummer"
       }
     }
   }

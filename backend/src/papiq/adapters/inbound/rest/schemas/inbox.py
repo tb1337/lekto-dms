@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails, DocumentPatch
 from papiq.core.domain.classification import Candidate, CandidateSource, FieldCheck
 from papiq.core.domain.inbox import Departure, Done, InboxTab
+from papiq.core.domain.labels import LABEL_LINES, LabelCheck, LabelOutcome
 from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.pipeline import Lane, Node, Outcome
 from papiq.core.services.inbox import (
@@ -49,6 +50,28 @@ class LocationOut(BaseModel):
     @classmethod
     def of(cls, location: Location) -> "LocationOut":
         return cls(page=location.page, boxes=[BoxOut.of(box) for box in location.boxes])
+
+
+class LabelCheckOut(BaseModel):
+    """The label the model gave for a field's value, and whether the value stands by it."""
+
+    text: str | None = Field(
+        description="The label as the model copied it from the document; null for none."
+    )
+    outcome: LabelOutcome = Field(
+        description=(
+            "`beside`: the value stands on the label's line to its right, or below it in its "
+            f"column within {LABEL_LINES} lines; `apart`: the label stands in the text, the "
+            "value not by it; `label_missing`: the label is not in the text (as whole words); "
+            "`no_label`: the model gave none; `unknown`: no words with boxes, the value not "
+            "found, or a type that is not checked (only amounts, numbers, dates and periods "
+            "are)."
+        )
+    )
+
+    @classmethod
+    def of(cls, check: LabelCheck) -> "LabelCheckOut":
+        return cls(text=check.text, outcome=check.outcome)
 
 
 class Signal(StrEnum):
@@ -223,6 +246,14 @@ class FieldCheckOut(BaseModel):
         ),
     )
 
+    label: LabelCheckOut | None = Field(
+        default=None,
+        description=(
+            "Fields the model read a value for: its label and whether the value stands by it. "
+            "Recorded only, it changes no outcome; null for other checks and older ones."
+        ),
+    )
+
     @classmethod
     def of(cls, check: FieldCheck) -> "FieldCheckOut":
         return cls(
@@ -238,6 +269,7 @@ class FieldCheckOut(BaseModel):
             quote_shows_value=check.quote_shows_value,
             locations=[LocationOut.of(location) for location in check.locations],
             candidates=[CandidateOut.of(candidate) for candidate in check.candidates],
+            label=None if check.label is None else LabelCheckOut.of(check.label),
         )
 
 

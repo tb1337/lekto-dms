@@ -42,18 +42,21 @@
     "fields": {
       "Aktenzeichen": {
         "value": "KFZ-2026-778899",
-        "evidence": "Aktenzeichen: KFZ-2026-778899"
+        "evidence": "Aktenzeichen: KFZ-2026-778899",
+        "label": "Aktenzeichen"
       },
       "Betrag": {
         "value": {
           "amount": "186.00",
           "currency": "EUR"
         },
-        "evidence": "jährlich 186,00 EUR"
+        "evidence": "jährlich 186,00 EUR",
+        "label": null
       },
       "Fällig am": {
         "value": "2026-03-16",
-        "evidence": "am 16.03.2026 per Lastschrift"
+        "evidence": "am 16.03.2026 per Lastschrift",
+        "label": null
       }
     }
   }

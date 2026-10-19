@@ -1,6 +1,6 @@
 # Templates
 
-Papiq writes some texts from the values of a document. These texts are templates in
+Lekto writes some texts from the values of a document. These texts are templates in
 [Liquid](https://shopify.github.io/liquid/):
 
 - a document type's title pattern;
@@ -110,7 +110,7 @@ optional:
 
 A value that is missing tests as false in `{% if %}`, and `default` takes its place.
 
-When a template is saved, Papiq checks it: Liquid syntax, known filters, and known values
+When a template is saved, Lekto checks it: Liquid syntax, known filters, and known values
 (`unknown value field.brutto` if no field has that key).
 
 ## Examples

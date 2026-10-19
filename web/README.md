@@ -1,6 +1,6 @@
-# papiq web
+# lekto web
 
-Web UI: a single-page app on top of the Papiq REST API, served by the API under `/ui`. It talks to
+Web UI: a single-page app on top of the Lekto REST API, served by the API under `/ui`. It talks to
 the API only (`/api/v1`), through a TypeScript client generated from the API's OpenAPI document.
 
 Stack: SvelteKit 3 (Svelte 5, static adapter, no server-side rendering), Tailwind CSS 4,
@@ -36,7 +36,7 @@ LEKTO_ADMIN_USERNAME=… LEKTO_ADMIN_PASSWORD=… pnpm e2e
 `LEKTO_E2E_URL` (default `http://127.0.0.1:8000`) names the API, `LEKTO_E2E_CHROMIUM` a Chromium
 of another Playwright version instead of `pnpm exec playwright install chromium`.
 
-For `pnpm dev`, start the API in `backend/` with `uv run python -m papiq.composition api` and
+For `pnpm dev`, start the API in `backend/` with `uv run python -m lekto.composition api` and
 `LEKTO_COOKIE_SECURE=false` (plain HTTP). Open http://localhost:5173/ui/.
 
 ## PDF viewer and CSP
@@ -180,7 +180,7 @@ processing (`nextDecision`); without one, back to the inbox.
 the code. After an API change:
 
 ```sh
-cd backend && uv run python -m papiq.composition.openapi ../web/openapi.json
+cd backend && uv run python -m lekto.composition.openapi ../web/openapi.json
 cd web && pnpm gen:api   # writes src/lib/api/schema.ts
 ```
 

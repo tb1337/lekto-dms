@@ -1,9 +1,9 @@
-# papiq backend
+# lekto backend
 
-Python package `papiq`, structured as ports and adapters.
+Python package `lekto`, structured as ports and adapters.
 
 ```
-src/papiq/
+src/lekto/
   core/            domain core, framework-free
     domain/        entities and value objects (document, space, contact, ...)
     ports/         interfaces the core needs (Python protocols)
@@ -12,7 +12,7 @@ src/papiq/
     inbound/       call the core: REST API, MCP server, worker, evaluation
     outbound/      implement ports: database, object store, search, LLM, OCR, parser
   composition/     composition root: reads configuration, wires adapters to ports, the
-                   commands of `python -m papiq.composition`
+                   commands of `python -m lekto.composition`
 ```
 
 Dependency rules, enforced by `uv run lint-imports`:
@@ -38,12 +38,12 @@ pattern matcher (`regex`, a search with a time limit) and the template renderer 
   Further ports: `ObjectStore`, `Clock`, `Ocr`, `DocumentParser`, `PageRenderer`,
   `PasswordHasher`, `SecretCipher`, `Totp`, `OidcProvider`, `LanguageModel`, `Embeddings`,
   `SearchIndex`, `PatternMatcher`, `WebhookSender`.
-  Each is imported from its module (`papiq.core.ports.repository`, ...); the package
+  Each is imported from its module (`lekto.core.ports.repository`, ...); the package
   re-exports nothing.
 - `core/services`: use cases (users, spaces, master data, documents, pipeline, inbox,
   classification, rules, indexing, search, webhooks, maintenance). Each runs in one unit of work and checks the caller's rights.
 
-`papiq.composition.container.build_memory_container()` wires all designed ports to their
+`lekto.composition.container.build_memory_container()` wires all designed ports to their
 in-memory adapters (fakes for OCR, parser and previews); `build_services()` creates the use
 cases on top.
 
@@ -78,7 +78,7 @@ whether it is active. A deactivated user has no rights and cannot authenticate.
   changes or is reset (the caller's own session is renewed). Every sign-in starts a new session.
   Last use is written at most once a minute. The CSRF token of a session is derived from its
   token (HMAC), so nothing more is stored.
-- API tokens: `papiq_` plus 256 random bits, stored as SHA-256; scope `read` or `read_write`,
+- API tokens: `lekto_` plus 256 random bits, stored as SHA-256; scope `read` or `read_write`,
   a name, optional expiry, last use. Shown once. They survive a password change unless the
   caller (or the admin resetting it) asks to revoke them, and are refused while the account is
   deactivated.
@@ -130,8 +130,8 @@ SQLAlchemy 2 Core (async; aiosqlite, asyncpg); the domain classes are not ORM-ma
 - Claiming jobs uses `FOR UPDATE SKIP LOCKED` on Postgres and the write lock on SQLite.
 
 Migrations are one Alembic chain for both databases (batch mode on SQLite), in
-`adapters/outbound/sql/migrations`. Apply them with `python -m papiq.composition migrate`; it
-creates a missing SQLite file. `python -m papiq.composition check-schema [--wait SECONDS]` only
+`adapters/outbound/sql/migrations`. Apply them with `python -m lekto.composition migrate`; it
+creates a missing SQLite file. `python -m lekto.composition check-schema [--wait SECONDS]` only
 looks (exit 0 if the schema is at the newest revision of this version; a database migrated by a
 newer version fails at once); the image's worker waits with it for the API container's migration.
 A schema change needs both an edit of `tables.py` and a new
@@ -224,7 +224,7 @@ jobs of the old run are recognised as stale.
   revision 0021), so a retry asks the model again; reprocessing from `parse` and `reparse` keep
   the model's text (it is the archive's), reprocessing from `ocr` reads with Tesseract (the web UI asks first whether the model shall
   read again, and then calls `POST /documents/{id}/vision`). The archive's metadata names the
-  reader: `/Creator` and `xmp:CreatorTool` say `Papiq, vision language model <model> (read-1)`. A page
+  reader: `/Creator` and `xmp:CreatorTool` say `Lekto, vision language model <model> (read-1)`. A page
   the model cannot read fails the node like the language model (`LanguageModelError`: retried,
   then red). The plugin gets its configuration in the environment of OCRmyPDF's process (the
   key apart, never logged) and leaves a record per page in a folder of ours. The log names
@@ -251,7 +251,7 @@ jobs of the old run are recognised as stale.
   Pages are separated by a form feed on a line of its own. Headers and footers stay in the
   text (the identifiers of a letter's footer among them). A document parsed before 0.2 keeps
   Docling's Markdown (`content.md`) until its text is read again (`reparse`); it is read
-  meanwhile. The structure is Papiq's own JSON:
+  meanwhile. The structure is Lekto's own JSON:
   the pages with their size, the lines and words with boxes in fractions of the page as shown.
   It replaced Docling in 0.2: on the documents compared (`.idea/umsetzungsplan.md`) Docling
   dropped headers and footers, merged the rows of forms and needed a minute and 2 GB per
@@ -610,7 +610,7 @@ it confirms. A recurring job (`classifier.check`,
 every ten minutes) queues the training (`classifier.train`, which may take an hour before another
 worker takes it over) once `LEKTO_CLASSIFIER_MIN_EXAMPLES`
 documents are confirmed and no model exists, or `LEKTO_CLASSIFIER_RETRAIN_AFTER` were confirmed
-since the last one; `python -m papiq.composition train` and `POST /classifier/train` train at
+since the last one; `python -m lekto.composition train` and `POST /classifier/train` train at
 once. Training also learns identifiers of contacts: one that stands in at least two confirmed
 documents, all of one contact (the household's own IBAN stands on letters of many and is never
 learned); a learned identifier an admin rejected stays rejected. The model is stored as `npz`
@@ -630,12 +630,12 @@ alone, so a new scikit-learn version cannot break it. It sees about the first 8,
    index's layout 2 (fields with a value, the title's sort key, periods in ISO), with the
    vectors it has.
 2. 0.2 reads the text as it is set instead of Docling's Markdown. A document parsed before
-   keeps its Markdown, which is read meanwhile, until `python -m papiq.composition reparse` (or
+   keeps its Markdown, which is read meanwhile, until `python -m lekto.composition reparse` (or
    `POST /pipeline/reparse`) has the worker read its text again; nodes, lane and metadata stay
    as they are. The search index then takes up the new texts, which embeds every document anew
    (with an embedding service elsewhere this takes a while: choose the time), and the
    classifier is trained on the new texts afterwards (`train`).
-3. 0.2 reads the bar and QR codes on the pages. `python -m papiq.composition read-codes` has
+3. 0.2 reads the bar and QR codes on the pages. `python -m lekto.composition read-codes` has
    the worker read them for the documents from before and keep the identifiers each document
    shows (`document_identifiers`), so that the warning when attaching an identifier counts
    every confirmed document. It reads locally and sends nothing out; nodes, lane and metadata
@@ -663,7 +663,7 @@ alone, so a new scikit-learn version cannot break it. It sees about the first 8,
    next run (`train` trains at once).
 4. Logos of contacts come by upload. Fetching them from the contacts' websites is off: with
    `LEKTO_LOGO_FETCH=true` a contact without a logo that gets a domain has it fetched, and
-   `python -m papiq.composition fetch-logos` fetches them for the contacts from before
+   `python -m lekto.composition fetch-logos` fetches them for the contacts from before
    (outgoing HTTPS to their domains only).
 
 **After the update to 0.4.** Revision 0030 runs at start. Nothing is new then: the documents
@@ -673,7 +673,11 @@ everything open, not only yellow and red documents: a client that wants those as
 `tab=review` or `tab=intervene`. Documents taken over from Paperless-ngx with their metadata
 (`migration`) are not new: the metadata are a person's (see Inbox).
 
-**Evaluation.** `python -m papiq.composition evaluate [--fake]` runs the synthetic documents in
+**After the update to 0.5.** The project is called Lekto now, not Papiq: variables, cookies,
+search index, SQLite file and classifier format have new names, and nothing reads the old ones.
+The steps are in [deploy/README.md](../deploy/README.md) ("Upgrading from Papiq").
+
+**Evaluation.** `python -m lekto.composition evaluate [--fake]` runs the synthetic documents in
 `evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).
 
 ## Rules
@@ -836,7 +840,7 @@ meaning took part.
 - **Sorting.** `sort` comes first among Meilisearch's ranking rules, so relevance breaks ties,
   also with vectors; document date, arrival and the title's sort key are sortable. Without
   `sort` (or with `relevance`), the hits come by relevance.
-- **Rebuild at any time.** `POST /search/reindex` (admins) or `python -m papiq.composition
+- **Rebuild at any time.** `POST /search/reindex` (admins) or `python -m lekto.composition
   reindex` builds `<index>-rebuild` from the database and the object store, 50 documents per
   request, while the active index keeps serving, swaps it in and reconciles what changed
   meanwhile. The index holds no information that is not in the database.
@@ -866,7 +870,7 @@ meaning took part.
 - **Health.** `GET /health` includes `search` when it is configured. If only the search is
   down, the status is `degraded` and the answer stays `200`: the API works without it.
 
-**Evaluation of the embedding model.** `python -m papiq.composition evaluate-search [--fake]
+**Evaluation of the embedding model.** `python -m lekto.composition evaluate-search [--fake]
 [--models a,b] [--ratios 0,0.5,1]` indexes the documents of the evaluation set with each model in
 a temporary Meilisearch index and runs the queries of `evaluation/search/queries.json`; see
 [evaluation/README.md](evaluation/README.md).
@@ -892,16 +896,16 @@ a temporary Meilisearch index and runs the queries of `evaluation/search/queries
     `adapters/outbound/pillow`) reads PNG, JPEG, WebP and ICO only, checks the size before it
     decodes (at most 4096 × 4096 pixels; of an ICO every picture by its own header) and writes
     a WebP keeping transparency. An uploaded logo is never replaced by a fetched one.
-  - *Fetch* (`LEKTO_LOGO_FETCH=true`; off by default, Papiq then never asks the web on its own):
+  - *Fetch* (`LEKTO_LOGO_FETCH=true`; off by default, Lekto then never asks the web on its own):
     the worker's job `contacts.logo` asks the contact's own website for its icon, the port
     `LogoFetcher` (`adapters/outbound/logos`, httpx2). It is queued when a contact without a
     logo, or with a fetched one, gets a domain among its identifiers (entered by hand, learned
     by training, attached from a document; a logo found there replaces the fetched one, none
     found leaves it), by an admin (`POST /contacts/{id}/logo/fetch`; all its domains in turn,
     also one that failed; may replace a fetched logo) and for the contacts without a logo with
-    `python -m papiq.composition fetch-logos`. A job that runs while `LEKTO_LOGO_FETCH` is off
+    `python -m lekto.composition fetch-logos`. A job that runs while `LEKTO_LOGO_FETCH` is off
     (switched off after it was queued) ends at once with the note "not fetched: fetching logos
-    is off", without waiting or retries; the button answers `503` ("Papiq does not fetch
+    is off", without waiting or retries; the button answers `503` ("Lekto does not fetch
     logos") then. It reads the page of the domain (or of `www.`),
     the apple-touch-icon, `<link rel="icon">` with sizes and the web app manifest (with the
     standard library's `html.parser`), and `/favicon.ico`, and takes the largest raster icon of
@@ -921,12 +925,12 @@ a temporary Meilisearch index and runs the queries of `evaluation/search/queries
 
 ## REST API
 
-`python -m papiq.composition api` (with `LEKTO_ROLE` `all` or `api`) serves
+`python -m lekto.composition api` (with `LEKTO_ROLE` `all` or `api`) serves
 `adapters/inbound/rest` with Uvicorn on `LEKTO_API_HOST`:`LEKTO_API_PORT`. All routes are below
 `/api/v1`; the OpenAPI document is `/api/v1/openapi.json`, the interactive docs `/api/v1/docs`.
 
 Authentication: a session cookie from `POST /auth/login` or the OIDC callback, or a personal
-API token as `Authorization: Bearer papiq_…` (a Bearer header wins over a cookie). Every route
+API token as `Authorization: Bearer lekto_…` (a Bearer header wins over a cookie). Every route
 depends on it except the five public ones (sign-in, OIDC start, info and callback, health); a
 test calls every registered route without credentials and expects `401`. Requests that change
 something need, with a session, the header `X-CSRF-Token` (from the sign-in answer or
@@ -937,8 +941,8 @@ password, reset passwords, turn TOTP off and remove links. Admins cannot reset t
 password or TOTP there; that goes through `/auth/*` with the current password or a code. Event streams check every 30
 seconds that their session or token still holds and end otherwise.
 
-The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax`, `Path=/`, for
-`LEKTO_SESSION_MAX_AGE`; with `LEKTO_COOKIE_SECURE=false` it is `papiq_session` without
+The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax`, `Path=/`, for
+`LEKTO_SESSION_MAX_AGE`; with `LEKTO_COOKIE_SECURE=false` it is `lekto_session` without
 `Secure`. Sign-in accepts JSON only, so a form on another site cannot sign anyone in.
 
 | Endpoint | Purpose |
@@ -1027,7 +1031,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 
 ## Worker
 
-`python -m papiq.composition worker` (with `LEKTO_ROLE` `all` or `worker`) runs
+`python -m lekto.composition worker` (with `LEKTO_ROLE` `all` or `worker`) runs
 `adapters/inbound/worker`:
 
 - `LEKTO_WORKER_CONCURRENCY` loops claim and run due jobs; each waits
@@ -1065,7 +1069,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 
 ## Webhooks
 
-A user subscribes to document events and Papiq sends a signed `POST` to a URL (n8n, Home
+A user subscribes to document events and Lekto sends a signed `POST` to a URL (n8n, Home
 Assistant, any service). Webhooks belong to the user who created them; the API is under
 `/webhooks` (create, list, change, switch off, delete, renew the secret, test, delivery log).
 Admins may do everything with every webhook: read it and its log, change, delete, test, renew the
@@ -1083,7 +1087,7 @@ that wants the state of the document fetches it; `document.filed` is not sent wh
 is still being processed. `document.deleted` goes to those who could read the document
 when it was deleted.
 
-**The request.** `POST <url>`, `Content-Type: application/json`, `User-Agent: Papiq/<version>`,
+**The request.** `POST <url>`, `Content-Type: application/json`, `User-Agent: Lekto/<version>`,
 and a body that names the event only; the receiver fetches details through the API with a token
 of its own:
 
@@ -1140,7 +1144,7 @@ KEY=$(printf %s "${SECRET#whsec_}" | base64 -d | od -An -vtx1 | tr -d ' \n')
 `LEKTO_WEBHOOK_MAX_ATTEMPTS` attempts with `LEKTO_WEBHOOK_RETRY_DELAY` doubling up to an hour
 (30 s, 1, 2, 4, 8, 16, 32, 60, 60 minutes: about three hours). `3xx` and every other `4xx` are
 final: redirects are never followed, since the signature would not hold for another target.
-After `LEKTO_WEBHOOK_DISABLE_AFTER` (20) deliveries given up in a row Papiq switches the webhook
+After `LEKTO_WEBHOOK_DISABLE_AFTER` (20) deliveries given up in a row Lekto switches the webhook
 off (`active: false`, `disabled_reason: failing`); switching it on again clears the count.
 A receiver that is down delays the deliveries behind it, since the `LEKTO_WEBHOOK_CONCURRENCY`
 loops wait for it up to the timeout per attempt; the pipeline is not affected.
@@ -1150,7 +1154,7 @@ event, `outcome` (`delivered`, `retrying`, `gave_up`, `dropped`), HTTP status, d
 and the time of the next attempt. The receiver's answer is neither stored nor shown. Rows are
 removed after `LEKTO_RETENTION`.
 
-**Secrets.** Papiq generates the secret and shows it once, in the answer to creating a webhook
+**Secrets.** Lekto generates the secret and shows it once, in the answer to creating a webhook
 or renewing its secret. It is stored encrypted with `LEKTO_SECRET_KEY` (the worker needs the key
 too, to sign). Renewing keeps the old secret signing next to the new one for
 `LEKTO_WEBHOOK_SECRET_GRACE` (24 hours), so the receiver can switch without a gap; renewing again
@@ -1169,7 +1173,7 @@ The API serves the Model Context Protocol (Streamable HTTP, stateless, JSON answ
 `LEKTO_MCP_ENABLED=false` removes it. It is not part of the OpenAPI document.
 
 Authentication: a personal API token (`POST /auth/tokens`; the web UI will offer it later) as
-`Authorization: Bearer papiq_…`; cookies do not count. Without a valid token the answer is `401`
+`Authorization: Bearer lekto_…`; cookies do not count. Without a valid token the answer is `401`
 (`WWW-Authenticate: Bearer`). A client sees exactly what its token's user sees. The scope works
 as in REST: `read` may use every tool but `update_metadata`.
 
@@ -1187,8 +1191,8 @@ document the caller may not read is "not found", with the same text as a missing
 Set up Claude Code (use a `read` token if the client should only read):
 
 ```sh
-claude mcp add --transport http papiq https://papiq.example.org/api/v1/mcp \
-  --header "Authorization: Bearer papiq_..."
+claude mcp add --transport http lekto https://lekto.example.org/api/v1/mcp \
+  --header "Authorization: Bearer lekto_..."
 ```
 
 Other clients take the same URL and header; the MCP Inspector
@@ -1200,7 +1204,7 @@ handling; requests are plain `POST`s with JSON bodies, limited by `LEKTO_REQUEST
 
 Environment variables with the prefix `LEKTO_` only; there is no configuration file. Invalid or
 contradictory configuration stops the start with a message naming the variables. Check it with
-`python -m papiq.composition`, which prints the effective configuration without secrets.
+`python -m lekto.composition`, which prints the effective configuration without secrets.
 
 Secrets (marked *secret*) can also be passed as `LEKTO_<NAME>_FILE=/run/secrets/...` (Docker
 secrets): the file content, without one trailing newline, is the value. Setting both
@@ -1225,7 +1229,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `LEKTO_LOG_FORMAT` | both | `json` | `json` or `console` |
 | `LEKTO_LOG_LEVEL` | both | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
 | `LEKTO_DB_TYPE` | both | `sqlite` | `sqlite` or `postgres` |
-| `LEKTO_DB_SQLITE_PATH` | both | `data/papiq.db`; image: `/data/papiq.db` | SQLite only; local volume (WAL), never a network share |
+| `LEKTO_DB_SQLITE_PATH` | both | `data/lekto.db`; image: `/data/lekto.db` | SQLite only; local volume (WAL), never a network share |
 | `LEKTO_DB_HOST` | both | unset | required for `postgres` |
 | `LEKTO_DB_PORT` | both | `5432` |  |
 | `LEKTO_DB_NAME` | both | unset | required for `postgres` |
@@ -1243,15 +1247,15 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `LEKTO_API_PORT` | API | `8000` | `0`: the operating system picks a free port, which the log line `api started` names (for tests; the image's health check needs a fixed port) |
 | `LEKTO_UPLOAD_MAX_SIZE` | API | `100MiB` | Largest upload; bytes or with unit (`50MB`, `1GiB`); a proxy's body limit must allow it |
 | `LEKTO_REQUEST_MAX_SIZE` | API | `1MiB` | Largest body of every other request (JSON); larger ones get `413` |
-| `LEKTO_UI_DIR` | API | unset; image: `/opt/papiq/ui` | The built web UI (`web/build`), served below `/ui`; `/` leads there. Must contain `index.html`; unset serves the API only |
-| `LEKTO_FORWARDED_ALLOW_IPS` | API | unset; required with `LEKTO_COOKIE_SECURE=true` | Reverse proxies whose `X-Forwarded-For` is trusted (comma-separated). Secure cookies mean a TLS-terminating proxy in front of Papiq: name its address, or the per-source throttle sees only the proxy. `*` only if the proxy sets the header itself, replacing what clients send |
+| `LEKTO_UI_DIR` | API | unset; image: `/opt/lekto/ui` | The built web UI (`web/build`), served below `/ui`; `/` leads there. Must contain `index.html`; unset serves the API only |
+| `LEKTO_FORWARDED_ALLOW_IPS` | API | unset; required with `LEKTO_COOKIE_SECURE=true` | Reverse proxies whose `X-Forwarded-For` is trusted (comma-separated). Secure cookies mean a TLS-terminating proxy in front of Lekto: name its address, or the per-source throttle sees only the proxy. `*` only if the proxy sets the header itself, replacing what clients send |
 | `LEKTO_SECRET_KEY` | both | required | *secret*; 32 bytes base64 (`openssl rand -base64 32`); encrypts TOTP and webhook secrets, the worker decrypts the latter to sign. Keep it: without it they cannot be read. The development key is refused with secure cookies |
 | `LEKTO_ADMIN_USERNAME` | API | unset | The first admin, created at API start while there is no active admin; set together with the password |
 | `LEKTO_ADMIN_PASSWORD` | API | unset | *secret*; see above |
 | `LEKTO_SESSION_IDLE_TIMEOUT` | API | `P1D` | A session ends when unused this long |
 | `LEKTO_SESSION_MAX_AGE` | API | `P30D` | A session ends this long after sign-in; not shorter than the idle timeout |
 | `LEKTO_COOKIE_SECURE` | API | `true` | `false` only for development over plain HTTP |
-| `LEKTO_PUBLIC_URL` | API | unset | Where browsers reach Papiq (`https://papiq.example.org`); required with OIDC |
+| `LEKTO_PUBLIC_URL` | API | unset | Where browsers reach Lekto (`https://lekto.example.org`); required with OIDC |
 | `LEKTO_OIDC_ISSUER` | API | unset | OpenID Connect: set issuer, client id and client secret together or none; the issuer is `https` and compared exactly. Register `<LEKTO_PUBLIC_URL>/api/v1/auth/oidc/callback` as redirect URI |
 | `LEKTO_OIDC_CLIENT_ID` | API | unset | see above |
 | `LEKTO_OIDC_CLIENT_SECRET` | API | unset | *secret*; see above |
@@ -1281,7 +1285,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `LEKTO_OCR_TIMEOUT` | Worker | `600` | Seconds per document for OCR |
 | `LEKTO_MEILISEARCH_URL` | both | unset | Without it there is no search (the API searches, the worker indexes) |
 | `LEKTO_MEILISEARCH_API_KEY` | both | unset | *secret*; the master key or a key with access to the index |
-| `LEKTO_MEILISEARCH_INDEX` | both | `papiq-documents` | The active index; a rebuild fills `<name>-rebuild` and swaps it in |
+| `LEKTO_MEILISEARCH_INDEX` | both | `lekto-documents` | The active index; a rebuild fills `<name>-rebuild` and swaps it in |
 | `LEKTO_MEILISEARCH_TIMEOUT` | both | `30` | Seconds per request |
 | `LEKTO_MEILISEARCH_TASK_TIMEOUT` | Worker | `120` | Seconds a write waits for its task |
 | `LEKTO_SEARCH_LOCALES` | both | `deu+eng` | Languages of the documents, ISO 639-3 codes joined by `+` (index settings) |
@@ -1321,7 +1325,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `LEKTO_CLASSIFIER_RETRAIN_AFTER` | both | `25` | Documents confirmed since the last model before it is trained again |
 | `LEKTO_CLASSIFIER_THRESHOLD` | Worker | `0.8` | A prediction this sure names its contact, type or tag |
 | `LEKTO_NEIGHBOURS` | Worker | `5` | Similar confirmed documents that vote on a new one (needs the search index with embeddings); `0` turns them off |
-| `LEKTO_LOGO_FETCH` | both | `false` | Fetch the logos of contacts from their own websites (worker; the API offers the button): HTTPS to public addresses only, see Logos. Off, Papiq never asks the web on its own |
+| `LEKTO_LOGO_FETCH` | both | `false` | Fetch the logos of contacts from their own websites (worker; the API offers the button): HTTPS to public addresses only, see Logos. Off, Lekto never asks the web on its own |
 | `LEKTO_RULES_PATTERN_TIMEOUT` | both | `0.2` | Seconds a regular expression of a rule may run per text or value (worker: rules; API: previews) |
 | `LEKTO_RULES_MAX_TEXT` | both | `200000` | Characters of text rules look at (1,000 to 10,000,000) |
 | `LEKTO_RULES_APPLY_MAX_DOCUMENTS` | both | `1000` | Documents per retroactive rule application (1 to 100,000) |

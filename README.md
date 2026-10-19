@@ -1,6 +1,6 @@
-# p:api:q
+# Lekto DMS
 
-**Papiq** is a self-hosted, headless document management system and a replacement for
+**Lekto DMS** is a self-hosted, headless document management system and a replacement for
 Paperless-ngx. Every feature is exposed through the REST API; the web UI, the MCP server for AI
 clients and the Paperless migration tool are clients of that API. Documents run through OCR,
 parsing and a classification whose confidence comes from verifiable facts, and end up in one of
@@ -35,7 +35,7 @@ three lanes: green (done), yellow (confirm), red (intervene).
 plus Meilisearch, optionally Postgres and Garage): [deploy/README.md](deploy/README.md).
 
 ```sh
-docker build --target runtime -t papiq:local .
+docker build --target runtime -t lekto:local .
 cd deploy && ./create-secrets.sh && docker compose -f compose.sqlite.yml up -d --build
 ```
 
@@ -45,8 +45,8 @@ Ollama or another OpenAI-compatible endpoint; without one, documents stop yellow
 classify and the search works with words only.
 
 **Run it from the devcontainer** (development, or a personal instance on your machine): open the
-repository in VS Code, "Reopen in Container", run the task **Papiq: Devinstanz einrichten**, fill
-in `.devcontainer/live.env`, run **Papiq starten**. Details, data separation, backup and the
+repository in VS Code, "Reopen in Container", run the task **Lekto: Devinstanz einrichten**, fill
+in `.devcontainer/live.env`, run **Lekto starten**. Details, data separation, backup and the
 migration from Paperless: [.devcontainer/README.md](.devcontainer/README.md).
 
 **Take a Paperless-ngx archive over:** [migration/README.md](migration/README.md) (`plan`, `run`,

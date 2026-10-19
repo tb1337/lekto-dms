@@ -1,17 +1,17 @@
-# Papiq in the devcontainer: development and the development instance
+# Lekto in the devcontainer: development and the development instance
 
-The devcontainer (`devcontainer.json`, `compose.yml`) is where Papiq is developed and tested, and
-where the **development instance** runs: a Papiq with real documents, started from VS Code tasks,
+The devcontainer (`devcontainer.json`, `compose.yml`) is where Lekto is developed and tested, and
+where the **development instance** runs: a Lekto with real documents, started from VS Code tasks,
 sharing Postgres, Garage and Meilisearch with development and tests but with its own database,
-bucket and search index. Nothing here is reachable from outside the machine; Papiq speaks plain
+bucket and search index. Nothing here is reachable from outside the machine; Lekto speaks plain
 HTTP on `localhost`.
 
 | Service (`compose.yml`) | Purpose |
 | --- | --- |
 | `dev` | The workspace: target `dev` of the `Dockerfile` (the system packages of the runtime image, Python 3.13 with uv, Node.js with pnpm, Git, GitHub CLI, Claude Code) |
-| `postgres` | Databases `papiq` (development), `papiq_test_*` (integration tests, created and dropped per test) and `papiq_live` (the development instance) |
-| `garage` | S3 object store; `garage-init` creates the key and the buckets `papiq` (development, tests below `tests/`) and `papiq-live` (the development instance) at every start |
-| `meilisearch` | Search; indexes `papiq-documents` (development), `papiq-test-*` (tests) and `papiq-live-documents` (the development instance) |
+| `postgres` | Databases `lekto` (development), `lekto_test_*` (integration tests, created and dropped per test) and `lekto_live` (the development instance) |
+| `garage` | S3 object store; `garage-init` creates the key and the buckets `lekto` (development, tests below `tests/`) and `lekto-live` (the development instance) at every start |
+| `meilisearch` | Search; indexes `lekto-documents` (development), `lekto-test-*` (tests) and `lekto-live-documents` (the development instance) |
 
 The credentials in `dev.env` are fixed development values and never leave the machine. Ports
 8000 (API), 5173 (Vite), 7700 (Meilisearch) and 3900 (Garage) are forwarded to the host.
@@ -20,24 +20,26 @@ The credentials in `dev.env` are fixed development values and never leave the ma
 
 | Use | Settings | Database | Bucket | Index |
 | --- | --- | --- | --- | --- |
-| Development (`uv run python -m papiq.composition api`, `pnpm dev`) | `dev.env`, injected into the container | `papiq` | `papiq` | `papiq-documents` |
-| Tests (`uv run pytest -m integration`) | `dev.env`; the tests derive their own names | `papiq_test_<random>` | `papiq`, prefix `tests/<random>/` | `papiq-test-<random>` |
-| Development instance (the tasks) | `live.env` (not in the repository) | `papiq_live` | `papiq-live` | `papiq-live-documents` |
+| Development (`uv run python -m lekto.composition api`, `pnpm dev`) | `dev.env`, injected into the container | `lekto` | `lekto` | `lekto-documents` |
+| Tests (`uv run pytest -m integration`) | `dev.env`; the tests derive their own names | `lekto_test_<random>` | `lekto`, prefix `tests/<random>/` | `lekto-test-<random>` |
+| Development instance (the tasks) | `live.env` (not in the repository) | `lekto_live` | `lekto-live` | `lekto-live-documents` |
 
 The tests create and remove their databases, prefixes and indexes themselves. Running
-`pytest -m integration` while the development instance is up changes nothing in `papiq_live`,
-`papiq-live` or `papiq-live-documents`. The volumes (`postgres-data`, `garage-meta`,
+`pytest -m integration` while the development instance is up changes nothing in `lekto_live`,
+`lekto-live` or `lekto-live-documents`. The volumes (`postgres-data`, `garage-meta`,
 `garage-data`, `meilisearch-data`) outlive rebuilds of the devcontainer; `docker compose down -v`
 in `.devcontainer/` deletes them all, including the development instance.
+The Compose project keeps the former name `papiq-dev`, so the volumes of a devcontainer from
+before the rename to Lekto stay (containers `papiq-dev-postgres-1`, network `papiq-dev_default`).
 
 ## Set the development instance up
 
 Once, in the devcontainer (VS Code: Terminal → Run Task):
 
-1. **Papiq: Devinstanz einrichten** copies `live.env.example` to `live.env` with a fresh
-   `LEKTO_SECRET_KEY` and creates the database `papiq_live` (the bucket comes from
-   `garage-init`, the index from Papiq). It never overwrites an existing `live.env`. In a
-   devcontainer that was started before the bucket `papiq-live` existed, run `garage-init`
+1. **Lekto: Devinstanz einrichten** copies `live.env.example` to `live.env` with a fresh
+   `LEKTO_SECRET_KEY` and creates the database `lekto_live` (the bucket comes from
+   `garage-init`, the index from Lekto). It never overwrites an existing `live.env`. In a
+   devcontainer that was started before the bucket `lekto-live` existed, run `garage-init`
    once (`docker compose -f .devcontainer/compose.yml run --rm garage-init`, from the container
    or the host) or rebuild the container; `/api/v1/health` says `object_store: failed` until then.
 2. Fill in `live.env`: `LEKTO_ADMIN_USERNAME` and `LEKTO_ADMIN_PASSWORD` for the first admin
@@ -47,7 +49,7 @@ Once, in the devcontainer (VS Code: Terminal → Run Task):
    `LEKTO_EMBEDDING_API_KEY` (or remove the model variables to run without a language model: documents then stop yellow for the
    contact and the type, and the search works with words only). The other values fit the
    devcontainer. All variables: [backend/README.md](../backend/README.md#configuration).
-3. **Papiq starten** (below).
+3. **Lekto starten** (below).
 
 Keep `LEKTO_SECRET_KEY` (TOTP and webhook secrets are encrypted with it) and the admin password
 in your password manager, not only in `live.env`.
@@ -56,27 +58,27 @@ in your password manager, not only in `live.env`.
 
 | Task | What it does |
 | --- | --- |
-| **Papiq starten** | `Papiq: Schema migrieren`, `Papiq: UI bauen`, then `Papiq: API` and `Papiq: Worker` side by side, each in its own terminal |
-| **Papiq stoppen** | Ends the API and worker tasks (SIGTERM; the worker finishes running jobs within `LEKTO_WORKER_SHUTDOWN_TIMEOUT`, 30 s) |
-| Papiq: API, Papiq: Worker | One service alone (both run migration first; the API also builds the UI) |
-| Papiq: Schema migrieren | `python -m papiq.composition migrate` with `live.env` |
-| Papiq: UI bauen | `pnpm build` in `web/`; the API serves `web/build` below `/ui` (`LEKTO_UI_DIR`) |
-| Papiq: UI dev | Vite on <http://localhost:5173/ui/> with `/api` proxied to the API, for UI work with hot reload |
-| Papiq: Suche neu aufbauen | `reindex`: rebuild the search index from database and bucket (after a restore, a model change, or to add vectors) |
-| Papiq: Seitenbilder nachholen | `render-pages`: queue the page images of documents from before the pages node; the worker renders them |
-| Papiq: Codes nachholen | `read-codes`: queue reading the bar and QR codes of documents from before code reading; the worker reads them and keeps the identifiers each document shows |
-| Migration: plan, run, verify | The Paperless migration client with the `PAPIQ_MIGRATION_*` variables of `live.env` (see below) |
+| **Lekto starten** | `Lekto: Schema migrieren`, `Lekto: UI bauen`, then `Lekto: API` and `Lekto: Worker` side by side, each in its own terminal |
+| **Lekto stoppen** | Ends the API and worker tasks (SIGTERM; the worker finishes running jobs within `LEKTO_WORKER_SHUTDOWN_TIMEOUT`, 30 s) |
+| Lekto: API, Lekto: Worker | One service alone (both run migration first; the API also builds the UI) |
+| Lekto: Schema migrieren | `python -m lekto.composition migrate` with `live.env` |
+| Lekto: UI bauen | `pnpm build` in `web/`; the API serves `web/build` below `/ui` (`LEKTO_UI_DIR`) |
+| Lekto: UI dev | Vite on <http://localhost:5173/ui/> with `/api` proxied to the API, for UI work with hot reload |
+| Lekto: Suche neu aufbauen | `reindex`: rebuild the search index from database and bucket (after a restore, a model change, or to add vectors) |
+| Lekto: Seitenbilder nachholen | `render-pages`: queue the page images of documents from before the pages node; the worker renders them |
+| Lekto: Codes nachholen | `read-codes`: queue reading the bar and QR codes of documents from before code reading; the worker reads them and keeps the identifiers each document shows |
+| Migration: plan, run, verify | The Paperless migration client with the `LEKTO_MIGRATION_*` variables of `live.env` (see below) |
 
-Nothing starts when the container opens. After **Papiq starten**, open
+Nothing starts when the container opens. After **Lekto starten**, open
 <http://localhost:8000/ui/> and sign in as the admin from `live.env`; the API documentation is
 at <http://localhost:8000/api/v1/docs>. The tasks use the terminals of VS Code; the logs are
 there (`LEKTO_LOG_FORMAT=console`).
 
 **Update after `git pull`:** `uv sync` in `backend/` and `pnpm install` in `web/` when the lock
-files changed (the devcontainer runs both after a rebuild), then **Papiq stoppen** and **Papiq
+files changed (the devcontainer runs both after a rebuild), then **Lekto stoppen** and **Lekto
 starten**: the start migrates the schema (a new Alembic revision is applied before API and
 worker come up) and builds the UI anew. A schema migration cannot be undone: take a backup first
-when the pull brings a new revision (`git log --stat -- backend/src/papiq/adapters/outbound/sql/migrations/versions`).
+when the pull brings a new revision (`git log --stat -- backend/src/lekto/adapters/outbound/sql/migrations/versions`).
 
 **Rebuild of the devcontainer** ("Rebuild Container"): the volumes stay, `live.env` stays (it is
 a file in the workspace), the tasks work as before.
@@ -107,10 +109,10 @@ cores gain nothing (Docker Desktop or OrbStack: the cores of the VM, not of the 
 [migration/README.md](../migration/README.md) describes the client. For the development
 instance:
 
-1. In Papiq (as the admin): Settings → API tokens → create a token with scope `read_write`;
-   write it to the file `PAPIQ_MIGRATION_LEKTO_TOKEN_FILE` names in `live.env`
-   (`/tmp/papiq-token`, outside the repository). Write the Paperless API key to
-   `PAPIQ_MIGRATION_PAPERLESS_TOKEN_FILE` (`/tmp/paperless-token`). `/tmp` is emptied when the
+1. In Lekto (as the admin): Settings → API tokens → create a token with scope `read_write`;
+   write it to the file `LEKTO_MIGRATION_LEKTO_TOKEN_FILE` names in `live.env`
+   (`/tmp/lekto-token`, outside the repository). Write the Paperless API key to
+   `LEKTO_MIGRATION_PAPERLESS_TOKEN_FILE` (`/tmp/paperless-token`). `/tmp` is emptied when the
    container restarts; recreate the files then.
 2. **Migration: plan** reads Paperless and writes nothing; the report in
    `migration/migration-reports/` lists what would happen.
@@ -119,22 +121,22 @@ instance:
    the text as it is set takes milliseconds of that now). Ctrl-C in the terminal
    stops cleanly; running the task again continues. The state is in
    `migration/migration-state.sqlite`.
-4. **Migration: verify** compares Paperless and Papiq object by object.
+4. **Migration: verify** compares Paperless and Lekto object by object.
 
 Run the migration with the embedding variables commented out in `live.env` (restart API and
 worker after changing it): the pipeline then does not call Ollama for every document. Afterwards
-switch them on again, restart, and run **Papiq: Suche neu aufbauen** once to get the vectors.
+switch them on again, restart, and run **Lekto: Suche neu aufbauen** once to get the vectors.
 The rebuild runs in one go and cannot be split: measured in M13 over the reverse proxy it took
 about 10 s per document (1525 documents: over four hours), not the 0.7 s of the M6 measurement
 on the NUC itself, so check the model's machine first or plan the time. Switching embeddings
 **off** again while the index exists makes every indexing job fail (`vector_embedding_error`:
 the index keeps its `userProvided` embedder); delete the index in Meilisearch then (`curl -X
-DELETE -H "Authorization: Bearer $LEKTO_MEILISEARCH_API_KEY" $LEKTO_MEILISEARCH_URL/indexes/papiq-live-documents`),
+DELETE -H "Authorization: Bearer $LEKTO_MEILISEARCH_API_KEY" $LEKTO_MEILISEARCH_URL/indexes/lekto-live-documents`),
 the worker recreates it at its next reconcile.
 
 ## Backup and restore
 
-What to back up: the database `papiq_live` and the bucket `papiq-live`. Not Meilisearch (the
+What to back up: the database `lekto_live` and the bucket `lekto-live`. Not Meilisearch (the
 index is derived; `reindex` rebuilds it). Database first, then the objects (originals never
 change; an object that arrived after the database copy is only an unused file). Keep
 `LEKTO_SECRET_KEY` in your password manager.
@@ -142,36 +144,36 @@ change; an object that arrived after the database copy is only an unused file). 
 The backup uses the Postgres container and an `rclone` image. Run the commands **on the host**,
 in the repository folder (the paths of `-v` are host paths); from inside the devcontainer they
 work as well, since it talks to the host's Docker, but `BACKUP` must then be the host's path of
-the workspace (for example `/Users/you/papiq/backup/...`, not `/workspaces/papiq/...`). The
+the workspace (for example `/Users/you/lekto/backup/...`, not `/workspaces/papiq/...`). The
 folder `backup/` in the repository is ignored by Git.
 
 ```sh
 BACKUP=$PWD/backup/$(date +%Y-%m-%d)
 mkdir -p "$BACKUP"
-docker exec papiq-dev-postgres-1 pg_dump -U papiq -Fc papiq_live > "$BACKUP/papiq_live.dump"
+docker exec papiq-dev-postgres-1 pg_dump -U lekto -Fc lekto_live > "$BACKUP/lekto_live.dump"
 docker run --rm --network papiq-dev_default -v "$BACKUP:/backup" \
   -e RCLONE_CONFIG_GARAGE_TYPE=s3 -e RCLONE_CONFIG_GARAGE_PROVIDER=Other \
   -e RCLONE_CONFIG_GARAGE_ENDPOINT=http://garage:3900 -e RCLONE_CONFIG_GARAGE_REGION=garage \
   -e RCLONE_CONFIG_GARAGE_ACCESS_KEY_ID=GKdeadbeefdeadbeefdeadbeef \
   -e RCLONE_CONFIG_GARAGE_SECRET_ACCESS_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
-  rclone/rclone:1.75.1 sync garage:papiq-live /backup/objects
+  rclone/rclone:1.75.1 sync garage:lekto-live /backup/objects
 ```
 
-Restore (into the same devcontainer; stop Papiq first with **Papiq stoppen**):
+Restore (into the same devcontainer; stop Lekto first with **Lekto stoppen**):
 
 ```sh
-docker exec papiq-dev-postgres-1 dropdb -U papiq --if-exists papiq_live
-docker exec papiq-dev-postgres-1 createdb -U papiq papiq_live
-docker exec -i papiq-dev-postgres-1 pg_restore -U papiq -d papiq_live --no-owner < "$BACKUP/papiq_live.dump"
+docker exec papiq-dev-postgres-1 dropdb -U lekto --if-exists lekto_live
+docker exec papiq-dev-postgres-1 createdb -U lekto lekto_live
+docker exec -i papiq-dev-postgres-1 pg_restore -U lekto -d lekto_live --no-owner < "$BACKUP/lekto_live.dump"
 docker run --rm --network papiq-dev_default -v "$BACKUP:/backup:ro" \
   -e RCLONE_CONFIG_GARAGE_TYPE=s3 -e RCLONE_CONFIG_GARAGE_PROVIDER=Other \
   -e RCLONE_CONFIG_GARAGE_ENDPOINT=http://garage:3900 -e RCLONE_CONFIG_GARAGE_REGION=garage \
   -e RCLONE_CONFIG_GARAGE_ACCESS_KEY_ID=GKdeadbeefdeadbeefdeadbeef \
   -e RCLONE_CONFIG_GARAGE_SECRET_ACCESS_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
-  rclone/rclone:1.75.1 sync /backup/objects garage:papiq-live
+  rclone/rclone:1.75.1 sync /backup/objects garage:lekto-live
 ```
 
-Then **Papiq starten** and **Papiq: Suche neu aufbauen**. `rclone sync` makes the target equal
+Then **Lekto starten** and **Lekto: Suche neu aufbauen**. `rclone sync` makes the target equal
 to the source: a restore removes objects that are not in the backup. The Garage key above is the
 fixed development key from `dev.env`.
 
@@ -181,5 +183,5 @@ Every task is a shell command (`.vscode/tasks.json`): load `live.env` and run it
 
 ```sh
 set -a; . .devcontainer/live.env; set +a
-cd backend && uv run python -m papiq.composition api      # and `worker` in a second terminal
+cd backend && uv run python -m lekto.composition api      # and `worker` in a second terminal
 ```

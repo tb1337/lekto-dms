@@ -1,26 +1,26 @@
-# papiq deploy
+# lekto deploy
 
-Papiq ships as a single Docker image. s6-overlay runs as PID 1 and supervises the Papiq
+Lekto ships as a single Docker image. s6-overlay runs as PID 1 and supervises the Lekto
 processes inside it:
 
 | Service | Type | Purpose |
 | --- | --- | --- |
-| `init-papiq` | oneshot | check `PUID`/`PGID`, prepare the volume, validate the configuration |
+| `init-lekto` | oneshot | check `PUID`/`PGID`, prepare the volume, validate the configuration |
 | `init-migrations` | oneshot | `LEKTO_ROLE` `all`/`api`: migrate the database; `worker`: nothing |
 | `svc-api` | longrun | Uvicorn with FastAPI: REST, MCP, SSE, and the web UI below `/ui` |
 | `svc-worker` | longrun | waits for the schema (role `worker`), then pipeline jobs, outbox dispatch, webhook delivery |
 
-Outside the Papiq container: Postgres (if used), Garage (if S3 is used), Meilisearch, the
+Outside the Lekto container: Postgres (if used), Garage (if S3 is used), Meilisearch, the
 language model, an identity provider. With SQLite and the file system, the database and the files
-live on one volume of the Papiq container.
+live on one volume of the Lekto container.
 
 Image: Debian slim, Python 3.13, OCRmyPDF with Tesseract (German, English), s6-overlay 3.2.3.2,
-the built web UI in `/opt/papiq/ui` (static files; no Node.js in the image). For `amd64` and
+the built web UI in `/opt/lekto/ui` (static files; no Node.js in the image). For `amd64` and
 `arm64`. About 1.4 GB (`docker image inspect`; with Docling, before 0.2, it was 4.6 GB). Nothing secret is part of the image.
 
 ```sh
-docker build --target runtime -t papiq:local .     # in the repository root
-deploy/test-image.sh papiq:local                   # a few minutes: starts, migrates, health, user, web UI, roles, stop
+docker build --target runtime -t lekto:local .     # in the repository root
+deploy/test-image.sh lekto:local                   # a few minutes: starts, migrates, health, user, web UI, roles, stop
 ```
 
 Publishing the image comes with the release (M13); until then you build it yourself.
@@ -32,7 +32,7 @@ Two Compose files, both with Meilisearch; the language model is outside (see
 
 | File | Database | Files | Volumes |
 | --- | --- | --- | --- |
-| `compose.sqlite.yml` | SQLite | file system | `papiq-data` (`/data`), `meilisearch-data` |
+| `compose.sqlite.yml` | SQLite | file system | `lekto-data` (`/data`), `meilisearch-data` |
 | `compose.postgres.yml` | Postgres 17 | Garage (S3) | `postgres-data`, `garage-meta`, `garage-data`, `meilisearch-data` |
 
 ```sh
@@ -51,8 +51,8 @@ before anyone else uses it (see [Reverse proxy](#reverse-proxy)).
 
 Environment variables with the prefix `LEKTO_`, no configuration file; the Compose files show
 the ones that matter. The start stops with a message naming every invalid variable (`docker compose
-up` without `-d`, or `docker compose logs papiq`). A running container prints its effective
-configuration, secrets masked, with `docker compose exec papiq papiq check`. The complete list is
+up` without `-d`, or `docker compose logs lekto`). A running container prints its effective
+configuration, secrets masked, with `docker compose exec lekto lekto check`. The complete list is
 in [backend/README.md](../backend/README.md#configuration).
 
 **Secrets** are passed as files (Docker secrets): `LEKTO_<NAME>_FILE=/run/secrets/…`; the file's
@@ -64,7 +64,7 @@ every process, in `/run/s6/container_environment` inside the container, and show
 gives Garage's two secrets the mode `0600` it insists on. By hand:
 
 ```sh
-openssl rand -base64 32 > secrets/papiq_secret_key   # LEKTO_SECRET_KEY: 32 random bytes, base64
+openssl rand -base64 32 > secrets/lekto_secret_key   # LEKTO_SECRET_KEY: 32 random bytes, base64
 ```
 
 `LEKTO_SECRET_KEY` is required by every service (it encrypts TOTP and webhook secrets). Losing it
@@ -72,7 +72,7 @@ means losing both. The key from `.devcontainer/dev.env` is public and refused wi
 (the default; the example stacks run with `LEKTO_COOKIE_SECURE=false` and would take it, so never
 copy it). Meilisearch has no
 `*_FILE` variable: its key reaches it through `secrets/meilisearch.env`, the one secret that is an
-environment variable of a container (visible in `docker inspect` of Meilisearch, not of Papiq).
+environment variable of a container (visible in `docker inspect` of Meilisearch, not of Lekto).
 
 | Variable | Default | Notes |
 | --- | --- | --- |
@@ -81,14 +81,14 @@ environment variable of a container (visible in `docker inspect` of Meilisearch,
 | `LEKTO_ADMIN_USERNAME`, `LEKTO_ADMIN_PASSWORD(_FILE)` | – | create the first admin while there is none |
 | `LEKTO_DB_TYPE` | `sqlite` | `postgres` needs `LEKTO_DB_HOST`, `_NAME`, `_USER`, `_PASSWORD(_FILE)` |
 | `LEKTO_STORAGE_TYPE` | `filesystem` | `s3` needs `LEKTO_S3_ENDPOINT_URL`, `_BUCKET`, `_ACCESS_KEY_ID(_FILE)`, `_SECRET_ACCESS_KEY(_FILE)` |
-| `LEKTO_MEILISEARCH_URL`, `_API_KEY(_FILE)` | – | search; without it Papiq works without search |
+| `LEKTO_MEILISEARCH_URL`, `_API_KEY(_FILE)` | – | search; without it Lekto works without search |
 | `LEKTO_LLM_BASE_URL`, `_MODEL` | – | set both or neither; `LEKTO_LLM_TIMEOUT` (seconds, 300) |
 | `LEKTO_EMBEDDING_BASE_URL`, `_MODEL`, `_DIMENSIONS`, `_QUERY_PREFIX` | – | with Meilisearch and embeddings the dimensions are required |
 | `LEKTO_VLM_BASE_URL`, `_MODEL`, `_API_KEY(_FILE)` | – | a vision language model that reads a document's pages when a person asks for it; set both or neither; `LEKTO_VLM_TIMEOUT` (seconds per document, 1800) |
 | `LEKTO_LOGO_FETCH` | `false` | fetch the logos of contacts from their own websites; see [Outgoing requests](#outgoing-requests) |
 | `LEKTO_COOKIE_SECURE`, `LEKTO_FORWARDED_ALLOW_IPS`, `LEKTO_PUBLIC_URL` | `true`, –, – | behind a proxy, see below |
 | `LEKTO_UPLOAD_MAX_SIZE` | 100 MiB | the proxy's body limit must allow it |
-| `LEKTO_UI_DIR` | `/opt/papiq/ui` | the web UI's files; unset it to serve the API only |
+| `LEKTO_UI_DIR` | `/opt/lekto/ui` | the web UI's files; unset it to serve the API only |
 | `LEKTO_WORKER_CONCURRENCY`, `LEKTO_WORKER_SHUTDOWN_TIMEOUT` | 2, 30 s | jobs at the same time (OCR shares the CPU cores among them); see [Stopping](#stopping) |
 | `LEKTO_MCP_ENABLED`, `LEKTO_MCP_TEXT_MAX` | `true`, 20000 | the MCP endpoint and the characters one `get_text` returns |
 | `LEKTO_WEBHOOKS_PER_USER` | 20 | webhooks per user |
@@ -101,7 +101,7 @@ Variables of the image itself (not `LEKTO_`, so not checked as settings): `PUID`
 
 ### Language model
 
-Papiq talks to any OpenAI-compatible endpoint; the examples point at Ollama on the host
+Lekto talks to any OpenAI-compatible endpoint; the examples point at Ollama on the host
 (`host.docker.internal:11434`) and use `qwen3:8b` and `snowflake-arctic-embed2`. Change the address
 with `LEKTO_LLM_BASE_URL`, `LEKTO_EMBEDDING_BASE_URL` and the models with `LEKTO_LLM_MODEL`,
 `LEKTO_EMBEDDING_MODEL` in your shell (empty: none). Start Ollama with `OLLAMA_CONTEXT_LENGTH=8192`
@@ -116,12 +116,12 @@ and give each line's box in pixels (measured with Claude Sonnet 5.5 through Open
 ### Outgoing requests
 
 Besides the endpoints configured above (language model, embeddings, vision model, identity
-provider, S3, webhooks of the users), Papiq asks nothing on the internet. Only with
+provider, S3, webhooks of the users), Lekto asks nothing on the internet. Only with
 `LEKTO_LOGO_FETCH=true` (off by default) does the worker fetch the logos of contacts from their
 own websites: the domains among their identifiers, which training also learns from documents.
 It goes over HTTPS to public addresses only (no private, loopback, link-local or shared address,
 checked again for every redirect, at most three) and reads at most 1 MB in 10 s per request,
-with the user agent `Papiq/<version>`; a website learns that this Papiq fetched its icon. No
+with the user agent `Lekto/<version>`; a website learns that this Lekto fetched its icon. No
 logo service of a third party is asked. A proxy from the environment is not used for it. Switched
 off again, fetches still queued end without asking. Logos uploaded by an admin need no setting.
 
@@ -144,21 +144,21 @@ streams assume it.
 
 ## User and volumes
 
-s6 starts as root. Every Papiq process (configuration check, migration, API, worker and the OCR
+s6 starts as root. Every Lekto process (configuration check, migration, API, worker and the OCR
 processes they start) runs as `PUID`:`PGID` (default `1000:1000`), never as root;
-`0` is refused. `init-papiq` makes that user the owner of `/data` (and of the paths you set with
+`0` is refused. `init-lekto` makes that user the owner of `/data` (and of the paths you set with
 `LEKTO_DB_SQLITE_PATH` and `LEKTO_STORAGE_PATH`): recursively only if the folder itself belongs to
 someone else, otherwise only the database files, so a large object store is not walked at each start.
 The caches of the libraries go to a `HOME` that disappears with the container.
 
-- `/data` is the only volume. The image sets `LEKTO_DB_SQLITE_PATH=/data/papiq.db` and
+- `/data` is the only volume. The image sets `LEKTO_DB_SQLITE_PATH=/data/lekto.db` and
   `LEKTO_STORAGE_PATH=/data/objects`. With Postgres and S3 it stays empty.
 - SQLite needs a local disk in WAL mode, never a network share. A share that does not allow
-  `chown` makes `init-papiq` fail with that message: set the owner on the share instead.
+  `chown` makes `init-lekto` fail with that message: set the owner on the share instead.
 - After restoring files into the volume as root, give them to `PUID`:`PGID` again (the restore
   commands below do).
-- Run commands of the application with `papiq` (it is `python -m papiq.composition` as that user):
-  `docker compose exec papiq papiq reindex`, `… papiq check-schema`.
+- Run commands of the application with `lekto` (it is `python -m lekto.composition` as that user):
+  `docker compose exec lekto lekto reindex`, `… lekto check-schema`.
 
 ## Health and logs
 
@@ -168,7 +168,7 @@ store that cannot be reached, is not) and the worker through its s6 service (up 
 seconds, so a crash loop shows, and past its wait for the schema). The worker has no endpoint of
 its own: a hung worker that is still a process is not detected. Compose `depends_on` can use `condition: service_healthy`.
 
-All services write to stdout/stderr of the container (`docker compose logs papiq`), as JSON by
+All services write to stdout/stderr of the container (`docker compose logs lekto`), as JSON by
 default; the health check's own requests are left out of the access log. s6's own messages (`s6-rc: info: …`) are there as well. If an init service fails (invalid
 configuration, failed migration), the container stops with exit code 1 and the reason is the last
 thing in the log.
@@ -196,10 +196,10 @@ migration is one transaction and is rolled back.
 Put a TLS proxy in front of the API and remove `LEKTO_COOKIE_SECURE: "false"` (default `true`: the
 session cookie is `Secure`). Then name the proxy: `LEKTO_FORWARDED_ALLOW_IPS` takes its address
 (comma-separated, `*` only if the proxy sets `X-Forwarded-For` itself and replaces what clients
-send); Papiq counts failed sign-ins per client address from that header, and refuses to start
+send); Lekto counts failed sign-ins per client address from that header, and refuses to start
 with secure cookies and without it. With OIDC set `LEKTO_PUBLIC_URL`.
 
-The web UI is at `/ui/` (`/` leads there). Papiq sets its cache headers: files below
+The web UI is at `/ui/` (`/` leads there). Lekto sets its cache headers: files below
 `/ui/_app/immutable/` carry a hash in their name and may be cached for a year, everything else
 (`no-cache`) is revalidated on every load, so an update shows at once. A proxy cache keeps these
 headers; it must not cache `/api/` (the API's answers are personal).
@@ -214,13 +214,13 @@ For nginx:
 ```nginx
 client_max_body_size 100m;                 # LEKTO_UPLOAD_MAX_SIZE
 location / {
-    proxy_pass http://papiq:8000;
+    proxy_pass http://lekto:8000;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 location ~ ^/api/v1/(events|mcp) {
-    proxy_pass http://papiq:8000;
+    proxy_pass http://lekto:8000;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -232,7 +232,7 @@ location ~ ^/api/v1/(events|mcp) {
 ## Webhooks
 
 The worker delivers webhooks, so the worker container needs network access to their targets, also
-in your own network. Papiq follows no redirects and ignores the proxy environment variables
+in your own network. Lekto follows no redirects and ignores the proxy environment variables
 (`HTTP_PROXY` and the like), so the targets must be reachable directly from the worker's network. A
 target that does not answer holds up deliveries up to `LEKTO_WEBHOOK_TIMEOUT` each, at most
 `LEKTO_WEBHOOK_CONCURRENCY` at a time; processing documents is not affected.
@@ -243,14 +243,14 @@ The API serves MCP at `/api/v1/mcp`. Create a token (`POST /api/v1/auth/tokens`,
 add it, for example, to Claude Code:
 
 ```sh
-claude mcp add --transport http papiq http://localhost:8000/api/v1/mcp \
-  --header "Authorization: Bearer papiq_..."
+claude mcp add --transport http lekto http://localhost:8000/api/v1/mcp \
+  --header "Authorization: Bearer lekto_..."
 ```
 
 ## Backup and restore
 
 What to back up: the **database** and the **object store** (the original files and their
-derivatives). **Not** Meilisearch: the index is derived; after a restore `papiq reindex` rebuilds
+derivatives). **Not** Meilisearch: the index is derived; after a restore `lekto reindex` rebuilds
 it. Keep the secrets (`LEKTO_SECRET_KEY` above all) in your password manager, not only in the
 backup. Back up the database first, then the objects: the originals never change (their key is the SHA-256
 of the content), so objects that came in after the database copy are only unused files, while the
@@ -260,43 +260,43 @@ still usable, and reprocessing the document renews it.
 
 ### SQLite and file system
 
-Do not copy `papiq.db` while Papiq runs: with WAL, the content is partly in `papiq.db-wal`. Use
+Do not copy `lekto.db` while Lekto runs: with WAL, the content is partly in `lekto.db-wal`. Use
 SQLite's backup, which Python in the image provides (no `sqlite3` program needed):
 
 ```sh
 mkdir backup                       # a new, empty folder for each backup
 # -u is your PUID:PGID: SQLite needs write access to the volume for its shared-memory file.
-docker compose -f compose.sqlite.yml exec -u 1000:1000 papiq python -c "
+docker compose -f compose.sqlite.yml exec -u 1000:1000 lekto python -c "
 import sqlite3
-source = sqlite3.connect('/data/papiq.db')
-target = sqlite3.connect('/tmp/papiq-backup.db')
+source = sqlite3.connect('/data/lekto.db')
+target = sqlite3.connect('/tmp/lekto-backup.db')
 source.backup(target)
 target.close()"
-docker compose -f compose.sqlite.yml cp papiq:/tmp/papiq-backup.db backup/papiq.db
-docker compose -f compose.sqlite.yml exec papiq rm /tmp/papiq-backup.db
-docker compose -f compose.sqlite.yml cp papiq:/data/objects backup/
+docker compose -f compose.sqlite.yml cp lekto:/tmp/lekto-backup.db backup/lekto.db
+docker compose -f compose.sqlite.yml exec lekto rm /tmp/lekto-backup.db
+docker compose -f compose.sqlite.yml cp lekto:/data/objects backup/
 ```
 
 Restore into an empty or existing stack (the database and the objects in the volume are replaced):
 
 ```sh
 docker compose -f compose.sqlite.yml down                    # keeps the volumes
-docker run --rm -v papiq-sqlite_papiq-data:/data -v "$PWD/backup:/backup:ro" alpine:3.24.2 sh -c '
-  rm -rf /data/papiq.db /data/papiq.db-wal /data/papiq.db-shm /data/objects &&
-  cp /backup/papiq.db /data/papiq.db && cp -a /backup/objects /data/objects &&
+docker run --rm -v lekto-sqlite_lekto-data:/data -v "$PWD/backup:/backup:ro" alpine:3.24.2 sh -c '
+  rm -rf /data/lekto.db /data/lekto.db-wal /data/lekto.db-shm /data/objects &&
+  cp /backup/lekto.db /data/lekto.db && cp -a /backup/objects /data/objects &&
   chown -R 1000:1000 /data'                                  # PUID:PGID
 docker compose -f compose.sqlite.yml up -d
-docker compose -f compose.sqlite.yml exec papiq papiq reindex   # rebuild the search index
+docker compose -f compose.sqlite.yml exec lekto lekto reindex   # rebuild the search index
 ```
 
 ### Postgres and Garage
 
 ```sh
 mkdir -p backup
-docker compose -f compose.postgres.yml exec -T postgres pg_dump -U papiq -Fc papiq > backup/papiq.dump
+docker compose -f compose.postgres.yml exec -T postgres pg_dump -U lekto -Fc lekto > backup/lekto.dump
 # Objects: Garage's two volumes, with Garage stopped (a consistent copy of its metadata).
 docker compose -f compose.postgres.yml stop garage
-docker run --rm -v papiq-postgres_garage-meta:/meta:ro -v papiq-postgres_garage-data:/data:ro \
+docker run --rm -v lekto-postgres_garage-meta:/meta:ro -v lekto-postgres_garage-data:/data:ro \
   -v "$PWD/backup:/backup" alpine:3.24.2 tar -C / -czf /backup/garage.tar.gz meta data
 docker compose -f compose.postgres.yml start garage
 ```
@@ -306,12 +306,12 @@ Restore into a stack with the same Compose secrets (Garage's key, Postgres passw
 ```sh
 docker compose -f compose.postgres.yml down
 docker compose -f compose.postgres.yml up -d postgres
-docker compose -f compose.postgres.yml exec -T postgres pg_restore -U papiq -d papiq \
-  --clean --if-exists --no-owner < backup/papiq.dump
-docker run --rm -v papiq-postgres_garage-meta:/meta -v papiq-postgres_garage-data:/data \
+docker compose -f compose.postgres.yml exec -T postgres pg_restore -U lekto -d lekto \
+  --clean --if-exists --no-owner < backup/lekto.dump
+docker run --rm -v lekto-postgres_garage-meta:/meta -v lekto-postgres_garage-data:/data \
   -v "$PWD/backup:/backup:ro" alpine:3.24.2 sh -c 'rm -rf /meta/* /data/* && tar -C / -xzf /backup/garage.tar.gz'
 docker compose -f compose.postgres.yml up -d
-docker compose -f compose.postgres.yml exec papiq papiq reindex
+docker compose -f compose.postgres.yml exec lekto lekto reindex
 ```
 
 Another S3 server or an external Postgres: use its own tools (`pg_dump`, `rclone sync`); the order
@@ -325,12 +325,12 @@ update the API container first: a worker that starts waits for the schema, and a
 newer image migrated is refused by an older one.
 
 An update that changes what the search index holds says so in its release notes; run
-`papiq reindex` after it (the update that renamed attributes to fields is one). The update
-that made the pipeline a graph (0.2.0) added the page images: run `papiq render-pages` after
+`lekto reindex` after it (the update that renamed attributes to fields is one). The update
+that made the pipeline a graph (0.2.0) added the page images: run `lekto render-pages` after
 it, and the worker renders the pages of the documents from before (a document that is being
 processed at that moment keeps its job; run the command again until it reports 0 queued).
-The same update reads bar and QR codes: run `papiq read-codes` after it (and after a
-`papiq reparse`), and the worker reads the codes of the documents from before and keeps the
+The same update reads bar and QR codes: run `lekto read-codes` after it (and after a
+`lekto reparse`), and the worker reads the codes of the documents from before and keeps the
 identifiers each one shows; it reads locally, nothing is sent out. A document that is being
 processed at that moment is skipped; run the command again once it is through.
 The same update renamed `LEKTO_STEP_MAX_ATTEMPTS` and `LEKTO_STEP_RETRY_DELAY` to
@@ -339,3 +339,33 @@ to start and says so.
 The update to 0.3.0 renamed drawers to spaces in the API (`/api/v1/spaces`, `space_id`), in
 rules and in templates (`{{ space }}`); it needs no `reindex`. What to do after it is in
 [backend/README.md](../backend/README.md) ("After the update to 0.3").
+
+### Upgrading from Papiq
+
+Release 0.5.0 renames the project from Papiq to Lekto. No old name is read any more; an existing
+installation needs these steps once, with the containers stopped and a backup made:
+
+- **Configuration.** Rename every `PAPIQ_` variable to `LEKTO_`, the `_FILE` variants too. A
+  variable still called `PAPIQ_…` is ignored: with SQLite, a missing path starts an empty
+  database.
+- **Compose.** The example stacks now use the projects `lekto-sqlite` and `lekto-postgres`, the
+  service `lekto`, the volume `lekto-data`, database, user and bucket `lekto`, the image
+  `lekto:local` and the secret `secrets/lekto_secret_key` (`mv secrets/papiq_secret_key
+  secrets/lekto_secret_key`). Compose names volumes after the project (`papiq-sqlite_papiq-data`):
+  keep `name:` and the volume names of your file, or copy the volumes, or a new stack starts
+  empty. With Postgres and Garage, keep `LEKTO_DB_NAME`, `LEKTO_DB_USER` and `LEKTO_S3_BUCKET` at
+  their old values or rename database, role and bucket.
+- **SQLite.** The image keeps the database in `/data/lekto.db`: move `papiq.db` (and
+  `papiq.db-wal`, `papiq.db-shm`) there, or set `LEKTO_DB_SQLITE_PATH=/data/papiq.db`.
+- **Search.** The index is now `lekto-documents`: set `LEKTO_MEILISEARCH_INDEX=papiq-documents`,
+  or run `lekto reindex` (it computes every embedding again).
+- **Classifier.** Stored models are in the old format and are not loaded; `lekto train` (or
+  `POST /classifier/train`) trains a new one.
+- **Commands.** In the container, `lekto` replaces `papiq`: `docker compose exec lekto lekto
+  reindex`.
+- **Sign-in.** The cookies are now `__Host-lekto_session` and `__Host-lekto_oidc`: everyone signs
+  in once more. API tokens that start with `papiq_` keep working; new ones start with `lekto_`.
+  Authenticator apps keep the label Papiq for an existing second factor.
+- **Clients.** Webhooks are sent with `User-Agent: Lekto/<version>`, the MCP server is called
+  `lekto`, the loggers `lekto.*`. The migration client reads `LEKTO_MIGRATION_*` and
+  `--lekto-url`; a state file of an earlier run cannot be continued.

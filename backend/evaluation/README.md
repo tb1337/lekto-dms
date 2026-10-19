@@ -53,9 +53,9 @@ inbox or changing a green one; the log's `corrected` tells which automatic value
 Run it from `backend/`:
 
 ```sh
-uv run python -m papiq.composition evaluate --fake       # fixed answers, both runs, as in CI
-uv run python -m papiq.composition evaluate              # the model in LEKTO_LLM_*
-uv run python -m papiq.composition evaluate --runs cold --cases DIR --output FILE
+uv run python -m lekto.composition evaluate --fake       # fixed answers, both runs, as in CI
+uv run python -m lekto.composition evaluate              # the model in LEKTO_LLM_*
+uv run python -m lekto.composition evaluate --runs cold --cases DIR --output FILE
 ```
 
 A real run needs `LEKTO_LLM_BASE_URL` and `LEKTO_LLM_MODEL`, and a configuration that is valid
@@ -84,12 +84,12 @@ amounts), `compound` (compound words), `typo`, `paraphrase` (other words for the
 statement, beyond the sections that get a vector).
 
 ```sh
-uv run python -m papiq.composition evaluate-search --fake                # flow only, as in CI
-uv run python -m papiq.composition evaluate-search --models bge-m3,other # models of the endpoint
-uv run python -m papiq.composition evaluate-search --ratios 0,0.5,1 --queries FILE --output FILE
+uv run python -m lekto.composition evaluate-search --fake                # flow only, as in CI
+uv run python -m lekto.composition evaluate-search --models bge-m3,other # models of the endpoint
+uv run python -m lekto.composition evaluate-search --ratios 0,0.5,1 --queries FILE --output FILE
 ```
 
-Each model gets a temporary Meilisearch index (`papiq-eval-…`, removed afterwards) and the
+Each model gets a temporary Meilisearch index (`lekto-eval-…`, removed afterwards) and the
 documents of the set, indexed by the real indexing service; the queries run through the real
 search service at each semantic ratio. A real run needs `LEKTO_MEILISEARCH_URL`,
 `LEKTO_EMBEDDING_BASE_URL` and `LEKTO_EMBEDDING_MODEL` (the default for `--models`), and

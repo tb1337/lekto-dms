@@ -18,6 +18,7 @@ from papiq.core.domain.reading import (
     PageWords,
     ReadWord,
     Surroundings,
+    beside_leaders,
     content_words,
     gap,
     is_noise,
@@ -295,7 +296,7 @@ def test_a_date_in_a_well_read_header_above_a_badly_read_table_stands_well() -> 
     place = surroundings(words, [the(words, "24.06.2022")])
     assert place is not None
     assert len(place.words) == SURROUNDING and place.unsure == 0
-    assert not place.poor(0.08)
+    assert not place.poor()
     # The words around it are the header's: the address and the lines of the date.
     assert {"Personalnummer", "Brutto/Netto-Bezüge", "Musterweg"} <= {
         word.text for word in place.words
@@ -307,7 +308,7 @@ def test_an_amount_inside_a_badly_read_table_stands_in_a_poorly_read_place() -> 
     amount = the(words, "317,22")
     assert not amount.unsure  # the value itself was read sure
     place = surroundings(words, [amount])
-    assert place is not None and place.poor(0.08)
+    assert place is not None and place.poor()
     assert place.describe() == (
         f"the text around the value was poorly read ({place.unsure} of 20 content words unsure)"
     )
@@ -317,11 +318,11 @@ def test_an_amount_inside_a_badly_read_table_stands_in_a_poorly_read_place() -> 
     assert good is not None and good.unsure < place.unsure
 
 
-@pytest.mark.parametrize(("unsure", "poor"), [(0, False), (1, False), (2, True), (20, True)])
-def test_a_place_is_poorly_read_from_the_threshold_on(unsure: int, poor: bool) -> None:
+@pytest.mark.parametrize(("unsure", "poor"), [(0, False), (2, False), (3, True), (20, True)])
+def test_a_place_is_poorly_read_from_three_of_twenty_on(unsure: int, poor: bool) -> None:
     around = Surroundings(tuple(word(f"Wort{n}", 30 if n < unsure else 93) for n in range(20)))
     assert around.unsure == unsure
-    assert around.poor(0.08) is poor  # 1 of 20 is 5 %, 2 are 10 %
+    assert around.poor() is poor  # 2 of 20 is 10 %, 3 are 15 %
 
 
 def grid(
@@ -408,6 +409,33 @@ def test_the_value_s_own_words_are_not_counted() -> None:
     assert place is not None and len(place.words) == SURROUNDING
     assert not set(value) & set(place.words)
     assert place.unsure == 0
+
+
+def placed(text: str, x: float, confidence: int = 93, height: float = 0.01) -> ReadWord:
+    """A word on one line (a hundredth of the page high) at `x`, a tenth of the page wide."""
+    return ReadWord(text, confidence, Box(x, 0.3, 0.1, height), 0.012)
+
+
+def test_a_label_right_beside_a_leader_is_neither_content_nor_unsure() -> None:
+    """Tesseract reads a clean label unsure beside its dots (`Krankenkasse` 38 %)."""
+    words = [
+        placed("Krankenkasse", 0.1, confidence=38),
+        placed("................", 0.205),
+        placed("Gesundkasse", 0.31),
+    ]
+    assert beside_leaders(words) == {0, 2}
+    assert content_words(words) == []
+    # Dots read as letters (a flat box) are a leader as well.
+    flat = [placed("Steuerklasse", 0.1, confidence=59), placed("cence", 0.205, height=0.002)]
+    assert beside_leaders(flat) == {0}
+
+
+def test_a_word_apart_from_a_leader_or_on_another_line_stays_content() -> None:
+    far = [placed("Krankenkasse", 0.1, confidence=38), placed("..........", 0.5)]
+    assert beside_leaders(far) == set()  # four tenths of the page away
+    below = ReadWord("Krankenkasse", 38, Box(0.1, 0.4, 0.1, 0.01), 0.012)
+    assert beside_leaders([below, placed("..........", 0.205)]) == set()
+    assert content_words(far) == [far[0]]
 
 
 def test_noise_around_a_value_is_not_counted() -> None:

@@ -11,7 +11,7 @@ from lekto.core.services.indexing import Rebuilt
 
 async def run_reindex(settings: Settings, *, progress: bool = False) -> Rebuilt:
     if settings.meilisearch_url is None:
-        raise ConfigurationError("PAPIQ_MEILISEARCH_URL is not set: there is no search index")
+        raise ConfigurationError("LEKTO_MEILISEARCH_URL is not set: there is no search index")
 
     def report(done: int, total: int) -> None:
         print(f"indexed {done} of {total} documents", flush=True)

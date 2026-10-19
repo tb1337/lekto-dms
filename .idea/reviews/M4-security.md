@@ -54,12 +54,12 @@ Größengrenzen für JSON-Eingaben.
 sperren die Quelle 15 Minuten, auch für richtige Passwörter), `core/services/auth.py:156`
 (`_check_throttles` vor jeder Prüfung), `adapters/inbound/rest/auth.py:172` (`client_address`
 = `request.client.host`), `composition/api.py:112` (`proxy_headers` nur mit
-`PAPIQ_FORWARDED_ALLOW_IPS`), `composition/settings.py:100,110` (Default: keine Proxies,
+`LEKTO_FORWARDED_ALLOW_IPS`), `composition/settings.py:100,110` (Default: keine Proxies,
 `cookie_secure=true`).
 
-**Problem:** Papiq spricht nur HTTP. Mit dem Default `PAPIQ_COOKIE_SECURE=true` schickt kein
+**Problem:** Papiq spricht nur HTTP. Mit dem Default `LEKTO_COOKIE_SECURE=true` schickt kein
 Browser das Session-Cookie über HTTP, also steht in jeder funktionierenden Produktion ein
-TLS-terminierender Reverse-Proxy davor. Ohne `PAPIQ_FORWARDED_ALLOW_IPS` (Default) ist
+TLS-terminierender Reverse-Proxy davor. Ohne `LEKTO_FORWARDED_ALLOW_IPS` (Default) ist
 `request.client.host` dann immer die Adresse des Proxys: alle Nutzer teilen sich eine
 „Quelle“. Ein nicht angemeldeter Angreifer sperrt mit 30 Anfragen pro 15 Minuten
 (beliebige Nutzernamen) die Passwort-Anmeldung der ganzen Instanz dauerhaft. Dasselbe gilt
@@ -133,7 +133,7 @@ Session (`SessionPrincipal`), wie bei `/auth/*`; mindestens aber Selbstbezug (`i
 ### M4-04 (mittel): JSON-Bodies ohne Größengrenze
 
 **Fundstellen:** Nur `adapters/inbound/rest/upload.py:54` begrenzt (Multipart,
-`PAPIQ_UPLOAD_MAX_SIZE`). Für alle JSON-Endpunkte liest FastAPI den Body vollständig in den
+`LEKTO_UPLOAD_MAX_SIZE`). Für alle JSON-Endpunkte liest FastAPI den Body vollständig in den
 Speicher, bevor validiert wird; keine Middleware, kein Uvicorn-Limit (`composition/api.py`).
 
 **Problem:** Ein nicht angemeldeter Client schickt an `POST /auth/login` einen beliebig großen
@@ -203,7 +203,7 @@ nur angemeldet auszuliefern, wäre ein Plus.
 `composition/settings.py:100` (`*` erlaubt).
 
 **Problem:** Ein Angreifer mit einem IPv6-/64 hat praktisch unbegrenzt viele Quellen; die
-Quellen-Drossel greift dann nicht, nur die Konto-Drossel. Mit `PAPIQ_FORWARDED_ALLOW_IPS=*`
+Quellen-Drossel greift dann nicht, nur die Konto-Drossel. Mit `LEKTO_FORWARDED_ALLOW_IPS=*`
 ist `X-Forwarded-For` frei wählbar und die Quellen-Drossel umgehbar (und M4-01 trivial
 auslösbar für beliebige Adressen). Jeder unbekannte Nutzername erzeugt zudem eine Zeile in
 `login_failures` (Aufräumen erst nach dem Fenster).
@@ -223,14 +223,14 @@ der Reaktivierung wirksam, ohne dass der Besitzer es sieht. Inkonsistent zur Nut
 
 ### M4-11 (gering): Dev-Geheimnisse im Repository
 
-**Fundstellen:** `.devcontainer/dev.env:7,10` (`PAPIQ_SECRET_KEY`, `PAPIQ_ADMIN_PASSWORD`).
+**Fundstellen:** `.devcontainer/dev.env:7,10` (`LEKTO_SECRET_KEY`, `LEKTO_ADMIN_PASSWORD`).
 
 **Problem:** Für die Entwicklung richtig und dokumentiert. Risiko: Übernahme der Datei in eine
 Produktion; der bekannte Schlüssel entschlüsselt dann alle TOTP-Geheimnisse und
 OIDC-Flow-Cookies.
 
 **Empfehlung:** Start mit dem bekannten Dev-Schlüssel bei `cookie_secure=true` verweigern;
-README: `PAPIQ_SECRET_KEY_FILE` und `PAPIQ_ADMIN_PASSWORD_FILE` für Produktion empfehlen.
+README: `LEKTO_SECRET_KEY_FILE` und `LEKTO_ADMIN_PASSWORD_FILE` für Produktion empfehlen.
 
 ### M4-12 (gering, akzeptiert): Enumeration und Timing
 
@@ -275,7 +275,7 @@ Versionsschreiben gegen gleichzeitige Herabstufung.
 
 **3. Sessions und Tokens.** 256-Bit-Zufall, nur SHA-256 gespeichert, Vergleich über den Hash
 (konstantzeitig in der Domäne). Cookie `__Host-papiq_session`: HttpOnly, Secure, SameSite=Lax,
-Path=/, keine Domain; ohne `Secure` nur mit `PAPIQ_COOKIE_SECURE=false`. CSRF: Header
+Path=/, keine Domain; ohne `Secure` nur mit `LEKTO_COOKIE_SECURE=false`. CSRF: Header
 `X-CSRF-Token` = HMAC(Session-Token) auf allen nicht-sicheren Methoden mit Session; Bearer
 ignoriert Cookies; kein CORS. Login nur als `application/json` (Login-CSRF per Formular
 ausgeschlossen, getestet). Passwortwechsel beendet alle Sessions (eigene wird erneuert) mit
@@ -314,7 +314,7 @@ Parameter (`cursor` 64, `tag_id` ≤ 50, `next` ≤ 2000). Offen: Gesamtgröße 
 
 ## Entscheidungen des Besitzers (2026-10-07)
 
-- **M4-01:** Beides: Start bricht mit `Secure`-Cookies ohne `PAPIQ_FORWARDED_ALLOW_IPS` ab, und
+- **M4-01:** Beides: Start bricht mit `Secure`-Cookies ohne `LEKTO_FORWARDED_ALLOW_IPS` ab, und
   die Quellen-Sperre weist nur falsche Anmeldungen ab (richtiges Passwort kommt durch; die
   Konto-Drossel bleibt wie sie ist). Der bestehende Test zur Quellen-Sperre wird entsprechend
   geändert.

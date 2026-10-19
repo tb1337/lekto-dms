@@ -2,12 +2,12 @@
 
 - Embedding endpoint: `10.30.2.15:11434`
 - Index: Meilisearch at 127.0.0.1:7701, a temporary index per model
-- PAPIQ_SEARCH_CHUNK_SIZE: `1500`
-- PAPIQ_SEARCH_MAX_CHUNKS: `8`
-- PAPIQ_SEARCH_MAX_TEXT: `200000`
-- PAPIQ_SEARCH_SEMANTIC_RATIO: `0.5`
-- PAPIQ_EMBEDDING_DOCUMENT_PREFIX: ``
-- PAPIQ_EMBEDDING_QUERY_PREFIX: `query:`
+- LEKTO_SEARCH_CHUNK_SIZE: `1500`
+- LEKTO_SEARCH_MAX_CHUNKS: `8`
+- LEKTO_SEARCH_MAX_TEXT: `200000`
+- LEKTO_SEARCH_SEMANTIC_RATIO: `0.5`
+- LEKTO_EMBEDDING_DOCUMENT_PREFIX: ``
+- LEKTO_EMBEDDING_QUERY_PREFIX: `query:`
 - Documents: 28, queries: 48
 - Result per query: the first expected case among the first 10 hits. Hit@k: the share of queries found within the first k hits; MRR: mean of 1/rank (0 if not found).
 

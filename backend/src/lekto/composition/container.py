@@ -156,7 +156,7 @@ class Persistence:
 
 
 def sql_persistence(settings: Settings) -> Persistence:
-    """SQLite or Postgres, per `PAPIQ_DB_TYPE`; the schema must be migrated."""
+    """SQLite or Postgres, per `LEKTO_DB_TYPE`; the schema must be migrated."""
     database = open_database(settings)
     return Persistence(
         unit_of_work=SqlUnitOfWorkFactory(database),
@@ -185,7 +185,7 @@ def s3_store(settings: Settings) -> Opened[S3ObjectStore]:
     )
 
 
-# Keys: `PAPIQ_DB_TYPE` (persistence), `PAPIQ_STORAGE_TYPE` (object store),
+# Keys: `LEKTO_DB_TYPE` (persistence), `LEKTO_STORAGE_TYPE` (object store),
 # or the fixed adapter name for ports with a single adapter.
 PERSISTENCE: dict[str, Factory[Persistence]] = {
     "sqlite": sql_persistence,
@@ -350,7 +350,7 @@ class Container:
     language_model: LanguageModel | None
     embeddings: Embeddings | None
     classifier: Classifier | None
-    # With `PAPIQ_LOGO_FETCH`: Papiq asks the websites of contacts for their logos.
+    # With `LEKTO_LOGO_FETCH`: Papiq asks the websites of contacts for their logos.
     logo_fetcher: LogoFetcher | None = None
     closers: tuple[Closer, ...] = field(default=(), repr=False)
 

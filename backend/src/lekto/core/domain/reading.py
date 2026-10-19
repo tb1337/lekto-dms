@@ -247,7 +247,7 @@ class PageReading:
 
     def poor(self, threshold: float) -> bool:
         """Whether the page counts as poorly read: at least `threshold` of its content words
-        unsure (`PAPIQ_POOR_READING_THRESHOLD`), with enough of them to tell; of all its words
+        unsure (`LEKTO_POOR_READING_THRESHOLD`), with enough of them to tell; of all its words
         where content was not counted (read before, or by the vision language model)."""
         return self.counted[0] >= MIN_WORDS and self.share >= threshold
 

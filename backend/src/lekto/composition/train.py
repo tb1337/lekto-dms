@@ -11,7 +11,7 @@ from lekto.core.domain.classifier import ClassifierModel
 
 async def run_training(settings: Settings) -> ClassifierModel:
     if settings.classifier == "none":
-        raise ConfigurationError("PAPIQ_CLASSIFIER is none: there is no classifier to train")
+        raise ConfigurationError("LEKTO_CLASSIFIER is none: there is no classifier to train")
     container = build_container(settings)
     try:
         services = build_services(container, settings)

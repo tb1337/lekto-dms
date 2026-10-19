@@ -565,7 +565,7 @@ async def test_contact_aliases_and_type_descriptions(api: Api) -> None:
 
 
 async def test_json_bodies_are_bounded(api: Api) -> None:
-    """M4-04: only multipart uploads have a size limit (`PAPIQ_UPLOAD_MAX_SIZE`). A JSON body of
+    """M4-04: only multipart uploads have a size limit (`LEKTO_UPLOAD_MAX_SIZE`). A JSON body of
     any size is read into memory before validation, also at the public sign-in."""
     huge = '{"username": "' + "a" * (16 * 1024 * 1024) + '", "password": "x"}'
     response = await api.client.post(

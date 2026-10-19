@@ -16,7 +16,7 @@ HTTP_CLIENT_LOGGERS = ("httpx", "httpx2", "httpcore")
 
 
 def configure_logging(settings: Settings) -> None:
-    """Route all log records through structlog, formatted per `PAPIQ_LOG_FORMAT`."""
+    """Route all log records through structlog, formatted per `LEKTO_LOG_FORMAT`."""
     shared: list[structlog.typing.Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,

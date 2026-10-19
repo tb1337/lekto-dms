@@ -31,10 +31,10 @@ mich, bevor Du es umsetzt. Ports und Vertragstests ändern nur nach Rücksprache
 ## Entscheidungen
 
 ### M4-01 – Quellen-Drossel sperrt alle Nutzer aus (hoch): beides umsetzen
-1. **Konfiguration:** `PAPIQ_COOKIE_SECURE=true` (Default) ohne `PAPIQ_FORWARDED_ALLOW_IPS` ist
+1. **Konfiguration:** `LEKTO_COOKIE_SECURE=true` (Default) ohne `LEKTO_FORWARDED_ALLOW_IPS` ist
    ein Konfigurationsfehler, der den Start abbricht, mit klarer Meldung: Mit `Secure`-Cookies
    steht ein TLS-terminierender Proxy vor Papiq, dessen Adresse genannt werden muss. Mit
-   `PAPIQ_COOKIE_SECURE=false` (Entwicklung, Direktzugriff) bleibt die Variable optional.
+   `LEKTO_COOKIE_SECURE=false` (Entwicklung, Direktzugriff) bleibt die Variable optional.
    README: Variable als Pflicht hinter einem Proxy dokumentieren; `*` nur, wenn der Proxy den
    Header selbst setzt und überschreibt. Bestehende Settings-Tests anpassen.
 2. **Verhalten:** Die Quellen-Sperre weist nur **falsche** Anmeldungen ab. Bei gesperrter
@@ -71,10 +71,10 @@ um die Admin-Endpunkte erweitern. Abnahme: beide M4-03-Belegtests.
 Eine ASGI-Middleware in `adapters/inbound/rest` begrenzt die Größe aller Request-Bodies außer
 dem Upload (`POST /documents`, hat sein eigenes Limit): `Content-Length` prüfen und gezählte
 Bytes beim Lesen; Überschreitung antwortet `413` als Problem (vorhandener `UploadTooLargeError`
-oder eigener Fehler, in `problems.py` registriert). Limit als `PAPIQ_REQUEST_MAX_SIZE`
-(Default 1 MiB, `ByteSize` wie `PAPIQ_UPLOAD_MAX_SIZE`), in README-Tabelle aufnehmen.
+oder eigener Fehler, in `problems.py` registriert). Limit als `LEKTO_REQUEST_MAX_SIZE`
+(Default 1 MiB, `ByteSize` wie `LEKTO_UPLOAD_MAX_SIZE`), in README-Tabelle aufnehmen.
 Abnahme: `test_json_bodies_are_bounded`; zusätzlich ein Test, dass ein Upload knapp unter
-`PAPIQ_UPLOAD_MAX_SIZE` weiterhin durchgeht.
+`LEKTO_UPLOAD_MAX_SIZE` weiterhin durchgeht.
 
 ### M4-05 – Token-Widerruf bei Passwortwechsel: **keine Änderung**
 `revoke_tokens` bleibt standardmäßig `false`, bei eigenem Wechsel und beim Admin-Reset.
@@ -100,9 +100,9 @@ als Text. README-Hinweis zu `*` siehe M4-01.
 `DrawerService.share` lehnt deaktivierte Nutzer wie unbekannte ab (`NotFoundError`).
 
 ### M4-11 – Dev-Geheimnisse (gering)
-Start verweigern, wenn `PAPIQ_SECRET_KEY` dem Schlüssel aus `.devcontainer/dev.env` entspricht
-und `PAPIQ_COOKIE_SECURE=true` ist. README: für Produktion `PAPIQ_SECRET_KEY_FILE` und
-`PAPIQ_ADMIN_PASSWORD_FILE` empfehlen.
+Start verweigern, wenn `LEKTO_SECRET_KEY` dem Schlüssel aus `.devcontainer/dev.env` entspricht
+und `LEKTO_COOKIE_SECURE=true` ist. README: für Produktion `LEKTO_SECRET_KEY_FILE` und
+`LEKTO_ADMIN_PASSWORD_FILE` empfehlen.
 
 ### M4-12 – akzeptiert, nichts zu tun.
 
@@ -124,7 +124,7 @@ Begrenzung der SSE-Verbindungen je Nutzer), Web-UI, M5 ff.
 ## Fertig, wenn
 - Alle Belegtests aus dem Review sind grün und thematisch eingeordnet; kein bestehender Test
   wurde gelöscht, ohne dass ein geänderter ihn ersetzt.
-- `PAPIQ_FORWARDED_ALLOW_IPS` ist mit `Secure`-Cookies Pflicht; die Quellen-Sperre weist nur
+- `LEKTO_FORWARDED_ALLOW_IPS` ist mit `Secure`-Cookies Pflicht; die Quellen-Sperre weist nur
   falsche Anmeldungen ab; Fehlversuche werden atomar gezählt.
 - Admin-Endpunkte für Anmeldedaten brauchen eine Session; Selbstbezug ist abgelehnt.
 - Request-Bodies sind begrenzt (`413`), `/auth/*` ist `no-store`.

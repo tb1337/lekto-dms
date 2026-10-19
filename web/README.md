@@ -29,15 +29,15 @@ webhook and an API token:
 
 ```sh
 pnpm build
-# backend/: the API with PAPIQ_UI_DIR=../web/build and PAPIQ_COOKIE_SECURE=false
-PAPIQ_ADMIN_USERNAME=… PAPIQ_ADMIN_PASSWORD=… pnpm e2e
+# backend/: the API with LEKTO_UI_DIR=../web/build and LEKTO_COOKIE_SECURE=false
+LEKTO_ADMIN_USERNAME=… LEKTO_ADMIN_PASSWORD=… pnpm e2e
 ```
 
-`PAPIQ_E2E_URL` (default `http://127.0.0.1:8000`) names the API, `PAPIQ_E2E_CHROMIUM` a Chromium
+`LEKTO_E2E_URL` (default `http://127.0.0.1:8000`) names the API, `LEKTO_E2E_CHROMIUM` a Chromium
 of another Playwright version instead of `pnpm exec playwright install chromium`.
 
 For `pnpm dev`, start the API in `backend/` with `uv run python -m papiq.composition api` and
-`PAPIQ_COOKIE_SECURE=false` (plain HTTP). Open http://localhost:5173/ui/.
+`LEKTO_COOKIE_SECURE=false` (plain HTTP). Open http://localhost:5173/ui/.
 
 ## PDF viewer and CSP
 

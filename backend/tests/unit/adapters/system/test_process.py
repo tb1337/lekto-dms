@@ -9,7 +9,7 @@ from lekto.adapters.outbound.system import run_process
 SHOW_ENVIRONMENT = (
     "import json, os; "
     "print(json.dumps({k: v for k, v in os.environ.items() "
-    "if k.startswith('PAPIQ_') or k == 'PATH'}))"
+    "if k.startswith('LEKTO_') or k == 'PATH'}))"
 )
 
 
@@ -18,18 +18,18 @@ async def test_a_child_gets_no_papiq_settings_but_what_the_caller_adds(
 ) -> None:
     """OCRmyPDF, Ghostscript and Tesseract process documents of unknown origin; the secret key
     and the credentials stay out of their reach."""
-    monkeypatch.setenv("PAPIQ_SECRET_KEY", "the-key")
-    monkeypatch.setenv("PAPIQ_DB_PASSWORD_FILE", "/run/secrets/db")
+    monkeypatch.setenv("LEKTO_SECRET_KEY", "the-key")
+    monkeypatch.setenv("LEKTO_DB_PASSWORD_FILE", "/run/secrets/db")
     completed = await run_process(
         [sys.executable, "-I", "-c", SHOW_ENVIRONMENT],
         timeout=timedelta(seconds=30),
-        env={"PAPIQ_OCR_VISION": "{}"},
+        env={"LEKTO_OCR_VISION": "{}"},
     )
     assert completed.returncode == 0, completed.stderr
     seen = json.loads(completed.stdout)
-    assert "PAPIQ_SECRET_KEY" not in seen
-    assert "PAPIQ_DB_PASSWORD_FILE" not in seen
-    assert seen["PAPIQ_OCR_VISION"] == "{}"
+    assert "LEKTO_SECRET_KEY" not in seen
+    assert "LEKTO_DB_PASSWORD_FILE" not in seen
+    assert seen["LEKTO_OCR_VISION"] == "{}"
     assert "PATH" in seen
 
 

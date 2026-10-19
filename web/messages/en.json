@@ -964,7 +964,7 @@
 	"logo_removed": "Logo removed",
 	"nav_classifier": "Classifier",
 	"classifier_intro": "Papiq learns contact, document type and tags from the documents a person confirmed or that were taken over with their metadata, and suggests them for new ones. After enough confirmations it trains again on its own.",
-	"classifier_not_configured": "No classifier is set up (PAPIQ_CLASSIFIER is none).",
+	"classifier_not_configured": "No classifier is set up (LEKTO_CLASSIFIER is none).",
 	"classifier_no_model": "No model yet.",
 	"classifier_model": "Model {number}, trained {date}",
 	"classifier_examples": "Learned from {count} confirmed documents.",

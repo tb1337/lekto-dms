@@ -15,7 +15,7 @@
 #   docker build --target runtime -t papiq:local .
 #
 # The runtime image runs s6-overlay as PID 1 (see deploy/README.md): `init-papiq` and
-# `init-migrations` once, then `svc-api` and `svc-worker` as PAPIQ_ROLE says. The Papiq
+# `init-migrations` once, then `svc-api` and `svc-worker` as LEKTO_ROLE says. The Papiq
 # processes run as PUID:PGID (default 1000:1000), never as root. No secret is part of the
 # image or of its build arguments: configuration is read from the environment at run time.
 
@@ -169,7 +169,7 @@ COPY deploy/image/rootfs/ /
 
 # /command holds the s6 programs (`docker exec` shells need it in PATH).
 # s6-overlay: a failing init service stops the container (exit code 1, reason in the log).
-# Shutdown on `docker stop`: the worker gets PAPIQ_WORKER_SHUTDOWN_TIMEOUT (30 s) to finish
+# Shutdown on `docker stop`: the worker gets LEKTO_WORKER_SHUTDOWN_TIMEOUT (30 s) to finish
 # its jobs, so s6 waits 40 s for the services; Compose `stop_grace_period` is 60 s. s6 sits out the
 # whole S6_KILL_GRACETIME before it ends, so that stays short (1 s). Raise the first two together.
 # The database and the objects live on the volume /data (the defaults of settings.py are
@@ -179,9 +179,9 @@ ENV PATH="/command:/opt/papiq/venv/bin:$PATH" \
     S6_BEHAVIOUR_IF_STAGE2_FAILS=2 \
     S6_SERVICES_GRACETIME=40000 \
     S6_KILL_GRACETIME=1000 \
-    PAPIQ_DB_SQLITE_PATH=/data/papiq.db \
-    PAPIQ_STORAGE_PATH=/data/objects \
-    PAPIQ_UI_DIR=/opt/papiq/ui \
+    LEKTO_DB_SQLITE_PATH=/data/papiq.db \
+    LEKTO_STORAGE_PATH=/data/objects \
+    LEKTO_UI_DIR=/opt/papiq/ui \
     PUID=1000 \
     PGID=1000
 

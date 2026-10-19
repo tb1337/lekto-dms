@@ -6,7 +6,7 @@
 #
 # Starts the image with SQLite and the filesystem and checks: configuration from secret files,
 # migration, health, the user of the Papiq processes (PUID/PGID, never root), the web UI below
-# /ui (files, page fallback, cache headers, the API's paths untouched), PAPIQ_ROLE, a PDF
+# /ui (files, page fallback, cache headers, the API's paths untouched), LEKTO_ROLE, a PDF
 # through OCR and parsing up to its lane (no language model: classification is uncertain, so
 # the lane is yellow), invalid configuration and a clean `docker stop`. Needs docker, curl and
 # python3 on the host; takes a few minutes. No language model, no other service.
@@ -58,9 +58,9 @@ start() {
   for variable in "$@"; do args+=(-e "$variable"); done
   docker run -d --name "$name" \
     -e PUID=$uid -e PGID=$gid \
-    -e PAPIQ_SECRET_KEY_FILE=/run/secrets/secret_key \
-    -e PAPIQ_ADMIN_USERNAME=admin -e PAPIQ_ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
-    -e PAPIQ_COOKIE_SECURE=false \
+    -e LEKTO_SECRET_KEY_FILE=/run/secrets/secret_key \
+    -e LEKTO_ADMIN_USERNAME=admin -e LEKTO_ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
+    -e LEKTO_COOKIE_SECURE=false \
     -v "$work/secret_key:/run/secrets/secret_key:ro" \
     -v "$work/admin_password:/run/secrets/admin_password:ro" \
     -v "$volume:/data" \
@@ -187,24 +187,24 @@ check "the worker and Uvicorn logged their shutdown" \
   bash -c "docker logs $prefix-all 2>&1 | grep -q 'worker stopped' && docker logs $prefix-all 2>&1 | grep -q 'Finished server process'"
 
 step "role api: no worker"
-start api PAPIQ_ROLE=api
+start api LEKTO_ROLE=api
 wait_for 180 "healthy" healthy api || logs api
 check "the API runs" test "$(count api 'composition api')" -eq 1
 check "no worker process" test "$(count api 'composition worker')" -eq 0
 check "svc-worker stays down" bash -c "docker exec $prefix-api s6-svstat /run/service/svc-worker | grep -q '^down'"
 
 step "role worker: waits for the schema, starts when the API container has migrated"
-start waiter PAPIQ_ROLE=worker
+start waiter LEKTO_ROLE=worker
 wait_for 60 "a worker waits for the schema" bash -c "docker logs $prefix-waiter 2>&1 | grep -q 'waiting for the database schema'"
 started=$SECONDS
 docker stop "$prefix-waiter" >/dev/null
 check "a waiting worker stops at once, exit code 0 (took $((SECONDS - started)) s)" \
   bash -c "[ $((SECONDS - started)) -lt 20 ] && [ \"\$(docker inspect --format '{{.State.ExitCode}}' $prefix-waiter)\" = 0 ]"
-VOLUME=$prefix-shared start worker PAPIQ_ROLE=worker
+VOLUME=$prefix-shared start worker LEKTO_ROLE=worker
 wait_for 60 "the worker waits for the schema" bash -c "docker logs $prefix-worker 2>&1 | grep -q 'waiting for the database schema'"
 check "no migration by the worker" test "$(logs worker | grep -c 'database migrated')" -eq 0
 check "not healthy yet" bash -c "[ \"\$(docker inspect --format '{{.State.Health.Status}}' $prefix-worker)\" != healthy ]"
-VOLUME=$prefix-shared start migrator PAPIQ_ROLE=api
+VOLUME=$prefix-shared start migrator LEKTO_ROLE=api
 wait_for 180 "the worker container becomes healthy" healthy worker || logs worker
 check "the worker runs" test "$(count worker 'composition worker')" -eq 1
 check "the worker is ready for the healthcheck" docker exec "$prefix-worker" test -e /run/papiq-worker-ready
@@ -214,24 +214,24 @@ step "invalid configuration stops the container with a reason"
 docker run -d --name "$prefix-nokey" -e PUID=$uid -e PGID=$gid "$image" >/dev/null
 wait_for 60 "the container stops" exited nokey || true
 check "exit code is not 0" test "$(docker inspect --format '{{.State.ExitCode}}' "$prefix-nokey")" -ne 0
-check "the log names PAPIQ_SECRET_KEY" grep -q 'PAPIQ_SECRET_KEY is required' <(logs nokey)
-docker run -d --name "$prefix-root" -e PUID=0 -e PAPIQ_SECRET_KEY_FILE=/run/secrets/secret_key \
+check "the log names LEKTO_SECRET_KEY" grep -q 'LEKTO_SECRET_KEY is required' <(logs nokey)
+docker run -d --name "$prefix-root" -e PUID=0 -e LEKTO_SECRET_KEY_FILE=/run/secrets/secret_key \
   -v "$work/secret_key:/run/secrets/secret_key:ro" "$image" >/dev/null
 wait_for 60 "the container with PUID=0 stops" exited root || true
 check "PUID=0 is refused" grep -q 'must not be 0' <(logs root)
-docker run -d --name "$prefix-path" -e PAPIQ_DB_SQLITE_PATH=/papiq.db -e PAPIQ_SECRET_KEY_FILE=/run/secrets/secret_key \
+docker run -d --name "$prefix-path" -e LEKTO_DB_SQLITE_PATH=/papiq.db -e LEKTO_SECRET_KEY_FILE=/run/secrets/secret_key \
   -v "$work/secret_key:/run/secrets/secret_key:ro" "$image" >/dev/null
 wait_for 60 "the container with a database in / stops" exited path || true
 check "a database path in the root folder is refused" grep -q 'is the root folder' <(logs path)
-docker run -d --name "$prefix-dots" -e PAPIQ_STORAGE_PATH=/data/../etc/objects -e PAPIQ_SECRET_KEY_FILE=/run/secrets/secret_key \
+docker run -d --name "$prefix-dots" -e LEKTO_STORAGE_PATH=/data/../etc/objects -e LEKTO_SECRET_KEY_FILE=/run/secrets/secret_key \
   -v "$work/secret_key:/run/secrets/secret_key:ro" "$image" >/dev/null
 wait_for 60 "the container with '..' in a path stops" exited dots || true
 check "a path with '..' is refused" grep -q "must not contain" <(logs dots)
 check "nothing in /etc was chowned" test "$(docker inspect --format '{{.State.ExitCode}}' "$prefix-dots")" -ne 0
-docker run -d --name "$prefix-role" -e PAPIQ_ROLE=proxy -e PAPIQ_SECRET_KEY_FILE=/run/secrets/secret_key \
+docker run -d --name "$prefix-role" -e LEKTO_ROLE=proxy -e LEKTO_SECRET_KEY_FILE=/run/secrets/secret_key \
   -v "$work/secret_key:/run/secrets/secret_key:ro" "$image" >/dev/null
 wait_for 60 "the container with an invalid role stops" exited role || true
-check "an invalid PAPIQ_ROLE is refused" grep -q 'PAPIQ_ROLE' <(logs role)
+check "an invalid LEKTO_ROLE is refused" grep -q 'LEKTO_ROLE' <(logs role)
 
 printf '\n'
 if [ "$failures" -gt 0 ]; then

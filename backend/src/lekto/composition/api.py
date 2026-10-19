@@ -100,7 +100,7 @@ class _Server(uvicorn.Server):
     - The signal is handled in the event loop and not raised again after shutdown (Uvicorn's
       default), so the caller can still close the database engine and exits normally.
 
-    Once it listens, it logs `api started` with the port it bound (with `PAPIQ_API_PORT=0`, the
+    Once it listens, it logs `api started` with the port it bound (with `LEKTO_API_PORT=0`, the
     one the operating system picked).
     """
 

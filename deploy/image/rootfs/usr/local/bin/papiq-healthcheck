@@ -4,7 +4,7 @@
 # the wait for the schema (svc-worker writes /run/papiq-worker-ready).
 set -eu
 
-role=$(printf %s "${PAPIQ_ROLE:-all}" | tr '[:upper:]' '[:lower:]')
+role=$(printf %s "${LEKTO_ROLE:-all}" | tr '[:upper:]' '[:lower:]')
 
 case "$role" in
   all | api)
@@ -13,7 +13,7 @@ import os
 import sys
 import urllib.request
 
-port = os.environ.get("PAPIQ_API_PORT", "8000")
+port = os.environ.get("LEKTO_API_PORT", "8000")
 # No proxy for the check, whatever the environment says.
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 try:

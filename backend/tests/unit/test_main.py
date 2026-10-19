@@ -20,7 +20,7 @@ from tests.builders import PASSWORD, SECRET_KEY, TRUSTED_PROXY
 @pytest.fixture
 def sqlite_instance(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A migrated SQLite database in `tmp_path`; OCR and parser are fakes."""
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
+    monkeypatch.setenv("LEKTO_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
     monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
     monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
     assert main(["migrate"]) == 0
@@ -31,8 +31,8 @@ def test_valid_configuration_exits_zero_and_masks_secrets(
 ) -> None:
     secret = tmp_path / "key"
     secret.write_text("top-secret")
-    monkeypatch.setenv("PAPIQ_MEILISEARCH_API_KEY_FILE", str(secret))
-    monkeypatch.setenv("PAPIQ_DB_TYPO", "x")
+    monkeypatch.setenv("LEKTO_MEILISEARCH_API_KEY_FILE", str(secret))
+    monkeypatch.setenv("LEKTO_DB_TYPO", "x")
 
     assert main() == 0
 
@@ -40,24 +40,24 @@ def test_valid_configuration_exits_zero_and_masks_secrets(
     assert "top-secret" not in err
     events = [json.loads(line) for line in err.splitlines()]
     assert [e["event"] for e in events] == ["unknown configuration variable", "configuration valid"]
-    assert events[0]["variable"] == "PAPIQ_DB_TYPO"
+    assert events[0]["variable"] == "LEKTO_DB_TYPO"
     assert events[1]["meilisearch_api_key"] == "**********"
 
 
 def test_external_language_models_are_reported(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setenv("PAPIQ_LLM_BASE_URL", "https://api.example.com/v1")
-    monkeypatch.setenv("PAPIQ_LLM_MODEL", "large")
-    monkeypatch.setenv("PAPIQ_EMBEDDING_BASE_URL", "http://10.30.2.15:11434/v1")
-    monkeypatch.setenv("PAPIQ_EMBEDDING_MODEL", "small")
+    monkeypatch.setenv("LEKTO_LLM_BASE_URL", "https://api.example.com/v1")
+    monkeypatch.setenv("LEKTO_LLM_MODEL", "large")
+    monkeypatch.setenv("LEKTO_EMBEDDING_BASE_URL", "http://10.30.2.15:11434/v1")
+    monkeypatch.setenv("LEKTO_EMBEDDING_MODEL", "small")
 
     assert main() == 0
 
     events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
     warnings = [e for e in events if e["level"] == "warning"]
     assert [(e["variable"], e["host"]) for e in warnings] == [
-        ("PAPIQ_LLM_BASE_URL", "api.example.com")
+        ("LEKTO_LLM_BASE_URL", "api.example.com")
     ]
     assert "outside the local network" in warnings[0]["event"]
 
@@ -65,18 +65,18 @@ def test_external_language_models_are_reported(
 def test_invalid_configuration_exits_one_with_message(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setenv("PAPIQ_DB_TYPE", "mysql")
+    monkeypatch.setenv("LEKTO_DB_TYPE", "mysql")
 
     assert main() == 1
 
-    assert "PAPIQ_DB_TYPE" in capsys.readouterr().err
+    assert "LEKTO_DB_TYPE" in capsys.readouterr().err
 
 
 def test_migrate_sets_up_an_empty_sqlite_database(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     path = tmp_path / "data" / "papiq.db"
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(path))
+    monkeypatch.setenv("LEKTO_DB_SQLITE_PATH", str(path))
 
     assert main(["migrate"]) == 0
     assert main(["migrate"]) == 0  # up to date: nothing to do
@@ -90,15 +90,15 @@ def test_migrate_sets_up_an_empty_sqlite_database(
 
 def test_reindex_needs_a_search_index(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["reindex"]) == 1
-    assert "PAPIQ_MEILISEARCH_URL is not set" in capsys.readouterr().err
+    assert "LEKTO_MEILISEARCH_URL is not set" in capsys.readouterr().err
 
 
 def test_train_needs_a_classifier(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setenv("PAPIQ_CLASSIFIER", "none")
+    monkeypatch.setenv("LEKTO_CLASSIFIER", "none")
     assert main(["train"]) == 1
-    assert "PAPIQ_CLASSIFIER is none" in capsys.readouterr().err
+    assert "LEKTO_CLASSIFIER is none" in capsys.readouterr().err
 
 
 @pytest.mark.usefixtures("sqlite_instance")
@@ -136,9 +136,9 @@ def test_fetch_logos_queues_the_contacts_without_a_logo(
 
     # Off by default: Papiq asks no website.
     assert main(["fetch-logos"]) == 1
-    assert "set PAPIQ_LOGO_FETCH=true" in capsys.readouterr().err
+    assert "set LEKTO_LOGO_FETCH=true" in capsys.readouterr().err
 
-    monkeypatch.setenv("PAPIQ_LOGO_FETCH", "true")
+    monkeypatch.setenv("LEKTO_LOGO_FETCH", "true")
     assert main(["fetch-logos"]) == 0
     events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
     assert [e["contacts"] for e in events if e["event"] == "fetch-logos queued"] == [0]
@@ -156,7 +156,7 @@ def test_reparse_queues_the_documents_to_read_again(capsys: pytest.CaptureFixtur
 def test_reindex_rebuilds_the_index(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setenv("PAPIQ_MEILISEARCH_URL", "http://meilisearch:7700")
+    monkeypatch.setenv("LEKTO_MEILISEARCH_URL", "http://meilisearch:7700")
     index = MemorySearchIndex()
     monkeypatch.setitem(container.SEARCH_INDEXES, "meilisearch", lambda _: container.Opened(index))
 
@@ -178,7 +178,7 @@ def test_failed_migration_exits_one(
         "DB_USER": "papiq",
         "DB_PASSWORD": "secret",
     }.items():
-        monkeypatch.setenv(f"PAPIQ_{name}", value)
+        monkeypatch.setenv(f"LEKTO_{name}", value)
 
     assert main(["migrate"]) == 1
 
@@ -188,26 +188,26 @@ def test_failed_migration_exits_one(
 def test_a_service_only_runs_in_its_role(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setenv("PAPIQ_ROLE", "api")
+    monkeypatch.setenv("LEKTO_ROLE", "api")
 
     assert main(["worker"]) == 1
-    monkeypatch.setenv("PAPIQ_ROLE", "worker")
+    monkeypatch.setenv("LEKTO_ROLE", "worker")
     assert main(["api"]) == 1
 
     events = [json.loads(line)["event"] for line in capsys.readouterr().err.splitlines()]
-    assert "the worker does not run with PAPIQ_ROLE=api" in events
-    assert events[-1] == "the api does not run with PAPIQ_ROLE=worker"
+    assert "the worker does not run with LEKTO_ROLE=api" in events
+    assert events[-1] == "the api does not run with LEKTO_ROLE=worker"
 
 
 def test_the_worker_stops_cleanly_on_sigterm(tmp_path: Path) -> None:
     """In a process of its own: start on SQLite and the filesystem, then SIGTERM."""
-    environment = {key: value for key, value in os.environ.items() if not key.startswith("PAPIQ_")}
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("LEKTO_")}
     environment |= {
-        "PAPIQ_DB_SQLITE_PATH": str(tmp_path / "papiq.db"),
-        "PAPIQ_STORAGE_PATH": str(tmp_path / "objects"),
-        "PAPIQ_LOG_LEVEL": "INFO",
-        "PAPIQ_SECRET_KEY": SECRET_KEY,
-        "PAPIQ_FORWARDED_ALLOW_IPS": TRUSTED_PROXY,
+        "LEKTO_DB_SQLITE_PATH": str(tmp_path / "papiq.db"),
+        "LEKTO_STORAGE_PATH": str(tmp_path / "objects"),
+        "LEKTO_LOG_LEVEL": "INFO",
+        "LEKTO_SECRET_KEY": SECRET_KEY,
+        "LEKTO_FORWARDED_ALLOW_IPS": TRUSTED_PROXY,
     }
     command = [sys.executable, "-m", "lekto.composition"]
     subprocess.run([*command, "migrate"], env=environment, check=True, capture_output=True)
@@ -234,16 +234,16 @@ def test_the_api_serves_health_and_stops_on_sigterm(tmp_path: Path) -> None:
     from the configuration; the password never shows in the log."""
     password_file = tmp_path / "admin-password"
     password_file.write_text(PASSWORD + "\n")
-    environment = {key: value for key, value in os.environ.items() if not key.startswith("PAPIQ_")}
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("LEKTO_")}
     environment |= {
-        "PAPIQ_DB_SQLITE_PATH": str(tmp_path / "papiq.db"),
-        "PAPIQ_STORAGE_PATH": str(tmp_path / "objects"),
-        "PAPIQ_API_HOST": "127.0.0.1",
-        "PAPIQ_API_PORT": "0",
-        "PAPIQ_SECRET_KEY": SECRET_KEY,
-        "PAPIQ_FORWARDED_ALLOW_IPS": TRUSTED_PROXY,
-        "PAPIQ_ADMIN_USERNAME": "admin",
-        "PAPIQ_ADMIN_PASSWORD_FILE": str(password_file),
+        "LEKTO_DB_SQLITE_PATH": str(tmp_path / "papiq.db"),
+        "LEKTO_STORAGE_PATH": str(tmp_path / "objects"),
+        "LEKTO_API_HOST": "127.0.0.1",
+        "LEKTO_API_PORT": "0",
+        "LEKTO_SECRET_KEY": SECRET_KEY,
+        "LEKTO_FORWARDED_ALLOW_IPS": TRUSTED_PROXY,
+        "LEKTO_ADMIN_USERNAME": "admin",
+        "LEKTO_ADMIN_PASSWORD_FILE": str(password_file),
     }
     command = [sys.executable, "-m", "lekto.composition"]
     subprocess.run([*command, "migrate"], env=environment, check=True, capture_output=True)
@@ -290,7 +290,7 @@ def test_check_schema_tells_whether_the_database_is_migrated(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     path = tmp_path / "data" / "papiq.db"
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(path))
+    monkeypatch.setenv("LEKTO_DB_SQLITE_PATH", str(path))
 
     assert main(["check-schema"]) == 1
     assert not path.exists()  # looking does not create the file
@@ -306,7 +306,7 @@ def test_check_schema_rejects_a_database_of_a_newer_version(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     path = tmp_path / "papiq.db"
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(path))
+    monkeypatch.setenv("LEKTO_DB_SQLITE_PATH", str(path))
     assert main(["migrate"]) == 0
     with sqlite3.connect(path) as connection:
         connection.execute("UPDATE alembic_version SET version_num = '9999'")
@@ -323,7 +323,7 @@ def test_check_schema_waits_for_the_migration(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     path = tmp_path / "papiq.db"
-    monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(path))
+    monkeypatch.setenv("LEKTO_DB_SQLITE_PATH", str(path))
     monkeypatch.setattr("lekto.composition.database.SCHEMA_POLL_INTERVAL", 0.1)
 
     timer = threading.Timer(1.0, lambda: main(["migrate"]))

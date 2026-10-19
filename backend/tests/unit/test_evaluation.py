@@ -111,7 +111,7 @@ async def test_instructions_in_the_text_change_only_checked_fields(tmp_path: Pat
 
 
 async def test_a_real_run_needs_a_model(tmp_path: Path) -> None:
-    with pytest.raises(ConfigurationError, match="PAPIQ_LLM_BASE_URL"):
+    with pytest.raises(ConfigurationError, match="LEKTO_LLM_BASE_URL"):
         await run_evaluation(Settings.model_construct(), cases=SET, output=tmp_path / "r.md")
 
 

@@ -157,13 +157,13 @@ async def run_evaluation(
 ) -> Evaluation:
     """Run the set in `cases`, cold and trained (or the `runs` given); write the report to
     `output` (default: `<cases>/reports/<date>-<model>.md`). Without `fake`,
-    PAPIQ_LLM_BASE_URL is required."""
+    LEKTO_LLM_BASE_URL is required."""
     evaluation = load_set(cases)
     model: LanguageModel | None = None
     if not fake:
         if settings.llm_base_url is None:
             raise ConfigurationError(
-                "PAPIQ_LLM_BASE_URL is not set; configure a model or use --fake"
+                "LEKTO_LLM_BASE_URL is not set; configure a model or use --fake"
             )
         model = openai_language_model(settings)
 

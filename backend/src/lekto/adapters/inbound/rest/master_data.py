@@ -290,7 +290,7 @@ async def remove_logo(id: UUID, user: CurrentUser, context: Context) -> None:
     status_code=202,
     summary="Fetch a contact's logo from its website",
     description=(
-        ADMINS_ONLY + " Only with `PAPIQ_LOGO_FETCH` (503 otherwise; `GET /pipeline` tells, "
+        ADMINS_ONLY + " Only with `LEKTO_LOGO_FETCH` (503 otherwise; `GET /pipeline` tells, "
         "`logo_fetch`). The worker asks the website at each of the contact's domains in turn "
         "for its icon (HTTPS to public addresses only), also one whose fetch failed before, "
         "and stores the first that fits in place of a fetched logo; `ContactOut.logo` or "

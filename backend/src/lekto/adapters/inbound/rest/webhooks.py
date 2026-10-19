@@ -57,7 +57,7 @@ async def list_webhooks(
         "documents within the owner's reach: their own, and green ones in spaces they own or "
         "that are shared with them (an admin's webhooks too; the rights of an admin do not "
         "widen them). The answer holds the secret, shown only once. A user has at most as "
-        "many webhooks as `PAPIQ_WEBHOOKS_PER_USER` allows (409)."
+        "many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409)."
     ),
     response_model=WebhookCreated,
     responses=problem_responses(401, 403, 409, 422),

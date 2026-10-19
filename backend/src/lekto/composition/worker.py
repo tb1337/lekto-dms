@@ -12,7 +12,7 @@ from lekto.core.services.webhooks import SUBSCRIBER as WEBHOOK_SUBSCRIBER
 
 async def run_worker(settings: Settings) -> None:
     """Run the worker until it receives SIGTERM or SIGINT; then finish running jobs (up to
-    `PAPIQ_WORKER_SHUTDOWN_TIMEOUT`) and close the database engine and the object store."""
+    `LEKTO_WORKER_SHUTDOWN_TIMEOUT`) and close the database engine and the object store."""
     container = build_container(settings)
     try:
         services = build_services(container, settings)

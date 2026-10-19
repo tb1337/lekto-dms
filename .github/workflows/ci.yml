@@ -204,8 +204,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Configure from dev.env, with the services on localhost
         run: |
-          grep '^PAPIQ_' .devcontainer/dev.env \
-            | sed -E 's#^PAPIQ_DB_HOST=.*#PAPIQ_DB_HOST=localhost#; s#//(garage|meilisearch):#//localhost:#' \
+          grep '^LEKTO_' .devcontainer/dev.env \
+            | sed -E 's#^LEKTO_DB_HOST=.*#LEKTO_DB_HOST=localhost#; s#//(garage|meilisearch):#//localhost:#' \
             >> "$GITHUB_ENV"
       - name: Start the services and install the OCR programs, in parallel
         run: |

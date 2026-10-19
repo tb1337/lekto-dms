@@ -333,7 +333,7 @@ async def test_the_text_is_read_in_pieces(api: Api) -> None:
 
 
 async def test_one_piece_of_text_holds_what_the_setting_allows() -> None:
-    """`PAPIQ_MCP_TEXT_MAX` limits a piece over REST as over MCP."""
+    """`LEKTO_MCP_TEXT_MAX` limits a piece over REST as over MCP."""
     container = build_memory_container()
     services = build_services(container)
     builders.skip_classification(services.pipeline)

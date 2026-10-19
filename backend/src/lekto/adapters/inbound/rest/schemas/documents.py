@@ -559,7 +559,7 @@ class PageReadingOut(BaseModel):
     )
     poor: bool = Field(
         description=(
-            "The page counts as poorly read (`PAPIQ_POOR_READING_THRESHOLD`): by its content "
+            "The page counts as poorly read (`LEKTO_POOR_READING_THRESHOLD`): by its content "
             "words where counted, else by all."
         )
     )

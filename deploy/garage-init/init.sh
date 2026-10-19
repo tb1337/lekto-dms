@@ -6,18 +6,18 @@
 # Environment:
 #   GARAGE_ADMIN_URL                    admin API, e.g. http://garage:3903
 #   GARAGE_ADMIN_TOKEN_FILE             file with the admin API token
-#   PAPIQ_S3_ACCESS_KEY_ID_FILE         file with the access key to import (GK + 24 hex digits)
-#   PAPIQ_S3_SECRET_ACCESS_KEY_FILE     file with its secret (64 hex digits)
-#   PAPIQ_S3_BUCKET                     bucket to create
+#   LEKTO_S3_ACCESS_KEY_ID_FILE         file with the access key to import (GK + 24 hex digits)
+#   LEKTO_S3_SECRET_ACCESS_KEY_FILE     file with its secret (64 hex digits)
+#   LEKTO_S3_BUCKET                     bucket to create
 #   GARAGE_ZONE, GARAGE_CAPACITY        zone name and capacity in bytes (defaults: papiq, 1 TB)
 set -eu
 
 : "${GARAGE_ADMIN_URL:?}" "${GARAGE_ADMIN_TOKEN_FILE:?}"
-: "${PAPIQ_S3_ACCESS_KEY_ID_FILE:?}" "${PAPIQ_S3_SECRET_ACCESS_KEY_FILE:?}" "${PAPIQ_S3_BUCKET:?}"
+: "${LEKTO_S3_ACCESS_KEY_ID_FILE:?}" "${LEKTO_S3_SECRET_ACCESS_KEY_FILE:?}" "${LEKTO_S3_BUCKET:?}"
 
 token=$(tr -d '\r\n' <"$GARAGE_ADMIN_TOKEN_FILE")
-access_key_id=$(tr -d '\r\n' <"$PAPIQ_S3_ACCESS_KEY_ID_FILE")
-secret_access_key=$(tr -d '\r\n' <"$PAPIQ_S3_SECRET_ACCESS_KEY_FILE")
+access_key_id=$(tr -d '\r\n' <"$LEKTO_S3_ACCESS_KEY_ID_FILE")
+secret_access_key=$(tr -d '\r\n' <"$LEKTO_S3_SECRET_ACCESS_KEY_FILE")
 zone=${GARAGE_ZONE:-papiq}
 capacity=${GARAGE_CAPACITY:-1000000000000}
 
@@ -74,17 +74,17 @@ else
 fi
 
 # Bucket.
-if [ "$(status GET "/v2/GetBucketInfo?globalAlias=$PAPIQ_S3_BUCKET")" = "200" ]; then
+if [ "$(status GET "/v2/GetBucketInfo?globalAlias=$LEKTO_S3_BUCKET")" = "200" ]; then
   echo "Bucket already exists"
 else
-  echo "Creating bucket $PAPIQ_S3_BUCKET"
-  api POST /v2/CreateBucket "{\"globalAlias\": \"$PAPIQ_S3_BUCKET\"}" >/dev/null
+  echo "Creating bucket $LEKTO_S3_BUCKET"
+  api POST /v2/CreateBucket "{\"globalAlias\": \"$LEKTO_S3_BUCKET\"}" >/dev/null
 fi
 
 # Permissions are set, not toggled, so repeating this changes nothing.
-bucket_id=$(api GET "/v2/GetBucketInfo?globalAlias=$PAPIQ_S3_BUCKET" | jq -r '.id')
+bucket_id=$(api GET "/v2/GetBucketInfo?globalAlias=$LEKTO_S3_BUCKET" | jq -r '.id')
 api POST /v2/AllowBucketKey \
   "{\"bucketId\": \"$bucket_id\", \"accessKeyId\": \"$access_key_id\", \"permissions\": {\"read\": true, \"write\": true, \"owner\": true}}" \
   >/dev/null
 
-echo "Garage is ready: bucket $PAPIQ_S3_BUCKET, key $access_key_id"
+echo "Garage is ready: bucket $LEKTO_S3_BUCKET, key $access_key_id"

@@ -18,8 +18,8 @@ The template editor writes them with you and shows the result on a document you 
 `|` passes a value through a filter. Everything else is text as written. Single braces
 (`{contact}`, as before 0.2.0) are text too.
 
-The examples below were rendered with `PAPIQ_TEMPLATE_LOCALE=de` and
-`PAPIQ_DEFAULT_CURRENCY=EUR`.
+The examples below were rendered with `LEKTO_TEMPLATE_LOCALE=de` and
+`LEKTO_DEFAULT_CURRENCY=EUR`.
 
 ## Values
 
@@ -80,7 +80,7 @@ All of [Liquid's standard filters](https://shopify.github.io/liquid/filters/) wo
 | `{{ field.nummer \| default: 'ohne Nummer' }}` | `ohne Nummer` where the field has no value |
 | `{{ title \| replace: 'Rechnung', 'RE' }}` | `Strom-RE` for `Strom-Rechnung` |
 
-Three more filters write in `PAPIQ_TEMPLATE_LOCALE`:
+Three more filters write in `LEKTO_TEMPLATE_LOCALE`:
 
 | Filter | Template | Result |
 | --- | --- | --- |
@@ -93,7 +93,7 @@ Three more filters write in `PAPIQ_TEMPLATE_LOCALE`:
 The `datetime` format uses the
 [Unicode date patterns](https://unicode.org/reports/tr35/tr35-dates.html#Date_Field_Symbol_Table):
 `d` is the day, `MM` the month as a number, `MMMM` the month's name, `yyyy` the year, and
-`QQQ` the quarter (`Q1`). `currency` always writes `PAPIQ_DEFAULT_CURRENCY`. For an amount in
+`QQQ` the quarter (`Q1`). `currency` always writes `LEKTO_DEFAULT_CURRENCY`. For an amount in
 another currency, write the amount itself (`{{ field.betrag }}`), which keeps its currency.
 
 ## Missing values

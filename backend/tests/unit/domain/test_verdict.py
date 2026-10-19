@@ -21,7 +21,7 @@ from lekto.core.domain.verdict import (
 )
 from tests import builders
 
-# The judges with the shipped thresholds (`PAPIQ_*_THRESHOLD` defaults).
+# The judges with the shipped thresholds (`LEKTO_*_THRESHOLD` defaults).
 judge_contact = partial(verdict.judge_contact, thresholds=builders.THRESHOLDS)
 judge_type = partial(verdict.judge_type, thresholds=builders.THRESHOLDS)
 judge_tags = partial(verdict.judge_tags, thresholds=builders.THRESHOLDS)

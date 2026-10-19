@@ -2,12 +2,12 @@
 // error (CSP violations included), and one create-and-remove round trip per kind of dialog.
 import { expect, test } from '@playwright/test';
 
-const ADMIN = process.env.PAPIQ_ADMIN_USERNAME ?? 'admin';
-const ADMIN_PASSWORD = process.env.PAPIQ_ADMIN_PASSWORD ?? '';
+const ADMIN = process.env.LEKTO_ADMIN_USERNAME ?? 'admin';
+const ADMIN_PASSWORD = process.env.LEKTO_ADMIN_PASSWORD ?? '';
 const NAME = `e2e-${Date.now()}`;
 
 test.beforeEach(() => {
-	test.skip(!ADMIN_PASSWORD, 'PAPIQ_ADMIN_PASSWORD is not set');
+	test.skip(!ADMIN_PASSWORD, 'LEKTO_ADMIN_PASSWORD is not set');
 });
 
 test('every area opens, and the dialogs create things', async ({ page }) => {

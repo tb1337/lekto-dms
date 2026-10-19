@@ -392,7 +392,7 @@ async def _download(
     description=(
         "Needs read access. The text read from the archive, plain text as it is set (the "
         "pages apart by a form feed on a line of its own; a document parsed before 0.2 has "
-        "Markdown until it is read again), in pieces of at most `PAPIQ_MCP_TEXT_MAX` "
+        "Markdown until it is read again), in pieces of at most `LEKTO_MCP_TEXT_MAX` "
         "characters; continue with `next_offset`. 409 while the document has no text yet (it "
         "is not parsed), 422 for a larger `limit`."
     ),
@@ -493,7 +493,7 @@ async def retry(id: UUID, user: CurrentUser, context: Context) -> DocumentDetail
     summary="Read the document with the vision language model",
     description=(
         "The owner and admins. Sends every page as an image to the vision language model "
-        "(`PAPIQ_VLM_*`, named in `GET /pipeline`) and processes the document again from "
+        "(`LEKTO_VLM_*`, named in `GET /pipeline`) and processes the document again from "
         "`ocr`: the model's text becomes the archive's text layer and is checked like any "
         "other OCR. Only a person asks for it; the advice is in `GET /documents/{id}/reading`. "
         "409 without a model, while processing runs, or past a failed node."

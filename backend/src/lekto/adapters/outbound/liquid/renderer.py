@@ -66,8 +66,8 @@ class _DateTime(DateTime):
 
 class LiquidTemplateRenderer:
     def __init__(self, *, locale: str, currency: str) -> None:
-        """`locale` writes dates and amounts (`PAPIQ_TEMPLATE_LOCALE`); `currency` is that
-        of the `currency` filter where a template names none (`PAPIQ_DEFAULT_CURRENCY`)."""
+        """`locale` writes dates and amounts (`LEKTO_TEMPLATE_LOCALE`); `currency` is that
+        of the `currency` filter where a template names none (`LEKTO_DEFAULT_CURRENCY`)."""
         self._locale = parse_locale(locale)
         environment = _Environment(undefined=FalsyStrictUndefined)
         for tag in _FORBIDDEN_TAGS:

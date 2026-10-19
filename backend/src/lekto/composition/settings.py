@@ -1,7 +1,7 @@
-"""Configuration: environment variables prefixed `PAPIQ_`, no configuration file.
+"""Configuration: environment variables prefixed `LEKTO_`, no configuration file.
 
-Secrets can also be passed as `PAPIQ_<NAME>_FILE` (Docker secrets): the file content is the value.
-Setting both `PAPIQ_<NAME>` and `PAPIQ_<NAME>_FILE` is an error.
+Secrets can also be passed as `LEKTO_<NAME>_FILE` (Docker secrets): the file content is the value.
+Setting both `LEKTO_<NAME>` and `LEKTO_<NAME>_FILE` is an error.
 """
 
 import functools
@@ -33,13 +33,13 @@ from lekto.adapters.outbound.crypto import decode_key
 from lekto.adapters.outbound.liquid import parse_locale
 from lekto.composition.errors import ConfigurationError
 
-ENV_PREFIX = "PAPIQ_"
+ENV_PREFIX = "LEKTO_"
 FILE_SUFFIX = "_FILE"
 
 # The secret key of the devcontainer (`.devcontainer/dev.env`); public, so never for production.
 DEVELOPMENT_SECRET_KEY = "ZGV2LWtleS1kZXYta2V5LWRldi1rZXktZGV2LWtleS0="
 
-# The roles that run the API and the worker (`PAPIQ_ROLE`).
+# The roles that run the API and the worker (`LEKTO_ROLE`).
 API_ROLES = frozenset({"all", "api"})
 WORKER_ROLES = frozenset({"all", "worker"})
 # Credentials in URLs (`http://user:password@host`) must not reach logs or error messages.
@@ -57,7 +57,7 @@ _NUMBER = re.compile(r"\d+(\.\d+)?")
 @functools.cache
 def _lowercase_choices(settings_cls: type[BaseSettings]) -> frozenset[str]:
     """The fields whose value is one of a few lower-case words (`Literal[...]`); for them
-    `PAPIQ_ROLE=API` is accepted. Derived from the annotations, so a new choice field needs no
+    `LEKTO_ROLE=API` is accepted. Derived from the annotations, so a new choice field needs no
     entry anywhere."""
     names: set[str] = set()
     for name, field in settings_cls.model_fields.items():
@@ -431,7 +431,7 @@ class Settings(BaseSettings):
 
 
 class _SecretFileSource(PydanticBaseSettingsSource):
-    """Reads secrets from the file named by `PAPIQ_<NAME>_FILE`."""
+    """Reads secrets from the file named by `LEKTO_<NAME>_FILE`."""
 
     def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
         raise NotImplementedError  # unused: __call__ handles all fields at once
@@ -481,7 +481,7 @@ def _mask_userinfo(text: str) -> str:
 
 
 def _env(field_name: str) -> str:
-    """The variable of a setting: `llm_input_budget` is `PAPIQ_LLM_INPUT_BUDGET`."""
+    """The variable of a setting: `llm_input_budget` is `LEKTO_LLM_INPUT_BUDGET`."""
     return ENV_PREFIX + field_name.upper()
 
 
@@ -507,7 +507,7 @@ MIGRATION_PREFIX = ENV_PREFIX + "MIGRATION_"
 
 
 def find_unknown_variables(environ: Mapping[str, str] | None = None) -> list[str]:
-    """`PAPIQ_` variables that match no setting; usually typos. The migration client's
+    """`LEKTO_` variables that match no setting; usually typos. The migration client's
     `PAPIQ_MIGRATION_*` are left alone."""
     environ = os.environ if environ is None else environ
     secrets = {_env(name) + FILE_SUFFIX for name in _secret_fields(Settings)}
@@ -522,8 +522,8 @@ def find_unknown_variables(environ: Mapping[str, str] | None = None) -> list[str
 
 
 RENAMED: dict[str, str] = {
-    "PAPIQ_STEP_MAX_ATTEMPTS": "PAPIQ_NODE_MAX_ATTEMPTS",
-    "PAPIQ_STEP_RETRY_DELAY": "PAPIQ_NODE_RETRY_DELAY",
+    "LEKTO_STEP_MAX_ATTEMPTS": "LEKTO_NODE_MAX_ATTEMPTS",
+    "LEKTO_STEP_RETRY_DELAY": "LEKTO_NODE_RETRY_DELAY",
 }
 """Variables of earlier versions and their names now; setting an old one is an error, so a
 value does not fall back to the default unnoticed."""

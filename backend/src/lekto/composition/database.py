@@ -1,4 +1,4 @@
-"""The configured database: SQLite or Postgres, per `PAPIQ_DB_TYPE`."""
+"""The configured database: SQLite or Postgres, per `LEKTO_DB_TYPE`."""
 
 import asyncio
 import logging

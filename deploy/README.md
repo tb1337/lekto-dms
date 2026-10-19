@@ -6,7 +6,7 @@ processes inside it:
 | Service | Type | Purpose |
 | --- | --- | --- |
 | `init-papiq` | oneshot | check `PUID`/`PGID`, prepare the volume, validate the configuration |
-| `init-migrations` | oneshot | `PAPIQ_ROLE` `all`/`api`: migrate the database; `worker`: nothing |
+| `init-migrations` | oneshot | `LEKTO_ROLE` `all`/`api`: migrate the database; `worker`: nothing |
 | `svc-api` | longrun | Uvicorn with FastAPI: REST, MCP, SSE, and the web UI below `/ui` |
 | `svc-worker` | longrun | waits for the schema (role `worker`), then pipeline jobs, outbox dispatch, webhook delivery |
 
@@ -42,74 +42,74 @@ docker compose -f compose.sqlite.yml up -d --build     # or compose.postgres.yml
 docker compose -f compose.sqlite.yml ps                # wait for "healthy"
 ```
 
-Open <http://localhost:8000/api/v1/docs> (another port: `PAPIQ_HTTP_PORT=8080 docker compose …`).
+Open <http://localhost:8000/api/v1/docs> (another port: `LEKTO_HTTP_PORT=8080 docker compose …`).
 Sign in as `admin`; the password is in `secrets/admin_password`. The stacks publish the port on
-`127.0.0.1` only and run over plain HTTP (`PAPIQ_COOKIE_SECURE=false`): put a TLS proxy in front
+`127.0.0.1` only and run over plain HTTP (`LEKTO_COOKIE_SECURE=false`): put a TLS proxy in front
 before anyone else uses it (see [Reverse proxy](#reverse-proxy)).
 
 ## Configuration
 
-Environment variables with the prefix `PAPIQ_`, no configuration file; the Compose files show
+Environment variables with the prefix `LEKTO_`, no configuration file; the Compose files show
 the ones that matter. The start stops with a message naming every invalid variable (`docker compose
 up` without `-d`, or `docker compose logs papiq`). A running container prints its effective
 configuration, secrets masked, with `docker compose exec papiq papiq check`. The complete list is
 in [backend/README.md](../backend/README.md#configuration).
 
-**Secrets** are passed as files (Docker secrets): `PAPIQ_<NAME>_FILE=/run/secrets/…`; the file's
-content is the value, and setting both `PAPIQ_<NAME>` and `PAPIQ_<NAME>_FILE` is an error. The files
+**Secrets** are passed as files (Docker secrets): `LEKTO_<NAME>_FILE=/run/secrets/…`; the file's
+content is the value, and setting both `LEKTO_<NAME>` and `LEKTO_<NAME>_FILE` is an error. The files
 must be readable by `PUID`:`PGID`, because the services read them as that user.
-Pass secrets only this way: a secret in a plain `PAPIQ_…` variable is also stored, readable by
+Pass secrets only this way: a secret in a plain `LEKTO_…` variable is also stored, readable by
 every process, in `/run/s6/container_environment` inside the container, and shows in `docker inspect`.
 `create-secrets.sh` writes them with random values (`openssl rand`), keeps files that exist, and
 gives Garage's two secrets the mode `0600` it insists on. By hand:
 
 ```sh
-openssl rand -base64 32 > secrets/papiq_secret_key   # PAPIQ_SECRET_KEY: 32 random bytes, base64
+openssl rand -base64 32 > secrets/papiq_secret_key   # LEKTO_SECRET_KEY: 32 random bytes, base64
 ```
 
-`PAPIQ_SECRET_KEY` is required by every service (it encrypts TOTP and webhook secrets). Losing it
+`LEKTO_SECRET_KEY` is required by every service (it encrypts TOTP and webhook secrets). Losing it
 means losing both. The key from `.devcontainer/dev.env` is public and refused with secure cookies
-(the default; the example stacks run with `PAPIQ_COOKIE_SECURE=false` and would take it, so never
+(the default; the example stacks run with `LEKTO_COOKIE_SECURE=false` and would take it, so never
 copy it). Meilisearch has no
 `*_FILE` variable: its key reaches it through `secrets/meilisearch.env`, the one secret that is an
 environment variable of a container (visible in `docker inspect` of Meilisearch, not of Papiq).
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `PAPIQ_ROLE` | `all` | `all`, `api` or `worker` (next section) |
-| `PAPIQ_SECRET_KEY(_FILE)` | – | required |
-| `PAPIQ_ADMIN_USERNAME`, `PAPIQ_ADMIN_PASSWORD(_FILE)` | – | create the first admin while there is none |
-| `PAPIQ_DB_TYPE` | `sqlite` | `postgres` needs `PAPIQ_DB_HOST`, `_NAME`, `_USER`, `_PASSWORD(_FILE)` |
-| `PAPIQ_STORAGE_TYPE` | `filesystem` | `s3` needs `PAPIQ_S3_ENDPOINT_URL`, `_BUCKET`, `_ACCESS_KEY_ID(_FILE)`, `_SECRET_ACCESS_KEY(_FILE)` |
-| `PAPIQ_MEILISEARCH_URL`, `_API_KEY(_FILE)` | – | search; without it Papiq works without search |
-| `PAPIQ_LLM_BASE_URL`, `_MODEL` | – | set both or neither; `PAPIQ_LLM_TIMEOUT` (seconds, 300) |
-| `PAPIQ_EMBEDDING_BASE_URL`, `_MODEL`, `_DIMENSIONS`, `_QUERY_PREFIX` | – | with Meilisearch and embeddings the dimensions are required |
-| `PAPIQ_VLM_BASE_URL`, `_MODEL`, `_API_KEY(_FILE)` | – | a vision language model that reads a document's pages when a person asks for it; set both or neither; `PAPIQ_VLM_TIMEOUT` (seconds per document, 1800) |
-| `PAPIQ_LOGO_FETCH` | `false` | fetch the logos of contacts from their own websites; see [Outgoing requests](#outgoing-requests) |
-| `PAPIQ_COOKIE_SECURE`, `PAPIQ_FORWARDED_ALLOW_IPS`, `PAPIQ_PUBLIC_URL` | `true`, –, – | behind a proxy, see below |
-| `PAPIQ_UPLOAD_MAX_SIZE` | 100 MiB | the proxy's body limit must allow it |
-| `PAPIQ_UI_DIR` | `/opt/papiq/ui` | the web UI's files; unset it to serve the API only |
-| `PAPIQ_WORKER_CONCURRENCY`, `PAPIQ_WORKER_SHUTDOWN_TIMEOUT` | 2, 30 s | jobs at the same time (OCR shares the CPU cores among them); see [Stopping](#stopping) |
-| `PAPIQ_MCP_ENABLED`, `PAPIQ_MCP_TEXT_MAX` | `true`, 20000 | the MCP endpoint and the characters one `get_text` returns |
-| `PAPIQ_WEBHOOKS_PER_USER` | 20 | webhooks per user |
-| `PAPIQ_WEBHOOK_TIMEOUT`, `_MAX_ATTEMPTS`, `_RETRY_DELAY` | 10 s, 10, 30 s | per attempt; attempts per event; first delay, doubling up to one hour |
-| `PAPIQ_WEBHOOK_DISABLE_AFTER`, `_CONCURRENCY`, `_SECRET_GRACE` | 20, 4, 24 h | given-up deliveries in a row until a webhook is switched off; parallel deliveries; how long a renewed secret's predecessor still signs |
-| `PAPIQ_LOG_FORMAT`, `PAPIQ_LOG_LEVEL` | `json`, `INFO` | all services log to stdout/stderr |
+| `LEKTO_ROLE` | `all` | `all`, `api` or `worker` (next section) |
+| `LEKTO_SECRET_KEY(_FILE)` | – | required |
+| `LEKTO_ADMIN_USERNAME`, `LEKTO_ADMIN_PASSWORD(_FILE)` | – | create the first admin while there is none |
+| `LEKTO_DB_TYPE` | `sqlite` | `postgres` needs `LEKTO_DB_HOST`, `_NAME`, `_USER`, `_PASSWORD(_FILE)` |
+| `LEKTO_STORAGE_TYPE` | `filesystem` | `s3` needs `LEKTO_S3_ENDPOINT_URL`, `_BUCKET`, `_ACCESS_KEY_ID(_FILE)`, `_SECRET_ACCESS_KEY(_FILE)` |
+| `LEKTO_MEILISEARCH_URL`, `_API_KEY(_FILE)` | – | search; without it Papiq works without search |
+| `LEKTO_LLM_BASE_URL`, `_MODEL` | – | set both or neither; `LEKTO_LLM_TIMEOUT` (seconds, 300) |
+| `LEKTO_EMBEDDING_BASE_URL`, `_MODEL`, `_DIMENSIONS`, `_QUERY_PREFIX` | – | with Meilisearch and embeddings the dimensions are required |
+| `LEKTO_VLM_BASE_URL`, `_MODEL`, `_API_KEY(_FILE)` | – | a vision language model that reads a document's pages when a person asks for it; set both or neither; `LEKTO_VLM_TIMEOUT` (seconds per document, 1800) |
+| `LEKTO_LOGO_FETCH` | `false` | fetch the logos of contacts from their own websites; see [Outgoing requests](#outgoing-requests) |
+| `LEKTO_COOKIE_SECURE`, `LEKTO_FORWARDED_ALLOW_IPS`, `LEKTO_PUBLIC_URL` | `true`, –, – | behind a proxy, see below |
+| `LEKTO_UPLOAD_MAX_SIZE` | 100 MiB | the proxy's body limit must allow it |
+| `LEKTO_UI_DIR` | `/opt/papiq/ui` | the web UI's files; unset it to serve the API only |
+| `LEKTO_WORKER_CONCURRENCY`, `LEKTO_WORKER_SHUTDOWN_TIMEOUT` | 2, 30 s | jobs at the same time (OCR shares the CPU cores among them); see [Stopping](#stopping) |
+| `LEKTO_MCP_ENABLED`, `LEKTO_MCP_TEXT_MAX` | `true`, 20000 | the MCP endpoint and the characters one `get_text` returns |
+| `LEKTO_WEBHOOKS_PER_USER` | 20 | webhooks per user |
+| `LEKTO_WEBHOOK_TIMEOUT`, `_MAX_ATTEMPTS`, `_RETRY_DELAY` | 10 s, 10, 30 s | per attempt; attempts per event; first delay, doubling up to one hour |
+| `LEKTO_WEBHOOK_DISABLE_AFTER`, `_CONCURRENCY`, `_SECRET_GRACE` | 20, 4, 24 h | given-up deliveries in a row until a webhook is switched off; parallel deliveries; how long a renewed secret's predecessor still signs |
+| `LEKTO_LOG_FORMAT`, `LEKTO_LOG_LEVEL` | `json`, `INFO` | all services log to stdout/stderr |
 
-Variables of the image itself (not `PAPIQ_`, so not checked as settings): `PUID`, `PGID`, and the
+Variables of the image itself (not `LEKTO_`, so not checked as settings): `PUID`, `PGID`, and the
 `S6_*` variables of s6-overlay.
 
 ### Language model
 
 Papiq talks to any OpenAI-compatible endpoint; the examples point at Ollama on the host
 (`host.docker.internal:11434`) and use `qwen3:8b` and `snowflake-arctic-embed2`. Change the address
-with `PAPIQ_LLM_BASE_URL`, `PAPIQ_EMBEDDING_BASE_URL` and the models with `PAPIQ_LLM_MODEL`,
-`PAPIQ_EMBEDDING_MODEL` in your shell (empty: none). Start Ollama with `OLLAMA_CONTEXT_LENGTH=8192`
-or more; it cuts longer prompts silently. On a CPU a document takes minutes (`PAPIQ_LLM_TIMEOUT`
+with `LEKTO_LLM_BASE_URL`, `LEKTO_EMBEDDING_BASE_URL` and the models with `LEKTO_LLM_MODEL`,
+`LEKTO_EMBEDDING_MODEL` in your shell (empty: none). Start Ollama with `OLLAMA_CONTEXT_LENGTH=8192`
+or more; it cuts longer prompts silently. On a CPU a document takes minutes (`LEKTO_LLM_TIMEOUT`
 is 600 in the examples). Document content is sent to these endpoints; at start, a warning names
 every endpoint outside the local network.
 
-A vision language model (`PAPIQ_VLM_*`) reads a document's pages only when a person asks for it
+A vision language model (`LEKTO_VLM_*`) reads a document's pages only when a person asks for it
 in the web UI ("Read with VLM"): every page goes there as an image. The model has to take images
 and give each line's box in pixels (measured with Claude Sonnet 5.5 through Open WebUI).
 
@@ -117,7 +117,7 @@ and give each line's box in pixels (measured with Claude Sonnet 5.5 through Open
 
 Besides the endpoints configured above (language model, embeddings, vision model, identity
 provider, S3, webhooks of the users), Papiq asks nothing on the internet. Only with
-`PAPIQ_LOGO_FETCH=true` (off by default) does the worker fetch the logos of contacts from their
+`LEKTO_LOGO_FETCH=true` (off by default) does the worker fetch the logos of contacts from their
 own websites: the domains among their identifiers, which training also learns from documents.
 It goes over HTTPS to public addresses only (no private, loopback, link-local or shared address,
 checked again for every redirect, at most three) and reads at most 1 MB in 10 s per request,
@@ -127,7 +127,7 @@ off again, fetches still queued end without asking. Logos uploaded by an admin n
 
 ## Roles
 
-`PAPIQ_ROLE` decides which services s6 starts; the other one stays down (`s6-svstat` shows it).
+`LEKTO_ROLE` decides which services s6 starts; the other one stays down (`s6-svstat` shows it).
 
 | Role | Starts | Migrates | Health |
 | --- | --- | --- | --- |
@@ -136,7 +136,7 @@ off again, fetches still queued end without asking. Logos uploaded by an admin n
 | `worker` | worker | never | worker is up |
 
 Separate containers run the same image: for example two services in one Compose file, one with
-`PAPIQ_ROLE: api`, one with `worker`, otherwise the same environment. The worker waits for the API
+`LEKTO_ROLE: api`, one with `worker`, otherwise the same environment. The worker waits for the API
 container to migrate (`svc-worker` runs `check-schema --wait 600`, then looks again; the container
 reports unhealthy meanwhile, and `docker stop` ends the wait at once). A database migrated by a
 newer image is refused with a message every ten seconds. Run a single API instance: the event
@@ -147,12 +147,12 @@ streams assume it.
 s6 starts as root. Every Papiq process (configuration check, migration, API, worker and the OCR
 processes they start) runs as `PUID`:`PGID` (default `1000:1000`), never as root;
 `0` is refused. `init-papiq` makes that user the owner of `/data` (and of the paths you set with
-`PAPIQ_DB_SQLITE_PATH` and `PAPIQ_STORAGE_PATH`): recursively only if the folder itself belongs to
+`LEKTO_DB_SQLITE_PATH` and `LEKTO_STORAGE_PATH`): recursively only if the folder itself belongs to
 someone else, otherwise only the database files, so a large object store is not walked at each start.
 The caches of the libraries go to a `HOME` that disappears with the container.
 
-- `/data` is the only volume. The image sets `PAPIQ_DB_SQLITE_PATH=/data/papiq.db` and
-  `PAPIQ_STORAGE_PATH=/data/objects`. With Postgres and S3 it stays empty.
+- `/data` is the only volume. The image sets `LEKTO_DB_SQLITE_PATH=/data/papiq.db` and
+  `LEKTO_STORAGE_PATH=/data/objects`. With Postgres and S3 it stays empty.
 - SQLite needs a local disk in WAL mode, never a network share. A share that does not allow
   `chown` makes `init-papiq` fail with that message: set the owner on the share instead.
 - After restoring files into the volume as root, give them to `PUID`:`PGID` again (the restore
@@ -177,12 +177,12 @@ thing in the log.
 
 `docker stop` sends SIGTERM to s6, which stops the services together: Uvicorn ends its streams and
 gives requests 10 s; the worker takes no new jobs and gives running ones up to
-`PAPIQ_WORKER_SHUTDOWN_TIMEOUT` (30 s) before it hands them back to run again. The values fit
+`LEKTO_WORKER_SHUTDOWN_TIMEOUT` (30 s) before it hands them back to run again. The values fit
 together:
 
 | | Default | Rule |
 | --- | --- | --- |
-| `PAPIQ_WORKER_SHUTDOWN_TIMEOUT` | 30 s | |
+| `LEKTO_WORKER_SHUTDOWN_TIMEOUT` | 30 s | |
 | `S6_SERVICES_GRACETIME` | 40000 ms | at least (worker timeout + 10 s) in ms, then s6 kills the service |
 | `stop_grace_period` (Compose) / `docker stop -t` | 60 s | above the s6 value, or Docker kills the whole container |
 
@@ -193,11 +193,11 @@ migration is one transaction and is rolled back.
 
 ## Reverse proxy
 
-Put a TLS proxy in front of the API and remove `PAPIQ_COOKIE_SECURE: "false"` (default `true`: the
-session cookie is `Secure`). Then name the proxy: `PAPIQ_FORWARDED_ALLOW_IPS` takes its address
+Put a TLS proxy in front of the API and remove `LEKTO_COOKIE_SECURE: "false"` (default `true`: the
+session cookie is `Secure`). Then name the proxy: `LEKTO_FORWARDED_ALLOW_IPS` takes its address
 (comma-separated, `*` only if the proxy sets `X-Forwarded-For` itself and replaces what clients
 send); Papiq counts failed sign-ins per client address from that header, and refuses to start
-with secure cookies and without it. With OIDC set `PAPIQ_PUBLIC_URL`.
+with secure cookies and without it. With OIDC set `LEKTO_PUBLIC_URL`.
 
 The web UI is at `/ui/` (`/` leads there). Papiq sets its cache headers: files below
 `/ui/_app/immutable/` carry a hash in their name and may be cached for a year, everything else
@@ -212,7 +212,7 @@ Two paths must not be buffered or cut short by the proxy:
 For nginx:
 
 ```nginx
-client_max_body_size 100m;                 # PAPIQ_UPLOAD_MAX_SIZE
+client_max_body_size 100m;                 # LEKTO_UPLOAD_MAX_SIZE
 location / {
     proxy_pass http://papiq:8000;
     proxy_set_header Host $host;
@@ -234,8 +234,8 @@ location ~ ^/api/v1/(events|mcp) {
 The worker delivers webhooks, so the worker container needs network access to their targets, also
 in your own network. Papiq follows no redirects and ignores the proxy environment variables
 (`HTTP_PROXY` and the like), so the targets must be reachable directly from the worker's network. A
-target that does not answer holds up deliveries up to `PAPIQ_WEBHOOK_TIMEOUT` each, at most
-`PAPIQ_WEBHOOK_CONCURRENCY` at a time; processing documents is not affected.
+target that does not answer holds up deliveries up to `LEKTO_WEBHOOK_TIMEOUT` each, at most
+`LEKTO_WEBHOOK_CONCURRENCY` at a time; processing documents is not affected.
 
 ## MCP clients
 
@@ -251,7 +251,7 @@ claude mcp add --transport http papiq http://localhost:8000/api/v1/mcp \
 
 What to back up: the **database** and the **object store** (the original files and their
 derivatives). **Not** Meilisearch: the index is derived; after a restore `papiq reindex` rebuilds
-it. Keep the secrets (`PAPIQ_SECRET_KEY` above all) in your password manager, not only in the
+it. Keep the secrets (`LEKTO_SECRET_KEY` above all) in your password manager, not only in the
 backup. Back up the database first, then the objects: the originals never change (their key is the SHA-256
 of the content), so objects that came in after the database copy are only unused files, while the
 other order could leave documents without a file. The derivatives (archive PDF, text, preview,
@@ -333,8 +333,8 @@ The same update reads bar and QR codes: run `papiq read-codes` after it (and aft
 `papiq reparse`), and the worker reads the codes of the documents from before and keeps the
 identifiers each one shows; it reads locally, nothing is sent out. A document that is being
 processed at that moment is skipped; run the command again once it is through.
-The same update renamed `PAPIQ_STEP_MAX_ATTEMPTS` and `PAPIQ_STEP_RETRY_DELAY` to
-`PAPIQ_NODE_MAX_ATTEMPTS` and `PAPIQ_NODE_RETRY_DELAY`; a container with an old name refuses
+The same update renamed `LEKTO_STEP_MAX_ATTEMPTS` and `LEKTO_STEP_RETRY_DELAY` to
+`LEKTO_NODE_MAX_ATTEMPTS` and `LEKTO_NODE_RETRY_DELAY`; a container with an old name refuses
 to start and says so.
 The update to 0.3.0 renamed drawers to spaces in the API (`/api/v1/spaces`, `space_id`), in
 rules and in templates (`{{ space }}`); it needs no `reindex`. What to do after it is in

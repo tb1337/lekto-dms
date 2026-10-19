@@ -136,7 +136,7 @@ Stammdatennamen ab, der Abgleich ist nicht wörtlich.
 1. **Modelle und Endpunkte:** `chat.tbsch.me` ist OpenWebUI mit Ollama auf dem NUC, Groq und
    Claude dahinter. Folge: Papiq spricht einen OpenAI-kompatiblen Endpunkt, der Modellname wählt
    den Anbieter; Text- und Vision-Modell werden getrennt konfiguriert
-   (`PAPIQ_LLM_MODEL`, `PAPIQ_LLM_VISION_MODEL`), die Lesung ihr eigenes (`PAPIQ_READ_VLM_MODEL`).
+   (`LEKTO_LLM_MODEL`, `LEKTO_LLM_VISION_MODEL`), die Lesung ihr eigenes (`LEKTO_READ_VLM_MODEL`).
    Zu prüfen in Phase 3: ob OpenWebUIs API Bilder an Claude und Groq durchreicht, und wie schnell
    `granite-docling-258M` auf dem NUC ist.
 2. **scikit-learn:** ja, als Abhängigkeit eines Adapters hinter einem neuen Port `Classifier`;
@@ -199,10 +199,10 @@ Stammdatennamen ab, der Abgleich ist nicht wörtlich.
   Training anstoßen.
 - Prüfansicht: Graph, Zwischenergebnisse, Zitat → Box auf der Seite.
 
-**Einstellungen (neu):** `PAPIQ_READ_MODE` (`ocr`, `vlm`, `auto`), `PAPIQ_READ_VLM_MODEL`,
-`PAPIQ_LLM_VISION_MODEL`, `PAPIQ_LLM_PAGES` (Seitenbilder je Anfrage), `PAPIQ_PAGE_WIDTH`,
-`PAPIQ_CLASSIFIER_MIN_EXAMPLES`, `PAPIQ_CLASSIFIER_RETRAIN_AFTER`, `PAPIQ_CLASSIFIER_THRESHOLD`,
-`PAPIQ_NEIGHBOURS`.
+**Einstellungen (neu):** `LEKTO_READ_MODE` (`ocr`, `vlm`, `auto`), `LEKTO_READ_VLM_MODEL`,
+`LEKTO_LLM_VISION_MODEL`, `LEKTO_LLM_PAGES` (Seitenbilder je Anfrage), `LEKTO_PAGE_WIDTH`,
+`LEKTO_CLASSIFIER_MIN_EXAMPLES`, `LEKTO_CLASSIFIER_RETRAIN_AFTER`, `LEKTO_CLASSIFIER_THRESHOLD`,
+`LEKTO_NEIGHBOURS`.
 
 **Daten:** neue Derivate (Seitenbilder), Tabellen `contact_identifiers` und
 `classifier_models` (Version, Zeitpunkt, Anzahl Beispiele, Objektschlüssel), Spalte

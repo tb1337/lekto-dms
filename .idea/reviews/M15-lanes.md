@@ -24,7 +24,7 @@ Personennamen in diesem Bericht; die Auswahl steht als Paperless-IDs, Gründe mi
   der Indexer erkannte unveränderten Text am Stempel und schrieb nur die Metadaten mit
   `confirmed` neu, ohne Embedding-Aufrufe.
 - **Modell:** Groq `qwen/qwen3.8-27b` über Open WebUI (Tobis Wahl), `json_schema`,
-  `PAPIQ_LLM_INPUT_BUDGET=6000`, `PAPIQ_NODE_RETRY_DELAY=70`. Ein Modellaufruf je Dokument,
+  `LEKTO_LLM_INPUT_BUDGET=6000`, `LEKTO_NODE_RETRY_DELAY=70`. Ein Modellaufruf je Dokument,
   0,8 s im Median.
 
 ## Zwei Durchgänge
@@ -111,7 +111,7 @@ gelernte im Kontaktdialog.
 - **Nachbarn:** bleiben, wie sie sind (ein Widerspruch ist gelb); wie stark ähnliche Dokumente
   widersprechen dürfen (Mindestähnlichkeit, gleichförmige Formulare), kalibriert M18 am
   Rückkopplungsmaß.
-- **Beträge ohne jede Währung im Text:** in der Standardwährung (`PAPIQ_DEFAULT_CURRENCY`, EUR).
+- **Beträge ohne jede Währung im Text:** in der Standardwährung (`LEKTO_DEFAULT_CURRENCY`, EUR).
   Umgesetzt; die Lohnabrechnung (384), ab `fields` neu verarbeitet ohne Modellaufruf, ist jetzt
   grün. Mit Nachbarn stehen damit 2 grün und 8 gelb.
 - **Felder „nur von Hand“** (wie die Archivnummer): als Idee vorgemerkt, Issue #52.

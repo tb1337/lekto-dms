@@ -42,8 +42,8 @@ from lekto.core.domain.exchanges import ModelCall
 
 PROMPT = "read-1"
 """The version of `SYSTEM` and `SCHEMA`, for the processing log."""
-CONFIG_ENV = "PAPIQ_OCR_VISION"
-KEY_ENV = "PAPIQ_OCR_VISION_KEY"
+CONFIG_ENV = "LEKTO_OCR_VISION"
+KEY_ENV = "LEKTO_OCR_VISION_KEY"
 MAX_PIXELS = 1_150_000  # what Claude looks at; larger images are scaled down by the service
 MAX_EDGE = 1568
 MAX_TOKENS = 16_000  # a dense page with its boxes takes about 2,500
@@ -92,7 +92,7 @@ SCHEMA: dict[str, Any] = {
 
 @dataclass(frozen=True, kw_only=True)
 class VisionSettings:
-    """An OpenAI-compatible endpoint with a vision model (`PAPIQ_VLM_*`); `timeout` per
+    """An OpenAI-compatible endpoint with a vision model (`LEKTO_VLM_*`); `timeout` per
     request."""
 
     base_url: str

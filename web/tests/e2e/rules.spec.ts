@@ -3,8 +3,8 @@
 // earlier version, opened and saved again unchanged (no new version), and deleted.
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-const ADMIN = process.env.PAPIQ_ADMIN_USERNAME ?? 'admin';
-const ADMIN_PASSWORD = process.env.PAPIQ_ADMIN_PASSWORD ?? '';
+const ADMIN = process.env.LEKTO_ADMIN_USERNAME ?? 'admin';
+const ADMIN_PASSWORD = process.env.LEKTO_ADMIN_PASSWORD ?? '';
 const NAME = `e2e-rule-${Date.now()}`;
 const PDF = `%PDF-1.4
 1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj
@@ -31,7 +31,7 @@ async function call(method: 'post' | 'patch' | 'delete', path: string, data?: ob
 }
 
 test.beforeAll(async ({ playwright, baseURL }) => {
-	test.skip(!ADMIN_PASSWORD, 'PAPIQ_ADMIN_PASSWORD is not set');
+	test.skip(!ADMIN_PASSWORD, 'LEKTO_ADMIN_PASSWORD is not set');
 	// Without OCR programs the document turns red only after the node's retries.
 	test.setTimeout(240_000);
 	api = await playwright.request.newContext({ baseURL });

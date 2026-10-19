@@ -67,7 +67,7 @@ Das Modell las dort das, was auf dem Dokument steht. Tobi prüft diese Bestätig
 4. **Die Sicherheit je Wort hilft nicht:** Tesseract war sich bei der Fehllesung zu 96 % sicher. Darum zählt die Seite.
 5. **Lange Zeilen im Layout-Text:** Mit der Zeile des Werts zitiert das Modell auch fremde Beschriftungen derselben Zeile. Dass die Beschriftung beim Wert steht, prüft niemand: Issue #55.
 6. **Sonnet 5.5 und die Schnittstelle:**
-   - Es lehnt `temperature` ab (jetzt `PAPIQ_LLM_TEMPERATURE=none`).
+   - Es lehnt `temperature` ab (jetzt `LEKTO_LLM_TEMPERATURE=none`).
    - Es lehnt `enum` unter einer Typliste mit `null` ab, und `maxItems`. Die Schemas schreiben jetzt `anyOf`, ohne Grenzen für Listen.
 
 ## Grenzen

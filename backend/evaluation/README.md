@@ -54,12 +54,12 @@ Run it from `backend/`:
 
 ```sh
 uv run python -m papiq.composition evaluate --fake       # fixed answers, both runs, as in CI
-uv run python -m papiq.composition evaluate              # the model in PAPIQ_LLM_*
+uv run python -m papiq.composition evaluate              # the model in LEKTO_LLM_*
 uv run python -m papiq.composition evaluate --runs cold --cases DIR --output FILE
 ```
 
-A real run needs `PAPIQ_LLM_BASE_URL` and `PAPIQ_LLM_MODEL`, and a configuration that is valid
-otherwise (e.g. `PAPIQ_ROLE=worker`). The report goes to `reports/<date>-<model>.md`, the runs
+A real run needs `LEKTO_LLM_BASE_URL` and `LEKTO_LLM_MODEL`, and a configuration that is valid
+otherwise (e.g. `LEKTO_ROLE=worker`). The report goes to `reports/<date>-<model>.md`, the runs
 side by side: documents that came out green although they should not have, or with a wrong
 value, lanes as expected, run time; per field the hit rate, the values applied without a
 person and the share of those the person corrected afterwards (the feedback measure; a topic
@@ -91,10 +91,10 @@ uv run python -m papiq.composition evaluate-search --ratios 0,0.5,1 --queries FI
 
 Each model gets a temporary Meilisearch index (`papiq-eval-…`, removed afterwards) and the
 documents of the set, indexed by the real indexing service; the queries run through the real
-search service at each semantic ratio. A real run needs `PAPIQ_MEILISEARCH_URL`,
-`PAPIQ_EMBEDDING_BASE_URL` and `PAPIQ_EMBEDDING_MODEL` (the default for `--models`), and
-`PAPIQ_EMBEDDING_DIMENSIONS` with any value, because the configuration is checked first (the
-real length is measured). Prefixes, section size and the rest come from the `PAPIQ_` settings, so
+search service at each semantic ratio. A real run needs `LEKTO_MEILISEARCH_URL`,
+`LEKTO_EMBEDDING_BASE_URL` and `LEKTO_EMBEDDING_MODEL` (the default for `--models`), and
+`LEKTO_EMBEDDING_DIMENSIONS` with any value, because the configuration is checked first (the
+real length is measured). Prefixes, section size and the rest come from the `LEKTO_` settings, so
 a model that needs other prefixes gets a run of its own. `--fake` uses bag-of-words vectors and
 the in-memory index: it shows that the flow works, not how good a model is.
 

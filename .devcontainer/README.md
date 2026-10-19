@@ -35,21 +35,21 @@ in `.devcontainer/` deletes them all, including the development instance.
 Once, in the devcontainer (VS Code: Terminal → Run Task):
 
 1. **Papiq: Devinstanz einrichten** copies `live.env.example` to `live.env` with a fresh
-   `PAPIQ_SECRET_KEY` and creates the database `papiq_live` (the bucket comes from
+   `LEKTO_SECRET_KEY` and creates the database `papiq_live` (the bucket comes from
    `garage-init`, the index from Papiq). It never overwrites an existing `live.env`. In a
    devcontainer that was started before the bucket `papiq-live` existed, run `garage-init`
    once (`docker compose -f .devcontainer/compose.yml run --rm garage-init`, from the container
    or the host) or rebuild the container; `/api/v1/health` says `object_store: failed` until then.
-2. Fill in `live.env`: `PAPIQ_ADMIN_USERNAME` and `PAPIQ_ADMIN_PASSWORD` for the first admin
+2. Fill in `live.env`: `LEKTO_ADMIN_USERNAME` and `LEKTO_ADMIN_PASSWORD` for the first admin
    (use the user name you have in Paperless, so the migration maps the documents to you), the
-   address of your Open WebUI (`https://<host>/api`) in `PAPIQ_LLM_BASE_URL` and
-   `PAPIQ_EMBEDDING_BASE_URL` and its API key in `PAPIQ_LLM_API_KEY` and
-   `PAPIQ_EMBEDDING_API_KEY` (or remove the model variables to run without a language model: documents then stop yellow for the
+   address of your Open WebUI (`https://<host>/api`) in `LEKTO_LLM_BASE_URL` and
+   `LEKTO_EMBEDDING_BASE_URL` and its API key in `LEKTO_LLM_API_KEY` and
+   `LEKTO_EMBEDDING_API_KEY` (or remove the model variables to run without a language model: documents then stop yellow for the
    contact and the type, and the search works with words only). The other values fit the
    devcontainer. All variables: [backend/README.md](../backend/README.md#configuration).
 3. **Papiq starten** (below).
 
-Keep `PAPIQ_SECRET_KEY` (TOTP and webhook secrets are encrypted with it) and the admin password
+Keep `LEKTO_SECRET_KEY` (TOTP and webhook secrets are encrypted with it) and the admin password
 in your password manager, not only in `live.env`.
 
 ## Start, stop, update
@@ -57,10 +57,10 @@ in your password manager, not only in `live.env`.
 | Task | What it does |
 | --- | --- |
 | **Papiq starten** | `Papiq: Schema migrieren`, `Papiq: UI bauen`, then `Papiq: API` and `Papiq: Worker` side by side, each in its own terminal |
-| **Papiq stoppen** | Ends the API and worker tasks (SIGTERM; the worker finishes running jobs within `PAPIQ_WORKER_SHUTDOWN_TIMEOUT`, 30 s) |
+| **Papiq stoppen** | Ends the API and worker tasks (SIGTERM; the worker finishes running jobs within `LEKTO_WORKER_SHUTDOWN_TIMEOUT`, 30 s) |
 | Papiq: API, Papiq: Worker | One service alone (both run migration first; the API also builds the UI) |
 | Papiq: Schema migrieren | `python -m papiq.composition migrate` with `live.env` |
-| Papiq: UI bauen | `pnpm build` in `web/`; the API serves `web/build` below `/ui` (`PAPIQ_UI_DIR`) |
+| Papiq: UI bauen | `pnpm build` in `web/`; the API serves `web/build` below `/ui` (`LEKTO_UI_DIR`) |
 | Papiq: UI dev | Vite on <http://localhost:5173/ui/> with `/api` proxied to the API, for UI work with hot reload |
 | Papiq: Suche neu aufbauen | `reindex`: rebuild the search index from database and bucket (after a restore, a model change, or to add vectors) |
 | Papiq: Seitenbilder nachholen | `render-pages`: queue the page images of documents from before the pages node; the worker renders them |
@@ -70,7 +70,7 @@ in your password manager, not only in `live.env`.
 Nothing starts when the container opens. After **Papiq starten**, open
 <http://localhost:8000/ui/> and sign in as the admin from `live.env`; the API documentation is
 at <http://localhost:8000/api/v1/docs>. The tasks use the terminals of VS Code; the logs are
-there (`PAPIQ_LOG_FORMAT=console`).
+there (`LEKTO_LOG_FORMAT=console`).
 
 **Update after `git pull`:** `uv sync` in `backend/` and `pnpm install` in `web/` when the lock
 files changed (the devcontainer runs both after a rebuild), then **Papiq stoppen** and **Papiq
@@ -85,7 +85,7 @@ a file in the workspace), the tasks work as before.
 
 `live.env.example` points at Open WebUI (in front of Ollama) with `qwen3:8b-ctx8k` (classification) and
 `snowflake-arctic-embed2` (search vectors), the models evaluated in `.idea/architektur.md`. On a
-CPU a document takes 3 to 10 minutes in the model (`PAPIQ_LLM_TIMEOUT=600`); embeddings take
+CPU a document takes 3 to 10 minutes in the model (`LEKTO_LLM_TIMEOUT=600`); embeddings take
 about 0.6 s per section. Single uploads are fine at any time. Mass runs (the migration with
 embeddings on, `reindex` after switching embeddings on, a reprocessing of many documents) load
 the model's machine for a long time: run them in sections of at most 40 minutes, not after
@@ -98,7 +98,7 @@ endpoint outside the local network.
 ## Memory
 
 A job needs little memory (OCRmyPDF about 150 MB, the worker about 0.5 GB); the OCR is bound
-by the CPU. `live.env.example` sets `PAPIQ_WORKER_CONCURRENCY=3`; more jobs than the VM has
+by the CPU. `live.env.example` sets `LEKTO_WORKER_CONCURRENCY=3`; more jobs than the VM has
 cores gain nothing (Docker Desktop or OrbStack: the cores of the VM, not of the Mac). See
 [backend/README.md](../backend/README.md#worker).
 
@@ -108,7 +108,7 @@ cores gain nothing (Docker Desktop or OrbStack: the cores of the VM, not of the 
 instance:
 
 1. In Papiq (as the admin): Settings → API tokens → create a token with scope `read_write`;
-   write it to the file `PAPIQ_MIGRATION_PAPIQ_TOKEN_FILE` names in `live.env`
+   write it to the file `PAPIQ_MIGRATION_LEKTO_TOKEN_FILE` names in `live.env`
    (`/tmp/papiq-token`, outside the repository). Write the Paperless API key to
    `PAPIQ_MIGRATION_PAPERLESS_TOKEN_FILE` (`/tmp/paperless-token`). `/tmp` is emptied when the
    container restarts; recreate the files then.
@@ -129,7 +129,7 @@ about 10 s per document (1525 documents: over four hours), not the 0.7 s of the 
 on the NUC itself, so check the model's machine first or plan the time. Switching embeddings
 **off** again while the index exists makes every indexing job fail (`vector_embedding_error`:
 the index keeps its `userProvided` embedder); delete the index in Meilisearch then (`curl -X
-DELETE -H "Authorization: Bearer $PAPIQ_MEILISEARCH_API_KEY" $PAPIQ_MEILISEARCH_URL/indexes/papiq-live-documents`),
+DELETE -H "Authorization: Bearer $LEKTO_MEILISEARCH_API_KEY" $LEKTO_MEILISEARCH_URL/indexes/papiq-live-documents`),
 the worker recreates it at its next reconcile.
 
 ## Backup and restore
@@ -137,7 +137,7 @@ the worker recreates it at its next reconcile.
 What to back up: the database `papiq_live` and the bucket `papiq-live`. Not Meilisearch (the
 index is derived; `reindex` rebuilds it). Database first, then the objects (originals never
 change; an object that arrived after the database copy is only an unused file). Keep
-`PAPIQ_SECRET_KEY` in your password manager.
+`LEKTO_SECRET_KEY` in your password manager.
 
 The backup uses the Postgres container and an `rclone` image. Run the commands **on the host**,
 in the repository folder (the paths of `-v` are host paths); from inside the devcontainer they

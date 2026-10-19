@@ -8,7 +8,7 @@ from lekto.core.domain.reading import PageReading, PageWords
 
 @dataclass(frozen=True, kw_only=True)
 class VisionModel:
-    """The vision language model an OCR engine can read pages with (`PAPIQ_VLM_*`)."""
+    """The vision language model an OCR engine can read pages with (`LEKTO_VLM_*`)."""
 
     model: str
     endpoint: str  # where the page images go (host and port, no credentials)

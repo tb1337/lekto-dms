@@ -40,7 +40,7 @@ cd deploy && ./create-secrets.sh && docker compose -f compose.sqlite.yml up -d -
 ```
 
 Then open <http://localhost:8000/ui/> and sign in as `admin` with the password in
-`deploy/secrets/admin_password`. Point `PAPIQ_LLM_BASE_URL` and `PAPIQ_EMBEDDING_BASE_URL` at an
+`deploy/secrets/admin_password`. Point `LEKTO_LLM_BASE_URL` and `LEKTO_EMBEDDING_BASE_URL` at an
 Ollama or another OpenAI-compatible endpoint; without one, documents stop yellow for a person to
 classify and the search works with words only.
 
@@ -56,7 +56,7 @@ migration from Paperless: [.devcontainer/README.md](.devcontainer/README.md).
 
 | Document | Content |
 | --- | --- |
-| [backend/README.md](backend/README.md) | Architecture of the backend, every `PAPIQ_` variable with default, role and meaning, the REST API, processing, classification, rules, search, webhooks, MCP, tests |
+| [backend/README.md](backend/README.md) | Architecture of the backend, every `LEKTO_` variable with default, role and meaning, the REST API, processing, classification, rules, search, webhooks, MCP, tests |
 | [deploy/README.md](deploy/README.md) | The image: roles, user and volumes, health and logs, stopping, reverse proxy, backup and restore, updating |
 | [.devcontainer/README.md](.devcontainer/README.md) | Development and the development instance in the devcontainer: tasks, data separation, Ollama, memory, migration, backup |
 | [web/README.md](web/README.md) | The web UI: stack, commands, API client, CSP |
@@ -72,7 +72,7 @@ migration from Paperless: [.devcontainer/README.md](.devcontainer/README.md).
 - **Asynchronous.** API calls return at once (`202 Accepted`); processing runs in the worker.
   State changes are published as events (transactional outbox) to the UI, webhooks and the
   search index.
-- **Configuration by environment.** Variables with the prefix `PAPIQ_`, secrets also as files;
+- **Configuration by environment.** Variables with the prefix `LEKTO_`, secrets also as files;
   no configuration file.
 
 ## Glossary

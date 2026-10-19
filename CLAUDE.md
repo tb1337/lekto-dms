@@ -29,7 +29,7 @@ uv run pytest                    # all tests; integration tests skip if a servic
 uv run pytest -m unit            # no external services
 uv run pytest -m integration     # needs Postgres, Garage, Meilisearch, OCR programs
 uv run pytest -n auto            # in parallel (pytest-xdist), as CI does
-uv run python -m papiq.composition   # validate PAPIQ_ configuration
+uv run python -m papiq.composition   # validate LEKTO_ configuration
 uv run python -m papiq.composition migrate   # bring the configured database to the newest schema
 uv run python -m papiq.composition check-schema   # exit 0 if the schema is at the newest revision
 uv run python -m papiq.composition api       # serve the REST API until SIGTERM
@@ -47,7 +47,7 @@ pnpm dev                         # Vite on :5173 below /ui, /api proxied to the 
 After an API change: `uv run python -m papiq.composition.openapi ../web/openapi.json` in `backend/`,
 then `pnpm gen:api` in `web/` (a backend test fails while `web/openapi.json` is out of date).
 
-Image (in the repository root; s6-overlay, `PAPIQ_ROLE`, `PUID`/`PGID`; see `deploy/README.md`):
+Image (in the repository root; s6-overlay, `LEKTO_ROLE`, `PUID`/`PGID`; see `deploy/README.md`):
 
 ```sh
 docker build --target runtime -t papiq:local .
@@ -76,8 +76,8 @@ changes in `migration/` its checks.
 - Every port gets an in-memory adapter and a contract test suite that every real adapter passes.
   The pattern matcher and the template renderer are the stated exceptions: the `regex` and
   `liquid` adapters need no service and serve the memory container too.
-- Configuration is environment variables with prefix `PAPIQ_` only, no config file. Secrets also work
-  as `PAPIQ_<NAME>_FILE`; both set is an error. See `backend/src/papiq/composition/settings.py`.
+- Configuration is environment variables with prefix `LEKTO_` only, no config file. Secrets also work
+  as `LEKTO_<NAME>_FILE`; both set is an error. See `backend/src/papiq/composition/settings.py`.
 - Async throughout (FastAPI, SQLAlchemy async, async HTTP clients).
 - Tests: `tests/unit` (marker `unit`) needs no services, `tests/integration` (marker `integration`) does.
   Markers are applied by directory. Contract suites live in `tests/contracts`; adapters subclass them.

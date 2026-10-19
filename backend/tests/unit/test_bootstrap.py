@@ -34,5 +34,5 @@ async def test_without_configuration_nothing_happens() -> None:
 
 async def test_problems_are_configuration_errors() -> None:
     services = build_services(build_memory_container(ManualClock(builders.NOW)))
-    with pytest.raises(ConfigurationError, match="PAPIQ_ADMIN_PASSWORD"):
+    with pytest.raises(ConfigurationError, match="LEKTO_ADMIN_PASSWORD"):
         await ensure_first_admin(services.users, settings("root", "short"))

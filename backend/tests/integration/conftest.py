@@ -19,8 +19,8 @@ def settings() -> Settings:
     """The configuration from the environment: in the devcontainer, the compose services. The
     secret key and the trusted proxies the API requires are not what these tests are about;
     test values fill in."""
-    os.environ.setdefault("PAPIQ_SECRET_KEY", SECRET_KEY)
-    os.environ.setdefault("PAPIQ_FORWARDED_ALLOW_IPS", TRUSTED_PROXY)
+    os.environ.setdefault("LEKTO_SECRET_KEY", SECRET_KEY)
+    os.environ.setdefault("LEKTO_FORWARDED_ALLOW_IPS", TRUSTED_PROXY)
     return load_settings()
 
 
@@ -31,7 +31,7 @@ def settings() -> Settings:
 @pytest.fixture(scope="session")
 def postgres_settings(settings: Settings) -> Settings:
     if settings.db_type != "postgres" or settings.db_host is None:
-        pytest.skip("PAPIQ_DB_TYPE is not postgres")
+        pytest.skip("LEKTO_DB_TYPE is not postgres")
     if not probes.postgres_answers(settings.db_host, settings.db_port):
         pytest.skip(f"Postgres not reachable at {settings.db_host}:{settings.db_port}")
     return settings
@@ -40,7 +40,7 @@ def postgres_settings(settings: Settings) -> Settings:
 @pytest.fixture(scope="session")
 def s3_settings(settings: Settings) -> Settings:
     if settings.storage_type != "s3" or settings.s3_endpoint_url is None:
-        pytest.skip("PAPIQ_STORAGE_TYPE is not s3")
+        pytest.skip("LEKTO_STORAGE_TYPE is not s3")
     if probes.http_status(str(settings.s3_endpoint_url)) is None:
         pytest.skip(f"S3 endpoint not reachable at {settings.s3_endpoint_url}")
     return settings
@@ -49,7 +49,7 @@ def s3_settings(settings: Settings) -> Settings:
 @pytest.fixture(scope="session")
 def meilisearch_settings(settings: Settings) -> Settings:
     if settings.meilisearch_url is None:
-        pytest.skip("PAPIQ_MEILISEARCH_URL is not set")
+        pytest.skip("LEKTO_MEILISEARCH_URL is not set")
     if probes.meilisearch_health(str(settings.meilisearch_url)) is None:
         pytest.skip(f"Meilisearch not reachable at {settings.meilisearch_url}")
     return settings

@@ -26,5 +26,5 @@ def external_endpoints(settings: Settings) -> dict[str, str]:
     for name in ("llm_base_url", "embedding_base_url", "vlm_base_url", "meilisearch_url"):
         url = getattr(settings, name)
         if url is not None and url.host is not None and not is_local_host(url.host):
-            found[f"PAPIQ_{name.upper()}"] = url.host
+            found[f"LEKTO_{name.upper()}"] = url.host
     return found

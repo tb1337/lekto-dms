@@ -12,11 +12,11 @@ from tests.builders import SECRET_KEY, TRUSTED_PROXY
 def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """The process environment (devcontainer, CI) must not leak into unit tests."""
     for name in list(os.environ):
-        if name.upper().startswith("PAPIQ_"):
+        if name.upper().startswith("LEKTO_"):
             monkeypatch.delenv(name)
     # Required for the API; tests that check the requirement remove it.
-    monkeypatch.setenv("PAPIQ_SECRET_KEY", SECRET_KEY)
-    monkeypatch.setenv("PAPIQ_FORWARDED_ALLOW_IPS", TRUSTED_PROXY)
+    monkeypatch.setenv("LEKTO_SECRET_KEY", SECRET_KEY)
+    monkeypatch.setenv("LEKTO_FORWARDED_ALLOW_IPS", TRUSTED_PROXY)
 
 
 @pytest.fixture(autouse=True)

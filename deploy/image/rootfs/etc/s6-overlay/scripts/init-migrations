@@ -4,9 +4,9 @@
 # by `docker stop`, a service can).
 set -eu
 
-role=$(printf %s "${PAPIQ_ROLE:-all}" | tr '[:upper:]' '[:lower:]')
+role=$(printf %s "${LEKTO_ROLE:-all}" | tr '[:upper:]' '[:lower:]')
 if [ "$role" = worker ]; then
-  echo "init-migrations: PAPIQ_ROLE=worker does not migrate; svc-worker waits for the schema"
+  echo "init-migrations: LEKTO_ROLE=worker does not migrate; svc-worker waits for the schema"
   exit 0
 fi
 exec papiq-run python -m lekto.composition migrate

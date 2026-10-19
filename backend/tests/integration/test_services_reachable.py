@@ -1,6 +1,6 @@
 """Checks that the services of the devcontainer (or CI) answer. Skipped when they do not.
 
-Which services apply comes from the `PAPIQ_` variables, the same ones the application reads; the
+Which services apply comes from the `LEKTO_` variables, the same ones the application reads; the
 fixtures of `integration/conftest.py` skip when a service is not configured or does not answer.
 """
 

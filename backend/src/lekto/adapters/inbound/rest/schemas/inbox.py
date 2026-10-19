@@ -100,7 +100,7 @@ class CandidateSourceOut(BaseModel):
         default=None,
         description=(
             "The score from which the signal names a value (`signal_llm`: "
-            "`PAPIQ_CONFIDENCE_THRESHOLD`; `signal_classifier`: `PAPIQ_CLASSIFIER_THRESHOLD`). "
+            "`LEKTO_CONFIDENCE_THRESHOLD`; `signal_classifier`: `LEKTO_CLASSIFIER_THRESHOLD`). "
             "The similar documents name a value by their votes instead."
         ),
     )

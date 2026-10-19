@@ -71,10 +71,10 @@ whether it is active. A deactivated user has no rights and cannot authenticate.
 - TOTP (RFC 6238, pyotp), optional per user: set up with a new secret, which takes effect when a
   code confirms it; then ten recovery codes (80 bits each) are shown once and stored as SHA-256
   hashes. Codes of the previous and next 30-second step are accepted, each step only once. The
-  secret is encrypted with AES-256-GCM (`PAPIQ_SECRET_KEY`), bound to the user id. Turning TOTP
+  secret is encrypted with AES-256-GCM (`LEKTO_SECRET_KEY`), bound to the user id. Turning TOTP
   off needs a code or a recovery code, or an admin.
-- Sessions: random 256-bit tokens, stored as SHA-256. They end after `PAPIQ_SESSION_IDLE_TIMEOUT`
-  without use, after `PAPIQ_SESSION_MAX_AGE`, at sign-out, at deactivation and when the password
+- Sessions: random 256-bit tokens, stored as SHA-256. They end after `LEKTO_SESSION_IDLE_TIMEOUT`
+  without use, after `LEKTO_SESSION_MAX_AGE`, at sign-out, at deactivation and when the password
   changes or is reset (the caller's own session is renewed). Every sign-in starts a new session.
   Last use is written at most once a minute. The CSRF token of a session is derived from its
   token (HMAC), so nothing more is stored.
@@ -86,20 +86,20 @@ whether it is active. A deactivated user has no rights and cannot authenticate.
   deactivate, turn TOTP off and remove links to identity providers. Deleting a user needs that
   they own no documents and their spaces are empty; it removes their spaces, the shares to
   them and their sign-in data. The last active admin cannot be demoted, deactivated or deleted.
-- The first admin: `PAPIQ_ADMIN_USERNAME` and `PAPIQ_ADMIN_PASSWORD[_FILE]` create an admin at
+- The first admin: `LEKTO_ADMIN_USERNAME` and `LEKTO_ADMIN_PASSWORD[_FILE]` create an admin at
   API start while there is no admin at all. Afterwards they are ignored; they never change an
   existing account. A name taken by another user stops the start.
 - OpenID Connect (optional, one provider; `core/services/oidc.py`, `adapters/outbound/oidc`):
   Authorization Code Flow with PKCE (S256) through Authlib over httpx2. State, nonce, verifier
-  and the target path are sealed (AES-GCM, `PAPIQ_SECRET_KEY`) into a value for a short-lived
+  and the target path are sealed (AES-GCM, `LEKTO_SECRET_KEY`) into a value for a short-lived
   cookie, which binds the flow to the browser that began it; it expires after ten minutes. The
   ID token is checked with joserfc: signature with an asymmetric algorithm the provider
   announces, issuer, audience (`azp` with several), expiry and issue time (one minute of
   leeway), nonce. Endpoints and keys come from the discovery document, whose issuer must equal
-  `PAPIQ_OIDC_ISSUER`; keys are fetched again once for an unknown key id. Accounts are linked by
+  `LEKTO_OIDC_ISSUER`; keys are fetched again once for an unknown key id. Accounts are linked by
   issuer and subject, never by e-mail; a signed-in user links their account through the same
-  flow. Unknown accounts are refused unless `PAPIQ_OIDC_AUTO_CREATE` creates a user named by
-  `PAPIQ_OIDC_USERNAME_CLAIM` (a taken name is refused). No local TOTP is asked for: the
+  flow. Unknown accounts are refused unless `LEKTO_OIDC_AUTO_CREATE` creates a user named by
+  `LEKTO_OIDC_USERNAME_CLAIM` (a taken name is refused). No local TOTP is asked for: the
   provider handles that. Unlinking needs a local password. The redirect after the callback goes
   only to a path on this site.
 - The cleanup job also removes ended sessions and failure counts past their window.
@@ -107,7 +107,7 @@ whether it is active. A deactivated user has no rights and cannot authenticate.
 ## Persistence
 
 `adapters/outbound/sql` implements the unit of work (all repositories, processing log, outbox,
-job queue) and the event bus on SQLite or Postgres, selected by `PAPIQ_DB_TYPE`. It uses
+job queue) and the event bus on SQLite or Postgres, selected by `LEKTO_DB_TYPE`. It uses
 SQLAlchemy 2 Core (async; aiosqlite, asyncpg); the domain classes are not ORM-mapped,
 `tables.py` defines the tables and the repositories convert explicitly.
 
@@ -139,17 +139,17 @@ revision; a test compares the migrated schema with the table definitions.
 
 ## Object store
 
-`PAPIQ_STORAGE_TYPE` selects `adapters/outbound/filesystem` or `adapters/outbound/s3`; both pass
+`LEKTO_STORAGE_TYPE` selects `adapters/outbound/filesystem` or `adapters/outbound/s3`; both pass
 the same contract suite. Keys are relative paths (`originals/<sha256>`, `documents/<id>/...`)
 checked by `core.ports.object_store.check_key`. `put`/`get` hold an object in memory and suit
 small objects; files of any size go through `upload`/`download`, which work on local files.
 
-- Filesystem: one file per key below `PAPIQ_STORAGE_PATH`. Writes go to a hidden temporary file
+- Filesystem: one file per key below `LEKTO_STORAGE_PATH`. Writes go to a hidden temporary file
   next to the target, are flushed to disk and renamed over it, so readers never see a partial
   object.
 - S3 (aioboto3): files above 8 MiB are transferred in parts. Checksums are only sent where S3
   requires them, for compatibility with servers such as Garage. Path-style addressing is the
-  default (`PAPIQ_S3_PATH_STYLE`).
+  default (`LEKTO_S3_PATH_STYLE`).
 
 `Container.aclose()` closes the database engine and the S3 client.
 
@@ -180,21 +180,21 @@ jobs of the old run are recognised as stale.
 | Apply rules (`ApplyRulesNode`) | `content.txt` (only if a rule looks at the text), the rules | space, contact, type, title, tags, fields | uncertain on conflicts, refused actions and forced reviews; see Rules |
 | File (`FileNode`) | the space | - | uncertain if the owner may no longer file into the space (field `space`) |
 
-- A node that raises is retried (`PAPIQ_NODE_MAX_ATTEMPTS`, delay `PAPIQ_NODE_RETRY_DELAY`,
+- A node that raises is retried (`LEKTO_NODE_MAX_ATTEMPTS`, delay `LEKTO_NODE_RETRY_DELAY`,
   doubling); it waits meanwhile (`document.node_deferred`); after the last attempt the
   document goes red. A damaged or encrypted file
   (`UnprocessableDocumentError`) fails at once. The processing log records input, output,
   engine version, reason and duration of every run.
 - OCRmyPDF (`adapters/outbound/ocrmypdf`) runs as a child process per document with a time
-  limit (`PAPIQ_OCR_TIMEOUT`); on timeout or cancellation the process group is killed. The job
+  limit (`LEKTO_OCR_TIMEOUT`); on timeout or cancellation the process group is killed. The job
   lease is the longest limit of a node (OCR, reading with the vision model in
-  `PAPIQ_VLM_TIMEOUT` if one is configured, or twice `PAPIQ_LLM_TIMEOUT`) plus two minutes, so a
+  `LEKTO_VLM_TIMEOUT` if one is configured, or twice `LEKTO_LLM_TIMEOUT`) plus two minutes, so a
   node normally keeps its claim; if it overruns (e.g. a slow S3 transfer), another worker takes
   the job over and the late result is discarded. A node interrupted by a stopping worker is
   released at once (`JobQueue.release`); that does not count against
-  `PAPIQ_NODE_MAX_ATTEMPTS`.
+  `LEKTO_NODE_MAX_ATTEMPTS`.
 - OCRmyPDF: `--skip-text` (pages with text are not recognised again), `--deskew`,
-  `--rotate-pages`, `--output-type pdfa`, languages `PAPIQ_OCR_LANGUAGES`. A PDF with invisible
+  `--rotate-pages`, `--output-type pdfa`, languages `LEKTO_OCR_LANGUAGES`. A PDF with invisible
   text carries the layer of another OCR (a scanner's, an older archive's), which may be poor and
   says nothing of how well it read: it gets `--redo-ocr` instead (that layer is replaced,
   visible text kept, no deskewing, which OCRmyPDF does not allow then), and the log says
@@ -205,10 +205,10 @@ jobs of the old run are recognised as stale.
   and the log says why. Documents from before take the new reading when processed again from OCR. Images whose stated resolution gives an implausible page
   size (none, or 72 dpi from a phone) are scaled to the long edge of A4; transparency is put on
   white, CMYK is converted, all pages of a TIFF are kept. OCRmyPDF shares the CPU cores among
-  `PAPIQ_WORKER_CONCURRENCY` jobs.
-- A vision language model (`PAPIQ_VLM_*`, off without) reads a document only when a person
+  `LEKTO_WORKER_CONCURRENCY` jobs.
+- A vision language model (`LEKTO_VLM_*`, off without) reads a document only when a person
   asks for it (`POST /documents/{id}/vision`, owner or admin); nothing asks on its own. Without
-  `PAPIQ_VLM_BASE_URL` and `PAPIQ_VLM_MODEL` the request answers `409` ("no vision language
+  `LEKTO_VLM_BASE_URL` and `LEKTO_VLM_MODEL` the request answers `409` ("no vision language
   model is configured"), and a run that asked before the model was taken away fails at `ocr`
   ("a person asked for the vision language model, but none is configured"). The
   document is processed again from OCR, and OCRmyPDF runs with `--force-ocr --deskew` and the
@@ -220,7 +220,7 @@ jobs of the old run are recognised as stale.
   thousandths of the image drifted on a dense statement and on a photo, pixel boxes fit every
   line (issue #53). The archive holds the pages as images under the model's text, and that text
   counts as OCR: the checks are the usual ones, words the model marks `[unreadable]` count as
-  unsure (`PAPIQ_POOR_READING_THRESHOLD`). The run keeps the request (`processing.vision`,
+  unsure (`LEKTO_POOR_READING_THRESHOLD`). The run keeps the request (`processing.vision`,
   revision 0021), so a retry asks the model again; reprocessing from `parse` and `reparse` keep
   the model's text (it is the archive's), reprocessing from `ocr` reads with Tesseract (the web UI asks first whether the model shall
   read again, and then calls `POST /documents/{id}/vision`). The archive's metadata names the
@@ -414,7 +414,7 @@ the fields node reads the fields of the decided type and the title
 (`core/services/classification`, the rules in `core/domain/verdict.py`).
 
 - **`signal_llm`**: one request to an OpenAI-compatible chat completions endpoint
-  (`adapters/outbound/openai_compat`, `PAPIQ_LLM_*`, prompt `propose-4`) for sender and recipient,
+  (`adapters/outbound/openai_compat`, `LEKTO_LLM_*`, prompt `propose-4`) for sender and recipient,
   the topic (one of the automatic topics the listed contacts enable, or none; the prompt lists
   them at each of the at most 20 preselected contacts), type, tags (the automatic document
   tags), date, a title, the language, and the values of the fields of the type it chooses
@@ -423,12 +423,12 @@ the fields node reads the fields of the decided type and the title
   types). The answer must follow a
   JSON schema (`response_format` `json_schema`, or `json_object` for providers without schema
   support); an answer that does not fit is asked for once more, then the signal fails (red).
-  Without a configured model (`PAPIQ_LLM_BASE_URL` and `PAPIQ_LLM_MODEL`) it abstains with "no language
+  Without a configured model (`LEKTO_LLM_BASE_URL` and `LEKTO_LLM_MODEL`) it abstains with "no language
   model is configured", and the owner classifies.
 - **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
   (contact, topic, type, each automatic document tag), trained on the confirmed documents
-  (`PAPIQ_CLASSIFIER`, see Classifier). It abstains without a trained model.
-- **`signal_neighbours`**: the `PAPIQ_NEIGHBOURS` most similar confirmed documents the owner may
+  (`LEKTO_CLASSIFIER`, see Classifier). It abstains without a trained model.
+- **`signal_neighbours`**: the `LEKTO_NEIGHBOURS` most similar confirmed documents the owner may
   read, by the vector of the start of the text against the search index; their contact, topic,
   type and automatic document tags come from the database. It abstains without embeddings or
   index.
@@ -444,9 +444,9 @@ the fields node reads the fields of the decided type and the title
   tells on the confirmed documents of how many contacts an identifier stands.
 
 A signal *names* a value it is sure of: the model, a contact whose name or alias its sender
-matches at least `PAPIQ_CONFIDENCE_THRESHOLD` (legal forms and punctuation aside) with no other
+matches at least `LEKTO_CONFIDENCE_THRESHOLD` (legal forms and punctuation aside) with no other
 close, or a type or tag of the lists; the classifier, its best class from
-`PAPIQ_CLASSIFIER_THRESHOLD` on; the neighbours, a value at least two and more than half of them
+`LEKTO_CLASSIFIER_THRESHOLD` on; the neighbours, a value at least two and more than half of them
 carry, a contact only if no other contact is carried by two of them as well (neighbours split
 between senders are alike by their form, a pay slip's employee for one, and name no sender). A
 signal naming another value contradicts: always yellow, with every candidate and its
@@ -454,7 +454,7 @@ sources. The judge's rule:
 
 | Field | Green (no contradiction) | Otherwise |
 | --- | --- | --- |
-| Contact | hard evidence (its identifier, or its name or alias in the text) and a signal names it; or the model's sender matches it from `PAPIQ_CONTACT_SUGGEST_THRESHOLD` on and the classifier or the neighbours name it. Never the model's recipient | yellow with ranked candidates; an identifier alone is a suggestion; an unknown sender a new contact (an admin creates it) |
+| Contact | hard evidence (its identifier, or its name or alias in the text) and a signal names it; or the model's sender matches it from `LEKTO_CONTACT_SUGGEST_THRESHOLD` on and the classifier or the neighbours name it. Never the model's recipient | yellow with ranked candidates; an identifier alone is a suggestion; an unknown sender a new contact (an admin creates it) |
 | Topic (an automatic one the decided contact enables) | the contact is green, no signal or identifier names another topic, and an identifier of the pair stands in the text and a signal names it, or two signals name it | a suggestion, always under a contact that is only suggested; signals or identifiers naming different topics leave it empty with all candidates; a topic never makes a document yellow, and another contact clears one it does not enable |
 | Document type | two signals name it, or only the model and no other signal covers it (the classifier was not trained on it, no confirmed document carries it) | yellow; a type outside the list is proposed as new |
 | Tags (automatic document tags; one set by hand is never proposed) | set as a type is green, without the parent of a tag set | a suggestion (ids); tags never make a document yellow |
@@ -474,7 +474,7 @@ own switch:
 | Required field | its value is found and passes | yellow |
 | Optional field | no value is fine (left empty); a value given must pass | yellow |
 | Set by hand (`assignment: manual`) | never asked of the model; its value stays as the document has it; required, it needs a value a person or a rule set (checked by `apply_rules`, after the rules; confirming without a value is no decision) | yellow until a person enters it |
-| Amounts, numbers | read as written (`2.111,68 €`, `1,234.56`, `-12,50`; an ambiguous one as the text shows it, else in the document's language) and found in the text; the currency shown as code, sign or word, or, where the text shows none at all (a pay slip's bare numbers), `PAPIQ_DEFAULT_CURRENCY` | |
+| Amounts, numbers | read as written (`2.111,68 €`, `1,234.56`, `-12,50`; an ambiguous one as the text shows it, else in the document's language) and found in the text; the currency shown as code, sign or word, or, where the text shows none at all (a pay slip's bare numbers), `LEKTO_DEFAULT_CURRENCY` | |
 | Dates | as the document date; a date field must differ from the document date | the date is suggested |
 | Periods | read as written (`September 2026`, `09/2026`, `KW 38/2026`, `Q3 2026`, `2025`, `01.09.–30.09.2026`, `1. bis 30. September 2026`, a date as that day) or as `{start, end}`; plausible as a date; the quoted passage shows it as written or by its first and last day; of a value, the reading no other one holds counts (two are none) | without a year (it takes the document date's), or a single day equal to the document date: suggested |
 | Text, link, choice, yes/no | the value, or the quoted passage, appears in the text (`ja`/`nein` read as yes or no) | |
@@ -490,7 +490,7 @@ which takes two conditions; the document date follows the same rules:
   are found on the page (see the next condition), its place is the 20 content words nearest to
   them, its own words not counted; it counts as poorly read from three of them unsure (15 %:
   among 20 words one stray reading is already 5 %; the page keeps
-  `PAPIQ_POOR_READING_THRESHOLD`)
+  `LEKTO_POOR_READING_THRESHOLD`)
   (`'Betrag': the text around the value was poorly read (3 of 20 content words unsure)`): on a
   broken scan a number may be anything, however sure Tesseract was of it. No layout is
   assumed, neither blocks nor tables: nearness is the gap between the words' boxes, Euclidean
@@ -583,22 +583,22 @@ traceable after a correction; the rules read them with `core.services.inbox.fiel
 The document text is sent between markers derived from its hash, and the model is told to treat
 it as data. It can only answer with the fixed schema: there is no field for spaces, owners,
 shares or actions, and additional fields make the answer unfit. Long documents are shortened to
-`PAPIQ_LLM_INPUT_BUDGET` characters, a run of spaces counted once (the columns of the text as it
+`LEKTO_LLM_INPUT_BUDGET` characters, a run of spaces counted once (the columns of the text as it
 is set cost a model little; beginning and end kept, the middle left out); with many
-tags, at most `PAPIQ_LLM_MAX_TAGS` are listed, those named in the text first; of the contacts,
+tags, at most `LEKTO_LLM_MAX_TAGS` are listed, those named in the text first; of the contacts,
 the 20 the text names most (with their aliases).
 
 **Privacy.** The shortened document text, the names of document types, tags and fields, the
 descriptions of types and fields, and the names of the contacts the text names go to the
-endpoint in `PAPIQ_LLM_BASE_URL`; the file, other contacts and users do not. Every log entry of the two model nodes names the endpoint host and
+endpoint in `LEKTO_LLM_BASE_URL`; the file, other contacts and users do not. Every log entry of the two model nodes names the endpoint host and
 the model. At start, a warning names every
 configured model endpoint outside the local network (not loopback, private, link-local or a
 local name), because document content leaves the system there.
 
-**Ollama.** `PAPIQ_LLM_BASE_URL=http://<host>:11434/v1` (with `/v1`). Ollama does not take a
+**Ollama.** `LEKTO_LLM_BASE_URL=http://<host>:11434/v1` (with `/v1`). Ollama does not take a
 context size over this API and cuts longer prompts silently (often at 4,096 tokens); start it
 with `OLLAMA_CONTEXT_LENGTH=8192` or more. Local models on a CPU are slow:
-`PAPIQ_LLM_TIMEOUT` is per request, and the job lease allows twice that (one repeated request).
+`LEKTO_LLM_TIMEOUT` is per request, and the job lease allows twice that (one repeated request).
 
 **Classifier.** One model for all users (`core/services/classifier.py`,
 `adapters/outbound/sklearn`). Training examples are the documents whose metadata a person set or
@@ -608,8 +608,8 @@ removes tags set by hand (statuses such as "to pay") confirms nothing: they say 
 contact and type (`documents.confirms`); with an automatic tag or any other confirming value
 it confirms. A recurring job (`classifier.check`,
 every ten minutes) queues the training (`classifier.train`, which may take an hour before another
-worker takes it over) once `PAPIQ_CLASSIFIER_MIN_EXAMPLES`
-documents are confirmed and no model exists, or `PAPIQ_CLASSIFIER_RETRAIN_AFTER` were confirmed
+worker takes it over) once `LEKTO_CLASSIFIER_MIN_EXAMPLES`
+documents are confirmed and no model exists, or `LEKTO_CLASSIFIER_RETRAIN_AFTER` were confirmed
 since the last one; `python -m papiq.composition train` and `POST /classifier/train` train at
 once. Training also learns identifiers of contacts: one that stands in at least two confirmed
 documents, all of one contact (the household's own IBAN stands on letters of many and is never
@@ -662,7 +662,7 @@ alone, so a new scikit-learn version cannot break it. It sees about the first 8,
    their topic; the training learns topics (of documents and of learned identifiers) with its
    next run (`train` trains at once).
 4. Logos of contacts come by upload. Fetching them from the contacts' websites is off: with
-   `PAPIQ_LOGO_FETCH=true` a contact without a logo that gets a domain has it fetched, and
+   `LEKTO_LOGO_FETCH=true` a contact without a logo that gets a domain has it fetched, and
    `python -m papiq.composition fetch-logos` fetches them for the contacts from before
    (outgoing HTTPS to their domains only).
 
@@ -724,10 +724,10 @@ disabling make no version; deleting is a soft delete.
   | `field` (with `field_id`) | by data type: text and link `is`, `in`, `contains`, `matches`; number, amount, date `is`, `gt`, `lt`; yes/no `is`; choice `is`, `in`; period `is`, `overlaps` (shares a day with a period), `gt` (starts after a date), `lt` (ends before a date); all `present`, `missing` |
 
   `matches` takes `case_sensitive` (default false). Patterns run with the `regex` package
-  (`adapters/outbound/regex`) in a thread with a time limit (`PAPIQ_RULES_PATTERN_TIMEOUT`); a
+  (`adapters/outbound/regex`) in a thread with a time limit (`LEKTO_RULES_PATTERN_TIMEOUT`); a
   pattern that times out does not match and is logged. All patterns of one run on one
   document get two seconds together, a preview page twenty; the patterns left do not match. The text is the parsed text without
-  markup, at most `PAPIQ_RULES_MAX_TEXT` characters; it is loaded only if a rule looks at it.
+  markup, at most `LEKTO_RULES_MAX_TEXT` characters; it is loaded only if a rule looks at it.
 - **Actions.** `set_space`, `set_contact`, `set_topic`, `set_document_type`, `set_title`,
   `add_tags`, `remove_tags`, `set_field`, `force_review` (with a reason). `set_topic` is for
   user rules only; it is skipped (and noted) if the contact the document ends up with does not
@@ -747,7 +747,7 @@ disabling make no version; deleting is a soft delete.
   `2026-Q3` (ISO has no short form for a quarter), `2026`, a day as `2026-09-15`, else its
   ends, `2026-09-01/2026-09-14`; `{{ field.x.start | datetime: format: 'MMMM yyyy' }}` writes
   it in words. `datetime`, `currency` and
-  `decimal` format in `PAPIQ_TEMPLATE_LOCALE`, an amount writes itself as `3.650,00 EUR`. A
+  `decimal` format in `LEKTO_TEMPLATE_LOCALE`, an amount writes itself as `3.650,00 EUR`. A
   template sees nothing but these values (no attributes of objects, no `include`), loops stop
   after 1,000 turns and output after 10,000 characters. Writing a missing value sets nothing
   (note `skipped`); `| default` and `{% if %}` make a part optional; a forced review holds with
@@ -787,7 +787,7 @@ disabling make no version; deleting is a soft delete.
 - **Retroactively.** `POST /rules/{id}/apply/preview` lists the documents the current version
   would change, newest first, with changes and conflicts (a page looks at 200 documents at
   most). `POST /rules/{id}/apply` pins a version and applies it to the selected documents (at
-  most `PAPIQ_RULES_APPLY_MAX_DOCUMENTS`) in the background, job `rules.apply`, 25 documents per
+  most `LEKTO_RULES_APPLY_MAX_DOCUMENTS`) in the background, job `rules.apply`, 25 documents per
   job; conflicts only where accepted (`accept_conflicts`), forced reviews do not act. A user rule
   is applied by its owner to their documents, a global rule by anyone to the documents they may
   write to; rights are checked again per document. Progress: `GET /rule-applications/{id}`.
@@ -806,10 +806,10 @@ disabling make no version; deleting is a soft delete.
 ## Search
 
 Hybrid search in Meilisearch: full text and meaning (vectors) in one query. Without
-`PAPIQ_MEILISEARCH_URL` there is no search; without `PAPIQ_EMBEDDING_BASE_URL` it works on words
+`LEKTO_MEILISEARCH_URL` there is no search; without `LEKTO_EMBEDDING_BASE_URL` it works on words
 only. `GET /api/v1/documents/search?q=…` takes the filters of `GET /documents`, `limit`,
 `offset` (at most 1000 hits can be reached) and `semantic_ratio` (0 words only, 1 meaning only;
-default `PAPIQ_SEARCH_SEMANTIC_RATIO`). Each hit carries the document as `GET /documents/{id}`
+default `LEKTO_SEARCH_SEMANTIC_RATIO`). Each hit carries the document as `GET /documents/{id}`
 does, a score and a snippet whose matches are marked. `semantic` in the answer tells whether the
 meaning took part.
 
@@ -819,7 +819,7 @@ meaning took part.
   doubling up to an hour, ten times; the last attempt writes the words without vectors. Renaming
   a contact, a type or a tag, nesting a tag elsewhere and changing the groups of a contact or
   type queue the documents concerned: the index holds names for the search by words. A reconciliation compares the index with the database and queues what is
-  missing, stale or gone: every `PAPIQ_SEARCH_RECONCILE_INTERVAL` and at every start of a worker.
+  missing, stale or gone: every `LEKTO_SEARCH_RECONCILE_INTERVAL` and at every start of a worker.
   If the embedding endpoint is down, the document is written at once with the vectors it has
   and the job repeats for the new ones. If Meilisearch loses its data, the adapter sets the
   index up again; restart the worker or call `POST /search/reindex` to fill it without waiting
@@ -845,20 +845,20 @@ meaning took part.
   database once more and the filter applied again, so a withdrawn share ends the search for that
   document at once, before the index has changed; a page can therefore hold fewer items than
   `limit`. Documents still in processing are in the index, for their owner only.
-- **Sections.** The text (at most `PAPIQ_SEARCH_MAX_TEXT` characters) is cut into sections of
-  about `PAPIQ_SEARCH_CHUNK_SIZE` characters, at most `PAPIQ_SEARCH_MAX_CHUNKS`; each gets a
+- **Sections.** The text (at most `LEKTO_SEARCH_MAX_TEXT` characters) is cut into sections of
+  about `LEKTO_SEARCH_CHUNK_SIZE` characters, at most `LEKTO_SEARCH_MAX_CHUNKS`; each gets a
   vector, and the first one starts with title, contact, type and the tags set (not their
-  ancestors: nesting a tag elsewhere costs no embedding). `PAPIQ_SEARCH_MAX_CHUNKS=1`
+  ancestors: nesting a tag elsewhere costs no embedding). `LEKTO_SEARCH_MAX_CHUNKS=1`
   gives one vector per document. A vector is made again only when model or section texts change.
-- **Embeddings.** The query is embedded at request time (`PAPIQ_SEARCH_EMBED_TIMEOUT`); if the
+- **Embeddings.** The query is embedded at request time (`LEKTO_SEARCH_EMBED_TIMEOUT`); if the
   endpoint is down or slow, the search falls back to words (`semantic: false`).
-  The model is `snowflake-arctic-embed2` with `PAPIQ_EMBEDDING_QUERY_PREFIX=query:` (compared with
+  The model is `snowflake-arctic-embed2` with `LEKTO_EMBEDDING_QUERY_PREFIX=query:` (compared with
   `bge-m3` and `qwen3-embedding:0.6b` in `evaluation/search/reports`).
-  `PAPIQ_EMBEDDING_DIMENSIONS` is the length of the vectors and required with Meilisearch and an
+  `LEKTO_EMBEDDING_DIMENSIONS` is the length of the vectors and required with Meilisearch and an
   embedding endpoint; vectors of another length are refused ("the vectors of <model> do not
   have the <n> dimensions configured"; the query then goes by words).
   Changing the model means a rebuild. Some models want a prefix for queries
-  and documents (`PAPIQ_EMBEDDING_QUERY_PREFIX`, `PAPIQ_EMBEDDING_DOCUMENT_PREFIX`).
+  and documents (`LEKTO_EMBEDDING_QUERY_PREFIX`, `LEKTO_EMBEDDING_DOCUMENT_PREFIX`).
 - **Limits.** Meilisearch ranks the documents nearest in meaning even if no word matches, so
   a hybrid search always returns hits; there is no threshold yet. A rebuild occupies one worker
   loop for its time. On a CPU the embedding of the sections dominates the indexing cost;
@@ -892,14 +892,14 @@ a temporary Meilisearch index and runs the queries of `evaluation/search/queries
     `adapters/outbound/pillow`) reads PNG, JPEG, WebP and ICO only, checks the size before it
     decodes (at most 4096 × 4096 pixels; of an ICO every picture by its own header) and writes
     a WebP keeping transparency. An uploaded logo is never replaced by a fetched one.
-  - *Fetch* (`PAPIQ_LOGO_FETCH=true`; off by default, Papiq then never asks the web on its own):
+  - *Fetch* (`LEKTO_LOGO_FETCH=true`; off by default, Papiq then never asks the web on its own):
     the worker's job `contacts.logo` asks the contact's own website for its icon, the port
     `LogoFetcher` (`adapters/outbound/logos`, httpx2). It is queued when a contact without a
     logo, or with a fetched one, gets a domain among its identifiers (entered by hand, learned
     by training, attached from a document; a logo found there replaces the fetched one, none
     found leaves it), by an admin (`POST /contacts/{id}/logo/fetch`; all its domains in turn,
     also one that failed; may replace a fetched logo) and for the contacts without a logo with
-    `python -m papiq.composition fetch-logos`. A job that runs while `PAPIQ_LOGO_FETCH` is off
+    `python -m papiq.composition fetch-logos`. A job that runs while `LEKTO_LOGO_FETCH` is off
     (switched off after it was queued) ends at once with the note "not fetched: fetching logos
     is off", without waiting or retries; the button answers `503` ("Papiq does not fetch
     logos") then. It reads the page of the domain (or of `www.`),
@@ -921,8 +921,8 @@ a temporary Meilisearch index and runs the queries of `evaluation/search/queries
 
 ## REST API
 
-`python -m papiq.composition api` (with `PAPIQ_ROLE` `all` or `api`) serves
-`adapters/inbound/rest` with Uvicorn on `PAPIQ_API_HOST`:`PAPIQ_API_PORT`. All routes are below
+`python -m papiq.composition api` (with `LEKTO_ROLE` `all` or `api`) serves
+`adapters/inbound/rest` with Uvicorn on `LEKTO_API_HOST`:`LEKTO_API_PORT`. All routes are below
 `/api/v1`; the OpenAPI document is `/api/v1/openapi.json`, the interactive docs `/api/v1/docs`.
 
 Authentication: a session cookie from `POST /auth/login` or the OIDC callback, or a personal
@@ -938,7 +938,7 @@ password or TOTP there; that goes through `/auth/*` with the current password or
 seconds that their session or token still holds and end otherwise.
 
 The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax`, `Path=/`, for
-`PAPIQ_SESSION_MAX_AGE`; with `PAPIQ_COOKIE_SECURE=false` it is `papiq_session` without
+`LEKTO_SESSION_MAX_AGE`; with `LEKTO_COOKIE_SECURE=false` it is `papiq_session` without
 `Secure`. Sign-in accepts JSON only, so a form on another site cannot sign anyone in.
 
 | Endpoint | Purpose |
@@ -955,7 +955,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `/contacts`, `/document-types`, `/tags`, `/fields` (`GET`, `POST`, `GET/PATCH/DELETE /{id}`) | Master data: read by all, changed by admins, deleted only when unused. Contacts and types take `group_ids`, contacts `topic_ids` (the topics they enable) and identifiers with an optional `topic_id`. Fields: name, description, choices and scope change, the data type does not; removing a used choice or narrowing the scope past documents with values is `409`. The lists take `document_counts=true` (and `all_users` for admins): each item with `document_count`, the documents in the caller's reach that have it (a field: a value for it; a tag: see Tags), counted in one query (tags in a few: the parents' counts and the groups' come apart) |
 | `GET /tags` | The tags in the order of their trees (each after its parent, siblings by name; document tags, contact groups, type groups, topics), or of one `scope`; each with `scope`, `parent_id`, `path` (the names from the top), `assignment`, `shown`, `icon`, `color`. `POST` takes `scope` (default `document`), `parent_id`, `assignment` and `shown` (by scope unless given), `icon` and `color`; `PATCH` name, parent (`null`: the top), assignment, `shown`, `icon` and `color` (`null` removes them), never the scope. Document types take an `icon` too |
 | `PUT/DELETE /contacts/{id}/logo`, `GET /contacts/{id}/logo` | A contact's logo (see Icons, colours and logos): upload (multipart `file`, admins; `413` above 1 MiB, `415` for another kind than PNG, JPEG or WebP, `422` if it cannot be read), remove (admins), read (everyone; WebP with `Cache-Control: private, max-age=86400`, the only answer of the API a browser may keep: `ContactOut.logo.url` carries the version). `ContactOut` has `logo` (source, domain, time, URL) and `logo_failure` (the domains whose fetch found none, the time of the last) |
-| `POST /contacts/{id}/logo/fetch` | Fetch the logo from the contact's website (admins, `202`); `503` without `PAPIQ_LOGO_FETCH`, `409` with an uploaded logo, `422` without a domain |
+| `POST /contacts/{id}/logo/fetch` | Fetch the logo from the contact's website (admins, `202`); `503` without `LEKTO_LOGO_FETCH`, `409` with an uploaded logo, `422` without a domain |
 | `PUT /document-types/{id}/fields` | The fields of a document type, each required or optional, set from the type in one transaction (admins); answers its fields. A global field is `422`; taking off a field that has values on its documents or that the type's title pattern uses is `409` |
 | `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins), optionally with a `topic_id` the contact enables; the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |
 | `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/shares/{user_id}` | Spaces and shares (owner) |
@@ -967,7 +967,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result and the differences |
 | `POST /documents/{id}/move` | Into another space (owner, or an admin without read access) |
 | `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
-| `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit` (at most `PAPIQ_MCP_TEXT_MAX`, the default); `409` while not parsed |
+| `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit` (at most `LEKTO_MCP_TEXT_MAX`, the default); `409` while not parsed |
 | `GET /documents/{id}/files` | The files as stored (read access): when the document was added and changed, its original's name and type, and for the original and the archive (null while there is none) size, SHA-256 and metadata: a PDF's version, PDF/A level, pages, document information and XMP; an image's format, size, resolution and EXIF |
 | `GET /documents/{id}/facts` | What the document shows of its contacts (read access): names and identifiers with the contact they belong to now and their spans in the text (characters, as `/text` counts them); the codes on its pages, each once for its format and text, with the pages and boxes where it stands (a box per copy), the GiroCode read, their identifiers and the amount fields of the same value; for admins, on the documents of how many other contacts an identifier stands; `409` while not parsed |
 | `GET /documents/{id}/log` | Processing log (owner or admin) |
@@ -990,7 +990,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `GET /health` | Database, bucket or storage directory and, if configured, the search index reachable; `200` (`ok`, or `degraded` if only the search is down) or `503`, no authentication; not written to the access log |
 
 - Uploads are streamed into a temporary file and hashed on the way; the limit
-  `PAPIQ_UPLOAD_MAX_SIZE` applies while receiving (`413`). The type is recognised from the
+  `LEKTO_UPLOAD_MAX_SIZE` applies while receiving (`413`). The type is recognised from the
   content (PDF, JPEG, PNG, TIFF; otherwise `415`). A file the owner already has: `409` with
   `existing_document_id`.
 - Errors are problem details (RFC 9457, `application/problem+json`) and documented per endpoint.
@@ -1005,7 +1005,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   `/health` stay public. Every other answer of the API is `no-store` too, but for a contact's
   logo (`GET /contacts/{id}/logo`, successful answers only), which keeps its own
   `private, max-age=86400`: its URL changes with the logo, so lists need not load it again.
-- Request bodies other than uploads (documents, logos) are bounded by `PAPIQ_REQUEST_MAX_SIZE`, by
+- Request bodies other than uploads (documents, logos) are bounded by `LEKTO_REQUEST_MAX_SIZE`, by
   `Content-Length` before anything is read and by the bytes received otherwise (`413`);
   FastAPI would otherwise read a JSON body of any size into memory.
 - Downloads go through a temporary file and carry `Content-Security-Policy: sandbox`, besides
@@ -1014,7 +1014,7 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
   provider) are problems like all errors. The access log shows the OIDC callback without its
   query (code and state).
 - Event streams: the API subscribes to the event bus as `api.sse` and polls the outbox every
-  `PAPIQ_EVENTS_POLL_INTERVAL`. Each event goes to the streams of the users who may read the
+  `LEKTO_EVENTS_POLL_INTERVAL`. Each event goes to the streams of the users who may read the
   document at that moment (other users once it is green). No replay: after reconnecting,
   clients fetch the state. `document.deleted` goes to the streams of the users who could read the
   document when it was deleted (the event carries their ids; the stream message does not).
@@ -1027,39 +1027,39 @@ The session cookie is `__Host-papiq_session`: HTTP-only, `Secure`, `SameSite=Lax
 
 ## Worker
 
-`python -m papiq.composition worker` (with `PAPIQ_ROLE` `all` or `worker`) runs
+`python -m papiq.composition worker` (with `LEKTO_ROLE` `all` or `worker`) runs
 `adapters/inbound/worker`:
 
-- `PAPIQ_WORKER_CONCURRENCY` loops claim and run due jobs; each waits
-  `PAPIQ_WORKER_POLL_INTERVAL` when nothing is due. One loop delivers outbox events
-  (`EventBus.dispatch`) every `PAPIQ_EVENTS_POLL_INTERVAL`. Postgres `LISTEN/NOTIFY` is not
+- `LEKTO_WORKER_CONCURRENCY` loops claim and run due jobs; each waits
+  `LEKTO_WORKER_POLL_INTERVAL` when nothing is due. One loop delivers outbox events
+  (`EventBus.dispatch`) every `LEKTO_EVENTS_POLL_INTERVAL`. Postgres `LISTEN/NOTIFY` is not
   used.
 - Memory: OCRmyPDF takes about 150 MB per job, the worker itself about 0.5 GB; reading the
   text needs little. The OCR is bound by the CPU: OCRmyPDF shares the cores among
-  `PAPIQ_WORKER_CONCURRENCY` jobs, so more loops than cores gain nothing.
+  `LEKTO_WORKER_CONCURRENCY` jobs, so more loops than cores gain nothing.
 - The cleanup (`maintenance.cleanup`, one job with a fixed dedup key; it goes before pipeline
   steps when due) runs every
-  `PAPIQ_CLEANUP_INTERVAL` and removes finished jobs and delivered events older than
-  `PAPIQ_RETENTION`, webhook delivery log rows of that age, ended sessions, stale counts of
+  `LEKTO_CLEANUP_INTERVAL` and removes finished jobs and delivered events older than
+  `LEKTO_RETENTION`, webhook delivery log rows of that age, ended sessions, stale counts of
   failed sign-ins, the previous secrets of webhooks whose grace period
-  (`PAPIQ_WEBHOOK_SECRET_GRACE`) is over, and what only the inbox's done needs after 14 days
+  (`LEKTO_WEBHOOK_SECRET_GRACE`) is over, and what only the inbox's done needs after 14 days
   (see Inbox). The same loop runs the removal of a deleted document's files.
 - Rule applications (`rules.apply`) run 25 documents per job, then queue the next job, so
   pipeline nodes do not wait behind them.
 - After a tag moved, `tags.normalise` leaves what carries it and a tag now above it the one
   below (after rule applications; see Tags); a row changed meanwhile fails the version check,
   and the job runs again (five tries, waiting from a minute, doubling).
-- With `PAPIQ_LOGO_FETCH`, the job `contacts.logo` fetches the logo of a contact (after rule
+- With `LEKTO_LOGO_FETCH`, the job `contacts.logo` fetches the logo of a contact (after rule
   applications, before training; see Icons, colours and logos). It asks the network outside
   any transaction and is repeated only for other errors than the website's (three tries).
   Without it, a job queued before ends at once (failed, with the note that fetching is off).
-- `PAPIQ_WEBHOOK_CONCURRENCY` further loops deliver webhooks (see Webhooks); a receiver that
+- `LEKTO_WEBHOOK_CONCURRENCY` further loops deliver webhooks (see Webhooks); a receiver that
   does not answer holds up deliveries, never the pipeline.
 - SIGTERM or SIGINT: no new jobs; running jobs may finish within
-  `PAPIQ_WORKER_SHUTDOWN_TIMEOUT`, then they are cancelled and their jobs released to run again
+  `LEKTO_WORKER_SHUTDOWN_TIMEOUT`, then they are cancelled and their jobs released to run again
   at once. Finally the database engine and the S3 client are closed.
 - Failed event deliveries are repeated with doubling delay from one second up to an hour, at
-  most `PAPIQ_EVENTS_MAX_ATTEMPTS` times. Several dispatchers under the same subscriber name
+  most `LEKTO_EVENTS_MAX_ATTEMPTS` times. Several dispatchers under the same subscriber name
   may deliver an event twice (at least once is allowed).
 - Every loop runs its units of work one after another, never nested, as SQLite requires.
 
@@ -1072,7 +1072,7 @@ Admins may do everything with every webhook: read it and its log, change, delete
 secret (which then shows to them, once). Nobody sees a secret again after it was shown. What an
 admin reads includes the target URL (which may be a capability URL) and, in the log, the document
 IDs and event types of that user's deliveries.
-At most `PAPIQ_WEBHOOKS_PER_USER` (20) per user.
+At most `LEKTO_WEBHOOKS_PER_USER` (20) per user.
 
 **Events.** `document.received`, `document.node_started`, `document.node_deferred`, `document.node_completed`, `document.lane_changed`,
 `document.filed`, `document.updated`, `document.deleted`, or `*` for all, also future ones. A
@@ -1136,24 +1136,24 @@ KEY=$(printf %s "${SECRET#whsec_}" | base64 -d | od -An -vtx1 | tr -d ' \n')
 ```
 
 **Answers and repetition.** Any `2xx` answer is delivered. No answer (unreachable, timeout after
-`PAPIQ_WEBHOOK_TIMEOUT`, certificate refused), `5xx`, `408`, `425` and `429` are repeated, up to
-`PAPIQ_WEBHOOK_MAX_ATTEMPTS` attempts with `PAPIQ_WEBHOOK_RETRY_DELAY` doubling up to an hour
+`LEKTO_WEBHOOK_TIMEOUT`, certificate refused), `5xx`, `408`, `425` and `429` are repeated, up to
+`LEKTO_WEBHOOK_MAX_ATTEMPTS` attempts with `LEKTO_WEBHOOK_RETRY_DELAY` doubling up to an hour
 (30 s, 1, 2, 4, 8, 16, 32, 60, 60 minutes: about three hours). `3xx` and every other `4xx` are
 final: redirects are never followed, since the signature would not hold for another target.
-After `PAPIQ_WEBHOOK_DISABLE_AFTER` (20) deliveries given up in a row Papiq switches the webhook
+After `LEKTO_WEBHOOK_DISABLE_AFTER` (20) deliveries given up in a row Papiq switches the webhook
 off (`active: false`, `disabled_reason: failing`); switching it on again clears the count.
-A receiver that is down delays the deliveries behind it, since the `PAPIQ_WEBHOOK_CONCURRENCY`
+A receiver that is down delays the deliveries behind it, since the `LEKTO_WEBHOOK_CONCURRENCY`
 loops wait for it up to the timeout per attempt; the pipeline is not affected.
 
 **The log** (`GET /webhooks/{id}/deliveries`, newest first) has one row per attempt: time,
 event, `outcome` (`delivered`, `retrying`, `gave_up`, `dropped`), HTTP status, duration, error
 and the time of the next attempt. The receiver's answer is neither stored nor shown. Rows are
-removed after `PAPIQ_RETENTION`.
+removed after `LEKTO_RETENTION`.
 
 **Secrets.** Papiq generates the secret and shows it once, in the answer to creating a webhook
-or renewing its secret. It is stored encrypted with `PAPIQ_SECRET_KEY` (the worker needs the key
+or renewing its secret. It is stored encrypted with `LEKTO_SECRET_KEY` (the worker needs the key
 too, to sign). Renewing keeps the old secret signing next to the new one for
-`PAPIQ_WEBHOOK_SECRET_GRACE` (24 hours), so the receiver can switch without a gap; renewing again
+`LEKTO_WEBHOOK_SECRET_GRACE` (24 hours), so the receiver can switch without a gap; renewing again
 ends that at once.
 
 **Targets.** `http` and `https` to any host and port, including the own network. `https`
@@ -1166,7 +1166,7 @@ shown.
 
 The API serves the Model Context Protocol (Streamable HTTP, stateless, JSON answers) at
 `/api/v1/mcp`, so AI clients can search documents, read them and correct their metadata.
-`PAPIQ_MCP_ENABLED=false` removes it. It is not part of the OpenAPI document.
+`LEKTO_MCP_ENABLED=false` removes it. It is not part of the OpenAPI document.
 
 Authentication: a personal API token (`POST /auth/tokens`; the web UI will offer it later) as
 `Authorization: Bearer papiq_…`; cookies do not count. Without a valid token the answer is `401`
@@ -1177,7 +1177,7 @@ as in REST: `read` may use every tool but `update_metadata`.
 | --- | --- |
 | `search` | `query`, `limit` (1 to 25), `offset`, optional `contact`, `document_type`, `tags` (names of document tags, all of them; a tag finds the documents with a tag below it too), `topics` (names of topics, one of them; a topic finds those with a topic below it too): hits with `id`, `title`, `score`, `snippet` (plain text), contact, type, topic, tags, date, lane, `access`; `next_offset`, `semantic` |
 | `get_document` | `id`: metadata with contact, topic, type, tags and fields by name, lane and processing status |
-| `get_text` | `id`, `offset`, `limit` (characters, at most `PAPIQ_MCP_TEXT_MAX`, 20,000): a piece of the document's text as it is set, `next_offset` to continue. The text is content from outside; the tool description tells clients not to follow instructions in it |
+| `get_text` | `id`, `offset`, `limit` (characters, at most `LEKTO_MCP_TEXT_MAX`, 20,000): a piece of the document's text as it is set, `next_offset` to continue. The text is content from outside; the tool description tells clients not to follow instructions in it |
 | `update_metadata` | `id` and any of `title`, `contact`, `topic`, `document_type` (name; `null` removes; a topic the contact enables), `tags` (names of document tags, the complete list, replaces), `document_date` (`null` removes), `fields` (field name to value; `null` removes). Needs a `read_write` token and write access; the owner's change rules run as for `PATCH /documents/{id}` and the result shows them. If the rules filed the document where the caller can no longer read it, the result has only `id` and `access: null` |
 | `list_tags` | The tags with `scope` and `path`, in the order of their trees, optionally of one `scope`; document tags name the tags of the other tools, topics the `topic` of `update_metadata` |
 
@@ -1194,145 +1194,145 @@ claude mcp add --transport http papiq https://papiq.example.org/api/v1/mcp \
 Other clients take the same URL and header; the MCP Inspector
 (`npx @modelcontextprotocol/inspector`) is handy to try it out: transport *Streamable HTTP*,
 the URL, and the header `Authorization`. Behind a reverse proxy the path needs no special
-handling; requests are plain `POST`s with JSON bodies, limited by `PAPIQ_REQUEST_MAX_SIZE`.
+handling; requests are plain `POST`s with JSON bodies, limited by `LEKTO_REQUEST_MAX_SIZE`.
 
 ## Configuration
 
-Environment variables with the prefix `PAPIQ_` only; there is no configuration file. Invalid or
+Environment variables with the prefix `LEKTO_` only; there is no configuration file. Invalid or
 contradictory configuration stops the start with a message naming the variables. Check it with
 `python -m papiq.composition`, which prints the effective configuration without secrets.
 
-Secrets (marked *secret*) can also be passed as `PAPIQ_<NAME>_FILE=/run/secrets/...` (Docker
+Secrets (marked *secret*) can also be passed as `LEKTO_<NAME>_FILE=/run/secrets/...` (Docker
 secrets): the file content, without one trailing newline, is the value. Setting both
-`PAPIQ_<NAME>` and `PAPIQ_<NAME>_FILE` is an error. In production, pass at least
-`PAPIQ_SECRET_KEY_FILE` and `PAPIQ_ADMIN_PASSWORD_FILE` that way. The key and the admin
+`LEKTO_<NAME>` and `LEKTO_<NAME>_FILE` is an error. In production, pass at least
+`LEKTO_SECRET_KEY_FILE` and `LEKTO_ADMIN_PASSWORD_FILE` that way. The key and the admin
 password in `.devcontainer/dev.env` are public; with secure cookies the start refuses the
 development key.
 
-Variables for the variant that is not selected (for example `PAPIQ_DB_HOST` with
-`PAPIQ_DB_TYPE=sqlite`) are not required, but must still be well-formed if set.
+Variables for the variant that is not selected (for example `LEKTO_DB_HOST` with
+`LEKTO_DB_TYPE=sqlite`) are not required, but must still be well-formed if set.
 Choices are case-insensitive; surrounding whitespace is removed and blank values count as unset.
 Durations must be positive.
 
 The table names every variable (a test checks it against `settings.py`). **Role** says which
-service reads it: `API`, `Worker` or `both`; a container with `PAPIQ_ROLE=all` needs them all,
+service reads it: `API`, `Worker` or `both`; a container with `LEKTO_ROLE=all` needs them all,
 separate API and worker containers only theirs (the connection and storage settings in both).
 Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 
 | Variable | Role | Default | Meaning |
 | --- | --- | --- | --- |
-| `PAPIQ_ROLE` | both | `all` | `all`, `api` or `worker`: which services run (the image's s6 scripts read it) |
-| `PAPIQ_LOG_FORMAT` | both | `json` | `json` or `console` |
-| `PAPIQ_LOG_LEVEL` | both | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
-| `PAPIQ_DB_TYPE` | both | `sqlite` | `sqlite` or `postgres` |
-| `PAPIQ_DB_SQLITE_PATH` | both | `data/papiq.db`; image: `/data/papiq.db` | SQLite only; local volume (WAL), never a network share |
-| `PAPIQ_DB_HOST` | both | unset | required for `postgres` |
-| `PAPIQ_DB_PORT` | both | `5432` |  |
-| `PAPIQ_DB_NAME` | both | unset | required for `postgres` |
-| `PAPIQ_DB_USER` | both | unset | required for `postgres` |
-| `PAPIQ_DB_PASSWORD` | both | unset | *secret*; required for `postgres` |
-| `PAPIQ_STORAGE_TYPE` | both | `filesystem` | `filesystem` or `s3` |
-| `PAPIQ_STORAGE_PATH` | both | `data/objects`; image: `/data/objects` | filesystem only |
-| `PAPIQ_S3_ENDPOINT_URL` | both | unset | required for `s3`, e.g. `http://garage:3900` |
-| `PAPIQ_S3_REGION` | both | `us-east-1` |  |
-| `PAPIQ_S3_BUCKET` | both | unset | required for `s3` |
-| `PAPIQ_S3_ACCESS_KEY_ID` | both | unset | *secret*; required for `s3` |
-| `PAPIQ_S3_SECRET_ACCESS_KEY` | both | unset | *secret*; required for `s3` |
-| `PAPIQ_S3_PATH_STYLE` | both | `true` | Path-style addressing (Garage needs it) |
-| `PAPIQ_API_HOST` | API | `0.0.0.0` | Where the API listens |
-| `PAPIQ_API_PORT` | API | `8000` | `0`: the operating system picks a free port, which the log line `api started` names (for tests; the image's health check needs a fixed port) |
-| `PAPIQ_UPLOAD_MAX_SIZE` | API | `100MiB` | Largest upload; bytes or with unit (`50MB`, `1GiB`); a proxy's body limit must allow it |
-| `PAPIQ_REQUEST_MAX_SIZE` | API | `1MiB` | Largest body of every other request (JSON); larger ones get `413` |
-| `PAPIQ_UI_DIR` | API | unset; image: `/opt/papiq/ui` | The built web UI (`web/build`), served below `/ui`; `/` leads there. Must contain `index.html`; unset serves the API only |
-| `PAPIQ_FORWARDED_ALLOW_IPS` | API | unset; required with `PAPIQ_COOKIE_SECURE=true` | Reverse proxies whose `X-Forwarded-For` is trusted (comma-separated). Secure cookies mean a TLS-terminating proxy in front of Papiq: name its address, or the per-source throttle sees only the proxy. `*` only if the proxy sets the header itself, replacing what clients send |
-| `PAPIQ_SECRET_KEY` | both | required | *secret*; 32 bytes base64 (`openssl rand -base64 32`); encrypts TOTP and webhook secrets, the worker decrypts the latter to sign. Keep it: without it they cannot be read. The development key is refused with secure cookies |
-| `PAPIQ_ADMIN_USERNAME` | API | unset | The first admin, created at API start while there is no active admin; set together with the password |
-| `PAPIQ_ADMIN_PASSWORD` | API | unset | *secret*; see above |
-| `PAPIQ_SESSION_IDLE_TIMEOUT` | API | `P1D` | A session ends when unused this long |
-| `PAPIQ_SESSION_MAX_AGE` | API | `P30D` | A session ends this long after sign-in; not shorter than the idle timeout |
-| `PAPIQ_COOKIE_SECURE` | API | `true` | `false` only for development over plain HTTP |
-| `PAPIQ_PUBLIC_URL` | API | unset | Where browsers reach Papiq (`https://papiq.example.org`); required with OIDC |
-| `PAPIQ_OIDC_ISSUER` | API | unset | OpenID Connect: set issuer, client id and client secret together or none; the issuer is `https` and compared exactly. Register `<PAPIQ_PUBLIC_URL>/api/v1/auth/oidc/callback` as redirect URI |
-| `PAPIQ_OIDC_CLIENT_ID` | API | unset | see above |
-| `PAPIQ_OIDC_CLIENT_SECRET` | API | unset | *secret*; see above |
-| `PAPIQ_OIDC_SCOPES` | API | `openid profile email` | Must contain `openid` |
-| `PAPIQ_OIDC_DISPLAY_NAME` | API | `Single sign-on` | Name of the provider on the sign-in page |
-| `PAPIQ_OIDC_AUTO_CREATE` | API | `false` | Create a user at the first sign-in of an unknown provider account |
-| `PAPIQ_OIDC_USERNAME_CLAIM` | API | `preferred_username` | ID token claim that names such a user |
-| `PAPIQ_WEBHOOKS_PER_USER` | API | `20` | Webhooks a user may have |
-| `PAPIQ_WEBHOOK_SECRET_GRACE` | API | `P1D` | How long the old secret signs after renewing; the cleanup drops it afterwards |
-| `PAPIQ_WEBHOOK_TIMEOUT` | Worker | `10` | Seconds per delivery attempt (1 to 120) |
-| `PAPIQ_WEBHOOK_MAX_ATTEMPTS` | Worker | `10` | Attempts per delivery (1 to 50) |
-| `PAPIQ_WEBHOOK_RETRY_DELAY` | Worker | `30` | Seconds before the second attempt, doubling after, at most an hour |
-| `PAPIQ_WEBHOOK_DISABLE_AFTER` | Worker | `20` | Deliveries given up in a row until a webhook is switched off |
-| `PAPIQ_WEBHOOK_CONCURRENCY` | Worker | `4` | Deliveries at the same time |
-| `PAPIQ_MCP_ENABLED` | API | `true` | Serve MCP at `/api/v1/mcp` |
-| `PAPIQ_MCP_TEXT_MAX` | API | `20000` | Characters one `get_text` call and one piece of `GET /documents/{id}/text` return at most (1,000 to 1,000,000) |
-| `PAPIQ_WORKER_CONCURRENCY` | Worker | `2` | Jobs at the same time, see Worker |
-| `PAPIQ_WORKER_POLL_INTERVAL` | Worker | `1` | Seconds between looks for due jobs |
-| `PAPIQ_WORKER_SHUTDOWN_TIMEOUT` | Worker | `30` | Seconds running jobs get to finish on SIGTERM |
-| `PAPIQ_NODE_MAX_ATTEMPTS` | Worker | `3` | Attempts of a pipeline node that raises |
-| `PAPIQ_NODE_RETRY_DELAY` | Worker | `30` | Seconds before the second attempt, doubling after |
-| `PAPIQ_EVENTS_POLL_INTERVAL` | Worker | `1` | Seconds between outbox dispatches |
-| `PAPIQ_EVENTS_MAX_ATTEMPTS` | Worker | `10` | Delivery attempts of an event per subscriber |
-| `PAPIQ_CLEANUP_INTERVAL` | Worker | `3600` | Seconds between cleanups |
-| `PAPIQ_RETENTION` | Worker | `P7D` | Age of finished jobs, delivered events and webhook log rows to remove |
-| `PAPIQ_OCR_LANGUAGES` | Worker | `deu+eng` | Tesseract languages, joined by `+` |
-| `PAPIQ_OCR_TIMEOUT` | Worker | `600` | Seconds per document for OCR |
-| `PAPIQ_MEILISEARCH_URL` | both | unset | Without it there is no search (the API searches, the worker indexes) |
-| `PAPIQ_MEILISEARCH_API_KEY` | both | unset | *secret*; the master key or a key with access to the index |
-| `PAPIQ_MEILISEARCH_INDEX` | both | `papiq-documents` | The active index; a rebuild fills `<name>-rebuild` and swaps it in |
-| `PAPIQ_MEILISEARCH_TIMEOUT` | both | `30` | Seconds per request |
-| `PAPIQ_MEILISEARCH_TASK_TIMEOUT` | Worker | `120` | Seconds a write waits for its task |
-| `PAPIQ_SEARCH_LOCALES` | both | `deu+eng` | Languages of the documents, ISO 639-3 codes joined by `+` (index settings) |
-| `PAPIQ_SEARCH_SEMANTIC_RATIO` | API | `0.5` | Weight of the meaning against the words when a request does not say |
-| `PAPIQ_SEARCH_EMBED_TIMEOUT` | API | `5` | Seconds to wait for the embedding of a query, then words only |
-| `PAPIQ_SEARCH_MAX_TEXT` | Worker | `200000` | Characters of text per document in the index |
-| `PAPIQ_SEARCH_CHUNK_SIZE` | Worker | `1500` | Characters per section with a vector |
-| `PAPIQ_SEARCH_MAX_CHUNKS` | Worker | `8` | Sections with a vector per document |
-| `PAPIQ_SEARCH_RECONCILE_INTERVAL` | Worker | `21600` | Seconds between comparisons of index and database |
-| `PAPIQ_SEARCH_REBUILD_TIMEOUT` | Worker | `21600` | Seconds a rebuild may take |
-| `PAPIQ_LLM_BASE_URL` | Worker | unset | OpenAI-compatible endpoint with version path (`http://ollama:11434/v1`); set together with the model or neither |
-| `PAPIQ_LLM_MODEL` | Worker | unset | see above |
-| `PAPIQ_LLM_API_KEY` | Worker | unset | *secret* |
-| `PAPIQ_LLM_TEMPERATURE` | Worker | `0` | 0 to 2; 0 for repeatable answers; `none` sends none (for models that reject one, such as Claude Sonnet 5.5) |
-| `PAPIQ_LLM_SEED` | Worker | unset | Passed to the endpoint, if set |
-| `PAPIQ_LLM_TIMEOUT` | Worker | `300` | Seconds per request (`600` on a CPU) |
-| `PAPIQ_LLM_RESPONSE_FORMAT` | Worker | `json_schema` | `json_object` for providers without JSON schema support |
-| `PAPIQ_LLM_INPUT_BUDGET` | Worker | `12000` | Characters of document text per request (a run of spaces counts once) |
-| `PAPIQ_LLM_MAX_TAGS` | Worker | `200` | Tags listed per request |
-| `PAPIQ_EMBEDDING_BASE_URL` | both | unset | OpenAI-compatible endpoint; set together with the model or neither (the worker embeds sections, the API embeds queries) |
-| `PAPIQ_EMBEDDING_MODEL` | both | unset | see above |
-| `PAPIQ_EMBEDDING_API_KEY` | both | unset | *secret* |
-| `PAPIQ_EMBEDDING_TIMEOUT` | both | `60` | Seconds per request |
-| `PAPIQ_EMBEDDING_DIMENSIONS` | both | unset | Length of the vectors (`snowflake-arctic-embed2`, `bge-m3`: 1024); required with Meilisearch and an embedding endpoint |
-| `PAPIQ_EMBEDDING_QUERY_PREFIX` | API | unset | Put before queries, for models that ask for it (`query:`) |
-| `PAPIQ_EMBEDDING_DOCUMENT_PREFIX` | Worker | unset | Put before document sections, for models that ask for it |
-| `PAPIQ_VLM_BASE_URL` | both | unset | OpenAI-compatible endpoint of a vision language model that reads a document's pages when a person asks for it (`POST /documents/{id}/vision`); the page images go there. Set together with the model or neither; off without. The API names model and endpoint in `GET /pipeline` |
-| `PAPIQ_VLM_MODEL` | both | unset | see above: a model that takes images and gives each line's box in pixels (measured with Claude Sonnet 5.5) |
-| `PAPIQ_VLM_API_KEY` | Worker | unset | *secret* |
-| `PAPIQ_VLM_TIMEOUT` | Worker | `1800` | Seconds for reading a whole document with the model (one page at most 300); the job lease grows with it |
-| `PAPIQ_CONFIDENCE_THRESHOLD` | Worker | `0.9` | A field passes from this confidence on |
-| `PAPIQ_CONTACT_SUGGEST_THRESHOLD` | Worker | `0.75` | An existing contact is suggested from this similarity on; not above the confidence threshold |
-| `PAPIQ_POOR_READING_THRESHOLD` | Worker | `0.08` | Share of unsure content words (below 60 % of Tesseract's confidence; noise left out, see the field checks) from which a value's place counts as poorly read, and the value is only suggested: the 20 content words nearest to it, else the page the OCR recognised. The default lies between good scans (up to 7 %) and broken ones (from 9 %) of a first sample; calibration in M18 |
-| `PAPIQ_DEFAULT_CURRENCY` | both | `EUR` | The currency of an amount in a document that shows no currency at all (ISO 4217), and of the `currency` filter in templates where they name none |
-| `PAPIQ_CLASSIFIER` | both | `scikit-learn` | The classifier trained from confirmed documents; `none` turns it off |
-| `PAPIQ_CLASSIFIER_MIN_EXAMPLES` | both | `20` | Confirmed documents before the first model is trained |
-| `PAPIQ_CLASSIFIER_RETRAIN_AFTER` | both | `25` | Documents confirmed since the last model before it is trained again |
-| `PAPIQ_CLASSIFIER_THRESHOLD` | Worker | `0.8` | A prediction this sure names its contact, type or tag |
-| `PAPIQ_NEIGHBOURS` | Worker | `5` | Similar confirmed documents that vote on a new one (needs the search index with embeddings); `0` turns them off |
-| `PAPIQ_LOGO_FETCH` | both | `false` | Fetch the logos of contacts from their own websites (worker; the API offers the button): HTTPS to public addresses only, see Logos. Off, Papiq never asks the web on its own |
-| `PAPIQ_RULES_PATTERN_TIMEOUT` | both | `0.2` | Seconds a regular expression of a rule may run per text or value (worker: rules; API: previews) |
-| `PAPIQ_RULES_MAX_TEXT` | both | `200000` | Characters of text rules look at (1,000 to 10,000,000) |
-| `PAPIQ_RULES_APPLY_MAX_DOCUMENTS` | both | `1000` | Documents per retroactive rule application (1 to 100,000) |
-| `PAPIQ_TEMPLATE_LOCALE` | both | `de` | Locale in which templates of rules and title patterns write dates and amounts (`datetime`, `currency`, `decimal`, an amount field as `3.650,00 EUR`); Babel's names, such as `de`, `en_US` |
+| `LEKTO_ROLE` | both | `all` | `all`, `api` or `worker`: which services run (the image's s6 scripts read it) |
+| `LEKTO_LOG_FORMAT` | both | `json` | `json` or `console` |
+| `LEKTO_LOG_LEVEL` | both | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+| `LEKTO_DB_TYPE` | both | `sqlite` | `sqlite` or `postgres` |
+| `LEKTO_DB_SQLITE_PATH` | both | `data/papiq.db`; image: `/data/papiq.db` | SQLite only; local volume (WAL), never a network share |
+| `LEKTO_DB_HOST` | both | unset | required for `postgres` |
+| `LEKTO_DB_PORT` | both | `5432` |  |
+| `LEKTO_DB_NAME` | both | unset | required for `postgres` |
+| `LEKTO_DB_USER` | both | unset | required for `postgres` |
+| `LEKTO_DB_PASSWORD` | both | unset | *secret*; required for `postgres` |
+| `LEKTO_STORAGE_TYPE` | both | `filesystem` | `filesystem` or `s3` |
+| `LEKTO_STORAGE_PATH` | both | `data/objects`; image: `/data/objects` | filesystem only |
+| `LEKTO_S3_ENDPOINT_URL` | both | unset | required for `s3`, e.g. `http://garage:3900` |
+| `LEKTO_S3_REGION` | both | `us-east-1` |  |
+| `LEKTO_S3_BUCKET` | both | unset | required for `s3` |
+| `LEKTO_S3_ACCESS_KEY_ID` | both | unset | *secret*; required for `s3` |
+| `LEKTO_S3_SECRET_ACCESS_KEY` | both | unset | *secret*; required for `s3` |
+| `LEKTO_S3_PATH_STYLE` | both | `true` | Path-style addressing (Garage needs it) |
+| `LEKTO_API_HOST` | API | `0.0.0.0` | Where the API listens |
+| `LEKTO_API_PORT` | API | `8000` | `0`: the operating system picks a free port, which the log line `api started` names (for tests; the image's health check needs a fixed port) |
+| `LEKTO_UPLOAD_MAX_SIZE` | API | `100MiB` | Largest upload; bytes or with unit (`50MB`, `1GiB`); a proxy's body limit must allow it |
+| `LEKTO_REQUEST_MAX_SIZE` | API | `1MiB` | Largest body of every other request (JSON); larger ones get `413` |
+| `LEKTO_UI_DIR` | API | unset; image: `/opt/papiq/ui` | The built web UI (`web/build`), served below `/ui`; `/` leads there. Must contain `index.html`; unset serves the API only |
+| `LEKTO_FORWARDED_ALLOW_IPS` | API | unset; required with `LEKTO_COOKIE_SECURE=true` | Reverse proxies whose `X-Forwarded-For` is trusted (comma-separated). Secure cookies mean a TLS-terminating proxy in front of Papiq: name its address, or the per-source throttle sees only the proxy. `*` only if the proxy sets the header itself, replacing what clients send |
+| `LEKTO_SECRET_KEY` | both | required | *secret*; 32 bytes base64 (`openssl rand -base64 32`); encrypts TOTP and webhook secrets, the worker decrypts the latter to sign. Keep it: without it they cannot be read. The development key is refused with secure cookies |
+| `LEKTO_ADMIN_USERNAME` | API | unset | The first admin, created at API start while there is no active admin; set together with the password |
+| `LEKTO_ADMIN_PASSWORD` | API | unset | *secret*; see above |
+| `LEKTO_SESSION_IDLE_TIMEOUT` | API | `P1D` | A session ends when unused this long |
+| `LEKTO_SESSION_MAX_AGE` | API | `P30D` | A session ends this long after sign-in; not shorter than the idle timeout |
+| `LEKTO_COOKIE_SECURE` | API | `true` | `false` only for development over plain HTTP |
+| `LEKTO_PUBLIC_URL` | API | unset | Where browsers reach Papiq (`https://papiq.example.org`); required with OIDC |
+| `LEKTO_OIDC_ISSUER` | API | unset | OpenID Connect: set issuer, client id and client secret together or none; the issuer is `https` and compared exactly. Register `<LEKTO_PUBLIC_URL>/api/v1/auth/oidc/callback` as redirect URI |
+| `LEKTO_OIDC_CLIENT_ID` | API | unset | see above |
+| `LEKTO_OIDC_CLIENT_SECRET` | API | unset | *secret*; see above |
+| `LEKTO_OIDC_SCOPES` | API | `openid profile email` | Must contain `openid` |
+| `LEKTO_OIDC_DISPLAY_NAME` | API | `Single sign-on` | Name of the provider on the sign-in page |
+| `LEKTO_OIDC_AUTO_CREATE` | API | `false` | Create a user at the first sign-in of an unknown provider account |
+| `LEKTO_OIDC_USERNAME_CLAIM` | API | `preferred_username` | ID token claim that names such a user |
+| `LEKTO_WEBHOOKS_PER_USER` | API | `20` | Webhooks a user may have |
+| `LEKTO_WEBHOOK_SECRET_GRACE` | API | `P1D` | How long the old secret signs after renewing; the cleanup drops it afterwards |
+| `LEKTO_WEBHOOK_TIMEOUT` | Worker | `10` | Seconds per delivery attempt (1 to 120) |
+| `LEKTO_WEBHOOK_MAX_ATTEMPTS` | Worker | `10` | Attempts per delivery (1 to 50) |
+| `LEKTO_WEBHOOK_RETRY_DELAY` | Worker | `30` | Seconds before the second attempt, doubling after, at most an hour |
+| `LEKTO_WEBHOOK_DISABLE_AFTER` | Worker | `20` | Deliveries given up in a row until a webhook is switched off |
+| `LEKTO_WEBHOOK_CONCURRENCY` | Worker | `4` | Deliveries at the same time |
+| `LEKTO_MCP_ENABLED` | API | `true` | Serve MCP at `/api/v1/mcp` |
+| `LEKTO_MCP_TEXT_MAX` | API | `20000` | Characters one `get_text` call and one piece of `GET /documents/{id}/text` return at most (1,000 to 1,000,000) |
+| `LEKTO_WORKER_CONCURRENCY` | Worker | `2` | Jobs at the same time, see Worker |
+| `LEKTO_WORKER_POLL_INTERVAL` | Worker | `1` | Seconds between looks for due jobs |
+| `LEKTO_WORKER_SHUTDOWN_TIMEOUT` | Worker | `30` | Seconds running jobs get to finish on SIGTERM |
+| `LEKTO_NODE_MAX_ATTEMPTS` | Worker | `3` | Attempts of a pipeline node that raises |
+| `LEKTO_NODE_RETRY_DELAY` | Worker | `30` | Seconds before the second attempt, doubling after |
+| `LEKTO_EVENTS_POLL_INTERVAL` | Worker | `1` | Seconds between outbox dispatches |
+| `LEKTO_EVENTS_MAX_ATTEMPTS` | Worker | `10` | Delivery attempts of an event per subscriber |
+| `LEKTO_CLEANUP_INTERVAL` | Worker | `3600` | Seconds between cleanups |
+| `LEKTO_RETENTION` | Worker | `P7D` | Age of finished jobs, delivered events and webhook log rows to remove |
+| `LEKTO_OCR_LANGUAGES` | Worker | `deu+eng` | Tesseract languages, joined by `+` |
+| `LEKTO_OCR_TIMEOUT` | Worker | `600` | Seconds per document for OCR |
+| `LEKTO_MEILISEARCH_URL` | both | unset | Without it there is no search (the API searches, the worker indexes) |
+| `LEKTO_MEILISEARCH_API_KEY` | both | unset | *secret*; the master key or a key with access to the index |
+| `LEKTO_MEILISEARCH_INDEX` | both | `papiq-documents` | The active index; a rebuild fills `<name>-rebuild` and swaps it in |
+| `LEKTO_MEILISEARCH_TIMEOUT` | both | `30` | Seconds per request |
+| `LEKTO_MEILISEARCH_TASK_TIMEOUT` | Worker | `120` | Seconds a write waits for its task |
+| `LEKTO_SEARCH_LOCALES` | both | `deu+eng` | Languages of the documents, ISO 639-3 codes joined by `+` (index settings) |
+| `LEKTO_SEARCH_SEMANTIC_RATIO` | API | `0.5` | Weight of the meaning against the words when a request does not say |
+| `LEKTO_SEARCH_EMBED_TIMEOUT` | API | `5` | Seconds to wait for the embedding of a query, then words only |
+| `LEKTO_SEARCH_MAX_TEXT` | Worker | `200000` | Characters of text per document in the index |
+| `LEKTO_SEARCH_CHUNK_SIZE` | Worker | `1500` | Characters per section with a vector |
+| `LEKTO_SEARCH_MAX_CHUNKS` | Worker | `8` | Sections with a vector per document |
+| `LEKTO_SEARCH_RECONCILE_INTERVAL` | Worker | `21600` | Seconds between comparisons of index and database |
+| `LEKTO_SEARCH_REBUILD_TIMEOUT` | Worker | `21600` | Seconds a rebuild may take |
+| `LEKTO_LLM_BASE_URL` | Worker | unset | OpenAI-compatible endpoint with version path (`http://ollama:11434/v1`); set together with the model or neither |
+| `LEKTO_LLM_MODEL` | Worker | unset | see above |
+| `LEKTO_LLM_API_KEY` | Worker | unset | *secret* |
+| `LEKTO_LLM_TEMPERATURE` | Worker | `0` | 0 to 2; 0 for repeatable answers; `none` sends none (for models that reject one, such as Claude Sonnet 5.5) |
+| `LEKTO_LLM_SEED` | Worker | unset | Passed to the endpoint, if set |
+| `LEKTO_LLM_TIMEOUT` | Worker | `300` | Seconds per request (`600` on a CPU) |
+| `LEKTO_LLM_RESPONSE_FORMAT` | Worker | `json_schema` | `json_object` for providers without JSON schema support |
+| `LEKTO_LLM_INPUT_BUDGET` | Worker | `12000` | Characters of document text per request (a run of spaces counts once) |
+| `LEKTO_LLM_MAX_TAGS` | Worker | `200` | Tags listed per request |
+| `LEKTO_EMBEDDING_BASE_URL` | both | unset | OpenAI-compatible endpoint; set together with the model or neither (the worker embeds sections, the API embeds queries) |
+| `LEKTO_EMBEDDING_MODEL` | both | unset | see above |
+| `LEKTO_EMBEDDING_API_KEY` | both | unset | *secret* |
+| `LEKTO_EMBEDDING_TIMEOUT` | both | `60` | Seconds per request |
+| `LEKTO_EMBEDDING_DIMENSIONS` | both | unset | Length of the vectors (`snowflake-arctic-embed2`, `bge-m3`: 1024); required with Meilisearch and an embedding endpoint |
+| `LEKTO_EMBEDDING_QUERY_PREFIX` | API | unset | Put before queries, for models that ask for it (`query:`) |
+| `LEKTO_EMBEDDING_DOCUMENT_PREFIX` | Worker | unset | Put before document sections, for models that ask for it |
+| `LEKTO_VLM_BASE_URL` | both | unset | OpenAI-compatible endpoint of a vision language model that reads a document's pages when a person asks for it (`POST /documents/{id}/vision`); the page images go there. Set together with the model or neither; off without. The API names model and endpoint in `GET /pipeline` |
+| `LEKTO_VLM_MODEL` | both | unset | see above: a model that takes images and gives each line's box in pixels (measured with Claude Sonnet 5.5) |
+| `LEKTO_VLM_API_KEY` | Worker | unset | *secret* |
+| `LEKTO_VLM_TIMEOUT` | Worker | `1800` | Seconds for reading a whole document with the model (one page at most 300); the job lease grows with it |
+| `LEKTO_CONFIDENCE_THRESHOLD` | Worker | `0.9` | A field passes from this confidence on |
+| `LEKTO_CONTACT_SUGGEST_THRESHOLD` | Worker | `0.75` | An existing contact is suggested from this similarity on; not above the confidence threshold |
+| `LEKTO_POOR_READING_THRESHOLD` | Worker | `0.08` | Share of unsure content words (below 60 % of Tesseract's confidence; noise left out, see the field checks) from which a value's place counts as poorly read, and the value is only suggested: the 20 content words nearest to it, else the page the OCR recognised. The default lies between good scans (up to 7 %) and broken ones (from 9 %) of a first sample; calibration in M18 |
+| `LEKTO_DEFAULT_CURRENCY` | both | `EUR` | The currency of an amount in a document that shows no currency at all (ISO 4217), and of the `currency` filter in templates where they name none |
+| `LEKTO_CLASSIFIER` | both | `scikit-learn` | The classifier trained from confirmed documents; `none` turns it off |
+| `LEKTO_CLASSIFIER_MIN_EXAMPLES` | both | `20` | Confirmed documents before the first model is trained |
+| `LEKTO_CLASSIFIER_RETRAIN_AFTER` | both | `25` | Documents confirmed since the last model before it is trained again |
+| `LEKTO_CLASSIFIER_THRESHOLD` | Worker | `0.8` | A prediction this sure names its contact, type or tag |
+| `LEKTO_NEIGHBOURS` | Worker | `5` | Similar confirmed documents that vote on a new one (needs the search index with embeddings); `0` turns them off |
+| `LEKTO_LOGO_FETCH` | both | `false` | Fetch the logos of contacts from their own websites (worker; the API offers the button): HTTPS to public addresses only, see Logos. Off, Papiq never asks the web on its own |
+| `LEKTO_RULES_PATTERN_TIMEOUT` | both | `0.2` | Seconds a regular expression of a rule may run per text or value (worker: rules; API: previews) |
+| `LEKTO_RULES_MAX_TEXT` | both | `200000` | Characters of text rules look at (1,000 to 10,000,000) |
+| `LEKTO_RULES_APPLY_MAX_DOCUMENTS` | both | `1000` | Documents per retroactive rule application (1 to 100,000) |
+| `LEKTO_TEMPLATE_LOCALE` | both | `de` | Locale in which templates of rules and title patterns write dates and amounts (`datetime`, `currency`, `decimal`, an amount field as `3.650,00 EUR`); Babel's names, such as `de`, `en_US` |
 
 ## Tests
 
 - `tests/unit` (marker `unit`): no external services.
 - `tests/integration` (marker `integration`): need Postgres, Garage or Meilisearch or the OCR
   programs (Tesseract, Ghostscript). Which services apply follows the
-  `PAPIQ_` variables; a test skips itself if what it needs is not configured or not reachable.
+  `LEKTO_` variables; a test skips itself if what it needs is not configured or not reachable.
   The devcontainer provides all of them.
 - Sample files (scan, text PDF, photo, empty page, damaged PDF, Office file) are in
   `tests/samples`, generated by `make_samples.py`.

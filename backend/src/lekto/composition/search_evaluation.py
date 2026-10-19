@@ -79,7 +79,7 @@ async def run_search_evaluation(
     `cases` for each model; write the report to `output` (default:
     `<cases>/search/reports/<date>-<models>.md`).
 
-    Without `fake`, PAPIQ_MEILISEARCH_URL and PAPIQ_EMBEDDING_BASE_URL are required; every model
+    Without `fake`, LEKTO_MEILISEARCH_URL and LEKTO_EMBEDDING_BASE_URL are required; every model
     gets a temporary Meilisearch index, removed afterwards. With `fake`, bag-of-words vectors and
     the in-memory index take their place.
     """
@@ -165,14 +165,14 @@ def _backends(
 
         return [Backend(embeddings.model, embeddings, memory)], "memory", "in memory"
     if settings.meilisearch_url is None:
-        raise ConfigurationError("PAPIQ_MEILISEARCH_URL is not set; use --fake or configure it")
+        raise ConfigurationError("LEKTO_MEILISEARCH_URL is not set; use --fake or configure it")
     if settings.embedding_base_url is None:
-        raise ConfigurationError("PAPIQ_EMBEDDING_BASE_URL is not set; use --fake or configure it")
+        raise ConfigurationError("LEKTO_EMBEDDING_BASE_URL is not set; use --fake or configure it")
     names = list(
         dict.fromkeys(models or ([settings.embedding_model] if settings.embedding_model else []))
     )
     if not names:
-        raise ConfigurationError("no model: pass --models or set PAPIQ_EMBEDDING_MODEL")
+        raise ConfigurationError("no model: pass --models or set LEKTO_EMBEDDING_MODEL")
 
     @asynccontextmanager
     async def meilisearch(dimensions: int | None) -> AsyncIterator[SearchIndex]:

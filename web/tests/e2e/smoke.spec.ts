@@ -3,8 +3,8 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import { code, step } from './totp.ts';
 
-const ADMIN = process.env.PAPIQ_ADMIN_USERNAME ?? 'admin';
-const ADMIN_PASSWORD = process.env.PAPIQ_ADMIN_PASSWORD ?? '';
+const ADMIN = process.env.LEKTO_ADMIN_USERNAME ?? 'admin';
+const ADMIN_PASSWORD = process.env.LEKTO_ADMIN_PASSWORD ?? '';
 const USERNAME = `e2e-${Date.now()}`;
 const PASSWORD = 'correct horse battery staple';
 
@@ -18,7 +18,7 @@ let secret = '';
 let usedStep = 0;
 
 test.beforeAll(async ({ playwright, baseURL }) => {
-	test.skip(!ADMIN_PASSWORD, 'PAPIQ_ADMIN_PASSWORD is not set');
+	test.skip(!ADMIN_PASSWORD, 'LEKTO_ADMIN_PASSWORD is not set');
 	const admin = await playwright.request.newContext({ baseURL });
 	const adminToken = await signIn(admin, ADMIN, ADMIN_PASSWORD);
 	const created = await admin.post('/api/v1/users', {

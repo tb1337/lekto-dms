@@ -91,7 +91,7 @@ def related(a: str, b: str, *, threshold: float) -> bool:
     """Whether two name keys belong together: they share a word of at least three letters, or
     are at least `threshold` similar (the model read "Nord Krankenversicherung AG" for "Nord
     Versicherungsgruppe"; "Max Mustermann" is something else). The threshold is the one from
-    which a name suggests a contact (`PAPIQ_CONTACT_SUGGEST_THRESHOLD`), so a related name is
+    which a name suggests a contact (`LEKTO_CONTACT_SUGGEST_THRESHOLD`), so a related name is
     one that would have been suggested."""
     words = {word for word in a.split() if len(word) >= _SHORTEST_WORD}
     return bool(words & set(b.split())) or similarity(a, b) >= threshold

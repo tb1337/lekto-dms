@@ -346,8 +346,8 @@ async def test_language_model_and_embeddings_from_settings(network: Network) -> 
 
 @pytest.mark.usefixtures("offline_adapters")
 def test_templates_from_settings() -> None:
-    """Dates and amounts of templates in `PAPIQ_TEMPLATE_LOCALE`, the `currency` filter in
-    `PAPIQ_DEFAULT_CURRENCY`; the memory container takes the defaults."""
+    """Dates and amounts of templates in `LEKTO_TEMPLATE_LOCALE`, the `currency` filter in
+    `LEKTO_DEFAULT_CURRENCY`; the memory container takes the defaults."""
     values: dict[str, TemplateValue] = {"day": date(2026, 3, 31), "sum": Decimal("12.5")}
     template = "{{ day | datetime: format: 'MMMM' }} {{ sum | currency }}"
     built = build_container(settings(template_locale="en_US", default_currency="CHF"))

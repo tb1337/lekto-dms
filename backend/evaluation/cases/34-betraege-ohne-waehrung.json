@@ -1,5 +1,5 @@
 {
-  "description": "Pay slip that prints its amounts as bare numbers, without any currency. The model reads the net pay as written; with no currency in the text it is in the default currency (PAPIQ_DEFAULT_CURRENCY, EUR).",
+  "description": "Pay slip that prints its amounts as bare numbers, without any currency. The model reads the net pay as written; with no currency in the text it is in the default currency (LEKTO_DEFAULT_CURRENCY, EUR).",
   "expected": {
     "lane": "green",
     "contact": "Nordlicht Software AG",

@@ -14,18 +14,18 @@ from lekto.composition.settings import (
 )
 
 POSTGRES = {
-    "PAPIQ_DB_TYPE": "postgres",
-    "PAPIQ_DB_HOST": "db",
-    "PAPIQ_DB_NAME": "papiq",
-    "PAPIQ_DB_USER": "papiq",
-    "PAPIQ_DB_PASSWORD": "pw",
+    "LEKTO_DB_TYPE": "postgres",
+    "LEKTO_DB_HOST": "db",
+    "LEKTO_DB_NAME": "papiq",
+    "LEKTO_DB_USER": "papiq",
+    "LEKTO_DB_PASSWORD": "pw",
 }
 S3 = {
-    "PAPIQ_STORAGE_TYPE": "s3",
-    "PAPIQ_S3_ENDPOINT_URL": "http://garage:3900",
-    "PAPIQ_S3_BUCKET": "papiq",
-    "PAPIQ_S3_ACCESS_KEY_ID": "key",
-    "PAPIQ_S3_SECRET_ACCESS_KEY": "secret",
+    "LEKTO_STORAGE_TYPE": "s3",
+    "LEKTO_S3_ENDPOINT_URL": "http://garage:3900",
+    "LEKTO_S3_BUCKET": "papiq",
+    "LEKTO_S3_ACCESS_KEY_ID": "key",
+    "LEKTO_S3_SECRET_ACCESS_KEY": "secret",
 }
 
 
@@ -54,7 +54,7 @@ def test_defaults() -> None:
 
 
 def test_valid_postgres_and_s3(monkeypatch: pytest.MonkeyPatch) -> None:
-    set_env(monkeypatch, POSTGRES | S3 | {"PAPIQ_DB_PORT": "6543", "PAPIQ_ROLE": "worker"})
+    set_env(monkeypatch, POSTGRES | S3 | {"LEKTO_DB_PORT": "6543", "LEKTO_ROLE": "worker"})
     settings = load_settings()
     assert settings.db_type == "postgres"
     assert settings.db_port == 6543
@@ -69,10 +69,10 @@ def test_llm_and_embedding_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     set_env(
         monkeypatch,
         {
-            "PAPIQ_LLM_BASE_URL": "http://host.docker.internal:11434/v1",
-            "PAPIQ_LLM_MODEL": "qwen3",
-            "PAPIQ_EMBEDDING_BASE_URL": "http://localhost:11434/v1",
-            "PAPIQ_EMBEDDING_MODEL": "bge-m3",
+            "LEKTO_LLM_BASE_URL": "http://host.docker.internal:11434/v1",
+            "LEKTO_LLM_MODEL": "qwen3",
+            "LEKTO_EMBEDDING_BASE_URL": "http://localhost:11434/v1",
+            "LEKTO_EMBEDDING_MODEL": "bge-m3",
         },
     )
     settings = load_settings()
@@ -97,13 +97,13 @@ def test_classification_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     set_env(
         monkeypatch,
         {
-            "PAPIQ_LLM_TEMPERATURE": "0.2",
-            "PAPIQ_LLM_SEED": "42",
-            "PAPIQ_LLM_TIMEOUT": "PT10M",
-            "PAPIQ_LLM_RESPONSE_FORMAT": "JSON_Object",
-            "PAPIQ_LLM_INPUT_BUDGET": "20000",
-            "PAPIQ_CONFIDENCE_THRESHOLD": "0.8",
-            "PAPIQ_CONTACT_SUGGEST_THRESHOLD": "0.8",
+            "LEKTO_LLM_TEMPERATURE": "0.2",
+            "LEKTO_LLM_SEED": "42",
+            "LEKTO_LLM_TIMEOUT": "PT10M",
+            "LEKTO_LLM_RESPONSE_FORMAT": "JSON_Object",
+            "LEKTO_LLM_INPUT_BUDGET": "20000",
+            "LEKTO_CONFIDENCE_THRESHOLD": "0.8",
+            "LEKTO_CONTACT_SUGGEST_THRESHOLD": "0.8",
         },
     )
     settings = load_settings()
@@ -118,13 +118,13 @@ def test_classification_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize(
     ("name", "value"),
     [
-        ("PAPIQ_LLM_TEMPERATURE", "-1"),
-        ("PAPIQ_LLM_TEMPERATURE", "warm"),
-        ("PAPIQ_LLM_RESPONSE_FORMAT", "text"),
-        ("PAPIQ_LLM_INPUT_BUDGET", "10"),
-        ("PAPIQ_LLM_TIMEOUT", "0"),
-        ("PAPIQ_CONFIDENCE_THRESHOLD", "0"),
-        ("PAPIQ_CONFIDENCE_THRESHOLD", "1.5"),
+        ("LEKTO_LLM_TEMPERATURE", "-1"),
+        ("LEKTO_LLM_TEMPERATURE", "warm"),
+        ("LEKTO_LLM_RESPONSE_FORMAT", "text"),
+        ("LEKTO_LLM_INPUT_BUDGET", "10"),
+        ("LEKTO_LLM_TIMEOUT", "0"),
+        ("LEKTO_CONFIDENCE_THRESHOLD", "0"),
+        ("LEKTO_CONFIDENCE_THRESHOLD", "1.5"),
     ],
 )
 def test_invalid_classification_settings(
@@ -138,37 +138,37 @@ def test_the_suggestion_threshold_is_not_above_acceptance(
 ) -> None:
     message = error_message(
         monkeypatch,
-        {"PAPIQ_CONFIDENCE_THRESHOLD": "0.7", "PAPIQ_CONTACT_SUGGEST_THRESHOLD": "0.75"},
+        {"LEKTO_CONFIDENCE_THRESHOLD": "0.7", "LEKTO_CONTACT_SUGGEST_THRESHOLD": "0.75"},
     )
-    assert "PAPIQ_CONTACT_SUGGEST_THRESHOLD must not be above PAPIQ_CONFIDENCE_THRESHOLD" in message
+    assert "LEKTO_CONTACT_SUGGEST_THRESHOLD must not be above LEKTO_CONFIDENCE_THRESHOLD" in message
 
 
 def test_none_leaves_the_temperature_to_the_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
-    set_env(monkeypatch, {"PAPIQ_LLM_TEMPERATURE": "None"})
+    set_env(monkeypatch, {"LEKTO_LLM_TEMPERATURE": "None"})
     assert load_settings().llm_temperature is None
 
 
 def test_log_level_is_case_insensitive(monkeypatch: pytest.MonkeyPatch) -> None:
-    set_env(monkeypatch, {"PAPIQ_LOG_LEVEL": "debug"})
+    set_env(monkeypatch, {"LEKTO_LOG_LEVEL": "debug"})
     assert load_settings().log_level == "DEBUG"
 
 
 def test_empty_variable_counts_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    set_env(monkeypatch, {"PAPIQ_DB_TYPE": ""})
+    set_env(monkeypatch, {"LEKTO_DB_TYPE": ""})
     assert load_settings().db_type == "sqlite"
 
 
 @pytest.mark.parametrize(
     ("variable", "value"),
     [
-        ("PAPIQ_ROLE", "everything"),
-        ("PAPIQ_DB_TYPE", "mysql"),
-        ("PAPIQ_STORAGE_TYPE", "ftp"),
-        ("PAPIQ_LOG_FORMAT", "xml"),
-        ("PAPIQ_LOG_LEVEL", "LOUD"),
-        ("PAPIQ_DB_PORT", "0"),
-        ("PAPIQ_DB_PORT", "abc"),
-        ("PAPIQ_MEILISEARCH_URL", "not a url"),
+        ("LEKTO_ROLE", "everything"),
+        ("LEKTO_DB_TYPE", "mysql"),
+        ("LEKTO_STORAGE_TYPE", "ftp"),
+        ("LEKTO_LOG_FORMAT", "xml"),
+        ("LEKTO_LOG_LEVEL", "LOUD"),
+        ("LEKTO_DB_PORT", "0"),
+        ("LEKTO_DB_PORT", "abc"),
+        ("LEKTO_MEILISEARCH_URL", "not a url"),
     ],
 )
 def test_invalid_value_names_the_variable(
@@ -181,24 +181,24 @@ def test_invalid_value_names_the_variable(
 
 @pytest.mark.parametrize("value", ["xx_YY", "de DE"])
 def test_an_unknown_template_locale_is_refused(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
-    message = error_message(monkeypatch, {"PAPIQ_TEMPLATE_LOCALE": value})
-    assert "PAPIQ_TEMPLATE_LOCALE:" in message and f"unknown locale {value!r}" in message
+    message = error_message(monkeypatch, {"LEKTO_TEMPLATE_LOCALE": value})
+    assert "LEKTO_TEMPLATE_LOCALE:" in message and f"unknown locale {value!r}" in message
 
 
 def test_postgres_requires_connection_parameters(monkeypatch: pytest.MonkeyPatch) -> None:
-    message = error_message(monkeypatch, {"PAPIQ_DB_TYPE": "postgres"})
+    message = error_message(monkeypatch, {"LEKTO_DB_TYPE": "postgres"})
     for name in ("HOST", "NAME", "USER", "PASSWORD"):
-        assert f"PAPIQ_DB_{name} is required when PAPIQ_DB_TYPE=postgres" in message
+        assert f"LEKTO_DB_{name} is required when LEKTO_DB_TYPE=postgres" in message
 
 
 def test_s3_requires_parameters(monkeypatch: pytest.MonkeyPatch) -> None:
-    message = error_message(monkeypatch, {"PAPIQ_STORAGE_TYPE": "s3"})
+    message = error_message(monkeypatch, {"LEKTO_STORAGE_TYPE": "s3"})
     for name in ("ENDPOINT_URL", "BUCKET", "ACCESS_KEY_ID", "SECRET_ACCESS_KEY"):
-        assert f"PAPIQ_S3_{name} is required when PAPIQ_STORAGE_TYPE=s3" in message
+        assert f"LEKTO_S3_{name} is required when LEKTO_STORAGE_TYPE=s3" in message
 
 
 def test_sqlite_ignores_postgres_parameters(monkeypatch: pytest.MonkeyPatch) -> None:
-    set_env(monkeypatch, {"PAPIQ_DB_HOST": "db"})
+    set_env(monkeypatch, {"LEKTO_DB_HOST": "db"})
     assert load_settings().db_type == "sqlite"
 
 
@@ -206,31 +206,31 @@ def test_sqlite_ignores_postgres_parameters(monkeypatch: pytest.MonkeyPatch) -> 
 def test_endpoint_and_model_must_be_set_together(
     monkeypatch: pytest.MonkeyPatch, prefix: str
 ) -> None:
-    message = error_message(monkeypatch, {f"PAPIQ_{prefix}_MODEL": "m"})
-    assert f"PAPIQ_{prefix}_BASE_URL and PAPIQ_{prefix}_MODEL must be set together" in message
+    message = error_message(monkeypatch, {f"LEKTO_{prefix}_MODEL": "m"})
+    assert f"LEKTO_{prefix}_BASE_URL and LEKTO_{prefix}_MODEL must be set together" in message
 
 
 def test_all_problems_are_reported_at_once(monkeypatch: pytest.MonkeyPatch) -> None:
-    message = error_message(monkeypatch, {"PAPIQ_ROLE": "x", "PAPIQ_DB_PORT": "0"})
-    assert "PAPIQ_ROLE" in message
-    assert "PAPIQ_DB_PORT" in message
+    message = error_message(monkeypatch, {"LEKTO_ROLE": "x", "LEKTO_DB_PORT": "0"})
+    assert "LEKTO_ROLE" in message
+    assert "LEKTO_DB_PORT" in message
 
 
 def test_secret_is_masked(monkeypatch: pytest.MonkeyPatch) -> None:
-    set_env(monkeypatch, POSTGRES | {"PAPIQ_DB_PASSWORD": "s3cr3t-value"})
+    set_env(monkeypatch, POSTGRES | {"LEKTO_DB_PASSWORD": "s3cr3t-value"})
     settings = load_settings()
     assert "s3cr3t-value" not in repr(settings)
     assert settings.describe()["db_password"] == "**********"
 
 
 def test_url_credentials_are_masked(monkeypatch: pytest.MonkeyPatch) -> None:
-    set_env(monkeypatch, {"PAPIQ_MEILISEARCH_URL": "http://admin:hunter2@meili:7700"})
+    set_env(monkeypatch, {"LEKTO_MEILISEARCH_URL": "http://admin:hunter2@meili:7700"})
     description = load_settings().describe()
     assert description["meilisearch_url"] == "http://***@meili:7700/"
     assert "hunter2" not in str(description)
 
-    message = error_message(monkeypatch, {"PAPIQ_LLM_BASE_URL": "http://admin:hunter2@ollama:::1"})
-    assert "PAPIQ_LLM_BASE_URL" in message
+    message = error_message(monkeypatch, {"LEKTO_LLM_BASE_URL": "http://admin:hunter2@ollama:::1"})
+    assert "LEKTO_LLM_BASE_URL" in message
     assert "hunter2" not in message
 
 
@@ -238,10 +238,10 @@ def test_choices_ignore_case_and_whitespace(monkeypatch: pytest.MonkeyPatch) -> 
     set_env(
         monkeypatch,
         {
-            "PAPIQ_ROLE": "API",
-            "PAPIQ_LOG_FORMAT": " Console ",
-            "PAPIQ_DB_TYPE": "SQLite",
-            "PAPIQ_CLASSIFIER": "NONE",
+            "LEKTO_ROLE": "API",
+            "LEKTO_LOG_FORMAT": " Console ",
+            "LEKTO_DB_TYPE": "SQLite",
+            "LEKTO_CLASSIFIER": "NONE",
         },
     )
     settings = load_settings()
@@ -250,19 +250,19 @@ def test_choices_ignore_case_and_whitespace(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_blank_values_count_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    set_env(monkeypatch, POSTGRES | {"PAPIQ_DB_HOST": "  ", "PAPIQ_DB_PASSWORD": " "})
+    set_env(monkeypatch, POSTGRES | {"LEKTO_DB_HOST": "  ", "LEKTO_DB_PASSWORD": " "})
     message = error_message(monkeypatch, {})
-    assert "PAPIQ_DB_HOST is required" in message
-    assert "PAPIQ_DB_PASSWORD is required" in message
+    assert "LEKTO_DB_HOST is required" in message
+    assert "LEKTO_DB_PASSWORD is required" in message
 
 
 def test_values_are_stripped(monkeypatch: pytest.MonkeyPatch) -> None:
-    set_env(monkeypatch, POSTGRES | {"PAPIQ_DB_HOST": " db \n"})
+    set_env(monkeypatch, POSTGRES | {"LEKTO_DB_HOST": " db \n"})
     assert load_settings().db_host == "db"
 
 
 def test_variable_names_are_case_insensitive(monkeypatch: pytest.MonkeyPatch) -> None:
-    set_env(monkeypatch, {"papiq_role": "worker"})
+    set_env(monkeypatch, {"lekto_role": "worker"})
     assert load_settings().role == "worker"
 
 
@@ -270,8 +270,8 @@ def test_secret_from_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     secret = tmp_path / "db"
     secret.write_text("from-file\n")
     set_env(monkeypatch, POSTGRES)
-    monkeypatch.delenv("PAPIQ_DB_PASSWORD")
-    monkeypatch.setenv("PAPIQ_DB_PASSWORD_FILE", str(secret))
+    monkeypatch.delenv("LEKTO_DB_PASSWORD")
+    monkeypatch.setenv("LEKTO_DB_PASSWORD_FILE", str(secret))
     settings = load_settings()
     assert settings.db_password is not None
     assert settings.db_password.get_secret_value() == "from-file"
@@ -282,7 +282,7 @@ def test_only_one_trailing_newline_is_removed(
 ) -> None:
     secret = tmp_path / "key"
     secret.write_text(" spaced \n\n")
-    monkeypatch.setenv("PAPIQ_MEILISEARCH_API_KEY_FILE", str(secret))
+    monkeypatch.setenv("LEKTO_MEILISEARCH_API_KEY_FILE", str(secret))
     settings = load_settings()
     assert settings.meilisearch_api_key is not None
     assert settings.meilisearch_api_key.get_secret_value() == " spaced \n"
@@ -293,17 +293,17 @@ def test_variable_and_file_together_fail(monkeypatch: pytest.MonkeyPatch, tmp_pa
     secret.write_text("from-file")
     message = error_message(
         monkeypatch,
-        {"PAPIQ_DB_PASSWORD": "pw", "PAPIQ_DB_PASSWORD_FILE": str(secret)},
+        {"LEKTO_DB_PASSWORD": "pw", "LEKTO_DB_PASSWORD_FILE": str(secret)},
     )
     assert message == (
-        "PAPIQ_DB_PASSWORD and PAPIQ_DB_PASSWORD_FILE are both set; use only one of them"
+        "LEKTO_DB_PASSWORD and LEKTO_DB_PASSWORD_FILE are both set; use only one of them"
     )
 
 
 def test_missing_secret_file_fails(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     missing = tmp_path / "nope"
-    message = error_message(monkeypatch, {"PAPIQ_LLM_API_KEY_FILE": str(missing)})
-    assert "PAPIQ_LLM_API_KEY_FILE" in message
+    message = error_message(monkeypatch, {"LEKTO_LLM_API_KEY_FILE": str(missing)})
+    assert "LEKTO_LLM_API_KEY_FILE" in message
     assert str(missing) in message
 
 
@@ -313,16 +313,16 @@ def test_blank_secret_file_fails(
 ) -> None:
     secret = tmp_path / "blank"
     secret.write_text(content)
-    message = error_message(monkeypatch, {"PAPIQ_LLM_API_KEY_FILE": str(secret)})
+    message = error_message(monkeypatch, {"LEKTO_LLM_API_KEY_FILE": str(secret)})
     assert "is empty" in message
 
 
 def test_unreadable_secret_files_fail(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     binary = tmp_path / "binary"
     binary.write_bytes(b"\xff\xfe\x00")
-    assert "not valid UTF-8" in error_message(monkeypatch, {"PAPIQ_LLM_API_KEY_FILE": str(binary)})
-    assert "PAPIQ_LLM_API_KEY_FILE" in error_message(
-        monkeypatch, {"PAPIQ_LLM_API_KEY_FILE": str(tmp_path)}
+    assert "not valid UTF-8" in error_message(monkeypatch, {"LEKTO_LLM_API_KEY_FILE": str(binary)})
+    assert "LEKTO_LLM_API_KEY_FILE" in error_message(
+        monkeypatch, {"LEKTO_LLM_API_KEY_FILE": str(tmp_path)}
     )
 
 
@@ -331,10 +331,10 @@ def test_s3_secrets_from_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     key_id.write_text("file-id\n")
     key.write_text("file-key\n")
     set_env(monkeypatch, S3)
-    monkeypatch.delenv("PAPIQ_S3_ACCESS_KEY_ID")
-    monkeypatch.delenv("PAPIQ_S3_SECRET_ACCESS_KEY")
-    monkeypatch.setenv("PAPIQ_S3_ACCESS_KEY_ID_FILE", str(key_id))
-    monkeypatch.setenv("PAPIQ_S3_SECRET_ACCESS_KEY_FILE", str(key))
+    monkeypatch.delenv("LEKTO_S3_ACCESS_KEY_ID")
+    monkeypatch.delenv("LEKTO_S3_SECRET_ACCESS_KEY")
+    monkeypatch.setenv("LEKTO_S3_ACCESS_KEY_ID_FILE", str(key_id))
+    monkeypatch.setenv("LEKTO_S3_SECRET_ACCESS_KEY_FILE", str(key))
     settings = load_settings()
     assert settings.s3_access_key_id is not None
     assert settings.s3_secret_access_key is not None
@@ -347,14 +347,14 @@ def test_file_variant_exists_only_for_secrets(
 ) -> None:
     role = tmp_path / "role"
     role.write_text("api")
-    set_env(monkeypatch, {"PAPIQ_ROLE_FILE": str(role)})
+    set_env(monkeypatch, {"LEKTO_ROLE_FILE": str(role)})
     assert Settings().role == "all"
-    assert find_unknown_variables() == ["PAPIQ_ROLE_FILE"]
+    assert find_unknown_variables() == ["LEKTO_ROLE_FILE"]
 
 
 def test_unknown_variables_are_listed(monkeypatch: pytest.MonkeyPatch) -> None:
-    set_env(monkeypatch, {"PAPIQ_DB_TYPO": "x", "PAPIQ_ROLE": "all", "UNRELATED": "y"})
-    assert find_unknown_variables() == ["PAPIQ_DB_TYPO"]
+    set_env(monkeypatch, {"LEKTO_DB_TYPO": "x", "LEKTO_ROLE": "all", "UNRELATED": "y"})
+    assert find_unknown_variables() == ["LEKTO_DB_TYPO"]
 
 
 def test_variables_of_the_migration_client_are_not_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -382,12 +382,12 @@ def test_the_web_ui_is_off_by_default() -> None:
 def test_the_web_ui_directory_needs_its_index(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    message = error_message(monkeypatch, {"PAPIQ_UI_DIR": str(tmp_path)})
-    assert f"PAPIQ_UI_DIR: no index.html in {tmp_path}" in message
-    set_env(monkeypatch, {"PAPIQ_ROLE": "worker"})
+    message = error_message(monkeypatch, {"LEKTO_UI_DIR": str(tmp_path)})
+    assert f"LEKTO_UI_DIR: no index.html in {tmp_path}" in message
+    set_env(monkeypatch, {"LEKTO_ROLE": "worker"})
     assert load_settings().ui_dir == tmp_path  # the worker serves nothing
     (tmp_path / "index.html").write_text("<!doctype html>", encoding="utf-8")
-    set_env(monkeypatch, {"PAPIQ_ROLE": "all"})
+    set_env(monkeypatch, {"LEKTO_ROLE": "all"})
     assert load_settings().ui_dir == tmp_path
 
 
@@ -425,18 +425,18 @@ def test_worker_and_processing_defaults() -> None:
 def test_durations_are_seconds_or_iso_8601(
     monkeypatch: pytest.MonkeyPatch, value: str, expected: timedelta
 ) -> None:
-    monkeypatch.setenv("PAPIQ_OCR_TIMEOUT", value)
+    monkeypatch.setenv("LEKTO_OCR_TIMEOUT", value)
     assert load_settings().ocr_timeout == expected
 
 
 @pytest.mark.parametrize(
     ("name", "value"),
     [
-        ("PAPIQ_OCR_TIMEOUT", "0"),
-        ("PAPIQ_OCR_TIMEOUT", "ten"),
-        ("PAPIQ_WORKER_CONCURRENCY", "0"),
-        ("PAPIQ_OCR_LANGUAGES", "deu,eng"),
-        ("PAPIQ_OCR_LANGUAGES", "deu+"),
+        ("LEKTO_OCR_TIMEOUT", "0"),
+        ("LEKTO_OCR_TIMEOUT", "ten"),
+        ("LEKTO_WORKER_CONCURRENCY", "0"),
+        ("LEKTO_OCR_LANGUAGES", "deu,eng"),
+        ("LEKTO_OCR_LANGUAGES", "deu+"),
     ],
 )
 def test_invalid_worker_settings_name_the_variable(
@@ -447,12 +447,12 @@ def test_invalid_worker_settings_name_the_variable(
 
 def test_every_role_needs_a_valid_secret_key(monkeypatch: pytest.MonkeyPatch) -> None:
     # The worker decrypts webhook secrets to sign requests.
-    monkeypatch.delenv("PAPIQ_SECRET_KEY")
+    monkeypatch.delenv("LEKTO_SECRET_KEY")
     for role in ("all", "api", "worker"):
-        message = error_message(monkeypatch, {"PAPIQ_ROLE": role})
-        assert "PAPIQ_SECRET_KEY is required" in message
-    message = error_message(monkeypatch, {"PAPIQ_SECRET_KEY": "too-short"})
-    assert "PAPIQ_SECRET_KEY" in message and "openssl rand -base64 32" in message
+        message = error_message(monkeypatch, {"LEKTO_ROLE": role})
+        assert "LEKTO_SECRET_KEY is required" in message
+    message = error_message(monkeypatch, {"LEKTO_SECRET_KEY": "too-short"})
+    assert "LEKTO_SECRET_KEY" in message and "openssl rand -base64 32" in message
     assert "too-short" not in message
 
 
@@ -462,12 +462,12 @@ def test_identity_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     set_env(
         monkeypatch,
         {
-            "PAPIQ_ADMIN_USERNAME": "root",
-            "PAPIQ_ADMIN_PASSWORD_FILE": str(password),
-            "PAPIQ_SESSION_IDLE_TIMEOUT": "PT8H",
-            "PAPIQ_SESSION_MAX_AGE": "P7D",
-            "PAPIQ_COOKIE_SECURE": "false",
-            "PAPIQ_FORWARDED_ALLOW_IPS": "172.18.0.2",
+            "LEKTO_ADMIN_USERNAME": "root",
+            "LEKTO_ADMIN_PASSWORD_FILE": str(password),
+            "LEKTO_SESSION_IDLE_TIMEOUT": "PT8H",
+            "LEKTO_SESSION_MAX_AGE": "P7D",
+            "LEKTO_COOKIE_SECURE": "false",
+            "LEKTO_FORWARDED_ALLOW_IPS": "172.18.0.2",
         },
     )
     settings = load_settings()
@@ -494,26 +494,26 @@ def test_inconsistent_identity_settings(monkeypatch: pytest.MonkeyPatch) -> None
     message = error_message(
         monkeypatch,
         {
-            "PAPIQ_ADMIN_USERNAME": "root",
-            "PAPIQ_SESSION_IDLE_TIMEOUT": "P2D",
-            "PAPIQ_SESSION_MAX_AGE": "P1D",
+            "LEKTO_ADMIN_USERNAME": "root",
+            "LEKTO_SESSION_IDLE_TIMEOUT": "P2D",
+            "LEKTO_SESSION_MAX_AGE": "P1D",
         },
     )
-    assert "PAPIQ_ADMIN_USERNAME and PAPIQ_ADMIN_PASSWORD must be set together" in message
-    assert "PAPIQ_SESSION_MAX_AGE must not be shorter than PAPIQ_SESSION_IDLE_TIMEOUT" in message
+    assert "LEKTO_ADMIN_USERNAME and LEKTO_ADMIN_PASSWORD must be set together" in message
+    assert "LEKTO_SESSION_MAX_AGE must not be shorter than LEKTO_SESSION_IDLE_TIMEOUT" in message
 
 
 OIDC = {
-    "PAPIQ_OIDC_ISSUER": "https://idp.example/realms/home",
-    "PAPIQ_OIDC_CLIENT_ID": "papiq",
-    "PAPIQ_OIDC_CLIENT_SECRET": "client-secret",
-    "PAPIQ_PUBLIC_URL": "https://papiq.example",
+    "LEKTO_OIDC_ISSUER": "https://idp.example/realms/home",
+    "LEKTO_OIDC_CLIENT_ID": "papiq",
+    "LEKTO_OIDC_CLIENT_SECRET": "client-secret",
+    "LEKTO_PUBLIC_URL": "https://papiq.example",
 }
 
 
 def test_oidc_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     assert not load_settings().oidc_enabled
-    set_env(monkeypatch, OIDC | {"PAPIQ_OIDC_AUTO_CREATE": "true"})
+    set_env(monkeypatch, OIDC | {"LEKTO_OIDC_AUTO_CREATE": "true"})
     settings = load_settings()
     assert settings.oidc_enabled
     assert settings.oidc_issuer == "https://idp.example/realms/home"  # exactly as given
@@ -527,15 +527,15 @@ def test_oidc_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     ("values", "expected"),
     [
         (
-            {"PAPIQ_OIDC_ISSUER": "https://idp.example"},
-            "PAPIQ_OIDC_ISSUER, PAPIQ_OIDC_CLIENT_ID, PAPIQ_OIDC_CLIENT_SECRET must be set "
+            {"LEKTO_OIDC_ISSUER": "https://idp.example"},
+            "LEKTO_OIDC_ISSUER, LEKTO_OIDC_CLIENT_ID, LEKTO_OIDC_CLIENT_SECRET must be set "
             "together",
         ),
-        (OIDC | {"PAPIQ_OIDC_ISSUER": "http://idp.example"}, "PAPIQ_OIDC_ISSUER: must be an https"),
-        (OIDC | {"PAPIQ_OIDC_SCOPES": "profile email"}, "PAPIQ_OIDC_SCOPES: must contain 'openid'"),
+        (OIDC | {"LEKTO_OIDC_ISSUER": "http://idp.example"}, "LEKTO_OIDC_ISSUER: must be an https"),
+        (OIDC | {"LEKTO_OIDC_SCOPES": "profile email"}, "LEKTO_OIDC_SCOPES: must contain 'openid'"),
         (
-            {key: value for key, value in OIDC.items() if key != "PAPIQ_PUBLIC_URL"},
-            "PAPIQ_PUBLIC_URL is required with OIDC",
+            {key: value for key, value in OIDC.items() if key != "LEKTO_PUBLIC_URL"},
+            "LEKTO_PUBLIC_URL is required with OIDC",
         ),
     ],
 )
@@ -549,22 +549,22 @@ def test_inconsistent_oidc_settings(
 
 def test_secure_cookies_need_the_trusted_proxies(monkeypatch: pytest.MonkeyPatch) -> None:
     """M4-01: Papiq speaks plain HTTP; with `Secure` cookies (default) a TLS-terminating proxy
-    is in front of it. Without `PAPIQ_FORWARDED_ALLOW_IPS` every request then carries the
+    is in front of it. Without `LEKTO_FORWARDED_ALLOW_IPS` every request then carries the
     proxy's address, and the per-source throttle would hit everyone at once."""
-    monkeypatch.delenv("PAPIQ_FORWARDED_ALLOW_IPS")
+    monkeypatch.delenv("LEKTO_FORWARDED_ALLOW_IPS")
     message = error_message(monkeypatch, {})
-    assert "PAPIQ_FORWARDED_ALLOW_IPS is required with PAPIQ_COOKIE_SECURE=true" in message
+    assert "LEKTO_FORWARDED_ALLOW_IPS is required with LEKTO_COOKIE_SECURE=true" in message
     with pytest.raises(ConfigurationError, match="FORWARDED_ALLOW_IPS"):
         Settings(cookie_secure=True, forwarded_allow_ips=None)
-    set_env(monkeypatch, {"PAPIQ_COOKIE_SECURE": "false"})
+    set_env(monkeypatch, {"LEKTO_COOKIE_SECURE": "false"})
     assert load_settings().forwarded_allow_ips is None  # development over plain HTTP
-    set_env(monkeypatch, {"PAPIQ_COOKIE_SECURE": "true", "PAPIQ_ROLE": "worker"})
+    set_env(monkeypatch, {"LEKTO_COOKIE_SECURE": "true", "LEKTO_ROLE": "worker"})
     assert load_settings().forwarded_allow_ips is None  # no cookies in the worker
 
 
 def test_request_bodies_are_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
     assert load_settings().request_max_size == 1024 * 1024
-    set_env(monkeypatch, {"PAPIQ_REQUEST_MAX_SIZE": "64KiB"})
+    set_env(monkeypatch, {"LEKTO_REQUEST_MAX_SIZE": "64KiB"})
     assert load_settings().request_max_size == 64 * 1024
 
 
@@ -573,13 +573,13 @@ def test_the_development_key_is_refused_with_secure_cookies(
 ) -> None:
     """M4-11: the devcontainer's key is public; production (secure cookies) must not use it."""
     dev_env = Path(__file__).parents[3] / ".devcontainer" / "dev.env"
-    assert f"PAPIQ_SECRET_KEY={DEVELOPMENT_SECRET_KEY}" in dev_env.read_text().splitlines()
-    message = error_message(monkeypatch, {"PAPIQ_SECRET_KEY": DEVELOPMENT_SECRET_KEY})
-    assert "PAPIQ_SECRET_KEY is the development key" in message
+    assert f"LEKTO_SECRET_KEY={DEVELOPMENT_SECRET_KEY}" in dev_env.read_text().splitlines()
+    message = error_message(monkeypatch, {"LEKTO_SECRET_KEY": DEVELOPMENT_SECRET_KEY})
+    assert "LEKTO_SECRET_KEY is the development key" in message
     assert DEVELOPMENT_SECRET_KEY not in message
     urlsafe = DEVELOPMENT_SECRET_KEY.replace("+", "-").replace("/", "_").rstrip("=")
-    assert "development key" in error_message(monkeypatch, {"PAPIQ_SECRET_KEY": urlsafe})
-    set_env(monkeypatch, {"PAPIQ_COOKIE_SECURE": "false"})
+    assert "development key" in error_message(monkeypatch, {"LEKTO_SECRET_KEY": urlsafe})
+    set_env(monkeypatch, {"LEKTO_COOKIE_SECURE": "false"})
     assert load_settings().secret_key is not None  # fine for development
 
 
@@ -607,15 +607,15 @@ def test_indexing_and_query_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     set_env(
         monkeypatch,
         {
-            "PAPIQ_SEARCH_SEMANTIC_RATIO": "0.8",
-            "PAPIQ_SEARCH_EMBED_TIMEOUT": "2",
-            "PAPIQ_SEARCH_MAX_TEXT": "50000",
-            "PAPIQ_SEARCH_CHUNK_SIZE": "800",
-            "PAPIQ_SEARCH_MAX_CHUNKS": "4",
-            "PAPIQ_SEARCH_RECONCILE_INTERVAL": "PT1H",
-            "PAPIQ_SEARCH_REBUILD_TIMEOUT": "PT12H",
-            "PAPIQ_EMBEDDING_QUERY_PREFIX": "query:",
-            "PAPIQ_EMBEDDING_DOCUMENT_PREFIX": "passage:",
+            "LEKTO_SEARCH_SEMANTIC_RATIO": "0.8",
+            "LEKTO_SEARCH_EMBED_TIMEOUT": "2",
+            "LEKTO_SEARCH_MAX_TEXT": "50000",
+            "LEKTO_SEARCH_CHUNK_SIZE": "800",
+            "LEKTO_SEARCH_MAX_CHUNKS": "4",
+            "LEKTO_SEARCH_RECONCILE_INTERVAL": "PT1H",
+            "LEKTO_SEARCH_REBUILD_TIMEOUT": "PT12H",
+            "LEKTO_EMBEDDING_QUERY_PREFIX": "query:",
+            "LEKTO_EMBEDDING_DOCUMENT_PREFIX": "passage:",
         },
     )
     settings = load_settings()
@@ -638,14 +638,14 @@ def test_search_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     set_env(
         monkeypatch,
         {
-            "PAPIQ_MEILISEARCH_URL": "http://meilisearch:7700",
-            "PAPIQ_MEILISEARCH_INDEX": "papiq-test",
-            "PAPIQ_MEILISEARCH_TIMEOUT": "5",
-            "PAPIQ_MEILISEARCH_TASK_TIMEOUT": "PT10M",
-            "PAPIQ_SEARCH_LOCALES": "deu",
-            "PAPIQ_EMBEDDING_BASE_URL": "http://ollama:11434/v1",
-            "PAPIQ_EMBEDDING_MODEL": "bge-m3",
-            "PAPIQ_EMBEDDING_DIMENSIONS": "1024",
+            "LEKTO_MEILISEARCH_URL": "http://meilisearch:7700",
+            "LEKTO_MEILISEARCH_INDEX": "papiq-test",
+            "LEKTO_MEILISEARCH_TIMEOUT": "5",
+            "LEKTO_MEILISEARCH_TASK_TIMEOUT": "PT10M",
+            "LEKTO_SEARCH_LOCALES": "deu",
+            "LEKTO_EMBEDDING_BASE_URL": "http://ollama:11434/v1",
+            "LEKTO_EMBEDDING_MODEL": "bge-m3",
+            "LEKTO_EMBEDDING_DIMENSIONS": "1024",
         },
     )
     settings = load_settings()
@@ -660,13 +660,13 @@ def test_the_search_index_needs_the_vector_length_with_embeddings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     embeddings = {
-        "PAPIQ_EMBEDDING_BASE_URL": "http://ollama:11434/v1",
-        "PAPIQ_EMBEDDING_MODEL": "bge-m3",
+        "LEKTO_EMBEDDING_BASE_URL": "http://ollama:11434/v1",
+        "LEKTO_EMBEDDING_MODEL": "bge-m3",
     }
     message = error_message(
-        monkeypatch, {**embeddings, "PAPIQ_MEILISEARCH_URL": "http://meilisearch:7700"}
+        monkeypatch, {**embeddings, "LEKTO_MEILISEARCH_URL": "http://meilisearch:7700"}
     )
-    assert "PAPIQ_EMBEDDING_DIMENSIONS is required with PAPIQ_MEILISEARCH_URL" in message
+    assert "LEKTO_EMBEDDING_DIMENSIONS is required with LEKTO_MEILISEARCH_URL" in message
 
 
 def test_either_embeddings_or_search_alone_needs_no_vector_length(
@@ -674,29 +674,29 @@ def test_either_embeddings_or_search_alone_needs_no_vector_length(
 ) -> None:
     set_env(
         monkeypatch,
-        {"PAPIQ_EMBEDDING_BASE_URL": "http://ollama:11434/v1", "PAPIQ_EMBEDDING_MODEL": "bge-m3"},
+        {"LEKTO_EMBEDDING_BASE_URL": "http://ollama:11434/v1", "LEKTO_EMBEDDING_MODEL": "bge-m3"},
     )
     assert load_settings().embedding_dimensions is None
-    monkeypatch.delenv("PAPIQ_EMBEDDING_BASE_URL")
-    monkeypatch.delenv("PAPIQ_EMBEDDING_MODEL")
-    set_env(monkeypatch, {"PAPIQ_MEILISEARCH_URL": "http://meilisearch:7700"})
+    monkeypatch.delenv("LEKTO_EMBEDDING_BASE_URL")
+    monkeypatch.delenv("LEKTO_EMBEDDING_MODEL")
+    set_env(monkeypatch, {"LEKTO_MEILISEARCH_URL": "http://meilisearch:7700"})
     assert load_settings().embedding_dimensions is None
 
 
 @pytest.mark.parametrize(
     ("name", "value"),
     [
-        ("PAPIQ_MEILISEARCH_INDEX", "with space"),
-        ("PAPIQ_MEILISEARCH_INDEX", ""),
-        ("PAPIQ_SEARCH_LOCALES", "de"),
-        ("PAPIQ_SEARCH_LOCALES", "deu+"),
-        ("PAPIQ_EMBEDDING_DIMENSIONS", "0"),
-        ("PAPIQ_SEARCH_SEMANTIC_RATIO", "1.5"),
-        ("PAPIQ_SEARCH_SEMANTIC_RATIO", "-0.1"),
-        ("PAPIQ_SEARCH_CHUNK_SIZE", "10"),
-        ("PAPIQ_SEARCH_MAX_CHUNKS", "0"),
-        ("PAPIQ_SEARCH_MAX_TEXT", "10"),
-        ("PAPIQ_SEARCH_EMBED_TIMEOUT", "0"),
+        ("LEKTO_MEILISEARCH_INDEX", "with space"),
+        ("LEKTO_MEILISEARCH_INDEX", ""),
+        ("LEKTO_SEARCH_LOCALES", "de"),
+        ("LEKTO_SEARCH_LOCALES", "deu+"),
+        ("LEKTO_EMBEDDING_DIMENSIONS", "0"),
+        ("LEKTO_SEARCH_SEMANTIC_RATIO", "1.5"),
+        ("LEKTO_SEARCH_SEMANTIC_RATIO", "-0.1"),
+        ("LEKTO_SEARCH_CHUNK_SIZE", "10"),
+        ("LEKTO_SEARCH_MAX_CHUNKS", "0"),
+        ("LEKTO_SEARCH_MAX_TEXT", "10"),
+        ("LEKTO_SEARCH_EMBED_TIMEOUT", "0"),
     ],
 )
 def test_invalid_search_settings(monkeypatch: pytest.MonkeyPatch, name: str, value: str) -> None:
@@ -709,11 +709,11 @@ def test_invalid_search_settings(monkeypatch: pytest.MonkeyPatch, name: str, val
 
 
 README = Path(__file__).parents[2] / "README.md"
-_DOCUMENTED = re.compile(r"^\| `(PAPIQ_[A-Z0-9_]+)` \| (API|Worker|both) \| ", re.MULTILINE)
+_DOCUMENTED = re.compile(r"^\| `(LEKTO_[A-Z0-9_]+)` \| (API|Worker|both) \| ", re.MULTILINE)
 
 
 def test_every_setting_is_documented_with_its_role() -> None:
-    """backend/README.md, section Configuration, is the one place for all `PAPIQ_` variables:
+    """backend/README.md, section Configuration, is the one place for all `LEKTO_` variables:
     one row per setting with its role (API, Worker or both), default and meaning."""
     documented = _DOCUMENTED.findall(README.read_text(encoding="utf-8"))
     names = [name for name, _ in documented]
@@ -726,5 +726,5 @@ def test_every_setting_is_documented_with_its_role() -> None:
 
 
 def test_renamed_variables_are_refused_with_their_new_name(monkeypatch: pytest.MonkeyPatch) -> None:
-    message = error_message(monkeypatch, {"PAPIQ_STEP_MAX_ATTEMPTS": "5"})
-    assert message == "PAPIQ_STEP_MAX_ATTEMPTS was renamed to PAPIQ_NODE_MAX_ATTEMPTS"
+    message = error_message(monkeypatch, {"LEKTO_STEP_MAX_ATTEMPTS": "5"})
+    assert message == "LEKTO_STEP_MAX_ATTEMPTS was renamed to LEKTO_NODE_MAX_ATTEMPTS"

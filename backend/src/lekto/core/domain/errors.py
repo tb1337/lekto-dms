@@ -82,7 +82,7 @@ class LogoFetchError(DomainError):
 
 
 class LogoFetchDisabledError(DomainError):
-    """Papiq does not fetch logos (`PAPIQ_LOGO_FETCH` is off)."""
+    """Papiq does not fetch logos (`LEKTO_LOGO_FETCH` is off)."""
 
 
 class AuthenticationError(DomainError):
@@ -134,7 +134,7 @@ class ClassifierError(DomainError):
 
 
 class ClassifierUnavailableError(DomainError):
-    """No classifier is configured (`PAPIQ_CLASSIFIER=none`)."""
+    """No classifier is configured (`LEKTO_CLASSIFIER=none`)."""
 
 
 class PatternTimeoutError(DomainError):

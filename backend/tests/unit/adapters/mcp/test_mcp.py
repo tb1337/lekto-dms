@@ -269,7 +269,7 @@ async def test_a_document_one_may_not_read_is_just_not_found(api: Api, scene: Sc
 
 async def test_get_text_reads_in_pieces_and_only_for_readers(api: Api, scene: Scene) -> None:
     first = data(await call(api, scene.headers["reader"], "get_text", id=scene.green))
-    assert first["text"] == TEXT[:100]  # the server's limit: PAPIQ_MCP_TEXT_MAX
+    assert first["text"] == TEXT[:100]  # the server's limit: LEKTO_MCP_TEXT_MAX
     assert (first["offset"], first["total_length"], first["next_offset"]) == (0, len(TEXT), 100)
     asked_more = data(
         await call(api, scene.headers["reader"], "get_text", id=scene.green, limit=5000)

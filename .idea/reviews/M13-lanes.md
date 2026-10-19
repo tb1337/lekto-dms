@@ -18,9 +18,9 @@ Bericht; die Auswahl steht als Paperless-IDs.
   (Klassifizierung 219 s und 349 s, Felder 390 s je Dokument). Ursache nicht geklärt
   (Neustart von Ollama auf dem NUC?); ein Dokument wurde so gelb, der Rest blieb hängen.
 - **Groq (`openai/gpt-oss-120b`, ab 13:21 Uhr, Tobis Entscheidung):** Antworten in 2 bis 4 s je
-  Anfrage. Zwei Dinge waren nötig: `PAPIQ_LLM_RESPONSE_FORMAT=json_schema` (mit `json_object`
+  Anfrage. Zwei Dinge waren nötig: `LEKTO_LLM_RESPONSE_FORMAT=json_schema` (mit `json_object`
   hielt das Modell das Schema nicht ein, Feld `contact_evidence` statt des Aufbaus der Antwort)
-  und ein kleineres Prompt-Budget (`PAPIQ_LLM_INPUT_BUDGET=6000`, `PAPIQ_STEP_RETRY_DELAY=70`),
+  und ein kleineres Prompt-Budget (`LEKTO_LLM_INPUT_BUDGET=6000`, `LEKTO_STEP_RETRY_DELAY=70`),
   weil die Gratis-Stufe **8000 Token pro Minute** je Modell erlaubt: 16 Antworten `429`, von den
   Wiederholungen aufgefangen; ein Dokument wurde dadurch einmal rot und beim Wiederholen gelb.
   Alle drei verfügbaren Modelle (gpt-oss 120b/20b, qwen3.8-27b) haben dieses Limit. Im Mittel
@@ -79,7 +79,7 @@ Token/min begrenzt.
 4. **Dokumentdatum ±1 Tag.** Paperless „erstellt“ weicht dreimal um einen Tag vom Datum im
    Dokument ab (vermutlich Zeitzone beim Import in Paperless). Keine Änderung nötig.
 5. **Zwei Modellanfragen je Dokument** mit zusammen 4000 bis 8000 Token: bei Gratis-Stufen mit
-   Token-Limits je Minute reicht ein Worker; `PAPIQ_LLM_INPUT_BUDGET` ist die Stellschraube.
+   Token-Limits je Minute reicht ein Worker; `LEKTO_LLM_INPUT_BUDGET` ist die Stellschraube.
 6. **Ollama über den Reverse Proxy** ist für Massenläufe unzuverlässig (drei 502 in einer
    Stunde). Für die Übernahme des Archivs bleibt das Modell aus (übernommene Metadaten), die
    Embeddings entstehen danach in einem `reindex`.

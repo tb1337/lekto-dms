@@ -9,7 +9,7 @@ written before the file: another change of the contact meanwhile (it takes no lo
 the row's version check there, on SQL before the file is touched (and holds the row until the
 commit), and the step starts again on the new state (`_jobs.retrying`).
 
-Fetching (with a `LogoFetcher`, `PAPIQ_LOGO_FETCH`) runs as the job `contacts.logo`, queued
+Fetching (with a `LogoFetcher`, `LEKTO_LOGO_FETCH`) runs as the job `contacts.logo`, queued
 when a contact without a logo, or with a fetched one, gets a domain among its identifiers
 (entered by hand, learned by training or attached from a document: `queue_logo_fetch`), when an
 admin asks (`request_fetch`) and for every contact without one (`request_all`, the command
@@ -95,7 +95,7 @@ class LogoService:
 
     @property
     def fetching(self) -> bool:
-        """Whether logos are fetched from websites (`PAPIQ_LOGO_FETCH`)."""
+        """Whether logos are fetched from websites (`LEKTO_LOGO_FETCH`)."""
         return self._fetcher is not None
 
     async def upload(self, actor: UserId, id: ContactId, data: bytes) -> Contact:

@@ -116,10 +116,10 @@ def test_ratios() -> None:
 
 async def test_a_real_run_needs_meilisearch_embeddings_and_a_model(tmp_path: Path) -> None:
     run = partial(run_search_evaluation, cases=SET, output=tmp_path / "r.md")
-    with pytest.raises(ConfigurationError, match="PAPIQ_MEILISEARCH_URL"):
+    with pytest.raises(ConfigurationError, match="LEKTO_MEILISEARCH_URL"):
         await run(Settings.model_construct())
     settings = Settings.model_construct(meilisearch_url="http://meilisearch:7700")
-    with pytest.raises(ConfigurationError, match="PAPIQ_EMBEDDING_BASE_URL"):
+    with pytest.raises(ConfigurationError, match="LEKTO_EMBEDDING_BASE_URL"):
         await run(settings)
     settings = Settings.model_construct(
         meilisearch_url="http://meilisearch:7700", embedding_base_url="http://ollama:11434/v1"

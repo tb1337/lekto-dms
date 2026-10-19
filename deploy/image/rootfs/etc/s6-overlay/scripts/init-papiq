@@ -51,9 +51,9 @@ own() {
 
 lower() { printf %s "$1" | tr '[:upper:]' '[:lower:]'; }
 
-if [ "$(lower "${PAPIQ_DB_TYPE:-sqlite}")" = sqlite ]; then
-  database=${PAPIQ_DB_SQLITE_PATH:-/data/papiq.db}
-  safe PAPIQ_DB_SQLITE_PATH "$(dirname "$database")"
+if [ "$(lower "${LEKTO_DB_TYPE:-sqlite}")" = sqlite ]; then
+  database=${LEKTO_DB_SQLITE_PATH:-/data/papiq.db}
+  safe LEKTO_DB_SQLITE_PATH "$(dirname "$database")"
   own "$(dirname "$database")"
   # A restored backup may have left the files with another owner.
   for file in "$database" "$database-wal" "$database-shm"; do
@@ -62,12 +62,12 @@ if [ "$(lower "${PAPIQ_DB_TYPE:-sqlite}")" = sqlite ]; then
     fi
   done
 fi
-if [ "$(lower "${PAPIQ_STORAGE_TYPE:-filesystem}")" = filesystem ]; then
-  safe PAPIQ_STORAGE_PATH "${PAPIQ_STORAGE_PATH:-/data/objects}"
-  own "${PAPIQ_STORAGE_PATH:-/data/objects}"
+if [ "$(lower "${LEKTO_STORAGE_TYPE:-filesystem}")" = filesystem ]; then
+  safe LEKTO_STORAGE_PATH "${LEKTO_STORAGE_PATH:-/data/objects}"
+  own "${LEKTO_STORAGE_PATH:-/data/objects}"
 fi
 
-echo "init-papiq: Papiq runs as $puid:$pgid, PAPIQ_ROLE=${PAPIQ_ROLE:-all}"
+echo "init-papiq: Papiq runs as $puid:$pgid, LEKTO_ROLE=${LEKTO_ROLE:-all}"
 # Fails with a readable message for any invalid or missing setting. Runs as the user of the
 # services, so that secret files must be readable by them.
 exec papiq-run python -m lekto.composition check

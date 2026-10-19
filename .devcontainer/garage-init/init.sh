@@ -7,15 +7,15 @@
 # Environment:
 #   GARAGE_ADMIN_URL           admin API, e.g. http://garage:3903
 #   GARAGE_ADMIN_TOKEN         admin API token
-#   PAPIQ_S3_ACCESS_KEY_ID     access key to import (GK + 24 hex digits)
-#   PAPIQ_S3_SECRET_ACCESS_KEY its secret (64 hex digits)
-#   PAPIQ_S3_BUCKET            bucket to create (development and tests)
-#   PAPIQ_S3_EXTRA_BUCKETS     further buckets, space-separated (the development instance,
+#   LEKTO_S3_ACCESS_KEY_ID     access key to import (GK + 24 hex digits)
+#   LEKTO_S3_SECRET_ACCESS_KEY its secret (64 hex digits)
+#   LEKTO_S3_BUCKET            bucket to create (development and tests)
+#   LEKTO_S3_EXTRA_BUCKETS     further buckets, space-separated (the development instance,
 #                              see .devcontainer/README.md); the same key gets access
 set -eu
 
 : "${GARAGE_ADMIN_URL:?}" "${GARAGE_ADMIN_TOKEN:?}"
-: "${PAPIQ_S3_ACCESS_KEY_ID:?}" "${PAPIQ_S3_SECRET_ACCESS_KEY:?}" "${PAPIQ_S3_BUCKET:?}"
+: "${LEKTO_S3_ACCESS_KEY_ID:?}" "${LEKTO_S3_SECRET_ACCESS_KEY:?}" "${LEKTO_S3_BUCKET:?}"
 
 # api METHOD PATH [JSON_BODY]: prints the response body, fails on HTTP errors.
 api() {
@@ -60,18 +60,18 @@ else
 fi
 
 # Access key with the fixed development credentials.
-if [ "$(status GET "/v2/GetKeyInfo?id=$PAPIQ_S3_ACCESS_KEY_ID")" = "200" ]; then
+if [ "$(status GET "/v2/GetKeyInfo?id=$LEKTO_S3_ACCESS_KEY_ID")" = "200" ]; then
   echo "Access key already exists"
 else
-  echo "Importing access key $PAPIQ_S3_ACCESS_KEY_ID"
+  echo "Importing access key $LEKTO_S3_ACCESS_KEY_ID"
   api POST /v2/ImportKey \
-    "{\"name\": \"papiq-dev\", \"accessKeyId\": \"$PAPIQ_S3_ACCESS_KEY_ID\", \"secretAccessKey\": \"$PAPIQ_S3_SECRET_ACCESS_KEY\"}" \
+    "{\"name\": \"papiq-dev\", \"accessKeyId\": \"$LEKTO_S3_ACCESS_KEY_ID\", \"secretAccessKey\": \"$LEKTO_S3_SECRET_ACCESS_KEY\"}" \
     >/dev/null
 fi
 
 # Buckets; the key gets full access to each. Permissions are set, not toggled, so repeating this
 # changes nothing.
-for bucket in $PAPIQ_S3_BUCKET ${PAPIQ_S3_EXTRA_BUCKETS:-}; do
+for bucket in $LEKTO_S3_BUCKET ${LEKTO_S3_EXTRA_BUCKETS:-}; do
   if [ "$(status GET "/v2/GetBucketInfo?globalAlias=$bucket")" = "200" ]; then
     echo "Bucket $bucket already exists"
   else
@@ -80,8 +80,8 @@ for bucket in $PAPIQ_S3_BUCKET ${PAPIQ_S3_EXTRA_BUCKETS:-}; do
   fi
   bucket_id=$(api GET "/v2/GetBucketInfo?globalAlias=$bucket" | jq -r '.id')
   api POST /v2/AllowBucketKey \
-    "{\"bucketId\": \"$bucket_id\", \"accessKeyId\": \"$PAPIQ_S3_ACCESS_KEY_ID\", \"permissions\": {\"read\": true, \"write\": true, \"owner\": true}}" \
+    "{\"bucketId\": \"$bucket_id\", \"accessKeyId\": \"$LEKTO_S3_ACCESS_KEY_ID\", \"permissions\": {\"read\": true, \"write\": true, \"owner\": true}}" \
     >/dev/null
 done
 
-echo "Garage is ready: buckets $PAPIQ_S3_BUCKET ${PAPIQ_S3_EXTRA_BUCKETS:-}, key $PAPIQ_S3_ACCESS_KEY_ID"
+echo "Garage is ready: buckets $LEKTO_S3_BUCKET ${LEKTO_S3_EXTRA_BUCKETS:-}, key $LEKTO_S3_ACCESS_KEY_ID"

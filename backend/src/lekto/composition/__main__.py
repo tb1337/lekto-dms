@@ -8,8 +8,8 @@ evaluate-search | reindex | render-pages | read-codes | fetch-logos | reparse | 
   version, otherwise 1; with `--wait`, keep looking for that long while it is older or not
   reachable. Never changes the database. The worker's start in the image waits with it for the
   API container's migration.
-- `api`: serve the REST API until SIGTERM or SIGINT. Only with `PAPIQ_ROLE` `all` or `api`.
-- `worker`: run the worker service until SIGTERM or SIGINT. Only with `PAPIQ_ROLE` `all` or
+- `api`: serve the REST API until SIGTERM or SIGINT. Only with `LEKTO_ROLE` `all` or `api`.
+- `worker`: run the worker service until SIGTERM or SIGINT. Only with `LEKTO_ROLE` `all` or
   `worker`.
 - `evaluate [--fake] [--runs cold,trained] [--cases DIR] [--output FILE]`: run the evaluation
   set (default `evaluation`) against the configured language model, or with `--fake` against
@@ -19,13 +19,13 @@ evaluate-search | reindex | render-pages | read-codes | fetch-logos | reparse | 
   field changed without a passed check.
 - `evaluate-search [--fake] [--models A,B] [--ratios 0,0.5,1] [--queries FILE] [--cases DIR]
   [--output FILE]`: index the documents of the evaluation set with each embedding model (default
-  `PAPIQ_EMBEDDING_MODEL`) in a temporary Meilisearch index, run the queries (default
+  `LEKTO_EMBEDDING_MODEL`) in a temporary Meilisearch index, run the queries (default
   `<cases>/search/queries.json`) at each semantic ratio and write a Markdown report. With
   `--fake`, bag-of-words vectors and the in-memory index stand in for both. Needs
-  `PAPIQ_MEILISEARCH_URL` and `PAPIQ_EMBEDDING_BASE_URL`, and `PAPIQ_EMBEDDING_DIMENSIONS` (any
+  `LEKTO_MEILISEARCH_URL` and `LEKTO_EMBEDDING_BASE_URL`, and `LEKTO_EMBEDDING_DIMENSIONS` (any
   value; the real length is measured) as the configuration is checked first.
 - `reindex`: rebuild the search index from the database and the object store, in the foreground,
-  with progress. The search keeps working meanwhile. Needs `PAPIQ_MEILISEARCH_URL`.
+  with progress. The search keeps working meanwhile. Needs `LEKTO_MEILISEARCH_URL`.
 - `render-pages`: queue the page images of every document from before the pages node existed
   (its `pages` node is skipped); the worker renders them.
 - `read-codes`: queue reading the facts of every document with a text: the worker reads the
@@ -33,7 +33,7 @@ evaluate-search | reindex | render-pages | read-codes | fetch-logos | reparse | 
   read, and for telling on how many contacts' documents an identifier stands).
 - `fetch-logos`: queue fetching the logo of every contact without one that has a domain among
   its identifiers (one whose fetch failed is not tried again); the worker asks the websites.
-  Needs `PAPIQ_LOGO_FETCH=true`.
+  Needs `LEKTO_LOGO_FETCH=true`.
 - `reparse`: queue reading the text of every document again (after the update to 0.2, which
   reads the text as it is set instead of Docling's Markdown); the worker reads them, and the
   search index takes up the new texts. Train the classifier afterwards (`train`).
@@ -42,7 +42,7 @@ evaluate-search | reindex | render-pages | read-codes | fetch-logos | reparse | 
 
 Options follow their command. Exits with status 1 when the command fails: with the message on
 stderr when the configuration (or the evaluation set) does not let it work, otherwise with the
-error in the log, as when the command does not fit `PAPIQ_ROLE`.
+error in the log, as when the command does not fit `LEKTO_ROLE`.
 """
 
 import argparse
@@ -112,7 +112,7 @@ def main(argv: Sequence[str] = ()) -> int:
 
     if command in SERVICES and settings.role not in SERVICES[command]:
         log.error(
-            f"the {command} does not run with PAPIQ_ROLE={settings.role}",
+            f"the {command} does not run with LEKTO_ROLE={settings.role}",
             command=command,
             role=settings.role,
         )

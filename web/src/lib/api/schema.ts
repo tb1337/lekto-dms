@@ -532,7 +532,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Fetch a contact's logo from its website
-		 * @description Admins only. Only with `PAPIQ_LOGO_FETCH` (503 otherwise; `GET /pipeline` tells, `logo_fetch`). The worker asks the website at each of the contact's domains in turn for its icon (HTTPS to public addresses only), also one whose fetch failed before, and stores the first that fits in place of a fetched logo; `ContactOut.logo` or `logo_failure` tell the outcome. 409 while the contact has an uploaded logo (it is never replaced), 422 without a domain among its identifiers.
+		 * @description Admins only. Only with `LEKTO_LOGO_FETCH` (503 otherwise; `GET /pipeline` tells, `logo_fetch`). The worker asks the website at each of the contact's domains in turn for its icon (HTTPS to public addresses only), also one whose fetch failed before, and stores the first that fits in place of a fetched logo; `ContactOut.logo` or `logo_failure` tell the outcome. 409 while the contact has an uploaded logo (it is never replaced), 422 without a domain among its identifiers.
 		 */
 		post: operations['fetch_logo_api_v1_contacts__id__logo_fetch_post'];
 		delete?: never;
@@ -1218,7 +1218,7 @@ export interface paths {
 		};
 		/**
 		 * The recognised text of a document
-		 * @description Needs read access. The text read from the archive, plain text as it is set (the pages apart by a form feed on a line of its own; a document parsed before 0.2 has Markdown until it is read again), in pieces of at most `PAPIQ_MCP_TEXT_MAX` characters; continue with `next_offset`. 409 while the document has no text yet (it is not parsed), 422 for a larger `limit`.
+		 * @description Needs read access. The text read from the archive, plain text as it is set (the pages apart by a form feed on a line of its own; a document parsed before 0.2 has Markdown until it is read again), in pieces of at most `LEKTO_MCP_TEXT_MAX` characters; continue with `next_offset`. 409 while the document has no text yet (it is not parsed), 422 for a larger `limit`.
 		 */
 		get: operations['document_text_api_v1_documents__id__text_get'];
 		put?: never;
@@ -1320,7 +1320,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Read the document with the vision language model
-		 * @description The owner and admins. Sends every page as an image to the vision language model (`PAPIQ_VLM_*`, named in `GET /pipeline`) and processes the document again from `ocr`: the model's text becomes the archive's text layer and is checked like any other OCR. Only a person asks for it; the advice is in `GET /documents/{id}/reading`. 409 without a model, while processing runs, or past a failed node.
+		 * @description The owner and admins. Sends every page as an image to the vision language model (`LEKTO_VLM_*`, named in `GET /pipeline`) and processes the document again from `ocr`: the model's text becomes the archive's text layer and is checked like any other OCR. Only a person asks for it; the advice is in `GET /documents/{id}/reading`. 409 without a model, while processing runs, or past a failed node.
 		 */
 		post: operations['read_with_vision_api_v1_documents__id__vision_post'];
 		delete?: never;
@@ -1608,7 +1608,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Create a webhook
-		 * @description Papiq sends a signed request to the URL for each event of the chosen types on documents within the owner's reach: their own, and green ones in spaces they own or that are shared with them (an admin's webhooks too; the rights of an admin do not widen them). The answer holds the secret, shown only once. A user has at most as many webhooks as `PAPIQ_WEBHOOKS_PER_USER` allows (409).
+		 * @description Papiq sends a signed request to the URL for each event of the chosen types on documents within the owner's reach: their own, and green ones in spaces they own or that are shared with them (an admin's webhooks too; the rights of an admin do not widen them). The answer holds the secret, shown only once. A user has at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409).
 		 */
 		post: operations['create_webhook_api_v1_webhooks_post'];
 		delete?: never;
@@ -2014,7 +2014,7 @@ export interface components {
 			score?: number | null;
 			/**
 			 * Threshold
-			 * @description The score from which the signal names a value (`signal_llm`: `PAPIQ_CONFIDENCE_THRESHOLD`; `signal_classifier`: `PAPIQ_CLASSIFIER_THRESHOLD`). The similar documents name a value by their votes instead.
+			 * @description The score from which the signal names a value (`signal_llm`: `LEKTO_CONFIDENCE_THRESHOLD`; `signal_classifier`: `LEKTO_CLASSIFIER_THRESHOLD`). The similar documents name a value by their votes instead.
 			 */
 			threshold?: number | null;
 			/**
@@ -4205,7 +4205,7 @@ export interface components {
 			content_unsure: number | null;
 			/**
 			 * Poor
-			 * @description The page counts as poorly read (`PAPIQ_POOR_READING_THRESHOLD`): by its content words where counted, else by all.
+			 * @description The page counts as poorly read (`LEKTO_POOR_READING_THRESHOLD`): by its content words where counted, else by all.
 			 */
 			poor: boolean;
 		};
@@ -4323,7 +4323,7 @@ export interface components {
 			vision: components['schemas']['VisionOut'] | null;
 			/**
 			 * Logo Fetch
-			 * @description Whether Papiq fetches the logos of contacts from their websites (`PAPIQ_LOGO_FETCH`; `POST /contacts/{id}/logo/fetch`).
+			 * @description Whether Papiq fetches the logos of contacts from their websites (`LEKTO_LOGO_FETCH`; `POST /contacts/{id}/logo/fetch`).
 			 */
 			logo_fetch: boolean;
 		};
@@ -4962,7 +4962,7 @@ export interface components {
 			type: 'set_title';
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/papiq/blob/main/docs/templates.md
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/papiq/blob/main/docs/templates.md
 			 * @example {{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}
 			 */
 			template: string;
@@ -5257,7 +5257,7 @@ export interface components {
 		TemplatePreviewIn: {
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/papiq/blob/main/docs/templates.md
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/papiq/blob/main/docs/templates.md
 			 */
 			template: string;
 			/**

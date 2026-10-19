@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Prepare the development instance in the devcontainer, once; safe to run again:
-#   - .devcontainer/live.env from live.env.example, with a fresh PAPIQ_SECRET_KEY
+#   - .devcontainer/live.env from live.env.example, with a fresh LEKTO_SECRET_KEY
 #   - the database papiq_live (the bucket papiq-live is created by garage-init at every start,
 #     the search index by Papiq itself)
 # Run from the repository root (the VS Code task "Papiq: Devinstanz einrichten" does).
@@ -13,9 +13,9 @@ if [ -e "$env_file" ]; then
   echo "live.env exists; keeping it"
 else
   key=$(openssl rand -base64 32)
-  sed "s|^PAPIQ_SECRET_KEY=$|PAPIQ_SECRET_KEY=$key|" "$here/live.env.example" >"$env_file"
+  sed "s|^LEKTO_SECRET_KEY=$|LEKTO_SECRET_KEY=$key|" "$here/live.env.example" >"$env_file"
   chmod 600 "$env_file"
-  echo "live.env written with a new PAPIQ_SECRET_KEY; fill in PAPIQ_ADMIN_USERNAME, PAPIQ_ADMIN_PASSWORD the Open WebUI address and its API keys"
+  echo "live.env written with a new LEKTO_SECRET_KEY; fill in LEKTO_ADMIN_USERNAME, LEKTO_ADMIN_PASSWORD the Open WebUI address and its API keys"
 fi
 
 set -a
@@ -32,12 +32,12 @@ import asyncpg
 
 
 async def main() -> None:
-    name = os.environ["PAPIQ_DB_NAME"]
+    name = os.environ["LEKTO_DB_NAME"]
     connection = await asyncpg.connect(
-        host=os.environ["PAPIQ_DB_HOST"],
-        port=int(os.environ.get("PAPIQ_DB_PORT", "5432")),
-        user=os.environ["PAPIQ_DB_USER"],
-        password=os.environ["PAPIQ_DB_PASSWORD"],
+        host=os.environ["LEKTO_DB_HOST"],
+        port=int(os.environ.get("LEKTO_DB_PORT", "5432")),
+        user=os.environ["LEKTO_DB_USER"],
+        password=os.environ["LEKTO_DB_PASSWORD"],
         database="postgres",
     )
     try:

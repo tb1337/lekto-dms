@@ -23,7 +23,7 @@ class TestLiquidTemplateRenderer(TemplateRendererContract):
 
 
 def test_the_settings_shape_dates_and_amounts() -> None:
-    """`PAPIQ_TEMPLATE_LOCALE` writes dates and amounts, `PAPIQ_DEFAULT_CURRENCY` is that of
+    """`LEKTO_TEMPLATE_LOCALE` writes dates and amounts, `LEKTO_DEFAULT_CURRENCY` is that of
     `currency` without one."""
     values: dict[str, TemplateValue] = {
         "day": date(2026, 3, 31),

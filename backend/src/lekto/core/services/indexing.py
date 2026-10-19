@@ -12,8 +12,8 @@ into the index. A job is idempotent and may be repeated.
   So a job checks after writing that the document and the names it carries are still as it read
   them, and writes again if not (`_ROUNDS`). The state written last is then one that matched the
   database after the write.
-- Vectors are computed from sections of the text (`PAPIQ_SEARCH_CHUNK_SIZE`, at most
-  `PAPIQ_SEARCH_MAX_CHUNKS`) and only when the sections differ from those of the indexed
+- Vectors are computed from sections of the text (`LEKTO_SEARCH_CHUNK_SIZE`, at most
+  `LEKTO_SEARCH_MAX_CHUNKS`) and only when the sections differ from those of the indexed
   vectors: a change of lane, space or date costs no embedding.
 - Failed jobs are repeated with a growing delay (about three hours in all). If only the
   embedding fails, the document is written at once with the vectors it has (the words must not

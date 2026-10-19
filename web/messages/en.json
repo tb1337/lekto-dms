@@ -853,7 +853,7 @@
 	"log_label_beside": "Label: “{label}” – stands by the value",
 	"log_label_apart": "Label: “{label}” – not by the value",
 	"log_label_missing": "Label: “{label}” – not in the text",
-	"log_label_unknown": "Label: “{label}” – not checked",
+	"log_label_unknown": "Label: “{label}” – cannot be checked",
 	"log_label_none": "Label: none given",
 	"log_from_run": "from run {run}",
 	"log_not_run": "Did not run",

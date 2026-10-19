@@ -853,7 +853,7 @@
 	"log_label_beside": "Beschriftung: „{label}“ – steht beim Wert",
 	"log_label_apart": "Beschriftung: „{label}“ – steht nicht beim Wert",
 	"log_label_missing": "Beschriftung: „{label}“ – steht nicht im Text",
-	"log_label_unknown": "Beschriftung: „{label}“ – nicht geprüft",
+	"log_label_unknown": "Beschriftung: „{label}“ – nicht prüfbar",
 	"log_label_none": "Beschriftung: keine angegeben",
 	"log_from_run": "aus Lauf {run}",
 	"log_not_run": "Nicht gelaufen",

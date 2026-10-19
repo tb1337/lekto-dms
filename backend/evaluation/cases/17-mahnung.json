@@ -44,19 +44,23 @@
           "amount": "64.90",
           "currency": "EUR"
         },
-        "evidence": "Zu zahlen | 64,90 €"
+        "evidence": "Zu zahlen | 64,90 €",
+        "label": "Zu zahlen"
       },
       "Rechnungsnummer": {
         "value": "VB-889911",
-        "evidence": "Rechnungsnummer: VB-889911"
+        "evidence": "Rechnungsnummer: VB-889911",
+        "label": "Rechnungsnummer"
       },
       "Kundennummer": {
         "value": "88 77 66",
-        "evidence": "Kundennummer: 88 77 66"
+        "evidence": "Kundennummer: 88 77 66",
+        "label": "Kundennummer"
       },
       "Fällig am": {
         "value": "2026-06-24",
-        "evidence": "bis zum 24.06.2026"
+        "evidence": "bis zum 24.06.2026",
+        "label": null
       }
     }
   }

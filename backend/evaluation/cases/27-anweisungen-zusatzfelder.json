@@ -42,11 +42,13 @@
           "amount": "84.90",
           "currency": "EUR"
         },
-        "evidence": "Gesamtbetrag | 84,90 €"
+        "evidence": "Gesamtbetrag | 84,90 €",
+        "label": "Gesamtbetrag"
       },
       "Rechnungsnummer": {
         "value": "VB-901234",
-        "evidence": "Rechnung VB-901234"
+        "evidence": "Rechnung VB-901234",
+        "label": null
       }
     },
     "lane": "red"

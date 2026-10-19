@@ -42,11 +42,13 @@
           "amount": "120.00",
           "currency": "USD"
         },
-        "evidence": "Total** | **$120.00 USD"
+        "evidence": "Total** | **$120.00 USD",
+        "label": "Total"
       },
       "Rechnungsnummer": {
         "value": "INV-2026-0331",
-        "evidence": "INVOICE** INV-2026-0331"
+        "evidence": "INVOICE** INV-2026-0331",
+        "label": "INVOICE"
       }
     }
   }

@@ -41,7 +41,8 @@
           "start": "2026-09-01",
           "end": "2026-09-30"
         },
-        "evidence": "Abrechnungsmonat: September 2026"
+        "evidence": "Abrechnungsmonat: September 2026",
+        "label": "Abrechnungsmonat"
       }
     }
   }

@@ -42,14 +42,16 @@
     "fields": {
       "Nettolohn": {
         "value": "2.990,75 €",
-        "evidence": "Nettoverdienst: 2.990,75 €"
+        "evidence": "Nettoverdienst: 2.990,75 €",
+        "label": "Nettoverdienst"
       },
       "Bezugszeitraum": {
         "value": {
           "start": "2026-04-01",
           "end": "2026-04-30"
         },
-        "evidence": "Entgeltabrechnung April 2026"
+        "evidence": "Entgeltabrechnung April 2026",
+        "label": null
       }
     },
     "lane": "yellow"

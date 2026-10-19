@@ -1,0 +1,60 @@
+{
+  "description": "Invoice whose number, date, due date and total stand in columns under their labels: the label check finds each value below its label (issue #55, step 1).",
+  "expected": {
+    "lane": "green",
+    "contact": "Elektro Krause GmbH",
+    "document_type": "Rechnung",
+    "tags": [
+      "Handwerker",
+      "Wohnung"
+    ],
+    "document_date": "2026-05-12",
+    "fields": {
+      "Betrag": {
+        "amount": "238.00",
+        "currency": "EUR"
+      },
+      "Rechnungsnummer": "2026-044",
+      "Fällig am": "2026-05-26"
+    }
+  },
+  "fake": {
+    "classification": {
+      "contact": {
+        "value": "Elektro Krause GmbH",
+        "evidence": "Elektro Krause GmbH"
+      },
+      "document_type": "Rechnung",
+      "new_document_type": null,
+      "tags": [
+        "Handwerker",
+        "Wohnung"
+      ],
+      "new_tags": [],
+      "document_date": {
+        "value": "2026-05-12",
+        "evidence": "2026-044 12.05.2026 26.05.2026 238,00 €"
+      }
+    },
+    "fields": {
+      "Betrag": {
+        "value": {
+          "amount": "238.00",
+          "currency": "EUR"
+        },
+        "evidence": "2026-044 12.05.2026 26.05.2026 238,00 €",
+        "label": "Rechnungsbetrag"
+      },
+      "Rechnungsnummer": {
+        "value": "2026-044",
+        "evidence": "2026-044 12.05.2026 26.05.2026 238,00 €",
+        "label": "Rechnungsnummer"
+      },
+      "Fällig am": {
+        "value": "2026-05-26",
+        "evidence": "2026-044 12.05.2026 26.05.2026 238,00 €",
+        "label": "Fällig am"
+      }
+    }
+  }
+}

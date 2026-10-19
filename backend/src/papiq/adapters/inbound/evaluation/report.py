@@ -1,6 +1,7 @@
 """Scores of an evaluation's runs and their Markdown report."""
 
 import statistics
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -17,6 +18,7 @@ from papiq.core.domain.classification import (
     TOPIC,
 )
 from papiq.core.domain.json_value import JsonValue
+from papiq.core.domain.labels import LabelOutcome
 from papiq.core.domain.pipeline import Lane
 
 FIELDS = (CONTACT, DOCUMENT_TYPE, TOPIC, DOCUMENT_DATE)
@@ -255,6 +257,7 @@ def render(runs: Mapping[Run, Sequence[CaseResult]], info: RunInfo) -> str:
         )
     for run, results in runs.items():
         lines += _run_section(run, results, summaries[run], info)
+        lines += _labels_section(run, results)
     return "\n".join(lines) + "\n"
 
 
@@ -305,6 +308,55 @@ def _run_section(
             f"{result.seconds:.1f} | {'yes' if result.truncated else 'no'} | {corrected} | "
             f"{_cell(reasons) or '-'} |"
         )
+    return lines
+
+
+_LABEL_TITLES = {
+    LabelOutcome.BESIDE: "beside",
+    LabelOutcome.APART: "apart",
+    LabelOutcome.LABEL_MISSING: "label missing",
+    LabelOutcome.NO_LABEL: "no label",
+    LabelOutcome.UNKNOWN: "unknown",
+}
+
+
+def label_outcomes(result: CaseResult) -> dict[str, LabelOutcome]:
+    """The outcome of the label check of each field of a case that has one, by name."""
+    return {
+        name: check.label.outcome
+        for name, check in sorted(result.checks.items())
+        if check.label is not None
+    }
+
+
+def _labels_section(run: Run, results: Sequence[CaseResult]) -> list[str]:
+    """The label outcomes per case and in total (issue #55: measured, not enforced)."""
+    title = _RUN_TITLES[run]
+    header = " | ".join(_LABEL_TITLES.values())
+    lines = [
+        "",
+        f"## Labels ({title})",
+        "",
+        "The label the model gave for each value it read, and whether the value stands by it: on "
+        "the label's line to its right, or below it in its column within three lines. Recorded, "
+        "not enforced; only amounts, numbers, dates and periods are checked (others are "
+        "unknown).",
+        "",
+        f"| Case | {header} | Fields |",
+        "| --- |" + " ---: |" * len(_LABEL_TITLES) + " --- |",
+    ]
+    total: Counter[LabelOutcome] = Counter()
+    for result in results:
+        outcomes = label_outcomes(result)
+        if not outcomes:
+            continue
+        counts = Counter(outcomes.values())
+        total += counts
+        cells = " | ".join(str(counts.get(outcome, 0)) for outcome in _LABEL_TITLES)
+        fields = ", ".join(f"{name}: {_LABEL_TITLES[got]}" for name, got in outcomes.items())
+        lines.append(f"| {result.case.name} | {cells} | {_cell(fields)} |")
+    cells = " | ".join(f"**{total.get(outcome, 0)}**" for outcome in _LABEL_TITLES)
+    lines.append(f"| Total | {cells} | |")
     return lines
 
 

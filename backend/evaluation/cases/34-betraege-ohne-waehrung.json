@@ -22,11 +22,12 @@
       "document_date": {"value": "31.05.2026", "evidence": "erstellt am 31.05.2026"}
     },
     "fields": {
-      "Nettolohn": {"value": "2.987,45", "evidence": "Nettoverdienst: 2.987,45"},
-      "Bruttolohn": {"value": "5.166,67", "evidence": "Gesamtbrutto | 5.166,67"},
+      "Nettolohn": {"value": "2.987,45", "evidence": "Nettoverdienst: 2.987,45", "label": "Nettoverdienst"},
+      "Bruttolohn": {"value": "5.166,67", "evidence": "Gesamtbrutto | 5.166,67", "label": "Gesamtbrutto"},
       "Bezugszeitraum": {
         "value": {"start": "2026-05-01", "end": "2026-05-31"},
-        "evidence": "Entgeltabrechnung Mai 2026"
+        "evidence": "Entgeltabrechnung Mai 2026",
+        "label": null
       }
     }
   }

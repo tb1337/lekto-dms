@@ -39,11 +39,13 @@
           "amount": "225.00",
           "currency": "EUR"
         },
-        "evidence": "Summe brutto | 225,00 €"
+        "evidence": "Summe brutto | 225,00 €",
+        "label": "Summe brutto"
       },
       "Rechnungsnummer": {
         "value": "GS-2026-088",
-        "evidence": "Rechnung Nr. GS-2026-088"
+        "evidence": "Rechnung Nr. GS-2026-088",
+        "label": "Rechnung Nr."
       }
     }
   }

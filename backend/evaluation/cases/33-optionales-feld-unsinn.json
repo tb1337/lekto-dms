@@ -21,9 +21,9 @@
       "document_date": {"value": "2026-02-03", "evidence": "Rechnungsdatum: 03.02.2026"}
     },
     "fields": {
-      "Betrag": {"value": "44,99 €", "evidence": "Rechnungsbetrag | 44,99 €"},
-      "Rechnungsnummer": {"value": "702118845", "evidence": "Rechnungsnummer: 702118845"},
-      "Kundennummer": {"value": "siehe Rückseite", "evidence": null}
+      "Betrag": {"value": "44,99 €", "evidence": "Rechnungsbetrag | 44,99 €", "label": "Rechnungsbetrag"},
+      "Rechnungsnummer": {"value": "702118845", "evidence": "Rechnungsnummer: 702118845", "label": "Rechnungsnummer"},
+      "Kundennummer": {"value": "siehe Rückseite", "evidence": null, "label": null}
     },
     "lane": "yellow"
   }

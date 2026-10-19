@@ -11,6 +11,7 @@ import pytest
 
 from papiq.adapters.inbound.evaluation import EvaluationSetError, Run, evaluate, load_set
 from papiq.adapters.inbound.evaluation.cases import Case, FakeAnswer, _proposal_keys
+from papiq.adapters.inbound.evaluation.report import label_outcomes
 from papiq.adapters.outbound.memory import FakeLanguageModel
 from papiq.composition.__main__ import main
 from papiq.composition.errors import ConfigurationError
@@ -24,6 +25,7 @@ from papiq.composition.settings import Settings
 from papiq.core.domain.fields import FieldDefinition, FieldType
 from papiq.core.domain.identifiers import IdentifierKind, IdentifierSource
 from papiq.core.domain.json_value import JsonObject
+from papiq.core.domain.labels import LabelOutcome
 from papiq.core.domain.pipeline import Lane
 from papiq.core.domain.text import Shortened
 from papiq.core.ports.llm import StructuredRequest
@@ -59,6 +61,36 @@ async def test_the_fixed_answers_give_the_expected_lanes(tmp_path: Path) -> None
     assert "the trained one took over 57 documents of the training corpus first" in text
     assert "## Lanes (trained)" in text
     assert "## Instructions in the document text (cold)" in text
+
+
+async def test_the_labels_are_recorded_and_counted_but_enforce_nothing(tmp_path: Path) -> None:
+    """The cases of issue #55: the wrong line of a pay slip and a total far below a monthly
+    label are apart from their labels, the values of an invoice's columns beside them. The
+    wrong values pass every other check (the cases are yellow for a missing field alone)."""
+    report = tmp_path / "report.md"
+    evaluation = await run_evaluation(
+        Settings.model_construct(), cases=SET, fake=True, output=report
+    )
+    cold = {result.case.name: result for result in evaluation.results if result.run is Run.COLD}
+    assert label_outcomes(cold["43-lohnabrechnung-falsche-zeile"])["Bruttolohn"] is (
+        LabelOutcome.APART
+    )
+    assert label_outcomes(cold["45-versicherung-jahresbeitrag"]) == {"Beitrag": LabelOutcome.APART}
+    assert label_outcomes(cold["44-rechnung-spalten"]) == {
+        "Betrag": LabelOutcome.BESIDE,
+        "Fällig am": LabelOutcome.BESIDE,
+        "Rechnungsnummer": LabelOutcome.UNKNOWN,
+    }
+    for name, field in (
+        ("43-lohnabrechnung-falsche-zeile", "Bruttolohn"),
+        ("45-versicherung-jahresbeitrag", "Beitrag"),
+    ):
+        assert cold[name].checks[field].ok, name  # step 1 records, step 2 enforces
+        assert cold[name].lane is Lane.YELLOW
+    assert cold["44-rechnung-spalten"].lane is Lane.GREEN
+    text = report.read_text(encoding="utf-8")
+    assert "## Labels (cold)" in text and "## Labels (trained)" in text
+    assert "| 45-versicherung-jahresbeitrag | 0 | 1 | 0 | 0 | 0 | Beitrag: apart |" in text
 
 
 async def test_instructions_in_the_text_change_only_checked_fields(tmp_path: Path) -> None:

@@ -1,8 +1,9 @@
 """Running the evaluation set through the pipeline's signals, judge and fields node.
 
 Each case becomes a document of one owner, whose text is stored as if the parse node had
-produced it. OCR, parsing, rules and filing pass through; the signals, the judge and the
-fields node are the same as in the pipeline, with the given model.
+produced it, with its structure set on a fixed grid (`labels.grid_layout`). OCR, parsing,
+rules and filing pass through; the signals, the judge and the fields node are the same as in
+the pipeline, with the given model.
 
 A run is cold (a fresh installation: the classifier and the similar documents abstain) or
 trained: the training corpus is taken over first as from Paperless, indexed, and the
@@ -11,6 +12,7 @@ the inbox, or changing a green document), and the log tells which automatic valu
 corrected.
 """
 
+import json
 import secrets
 import tempfile
 import time
@@ -45,6 +47,7 @@ from papiq.core.domain.identifiers import Identifier, IdentifierKind
 from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from papiq.core.domain.imports import ImportedMetadata
 from papiq.core.domain.json_value import JsonValue
+from papiq.core.domain.labels import grid_layout
 from papiq.core.domain.master_data import TagScope
 from papiq.core.domain.pipeline import CORRECTED, TRUNCATED, Lane, Node, NodeRun, ProcessingStatus
 from papiq.core.domain.sorting import sort_key
@@ -55,7 +58,7 @@ from papiq.core.services.documents import DocumentService
 from papiq.core.services.inbox import field_checks, open_nodes
 from papiq.core.services.indexing import IndexingService
 from papiq.core.services.master_data import MasterDataService
-from papiq.core.services.objects import text_key
+from papiq.core.services.objects import structure_key, text_key
 from papiq.core.services.pipeline import IncomingFile, PipelineService
 from papiq.core.services.users import UserService
 
@@ -280,7 +283,8 @@ async def _receive(
     owner: UserId | None = None,
     imported: ImportedMetadata | None = None,
 ) -> Document:
-    """Receive a document and store its text as the parse node would have."""
+    """Receive a document and store its text as the parse node would have, with its structure
+    on a fixed grid: the words a label check looks at."""
     with tempfile.TemporaryDirectory(prefix="papiq-evaluation-") as directory:
         path = Path(directory) / "case.pdf"
         # A distinct file per document: the owner cannot have the same file twice.
@@ -297,6 +301,11 @@ async def _receive(
         text_key(received.id),
         text.encode("utf-8"),
         content_type=media_types.TEXT,
+    )
+    await environment.store.put(
+        structure_key(received.id),
+        json.dumps(grid_layout(text), ensure_ascii=False).encode("utf-8"),
+        content_type=media_types.JSON,
     )
     return received
 

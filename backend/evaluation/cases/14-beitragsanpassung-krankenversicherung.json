@@ -40,14 +40,16 @@
     "fields": {
       "Versicherungsnummer": {
         "value": "K123456789",
-        "evidence": "Versichertennummer: K123456789"
+        "evidence": "Versichertennummer: K123456789",
+        "label": "Versichertennummer"
       },
       "Beitrag": {
         "value": {
           "amount": "512.34",
           "currency": "EUR"
         },
-        "evidence": "beträgt 512,34 €"
+        "evidence": "beträgt 512,34 €",
+        "label": null
       }
     }
   }

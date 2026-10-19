@@ -41,19 +41,23 @@
           "amount": "84.20",
           "currency": "EUR"
         },
-        "evidence": "Gesamtbetrag | 84,20 €"
+        "evidence": "Gesamtbetrag | 84,20 €",
+        "label": "Gesamtbetrag"
       },
       "Rechnungsnummer": {
         "value": "R-2026-004711",
-        "evidence": "Rechnungsnummer: R-2026-004711"
+        "evidence": "Rechnungsnummer: R-2026-004711",
+        "label": "Rechnungsnummer"
       },
       "Kundennummer": {
         "value": "100 200 300",
-        "evidence": "Kundennummer: 100 200 300"
+        "evidence": "Kundennummer: 100 200 300",
+        "label": "Kundennummer"
       },
       "Fällig am": {
         "value": "2026-04-15",
-        "evidence": "am 15.04.2026 per Lastschrift"
+        "evidence": "am 15.04.2026 per Lastschrift",
+        "label": null
       }
     }
   }

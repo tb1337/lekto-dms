@@ -38,7 +38,8 @@
           "amount": "5432.10",
           "currency": "EUR"
         },
-        "evidence": "Neuer Kontostand | 5.432,10 EUR"
+        "evidence": "Neuer Kontostand | 5.432,10 EUR",
+        "label": "Neuer Kontostand"
       }
     }
   }

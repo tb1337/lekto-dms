@@ -40,14 +40,16 @@
     "fields": {
       "Versicherungsnummer": {
         "value": "HR-2026-55501",
-        "evidence": "Versicherungsnummer: HR-2026-55501"
+        "evidence": "Versicherungsnummer: HR-2026-55501",
+        "label": "Versicherungsnummer"
       },
       "Beitrag": {
         "value": {
           "amount": "89.90",
           "currency": "EUR"
         },
-        "evidence": "Hausrat Komfort | 89,90 €"
+        "evidence": "Hausrat Komfort | 89,90 €",
+        "label": "Hausrat Komfort"
       }
     }
   }

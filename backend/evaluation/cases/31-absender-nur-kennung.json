@@ -41,15 +41,18 @@
     "fields": {
       "Betrag": {
         "value": "84,75 €",
-        "evidence": "Gesamtbetrag | 84,75 €"
+        "evidence": "Gesamtbetrag | 84,75 €",
+        "label": "Gesamtbetrag"
       },
       "Rechnungsnummer": {
         "value": "VB-552871",
-        "evidence": "Rechnung VB-552871"
+        "evidence": "Rechnung VB-552871",
+        "label": null
       },
       "Kundennummer": {
         "value": "88 77 66",
-        "evidence": "Kundennummer: 88 77 66"
+        "evidence": "Kundennummer: 88 77 66",
+        "label": "Kundennummer"
       }
     }
   }

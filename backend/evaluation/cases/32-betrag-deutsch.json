@@ -38,11 +38,13 @@
     "fields": {
       "Betrag": {
         "value": "2.111,68 EUR",
-        "evidence": "Summe inkl. 19 % MwSt.: 2.111,68 EUR"
+        "evidence": "Summe inkl. 19 % MwSt.: 2.111,68 EUR",
+        "label": "Summe inkl. 19 % MwSt."
       },
       "Rechnungsnummer": {
         "value": "2026-118",
-        "evidence": "Rechnung Nr. 2026-118"
+        "evidence": "Rechnung Nr. 2026-118",
+        "label": "Rechnung Nr."
       }
     }
   }

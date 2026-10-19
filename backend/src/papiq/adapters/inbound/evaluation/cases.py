@@ -18,10 +18,10 @@ Layout of a set directory:
   `topic`, `tags`, `document_date`, `fields` by name, in the JSON form of the API) and `fake`
   (`classification`: `contact`, `document_type`, `new_document_type`, `tags`, `new_tags`,
   `document_date`, optionally `recipient`, `topic`, `title` and `language`, from which the
-  answer of the language model's signal is built; `fields`: proposals by field name, in that
-  answer as text; `lane`: the lane this answer leads to, if not the expected one). `expected`
-  and `fake` may give `lanes` by run where a run differs; `runs` names the runs a case belongs
-  to (default: both).
+  answer of the language model's signal is built; `fields`: proposals by field name
+  (`value`, `evidence`, `label`), in that answer as text; `lane`: the lane this answer leads
+  to, if not the expected one). `expected` and `fake` may give `lanes` by run where a run
+  differs; `runs` names the runs a case belongs to (default: both).
 """
 
 import json
@@ -121,7 +121,7 @@ class FakeAnswer:
         if request.schema_name == PROPOSE_SCHEMA:
             return self._proposal(request.user)
         keys = dict(_KEY_LINE.findall(_before_document(request.user)))
-        empty: JsonObject = {"value": None, "evidence": None}
+        empty: JsonObject = {"value": None, "evidence": None, "label": None}
         return {"fields": {key: self.fields.get(name, empty) for key, name in keys.items()}}
 
     def _proposal(self, message: str) -> JsonObject:
@@ -138,7 +138,14 @@ class FakeAnswer:
             proposal = self.fields.get(name)
             if isinstance(proposal, dict) and proposal.get("value") is not None:
                 value = _written(proposal["value"])
-                fields.append({"key": key, "value": value, "evidence": proposal.get("evidence")})
+                fields.append(
+                    {
+                        "key": key,
+                        "value": value,
+                        "evidence": proposal.get("evidence"),
+                        "label": proposal.get("label"),
+                    }
+                )
         return {
             "recipient": None,
             "title": None,

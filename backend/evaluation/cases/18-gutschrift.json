@@ -42,11 +42,13 @@
           "amount": "49.99",
           "currency": "EUR"
         },
-        "evidence": "schreiben wir Ihnen 49,99 € gut"
+        "evidence": "schreiben wir Ihnen 49,99 € gut",
+        "label": null
       },
       "Kundennummer": {
         "value": "88 77 66",
-        "evidence": "Kundennummer: 88 77 66"
+        "evidence": "Kundennummer: 88 77 66",
+        "label": "Kundennummer"
       }
     }
   }

@@ -6,7 +6,8 @@ On that scan almost every unsure word was noise: the dot leaders after the label
 `j`, `cae`, the table rules as `en EEE`. Two amounts were truly unsure (31 % and 32 %), and one
 was misread with 79 %. Counting every word, 10 % of them are unsure; counting content only,
 fewer than 8 %. Leaders and rules read as letters keep the low box of the dots (`flat`), as
-Tesseract gave them on a scan made for the test.
+Tesseract gave them on a scan made for the test. On the real pay slip the table of amounts was
+also read badly, the header above it well (`BAD_TABLE`).
 
 `hocr` places the lines as `FakeTextLocator` places text: line `n` of `L` at the height
 `n / L`, a character at `column / length of its line`, so that the boxes of the words and those
@@ -139,3 +140,25 @@ def scan(lines: Sequence[ScanLine], replace: Mapping[str, int]) -> tuple[ScanLin
         ScanLine(line.text, line.size, line.confidence, {**line.unsure, **replace}, line.flat)
         for line in lines
     )
+
+
+BAD_TABLE: tuple[ScanLine, ...] = scan(
+    PAYSLIP,
+    {
+        "1,00": 40,
+        "3.250,00": 41,
+        "40,00": 48,
+        "22,00": 52,
+        "121,00": 45,
+        "3.411,00": 38,
+        "Solidaritätszuschlag": 46,
+        "0,00": 50,
+        "249,00": 44,
+        "22,17": 39,
+        "40,93": 47,
+        "52,02": 55,
+    },
+)
+"""The pay slip with its table of amounts read badly, as on the real one after the noise was
+left out: none of the header's content words unsure, but 9 % of the page's, nearly all of
+them in the table (`317,22` stays sure there)."""

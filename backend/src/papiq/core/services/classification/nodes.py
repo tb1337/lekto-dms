@@ -56,6 +56,7 @@ from papiq.core.domain.fields import (
 )
 from papiq.core.domain.ids import ContactId, DocumentId, FieldId
 from papiq.core.domain.json_value import JsonObject, JsonValue, as_list
+from papiq.core.domain.locations import Location
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.names import match_key, mentions, named_share
 from papiq.core.domain.periods import Period, PeriodKind
@@ -75,6 +76,7 @@ from papiq.core.domain.reading import (
     PageReading,
     ReadWord,
     reading_from_json,
+    surroundings,
     value_words,
     words_at,
 )
@@ -153,9 +155,9 @@ class ClassificationPolicy:
     characters are shortened; at most `max_tags` tags and `max_contacts` contacts (those the
     text names most) are listed in a prompt. `default_currency`: the currency of an amount in
     a text that shows none. `poor_reading`: the share of unsure (content) words from which a
-    recognised page counts as poorly read (`PageReading.poor`). All but `max_contacts` are
-    configuration: the composition sets them from the settings, whose defaults are the one
-    source."""
+    value's place counts as poorly read (`Surroundings.poor`, `PageReading.poor`). All but
+    `max_contacts` are configuration: the composition sets them from the settings, whose
+    defaults are the one source."""
 
     accept: float
     suggest_contact: float
@@ -797,7 +799,7 @@ def _check_field(
 
 _SHORTEST_EVIDENCE = 4  # characters of a quoted passage that alone backs a yes/no or choice
 # Values written as such: their quoted passage must show them (`_verified`), and a poorly
-# read page does not back them (`_readable`).
+# read place does not back them (`_readable`).
 _LITERAL = frozenset(
     {
         FieldType.TEXT,
@@ -1003,29 +1005,26 @@ def _readable(
     shows: Callable[[DocumentText], bool] | None,
     name: str | None = None,
 ) -> FieldCheck:
-    """A checked value is only suggested where it was not read sure: on a poorly read page
+    """A checked value is only suggested where it was not read sure: in a poorly read place
     (counting content only), as on a broken scan a number may be anything, however sure the
-    engine was of it; or where a word of the value itself was read unsure. The page is that of
-    its quote, or any recognised page if the quote was not found on one. The value's words are
-    those in its quote's boxes that show it (`shows`); where they are not found (no place, no
-    words kept, a value not written as such), the page alone decides."""
+    engine was of it; or where a word of the value itself was read unsure. The value's words
+    are those in its quote's boxes that show it (`shows`); its place, the content words around
+    them (`surroundings`). Where they are not found (no place, no words kept, a value not
+    written as such), or too few words stand around them, the place is the page of the quote,
+    or any recognised page if the quote was not found on one."""
     if not check.ok or check.value is None:
         return check
-    pages = {location.page for location in check.locations}
-    poor = next(
-        (
-            item
-            for item in reading.pages
-            if item.poor(threshold) and (not pages or item.page in pages)
-        ),
-        None,
-    )
-    if poor is not None:
-        reason = poor.describe()
-    elif shows is not None and (lowest := _unsure_value(check, reading, shows)) is not None:
-        reason = f"the value was read unsure ({lowest}%)"
-    else:
-        return check
+    places: list[_Place] = []
+    for location in check.locations:
+        words = reading.words.get(location.page, ())
+        found = None if shows is None else value_words(words_at(location, words), shows)
+        places.append((location, words, found))
+    reason = _poorly_read(places, reading.pages, threshold)
+    if reason is None:
+        unsure = [word.confidence for *_, value in places for word in value or () if word.unsure]
+        if not unsure:
+            return check
+        reason = f"the value was read unsure ({min(unsure)}%)"
     return replace(
         check,
         outcome=Outcome.UNCERTAIN,
@@ -1036,18 +1035,32 @@ def _readable(
     )
 
 
-def _unsure_value(
-    check: FieldCheck, reading: _Reading, shows: Callable[[DocumentText], bool]
-) -> int | None:
-    """The lowest confidence of an unsure word of the value at any of its quote's places; None
-    if every word found was read sure, or none was found."""
-    lowest: int | None = None
-    for location in check.locations:
-        found = value_words(words_at(location, reading.words.get(location.page, ())), shows)
-        for word in found or ():
-            if word.unsure and (lowest is None or word.confidence < lowest):
-                lowest = word.confidence
-    return lowest
+type _Place = tuple[Location, Sequence[ReadWord], tuple[ReadWord, ...] | None]
+"""A place of a quote, the words Tesseract read on its page and those of the value there (None
+where they are not found)."""
+
+
+def _poorly_read(
+    places: Sequence[_Place], pages: Sequence[PageReading], threshold: float
+) -> str | None:
+    """Why a value stands in a poorly read place, at any of its quote's places; None if it
+    does not. A place is the content around the value's words there, or, without them or with
+    too few words around, the page; without places, any recognised page."""
+    if not places:
+        poor = next((page for page in pages if page.poor(threshold)), None)
+        return None if poor is None else poor.describe()
+    for location, words, value in places:
+        around = None if value is None else surroundings(words, value)
+        if around is not None:
+            if around.poor(threshold):
+                return around.describe()
+            continue
+        poor = next(
+            (page for page in pages if page.page == location.page and page.poor(threshold)), None
+        )
+        if poor is not None:
+            return poor.describe()
+    return None
 
 
 def _common(field: str, proposal: Proposal) -> dict[str, Any]:

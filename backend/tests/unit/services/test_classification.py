@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from papiq.adapters.outbound.memory import FakeLanguageModel, FakeTextLocator
+from papiq.adapters.outbound.memory import FakeLanguageModel, FakeOcr, FakeParser, FakeTextLocator
 from papiq.adapters.outbound.memory.processing import FAKE_PDF
 from papiq.adapters.outbound.ocrmypdf.hocr import hocr_words
 from papiq.adapters.outbound.regex import RegexPatternMatcher
@@ -23,7 +23,15 @@ from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.identifiers import Identifier, IdentifierKind
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
-from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
+from papiq.core.domain.pipeline import (
+    Lane,
+    Node,
+    NodeResult,
+    NodeRun,
+    Outcome,
+    ProcessingHistory,
+    ProcessingStatus,
+)
 from papiq.core.domain.reading import PageReading, PageWords, reading_to_json, readings_to_json
 from papiq.core.domain.users import Role
 from papiq.core.domain.verdict import Thresholds
@@ -43,12 +51,13 @@ from papiq.core.services.classification.signals import (
     FactsSignal,
     NeighboursSignal,
 )
+from papiq.core.services.nodes import OcrNode, ParseNode
 from papiq.core.services.objects import archive_key, exchanges_key, reading_key, text_key
 from papiq.core.services.pipeline import MetadataResult, NodeExecutor
 from papiq.core.services.rules.nodes import ApplyRulesNode
 from tests import builders
-from tests.builders import NOW, PlaceholderNode, incoming
-from tests.scans import PAYSLIP, PAYSLIP_TEXT, ScanLine, hocr, scan
+from tests.builders import NOW, SAMPLES, PlaceholderNode, incoming
+from tests.scans import BAD_TABLE, PAYSLIP, PAYSLIP_TEXT, ScanLine, hocr, scan
 from tests.unit.services.support import World
 
 INVOICE = """\
@@ -1150,9 +1159,12 @@ async def test_the_readings_are_those_of_the_latest_ocr_that_made_a_text(world: 
     assert check.reason == "page 1 was poorly read (10% of its words unsure)"
 
 
-# --- how sure the reading is: content and the value's own words ------------------------------
+# --- how sure the reading is: content, the value's surroundings, its own words ---------------
 
-PAYSLIP_DATE = {"value": "2022-06-24", "evidence": "Datum «oso: see 24.06.2022"}
+PAYSLIP_DATE: JsonObject = {"value": "2022-06-24", "evidence": "Datum «oso: see 24.06.2022"}
+AROUND_HEADER = {"Personalnummer": 30, "Brutto/Netto-Bezüge": 40, "004711": 50}
+"""Three words of the header around the pay slip's date, read unsure."""
+AROUND_THE_DATE = "the text around the value was poorly read (3 of 20 content words unsure)"
 
 
 async def scanned(
@@ -1163,11 +1175,12 @@ async def scanned(
     counted: bool = True,
     on_page: int = 1,
 ) -> tuple[Seeded, Document]:
-    """An invoice-typed document whose text is the pay slip's, recognised by Tesseract: the
+    """An invoice-typed document whose text is that of `lines`, recognised by Tesseract: the
     OCR's entry with the counts (`counted`: with content; else as before content was counted)
     and, if `kept`, its words beside the archive (for page `on_page`)."""
     seeded = await seed(world)
-    document = await document_with(world, PAYSLIP_TEXT, seeded.types["Rechnung"])
+    text = "\n".join(line.text for line in lines)
+    document = await document_with(world, text, seeded.types["Rechnung"])
     words = hocr_words(hocr(lines))
     reading = PageReading.of(1, words)
     if not counted:
@@ -1181,10 +1194,17 @@ async def scanned(
     return seeded, document
 
 
-async def judged_date(world: World, document: Document, *, located: bool = True) -> FieldCheck:
-    locator = FakeTextLocator([PAYSLIP_TEXT]) if located else None
+async def judged_date(
+    world: World,
+    document: Document,
+    *,
+    located: bool = True,
+    text: str = PAYSLIP_TEXT,
+    date_check: JsonObject = PAYSLIP_DATE,
+) -> FieldCheck:
+    locator = FakeTextLocator([text]) if located else None
     result = await judge(
-        world, document, model(proposal(document_date=PAYSLIP_DATE)), locator=locator
+        world, document, model(proposal(document_date=date_check)), locator=locator
     )
     assert isinstance(result, MetadataResult)
     return checks(result.result)["document_date"]
@@ -1239,16 +1259,113 @@ async def test_words_that_cannot_be_read_leave_the_page_to_decide(
     assert check.ok and check.value == "2022-06-24"
 
 
-async def test_the_poorly_read_page_names_itself_first(world: World) -> None:
-    broken = scan(PAYSLIP, {"Abrechnung": 30, "Steuerbrutto": 30, "Gehalt": 20, "24.06.2022": 30})
-    lines = tuple(
-        ScanLine(line.text, line.size, 40 if n % 3 == 0 else line.confidence, line.unsure)
-        for n, line in enumerate(broken)
-    )
-    _, document = await scanned(world, lines)
+async def test_the_poorly_read_place_names_itself_first(world: World) -> None:
+    unsure = {"24.06.2022": 30, **AROUND_HEADER}
+    _, document = await scanned(world, scan(BAD_TABLE, unsure))
     check = await judged_date(world, document)
-    assert (check.reason or "").startswith("page 1 was poorly read (")
-    assert (check.reason or "").endswith("of its content words unsure)")
+    assert check.reason == AROUND_THE_DATE  # before the value's own 30 %
+
+
+async def test_reprocessing_after_the_ocr_judges_the_kept_words_again(world: World) -> None:
+    """A run from the judge on reads `reading.json` again, without reading the scan again:
+    a rule about the words applies to documents read before it."""
+    await seed(world)
+    store = world.object_store
+    words = hocr_words(hocr(BAD_TABLE))
+    ocr = FakeOcr(readings=[PageReading.of(1, words)], words=[PageWords(1, words)])
+    pipeline = world.pipeline(
+        {
+            Node.OCR: OcrNode(store, ocr),
+            Node.PARSE: ParseNode(store, FakeParser(PAYSLIP_TEXT)),
+            Node.SIGNAL_LLM: signal_step(world, model(proposal(document_date=PAYSLIP_DATE))),
+            Node.SIGNAL_FACTS: FactsSignal(world.uow, store),
+            Node.JUDGE: JudgeNode(
+                world.uow,
+                store,
+                world.clock,
+                builders.CLASSIFICATION,
+                thresholds=builders.THRESHOLDS,
+                locator=FakeTextLocator([PAYSLIP_TEXT]),
+            ),
+        }
+    )
+    owner = await world.user()
+    data = (SAMPLES / "scan.pdf").read_bytes()
+    document = await pipeline.receive(owner.id, incoming(data), filename="scan.pdf")
+    await world.drain(pipeline)
+
+    async def date_check() -> FieldCheck:
+        log = await world.documents.processing_log(owner.id, document.id)
+        entry = ProcessingHistory(log).latest(Node.JUDGE)
+        assert entry is not None
+        return checks(entry.result)["document_date"]
+
+    assert (await date_check()).ok
+    # The words kept change (as the rule that reads them did): the judge reads them again.
+    unsure = scan(BAD_TABLE, AROUND_HEADER)
+    kept = reading_to_json([PageWords(1, hocr_words(hocr(unsure)))])
+    await store.put(
+        reading_key(document.id), json.dumps(kept).encode(), content_type="application/json"
+    )
+    await pipeline.reprocess_from(owner.id, document.id, Node.JUDGE)
+    await world.drain(pipeline)
+    assert (await date_check()).reason == AROUND_THE_DATE
+    assert len(ocr.calls) == 1
+
+
+async def test_a_date_in_a_well_read_header_above_a_badly_read_table_is_applied(
+    world: World,
+) -> None:
+    """The real pay slip: the page as a whole poorly read (9 % of its content words unsure),
+    the header around the date not at all."""
+    _, document = await scanned(world, BAD_TABLE)
+    check = await judged_date(world, document)
+    assert check.ok and check.value == "2022-06-24"
+
+
+@pytest.mark.parametrize(
+    ("kept", "located", "on_page"),
+    [
+        (False, True, 1),  # no words kept: read before, or by the vision language model
+        (True, False, 1),  # the quote has no place
+        (True, True, 2),  # no words where the quote stands
+    ],
+)
+async def test_without_the_value_s_words_the_page_decides_by_its_content(
+    world: World, kept: bool, located: bool, on_page: int
+) -> None:
+    _, document = await scanned(world, BAD_TABLE, kept=kept, on_page=on_page)
+    check = await judged_date(world, document, located=located)
+    assert check.reason == "page 1 was poorly read (9% of its content words unsure)"
+    assert check.suggestion == "2022-06-24"
+
+
+RECEIPT = (
+    ScanLine("Quittung Nr. 4711"),
+    ScanLine("Datum 24.06.2022"),
+    ScanLine("Betrag 12,50 EUR bar erhalten", unsure={"erhalten": 40}),
+    ScanLine("Musterladen Hauptstraße 1 Musterstadt", unsure={"Musterladen": 35}),
+    ScanLine("Vielen Dank für Ihren Einkauf"),
+)
+
+
+@pytest.mark.parametrize(
+    ("lines", "reason"),
+    [
+        (RECEIPT, "page 1 was poorly read (11% of its content words unsure)"),  # 2 of 19
+        (scan(RECEIPT, {"erhalten": 93, "Musterladen": 93}), None),
+    ],
+)
+async def test_with_too_few_words_around_the_value_the_page_decides(
+    world: World, lines: tuple[ScanLine, ...], reason: str | None
+) -> None:
+    """A receipt of 19 content words: 18 besides the date are too few for its surroundings."""
+    _, document = await scanned(world, lines)
+    text = "\n".join(line.text for line in lines)
+    date_check: JsonObject = {"value": "2022-06-24", "evidence": "Datum 24.06.2022"}
+    check = await judged_date(world, document, text=text, date_check=date_check)
+    assert check.reason == reason
+    assert check.ok is (reason is None)
 
 
 async def extracted(world: World, document: Document, amount: str, quote: str) -> MetadataResult:
@@ -1273,6 +1390,17 @@ async def test_an_amount_read_unsure_on_a_well_read_page_is_only_suggested(world
     assert check.reason == "'Rechnungsbetrag': the value was read unsure (31%)"
     assert check.suggestion == {"amount": "412.33", "currency": "EUR"}
     assert seeded.fields["Rechnungsbetrag"].id not in result.changes.fields
+
+
+async def test_an_amount_read_sure_in_a_badly_read_table_is_only_suggested(world: World) -> None:
+    seeded, document = await scanned(world, BAD_TABLE)
+    result = await extracted(world, document, "317.22", "Rentenversicherung 9,30 % 317,22")
+    check = field_check(seeded, result, "Rechnungsbetrag")
+    assert check.reason == (
+        "'Rechnungsbetrag': the text around the value was poorly read"
+        " (9 of 20 content words unsure)"
+    )
+    assert check.suggestion == {"amount": "317.22", "currency": "EUR"}
 
 
 async def test_an_amount_read_sure_is_applied_also_when_it_is_misread(world: World) -> None:

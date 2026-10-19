@@ -1,28 +1,35 @@
 import json
+from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
 
 import pytest
 
+from papiq.adapters.outbound.ocrmypdf.hocr import hocr_words
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.evidence import DocumentText
 from papiq.core.domain.json_value import JsonValue
 from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.reading import (
     READING_VERSION,
+    SURROUNDING,
     OcrOutput,
     PageReading,
     PageWords,
     ReadWord,
+    Surroundings,
     content_words,
+    gap,
     is_noise,
     reading_from_json,
     reading_to_json,
     readings_from_json,
     readings_to_json,
+    surroundings,
     value_words,
     words_at,
 )
+from tests.scans import BAD_TABLE, PAYSLIP, hocr
 
 
 @pytest.mark.parametrize(
@@ -251,3 +258,140 @@ def test_the_words_of_a_value_are_the_shortest_runs_that_show_it() -> None:
 def test_a_value_the_words_do_not_show_has_no_words() -> None:
     assert value_words(line("Datum", "Juni", "2022"), shows_date) is None
     assert value_words([], shows_date) is None
+
+
+# --- the value's surroundings ----------------------------------------------------------------
+
+
+def the(words: Sequence[ReadWord], text: str) -> ReadWord:
+    return next(word for word in words if word.text == text)
+
+
+def test_a_date_in_a_well_read_header_above_a_badly_read_table_stands_well() -> None:
+    """The real pay slip: none of the header's content words unsure, the table read badly, 9 %
+    of the page's content words unsure, so that the page as a whole counts as poorly read."""
+    words = hocr_words(hocr(BAD_TABLE))
+    page = PageReading.of(1, words)
+    assert page.poor(0.08) and page.share == pytest.approx(0.09, abs=0.005)
+    place = surroundings(words, [the(words, "24.06.2022")])
+    assert place is not None
+    assert len(place.words) == SURROUNDING and place.unsure == 0
+    assert not place.poor(0.08)
+    # The words around it are the header's: the address and the lines of the date.
+    assert {"Personalnummer", "Brutto/Netto-Bezüge", "Musterweg"} <= {
+        word.text for word in place.words
+    }
+
+
+def test_an_amount_inside_a_badly_read_table_stands_in_a_poorly_read_place() -> None:
+    words = hocr_words(hocr(BAD_TABLE))
+    amount = the(words, "317,22")
+    assert not amount.unsure  # the value itself was read sure
+    place = surroundings(words, [amount])
+    assert place is not None and place.poor(0.08)
+    assert place.describe() == (
+        f"the text around the value was poorly read ({place.unsure} of 20 content words unsure)"
+    )
+    # On the pay slip with its table read well, fewer words around it are unsure.
+    clean = hocr_words(hocr(PAYSLIP))
+    good = surroundings(clean, [the(clean, "317,22")])
+    assert good is not None and good.unsure < place.unsure
+
+
+@pytest.mark.parametrize(("unsure", "poor"), [(0, False), (1, False), (2, True), (20, True)])
+def test_a_place_is_poorly_read_from_the_threshold_on(unsure: int, poor: bool) -> None:
+    around = Surroundings(tuple(word(f"Wort{n}", 30 if n < unsure else 93) for n in range(20)))
+    assert around.unsure == unsure
+    assert around.poor(0.08) is poor  # 1 of 20 is 5 %, 2 are 10 %
+
+
+def grid(
+    rows: int, columns: int, unsure: frozenset[tuple[int, int]] = frozenset()
+) -> list[ReadWord]:
+    """Words of five characters in rows and columns, in reading order. A line is a 32nd of the
+    page high, a line's slot a 16th, so a line's height lies between two lines; a word is 3/64
+    of the page wide, a column 1/16, so a word's character is 3/320 and a gap between words
+    1/64, that is 5/3 characters. Fractions of two, so that equal gaps are equal."""
+    return [
+        ReadWord(
+            f"w{row:02d}{column:02d}",
+            30 if (row, column) in unsure else 93,
+            Box(column / 16, row / 16, 3 / 64, 1 / 32),
+            1 / 32,
+        )
+        for row in range(rows)
+        for column in range(columns)
+    ]
+
+
+def test_a_gap_is_euclidean_between_edges_in_lines_and_characters() -> None:
+    value = Box(0.3, 0.3, 0.05, 0.02)
+
+    def to(box: Box) -> float:
+        return gap(value, box, line=0.02, character=0.01)
+
+    assert to(Box(0.36, 0.3, 0.05, 0.02)) == pytest.approx(0.5)  # a character to the right
+    assert to(Box(0.32, 0.31, 0.05, 0.02)) == 0  # overlapping
+    assert to(Box(0.3, 0.36, 0.05, 0.02)) == pytest.approx(2.0)  # two lines straight below
+    assert to(Box(0.2, 0.29, 0.05, 0.02)) == pytest.approx(2.5)  # five characters to the left
+    assert to(Box(0.39, 0.34, 0.05, 0.02)) == pytest.approx((2.0**2 + 1.0**2) ** 0.5)
+    # A word on the same line a little to the right is nearer than one two lines down.
+    assert to(Box(0.38, 0.3, 0.05, 0.02)) < to(Box(0.3, 0.36, 0.05, 0.02))
+
+
+def test_the_same_line_is_nearer_than_the_lines_below() -> None:
+    words = grid(5, 9)
+    place = surroundings(words, [the(words, "w0004")], count=8)
+    assert place is not None
+    assert [word.text for word in place.words] == [
+        "w0003",  # beside it on its line: 5/6 of a line
+        "w0005",
+        "w0104",  # straight below: a line
+        "w0103",
+        "w0105",
+        "w0204",  # two lines down: three lines
+        "w0203",
+        "w0205",
+    ]  # the next but one word on its line, more than four lines away, comes after
+
+
+def test_ties_go_by_reading_order() -> None:
+    words = grid(3, 9)
+    value = [the(words, "w0104")]
+    place = surroundings(words, value, count=3)
+    assert place is not None and place == surroundings(words, value, count=3)
+    # Left and right are as near, then above and below.
+    assert [word.text for word in place.words] == ["w0103", "w0105", "w0004"]
+    backwards = surroundings(words[::-1], value, count=3)
+    assert backwards is not None
+    assert [word.text for word in backwards.words] == ["w0105", "w0103", "w0204"]
+
+
+def test_the_value_s_own_words_are_not_counted() -> None:
+    words = grid(3, 8, unsure=frozenset({(1, 3), (1, 4)}))
+    value = [the(words, "w0103"), the(words, "w0104")]  # a value of two words, read unsure
+    place = surroundings(words, value)
+    assert place is not None and len(place.words) == SURROUNDING
+    assert not set(value) & set(place.words)
+    assert place.unsure == 0
+
+
+def test_noise_around_a_value_is_not_counted() -> None:
+    words = grid(3, 8)
+    noise = [
+        ReadWord("..........", 18, Box(0.14, 0.0625, 0.04, 0.03125), 1 / 32),
+        ReadWord("gy", 31, Box(0.25, 0.0625, 0.02, 0.03125), 1 / 32),
+    ]
+    place = surroundings([*words, *noise], [the(words, "w0103")])
+    assert place is not None and place.unsure == 0
+    assert not set(noise) & set(place.words)
+
+
+def test_with_too_few_words_besides_the_value_the_page_decides() -> None:
+    words = grid(3, 7)  # 21 words: 20 besides a value of one
+    assert surroundings(words, [the(words, "w0103")]) is not None
+    assert surroundings(words[:-1], [the(words, "w0103")]) is None
+    assert surroundings(words, [the(words, "w0103"), the(words, "w0104")]) is None
+    # Without the value's words, or without boxes, nothing is near.
+    assert surroundings(words, []) is None
+    assert surroundings([ReadWord(f"Wort{n}", 93) for n in range(30)], [word("Wort1")]) is None

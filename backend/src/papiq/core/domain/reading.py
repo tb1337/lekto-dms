@@ -8,11 +8,14 @@ dot leaders after labels, table rules, stray marks and the small print of a lett
 unsure on any scan and say nothing about whether a value was read right.
 
 Tesseract also tells how sure it was of each word (`ReadWord`): a value whose own words were
-read unsure is only suggested on a well read page too (`value_words`). The words of a document
-are kept beside its archive (`reading_to_json`); the vision language model gives no
-confidences, so its readings have no words and no content counts.
+read unsure is only suggested on a well read page too (`value_words`). Where the value's words
+are found, not the whole page but the content around them decides whether its place was read
+poorly (`surroundings`): a well read header above a badly read table keeps a date there. The
+words of a document are kept beside its archive (`reading_to_json`); the vision language model
+gives no confidences, so its readings have no words and no content counts.
 """
 
+import math
 import re
 import statistics
 from collections.abc import Callable, Sequence
@@ -51,6 +54,14 @@ FLAT_WORD = 0.35
 dots of a leader, a dash or a table rule as letters (`«oso:`, `see`, `cence`, `EEE`), and their
 box stays as low as the dots (0.1 to 0.2 of the line on a test scan), while a word of small
 letters only (`nur`, `an`) still has the x-height (0.55 and more)."""
+
+SURROUNDING = 20
+"""The content words nearest to a value that tell whether its place was read poorly."""
+
+CHARACTER = 0.5
+"""How wide a character is for the height of its line (hOCR `x_size`, about the font size), as
+in the proportional fonts of letters: it turns a horizontal gap measured in characters into
+line heights (`gap`)."""
 
 READING_VERSION = 1
 """The version of `reading.json`, the words of a document's archive."""
@@ -312,6 +323,70 @@ def value_words(
             indexes = sorted({index + offset for index in found for offset in range(length)})
             return tuple(words[index] for index in indexes)
     return tuple(words)
+
+
+def gap(first: Box, second: Box, *, line: float, character: float) -> float:
+    """How far apart two boxes on a page are, in line heights: Euclidean between their nearest
+    edges, 0 where they overlap. The vertical gap is measured in lines (`line`, a line's height
+    as a share of the page's height), so that a row is a row whatever the leading; the
+    horizontal one in characters (`character`, a character's width as a share of the page's
+    width), at `CHARACTER` of a line each. Boxes are shares of a page whose shape the reading
+    does not keep; the line and the character are measured on the page itself, so a receipt or
+    a landscape page is measured as truly as a letter."""
+    across = max(0.0, second.x - (first.x + first.width), first.x - (second.x + second.width))
+    down = max(0.0, second.y - (first.y + first.height), first.y - (second.y + second.height))
+    return math.hypot(across / character * CHARACTER, down / line)
+
+
+@dataclass(frozen=True)
+class Surroundings:
+    """The content words nearest to a value's words on its page (`surroundings`)."""
+
+    words: tuple[ReadWord, ...]
+
+    @property
+    def unsure(self) -> int:
+        return sum(word.unsure for word in self.words)
+
+    def poor(self, threshold: float) -> bool:
+        """Whether the value stands in a poorly read place: at least `threshold` of the words
+        around it unsure (`PAPIQ_POOR_READING_THRESHOLD`)."""
+        return bool(self.words) and self.unsure / len(self.words) >= threshold
+
+    def describe(self) -> str:
+        """Why the value's place counts as poorly read, for a check's reason."""
+        return (
+            f"the text around the value was poorly read ({self.unsure} of {len(self.words)}"
+            " content words unsure)"
+        )
+
+
+def surroundings(
+    words: Sequence[ReadWord], value: Sequence[ReadWord], count: int = SURROUNDING
+) -> Surroundings | None:
+    """The `count` content words of a page (`words`, `content_words`) nearest to the value's
+    words (`value`, among them, `value_words`), not counting those: by `gap` to the nearest of
+    them, a tie by reading order. The line is the median line height of the content (without
+    sizes, of its boxes), the character the median width of one in its boxes. No layout is
+    assumed: a table, a header or a form are words at a distance like any other. None where
+    the page has fewer than `count` content words besides the value's: the whole page decides
+    then."""
+    content = [(word, word.box) for word in content_words(words) if word.box is not None]
+    places = [word.box for word in value if word.box is not None]
+    own = set(value)
+    others = [(word, box) for word, box in content if word not in own]
+    if len(others) < count or not places:
+        return None
+    sizes = [word.size for word, _ in content if word.size is not None]
+    line = statistics.median(sizes or [box.height for _, box in content])
+    character = statistics.median(box.width / len(word.text.strip()) for word, box in content)
+    if line <= 0 or character <= 0:  # boxes without extent: nothing to measure by
+        return None
+    distances = [
+        (min(gap(box, place, line=line, character=character) for place in places), index)
+        for index, (_, box) in enumerate(others)
+    ]
+    return Surroundings(tuple(others[index][0] for _, index in sorted(distances)[:count]))
 
 
 class VisionAdvice(StrEnum):

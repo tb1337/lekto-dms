@@ -4,8 +4,9 @@
  */
 
 export interface Filters {
-	contact: string | null;
-	type: string | null;
+	/** One of them (each repeats in the URL). */
+	contacts: string[];
+	types: string[];
 	/** Each with the tags below it; all of them. */
 	tags: string[];
 	/** Documents whose contact (type) is in each group or one below it. */
@@ -13,64 +14,82 @@ export interface Filters {
 	typeGroups: string[];
 	/** Documents with one of these topics or one below it (a document has one topic). */
 	topics: string[];
-	space: string | null;
+	/** One of them. */
+	spaces: string[];
 	/** Documents with a value for this field. */
 	field: string | null;
+	/** The document date lies between them, both days included (ISO days; either open). */
+	dateFrom: string | null;
+	dateTo: string | null;
 }
 
 export const NO_FILTERS: Filters = {
-	contact: null,
-	type: null,
+	contacts: [],
+	types: [],
 	tags: [],
 	contactGroups: [],
 	typeGroups: [],
 	topics: [],
-	space: null,
-	field: null
+	spaces: [],
+	field: null,
+	dateFrom: null,
+	dateTo: null
 };
+
+const LISTS = {
+	contacts: 'contact',
+	types: 'type',
+	tags: 'tag',
+	contactGroups: 'contact_group',
+	typeGroups: 'type_group',
+	topics: 'topic',
+	spaces: 'space'
+} as const;
 
 /** The filters in `params`. Whom the list covers is no filter but a setting (`scope`). */
 export function parseFilters(params: URLSearchParams): Filters {
 	return {
-		contact: params.get('contact'),
-		type: params.get('type'),
-		tags: params.getAll('tag'),
-		contactGroups: params.getAll('contact_group'),
-		typeGroups: params.getAll('type_group'),
-		topics: params.getAll('topic'),
-		space: params.get('space'),
-		field: params.get('field')
+		contacts: params.getAll(LISTS.contacts),
+		types: params.getAll(LISTS.types),
+		tags: params.getAll(LISTS.tags),
+		contactGroups: params.getAll(LISTS.contactGroups),
+		typeGroups: params.getAll(LISTS.typeGroups),
+		topics: params.getAll(LISTS.topics),
+		spaces: params.getAll(LISTS.spaces),
+		field: params.get('field'),
+		dateFrom: day(params.get('date_from')),
+		dateTo: day(params.get('date_to'))
 	};
 }
 
 /** Write the filters into `params` (other parameters stay). */
 export function writeFilters(params: URLSearchParams, filters: Filters): URLSearchParams {
-	for (const key of ['contact', 'type', 'tag', 'contact_group', 'type_group', 'topic', 'space']) {
+	for (const key of [...Object.values(LISTS), 'field', 'date_from', 'date_to']) {
 		params.delete(key);
 	}
-	params.delete('field');
-	if (filters.contact) params.set('contact', filters.contact);
-	if (filters.type) params.set('type', filters.type);
-	for (const tag of filters.tags) params.append('tag', tag);
-	for (const group of filters.contactGroups) params.append('contact_group', group);
-	for (const group of filters.typeGroups) params.append('type_group', group);
-	for (const topic of filters.topics) params.append('topic', topic);
-	if (filters.space) params.set('space', filters.space);
+	for (const [list, key] of Object.entries(LISTS) as [keyof typeof LISTS, string][]) {
+		for (const id of filters[list]) params.append(key, id);
+	}
 	if (filters.field) params.set('field', filters.field);
+	if (filters.dateFrom) params.set('date_from', filters.dateFrom);
+	if (filters.dateTo) params.set('date_to', filters.dateTo);
 	return params;
 }
 
 /** The query of the API for these filters; `allUsers` from the scope setting. */
 export function apiQuery(filters: Filters, allUsers = false) {
+	const list = (ids: string[]) => (ids.length > 0 ? ids : undefined);
 	return {
-		contact_id: filters.contact ? [filters.contact] : undefined,
-		document_type_id: filters.type ? [filters.type] : undefined,
-		tag_id: filters.tags.length > 0 ? filters.tags : undefined,
-		contact_group_id: filters.contactGroups.length > 0 ? filters.contactGroups : undefined,
-		document_type_group_id: filters.typeGroups.length > 0 ? filters.typeGroups : undefined,
-		topic_id: filters.topics.length > 0 ? filters.topics : undefined,
-		space_id: filters.space ? [filters.space] : undefined,
+		contact_id: list(filters.contacts),
+		document_type_id: list(filters.types),
+		tag_id: list(filters.tags),
+		contact_group_id: list(filters.contactGroups),
+		document_type_group_id: list(filters.typeGroups),
+		topic_id: list(filters.topics),
+		space_id: list(filters.spaces),
 		field_id: filters.field ?? undefined,
+		document_date_from: filters.dateFrom ?? undefined,
+		document_date_to: filters.dateTo ?? undefined,
 		all_users: allUsers || undefined
 	};
 }
@@ -78,13 +97,48 @@ export function apiQuery(filters: Filters, allUsers = false) {
 /** Whether a filter narrows the list. */
 export function isFiltered(filters: Filters): boolean {
 	return Boolean(
-		filters.contact ||
-		filters.type ||
-		filters.space ||
 		filters.field ||
-		filters.tags.length ||
-		filters.contactGroups.length ||
-		filters.typeGroups.length ||
-		filters.topics.length
+		filters.dateFrom ||
+		filters.dateTo ||
+		Object.keys(LISTS).some((list) => filters[list as keyof typeof LISTS].length > 0)
 	);
+}
+
+/** A whole year or month of the document date, as the filters hold it. */
+export function yearPeriod(year: number): Pick<Filters, 'dateFrom' | 'dateTo'> {
+	return { dateFrom: `${year}-01-01`, dateTo: `${year}-12-31` };
+}
+
+/** `month` as `2026-09`. */
+export function monthPeriod(month: string): Pick<Filters, 'dateFrom' | 'dateTo'> {
+	const [year, number] = month.split('-').map(Number);
+	const last = new Date(Date.UTC(year, number, 0)).getUTCDate();
+	return { dateFrom: `${month}-01`, dateTo: `${month}-${String(last).padStart(2, '0')}` };
+}
+
+/** What the period of the filters is: a whole year, a whole month, another span, or none. */
+export type PeriodChoice =
+	| { kind: 'year'; year: number }
+	| { kind: 'month'; month: string }
+	| { kind: 'span'; from: string | null; to: string | null }
+	| null;
+
+export function periodOf(filters: Pick<Filters, 'dateFrom' | 'dateTo'>): PeriodChoice {
+	const { dateFrom: from, dateTo: to } = filters;
+	if (!from && !to) return null;
+	if (from && to) {
+		const year = Number(from.slice(0, 4));
+		const whole = yearPeriod(year);
+		if (whole.dateFrom === from && whole.dateTo === to) return { kind: 'year', year };
+		const month = monthPeriod(from.slice(0, 7));
+		if (month.dateFrom === from && month.dateTo === to) {
+			return { kind: 'month', month: from.slice(0, 7) };
+		}
+	}
+	return { kind: 'span', from, to };
+}
+
+/** An ISO day, or null for anything else. */
+function day(value: string | null): string | null {
+	return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }

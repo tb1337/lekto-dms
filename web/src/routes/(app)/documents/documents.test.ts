@@ -106,6 +106,33 @@ describe('the archive page', () => {
 		expect(screen.queryAllByRole('heading', { level: 2 })).toEqual([]);
 	});
 
+	it('counts the documents of the filters, and asks with each chosen contact', async () => {
+		state.url = new URL('http://lekto/ui/documents?contact=c1&contact=c2&date_from=2026-01-01');
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({
+				items: [listedOf({ id: 'd1', title: 'Strom', document_date: '2026-10-01' })],
+				next_cursor: null
+			}),
+			'GET /api/v1/documents/facets': () => ({
+				total: 7,
+				contacts: [],
+				document_types: [],
+				topics: [],
+				tags: [],
+				years: [],
+				undated: 0
+			})
+		});
+		vi.stubGlobal('fetch', api);
+		render(Page);
+		expect(await screen.findByText(m.documents_total({ count: '7' }))).toBeTruthy();
+		for (const path of ['/api/v1/documents?', '/api/v1/documents/facets?']) {
+			const call = calls(api).find((entry) => entry.startsWith(`GET ${path}`))!;
+			expect(call).toContain('contact_id=c1&contact_id=c2');
+			expect(call).toContain('document_date_from=2026-01-01');
+		}
+	});
+
 	it('takes no lane from an older link', async () => {
 		state.url = new URL('http://lekto/ui/documents?lane=yellow');
 		const api = fakeApi({

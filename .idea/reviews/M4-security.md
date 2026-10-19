@@ -57,7 +57,7 @@ sperren die Quelle 15 Minuten, auch für richtige Passwörter), `core/services/a
 `LEKTO_FORWARDED_ALLOW_IPS`), `composition/settings.py:100,110` (Default: keine Proxies,
 `cookie_secure=true`).
 
-**Problem:** Papiq spricht nur HTTP. Mit dem Default `LEKTO_COOKIE_SECURE=true` schickt kein
+**Problem:** Lekto spricht nur HTTP. Mit dem Default `LEKTO_COOKIE_SECURE=true` schickt kein
 Browser das Session-Cookie über HTTP, also steht in jeder funktionierenden Produktion ein
 TLS-terminierender Reverse-Proxy davor. Ohne `LEKTO_FORWARDED_ALLOW_IPS` (Default) ist
 `request.client.host` dann immer die Adresse des Proxys: alle Nutzer teilen sich eine
@@ -274,7 +274,7 @@ Name eines Nicht-Admins bricht den Start ab. Letzter aktiver Admin geschützt, m
 Versionsschreiben gegen gleichzeitige Herabstufung.
 
 **3. Sessions und Tokens.** 256-Bit-Zufall, nur SHA-256 gespeichert, Vergleich über den Hash
-(konstantzeitig in der Domäne). Cookie `__Host-papiq_session`: HttpOnly, Secure, SameSite=Lax,
+(konstantzeitig in der Domäne). Cookie `__Host-lekto_session`: HttpOnly, Secure, SameSite=Lax,
 Path=/, keine Domain; ohne `Secure` nur mit `LEKTO_COOKIE_SECURE=false`. CSRF: Header
 `X-CSRF-Token` = HMAC(Session-Token) auf allen nicht-sicheren Methoden mit Session; Bearer
 ignoriert Cookies; kein CORS. Login nur als `application/json` (Login-CSRF per Formular

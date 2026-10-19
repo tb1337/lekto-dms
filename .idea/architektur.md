@@ -1,30 +1,32 @@
-# Papiq – Architektur
+# Lekto – Architektur
 
 Stand: 06.10.2026 · Tobias
 
 ## Ziel und Rahmen
 
-Papiq ist ein selbst gehostetes, headless Dokumentenmanagementsystem als Ersatz für Paperless-ngx – Open Source, kostenlos, als Docker-Stack.
+Lekto ist ein selbst gehostetes, headless Dokumentenmanagementsystem als Ersatz für Paperless-ngx – Open Source, kostenlos, als Docker-Stack.
 
 - Multi-User mit nativen Logins, keine Mandanten
 - Headless: alle Funktionen nur über die API; Web-UI, MCP und Migrations-CLI sind Clients
 - LLM lokal und in der Cloud nutzbar
 - Erster Wurf mit 100 Dokumenten; Migration aus Paperless-ngx folgt als eigener Client
 
-**Name:** Papiq, Eigenschreibweise **p:api:q** (Logo, Oberfläche). Technischer Name für Repository, Pakete, Images und Hostnamen: `papiq`.
+**Name:** Lekto (von Lektor, lat. *lector*, der Leser: jedes Dokument wird gelesen und zusammengefasst). Anzeigename **Lekto DMS** (README-Titel, OpenAPI-Titel, Seitentitel der UI). Technische Namen ohne „DMS“, durchgehend klein `lekto`: Pakete `lekto` und `lekto_migration`, Präfix `LEKTO_`, Cookies, Tokens (`lekto_…`), Image, MCP-Server, Logger, Hostnamen; Repository `tb1337/lekto-dms`. Die Wortmarke ist vorerst der Schriftzug „lekto“ in der Typografie der früheren Wortmarke.
+
+**Umbenennung** (Tobi, 19.10.2026, Issue #60): Bis 0.4 hieß das Projekt Papiq (`p:api:q`); ab 0.5 Lekto, als neue Minor-Version ohne Übergang. Kein alter Name wird mehr gelesen: weder das Präfix `PAPIQ_` noch die alten Cookies (alle melden sich einmal neu an), der Suchindex `papiq-documents`, die SQLite-Datei `papiq.db`, das Format des Klassifikators (einmal neu trainieren) oder die Zustandsdatei des Migrationsclients. API-Tokens mit `papiq_` gelten weiter, weil nur ihr Hash zählt. Das Compose-Projekt des Devcontainers heißt weiter `papiq-dev` (und sein Arbeitsverzeichnis `/workspaces/papiq`), damit dessen Volumes bleiben. Was eine Installation tun muss, steht in `deploy/README.md` („Upgrading from Papiq“). Domains und Marken für Lekto sind noch offen.
 
 **Logo-Konzept:** Wortmarke p:a~~p~~i:q mit grafisch durchgestrichenem mittlerem p. Ein Wort, vier Lesarten: **PAP**(er), p**API**q, pa~~p~~**I** (AI), pap**IQ**; das durchgestrichene p verweist zugleich auf „paperless“. Das Durchstreichen gibt es nur im Logo, nicht im Fließtext.
 
 ## Gesamtarchitektur
 
-Papiq läuft als ein Docker-Container (API, Worker, Auslieferung der Web-UI, überwacht von s6-overlay) neben drei Speichern; LLM und Identity Provider sind extern.
+Lekto läuft als ein Docker-Container (API, Worker, Auslieferung der Web-UI, überwacht von s6-overlay) neben drei Speichern; LLM und Identity Provider sind extern.
 
 ```mermaid
 flowchart TB
     ui[Web-UI im Browser<br/>Single-Page-App]
     mcp[MCP-Client<br/>Claude u. a., API-Token]
     cli[Migrations-CLI<br/>aus Paperless-ngx]
-    subgraph papiq[Papiq-Container · s6-overlay]
+    subgraph lekto[Lekto-Container · s6-overlay]
         api[API - FastAPI<br/>REST + MCP, Login, Rechte, UI-Dateien]
         worker[Worker<br/>OCRmyPDF, Text auslesen, Klassifizierung, Regeln]
     end
@@ -49,7 +51,7 @@ Web-UI, MCP-Client und Migrations-CLI greifen ausschließlich über die API zu. 
 
 ## Architekturprinzip: Ports und Adapter
 
-Papiq ist hexagonal aufgebaut: Der fachliche Kern kennt keine Datenbank, kein S3, keinen Suchdienst und kein LLM – nur Schnittstellen (Ports), die er selbst definiert. Jede Technik steckt in einem austauschbaren Adapter.
+Lekto ist hexagonal aufgebaut: Der fachliche Kern kennt keine Datenbank, kein S3, keinen Suchdienst und kein LLM – nur Schnittstellen (Ports), die er selbst definiert. Jede Technik steckt in einem austauschbaren Adapter.
 
 - **Kern:** Dokumente, Spaces, Rechte, Regeln, Lanes, Pipeline-Ablauf. Reines Python, keine Framework-Abhängigkeiten.
 - **Ports:** Python-Protocols, vom Kern definiert.
@@ -119,7 +121,7 @@ Backend und Worker in Python; ein Container mit s6-overlay als Prozessüberwachu
 | Authentifizierung | Argon2id, TOTP, Authlib (OIDC) | entschieden |
 | Web-UI | SvelteKit (Svelte 5), Tailwind, shadcn-svelte; Ziel: cleanes, modernes Interface | entschieden |
 | Template-Editor | CodeMirror 6 (`state`, `view`, `autocomplete`, `commands`) mit eigener Liquid-Färbung, nachgeladen nur wo ein Template steht; `lang-liquid` verworfen, es zöge HTML, CSS und JavaScript mit (Tobi, 15.10.2026) | entschieden |
-| Container | ein Papiq-Image, Prozessüberwachung mit s6-overlay | entschieden |
+| Container | ein Lekto-Image, Prozessüberwachung mit s6-overlay | entschieden |
 
 Nicht verwendet: MySQL (gestrichen), LangGraph (kein Bedarf, siehe Ingest-Workflow), Procrastinate (nur Postgres).
 
@@ -136,7 +138,7 @@ Drei Speicher mit klarer Aufgabe: Datenbank für Metadaten, Objektspeicher für 
 **Objektspeicher (S3 oder Dateisystem)**
 
 - Zwei gleichwertige Adapter: S3 (erster Server: Garage) oder lokales Dateisystem.
-- Papiq nutzt keine Speicher-Events. Ereignisse entstehen ausschließlich in der Outbox; so bleibt der Adapter frei tauschbar (Garage und Dateisystem kennen keine Events).
+- Lekto nutzt keine Speicher-Events. Ereignisse entstehen ausschließlich in der Outbox; so bleibt der Adapter frei tauschbar (Garage und Dateisystem kennen keine Events).
 - Originale unveränderlich, Objekt-Key = SHA-256 des Inhalts; Dubletten werden darüber erkannt. Eine Datei, die derselbe Besitzer schon hat, wird abgelehnt; ein anderer Nutzer bekommt ein eigenes Dokument zum selben Objekt.
 - Daneben die Derivate: Archiv-PDF mit Textlayer, der ausgelesene Text (`content.txt`, Klartext wie gesetzt) mit seiner Struktur (`content.json`: Seiten, Zeilen und Wörter mit Boxen), die Codes der Seiten (`codes.json`), Seitenbilder und Vorschau, die Anfragen an das Sprachmodell; dazu die Modelle des Klassifikators (`classifier/model-<n>.npz`) und die Logos der Kontakte (`contacts/<id>/logo.webp`).
 
@@ -166,7 +168,7 @@ Angelehnt an Paperless-ngx, ohne Speicherpfade, mit Spaces als Ablage- und Recht
 
 **Tags, Gruppen und Themen** (Tobi, 16.10.2026)
 
-- Jedes Merkmal eines Dokuments ist entweder ein Klassifizierungsmerkmal, das Papiq selbst ermittelt, oder eines, das nur ein Mensch festlegen kann. Dafür hat jeder Tag (wie jedes Feld, siehe Felder) einen Schalter: `auto` (die Signale schlagen vor und setzen) oder `manual` (nur Personen und Regeln setzen ihn, etwa Status-Tags wie „zu bezahlen“, „Wiedervorlage“). Kontakt- und Typgruppen sind immer `manual`.
+- Jedes Merkmal eines Dokuments ist entweder ein Klassifizierungsmerkmal, das Lekto selbst ermittelt, oder eines, das nur ein Mensch festlegen kann. Dafür hat jeder Tag (wie jedes Feld, siehe Felder) einen Schalter: `auto` (die Signale schlagen vor und setzen) oder `manual` (nur Personen und Regeln setzen ihn, etwa Status-Tags wie „zu bezahlen“, „Wiedervorlage“). Kontakt- und Typgruppen sind immer `manual`.
 - Arten (`scope`): `document` – Merkmal am Dokument, wie bis 0.2; `contact` – Kontaktgruppe („Versicherung“, „Arbeitgeber“), ein Kontakt in beliebig vielen; `document_type` – Typgruppe („Rechnung“ über „Arztrechnung“ und „Handwerkerrechnung“), ein Typ in beliebig vielen; `topic` – Thema. Namen sind je Art eindeutig: „Versicherung“ darf Kontaktgruppe und Thema zugleich sein.
 - Die Gruppe sagt, wer schreibt; das Thema, worum es geht. Der Lohnzettel der Versicherung, bei der man arbeitet, liegt in der Kontaktgruppe „Versicherung“ und im Thema „Arbeit“.
 - Hierarchie: Ein Tag hat höchstens einen Elterntag derselben Art; keine Zyklen, höchstens fünf Ebenen. Gespeichert wird nur der gesetzte Tag, seine Vorfahren sind abgeleitet: Das Dokument findet sich über den Tag und alle Vorfahren, Filter und Regelbedingungen treffen die Nachfahren mit. Setzt man Kind und Elternteil, bleibt das Kind; ein Elterntag darf auch allein gesetzt werden. Bekommt ein Tag oder eine Gruppe einen anderen Elterntag, behalten Dokumente (bei Gruppen Kontakte und Typen), die danach einen Tag und einen seiner Vorfahren tragen, nur den Nachfahren, als wären sie neu gesetzt: ein Job über die betroffenen Zeilen, der weder Bestätigung noch Lane ändert und die Sucheinträge erneuert (Tobi, 17.10.2026). Ein Tag mit Kindern oder in Gebrauch lässt sich nicht löschen.
@@ -286,7 +288,7 @@ Nicht hundertprozentig sicher heißt kein Grün. Ein Signal *nennt* einen Wert, 
 **Felder (`fields`)**
 
 - Gelesen werden die Felder des entschiedenen Typs und die globalen. Hat das Modell nach dem Typ gefragt, den das Urteil entschied, werden seine Werte übernommen; sonst (nach einer Korrektur des Typs) fragt der Knoten das Modell nach den fehlenden (Prompt `extract-5`).
-- Nur von Hand (Tobi, 16.10.2026, Issue #52): Ein Feld „nur von Hand“ fragt Papiq nie beim Modell an, weder in `signal_llm` noch in `fields`; Personen und Regeln setzen es. Ist es für den Typ Pflicht, bleibt das Dokument gelb, bis eine Person es setzt (etwa die Archivnummer vom Papier).
+- Nur von Hand (Tobi, 16.10.2026, Issue #52): Ein Feld „nur von Hand“ fragt Lekto nie beim Modell an, weder in `signal_llm` noch in `fields`; Personen und Regeln setzen es. Ist es für den Typ Pflicht, bleibt das Dokument gelb, bis eine Person es setzt (etwa die Archivnummer vom Papier).
 - Ein Feld ist je Zuordnung zu einem Typ Pflicht oder optional, ein globales mit eigenem Schalter; nach der Übernahme ist alles optional (Tobi, 13.10.2026). Pflicht: der Wert muss gefunden und geprüft sein, sonst gelb. Optional: ohne Wert bleibt das Feld leer; ein Wert, der die Prüfung nicht besteht, macht gelb.
 - Werte werden gelesen, wie Menschen sie schreiben (`2.111,68 €`, `12. März 2026`, `ja`); eine mehrdeutige Zahl so, wie der Text sie zeigt, sonst nach der Sprache des Dokuments. Der Wert muss im Text stehen; ein Datumsfeld gleich dem Dokumentdatum ist nur ein Vorschlag, weil Modelle das Dokumentdatum für fehlende Daten wie die Fälligkeit einsetzen.
 - Beschreibung (Tobi, 14.10.2026): Feldnamen vergeben wir intern (`LA_Brutto`), so stehen sie auf keinem Dokument. Die Beschreibung eines Felds sagt dem Modell, was hineingehört (bis 300 Zeichen, in beiden Prompts hinter Name und Optionen; in der Feldverwaltung und im Formular unter dem Feld).
@@ -314,7 +316,7 @@ Nicht hundertprozentig sicher heißt kein Grün. Ein Signal *nennt* einen Wert, 
 - Kennungen (IBAN mit Prüfziffer, USt-IdNr, Kundennummer und Personalnummer hinter einer Beschriftung, E-Mail-Domain ohne Freemail), eindeutig über alle Kontakte. Die Personalnummer (Tobi, 15.10.2026) belegt den Arbeitgeber, dessen Lohnabrechnungen und Zeitnachweise sie tragen: „Personalnummer“, „Personal-Nr.“, „Pers.-Nr.“, „Mitarbeiternummer“, „Employee ID“; 3 bis 30 Buchstaben und Ziffern, ohne führende Nullen verglichen („00012345“ = „12345“). Admins pflegen sie von Hand; das Training lernt weitere: eine Kennung, die in mindestens zwei bestätigten Dokumenten steht, alle eines Kontakts (die eigene IBAN steht bei vielen und wird nie gelernt). Eine verworfene gelernte Kennung bleibt gesperrt; eine gelernte kann von Hand übernommen werden.
 - Anheften (Tobi, 15.10.2026): Eine Kennung ohne Kontakt, die ein Dokument zeigt (im Text oder in einem Code), heftet ein Admin in den Fakten des Dokuments an dessen Kontakt oder einen anderen (`POST /contacts/{id}/identifiers`, eine Kennung von Hand; 409, wenn ein anderer Kontakt sie von Hand trägt). Steht sie auch auf bestätigten Dokumenten anderer Kontakte, warnt die Zeile vorher: vermutlich das eigene Konto (`document_identifiers`, nur für Admins gezählt). Das Dokument wird danach nicht neu bewertet; die nächste Verarbeitung nutzt die Kennung.
 - Kennungen und Themen (Tobi, 16.10.2026): Eine Kennung gehört weiter genau einem Kontakt und kann zusätzlich auf eines seiner Themen zeigen (Personalnummer → „Arbeit“, Versicherungsscheinnummer → „Krankenversicherung“); sie belegt dann Kontakt und Thema. Admins wählen das Thema je Kennung im Kontaktdialog und beim Anheften (vorbelegt mit dem Thema des Dokuments). Das Training gibt einer gelernten Kennung ein Thema nur, wenn alle ihre bestätigten Dokumente dasselbe Thema tragen; sonst bleibt sie ohne.
-- Logo (Tobi, 16.10.2026): Ein Admin lädt es hoch (PNG, JPEG oder WebP bis 1 MB; kein SVG, es kann Skripte tragen); Papiq legt es auf 128 px als WebP im Objektspeicher ab. Mit `LEKTO_LOGO_FETCH=true` (Vorgabe aus: Papiq fragt sonst nie ungefragt nach außen) holt der Worker es von der eigenen Website des Kontakts, sobald er eine Domain als Kennung hat, dazu auf Knopfdruck und für den Bestand mit `fetch-logos`: `apple-touch-icon`, Web-App-Manifest, `<link rel="icon">`, `/favicon.ico`, das größte Rasterbild ab 64 px. Ein hochgeladenes Logo hat Vorrang und wird nie überschrieben. Bekommt ein Kontakt mit abgerufenem Logo eine neue Domain (von Hand, gelernt, angeheftet), holt der Worker das Logo von dort neu; findet er keines, bleibt das alte. Ein Job `contacts.logo`, der läuft, während `LEKTO_LOGO_FETCH` aus ist, endet sofort mit einem Vermerk, ohne zu warten und ohne Wiederholung; der Knopf antwortet weiter 503 (Tobi, 17.10.2026). Weil gelernte Domains aus Dokumenten stammen, geht der Abruf nur über HTTPS an öffentliche Adressen (jede Weiterleitung neu geprüft, höchstens drei; höchstens 1 MB und 10 s). Logo-Dienste Dritter werden nicht gefragt; sie erführen, mit wem man zu tun hat.
+- Logo (Tobi, 16.10.2026): Ein Admin lädt es hoch (PNG, JPEG oder WebP bis 1 MB; kein SVG, es kann Skripte tragen); Lekto legt es auf 128 px als WebP im Objektspeicher ab. Mit `LEKTO_LOGO_FETCH=true` (Vorgabe aus: Lekto fragt sonst nie ungefragt nach außen) holt der Worker es von der eigenen Website des Kontakts, sobald er eine Domain als Kennung hat, dazu auf Knopfdruck und für den Bestand mit `fetch-logos`: `apple-touch-icon`, Web-App-Manifest, `<link rel="icon">`, `/favicon.ico`, das größte Rasterbild ab 64 px. Ein hochgeladenes Logo hat Vorrang und wird nie überschrieben. Bekommt ein Kontakt mit abgerufenem Logo eine neue Domain (von Hand, gelernt, angeheftet), holt der Worker das Logo von dort neu; findet er keines, bleibt das alte. Ein Job `contacts.logo`, der läuft, während `LEKTO_LOGO_FETCH` aus ist, endet sofort mit einem Vermerk, ohne zu warten und ohne Wiederholung; der Knopf antwortet weiter 503 (Tobi, 17.10.2026). Weil gelernte Domains aus Dokumenten stammen, geht der Abruf nur über HTTPS an öffentliche Adressen (jede Weiterleitung neu geprüft, höchstens drei; höchstens 1 MB und 10 s). Logo-Dienste Dritter werden nicht gefragt; sie erführen, mit wem man zu tun hat.
 - Das Modell sieht eine Vorauswahl von höchstens 20 Kontakten, deren Namen der Text am stärksten zeigt.
 
 **Training und Rückkopplung**
@@ -339,7 +341,7 @@ Hybride Suche in Meilisearch: Wörter und Bedeutung (Vektoren) in einer Anfrage,
 - **Abschnitte.** Der Text wird in Abschnitte von etwa 1500 Zeichen geteilt (höchstens 8, zusammen höchstens 200 000 Zeichen im Index); jeder bekommt einen Vektor, der erste beginnt mit Titel, Kontakt, Typ, Thema und Tags. Der Text dahinter ist per Wörtern auffindbar, aber ohne Vektor.
 - **Namen im Index.** Kontakt, Typ, Thema und Tags stehen als Namen und IDs im Index, Tags und Thema mit ihren Vorfahren, dazu die Kontakt- und Typgruppen mit Vorfahren (Tobi, 16.10.2026). Eine Umbenennung, ein anderer Elterntag oder geänderte Gruppen an Kontakt oder Typ stoßen die betroffenen Dokumente neu an.
 - **Aufbau des Eintrags.** Jeder Eintrag trägt die Nummer seines Aufbaus (`layout`). Ändert sich der Aufbau (Layout 2: die IDs der Felder mit Wert, der Sortierschlüssel des Titels, Zeiträume auch in ISO; Layout 3: Space statt Schublade; Layout 4: Tags mit Vorfahren und die Gruppen von Kontakt und Typ; Layout 5: das Thema), schreibt der Abgleich ältere Einträge neu und behält ihre Vektoren, solange sich der eingebettete Text nicht ändert.
-- **Ausfälle.** Ohne Embedding-Dienst (oder bei zu langsamer Anfrage-Einbettung) sucht Papiq nur mit Wörtern. Ein Ausfall der Suche macht `/health` `degraded`, nicht `503`.
+- **Ausfälle.** Ohne Embedding-Dienst (oder bei zu langsamer Anfrage-Einbettung) sucht Lekto nur mit Wörtern. Ein Ausfall der Suche macht `/health` `degraded`, nicht `503`.
 
 **Bewertung der Embedding-Modelle (07.10.2026):** 28 Dokumente und 48 Anfragen des Bewertungssatzes (`backend/evaluation/search/`: Wörter, Nummern, Komposita, Tippfehler, Umschreibungen, englische Anfragen, Stellen hinter den Abschnitten), Ollama auf dem NUC, Meilisearch 1.54.3. Treffer in den ersten drei, Standardgewicht 0,5 (Wörter und Bedeutung gleich): `bge-m3` 100 %, `snowflake-arctic-embed2` 100 %, `qwen3-embedding:0.6b` 100 %; Hit@1 98 %, 100 %, 98 %. Reine Wortsuche findet nur 69 %. Bei reiner Bedeutungssuche liegt `snowflake-arctic-embed2` vorn (Hit@3 98 % gegen 92 %, bei Nummern 100 % gegen 40 % bzw. 60 %). Indexieren auf der CPU des NUC: 0,55 s (`bge-m3`), 0,58 s (`snowflake-arctic-embed2`), 1,39 s (`qwen3-embedding:0.6b`) je Abschnitt; im Schnitt 1,2 Abschnitte je Dokument. Tobi wählte `snowflake-arctic-embed2` (`LEKTO_EMBEDDING_MODEL=snowflake-arctic-embed2`, `LEKTO_EMBEDDING_QUERY_PREFIX=query:`, `LEKTO_EMBEDDING_DIMENSIONS=1024`). Der Satz ist klein: Unterschiede von einer Anfrage sind keine Aussage. Die Berichte liegen in `backend/evaluation/search/reports/`. Ein Modellwechsel braucht einen Neuaufbau des Index.
 
@@ -432,7 +434,7 @@ Die REST-API ist der einzige Zugang; es gibt keine Hintertüren für UI oder Mig
 
 - **REST-API:** OpenAPI-Spezifikation als Vertrag; daraus wird der TypeScript-Client der Web-UI generiert.
 - **MCP-Server:** im API-Prozess, nutzt dieselbe Service-Schicht; HTTP mit Bearer-Token. Tools (Vorschlag): `search` (Filter nach Kontakt, Typ, Tags und Themen, je beim Namen), `get_document`, `get_text`, `update_metadata`, `list_tags` (mit Art und Pfad je Tag).
-- **Web-UI:** Single-Page-App auf der API, als statische Dateien im Papiq-Container ausgeliefert; Job-Fortschritt per Server-Sent Events; PDF-Anzeige mit PDF.js; Posteingang als Eingang (siehe Verarbeitung › „Posteingang“), Probelauf für Regeln. Dokumentansicht (Tobi, 16.10.2026): Ab Desktop-Breite füllt sie das Fenster, gescrollt wird nur in ihren Karten; am Handy scrollt die Seite. Tabs Details, Inhalt (der Text neben Fakten und Codes, in den Karten von Details; keine JSON-Ansicht mehr, `/structure` bleibt in der API), Metadaten (die Dateien wie in Paperless-ngx) und Protokoll. Die Seiten stehen nebeneinander, die Aufteilung folgt dem Zoom: „1 Seite“, „2 Seiten“ (Vorgabe, am Handy eine), „Übersicht“ (vier je Reihe, die kleinste Stufe); eine erreichte Aufteilung ist markiert. Zoom mit Strg/⌘ und Mausrad, Pinch auf dem Trackpad und zwei Fingern um den Zeiger, Doppelklick vergrößert eine Seite. Die Dialoge zum Anlegen und Ändern von Stammdaten öffnen auf jeder Seite an Ort und Stelle; der Typ-Dialog verlinkt die Regel seines Titelmusters, außer er wurde aus ihr geöffnet (Tobi, 15.10.2026). Im Inhalt stehen neben dem Text die Fakten (was den Kontakt belegt, was zu anderen Kontakten gehört, Kennungen ohne Kontakt) und die Codes der Seiten, ein GiroCode aufgeschlüsselt; Überfahren markiert die Fundstelle im Text, ein Code steht einmal je Format und Inhalt, mit einem Chip je Seite wie die Fundstellen der Felder. Unter Details führt nur ein Chip am Kontaktfeld dorthin (Tobi, 15.10.2026: die Spalte unter Details ist schon voll). Die Fundstelle eines Felds hat einen Chip je Seite, ab sieben Seiten die übrigen hinter „+N“; das Zitat steht in eigener Zeile (Tobi, 16.10.2026).
+- **Web-UI:** Single-Page-App auf der API, als statische Dateien im Lekto-Container ausgeliefert; Job-Fortschritt per Server-Sent Events; PDF-Anzeige mit PDF.js; Posteingang als Eingang (siehe Verarbeitung › „Posteingang“), Probelauf für Regeln. Dokumentansicht (Tobi, 16.10.2026): Ab Desktop-Breite füllt sie das Fenster, gescrollt wird nur in ihren Karten; am Handy scrollt die Seite. Tabs Details, Inhalt (der Text neben Fakten und Codes, in den Karten von Details; keine JSON-Ansicht mehr, `/structure` bleibt in der API), Metadaten (die Dateien wie in Paperless-ngx) und Protokoll. Die Seiten stehen nebeneinander, die Aufteilung folgt dem Zoom: „1 Seite“, „2 Seiten“ (Vorgabe, am Handy eine), „Übersicht“ (vier je Reihe, die kleinste Stufe); eine erreichte Aufteilung ist markiert. Zoom mit Strg/⌘ und Mausrad, Pinch auf dem Trackpad und zwei Fingern um den Zeiger, Doppelklick vergrößert eine Seite. Die Dialoge zum Anlegen und Ändern von Stammdaten öffnen auf jeder Seite an Ort und Stelle; der Typ-Dialog verlinkt die Regel seines Titelmusters, außer er wurde aus ihr geöffnet (Tobi, 15.10.2026). Im Inhalt stehen neben dem Text die Fakten (was den Kontakt belegt, was zu anderen Kontakten gehört, Kennungen ohne Kontakt) und die Codes der Seiten, ein GiroCode aufgeschlüsselt; Überfahren markiert die Fundstelle im Text, ein Code steht einmal je Format und Inhalt, mit einem Chip je Seite wie die Fundstellen der Felder. Unter Details führt nur ein Chip am Kontaktfeld dorthin (Tobi, 15.10.2026: die Spalte unter Details ist schon voll). Die Fundstelle eines Felds hat einen Chip je Seite, ab sieben Seiten die übrigen hinter „+N“; das Zitat steht in eigener Zeile (Tobi, 16.10.2026).
   - **Dokumente und Suche** (Tobi, 16.10.2026): eine Ansicht unter `/documents`; mit Worten in `?q=` sucht sie, mit denselben Filtern. `/search` gibt es nicht mehr. Die Sortierung steht in `?sort=`, die letzte Wahl je Liste und Suche bleibt im Browser; ohne Wahl sucht sie nach Relevanz und listet nach Dokumentdatum absteigend. Dokumente als Raster mit der ersten Seite (Vorgabe) oder als Liste, gemerkt. Das Suchfeld im Kopf führt dorthin, am Handy öffnet das Lupen-Symbol die Ansicht mit fokussiertem Suchfeld.
   - **Stammdaten** (Tobi, 16.10.2026): An jedem Eintrag steht, wie viele Dokumente im Bereich ihn haben (ein Feld: einen Wert dafür), als Link zur gefilterten Ansicht; die API zählt auf Wunsch (`document_counts=true`) in einer Abfrage. Felder und Typen ordnen sich von beiden Seiten zu, in einer Liste mit „Pflicht“ und Entfernen, weitere über eine Suche; der Typ-Dialog speichert über `PUT /document-types/{id}/fields` und zeigt die globalen Felder zur Info.
   - **Fortschritt** (Tobi, 16.10.2026): eine Leiste mit einem Abschnitt je Knoten (erledigt nach Ergebnis, läuft, wartet, übersprungen); im Kopf des Dokuments führt sie ins Protokoll, in Raster, Liste und Posteingang steht sie klein. Ein Prozentwert täuschte bei parallelen Knoten eine Genauigkeit vor, die es nicht gibt.
@@ -441,20 +443,20 @@ Die REST-API ist der einzige Zugang; es gibt keine Hintertüren für UI oder Mig
   - **Stammdaten am Handy** (Tobi, 17.10.2026): Unter der Breite `sm` hat der Titel ein rundes „+“, die vier Reiter sind gleich breit, jeder hat eine Suche. Die ganze Zeile öffnet den Editor (keine Knöpfe in der Zeile); unter dem Namen eine kurze Zeile (Kontakt: Gruppen, Kennungen, Themen, ein Alias; Typ: Beschreibung, Gruppen, Titelmuster, Felder; Feld: Datentyp, „von Hand“, wo es gilt, die Beschreibung), rechts die Zahl der Dokumente und ein Pfeil. Die Editoren füllen den Bildschirm mit einer festen Leiste („Abbrechen“ · Titel · „Sichern“); Gruppen und Themen sind Chips mit „+ Gruppe“/„+ Thema“, die Auswahl ein Blatt von unten (Suche, Anlegen, alle mit Häkchen und Einrückung, „Fertig“), Kennungen Zeilen. Am Desktop bleiben die Dialoge Dialoge, mit derselben Auswahl als Dialog darüber und einem Fuß, der beim Scrollen stehen bleibt. Im Kontakt-Editor am Handy steht das Logo neben dem Namen, Hochladen und Holen darunter; Sprache und Darstellung verlassen unter `sm` die Kopfleiste und stehen im Kontomenü, am Desktop bleibt die Kopfleiste, wie sie ist (Tobi, 17.10.2026).
   - **Hinweisboxen** (Tobi, 16.10.2026): Varianten der Alert-Komponente nach GitHub und Docusaurus: `note` (blau), `tip` (grün, Glühbirne), `warning` (gelb), `caution` (rot). Die Empfehlung, mit dem VLM zu lesen, ist ein `tip`.
 
-## Betrieb: Papiq-Container mit s6-overlay
+## Betrieb: Lekto-Container mit s6-overlay
 
-Papiq wird als ein Docker-Image ausgeliefert. Darin überwacht s6-overlay alle Papiq-Prozesse: Es läuft als PID 1, startet Dienste in fester Reihenfolge, startet abgestürzte Dienste neu und fährt sauber herunter.
+Lekto wird als ein Docker-Image ausgeliefert. Darin überwacht s6-overlay alle Lekto-Prozesse: Es läuft als PID 1, startet Dienste in fester Reihenfolge, startet abgestürzte Dienste neu und fährt sauber herunter.
 
 **Dienste im Container**
 
 | Dienst | Art | Aufgabe |
 | --- | --- | --- |
-| `init-papiq` | einmalig | Konfiguration prüfen, Verzeichnisse und Rechte für Volumes setzen (`PUID`/`PGID`) |
+| `init-lekto` | einmalig | Konfiguration prüfen, Verzeichnisse und Rechte für Volumes setzen (`PUID`/`PGID`) |
 | `init-migrations` | einmalig | Datenbankschema per Alembic aktualisieren, bevor API und Worker starten |
 | `svc-api` | dauerhaft | Uvicorn mit FastAPI: REST, MCP, SSE und Auslieferung der Web-UI (statische Dateien, ohne zusätzlichen Webserver) |
 | `svc-worker` | dauerhaft | Pipeline-Jobs, Outbox-Verteilung, Webhook-Versand |
 
-**Außerhalb des Containers** (eigene Container oder extern): Datenbank (bei Postgres), Garage (bei S3), Meilisearch, LLM, Identity Provider. Mit SQLite und Dateisystem-Adapter liegen Datenbank und Dateien auf Volumes des Papiq-Containers.
+**Außerhalb des Containers** (eigene Container oder extern): Datenbank (bei Postgres), Garage (bei S3), Meilisearch, LLM, Identity Provider. Mit SQLite und Dateisystem-Adapter liegen Datenbank und Dateien auf Volumes des Lekto-Containers.
 
 **Konfiguration: vollständig über Umgebungsvariablen**
 
@@ -471,9 +473,9 @@ Papiq wird als ein Docker-Image ausgeliefert. Darin überwacht s6-overlay alle P
 
 ## Migration aus Paperless-ngx
 
-Ein eigener CLI-Client (`migration/`) liest die Paperless-REST-API und schreibt über die Papiq-API – damit beweist er zugleich, dass die API vollständig ist. Ein Admin-Token genügt für die ganze Migration (Tobi, 08.10.2026).
+Ein eigener CLI-Client (`migration/`) liest die Paperless-REST-API und schreibt über die Lekto-API – damit beweist er zugleich, dass die API vollständig ist. Ein Admin-Token genügt für die ganze Migration (Tobi, 08.10.2026).
 
-| Paperless-ngx | Papiq | Hinweis |
+| Paperless-ngx | Lekto | Hinweis |
 | --- | --- | --- |
 | Nutzer | Nutzer | Zuordnung über den Benutzernamen; fehlende ohne Passwort, Rolle „Nutzer“, inaktive deaktiviert |
 | Korrespondent | Kontakt | per Name zugeordnet |
@@ -484,7 +486,7 @@ Ein eigener CLI-Client (`migration/`) liest die Paperless-REST-API und schreibt 
 | Besitzer | Besitzer | ohne Besitzer: der ausführende Admin |
 | Speicherpfad | – | entfällt, nur gezählt |
 | Berechtigungen pro Dokument | Space des Besitzers | ohne zusätzliche Rechte: Standard-Space; sonst ein Space je Kombination aus Lesern und Schreibern (Gruppen zu Nutzern aufgelöst), geteilt mit „lesen“ bzw. „lesen/schreiben“ |
-| Datei | Original | nicht das Archiv-PDF; Papiq erzeugt ein eigenes |
+| Datei | Original | nicht das Archiv-PDF; Lekto erzeugt ein eigenes |
 | Datum „hinzugefügt“, Verlauf, Freigabelinks, gespeicherte Ansichten, Workflows, Mail-Regeln, Zuordnungsregeln | – | entfallen, im Bericht |
 
 **API-Erweiterungen für die Migration (M12)**
@@ -502,3 +504,4 @@ Ein eigener CLI-Client (`migration/`) liest die Paperless-REST-API und schreibt 
 - [x] Embedding-Modell für die semantische Suche bestätigen (`snowflake-arctic-embed2`, Tobi 07.10.2026; Bewertung unter „Suche“)
 - [x] Migration: Paperless-Speicherpfade und -Berechtigungen auf Schubladen (seit 0.3.0 Spaces) abbilden (Speicherpfade entfallen, Berechtigungen: eine Schublade des Besitzers je Kombination aus Lesern und Schreibern; Tobi 08.10.2026)
 - [x] Verfügbarkeit des Namens „Papiq“ prüfen (GitHub, PyPI, Docker Hub, Marken) – geprüft 09.10.2026 (M13): PyPI, npm, Docker Hub, GHCR und papiq.de/.io/.app/.dev frei; GitHub-Nutzer `PapiQ` belegt (keine Organisation `papiq`, Repo bleibt `tb1337/papiq`); keine Marke „PAPIQ“ für Software in DE/EU (TMview), nahe Zeichen „papique“ (Papierwaren) und „Paper IQ“/„PaperIQ“ (Papiermaschinen, KI-Dokumentensuche). Der Name bleibt; die Entscheidung vor dem Tag `v0.1.0` liegt bei Tobi.
+- [x] Neuer Name (Tobi, 19.10.2026, Issue #60): Lekto, Anzeigename Lekto DMS (siehe oben); Domains und Marken noch zu prüfen

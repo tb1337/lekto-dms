@@ -11,7 +11,7 @@ Lies zuerst vollständig:
 - `CLAUDE.md`, `backend/README.md` (Abschnitte Identity, REST API, Konfiguration)
 - `.idea/architektur.md` (Berechtigungen, Authentifizierung, Betrieb)
 - `.idea/reviews/M4-security.md` (alle Befunde, auch „Geprüft und in Ordnung“)
-- `backend/src/papiq/core/services/auth.py`, `core/domain/identity.py`,
+- `backend/src/lekto/core/services/auth.py`, `core/domain/identity.py`,
   `adapters/inbound/rest/{auth,account,users}.py`, `composition/{settings,api}.py`
 
 Halte Dich an die Entscheidungen unten. Fehlt eine Entscheidung oder ist etwas unklar, frag
@@ -33,7 +33,7 @@ mich, bevor Du es umsetzt. Ports und Vertragstests ändern nur nach Rücksprache
 ### M4-01 – Quellen-Drossel sperrt alle Nutzer aus (hoch): beides umsetzen
 1. **Konfiguration:** `LEKTO_COOKIE_SECURE=true` (Default) ohne `LEKTO_FORWARDED_ALLOW_IPS` ist
    ein Konfigurationsfehler, der den Start abbricht, mit klarer Meldung: Mit `Secure`-Cookies
-   steht ein TLS-terminierender Proxy vor Papiq, dessen Adresse genannt werden muss. Mit
+   steht ein TLS-terminierender Proxy vor Lekto, dessen Adresse genannt werden muss. Mit
    `LEKTO_COOKIE_SECURE=false` (Entwicklung, Direktzugriff) bleibt die Variable optional.
    README: Variable als Pflicht hinter einem Proxy dokumentieren; `*` nur, wenn der Proxy den
    Header selbst setzt und überschreibt. Bestehende Settings-Tests anpassen.

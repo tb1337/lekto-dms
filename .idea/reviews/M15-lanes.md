@@ -7,9 +7,9 @@ Personennamen in diesem Bericht; die Auswahl steht als Paperless-IDs, Gründe mi
 
 ## Aufbau
 
-- **Kopie der Devinstanz:** Datenbank `papiq_m15` (Vorlage `papiq_live`), Bucket `papiq-m15` (7644
+- **Kopie der Devinstanz:** Datenbank `lekto_m15` (Vorlage `lekto_live`), Bucket `lekto-m15` (7644
   Objekte serverseitig kopiert), Webhooks abgeschaltet (es gab keine), eigener Index
-  `papiq-m15-documents`, API auf Port 8001.
+  `lekto-m15-documents`, API auf Port 8001.
 - **Migration 0011 → 0016 auf echten Daten:** ohne Fehler, 5 s. Die Rückfüllung von `confirmed_at`
   markierte 1525 von 1527 Dokumenten als bestätigt (die übernommenen).
 - **Felder:** Die drei globalen Felder (ASN, Notizen, Text) wurden optional den Typen zugeordnet,
@@ -52,7 +52,7 @@ gehörten die zehn dem Hauptnutzer des Bestands (Upload im Auftrag), wie im Betr
 
 Tags machen nie gelb; „richtig“ heißt hier: gesetzte gleich Paperless (auch beide leer).
 
-**Datum:** Die vier grünen Abweichungen sind keine falschen Werte. Papiq nimmt das Ausstellungsdatum,
+**Datum:** Die vier grünen Abweichungen sind keine falschen Werte. Lekto nimmt das Ausstellungsdatum,
 wie der Prompt es verlangt, und es steht jeweils im Text; Paperless' „erstellt“ folgt einer anderen
 Gewohnheit: ein Kontoauszug mit dem Tag seiner Erstellung statt dem Ende des Zeitraums (+8 Tage),
 ein Spendennachweis mit dem Briefdatum statt dem Tag der Zuwendung (+366 Tage), zweimal +1 Tag

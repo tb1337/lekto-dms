@@ -10,7 +10,7 @@ Tobi: Dokumente werden oft gelb, weil die Feldnamen (`LA_Brutto`, `LA_Netto`) in
 
 ## Aufbau
 
-- **Kopie der Devinstanz:** Datenbank `papiq_measure` (Dump von `papiq_live`, auf Revision 0017 gebracht), Texte aus dem Bucket nur gelesen. In der Devinstanz wurde nichts geändert.
+- **Kopie der Devinstanz:** Datenbank `lekto_measure` (Dump von `lekto_live`, auf Revision 0017 gebracht), Texte aus dem Bucket nur gelesen. In der Devinstanz wurde nichts geändert.
 - **Skript im Scratchpad:**
   - Es fragt das Modell wie der Sprachmodell-Knoten (`propose_message`, `propose_schema`, `parse_propose`) und prüft wie der Felder-Knoten (`_check_field`, ab Lauf C auch `_readable`).
   - Verglichen wird mit den bestätigten Werten.
@@ -57,7 +57,7 @@ Das Modell las dort das, was auf dem Dokument steht. Tobi prüft diese Bestätig
 1. **Falsches Grün im Teillauf mit Groq (Dokument 8, zerfallener Scan):** Das Modell zitierte nur die Beschriftung und machte aus einer einzelnen Zahl zehn Zeilen tiefer den Betrag. Die Prüfung verlangte nur, dass das Zitat irgendwo im Text steht und der Wert irgendwo sonst.
    - Prüfung A (das Zitat muss den Wert zeigen) und B (ein Betrag zählt nur als Betrag, mit Nachkommastellen oder Währung) schließen das.
    - In Lauf B fingen sie zweimal ein Zitat aus der bloßen Beschriftung ab, und einmal einen Betrag, dessen Komma die alte OCR verloren hatte. Der Wert war jeweils richtig, die Person bestätigt.
-2. **Fremde OCR:** Die Lohnabrechnungen tragen die Textschicht von ecoDMS („pdf to searchable pdf“, 2020). `--skip-text` behielt sie, Tesseract las diese Seiten nie, und deshalb gab es keine Lesung je Seite. Dokument 8 stammt mit seinem zerfallenen Text aus dieser Schicht. Mit `--redo-ocr` liest Papiq solche PDFs selbst (Tobi). Die Lesungen der 37 Dokumente:
+2. **Fremde OCR:** Die Lohnabrechnungen tragen die Textschicht von ecoDMS („pdf to searchable pdf“, 2020). `--skip-text` behielt sie, Tesseract las diese Seiten nie, und deshalb gab es keine Lesung je Seite. Dokument 8 stammt mit seinem zerfallenen Text aus dieser Schicht. Mit `--redo-ocr` liest Lekto solche PDFs selbst (Tobi). Die Lesungen der 37 Dokumente:
    - 32 haben 2–7 % unsichere Wörter;
    - 5 haben 8–15 % (die drei zerfallenen Scans, Dokument 27 mit 8,2 %, Dokument 32).
 3. **Schwach gelesene Seiten (Lauf C):** Die fünf Dokumente ab 8 % werden gelb.

@@ -4,7 +4,7 @@ Datum: 2026-10-09. Fünf unabhängige Reviews durch separate Agenten, parallel, 
 Image-Review hat das Runtime-Image zusätzlich gebaut und mit eigenen Containern geprüft). Geprüfter
 Stand: `main` nach dem Merge von Phase A (Commit `80bd199`, PR #28). Aufbau wie
 `M4-security.md`: je Bereich eine Tabelle der Befunde, dann die Befunde mit Fundstelle und
-Behebung, dann „Geprüft und in Ordnung“. Pfade relativ zu `backend/src/papiq/` bzw. `web/`,
+Behebung, dann „Geprüft und in Ordnung“. Pfade relativ zu `backend/src/lekto/` bzw. `web/`,
 wie im jeweiligen Abschnitt angegeben.
 
 ## Zusammenfassung
@@ -29,11 +29,11 @@ im Umsetzungsplan; was davon kommt, entscheidet Tobi (Entscheidung 9 in `prompts
 | 1-06 | API | niedrig | Zahl offener Ereignisströme je Nutzer unbegrenzt | Nach 0.1 |
 | 1-07 | API | niedrig | OIDC-Callback mit `error` lässt das Flow-Cookie stehen | Nach 0.1 (eine Zeile) |
 | 1-08 | API | niedrig | Konto-Drossel sperrt richtige Anmeldungen (gezielte Aussperrung möglich); Kommentar widerspricht | akzeptiert (M4); Kommentar und README anpassen: Nach 0.1 |
-| 2-01 | Egress | niedrig | Meilisearch ohne Master-Key ist über einen Webhook beschreibbar; Papiq warnt nicht | Nach 0.1 (Warnung ohne Schlüssel, toleranter Abgleich) |
+| 2-01 | Egress | niedrig | Meilisearch ohne Master-Key ist über einen Webhook beschreibbar; Lekto warnt nicht | Nach 0.1 (Warnung ohne Schlüssel, toleranter Abgleich) |
 | 2-02 | Egress | niedrig | OIDC-Discovery: Endpunkt-URLs nicht auf `https` geprüft | Nach 0.1 |
 | 2-03 | Egress | niedrig | `LEKTO_LLM_TIMEOUT` wirkt je Socket-Operation, nicht je Anfrage | Nach 0.1 |
 | 2-04 | Egress | niedrig | Webhook-Test antwortet 500 statt Protokolleintrag bei unentschlüsselbarem Geheimnis | Nach 0.1 |
-| 3.1 | Image | mittel | `init-papiq` lässt `..` in den Datenpfaden durch: `/data/../etc` wird samt `passwd` und `shadow` an PUID:PGID übergeben | behoben: `.`/`..` abgelehnt, `tmp` und `var` in der Systemordner-Liste, Prüfung in `test-image.sh` |
+| 3.1 | Image | mittel | `init-lekto` lässt `..` in den Datenpfaden durch: `/data/../etc` wird samt `passwd` und `shadow` an PUID:PGID übergeben | behoben: `.`/`..` abgelehnt, `tmp` und `var` in der Systemordner-Liste, Prüfung in `test-image.sh` |
 | 3.2 | Image | niedrig | `var`, `tmp` fehlten in der Systemordner-Liste | behoben (mit 3.1) |
 | 3.3 | Image | niedrig | README: Dev-Schlüssel „wird abgelehnt“ gilt nur mit `LEKTO_COOKIE_SECURE=true` | behoben (Doku) |
 | 3.4 | Image | niedrig | Setuid-Programme aus Debian im Runtime-Image | Nach 0.1 |
@@ -42,7 +42,7 @@ im Umsetzungsplan; was davon kommt, entscheidet Tobi (Entscheidung 9 in `prompts
 | 3.7 | Image | niedrig | CI-Actions per Major-Tag, nicht per SHA | Nach 0.1 |
 | 3.8 | Image | niedrig | Basis-Images per Tag, nicht per Digest; `curl … \| bash` in der Dev-Stufe | Nach 0.1 |
 | 3.9 | Image | niedrig | Docker-outside-of-Docker und `GH_TOKEN` im Devcontainer undokumentiert | behoben in Phase C (Devcontainer-Doku) |
-| 3.10 | Image | niedrig | `/opt/papiq/venv/.lock` 0666 | Nach 0.1 |
+| 3.10 | Image | niedrig | `/opt/lekto/venv/.lock` 0666 | Nach 0.1 |
 | A-01 | Architektur | niedrig (vom Agenten: mittel) | MCP-Adapter importiert `rest.context`, `rest.problems`, `rest.schemas`; `rest.app` bindet `mcp` ein | so gewollt: MCP läuft laut `architektur.md` im API-Prozess und teilt die Service-Schicht und die JSON-Formen; kein Vertrag verletzt. Nach 0.1: Vertrag „Inbound-Adapter untereinander“ ausweisen |
 | A-02 | Architektur | niedrig (vom Agenten: mittel) | Regel-Muster werden im Kern mit `re` geprüft, mit `regex` ausgeführt | ohne Sicherheitsfolge: `regex` nimmt jedes gültige `re`-Muster, Abweichungen melden sich als 422 bzw. `ValidationError` beim Lauf. Nach 0.1: Prüfung über den `PatternMatcher`-Port |
 | A-03 | Architektur | niedrig | Outbound→Outbound-Importe (`docling`, `ocrmypdf` → `pdfium`, `system`) ohne Vertrag | Nach 0.1 |
@@ -89,7 +89,7 @@ wiederholt). Gelesen: `adapters/inbound/rest/*`, `adapters/inbound/mcp/*`,
 `core/services/{rules,webhooks}/*`, `core/domain/{identity,permissions,webhooks,media_types}.py`,
 `adapters/outbound/{oidc,webhooks,sql/identity}.py`, `composition/{settings,api,logging_setup}.py`,
 die REST-, MCP- und Rechte-Tests sowie die MCP-SDK-Fehlerbehandlung in `.venv`. Alle Pfade unten
-relativ zu `backend/src/papiq/`, sofern nicht anders angegeben.
+relativ zu `backend/src/lekto/`, sofern nicht anders angegeben.
 
 Keine hohen Befunde. Die Zugriffskontrolle auf Dokumente, Schubladen, Regeln und Webhooks folgt
 der Architektur; die M12-Erweiterungen sind auf Admins beschränkt; Sitzungen, CSRF, Drossel, OIDC
@@ -211,7 +211,7 @@ Die UI setzt ihre CSP als Meta-Tag (`web/vite.config.ts:26-43`) und `frame-ances
 und Ports des internen Netzes (Datenbank, Meilisearch, S3, Ollama, Cloud-Metadaten
 `169.254.169.254`) mit 10 Anfragen pro Minute abtasten; über reguläre Zustellungen und das
 Lieferprotokoll (`GET /webhooks/{id}/deliveries`) ohne diese Grenze. Body ist signiertes
-Papiq-JSON, Methode POST, keine Redirects: ein klassischer SSRF mit Datenabfluss ist nicht
+Lekto-JSON, Methode POST, keine Redirects: ein klassischer SSRF mit Datenabfluss ist nicht
 möglich, die Erkundung schon. Die Entscheidung „Ziele im eigenen Netz sind erlaubt“ ist
 dokumentiert; der Befund betrifft die Granularität der Rückmeldung an Nicht-Admins.
 
@@ -251,7 +251,7 @@ alten State bleibt möglich.
 **Behebung.** `context` auch hier übergeben.
 
 **Test.** `test_a_denied_callback_clears_the_flow_cookie`: `GET /auth/oidc/callback?error=access_denied`
-mit Flow-Cookie → 303 nach `/ui/login?error=denied` und `Set-Cookie` löscht `__Host-papiq_oidc`.
+mit Flow-Cookie → 303 nach `/ui/login?error=denied` und `Set-Cookie` löscht `__Host-lekto_oidc`.
 
 ### 1-08 (niedrig, akzeptiert in M4): Konto-Drossel als gezielte Aussperrung
 
@@ -271,7 +271,7 @@ gültiges TOTP/Recovery-Code-Paar durchlässt.
 
 ## Geprüft und in Ordnung
 
-**Sitzungen.** Cookie `__Host-papiq_session`: HttpOnly, Secure, SameSite=Lax, Path=/, keine Domain
+**Sitzungen.** Cookie `__Host-lekto_session`: HttpOnly, Secure, SameSite=Lax, Path=/, keine Domain
 (`adapters/inbound/rest/auth.py:128-137`); ohne `Secure` nur mit `LEKTO_COOKIE_SECURE=false`, und
 dann erzwingt `settings.py:259-265` hinter Secure-Cookies einen Proxy. CSRF: `X-CSRF-Token` =
 HMAC(Session-Token) auf allen unsicheren Methoden, konstantzeitig (`auth.py:81-84`,
@@ -308,7 +308,7 @@ Konflikt (`oidc.py:150-165`, `users.py:263-270`). Fehlpfade als Redirect-Codes o
 (`account.py:376-392`); `safe_redirect` lässt nur Pfade dieser Site zu (`identity.py:303-315`).
 Access-Log verbirgt die Callback-Query (`logging_setup.py:71-81`).
 
-**API-Tokens.** `papiq_` + 256 Bit, nur SHA-256 gespeichert (`identity.py:71-78,237-259`), Suche
+**API-Tokens.** `lekto_` + 256 Bit, nur SHA-256 gespeichert (`identity.py:71-78,237-259`), Suche
 über den Hash. `read` zentral für alle Methoden außer GET/HEAD/OPTIONS abgewiesen
 (`auth.py:74-75`), auch im MCP (`mcp/server.py:381-383`). Eigene Anmeldung (`/auth/*`) und die
 Admin-Endpunkte für Anmeldedaten nur mit Sitzung (`account.py`, `users.py:125-154`; M4-03), kein
@@ -393,7 +393,7 @@ Datum: 2026-10-09. Unabhängiges Review ohne Kontext aus der Umsetzung; nur gele
 - **Branch:** `claude/project-thread-7jl9zr` (Commit `80bd199`) gegen `main` (`b8d8587`).
 - **Grundlage:** `CLAUDE.md`, `.idea/architektur.md` (Asynchronität und Ereignisse, Webhooks, Suche, Betrieb), `backend/README.md` (Webhooks, Search, Classification), `.idea/reviews/M4-security.md`.
 - **Vollständig gelesen:** `core/domain/webhooks.py`, `core/services/webhooks/{delivery,management,policy}.py`, `core/ports/webhook_sender.py`, `adapters/outbound/webhooks/sender.py`, `adapters/inbound/rest/webhooks.py`, `adapters/outbound/sql/webhooks.py` (und die Tabellen), `core/services/maintenance.py` (Aufräumen), `core/domain/permissions.py` (`reach_access`, `in_reach`), `adapters/outbound/crypto/cipher.py`, `adapters/outbound/openai_compat/client.py`, `core/services/classification/prompts.py`, `adapters/outbound/meilisearch/index.py`, `core/services/search.py` (Einbettung der Anfrage), `adapters/outbound/s3/object_store.py`, `core/ports/object_store.py` (`check_key`), `adapters/outbound/oidc/provider.py`, `composition/{endpoints,logging_setup,container,settings,__main__}.py`, die Compose-Beispiele in `deploy/` und `.devcontainer/`. Standardwerte von `httpx2` 2.13.1 im installierten Paket nachgeschlagen (`follow_redirects=False`, `trust_env=True`, `verify=True`).
-- Pfade unten relativ zu `backend/src/papiq/`, sofern nicht anders angegeben.
+- Pfade unten relativ zu `backend/src/lekto/`, sofern nicht anders angegeben.
 
 ### Zusammenfassung
 
@@ -401,7 +401,7 @@ Keine hohen oder mittleren Befunde. Die SSRF-Entscheidung (interne Ziele erlaubt
 
 | Nr. | Schwere | Befund |
 | --- | --- | --- |
-| 2-01 | niedrig | Meilisearch ohne Master-Key: jeder Nutzer kann über einen Webhook in den Index schreiben und den Abgleich dauerhaft brechen; Papiq warnt nicht |
+| 2-01 | niedrig | Meilisearch ohne Master-Key: jeder Nutzer kann über einen Webhook in den Index schreiben und den Abgleich dauerhaft brechen; Lekto warnt nicht |
 | 2-02 | niedrig | OIDC: `jwks_uri`, `token_endpoint`, `authorization_endpoint` aus der Discovery werden nicht auf `https` geprüft |
 | 2-03 | niedrig | LLM- und Embedding-Client: `LEKTO_LLM_TIMEOUT` gilt je Socket-Operation, nicht je Anfrage; Lease kann ablaufen, Anfrage läuft doppelt |
 | 2-04 | niedrig | `POST /webhooks/{id}/test` antwortet 500 statt eines Protokolleintrags, wenn das Geheimnis nicht entschlüsselbar ist |
@@ -410,14 +410,14 @@ Keine hohen oder mittleren Befunde. Die SSRF-Entscheidung (interne Ziele erlaubt
 
 #### 2-01 (niedrig): Meilisearch ohne Master-Key ist über Webhooks beschreibbar
 
-**Fundstellen:** `composition/settings.py:169` (`meilisearch_api_key` optional, keine Konsistenzprüfung), `adapters/outbound/meilisearch/index.py:84` (ohne Schlüssel kein `Authorization`-Header, Papiq arbeitet anstandslos), `core/domain/webhooks.py:55-76` (`validate_url`: jeder Host, jeder Port, jede Query), `adapters/outbound/meilisearch/index.py:485-494` (`_state_of`: `item["version"]` fehlt → `SearchIndexError`), `:117-131` (`states()`, vom Abgleich benutzt).
+**Fundstellen:** `composition/settings.py:169` (`meilisearch_api_key` optional, keine Konsistenzprüfung), `adapters/outbound/meilisearch/index.py:84` (ohne Schlüssel kein `Authorization`-Header, Lekto arbeitet anstandslos), `core/domain/webhooks.py:55-76` (`validate_url`: jeder Host, jeder Port, jede Query), `adapters/outbound/meilisearch/index.py:485-494` (`_state_of`: `item["version"]` fehlt → `SearchIndexError`), `:117-131` (`states()`, vom Abgleich benutzt).
 
-**Problem:** Die Architektur erlaubt interne Ziele bewusst, mit dem Argument, dass Body und Header fest sind und die Antwort nicht gezeigt wird (`backend/README.md`, „Targets“). Ich habe die internen Dienste des Compose-Stacks daraufhin durchgesehen, ob der feste Body `{"id":"<uuid>","type":…,"occurred_at":…,"document_id":…}` irgendwo eine Wirkung hat: Papiq-API (401/422), Garage (Signatur fehlt), Postgres (kein HTTP), Ollama (`model` fehlt → 400) sind unempfindlich. **Meilisearch ohne Master-Key** nicht:
+**Problem:** Die Architektur erlaubt interne Ziele bewusst, mit dem Argument, dass Body und Header fest sind und die Antwort nicht gezeigt wird (`backend/README.md`, „Targets“). Ich habe die internen Dienste des Compose-Stacks daraufhin durchgesehen, ob der feste Body `{"id":"<uuid>","type":…,"occurred_at":…,"document_id":…}` irgendwo eine Wirkung hat: Lekto-API (401/422), Garage (Signatur fehlt), Postgres (kein HTTP), Ollama (`model` fehlt → 400) sind unempfindlich. **Meilisearch ohne Master-Key** nicht:
 
-- `POST http://meilisearch:7700/indexes/papiq-documents/documents` nimmt den Body als Dokument an (Primärschlüssel `id`, die Ereignis-UUID ist gültig). Das Fremddokument hat kein `version`; der nächste Abgleich (`states()` → `_state_of`) wirft `SearchIndexError` und bricht ab, bei jedem Lauf, bis jemand das Dokument von Hand löscht. Suchen sind nicht betroffen (keine durchsuchbaren Felder, kein Vektor, Rechtefilter), aber der Index driftet unbemerkt.
+- `POST http://meilisearch:7700/indexes/lekto-documents/documents` nimmt den Body als Dokument an (Primärschlüssel `id`, die Ereignis-UUID ist gültig). Das Fremddokument hat kein `version`; der nächste Abgleich (`states()` → `_state_of`) wirft `SearchIndexError` und bricht ab, bei jedem Lauf, bis jemand das Dokument von Hand löscht. Suchen sind nicht betroffen (keine durchsuchbaren Felder, kein Vektor, Rechtefilter), aber der Index driftet unbemerkt.
 - `POST http://meilisearch:7700/tasks/cancel?statuses=enqueued,processing` bricht laufende Index-Aufgaben ab (`_wait` sieht `canceled`, der Job wiederholt sich); `POST …/dumps` und `…/snapshots` füllen die Platte.
 
-Ein Nutzer braucht dafür nur das Recht, Webhooks anzulegen (jeder Nutzer) und einen Testaufruf. Die Beispiel-Stacks (`deploy/compose.sqlite.yml:46,88`, `deploy/compose.postgres.yml:52,147`, `.devcontainer/compose.yml:68`) setzen einen Schlüssel, deshalb niedrig. Papiq selbst verlangt ihn aber nicht und sagt nichts, wenn er fehlt, obwohl die Webhook-Dokumentation genau diese Konstellation („die eigene Infrastruktur ist erreichbar“) als unbedenklich beschreibt.
+Ein Nutzer braucht dafür nur das Recht, Webhooks anzulegen (jeder Nutzer) und einen Testaufruf. Die Beispiel-Stacks (`deploy/compose.sqlite.yml:46,88`, `deploy/compose.postgres.yml:52,147`, `.devcontainer/compose.yml:68`) setzen einen Schlüssel, deshalb niedrig. Lekto selbst verlangt ihn aber nicht und sagt nichts, wenn er fehlt, obwohl die Webhook-Dokumentation genau diese Konstellation („die eigene Infrastruktur ist erreichbar“) als unbedenklich beschreibt.
 
 **Empfehlung:**
 1. In `Settings._check_consistency`: mit `meilisearch_url` und ohne `meilisearch_api_key` den Start in Produktion (`cookie_secure=true`, wie beim Dev-Schlüssel) verweigern oder mindestens laut warnen („Meilisearch ohne Schlüssel: jeder, der Webhooks anlegen darf, kann den Index beschreiben“). Alternativ in `MeilisearchIndex.check()`: ohne Schlüssel `GET /keys` versuchen; antwortet es 200, läuft Meilisearch ohne Master-Key.
@@ -431,7 +431,7 @@ Ein Nutzer braucht dafür nur das Recht, Webhooks anzulegen (jeder Nutzer) und e
 
 **Fundstellen:** `adapters/outbound/oidc/provider.py:173-175` (nur `isinstance(str)` für `authorization_endpoint`, `token_endpoint`, `jwks_uri`), `:183` (JWKS wird von `jwks_uri` geholt), `:74` (Browser wird an `authorization_endpoint` geschickt), `composition/settings.py:337` (nur der Issuer muss `https` sein).
 
-**Problem:** OpenID Connect Discovery 1.0 verlangt für diese drei Endpunkte das `https`-Schema. Papiq prüft das nicht. Nennt ein (fehlkonfigurierter oder teilweise kompromittierter) Provider `http://`-Endpunkte, holt Papiq die Signaturschlüssel im Klartext; wer auf dem Pfad sitzt, tauscht das JWKS aus und stellt ein ID-Token aus, das alle Prüfungen (`iss`, `aud`, `nonce`, Signatur gegen die „frischen“ Schlüssel, Refetch bei unbekannter `kid` in `:121-134`) besteht → Anmeldung als beliebiger verknüpfter Nutzer, mit `oidc_auto_create` als neuer Nutzer. Der `client_secret` ginge beim Token-Abruf ebenfalls im Klartext. Voraussetzung ist ein Provider, der das tut; echte Provider tun es nicht, deshalb niedrig. Die Prüfung kostet drei Zeilen und schließt den Weg.
+**Problem:** OpenID Connect Discovery 1.0 verlangt für diese drei Endpunkte das `https`-Schema. Lekto prüft das nicht. Nennt ein (fehlkonfigurierter oder teilweise kompromittierter) Provider `http://`-Endpunkte, holt Lekto die Signaturschlüssel im Klartext; wer auf dem Pfad sitzt, tauscht das JWKS aus und stellt ein ID-Token aus, das alle Prüfungen (`iss`, `aud`, `nonce`, Signatur gegen die „frischen“ Schlüssel, Refetch bei unbekannter `kid` in `:121-134`) besteht → Anmeldung als beliebiger verknüpfter Nutzer, mit `oidc_auto_create` als neuer Nutzer. Der `client_secret` ginge beim Token-Abruf ebenfalls im Klartext. Voraussetzung ist ein Provider, der das tut; echte Provider tun es nicht, deshalb niedrig. Die Prüfung kostet drei Zeilen und schließt den Weg.
 
 **Empfehlung:** In `_discover` zusätzlich `urlsplit(metadata[field]).scheme == "https"` fordern (Fehler „the discovery document names a non-https <field>“); für die Tests reicht das, `tests/oidc_idp.py` nutzt bereits `https://idp.example`.
 
@@ -491,28 +491,28 @@ Ein Nutzer braucht dafür nur das Recht, Webhooks anzulegen (jeder Nutzer) und e
 
 ## 3 Image und Betrieb
 
-Stand: Branch `claude/project-thread-7jl9zr`, Commit `e593168`. Gelesen: `CLAUDE.md`, `.idea/architektur.md` (Betrieb), `deploy/README.md`, `Dockerfile`, `.dockerignore`, `deploy/` (Compose-Stacks, `create-secrets.sh`, `garage-init/`, `garage.toml`, `image/rootfs/` komplett, `test-image.sh`), `.devcontainer/` (`compose.yml`, `dev.env`, `devcontainer.json`, `devcontainer-lock.json`), `.github/workflows/ci.yml`, `.github/compose.ci.yml`, `backend/src/papiq/composition/{settings,__main__,api,database,logging_setup}.py`, `adapters/inbound/rest/health.py`.
+Stand: Branch `claude/project-thread-7jl9zr`, Commit `e593168`. Gelesen: `CLAUDE.md`, `.idea/architektur.md` (Betrieb), `deploy/README.md`, `Dockerfile`, `.dockerignore`, `deploy/` (Compose-Stacks, `create-secrets.sh`, `garage-init/`, `garage.toml`, `image/rootfs/` komplett, `test-image.sh`), `.devcontainer/` (`compose.yml`, `dev.env`, `devcontainer.json`, `devcontainer-lock.json`), `.github/workflows/ci.yml`, `.github/compose.ci.yml`, `backend/src/lekto/composition/{settings,__main__,api,database,logging_setup}.py`, `adapters/inbound/rest/health.py`.
 
-Praktisch: Runtime-Image auf dem Mac (arm64, OrbStack) gebaut, `deploy/test-image.sh` gelaufen, eigene Container `papiq-review-*` für Prozesse, Rechte, Geheimnisse, Pfadprüfung, Health und Herunterfahren; alles danach entfernt. Details unter „Geprüft und in Ordnung“.
+Praktisch: Runtime-Image auf dem Mac (arm64, OrbStack) gebaut, `deploy/test-image.sh` gelaufen, eigene Container `lekto-review-*` für Prozesse, Rechte, Geheimnisse, Pfadprüfung, Health und Herunterfahren; alles danach entfernt. Details unter „Geprüft und in Ordnung“.
 
 | Nr. | Schwere | Befund |
 | --- | --- | --- |
-| 3.1 | mittel | `init-papiq` lässt `..` in `LEKTO_DB_SQLITE_PATH`/`LEKTO_STORAGE_PATH` durch: `/data/../etc` übergibt `/etc` samt `passwd` und `shadow` per `chown -R` an PUID:PGID |
-| 3.2 | niedrig | Liste der Systemordner in `init-papiq` ohne `var` (und `tmp`); `/var` als Ablage wird angenommen und rekursiv umgehängt |
+| 3.1 | mittel | `init-lekto` lässt `..` in `LEKTO_DB_SQLITE_PATH`/`LEKTO_STORAGE_PATH` durch: `/data/../etc` übergibt `/etc` samt `passwd` und `shadow` per `chown -R` an PUID:PGID |
+| 3.2 | niedrig | Liste der Systemordner in `init-lekto` ohne `var` (und `tmp`); `/var` als Ablage wird angenommen und rekursiv umgehängt |
 | 3.3 | niedrig | README verspricht, der Dev-Schlüssel werde abgelehnt; er wird nur mit `LEKTO_COOKIE_SECURE=true` abgelehnt, die Beispiel-Stacks laufen mit `false` |
 | 3.4 | niedrig | Setuid-Programme aus Debian (`su`, `passwd`, `mount`, …) bleiben im Runtime-Image; mit 3.1 ein Weg zu root im Container |
 | 3.5 | niedrig | `VOLUME /data` im Dockerfile erzeugt anonyme Volumes für jeden Container ohne eigenes Volume (Postgres/S3-Stack, `docker run` ohne `-v`) |
-| 3.6 | niedrig | `test-image.sh`: Lücken (Geheimnisse in `docker inspect` und `/run/s6/container_environment`, Pfadprüfung über `/` hinaus, beschäftigtes Herunterfahren, `degraded`, nur `papiq.composition`-Prozesse auf root geprüft); Anzahl ist 42, nicht 31 |
+| 3.6 | niedrig | `test-image.sh`: Lücken (Geheimnisse in `docker inspect` und `/run/s6/container_environment`, Pfadprüfung über `/` hinaus, beschäftigtes Herunterfahren, `degraded`, nur `lekto.composition`-Prozesse auf root geprüft); Anzahl ist 42, nicht 31 |
 | 3.7 | niedrig | CI: Actions nur per Major-Tag gepinnt (`@v4` … `@v7`), nicht per Commit-SHA |
 | 3.8 | niedrig | Dockerfile: Basis-Images nur per Tag, nicht per Digest; Dev-Stufe führt `curl … | bash` (Claude-Installer) ungepinnt aus |
 | 3.9 | niedrig | Devcontainer: Docker-outside-of-Docker (Host-Socket, root-äquivalent) und `GH_TOKEN` aus der Host-Umgebung sind nirgends dokumentiert |
-| 3.10 | niedrig | `/opt/papiq/venv/.lock` ist 0666 (world-writable) im Image |
+| 3.10 | niedrig | `/opt/lekto/venv/.lock` ist 0666 (world-writable) im Image |
 
-### 3.1 Pfadprüfung in `init-papiq` lässt `..` durch (mittel)
+### 3.1 Pfadprüfung in `init-lekto` lässt `..` durch (mittel)
 
-**Problem.** `safe()` prüft nur das zweite Pfadsegment (`cut -d/ -f2`) gegen eine Liste von Systemordnern. Ein Pfad mit `..` besteht die Prüfung, und `own()` ruft anschließend `chown -R` auf den aufgelösten Ordner. Praktisch geprüft: `LEKTO_DB_SQLITE_PATH=/data/../etc/papiq.db` startet ohne Fehler, Log `init-papiq: giving /data/../etc to 1000:1000`; danach gehören `/etc` (755), `/etc/passwd` (644) und `/etc/shadow` (640) dem Nutzer 1000:1000, Papiq läuft mit der Datenbank in `/etc/papiq.db`. Der Papiq-Prozess (unprivilegiert, verarbeitet fremde PDFs mit Ghostscript, Tesseract, Docling) kann dann `/etc/passwd` schreiben; zusammen mit dem setuid-`su` (3.4) ist das root im Container. Die README (`deploy/README.md:130-131`) und der Umsetzungsplan versprechen genau diesen Schutz („refuse relative paths and system folders“). Auslöser ist zwar ein Tippfehler des Betreibers, aber genau dafür gibt es die Prüfung.
+**Problem.** `safe()` prüft nur das zweite Pfadsegment (`cut -d/ -f2`) gegen eine Liste von Systemordnern. Ein Pfad mit `..` besteht die Prüfung, und `own()` ruft anschließend `chown -R` auf den aufgelösten Ordner. Praktisch geprüft: `LEKTO_DB_SQLITE_PATH=/data/../etc/lekto.db` startet ohne Fehler, Log `init-lekto: giving /data/../etc to 1000:1000`; danach gehören `/etc` (755), `/etc/passwd` (644) und `/etc/shadow` (640) dem Nutzer 1000:1000, Lekto läuft mit der Datenbank in `/etc/lekto.db`. Der Lekto-Prozess (unprivilegiert, verarbeitet fremde PDFs mit Ghostscript, Tesseract, Docling) kann dann `/etc/passwd` schreiben; zusammen mit dem setuid-`su` (3.4) ist das root im Container. Die README (`deploy/README.md:130-131`) und der Umsetzungsplan versprechen genau diesen Schutz („refuse relative paths and system folders“). Auslöser ist zwar ein Tippfehler des Betreibers, aber genau dafür gibt es die Prüfung.
 
-**Fundstelle.** `deploy/image/rootfs/etc/s6-overlay/scripts/init-papiq:26-37` (`safe`), `:41-47` (`own`), `:53-54`, `:63-64`.
+**Fundstelle.** `deploy/image/rootfs/etc/s6-overlay/scripts/init-lekto:26-37` (`safe`), `:41-47` (`own`), `:53-54`, `:63-64`.
 
 **Vorschlag.** Pfad vor der Prüfung normalisieren und `..` ablehnen:
 
@@ -524,13 +524,13 @@ safe() { # safe VARIABLE FOLDER
 }
 ```
 
-und den aufgelösten Pfad auch an `own()` geben. Zusätzlich im Test (`test-image.sh`, Abschnitt „invalid configuration“): ein Container mit `LEKTO_DB_SQLITE_PATH=/data/../etc/papiq.db` muss beendet werden und `must not contain` loggen; optional nach dem Lauf `stat -c %u /etc/passwd` = 0 in einem laufenden Container prüfen.
+und den aufgelösten Pfad auch an `own()` geben. Zusätzlich im Test (`test-image.sh`, Abschnitt „invalid configuration“): ein Container mit `LEKTO_DB_SQLITE_PATH=/data/../etc/lekto.db` muss beendet werden und `must not contain` loggen; optional nach dem Lauf `stat -c %u /etc/passwd` = 0 in einem laufenden Container prüfen.
 
 ### 3.2 Systemordner-Liste ohne `var` und `tmp` (niedrig)
 
 **Problem.** Die Liste in `safe()` enthält `bin boot dev etc lib lib64 opt proc root run sbin sys usr`, aber nicht `var` (dort `lib/dpkg`, `lib/apt`, `log`, `cache`) und nicht `tmp`. Praktisch geprüft: `LEKTO_STORAGE_PATH=/var/objects` wird angenommen (neuer Ordner, harmlos); `LEKTO_STORAGE_PATH=/var` oder `/var/lib` würde den ganzen Baum rekursiv umhängen. `/home`, `/srv`, `/mnt`, `/media` sind bewusst frei (Volume-Mountpunkte) und bleiben besser so.
 
-**Fundstelle.** `deploy/image/rootfs/etc/s6-overlay/scripts/init-papiq:33`.
+**Fundstelle.** `deploy/image/rootfs/etc/s6-overlay/scripts/init-lekto:33`.
 
 **Vorschlag.** `tmp` und `var` ergänzen. Test: `LEKTO_STORAGE_PATH=/var/lib` wird mit `is a system folder` abgelehnt.
 
@@ -538,13 +538,13 @@ und den aufgelösten Pfad auch an `own()` geben. Zusätzlich im Test (`test-imag
 
 **Problem.** `deploy/README.md:72`: „The key from `.devcontainer/dev.env` is public and refused.“ Tatsächlich prüft `settings.py` den Schlüssel nur, wenn `cookie_secure` wahr ist. Beide Beispiel-Stacks setzen `LEKTO_COOKIE_SECURE: "false"` (`compose.sqlite.yml:39`, `compose.postgres.yml:36`); wer dort den Dev-Schlüssel einträgt, startet ohne Einwand. Praktisch geprüft: Container mit `LEKTO_SECRET_KEY=<Dev-Schlüssel>` und `LEKTO_COOKIE_SECURE=false` läuft und wird healthy; mit `LEKTO_COOKIE_SECURE=true` + `LEKTO_FORWARDED_ALLOW_IPS` endet er mit Exit 1 wie erwartet. Die Bedingung ist absichtlich (der Devcontainer braucht den Schlüssel), nur die Dokumentation ist zu knapp.
 
-**Fundstelle.** `backend/src/papiq/composition/settings.py:286-290`; `deploy/README.md:72`.
+**Fundstelle.** `backend/src/lekto/composition/settings.py:286-290`; `deploy/README.md:72`.
 
-**Vorschlag.** README präzisieren („refused as soon as `LEKTO_COOKIE_SECURE` is `true`; the example stacks run over plain HTTP, so replace it before exposing Papiq“), oder ergänzend eine Warnung im Log ausgeben, wenn der Dev-Schlüssel mit `cookie_secure=false` läuft (`log.warning` in `__main__.py` nach `configuration valid`).
+**Vorschlag.** README präzisieren („refused as soon as `LEKTO_COOKIE_SECURE` is `true`; the example stacks run over plain HTTP, so replace it before exposing Lekto“), oder ergänzend eine Warnung im Log ausgeben, wenn der Dev-Schlüssel mit `cookie_secure=false` läuft (`log.warning` in `__main__.py` nach `configuration valid`).
 
 ### 3.4 Setuid-Programme im Runtime-Image (niedrig)
 
-**Problem.** `find / -xdev -perm -4000` im laufenden Container: `/usr/bin/{chfn,chsh,gpasswd,mount,newgrp,passwd,su,umount}` (aus Debian) und `/package/admin/s6-overlay-helpers-0.1.2.2/command/s6-overlay-suexec` (gewollt, s6). Die Papiq-Prozesse laufen unprivilegiert und brauchen keines davon. Ohne 3.1 ist das nur Härtung; mit 3.1 wird aus einem beschreibbaren `/etc/passwd` echter root im Container.
+**Problem.** `find / -xdev -perm -4000` im laufenden Container: `/usr/bin/{chfn,chsh,gpasswd,mount,newgrp,passwd,su,umount}` (aus Debian) und `/package/admin/s6-overlay-helpers-0.1.2.2/command/s6-overlay-suexec` (gewollt, s6). Die Lekto-Prozesse laufen unprivilegiert und brauchen keines davon. Ohne 3.1 ist das nur Härtung; mit 3.1 wird aus einem beschreibbaren `/etc/passwd` echter root im Container.
 
 **Fundstelle.** `Dockerfile:178-214` (Stufe `runtime`, kein Entfernen).
 
@@ -558,7 +558,7 @@ Test in `test-image.sh`: `docker exec … find / -xdev -type f -perm /6000 ! -pa
 
 ### 3.5 `VOLUME /data` erzeugt anonyme Volumes (niedrig)
 
-**Problem.** Das Image deklariert `VOLUME /data`. Jeder Container, der kein Volume auf `/data` bekommt, erhält ein anonymes Volume: im Postgres/S3-Stack (`compose.postgres.yml` hat keine `volumes:` für `papiq`), bei `docker run` ohne `-v` und bei allen Negativ-Containern in `test-image.sh`. Praktisch geprüft: drei Testcontainer ohne `-v` hatten je ein anonymes Volume (`docker inspect … .Mounts`). `docker compose down` ohne `-v` und `docker rm` ohne `-v` lassen sie liegen; `test-image.sh` räumt mit `rm -fv` korrekt auf. Datenverlust droht nicht (mit Postgres/S3 bleibt `/data` leer), es sammelt sich nur Müll.
+**Problem.** Das Image deklariert `VOLUME /data`. Jeder Container, der kein Volume auf `/data` bekommt, erhält ein anonymes Volume: im Postgres/S3-Stack (`compose.postgres.yml` hat keine `volumes:` für `lekto`), bei `docker run` ohne `-v` und bei allen Negativ-Containern in `test-image.sh`. Praktisch geprüft: drei Testcontainer ohne `-v` hatten je ein anonymes Volume (`docker inspect … .Mounts`). `docker compose down` ohne `-v` und `docker rm` ohne `-v` lassen sie liegen; `test-image.sh` räumt mit `rm -fv` korrekt auf. Datenverlust droht nicht (mit Postgres/S3 bleibt `/data` leer), es sammelt sich nur Müll.
 
 **Fundstelle.** `Dockerfile:210`; `deploy/compose.postgres.yml:12-95`.
 
@@ -566,12 +566,12 @@ Test in `test-image.sh`: `docker exec … find / -xdev -type f -perm /6000 ! -pa
 
 ### 3.6 `test-image.sh`: Umfang und Lücken (niedrig)
 
-**Stand.** 42 Einzelprüfungen (`ok:`-Zeilen), nicht 31 wie im Umsetzungsplan (`.idea/umsetzungsplan.md:254`) genannt; Laufzeit hier 1:19 min, alle bestanden. Geprüft werden Image-Env, PID 1, Rolle `all` (Health, Migration, Nutzer, `/data`-Eigentümer, Geheimnisse in Logs, `papiq`-Helfer), Web-UI (11), PDF bis Lane, `docker stop` leer, Rollen `api`/`worker`, vier ungültige Konfigurationen.
+**Stand.** 42 Einzelprüfungen (`ok:`-Zeilen), nicht 31 wie im Umsetzungsplan (`.idea/umsetzungsplan.md:254`) genannt; Laufzeit hier 1:19 min, alle bestanden. Geprüft werden Image-Env, PID 1, Rolle `all` (Health, Migration, Nutzer, `/data`-Eigentümer, Geheimnisse in Logs, `lekto`-Helfer), Web-UI (11), PDF bis Lane, `docker stop` leer, Rollen `api`/`worker`, vier ungültige Konfigurationen.
 
 **Lücken.**
 
 1. Geheimnisse werden nur in den Logs gesucht (`:128-131`), nicht in `docker inspect` des laufenden Containers und nicht in `/run/s6/container_environment` (die README `:62-63` nennt genau diesen Ort). Ergänzung: `docker inspect $prefix-all | grep -cF -f "$work/secret_key"` = 0 und `docker exec … grep -rlF -f … /run/s6/container_environment` leer.
-2. Root-Prüfung nur für Prozesse mit `papiq.composition` im Kommando (`:122-125`). Ergänzung: jeder Prozess, dessen Kommando nicht mit `s6-`/`/package/` beginnt, läuft als `$uid:$gid` (deckt auch gestartete OCR-/Docling-Kindprozesse).
+2. Root-Prüfung nur für Prozesse mit `lekto.composition` im Kommando (`:122-125`). Ergänzung: jeder Prozess, dessen Kommando nicht mit `s6-`/`/package/` beginnt, läuft als `$uid:$gid` (deckt auch gestartete OCR-/Docling-Kindprozesse).
 3. Pfadprüfung nur mit `/` (`:222-225`); fehlen: relativer Pfad, Systemordner, `..` (siehe 3.1), `PUID=abc`, `LEKTO_SECRET_KEY` und `_FILE` gleichzeitig.
 4. Herunterfahren nur leer und mit Docker-Standard-Timeout 10 s (`:182`). Ergänzung: PDF hochladen, sofort `docker stop -t 60`, Exit 0, nach `docker start` erreicht das Dokument eine Lane (praktisch geprüft, funktioniert: Stopp in 2 s, Lane gelb nach Neustart).
 5. Health `degraded`: ein Container mit `LEKTO_MEILISEARCH_URL=http://127.0.0.1:1` muss healthy werden und `"status":"degraded"` mit HTTP 200 liefern (praktisch geprüft, funktioniert).
@@ -606,30 +606,30 @@ Test in `test-image.sh`: `docker exec … find / -xdev -type f -perm /6000 ! -pa
 
 ### 3.10 World-writable `.lock` im venv (niedrig)
 
-**Problem.** `/opt/papiq/venv/.lock` ist `0666 root` (uv legt es an). Einzige world-writable Datei im Image (`find / -xdev -type f -perm -o+w` außerhalb `/proc,/sys,/data,/run,/tmp,/dev`). Praktisch bedeutungslos, aber ein Scanner meldet es.
+**Problem.** `/opt/lekto/venv/.lock` ist `0666 root` (uv legt es an). Einzige world-writable Datei im Image (`find / -xdev -type f -perm -o+w` außerhalb `/proc,/sys,/data,/run,/tmp,/dev`). Praktisch bedeutungslos, aber ein Scanner meldet es.
 
-**Fundstelle.** `Dockerfile:181` (`COPY --from=app /opt/papiq/venv`).
+**Fundstelle.** `Dockerfile:181` (`COPY --from=app /opt/lekto/venv`).
 
-**Vorschlag.** In der Stufe `app` nach `uv sync`: `rm -f /opt/papiq/venv/.lock` oder `chmod 644`.
+**Vorschlag.** In der Stufe `app` nach `uv sync`: `rm -f /opt/lekto/venv/.lock` oder `chmod 644`.
 
 ### Geprüft und in Ordnung
 
 **Bau und Test**
 
-- `docker build --target runtime -t papiq:review .` (arm64, OrbStack, mit Layer-Cache): 1:53 min; Image 1,41 GB Inhalt / 4,58 GB „disk usage“ laut `docker image ls` (README: „about 3 GB“, CI misst 3,0–3,2 GB; plausibel). `Config.Env` ohne Geheimnis; `Entrypoint ["/init"]`.
-- `deploy/test-image.sh papiq:review`: „All checks passed.“, 42 Prüfungen, 1:19 min. PDF bis Lane gelb (ocr ok, parse ok, classify uncertain).
+- `docker build --target runtime -t lekto:review .` (arm64, OrbStack, mit Layer-Cache): 1:53 min; Image 1,41 GB Inhalt / 4,58 GB „disk usage“ laut `docker image ls` (README: „about 3 GB“, CI misst 3,0–3,2 GB; plausibel). `Config.Env` ohne Geheimnis; `Entrypoint ["/init"]`.
+- `deploy/test-image.sh lekto:review`: „All checks passed.“, 42 Prüfungen, 1:19 min. PDF bis Lane gelb (ocr ok, parse ok, classify uncertain).
 - `docker compose -f compose.sqlite.yml config --quiet` und `compose.postgres.yml`: gültig; einziger veröffentlichter Port `127.0.0.1:8000`. Meilisearch-Image `v1.54.3` enthält `curl` (Healthcheck funktioniert).
 
-**Rechte im Container** (eigener Container `papiq-review-all`, PUID=1234, PGID=4321)
+**Rechte im Container** (eigener Container `lekto-review-all`, PUID=1234, PGID=4321)
 
-- Prozessliste aus `/proc`: als root nur `s6-svscan` (PID 1), fünf `s6-supervise`, `s6-linux-init-shutdownd`, `s6-ipcserverd`; `python -m papiq.composition api` und `worker` als `1234:4321`, Zusatzgruppen `[4321]` (`s6-applyuidgid -G ""` wirkt), umask 0022. `docker top` bestätigt.
-- `papiq-run id` → `uid=1234 gid=4321 groups=4321`, `HOME=/run/papiq-home` (0700, 1234:4321); `papiq check-schema` als derselbe Nutzer (test-image).
-- `/data` 755, `papiq.db*` 644, alles 1234:4321. Marke `/run/papiq-worker-ready` root 644 (nur Existenz zählt).
+- Prozessliste aus `/proc`: als root nur `s6-svscan` (PID 1), fünf `s6-supervise`, `s6-linux-init-shutdownd`, `s6-ipcserverd`; `python -m lekto.composition api` und `worker` als `1234:4321`, Zusatzgruppen `[4321]` (`s6-applyuidgid -G ""` wirkt), umask 0022. `docker top` bestätigt.
+- `lekto-run id` → `uid=1234 gid=4321 groups=4321`, `HOME=/run/lekto-home` (0700, 1234:4321); `lekto check-schema` als derselbe Nutzer (test-image).
+- `/data` 755, `lekto.db*` 644, alles 1234:4321. Marke `/run/lekto-worker-ready` root 644 (nur Existenz zählt).
 - `PUID=0` abgelehnt (test-image), `PUID=abc` abgelehnt („must be numbers“), relativer Pfad abgelehnt („must be an absolute path“), `/` abgelehnt (test-image). Ausnahmen: 3.1, 3.2.
 
 **Geheimnisse**
 
-- Beispiel-Stacks: ausschließlich `_FILE`-Variablen für Papiq; `meilisearch.env` als dokumentierte Ausnahme (`README:72-74`), `create-secrets.sh` legt 0644 in 0700-Ordner, Garage 0600; `deploy/secrets/` ist in `.gitignore:35`, `.dockerignore` lässt nur `deploy/image/` in den Build-Kontext.
+- Beispiel-Stacks: ausschließlich `_FILE`-Variablen für Lekto; `meilisearch.env` als dokumentierte Ausnahme (`README:72-74`), `create-secrets.sh` legt 0644 in 0700-Ordner, Garage 0600; `deploy/secrets/` ist in `.gitignore:35`, `.dockerignore` lässt nur `deploy/image/` in den Build-Kontext.
 - `docker inspect` des Containers: 0 Treffer für Schlüssel und Admin-Passwort; `docker logs`: 0 Treffer. Log „configuration valid“ zeigt `"secret_key": "**********"` (SecretStr, `describe()`); Validierungsfehler lassen bei Secret-Feldern den Wert weg (`settings.py:452-460`); HTTP-Client-Logger auf WARNING, OIDC-Callback-Query ausgeblendet (`logging_setup.py:53-81`).
 - `/run/s6/container_environment`: nur Pfade (`LEKTO_*_FILE`), Dateien 0644 root. Gegenprobe mit `LEKTO_SECRET_KEY` als Klartext-Variable: Wert in `docker inspect` und in `/run/s6/container_environment/LEKTO_SECRET_KEY` sichtbar, genau wie `README:62-63` warnt.
 - Secret-Dateien im Container 0644 root (Bind-Mount), lesbar für PUID; die README verlangt genau das (`:60-61`).
@@ -637,8 +637,8 @@ Test in `test-image.sh`: `docker exec … find / -xdev -type f -perm /6000 ! -pa
 
 **Healthchecks**
 
-- API: `/api/v1/health` → `{"status":"ok","checks":{"database":"ok","object_store":"ok"}}`; mit unerreichbarem Meilisearch (`papiq-review-degraded`): `"status":"degraded"`, HTTP 200, Container healthy nach 18 s; `unavailable` → 503 im Code (`health.py:36-38`). Healthcheck-Requests nicht im Access-Log (`DropHealthChecks`).
-- Worker: `s6-svstat -o up,updownfor /run/service/svc-worker` → `true 38`, Skript wertet ≥ 10 s plus Marke aus; `papiq-healthcheck` Exit 0. Wartender Worker ist unhealthy (test-image). Hängender Worker nicht erkannt: dokumentiert `README:149-150`.
+- API: `/api/v1/health` → `{"status":"ok","checks":{"database":"ok","object_store":"ok"}}`; mit unerreichbarem Meilisearch (`lekto-review-degraded`): `"status":"degraded"`, HTTP 200, Container healthy nach 18 s; `unavailable` → 503 im Code (`health.py:36-38`). Healthcheck-Requests nicht im Access-Log (`DropHealthChecks`).
+- Worker: `s6-svstat -o up,updownfor /run/service/svc-worker` → `true 38`, Skript wertet ≥ 10 s plus Marke aus; `lekto-healthcheck` Exit 0. Wartender Worker ist unhealthy (test-image). Hängender Worker nicht erkannt: dokumentiert `README:149-150`.
 - `HEALTHCHECK --start-period=120s --interval=30s --timeout=10s --retries=3` (`Dockerfile:212`), Health-Timeout pro Check 5 s (`health.py:16`) passt darunter.
 
 **Herunterfahren**
@@ -665,13 +665,13 @@ Test in `test-image.sh`: `docker exec … find / -xdev -type f -perm /6000 ! -pa
 
 **Aufräumen**
 
-- `docker rm -fv papiq-review-*` (10 Container inkl. anonymer Volumes), `docker volume rm papiq-review-data`, `docker rmi papiq:review`: keine Reste (`docker ps -a`, `docker volume ls`, `docker images` je 0). `git status` sauber, keine Datei im Repo geändert.
+- `docker rm -fv lekto-review-*` (10 Container inkl. anonymer Volumes), `docker volume rm lekto-review-data`, `docker rmi lekto:review`: keine Reste (`docker ps -a`, `docker volume ls`, `docker images` je 0). `git status` sauber, keine Datei im Repo geändert.
 
 ## 4 Architektur
 
 Geprüfter Stand: Branch `claude/project-thread-7jl9zr` (Commit `80bd199`, Merge von PR #28). Grundlage: `CLAUDE.md` (Architekturregeln), `.idea/architektur.md` (verbindlich), `backend/README.md`, `backend/pyproject.toml` (import-linter-Verträge). Vorgehen: nur Lesen (Quelltext, Tests, Grep über die Importe); `lint-imports` wurde nicht ausgeführt, die Verträge wurden gegen die tatsächlichen Importe von Hand geprüft.
 
-Keine Befunde der Schwere hoch. Die hexagonale Struktur ist sauber umgesetzt: der Kern importiert ausschließlich die Standardbibliothek und `papiq.core`, Ports sind Protocols, die Verdrahtung liegt allein in `composition`, Zustand, Ereignisse und Folgejobs gehen durch eine Unit of Work. Die Befunde betreffen Lücken in den Verträgen des import-linters (Kopplungen zwischen Adaptern derselben Richtung), fehlende Indizes, eine Regex-Validierung, die den Port umgeht, sowie veraltete Stellen in `architektur.md` und `README.md`.
+Keine Befunde der Schwere hoch. Die hexagonale Struktur ist sauber umgesetzt: der Kern importiert ausschließlich die Standardbibliothek und `lekto.core`, Ports sind Protocols, die Verdrahtung liegt allein in `composition`, Zustand, Ereignisse und Folgejobs gehen durch eine Unit of Work. Die Befunde betreffen Lücken in den Verträgen des import-linters (Kopplungen zwischen Adaptern derselben Richtung), fehlende Indizes, eine Regex-Validierung, die den Port umgeht, sowie veraltete Stellen in `architektur.md` und `README.md`.
 
 | Nr. | Schwere | Befund |
 | --- | --- | --- |
@@ -687,7 +687,7 @@ Keine Befunde der Schwere hoch. Die hexagonale Struktur ist sauber umgesetzt: de
 
 ### A-01 (mittel): MCP-Adapter hängt vom REST-Adapter ab
 
-**Fundstellen:** `backend/src/papiq/adapters/inbound/mcp/app.py:25-26` (`ApiContext`, `problem` aus `rest.context`, `rest.problems`), `backend/src/papiq/adapters/inbound/mcp/server.py:27-29` (`ApiContext`, `FieldJson`, `RuleReportOut`, `field_json` aus `rest.schemas`), `backend/src/papiq/adapters/inbound/rest/app.py:14` (`McpEndpoint` aus `mcp`). `backend/pyproject.toml:90-96` (Vertrag „Inbound and outbound adapters are independent" prüft nur `inbound` gegen `outbound`).
+**Fundstellen:** `backend/src/lekto/adapters/inbound/mcp/app.py:25-26` (`ApiContext`, `problem` aus `rest.context`, `rest.problems`), `backend/src/lekto/adapters/inbound/mcp/server.py:27-29` (`ApiContext`, `FieldJson`, `RuleReportOut`, `field_json` aus `rest.schemas`), `backend/src/lekto/adapters/inbound/rest/app.py:14` (`McpEndpoint` aus `mcp`). `backend/pyproject.toml:90-96` (Vertrag „Inbound and outbound adapters are independent" prüft nur `inbound` gegen `outbound`).
 
 **Problem:** Die beiden eingehenden Adapter REST und MCP importieren einander: `rest.app` baut den MCP-Endpunkt ein, `mcp.app`/`mcp.server` nehmen Kontext, Fehlerformat und Pydantic-Antwortschemata aus dem REST-Adapter. `architektur.md` (Zeile 300) sieht MCP „im API-Prozess, nutzt dieselbe Service-Schicht" vor; die Kopplung soll also über die Services (`core`) laufen, nicht über REST-Schemata. Heute ist MCP ohne REST nicht lauffähig, und eine Änderung an `rest/schemas.py` (z. B. ein Feld in `RuleReportOut`) ändert stillschweigend das MCP-Antwortformat. Der import-linter meldet das nicht, weil kein Vertrag die Inbound-Adapter untereinander trennt. `adapters/inbound/values.py` zeigt bereits das richtige Muster (gemeinsam genutzter Code ohne Zugehörigkeit zu einem Adapter).
 
@@ -697,14 +697,14 @@ Keine Befunde der Schwere hoch. Die hexagonale Struktur ist sauber umgesetzt: de
 [[tool.importlinter.contracts]]
 name = "Inbound adapters are independent of each other"
 type = "independence"
-modules = ["papiq.adapters.inbound.rest", "papiq.adapters.inbound.mcp", "papiq.adapters.inbound.worker", "papiq.adapters.inbound.cli", "papiq.adapters.inbound.evaluation"]
+modules = ["lekto.adapters.inbound.rest", "lekto.adapters.inbound.mcp", "lekto.adapters.inbound.worker", "lekto.adapters.inbound.cli", "lekto.adapters.inbound.evaluation"]
 ```
 
 **Test:** Der Vertrag selbst (`uv run lint-imports`). Zusätzlich ein Unit-Test in `tests/unit/adapters/mcp`, der den MCP-Endpunkt ohne `create_app` aus `rest` aufbaut (nur `ApiContext`/Services), um zu belegen, dass MCP eigenständig läuft.
 
 ### A-02 (mittel): Regex-Validierung umgeht den Port
 
-**Fundstellen:** `backend/src/papiq/core/domain/rules.py:24` (`import re`), `:958-962` (`_pattern`: `re.compile(str(value))`), `backend/src/papiq/core/ports/patterns.py:12-15` (Port: „ValidationError if the pattern is invalid"), `backend/src/papiq/adapters/outbound/regex/matcher.py` (Ausführung mit dem Paket `regex`), `backend/src/papiq/core/services/rules/running.py:160-164` (Fehler zur Laufzeit werden als „skipped" protokolliert, die Bedingung trifft nicht zu).
+**Fundstellen:** `backend/src/lekto/core/domain/rules.py:24` (`import re`), `:958-962` (`_pattern`: `re.compile(str(value))`), `backend/src/lekto/core/ports/patterns.py:12-15` (Port: „ValidationError if the pattern is invalid"), `backend/src/lekto/adapters/outbound/regex/matcher.py` (Ausführung mit dem Paket `regex`), `backend/src/lekto/core/services/rules/running.py:160-164` (Fehler zur Laufzeit werden als „skipped" protokolliert, die Bedingung trifft nicht zu).
 
 **Problem:** Beim Anlegen einer Regel wird ein `matches`-Muster mit der Standardbibliothek `re` geprüft, ausgeführt wird es mit `regex`. Die Syntax ist nicht identisch: `regex` kennt z. B. `\p{L}`, possessive Quantoren (`a++`), `(?V1)`, Mengenoperationen in Zeichenklassen; `re` lehnt sie ab, obwohl der Adapter sie ausführen könnte (`422` für ein gültiges Muster). Umgekehrt könnte ein Muster, das `re` annimmt und `regex` ablehnt, gespeichert werden und zur Laufzeit still nicht zutreffen (`running.py:162`). Architektonisch: Die Domäne kennt die Fähigkeiten des Adapters nicht; die Prüfung gehört an den Port, so wie die Docstring des Ports es vorsieht. Zugleich ist das ein verdecktes „Framework im Kern": der Kern legt sich mit `re` auf eine Regex-Engine fest, während der austauschbare Adapter eine andere nutzt.
 
@@ -714,7 +714,7 @@ modules = ["papiq.adapters.inbound.rest", "papiq.adapters.inbound.mcp", "papiq.a
 
 ### A-03 (niedrig): Outbound→Outbound-Abhängigkeiten ohne Vertrag
 
-**Fundstellen:** `backend/src/papiq/adapters/outbound/docling/convert.py:21` (`pdfium.library.text_layer`), `backend/src/papiq/adapters/outbound/docling/parser.py:17` (`system.run_process`), `backend/src/papiq/adapters/outbound/ocrmypdf/engine.py:41-42` (`pdfium.count_pages`, `system.run_process`, `Completed`). `backend/pyproject.toml:81-96`.
+**Fundstellen:** `backend/src/lekto/adapters/outbound/docling/convert.py:21` (`pdfium.library.text_layer`), `backend/src/lekto/adapters/outbound/docling/parser.py:17` (`system.run_process`), `backend/src/lekto/adapters/outbound/ocrmypdf/engine.py:41-42` (`pdfium.count_pages`, `system.run_process`, `Completed`). `backend/pyproject.toml:81-96`.
 
 **Problem:** Die Regel „Inbound- und Outbound-Adapter importieren einander nicht" wird eingehalten; zwischen Outbound-Adaptern gibt es jedoch Abhängigkeiten, die kein Vertrag benennt. `system` (Prozessstart mit Zeitlimit) ist geteilte Infrastruktur und gewollt; `pdfium` ist ein eigener Adapter (Port `PreviewRenderer`), dessen Bibliotheksfunktionen (`text_layer`, `count_pages`) zwei andere Adapter nutzen. Wird der Vorschau-Adapter gegen einen anderen getauscht, bleibt `pypdfium2` dennoch Pflicht für OCR und Parsen. Das ist tragbar, sollte aber sichtbar sein, damit neue Kopplungen (z. B. `s3`→`sql`) nicht unbemerkt entstehen.
 
@@ -724,10 +724,10 @@ modules = ["papiq.adapters.inbound.rest", "papiq.adapters.inbound.mcp", "papiq.a
 [[tool.importlinter.contracts]]
 name = "Outbound adapters are independent (shared: system, pdfium.library)"
 type = "independence"
-modules = ["papiq.adapters.outbound.crypto", "papiq.adapters.outbound.docling", "papiq.adapters.outbound.filesystem", "papiq.adapters.outbound.meilisearch", "papiq.adapters.outbound.ocrmypdf", "papiq.adapters.outbound.oidc", "papiq.adapters.outbound.openai_compat", "papiq.adapters.outbound.pdfium", "papiq.adapters.outbound.regex", "papiq.adapters.outbound.s3", "papiq.adapters.outbound.sql", "papiq.adapters.outbound.webhooks"]
+modules = ["lekto.adapters.outbound.crypto", "lekto.adapters.outbound.docling", "lekto.adapters.outbound.filesystem", "lekto.adapters.outbound.meilisearch", "lekto.adapters.outbound.ocrmypdf", "lekto.adapters.outbound.oidc", "lekto.adapters.outbound.openai_compat", "lekto.adapters.outbound.pdfium", "lekto.adapters.outbound.regex", "lekto.adapters.outbound.s3", "lekto.adapters.outbound.sql", "lekto.adapters.outbound.webhooks"]
 ignore_imports = [
-    "papiq.adapters.outbound.docling.convert -> papiq.adapters.outbound.pdfium.library",
-    "papiq.adapters.outbound.ocrmypdf.engine -> papiq.adapters.outbound.pdfium",
+    "lekto.adapters.outbound.docling.convert -> lekto.adapters.outbound.pdfium.library",
+    "lekto.adapters.outbound.ocrmypdf.engine -> lekto.adapters.outbound.pdfium",
 ]
 ```
 
@@ -737,7 +737,7 @@ ignore_imports = [
 
 ### A-04 (niedrig): `PatternMatcher` ohne In-Memory-Adapter; Adapter im Composition Root
 
-**Fundstellen:** `backend/src/papiq/composition/container.py:370` (`build_memory_container` nutzt den echten `RegexPatternMatcher`), `:332`; `backend/src/papiq/adapters/outbound/memory/__init__.py` (kein Pattern-Matcher); `backend/src/papiq/composition/container.py:229-237` (`MissingKeyCipher`, eine `SecretCipher`-Implementierung in `composition`).
+**Fundstellen:** `backend/src/lekto/composition/container.py:370` (`build_memory_container` nutzt den echten `RegexPatternMatcher`), `:332`; `backend/src/lekto/adapters/outbound/memory/__init__.py` (kein Pattern-Matcher); `backend/src/lekto/composition/container.py:229-237` (`MissingKeyCipher`, eine `SecretCipher`-Implementierung in `composition`).
 
 **Problem:** `CLAUDE.md` und `architektur.md` (Zeile 57) verlangen je Port einen In-Memory-Adapter. Für `PatternMatcher` fehlt er (bekannt); dadurch hängen alle Kern- und REST-Tests, die Regeln mit `matches` berühren, am Paket `regex` und an dessen Thread-Timeout. `MissingKeyCipher` ist ein (bewusst scheiternder) Adapter, liegt aber in `composition` statt bei den Adaptern und hat keinen Vertragstest; `composition` soll nur verdrahten.
 
@@ -747,7 +747,7 @@ ignore_imports = [
 
 ### A-05 (niedrig): Fehlende Indizes
 
-**Fundstellen:** `backend/src/papiq/adapters/outbound/sql/tables.py:140-145` (`contact_id`, `document_type_id`, `lane` ohne Index), `:158-163` (`document_tags`: PK `(document_id, tag_id)`, kein Index auf `tag_id`), `:269` (`jobs.locked_until`), `:293` (`outbox.recorded_at`), `:320` (`event_retries.retry_at`), `:358-359` (`sessions.last_seen_at`, `expires_at`). Abfragen: `repositories.py:242-251` (`_visible_to`: `lane = 'green' AND drawer_id IN (…)`), `:426-444` (`_query`: Filter nach `contact_id`, `document_type_id`, `tag_id`, `lane`), `event_bus.py:89-96` (`purge` nach `recorded_at`), `identity.py:186-189` (`sessions.purge`), `job_queue.py:81-85` (`claim`: `status = running AND locked_until <= now`).
+**Fundstellen:** `backend/src/lekto/adapters/outbound/sql/tables.py:140-145` (`contact_id`, `document_type_id`, `lane` ohne Index), `:158-163` (`document_tags`: PK `(document_id, tag_id)`, kein Index auf `tag_id`), `:269` (`jobs.locked_until`), `:293` (`outbox.recorded_at`), `:320` (`event_retries.retry_at`), `:358-359` (`sessions.last_seen_at`, `expires_at`). Abfragen: `repositories.py:242-251` (`_visible_to`: `lane = 'green' AND drawer_id IN (…)`), `:426-444` (`_query`: Filter nach `contact_id`, `document_type_id`, `tag_id`, `lane`), `event_bus.py:89-96` (`purge` nach `recorded_at`), `identity.py:186-189` (`sessions.purge`), `job_queue.py:81-85` (`claim`: `status = running AND locked_until <= now`).
 
 **Problem:** Die geprüften Kernabfragen sind abgedeckt: Job-Claim über `(status, run_at)`, Dublette und Besitzer über den Unique-Index `(owner_id, sha256)` (die führende Spalte deckt `owner_id = ?`), Protokoll über `processing_log.document_id`, Liste über `drawer_id`. Nicht abgedeckt sind die Listenfilter nach Kontakt, Typ, Tag und Lane (Posteingang: `lane IN ('yellow','red')`), die Löschprüfungen `exists(contact=…)`, `exists(document_type=…)`, `exists(tag=…)` (`repositories.py:470-488`) und die Aufräumabfragen. Postgres legt für Fremdschlüssel keine Indizes an. Bei den geplanten 100 bis einigen tausend Dokumenten ist das unkritisch, es sind aber die Abfragen, die mit der Dokumentzahl wachsen und bei jeder Listenansicht laufen.
 
@@ -757,7 +757,7 @@ ignore_imports = [
 
 ### A-06 (niedrig): Vollständigkeit der Fehlerzuordnung ungeprüft
 
-**Fundstellen:** `backend/src/papiq/adapters/inbound/rest/problems.py:188-201` (`_STATUSES`), `backend/src/papiq/core/domain/errors.py` (`UnprocessableDocumentError`, `LanguageModelError`, `EmbeddingsError`, `PatternTimeoutError` ohne Eintrag; `ConcurrencyError` über `ConflictError` → 409; `OpenFieldsError`, `DuplicateDocumentError`, `SecondFactorRequiredError`, `TooManyAttemptsError` gesondert behandelt).
+**Fundstellen:** `backend/src/lekto/adapters/inbound/rest/problems.py:188-201` (`_STATUSES`), `backend/src/lekto/core/domain/errors.py` (`UnprocessableDocumentError`, `LanguageModelError`, `EmbeddingsError`, `PatternTimeoutError` ohne Eintrag; `ConcurrencyError` über `ConflictError` → 409; `OpenFieldsError`, `DuplicateDocumentError`, `SecondFactorRequiredError`, `TooManyAttemptsError` gesondert behandelt).
 
 **Problem:** Vier `DomainError`-Unterklassen haben keine HTTP-Zuordnung und würden als `500` enden. Heute erreichen sie die REST-Schicht nicht: `UnprocessableDocumentError` und `LanguageModelError` entstehen nur in Worker-Schritten (`pipeline.py:479`), `EmbeddingsError` wird in `search.py:161` abgefangen (Rückfall auf Wörter), `PatternTimeoutError` in `running.py:162`. Das ist richtig, aber ungesichert: ein neuer Aufrufpfad (z. B. ein synchroner Klassifizierungs-Endpunkt oder die Mustervalidierung aus A-02 über den Port) macht daraus unbemerkt einen 500er. Die Zuordnung `SearchIndexError` → 503 „Service Unavailable" ist für „Index hat die Anfrage abgelehnt" (z. B. falsche Vektorlänge) eher 502/500, fällt aber nicht ins Gewicht.
 
@@ -799,13 +799,13 @@ Ebenfalls geprüft, aber in Ordnung: Regel-Engine (Konflikte, Schleifenschutz, M
 
 **Problem:** Die Abdeckung ist heute vollständig (Prüfung von Hand, siehe unten), aber nichts erzwingt sie: ein neuer Port mit Memory-Adapter ohne Vertragssuite oder ein neuer echter Adapter, dessen Testmodul die Suite nicht erbt, fällt in CI nicht auf. Gerade die Regel aus `CLAUDE.md` ist der Kern des Testkonzepts.
 
-**Vorschlag:** Ein Test `tests/unit/test_contract_coverage.py`: alle Klassen `*Contract` in `tests.contracts` sammeln; für jede muss es (a) eine Unterklasse in `tests.unit.adapters.memory` geben und (b) mindestens eine Unterklasse außerhalb von `memory` (unit oder integration), Ausnahmen in einer kleinen, begründeten Liste (`PatternMatcherContract` bis A-04 erledigt ist). Zusätzlich: jeder Name in `papiq.core.ports.__all__`, der ein `Protocol` ist, wird von einer Klasse in `papiq.adapters.outbound.memory` implementiert (Prüfung über `typing.runtime_checkable` oder einen festen Zuordnungs-Dict).
+**Vorschlag:** Ein Test `tests/unit/test_contract_coverage.py`: alle Klassen `*Contract` in `tests.contracts` sammeln; für jede muss es (a) eine Unterklasse in `tests.unit.adapters.memory` geben und (b) mindestens eine Unterklasse außerhalb von `memory` (unit oder integration), Ausnahmen in einer kleinen, begründeten Liste (`PatternMatcherContract` bis A-04 erledigt ist). Zusätzlich: jeder Name in `lekto.core.ports.__all__`, der ein `Protocol` ist, wird von einer Klasse in `lekto.adapters.outbound.memory` implementiert (Prüfung über `typing.runtime_checkable` oder einen festen Zuordnungs-Dict).
 
 **Test:** Der Meta-Test selbst.
 
 ## Geprüft und in Ordnung
 
-**1. Kern ohne Framework.** Alle Importe in `core` sind Standardbibliothek und `papiq.core` (Grep über 344 Importzeilen; kein `papiq.adapters`, `papiq.composition`, kein `pydantic`, `sqlalchemy`, `fastapi`, `structlog`, `httpx2`, `regex`). Logging ausschließlich über `logging.getLogger` (11 Module). `structlog` nur in `composition`. Der Vertrag „Core is plain Python" (`pyproject.toml:104-139`) listet die kritischen Pakete; der Layers-Vertrag verbietet `core`→`adapters`/`composition` und `adapters`→`composition`. Der Vertrag „Domain model depends on nothing else in the core" wird eingehalten (`core/domain` importiert kein `ports`/`services`).
+**1. Kern ohne Framework.** Alle Importe in `core` sind Standardbibliothek und `lekto.core` (Grep über 344 Importzeilen; kein `lekto.adapters`, `lekto.composition`, kein `pydantic`, `sqlalchemy`, `fastapi`, `structlog`, `httpx2`, `regex`). Logging ausschließlich über `logging.getLogger` (11 Module). `structlog` nur in `composition`. Der Vertrag „Core is plain Python" (`pyproject.toml:104-139`) listet die kritischen Pakete; der Layers-Vertrag verbietet `core`→`adapters`/`composition` und `adapters`→`composition`. Der Vertrag „Domain model depends on nothing else in the core" wird eingehalten (`core/domain` importiert kein `ports`/`services`).
 
 **2. Ports und Verdrahtung.** 16 Port-Module, alle als `Protocol`; Datenklassen daneben (`OcrResult`, `StructuredRequest`, `SearchQuery` mit Pflicht-`visibility`). Nur `composition/container.py` kennt die Adapterklassen (`PERSISTENCE`, `OBJECT_STORES`, `SEARCH_INDEXES`, … als Tabellen mit `AdapterNotAvailableError`); `composition/settings.py` importiert nur `decode_key`. Inbound-Adapter (REST, MCP, Worker, Evaluation) importieren ausschließlich `core` und den eigenen Bereich (Ausnahme A-01). Kein Adapter importiert `composition` (ein Treffer ist ein Docstring). Keine relativen Importe.
 
@@ -825,7 +825,7 @@ Ebenfalls geprüft, aber in Ordnung: Regel-Engine (Konflikte, Schleifenschutz, M
 
 ## 5 Web-UI
 
-Geprüft: `web/` auf Branch `claude/project-thread-7jl9zr` (Stand `e593168`), dazu `backend/src/papiq/adapters/inbound/rest/ui.py` und die Endpunktbeschreibungen in `web/openapi.json`. Nur gelesen; keine Befehle der Werkzeugkette ausgeführt. Alle Pfade relativ zu `web/`, sofern nicht anders angegeben.
+Geprüft: `web/` auf Branch `claude/project-thread-7jl9zr` (Stand `e593168`), dazu `backend/src/lekto/adapters/inbound/rest/ui.py` und die Endpunktbeschreibungen in `web/openapi.json`. Nur gelesen; keine Befehle der Werkzeugkette ausgeführt. Alle Pfade relativ zu `web/`, sofern nicht anders angegeben.
 
 | Nr. | Schwere | Befund |
 | --- | --- | --- |

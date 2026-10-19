@@ -2,7 +2,7 @@
 
 Datum: 2026-10-09. Entscheidung 6 (`prompts/M13.md`): zehn Originale aus der Paperless-Testinstanz
 (Auszug der Produktion), quer über Dokumenttypen und Kontakte, in eine Wegwerf-Umgebung
-(Datenbank `papiq_trial`, Dateisystem-Speicher, Index `papiq-trial-documents`, ein Worker) normal
+(Datenbank `lekto_trial`, Dateisystem-Speicher, Index `lekto-trial-documents`, ein Worker) normal
 per API hochgeladen (Kanal `web`, ohne Metadaten). Die Paperless-Werte sind das Soll. Vorher wurden
 die Stammdaten aus Paperless angelegt (86 Kontakte, 16 Dokumenttypen, 10 Tags, 14 Felder, alle
 global), wie es nach einer Übernahme der Fall wäre. Keine Titel und keine Personennamen in diesem
@@ -44,7 +44,7 @@ Bericht; die Auswahl steht als Paperless-IDs.
 | Dokumentdatum | 5 | 10 | drei Abweichungen um einen Tag (Paperless „erstellt“ gegen das Datum im Dokument), zwei nicht erkannt |
 | Tags | 1 | 3 | nur drei Dokumente haben Tags in Paperless |
 | Felder | 0 | 16 | nicht aussagekräftig: die Testinstanz trägt Testwerte („Das ist ein Text“, Zufallstext, Verweise auf andere Dokumente), die kein Modell aus dem Dokument lesen kann; siehe Befund unten |
-| Titel | 0 | 10 | Papiqs Titel kommt vom Modell, Paperless-Titel sind von Hand; kein Maß |
+| Titel | 0 | 10 | Lektos Titel kommt vom Modell, Paperless-Titel sind von Hand; kein Maß |
 
 ## Laufzeit je Schritt (Sekunden, alle Läufe)
 
@@ -88,7 +88,7 @@ Token/min begrenzt.
 
 Trial-Einstellungen: `/tmp/m13/trial/trial.env` im Devcontainer (Kopie von `live.env` mit
 eigener Datenbank, Dateisystem-Speicher unter `/tmp/m13/trial/objects`, Index
-`papiq-trial-documents`, API auf Port 8001), Skript `/tmp/m13/trial/evaluate.py` (`seed`,
+`lekto-trial-documents`, API auf Port 8001), Skript `/tmp/m13/trial/evaluate.py` (`seed`,
 `upload`, `report`), Originale und Paperless-Metadaten unter `/tmp/m13/trial/docs`. `/tmp` ist
-mit dem nächsten Neustart des Containers weg; die Datenbank `papiq_trial` bleibt, damit Tobi
+mit dem nächsten Neustart des Containers weg; die Datenbank `lekto_trial` bleibt, damit Tobi
 weitere Dokumente dort testen kann (Entscheidung 6).

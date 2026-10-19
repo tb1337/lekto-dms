@@ -134,7 +134,7 @@ Stammdatennamen ab, der Abgleich ist nicht wörtlich.
 ## Entscheidungen (Tobi, 12.10.2026)
 
 1. **Modelle und Endpunkte:** `chat.tbsch.me` ist OpenWebUI mit Ollama auf dem NUC, Groq und
-   Claude dahinter. Folge: Papiq spricht einen OpenAI-kompatiblen Endpunkt, der Modellname wählt
+   Claude dahinter. Folge: Lekto spricht einen OpenAI-kompatiblen Endpunkt, der Modellname wählt
    den Anbieter; Text- und Vision-Modell werden getrennt konfiguriert
    (`LEKTO_LLM_MODEL`, `LEKTO_LLM_VISION_MODEL`), die Lesung ihr eigenes (`LEKTO_READ_VLM_MODEL`).
    Zu prüfen in Phase 3: ob OpenWebUIs API Bilder an Claude und Groq durchreicht, und wie schnell

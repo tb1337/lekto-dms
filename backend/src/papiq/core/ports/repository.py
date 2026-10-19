@@ -41,6 +41,7 @@ from papiq.core.domain.ids import (
     UserId,
     WebhookId,
 )
+from papiq.core.domain.inbox import Confirmation, InboxTab
 from papiq.core.domain.master_data import Contact, DocumentType, Tag, TagScope
 from papiq.core.domain.pipeline import Lane, NodeRun
 from papiq.core.domain.rules import Rule, RuleApplication, RuleVersion
@@ -329,7 +330,8 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         ...
 
     async def remove(self, id: DocumentId) -> None:
-        """Delete the document and its processing log; NotFoundError if it does not exist."""
+        """Delete the document, its processing log and what the inbox keeps of it (`inbox`);
+        NotFoundError if it does not exist."""
         ...
 
     async def count_confirmed(self, *, after: datetime | None = None) -> int:
@@ -375,6 +377,100 @@ class DocumentIdentifierRepository(Protocol):
     ) -> dict[tuple[IdentifierKind, str], frozenset[ContactId]]:
         """For each of `identifiers`, the contacts of the confirmed documents that show it;
         one that no confirmed document with a contact shows is left out."""
+        ...
+
+
+@dataclass(frozen=True)
+class InboxEntry:
+    """A document in a viewer's inbox, with what `domain.inbox.inbox_state` decides by: when
+    the viewer saw it last (None: never), and who confirmed it out of yellow or red last."""
+
+    document: Document
+    seen_at: datetime | None
+    confirmation: Confirmation | None
+
+
+@dataclass(frozen=True)
+class InboxPosition:
+    """Where a page of an inbox ended: its last document, and under done when that document
+    left the inbox (`domain.inbox.left_at`), which done is sorted by; the other tabs go by
+    arrival, the id."""
+
+    id: DocumentId
+    left_at: datetime | None = None
+
+
+class InboxRepository(Protocol):
+    """What the inbox keeps beside the documents (`domain.inbox`): when each user saw a
+    document last, and who confirmed a document out of yellow or red last; and the inbox's
+    queries over both and the documents.
+
+    `owner`: whose inbox, a user's or, None, every user's (an admin with `all_users`); `viewer`:
+    whose seen counts. `since`: from when done counts (`DONE_PERIOD` back). Marks go with their
+    document and their user; the seen marks of a user who is deleted are removed first
+    (`remove_for_user`)."""
+
+    async def query(
+        self,
+        viewer: UserId,
+        *,
+        owner: UserId | None,
+        tab: InboxTab | None,
+        since: datetime,
+        after: InboxPosition | None = None,
+        limit: int,
+    ) -> list[InboxEntry]:
+        """The documents of `owner` that stand under `tab` in the inbox (`inbox_state`; None:
+        under any open tab), newest first: by id, and under done by when they left
+        (`domain.inbox.left_at`), ties by id; those after `after` in that order, at most
+        `limit`."""
+        ...
+
+    async def entry(self, viewer: UserId, document: DocumentId) -> InboxEntry | None:
+        """The document with `viewer`'s seen mark and its confirmation, whoever owns it and
+        wherever it stands; None if it does not exist."""
+        ...
+
+    async def count(
+        self, viewer: UserId, *, owner: UserId | None, since: datetime
+    ) -> dict[InboxTab, int]:
+        """How many documents of `owner` stand under each tab of the inbox (as `query`)."""
+        ...
+
+    async def seen(
+        self, viewer: UserId, documents: Collection[DocumentId]
+    ) -> dict[DocumentId, datetime]:
+        """When `viewer` saw each of `documents` last; those never seen are left out."""
+        ...
+
+    async def mark_seen(self, viewer: UserId, document: DocumentId, at: datetime) -> None:
+        """`viewer` saw `document` at `at`, which replaces when they saw it before."""
+        ...
+
+    async def mark_all_seen(self, viewer: UserId, *, owner: UserId | None, at: datetime) -> int:
+        """Mark every document of `owner` that is new and unseen in the inbox as seen by
+        `viewer` at `at` (`domain.inbox.is_unseen`); returns how many."""
+        ...
+
+    async def unmark_seen(self, viewer: UserId, document: DocumentId) -> None:
+        """Forget that `viewer` saw `document` (it is new for them again while it is new); no
+        error if they never did."""
+        ...
+
+    async def record_confirmation(self, document: DocumentId, confirmation: Confirmation) -> None:
+        """A person confirmed `document` out of yellow or red; it replaces the confirmation
+        before."""
+        ...
+
+    async def purge(self, *, before: datetime) -> int:
+        """Remove what only done needs, from before `before`: the confirmations, and the seen
+        marks that tell nothing any more (their document became new again since, or it is new
+        for no one); returns how many."""
+        ...
+
+    async def remove_for_user(self, user: UserId) -> int:
+        """Remove the user's seen marks; returns how many. Confirmations stay with their
+        document (they name who confirmed, also once the account is gone)."""
         ...
 
 

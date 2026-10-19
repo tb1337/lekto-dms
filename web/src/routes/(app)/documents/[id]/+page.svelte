@@ -18,22 +18,27 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import {
 		inboxDocument,
+		keepPlace,
 		neighbours,
+		nextDecision,
+		type InboxPlace,
 		tabHref,
 		tabOf,
 		type Mark,
 		type Place,
 		type Review,
-		type Tab
+		type Tab,
+		viewerSources
 	} from '#lib/document-view.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
+	import { inbox as inboxSummary } from '#lib/inbox.svelte.ts';
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { canEdit, canManage } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
-	import type { GraphNode } from '#lib/pipeline.ts';
+	import { hasText, type GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 	import { factCounts, type CodeFacts, type CodePlace, type Facts } from '#lib/facts.ts';
@@ -55,7 +60,9 @@
 	let facts = $state<Facts | null>(null);
 	// A code shown on its page from the content (`Auf der Seite zeigen`).
 	let codeMarks = $state<Mark[]>([]);
-	let inboxIds = $state<string[] | null>(null);
+	// The open documents of the inbox, in its order, opened from there.
+	let inboxPlaces = $state<InboxPlace[] | null>(null);
+	let inboxReady: Promise<void> = Promise.resolve();
 	let problem = $state<unknown>(null);
 	let marks = $state<Mark[]>([]);
 	let viewer = $state<PdfViewer | null>(null);
@@ -64,14 +71,24 @@
 	const user = $derived(session.user);
 	const editable = $derived(document !== null && canEdit(document, user));
 	const manageable = $derived(document !== null && canManage(document, user));
-	const base = $derived(`/api/v1/documents/${id}`);
-	// The archive exists once the text is recognised; until then the page images stand in.
+	// The archive exists once the text is recognised; until then the page images stand in, or,
+	// before they are rendered, the original PDF.
 	const archive = $derived(
 		document?.processing.nodes.some(
 			(state) => state.node === 'ocr' && state.status === 'done' && state.outcome !== 'failed'
 		) ?? false
 	);
-	const inbox = $derived(fromInbox && inboxIds ? neighbours(inboxIds, id) : null);
+	const inbox = $derived(
+		fromInbox && inboxPlaces
+			? neighbours(
+					inboxPlaces.map((place) => place.id),
+					id
+				)
+			: null
+	);
+	// After confirming, the next document that waits for a decision; not a new one, nor one in
+	// processing.
+	const nextUp = $derived(fromInbox && inboxPlaces ? nextDecision(inboxPlaces, id) : null);
 
 	// An answer for a document the page has left behind, or one overtaken by a later request
 	// (several events arrive at once), must not replace the current state.
@@ -90,13 +107,15 @@
 						unwrap(api.GET('/api/v1/documents/{id}/reading', params))
 					])
 				: [null, null];
-			const found = await loadFacts(wanted);
+			// Not asked for before there is a text (in processing, or failed before it was read).
+			const found = hasText(loaded.processing) ? await loadFacts(wanted) : null;
 			if (wanted === id && request === latest) {
 				document = loaded;
 				review = reviewed;
 				reading = read;
 				facts = found;
 				problem = null;
+				reportSeen(loaded);
 			}
 		} catch (error) {
 			if (wanted === id && request === latest) problem = error;
@@ -147,10 +166,31 @@
 					params: { query: { limit: 100, all_users: scope.query } }
 				})
 			);
-			inboxIds = listed.items.map((item) => item.document.id);
+			const now = listed.items.map((item) => ({ id: item.document.id, tab: item.tab }));
+			inboxPlaces = keepPlace(inboxPlaces ?? [], now, id);
 		} catch (error) {
 			reportError(error);
 		}
+	}
+
+	// Opening the view counts as seen (a read through the API does not), from anywhere: the
+	// inbox, the archive, a search, a link. Seen while the document is processed does not count
+	// (it is not new yet), so it is reported again when the open document turns green. Opened
+	// from the inbox, after the inbox is known: the document keeps its place there.
+	let reported: { id: string; green: boolean } | null = null;
+	function reportSeen(loaded: Document) {
+		const green = loaded.lane === 'green';
+		const report = reported?.id !== loaded.id || (green && !reported.green);
+		reported = { id: loaded.id, green };
+		if (!report) return;
+		void inboxReady
+			.then(() => api.PUT('/api/v1/documents/{id}/seen', { params: { path: { id: loaded.id } } }))
+			.then(({ response }) => {
+				if (response.ok) void inboxSummary.refresh();
+			})
+			.catch(() => {
+				// Seen is bookkeeping; the next opening reports it again.
+			});
 	}
 
 	$effect(() => {
@@ -173,10 +213,13 @@
 		void load();
 	});
 
+	// Again on every document opened: what changed at the one before (confirmed) came while it
+	// was no longer shown.
 	$effect(() => {
+		void id;
 		void events.generation;
 		void scope.allUsers;
-		if (fromInbox) untrack(() => void loadInbox());
+		if (fromInbox) untrack(() => (inboxReady = loadInbox()));
 	});
 
 	// Again after a master data dialog saved here (a contact opened from its facts): names,
@@ -212,6 +255,9 @@
 	}
 
 	async function confirmed(next: string | null) {
+		// It waits for no decision any more, whatever the next list says.
+		const left = id;
+		inboxPlaces = inboxPlaces?.filter((place) => place.id !== left) ?? null;
 		await goto(next ? inboxDocument(next) : `${BASE}/inbox`);
 	}
 
@@ -302,9 +348,7 @@
 						{#if archive || !document.page_count}
 							<PdfViewer
 								bind:this={viewer}
-								sources={archive || document.media_type !== 'application/pdf'
-									? [`${base}/archive`]
-									: [`${base}/archive`, `${base}/original`]}
+								sources={viewerSources(document, archive)}
 								label={document.title}
 								marks={archive ? [...marks, ...codeMarks] : []}
 							/>
@@ -321,7 +365,7 @@
 								{lookup}
 								{review}
 								{editable}
-								next={inbox?.next ?? null}
+								next={nextUp}
 								onsaved={(updated) => (document = updated)}
 								onenabled={() => loadLookup().then((value) => (lookup = value), reportError)}
 								onconfirmed={confirmed}
@@ -341,6 +385,7 @@
 				documentId={id}
 				filename={document.original_filename}
 				vision={reading?.vision ?? false}
+				hasText={hasText(document.processing)}
 				{facts}
 				{lookup}
 				topicId={document.topic_id}

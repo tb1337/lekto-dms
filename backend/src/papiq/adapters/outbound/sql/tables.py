@@ -288,10 +288,18 @@ documents = Table(
     Column("processing_nodes", json_type(), nullable=False, server_default="{}"),
     # The current run reads the pages with the vision language model (`Processing.vision`).
     Column("processing_vision", Boolean, nullable=False, server_default=false()),
+    # What decides whether the current run makes the document new (`Processing.baseline`,
+    # `Processing.decided`); runs started before revision 0030 have no baseline.
+    Column("processing_baseline", Text, nullable=True),
+    Column("processing_decided", Boolean, nullable=False, server_default=false()),
     # Set once the pages node rendered the page images.
     Column("page_count", Integer, nullable=True),
     # When a person last set or confirmed the metadata (see `Document.confirmed_at`).
     Column("confirmed_at", UtcDateTime, nullable=True, index=True),
+    # When processing last made it new for the inbox (see `Document.new_at`). No index: most
+    # green documents keep it, and the inbox queries go by owner and lane with the viewer's
+    # seen marks.
+    Column("new_at", UtcDateTime, nullable=True),
     Column("created_at", UtcDateTime, nullable=False),
     Column("updated_at", UtcDateTime, nullable=False),
     Column("version", Integer, nullable=False),
@@ -362,6 +370,35 @@ processing_log = Table(
     Column("pipeline_version", Text, nullable=False),
     Column("started_at", UtcDateTime, nullable=False),
     Column("duration_us", BigInteger, nullable=False),
+)
+
+# --- the inbox (`domain.inbox`): rows go with their document ------------------------------------
+
+# When a user saw a document last; it is new for them again once it became new after
+# (`documents.new_at`). The rows also go with their user.
+inbox_seen = Table(
+    "inbox_seen",
+    metadata,
+    Column("user_id", Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "document_id",
+        Uuid,
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    ),
+    Column("seen_at", UtcDateTime, nullable=False),
+)
+
+# Who confirmed a document out of yellow or red last, and when: for "done", removed by the
+# cleanup after `DONE_PERIOD`. `confirmed_by` has no foreign key: the account may be deleted,
+# the record stays.
+inbox_confirmations = Table(
+    "inbox_confirmations",
+    metadata,
+    Column("document_id", Uuid, ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+    Column("confirmed_by", Uuid, nullable=False),
+    Column("confirmed_at", UtcDateTime, nullable=False, index=True),
 )
 
 # --- rules --------------------------------------------------------------------------------------

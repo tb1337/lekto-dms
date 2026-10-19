@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
-import { createRawSnippet } from 'svelte';
+import { createRawSnippet, tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LANGUAGE_NAMES, locales } from '#lib/i18n.ts';
+import { inbox } from '#lib/inbox.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { phone } from '#lib/phone.svelte.ts';
 import { session, type User } from '#lib/session.svelte.ts';
@@ -24,6 +25,7 @@ function signIn(role: User['role']) {
 afterEach(() => {
 	session.clear();
 	phone.override(null);
+	inbox.summary = null;
 });
 
 function mainNavigation() {
@@ -86,6 +88,51 @@ describe('AppShell', () => {
 		]);
 		expect(screen.getByRole('search')).toBeTruthy();
 		expect(screen.getByRole('searchbox', { name: m.header_search_label() })).toBeTruthy();
+	});
+
+	it('counts what is open in the inbox, coloured by the worst lane', async () => {
+		signIn('user');
+		inbox.summary = {
+			new: 1,
+			review: 2,
+			intervene: 1,
+			processing: 1,
+			done: 7,
+			open: 5,
+			worst_lane: 'red'
+		};
+		render(AppShell, { children });
+		const label = [
+			m.inbox_badge_total({ count: 5 }),
+			m.inbox_badge_red({ count: 1 }),
+			m.inbox_badge_yellow({ count: 2 }),
+			m.inbox_badge_new({ count: 1 }),
+			m.inbox_badge_processing({ count: 1 })
+		].join(', ');
+		const badge = within(mainNavigation()).getByRole('img', { name: label });
+		expect(badge.textContent?.trim()).toBe('5');
+		expect(badge.dataset.tone).toBe('red');
+		expect(badge.className).toContain('bg-lane-red');
+		expect(badge.className).toContain('text-lane-red-foreground');
+
+		inbox.summary = {
+			...inbox.summary,
+			intervene: 0,
+			review: 0,
+			new: 0,
+			open: 1,
+			worst_lane: null
+		};
+		await tick();
+		const grey = within(mainNavigation()).getByRole('img', {
+			name: `${m.inbox_badge_total({ count: 1 })}, ${m.inbox_badge_processing({ count: 1 })}`
+		});
+		expect(grey.dataset.tone).toBe('grey');
+		expect(grey.className).toContain('bg-lane-running');
+
+		inbox.summary = { ...inbox.summary, processing: 0, open: 0 };
+		await tick();
+		expect(within(mainNavigation()).queryByRole('img')).toBeNull();
 	});
 
 	it('offers a skip link and the account menu', () => {

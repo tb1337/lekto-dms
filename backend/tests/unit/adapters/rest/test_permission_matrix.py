@@ -244,25 +244,31 @@ async def test_yellow_and_processing_documents_are_the_owners_and_admins(
 
 
 async def test_the_inbox_is_the_owners_and_all_of_them_for_admins(api: Api) -> None:
+    """The owner's documents in processing, yellow and new (green by itself, the green one); a
+    share never brings one in; admins have every user's with `all_users`."""
     scene = await build_scene(api)
-    for actor, expected in [("owner", [scene.yellow]), ("read_token", [scene.yellow])] + [
+    open = [scene.processing, scene.yellow, scene.green]  # newest first
+    for actor, expected in [("owner", open), ("read_token", open)] + [
         (actor, []) for actor in ("reader", "writer", "stranger", "admin")
     ]:
         response = await api.client.get(f"{PREFIX}/inbox", headers=scene.headers[actor])
         assert response.status_code == 200, response.text
         assert [item["document"]["id"] for item in response.json()["items"]] == expected, actor
+        summary = await api.client.get(f"{PREFIX}/inbox/summary", headers=scene.headers[actor])
+        assert summary.json()["open"] == len(expected), actor
     every = await api.client.get(
         f"{PREFIX}/inbox", params={"all_users": True}, headers=scene.headers["admin"]
     )
-    assert [item["document"]["id"] for item in every.json()["items"]] == [scene.yellow]
-    for actor in ("owner", "reader", "stranger", "read_token"):
-        response = await api.client.get(
-            f"{PREFIX}/inbox", params={"all_users": True}, headers=scene.headers[actor]
-        )
-        assert response.status_code == 403, actor
-    for actor in ("expired_token", "revoked_token", "deactivated", "deactivated_admin"):
-        response = await api.client.get(f"{PREFIX}/inbox", headers=scene.headers[actor])
-        assert response.status_code == 401
+    assert [item["document"]["id"] for item in every.json()["items"]] == open
+    for path, method in INBOX_LISTS:
+        for actor in ("owner", "reader", "stranger", "read_token"):
+            response = await api.client.request(
+                method, path, params={"all_users": True}, headers=scene.headers[actor]
+            )
+            assert response.status_code == 403, (path, actor)
+        for actor in DENIED:
+            response = await api.client.request(method, path, headers=scene.headers[actor])
+            assert response.status_code == 401, (path, actor)
     confirm = doc("POST", "/confirm", {})
     for actor in ("reader", "writer", "stranger"):
         response = await confirm(scene, api.client, scene.headers[actor], "yellow")
@@ -271,6 +277,40 @@ async def test_the_inbox_is_the_owners_and_all_of_them_for_admins(api: Api) -> N
     assert denied.status_code == 403
     by_admin = await confirm(scene, api.client, scene.headers["admin"], "yellow")
     assert by_admin.status_code == 202, by_admin.text
+
+
+INBOX_LISTS = [
+    (f"{PREFIX}/inbox", "GET"),
+    (f"{PREFIX}/inbox/summary", "GET"),
+    (f"{PREFIX}/inbox/seen", "POST"),
+]
+
+# Seen and new again: whoever reads the document (it counts for an inbox it can stand in).
+SEEN = {
+    "owner": 204,
+    "reader": 204,
+    "writer": 204,
+    "read_token": 403,
+    "admin": 204,
+    **HIDDEN,
+    **DENIED,
+}
+
+
+@pytest.mark.parametrize("method", ["PUT", "DELETE"])
+@pytest.mark.parametrize("which", ["green", "yellow", "processing"])
+async def test_seen_is_marked_by_whoever_reads_the_document(
+    api: Api, method: str, which: str
+) -> None:
+    scene = await build_scene(api)
+    call = doc(method, "/seen")
+    hidden = which != "green"
+    for actor in ACTORS:
+        expected = SEEN[actor]
+        if hidden and actor in ("reader", "writer"):
+            expected = 404
+        response = await call(scene, api.client, scene.headers[actor], which)
+        assert response.status_code == expected, (actor, response.text)
 
 
 async def test_hidden_and_missing_documents_look_alike(api: Api) -> None:

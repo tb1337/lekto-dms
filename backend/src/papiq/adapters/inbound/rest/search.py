@@ -9,7 +9,7 @@ from papiq.adapters.inbound.rest.context import Indexing, Search
 from papiq.adapters.inbound.rest.documents import DocumentSort
 from papiq.adapters.inbound.rest.params import ADMINS_ONLY, AllDocuments, Filter
 from papiq.adapters.inbound.rest.problems import problem_responses
-from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails
+from papiq.adapters.inbound.rest.schemas.documents import ListedDocument
 from papiq.adapters.inbound.rest.schemas.search import (
     SearchResultItem,
     SearchResultPage,
@@ -71,7 +71,7 @@ async def search_documents(
     return SearchResultPage(
         items=[
             SearchResultItem(
-                document=DocumentDetails.of(item.document, item.access),
+                document=ListedDocument.listed(item.document, item.access, item.in_inbox),
                 score=item.score,
                 snippet=[SnippetSegment(text=s.text, match=s.match) for s in item.snippet],
             )

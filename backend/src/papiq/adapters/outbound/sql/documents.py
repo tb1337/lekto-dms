@@ -341,6 +341,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
                 lane=None if row.lane is None else Lane(row.lane),
                 page_count=row.page_count,
                 confirmed_at=row.confirmed_at,
+                new_at=row.new_at,
                 processing=Processing(
                     status=ProcessingStatus(row.processing_status),
                     run=row.processing_run,
@@ -349,6 +350,8 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
                         for node, state in row.processing_nodes.items()
                     },
                     vision=row.processing_vision,
+                    baseline=row.processing_baseline,
+                    decided=row.processing_decided,
                 ),
                 created_at=row.created_at,
                 updated_at=row.updated_at,
@@ -376,12 +379,15 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             "lane": None if entity.lane is None else entity.lane.value,
             "page_count": entity.page_count,
             "confirmed_at": entity.confirmed_at,
+            "new_at": entity.new_at,
             "processing_status": processing.status.value,
             "processing_run": processing.run,
             "processing_nodes": {
                 node.value: _node_json(state) for node, state in processing.nodes.items()
             },
             "processing_vision": processing.vision,
+            "processing_baseline": processing.baseline,
+            "processing_decided": processing.decided,
             "created_at": entity.created_at,
             "updated_at": entity.updated_at,
             "version": entity.version,

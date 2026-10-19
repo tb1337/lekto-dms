@@ -36,6 +36,14 @@ describe('DocumentContent', () => {
 		expect(screen.getByText(m.facts_pending())).toBeTruthy();
 	});
 
+	it('asks for no text before the document has it', async () => {
+		render(DocumentContent, { documentId: 'doc-1', filename: 'scan.pdf', hasText: false });
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(screen.queryByRole('region', { name: m.content_page({ page: 1 }) })).toBeNull();
+		expect(screen.queryByText(m.loading())).toBeNull();
+	});
+
 	it('marks a fact where it stands in the text', async () => {
 		const scrolled = vi.fn();
 		Element.prototype.scrollIntoView = scrolled;

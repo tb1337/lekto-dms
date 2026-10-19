@@ -1,8 +1,7 @@
-/** The filters of the document view (list and search), as they stand in the page's URL. */
-import type { components } from '#lib/api/schema.ts';
-
-export type LaneFilter = components['schemas']['LaneFilter'];
-export const LANE_FILTERS: readonly LaneFilter[] = ['green', 'yellow', 'red', 'processing'];
+/**
+ * The filters of the document view (list and search), as they stand in the page's URL. No lane:
+ * where a document stands is the inbox's matter (the API keeps the filter).
+ */
 
 export interface Filters {
 	contact: string | null;
@@ -15,7 +14,6 @@ export interface Filters {
 	/** Documents with one of these topics or one below it (a document has one topic). */
 	topics: string[];
 	space: string | null;
-	lanes: LaneFilter[];
 	/** Documents with a value for this field. */
 	field: string | null;
 }
@@ -28,7 +26,6 @@ export const NO_FILTERS: Filters = {
 	typeGroups: [],
 	topics: [],
 	space: null,
-	lanes: [],
 	field: null
 };
 
@@ -42,25 +39,13 @@ export function parseFilters(params: URLSearchParams): Filters {
 		typeGroups: params.getAll('type_group'),
 		topics: params.getAll('topic'),
 		space: params.get('space'),
-		lanes: params
-			.getAll('lane')
-			.filter((lane): lane is LaneFilter => (LANE_FILTERS as readonly string[]).includes(lane)),
 		field: params.get('field')
 	};
 }
 
 /** Write the filters into `params` (other parameters stay). */
 export function writeFilters(params: URLSearchParams, filters: Filters): URLSearchParams {
-	for (const key of [
-		'contact',
-		'type',
-		'tag',
-		'contact_group',
-		'type_group',
-		'topic',
-		'space',
-		'lane'
-	]) {
+	for (const key of ['contact', 'type', 'tag', 'contact_group', 'type_group', 'topic', 'space']) {
 		params.delete(key);
 	}
 	params.delete('field');
@@ -71,7 +56,6 @@ export function writeFilters(params: URLSearchParams, filters: Filters): URLSear
 	for (const group of filters.typeGroups) params.append('type_group', group);
 	for (const topic of filters.topics) params.append('topic', topic);
 	if (filters.space) params.set('space', filters.space);
-	for (const lane of filters.lanes) params.append('lane', lane);
 	if (filters.field) params.set('field', filters.field);
 	return params;
 }
@@ -86,7 +70,6 @@ export function apiQuery(filters: Filters, allUsers = false) {
 		document_type_group_id: filters.typeGroups.length > 0 ? filters.typeGroups : undefined,
 		topic_id: filters.topics.length > 0 ? filters.topics : undefined,
 		space_id: filters.space ?? undefined,
-		lane: filters.lanes.length > 0 ? filters.lanes : undefined,
 		field_id: filters.field ?? undefined,
 		all_users: allUsers || undefined
 	};
@@ -102,7 +85,6 @@ export function isFiltered(filters: Filters): boolean {
 		filters.tags.length ||
 		filters.contactGroups.length ||
 		filters.typeGroups.length ||
-		filters.topics.length ||
-		filters.lanes.length
+		filters.topics.length
 	);
 }

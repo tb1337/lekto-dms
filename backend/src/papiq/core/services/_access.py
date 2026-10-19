@@ -54,6 +54,15 @@ async def require_admin(uow: UnitOfWork, actor: UserId, action: str) -> User:
     return user
 
 
+async def load_lister(uow: UnitOfWork, actor: UserId, all_users: bool, action: str) -> User:
+    """The caller of a list; with `all_users` (every user's instead of their own or their
+    reach), only an active admin (`admin_only`, "only admins <action>")."""
+    user = await load_actor(uow, actor)
+    if all_users:
+        admin_only(user, action)
+    return user
+
+
 async def readable_document(uow: UnitOfWork, user: User, id: DocumentId) -> tuple[Document, Space]:
     document = await uow.documents.find(id)
     if document is None:

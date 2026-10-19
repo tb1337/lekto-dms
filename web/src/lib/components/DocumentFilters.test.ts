@@ -47,4 +47,12 @@ describe('DocumentFilters', () => {
 		await user.click(remove);
 		expect(onchange).toHaveBeenLastCalledWith({ ...NO_FILTERS, topics: [] });
 	});
+
+	it('offers no lane: where a document stands is a matter of the inbox', () => {
+		render(DocumentFilters, { filters: NO_FILTERS, lookup, onchange: vi.fn() });
+		for (const label of [m.lane_green(), m.lane_yellow(), m.lane_red(), m.lane_running()]) {
+			expect(screen.queryByRole('button', { name: label })).toBeNull();
+		}
+		expect(screen.queryByRole('button', { name: m.filter_reset() })).toBeNull();
+	});
 });

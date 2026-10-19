@@ -1,19 +1,22 @@
 """Inbox, review and confirmation over HTTP."""
 
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from papiq.adapters.inbound.rest import PREFIX
+from papiq.adapters.inbound.rest.cursors import encode_cursor
 from papiq.core.domain.classification import (
     Candidate,
     CandidateSource,
     FieldCheck,
     checks_to_json,
 )
+from papiq.core.domain.ids import DocumentId
 from papiq.core.domain.master_data import Contact
 from papiq.core.domain.pipeline import Node, NodeResult, Outcome
 from tests.api import auth
 from tests.builders import NOW, Returns
-from tests.unit.adapters.rest.support import DOCUMENTS, Api, sample_file
+from tests.unit.adapters.rest.support import DOCUMENTS, Api, sample_file, unique_pdf, upload
 
 PROBLEM = "application/problem+json"
 NEIGHBOUR = UUID("01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b")
@@ -132,3 +135,87 @@ async def test_confirm_from_the_inbox(api: Api) -> None:
 
     again = await api.client.post(f"{url}/confirm", json={}, headers=auth(owner))
     assert again.status_code == 409
+
+
+async def test_the_tabs_the_summary_and_seen(api: Api) -> None:
+    owner = await api.user()
+    first = await upload(api, auth(owner), content=unique_pdf("first"))
+    second = await upload(api, auth(owner), content=unique_pdf("second"))
+    inbox = f"{PREFIX}/inbox"
+
+    page = (await api.client.get(inbox, headers=auth(owner))).json()
+    assert [(item["document"]["id"], item["tab"], item["done"]) for item in page["items"]] == [
+        (second, "new", None),
+        (first, "new", None),
+    ]
+    summary = (await api.client.get(f"{inbox}/summary", headers=auth(owner))).json()
+    assert summary == {
+        "new": 2,
+        "review": 0,
+        "intervene": 0,
+        "processing": 0,
+        "done": 0,
+        "open": 2,
+        "worst_lane": "green",
+    }
+
+    api.clock.advance(timedelta(minutes=1))
+    seen = await api.client.put(f"{DOCUMENTS}/{first}/seen", headers=auth(owner))
+    assert seen.status_code == 204
+    new = (await api.client.get(inbox, params={"tab": "new"}, headers=auth(owner))).json()
+    assert [item["document"]["id"] for item in new["items"]] == [second]
+    done = (await api.client.get(inbox, params={"tab": "done"}, headers=auth(owner))).json()
+    (item,) = done["items"]
+    assert (item["document"]["id"], item["tab"], item["open"]) == (first, "done", [])
+    assert item["done"]["how"] == "seen"
+    assert item["done"]["by"] == str(owner.id)
+    assert datetime.fromisoformat(item["done"]["at"]) == api.clock.now()
+
+    again = await api.client.delete(f"{DOCUMENTS}/{first}/seen", headers=auth(owner))
+    assert again.status_code == 204
+    marked = await api.client.post(f"{inbox}/seen", headers=auth(owner))
+    assert marked.status_code == 200
+    assert marked.json() == {"marked": 2}
+    summary = (await api.client.get(f"{inbox}/summary", headers=auth(owner))).json()
+    assert (summary["open"], summary["done"], summary["worst_lane"]) == (0, 2, None)
+
+
+async def test_done_goes_by_when_documents_left(api: Api) -> None:
+    owner = await api.user()
+    first = await upload(api, auth(owner), content=unique_pdf("first"))
+    second = await upload(api, auth(owner), content=unique_pdf("second"))
+    for document in (second, first):  # the older one is seen last
+        api.clock.advance(timedelta(minutes=1))
+        seen = await api.client.put(f"{DOCUMENTS}/{document}/seen", headers=auth(owner))
+        assert seen.status_code == 204
+    found, cursor = [], None
+    while True:
+        params: dict[str, str | int] = {"tab": "done", "limit": 1}
+        if cursor:
+            params["cursor"] = cursor
+        page = (await api.client.get(f"{PREFIX}/inbox", params=params, headers=auth(owner))).json()
+        found += [item["document"]["id"] for item in page["items"]]
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+    assert found == [first, second]
+    await api.client.delete(f"{DOCUMENTS}/{first}/seen", headers=auth(owner))
+    gone = await api.client.get(
+        f"{PREFIX}/inbox",
+        params={"tab": "done", "cursor": encode_cursor(DocumentId(UUID(first)))},
+        headers=auth(owner),
+    )
+    assert gone.status_code == 422  # its document is no longer done
+
+
+async def test_the_inbox_refuses_what_it_does_not_know(api: Api) -> None:
+    owner = await api.user()
+    missing = "01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+    for method in ("PUT", "DELETE"):
+        response = await api.client.request(
+            method, f"{DOCUMENTS}/{missing}/seen", headers=auth(owner)
+        )
+        assert response.status_code == 404
+        assert response.headers["content-type"] == PROBLEM
+    invalid = await api.client.get(f"{PREFIX}/inbox", params={"tab": "all"}, headers=auth(owner))
+    assert invalid.status_code == 422

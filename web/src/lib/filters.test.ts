@@ -16,9 +16,10 @@ describe('filters in the URL', () => {
 			typeGroups: ['g2', 'g3'],
 			topics: ['p1', 'p2'],
 			space: 'd1',
-			lanes: ['red'],
 			field: 'f1'
 		});
+		// The archive has no lanes; an older link's lane narrows nothing.
+		expect(apiQuery(filters)).not.toHaveProperty('lane');
 		const out = writeFilters(new URLSearchParams('q=x&tag=old&contact_group=old'), filters);
 		expect(out.getAll('tag')).toEqual(['a', 'b']);
 		expect(out.getAll('contact_group')).toEqual(['g1']);
@@ -29,7 +30,6 @@ describe('filters in the URL', () => {
 		expect(out.getAll('topic')).toEqual(['p1', 'p2']);
 		expect(apiQuery(filters).topic_id).toEqual(['p1', 'p2']);
 		expect(out.get('q')).toBe('x');
-		expect(out.getAll('lane')).toEqual(['red']);
 		// Whom the list covers is a setting, not part of the link.
 		expect(out.has('all')).toBe(false);
 		expect(apiQuery(filters, true).all_users).toBe(true);
@@ -46,7 +46,6 @@ describe('filters in the URL', () => {
 			document_type_group_id: undefined,
 			topic_id: undefined,
 			space_id: undefined,
-			lane: undefined,
 			field_id: undefined,
 			all_users: undefined
 		});

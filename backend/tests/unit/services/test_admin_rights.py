@@ -85,16 +85,16 @@ async def test_admins_control_other_users_documents_in_every_lane(world: World) 
     assert changed.title == "By the admin"
 
     # The owner's inbox holds it; the admin's own inbox not, unless they ask for all users.
-    assert [item.document.id for item in await world.documents.inbox(owner.id)] == [yellow.id]
-    assert await world.documents.inbox(admin.id) == []
-    every = await world.documents.inbox(admin.id, all_users=True)
+    assert [item.document.id for item in await world.inbox.items(owner.id)] == [yellow.id]
+    assert await world.inbox.items(admin.id) == []
+    every = await world.inbox.items(admin.id, all_users=True)
     assert [item.document.id for item in every] == [yellow.id]
     listed = await world.documents.query(admin.id, _all(), all_users=True)
     assert [view.document.id for view in listed] == [yellow.id]
     assert await world.documents.query(admin.id, _all()) == []
     for user in (owner, stranger):
         with pytest.raises(PermissionDeniedError):
-            await world.documents.inbox(user.id, all_users=True)
+            await world.inbox.items(user.id, all_users=True)
         with pytest.raises(PermissionDeniedError):
             await world.documents.query(user.id, _all(), all_users=True)
     with pytest.raises(NotFoundError):

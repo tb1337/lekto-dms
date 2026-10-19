@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 
-from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails
+from papiq.adapters.inbound.rest.schemas.documents import ListedDocument
 from papiq.core.ports.search_index import MAX_HITS
 
 
@@ -12,7 +12,7 @@ class SnippetSegment(BaseModel):
 
 
 class SearchResultItem(BaseModel):
-    document: DocumentDetails
+    document: ListedDocument
     score: float | None = Field(
         description="0 to 1, higher is better; only comparable within one result."
     )

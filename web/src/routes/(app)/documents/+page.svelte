@@ -2,7 +2,6 @@
 	import LayoutGrid from '@lucide/svelte/icons/layout-grid';
 	import List from '@lucide/svelte/icons/list';
 	import SearchIcon from '@lucide/svelte/icons/search';
-	import Upload from '@lucide/svelte/icons/upload';
 	import X from '@lucide/svelte/icons/x';
 	import { onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -13,8 +12,8 @@
 	import DocumentCard from '#lib/components/DocumentCard.svelte';
 	import DocumentFilters from '#lib/components/DocumentFilters.svelte';
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
+	import InboxMark from '#lib/components/InboxMark.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
-	import UploadDialog from '#lib/components/UploadDialog.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { events } from '#lib/events.svelte.ts';
@@ -35,13 +34,14 @@
 	import { PagedList } from '#lib/paging.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
-	import { uploads } from '#lib/upload.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 
-	// The documents: listed (newest document date first) or, with words in `q`, searched (by
-	// relevance), with the same filters; sorted as chosen, as a grid or a list. The URL holds
-	// the words, the filters and the sort; grid or list and the last sort are remembered.
-	type Document = components['schemas']['DocumentDetails'];
+	// The documents (the archive): listed (newest document date first) or, with words in `q`,
+	// searched (by relevance), with the same filters; sorted as chosen, as a grid or a list. The
+	// URL holds the words, the filters and the sort; grid or list and the last sort are
+	// remembered. No lanes here: a document that stands open in the inbox says so, with a link.
+	// Documents are uploaded in the inbox.
+	type Document = components['schemas']['ListedDocument'];
 	type Segment = components['schemas']['SnippetSegment'];
 	type Item = { document: Document; snippet: Segment[] };
 
@@ -56,7 +56,6 @@
 	let view = $state<View>(rememberedView());
 	let lookup = $state<Lookup | null>(null);
 	let lookupError = $state<string | null>(null);
-	let uploadOpen = $state(false);
 
 	const list = new PagedList<Item>(async (after) => {
 		const base = apiQuery(filters, scope.allUsers);
@@ -110,11 +109,9 @@
 			timer = setTimeout(() => void list.refresh(), 400);
 		};
 		const stop = events.subscribe(refresh);
-		const settled = uploads.onSettled(refresh);
 		return () => {
 			clearTimeout(timer);
 			stop();
-			settled();
 		};
 	});
 
@@ -184,13 +181,7 @@
 {/snippet}
 
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_documents()}</h1>
-		<Button onclick={() => (uploadOpen = true)}>
-			<Upload aria-hidden="true" />
-			{m.upload_title()}
-		</Button>
-	</div>
+	<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_documents()}</h1>
 
 	<div class="flex flex-col gap-3">
 		<form
@@ -307,6 +298,9 @@
 					<li>
 						<DocumentRow document={item.document} {lookup}>
 							{@render snippetLine(item)}
+							{#snippet aside()}
+								{#if item.document.in_inbox}<InboxMark lane={item.document.lane} />{/if}
+							{/snippet}
 						</DocumentRow>
 					</li>
 				{/each}
@@ -324,5 +318,3 @@
 		{/if}
 	{/if}
 </div>
-
-<UploadDialog bind:open={uploadOpen} spaces={lookup?.spaces ?? []} users={lookup?.users ?? []} />

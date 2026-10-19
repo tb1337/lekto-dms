@@ -80,6 +80,20 @@ async def test_the_owner_finds_everything_in_any_lane(scene: Scene) -> None:
     assert await scene.ids(scene.owner, "Mietvertrag") == {scene.private_document.id}
 
 
+async def test_hits_say_whether_they_stand_in_the_callers_inbox(scene: Scene) -> None:
+    """New for its owner until they see it; never for someone it is shared with."""
+    search = scene.search(embeddings=None)
+
+    async def in_inbox(user: User) -> list[bool]:
+        page = await search.search(user.id, "Stromrechnung")
+        return [item.in_inbox for item in page.items]
+
+    assert await in_inbox(scene.owner) == [True]
+    assert await in_inbox(scene.reader) == [False]
+    await scene.setup.world.inbox.mark_seen(scene.owner.id, scene.shared_document.id)
+    assert await in_inbox(scene.owner) == [False]
+
+
 async def test_others_find_green_documents_of_shared_spaces_only(scene: Scene) -> None:
     assert await scene.ids(scene.reader, "Stromrechnung") == {scene.shared_document.id}
     assert await scene.ids(scene.reader, "Mietvertrag") == set()

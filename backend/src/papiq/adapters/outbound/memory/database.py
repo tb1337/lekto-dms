@@ -13,7 +13,8 @@ from papiq.core.domain.events import DomainEvent
 from papiq.core.domain.fields import FieldDefinition
 from papiq.core.domain.identifiers import IdentifierKind
 from papiq.core.domain.identity import ApiToken, ExternalIdentity, Session
-from papiq.core.domain.ids import DocumentId, EventId, JobId
+from papiq.core.domain.ids import DocumentId, EventId, JobId, UserId
+from papiq.core.domain.inbox import Confirmation
 from papiq.core.domain.jobs import Job
 from papiq.core.domain.master_data import Contact, DocumentType, MasterData, Tag
 from papiq.core.domain.pipeline import NodeRun
@@ -140,3 +141,6 @@ class MemoryDatabase:
     jobs: dict[JobId, Job] = field(default_factory=dict)
     subscriptions: dict[str, SubscriptionState] = field(default_factory=dict)
     locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # see MemoryUnitOfWork.lock
+    # What the inbox keeps: when each user saw a document last, who confirmed it last.
+    seen: dict[tuple[UserId, DocumentId], datetime] = field(default_factory=dict)
+    confirmations: dict[DocumentId, Confirmation] = field(default_factory=dict)

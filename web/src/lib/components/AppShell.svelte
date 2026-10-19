@@ -18,7 +18,7 @@
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
 	import { reportError } from '#lib/errors.ts';
 	import { home, loginHref } from '#lib/navigation.ts';
-	import { inbox } from '#lib/inbox.svelte.ts';
+	import { BADGE_TONES, badgeLabel, badgeText, badgeTone, inbox } from '#lib/inbox.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { canListAllUsers } from '#lib/permissions.ts';
 	import { phone } from '#lib/phone.svelte.ts';
@@ -49,6 +49,8 @@
 		await goto(loginHref(home()), { replaceState: true });
 	}
 
+	const tone = $derived(badgeTone(inbox.summary));
+
 	// The inbox counter covers what the scope setting covers.
 	let allBefore = scope.allUsers;
 	$effect(() => {
@@ -73,12 +75,18 @@
 	>
 		{#if vertical}<section.icon class="size-[18px]" aria-hidden="true" />{/if}
 		{section.label()}
-		{#if section.path === '/inbox' && inbox.count > 0}
+		{#if section.path === '/inbox' && inbox.summary && tone}
+			<!-- Coloured by the worst lane in it; the label says what stands there. -->
 			<span
-				class="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground"
-				aria-label={m.inbox_count({ count: inbox.count })}
+				role="img"
+				data-tone={tone}
+				class={cn(
+					'grid h-5 min-w-5 place-items-center rounded-full border px-1.5 text-xs font-semibold',
+					BADGE_TONES[tone]
+				)}
+				aria-label={badgeLabel(inbox.summary)}
 			>
-				{inbox.more ? `${inbox.count}+` : inbox.count}
+				{badgeText(inbox.open)}
 			</span>
 		{/if}
 	</a>

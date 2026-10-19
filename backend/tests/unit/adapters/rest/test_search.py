@@ -52,6 +52,35 @@ async def test_search_shows_only_what_the_caller_may_read(api: Api) -> None:
     }
 
 
+async def test_lists_and_search_tell_what_stands_in_the_inbox(api: Api) -> None:
+    """`in_inbox`: the owner's documents in processing, yellow, or new and unseen (the green
+    one); a share brings none into an inbox; an admin with `all_users` has every user's."""
+    scene = await indexed_scene(api)
+
+    async def in_inbox(actor: str, **params: Any) -> dict[str, bool]:
+        headers = scene.headers[actor]
+        listed = await api.client.get(f"{PREFIX}/documents", params=params, headers=headers)
+        searched = await api.client.get(SEARCH, params={"q": "pdf", **params}, headers=headers)
+        flags = {item["id"]: item["in_inbox"] for item in listed.json()["items"]}
+        found = {
+            item["document"]["id"]: item["document"]["in_inbox"]
+            for item in searched.json()["items"]
+        }
+        assert found == flags, actor
+        return flags
+
+    everything = {scene.green: True, scene.yellow: True, scene.processing: True}
+    assert await in_inbox("owner") == everything
+    assert await in_inbox("reader") == {scene.green: False}
+    assert await in_inbox("admin", all_users=True) == everything
+    seen = await api.client.put(
+        f"{PREFIX}/documents/{scene.green}/seen", headers=scene.headers["owner"]
+    )
+    assert seen.status_code == 204
+    assert await in_inbox("owner") == {**everything, scene.green: False}
+    assert await in_inbox("admin", all_users=True) == everything
+
+
 @pytest.mark.parametrize("actor", sorted(DENIED))
 async def test_search_needs_a_valid_sign_in(api: Api, actor: str) -> None:
     scene = await indexed_scene(api)

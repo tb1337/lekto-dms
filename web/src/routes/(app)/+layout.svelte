@@ -18,10 +18,7 @@
 	// After a reconnect the counter may be stale.
 	$effect(() => {
 		void events.generation;
-		if (userId) {
-			void inbox.refresh();
-			uploads.recheck();
-		}
+		if (userId) void inbox.refresh();
 	});
 
 	// One event stream while someone is signed in; it closes with the session (sign-out, 401).

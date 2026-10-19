@@ -49,7 +49,13 @@ from papiq.core.ports.clock import Clock
 from papiq.core.ports.patterns import PatternMatcher
 from papiq.core.ports.templates import TemplateRenderer
 from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
-from papiq.core.services._access import admin_only, field_definitions, load_actor, readable_document
+from papiq.core.services._access import (
+    admin_only,
+    field_definitions,
+    load_actor,
+    load_lister,
+    readable_document,
+)
 from papiq.core.services._tags import tag_tree
 
 
@@ -91,9 +97,7 @@ class RuleService:
         """The caller's rules and the global rules, in the order they are applied.
         `all_users`: the rules of every user instead of the caller's (admins only)."""
         async with self._uow() as uow:
-            user = await load_actor(uow, actor)
-            if all_users:
-                admin_only(user, "list the rules of all users")
+            user = await load_lister(uow, actor, all_users, "list the rules of all users")
             rules = await uow.rules.list_for(
                 owners=None if all_users else (user.id,),
                 include_global=scope is not RuleScope.USER,

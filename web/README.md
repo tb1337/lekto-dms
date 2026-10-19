@@ -60,12 +60,45 @@ in (the editor's theme holds its colours), and bits-ui's focus trap does not see
 a listener keeps `focusin` from the editor away from it. Component tests get a plain text area in
 place of the editor (`tests/setup.ts`); `codemirror.test.ts` runs the real one.
 
+## Inbox
+
+`/ui/inbox` is the start page and the way in: documents are uploaded there only, and
+everything new stands there until a person saw it or decided.
+
+- **Upload:** the button opens `UploadDialog` (the space and, for admins, the owner; files
+  chosen, on a phone through the system's picker with camera and photos, or dropped there).
+  Dropping files on the page uploads them at once into the default space; an overlay shows
+  while files are dragged over it (not on a phone). A drop may hold folders, read in full
+  and recursively through the browser's entries (`lib/intake.ts`, batched `readEntries`),
+  without their structure; files of other types (only PDF, JPEG, PNG, TIFF go) and hidden
+  ones (`.DS_Store`, hidden folders as one) are skipped. Three requests at a time
+  (`lib/upload.svelte.ts`). The result (`UploadSummary`: uploaded, duplicates with a link to
+  the document already there from the 409's `existing_document_id`, skipped with the reason,
+  413 as too large, failures) stays until dismissed, in this browser only; the progress shows
+  while files are on their way. `/ui/documents` has no upload.
+- **Tabs** in `?tab=` (`lib/inbox-view.ts`): all that is open (none), new, review, intervene,
+  processing, done; an unknown one counts as none. Each row (`InboxRow`) says where its
+  document stands: in processing with its progress bar, yellow or red with the lane and why,
+  new calmly with a marker and "Seen" (no call to act), done (the last 14 days) with how
+  (confirmed or seen), when and by whom, and "Mark as new" for a seen one. "Mark all as
+  seen" asks first. Events refresh the list, also while documents are processed. On a phone
+  the tabs scroll sideways in their row, and the actions of a row are icons of 44 pixels.
+
+The counter at the menu entry (`lib/inbox.svelte.ts`) shows everything open from
+`/inbox/summary`, on the colour of the worst lane in it (grey with only documents in
+processing); its label names what stands there. The tabs show the same counts. The summary is
+fetched again after events and when the window comes back into view.
+
 ## Documents and search
 
-`/ui/documents` lists the documents and, with words in `?q=`, searches them
+`/ui/documents` is the archive: it lists the documents and, with words in `?q=`, searches them
 (`/documents/search`, with snippets), with the same filters (`lib/filters.ts`: contact, type,
-tags, contact and type groups, topics, space, lane, a field with a value; tags, groups and topics
-as chips, several topics meaning one of them); there is no search page of its own. The field in the
+tags, contact and type groups, topics, space, a field with a value; tags, groups and topics as
+chips, several topics meaning one of them); there is no search page of its own. It shows no
+lanes and no progress: a document that stands open in the inbox (`in_inbox`) carries "In the
+inbox", a link to the inbox tab it stands under (`InboxMark`); the document view keeps the lane
+in its head. A row or card asks for the preview only of a document with page images
+(`page_count`). The field in the
 header leads there; on narrow screens its icon opens the view with the field focused
 (`#search`). `?sort=` holds the sort: a search by relevance, a list by the newest document date
 unless chosen otherwise; the last choice of each, and grid or list (grid by default), stay in
@@ -113,10 +146,20 @@ those (`lib/icons/load.ts`).
 content, metadata and log (`?tab=`). From the desktop width on (`lg`) the view fills the window
 and only its cards scroll; on narrow screens the page scrolls.
 
+Opening the view reports the document seen (`PUT /documents/{id}/seen`), from wherever it was
+opened, and again when the open document turns green (seen while it is processed does not
+count); the counter follows. Opened from the inbox, the inbox is loaded again for every
+document shown, and a document that leaves it while open keeps its place there
+(`keepPlace`). After confirming, the view offers to open the inbox's next document that waits
+for a decision, yellow or red, the first before it if none follows, never a new one or one in
+processing (`nextDecision`); without one, back to the inbox.
+
 - **Details:** the archive PDF with PDF.js; until the archive exists (the text is still being
-  recognised), the page images from the API stand in. Both are shown by `PageViewer`: the
-  pages side by side, wrapping into rows, their width following the zoom (100 % is a page's
-  printed size), so the zoom decides how many stand in a row. The layouts one page, two pages
+  recognised), the page images from the API stand in, and before they exist the original of a
+  PDF (an image shows nothing yet; `viewerSources`: nothing is asked for that cannot be there).
+  Both are shown by `PageViewer`: the pages side by side, wrapping into rows, their width
+  following the zoom (100 % is a page's printed size), so the zoom decides how many stand in a
+  row. The layouts one page, two pages
   (the start; one on a narrow screen) and overview (four in a row, as far out as the zoom
   goes) are buttons, marked once zooming reaches them (`lib/viewer/zoom.ts`). Ctrl or ⌘ with
   the wheel, a pinch on a trackpad, Safari's gestures and two fingers zoom around the pointer
@@ -125,7 +168,9 @@ and only its cards scroll; on narrow screens the page scrolls.
   marks it on the page while hovered or focused (the places come from `/review`, owner and
   admins), a click on its page jumps there; so does a code from the content tab.
 - **Content:** the text as it is set, page by page, and beside it the facts and codes
-  (`FactsPanel`, from `/facts`).
+  (`FactsPanel`, from `/facts`). Text and facts are asked for once the document has its text
+  (`hasText`: `parse` done in the first run; a later run keeps the text of the one before), not
+  while it is processed for the first time or failed before its text was read (409).
 - **Metadata:** the files from `/files`: size, SHA-256, a PDF's information and XMP, an
   image's EXIF.
 

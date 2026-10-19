@@ -10,7 +10,7 @@ so paging over the pages still reaches every hit.
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 
 from papiq.core.domain.documents import Document
@@ -29,8 +29,9 @@ from papiq.core.ports.search_index import (
     check_search,
 )
 from papiq.core.ports.unit_of_work import UnitOfWorkFactory
-from papiq.core.services._access import admin_only, load_actor
+from papiq.core.services._access import load_lister
 from papiq.core.services._tags import expanded, group_lookup, matches
+from papiq.core.services.inbox import in_inbox
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +57,7 @@ class SearchItem:
     access: ShareLevel  # of the caller
     score: float | None
     snippet: tuple[Segment, ...]
+    in_inbox: bool = False  # it stands open in the caller's inbox (`inbox.in_inbox`)
 
 
 @dataclass(frozen=True)
@@ -92,7 +94,8 @@ class SearchService:
         all_users: bool = False,
     ) -> SearchPage:
         """Documents within the caller's reach that match `text` (and `filter`), by relevance
-        or in `order`; with `all_users` (admins only), any document.
+        or in `order`; with `all_users` (admins only), any document. Each says whether it stands
+        open in the caller's inbox (with `all_users`, in every user's).
 
         ValidationError for an empty text or a paging outside the limits, AuthenticationError
         for a deactivated caller, PermissionDeniedError for `all_users` without being an admin,
@@ -102,9 +105,7 @@ class SearchService:
         ratio = self._policy.semantic_ratio if semantic_ratio is None else semantic_ratio
         check_search(text, ratio, offset, limit)
         async with self._uow() as uow:
-            user = await load_actor(uow, actor)
-            if all_users:
-                admin_only(user, "search the documents of all users")
+            user = await load_lister(uow, actor, all_users, "search the documents of all users")
             spaces = await uow.spaces.list_accessible(actor)
             filter = await expanded(uow, filter)
         if offset >= MAX_HITS:
@@ -143,6 +144,10 @@ class SearchService:
                 if not allowed or access is None or not matches(document, filter, contacts, types):
                     continue  # the index is behind: a share or a lane has changed
                 items.append(SearchItem(document, access, hit.score, hit.snippet))
+            waiting = await in_inbox(
+                uow, actor, [item.document for item in items], all_users=all_users
+            )
+        items = [replace(item, in_inbox=item.document.id in waiting) for item in items]
         if len(items) < len(result.hits):
             log.info(
                 "search hits dropped after the check against the database",

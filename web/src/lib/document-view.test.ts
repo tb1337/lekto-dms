@@ -3,12 +3,16 @@ import {
 	fieldEvidence,
 	byPage,
 	inboxDocument,
+	keepPlace,
 	marksOf,
 	neighbours,
+	nextDecision,
+	type InboxPlace,
 	placesApply,
 	provenance,
 	tabHref,
 	tabOf,
+	viewerSources,
 	type Check,
 	type Review
 } from './document-view.ts';
@@ -151,6 +155,46 @@ describe('neighbours', () => {
 	});
 });
 
+describe('the place in the inbox', () => {
+	const at = (id: string, tab: InboxPlace['tab'] = 'new'): InboxPlace => ({ id, tab });
+
+	it('keeps the open document where it stood once it left the inbox', () => {
+		const before = [at('a'), at('b'), at('c'), at('d')];
+		expect(keepPlace(before, [at('a'), at('c'), at('d')], 'b')).toEqual(before);
+		// The ones before it left too: first.
+		expect(keepPlace(before, [at('d')], 'c').map((place) => place.id)).toEqual(['c', 'd']);
+		expect(keepPlace(before, [at('c')], 'a').map((place) => place.id)).toEqual(['a', 'c']);
+	});
+
+	it('takes the inbox as it is otherwise', () => {
+		expect(keepPlace([], [at('a')], 'x')).toEqual([at('a')]);
+		expect(keepPlace([at('x')], [at('a'), at('x', 'review')], 'x')).toEqual([
+			at('a'),
+			at('x', 'review')
+		]);
+		// Another document left: gone.
+		expect(keepPlace([at('a'), at('b')], [at('b')], 'b')).toEqual([at('b')]);
+	});
+
+	it('offers next the document that waits for a decision, never a new one or one in processing', () => {
+		const places = [
+			at('r1', 'intervene'),
+			at('me', 'review'),
+			at('n1', 'new'),
+			at('p1', 'processing'),
+			at('y1', 'review'),
+			at('r2', 'intervene')
+		];
+		expect(nextDecision(places, 'me')).toBe('y1');
+		// From the last one on, the first before it.
+		expect(nextDecision(places, 'r2')).toBe('r1');
+		expect(nextDecision([at('me', 'review'), at('n1'), at('p1', 'processing')], 'me')).toBeNull();
+		expect(nextDecision([], 'me')).toBeNull();
+		// Not (or no longer) in the inbox: the first that waits.
+		expect(nextDecision([at('n1'), at('y1', 'review')], 'gone')).toBe('y1');
+	});
+});
+
 describe('places by page', () => {
 	it('makes one place per page with every box on it, in page order', () => {
 		const box = (y: number) => ({ x: 0.1, y, width: 0.2, height: 0.02 });
@@ -164,5 +208,20 @@ describe('places by page', () => {
 			{ page: 1, boxes: [box(0.2)] },
 			{ page: 9, boxes: [box(0.1), box(0.5), box(0.52)] }
 		]);
+	});
+});
+
+describe('viewerSources', () => {
+	const pdf = { id: 'd1', media_type: 'application/pdf', page_count: null };
+	const image = { id: 'd2', media_type: 'image/png', page_count: null };
+
+	it('shows the archive once it exists', () => {
+		expect(viewerSources(pdf, true)).toEqual(['/api/v1/documents/d1/archive']);
+		expect(viewerSources(image, true)).toEqual(['/api/v1/documents/d2/archive']);
+	});
+
+	it('asks for no archive before it can exist', () => {
+		expect(viewerSources(pdf, false)).toEqual(['/api/v1/documents/d1/original']);
+		expect(viewerSources(image, false)).toEqual([]);
 	});
 });

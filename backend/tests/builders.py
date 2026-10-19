@@ -3,7 +3,7 @@
 import itertools
 import tempfile
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
@@ -36,6 +36,7 @@ from papiq.core.ports.ocr import VisionModel
 from papiq.core.ports.search_index import SearchQuery
 from papiq.core.ports.unit_of_work import UnitOfWorkFactory
 from papiq.core.services.pipeline import (
+    DeferredResult,
     IncomingFile,
     NodeExecutor,
     PipelineService,
@@ -109,13 +110,13 @@ class PlaceholderNode:
 
 
 class Returns:
-    """Node executor that returns a fixed result."""
+    """Node executor that returns a fixed result (one to complete when stored, too)."""
 
-    def __init__(self, result: NodeResult) -> None:
+    def __init__(self, result: NodeResult | DeferredResult) -> None:
         self.result = result
         self.calls = 0
 
-    async def run(self, document: Document) -> NodeResult:
+    async def run(self, document: Document) -> NodeResult | DeferredResult:
         self.calls += 1
         return self.result
 
@@ -207,16 +208,25 @@ def received() -> Document:
     return document(owner, default_space(owner))
 
 
-def run_pipeline(document: Document, results: dict[Node, NodeResult] | None = None) -> Document:
-    """Run the due nodes with OK (or the given results), one at a time in graph order, until
-    processing stops."""
+def run_pipeline(
+    document: Document,
+    results: dict[Node, NodeResult] | None = None,
+    *,
+    now: datetime = NOW,
+    before: Callable[[Node], object] | None = None,
+) -> Document:
+    """Run the due nodes with OK (or the given results) at `now`, one at a time in graph order,
+    until processing stops; `before` is called with each node before its result is stored
+    (to change the document as the node would)."""
     results = results or {}
     while True:
         run = document.processing.run
         due = [node for node in document.processing.due() if document.is_awaiting(node, run)]
         if not due:
             return document
-        document.record_result(due[0], run, results.get(due[0], OK), NOW)
+        if before is not None:
+            before(due[0])
+        document.record_result(due[0], run, results.get(due[0], OK), now)
 
 
 def processed(

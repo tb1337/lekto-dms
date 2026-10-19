@@ -210,8 +210,9 @@ class UserService:
 
     async def delete_user(self, actor: UserId, id: UserId) -> None:
         """Admins only, and only for a user who owns no documents and whose spaces are empty.
-        Removes their spaces, the shares to them, their rules and webhooks and all their sign-in
-        data. Other users' rules that file into the removed spaces are disabled."""
+        Removes their spaces, the shares to them, their rules and webhooks, all their sign-in
+        data and what they saw in the inbox. Other users' rules that file into the removed spaces
+        are disabled."""
         async with self._uow() as uow:
             await require_admin(uow, actor, "manage users")
             user = await uow.users.get(id)
@@ -242,6 +243,7 @@ class UserService:
             await uow.api_tokens.remove_for_user(id)
             await uow.external_identities.remove_for_user(id)
             await uow.credentials.remove(id)
+            await uow.inbox.remove_for_user(id)
             await uow.users.remove(id)
             await uow.commit()
         log.info("user deleted", extra={"user_id": str(id)})

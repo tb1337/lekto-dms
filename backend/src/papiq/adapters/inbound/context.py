@@ -15,6 +15,7 @@ from papiq.core.ports.event_bus import EventBus
 from papiq.core.services.auth import AuthService
 from papiq.core.services.classifier import ClassifierService
 from papiq.core.services.documents import DocumentService
+from papiq.core.services.inbox import InboxService
 from papiq.core.services.indexing import IndexingService
 from papiq.core.services.logos import LogoService
 from papiq.core.services.master_data import MasterDataService
@@ -42,6 +43,7 @@ class ApiContext:
     logos: LogoService
     pipeline: PipelineService
     documents: DocumentService
+    inbox: InboxService
     rules: RuleService
     rule_applications: RuleApplicationService
     webhooks: WebhookService

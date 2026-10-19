@@ -2,13 +2,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
-	import {
-		LANE_FILTERS,
-		NO_FILTERS,
-		isFiltered,
-		type Filters,
-		type LaneFilter
-	} from '#lib/filters.ts';
+	import { NO_FILTERS, isFiltered, type Filters } from '#lib/filters.ts';
 	import { spaceLabel, type Lookup, type TagScope } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { session } from '#lib/session.svelte.ts';
@@ -22,12 +16,6 @@
 		onchange
 	}: { filters: Filters; lookup: Lookup; onchange: (filters: Filters) => void } = $props();
 
-	const laneLabel: Record<LaneFilter, () => string> = {
-		green: m.lane_green,
-		yellow: m.lane_yellow,
-		red: m.lane_red,
-		processing: m.lane_running
-	};
 	const all = (label: string, list: readonly { id: string; name: string }[]) => [
 		{ value: '', label },
 		...list.map((entry) => ({ value: entry.id, label: entry.name }))
@@ -74,14 +62,6 @@
 
 	function set(patch: Partial<Filters>) {
 		onchange({ ...filters, ...patch });
-	}
-
-	function toggleLane(lane: LaneFilter) {
-		set({
-			lanes: filters.lanes.includes(lane)
-				? filters.lanes.filter((entry) => entry !== lane)
-				: [...filters.lanes, lane]
-		});
 	}
 </script>
 
@@ -130,46 +110,33 @@
 			{/if}
 		{/each}
 	</div>
-	<div class="flex flex-wrap items-center gap-2">
-		{#each LANE_FILTERS as lane (lane)}
-			<button
-				type="button"
-				aria-pressed={filters.lanes.includes(lane)}
-				onclick={() => toggleLane(lane)}
-				class={cn(
-					'h-8 rounded-full border px-3 text-sm transition-colors',
-					filters.lanes.includes(lane)
-						? 'border-primary bg-secondary font-medium'
-						: 'text-muted-foreground hover:text-foreground'
-				)}
-			>
-				{laneLabel[lane]()}
-			</button>
-		{/each}
-		{#each chips as chip (`${chip.key}:${chip.id}`)}
-			<span
-				class={cn(
-					'inline-flex h-8 max-w-full items-center gap-1 pr-1 pl-3 text-sm',
-					chip.key === 'topics' ? 'rounded-md' : 'rounded-full',
-					chip.key === 'tags' || chip.key === 'topics' ? 'bg-secondary' : 'border bg-background'
-				)}
-			>
-				<span class="truncate">{chip.name}</span>
-				<button
-					type="button"
-					class="grid size-6 shrink-0 place-items-center rounded-full hover:bg-background"
-					aria-label={chip.remove({ name: chip.name })}
-					onclick={() =>
-						set({ [chip.key]: filters[chip.key].filter((entry) => entry !== chip.id) })}
+	{#if chips.length > 0 || isFiltered(filters)}
+		<div class="flex flex-wrap items-center gap-2">
+			{#each chips as chip (`${chip.key}:${chip.id}`)}
+				<span
+					class={cn(
+						'inline-flex h-8 max-w-full items-center gap-1 pr-1 pl-3 text-sm',
+						chip.key === 'topics' ? 'rounded-md' : 'rounded-full',
+						chip.key === 'tags' || chip.key === 'topics' ? 'bg-secondary' : 'border bg-background'
+					)}
 				>
-					<X class="size-3.5" aria-hidden="true" />
-				</button>
-			</span>
-		{/each}
-		{#if isFiltered(filters)}
-			<Button variant="ghost" size="sm" onclick={() => onchange(NO_FILTERS)}>
-				{m.filter_reset()}
-			</Button>
-		{/if}
-	</div>
+					<span class="truncate">{chip.name}</span>
+					<button
+						type="button"
+						class="grid size-6 shrink-0 place-items-center rounded-full hover:bg-background"
+						aria-label={chip.remove({ name: chip.name })}
+						onclick={() =>
+							set({ [chip.key]: filters[chip.key].filter((entry) => entry !== chip.id) })}
+					>
+						<X class="size-3.5" aria-hidden="true" />
+					</button>
+				</span>
+			{/each}
+			{#if isFiltered(filters)}
+				<Button variant="ghost" size="sm" onclick={() => onchange(NO_FILTERS)}>
+					{m.filter_reset()}
+				</Button>
+			{/if}
+		</div>
+	{/if}
 </div>

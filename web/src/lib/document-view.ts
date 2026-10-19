@@ -32,6 +32,19 @@ export function tabHref(url: Address, tab: Tab): string {
 	return query ? `${url.pathname}?${query}` : url.pathname;
 }
 
+type Viewed = Pick<components['schemas']['DocumentDetails'], 'id' | 'media_type' | 'page_count'>;
+
+/**
+ * What the PDF viewer shows of a document: the archive PDF once it exists; before, while no
+ * page images stand in, the original if it is a PDF, else nothing (an image is shown once its
+ * page image exists). Nothing is asked for that cannot be there yet.
+ */
+export function viewerSources(document: Viewed, archive: boolean): string[] {
+	const base = `/api/v1/documents/${document.id}`;
+	if (archive) return [`${base}/archive`];
+	return document.media_type === 'application/pdf' ? [`${base}/original`] : [];
+}
+
 export interface FieldEvidence {
 	check: Check;
 	/** The field waits for a decision. */
@@ -130,6 +143,46 @@ export function neighbours(ids: readonly string[], id: string): Neighbours {
 		previous: ids[index - 1] ?? null,
 		next: ids[index + 1] ?? null
 	};
+}
+
+/** A document of the inbox as the document view knows it: where it stands there. */
+export interface InboxPlace {
+	id: string;
+	tab: components['schemas']['InboxTab'];
+}
+
+/**
+ * The inbox anew, with `id` kept where it stood before: the open document may leave the inbox
+ * while it is shown (seen when it opened, confirmed), and the way to the documents before and
+ * after it stays.
+ */
+export function keepPlace(
+	before: readonly InboxPlace[],
+	now: readonly InboxPlace[],
+	id: string
+): InboxPlace[] {
+	const kept = before.findIndex((place) => place.id === id);
+	if (kept < 0 || now.some((place) => place.id === id)) return [...now];
+	// After the nearest document before it that is still there; first if none is.
+	let at = 0;
+	for (let index = kept - 1; index >= 0 && at === 0; index--) {
+		at = now.findIndex((place) => place.id === before[index].id) + 1;
+	}
+	return [...now.slice(0, at), before[kept], ...now.slice(at)];
+}
+
+/**
+ * The document to open after confirming `id`: the next one in the inbox that waits for a
+ * decision (yellow or red), else the first such before it; never one in processing or a new
+ * one. Null if none is left: back to the inbox.
+ */
+export function nextDecision(places: readonly InboxPlace[], id: string): string | null {
+	const index = places.findIndex((place) => place.id === id);
+	const order = index < 0 ? places : [...places.slice(index + 1), ...places.slice(0, index)];
+	return (
+		order.find((place) => place.id !== id && (place.tab === 'review' || place.tab === 'intervene'))
+			?.id ?? null
+	);
 }
 
 /** A document opened from the inbox: its neighbours are the inbox's. */

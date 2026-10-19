@@ -150,3 +150,52 @@ describe('the topic in the signals', () => {
 		expect(classifier).toContainEqual([m.signal_topics(), ['Arbeit 93%']]);
 	});
 });
+
+describe('the labels in the fields node', () => {
+	const GROSS = '0199a6c4-0000-7000-8000-0000000000f1';
+	const NUMBER = '0199a6c4-0000-7000-8000-0000000000f2';
+	const fields = {
+		...lookup,
+		fields: [
+			{ id: GROSS, name: 'Bruttolohn' },
+			{ id: NUMBER, name: 'Personalnummer' }
+		]
+	} as unknown as Lookup;
+	const check = (field: string, label: unknown) => ({ field: `field:${field}`, label });
+
+	it('tells for each value whether it stands by its label, without a link', () => {
+		const output = {
+			fields: [
+				check(GROSS, { text: 'Gesamtbrutto', outcome: 'beside' }),
+				check(NUMBER, { text: 'Pers.-Nr.', outcome: 'unknown' }),
+				{ field: 'title', label: null }
+			]
+		};
+		const rows = signalSummary(entry('fields', output), fields);
+		expect(texts(rows)).toEqual([
+			['Bruttolohn', [m.log_label_beside({ label: 'Gesamtbrutto' })]],
+			['Personalnummer', [m.log_label_unknown({ label: 'Pers.-Nr.' })]]
+		]);
+		expect(rows.flatMap((row) => row.items).every((item) => item.href === undefined)).toBe(true);
+	});
+
+	it('names each outcome, and a label the model did not give', () => {
+		const said = (label: unknown) =>
+			texts(signalSummary(entry('fields', { fields: [check(GROSS, label)] }), fields))[0][1];
+		expect(said({ text: 'Gesamtbrutto', outcome: 'apart' })).toEqual([
+			m.log_label_apart({ label: 'Gesamtbrutto' })
+		]);
+		expect(said({ text: 'Brutto', outcome: 'label_missing' })).toEqual([
+			m.log_label_missing({ label: 'Brutto' })
+		]);
+		expect(said({ text: null, outcome: 'no_label' })).toEqual([m.log_label_none()]);
+		expect(m.log_label_beside({ label: 'Gesamtbrutto' })).toContain('Gesamtbrutto');
+	});
+
+	it('shows nothing for checks from before labels, nor for another node', () => {
+		const output = { fields: [{ field: `field:${GROSS}` }] };
+		expect(signalSummary(entry('fields', output), fields)).toEqual([]);
+		expect(signalSummary(entry('fields', {}), fields)).toEqual([]);
+		expect(signalSummary(entry('judge', output), fields)).toEqual([]);
+	});
+});

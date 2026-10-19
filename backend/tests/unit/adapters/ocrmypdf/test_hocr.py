@@ -5,7 +5,7 @@ from pathlib import Path
 
 from papiq.adapters.outbound.ocrmypdf.hocr import hocr_words, read_hocr
 from papiq.core.domain.locations import Box
-from papiq.core.domain.reading import PageReading, ReadWord
+from papiq.core.domain.reading import PageReading, ReadWord, content_words
 from tests.scans import PAYSLIP, ScanLine, hocr
 
 PAGE = "image &quot;000001_ocr.png&quot;; bbox 0 0 2000 1000; ppageno 0"
@@ -66,12 +66,14 @@ def test_the_pay_slip_is_poorly_read_by_all_words_but_not_by_its_content() -> No
     assert (reading.words, reading.unsure) == (237, 23)
     assert reading.unsure_share > 0.09
     assert PageReading(1, reading.words, reading.unsure).poor(0.08)  # as before
-    assert (reading.content, reading.content_unsure) == (200, 7)
-    assert reading.share < 0.04
+    assert (reading.content, reading.content_unsure) == (196, 3)
+    assert reading.share < 0.02
     assert not reading.poor(0.08)
-    # What stays unsure: the leader read as letters, the rules' long marks, two true amounts.
-    unsure = [word.text for word in words if word.unsure and word.size and word.size > 0.0065]
-    assert {"«oso:", "see", "EEE", "412,33", "32,99", "cae"} <= set(unsure)
+    # What stays unsure: two true amounts, and a mark read as a word of three letters.
+    content = content_words(words)
+    assert [word.text for word in content if word.unsure] == ["412,33", "32,99", "cae"]
+    # The misread amount Tesseract was sure of counts as read well.
+    assert next(word for word in content if word.text == "2.235,81").confidence == 79
 
 
 def test_a_broken_scan_stays_poorly_read_by_its_content() -> None:

@@ -46,6 +46,12 @@ print, not content. Tesseract measures the lines of one font up to a fifth apart
 digits or capitals has no descenders), so the cut lies well below: it takes a letterhead's or a
 sender line's 6 pt beside 11 pt body text, and keeps 8 pt footnotes and every table row."""
 
+FLAT_WORD = 0.35
+"""A word whose box is under this share of its line's height is no word: Tesseract reads the
+dots of a leader, a dash or a table rule as letters (`«oso:`, `see`, `cence`, `EEE`), and their
+box stays as low as the dots (0.1 to 0.2 of the line on a test scan), while a word of small
+letters only (`nur`, `an`) still has the x-height (0.55 and more)."""
+
 READING_VERSION = 1
 """The version of `reading.json`, the words of a document's archive."""
 
@@ -100,13 +106,16 @@ class ReadWord:
 def is_noise(word: ReadWord, typical_size: float | None = None) -> bool:
     """Whether a word is noise, neither content nor a sign of a broken scan: fewer than half
     of its characters letters or digits (table rules, marks); a dot, dash or underscore leader
-    (`Datum..........`); one or two characters without a digit (stray marks read as `gy`,
-    `TI`, `j`); or in a line under `SMALL_LINE` of the page's `typical_size` (a letterhead)."""
+    (`Datum..........`), also one read as letters (a box lower than `FLAT_WORD` of its line);
+    one or two characters without a digit (stray marks read as `gy`, `TI`, `j`); or in a line
+    under `SMALL_LINE` of the page's `typical_size` (a letterhead)."""
     text = word.text.strip()
     letters = sum(char.isalnum() for char in text)
     if not text or 2 * letters < len(text) or _LEADER.search(text):
         return True
     if len(text) <= 2 and not any(char.isdigit() for char in text):
+        return True
+    if word.box is not None and word.size and word.box.height < FLAT_WORD * word.size:
         return True
     return (
         typical_size is not None and word.size is not None and word.size < SMALL_LINE * typical_size

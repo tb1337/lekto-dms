@@ -489,12 +489,14 @@ which takes two conditions; the document date follows the same rules:
   page of the value's quote, or any recognised page if the quote was not found): on a broken
   scan a number may be anything, however sure Tesseract was of it. Noise counts neither as a
   word nor as unsure: a word with fewer than half of its characters letters or digits (rules,
-  marks), a dot, dash or underscore leader (`Datum..........`), one or two characters without a
-  digit (stray marks read as `gy`, `TI`, `j`), and the words of a line under 60 % of the page's
+  marks), a dot, dash or underscore leader (`Datum..........`), also one Tesseract read as
+  letters (`«oso:`, `see`, `EEE`: a box under 35 % of its line's height, where a word of small
+  letters still has the x-height), one or two characters without a digit (stray marks read as
+  `gy`, `TI`, `j`), and the words of a line under 60 % of the page's
   typical line height (hOCR `x_size`, the median over the words: a letterhead's small print;
   lines of the body font lie up to a fifth apart, footnotes stay content). On the pay slip that
   led to the rule, 10 % of all words were unsure, almost all of them leaders, letterhead and
-  marks; on a synthetic scan shaped like it (`tests/scans.py`), 4 % of the content.
+  marks; on a synthetic scan shaped like it (`tests/scans.py`), 2 % of the content.
 - **The value itself was read sure.** Every word Tesseract read that makes up the value within
   its quote's boxes needs 60 % confidence or more (the shortest runs of the words there that
   show the value, read as the quote check reads it): a date at 96 % passes, an amount at 32 % is

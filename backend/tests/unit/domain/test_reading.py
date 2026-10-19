@@ -101,6 +101,14 @@ def test_noise_is_neither_content_nor_unsure(text: str, noise: bool) -> None:
     assert is_noise(word(text)) is noise
 
 
+def test_dots_and_rules_read_as_letters_are_noise_by_their_low_box() -> None:
+    """Their box stays as low as the dots; a word of small letters has the x-height."""
+    assert is_noise(ReadWord("see", 47, Box(0.3, 0.5, 0.04, 0.002), 0.012))
+    assert is_noise(ReadWord("EEE", 30, Box(0.3, 0.5, 0.2, 0.004), 0.012))
+    assert not is_noise(ReadWord("nur", 96, Box(0.3, 0.5, 0.04, 0.007), 0.012))
+    assert not is_noise(ReadWord("see", 47, Box(0.3, 0.5, 0.04, 0.002)))  # no line size
+
+
 def test_small_print_is_noise_against_the_page_s_typical_line() -> None:
     body = [word(f"Wort{n}") for n in range(10)]
     letterhead = [word("Lohnbüro", 41, 0.007), word("Musterstadt", 70, 0.007)]

@@ -171,7 +171,7 @@ jobs of the old run are recognised as stale.
 
 | Node | Input | Derivatives (object store) | Outcome |
 | --- | --- | --- | --- |
-| OCR (`OcrNode`) | `originals/<sha256>` | `documents/<id>/archive.pdf` (PDF/A with text layer); in the log, how well each recognised page was read (`readings`: words, unsure words below 60 % of Tesseract's confidence) | uncertain if the archive is not PDF/A, with the reason; OK with a note if the original's digital signature is not in the archive |
+| OCR (`OcrNode`) | `originals/<sha256>` | `documents/<id>/archive.pdf` (PDF/A with text layer); `documents/<id>/reading.json` (each word Tesseract read: text, confidence, box, line size; gone when Tesseract recognised no page); in the log, how well each recognised page was read (`readings`: words and unsure words below 60 % of Tesseract's confidence, and the same of the content words) | uncertain if the archive is not PDF/A, with the reason; OK with a note if the original's digital signature is not in the archive |
 | Pages (`PagesNode`) | `originals/<sha256>` | `documents/<id>/pages/<n>.webp` (every page, 1200 px wide; an image narrower than that keeps its size, each frame of a TIFF is a page), `documents/<id>/preview.webp` (first page, 400 px wide); sets `page_count` | failed if the file cannot be read |
 | Parse (`ParseNode`) | the archive PDF | `documents/<id>/content.txt` (the text as it is set), `documents/<id>/content.json` (its lines and words with boxes) | failed if no text was recognised |
 | Signals (`signal_llm`, `signal_classifier`, `signal_neighbours`, `signal_facts`) | `content.txt`, master data, the classifier's model, the search index; `signal_facts` also the archive PDF | proposals in the log; `signal_facts` also `documents/<id>/codes.json` (the codes on the pages) | OK, also when abstaining (`abstained` names why); only `signal_llm` fails, after two unfit answers |
@@ -481,11 +481,63 @@ The quoted passage must appear in the text as well, and for an amount, number, d
 link or period it must show the value itself: elsewhere in the text the same digits may stand for
 anything, on a broken scan a lone fragment. An amount counts in the quote only as an amount,
 with decimal places or a currency beside it (`620,00`, `620 €`, `620,-`; a bare `620` is none).
-Without such a quote the value is only suggested, and so is a value on a page the OCR read
-poorly (`PAPIQ_POOR_READING_THRESHOLD`; the page of its quote, or any recognised page if the
-quote was not found): on a broken scan a number may be anything, however sure Tesseract was of
-it. The document date follows the same rules. A field's description (up to 300
-characters) goes into both prompts after its name and choices: it tells the model what belongs
+Without such a quote the value is only suggested. So is a value the OCR did not read sure,
+which takes two conditions; the document date follows the same rules:
+
+- **The value's place is not poorly read, counting content only.** Where the value's words
+  are found on the page (see the next condition), its place is the 20 content words nearest to
+  them, its own words not counted; it counts as poorly read from
+  `PAPIQ_POOR_READING_THRESHOLD` (8 %) of them unsure, that is two
+  (`'Betrag': the text around the value was poorly read (3 of 20 content words unsure)`): on a
+  broken scan a number may be anything, however sure Tesseract was of it. No layout is
+  assumed, neither blocks nor tables: nearness is the gap between the words' boxes, Euclidean
+  between their nearest edges, the vertical gap in line heights (the content's median hOCR
+  `x_size`, without sizes its median box height) and the horizontal one in characters (the
+  median width of one in the content's boxes) at half a line each, about the width of a
+  character for its font size; equal gaps (to a millionth of a line) go by reading order. So
+  the next word on the line is usually nearer than the line below, and a word two lines down
+  is about as far as one three characters' gap away on the same line. The page's shape does
+  not count: line and character are measured on the page itself, a receipt like a letter.
+  A quote without a place (its words are not one run of the page's text layer, or the model
+  put it together) leaves the value itself to be found among Tesseract's words: where it
+  stands just once on the pages, its words decide as with a place. With fewer than 20 other
+  content words on the page, without the value's words (no words were kept, the words do not
+  show the value as written, the value stands more than once without a place), and for what
+  the vision language model read, the place is the page: of the value's quote, or
+  any recognised page if the quote was not found, poorly read from the same share of unsure
+  content words with at least ten of them. Where the quote stands more than once on a page
+  and the value's words are found at one place, their surroundings stand for that page.
+  Noise counts neither as a word nor as unsure: a
+  word with fewer than half of its characters letters or digits (rules, marks), a dot, dash or
+  underscore leader (`Datum..........`), also one Tesseract read as letters (`«oso:`, `see`,
+  `EEE`: a box under 35 % of its line's height, where a word of small letters still has the
+  x-height), one or two characters without a digit (stray marks read as `gy`, `TI`, `j`), and
+  the words of a line under 60 % of the page's typical line height (hOCR `x_size`, the median
+  over the words: a letterhead's small print; lines of the body font lie up to a fifth apart,
+  footnotes stay content). On the pay slip that led to the rule, 10 % of all words were
+  unsure, almost all of them leaders, letterhead and marks; on a synthetic scan shaped like it
+  (`tests/scans.py`), 2 % of the content. Its table of amounts was also read badly: 9 % of the
+  page's content words were unsure, none of the 17 in the header with its date. On a
+  synthetic scan like that (`BAD_TABLE`), the 20 words around the date are all sure and keep
+  it green, while an amount inside the table is only suggested.
+- **The value itself was read sure.** Every word Tesseract read that makes up the value within
+  its quote's boxes needs 60 % confidence or more (the shortest runs of the words there that
+  show the value, read as the quote check reads it; a currency counts where the amount needs it
+  to be one): a date at 96 % passes, an amount at 32 % is
+  only suggested (`'Betrag': the value was read unsure (32%)`). Where these words cannot be
+  found, this condition does not apply, and neither does it for the vision language model,
+  which gives no confidences: its pages count all words, with what it marks unreadable as
+  unsure.
+
+Tesseract is sure of some misreadings, so a poorly read place still makes every value in it a
+suggestion. A document recognised before content was counted keeps the rule of all words on
+its pages (its log entry has no content counts and no `reading.json` exists) until it is
+reprocessed from `ocr`. One read with `reading.json` gets the rule of the surroundings when it
+is reprocessed from any node after `ocr` (such as `judge` or `fields`): the judge and the
+fields node read the kept words on each run, without reading the scan again.
+
+A field's description (up to 300 characters) goes into both prompts after its name and
+choices: it tells the model what belongs
 in the field, whose name is often an internal one no document shows (`LA_Brutto`: the month's
 gross total, not the base salary). The model is told to copy the quoted passage exactly as it
 stands, numbers unchanged, and where the label and the value stand apart (a table, a form with
@@ -1234,7 +1286,7 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `PAPIQ_VLM_TIMEOUT` | Worker | `1800` | Seconds for reading a whole document with the model (one page at most 300); the job lease grows with it |
 | `PAPIQ_CONFIDENCE_THRESHOLD` | Worker | `0.9` | A field passes from this confidence on |
 | `PAPIQ_CONTACT_SUGGEST_THRESHOLD` | Worker | `0.75` | An existing contact is suggested from this similarity on; not above the confidence threshold |
-| `PAPIQ_POOR_READING_THRESHOLD` | Worker | `0.08` | Share of unsure words (below 60 % of Tesseract's confidence) from which a page the OCR recognised counts as poorly read: a value on it is only suggested. The default lies between good scans (up to 7 %) and broken ones (from 9 %) of a first sample; calibration in M18 |
+| `PAPIQ_POOR_READING_THRESHOLD` | Worker | `0.08` | Share of unsure content words (below 60 % of Tesseract's confidence; noise left out, see the field checks) from which a value's place counts as poorly read, and the value is only suggested: the 20 content words nearest to it, else the page the OCR recognised. The default lies between good scans (up to 7 %) and broken ones (from 9 %) of a first sample; calibration in M18 |
 | `PAPIQ_DEFAULT_CURRENCY` | both | `EUR` | The currency of an amount in a document that shows no currency at all (ISO 4217), and of the `currency` filter in templates where they name none |
 | `PAPIQ_CLASSIFIER` | both | `scikit-learn` | The classifier trained from confirmed documents; `none` turns it off |
 | `PAPIQ_CLASSIFIER_MIN_EXAMPLES` | both | `20` | Confirmed documents before the first model is trained |

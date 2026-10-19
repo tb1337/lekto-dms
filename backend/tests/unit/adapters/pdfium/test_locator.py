@@ -9,7 +9,7 @@ from papiq.adapters.outbound.pdfium import PdfiumTextLocator
 from papiq.core.domain.locations import Box
 from tests.builders import SAMPLES
 from tests.contracts.processing import TextLocatorContract
-from tests.samples.make_samples import LINES, text_pdf
+from tests.samples.make_samples import LINES, pdf, text_lines, text_pdf
 
 
 @pytest.fixture
@@ -73,6 +73,28 @@ async def test_a_word_found_often_is_reported_a_few_times(tmp_path: Path) -> Non
     pdf.write_bytes(text_pdf(["EUR EUR EUR", "EUR EUR EUR"]))
     (places,) = await PdfiumTextLocator().locate(pdf, ["EUR"])
     assert len(places) == 5
+
+
+async def test_a_line_across_blocks_of_the_text_layer_is_found(tmp_path: Path) -> None:
+    """An OCR'd scan holds Tesseract's blocks one after the other: the left column, then the
+    right. A quote of one line across both (as the parsed text reads it) is found there."""
+    left = text_lines("F1", 12, 16, 72, 760, ["Entgeltbescheinigung", "fuer Juni 2022"])
+    right = text_lines("F1", 12, 16, 400, 760, ["24.06.2022", "Seite 12"])
+    path = tmp_path / "blocks.pdf"
+    path.write_bytes(pdf(f"{left} {right}"))
+    (places,) = await PdfiumTextLocator().locate(path, ["Entgeltbescheinigung 24.06.2022"])
+    (place,) = places
+    assert place.page == 1 and len(place.boxes) == 2  # the two words far apart: two boxes
+    left_box, right_box = sorted(place.boxes, key=lambda box: box.x)
+    assert left_box.x < 0.2 < 0.6 < right_box.x
+    assert abs(left_box.y - right_box.y) < 0.01
+
+
+async def test_a_quote_that_is_one_run_is_not_looked_for_in_the_lines(tmp_path: Path) -> None:
+    path = tmp_path / "lines.pdf"
+    path.write_bytes(text_pdf(["Rechnung 4711", "Rechnung 4711"]))
+    (places,) = await PdfiumTextLocator().locate(path, ["Rechnung 4711"])
+    assert len(places) == 2
 
 
 async def test_a_page_without_text_has_no_places() -> None:

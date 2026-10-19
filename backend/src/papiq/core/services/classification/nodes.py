@@ -11,11 +11,13 @@ the inbox).
 """
 
 import asyncio
+import json
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
+from types import MappingProxyType
 from typing import Any
 from uuid import UUID
 
@@ -54,6 +56,7 @@ from papiq.core.domain.fields import (
 )
 from papiq.core.domain.ids import ContactId, DocumentId, FieldId
 from papiq.core.domain.json_value import JsonObject, JsonValue, as_list
+from papiq.core.domain.locations import Location
 from papiq.core.domain.master_data import Contact, DocumentType, Tag
 from papiq.core.domain.names import match_key, mentions, named_share
 from papiq.core.domain.periods import Period, PeriodKind
@@ -68,7 +71,16 @@ from papiq.core.domain.pipeline import (
     Outcome,
     ProcessingHistory,
 )
-from papiq.core.domain.reading import OcrOutput, PageReading
+from papiq.core.domain.reading import (
+    OcrOutput,
+    PageReading,
+    ReadWord,
+    reading_from_json,
+    surroundings,
+    value_on_pages,
+    value_words,
+    words_at,
+)
 from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.text import Shortened, shorten
 from papiq.core.domain.validation import name_key
@@ -115,7 +127,7 @@ from papiq.core.services.classification.signals import (
 )
 from papiq.core.services.exchanges import keep_calls
 from papiq.core.services.nodes import ARCHIVE_FILE, work_directory
-from papiq.core.services.objects import archive_key, load_text, text_key
+from papiq.core.services.objects import archive_key, load_text, reading_key, text_key
 from papiq.core.services.pipeline import MetadataResult
 from papiq.core.services.titles import has_machine_title
 
@@ -130,6 +142,8 @@ JUDGE = "judge"
 """`model_version` of the judge's entry when the language model gave nothing."""
 
 
+_NO_WORDS: Mapping[int, tuple[ReadWord, ...]] = MappingProxyType({})
+
 MAX_CONTACTS = 20
 """Contacts a prompt lists, those the text names most: enough for every sender a letter
 names, few enough that the list does not crowd out the document (`architektur.md`)."""
@@ -141,9 +155,10 @@ class ClassificationPolicy:
     existing contact at least this similar is suggested. Texts longer than `input_budget`
     characters are shortened; at most `max_tags` tags and `max_contacts` contacts (those the
     text names most) are listed in a prompt. `default_currency`: the currency of an amount in
-    a text that shows none. `poor_reading`: the share of unsure words from which a recognised
-    page counts as poorly read (`PageReading.poor`). All but `max_contacts` are configuration:
-    the composition sets them from the settings, whose defaults are the one source."""
+    a text that shows none. `poor_reading`: the share of unsure (content) words from which a
+    value's place counts as poorly read (`Surroundings.poor`, `PageReading.poor`). All but
+    `max_contacts` are configuration: the composition sets them from the settings, whose
+    defaults are the one source."""
 
     accept: float
     suggest_contact: float
@@ -460,7 +475,10 @@ class JudgeNode:
         contact, kind, topic, tagged, date_check = await _locate_quotes(
             self._store, self._locator, document, [contact, kind, topic, tagged, date_check]
         )
-        date_check = _readable(date_check, _ocr_readings(log), self._policy.poor_reading)
+        reading = await _ocr_reading(self._store, document, log, [date_check])
+        date_check = _readable(
+            date_check, reading, self._policy.poor_reading, _date_shown(date_check.value)
+        )
         checks = [contact, kind, topic, tagged, date_check]
         # A topic set is one of the contact's; a contact set that does not enable the
         # document's topic clears it (`checked_changes`).
@@ -603,9 +621,15 @@ class FieldsNode(_ModelStep):
             for check, definition in zip(checks, definitions, strict=True)
         ]
         checks = await _locate_quotes(self._store, self._locator, document, checks)
-        readings = _ocr_readings(log)
+        reading = await _ocr_reading(self._store, document, log, checks)
         checks = [
-            _readable(check, readings, self._policy.poor_reading, definition.name)
+            _readable(
+                check,
+                reading,
+                self._policy.poor_reading,
+                _field_shown(definition, check.value),
+                definition.name,
+            )
             if definition.data_type in _LITERAL
             else check
             for check, definition in zip(checks, definitions, strict=True)
@@ -776,7 +800,7 @@ def _check_field(
 
 _SHORTEST_EVIDENCE = 4  # characters of a quoted passage that alone backs a yes/no or choice
 # Values written as such: their quoted passage must show them (`_verified`), and a poorly
-# read page does not back them (`_readable`).
+# read place does not back them (`_readable`).
 _LITERAL = frozenset(
     {
         FieldType.TEXT,
@@ -910,33 +934,106 @@ def _literally(value: FieldValue, quote: DocumentText) -> bool:
             return False
 
 
-def _ocr_readings(log: Sequence[NodeRun]) -> tuple[PageReading, ...]:
-    """How well the OCR read the pages, by its latest entry that made a text (as
-    `PipelineService.reading` tells it); none for a document recognised before readings, or
-    with text of its own."""
-    entry = ProcessingHistory(log).latest(Node.OCR, made=True)
-    return () if entry is None else OcrOutput.from_json(entry.result.output).readings
+@dataclass(frozen=True)
+class _Reading:
+    """How the OCR read the pages (`pages`), and the words Tesseract read on them by page
+    (`words`; none for pages the vision language model read, or read before words were kept)."""
+
+    pages: tuple[PageReading, ...] = ()
+    words: Mapping[int, tuple[ReadWord, ...]] = _NO_WORDS
+
+
+async def _ocr_reading(
+    store: ObjectStore,
+    document: Document,
+    history: Sequence[NodeRun],
+    checks: Sequence[FieldCheck],
+) -> _Reading:
+    """How the OCR read the pages, by its latest entry that made a text (as
+    `PipelineService.reading` tells it); nothing for a document recognised before readings, or
+    with text of its own. The words it kept beside the archive only where one of `checks`
+    passed: no other check looks at them."""
+    entry = ProcessingHistory(history).latest(Node.OCR, made=True)
+    pages = () if entry is None else OcrOutput.from_json(entry.result.output).readings
+    if not pages or not any(check.ok and check.value is not None for check in checks):
+        return _Reading(pages)
+    key = reading_key(document.id)
+    try:
+        data = await store.get(key)
+        words = await asyncio.to_thread(lambda: reading_from_json(json.loads(data)))
+    except NotFoundError:
+        words = None
+    except (ValueError, ValidationError):
+        log.warning("the words of the reading cannot be read", extra={"key": key})
+        words = None
+    return _Reading(pages, words or _NO_WORDS)
+
+
+def _date_shown(value: JsonValue) -> Callable[[DocumentText], bool] | None:
+    """How a quote shows a checked date (ISO), as the quote check reads it."""
+    if not isinstance(value, str):
+        return None
+    try:
+        day = date.fromisoformat(value)
+    except ValueError:
+        return None
+    return lambda text: text.has_date(day)
+
+
+def _field_shown(
+    definition: FieldDefinition, value: JsonValue
+) -> Callable[[DocumentText], bool] | None:
+    """How a quote shows a checked value of `definition`, as the quote check reads it."""
+    try:
+        parsed = field_from_json(definition, value)
+    except ValidationError:
+        return None
+    match parsed:
+        case Period():
+            period = parsed
+            return lambda text: text.has_period(period)
+        case date():
+            day = parsed
+            return lambda text: text.has_date(day)
+        case _:
+            return lambda text: _literally(parsed, text)
 
 
 def _readable(
     check: FieldCheck,
-    readings: Sequence[PageReading],
+    reading: _Reading,
     threshold: float,
+    shows: Callable[[DocumentText], bool] | None,
     name: str | None = None,
 ) -> FieldCheck:
-    """A checked value on a poorly read page is only suggested: on a broken scan a number
-    may be anything, however sure the engine was of it. The page is that of its quote, or any
-    recognised page if the quote was not found on one."""
+    """A checked value is only suggested where it was not read sure: in a poorly read place
+    (counting content only), as on a broken scan a number may be anything, however sure the
+    engine was of it; or where a word of the value itself was read unsure. The value's words
+    are those in its quote's boxes that show it (`shows`); its place, the content words around
+    them (`surroundings`). A quote without a place (its words not one run on the page, or put
+    together by the model) leaves the value itself to be found among the words of the pages
+    (`value_on_pages`), where it stands just once. Where the value's words are not found (no
+    words kept, a value not written as such, or not just once), or too few words stand around
+    them, the place is the page of the quote, or any recognised page if the quote was not found
+    on one."""
     if not check.ok or check.value is None:
         return check
-    pages = {location.page for location in check.locations}
-    poor = next(
-        (item for item in readings if item.poor(threshold) and (not pages or item.page in pages)),
-        None,
-    )
-    if poor is None:
-        return check
-    reason = f"page {poor.page} was poorly read ({poor.unsure_share:.0%} of its words unsure)"
+    places: list[_Place] = []
+    for location in check.locations:
+        words = reading.words.get(location.page, ())
+        found = None if shows is None else value_words(words_at(location, words), shows)
+        places.append((location, words, found))
+    if not places and shows is not None and (alone := value_on_pages(reading.words, shows)):
+        page, value = alone
+        boxes = tuple(word.box for word in value if word.box is not None)
+        if boxes:
+            places.append((Location(page, boxes), reading.words[page], value))
+    reason = _poorly_read(places, reading.pages, threshold)
+    if reason is None:
+        unsure = [word.confidence for *_, value in places for word in value or () if word.unsure]
+        if not unsure:
+            return check
+        reason = f"the value was read unsure ({min(unsure)}%)"
     return replace(
         check,
         outcome=Outcome.UNCERTAIN,
@@ -945,6 +1042,41 @@ def _readable(
         suggestion=check.value,
         value=None,
     )
+
+
+type _Place = tuple[Location, Sequence[ReadWord], tuple[ReadWord, ...] | None]
+"""A place of a quote, the words Tesseract read on its page and those of the value there (None
+where they are not found)."""
+
+
+def _poorly_read(
+    places: Sequence[_Place], pages: Sequence[PageReading], threshold: float
+) -> str | None:
+    """Why a value stands in a poorly read place, at any of its quote's places; None if it
+    does not. A place is the content around the value's words there, or, without them or with
+    too few words around, the page; without places, any recognised page. A page whose
+    surroundings were judged at one place is not judged as a whole for another place on it
+    where the value's words were not found: the boxes of the text layer and Tesseract's differ
+    at a line's edge, and the whole page would undo its surroundings."""
+    if not places:
+        poor = next((page for page in pages if page.poor(threshold)), None)
+        return None if poor is None else poor.describe()
+    judged: set[int] = set()
+    for location, words, value in places:
+        around = None if value is None else surroundings(words, value)
+        if around is not None:
+            if around.poor(threshold):
+                return around.describe()
+            judged.add(location.page)
+    for location, _, _ in places:
+        if location.page in judged:
+            continue
+        poor = next(
+            (page for page in pages if page.page == location.page and page.poor(threshold)), None
+        )
+        if poor is not None:
+            return poor.describe()
+    return None
 
 
 def _common(field: str, proposal: Proposal) -> dict[str, Any]:

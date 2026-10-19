@@ -849,6 +849,7 @@
 	"log_runs": "Runs",
 	"log_reading": "Reading",
 	"log_reading_page": "page {page}: {unsure} of {words} words unsure",
+	"log_reading_page_content": "page {page}: {unsure} of {words} words unsure, {content_unsure} of {content} content words",
 	"log_from_run": "from run {run}",
 	"log_not_run": "Did not run",
 	"master_identifiers": "Identifiers",

@@ -6,6 +6,12 @@ quote still not found, on its letters and digits alone: that passes over the mar
 text adds (table bars, emphasis) and punctuation the text layer spells otherwise. PDFium gives
 the boxes of the matched characters, one per line; they are turned into fractions of the page
 as shown, its rotation applied.
+
+A quote found neither way is looked for once more in the page's lines as they stand, as the
+parse node reads them (`layout`): the text layer of an OCR'd scan holds Tesseract's blocks one
+after the other, so a line across two of them (`Entgeltbescheinigung` on the left, its date on
+the right) is not one run of characters there, though it is one line of the parsed text the
+quote comes from.
 """
 
 import asyncio
@@ -17,7 +23,15 @@ from pathlib import Path
 
 import pypdfium2
 
-from papiq.adapters.outbound.pdfium.chars import SAME_LINE, Geometry
+from papiq.adapters.outbound.pdfium.chars import (
+    SAME_LINE,
+    Char,
+    Geometry,
+    page_chars,
+    page_fractions,
+)
+from papiq.adapters.outbound.pdfium.fixed_pitch import page_lines
+from papiq.adapters.outbound.pdfium.layout import WORD_GAP
 from papiq.adapters.outbound.pdfium.library import LOCK
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.domain.locations import Box, Location
@@ -88,11 +102,19 @@ def _search_page(
         return
     strict, loose = _normalize(chars, loose=False), _normalize(chars, loose=True)
     geometry = Geometry.of(page)
+    lined: _Lined | None = None
     for index, text in enumerate(texts):
-        for first, last in _matches(strict, loose, text, MAX_PLACES - len(found[index])):
+        limit = MAX_PLACES - len(found[index])
+        matches = _matches(strict, loose, text, limit)
+        for first, last in matches:
             boxes = _boxes(textpage, first, last, geometry)
             if boxes:
                 found[index].append(Location(number, boxes))
+        if matches or limit <= 0:
+            continue
+        if lined is None:
+            lined = _Lined.of(textpage, geometry)
+        found[index].extend(Location(number, boxes) for boxes in lined.places(text, limit))
 
 
 def _page_text(textpage: pypdfium2.PdfTextPage) -> str:
@@ -172,6 +194,72 @@ def _matches(
         if places:
             return places
     return []
+
+
+@dataclass(frozen=True)
+class _Lined:
+    """The upright characters of a page in its lines, top to bottom and each left to right
+    (`page_lines`, as the parse node reads them), spelt evened out (`strict`: a gap wider than
+    `WORD_GAP` of the characters' height and the end of a line count as a space) and on letters
+    and digits alone (`loose`), each with the character every one of its letters comes from."""
+
+    strict: tuple[str, list[Char]]
+    loose: tuple[str, list[Char]]
+    size: tuple[float, float]
+
+    @classmethod
+    def of(cls, textpage: pypdfium2.PdfTextPage, geometry: Geometry) -> "_Lined":
+        upright, _ = page_chars(textpage, geometry)
+        return cls(_spelt(upright, loose=False), _spelt(upright, loose=True), geometry.size)
+
+    def places(self, text: str, limit: int) -> list[tuple[Box, ...]]:
+        """The boxes of each place `text` stands at in the lines, at most `limit`."""
+        for (spelt, origin), is_loose in ((self.strict, False), (self.loose, True)):
+            needle = _normalize(html.unescape(text), loose=is_loose).text.strip()
+            if not needle or (is_loose and len(needle) < _SHORTEST_LOOSE):
+                continue
+            places: list[tuple[Box, ...]] = []
+            start = spelt.find(needle)
+            while start >= 0 and len(places) < limit:
+                matched = origin[start : start + len(needle)]
+                boxes = _lines([box for char in matched if (box := self._box(char))])
+                if boxes:
+                    places.append(boxes)
+                start = spelt.find(needle, start + len(needle))
+            if places:
+                return places
+        return []
+
+    def _box(self, char: Char) -> Box | None:
+        width, height = self.size
+        if width <= 0 or height <= 0:
+            return None
+        box = Box.clamped(*page_fractions(char.left, char.bottom, char.right, char.top, self.size))
+        return box if box.width > 0 and box.height > 0 else None
+
+
+def _spelt(chars: list[Char], *, loose: bool) -> tuple[str, list[Char]]:
+    out: list[str] = []
+    origin: list[Char] = []
+    for line in page_lines(chars) if chars else []:
+        last: Char | None = None
+        for char in line.chars:
+            apart = last is not None and char.left - last.right > WORD_GAP * max(
+                char.height, last.height
+            )
+            if not loose and apart and out[-1:] != [" "]:
+                out.append(" ")
+                origin.append(char)
+            last = char
+            if loose and not char.text.isalnum():
+                continue
+            for folded in char.text.casefold():
+                out.append(folded)
+                origin.append(char)
+        if not loose and out and out[-1] != " ":
+            out.append(" ")
+            origin.append(line.chars[-1])
+    return "".join(out), origin
 
 
 def _boxes(

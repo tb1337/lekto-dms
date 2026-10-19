@@ -547,8 +547,21 @@ class PageReadingOut(BaseModel):
             "or what the vision language model could not read."
         )
     )
+    content: int | None = Field(
+        description=(
+            "Of the words, those that are content: not dot leaders, rules, stray marks of one "
+            "or two characters, or small print. Null where content was not counted (read "
+            "before it was, or by the vision language model)."
+        )
+    )
+    content_unsure: int | None = Field(
+        description="Of the content words, those the reader was unsure of; null with `content`."
+    )
     poor: bool = Field(
-        description="The page counts as poorly read (`PAPIQ_POOR_READING_THRESHOLD`)."
+        description=(
+            "The page counts as poorly read (`PAPIQ_POOR_READING_THRESHOLD`): by its content "
+            "words where counted, else by all."
+        )
     )
 
 
@@ -558,7 +571,16 @@ class ReadingOut(BaseModel):
             "examples": [
                 {
                     "vision": False,
-                    "pages": [{"page": 1, "words": 50, "unsure": 6, "poor": True}],
+                    "pages": [
+                        {
+                            "page": 1,
+                            "words": 50,
+                            "unsure": 6,
+                            "content": 42,
+                            "content_unsure": 4,
+                            "poor": True,
+                        }
+                    ],
                     "advice": "poor_page",
                 }
             ]
@@ -589,6 +611,8 @@ class ReadingOut(BaseModel):
                     page=page.page,
                     words=page.words,
                     unsure=page.unsure,
+                    content=page.content,
+                    content_unsure=page.content_unsure,
                     poor=page.page in reading.poor,
                 )
                 for page in reading.pages

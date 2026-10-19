@@ -183,9 +183,13 @@ async def test_the_last_run_s_hocr_tells_how_well_each_page_was_read(
     runs.pages = [{1: hocr(10)}, {1: hocr(96, 41, 90), 3: hocr(59, 60)}]
     result, _ = await convert(runs, tmp_path)
     assert result.readings == (
-        PageReading(page=1, words=3, unsure=1),
-        PageReading(page=3, words=2, unsure=1),
+        PageReading(page=1, words=3, unsure=1, content=3, content_unsure=1),
+        PageReading(page=3, words=2, unsure=1, content=2, content_unsure=1),
     )
+    assert [(page.page, [word.text for word in page.words]) for page in result.words] == [
+        (1, ["w0", "w1", "w2"]),
+        (3, ["w0", "w1"]),
+    ]
     assert [p.name for p in tmp_path.iterdir()] == ["archive.pdf"]
 
 

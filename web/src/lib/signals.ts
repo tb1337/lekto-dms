@@ -68,18 +68,32 @@ function row(label: string, items: SummaryItem[]): SummaryRow {
 	return { label, items: items.length > 0 ? items : [{ text: m.signal_none() }] };
 }
 
-/** How well the OCR read each page it recognised; none where pages had text of their own. */
+/** How well the OCR read each page it recognised, of all words and of the content where it
+ * was counted; none where pages had text of their own. */
 function readings(output: Json): SummaryRow[] {
 	const pages = list(output.readings).map(object);
 	if (pages.length === 0) return [];
+	const count = (value: unknown) => (typeof value === 'number' ? value : 0);
 	const items = pages.map((page) => {
-		const words = typeof page.words === 'number' ? page.words : 0;
-		const unsure = typeof page.unsure === 'number' ? page.unsure : 0;
+		const words = count(page.words);
+		const share = percent(words > 0 ? count(page.unsure) / words : 0);
+		if (typeof page.content !== 'number') {
+			return {
+				text: m.log_reading_page({
+					page: String(page.page),
+					unsure: share,
+					words: formatNumber(words)
+				})
+			};
+		}
+		const content = page.content;
 		return {
-			text: m.log_reading_page({
+			text: m.log_reading_page_content({
 				page: String(page.page),
-				unsure: percent(words > 0 ? unsure / words : 0),
-				words: formatNumber(words)
+				unsure: share,
+				words: formatNumber(words),
+				content_unsure: percent(content > 0 ? count(page.content_unsure) / content : 0),
+				content: formatNumber(content)
 			})
 		};
 	});

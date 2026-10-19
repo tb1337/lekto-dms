@@ -18,7 +18,7 @@ from papiq.core.domain.codes import Code
 from papiq.core.domain.errors import UnprocessableDocumentError
 from papiq.core.domain.exchanges import ModelCall
 from papiq.core.domain.locations import Box, Location
-from papiq.core.domain.reading import PageReading
+from papiq.core.domain.reading import PageReading, PageWords
 from papiq.core.ports.codes import CodeReading
 from papiq.core.ports.metadata import FileMetadata, MetadataEntry, MetadataSource
 from papiq.core.ports.ocr import OcrResult, VisionModel, VisionReading
@@ -36,16 +36,21 @@ FAKE_VISION = VisionModel(model="fake-vlm", endpoint="vlm.example:443")
 
 
 class FakeOcr:
-    """`readings`: what it says it read of a scan or an image, instead of `FAKE_READING`.
-    `vision`: the vision model it reads with when asked to; it reads the page well then, with
-    one call per page (`vision_calls` counts the documents it read so)."""
+    """`readings`: what it says it read of a scan or an image, instead of `FAKE_READING`, and
+    `words` the words it read there (none unless given). `vision`: the vision model it reads
+    with when asked to; it reads the page well then, with one call per page (`vision_calls`
+    counts the documents it read so)."""
 
     def __init__(
-        self, readings: Sequence[PageReading] | None = None, vision: VisionModel | None = None
+        self,
+        readings: Sequence[PageReading] | None = None,
+        vision: VisionModel | None = None,
+        words: Sequence[PageWords] = (),
     ) -> None:
         self.calls: list[Path] = []
         self.vision_calls: list[Path] = []
         self.readings = (FAKE_READING,) if readings is None else tuple(readings)
+        self.words = tuple(words)
         self._vision = vision
 
     @property
@@ -84,8 +89,11 @@ class FakeOcr:
                 ),
             )
         has_text = media_type == media_types.PDF and b"/Font" in data
-        readings = () if has_text else self.readings
-        return OcrResult(pages=1, engine="fake-ocr 1", pdfa=True, readings=readings)
+        if has_text:
+            return OcrResult(pages=1, engine="fake-ocr 1", pdfa=True)
+        return OcrResult(
+            pages=1, engine="fake-ocr 1", pdfa=True, readings=self.readings, words=self.words
+        )
 
 
 FAKE_GIRO_CODE = Code(

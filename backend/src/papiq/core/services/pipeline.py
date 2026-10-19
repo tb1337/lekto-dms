@@ -221,7 +221,8 @@ class PipelineService:
         """`suggest_contact`: the similarity from which a name suggests a contact; an alias
         learned on confirmation must be at least that related to the contact's names;
         `vision`: the vision language model the OCR can read pages with, if any;
-        `poor_reading`: the share of unsure words from which a page counts as poorly read;
+        `poor_reading`: the share of unsure (content) words from which a page counts as
+        poorly read;
         `facts`: the facts signal for reading facts outside processing (`request_facts`)."""
         missing = set(NODES) - {Node.RECEIVE} - set(executors)
         if missing:

@@ -481,8 +481,8 @@ The quoted passage must appear in the text as well, and for an amount, number, d
 link or period it must show the value itself: elsewhere in the text the same digits may stand for
 anything, on a broken scan a lone fragment. An amount counts in the quote only as an amount,
 with decimal places or a currency beside it (`620,00`, `620 €`, `620,-`; a bare `620` is none).
-Without such a quote the value is only suggested. So is a value the OCR did not read sure;
-the document date follows the same rules:
+Without such a quote the value is only suggested. So is a value the OCR did not read sure,
+which takes two conditions; the document date follows the same rules:
 
 - **The page is not poorly read, counting content only.** A page counts as poorly read from
   `PAPIQ_POOR_READING_THRESHOLD` (8 %) of unsure content words, with at least ten of them (the
@@ -495,6 +495,13 @@ the document date follows the same rules:
   lines of the body font lie up to a fifth apart, footnotes stay content). On the pay slip that
   led to the rule, 10 % of all words were unsure, almost all of them leaders, letterhead and
   marks; on a synthetic scan shaped like it (`tests/scans.py`), 4 % of the content.
+- **The value itself was read sure.** Every word Tesseract read that makes up the value within
+  its quote's boxes needs 60 % confidence or more (the shortest runs of the words there that
+  show the value, read as the quote check reads it): a date at 96 % passes, an amount at 32 % is
+  only suggested (`'Betrag': the value was read unsure (32%)`). Where these words cannot be
+  found (the quote has no place, no words were kept, the words there do not show the value as
+  written), the page alone decides. The vision language model gives no confidences: its pages
+  count all words, with what it marks unreadable as unsure, and this condition does not apply.
 
 Tesseract is sure of some misreadings, so a poorly read page still makes every value on it a
 suggestion. A document recognised before content was counted keeps the rule of all words (its

@@ -7,19 +7,21 @@ broken scan, and a number read there may be anything. Only content counts (`is_n
 dot leaders after labels, table rules, stray marks and the small print of a letterhead are read
 unsure on any scan and say nothing about whether a value was read right.
 
-Tesseract also tells how sure it was of each word (`ReadWord`). The words of a document are
-kept beside its archive (`reading_to_json`); the vision language model gives no confidences,
-so its readings have no words and no content counts.
+Tesseract also tells how sure it was of each word (`ReadWord`): a value whose own words were
+read unsure is only suggested on a well read page too (`value_words`). The words of a document
+are kept beside its archive (`reading_to_json`); the vision language model gives no
+confidences, so its readings have no words and no content counts.
 """
 
 import re
 import statistics
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Self
 
 from papiq.core.domain.errors import ValidationError
+from papiq.core.domain.evidence import DocumentText
 from papiq.core.domain.json_value import (
     JsonObject,
     JsonValue,
@@ -30,7 +32,7 @@ from papiq.core.domain.json_value import (
     as_object,
     as_text,
 )
-from papiq.core.domain.locations import Box
+from papiq.core.domain.locations import Box, Location
 
 # Fewer words say too little about a page: a blank back side, a page number.
 MIN_WORDS = 10
@@ -261,6 +263,47 @@ def reading_from_json(data: JsonValue) -> dict[int, tuple[ReadWord, ...]] | None
             raise ValidationError(f"invalid page of a reading {item!r:.100}")
         found[page] = tuple(ReadWord.from_json(word) for word in words)
     return found
+
+
+def words_at(location: Location, words: Sequence[ReadWord]) -> list[ReadWord]:
+    """The words that stand in one of the location's boxes, in reading order: those whose
+    middle lies in a box, given half its height up and down (the text layer's boxes follow its
+    font and differ from Tesseract's)."""
+    found = []
+    for word in words:
+        if word.box is None:
+            continue
+        middle_x = word.box.x + word.box.width / 2
+        middle_y = word.box.y + word.box.height / 2
+        if any(
+            area.x <= middle_x <= area.x + area.width
+            and area.y - area.height / 2 <= middle_y <= area.y + area.height * 1.5
+            for area in location.boxes
+        ):
+            found.append(word)
+    return found
+
+
+def value_words(
+    words: Sequence[ReadWord], shows: Callable[[DocumentText], bool]
+) -> tuple[ReadWord, ...] | None:
+    """The words that make up a value among `words` (those of its quote, in reading order):
+    the shortest runs of them that show it (`shows`, as the quote check reads the value), all
+    of them where it stands more than once. None if the words do not show it (it is not written
+    as such, or they are not the words of the quote)."""
+
+    def shown(run: Sequence[ReadWord]) -> bool:
+        return shows(DocumentText(" ".join(word.text for word in run)))
+
+    if not words or not shown(words):
+        return None
+    for length in range(1, len(words)):
+        runs = [words[start : start + length] for start in range(len(words) - length + 1)]
+        found = [index for index, run in enumerate(runs) if shown(run)]
+        if found:
+            indexes = sorted({index + offset for index in found for offset in range(length)})
+            return tuple(words[index] for index in indexes)
+    return tuple(words)
 
 
 class VisionAdvice(StrEnum):

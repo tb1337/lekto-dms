@@ -1204,6 +1204,31 @@ async def test_a_page_read_before_content_was_counted_keeps_the_old_rule(world: 
     assert check.suggestion == "2022-06-24"
 
 
+async def test_a_date_read_unsure_on_a_well_read_page_is_only_suggested(world: World) -> None:
+    _, document = await scanned(world, scan(PAYSLIP, {"24.06.2022": 30}))
+    check = await judged_date(world, document)
+    assert check.reason == "the value was read unsure (30%)"
+    assert check.suggestion == "2022-06-24" and check.value is None
+
+
+@pytest.mark.parametrize(
+    ("kept", "located", "on_page"),
+    [
+        (False, True, 1),  # no words kept: read before, or by the vision language model
+        (True, False, 1),  # the quote has no place
+        (True, True, 2),  # no words where the quote stands
+    ],
+)
+async def test_without_the_value_s_words_the_page_alone_decides(
+    world: World, kept: bool, located: bool, on_page: int
+) -> None:
+    _, document = await scanned(
+        world, scan(PAYSLIP, {"24.06.2022": 30}), kept=kept, on_page=on_page
+    )
+    check = await judged_date(world, document, located=located)
+    assert check.ok and check.value == "2022-06-24"
+
+
 async def test_the_poorly_read_page_names_itself_first(world: World) -> None:
     broken = scan(PAYSLIP, {"Abrechnung": 30, "Steuerbrutto": 30, "Gehalt": 20, "24.06.2022": 30})
     lines = tuple(
@@ -1214,6 +1239,86 @@ async def test_the_poorly_read_page_names_itself_first(world: World) -> None:
     check = await judged_date(world, document)
     assert (check.reason or "").startswith("page 1 was poorly read (")
     assert (check.reason or "").endswith("of its content words unsure)")
+
+
+async def extracted(world: World, document: Document, amount: str, quote: str) -> MetadataResult:
+    answer = extraction(a3={"value": {"amount": amount, "currency": "EUR"}, "evidence": quote})
+    step = FieldsNode(
+        world.uow,
+        world.object_store,
+        model(answer),
+        world.clock,
+        builders.CLASSIFICATION,
+        locator=FakeTextLocator([PAYSLIP_TEXT]),
+    )
+    result = await step.run(document)
+    assert isinstance(result, MetadataResult)
+    return result
+
+
+async def test_an_amount_read_unsure_on_a_well_read_page_is_only_suggested(world: World) -> None:
+    seeded, document = await scanned(world)
+    result = await extracted(world, document, "412.33", "Lohnsteuer 412,33")
+    check = field_check(seeded, result, "Rechnungsbetrag")
+    assert check.reason == "'Rechnungsbetrag': the value was read unsure (31%)"
+    assert check.suggestion == {"amount": "412.33", "currency": "EUR"}
+    assert seeded.fields["Rechnungsbetrag"].id not in result.changes.fields
+
+
+async def test_an_amount_read_sure_is_applied_also_when_it_is_misread(world: World) -> None:
+    """Tesseract is sure of some misreadings (2.255,81 read as 2.235,81 at 79 %): the reading
+    cannot tell them, which is why a poorly read page still counts."""
+    seeded, document = await scanned(world)
+    result = await extracted(world, document, "2235.81", "Netto-Verdienst 2.235,81")
+    check = field_check(seeded, result, "Rechnungsbetrag")
+    assert check.ok
+    assert result.changes.fields[seeded.fields["Rechnungsbetrag"].id] == Money(
+        Decimal("2235.81"), "EUR"
+    )
+
+
+@pytest.mark.parametrize(("confidence", "reason"), [(93, None), (45, "read unsure (45%)")])
+async def test_a_period_is_matched_as_the_quote_check_reads_it(
+    world: World, confidence: int, reason: str | None
+) -> None:
+    seeded, document = await scanned(world, scan(PAYSLIP, {"Juni": confidence}))
+    period = FieldDefinition.create(
+        name="Bezugszeitraum",
+        data_type=FieldType.PERIOD,
+        document_type_ids=[seeded.types["Rechnung"].id],
+        now=NOW,
+    )
+    async with world.uow() as uow:
+        await uow.fields.add(period)
+        await uow.commit()
+    # Keys by name: a1 Bezahlt, a2 Bezugszeitraum, a3 Fällig am, a4 and a5 the invoice's.
+    answer: JsonObject = {
+        "fields": {
+            "a1": {"value": None, "evidence": None},
+            "a2": {
+                "value": {"start": "2022-06-01", "end": "2022-06-30"},
+                "evidence": "Abrechnung der Brutto/Netto-Bezüge für Juni 2022",
+            },
+            "a3": {"value": None, "evidence": None},
+            "a4": {"value": None, "evidence": None},
+            "a5": {"value": None, "evidence": None},
+        }
+    }
+    step = FieldsNode(
+        world.uow,
+        world.object_store,
+        model(answer),
+        world.clock,
+        builders.CLASSIFICATION,
+        locator=FakeTextLocator([PAYSLIP_TEXT]),
+    )
+    result = await step.run(document)
+    assert isinstance(result, MetadataResult)
+    check = checks(result.result)[field_key(period.id)]
+    if reason is None:
+        assert check.ok and check.value == {"start": "2022-06-01", "end": "2022-06-30"}
+    else:
+        assert check.reason == f"'Bezugszeitraum': the value was {reason}"
 
 
 async def test_values_are_read_as_written_in_german(world: World) -> None:

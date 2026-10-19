@@ -1,10 +1,13 @@
 import json
+from datetime import date
+from decimal import Decimal
 
 import pytest
 
 from papiq.core.domain.errors import ValidationError
+from papiq.core.domain.evidence import DocumentText
 from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.locations import Box
+from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.reading import (
     READING_VERSION,
     OcrOutput,
@@ -17,6 +20,8 @@ from papiq.core.domain.reading import (
     reading_to_json,
     readings_from_json,
     readings_to_json,
+    value_words,
+    words_at,
 )
 
 
@@ -184,3 +189,56 @@ def test_the_stored_words_round_trip() -> None:
 def test_a_broken_reading_is_invalid(data: JsonValue) -> None:
     with pytest.raises(ValidationError):
         reading_from_json(data)
+
+
+def line(*texts: str, y: float = 0.5, unsure: dict[str, int] | None = None) -> list[ReadWord]:
+    """Words side by side on one line, a tenth of the page wide each."""
+    confidences = unsure or {}
+    return [
+        ReadWord(text, confidences.get(text, 93), Box(0.1 * n, y, 0.09, 0.01), 0.012)
+        for n, text in enumerate(texts)
+    ]
+
+
+def test_the_words_of_a_quote_are_those_in_its_boxes() -> None:
+    words = [
+        *line("Lohnsteuer", "412,33", y=0.3),
+        *line("Datum", "24.06.2022", "Juni", y=0.5),
+        *line("Kirchensteuer", "32,99", y=0.52),  # the next line, close below
+    ]
+    # The text layer's box of "Datum 24.06.2022": a little higher than Tesseract's.
+    location = Location(1, (Box(0.0, 0.497, 0.19, 0.008),))
+    assert [word.text for word in words_at(location, words)] == ["Datum", "24.06.2022"]
+    both = Location(1, (Box(0.0, 0.3, 0.2, 0.01), Box(0.1, 0.52, 0.1, 0.01)))
+    assert [word.text for word in words_at(both, words)] == ["Lohnsteuer", "412,33", "32,99"]
+    assert words_at(location, [ReadWord("Datum", 95)]) == []  # no box
+
+
+def shows_date(text: DocumentText) -> bool:
+    return text.has_date(date(2022, 6, 24))
+
+
+def texts(words: tuple[ReadWord, ...] | None) -> list[str] | None:
+    return None if words is None else [word.text for word in words]
+
+
+def test_the_words_of_a_value_are_the_shortest_runs_that_show_it() -> None:
+    words = line("Datum", "«oso:", "see", "24.06.2022", unsure={"«oso:": 22, "see": 47})
+    assert texts(value_words(words, shows_date)) == ["24.06.2022"]
+    # An amount with its currency apart counts as written by its number alone.
+    amount = line("Lohnsteuer", "412,33", "EUR")
+    found = value_words(amount, lambda text: text.has_amount(Decimal("412.33")))
+    assert texts(found) == ["412,33"]
+    # A date written in three words.
+    spread = line("am", "24.", "Juni", "2022", "gezahlt")
+    assert texts(value_words(spread, shows_date)) == ["24.", "Juni", "2022"]
+    # Twice in the quote: both.
+    twice = line("24.06.2022", "bis", "24.06.2022")
+    assert texts(value_words(twice, shows_date)) == ["24.06.2022", "24.06.2022"]
+    # Only all of them together.
+    assert texts(value_words(line("24.", "Juni", "2022"), shows_date)) == ["24.", "Juni", "2022"]
+
+
+def test_a_value_the_words_do_not_show_has_no_words() -> None:
+    assert value_words(line("Datum", "Juni", "2022"), shows_date) is None
+    assert value_words([], shows_date) is None

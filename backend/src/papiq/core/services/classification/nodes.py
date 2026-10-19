@@ -11,11 +11,13 @@ the inbox).
 """
 
 import asyncio
+import json
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
+from types import MappingProxyType
 from typing import Any
 from uuid import UUID
 
@@ -68,7 +70,14 @@ from papiq.core.domain.pipeline import (
     Outcome,
     ProcessingHistory,
 )
-from papiq.core.domain.reading import OcrOutput, PageReading
+from papiq.core.domain.reading import (
+    OcrOutput,
+    PageReading,
+    ReadWord,
+    reading_from_json,
+    value_words,
+    words_at,
+)
 from papiq.core.domain.sorting import sort_key
 from papiq.core.domain.text import Shortened, shorten
 from papiq.core.domain.validation import name_key
@@ -115,7 +124,7 @@ from papiq.core.services.classification.signals import (
 )
 from papiq.core.services.exchanges import keep_calls
 from papiq.core.services.nodes import ARCHIVE_FILE, work_directory
-from papiq.core.services.objects import archive_key, load_text, text_key
+from papiq.core.services.objects import archive_key, load_text, reading_key, text_key
 from papiq.core.services.pipeline import MetadataResult
 from papiq.core.services.titles import has_machine_title
 
@@ -129,6 +138,8 @@ NO_MODEL = "no language model is configured"
 JUDGE = "judge"
 """`model_version` of the judge's entry when the language model gave nothing."""
 
+
+_NO_WORDS: Mapping[int, tuple[ReadWord, ...]] = MappingProxyType({})
 
 MAX_CONTACTS = 20
 """Contacts a prompt lists, those the text names most: enough for every sender a letter
@@ -461,7 +472,10 @@ class JudgeNode:
         contact, kind, topic, tagged, date_check = await _locate_quotes(
             self._store, self._locator, document, [contact, kind, topic, tagged, date_check]
         )
-        date_check = _readable(date_check, _ocr_readings(log), self._policy.poor_reading)
+        reading = await _ocr_reading(self._store, document, log)
+        date_check = _readable(
+            date_check, reading, self._policy.poor_reading, _date_shown(date_check.value)
+        )
         checks = [contact, kind, topic, tagged, date_check]
         # A topic set is one of the contact's; a contact set that does not enable the
         # document's topic clears it (`checked_changes`).
@@ -604,9 +618,15 @@ class FieldsNode(_ModelStep):
             for check, definition in zip(checks, definitions, strict=True)
         ]
         checks = await _locate_quotes(self._store, self._locator, document, checks)
-        readings = _ocr_readings(log)
+        reading = await _ocr_reading(self._store, document, log)
         checks = [
-            _readable(check, readings, self._policy.poor_reading, definition.name)
+            _readable(
+                check,
+                reading,
+                self._policy.poor_reading,
+                _field_shown(definition, check.value),
+                definition.name,
+            )
             if definition.data_type in _LITERAL
             else check
             for check, definition in zip(checks, definitions, strict=True)
@@ -911,33 +931,96 @@ def _literally(value: FieldValue, quote: DocumentText) -> bool:
             return False
 
 
-def _ocr_readings(log: Sequence[NodeRun]) -> tuple[PageReading, ...]:
-    """How well the OCR read the pages, by its latest entry that made a text (as
-    `PipelineService.reading` tells it); none for a document recognised before readings, or
-    with text of its own."""
-    entry = ProcessingHistory(log).latest(Node.OCR, made=True)
-    return () if entry is None else OcrOutput.from_json(entry.result.output).readings
+@dataclass(frozen=True)
+class _Reading:
+    """How the OCR read the pages (`pages`), and the words Tesseract read on them by page
+    (`words`; none for pages the vision language model read, or read before words were kept)."""
+
+    pages: tuple[PageReading, ...] = ()
+    words: Mapping[int, tuple[ReadWord, ...]] = _NO_WORDS
+
+
+async def _ocr_reading(
+    store: ObjectStore, document: Document, history: Sequence[NodeRun]
+) -> _Reading:
+    """How the OCR read the pages, by its latest entry that made a text (as
+    `PipelineService.reading` tells it), with the words it kept beside the archive; nothing for
+    a document recognised before readings, or with text of its own."""
+    entry = ProcessingHistory(history).latest(Node.OCR, made=True)
+    pages = () if entry is None else OcrOutput.from_json(entry.result.output).readings
+    if not pages:
+        return _Reading()
+    key = reading_key(document.id)
+    try:
+        words = reading_from_json(json.loads(await store.get(key)))
+    except NotFoundError:
+        words = None
+    except (ValueError, ValidationError):
+        log.warning("the words of the reading cannot be read", extra={"key": key})
+        words = None
+    return _Reading(pages, words or _NO_WORDS)
+
+
+def _date_shown(value: JsonValue) -> Callable[[DocumentText], bool] | None:
+    """How a quote shows a checked date (ISO), as the quote check reads it."""
+    if not isinstance(value, str):
+        return None
+    try:
+        day = date.fromisoformat(value)
+    except ValueError:
+        return None
+    return lambda text: text.has_date(day)
+
+
+def _field_shown(
+    definition: FieldDefinition, value: JsonValue
+) -> Callable[[DocumentText], bool] | None:
+    """How a quote shows a checked value of `definition`, as the quote check reads it."""
+    try:
+        parsed = field_from_json(definition, value)
+    except ValidationError:
+        return None
+    match parsed:
+        case Period():
+            period = parsed
+            return lambda text: text.has_period(period)
+        case date():
+            day = parsed
+            return lambda text: text.has_date(day)
+        case _:
+            return lambda text: _literally(parsed, text)
 
 
 def _readable(
     check: FieldCheck,
-    readings: Sequence[PageReading],
+    reading: _Reading,
     threshold: float,
+    shows: Callable[[DocumentText], bool] | None,
     name: str | None = None,
 ) -> FieldCheck:
-    """A checked value on a poorly read page (counting content only) is only suggested: on a
-    broken scan a number may be anything, however sure the engine was of it. The page is that
-    of its quote, or any recognised page if the quote was not found on one."""
+    """A checked value is only suggested where it was not read sure: on a poorly read page
+    (counting content only), as on a broken scan a number may be anything, however sure the
+    engine was of it; or where a word of the value itself was read unsure. The page is that of
+    its quote, or any recognised page if the quote was not found on one. The value's words are
+    those in its quote's boxes that show it (`shows`); where they are not found (no place, no
+    words kept, a value not written as such), the page alone decides."""
     if not check.ok or check.value is None:
         return check
     pages = {location.page for location in check.locations}
     poor = next(
-        (item for item in readings if item.poor(threshold) and (not pages or item.page in pages)),
+        (
+            item
+            for item in reading.pages
+            if item.poor(threshold) and (not pages or item.page in pages)
+        ),
         None,
     )
-    if poor is None:
+    if poor is not None:
+        reason = poor.describe()
+    elif shows is not None and (lowest := _unsure_value(check, reading, shows)) is not None:
+        reason = f"the value was read unsure ({lowest}%)"
+    else:
         return check
-    reason = poor.describe()
     return replace(
         check,
         outcome=Outcome.UNCERTAIN,
@@ -946,6 +1029,20 @@ def _readable(
         suggestion=check.value,
         value=None,
     )
+
+
+def _unsure_value(
+    check: FieldCheck, reading: _Reading, shows: Callable[[DocumentText], bool]
+) -> int | None:
+    """The lowest confidence of an unsure word of the value at any of its quote's places; None
+    if every word found was read sure, or none was found."""
+    lowest: int | None = None
+    for location in check.locations:
+        found = value_words(words_at(location, reading.words.get(location.page, ())), shows)
+        for word in found or ():
+            if word.unsure and (lowest is None or word.confidence < lowest):
+                lowest = word.confidence
+    return lowest
 
 
 def _common(field: str, proposal: Proposal) -> dict[str, Any]:

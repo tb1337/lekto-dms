@@ -12,11 +12,12 @@ import pytest
 from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
 from papiq.adapters.outbound.ocrmypdf.engine import UNREADABLE_NOTE
 from papiq.adapters.outbound.ocrmypdf.vision import VisionSettings
-from papiq.adapters.outbound.pdfium import has_hidden_text
+from papiq.adapters.outbound.pdfium import PdfiumTextLocator, has_hidden_text
 from papiq.adapters.outbound.pdfium.library import unreadable_share
 from papiq.composition.container import VISION_REQUEST_TIMEOUT
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import LanguageModelError
+from papiq.core.domain.reading import words_at
 from tests import probes
 from tests.builders import DEFAULT_SETTINGS, SAMPLES
 from tests.contracts.processing import OcrContract
@@ -101,6 +102,21 @@ async def test_scans_and_images_get_a_text_layer(
     assert all(reading.words > 0 for reading in result.readings)
     assert all(reading.content is not None for reading in result.readings)
     assert [page.page for page in result.words] == list(range(1, pages + 1))
+
+
+async def test_the_words_stand_where_the_text_layer_puts_them(tmp_path: Path) -> None:
+    """The boxes of Tesseract's words and those the locator finds in the archive agree: the
+    words of a quote are found in its boxes."""
+    target = tmp_path / "archive.pdf"
+    result = await engine().make_archive(SAMPLES / "scan.pdf", target, media_type=media_types.PDF)
+    (page,) = result.words
+    assert all(word.box is not None and word.size is not None for word in page.words)
+    for quote, words in [
+        ("Rechnung Nummer 4711", ["Rechnung", "Nummer", "4711"]),
+        ("123,45 EUR", ["123,45", "EUR"]),
+    ]:
+        ((location,),) = await PdfiumTextLocator().locate(target, [quote])
+        assert [word.text for word in words_at(location, page.words)] == words
 
 
 async def test_existing_text_is_kept(tmp_path: Path) -> None:

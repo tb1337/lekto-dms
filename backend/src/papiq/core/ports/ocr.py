@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Protocol
 
 from papiq.core.domain.exchanges import ModelCall
-from papiq.core.domain.reading import PageReading
+from papiq.core.domain.reading import PageReading, PageWords
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -36,6 +36,9 @@ class OcrResult:
     # How well each page the engine recognised was read; pages with text of their own are
     # not recognised and have none.
     readings: tuple[PageReading, ...] = ()
+    # The words of each page Tesseract recognised, with confidence, box and line size; none
+    # for pages with text of their own, and for pages the vision language model read.
+    words: tuple[PageWords, ...] = ()
     # The text the PDF had was replaced by a reading of its own: the layer another OCR had put
     # over the scan (invisible text), or text that cannot be read.
     read_again: bool = False
@@ -73,7 +76,8 @@ class Ocr(Protocol):
         A digitally signed original is processed anyway; the archive does not carry the
         signature (the original is never changed) and `note` says so. If PDF/A is not possible
         for the file, a plain PDF is written and `pdfa` is False, `note` naming the reason.
-        `readings` tell how well each recognised page was read.
+        `readings` tell how well each recognised page was read, `words` what Tesseract read on
+        it.
 
         UnprocessableDocumentError if the file cannot be processed (damaged, encrypted);
         repeating would not help. TimeoutError if recognition takes too long. Other errors may

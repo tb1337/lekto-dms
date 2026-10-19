@@ -1,5 +1,6 @@
 """OCR, pages and parse nodes on the fakes: derivatives, outcomes, failures."""
 
+import json
 import tempfile
 from pathlib import Path
 
@@ -8,7 +9,9 @@ import pytest
 from papiq.adapters.outbound.memory import FakeOcr, FakePageRenderer, FakeParser
 from papiq.adapters.outbound.memory.processing import FAKE_PDF, FAKE_READING
 from papiq.core.domain.documents import Document
+from papiq.core.domain.locations import Box
 from papiq.core.domain.pipeline import Lane, Node, NodeRun, Outcome
+from papiq.core.domain.reading import PageReading, PageWords, ReadWord, reading_from_json
 from papiq.core.domain.users import User
 from papiq.core.ports.ocr import OcrResult
 from papiq.core.services.nodes import OcrNode, PagesNode, ParseNode, has_text
@@ -19,6 +22,7 @@ from papiq.core.services.objects import (
     original_key,
     page_key,
     preview_key,
+    reading_key,
     structure_key,
     text_key,
 )
@@ -188,6 +192,33 @@ async def test_the_markdown_of_before_goes_once_the_text_is_read_again(world: Wo
     assert not await store.exists(legacy_text_key(document.id))
     entry = await logged(world, owner, document, Node.PARSE)
     assert entry.result.output["text"] == text_key(document.id)
+
+
+WORDS = (
+    PageWords(
+        1,
+        (
+            ReadWord("Datum", 95, Box(0.1, 0.2, 0.1, 0.01), 0.012),
+            ReadWord("24.06.2022", 96, Box(0.3, 0.2, 0.15, 0.01), 0.012),
+            ReadWord("j", 12),  # without a box: no quote finds it
+        ),
+    ),
+)
+
+
+async def test_the_words_tesseract_read_are_kept_beside_the_archive(world: World) -> None:
+    """Replaced with every archive; gone with one whose pages were not recognised."""
+    store = world.object_store
+    reading = PageReading.of(1, WORDS[0].words)
+    service = pipeline(world, ocr=FakeOcr(readings=[reading], words=WORDS))
+    owner, document = await ingest(world, service, "scan.pdf")
+    key = reading_key(document.id)
+    assert store.content_type(key) == "application/json"
+    assert reading_from_json(json.loads(await store.get(key))) == {1: WORDS[0].words[:2]}
+    entry = await logged(world, owner, document, Node.OCR)
+    assert entry.result.output["readings"] == [reading.to_json()]
+    await OcrNode(store, FakeOcr()).run(document)
+    assert not await store.exists(key)
 
 
 async def test_reprocessing_from_parse_reuses_the_archive(world: World) -> None:

@@ -51,9 +51,12 @@ class OcrContract:
         assert reading.page == 1
         assert reading.words > 0
         assert 0 <= reading.unsure <= reading.words
+        # The words, where it gives them, are those of the pages it recognised.
+        assert {page.page for page in scan.words} <= {1}
         # A page with text of its own is not recognised again.
         text = await ocr.make_archive(SAMPLES / "text.pdf", target, media_type=media_types.PDF)
         assert text.readings == ()
+        assert text.words == ()
 
     async def test_replaces_the_target(self, ocr: Ocr, tmp_path: Path) -> None:
         target = tmp_path / "archive.pdf"
@@ -100,6 +103,9 @@ class OcrContract:
         assert result.vision.prompt
         assert len(result.vision.calls) >= result.pages
         assert [reading.page for reading in result.readings] == list(range(1, result.pages + 1))
+        # The model gives no confidences: no words, no content counts.
+        assert result.words == ()
+        assert all(reading.content is None for reading in result.readings)
         assert sorted(path.name for path in tmp_path.iterdir()) == ["archive.pdf"]
 
 

@@ -42,13 +42,12 @@ model could not read, and what was sent. Such a run has a time limit of its own
 the plugin leaves in that folder.
 
 How well a page was read comes from Tesseract's hOCR, which OCRmyPDF keeps in its work folder
-with `--keep-temporary-files` (`*_ocr_hocr.hocr`, one per page it recognised): the words with
-a confidence and how many fall below `UNSURE_BELOW`. The work folder is one of our own
+with `--keep-temporary-files` (`hocr.read_hocr`): the words with their confidence, box and line
+size, and the counts of all, content and unsure words. The work folder is one of our own
 (`TMPDIR`), removed afterwards.
 """
 
 import asyncio
-import html
 import importlib.metadata
 import logging
 import re
@@ -64,6 +63,7 @@ from PIL import Image, ImageSequence
 
 from papiq.adapters.outbound.http_client import endpoint_of
 from papiq.adapters.outbound.imaging import flatten_on_white
+from papiq.adapters.outbound.ocrmypdf.hocr import read_hocr
 from papiq.adapters.outbound.ocrmypdf.vision import (
     PROMPT,
     PageRecord,
@@ -76,7 +76,7 @@ from papiq.adapters.outbound.pdfium import count_pages, has_hidden_text, has_unr
 from papiq.adapters.outbound.system import Completed, run_process
 from papiq.core.domain import media_types
 from papiq.core.domain.errors import LanguageModelError, UnprocessableDocumentError
-from papiq.core.domain.reading import PageReading
+from papiq.core.domain.reading import PageReading, PageWords
 from papiq.core.ports.ocr import OcrResult, VisionModel, VisionReading
 
 log = logging.getLogger(__name__)
@@ -107,13 +107,6 @@ _KNOWN_ERRORS = {
 }
 _ERROR_LINE = re.compile(r"^(\w+Error): ?(.*)$")
 _GHOSTSCRIPT_LINE = re.compile(r"^GPL Ghostscript [\d.]+: (.*)$")
-# Tesseract's confidence (0 to 100) below which a word counts as unsure.
-UNSURE_BELOW = 60
-_HOCR_FILE = "*_ocr_hocr.hocr"
-_HOCR_WORD = re.compile(
-    r"<span class=['\"]ocrx_word['\"][^>]*?x_wconf (\d+)[^>]*>(.*?)</span>", re.S
-)
-_TAG = re.compile(r"<[^>]+>")
 # What `--keep-temporary-files` prints where it kept them, in the middle of the output (before
 # an error), with a line about containers when it runs in one.
 _KEPT = re.compile(
@@ -203,6 +196,7 @@ class OcrmypdfEngine:
                 notes = [UNREADABLE_NOTE, *notes]
             pages = await asyncio.to_thread(count_pages, temporary)
             read: list[PageRecord] = []
+            words: tuple[PageWords, ...] = ()
             if vision:
                 read = await asyncio.to_thread(read_records, records)
                 readings = tuple(
@@ -210,7 +204,7 @@ class OcrmypdfEngine:
                     for record in read
                 )
             else:
-                readings = await asyncio.to_thread(read_hocr, work)
+                readings, words = await asyncio.to_thread(read_hocr, work)
             await asyncio.to_thread(temporary.replace, target)
         finally:
             for path in (temporary, prepared):
@@ -234,6 +228,7 @@ class OcrmypdfEngine:
             pdfa=pdfa,
             note=_join(notes),
             readings=readings,
+            words=words,
             read_again=unreadable or hidden,
             vision=reading,
         )
@@ -349,26 +344,6 @@ class OcrmypdfEngine:
             assert self._vision is not None
             return f"{self._engine}, vision language model {self._vision.model} ({PROMPT})"
         return self._engine
-
-
-def read_hocr(work: Path) -> tuple[PageReading, ...]:
-    """How well each page was read, from the hOCR files OCRmyPDF kept in `work`; none for
-    pages it did not recognise (they have text of their own)."""
-    readings: list[PageReading] = []
-    for path in work.glob(f"**/{_HOCR_FILE}"):
-        page = path.name.split("_", 1)[0]
-        if not page.isdigit():
-            continue
-        confidences = [
-            int(confidence)
-            for confidence, word in _HOCR_WORD.findall(path.read_text("utf-8", errors="replace"))
-            if html.unescape(_TAG.sub("", word)).strip()
-        ]
-        unsure = sum(confidence < UNSURE_BELOW for confidence in confidences)
-        readings.append(PageReading(page=int(page), words=len(confidences), unsure=unsure))
-    if not readings and not any(work.glob("*/")):
-        log.warning("ocrmypdf kept no work folder; how well the pages were read is unknown")
-    return tuple(sorted(readings, key=lambda reading: reading.page))
 
 
 def _empty_folder(path: Path) -> None:

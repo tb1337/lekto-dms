@@ -12,6 +12,7 @@ import pytest
 
 from papiq.adapters.outbound.memory import FakeLanguageModel, FakeTextLocator
 from papiq.adapters.outbound.memory.processing import FAKE_PDF
+from papiq.adapters.outbound.ocrmypdf.hocr import hocr_words
 from papiq.adapters.outbound.regex import RegexPatternMatcher
 from papiq.core.domain.classification import TITLE, FieldCheck, checks_from_json, field_key
 from papiq.core.domain.documents import UNSET, Document, DocumentChanges
@@ -23,7 +24,7 @@ from papiq.core.domain.identifiers import Identifier, IdentifierKind
 from papiq.core.domain.json_value import JsonObject, JsonValue
 from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
 from papiq.core.domain.pipeline import Lane, Node, NodeResult, NodeRun, Outcome, ProcessingStatus
-from papiq.core.domain.reading import PageReading, readings_to_json
+from papiq.core.domain.reading import PageReading, PageWords, reading_to_json, readings_to_json
 from papiq.core.domain.users import Role
 from papiq.core.domain.verdict import Thresholds
 from papiq.core.ports.llm import StructuredRequest
@@ -42,11 +43,12 @@ from papiq.core.services.classification.signals import (
     FactsSignal,
     NeighboursSignal,
 )
-from papiq.core.services.objects import archive_key, exchanges_key, text_key
+from papiq.core.services.objects import archive_key, exchanges_key, reading_key, text_key
 from papiq.core.services.pipeline import MetadataResult, NodeExecutor
 from papiq.core.services.rules.nodes import ApplyRulesNode
 from tests import builders
 from tests.builders import NOW, PlaceholderNode, incoming
+from tests.scans import PAYSLIP, PAYSLIP_TEXT, ScanLine, hocr, scan
 from tests.unit.services.support import World
 
 INVOICE = """\
@@ -1146,6 +1148,72 @@ async def test_the_readings_are_those_of_the_latest_ocr_that_made_a_text(world: 
     assert isinstance(result, MetadataResult)
     check = checks(result.result)["document_date"]
     assert check.reason == "page 1 was poorly read (10% of its words unsure)"
+
+
+# --- how sure the reading is: content and the value's own words ------------------------------
+
+PAYSLIP_DATE = {"value": "2022-06-24", "evidence": "Datum «oso: see 24.06.2022"}
+
+
+async def scanned(
+    world: World,
+    lines: tuple[ScanLine, ...] = PAYSLIP,
+    *,
+    kept: bool = True,
+    counted: bool = True,
+    on_page: int = 1,
+) -> tuple[Seeded, Document]:
+    """An invoice-typed document whose text is the pay slip's, recognised by Tesseract: the
+    OCR's entry with the counts (`counted`: with content; else as before content was counted)
+    and, if `kept`, its words beside the archive (for page `on_page`)."""
+    seeded = await seed(world)
+    document = await document_with(world, PAYSLIP_TEXT, seeded.types["Rechnung"])
+    words = hocr_words(hocr(lines))
+    reading = PageReading.of(1, words)
+    if not counted:
+        reading = PageReading(1, reading.words, reading.unsure)
+    await record(world, document, Node.OCR, recognised(reading))
+    store = world.object_store
+    await store.put(archive_key(document.id), FAKE_PDF, content_type="application/pdf")
+    if kept:
+        data = json.dumps(reading_to_json([PageWords(on_page, words)])).encode()
+        await store.put(reading_key(document.id), data, content_type="application/json")
+    return seeded, document
+
+
+async def judged_date(world: World, document: Document, *, located: bool = True) -> FieldCheck:
+    locator = FakeTextLocator([PAYSLIP_TEXT]) if located else None
+    result = await judge(
+        world, document, model(proposal(document_date=PAYSLIP_DATE)), locator=locator
+    )
+    assert isinstance(result, MetadataResult)
+    return checks(result.result)["document_date"]
+
+
+async def test_a_date_read_sure_among_noise_is_applied(world: World) -> None:
+    """The pay slip: 10 % of all words unsure, nearly all of them noise; the date at 96 %."""
+    _, document = await scanned(world)
+    check = await judged_date(world, document)
+    assert check.ok and check.value == "2022-06-24"
+
+
+async def test_a_page_read_before_content_was_counted_keeps_the_old_rule(world: World) -> None:
+    _, document = await scanned(world, counted=False, kept=False)
+    check = await judged_date(world, document)
+    assert check.reason == "page 1 was poorly read (10% of its words unsure)"
+    assert check.suggestion == "2022-06-24"
+
+
+async def test_the_poorly_read_page_names_itself_first(world: World) -> None:
+    broken = scan(PAYSLIP, {"Abrechnung": 30, "Steuerbrutto": 30, "Gehalt": 20, "24.06.2022": 30})
+    lines = tuple(
+        ScanLine(line.text, line.size, 40 if n % 3 == 0 else line.confidence, line.unsure)
+        for n, line in enumerate(broken)
+    )
+    _, document = await scanned(world, lines)
+    check = await judged_date(world, document)
+    assert (check.reason or "").startswith("page 1 was poorly read (")
+    assert (check.reason or "").endswith("of its content words unsure)")
 
 
 async def test_values_are_read_as_written_in_german(world: World) -> None:

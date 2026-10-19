@@ -141,9 +141,10 @@ class ClassificationPolicy:
     existing contact at least this similar is suggested. Texts longer than `input_budget`
     characters are shortened; at most `max_tags` tags and `max_contacts` contacts (those the
     text names most) are listed in a prompt. `default_currency`: the currency of an amount in
-    a text that shows none. `poor_reading`: the share of unsure words from which a recognised
-    page counts as poorly read (`PageReading.poor`). All but `max_contacts` are configuration:
-    the composition sets them from the settings, whose defaults are the one source."""
+    a text that shows none. `poor_reading`: the share of unsure (content) words from which a
+    recognised page counts as poorly read (`PageReading.poor`). All but `max_contacts` are
+    configuration: the composition sets them from the settings, whose defaults are the one
+    source."""
 
     accept: float
     suggest_contact: float
@@ -924,9 +925,9 @@ def _readable(
     threshold: float,
     name: str | None = None,
 ) -> FieldCheck:
-    """A checked value on a poorly read page is only suggested: on a broken scan a number
-    may be anything, however sure the engine was of it. The page is that of its quote, or any
-    recognised page if the quote was not found on one."""
+    """A checked value on a poorly read page (counting content only) is only suggested: on a
+    broken scan a number may be anything, however sure the engine was of it. The page is that
+    of its quote, or any recognised page if the quote was not found on one."""
     if not check.ok or check.value is None:
         return check
     pages = {location.page for location in check.locations}
@@ -936,7 +937,7 @@ def _readable(
     )
     if poor is None:
         return check
-    reason = f"page {poor.page} was poorly read ({poor.unsure_share:.0%} of its words unsure)"
+    reason = poor.describe()
     return replace(
         check,
         outcome=Outcome.UNCERTAIN,

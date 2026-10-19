@@ -99,6 +99,8 @@ async def test_scans_and_images_get_a_text_layer(
     # Tesseract's hOCR, kept by OCRmyPDF: every page read, the clean sample without doubt.
     assert [reading.page for reading in result.readings] == list(range(1, pages + 1))
     assert all(reading.words > 0 for reading in result.readings)
+    assert all(reading.content is not None for reading in result.readings)
+    assert [page.page for page in result.words] == list(range(1, pages + 1))
 
 
 async def test_existing_text_is_kept(tmp_path: Path) -> None:
@@ -199,7 +201,8 @@ async def test_the_vision_model_s_lines_become_the_text_layer(
     assert result.pdfa
     assert "vision language model stub-vlm (read-1)" in result.engine
     (reading,) = result.readings
-    assert (reading.page, reading.words, reading.unsure) == (1, 7, 1)
+    assert (reading.page, reading.words, reading.unsure, reading.content) == (1, 7, 1, None)
+    assert result.words == ()
     assert result.vision is not None
     (call,) = result.vision.calls
     assert call.model == "stub-vlm"

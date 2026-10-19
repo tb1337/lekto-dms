@@ -6,6 +6,7 @@ reprocessing replaces them.
 """
 
 import asyncio
+import json
 import re
 import shutil
 import tempfile
@@ -20,7 +21,7 @@ from papiq.core.domain.documents import Document
 from papiq.core.domain.exchanges import tokens_of
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.pipeline import Node, NodeResult, Outcome
-from papiq.core.domain.reading import NO_TEXT_REASON, OcrOutput
+from papiq.core.domain.reading import NO_TEXT_REASON, OcrOutput, reading_to_json
 from papiq.core.ports.object_store import ObjectStore
 from papiq.core.ports.ocr import Ocr, VisionReading
 from papiq.core.ports.pages import PAGE_MEDIA_TYPE, PREVIEW_FILE, PageRenderer
@@ -34,6 +35,7 @@ from papiq.core.services.objects import (
     original_key,
     page_key,
     preview_key,
+    reading_key,
     structure_key,
     text_key,
 )
@@ -49,6 +51,8 @@ class OcrNode:
     asked (a signature not carried over) is OK with the engine's note as reason. How well each
     recognised page was read goes into the log (`readings`), and whether another OCR's text
     layer was replaced (`read_again`); the judge and the fields node read the readings there.
+    The words Tesseract read, with their confidence and box, are kept beside the archive
+    (`reading_key`, gone when no page was recognised by Tesseract), for the same nodes.
 
     In a run a person asked to read with the vision language model (`Processing.vision`), the
     model reads every page: the log names it, its prompt and its tokens (`vision`), and what
@@ -83,6 +87,13 @@ class OcrNode:
             )
         # The codes were read from the archive before: the facts read the new one again.
         await self._store.delete(codes_key(document.id))
+        if result.words:
+            data = json.dumps(reading_to_json(result.words), ensure_ascii=False)
+            await self._store.put(
+                reading_key(document.id), data.encode("utf-8"), content_type=media_types.JSON
+            )
+        else:
+            await self._store.delete(reading_key(document.id))
         output = OcrOutput(
             archive=archive_key(document.id),
             pages=result.pages,

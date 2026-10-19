@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { formatDate } from '#lib/i18n.ts';
 import { rememberView } from '#lib/listing.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
@@ -60,6 +61,49 @@ describe('the archive page', () => {
 		expect(calls(api).find((call) => call.startsWith('GET /api/v1/documents'))).not.toContain(
 			'lane'
 		);
+	});
+
+	it('stands the documents by month while sorted by a date, last those without one', async () => {
+		vi.stubGlobal(
+			'fetch',
+			fakeApi({
+				'GET /api/v1/documents': () => ({
+					items: [
+						listedOf({ id: 'd1', title: 'Strom', document_date: '2026-10-01' }),
+						listedOf({ id: 'd2', title: 'Lohn', document_date: '2026-09-30' }),
+						listedOf({ id: 'd3', title: 'Lose', document_date: null })
+					],
+					next_cursor: null
+				})
+			})
+		);
+		render(Page);
+		await screen.findByText('Strom');
+		const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent?.trim());
+		expect(headings).toEqual([
+			formatDate(new Date(2026, 9, 1), { month: 'long', year: 'numeric' }),
+			formatDate(new Date(2026, 8, 1), { month: 'long', year: 'numeric' }),
+			m.documents_no_date()
+		]);
+		const october = screen.getByRole('region', { name: headings[0] });
+		expect(within(october).getByText('Strom')).toBeTruthy();
+		expect(within(october).queryByText('Lohn')).toBeNull();
+	});
+
+	it('stands the documents without headings while sorted by title', async () => {
+		state.url = new URL('http://lekto/ui/documents?sort=title');
+		vi.stubGlobal(
+			'fetch',
+			fakeApi({
+				'GET /api/v1/documents': () => ({
+					items: [listedOf({ id: 'd1', title: 'Strom', document_date: '2026-10-01' })],
+					next_cursor: null
+				})
+			})
+		);
+		render(Page);
+		await screen.findByText('Strom');
+		expect(screen.queryAllByRole('heading', { level: 2 })).toEqual([]);
 	});
 
 	it('takes no lane from an older link', async () => {

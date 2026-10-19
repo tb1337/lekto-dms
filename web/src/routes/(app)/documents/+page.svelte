@@ -18,10 +18,11 @@
 	import { describeError } from '#lib/errors.ts';
 	import { events } from '#lib/events.svelte.ts';
 	import { apiQuery, isFiltered, parseFilters, writeFilters, type Filters } from '#lib/filters.ts';
-	import { formatNumber } from '#lib/i18n.ts';
+	import { formatDate, formatNumber } from '#lib/i18n.ts';
 	import {
 		LIST_SORTS,
 		SEARCH_SORTS,
+		byMonth,
 		rememberSort,
 		rememberView,
 		rememberedView,
@@ -37,7 +38,8 @@
 	import { cn } from '#lib/utils.ts';
 
 	// The documents (the archive): listed (newest document date first) or, with words in `q`,
-	// searched (by relevance), with the same filters; sorted as chosen, as a grid or a list. The
+	// searched (by relevance), with the same filters; sorted as chosen, as a grid or a list, by
+	// month under headings while sorted by a date. The
 	// URL holds the words, the filters and the sort; grid or list and the last sort are
 	// remembered. No lanes here: a document that stands open in the inbox says so, with a link.
 	// Documents are uploaded in the inbox.
@@ -164,6 +166,16 @@
 			label: SORT_LABELS[value]()
 		}))
 	);
+
+	// Sorted by a date, the documents stand by month, each under its own heading.
+	const groups = $derived(byMonth(list.items, sort, (item) => item.document));
+
+	function monthLabel(month: string | null): string | undefined {
+		if (month === null) return undefined;
+		if (month === '') return m.documents_no_date();
+		const [year, number] = month.split('-').map(Number);
+		return formatDate(new Date(year, number - 1, 1), { month: 'long', year: 'numeric' });
+	}
 </script>
 
 <svelte:head><title>{m.nav_documents()} · {m.app_name()}</title></svelte:head>
@@ -279,33 +291,42 @@
 					: m.documents_none()}
 		</p>
 	{:else}
-		{#if view === 'grid'}
-			<ul
-				class="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(13rem,1fr))]"
-				aria-busy={list.loading}
-			>
-				{#each list.items as item (item.document.id)}
-					<li class="min-w-0">
-						<DocumentCard document={item.document} {lookup}>
-							{@render snippetLine(item)}
-						</DocumentCard>
-					</li>
-				{/each}
-			</ul>
-		{:else}
-			<ul class="flex flex-col gap-2" aria-busy={list.loading}>
-				{#each list.items as item (item.document.id)}
-					<li>
-						<DocumentRow document={item.document} {lookup}>
-							{@render snippetLine(item)}
-							{#snippet aside()}
-								{#if item.document.in_inbox}<InboxMark lane={item.document.lane} />{/if}
-							{/snippet}
-						</DocumentRow>
-					</li>
-				{/each}
-			</ul>
-		{/if}
+		<div class="flex flex-col gap-6" aria-busy={list.loading}>
+			{#each groups as group (group.start)}
+				<section class="flex flex-col gap-3" aria-label={monthLabel(group.month)}>
+					{#if group.month !== null}
+						<h2 class="flex items-center gap-3 text-[0.95rem] font-semibold">
+							{monthLabel(group.month)}
+							<span aria-hidden="true" class="h-px flex-1 bg-border"></span>
+						</h2>
+					{/if}
+					{#if view === 'grid'}
+						<ul class="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(13rem,1fr))]">
+							{#each group.items as item (item.document.id)}
+								<li class="min-w-0">
+									<DocumentCard document={item.document} {lookup}>
+										{@render snippetLine(item)}
+									</DocumentCard>
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<ul class="flex flex-col gap-2">
+							{#each group.items as item (item.document.id)}
+								<li>
+									<DocumentRow document={item.document} {lookup}>
+										{@render snippetLine(item)}
+										{#snippet aside()}
+											{#if item.document.in_inbox}<InboxMark lane={item.document.lane} />{/if}
+										{/snippet}
+									</DocumentRow>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</section>
+			{/each}
+		</div>
 		{#if list.loading && !list.loaded}
 			<p class="text-muted-foreground">{m.loading()}</p>
 		{/if}

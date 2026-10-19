@@ -61,6 +61,53 @@ export function rememberSort(sort: Sort, searching: boolean): void {
 	store(KEYS[searching ? 'search' : 'list'], sort);
 }
 
+/**
+ * The month a sort by date groups a document under, as `2026-10`: by its document date, or
+ * by when it was added; '' for one without a document date (they come last). Null where the
+ * sort does not group (relevance, title).
+ */
+export function monthOf(
+	sort: Sort,
+	document: { document_date?: string | null; created_at: string }
+): string | null {
+	if (sort === '-document_date' || sort === 'document_date') {
+		return document.document_date?.slice(0, 7) ?? '';
+	}
+	if (sort === '-created_at' || sort === 'created_at') {
+		// In the browser's time, as the date shows.
+		const added = new Date(document.created_at);
+		return `${added.getFullYear()}-${String(added.getMonth() + 1).padStart(2, '0')}`;
+	}
+	return null;
+}
+
+export interface MonthGroup<T> {
+	/** `2026-10`, '' without a document date, null where the sort does not group. */
+	month: string | null;
+	/** Where the group starts in the list. */
+	start: number;
+	items: T[];
+}
+
+/**
+ * The items in their order, a group for each run of one month; one group without a month
+ * where the sort does not group.
+ */
+export function byMonth<T>(
+	items: readonly T[],
+	sort: Sort,
+	documentOf: (item: T) => { document_date?: string | null; created_at: string }
+): MonthGroup<T>[] {
+	const groups: MonthGroup<T>[] = [];
+	items.forEach((item, index) => {
+		const month = monthOf(sort, documentOf(item));
+		const last = groups.at(-1);
+		if (last && last.month === month) last.items.push(item);
+		else groups.push({ month, start: index, items: [item] });
+	});
+	return groups;
+}
+
 export function rememberedView(): View {
 	return stored(KEYS.view) === 'list' ? 'list' : 'grid';
 }

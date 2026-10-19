@@ -110,6 +110,7 @@
 	"filter_reset": "Filter zurücksetzen",
 	"documents_none": "Noch keine Dokumente. Lade das erste hoch.",
 	"documents_none_filtered": "Kein Dokument passt zu diesen Filtern.",
+	"documents_no_date": "Ohne Dokumentdatum",
 	"document_not_found": "Dieses Dokument gibt es nicht, oder Du darfst es nicht sehen.",
 	"document_saved": "Dokument gespeichert.",
 	"document_moved_away": "Die Regeln haben das Dokument dorthin abgelegt, wo Du es nicht mehr siehst.",

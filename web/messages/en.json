@@ -110,6 +110,7 @@
 	"filter_reset": "Reset filters",
 	"documents_none": "No documents yet. Upload the first one.",
 	"documents_none_filtered": "No document matches these filters.",
+	"documents_no_date": "No document date",
 	"document_not_found": "This document does not exist or you may not see it.",
 	"document_saved": "Document saved.",
 	"document_moved_away": "The rules filed the document where you can no longer see it.",

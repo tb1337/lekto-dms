@@ -66,8 +66,9 @@ person and the share of those the person corrected afterwards (the feedback meas
 only suggested is not applied, its suggestion counts for the hit rate); tag
 precision and recall; and per run the lanes expected against lanes got, what the instructions
 in the text achieved, each case, and the outcomes of the label check per case and in total
-(recorded, not enforced: `beside`, `apart`, label missing, no label, unknown). The command exits with status 1 if any document came out
-green that should not have or with a wrong value, or a field changed without a passed check.
+(recorded, not enforced: `beside`, `apart`, label missing, no label, unknown). The command
+exits with status 1 if any document came out green that should not have or with a wrong value,
+or a field changed without a passed check.
 
 The bag-of-words vectors stand in for an embedding model: the similar documents they find show
 that the flow works, not how good real neighbours are. With so small a corpus the trained run

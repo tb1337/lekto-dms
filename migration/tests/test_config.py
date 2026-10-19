@@ -2,13 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from papiq_migration.config import Config, ConfigError, secret
+from lekto_migration.config import Config, ConfigError, secret
 
 
 def load(env: dict[str, str], **changes: object) -> Config:
     values: dict[str, object] = {
         "paperless_url": None,
-        "papiq_url": None,
+        "lekto_url": None,
         "state": Path("s"),
         "report_dir": Path("r"),
         "currency": "eur",
@@ -22,25 +22,25 @@ def load(env: dict[str, str], **changes: object) -> Config:
 def test_the_environment_configures_everything() -> None:
     config = load(
         {
-            "PAPIQ_MIGRATION_PAPERLESS_URL": "http://p/",
-            "PAPIQ_MIGRATION_PAPERLESS_TOKEN": " key ",
-            "PAPIQ_MIGRATION_PAPIQ_URL": "http://q",
-            "PAPIQ_MIGRATION_PAPIQ_TOKEN": "other",
+            "LEKTO_MIGRATION_PAPERLESS_URL": "http://p/",
+            "LEKTO_MIGRATION_PAPERLESS_TOKEN": " key ",
+            "LEKTO_MIGRATION_LEKTO_URL": "http://q",
+            "LEKTO_MIGRATION_LEKTO_TOKEN": "other",
         }
     )
-    assert (config.paperless_url, config.papiq_url, config.currency) == (
+    assert (config.paperless_url, config.lekto_url, config.currency) == (
         "http://p",
         "http://q",
         "EUR",
     )
-    assert (config.paperless_token, config.papiq_token) == ("key", "other")
+    assert (config.paperless_token, config.lekto_token) == ("key", "other")
 
 
 def test_keys_never_show_in_the_text_of_the_configuration() -> None:
     config = load(
         {
-            "PAPIQ_MIGRATION_PAPERLESS_URL": "http://p",
-            "PAPIQ_MIGRATION_PAPERLESS_TOKEN": "very-secret",
+            "LEKTO_MIGRATION_PAPERLESS_URL": "http://p",
+            "LEKTO_MIGRATION_PAPERLESS_TOKEN": "very-secret",
         }
     )
     assert "very-secret" not in repr(config) and "very-secret" not in str(config)
@@ -49,25 +49,25 @@ def test_keys_never_show_in_the_text_of_the_configuration() -> None:
 def test_a_key_may_come_from_a_file(tmp_path: Path) -> None:
     file = tmp_path / "key"
     file.write_text("from-file\n")
-    assert secret({"PAPIQ_MIGRATION_X_FILE": str(file)}, "X") == "from-file"
+    assert secret({"LEKTO_MIGRATION_X_FILE": str(file)}, "X") == "from-file"
     with pytest.raises(ConfigError, match="only one"):
-        secret({"PAPIQ_MIGRATION_X_FILE": str(file), "PAPIQ_MIGRATION_X": "v"}, "X")
+        secret({"LEKTO_MIGRATION_X_FILE": str(file), "LEKTO_MIGRATION_X": "v"}, "X")
     with pytest.raises(ConfigError, match="cannot read"):
-        secret({"PAPIQ_MIGRATION_X_FILE": str(tmp_path / "missing")}, "X")
+        secret({"LEKTO_MIGRATION_X_FILE": str(tmp_path / "missing")}, "X")
 
 
 @pytest.mark.parametrize(
     ("env", "changes", "text"),
     [
         ({}, {}, "Paperless URL"),
-        ({"PAPIQ_MIGRATION_PAPERLESS_URL": "http://p"}, {}, "API key"),
+        ({"LEKTO_MIGRATION_PAPERLESS_URL": "http://p"}, {}, "API key"),
         (
-            {"PAPIQ_MIGRATION_PAPERLESS_URL": "http://p", "PAPIQ_MIGRATION_PAPERLESS_TOKEN": "k"},
+            {"LEKTO_MIGRATION_PAPERLESS_URL": "http://p", "LEKTO_MIGRATION_PAPERLESS_TOKEN": "k"},
             {"currency": "euro"},
             "currency",
         ),
         (
-            {"PAPIQ_MIGRATION_PAPERLESS_URL": "http://p", "PAPIQ_MIGRATION_PAPERLESS_TOKEN": "k"},
+            {"LEKTO_MIGRATION_PAPERLESS_URL": "http://p", "LEKTO_MIGRATION_PAPERLESS_TOKEN": "k"},
             {"concurrency": 0},
             "concurrency",
         ),

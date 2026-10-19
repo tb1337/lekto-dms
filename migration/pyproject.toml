@@ -1,7 +1,7 @@
 [project]
-name = "papiq-migration"
+name = "lekto-migration"
 version = "0.1.0"
-description = "Takes over a Paperless-ngx archive into Papiq through the two REST APIs"
+description = "Takes over a Paperless-ngx archive into Lekto through the two REST APIs"
 readme = "README.md"
 license = "GPL-3.0-only"
 requires-python = ">=3.13"
@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-papiq-migration = "papiq_migration.cli:main"
+lekto-migration = "lekto_migration.cli:main"
 
 [dependency-groups]
 dev = [

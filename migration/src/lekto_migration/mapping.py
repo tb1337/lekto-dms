@@ -1,4 +1,4 @@
-"""How Paperless-ngx objects map to Papiq: pure functions, no I/O."""
+"""How Paperless-ngx objects map to Lekto: pure functions, no I/O."""
 
 import hashlib
 import re
@@ -19,17 +19,17 @@ _MONEY = re.compile(r"(?P<currency>[A-Za-z]{3})?\s*(?P<amount>[-+]?\d+(?:\.\d+)?
 
 
 def norm(name: str) -> str:
-    """Names are compared without case and surrounding space, as Papiq does."""
+    """Names are compared without case and surrounding space, as Lekto does."""
     return name.strip().casefold()
 
 
 @dataclass(frozen=True)
 class FieldSpec:
-    """The Papiq field definition for a Paperless custom field (or ASN, notes)."""
+    """The Lekto field definition for a Paperless custom field (or ASN, notes)."""
 
     key: str  # "field:<id>", "asn", "notes"
     name: str
-    data_type: str  # Papiq: text, number, amount, date, boolean, choice, link, period
+    data_type: str  # Lekto: text, number, amount, date, boolean, choice, link, period
     choices: tuple[str, ...] = ()
 
 
@@ -63,7 +63,7 @@ def field_spec(custom_field: dict[str, Any]) -> tuple[FieldSpec | None, list[str
     kind = custom_field["data_type"]
     name = str(custom_field["name"]).strip()[:NAME_LIMIT]
     if kind not in _TYPES:
-        return None, [f"data type '{kind}' has no counterpart in Papiq: values are not taken over"]
+        return None, [f"data type '{kind}' has no counterpart in Lekto: values are not taken over"]
     notes: list[str] = []
     choices: tuple[str, ...] = ()
     if kind == "select":
@@ -76,7 +76,7 @@ def field_spec(custom_field: dict[str, Any]) -> tuple[FieldSpec | None, list[str
 
 @dataclass(frozen=True)
 class Converted:
-    """A custom field value as Papiq's JSON, or None with the reason it is not taken over."""
+    """A custom field value as Lekto's JSON, or None with the reason it is not taken over."""
 
     value: Any = None
     note: str | None = None
@@ -189,7 +189,7 @@ def notes_text(notes: list[dict[str, Any]]) -> tuple[str | None, list[str]]:
 
 @dataclass(frozen=True)
 class Access:
-    """Who owns a document and who else may read or write it (by Papiq user name)."""
+    """Who owns a document and who else may read or write it (by Lekto user name)."""
 
     owner: str | None
     shares: tuple[tuple[str, str], ...]  # (username, level), sorted by name

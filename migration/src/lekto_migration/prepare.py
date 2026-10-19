@@ -1,12 +1,12 @@
-"""What a Paperless document becomes in Papiq: owner, space and the metadata that goes with
-the upload, in terms of Papiq's ids. Used by the migration (to upload) and by the check (to
+"""What a Paperless document becomes in Lekto: owner, space and the metadata that goes with
+the upload, in terms of Lekto's ids. Used by the migration (to upload) and by the check (to
 compare)."""
 
 import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from papiq_migration.mapping import (
+from lekto_migration.mapping import (
     ASN_SPEC,
     NOTES_LIMIT,
     NOTES_SPEC,
@@ -22,21 +22,21 @@ from papiq_migration.mapping import (
 )
 
 SUPPORTED = ("application/pdf", "image/jpeg", "image/png", "image/tiff")
-METADATA_LIMIT = 45_000  # bytes of the metadata field (Papiq allows 48 KiB)
+METADATA_LIMIT = 45_000  # bytes of the metadata field (Lekto allows 48 KiB)
 
 
 @dataclass
 class Ids:
-    """Paperless ids to the Papiq ids they became."""
+    """Paperless ids to the Lekto ids they became."""
 
     admin: str  # the executing admin: owns documents without an owner
-    inactive: set[str] = field(default_factory=set)  # Papiq users that cannot own or share
-    users: dict[int, str] = field(default_factory=dict)  # Paperless user id -> Papiq user id
-    usernames: dict[str, str] = field(default_factory=dict)  # norm(username) -> Papiq user id
+    inactive: set[str] = field(default_factory=set)  # Lekto users that cannot own or share
+    users: dict[int, str] = field(default_factory=dict)  # Paperless user id -> Lekto user id
+    usernames: dict[str, str] = field(default_factory=dict)  # norm(username) -> Lekto user id
     contacts: dict[int, str] = field(default_factory=dict)
     document_types: dict[int, str] = field(default_factory=dict)
     tags: dict[int, str] = field(default_factory=dict)
-    fields: dict[str, str] = field(default_factory=dict)  # field key -> Papiq id
+    fields: dict[str, str] = field(default_factory=dict)  # field key -> Lekto id
     specs: dict[str, FieldSpec] = field(default_factory=dict)  # usable fields by key
 
 
@@ -47,7 +47,7 @@ class Prepared:
     filename: str
     media_type: str
     skip: str | None
-    owner: str  # Papiq user id
+    owner: str  # Lekto user id
     owner_name: str | None  # Paperless name; None: the executing admin
     shares: tuple[tuple[str, str], ...]
     metadata: dict[str, Any]
@@ -83,15 +83,15 @@ def prepare(
     elif document.get("root_document") not in (None, document["id"]):
         skip = f"the file is a version of document {document['root_document']}"
     elif mime not in SUPPORTED:
-        skip = f"Papiq takes PDF, JPEG, PNG and TIFF; this file is {mime or 'of unknown type'}"
+        skip = f"Lekto takes PDF, JPEG, PNG and TIFF; this file is {mime or 'of unknown type'}"
     final_owner = owner_id or ids.admin
     shares: list[tuple[str, str]] = []
     for name, level in access.shares:
         recipient = ids.usernames.get(norm(name))
         if recipient is None or recipient in ids.inactive:
-            notes.append(f"shared with {name}, who is not an active user in Papiq: not shared")
+            notes.append(f"shared with {name}, who is not an active user in Lekto: not shared")
         elif recipient == final_owner:
-            notes.append(f"shared with {name}, who owns the document in Papiq: not shared")
+            notes.append(f"shared with {name}, who owns the document in Lekto: not shared")
         else:
             shares.append((name, level))
 
@@ -119,7 +119,7 @@ def prepare(
                     "is not taken over"
                 )
             elif item.get("value") not in (None, "", []):
-                notes.append(f"'{custom_field['name']}': no field in Papiq, value not taken over")
+                notes.append(f"'{custom_field['name']}': no field in Lekto, value not taken over")
             continue
         converted = convert_value(custom_field, item.get("value"), currency)
         if converted.note and converted.note != "empty value":

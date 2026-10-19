@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from papiq_migration.mapping import (
+from lekto_migration.mapping import (
     access_of,
     convert_value,
     document_date,

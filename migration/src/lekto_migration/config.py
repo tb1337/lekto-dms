@@ -1,4 +1,4 @@
-"""Configuration: environment variables (`PAPIQ_MIGRATION_*`) and command-line options. The API
+"""Configuration: environment variables (`LEKTO_MIGRATION_*`) and command-line options. The API
 keys come from the environment or a file, never from an option, and are never written anywhere."""
 
 import os
@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-PREFIX = "PAPIQ_MIGRATION_"
+PREFIX = "LEKTO_MIGRATION_"
 
 
 class ConfigError(Exception):
@@ -15,7 +15,7 @@ class ConfigError(Exception):
 
 
 def secret(env: Mapping[str, str], name: str) -> str | None:
-    """`PAPIQ_MIGRATION_<NAME>`, or the content of the file `PAPIQ_MIGRATION_<NAME>_FILE`; both
+    """`LEKTO_MIGRATION_<NAME>`, or the content of the file `LEKTO_MIGRATION_<NAME>_FILE`; both
     set is an error."""
     value, file = env.get(PREFIX + name), env.get(f"{PREFIX}{name}_FILE")
     if value and file:
@@ -42,11 +42,11 @@ def public(url: str | None) -> str | None:
 @dataclass(frozen=True)
 class Config:
     paperless_url: str
-    papiq_url: str | None
+    lekto_url: str | None
     state: Path
     report_dir: Path
     paperless_token: str = field(repr=False, default="")
-    papiq_token: str | None = field(repr=False, default=None)
+    lekto_token: str | None = field(repr=False, default=None)
     currency: str = "EUR"
     concurrency: int = 4
     limit: int | None = None
@@ -58,7 +58,7 @@ class Config:
         cls,
         *,
         paperless_url: str | None,
-        papiq_url: str | None,
+        lekto_url: str | None,
         state: Path,
         report_dir: Path,
         currency: str,
@@ -70,7 +70,7 @@ class Config:
     ) -> "Config":
         env = os.environ if env is None else env
         paperless = paperless_url or env.get(PREFIX + "PAPERLESS_URL")
-        papiq = papiq_url or env.get(PREFIX + "PAPIQ_URL")
+        lekto = lekto_url or env.get(PREFIX + "LEKTO_URL")
         if not paperless:
             raise ConfigError(
                 f"the Paperless URL is missing ({PREFIX}PAPERLESS_URL or --paperless-url)"
@@ -84,11 +84,11 @@ class Config:
             raise ConfigError("the concurrency is at least 1")
         return cls(
             paperless_url=paperless.rstrip("/"),
-            papiq_url=papiq.rstrip("/") if papiq else None,
+            lekto_url=lekto.rstrip("/") if lekto else None,
             state=state,
             report_dir=report_dir,
             paperless_token=token,
-            papiq_token=secret(env, "PAPIQ_TOKEN"),
+            lekto_token=secret(env, "LEKTO_TOKEN"),
             currency=currency.upper(),
             concurrency=concurrency,
             limit=limit,

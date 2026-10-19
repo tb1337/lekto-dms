@@ -9,25 +9,25 @@ from pathlib import Path
 
 import httpx2
 
-from papiq_migration import report as reports
-from papiq_migration.config import Config, ConfigError, public
-from papiq_migration.migrate import Migration, MigrationError, Progress
-from papiq_migration.paperless import Paperless, PaperlessError
-from papiq_migration.papiq import DELAYS, ApiError, Papiq
-from papiq_migration.state import State, StateError
-from papiq_migration.verify import verify
+from lekto_migration import report as reports
+from lekto_migration.config import Config, ConfigError, public
+from lekto_migration.lekto import DELAYS, ApiError, Lekto
+from lekto_migration.migrate import Migration, MigrationError, Progress
+from lekto_migration.paperless import Paperless, PaperlessError
+from lekto_migration.state import State, StateError
+from lekto_migration.verify import verify
 
 DESCRIPTION = """\
-Takes over a Paperless-ngx archive into Papiq. It reads Paperless through its REST API and writes
-through the Papiq API, with an admin's API token. API keys come from the environment only:
-PAPIQ_MIGRATION_PAPERLESS_TOKEN and PAPIQ_MIGRATION_PAPIQ_TOKEN (or ..._FILE with a path), the
-addresses from --paperless-url / --papiq-url or PAPIQ_MIGRATION_PAPERLESS_URL / ..._PAPIQ_URL.
+Takes over a Paperless-ngx archive into Lekto. It reads Paperless through its REST API and writes
+through the Lekto API, with an admin's API token. API keys come from the environment only:
+LEKTO_MIGRATION_PAPERLESS_TOKEN and LEKTO_MIGRATION_LEKTO_TOKEN (or ..._FILE with a path), the
+addresses from --paperless-url / --lekto-url or LEKTO_MIGRATION_PAPERLESS_URL / ..._LEKTO_URL.
 """
 
 
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(
-        prog="papiq-migration",
+        prog="lekto-migration",
         description=DESCRIPTION,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -35,11 +35,11 @@ def parser() -> argparse.ArgumentParser:
     for name, text in (
         ("plan", "trial run: read everything, write nothing, report what would happen"),
         ("run", "take everything over; stops cleanly on Ctrl-C and continues where it stopped"),
-        ("verify", "compare Paperless and Papiq object by object"),
+        ("verify", "compare Paperless and Lekto object by object"),
     ):
         command = commands.add_parser(name, help=text, description=text)
         command.add_argument("--paperless-url", help="e.g. http://localhost:8000")
-        command.add_argument("--papiq-url", help="e.g. http://localhost:8001")
+        command.add_argument("--lekto-url", help="e.g. http://localhost:8001")
         command.add_argument("--state", type=Path, default=Path("migration-state.sqlite"))
         command.add_argument("--report-dir", type=Path, default=Path("migration-reports"))
         command.add_argument("--currency", default="EUR", help="for amounts without a currency")
@@ -58,7 +58,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         config = Config.load(
             paperless_url=args.paperless_url,
-            papiq_url=args.papiq_url,
+            lekto_url=args.lekto_url,
             state=args.state,
             report_dir=args.report_dir,
             currency=args.currency,
@@ -101,7 +101,7 @@ async def execute(
     *,
     stop: asyncio.Event | None = None,
     paperless_transport: httpx2.AsyncBaseTransport | None = None,
-    papiq_transport: httpx2.AsyncBaseTransport | None = None,
+    lekto_transport: httpx2.AsyncBaseTransport | None = None,
     progress: Progress = say,
     poll: tuple[float, float] = (0.5, 5.0),
     delays: tuple[float, ...] = DELAYS,
@@ -111,8 +111,8 @@ async def execute(
     stop = stop or asyncio.Event()
     source = Paperless(config.paperless_url, config.paperless_token, transport=paperless_transport)
     target = (
-        Papiq(config.papiq_url, config.papiq_token, transport=papiq_transport, delays=delays)
-        if config.papiq_url and config.papiq_token
+        Lekto(config.lekto_url, config.lekto_token, transport=lekto_transport, delays=delays)
+        if config.lekto_url and config.lekto_token
         else None
     )
     state = State(Path(":memory:") if command == "plan" else config.state)
@@ -120,10 +120,10 @@ async def execute(
         if command != "plan":
             if target is None:
                 raise MigrationError(
-                    "the Papiq URL and API key are needed (PAPIQ_MIGRATION_PAPIQ_*)"
+                    "the Lekto URL and API key are needed (LEKTO_MIGRATION_LEKTO_*)"
                 )
             state.bind(
-                paperless=public(config.paperless_url) or "", papiq=public(config.papiq_url) or ""
+                paperless=public(config.paperless_url) or "", lekto=public(config.lekto_url) or ""
             )
         if command == "verify":
             assert target is not None
@@ -151,7 +151,7 @@ async def execute(
                     migration,
                     state,
                     paperless_url=public(config.paperless_url) or "",
-                    papiq_url=public(config.papiq_url),
+                    lekto_url=public(config.lekto_url),
                 )
                 _write(config, command, reports.to_markdown(partial), reports.to_json(partial))
             raise error
@@ -160,7 +160,7 @@ async def execute(
             migration,
             state,
             paperless_url=public(config.paperless_url) or "",
-            papiq_url=public(config.papiq_url),
+            lekto_url=public(config.lekto_url),
         )
         _write(config, command, reports.to_markdown(result), reports.to_json(result))
         progress(

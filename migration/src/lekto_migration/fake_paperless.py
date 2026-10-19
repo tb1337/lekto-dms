@@ -98,7 +98,7 @@ def pdf(number: int, base: bytes) -> bytes:
 def sample_archive(base_pdf: bytes, jpeg: bytes | None = None) -> Archive:
     """A small archive with the cases the migration has to handle: owners, a deleted owner and
     none, an inactive user, groups, permissions, every custom field type, notes, an ASN, a tag
-    with a parent, a document Papiq cannot take (an e-mail) and one in the trash."""
+    with a parent, a document Lekto cannot take (an e-mail) and one in the trash."""
     users = [
         {"id": 1, "username": "tobias", "is_active": True, "is_superuser": True, "groups": [1]},
         {"id": 2, "username": "anna", "is_active": True, "is_superuser": False, "groups": [1]},

@@ -1,4 +1,4 @@
-"""A small stand-in for the Papiq API: the endpoints the migration uses, in memory. The real API
+"""A small stand-in for the Lekto API: the endpoints the migration uses, in memory. The real API
 is exercised by the flow tests in the backend's test suite."""
 
 import hashlib
@@ -13,13 +13,13 @@ from uuid import uuid4
 
 import httpx2
 
-TOKEN = "papiq-test-key"
+TOKEN = "lekto-test-key"
 PREFIX = "/api/v1"
 ADMIN: dict[str, Any] = {"id": "admin-id", "username": "root", "role": "admin", "active": True}
 
 
 @dataclass
-class FakePapiq:
+class FakeLekto:
     users: dict[str, dict[str, Any]] = field(default_factory=lambda: {ADMIN["id"]: dict(ADMIN)})
     contacts: dict[str, dict[str, Any]] = field(default_factory=dict)
     document_types: dict[str, dict[str, Any]] = field(default_factory=dict)

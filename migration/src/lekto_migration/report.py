@@ -6,8 +6,8 @@ from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
 
-from papiq_migration.migrate import Migration
-from papiq_migration.state import State
+from lekto_migration.migrate import Migration
+from lekto_migration.state import State
 
 KINDS = (
     ("user", "Users"),
@@ -23,7 +23,7 @@ KINDS = (
 
 
 def build(
-    command: str, migration: Migration, state: State, *, paperless_url: str, papiq_url: str | None
+    command: str, migration: Migration, state: State, *, paperless_url: str, lekto_url: str | None
 ) -> dict[str, Any]:
     """The report of a trial run or a run, from what the state holds."""
     snapshot = migration.snapshot
@@ -40,7 +40,7 @@ def build(
                 "owner": row.detail.get("owner"),
                 "space": row.detail.get("space"),
                 "status": row.status,
-                "papiq_id": row.papiq_id,
+                "lekto_id": row.lekto_id,
                 "lane": row.lane,
                 "reason": row.reason,
                 "notes": row.notes,
@@ -54,7 +54,7 @@ def build(
         "command": command,
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "paperless": {"url": paperless_url, "version": snapshot.version},
-        "papiq": {"url": papiq_url},
+        "lekto": {"url": lekto_url},
         "source_counts": {
             "documents": len(snapshot.documents),
             "users": len(snapshot.users),
@@ -113,11 +113,11 @@ def to_markdown(report: dict[str, Any]) -> str:
     out: list[str] = []
     command = report["command"]
     titles = {"plan": "Trial run", "run": "Migration", "verify": "Verification"}
-    out.append(f"# Paperless-ngx to Papiq: {titles[command]}")
+    out.append(f"# Paperless-ngx to Lekto: {titles[command]}")
     out.append("")
     out.append(
         f"{report['generated_at']} · Paperless {report['paperless']['version']} "
-        f"({report['paperless']['url']}) · Papiq {report['papiq']['url'] or 'not read'}"
+        f"({report['paperless']['url']}) · Lekto {report['lekto']['url'] or 'not read'}"
     )
     out.append("")
     if command == "verify":
@@ -195,19 +195,19 @@ def _summary(report: dict[str, Any]) -> list[str]:
             continue
         out += [f"## {title}", ""]
         out += _table(
-            ["Paperless", "Name", "Papiq", "Result", "Remarks"],
-            [[i["source_id"], i["name"], i["papiq_id"], i["status"], i["notes"]] for i in items],
+            ["Paperless", "Name", "Lekto", "Result", "Remarks"],
+            [[i["source_id"], i["name"], i["lekto_id"], i["status"], i["notes"]] for i in items],
         )
     out += ["## All documents", ""]
     out += _table(
-        ["Paperless", "Title", "Owner", "Space", "Papiq", "Result", "Lane"],
+        ["Paperless", "Title", "Owner", "Space", "Lekto", "Result", "Lane"],
         [
             [
                 d["id"],
                 d["title"],
                 d["owner"] or "(executing admin)",
                 d["space"],
-                d["papiq_id"],
+                d["lekto_id"],
                 d["status"],
                 d["lane"],
             ]
@@ -224,8 +224,8 @@ def _section(title: str, documents: list[dict[str, Any]]) -> list[str]:
         f"## {title} ({len(documents)})",
         "",
         *_table(
-            ["Paperless", "Title", "Papiq", "Reason"],
-            [[d["id"], d["title"], d["papiq_id"], d["reason"]] for d in documents],
+            ["Paperless", "Title", "Lekto", "Reason"],
+            [[d["id"], d["title"], d["lekto_id"], d["reason"]] for d in documents],
         ),
     ]
 
@@ -240,7 +240,7 @@ def _verification(report: dict[str, Any]) -> list[str]:
     out.append("")
     if deviations:
         out += _table(
-            ["Object", "Id", "What", "Paperless", "Papiq"],
+            ["Object", "Id", "What", "Paperless", "Lekto"],
             [
                 [d["kind"], d["id"], d["what"], d.get("expected"), d.get("found")]
                 for d in deviations

@@ -1,4 +1,4 @@
-"""The local state of a migration: which Paperless object became which Papiq object, and how far
+"""The local state of a migration: which Paperless object became which Lekto object, and how far
 each document got. A SQLite file next to the run, so an interrupted migration continues where it
 stopped and a second run creates nothing twice. It holds no secrets."""
 
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS objects (
     kind TEXT NOT NULL,
     source_id TEXT NOT NULL,
     name TEXT NOT NULL,
-    papiq_id TEXT,
+    lekto_id TEXT,
     status TEXT NOT NULL,
     notes TEXT NOT NULL DEFAULT '[]',
     PRIMARY KEY (kind, source_id)
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS objects (
 CREATE TABLE IF NOT EXISTS documents (
     source_id INTEGER PRIMARY KEY,
     status TEXT NOT NULL,
-    papiq_id TEXT,
+    lekto_id TEXT,
     sha256 TEXT,
     lane TEXT,
     reason TEXT,
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 """
 # Document states: `uploaded` (accepted, pipeline not finished), `done` (pipeline finished),
-# `duplicate` (Papiq had the file already), `skipped` (cannot be taken over), `failed`.
+# `duplicate` (Lekto had the file already), `skipped` (cannot be taken over), `failed`.
 DOCUMENT_DONE = ("done", "duplicate", "skipped")
 
 
@@ -47,7 +47,7 @@ class StateError(Exception):
 class DocumentRow:
     source_id: int
     status: str
-    papiq_id: str | None
+    lekto_id: str | None
     sha256: str | None
     lane: str | None
     reason: str | None
@@ -62,7 +62,7 @@ class State:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(path)
         self._db.executescript(SCHEMA)
-        # Papiq 0.1 called fields "attributes", Papiq before 0.3 spaces "drawers".
+        # Version 0.1 called fields "attributes", versions before 0.3 spaces "drawers".
         self._db.execute("UPDATE objects SET kind = 'field' WHERE kind = 'attribute'")
         self._db.execute("UPDATE objects SET kind = 'space' WHERE kind = 'drawer'")
         rows = self._db.execute(
@@ -97,7 +97,7 @@ class State:
 
     def object(self, kind: str, source_id: str) -> tuple[str | None, str] | None:
         row = self._db.execute(
-            "SELECT papiq_id, status FROM objects WHERE kind = ? AND source_id = ?",
+            "SELECT lekto_id, status FROM objects WHERE kind = ? AND source_id = ?",
             (kind, source_id),
         ).fetchone()
         return None if row is None else (row[0], row[1])
@@ -107,19 +107,19 @@ class State:
         kind: str,
         source_id: str,
         name: str,
-        papiq_id: str | None,
+        lekto_id: str | None,
         status: str,
         notes: list[str],
     ) -> None:
         self._db.execute(
             "INSERT OR REPLACE INTO objects VALUES (?, ?, ?, ?, ?, ?)",
-            (kind, source_id, name, papiq_id, status, json.dumps(notes)),
+            (kind, source_id, name, lekto_id, status, json.dumps(notes)),
         )
         self._db.commit()
 
     def objects(self, kind: str) -> list[dict[str, Any]]:
         rows = self._db.execute(
-            "SELECT source_id, name, papiq_id, status, notes FROM objects WHERE kind = ? "
+            "SELECT source_id, name, lekto_id, status, notes FROM objects WHERE kind = ? "
             "ORDER BY rowid",
             (kind,),
         ).fetchall()
@@ -127,7 +127,7 @@ class State:
             {
                 "source_id": r[0],
                 "name": r[1],
-                "papiq_id": r[2],
+                "lekto_id": r[2],
                 "status": r[3],
                 "notes": json.loads(r[4]),
             }
@@ -148,7 +148,7 @@ class State:
         source_id: int,
         status: str,
         *,
-        papiq_id: str | None = None,
+        lekto_id: str | None = None,
         sha256: str | None = None,
         lane: str | None = None,
         reason: str | None = None,
@@ -163,7 +163,7 @@ class State:
             (
                 source_id,
                 status,
-                papiq_id or (before.papiq_id if before else None),
+                lekto_id or (before.lekto_id if before else None),
                 sha256 or (before.sha256 if before else None),
                 lane,
                 reason,
@@ -182,7 +182,7 @@ class State:
 
     def _select(self, where: str, args: tuple[Any, ...]) -> list[DocumentRow]:
         rows = self._db.execute(
-            "SELECT source_id, status, papiq_id, sha256, lane, reason, notes, detail, "
+            "SELECT source_id, status, lekto_id, sha256, lane, reason, notes, detail, "
             f"upload_seconds, pipeline_seconds FROM documents {where}",
             args,
         ).fetchall()

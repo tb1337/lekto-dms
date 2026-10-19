@@ -1,4 +1,4 @@
-"""Writing to Papiq through its REST API, with an admin's API token. Nothing else is used."""
+"""Writing to Lekto through its REST API, with an admin's API token. Nothing else is used."""
 
 import asyncio
 from collections.abc import Awaitable, Callable
@@ -13,7 +13,7 @@ DELAYS = (1.0, 3.0, 10.0)
 
 
 class ApiError(Exception):
-    """A request Papiq refused. `existing` is the document a duplicate upload collided with."""
+    """A request Lekto refused. `existing` is the document a duplicate upload collided with."""
 
     def __init__(self, status: int, detail: str, existing: str | None = None) -> None:
         super().__init__(f"HTTP {status}: {detail}")
@@ -22,7 +22,7 @@ class ApiError(Exception):
         self.existing = existing
 
 
-class Papiq:
+class Lekto:
     def __init__(
         self,
         base_url: str,
@@ -73,7 +73,7 @@ class Papiq:
                         )
             except httpx2.TransportError as error:
                 if attempt == len(self._delays):
-                    raise ApiError(0, f"Papiq is not reachable: {type(error).__name__}") from None
+                    raise ApiError(0, f"Lekto is not reachable: {type(error).__name__}") from None
                 await self._sleep(self._delays[attempt])
                 continue
             if response.status_code in RETRY_STATUS and attempt < len(self._delays):

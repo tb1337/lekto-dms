@@ -8,10 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import httpx2
-from papiq_migration import fake_paperless
-from papiq_migration.cli import execute
-from papiq_migration.config import Config
-from papiq_migration.fake_paperless import FakePaperless, sample_archive
+from lekto_migration import fake_paperless
+from lekto_migration.cli import execute
+from lekto_migration.config import Config
+from lekto_migration.fake_paperless import FakePaperless, sample_archive
 
 from lekto.adapters.inbound.rest import PREFIX
 from lekto.core.domain.pipeline import SIGNALS, Node
@@ -36,11 +36,11 @@ class Migrating:
     def config(self, **changes: Any) -> Config:
         values: dict[str, Any] = {
             "paperless_url": "http://paperless",
-            "papiq_url": "https://papiq",
+            "lekto_url": "https://lekto",
             "state": self.directory / "state.sqlite",
             "report_dir": self.directory / "reports",
             "paperless_token": fake_paperless.TOKEN,
-            "papiq_token": helpers.token(self.admin),
+            "lekto_token": helpers.token(self.admin),
             "concurrency": 3,
         }
         return Config(**{**values, **changes})
@@ -51,7 +51,7 @@ class Migrating:
             command,
             stop=stop,
             paperless_transport=self.paperless.transport(),
-            papiq_transport=httpx2.ASGITransport(app=self.api.app),
+            lekto_transport=httpx2.ASGITransport(app=self.api.app),
             progress=self.messages.append,
             poll=(0.01, 0.01),
             delays=(0.0, 0.0, 0.0),

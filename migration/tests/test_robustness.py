@@ -5,11 +5,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from papiq_migration.config import public
-from papiq_migration.fake_paperless import pdf
-from papiq_migration.state import State
+from lekto_migration.config import public
+from lekto_migration.fake_paperless import pdf
+from lekto_migration.state import State
 from tests.conftest import PDF, Setup
-from tests.fake_papiq import ADMIN
+from tests.fake_lekto import ADMIN
 
 
 def add_document(setup: Setup, id: int, owner: int | None, **changes: Any) -> None:
@@ -28,7 +28,7 @@ def add_document(setup: Setup, id: int, owner: int | None, **changes: Any) -> No
 
 
 def titled(setup: Setup, title: str) -> dict[str, Any]:
-    return next(d for d in setup.papiq.documents.values() if d["title"] == title)
+    return next(d for d in setup.lekto.documents.values() if d["title"] == title)
 
 
 async def test_documents_of_an_inactive_user_are_taken_over_and_the_user_deactivated(
@@ -43,13 +43,13 @@ async def test_documents_of_an_inactive_user_are_taken_over_and_the_user_deactiv
     )
     assert await setup.run("run") == 0
     document = titled(setup, "Extra 30")
-    gone = next(u for u in setup.papiq.users.values() if u["username"] == "gone")
+    gone = next(u for u in setup.lekto.users.values() if u["username"] == "gone")
     assert document["owner_id"] == gone["id"] and gone["active"] is False
-    assert setup.papiq.spaces[document["space_id"]]["owner_id"] == gone["id"]
+    assert setup.lekto.spaces[document["space_id"]]["owner_id"] == gone["id"]
     # A second run wakes nobody up and writes nothing.
-    writes = len(setup.papiq.writes())
+    writes = len(setup.lekto.writes())
     assert await setup.run("run") == 0
-    assert len(setup.papiq.writes()) == writes
+    assert len(setup.lekto.writes()) == writes
     assert await setup.run("verify") == 0
 
 
@@ -57,11 +57,11 @@ async def test_a_run_that_failed_for_an_inactive_owner_wakes_the_user_for_the_re
     setup: Setup,
 ) -> None:
     add_document(setup, 30, 4)
-    setup.papiq.errors["extra-30.pdf"] = (422, 99)
+    setup.lekto.errors["extra-30.pdf"] = (422, 99)
     assert await setup.run("run") == 1
-    gone = next(u for u in setup.papiq.users.values() if u["username"] == "gone")
+    gone = next(u for u in setup.lekto.users.values() if u["username"] == "gone")
     assert gone["active"] is False
-    setup.papiq.errors.clear()
+    setup.lekto.errors.clear()
     assert await setup.run("run") == 0
     assert titled(setup, "Extra 30")["owner_id"] == gone["id"]
     assert gone["active"] is False
@@ -90,39 +90,39 @@ async def test_a_share_with_the_executing_admin_is_dropped_not_fatal(setup: Setu
     assert await setup.run("run") == 0
     document = titled(setup, "Extra 31")
     assert document["owner_id"] == ADMIN["id"]
-    space = setup.papiq.spaces[document["space_id"]]
+    space = setup.lekto.spaces[document["space_id"]]
     assert [s["level"] for s in space["shares"]] == ["read"]  # bob only
     row = next(d for d in setup.report("run")["documents"] if d["id"] == 31)
     assert any("owns the document" in note for note in row["notes"])
 
 
 async def test_a_space_that_cannot_be_made_fails_its_documents_only(setup: Setup) -> None:
-    setup.papiq.refuse["POST /spaces"] = 422
+    setup.lekto.refuse["POST /spaces"] = 422
     assert await setup.run("run") == 1
     report = setup.report("run")
     failed = [d for d in report["documents"] if d["status"] == "failed"]
     assert [d["id"] for d in failed] == [13] and "space" in failed[0]["reason"]
-    assert len(setup.papiq.documents) == 7
+    assert len(setup.lekto.documents) == 7
     assert [d["status"] for d in report["objects"]["space"]] == ["failed"]
-    setup.papiq.refuse.clear()
+    setup.lekto.refuse.clear()
     assert await setup.run("run") == 0
-    assert len(setup.papiq.documents) == 8
+    assert len(setup.lekto.documents) == 8
 
 
 async def test_a_lost_answer_after_creating_a_user_is_not_an_error(setup: Setup) -> None:
-    setup.papiq.lose_answer = {"anna", "ACME Energy"}
+    setup.lekto.lose_answer = {"anna", "ACME Energy"}
     assert await setup.run("run") == 0
-    names = [u["username"] for u in setup.papiq.users.values()]
+    names = [u["username"] for u in setup.lekto.users.values()]
     assert names.count("anna") == 1
-    assert [c["name"] for c in setup.papiq.contacts.values()].count("ACME Energy") == 1
+    assert [c["name"] for c in setup.lekto.contacts.values()].count("ACME Energy") == 1
 
 
 async def test_a_refusal_that_stops_the_migration_still_leaves_a_report(setup: Setup) -> None:
-    setup.papiq.refuse["POST /users"] = 422
+    setup.lekto.refuse["POST /users"] = 422
     assert await setup.run("run") == 2
     report = setup.report("run")
     assert {u["status"] for u in report["objects"]["user"]} == {"failed"}
-    assert setup.papiq.documents == {}
+    assert setup.lekto.documents == {}
 
 
 async def test_a_huge_value_is_left_out_not_the_whole_document(setup: Setup) -> None:
@@ -176,11 +176,11 @@ def test_addresses_lose_their_credentials() -> None:
 
 
 async def test_a_run_notes_that_a_document_was_repaired_since(setup: Setup) -> None:
-    setup.papiq.lanes["scan-12.pdf"] = "red"
+    setup.lekto.lanes["scan-12.pdf"] = "red"
     assert await setup.run("run") == 0
     assert setup.report("run")["lanes"] == {"green": 7, "red": 1}
     document = titled(setup, "Document 12")
-    document["_lane"] = "green"  # retried and fixed in Papiq
+    document["_lane"] = "green"  # retried and fixed in Lekto
     assert await setup.run("run") == 0
     report = setup.report("run")
     assert report["lanes"] == {"green": 8}

@@ -30,7 +30,7 @@ DOCUMENT_FIELDS = ",".join(
         "deleted_at",
     ]
 )
-# Things Papiq has no counterpart for; only counted.
+# Things Lekto has no counterpart for; only counted.
 COUNTED = ("saved_views", "workflows", "mail_rules", "mail_accounts", "share_links", "trash")
 
 

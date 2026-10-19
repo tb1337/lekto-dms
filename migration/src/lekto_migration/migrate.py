@@ -1,5 +1,5 @@
 """The migration: users, master data, spaces, then documents. The same code path serves the
-trial run (`dry`: reads only, writes nothing, knows nothing of Papiq but what it can read) and
+trial run (`dry`: reads only, writes nothing, knows nothing of Lekto but what it can read) and
 the real run (resumable: what the state file knows is not done twice)."""
 
 import asyncio
@@ -11,8 +11,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from papiq_migration.config import Config
-from papiq_migration.mapping import (
+from lekto_migration.config import Config
+from lekto_migration.lekto import ApiError, Lekto
+from lekto_migration.mapping import (
     ASN_SPEC,
     NAME_LIMIT,
     NOTES_SPEC,
@@ -22,10 +23,9 @@ from papiq_migration.mapping import (
     norm,
     space_name,
 )
-from papiq_migration.paperless import Paperless, PaperlessError, Snapshot
-from papiq_migration.papiq import ApiError, Papiq
-from papiq_migration.prepare import Ids, Prepared, prepare
-from papiq_migration.state import DOCUMENT_DONE, DocumentRow, State
+from lekto_migration.paperless import Paperless, PaperlessError, Snapshot
+from lekto_migration.prepare import Ids, Prepared, prepare
+from lekto_migration.state import DOCUMENT_DONE, DocumentRow, State
 
 NEW, EXISTING, OMITTED, FAILED = "new", "existing", "omitted", "failed"
 DONE_PIPELINE = ("completed", "failed", "review")
@@ -63,7 +63,7 @@ class Migration:
         self,
         config: Config,
         source: Paperless,
-        target: Papiq | None,
+        target: Lekto | None,
         state: State,
         *,
         dry: bool,
@@ -74,7 +74,7 @@ class Migration:
         poll: tuple[float, float] = (0.5, 5.0),
     ) -> None:
         if target is None and not dry:
-            raise MigrationError("a real run needs the Papiq URL and API token")
+            raise MigrationError("a real run needs the Lekto URL and API token")
         self._config = config
         self._source = source
         self._target = target
@@ -90,7 +90,7 @@ class Migration:
         self.ids = Ids(admin="admin")
         self.prepared: list[Prepared] = []
         self._inactive: list[tuple[str, str]] = []
-        self._asleep: dict[str, str] = {}  # ours, inactive in Papiq from an earlier run
+        self._asleep: dict[str, str] = {}  # ours, inactive in Lekto from an earlier run
 
     # --- the whole run -----------------------------------------------------------------------
 
@@ -136,7 +136,7 @@ class Migration:
         self.totals.seconds["total"] = self._clock() - started
         return self.totals
 
-    # --- reading Papiq -----------------------------------------------------------------------
+    # --- reading Lekto -----------------------------------------------------------------------
 
     async def _list(self, path: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         return [] if self._target is None else await self._target.items(path, params)
@@ -147,12 +147,12 @@ class Migration:
         try:
             me = await self._target.me()
         except ApiError as error:
-            raise MigrationError(f"Papiq refused the API key: {error}") from None
+            raise MigrationError(f"Lekto refused the API key: {error}") from None
         user = me["user"]
         if user.get("role") != "admin":
-            raise MigrationError("the Papiq API key must belong to an admin")
+            raise MigrationError("the Lekto API key must belong to an admin")
         if not self._dry and me.get("token_scope") != "read_write":
-            raise MigrationError("the Papiq API key needs the scope read_write")
+            raise MigrationError("the Lekto API key needs the scope read_write")
         self.ids.admin = user["id"]
         self.ids.usernames[norm(user["username"])] = user["id"]
 
@@ -161,15 +161,15 @@ class Migration:
         kind: str,
         source_id: str,
         name: str,
-        papiq_id: str | None,
+        lekto_id: str | None,
         status: str,
         notes: list[str],
     ) -> None:
         """Remember an object. A second run finds what the first created: it stays `new`."""
         prior = self._state.object(kind, source_id)
-        if prior is not None and prior[0] == papiq_id and prior[1] == NEW and status == EXISTING:
+        if prior is not None and prior[0] == lekto_id and prior[1] == NEW and status == EXISTING:
             status = NEW
-        self._state.put_object(kind, source_id, name, papiq_id, status, notes)
+        self._state.put_object(kind, source_id, name, lekto_id, status, notes)
 
     # --- users -------------------------------------------------------------------------------
 
@@ -183,7 +183,7 @@ class Migration:
             found = existing.get(norm(name))
             if user.get("is_superuser") and found is None:
                 notes.append(
-                    "administrator in Paperless: role 'user' in Papiq (admins are named by hand)"
+                    "administrator in Paperless: role 'user' in Lekto (admins are named by hand)"
                 )
             active = bool(user.get("is_active", True))
             ours = (self._state.object("user", str(user["id"])) or (None, ""))[1] == NEW
@@ -221,7 +221,7 @@ class Migration:
                         else:
                             self._inactive.append((id, name))
                     else:
-                        notes.append("inactive in Paperless; the Papiq user stays as it is")
+                        notes.append("inactive in Paperless; the Lekto user stays as it is")
                 if found is not None and found.get("active") is False and status == EXISTING:
                     self.ids.inactive.add(id)
             except ApiError as error:
@@ -257,7 +257,7 @@ class Migration:
                 self._inactive.append((id, name))
 
     async def _deactivate(self) -> None:
-        """The users that are inactive in Paperless are inactive in Papiq, too, now that no
+        """The users that are inactive in Paperless are inactive in Lekto, too, now that no
         document of theirs is left to upload."""
         if self._dry or self._target is None:
             return
@@ -370,7 +370,7 @@ class Migration:
                 str(path["name"]),
                 None,
                 OMITTED,
-                [f"no counterpart in Papiq; {counts.get(str(path['id']), 0)} documents use it"],
+                [f"no counterpart in Lekto; {counts.get(str(path['id']), 0)} documents use it"],
             )
         for name, count in snapshot.counted.items():
             what = "could not be read" if count < 0 else f"{count} not taken over"
@@ -393,7 +393,7 @@ class Migration:
 
     async def _spaces(self) -> dict[str, str]:
         """The spaces the documents need: one per owner and combination of readers and
-        writers, shared accordingly. Returns the Papiq id by key."""
+        writers, shared accordingly. Returns the Lekto id by key."""
         wanted: dict[str, Prepared] = {}
         for item in self.prepared:
             key = item.space_key()
@@ -490,34 +490,34 @@ class Migration:
             return
         if prior is not None and prior.status in DOCUMENT_DONE:
             self.totals.resumed += 1
-            if prior.papiq_id and prior.status != "skipped" and prior.lane != "green":
+            if prior.lekto_id and prior.status != "skipped" and prior.lane != "green":
                 await self._refresh(prior)
             return
         assert self._target is not None
-        papiq_id = prior.papiq_id if prior is not None and prior.status == "uploaded" else None
+        lekto_id = prior.lekto_id if prior is not None and prior.status == "uploaded" else None
         upload_seconds = prior.upload_seconds if prior else None
         sha256 = prior.sha256 if prior else None
-        if papiq_id is not None:
+        if lekto_id is not None:
             try:
-                await self._target.document(papiq_id)
+                await self._target.document(lekto_id)
             except ApiError as error:
                 if error.status != 404:
                     raise
-                papiq_id = None
+                lekto_id = None
             else:
                 self.totals.resumed += 1
-        if papiq_id is None:
+        if lekto_id is None:
             began = self._clock()
             uploaded = await self._upload(item, spaces, detail)
             if uploaded is None:
                 return
-            papiq_id, sha256, duplicate = uploaded
+            lekto_id, sha256, duplicate = uploaded
             upload_seconds = self._clock() - began
             detail = {**detail, "duplicate": duplicate}
             self._state.put_document(
                 item.id,
                 "uploaded",
-                papiq_id=papiq_id,
+                lekto_id=lekto_id,
                 sha256=sha256,
                 notes=item.notes,
                 detail=detail,
@@ -526,7 +526,7 @@ class Migration:
             if not duplicate:
                 self.totals.uploaded += 1
         waited = self._clock()
-        finished = await self._wait(papiq_id)
+        finished = await self._wait(lekto_id)
         if finished is None:
             if not self._stop.is_set():
                 self.totals.failed += 1
@@ -534,7 +534,7 @@ class Migration:
                 self._state.put_document(
                     item.id,
                     "uploaded",
-                    papiq_id=papiq_id,
+                    lekto_id=lekto_id,
                     reason=f"processing did not finish in {int(self._config.pipeline_timeout)} s",
                 )
             else:
@@ -543,15 +543,15 @@ class Migration:
         lane = finished.get("lane")
         reason = None
         if lane != "green":
-            reason = await self._why_not_green(papiq_id)
+            reason = await self._why_not_green(lekto_id)
         known = self._state.document(item.id)
         duplicate = bool(known is not None and known.detail.get("duplicate"))
         if duplicate:
-            reason = "; ".join(filter(None, ["Papiq has the file already (same owner)", reason]))
+            reason = "; ".join(filter(None, ["Lekto has the file already (same owner)", reason]))
         self._state.put_document(
             item.id,
             "duplicate" if duplicate else "done",
-            papiq_id=papiq_id,
+            lekto_id=lekto_id,
             lane=lane,
             reason=reason,
             pipeline_seconds=self._clock() - waited,
@@ -560,22 +560,22 @@ class Migration:
     async def _refresh(self, row: DocumentRow) -> None:
         """A document that was not green may have been repaired since (retried, confirmed):
         note its lane as it is now."""
-        assert self._target is not None and row.papiq_id is not None
+        assert self._target is not None and row.lekto_id is not None
         try:
-            document = await self._target.document(row.papiq_id)
+            document = await self._target.document(row.lekto_id)
         except ApiError:
             return
         lane = document.get("lane")
         if document["processing"]["status"] not in DONE_PIPELINE or lane == row.lane:
             return
-        reason = None if lane == "green" else await self._why_not_green(row.papiq_id)
+        reason = None if lane == "green" else await self._why_not_green(row.lekto_id)
         self._state.put_document(row.source_id, row.status, lane=lane, reason=reason)
 
     async def _upload(
         self, item: Prepared, spaces: dict[str, str], detail: dict[str, Any]
     ) -> tuple[str, str, bool] | None:
-        """Download the original and upload it with owner, space and metadata; the Papiq id,
-        the file's SHA-256 and whether Papiq had the file already. None: not taken over
+        """Download the original and upload it with owner, space and metadata; the Lekto id,
+        the file's SHA-256 and whether Lekto had the file already. None: not taken over
         (recorded)."""
         assert self._target is not None
         key = item.space_key()
@@ -596,7 +596,7 @@ class Migration:
                 )
                 return None
             fields["space_id"] = spaces[key]
-        with tempfile.TemporaryDirectory(prefix="papiq-migration-") as directory:
+        with tempfile.TemporaryDirectory(prefix="lekto-migration-") as directory:
             path = Path(directory) / "original"
             try:
                 download = await self._source.download_original(item.id, path)
@@ -635,14 +635,14 @@ class Migration:
                 item.id, FAILED, sha256=sha256, reason=str(error), notes=item.notes, detail=detail
             )
 
-    async def _wait(self, papiq_id: str) -> dict[str, Any] | None:
+    async def _wait(self, lekto_id: str) -> dict[str, Any] | None:
         """The document once its pipeline is through (or has stopped); None if the run is
         stopped or the time is up."""
         assert self._target is not None
         deadline = self._clock() + self._config.pipeline_timeout
         delay = self._poll[0]
         while not self._stop.is_set():
-            document = await self._target.document(papiq_id)
+            document = await self._target.document(lekto_id)
             if document["processing"]["status"] in DONE_PIPELINE:
                 return document
             if self._clock() > deadline:
@@ -651,10 +651,10 @@ class Migration:
             delay = min(delay * 1.5, self._poll[1])
         return None
 
-    async def _why_not_green(self, papiq_id: str) -> str:
+    async def _why_not_green(self, lekto_id: str) -> str:
         assert self._target is not None
         try:
-            log = await self._target.log(papiq_id)
+            log = await self._target.log(lekto_id)
         except ApiError:
             return "not green (the log could not be read)"
         reasons = [

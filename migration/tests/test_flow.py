@@ -6,14 +6,14 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from tests import fake_papiq
+from tests import fake_lekto
 from tests.conftest import Setup
 
 PAPERLESS_KEY = "paperless-test-key"
 
 
 def by_title(setup: Setup, title: str) -> dict[str, Any]:
-    return next(d for d in setup.papiq.documents.values() if d["title"] == title)
+    return next(d for d in setup.lekto.documents.values() if d["title"] == title)
 
 
 def named(items: dict[str, dict[str, Any]], name: str) -> dict[str, Any]:
@@ -25,7 +25,7 @@ def named(items: dict[str, dict[str, Any]], name: str) -> dict[str, Any]:
 
 async def test_the_trial_run_writes_nothing_and_reports_everything(setup: Setup) -> None:
     assert await setup.run("plan") == 0
-    assert setup.papiq.writes() == []
+    assert setup.lekto.writes() == []
     assert all(method == "GET" for method, _ in setup.paperless.requests)
     assert setup.paperless.downloads == []
     assert not (setup.directory / "state.sqlite").exists()
@@ -54,34 +54,34 @@ async def test_the_trial_run_writes_nothing_and_reports_everything(setup: Setup)
     assert "documents [11] is not taken over" in text  # the link field of document 10
     assert "the hierarchy (parent 1) is not taken over" in text
     assert "same name as" in text  # "acme energy" merges into "ACME Energy"
-    assert PAPERLESS_KEY not in text and fake_papiq.TOKEN not in text
+    assert PAPERLESS_KEY not in text and fake_lekto.TOKEN not in text
 
 
-async def test_the_trial_run_marks_what_exists_in_papiq(setup: Setup) -> None:
-    setup.papiq.contacts["c1"] = {"id": "c1", "name": "ACME ENERGY"}
-    setup.papiq.users["u1"] = {"id": "u1", "username": "Anna", "role": "user", "active": True}
+async def test_the_trial_run_marks_what_exists_in_lekto(setup: Setup) -> None:
+    setup.lekto.contacts["c1"] = {"id": "c1", "name": "ACME ENERGY"}
+    setup.lekto.users["u1"] = {"id": "u1", "username": "Anna", "role": "user", "active": True}
     assert await setup.run("plan") == 0
     report = setup.report("plan")
     users = {u["name"]: u for u in report["objects"]["user"]}
-    assert users["anna"]["status"] == "existing" and users["anna"]["papiq_id"] == "u1"
+    assert users["anna"]["status"] == "existing" and users["anna"]["lekto_id"] == "u1"
     assert users["bob"]["status"] == "new"
     contacts = {c["source_id"]: c for c in report["objects"]["contact"]}
     assert contacts["1"]["status"] == contacts["2"]["status"] == "existing"
     assert contacts["3"]["status"] == "new"
-    assert setup.papiq.writes() == []
+    assert setup.lekto.writes() == []
 
 
 async def test_a_wrong_key_stops_with_an_error(setup: Setup) -> None:
     assert await setup.run("plan", paperless_token="wrong") == 2
-    assert await setup.run("run", papiq_token="wrong") == 2
+    assert await setup.run("run", lekto_token="wrong") == 2
 
 
-async def test_a_read_only_papiq_key_cannot_run(setup: Setup) -> None:
-    setup.papiq.scope = "read"
+async def test_a_read_only_lekto_key_cannot_run(setup: Setup) -> None:
+    setup.lekto.scope = "read"
     assert await setup.run("run") == 2
     assert await setup.run("plan") == 0  # reading is enough for a trial run
-    setup.papiq.scope = "read_write"
-    setup.papiq.role = "user"
+    setup.lekto.scope = "read_write"
+    setup.lekto.role = "user"
     assert await setup.run("run") == 2
 
 
@@ -90,23 +90,23 @@ async def test_a_read_only_papiq_key_cannot_run(setup: Setup) -> None:
 
 async def test_the_migration_takes_everything_over(setup: Setup) -> None:
     assert await setup.run("run") == 0
-    papiq = setup.papiq
+    lekto = setup.lekto
 
     # users: created without password, the inactive one deactivated
-    assert {u["username"] for u in papiq.users.values()} == {
+    assert {u["username"] for u in lekto.users.values()} == {
         "root",
         "tobias",
         "anna",
         "bob",
         "gone",
     }
-    assert named(papiq.users, "gone")["active"] is False and named(papiq.users, "bob")["active"]
+    assert named(lekto.users, "gone")["active"] is False and named(lekto.users, "bob")["active"]
     # master data: names are unique regardless of case
-    assert sorted(c["name"] for c in papiq.contacts.values()) == ["ACME Energy", "Unused"]
-    assert [t["name"] for t in papiq.document_types.values()] == ["Invoice"]
-    assert sorted(t["name"] for t in papiq.tags.values()) == ["tax", "tax/2024"]
+    assert sorted(c["name"] for c in lekto.contacts.values()) == ["ACME Energy", "Unused"]
+    assert [t["name"] for t in lekto.document_types.values()] == ["Invoice"]
+    assert sorted(t["name"] for t in lekto.tags.values()) == ["tax", "tax/2024"]
     # fields: one per usable custom field, plus ASN and notes; the link field is left out
-    types = {a["name"]: a["data_type"] for a in papiq.fields.values()}
+    types = {a["name"]: a["data_type"] for a in lekto.fields.values()}
     assert types == {
         "Text": "text",
         "Long": "text",
@@ -121,18 +121,18 @@ async def test_the_migration_takes_everything_over(setup: Setup) -> None:
         "ASN": "number",
         "Notizen": "text",
     }
-    assert named(papiq.fields, "Kind")["choices"] == ["One", "Two"]
+    assert named(lekto.fields, "Kind")["choices"] == ["One", "Two"]
 
     # documents: the e-mail and the one in the trash stay behind
-    assert len(papiq.documents) == 8
+    assert len(lekto.documents) == 8
     first = by_title(setup, "Document 10")
     assert first["channel"] == "migration"
-    assert first["owner_id"] == named(papiq.users, "tobias")["id"]
+    assert first["owner_id"] == named(lekto.users, "tobias")["id"]
     assert first["document_date"] == "2024-05-01"
-    assert first["contact_id"] == named(papiq.contacts, "ACME Energy")["id"]
-    assert first["document_type_id"] == named(papiq.document_types, "Invoice")["id"]
+    assert first["contact_id"] == named(lekto.contacts, "ACME Energy")["id"]
+    assert first["document_type_id"] == named(lekto.document_types, "Invoice")["id"]
     assert len(first["tag_ids"]) == 2
-    values = {papiq.fields[k]["name"]: v for k, v in first["fields"].items()}
+    values = {lekto.fields[k]["name"]: v for k, v in first["fields"].items()}
     assert values == {
         "Text": "Hello",
         "Long": "Some long text",
@@ -150,34 +150,34 @@ async def test_the_migration_takes_everything_over(setup: Setup) -> None:
     # an invalid URL is left out, the rest of that document is taken over
     second = by_title(setup, "Document 11")
     assert second["fields"] == {}
-    assert second["contact_id"] == named(papiq.contacts, "ACME Energy")["id"]
+    assert second["contact_id"] == named(lekto.contacts, "ACME Energy")["id"]
     # no owner, or an owner who is gone: the executing admin
-    assert by_title(setup, "Document 14")["owner_id"] == fake_papiq.ADMIN["id"]
-    assert by_title(setup, "Document 15")["owner_id"] == fake_papiq.ADMIN["id"]
+    assert by_title(setup, "Document 14")["owner_id"] == fake_lekto.ADMIN["id"]
+    assert by_title(setup, "Document 15")["owner_id"] == fake_lekto.ADMIN["id"]
     # documents with a negative amount and an unknown option
     nineteen = by_title(setup, "Document 19")
-    assert {papiq.fields[k]["name"] for k in nineteen["fields"]} == {"Net"}
+    assert {lekto.fields[k]["name"] for k in nineteen["fields"]} == {"Net"}
 
     # spaces: no extra permissions, default space; otherwise one shared space per combination
     assert by_title(setup, "Document 12")["space_id"].startswith("default:")
     assert by_title(setup, "Document 16")["space_id"].startswith("default:")
     shared = by_title(setup, "Document 13")
-    space = papiq.spaces[shared["space_id"]]
+    space = lekto.spaces[shared["space_id"]]
     assert space["name"] == "Geteilt: bob (lesen), tobias (schreiben)"
-    assert space["owner_id"] == named(papiq.users, "anna")["id"]
+    assert space["owner_id"] == named(lekto.users, "anna")["id"]
     assert {(s["user_id"], s["level"]) for s in space["shares"]} == {
-        (named(papiq.users, "bob")["id"], "read"),
-        (named(papiq.users, "tobias")["id"], "read_write"),
+        (named(lekto.users, "bob")["id"], "read"),
+        (named(lekto.users, "tobias")["id"], "read_write"),
     }
-    assert sum(1 for d in papiq.spaces.values() if not d["is_default"]) == 1
+    assert sum(1 for d in lekto.spaces.values() if not d["is_default"]) == 1
 
     # the upload carries owner, channel and metadata, and no key
-    upload = next(u for u in papiq.uploads if u["filename"] == "scan-13.pdf")
+    upload = next(u for u in lekto.uploads if u["filename"] == "scan-13.pdf")
     assert upload["channel"] == "migration" and upload["owner"] == space["owner_id"]
     assert upload["space_id"] == space["id"]
     assert json.loads(upload["metadata"])["title"] == "Document 13"
-    unowned = next(u for u in papiq.uploads if u["filename"] == "scan-14.pdf")
-    assert unowned["owner"] == fake_papiq.ADMIN["id"]
+    unowned = next(u for u in lekto.uploads if u["filename"] == "scan-14.pdf")
+    assert unowned["owner"] == fake_lekto.ADMIN["id"]
 
 
 async def test_the_report_accounts_for_every_paperless_object(setup: Setup) -> None:
@@ -209,7 +209,7 @@ async def test_no_key_ends_up_in_a_file(setup: Setup) -> None:
     for path in setup.directory.rglob("*"):
         if path.is_file():
             data = path.read_bytes()
-            assert PAPERLESS_KEY.encode() not in data and fake_papiq.TOKEN.encode() not in data, (
+            assert PAPERLESS_KEY.encode() not in data and fake_lekto.TOKEN.encode() not in data, (
                 path
             )
 
@@ -217,17 +217,17 @@ async def test_no_key_ends_up_in_a_file(setup: Setup) -> None:
 async def test_a_second_run_creates_nothing_twice(setup: Setup) -> None:
     assert await setup.run("run") == 0
     snapshot = {
-        name: len(getattr(setup.papiq, name))
+        name: len(getattr(setup.lekto, name))
         for name in ("users", "contacts", "tags", "fields", "spaces", "documents")
     }
-    uploads, writes = len(setup.papiq.uploads), len(setup.papiq.writes())
+    uploads, writes = len(setup.lekto.uploads), len(setup.lekto.writes())
     downloads = len(setup.paperless.downloads)
     assert await setup.run("run") == 0
-    assert len(setup.papiq.uploads) == uploads
+    assert len(setup.lekto.uploads) == uploads
     assert len(setup.paperless.downloads) == downloads
-    assert len(setup.papiq.writes()) == writes
+    assert len(setup.lekto.writes()) == writes
     assert snapshot == {
-        name: len(getattr(setup.papiq, name))
+        name: len(getattr(setup.lekto, name))
         for name in ("users", "contacts", "tags", "fields", "spaces", "documents")
     }
     report = setup.report("run")
@@ -237,11 +237,11 @@ async def test_a_second_run_creates_nothing_twice(setup: Setup) -> None:
 
 async def test_a_new_state_file_finds_what_is_there(setup: Setup) -> None:
     assert await setup.run("run") == 0
-    count = len(setup.papiq.documents)
+    count = len(setup.lekto.documents)
     assert await setup.run("run", state=setup.directory / "other.sqlite") == 0
     # Master data is matched by name; every file is a duplicate of the same owner.
-    assert len(setup.papiq.documents) == count
-    assert len(setup.papiq.users) == 5 and len(setup.papiq.contacts) == 2
+    assert len(setup.lekto.documents) == count
+    assert len(setup.lekto.users) == 5 and len(setup.lekto.contacts) == 2
     report = setup.report("run")
     assert report["document_results"] == {"duplicate": 8, "skipped": 2}
     assert await setup.run("verify", state=setup.directory / "other.sqlite") == 0
@@ -249,7 +249,7 @@ async def test_a_new_state_file_finds_what_is_there(setup: Setup) -> None:
 
 async def test_a_state_belongs_to_one_source_and_target(setup: Setup) -> None:
     assert await setup.run("run") == 0
-    assert await setup.run("run", papiq_url="http://elsewhere") == 2
+    assert await setup.run("run", lekto_url="http://elsewhere") == 2
 
 
 # --- interruption and failures ----------------------------------------------------------------
@@ -262,23 +262,23 @@ async def test_a_stopped_run_continues_where_it_stopped(setup: Setup) -> None:
         if count == 3:
             stop.set()
 
-    setup.papiq.after_upload = after
+    setup.lekto.after_upload = after
     assert await setup.run("run", stop=stop, concurrency=1) == 130
-    stopped = len(setup.papiq.documents)
+    stopped = len(setup.lekto.documents)
     assert 3 <= stopped < 8
-    first_uploads = list(setup.papiq.uploads)
+    first_uploads = list(setup.lekto.uploads)
 
-    setup.papiq.after_upload = None
+    setup.lekto.after_upload = None
     assert await setup.run("run") == 0
-    assert len(setup.papiq.documents) == 8
-    sent = [u["filename"] for u in setup.papiq.uploads]
+    assert len(setup.lekto.documents) == 8
+    sent = [u["filename"] for u in setup.lekto.uploads]
     assert len(sent) == len(set(sent)) == 8  # nothing twice
-    assert setup.papiq.uploads[: len(first_uploads)] == first_uploads
+    assert setup.lekto.uploads[: len(first_uploads)] == first_uploads
     assert await setup.run("verify") == 0
 
 
 async def test_an_upload_in_progress_is_waited_for_after_the_restart(setup: Setup) -> None:
-    setup.papiq.ticks = -1  # the pipeline never finishes
+    setup.lekto.ticks = -1  # the pipeline never finishes
     assert await setup.run("run", pipeline_timeout=0.0) == 1
     rows = (
         sqlite3.connect(setup.directory / "state.sqlite")
@@ -286,28 +286,28 @@ async def test_an_upload_in_progress_is_waited_for_after_the_restart(setup: Setu
         .fetchall()
     )
     assert dict(rows) == {"uploaded": 8, "skipped": 2}
-    setup.papiq.ticks = 1
+    setup.lekto.ticks = 1
     assert await setup.run("run") == 0
-    assert len(setup.papiq.documents) == 8
-    assert len(setup.papiq.uploads) == 8  # waiting again, not uploading again
+    assert len(setup.lekto.documents) == 8
+    assert len(setup.lekto.uploads) == 8  # waiting again, not uploading again
     assert setup.report("run")["document_results"] == {"done": 8, "skipped": 2}
 
 
 async def test_a_server_error_is_repeated_and_a_refusal_is_reported(setup: Setup) -> None:
-    setup.papiq.errors["scan-10.pdf"] = (503, 2)
-    setup.papiq.errors["scan-11.pdf"] = (422, 99)
+    setup.lekto.errors["scan-10.pdf"] = (503, 2)
+    setup.lekto.errors["scan-11.pdf"] = (422, 99)
     assert await setup.run("run") == 1
-    assert len(setup.papiq.documents) == 7
+    assert len(setup.lekto.documents) == 7
     assert by_title(setup, "Document 10")
     report = setup.report("run")
     failed = [d for d in report["documents"] if d["status"] == "failed"]
     assert [d["id"] for d in failed] == [11] and "422" in failed[0]["reason"]
     assert "Documents that failed" in (setup.directory / "reports" / "run.md").read_text()
     # Fix the cause and run again: only that document is sent.
-    setup.papiq.errors.clear()
-    sent = len(setup.papiq.uploads)
+    setup.lekto.errors.clear()
+    sent = len(setup.lekto.uploads)
     assert await setup.run("run") == 0
-    assert len(setup.papiq.uploads) == sent + 1 and len(setup.papiq.documents) == 8
+    assert len(setup.lekto.uploads) == sent + 1 and len(setup.lekto.documents) == 8
 
 
 async def test_a_duplicate_is_mapped_not_counted_as_an_error(setup: Setup) -> None:
@@ -320,11 +320,11 @@ async def test_a_duplicate_is_mapped_not_counted_as_an_error(setup: Setup) -> No
     setup.archive.files[30] = setup.archive.files[12]
     assert await setup.run("run") == 0
     row = next(d for d in setup.report("run")["documents"] if d["id"] == 30)
-    assert row["status"] == "duplicate" and row["papiq_id"] == existing["id"]
-    assert len(setup.papiq.documents) == 8
+    assert row["status"] == "duplicate" and row["lekto_id"] == existing["id"]
+    assert len(setup.lekto.documents) == 8
 
 
-async def test_a_file_papiq_refuses_is_reported_as_not_taken_over(setup: Setup) -> None:
+async def test_a_file_lekto_refuses_is_reported_as_not_taken_over(setup: Setup) -> None:
     setup.archive.files[10] = b"not a pdf"
     assert await setup.run("run") == 0
     row = next(d for d in setup.report("run")["documents"] if d["id"] == 10)
@@ -332,7 +332,7 @@ async def test_a_file_papiq_refuses_is_reported_as_not_taken_over(setup: Setup) 
 
 
 async def test_documents_that_are_not_green_are_reported_with_the_reason(setup: Setup) -> None:
-    setup.papiq.lanes["scan-12.pdf"] = "red"
+    setup.lekto.lanes["scan-12.pdf"] = "red"
     assert await setup.run("run") == 0
     report = setup.report("run")
     assert report["lanes"] == {"green": 7, "red": 1}
@@ -346,13 +346,13 @@ async def test_documents_that_are_not_green_are_reported_with_the_reason(setup: 
 
 async def test_only_the_first_documents_by_id_with_a_limit(setup: Setup) -> None:
     assert await setup.run("run", limit=3) == 0
-    assert sorted(d["title"] for d in setup.papiq.documents.values()) == [
+    assert sorted(d["title"] for d in setup.lekto.documents.values()) == [
         "Document 10",
         "Document 11",
         "Document 12",
     ]
     assert await setup.run("run") == 0
-    assert len(setup.papiq.documents) == 8
+    assert len(setup.lekto.documents) == 8
 
 
 # --- the check --------------------------------------------------------------------------------
@@ -375,9 +375,9 @@ async def test_the_check_reports_every_difference(setup: Setup) -> None:
     document["owner_id"] = "someone-else"
     document["sha256"] = "0" * 64
     gone = by_title(setup, "Document 12")
-    del setup.papiq.documents[gone["id"]]
-    named(setup.papiq.contacts, "Unused")["name"] = "Renamed"
-    del setup.papiq.tags[next(iter(setup.papiq.tags))]
+    del setup.lekto.documents[gone["id"]]
+    named(setup.lekto.contacts, "Unused")["name"] = "Renamed"
+    del setup.lekto.tags[next(iter(setup.lekto.tags))]
     assert await setup.run("verify") == 1
     deviations = setup.report("verify")["deviations"]
     what = {(d["kind"], d["what"]) for d in deviations}
@@ -385,9 +385,9 @@ async def test_the_check_reports_every_difference(setup: Setup) -> None:
     assert ("document", "tags differ") in what
     assert ("document", "owner differs") in what
     assert ("document", "SHA-256 of the original differs") in what
-    assert ("document", "missing in Papiq") in what
+    assert ("document", "missing in Lekto") in what
     assert ("contact", "name differs") in what
-    assert ("tag", "missing in Papiq") in what
+    assert ("tag", "missing in Lekto") in what
 
 
 async def test_the_check_notices_what_was_never_handled(setup: Setup) -> None:
@@ -404,7 +404,7 @@ async def test_rehashing_downloads_the_originals_again(setup: Setup) -> None:
     before = len(setup.paperless.downloads)
     assert await setup.run("verify", rehash=True) == 0
     assert len(setup.paperless.downloads) == before + 8
-    next(iter(setup.papiq.documents.values()))["sha256"] = "1" * 64
+    next(iter(setup.lekto.documents.values()))["sha256"] = "1" * 64
     assert await setup.run("verify", rehash=True) == 1
 
 
@@ -415,12 +415,12 @@ def test_the_state_file_is_not_a_secret_store(setup: Setup) -> None:
 async def test_the_check_compares_numbers_by_value_and_skips_what_a_stopped_pipeline_never_applied(
     setup: Setup,
 ) -> None:
-    setup.papiq.lanes["scan-12.pdf"] = "red"
+    setup.lekto.lanes["scan-12.pdf"] = "red"
     assert await setup.run("run") == 0
-    gross = named(setup.papiq.fields, "Gross")["id"]
+    gross = named(setup.lekto.fields, "Gross")["id"]
     document = by_title(setup, "Document 10")
     document["fields"][gross] = {"amount": "9.99E+1", "currency": "EUR"}  # 99.90
-    count = named(setup.papiq.fields, "Count")["id"]
+    count = named(setup.lekto.fields, "Count")["id"]
     document["fields"][count] = "4.2E+1"  # 42
     stopped = by_title(setup, "Document 12")
     stopped["title"] = "scan-12"  # the pipeline stopped before the metadata was applied
@@ -435,28 +435,28 @@ async def test_the_check_compares_numbers_by_value_and_skips_what_a_stopped_pipe
 
 
 async def test_a_group_of_the_same_name_is_no_tag(setup: Setup) -> None:
-    """Papiq's names are unique per scope: a contact group named like a Paperless tag stays a
+    """Lekto's names are unique per scope: a contact group named like a Paperless tag stays a
     group, and the tag becomes a document tag of its own."""
-    setup.papiq.tags["group"] = {"id": "group", "name": "tax", "scope": "contact"}
+    setup.lekto.tags["group"] = {"id": "group", "name": "tax", "scope": "contact"}
     assert await setup.run("run") == 0
-    tags = [t for t in setup.papiq.tags.values() if t["name"] == "tax"]
+    tags = [t for t in setup.lekto.tags.values() if t["name"] == "tax"]
     assert sorted(t.get("scope", "document") for t in tags) == ["contact", "document"]
     document_tag = next(t for t in tags if t.get("scope") == "document")
     taken = [
-        d for d in setup.papiq.documents.values() if document_tag["id"] in d.get("tag_ids", [])
+        d for d in setup.lekto.documents.values() if document_tag["id"] in d.get("tag_ids", [])
     ]
     assert taken and not any(
-        "group" in d.get("tag_ids", []) for d in setup.papiq.documents.values()
+        "group" in d.get("tag_ids", []) for d in setup.lekto.documents.values()
     )
 
 
-async def test_a_tag_papiq_keeps_as_its_child_is_no_deviation(setup: Setup) -> None:
-    """Papiq keeps a child set with its parent as the child alone: the check compares tags with
+async def test_a_tag_lekto_keeps_as_its_child_is_no_deviation(setup: Setup) -> None:
+    """Lekto keeps a child set with its parent as the child alone: the check compares tags with
     the tags above them."""
     assert await setup.run("run") == 0
-    tags = {t["name"]: t for t in setup.papiq.tags.values()}
+    tags = {t["name"]: t for t in setup.lekto.tags.values()}
     tags["tax/2024"]["parent_id"] = tags["tax"]["id"]
-    for document in setup.papiq.documents.values():
+    for document in setup.lekto.documents.values():
         held = document.get("tag_ids", [])
         if tags["tax/2024"]["id"] in held and tags["tax"]["id"] in held:
             document["tag_ids"] = [tags["tax/2024"]["id"]]

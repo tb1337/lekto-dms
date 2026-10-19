@@ -1,4 +1,4 @@
-# Papiq with SQLite and the file system: one Papiq container with a volume, plus Meilisearch.
+# Lekto with SQLite and the file system: one Lekto container with a volume, plus Meilisearch.
 # The language model and the embeddings are outside (Ollama or a cloud endpoint).
 #
 #   ./create-secrets.sh                              # once: the secrets in ./secrets
@@ -6,11 +6,11 @@
 #
 # Then open http://localhost:8000/api/v1/docs; sign in as `admin` (password in secrets/admin_password).
 # See README.md for the settings, the reverse proxy and the backup.
-name: papiq-sqlite
+name: lekto-sqlite
 
 services:
-  papiq:
-    image: papiq:local
+  lekto:
+    image: lekto:local
     build:
       context: ..
       dockerfile: Dockerfile
@@ -22,14 +22,14 @@ services:
       # Only this machine; a reverse proxy in front brings it to the network (see README.md).
       - 127.0.0.1:${LEKTO_HTTP_PORT:-8000}:8000
     environment:
-      # The user of the Papiq processes, and the owner of the volume's files.
+      # The user of the Lekto processes, and the owner of the volume's files.
       PUID: 1000
       PGID: 1000
       # all: API and worker in this container. api or worker: only that service; only `all` and
       # `api` migrate the database.
       LEKTO_ROLE: all
 
-      LEKTO_SECRET_KEY_FILE: /run/secrets/papiq_secret_key
+      LEKTO_SECRET_KEY_FILE: /run/secrets/lekto_secret_key
       # The first admin, created while there is none. Change the password in the web UI or
       # through the API; later changes of this file have no effect.
       LEKTO_ADMIN_USERNAME: admin
@@ -46,7 +46,7 @@ services:
       LEKTO_MEILISEARCH_API_KEY_FILE: /run/secrets/meilisearch_key
 
       # Language model and embeddings: Ollama, here on the host; change the address or set the
-      # variables in your shell (set empty for none). Papiq sends document content there.
+      # variables in your shell (set empty for none). Lekto sends document content there.
       LEKTO_LLM_BASE_URL: ${LEKTO_LLM_BASE_URL-http://host.docker.internal:11434/v1}
       LEKTO_LLM_MODEL: ${LEKTO_LLM_MODEL-qwen3:8b}
       # On a CPU a document takes minutes.
@@ -73,9 +73,9 @@ services:
       # Reaches an Ollama on the host on Linux, too (built in on Docker Desktop and OrbStack).
       - host.docker.internal:host-gateway
     volumes:
-      - papiq-data:/data
+      - lekto-data:/data
     secrets:
-      - papiq_secret_key
+      - lekto_secret_key
       - admin_password
       - meilisearch_key
     depends_on:
@@ -98,13 +98,13 @@ services:
       retries: 20
 
 secrets:
-  papiq_secret_key:
-    file: secrets/papiq_secret_key
+  lekto_secret_key:
+    file: secrets/lekto_secret_key
   admin_password:
     file: secrets/admin_password
   meilisearch_key:
     file: secrets/meilisearch_key
 
 volumes:
-  papiq-data:
+  lekto-data:
   meilisearch-data:

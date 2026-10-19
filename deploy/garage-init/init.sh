@@ -1,7 +1,7 @@
 #!/bin/sh
-# Prepare a fresh single-node Garage for Papiq: cluster layout, access key, bucket. Safe to run
+# Prepare a fresh single-node Garage for Lekto: cluster layout, access key, bucket. Safe to run
 # on every start: each step checks the current state first. The credentials come from files
-# (Docker secrets), like Papiq's own.
+# (Docker secrets), like Lekto's own.
 #
 # Environment:
 #   GARAGE_ADMIN_URL                    admin API, e.g. http://garage:3903
@@ -9,7 +9,7 @@
 #   LEKTO_S3_ACCESS_KEY_ID_FILE         file with the access key to import (GK + 24 hex digits)
 #   LEKTO_S3_SECRET_ACCESS_KEY_FILE     file with its secret (64 hex digits)
 #   LEKTO_S3_BUCKET                     bucket to create
-#   GARAGE_ZONE, GARAGE_CAPACITY        zone name and capacity in bytes (defaults: papiq, 1 TB)
+#   GARAGE_ZONE, GARAGE_CAPACITY        zone name and capacity in bytes (defaults: lekto, 1 TB)
 set -eu
 
 : "${GARAGE_ADMIN_URL:?}" "${GARAGE_ADMIN_TOKEN_FILE:?}"
@@ -18,7 +18,7 @@ set -eu
 token=$(tr -d '\r\n' <"$GARAGE_ADMIN_TOKEN_FILE")
 access_key_id=$(tr -d '\r\n' <"$LEKTO_S3_ACCESS_KEY_ID_FILE")
 secret_access_key=$(tr -d '\r\n' <"$LEKTO_S3_SECRET_ACCESS_KEY_FILE")
-zone=${GARAGE_ZONE:-papiq}
+zone=${GARAGE_ZONE:-lekto}
 capacity=${GARAGE_CAPACITY:-1000000000000}
 
 # api METHOD PATH [JSON_BODY]: prints the response body, fails on HTTP errors.
@@ -69,7 +69,7 @@ if [ "$(status GET "/v2/GetKeyInfo?id=$access_key_id")" = "200" ]; then
 else
   echo "Importing access key $access_key_id"
   api POST /v2/ImportKey \
-    "{\"name\": \"papiq\", \"accessKeyId\": \"$access_key_id\", \"secretAccessKey\": \"$secret_access_key\"}" \
+    "{\"name\": \"lekto\", \"accessKeyId\": \"$access_key_id\", \"secretAccessKey\": \"$secret_access_key\"}" \
     >/dev/null
 fi
 

@@ -9,4 +9,4 @@ if [ "$role" = worker ]; then
   echo "init-migrations: LEKTO_ROLE=worker does not migrate; svc-worker waits for the schema"
   exit 0
 fi
-exec papiq-run python -m lekto.composition migrate
+exec lekto-run python -m lekto.composition migrate

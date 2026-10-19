@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Test a built Papiq image with the docker CLI only (CI and local):
+# Test a built Lekto image with the docker CLI only (CI and local):
 #
-#   docker build --target runtime -t papiq:local .
-#   deploy/test-image.sh papiq:local
+#   docker build --target runtime -t lekto:local .
+#   deploy/test-image.sh lekto:local
 #
 # Starts the image with SQLite and the filesystem and checks: configuration from secret files,
-# migration, health, the user of the Papiq processes (PUID/PGID, never root), the web UI below
+# migration, health, the user of the Lekto processes (PUID/PGID, never root), the web UI below
 # /ui (files, page fallback, cache headers, the API's paths untouched), LEKTO_ROLE, a PDF
 # through OCR and parsing up to its lane (no language model: classification is uncertain, so
 # the lane is yellow), invalid configuration and a clean `docker stop`. Needs docker, curl and
@@ -15,7 +15,7 @@ set -euo pipefail
 image=${1:?usage: test-image.sh IMAGE}
 here=$(cd "$(dirname "$0")" && pwd)
 sample=$here/../backend/tests/samples/text.pdf
-prefix=papiq-test-$$
+prefix=lekto-test-$$
 work=$(mktemp -d)
 chmod 755 "$work"
 uid=1234
@@ -119,18 +119,18 @@ check "init-migrations migrated the schema" grep -q 'database migrated' <(logs a
 check "the API answers /health with ok" \
   bash -c "curl -fsS $(url all)/health | grep -q '\"status\":\"ok\"'"
 check "API and worker run (two processes)" test "$(count all lekto.composition)" -eq 2
-check "every Papiq process runs as $uid:$gid" \
+check "every Lekto process runs as $uid:$gid" \
   test "$(processes all lekto.composition | grep -vc "^$uid:$gid " || true)" -eq 0
-check "no Papiq process runs as root" \
+check "no Lekto process runs as root" \
   test "$(processes all lekto.composition | grep -c '^0:' || true)" -eq 0
 check "/data belongs to $uid:$gid" \
-  docker exec "$prefix-all" sh -c "test \"\$(stat -c %u:%g /data /data/papiq.db /data/objects | sort -u)\" = $uid:$gid"
+  docker exec "$prefix-all" sh -c "test \"\$(stat -c %u:%g /data /data/lekto.db /data/objects | sort -u)\" = $uid:$gid"
 check "the secret key does not show in the logs" \
   test "$(logs all | grep -cF -f "$work/secret_key")" -eq 0
 check "the admin password does not show in the logs" \
   test "$(logs all | grep -cF -f "$work/admin_password")" -eq 0
-check "\`papiq\` runs the commands of the composition root as the same user" \
-  docker exec "$prefix-all" papiq check-schema
+check "\`lekto\` runs the commands of the composition root as the same user" \
+  docker exec "$prefix-all" lekto check-schema
 
 step "web UI below /ui"
 ui=$(origin all)/ui
@@ -207,7 +207,7 @@ check "not healthy yet" bash -c "[ \"\$(docker inspect --format '{{.State.Health
 VOLUME=$prefix-shared start migrator LEKTO_ROLE=api
 wait_for 180 "the worker container becomes healthy" healthy worker || logs worker
 check "the worker runs" test "$(count worker 'composition worker')" -eq 1
-check "the worker is ready for the healthcheck" docker exec "$prefix-worker" test -e /run/papiq-worker-ready
+check "the worker is ready for the healthcheck" docker exec "$prefix-worker" test -e /run/lekto-worker-ready
 check "no API process in the worker container" test "$(count worker 'composition api')" -eq 0
 
 step "invalid configuration stops the container with a reason"
@@ -219,7 +219,7 @@ docker run -d --name "$prefix-root" -e PUID=0 -e LEKTO_SECRET_KEY_FILE=/run/secr
   -v "$work/secret_key:/run/secrets/secret_key:ro" "$image" >/dev/null
 wait_for 60 "the container with PUID=0 stops" exited root || true
 check "PUID=0 is refused" grep -q 'must not be 0' <(logs root)
-docker run -d --name "$prefix-path" -e LEKTO_DB_SQLITE_PATH=/papiq.db -e LEKTO_SECRET_KEY_FILE=/run/secrets/secret_key \
+docker run -d --name "$prefix-path" -e LEKTO_DB_SQLITE_PATH=/lekto.db -e LEKTO_SECRET_KEY_FILE=/run/secrets/secret_key \
   -v "$work/secret_key:/run/secrets/secret_key:ro" "$image" >/dev/null
 wait_for 60 "the container with a database in / stops" exited path || true
 check "a database path in the root folder is refused" grep -q 'is the root folder' <(logs path)

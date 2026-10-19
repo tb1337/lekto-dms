@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 
-# Papiq image, one Dockerfile for development and operation so both use the same system packages.
+# Lekto image, one Dockerfile for development and operation so both use the same system packages.
 #   base            Python and the system packages OCRmyPDF needs
-#   deps            the locked dependencies in /opt/papiq/venv, no dev group
-#   app             deps + the Papiq package
+#   deps            the locked dependencies in /opt/lekto/venv, no dev group
+#   app             deps + the Lekto package
 #   s6              s6-overlay, unpacked (version and checksums pinned below)
 #   web             the web UI (web/), built once on the build machine: static files only
 #   dev             devcontainer: base + uv, Node.js, pnpm, Git
@@ -12,10 +12,10 @@
 # All stages build for linux/amd64 and linux/arm64, each natively on its own machine (CI uses an
 # arm64 runner; building the other architecture locally runs under emulation and is slow).
 #
-#   docker build --target runtime -t papiq:local .
+#   docker build --target runtime -t lekto:local .
 #
-# The runtime image runs s6-overlay as PID 1 (see deploy/README.md): `init-papiq` and
-# `init-migrations` once, then `svc-api` and `svc-worker` as LEKTO_ROLE says. The Papiq
+# The runtime image runs s6-overlay as PID 1 (see deploy/README.md): `init-lekto` and
+# `init-migrations` once, then `svc-api` and `svc-worker` as LEKTO_ROLE says. The Lekto
 # processes run as PUID:PGID (default 1000:1000), never as root. No secret is part of the
 # image or of its build arguments: configuration is read from the environment at run time.
 
@@ -46,7 +46,7 @@ RUN apt-get update \
         unpaper \
     && rm -rf /var/lib/apt/lists/*
 
-# --- deps: the locked dependencies, without the dev group and without Papiq itself --------------
+# --- deps: the locked dependencies, without the dev group and without Lekto itself --------------
 # One layer that only a change of the lock file rebuilds; `app` builds on it. The environment's
 # Python is the image's own (same path in `runtime`).
 FROM base AS deps
@@ -56,12 +56,12 @@ ENV UV_PYTHON_DOWNLOADS=never \
     UV_LINK_MODE=copy \
     UV_NO_CACHE=1 \
     UV_COMPILE_BYTECODE=1 \
-    UV_PROJECT_ENVIRONMENT=/opt/papiq/venv
+    UV_PROJECT_ENVIRONMENT=/opt/lekto/venv
 WORKDIR /build
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev
 
-# --- app: Papiq itself, installed (not editable) into the environment ---------------------------
+# --- app: Lekto itself, installed (not editable) into the environment ---------------------------
 FROM deps AS app
 
 COPY backend/README.md ./
@@ -162,8 +162,8 @@ WORKDIR /workspaces/papiq
 FROM base AS runtime
 
 COPY --from=s6 /s6/ /
-COPY --from=app /opt/papiq/venv /opt/papiq/venv
-COPY --from=web /web/build /opt/papiq/ui
+COPY --from=app /opt/lekto/venv /opt/lekto/venv
+COPY --from=web /web/build /opt/lekto/ui
 # The s6 services and scripts.
 COPY deploy/image/rootfs/ /
 
@@ -173,25 +173,25 @@ COPY deploy/image/rootfs/ /
 # its jobs, so s6 waits 40 s for the services; Compose `stop_grace_period` is 60 s. s6 sits out the
 # whole S6_KILL_GRACETIME before it ends, so that stays short (1 s). Raise the first two together.
 # The database and the objects live on the volume /data (the defaults of settings.py are
-# relative paths). The API serves the web UI below /ui. PUID and PGID are not Papiq settings:
-# the user of the Papiq processes.
-ENV PATH="/command:/opt/papiq/venv/bin:$PATH" \
+# relative paths). The API serves the web UI below /ui. PUID and PGID are not Lekto settings:
+# the user of the Lekto processes.
+ENV PATH="/command:/opt/lekto/venv/bin:$PATH" \
     S6_BEHAVIOUR_IF_STAGE2_FAILS=2 \
     S6_SERVICES_GRACETIME=40000 \
     S6_KILL_GRACETIME=1000 \
-    LEKTO_DB_SQLITE_PATH=/data/papiq.db \
+    LEKTO_DB_SQLITE_PATH=/data/lekto.db \
     LEKTO_STORAGE_PATH=/data/objects \
-    LEKTO_UI_DIR=/opt/papiq/ui \
+    LEKTO_UI_DIR=/opt/lekto/ui \
     PUID=1000 \
     PGID=1000
 
-LABEL org.opencontainers.image.title="Papiq" \
+LABEL org.opencontainers.image.title="Lekto DMS" \
       org.opencontainers.image.description="Self-hosted, headless document management system" \
-      org.opencontainers.image.source="https://github.com/tb1337/papiq" \
+      org.opencontainers.image.source="https://github.com/tb1337/lekto-dms" \
       org.opencontainers.image.licenses="GPL-3.0-only"
 
 VOLUME /data
 EXPOSE 8000
 HEALTHCHECK --start-period=120s --interval=30s --timeout=10s --retries=3 \
-    CMD ["/usr/local/bin/papiq-healthcheck"]
+    CMD ["/usr/local/bin/lekto-healthcheck"]
 ENTRYPOINT ["/init"]

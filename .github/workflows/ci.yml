@@ -129,7 +129,7 @@ jobs:
       - run: uv run lint-imports
       - run: uv run pytest -m unit -n logical
 
-  # The migration client (Paperless-ngx to Papiq): lint, types and tests against stand-ins for both
+  # The migration client (Paperless-ngx to Lekto): lint, types and tests against stand-ins for both
   # APIs. Fast on purpose (httpx2 is its only dependency); its tests against the real API run
   # in `backend`.
   migration:
@@ -321,8 +321,8 @@ jobs:
           context: .
           target: runtime
           load: true
-          tags: papiq:ci
+          tags: lekto:ci
       - name: Size of the image
-        run: docker image inspect papiq:ci --format 'image size {{.Size}} bytes' | tee -a "$GITHUB_STEP_SUMMARY"
+        run: docker image inspect lekto:ci --format 'image size {{.Size}} bytes' | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Test the image
-        run: deploy/test-image.sh papiq:ci
+        run: deploy/test-image.sh lekto:ci

@@ -4,7 +4,7 @@
 # volumes (`docker compose down -v`): a database or a Garage cluster keeps the old values.
 #
 # The files are readable by everyone on the host (0644) in a folder only you can enter (0700):
-# Docker mounts them into the containers as they are, and the Papiq processes run as PUID:PGID,
+# Docker mounts them into the containers as they are, and the Lekto processes run as PUID:PGID,
 # not as the file's owner. Garage insists on 0600 for its own two secrets; it runs as root.
 set -eu
 
@@ -23,7 +23,7 @@ create() {
   fi
 }
 
-create papiq_secret_key "$(openssl rand -base64 32)"
+create lekto_secret_key "$(openssl rand -base64 32)"
 create admin_password "$(openssl rand -base64 18 | tr '+/' '-_')"
 create meilisearch_key "$(openssl rand -hex 32)"
 create postgres_password "$(openssl rand -hex 24)"

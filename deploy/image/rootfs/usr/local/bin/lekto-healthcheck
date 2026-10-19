@@ -1,7 +1,7 @@
 #!/bin/sh
 # Health of the container, for Docker's HEALTHCHECK. The API answers GET /api/v1/health; the
 # worker has no endpoint, so its service must be up for 10 seconds (not in a crash loop) and past
-# the wait for the schema (svc-worker writes /run/papiq-worker-ready).
+# the wait for the schema (svc-worker writes /run/lekto-worker-ready).
 set -eu
 
 role=$(printf %s "${LEKTO_ROLE:-all}" | tr '[:upper:]' '[:lower:]')
@@ -33,7 +33,7 @@ case "$role" in
       "true "*)
         seconds=${status#true }
         [ "$seconds" -ge 10 ] || { echo "worker (re)started $seconds s ago" >&2; exit 1; }
-        [ -e /run/papiq-worker-ready ] || { echo "worker waits for the database schema" >&2; exit 1; }
+        [ -e /run/lekto-worker-ready ] || { echo "worker waits for the database schema" >&2; exit 1; }
         ;;
       *)
         echo "worker is not running" >&2

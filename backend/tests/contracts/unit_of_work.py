@@ -1272,6 +1272,13 @@ class UnitOfWorkContract:
         )
         async with uow_factory() as uow:
             assert len(await uow.documents.query(with_note, limit=9)) == 2
+        # Documents dated within a period, both days included; one without a date never.
+        march = DocumentFilter(document_dates=Period.month(2026, 3))
+        assert sorted(await paged(NEWEST_FIRST, march)) == ["arzt", "Ärztebrief"]
+        since_christmas = DocumentFilter(document_dates=Period(date(2025, 12, 24), date.max))
+        assert sorted(await paged(NEWEST_FIRST, since_christmas)) == ["arzt", "bank", "Ärztebrief"]
+        before = DocumentFilter(document_dates=Period(date.min, date(2025, 12, 23)))
+        assert await paged(NEWEST_FIRST, before) == []
 
     async def test_documents_are_counted_by_master_data(
         self, uow_factory: UnitOfWorkFactory

@@ -43,6 +43,7 @@ from lekto.core.domain.ids import (
 )
 from lekto.core.domain.inbox import Confirmation, InboxTab
 from lekto.core.domain.master_data import Contact, DocumentType, Tag, TagScope
+from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane, NodeRun
 from lekto.core.domain.rules import Rule, RuleApplication, RuleVersion
 from lekto.core.domain.sorting import sort_key
@@ -136,7 +137,8 @@ class DocumentFilter:
     group of each set. `topics`: the document's topic is one of them (a topic with its
     descendants). `lanes`: one of them, where None stands for documents still in processing.
     `confirmed`: whether a person set or confirmed the metadata (`Document.confirmed_at`).
-    `field`: a value for it is set."""
+    `field`: a value for it is set. `document_dates`: the document date lies in the period (a
+    document without one does not match)."""
 
     contacts: frozenset[ContactId] | None = None
     document_types: frozenset[DocumentTypeId] | None = None
@@ -148,6 +150,7 @@ class DocumentFilter:
     lanes: frozenset[Lane | None] | None = None
     confirmed: bool | None = None
     field: FieldId | None = None
+    document_dates: Period | None = None
 
     def __post_init__(self) -> None:
         for sets in (self.tags, self.contact_groups, self.document_type_groups):
@@ -176,6 +179,13 @@ class DocumentFilter:
             and (self.lanes is None or view.lane in self.lanes)
             and (self.confirmed is None or view.confirmed is self.confirmed)
             and (self.field is None or self.field in view.fields)
+            and (
+                self.document_dates is None
+                or (
+                    view.document_date is not None
+                    and self.document_dates.start <= view.document_date <= self.document_dates.end
+                )
+            )
         )
 
 
@@ -194,6 +204,7 @@ class FilterView:
     lane: Lane | None
     confirmed: bool
     fields: frozenset[FieldId]
+    document_date: date | None = None
 
     @classmethod
     def of(
@@ -214,6 +225,7 @@ class FilterView:
             lane=document.lane,
             confirmed=document.confirmed_at is not None,
             fields=frozenset(document.fields),
+            document_date=document.document_date,
         )
 
 

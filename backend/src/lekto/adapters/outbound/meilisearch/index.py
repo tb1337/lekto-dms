@@ -19,7 +19,7 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator, Mapping, Sequence
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time
 from time import monotonic
 from typing import Any
 from uuid import UUID
@@ -83,6 +83,7 @@ FILTERABLE = [
     "document_type_group_ids",
     "confirmed",
     "field_ids",
+    "document_date",
 ]
 SORTABLE = ["document_date", "created_at", "title_key"]
 # Sorting comes first: without `sort` in a query it does nothing, with it the hits are in its
@@ -396,7 +397,7 @@ class MeilisearchIndex:
             "field_ids": [str(field) for field in document.field_ids],
             "document_date": None
             if document.document_date is None
-            else int(datetime.combine(document.document_date, time(), UTC).timestamp()),
+            else _day(document.document_date),
             "created_at": int(document.created_at.timestamp()),
             "confirmed": document.confirmed,
             "layout": LAYOUT,
@@ -477,6 +478,11 @@ class _MeilisearchBuild:
         await self._index._delete_index(self._index._build_index)
 
 
+def _day(day: date) -> int:
+    """A day as Meilisearch holds it: the seconds of its midnight in UTC."""
+    return int(datetime.combine(day, time(), UTC).timestamp())
+
+
 def filter_expression(visibility: Visibility, criteria: DocumentFilter) -> str | None:
     """The Meilisearch filter for the rights of the user and the criteria of a query; None if
     nothing is filtered (an admin's search over everything without criteria). Only ids and lane
@@ -502,6 +508,9 @@ def filter_expression(visibility: Visibility, criteria: DocumentFilter) -> str |
         for tags in sets:
             listed = ", ".join(_quote(tag) for tag in sorted(tags, key=str))
             parts.append(f"{attribute} IN [{listed}]")
+    if criteria.document_dates is not None:
+        start, end = criteria.document_dates.start, criteria.document_dates.end
+        parts.append(f"document_date {_day(start)} TO {_day(end)}")
     if criteria.lanes:
         lanes = sorted(lane_value(lane) for lane in criteria.lanes)
         parts.append(f"lane IN [{', '.join(_quote(lane) for lane in lanes)}]")

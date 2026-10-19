@@ -205,6 +205,12 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
             criteria.append(documents.c.topic_id.in_(sorted(filter.topics)))
         if filter.spaces is not None:
             criteria.append(documents.c.space_id.in_(sorted(filter.spaces)))
+        if filter.document_dates is not None:
+            criteria.append(
+                documents.c.document_date.between(
+                    filter.document_dates.start, filter.document_dates.end
+                )
+            )
         for tag_set in filter.tags:
             tags = t.document_tags
             criteria.append(

@@ -174,8 +174,18 @@ async def test_listing_sorts_by_date_and_title_and_filters_by_field(api: Api) ->
     # By title, case and accents aside.
     assert await listed(sort="title") == [ids[1], ids[2], ids[0]]
     assert await listed(field_id=note["id"]) == [ids[0]]
-    bad = await api.client.get(f"{PREFIX}/documents", params={"sort": "size"}, headers=auth(owner))
-    assert bad.status_code == 422
+    # Dated within a period, both days included; either end may stay open.
+    year = {"document_date_from": "2026-01-01", "document_date_to": "2026-12-31"}
+    assert await listed(**year) == [ids[0]]
+    assert await listed(document_date_to="2025-01-01") == [ids[1]]
+    assert await listed(document_date_from="2025-01-01", sort="document_date") == ids[1::-1]
+    for bad_params in (
+        {"sort": "size"},
+        {"document_date_from": "2026-02-01", "document_date_to": "2026-01-01"},
+        {"document_date_from": "2026-02-30"},
+    ):
+        bad = await api.client.get(f"{PREFIX}/documents", params=bad_params, headers=auth(owner))
+        assert bad.status_code == 422, bad_params
 
 
 async def test_master_data_with_their_document_counts(api: Api) -> None:

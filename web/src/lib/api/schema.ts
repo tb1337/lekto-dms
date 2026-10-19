@@ -1046,7 +1046,7 @@ export interface paths {
 		};
 		/**
 		 * List documents
-		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type or space, all tags and groups, any topic, any lane; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `GET /documents/search`.
+		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type or space, all tags and groups, any topic, any lane; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `document_date_from` and `document_date_to`: the document date lies between them, both days included, either end open (a document without a date does not match). `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `GET /documents/search`.
 		 */
 		get: operations['list_documents_api_v1_documents_get'];
 		put?: never;
@@ -13648,6 +13648,8 @@ export interface operations {
 				contact_group_id?: string[] | null;
 				document_type_group_id?: string[] | null;
 				topic_id?: string[] | null;
+				document_date_from?: string | null;
+				document_date_to?: string | null;
 			};
 			header?: never;
 			path?: never;
@@ -14046,6 +14048,8 @@ export interface operations {
 				contact_group_id?: string[] | null;
 				document_type_group_id?: string[] | null;
 				topic_id?: string[] | null;
+				document_date_from?: string | null;
+				document_date_to?: string | null;
 			};
 			header?: never;
 			path?: never;

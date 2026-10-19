@@ -17,6 +17,7 @@ from lekto.core.domain.ids import (
     UserId,
     new_id,
 )
+from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane
 from lekto.core.domain.search import EmbeddingStamp, IndexDocument, Visibility
 from lekto.core.ports.repository import DocumentFilter, DocumentOrder, SortKey, TagSets
@@ -318,6 +319,22 @@ class SearchIndexContract:
         assert await found(
             search_index, "Rechnung", visibility(owner), filter=DocumentFilter(field=field)
         ) == {with_value.id}
+
+    async def test_dated_within_a_period(self, search_index: SearchIndex) -> None:
+        owner = UserId(new_id())
+        first = index_document(owner_id=owner, text="Rechnung", document_date=date(2026, 9, 1))
+        last = index_document(owner_id=owner, text="Rechnung", document_date=date(2026, 9, 30))
+        october = index_document(owner_id=owner, text="Rechnung", document_date=date(2026, 10, 1))
+        undated = index_document(owner_id=owner, text="Rechnung")
+        await search_index.upsert([first, last, october, undated])
+
+        async def within(period: Period) -> set[DocumentId]:
+            criteria = DocumentFilter(document_dates=period)
+            return await found(search_index, "Rechnung", visibility(owner), filter=criteria)
+
+        assert await within(Period.month(2026, 9)) == {first.id, last.id}
+        assert await within(Period(date(2026, 9, 30), date.max)) == {last.id, october.id}
+        assert await within(Period.year(2025)) == set()
 
     async def test_sorted_by_date_and_title_without_a_date_last(
         self, search_index: SearchIndex

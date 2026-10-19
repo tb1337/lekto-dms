@@ -21,6 +21,7 @@ from lekto.adapters.outbound.meilisearch.index import (
 )
 from lekto.core.domain.errors import SearchIndexError, SearchUnavailableError
 from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, SpaceId, TagId, UserId
+from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane
 from lekto.core.domain.search import EmbeddingStamp, Segment, Visibility
 from lekto.core.ports.repository import DocumentFilter
@@ -536,6 +537,7 @@ def test_the_filter_for_a_user_with_spaces_and_criteria() -> None:
             document_type_groups=(frozenset({TagId(uid(9))}),),
             spaces=frozenset({SpaceId(uid(1))}),
             lanes=frozenset({Lane.GREEN, None}),
+            document_dates=Period.month(2026, 9),
         ),
     )
     assert filter_expression(query.visibility, query.filter) == (
@@ -545,6 +547,7 @@ def test_the_filter_for_a_user_with_spaces_and_criteria() -> None:
         f'AND space_id IN ["{uid(1)}"] '
         f'AND tag_ids IN ["{uid(5)}", "{uid(6)}"] AND tag_ids IN ["{uid(7)}"] '
         f'AND contact_group_ids IN ["{uid(8)}"] AND document_type_group_ids IN ["{uid(9)}"] '
+        "AND document_date 1788220800 TO 1790726400 "
         'AND lane IN ["green", "processing"]'
     )
 

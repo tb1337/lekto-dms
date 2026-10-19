@@ -2,13 +2,16 @@
 `GET /documents/search`), the switches to every user's documents and rules (`all_users`), and
 document counts; and how their descriptions say who may call them."""
 
+from datetime import date
 from enum import StrEnum
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, Query
+from fastapi.exceptions import RequestValidationError
 
 from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId
+from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane
 from lekto.core.domain.search import PROCESSING, lane_value
 from lekto.core.ports.repository import DocumentFilter
@@ -47,10 +50,14 @@ def document_filter(
     contact_group_id: Ids = None,
     document_type_group_id: Ids = None,
     topic_id: Ids = None,
+    document_date_from: date | None = None,
+    document_date_to: date | None = None,
 ) -> DocumentFilter:
     """The query parameters of the document list as a filter (the search takes the same).
     Several contacts, types or spaces: one of them. Each tag or group is one set, the topics one
-    more (a document has one topic: one of them); the service adds the tags below them."""
+    more (a document has one topic: one of them); the service adds the tags below them.
+    `document_date_from`, `document_date_to`: the document date lies between them, both days
+    included (either end may stay open)."""
 
     def sets(ids: list[UUID] | None) -> tuple[frozenset[TagId], ...]:
         return tuple(frozenset({TagId(id)}) for id in dict.fromkeys(ids or ()))
@@ -67,7 +74,25 @@ def document_filter(
         spaces=frozenset(SpaceId(id) for id in space_id) if space_id else None,
         lanes=None if not lane else frozenset(_LANES[item] for item in lane),
         field=None if field_id is None else FieldId(field_id),
+        document_dates=_dates(document_date_from, document_date_to),
     )
+
+
+def _dates(start: date | None, end: date | None) -> Period | None:
+    if start is None and end is None:
+        return None
+    if start is not None and end is not None and end < start:
+        raise RequestValidationError(
+            [
+                {
+                    "type": "value_error",
+                    "loc": ("query", "document_date_to"),
+                    "msg": "the end of the period lies before its start",
+                    "input": end.isoformat(),
+                }
+            ]
+        )
+    return Period(start or date.min, end or date.max)
 
 
 Filter = Annotated[DocumentFilter, Depends(document_filter)]

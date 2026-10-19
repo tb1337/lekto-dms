@@ -245,6 +245,7 @@ def _matches_filter(document: IndexDocument, criteria: DocumentFilter) -> bool:
             lane=document.lane,
             confirmed=document.confirmed,
             fields=frozenset(document.field_ids),
+            document_date=document.document_date,
         )
     )
 

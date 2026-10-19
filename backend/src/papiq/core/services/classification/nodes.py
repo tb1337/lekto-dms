@@ -1094,22 +1094,34 @@ async def _labelled(
             for check, definition, asked in zip(checks, definitions, read, strict=True)
         ]
 
-    return await asyncio.to_thread(all_labelled)
+    try:
+        return await asyncio.to_thread(all_labelled)
+    except Exception:  # recorded only: a failure of the check must not fail the node
+        log.warning(
+            "the labels were not checked", exc_info=True, extra={"document_id": str(document.id)}
+        )
+        return list(checks)
 
 
 async def _layout_words(
     store: ObjectStore, document: Document
 ) -> Mapping[int, tuple[LaidWord, ...]]:
-    """The words of the document's parsed text by page; none without it, or for one of another
-    kind (`layout_words`)."""
+    """The words of the document's parsed text by page; none without it, for one of another
+    kind (`layout_words`), or where it cannot be read (the label check is recorded only, so a
+    store that fails leaves it unknown instead of failing the node)."""
     key = structure_key(document.id)
     try:
         data = await store.get(key)
         pages = await asyncio.to_thread(lambda: layout_words(json.loads(data)))
     except NotFoundError:
         return {}
-    except ValueError:
-        log.warning("the structure of the text cannot be read", extra={"key": key})
+    except Exception as error:
+        log.warning(
+            "the structure of the text cannot be read: %s",
+            error,
+            exc_info=not isinstance(error, ValueError),
+            extra={"key": key},
+        )
         return {}
     return pages or {}
 

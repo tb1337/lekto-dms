@@ -12,6 +12,7 @@ lines) and the character (the median width of one in its words' boxes) are measu
 itself, as `reading.gap` measures, so a receipt is measured as truly as a letter.
 """
 
+import html
 import itertools
 import statistics
 from collections.abc import Callable, Mapping, Sequence
@@ -144,21 +145,38 @@ def grid_layout(text: str) -> JsonObject:
 def label_places[W: Placed](words: Sequence[W], label: str) -> list[tuple[W, ...]]:
     """The runs of `words` (those of a page, in reading order) the label stands at: matched with
     case and spacing evened out, or else on its letters and digits alone (with at least three of
-    them), as the quote locator matches."""
+    them), as the quote locator matches, but as whole words: a match starts at a word's start
+    and ends at a word's end (`Brutto` is not in `Steuerbrutto`, `Gesamtbrutto` is in
+    `**Gesamtbrutto:**` on letters and digits)."""
     for loose in (False, True):
         spelt, origin = _spelt([word.text for word in words], loose=loose)
-        needle = _spelt([label], loose=loose)[0].strip()
+        needle = _spelt([html.unescape(label)], loose=loose)[0].strip()
         if not needle or (loose and len(needle) < _SHORTEST_LOOSE):
             continue
         places = []
         start = spelt.find(needle)
         while start >= 0:
-            indexes = sorted(set(origin[start : start + len(needle)]))
-            places.append(tuple(words[index] for index in indexes))
-            start = spelt.find(needle, start + len(needle))
+            end = start + len(needle)
+            if _bounded(spelt, origin, start, end):
+                indexes = sorted(set(origin[start:end]))
+                places.append(tuple(words[index] for index in indexes))
+            start = spelt.find(needle, start + 1)
         if places:
             return places
     return []
+
+
+def _bounded(spelt: str, origin: Sequence[int], start: int, end: int) -> bool:
+    """Whether `spelt[start:end]` starts at a word's start and ends at a word's end: beside it
+    the end of the text, a character of another word, or, within a word, no letter or digit
+    on one side (`Brutto:` in `Brutto:3.650,00`, not `Brutto` in `Steuerbrutto`)."""
+
+    def edge(inside: int, outside: int) -> bool:
+        if outside < 0 or outside >= len(spelt) or origin[outside] != origin[inside]:
+            return True
+        return not (spelt[inside].isalnum() and spelt[outside].isalnum())
+
+    return edge(start, start - 1) and edge(end - 1, end)
 
 
 def _spelt(texts: Sequence[str], *, loose: bool) -> tuple[str, list[int]]:
@@ -214,14 +232,21 @@ class _Measure:
         return cls(line, character) if line > 0 and character > 0 else None
 
 
-def stands_by(words: Sequence[Placed], label: Sequence[Placed], value: Sequence[Placed]) -> bool:
-    """Whether the value's words stand by the label's on their page (`words`, which measure it):
-    on the label's line to its right, or below it in its column within `LABEL_LINES` lines. A
-    value that shares a word with its label (`Brutto:3.650,00`) stands by it."""
+def stands_by(
+    words: Sequence[Placed],
+    label: Sequence[Placed],
+    value: Sequence[Placed],
+    measure: _Measure | None = None,
+) -> bool:
+    """Whether the value's words stand by the label's on their page (`words`, which measure it,
+    unless `measure` is given): on the label's line to its right, or below it in its column
+    within `LABEL_LINES` lines. A label over two lines (or read across columns) is measured by
+    the line of its last word, where it ends. A value that shares a word with its label
+    (`Brutto:3.650,00`) stands by it."""
     if any(word in value for word in label):
         return True
-    measure = _Measure.of(words)
-    first, second = _union(label), _union(value)
+    measure = measure or _Measure.of(words)
+    first, second = _union(_last_line(label)), _union(value)
     if measure is None or first is None or second is None:
         return False
     down = (_middle(second) - _middle(first)) / measure.line
@@ -271,12 +296,29 @@ def check_label(
     values = [] if shows is None else value_places(pages, locations, shows)
     if not values:
         return LabelCheck(label, LabelOutcome.UNKNOWN)
+    measures = {page: _Measure.of(pages[page]) for page in {page for page, _ in values}}
     beside = any(
-        stands_by(pages[page], place, value)
+        stands_by(pages[page], place, value, measures[page])
         for page, value in values
         for place in found.get(page, ())
     )
     return LabelCheck(label, LabelOutcome.BESIDE if beside else LabelOutcome.APART)
+
+
+def _last_line[W: Placed](words: Sequence[W]) -> list[W]:
+    """The words on the line of the last one: those whose middle lies within half a height of
+    its middle."""
+    placed = [word for word in words if word.box is not None]
+    if not placed:
+        return []
+    last = placed[-1].box
+    assert last is not None
+    return [
+        word
+        for word in placed
+        if word.box is not None
+        and abs(_middle(word.box) - _middle(last)) <= max(word.box.height, last.height) / 2
+    ]
 
 
 def _union(words: Sequence[Placed]) -> Box | None:

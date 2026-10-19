@@ -163,8 +163,9 @@ def test_a_field_s_entry_gives_the_label_of_its_value() -> None:
     )
     # An answer as to the prompt before (propose-3) reads as without labels.
     assert parse_propose(json.dumps(ANSWER), ["a1"]).fields["a1"].label is None
-    with pytest.raises(AnswerError, match="label: expected text"):
-        parse_propose(json.dumps(ANSWER | {"fields": [labelled | {"label": 1}]}), ["a1"])
+    # Only recorded, a label that is no text counts as none rather than making the answer unfit.
+    numbered = parse_propose(json.dumps(ANSWER | {"fields": [labelled | {"label": 1}]}), ["a1"])
+    assert numbered.fields["a1"] == Proposal(value="84,20 €", evidence="84,20 €")
     sender = {"value": None, "evidence": None, "label": "Von"}
     with pytest.raises(AnswerError, match="sender: unexpected label"):
         parse_propose(json.dumps(ANSWER | {"sender": sender}), [])

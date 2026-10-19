@@ -90,6 +90,25 @@ def test_the_label_is_matched_as_quotes_are() -> None:
     # Too short to be matched loosely, and not at all.
     assert label_places(pages_of("A.B 12,00 €")[1], "AB") == []
     assert outcome(text, "Nettolohn") is LabelOutcome.LABEL_MISSING
+    # An entity of an older parse's quote, as the locator reads it.
+    assert outcome("Brutto & Zulage   3.980,00 €", "Brutto &amp; Zulage") is LabelOutcome.BESIDE
+
+
+def test_the_label_is_matched_as_whole_words() -> None:
+    text = "Steuerbrutto      3.400,00 €\nGesamtbrutto      3.980,00 €"
+    assert outcome(text, "Brutto", value="3400.00") is LabelOutcome.LABEL_MISSING
+    assert outcome(text, "Gesamtbrutto", value="3400.00") is LabelOutcome.APART
+    # On letters and digits alone, the marks around a word do not stand in the way.
+    assert outcome("**Gesamtbrutto:**    3.980,00 €", "Gesamtbrutto") is LabelOutcome.BESIDE
+
+
+def test_a_label_over_two_lines_is_measured_where_it_ends() -> None:
+    text = "Summe\nbrutto       3.980,00 €\n\n\n\n\nZeile"
+    assert outcome(text, "Summe brutto") is LabelOutcome.BESIDE
+    # Words of two places in reading order make no box across them: under the first word, not
+    # under the last one, is apart.
+    across = "Summe\n               brutto\n  3.980,00 €"
+    assert outcome(across, "Summe brutto") is LabelOutcome.APART
 
 
 def test_a_value_in_the_label_s_own_word_stands_by_it() -> None:

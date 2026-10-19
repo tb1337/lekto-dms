@@ -5,11 +5,14 @@ import json
 from dataclasses import replace
 from typing import Any
 
+import pytest
+
 from papiq.core.domain.classification import FieldCheck, checks_from_json, field_key
 from papiq.core.domain.documents import Document
 from papiq.core.domain.json_value import JsonObject
 from papiq.core.domain.labels import LabelCheck, LabelOutcome, grid_layout
 from papiq.core.domain.pipeline import Node, Outcome
+from papiq.core.services.classification import nodes
 from papiq.core.services.objects import structure_key
 from papiq.core.services.pipeline import MetadataResult
 from tests.unit.services.support import World
@@ -140,6 +143,39 @@ async def test_an_unreadable_structure_is_skipped(world: World) -> None:
     assert label(seeded, result, "Rechnungsbetrag") == LabelCheck(
         "Gesamtbetrag", LabelOutcome.UNKNOWN
     )
+
+
+async def test_a_failing_label_check_does_not_fail_the_node(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Recorded only: a store that fails leaves the labels unknown, a failure of the check
+    itself leaves them out; the outcome stays."""
+    seeded, document = await invoice(world)
+    get = world.object_store.get
+
+    async def failing(key: str) -> bytes:
+        if key == structure_key(document.id):
+            raise OSError("the store is gone")
+        return await get(key)
+
+    monkeypatch.setattr(world.object_store, "get", failing)
+    result = await fields_step(world, model(labelled())).run(document)
+    assert isinstance(result, MetadataResult)
+    assert result.result.outcome is Outcome.OK
+    assert label(seeded, result, "Rechnungsbetrag") == LabelCheck(
+        "Gesamtbetrag", LabelOutcome.UNKNOWN
+    )
+    monkeypatch.undo()
+
+    def broken(*args: object) -> LabelCheck:
+        raise ZeroDivisionError
+
+    monkeypatch.setattr(nodes, "check_label", broken)
+    _, document = await invoice(world, seeded=seeded)
+    result = await fields_step(world, model(labelled())).run(document)
+    assert isinstance(result, MetadataResult)
+    assert result.result.outcome is Outcome.OK
+    assert label(seeded, result, "Rechnungsbetrag") is None
 
 
 async def test_fields_without_a_value_have_no_label_check(world: World) -> None:

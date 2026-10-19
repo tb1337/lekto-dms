@@ -8,7 +8,7 @@ field may be an instruction from the document at work) and lenient about values:
 type outside the list counts as a proposed new type, unknown tags as proposed new tags, and a
 value that cannot be read makes only its field uncertain. The one exception is a field's
 `label` (`propose-4`, `extract-5`): an entry without it reads as without a label, as an answer
-to the prompts before did.
+to the prompts before did, and so does one whose label is no text.
 """
 
 import json
@@ -376,7 +376,7 @@ def _parse_proposal(
     data: JsonValue, where: str, *, text: bool = False, labelled: bool = False
 ) -> Proposal:
     """A value with its evidence; a field's (`labelled`) may also have its label, as text on
-    one line."""
+    one line (anything else counts as no label)."""
     if not isinstance(data, dict):
         raise AnswerError(f"{where}: expected an object with value and evidence")
     _require_fields(data, ("value", "evidence"), where, optional=(_LABEL,) if labelled else ())
@@ -384,7 +384,9 @@ def _parse_proposal(
     if text:
         value = _text_or_null(value, f"{where}.value")
     evidence = _text_or_null(data["evidence"], f"{where}.evidence")
-    label = _text_or_null(data.get(_LABEL), f"{where}.label")
+    # Recorded only (the label check changes no outcome): one that is no text counts as none.
+    given = data.get(_LABEL)
+    label = given.strip() or None if isinstance(given, str) else None
     return Proposal(
         value=value,
         evidence=evidence[:_EVIDENCE_LENGTH] if evidence else None,

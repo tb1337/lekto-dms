@@ -18,7 +18,7 @@ from papiq.core.domain.classification import (
     TOPIC,
 )
 from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.labels import LabelOutcome
+from papiq.core.domain.labels import LABEL_LINES, LabelOutcome
 from papiq.core.domain.pipeline import Lane
 
 FIELDS = (CONTACT, DOCUMENT_TYPE, TOPIC, DOCUMENT_DATE)
@@ -338,9 +338,9 @@ def _labels_section(run: Run, results: Sequence[CaseResult]) -> list[str]:
         f"## Labels ({title})",
         "",
         "The label the model gave for each value it read, and whether the value stands by it: on "
-        "the label's line to its right, or below it in its column within three lines. Recorded, "
-        "not enforced; only amounts, numbers, dates and periods are checked (others are "
-        "unknown).",
+        f"the label's line to its right, or below it in its column within {LABEL_LINES} lines. "
+        "Recorded, not enforced; only amounts, numbers, dates and periods are checked (others "
+        "are unknown).",
         "",
         f"| Case | {header} | Fields |",
         "| --- |" + " ---: |" * len(_LABEL_TITLES) + " --- |",

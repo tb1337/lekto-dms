@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from papiq.adapters.inbound.rest.schemas.documents import DocumentDetails, DocumentPatch
 from papiq.core.domain.classification import Candidate, CandidateSource, FieldCheck
 from papiq.core.domain.inbox import Departure, Done, InboxTab
-from papiq.core.domain.labels import LabelCheck, LabelOutcome
+from papiq.core.domain.labels import LABEL_LINES, LabelCheck, LabelOutcome
 from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.pipeline import Lane, Node, Outcome
 from papiq.core.services.inbox import (
@@ -61,10 +61,11 @@ class LabelCheckOut(BaseModel):
     outcome: LabelOutcome = Field(
         description=(
             "`beside`: the value stands on the label's line to its right, or below it in its "
-            "column within three lines; `apart`: the label stands in the text, the value not by "
-            "it; `label_missing`: the label is not in the text; `no_label`: the model gave "
-            "none; `unknown`: no words with boxes, the value not found, or a type that is not "
-            "checked (only amounts, numbers, dates and periods are)."
+            f"column within {LABEL_LINES} lines; `apart`: the label stands in the text, the "
+            "value not by it; `label_missing`: the label is not in the text (as whole words); "
+            "`no_label`: the model gave none; `unknown`: no words with boxes, the value not "
+            "found, or a type that is not checked (only amounts, numbers, dates and periods "
+            "are)."
         )
     )
 

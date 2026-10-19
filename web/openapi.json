@@ -18665,7 +18665,7 @@
           },
           "outcome": {
             "$ref": "#/components/schemas/LabelOutcome",
-            "description": "`beside`: the value stands on the label's line to its right, or below it in its column within three lines; `apart`: the label stands in the text, the value not by it; `label_missing`: the label is not in the text; `no_label`: the model gave none; `unknown`: no words with boxes, the value not found, or a type that is not checked (only amounts, numbers, dates and periods are)."
+            "description": "`beside`: the value stands on the label's line to its right, or below it in its column within 3 lines; `apart`: the label stands in the text, the value not by it; `label_missing`: the label is not in the text (as whole words); `no_label`: the model gave none; `unknown`: no words with boxes, the value not found, or a type that is not checked (only amounts, numbers, dates and periods are)."
           }
         },
         "type": "object",

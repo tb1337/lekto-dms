@@ -57,6 +57,7 @@ from lekto.core.ports.repository import (
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
+    FacetRow,
     SortKey,
 )
 
@@ -122,6 +123,41 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         limit: int,
     ) -> list[Document]:
         return await self._query([], filter, order=order, after=after, limit=limit)
+
+    async def facet_rows(self, filter: DocumentFilter, user: UserId | None) -> list[FacetRow]:
+        documents, tags = t.documents, t.document_tags
+        criteria = [*([] if user is None else [visible_to(user)]), *_matching(filter)]
+        rows = (
+            await self._tx.read(
+                select(
+                    documents.c.id,
+                    documents.c.contact_id,
+                    documents.c.document_type_id,
+                    documents.c.topic_id,
+                    documents.c.document_date,
+                ).where(*criteria)
+            )
+        ).all()
+        matching = select(documents.c.id).where(*criteria)
+        tagged: dict[UUID, set[TagId]] = {}
+        for link in (
+            await self._tx.read(
+                select(tags.c.document_id, tags.c.tag_id).where(tags.c.document_id.in_(matching))
+            )
+        ).all():
+            tagged.setdefault(link.document_id, set()).add(TagId(link.tag_id))
+        return [
+            FacetRow(
+                contact=None if row.contact_id is None else ContactId(row.contact_id),
+                document_type=(
+                    None if row.document_type_id is None else DocumentTypeId(row.document_type_id)
+                ),
+                topic=None if row.topic_id is None else TagId(row.topic_id),
+                tags=frozenset(tagged.get(row.id, ())),
+                document_date=row.document_date,
+            )
+            for row in rows
+        ]
 
     async def count_by(self, by: CountBy, user: UserId | None) -> dict[UUID, int]:
         documents = t.documents
@@ -197,54 +233,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         sorting, behind = _sorting(order, after)
         if behind is not None:
             criteria.append(behind)
-        if filter.contacts is not None:
-            criteria.append(documents.c.contact_id.in_(sorted(filter.contacts)))
-        if filter.document_types is not None:
-            criteria.append(documents.c.document_type_id.in_(sorted(filter.document_types)))
-        if filter.topics is not None:
-            criteria.append(documents.c.topic_id.in_(sorted(filter.topics)))
-        if filter.spaces is not None:
-            criteria.append(documents.c.space_id.in_(sorted(filter.spaces)))
-        if filter.document_dates is not None:
-            criteria.append(
-                documents.c.document_date.between(
-                    filter.document_dates.start, filter.document_dates.end
-                )
-            )
-        for tag_set in filter.tags:
-            tags = t.document_tags
-            criteria.append(
-                documents.c.id.in_(
-                    select(tags.c.document_id).where(tags.c.tag_id.in_(sorted(tag_set)))
-                )
-            )
-        for column, groups, owner in (
-            (documents.c.contact_id, filter.contact_groups, t.contact_groups.c.contact_id),
-            (
-                documents.c.document_type_id,
-                filter.document_type_groups,
-                t.document_type_groups.c.document_type_id,
-            ),
-        ):
-            for group_set in groups:
-                in_groups = owner.table.c.tag_id.in_(sorted(group_set))
-                criteria.append(column.in_(select(owner).where(in_groups)))
-        if filter.confirmed is not None:
-            confirmed = documents.c.confirmed_at
-            criteria.append(confirmed.is_not(None) if filter.confirmed else confirmed.is_(None))
-        if filter.lanes is not None:
-            values = [lane.value for lane in filter.lanes if lane is not None]
-            lane_criteria = [documents.c.lane.in_(values)]
-            if None in filter.lanes:
-                lane_criteria.append(documents.c.lane.is_(None))
-            criteria.append(or_(*lane_criteria))
-        if filter.field is not None:
-            fields = t.document_fields
-            criteria.append(
-                documents.c.id.in_(
-                    select(fields.c.document_id).where(fields.c.field_id == filter.field)
-                )
-            )
+        criteria.extend(_matching(filter))
         rows = (
             await self._tx.read(select(documents).where(*criteria).order_by(*sorting).limit(limit))
         ).all()
@@ -554,6 +543,59 @@ def _iso(value: datetime | None) -> str | None:
 
 def _from_iso(value: str | None) -> datetime | None:
     return None if value is None else datetime.fromisoformat(value)
+
+
+def _matching(filter: DocumentFilter) -> list[ColumnElement[bool]]:
+    """The criteria of `filter` on the documents table."""
+    documents = t.documents
+    criteria: list[ColumnElement[bool]] = []
+    if filter.contacts is not None:
+        criteria.append(documents.c.contact_id.in_(sorted(filter.contacts)))
+    if filter.document_types is not None:
+        criteria.append(documents.c.document_type_id.in_(sorted(filter.document_types)))
+    if filter.topics is not None:
+        criteria.append(documents.c.topic_id.in_(sorted(filter.topics)))
+    if filter.spaces is not None:
+        criteria.append(documents.c.space_id.in_(sorted(filter.spaces)))
+    if filter.document_dates is not None:
+        criteria.append(
+            documents.c.document_date.between(
+                filter.document_dates.start, filter.document_dates.end
+            )
+        )
+    for tag_set in filter.tags:
+        tags = t.document_tags
+        criteria.append(
+            documents.c.id.in_(select(tags.c.document_id).where(tags.c.tag_id.in_(sorted(tag_set))))
+        )
+    for column, groups, owner in (
+        (documents.c.contact_id, filter.contact_groups, t.contact_groups.c.contact_id),
+        (
+            documents.c.document_type_id,
+            filter.document_type_groups,
+            t.document_type_groups.c.document_type_id,
+        ),
+    ):
+        for group_set in groups:
+            in_groups = owner.table.c.tag_id.in_(sorted(group_set))
+            criteria.append(column.in_(select(owner).where(in_groups)))
+    if filter.confirmed is not None:
+        confirmed = documents.c.confirmed_at
+        criteria.append(confirmed.is_not(None) if filter.confirmed else confirmed.is_(None))
+    if filter.lanes is not None:
+        values = [lane.value for lane in filter.lanes if lane is not None]
+        lane_criteria = [documents.c.lane.in_(values)]
+        if None in filter.lanes:
+            lane_criteria.append(documents.c.lane.is_(None))
+        criteria.append(or_(*lane_criteria))
+    if filter.field is not None:
+        fields = t.document_fields
+        criteria.append(
+            documents.c.id.in_(
+                select(fields.c.document_id).where(fields.c.field_id == filter.field)
+            )
+        )
+    return criteria
 
 
 def _sorting(

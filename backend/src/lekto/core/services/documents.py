@@ -4,8 +4,9 @@ import functools
 import hashlib
 import json
 import logging
+from collections import Counter
 from collections.abc import Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from uuid import UUID
@@ -25,7 +26,15 @@ from lekto.core.domain.exchanges import RunExchange, exchanges_from_json
 from lekto.core.domain.facts import Facts, facts_in
 from lekto.core.domain.fields import FieldType, FieldValue
 from lekto.core.domain.identifiers import IdentifierKind
-from lekto.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId, TagId, UserId
+from lekto.core.domain.ids import (
+    ContactId,
+    DocumentId,
+    DocumentTypeId,
+    FieldId,
+    SpaceId,
+    TagId,
+    UserId,
+)
 from lekto.core.domain.locations import Box, Location
 from lekto.core.domain.master_data import Assignment
 from lekto.core.domain.permissions import (
@@ -49,6 +58,7 @@ from lekto.core.ports.repository import (
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
+    FacetRow,
     SortKey,
 )
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
@@ -63,7 +73,7 @@ from lekto.core.services._access import (
     visible_space,
     writable_document,
 )
-from lekto.core.services._tags import expanded, tag_counts
+from lekto.core.services._tags import expand, expanded, tag_counts, tag_tree
 from lekto.core.services.inbox import Review, in_inbox, node_reviews, open_nodes
 from lekto.core.services.maintenance import REMOVE_FILES_JOB, RemoveFiles
 from lekto.core.services.objects import (
@@ -103,6 +113,21 @@ class DocumentView:
 
     document: Document
     access: ShareLevel
+
+
+@dataclass(frozen=True)
+class DocumentFacets:
+    """How many documents of a filter have each value (`DocumentService.facets`). `contacts`
+    and `document_types` count those without one under None; `months` by `2026-09`, those
+    without a document date in `undated`."""
+
+    total: int
+    contacts: dict[ContactId | None, int]
+    document_types: dict[DocumentTypeId | None, int]
+    topics: dict[TagId, int]
+    tags: dict[TagId, int]
+    months: dict[str, int]
+    undated: int
 
 
 @dataclass(frozen=True)
@@ -470,6 +495,43 @@ class DocumentService:
             if by is CountBy.TAG:
                 return await tag_counts(uow, user)
             return await uow.documents.count_by(by, user)
+
+    async def facets(
+        self, actor: UserId, filter: DocumentFilter, *, all_users: bool = False
+    ) -> DocumentFacets:
+        """How many documents within the caller's reach (with `all_users`, admins only: every
+        document) that match `filter` have each contact, type, topic, tag and month of their
+        document date. A group whose values combine as either-or (contacts, types, topics, the
+        period) counts without its own choice, so that it tells what one more would add; tags
+        and groups combine as all-of and count with the whole filter. A tag or topic counts
+        the documents with it or one below it, each once, as its filter finds them."""
+        async with self._uow() as uow:
+            await load_lister(uow, actor, all_users, "count the documents of all users")
+            user = None if all_users else actor
+            tree = await tag_tree(uow)
+            found: dict[DocumentFilter, list[FacetRow]] = {}
+
+            async def rows(criteria: DocumentFilter) -> list[FacetRow]:
+                criteria = expand(criteria, tree)
+                if criteria not in found:
+                    found[criteria] = await uow.documents.facet_rows(criteria, user)
+                return found[criteria]
+
+            whole = await rows(filter)
+            by_contact = await rows(replace(filter, contacts=None))
+            by_type = await rows(replace(filter, document_types=None))
+            by_topic = await rows(replace(filter, topics=None))
+            by_date = await rows(replace(filter, document_dates=None))
+        dates = [row.document_date for row in by_date]
+        return DocumentFacets(
+            total=len(whole),
+            contacts=dict(Counter(row.contact for row in by_contact)),
+            document_types=dict(Counter(row.document_type for row in by_type)),
+            topics=tree.holders([row.topic] for row in by_topic if row.topic is not None),
+            tags=tree.holders(row.tags for row in whole),
+            months=dict(Counter(f"{day.year:04d}-{day.month:02d}" for day in dates if day)),
+            undated=sum(1 for day in dates if day is None),
+        )
 
     async def list_visible(self, actor: UserId) -> list[Document]:
         async with self._uow() as uow:

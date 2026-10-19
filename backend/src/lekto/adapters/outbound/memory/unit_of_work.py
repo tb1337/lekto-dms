@@ -86,6 +86,7 @@ from lekto.core.ports.repository import (
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
+    FacetRow,
     FilterView,
 )
 
@@ -395,6 +396,25 @@ class MemoryDocumentRepository(MemoryRepository[DocumentId, Document]):
     ) -> list[Document]:
         every = [_copy(row) for row in self._all()]
         return _query(every, filter, self._groups(), order=order, after=after, limit=limit)
+
+    async def facet_rows(self, filter: DocumentFilter, user: UserId | None) -> list[FacetRow]:
+        documents = (
+            [_copy(row) for row in self._all()]
+            if user is None
+            else await self.list_visible_to(user)
+        )
+        groups = self._groups()
+        return [
+            FacetRow(
+                contact=document.contact_id,
+                document_type=document.document_type_id,
+                topic=document.topic_id,
+                tags=frozenset(document.tag_ids),
+                document_date=document.document_date,
+            )
+            for document in documents
+            if filter.matches(groups.view(document))
+        ]
 
     def _groups(self) -> "_Groups":
         return _Groups(

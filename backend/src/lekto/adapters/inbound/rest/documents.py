@@ -30,6 +30,7 @@ from lekto.adapters.inbound.rest.schemas.documents import (
     DocumentAccepted,
     DocumentChanged,
     DocumentDetails,
+    DocumentFacetsOut,
     DocumentOutOfReach,
     DocumentPage,
     DocumentPatch,
@@ -224,6 +225,27 @@ async def list_documents(
         items=[ListedDocument.listed(view.document, view.access, view.in_inbox) for view in views],
         next_cursor=next_cursor,
     )
+
+
+@router.get(
+    "/facets",
+    summary="Counts for the filters of the documents",
+    description=(
+        "How many documents within the caller's reach that match the filter (the parameters "
+        "of `GET /documents`) have each contact, type, topic, tag and month of their document "
+        "date. Contacts, types, topics and the period combine as either-or: each counts "
+        "without its own choice, so it tells what one more would add. Tags combine as all-of "
+        "and count with the whole filter. A tag or topic counts the documents with it or one "
+        "below it, each once. Admins count every document with `all_users` (others: 403)."
+    ),
+    response_model=DocumentFacetsOut,
+    responses=problem_responses(401, 403, 422),
+)
+async def document_facets(
+    user: CurrentUser, context: Context, filter: Filter, all_users: AllDocuments = False
+) -> DocumentFacetsOut:
+    facets = await context.documents.facets(user, filter, all_users=all_users)
+    return DocumentFacetsOut.of(facets)
 
 
 @router.get(

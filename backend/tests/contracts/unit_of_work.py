@@ -34,6 +34,7 @@ from lekto.core.ports.repository import (
     DocumentFilter,
     DocumentOrder,
     DocumentPosition,
+    FacetRow,
     SortKey,
     TagSets,
 )
@@ -1320,6 +1321,59 @@ class UnitOfWorkContract:
             # Every document.
             assert await count(CountBy.CONTACT, None) == {contact.id: 3}
             assert await count(CountBy.FIELD, None) == {note.id: 2}
+
+    async def test_facet_rows_follow_the_filter_and_the_reach(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner, space = await owner_with_space(uow_factory)
+        stranger, theirs = await owner_with_space(uow_factory)
+        contact = Contact.create(name="ACME", now=NOW)
+        invoice = DocumentType.create(name="Invoice", now=NOW)
+        tax, paid = Tag.create(name="tax", now=NOW), Tag.create(name="paid", now=NOW)
+        topic = Tag.create(name="Car", scope=TagScope.TOPIC, now=NOW)
+        documents = []
+        for number, (user, place) in enumerate(
+            [(owner, space), (owner, space), (stranger, theirs)]
+        ):
+            document = builders.processed(user, place)
+            changes = DocumentChanges(
+                contact_id=contact.id if number != 1 else None,
+                document_type_id=invoice.id if number == 0 else None,
+                topic_id=topic.id if number == 0 else None,
+                tag_ids=frozenset({tax.id, paid.id} if number == 0 else {tax.id}),
+                document_date=date(2026, 9, 30) if number == 0 else None,
+            )
+            document.apply_changes(changes, {}, NOW)
+            documents.append(document)
+        async with uow_factory() as uow:
+            for item in (contact, invoice, tax, paid, topic):
+                await getattr(uow, _repository_of(item)).add(item)
+            for document in documents:
+                await uow.documents.add(document)
+            await uow.commit()
+
+        first = FacetRow(
+            contact=contact.id,
+            document_type=invoice.id,
+            topic=topic.id,
+            tags=frozenset({tax.id, paid.id}),
+            document_date=date(2026, 9, 30),
+        )
+        second = FacetRow(
+            contact=None, document_type=None, topic=None, tags=frozenset({tax.id}),
+            document_date=None,
+        )  # fmt: skip
+        async with uow_factory() as uow:
+            rows = uow.documents.facet_rows
+            # Within the owner's reach: their own two, the stranger's space is not shared.
+            assert sorted(await rows(DocumentFilter(), owner.id), key=repr) == sorted(
+                [first, second], key=repr
+            )
+            by_contact = DocumentFilter(contacts=frozenset({contact.id}))
+            assert await rows(by_contact, owner.id) == [first]
+            assert len(await rows(by_contact, None)) == 2  # every document
+            in_september = DocumentFilter(document_dates=Period.month(2026, 9))
+            assert await rows(in_september, owner.id) == [first]
 
     async def test_removing_a_document_removes_its_processing_log(
         self, uow_factory: UnitOfWorkFactory

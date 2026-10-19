@@ -188,6 +188,54 @@ async def test_listing_sorts_by_date_and_title_and_filters_by_field(api: Api) ->
         assert bad.status_code == 422, bad_params
 
 
+async def test_counts_for_the_filters_of_the_documents(api: Api) -> None:
+    admin, owner = await api.admin(), await api.user()
+    nord = await post(api, "/contacts", {"name": "Nord"}, auth(admin))
+    ids = []
+    for number in range(3):
+        content = unique_pdf(str(20 + number))
+        ids.append(
+            await upload(api, auth(owner), content=content, filename=f"{number}.pdf", drain=False)
+        )
+    await api.drain()
+    changes = [
+        {"contact_id": nord["id"], "document_date": "2026-09-30"},
+        {"contact_id": nord["id"], "document_date": "2025-12-24"},
+        {"document_date": None},
+    ]
+    for id, change in zip(ids, changes, strict=True):
+        response = await api.client.patch(
+            f"{PREFIX}/documents/{id}", json=change, headers=auth(owner)
+        )
+        assert response.status_code == 200, response.text
+
+    async def facets(**params: Any) -> dict[str, Any]:
+        response = await api.client.get(
+            f"{PREFIX}/documents/facets", params=params, headers=auth(owner)
+        )
+        assert response.status_code == 200, response.text
+        body: dict[str, Any] = response.json()
+        return body
+
+    counted = await facets()
+    assert counted["total"] == 3
+    assert counted["contacts"] == [{"id": nord["id"], "count": 2}, {"id": None, "count": 1}]
+    assert counted["years"] == [
+        {"year": 2026, "count": 1, "months": [{"month": "2026-09", "count": 1}]},
+        {"year": 2025, "count": 1, "months": [{"month": "2025-12", "count": 1}]},
+    ]
+    assert counted["undated"] == 1
+    # The period counts without its own choice; the contacts follow it.
+    in_2026 = await facets(document_date_from="2026-01-01", document_date_to="2026-12-31")
+    assert in_2026["total"] == 1
+    assert [year["year"] for year in in_2026["years"]] == [2026, 2025]
+    assert in_2026["contacts"] == [{"id": nord["id"], "count": 1}]
+    everyone = await api.client.get(
+        f"{PREFIX}/documents/facets", params={"all_users": True}, headers=auth(owner)
+    )
+    assert everyone.status_code == 403
+
+
 async def test_master_data_with_their_document_counts(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
     contact = await post(api, "/contacts", {"name": "ACME"}, auth(admin))

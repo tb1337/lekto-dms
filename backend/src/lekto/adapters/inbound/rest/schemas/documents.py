@@ -25,6 +25,7 @@ from lekto.core.domain.pipeline import (
 from lekto.core.domain.reading import DocumentReading, VisionAdvice
 from lekto.core.domain.spaces import ShareLevel, Space
 from lekto.core.domain.users import User
+from lekto.core.services.documents import DocumentFacets
 from lekto.core.services.objects import EXCHANGE_NODES
 
 ReprocessNode = StrEnum(  # type: ignore[misc]
@@ -240,6 +241,62 @@ class DocumentPage(BaseModel):
     next_cursor: str | None = Field(
         description="Pass as `cursor` for the next page; null on the last page."
     )
+
+
+class ValueCount(BaseModel):
+    id: UUID | None = Field(description="The contact, type, topic or tag; null: without one.")
+    count: int
+
+
+class MonthCount(BaseModel):
+    month: str = Field(description="ISO 8601, `2026-09`.", examples=["2026-09"])
+    count: int
+
+
+class YearCount(BaseModel):
+    year: int
+    count: int
+    months: list[MonthCount] = Field(description="Its months with documents, newest first.")
+
+
+class DocumentFacetsOut(BaseModel):
+    """How many documents of the filter have each value, for the filters of the document view.
+    Contacts, types, topics and the period combine as either-or and count without their own
+    choice (what one more would add); tags count with the whole filter."""
+
+    total: int = Field(description="The documents of the whole filter.")
+    contacts: list[ValueCount] = Field(description="Most first; null: without a contact.")
+    document_types: list[ValueCount] = Field(description="Most first; null: without a type.")
+    topics: list[ValueCount] = Field(
+        description="Most first; a topic counts the documents with it or one below it."
+    )
+    tags: list[ValueCount] = Field(
+        description="Most first; a tag counts the documents with it or one below it."
+    )
+    years: list[YearCount] = Field(description="By document date, newest first.")
+    undated: int = Field(description="Documents without a document date.")
+
+    @classmethod
+    def of(cls, facets: DocumentFacets) -> "DocumentFacetsOut":
+        def counted(counts: Mapping[Any, int]) -> list[ValueCount]:
+            ranked = sorted(counts.items(), key=lambda item: (-item[1], str(item[0])))
+            return [ValueCount(id=id, count=count) for id, count in ranked]
+
+        years: dict[int, list[MonthCount]] = {}
+        for month, count in sorted(facets.months.items(), reverse=True):
+            years.setdefault(int(month[:4]), []).append(MonthCount(month=month, count=count))
+        return cls(
+            total=facets.total,
+            contacts=counted(facets.contacts),
+            document_types=counted(facets.document_types),
+            topics=counted(facets.topics),
+            tags=counted(facets.tags),
+            years=[
+                YearCount(year=year, count=sum(month.count for month in months), months=months)
+                for year, months in years.items()
+            ],
+            undated=facets.undated,
+        )
 
 
 class DocumentPatch(BaseModel):

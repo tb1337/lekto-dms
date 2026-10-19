@@ -177,6 +177,7 @@ async def test_openapi_lists_every_endpoint(api: Api) -> None:
         (f"{PREFIX}/webhooks/{{id}}/deliveries", "get"),
         (f"{PREFIX}/webhooks/{{id}}/test", "post"),
         (f"{PREFIX}/documents", "get"),
+        (f"{PREFIX}/documents/facets", "get"),
         (f"{PREFIX}/documents", "post"),
         (f"{PREFIX}/documents/search", "get"),
         (f"{PREFIX}/search/reindex", "post"),

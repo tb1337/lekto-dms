@@ -190,6 +190,17 @@ class DocumentFilter:
 
 
 @dataclass(frozen=True, kw_only=True)
+class FacetRow:
+    """What counts of the documents of a filter look at of one of them (`facet_rows`)."""
+
+    contact: ContactId | None
+    document_type: DocumentTypeId | None
+    topic: TagId | None
+    tags: frozenset[TagId]
+    document_date: date | None
+
+
+@dataclass(frozen=True, kw_only=True)
 class FilterView:
     """What a `DocumentFilter` looks at of a document: from a `Document` and the groups of its
     contact and type (`of`), or from what the search index holds of it."""
@@ -332,6 +343,12 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
         limit: int,
     ) -> list[Document]:
         """As `query_visible`, over every document (for admins)."""
+        ...
+
+    async def facet_rows(self, filter: DocumentFilter, user: UserId | None) -> list[FacetRow]:
+        """Of each document that matches `filter` and the user may read (as
+        `list_visible_to`; None: every document), what its counts look at: contact, type,
+        topic, tags, document date. In no order."""
         ...
 
     async def count_by(self, by: CountBy, user: UserId | None) -> dict[UUID, int]:

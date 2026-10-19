@@ -10150,6 +10150,332 @@
         ]
       }
     },
+    "/api/v1/documents/facets": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Counts for the filters of the documents",
+        "description": "How many documents within the caller's reach that match the filter (the parameters of `GET /documents`) have each contact, type, topic, tag and month of their document date. Contacts, types, topics and the period combine as either-or: each counts without its own choice, so it tells what one more would add. Tags combine as all-of and count with the whole filter. A tag or topic counts the documents with it or one below it, each once. Admins count every document with `all_users` (others: 403).",
+        "operationId": "document_facets_api_v1_documents_facets_get",
+        "parameters": [
+          {
+            "name": "all_users",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Every user's documents instead of the caller's reach (admins).",
+              "default": false,
+              "title": "All Users"
+            },
+            "description": "Every user's documents instead of the caller's reach (admins)."
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Id"
+            }
+          },
+          {
+            "name": "document_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Type Id"
+            }
+          },
+          {
+            "name": "tag_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "space_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Space Id"
+            }
+          },
+          {
+            "name": "lane",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LaneFilter"
+                  },
+                  "maxItems": 4
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lane"
+            }
+          },
+          {
+            "name": "field_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field Id"
+            }
+          },
+          {
+            "name": "contact_group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Group Id"
+            }
+          },
+          {
+            "name": "document_type_group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Type Group Id"
+            }
+          },
+          {
+            "name": "topic_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Id"
+            }
+          },
+          {
+            "name": "document_date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Date From"
+            }
+          },
+          {
+            "name": "document_date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Date To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentFacetsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "authentication is required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "only the owner and admins control the processing of this document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "from_node: Input should be 'ocr', 'parse', ..."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Internal Server Error",
+                  "status": 500,
+                  "detail": "an unexpected error occurred"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents/{id}": {
       "get": {
         "tags": [
@@ -16864,6 +17190,72 @@
           }
         ]
       },
+      "DocumentFacetsOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "The documents of the whole filter."
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/ValueCount"
+            },
+            "type": "array",
+            "title": "Contacts",
+            "description": "Most first; null: without a contact."
+          },
+          "document_types": {
+            "items": {
+              "$ref": "#/components/schemas/ValueCount"
+            },
+            "type": "array",
+            "title": "Document Types",
+            "description": "Most first; null: without a type."
+          },
+          "topics": {
+            "items": {
+              "$ref": "#/components/schemas/ValueCount"
+            },
+            "type": "array",
+            "title": "Topics",
+            "description": "Most first; a topic counts the documents with it or one below it."
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/ValueCount"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "Most first; a tag counts the documents with it or one below it."
+          },
+          "years": {
+            "items": {
+              "$ref": "#/components/schemas/YearCount"
+            },
+            "type": "array",
+            "title": "Years",
+            "description": "By document date, newest first."
+          },
+          "undated": {
+            "type": "integer",
+            "title": "Undated",
+            "description": "Documents without a document date."
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "contacts",
+          "document_types",
+          "topics",
+          "tags",
+          "years",
+          "undated"
+        ],
+        "title": "DocumentFacetsOut",
+        "description": "How many documents of the filter have each value, for the filters of the document view.\nContacts, types, topics and the period combine as either-or and count without their own\nchoice (what one more would add); tags count with the whole filter."
+      },
       "DocumentFilesOut": {
         "properties": {
           "added": {
@@ -19552,6 +19944,28 @@
           "currency"
         ],
         "title": "MoneyValue"
+      },
+      "MonthCount": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month",
+            "description": "ISO 8601, `2026-09`.",
+            "examples": [
+              "2026-09"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "count"
+        ],
+        "title": "MonthCount"
       },
       "MoveRequest": {
         "properties": {
@@ -22521,6 +22935,33 @@
           }
         ]
       },
+      "ValueCount": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "The contact, type, topic or tag; null: without one."
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "count"
+        ],
+        "title": "ValueCount"
+      },
       "VisibilityOut": {
         "properties": {
           "owner_id": {
@@ -22900,6 +23341,33 @@
             "active": false
           }
         ]
+      },
+      "YearCount": {
+        "properties": {
+          "year": {
+            "type": "integer",
+            "title": "Year"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "months": {
+            "items": {
+              "$ref": "#/components/schemas/MonthCount"
+            },
+            "type": "array",
+            "title": "Months",
+            "description": "Its months with documents, newest first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "year",
+          "count",
+          "months"
+        ],
+        "title": "YearCount"
       },
       "EventMessage": {
         "additionalProperties": true,

@@ -1061,6 +1061,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/documents/facets': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Counts for the filters of the documents
+		 * @description How many documents within the caller's reach that match the filter (the parameters of `GET /documents`) have each contact, type, topic, tag and month of their document date. Contacts, types, topics and the period combine as either-or: each counts without its own choice, so it tells what one more would add. Tags combine as all-of and count with the whole filter. A tag or topic counts the documents with it or one below it, each once. Admins count every document with `all_users` (others: 403).
+		 */
+		get: operations['document_facets_api_v1_documents_facets_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/v1/documents/{id}': {
 		parameters: {
 			query?: never;
@@ -2760,6 +2780,49 @@ export interface components {
 			updated_at: string;
 		};
 		/**
+		 * DocumentFacetsOut
+		 * @description How many documents of the filter have each value, for the filters of the document view.
+		 *     Contacts, types, topics and the period combine as either-or and count without their own
+		 *     choice (what one more would add); tags count with the whole filter.
+		 */
+		DocumentFacetsOut: {
+			/**
+			 * Total
+			 * @description The documents of the whole filter.
+			 */
+			total: number;
+			/**
+			 * Contacts
+			 * @description Most first; null: without a contact.
+			 */
+			contacts: components['schemas']['ValueCount'][];
+			/**
+			 * Document Types
+			 * @description Most first; null: without a type.
+			 */
+			document_types: components['schemas']['ValueCount'][];
+			/**
+			 * Topics
+			 * @description Most first; a topic counts the documents with it or one below it.
+			 */
+			topics: components['schemas']['ValueCount'][];
+			/**
+			 * Tags
+			 * @description Most first; a tag counts the documents with it or one below it.
+			 */
+			tags: components['schemas']['ValueCount'][];
+			/**
+			 * Years
+			 * @description By document date, newest first.
+			 */
+			years: components['schemas']['YearCount'][];
+			/**
+			 * Undated
+			 * @description Documents without a document date.
+			 */
+			undated: number;
+		};
+		/**
 		 * DocumentFilesOut
 		 * @example {
 		 *       "added": "2026-07-03T08:40:36Z",
@@ -4016,6 +4079,17 @@ export interface components {
 			 * @example EUR
 			 */
 			currency: string;
+		};
+		/** MonthCount */
+		MonthCount: {
+			/**
+			 * Month
+			 * @description ISO 8601, `2026-09`.
+			 * @example 2026-09
+			 */
+			month: string;
+			/** Count */
+			count: number;
 		};
 		/**
 		 * MoveRequest
@@ -5470,6 +5544,16 @@ export interface components {
 			 */
 			active?: boolean | null;
 		};
+		/** ValueCount */
+		ValueCount: {
+			/**
+			 * Id
+			 * @description The contact, type, topic or tag; null: without one.
+			 */
+			id: string | null;
+			/** Count */
+			count: number;
+		};
 		/**
 		 * VisibilityOut
 		 * @description Who sees the document. Its owner always; while it is green also the space's owner and
@@ -5668,6 +5752,18 @@ export interface components {
 			 * @description Switching on clears the failure count and the reason.
 			 */
 			active?: boolean | null;
+		};
+		/** YearCount */
+		YearCount: {
+			/** Year */
+			year: number;
+			/** Count */
+			count: number;
+			/**
+			 * Months
+			 * @description Its months with documents, newest first.
+			 */
+			months: components['schemas']['MonthCount'][];
 		};
 		/**
 		 * EventMessage
@@ -14303,6 +14399,108 @@ export interface operations {
 					 *       "title": "Unsupported Media Type",
 					 *       "status": 415,
 					 *       "detail": "unsupported file type"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	document_facets_api_v1_documents_facets_get: {
+		parameters: {
+			query?: {
+				/** @description Every user's documents instead of the caller's reach (admins). */
+				all_users?: boolean;
+				contact_id?: string[] | null;
+				document_type_id?: string[] | null;
+				tag_id?: string[] | null;
+				space_id?: string[] | null;
+				lane?: components['schemas']['LaneFilter'][] | null;
+				field_id?: string | null;
+				contact_group_id?: string[] | null;
+				document_type_group_id?: string[] | null;
+				topic_id?: string[] | null;
+				document_date_from?: string | null;
+				document_date_to?: string | null;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DocumentFacetsOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

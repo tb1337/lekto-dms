@@ -637,6 +637,7 @@
 	"template_editor_open": "Im Template-Editor bearbeiten",
 	"template_editor_apply": "Übernehmen",
 	"template_filters": "Filter:",
+	"template_guide": "So funktionieren Templates",
 	"template_reference": "Referenzdokument",
 	"template_reference_choose": "Referenzdokument wählen",
 	"template_reference_none": "Kein Dokument",

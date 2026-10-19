@@ -734,8 +734,9 @@ disabling make no version; deleting is a soft delete.
   enable the topic. `add_tags` and `remove_tags` take document tags (also those set by hand);
   a tag above one the document keeps or gets is not added, a parent gives way to a child
   added. Saving a rule checks the scope of every tag it names (`422`).
-- **Templates.** A title, the value of a text field and a review's reason are Liquid templates
-  (`python-liquid`, `adapters/outbound/liquid`): `{{ contact }}`, `{% if field.la_brutto %}`,
+- **Templates** (in full, with examples: [docs/templates.md](../docs/templates.md)). A title,
+  the value of a text field and a review's reason are Liquid templates (`python-liquid`,
+  `adapters/outbound/liquid`): `{{ contact }}`, `{% if field.la_brutto %}`,
   filters with `|`. They see `title`, `filename`, `original_filename`, `contact`, `topic`,
   `document_type`, `document_date`, `added`, `tags` (those set), `contact_groups` and
   `document_type_groups` (the groups the contact and the type are in, by name, sorted), `space`,

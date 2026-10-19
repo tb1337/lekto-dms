@@ -135,6 +135,9 @@ class SetTopicAction(BaseModel):
     topic_id: UUID = Field(description="A tag of scope `topic`.")
 
 
+TEMPLATES_GUIDE = "https://github.com/tb1337/papiq/blob/main/docs/templates.md"
+"""The documentation of templates, linked from the API and the template editor."""
+
 TEMPLATE_DESCRIPTION = (
     "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: "
     "`title`, `filename` (the original's name without extension), `original_filename`, "
@@ -146,7 +149,8 @@ TEMPLATE_DESCRIPTION = (
     "`.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, "
     "`2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM "
     "yyyy'`), `currency`, `decimal`, in `PAPIQ_TEMPLATE_LOCALE`. Writing a missing value sets "
-    "nothing (`| default: ''` or `{% if %}` make it optional)."
+    "nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: "
+    f"{TEMPLATES_GUIDE}"
 )
 
 

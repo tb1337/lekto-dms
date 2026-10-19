@@ -12,6 +12,7 @@
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import type { EditorHandle } from '#lib/templates/codemirror.ts';
+	import { TEMPLATES_GUIDE } from '#lib/templates/guide.ts';
 	import { FILTERS, FILTER_CHIPS, insertFilter, insertValue } from '#lib/templates/liquid.ts';
 	import { LIST_NAMES, TEMPLATE_NAMES, TEMPLATE_NAME_LABELS } from '#lib/templates/values.ts';
 
@@ -120,6 +121,14 @@
 							{chip.name}
 						</Button>
 					{/each}
+					<a
+						href={TEMPLATES_GUIDE}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="ml-auto text-xs text-primary underline-offset-2 hover:underline"
+					>
+						{m.template_guide()}
+					</a>
 				</div>
 			</div>
 

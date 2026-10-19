@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { m } from '#lib/paraglide/messages.js';
+import { TEMPLATES_GUIDE } from '#lib/templates/guide.ts';
 import TemplateInput from './TemplateInput.svelte';
 
 const PAYSLIP = '0199a6c4-0000-7000-8000-0000000000e1';
@@ -130,6 +131,17 @@ describe('TemplateInput', () => {
 		expect((screen.getByLabelText(m.master_title_pattern()) as HTMLTextAreaElement).value).toBe(
 			'Lohn {{ field.la_brutto | upcase }}'
 		);
+	});
+
+	it('links the documentation of templates from the editor', async () => {
+		const user = userEvent.setup();
+		render(TemplateInput, { id: 'pattern', label: m.master_title_pattern(), value: '' });
+		await user.click(await screen.findByRole('button', { name: m.template_editor_open() }));
+		const sheet = await screen.findByRole('dialog');
+		const link = within(sheet).getByRole('link', { name: m.template_guide() });
+		expect(link.getAttribute('href')).toBe(TEMPLATES_GUIDE);
+		expect(link.getAttribute('target')).toBe('_blank');
+		expect(link.getAttribute('rel')).toContain('noopener');
 	});
 
 	it('drops the draft when the editor is cancelled', async () => {

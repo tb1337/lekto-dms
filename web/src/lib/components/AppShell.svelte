@@ -99,7 +99,8 @@
 >
 
 <!-- A page that needs the room (the document view) marks itself `data-wide`: from the desktop
-	width on it fills the window, and only its own areas scroll. -->
+	width on it fills the window, and only its own areas scroll. One that only needs the width
+	(the documents) marks itself `data-roomy`: as wide, and it scrolls as a page. -->
 <div class="flex min-h-screen flex-col lg:has-[[data-wide]]:h-dvh">
 	<header class="sticky top-0 z-40 border-b bg-card">
 		<!-- Narrower gaps on a phone, and a little narrower below 380 pixels, so that the menu, the
@@ -248,7 +249,7 @@
 		class="flex flex-1 justify-center px-4 py-8 outline-none sm:px-8 lg:has-[[data-wide]]:min-h-0 lg:has-[[data-wide]]:py-6"
 	>
 		<div
-			class="w-full max-w-[1040px] has-[[data-wide]]:max-w-[1600px] lg:has-[[data-wide]]:min-h-0"
+			class="w-full max-w-[1040px] has-[[data-roomy]]:max-w-[1600px] has-[[data-wide]]:max-w-[1600px] lg:has-[[data-wide]]:min-h-0"
 		>
 			{@render children()}
 		</div>

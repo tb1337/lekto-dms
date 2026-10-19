@@ -180,7 +180,7 @@
 	{/if}
 {/snippet}
 
-<div class="flex flex-col gap-6">
+<div class="flex flex-col gap-6" data-roomy>
 	<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_documents()}</h1>
 
 	<div class="flex flex-col gap-3">
@@ -281,7 +281,7 @@
 	{:else}
 		{#if view === 'grid'}
 			<ul
-				class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5"
+				class="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(13rem,1fr))]"
 				aria-busy={list.loading}
 			>
 				{#each list.items as item (item.document.id)}

@@ -21,7 +21,7 @@ import statistics
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Self
+from typing import Protocol, Self
 
 from papiq.core.domain.errors import ValidationError
 from papiq.core.domain.evidence import DocumentText
@@ -334,7 +334,18 @@ def reading_from_json(data: JsonValue) -> dict[int, tuple[ReadWord, ...]] | None
     return found
 
 
-def words_at(location: Location, words: Sequence[ReadWord]) -> list[ReadWord]:
+class Placed(Protocol):
+    """A word on a page: what it reads and its box (None where not known). Tesseract's words
+    (`ReadWord`) and those of the parsed text (`labels.LaidWord`) are placed alike."""
+
+    @property
+    def text(self) -> str: ...
+
+    @property
+    def box(self) -> Box | None: ...
+
+
+def words_at[W: Placed](location: Location, words: Sequence[W]) -> list[W]:
     """The words that stand in one of the location's boxes, in reading order: those whose
     middle lies in a box, given half its height up and down (the text layer's boxes follow its
     font and differ from Tesseract's)."""
@@ -353,16 +364,16 @@ def words_at(location: Location, words: Sequence[ReadWord]) -> list[ReadWord]:
     return found
 
 
-def value_words(
-    words: Sequence[ReadWord], shows: Callable[[DocumentText], bool]
-) -> tuple[ReadWord, ...] | None:
+def value_words[W: Placed](
+    words: Sequence[W], shows: Callable[[DocumentText], bool]
+) -> tuple[W, ...] | None:
     """The words that make up a value among `words` (those of its quote, in reading order):
     the shortest runs of them that show it (`shows`, as the quote check reads the value); where
     it stands more than once in as many words, all of them (a longer form beside a shorter one,
     `24. Juni 2022` beside `24.06.2022`, is not looked at). None if the words do not show it
     (it is not written as such, or they are not the words of the quote)."""
 
-    def shown(run: Sequence[ReadWord]) -> bool:
+    def shown(run: Sequence[W]) -> bool:
         return shows(DocumentText(" ".join(word.text for word in run)))
 
     if not words or not shown(words):
@@ -381,9 +392,9 @@ VALUE_RUN = 4
 out (`24. Juni 2022`) or an amount split by the reading (`1.180, 41`)."""
 
 
-def value_on_pages(
-    pages: Mapping[int, Sequence[ReadWord]], shows: Callable[[DocumentText], bool]
-) -> tuple[int, tuple[ReadWord, ...]] | None:
+def value_on_pages[W: Placed](
+    pages: Mapping[int, Sequence[W]], shows: Callable[[DocumentText], bool]
+) -> tuple[int, tuple[W, ...]] | None:
     """Where a value stands among the words read on the pages, for one whose quote was not
     found on them: the shortest runs of words in reading order that show it (`shows`, as
     `value_words`), up to `VALUE_RUN` words; its page and words if it stands at exactly one

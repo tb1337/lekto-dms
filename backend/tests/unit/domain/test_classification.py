@@ -26,6 +26,7 @@ from papiq.core.domain.fields import (
     field_to_json,
 )
 from papiq.core.domain.json_value import JsonValue
+from papiq.core.domain.labels import LabelCheck, LabelOutcome
 from papiq.core.domain.pipeline import Outcome
 from tests.builders import NOW
 
@@ -42,9 +43,20 @@ def test_field_check_round_trip() -> None:
             evidence="31.03.",
             suggestion="2026-03-31",
         ),
+        FieldCheck(
+            field="field:01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
+            outcome=Outcome.OK,
+            confidence=1,
+            value={"amount": "3980.00", "currency": "EUR"},
+            label=LabelCheck("Gesamtbrutto", LabelOutcome.BESIDE),
+        ),
     ]
     assert checks_from_json(checks_to_json(checks)) == checks
     assert checks_from_json(None) == []
+    # A check from before labels has none.
+    data = checks[0].to_json()
+    del data["label"]
+    assert FieldCheck.from_json(data).label is None
 
 
 def test_field_check_rules() -> None:

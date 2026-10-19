@@ -15,7 +15,7 @@ export function pdfjsAssets() {
 	const files = () =>
 		FOLDERS.flatMap((folder) => readdirSync(join(root, folder)).map((name) => `${folder}/${name}`));
 	return {
-		name: 'papiq-pdfjs-assets',
+		name: 'lekto-pdfjs-assets',
 		configureServer(server) {
 			server.middlewares.use((request, response, next) => {
 				const prefix = `${BASE}/pdfjs/`;

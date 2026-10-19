@@ -85,7 +85,7 @@
 	}
 </script>
 
-<svelte:head><title>{m.login_submit()} · p:api:q</title></svelte:head>
+<svelte:head><title>{m.login_submit()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex min-h-screen">
 	<aside class="hidden w-[560px] shrink-0 flex-col justify-between bg-panel p-14 lg:flex">

@@ -174,7 +174,7 @@
 	const fresh = $derived(inbox.summary?.new ?? 0);
 </script>
 
-<svelte:head><title>{m.nav_inbox()} · p:api:q</title></svelte:head>
+<svelte:head><title>{m.nav_inbox()} · {m.app_name()}</title></svelte:head>
 
 <svelte:window ondragenter={dragOver} ondragover={dragOver} ondrop={drop} />
 

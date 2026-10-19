@@ -6,7 +6,7 @@ import { session } from '#lib/session.svelte.ts';
 import { calls, fakeApi, listedOf, OWNER } from '#lib/testing/documents.ts';
 import Page from './+page.svelte';
 
-const state = vi.hoisted(() => ({ url: new URL('http://papiq/ui/documents') }));
+const state = vi.hoisted(() => ({ url: new URL('http://lekto/ui/documents') }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$app/state', () => ({
 	page: {
@@ -17,7 +17,7 @@ vi.mock('$app/state', () => ({
 }));
 
 beforeEach(() => {
-	state.url = new URL('http://papiq/ui/documents');
+	state.url = new URL('http://lekto/ui/documents');
 	session.start({
 		user: { id: OWNER, username: 'tobi', role: 'user' },
 		method: 'password',
@@ -63,7 +63,7 @@ describe('the archive page', () => {
 	});
 
 	it('takes no lane from an older link', async () => {
-		state.url = new URL('http://papiq/ui/documents?lane=yellow');
+		state.url = new URL('http://lekto/ui/documents?lane=yellow');
 		const api = fakeApi({
 			'GET /api/v1/documents': () => ({ items: [], next_cursor: null })
 		});

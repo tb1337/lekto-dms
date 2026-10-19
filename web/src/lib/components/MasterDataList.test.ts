@@ -6,7 +6,7 @@ import { phone } from '#lib/phone.svelte.ts';
 import MasterDataList from './MasterDataList.svelte';
 
 const nav = vi.hoisted(() => ({
-	url: new URL('http://papiq/ui/admin/master-data?tab=contacts'),
+	url: new URL('http://lekto/ui/admin/master-data?tab=contacts'),
 	goto: vi.fn()
 }));
 vi.mock('$app/state', () => ({
@@ -68,7 +68,7 @@ function json(body: unknown) {
 }
 
 beforeEach(() => {
-	nav.url = new URL('http://papiq/ui/admin/master-data?tab=contacts');
+	nav.url = new URL('http://lekto/ui/admin/master-data?tab=contacts');
 	nav.goto.mockReset();
 	fetchMock.mockReset();
 	fetchMock.mockImplementation(async (request) => {
@@ -120,7 +120,7 @@ describe('MasterDataList', () => {
 	});
 
 	it('lists the contacts of a group or one below it, as a link from the Tags tab asks', async () => {
-		nav.url = new URL('http://papiq/ui/admin/master-data?tab=contacts&group=g1');
+		nav.url = new URL('http://lekto/ui/admin/master-data?tab=contacts&group=g1');
 		render(MasterDataList, { kind: 'contacts' });
 		expect(await screen.findByText('Nord Versicherungsgruppe')).toBeTruthy();
 		expect(screen.queryByText('Sparkasse Musterstadt')).toBeNull();
@@ -132,7 +132,7 @@ describe('MasterDataList', () => {
 	});
 
 	it('ignores a filter that names no tag of its kind, and takes it out of the URL', async () => {
-		nav.url = new URL('http://papiq/ui/admin/master-data?tab=contacts&group=gone');
+		nav.url = new URL('http://lekto/ui/admin/master-data?tab=contacts&group=gone');
 		render(MasterDataList, { kind: 'contacts' });
 		expect(await screen.findByText('Nord Versicherungsgruppe')).toBeTruthy();
 		expect(screen.getByText('Sparkasse Musterstadt')).toBeTruthy();

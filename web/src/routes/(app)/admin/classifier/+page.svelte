@@ -61,7 +61,7 @@
 		value === null ? '–' : formatNumber(value, { style: 'percent', maximumFractionDigits: 0 });
 </script>
 
-<svelte:head><title>{m.nav_classifier()} · p:api:q</title></svelte:head>
+<svelte:head><title>{m.nav_classifier()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex max-w-3xl flex-col gap-6">
 	<div class="flex flex-wrap items-center justify-between gap-3">

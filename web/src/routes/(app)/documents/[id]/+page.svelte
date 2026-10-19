@@ -282,7 +282,7 @@
 	);
 </script>
 
-<svelte:head><title>{document?.title ?? m.nav_documents()} · p:api:q</title></svelte:head>
+<svelte:head><title>{document?.title ?? m.nav_documents()} · {m.app_name()}</title></svelte:head>
 
 <!-- From the desktop width on the view fills the window; only its cards scroll. -->
 <div class="flex flex-col gap-4 lg:h-full lg:min-h-0" data-wide>

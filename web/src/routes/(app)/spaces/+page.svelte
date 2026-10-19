@@ -81,7 +81,7 @@
 	}
 </script>
 
-<svelte:head><title>{m.nav_spaces()} · p:api:q</title></svelte:head>
+<svelte:head><title>{m.nav_spaces()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div class="flex flex-wrap items-center justify-between gap-3">

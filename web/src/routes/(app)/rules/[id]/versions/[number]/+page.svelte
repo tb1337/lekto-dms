@@ -46,7 +46,7 @@
 </script>
 
 <svelte:head>
-	<title>{m.rule_version_n({ number })} · p:api:q</title>
+	<title>{m.rule_version_n({ number })} · {m.app_name()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">

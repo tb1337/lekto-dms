@@ -60,7 +60,7 @@
 	let ending = $state(false);
 </script>
 
-<svelte:head><title>{m.nav_settings()} · p:api:q</title></svelte:head>
+<svelte:head><title>{m.nav_settings()} · {m.app_name()}</title></svelte:head>
 
 <div class="mx-auto flex w-full max-w-3xl flex-col gap-6">
 	<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_settings()}</h1>

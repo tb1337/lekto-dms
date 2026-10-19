@@ -6,7 +6,7 @@ import { phone } from '#lib/phone.svelte.ts';
 import TagsPanel from './TagsPanel.svelte';
 
 const nav = vi.hoisted(() => ({
-	url: new URL('http://papiq/ui/admin/master-data?tab=tags'),
+	url: new URL('http://lekto/ui/admin/master-data?tab=tags'),
 	goto: vi.fn()
 }));
 vi.mock('$app/state', () => ({
@@ -53,7 +53,7 @@ function json(body: unknown) {
 }
 
 beforeEach(() => {
-	nav.url = new URL('http://papiq/ui/admin/master-data?tab=tags');
+	nav.url = new URL('http://lekto/ui/admin/master-data?tab=tags');
 	nav.goto.mockReset();
 	localStorage.clear();
 	fetchMock.mockReset();
@@ -131,7 +131,7 @@ describe('TagsPanel', () => {
 	});
 
 	it('shows the kind the URL names and puts another choice there', async () => {
-		nav.url = new URL('http://papiq/ui/admin/master-data?tab=tags&kind=topics');
+		nav.url = new URL('http://lekto/ui/admin/master-data?tab=tags&kind=topics');
 		render(TagsPanel);
 		expect(await screen.findByText('Work')).toBeTruthy();
 		expect(screen.getAllByRole('heading').map((heading) => heading.textContent?.trim())).toEqual([
@@ -153,7 +153,7 @@ describe('TagsPanel', () => {
 			screen.getByRole('button', { name: m.tree_collapse({ name: m.master_contact_groups() }) })
 		);
 		expect(screen.queryByText('Insurer')).toBeNull();
-		expect(JSON.parse(localStorage.getItem('papiq.master-data.tags.collapsed')!)).toEqual([
+		expect(JSON.parse(localStorage.getItem('lekto.master-data.tags.collapsed')!)).toEqual([
 			'contact-groups'
 		]);
 		first.unmount();
@@ -164,19 +164,19 @@ describe('TagsPanel', () => {
 			screen.getByRole('button', { name: m.tree_expand({ name: m.master_contact_groups() }) })
 		);
 		expect(screen.getByText('Insurer')).toBeTruthy();
-		expect(localStorage.getItem('papiq.master-data.tags.collapsed')).toBeNull();
+		expect(localStorage.getItem('lekto.master-data.tags.collapsed')).toBeNull();
 	});
 
 	it('shows a kind the URL names open, though collapsed in this browser', async () => {
-		localStorage.setItem('papiq.master-data.tags.collapsed', '["topics"]');
-		nav.url = new URL('http://papiq/ui/admin/master-data?tab=tags&kind=topics');
+		localStorage.setItem('lekto.master-data.tags.collapsed', '["topics"]');
+		nav.url = new URL('http://lekto/ui/admin/master-data?tab=tags&kind=topics');
 		render(TagsPanel);
 		expect(await screen.findByText('Work')).toBeTruthy();
 		// Nothing to collapse while it is the only one.
 		expect(
 			screen.queryByRole('button', { name: m.tree_expand({ name: m.master_topics() }) })
 		).toBeNull();
-		expect(localStorage.getItem('papiq.master-data.tags.collapsed')).toBe('["topics"]');
+		expect(localStorage.getItem('lekto.master-data.tags.collapsed')).toBe('["topics"]');
 	});
 
 	it('points to the list of a section only while it is open', async () => {

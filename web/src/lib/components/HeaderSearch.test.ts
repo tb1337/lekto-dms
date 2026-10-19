@@ -5,7 +5,7 @@ import { goto } from '$app/navigation';
 import { m } from '#lib/paraglide/messages.js';
 import HeaderSearch from './HeaderSearch.svelte';
 
-const state = vi.hoisted(() => ({ url: new URL('http://papiq/ui/inbox') }));
+const state = vi.hoisted(() => ({ url: new URL('http://lekto/ui/inbox') }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$app/state', () => ({
 	page: {
@@ -17,7 +17,7 @@ vi.mock('$app/state', () => ({
 
 beforeEach(() => {
 	vi.mocked(goto).mockClear();
-	state.url = new URL('http://papiq/ui/inbox');
+	state.url = new URL('http://lekto/ui/inbox');
 });
 
 describe('HeaderSearch', () => {
@@ -29,7 +29,7 @@ describe('HeaderSearch', () => {
 	});
 
 	it('keeps the filters of the document view, the sort goes with the search', async () => {
-		state.url = new URL('http://papiq/ui/documents?q=alt&tag=7&sort=title');
+		state.url = new URL('http://lekto/ui/documents?q=alt&tag=7&sort=title');
 		render(HeaderSearch);
 		const field = screen.getByRole('searchbox', { name: m.header_search_label() });
 		expect((field as HTMLInputElement).value).toBe('alt');

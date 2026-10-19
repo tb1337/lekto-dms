@@ -624,7 +624,7 @@ describe('the topic', () => {
 		await closed();
 	});
 
-	it('shows a topic Papiq only suggests as a card; a click takes it', async () => {
+	it('shows a topic Lekto only suggests as a card; a click takes it', async () => {
 		const suggested = {
 			document: {},
 			open: [],

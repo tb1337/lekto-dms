@@ -9,7 +9,7 @@ import { calls, fakeApi, inboxItem, json, OWNER, summaryOf } from '#lib/testing/
 import { uploads } from '#lib/upload.svelte.ts';
 import Page from './+page.svelte';
 
-const state = vi.hoisted(() => ({ url: new URL('http://papiq/ui/inbox') }));
+const state = vi.hoisted(() => ({ url: new URL('http://lekto/ui/inbox') }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$app/state', () => ({
 	page: {
@@ -75,7 +75,7 @@ function signIn(role: User['role'] = 'user') {
 }
 
 beforeEach(() => {
-	state.url = new URL('http://papiq/ui/inbox');
+	state.url = new URL('http://lekto/ui/inbox');
 	phone.override(false);
 	signIn();
 });
@@ -114,7 +114,7 @@ describe('inbox tabs', () => {
 	});
 
 	it('shows the tab of the URL', async () => {
-		state.url = new URL('http://papiq/ui/inbox?tab=intervene');
+		state.url = new URL('http://lekto/ui/inbox?tab=intervene');
 		const api = start([inboxItem('intervene')], summaryOf({ intervene: 1 }));
 		await screen.findByText(m.lane_red());
 		expect(calls(api)).toContain('GET /api/v1/inbox?tab=intervene');
@@ -123,7 +123,7 @@ describe('inbox tabs', () => {
 	});
 
 	it('takes an unknown tab for everything open', async () => {
-		state.url = new URL('http://papiq/ui/inbox?tab=bogus');
+		state.url = new URL('http://lekto/ui/inbox?tab=bogus');
 		const api = start([]);
 		await screen.findByText(m.inbox_empty());
 		expect(calls(api)).toContain('GET /api/v1/inbox');
@@ -131,7 +131,7 @@ describe('inbox tabs', () => {
 	});
 
 	it('says per tab that it is empty', async () => {
-		state.url = new URL('http://papiq/ui/inbox?tab=done');
+		state.url = new URL('http://lekto/ui/inbox?tab=done');
 		start([]);
 		expect(await screen.findByText(m.inbox_empty_done())).toBeTruthy();
 	});
@@ -201,7 +201,7 @@ describe('inbox rows', () => {
 	});
 
 	it('tells how, when and by whom a document left, and offers a seen one as new again', async () => {
-		state.url = new URL('http://papiq/ui/inbox?tab=done');
+		state.url = new URL('http://lekto/ui/inbox?tab=done');
 		const api = start(
 			[
 				inboxItem('done', { id: 's1', title: 'Gesehen' }),
@@ -233,7 +233,7 @@ describe('inbox rows', () => {
 	});
 
 	it('starts done over after "mark as new", not on with the old cursor', async () => {
-		state.url = new URL('http://papiq/ui/inbox?tab=done');
+		state.url = new URL('http://lekto/ui/inbox?tab=done');
 		let renewed = false;
 		const api = fakeApi({
 			'GET /api/v1/inbox': (_, url) => {
@@ -262,7 +262,7 @@ describe('inbox rows', () => {
 	});
 
 	it('starts over when the next page no longer follows', async () => {
-		state.url = new URL('http://papiq/ui/inbox?tab=done');
+		state.url = new URL('http://lekto/ui/inbox?tab=done');
 		let pages = 0;
 		const api = fakeApi({
 			'GET /api/v1/inbox': (_, url) => {

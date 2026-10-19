@@ -21,7 +21,7 @@ const trained = {
 		classes: { contact: 80, document_type: 16, tags: 9 },
 		learned_identifiers: 42,
 		accuracy: { tested: 303, contact: 0.91, document_type: 0.87 },
-		method: 'scikit-learn 1.9.1 papiq-tfidf-logreg/1'
+		method: 'scikit-learn 1.9.1 lekto-tfidf-logreg/1'
 	},
 	confirmed: 1520,
 	since: 5,

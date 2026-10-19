@@ -20,7 +20,7 @@
 	];
 </script>
 
-<svelte:head><title>{m.dev_components_title()} · p:api:q</title></svelte:head>
+<svelte:head><title>{m.dev_components_title()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-10">
 	<div class="flex flex-col gap-1">

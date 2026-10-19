@@ -211,7 +211,7 @@
 	);
 	const enablesTopic = $derived(topic !== '' && contact !== '' && !enabledTopics.includes(topic));
 	const topicCheck = $derived(evidence.get('topic')?.check);
-	// Papiq suggests a topic it did not set (a topic never waits): a card with the candidates.
+	// Lekto suggests a topic it did not set (a topic never waits): a card with the candidates.
 	const topicAdvice = $derived(
 		topic === '' &&
 			topicCheck !== undefined &&

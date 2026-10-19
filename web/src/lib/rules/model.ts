@@ -3,7 +3,7 @@
  * and action, so that errors and focus find their block. Values keep the API's JSON form, so
  * that `toApi(fromApi(definition))` gives the definition back unchanged.
  *
- * The tables and limits mirror `papiq.core.domain.rules`; the API checks everything again.
+ * The tables and limits mirror `lekto.core.domain.rules`; the API checks everything again.
  */
 import type { components } from '#lib/api/schema.ts';
 import { isMoney, isPeriod } from '#lib/fields.ts';

@@ -166,7 +166,7 @@
 	);
 </script>
 
-<svelte:head><title>{m.nav_documents()} · p:api:q</title></svelte:head>
+<svelte:head><title>{m.nav_documents()} · {m.app_name()}</title></svelte:head>
 
 {#snippet snippetLine(item: Item)}
 	{#if item.snippet.length > 0}

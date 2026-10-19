@@ -31,7 +31,7 @@ export function isChange(method: string): boolean {
 }
 
 function isSignIn(url: string): boolean {
-	const path = new URL(url, 'http://papiq').pathname;
+	const path = new URL(url, 'http://lekto').pathname;
 	return SIGN_IN_PATHS.includes(path);
 }
 

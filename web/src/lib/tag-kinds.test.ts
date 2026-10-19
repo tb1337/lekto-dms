@@ -33,7 +33,7 @@ describe('the Tags tab', () => {
 	it('remembers collapsed sections, and forgets garbage or missing storage', () => {
 		rememberCollapsed(['topics', 'tags']);
 		expect(rememberedCollapsed()).toEqual(['tags', 'topics']);
-		localStorage.setItem('papiq.master-data.tags.collapsed', '{"no": 1');
+		localStorage.setItem('lekto.master-data.tags.collapsed', '{"no": 1');
 		expect(rememberedCollapsed()).toEqual([]);
 		vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
 			throw new Error('blocked');

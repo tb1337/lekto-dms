@@ -17,7 +17,7 @@ export const TAG_KIND_ORDER: readonly TagKind[] = [
 	'topics'
 ];
 
-const COLLAPSED_KEY = 'papiq.master-data.tags.collapsed';
+const COLLAPSED_KEY = 'lekto.master-data.tags.collapsed';
 
 /** The kind the URL filters by; null (all kinds) for none or an unknown one. */
 export function kindFilter(params: Pick<URLSearchParams, 'get'>): TagKind | null {

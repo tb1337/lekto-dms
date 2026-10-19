@@ -6,7 +6,7 @@ import type { Contact } from '#lib/masterdata.svelte.ts';
 
 let fetching: Promise<boolean> | null = null;
 
-/** Whether Papiq fetches logos from websites (`LEKTO_LOGO_FETCH`); false if it cannot tell. */
+/** Whether Lekto fetches logos from websites (`LEKTO_LOGO_FETCH`); false if it cannot tell. */
 export function logoFetching(): Promise<boolean> {
 	fetching ??= unwrap(api.GET('/api/v1/pipeline')).then(
 		(pipeline) => pipeline.logo_fetch,

@@ -17,10 +17,10 @@ describe('the scope setting', () => {
 		scope.set(true);
 		expect(scope.allUsers).toBe(true);
 		expect(scope.query).toBe(true);
-		expect(localStorage.getItem('papiq.scope.all-users')).toBe('1');
+		expect(localStorage.getItem('lekto.scope.all-users')).toBe('1');
 		scope.set(false);
 		expect(scope.query).toBeUndefined();
-		expect(localStorage.getItem('papiq.scope.all-users')).toBeNull();
+		expect(localStorage.getItem('lekto.scope.all-users')).toBeNull();
 	});
 
 	it('counts as off for anyone but an admin', () => {

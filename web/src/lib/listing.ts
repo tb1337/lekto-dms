@@ -22,9 +22,9 @@ export const SEARCH_SORTS: readonly Sort[] = ['relevance', ...LIST_SORTS];
 const DEFAULT: Record<'list' | 'search', Sort> = { list: '-document_date', search: 'relevance' };
 
 const KEYS = {
-	list: 'papiq.documents.sort.list',
-	search: 'papiq.documents.sort.search',
-	view: 'papiq.documents.view'
+	list: 'lekto.documents.sort.list',
+	search: 'lekto.documents.sort.search',
+	view: 'lekto.documents.view'
 };
 
 function stored(key: string): string | null {

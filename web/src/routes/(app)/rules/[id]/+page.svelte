@@ -82,7 +82,7 @@
 	}
 </script>
 
-<svelte:head><title>{rule?.name ?? m.nav_rules()} · p:api:q</title></svelte:head>
+<svelte:head><title>{rule?.name ?? m.nav_rules()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-6">
 	<a

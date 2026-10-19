@@ -6,7 +6,7 @@
 import { canListAllUsers } from '#lib/permissions.ts';
 import { session } from '#lib/session.svelte.ts';
 
-const KEY = 'papiq.scope.all-users';
+const KEY = 'lekto.scope.all-users';
 
 function stored(): boolean {
 	try {

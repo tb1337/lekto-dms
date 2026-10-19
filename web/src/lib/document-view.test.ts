@@ -38,16 +38,16 @@ const place = { page: 2, boxes: [{ x: 0.1, y: 0.5, width: 0.2, height: 0.02 }] }
 
 describe('tabs', () => {
 	it('come from the URL, the details without one', () => {
-		expect(tabOf(new URL('http://papiq/ui/documents/1'))).toBe('details');
-		expect(tabOf(new URL('http://papiq/ui/documents/1?tab=log'))).toBe('log');
-		expect(tabOf(new URL('http://papiq/ui/documents/1?tab=nonsense'))).toBe('details');
+		expect(tabOf(new URL('http://lekto/ui/documents/1'))).toBe('details');
+		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=log'))).toBe('log');
+		expect(tabOf(new URL('http://lekto/ui/documents/1?tab=nonsense'))).toBe('details');
 	});
 
 	it('keep the other parameters', () => {
-		const url = new URL('http://papiq/ui/documents/1?from=inbox&tab=log');
+		const url = new URL('http://lekto/ui/documents/1?from=inbox&tab=log');
 		expect(tabHref(url, 'content')).toBe('/ui/documents/1?from=inbox&tab=content');
 		expect(tabHref(url, 'details')).toBe('/ui/documents/1?from=inbox');
-		expect(tabHref(new URL('http://papiq/ui/documents/1?tab=log'), 'details')).toBe(
+		expect(tabHref(new URL('http://lekto/ui/documents/1?tab=log'), 'details')).toBe(
 			'/ui/documents/1'
 		);
 	});

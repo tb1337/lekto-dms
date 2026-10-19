@@ -83,7 +83,9 @@
 	}
 </script>
 
-<svelte:head><title>{m.rule_edit_title({ name: rule?.name ?? '' })} · p:api:q</title></svelte:head>
+<svelte:head
+	><title>{m.rule_edit_title({ name: rule?.name ?? '' })} · {m.app_name()}</title></svelte:head
+>
 
 <div class="flex flex-col gap-6">
 	<a

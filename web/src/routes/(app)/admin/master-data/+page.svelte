@@ -58,7 +58,7 @@
 	}
 </script>
 
-<svelte:head><title>{m.nav_master_data()} · p:api:q</title></svelte:head>
+<svelte:head><title>{m.nav_master_data()} · {m.app_name()}</title></svelte:head>
 
 <div class="flex flex-col gap-4 sm:gap-6">
 	<div class="flex items-center justify-between gap-3">

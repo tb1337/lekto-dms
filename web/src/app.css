@@ -7,7 +7,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Design tokens of p:api:q, direction "Papier" (chosen 08.10.2026): warm paper white, petrol as the
+ * Design tokens of Lekto, direction "Papier" (chosen 08.10.2026): warm paper white, petrol as the
  * one accent, round shapes, airy spacing. Every colour pair used for text meets WCAG AA (4.5:1) in
  * light and dark. Lanes are never told apart by colour alone: the badge carries an icon and text.
  */

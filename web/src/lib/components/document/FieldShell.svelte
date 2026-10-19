@@ -18,7 +18,7 @@
 
 	// One field of the document with what backs it. A field that waits for a decision is a
 	// card with the confidence, reason and quote, and what the signals proposed (a click takes
-	// one); one Papiq only suggests without making anyone wait (`advice`, the topic) is a calm
+	// one); one Lekto only suggests without making anyone wait (`advice`, the topic) is a calm
 	// card with the reason and the candidates; any other is a label and the input, with the
 	// page of its quote and where its value comes from. Hovering or focusing it marks the quote
 	// in the viewer.

@@ -76,7 +76,7 @@ test('every area opens, and the dialogs create things', async ({ page }) => {
 	await page.getByRole('button', { name: 'New token' }).click();
 	await page.getByRole('textbox', { name: 'Name' }).fill(NAME);
 	await page.getByRole('button', { name: 'Create token' }).click();
-	await expect(page.getByTestId('secret')).toContainText('papiq_');
+	await expect(page.getByTestId('secret')).toContainText('lekto_');
 	await page.getByRole('button', { name: 'I have stored it' }).click();
 	await page.getByRole('button', { name: `Revoke ${NAME}` }).click();
 	await page.getByRole('alertdialog').getByRole('button', { name: 'Revoke' }).click();

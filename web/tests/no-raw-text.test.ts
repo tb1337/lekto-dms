@@ -13,9 +13,9 @@ const ALLOWED_FILES = new Set(['/src/lib/components/Logo.svelte']);
 // Attributes whose value a user reads or hears.
 const READ_ATTRIBUTES = new Set(['alt', 'title', 'placeholder', 'aria-label', 'aria-description']);
 
-/** Text without letters or the product name only, such as " · p:api:q". */
+/** Text with letters, not only separators and numbers such as " · " or "42". */
 function isText(value: string): boolean {
-	return /\p{L}/u.test(value.replaceAll('p:api:q', ''));
+	return /\p{L}/u.test(value);
 }
 
 interface Node {
@@ -71,6 +71,6 @@ describe('markup', () => {
 	it('notices raw text', () => {
 		expect(findings('<p>Hello</p>')).toEqual(['Hello']);
 		expect(findings('<input placeholder="Name" />')).toEqual(['placeholder="Name"']);
-		expect(findings('<p>{m.x()} · p:api:q</p><p>42</p>')).toEqual([]);
+		expect(findings('<p>{m.x()} · {m.app_name()}</p><p>42</p>')).toEqual([]);
 	});
 });

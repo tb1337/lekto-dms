@@ -9,7 +9,7 @@ import { session, type User } from '#lib/session.svelte.ts';
 import AppShell from './AppShell.svelte';
 
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
-vi.mock('$app/state', () => ({ page: { url: new URL('http://papiq/ui/inbox') } }));
+vi.mock('$app/state', () => ({ page: { url: new URL('http://lekto/ui/inbox') } }));
 
 const children = createRawSnippet(() => ({ render: () => '<p>content</p>' }));
 

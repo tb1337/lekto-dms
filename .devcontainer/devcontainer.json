@@ -1,5 +1,5 @@
 {
-  "name": "papiq",
+  "name": "lekto",
   "dockerComposeFile": "compose.yml",
   "service": "dev",
   "workspaceFolder": "/workspaces/papiq",

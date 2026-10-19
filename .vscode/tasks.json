@@ -1,41 +1,41 @@
 {
-	// Papiq as a development instance inside the devcontainer (see .devcontainer/README.md).
+	// Lekto as a development instance inside the devcontainer (see .devcontainer/README.md).
 	// Every task runs in /workspaces/papiq with the settings of .devcontainer/live.env (not in the
-	// repository; "Papiq: Devinstanz einrichten" creates it). Nothing starts on its own.
+	// repository; "Lekto: Devinstanz einrichten" creates it). Nothing starts on its own.
 	"version": "2.0.0",
 	"options": {
 		"shell": { "executable": "/bin/bash", "args": ["-c"] }
 	},
 	"tasks": [
 		{
-			"label": "Papiq: Devinstanz einrichten",
-			"detail": "Once: live.env from the example, database papiq_live, bucket papiq-live",
+			"label": "Lekto: Devinstanz einrichten",
+			"detail": "Once: live.env from the example, database lekto_live, bucket lekto-live",
 			"type": "shell",
 			"command": ".devcontainer/live-setup.sh",
 			"problemMatcher": []
 		},
 		{
-			"label": "Papiq: Schema migrieren",
+			"label": "Lekto: Schema migrieren",
 			"detail": "Bring the database of the dev instance to the newest schema",
 			"type": "shell",
 			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m lekto.composition migrate",
 			"problemMatcher": []
 		},
 		{
-			"label": "Papiq: UI bauen",
+			"label": "Lekto: UI bauen",
 			"detail": "Build the web UI into web/build; the API serves it below /ui",
 			"type": "shell",
 			"command": "cd web && pnpm build",
 			"problemMatcher": []
 		},
 		{
-			"label": "Papiq: API",
+			"label": "Lekto: API",
 			"detail": "REST API, MCP and the built UI on http://localhost:8000/ui/",
 			"type": "shell",
 			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m lekto.composition api",
 			"isBackground": true,
 			"problemMatcher": {
-				"owner": "papiq",
+				"owner": "lekto",
 				"pattern": { "regexp": "^$" },
 				"background": {
 					"activeOnStart": true,
@@ -43,18 +43,18 @@
 					"endsPattern": "Application startup complete|Uvicorn running on"
 				}
 			},
-			"presentation": { "group": "papiq", "panel": "dedicated", "reveal": "always" },
+			"presentation": { "group": "lekto", "panel": "dedicated", "reveal": "always" },
 			"dependsOrder": "sequence",
-			"dependsOn": ["Papiq: Schema migrieren", "Papiq: UI bauen"]
+			"dependsOn": ["Lekto: Schema migrieren", "Lekto: UI bauen"]
 		},
 		{
-			"label": "Papiq: Worker",
+			"label": "Lekto: Worker",
 			"detail": "Pipeline, events, webhooks, search index",
 			"type": "shell",
 			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m lekto.composition worker",
 			"isBackground": true,
 			"problemMatcher": {
-				"owner": "papiq",
+				"owner": "lekto",
 				"pattern": { "regexp": "^$" },
 				"background": {
 					"activeOnStart": true,
@@ -62,31 +62,31 @@
 					"endsPattern": "worker started"
 				}
 			},
-			"presentation": { "group": "papiq", "panel": "dedicated", "reveal": "always" },
-			"dependsOn": ["Papiq: Schema migrieren"]
+			"presentation": { "group": "lekto", "panel": "dedicated", "reveal": "always" },
+			"dependsOn": ["Lekto: Schema migrieren"]
 		},
 		{
-			"label": "Papiq starten",
+			"label": "Lekto starten",
 			"detail": "Migrate, build the UI, then API and worker side by side",
 			"dependsOrder": "parallel",
-			"dependsOn": ["Papiq: API", "Papiq: Worker"],
+			"dependsOn": ["Lekto: API", "Lekto: Worker"],
 			"problemMatcher": []
 		},
 		{
-			"label": "Papiq stoppen",
+			"label": "Lekto stoppen",
 			"detail": "End the API and the worker tasks",
 			"type": "shell",
-			"command": "echo '${input:stopApi}${input:stopWorker}' >/dev/null; echo 'Papiq stopped'",
+			"command": "echo '${input:stopApi}${input:stopWorker}' >/dev/null; echo 'Lekto stopped'",
 			"problemMatcher": []
 		},
 		{
-			"label": "Papiq: UI dev",
+			"label": "Lekto: UI dev",
 			"detail": "Vite on http://localhost:5173/ui/ with /api proxied to the API on :8000",
 			"type": "shell",
 			"command": "cd web && pnpm dev",
 			"isBackground": true,
 			"problemMatcher": {
-				"owner": "papiq",
+				"owner": "lekto",
 				"pattern": { "regexp": "^$" },
 				"background": {
 					"activeOnStart": true,
@@ -94,31 +94,31 @@
 					"endsPattern": "Local:"
 				}
 			},
-			"presentation": { "group": "papiq", "panel": "dedicated" }
+			"presentation": { "group": "lekto", "panel": "dedicated" }
 		},
 		{
-			"label": "Papiq: Suche neu aufbauen",
+			"label": "Lekto: Suche neu aufbauen",
 			"detail": "Rebuild the search index of the dev instance (reindex)",
 			"type": "shell",
 			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m lekto.composition reindex",
 			"problemMatcher": []
 		},
 		{
-			"label": "Papiq: Seitenbilder nachholen",
+			"label": "Lekto: Seitenbilder nachholen",
 			"detail": "Queue the page images of documents from before the pages node (render-pages)",
 			"type": "shell",
 			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m lekto.composition render-pages",
 			"problemMatcher": []
 		},
 		{
-			"label": "Papiq: Codes nachholen",
+			"label": "Lekto: Codes nachholen",
 			"detail": "Queue reading the bar and QR codes of documents from before code reading (read-codes)",
 			"type": "shell",
 			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m lekto.composition read-codes",
 			"problemMatcher": []
 		},
 		{
-			"label": "Papiq: Logos holen",
+			"label": "Lekto: Logos holen",
 			"detail": "Queue fetching the logos of contacts without one from their websites (fetch-logos; needs LEKTO_LOGO_FETCH=true)",
 			"type": "shell",
 			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m lekto.composition fetch-logos",
@@ -151,13 +151,13 @@
 			"id": "stopApi",
 			"type": "command",
 			"command": "workbench.action.tasks.terminate",
-			"args": "Papiq: API"
+			"args": "Lekto: API"
 		},
 		{
 			"id": "stopWorker",
 			"type": "command",
 			"command": "workbench.action.tasks.terminate",
-			"args": "Papiq: Worker"
+			"args": "Lekto: Worker"
 		}
 	]
 }

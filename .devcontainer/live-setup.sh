@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Prepare the development instance in the devcontainer, once; safe to run again:
 #   - .devcontainer/live.env from live.env.example, with a fresh LEKTO_SECRET_KEY
-#   - the database papiq_live (the bucket papiq-live is created by garage-init at every start,
-#     the search index by Papiq itself)
-# Run from the repository root (the VS Code task "Papiq: Devinstanz einrichten" does).
+#   - the database lekto_live (the bucket lekto-live is created by garage-init at every start,
+#     the search index by Lekto itself)
+# Run from the repository root (the VS Code task "Lekto: Devinstanz einrichten" does).
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -53,4 +53,4 @@ async def main() -> None:
 
 asyncio.run(main())
 PY
-echo "Done. Next: the task 'Papiq starten'."
+echo "Done. Next: the task 'Lekto starten'."

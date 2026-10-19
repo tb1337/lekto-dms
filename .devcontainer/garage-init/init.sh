@@ -65,7 +65,7 @@ if [ "$(status GET "/v2/GetKeyInfo?id=$LEKTO_S3_ACCESS_KEY_ID")" = "200" ]; then
 else
   echo "Importing access key $LEKTO_S3_ACCESS_KEY_ID"
   api POST /v2/ImportKey \
-    "{\"name\": \"papiq-dev\", \"accessKeyId\": \"$LEKTO_S3_ACCESS_KEY_ID\", \"secretAccessKey\": \"$LEKTO_S3_SECRET_ACCESS_KEY\"}" \
+    "{\"name\": \"lekto-dev\", \"accessKeyId\": \"$LEKTO_S3_ACCESS_KEY_ID\", \"secretAccessKey\": \"$LEKTO_S3_SECRET_ACCESS_KEY\"}" \
     >/dev/null
 fi
 

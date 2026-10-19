@@ -2,6 +2,8 @@ import { render, screen, within } from '@testing-library/svelte';
 import { createRawSnippet } from 'svelte';
 import { describe, expect, it } from 'vitest';
 import type { components } from '#lib/api/schema.ts';
+import { formatDate } from '#lib/i18n.ts';
+import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { listedOf } from '#lib/testing/documents.ts';
 import DocumentCard from './DocumentCard.svelte';
@@ -36,6 +38,48 @@ describe('the archive', () => {
 	it('says nothing of the inbox for a document that left it', () => {
 		render(DocumentCard, { document: listed({ in_inbox: false, lane: 'green' }), lookup: null });
 		expect(screen.queryByRole('link', { name: m.in_inbox() })).toBeNull();
+	});
+
+	it('shows the contact in the head, the chips on the first page, then title, type and date', () => {
+		const lookup = {
+			contacts: [{ id: 'c1', name: 'Stadtwerke Süd', group_ids: ['g1'] }],
+			documentTypes: [{ id: 'k1', name: 'Rechnung', group_ids: [], icon: 'receipt' }],
+			tags: [
+				{ id: 't1', name: 'zu bezahlen', path: ['zu bezahlen'], scope: 'document', shown: true },
+				{ id: 'g1', name: 'Versorger', path: ['Versorger'], scope: 'contact', shown: true }
+			],
+			fields: [],
+			spaces: [],
+			users: []
+		} as unknown as Lookup;
+		const { container } = render(DocumentCard, {
+			document: listed({
+				contact_id: 'c1',
+				document_type_id: 'k1',
+				tag_ids: ['t1'],
+				document_date: '2026-10-01',
+				page_count: 2
+			}),
+			lookup
+		});
+		const link = screen.getByRole('link', { name: /Stromrechnung/ });
+		const [head, page, text] = [...link.children];
+		expect(within(head as HTMLElement).getByText('Stadtwerke Süd')).toBeTruthy();
+		expect(head.getAttribute('title')).toBe('Stadtwerke Süd');
+		// The tag and the contact's group stand on the page, with its page count.
+		expect(within(page as HTMLElement).getByText('zu bezahlen')).toBeTruthy();
+		expect(within(page as HTMLElement).getByText('Versorger')).toBeTruthy();
+		expect(within(page as HTMLElement).getByText(m.doc_pages_short({ count: 2 }))).toBeTruthy();
+		expect(text.textContent).toContain('Stromrechnung');
+		expect(text.textContent).toContain('Rechnung');
+		expect(text.textContent).toContain(formatDate('2026-10-01'));
+		expect(container.querySelector('[data-lane]')).toBeNull();
+	});
+
+	it('keeps the head without a contact, so that the first pages stand level', () => {
+		render(DocumentCard, { document: listed({ contact_id: null }), lookup: null });
+		const link = screen.getByRole('link', { name: /Stromrechnung/ });
+		expect(link.children[0].textContent?.trim()).toBe(m.doc_no_contact());
 	});
 
 	it('shows no lane in a row, and what stands beside its link', () => {

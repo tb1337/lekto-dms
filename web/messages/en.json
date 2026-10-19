@@ -780,6 +780,8 @@
 	"doc_next": "Next document",
 	"doc_uploaded": "uploaded {date}",
 	"doc_pages": "pages: {count}",
+	"doc_pages_short": "{count} p.",
+	"doc_no_contact": "No contact",
 	"doc_processing": "Running: {node} · step {done} of {total}",
 	"processing_progress": "Processing progress",
 	"doc_processing_vision": "The VLM is reading the pages · step {done} of {total}",

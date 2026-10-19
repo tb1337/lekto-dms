@@ -11,21 +11,21 @@ from typing import Any
 
 import pytest
 
-from papiq.adapters.outbound.memory import FakeLanguageModel, FakeOcr, FakeParser, FakeTextLocator
-from papiq.adapters.outbound.memory.processing import FAKE_PDF
-from papiq.adapters.outbound.ocrmypdf.hocr import hocr_words
-from papiq.adapters.outbound.regex import RegexPatternMatcher
-from papiq.core.domain.classification import TITLE, FieldCheck, checks_from_json, field_key
-from papiq.core.domain.documents import UNSET, Document, DocumentChanges
-from papiq.core.domain.errors import LanguageModelError
-from papiq.core.domain.events import DocumentFiled
-from papiq.core.domain.exchanges import RunExchange, exchanges_from_json
-from papiq.core.domain.fields import FieldDefinition, FieldType, Money
-from papiq.core.domain.identifiers import Identifier, IdentifierKind
-from papiq.core.domain.json_value import JsonObject, JsonValue
-from papiq.core.domain.locations import Box, Location
-from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
-from papiq.core.domain.pipeline import (
+from lekto.adapters.outbound.memory import FakeLanguageModel, FakeOcr, FakeParser, FakeTextLocator
+from lekto.adapters.outbound.memory.processing import FAKE_PDF
+from lekto.adapters.outbound.ocrmypdf.hocr import hocr_words
+from lekto.adapters.outbound.regex import RegexPatternMatcher
+from lekto.core.domain.classification import TITLE, FieldCheck, checks_from_json, field_key
+from lekto.core.domain.documents import UNSET, Document, DocumentChanges
+from lekto.core.domain.errors import LanguageModelError
+from lekto.core.domain.events import DocumentFiled
+from lekto.core.domain.exchanges import RunExchange, exchanges_from_json
+from lekto.core.domain.fields import FieldDefinition, FieldType, Money
+from lekto.core.domain.identifiers import Identifier, IdentifierKind
+from lekto.core.domain.json_value import JsonObject, JsonValue
+from lekto.core.domain.locations import Box, Location
+from lekto.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
+from lekto.core.domain.pipeline import (
     Lane,
     Node,
     NodeResult,
@@ -34,29 +34,29 @@ from papiq.core.domain.pipeline import (
     ProcessingHistory,
     ProcessingStatus,
 )
-from papiq.core.domain.reading import PageReading, PageWords, reading_to_json, readings_to_json
-from papiq.core.domain.users import Role
-from papiq.core.domain.verdict import Thresholds
-from papiq.core.ports.llm import StructuredRequest
-from papiq.core.services.classification.nodes import (
+from lekto.core.domain.reading import PageReading, PageWords, reading_to_json, readings_to_json
+from lekto.core.domain.users import Role
+from lekto.core.domain.verdict import Thresholds
+from lekto.core.ports.llm import StructuredRequest
+from lekto.core.services.classification.nodes import (
     NO_MODEL,
     ClassificationPolicy,
     FieldsNode,
     JudgeNode,
     LlmSignal,
 )
-from papiq.core.services.classification.prompts import EXTRACT_SYSTEM, PROPOSE_SYSTEM
-from papiq.core.services.classification.signals import (
+from lekto.core.services.classification.prompts import EXTRACT_SYSTEM, PROPOSE_SYSTEM
+from lekto.core.services.classification.signals import (
     ABSTAINED,
     ClassifierSignal,
     FactsResult,
     FactsSignal,
     NeighboursSignal,
 )
-from papiq.core.services.nodes import OcrNode, ParseNode
-from papiq.core.services.objects import archive_key, exchanges_key, reading_key, text_key
-from papiq.core.services.pipeline import MetadataResult, NodeExecutor
-from papiq.core.services.rules.nodes import ApplyRulesNode
+from lekto.core.services.nodes import OcrNode, ParseNode
+from lekto.core.services.objects import archive_key, exchanges_key, reading_key, text_key
+from lekto.core.services.pipeline import MetadataResult, NodeExecutor
+from lekto.core.services.rules.nodes import ApplyRulesNode
 from tests import builders
 from tests.builders import NOW, SAMPLES, PlaceholderNode, incoming
 from tests.scans import BAD_TABLE, PAYSLIP, PAYSLIP_TEXT, ScanLine, hocr, scan

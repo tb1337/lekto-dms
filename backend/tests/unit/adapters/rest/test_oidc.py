@@ -6,13 +6,13 @@ from dataclasses import replace
 import httpx2
 import pytest
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.adapters.outbound.memory import FakeOidcProvider, ManualClock
-from papiq.composition.container import build_memory_container, build_services
-from papiq.core.domain.encoding import query_parameters
-from papiq.core.domain.errors import AuthenticationError
-from papiq.core.domain.identity import ExternalIdentity
-from papiq.core.domain.ids import UserId
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.adapters.outbound.memory import FakeOidcProvider, ManualClock
+from lekto.composition.container import build_memory_container, build_services
+from lekto.core.domain.encoding import query_parameters
+from lekto.core.domain.errors import AuthenticationError
+from lekto.core.domain.identity import ExternalIdentity
+from lekto.core.domain.ids import UserId
 from tests import builders
 from tests.api import auth
 from tests.builders import NOW

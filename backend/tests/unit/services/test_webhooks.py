@@ -5,17 +5,17 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.core.domain.errors import (
+from lekto.core.domain.errors import (
     AuthenticationError,
     ConflictError,
     NotFoundError,
     ValidationError,
 )
-from papiq.core.domain.ids import WebhookId, new_id
-from papiq.core.domain.users import Role
-from papiq.core.domain.webhooks import DISABLED_FAILING, new_secret
-from papiq.core.services.webhooks import WebhookService
-from papiq.core.services.webhooks.management import secret_context
+from lekto.core.domain.ids import WebhookId, new_id
+from lekto.core.domain.users import Role
+from lekto.core.domain.webhooks import DISABLED_FAILING, new_secret
+from lekto.core.services.webhooks import WebhookService
+from lekto.core.services.webhooks.management import secret_context
 from tests import builders
 from tests.unit.services.support import World
 

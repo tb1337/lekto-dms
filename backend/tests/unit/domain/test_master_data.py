@@ -2,9 +2,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from papiq.core.domain.master_data import (
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
+from lekto.core.domain.master_data import (
     MAX_ALIASES,
     MAX_DESCRIPTION,
     MAX_GROUPS,

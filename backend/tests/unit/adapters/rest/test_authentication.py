@@ -9,11 +9,11 @@ import httpx2
 import pytest
 from fastapi.routing import APIRoute, iter_route_contexts
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.adapters.inbound.rest.auth import CSRF_HEADER
-from papiq.composition.container import build_memory_container, build_services
-from papiq.core.domain.errors import AuthenticationError
-from papiq.core.domain.identity import TokenScope
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.adapters.inbound.rest.auth import CSRF_HEADER
+from lekto.composition.container import build_memory_container, build_services
+from lekto.core.domain.errors import AuthenticationError
+from lekto.core.domain.identity import TokenScope
 from tests.api import auth, bearer
 from tests.builders import PASSWORD
 from tests.unit.adapters.rest.support import Api, make_app

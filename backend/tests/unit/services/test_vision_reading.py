@@ -6,21 +6,21 @@ from pathlib import Path
 
 import pytest
 
-from papiq.adapters.outbound.memory import FAKE_VISION, FakeOcr, FakePageRenderer, FakeParser
-from papiq.adapters.outbound.memory.processing import FAKE_READING
-from papiq.core.domain.documents import Document
-from papiq.core.domain.errors import (
+from lekto.adapters.outbound.memory import FAKE_VISION, FakeOcr, FakePageRenderer, FakeParser
+from lekto.adapters.outbound.memory.processing import FAKE_READING
+from lekto.core.domain.documents import Document
+from lekto.core.domain.errors import (
     InvalidTransitionError,
     LanguageModelError,
     NotFoundError,
 )
-from papiq.core.domain.pipeline import Lane, Node, NodeRun, Outcome, ProcessingStatus
-from papiq.core.domain.reading import PageReading, VisionAdvice
-from papiq.core.domain.users import Role, User
-from papiq.core.ports.ocr import OcrResult
-from papiq.core.services.nodes import NO_VISION_MODEL, OcrNode, PagesNode, ParseNode
-from papiq.core.services.objects import archive_key, exchanges_key, original_key
-from papiq.core.services.pipeline import PipelineService
+from lekto.core.domain.pipeline import Lane, Node, NodeRun, Outcome, ProcessingStatus
+from lekto.core.domain.reading import PageReading, VisionAdvice
+from lekto.core.domain.users import Role, User
+from lekto.core.ports.ocr import OcrResult
+from lekto.core.services.nodes import NO_VISION_MODEL, OcrNode, PagesNode, ParseNode
+from lekto.core.services.objects import archive_key, exchanges_key, original_key
+from lekto.core.services.pipeline import PipelineService
 from tests.builders import SAMPLES, incoming
 from tests.unit.services.support import World
 

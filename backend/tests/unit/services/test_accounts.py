@@ -2,7 +2,7 @@
 
 import pytest
 
-from papiq.core.domain.errors import (
+from lekto.core.domain.errors import (
     AuthenticationError,
     ConflictError,
     NotFoundError,
@@ -10,10 +10,10 @@ from papiq.core.domain.errors import (
     SecondFactorRequiredError,
     ValidationError,
 )
-from papiq.core.domain.identity import ExternalIdentity, TokenScope
-from papiq.core.domain.ids import UserId, new_id
-from papiq.core.domain.spaces import ShareLevel
-from papiq.core.domain.users import Role
+from lekto.core.domain.identity import ExternalIdentity, TokenScope
+from lekto.core.domain.ids import UserId, new_id
+from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.users import Role
 from tests import builders
 from tests.builders import NOW, PASSWORD
 from tests.unit.services.support import World

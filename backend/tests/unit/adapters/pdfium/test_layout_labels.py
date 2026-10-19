@@ -6,10 +6,10 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-from papiq.adapters.outbound.pdfium import PdfiumTextLocator
-from papiq.adapters.outbound.pdfium.layout import LayoutParser
-from papiq.core.domain.evidence import DocumentText
-from papiq.core.domain.labels import LabelOutcome, LaidWord, check_label, layout_words
+from lekto.adapters.outbound.pdfium import PdfiumTextLocator
+from lekto.adapters.outbound.pdfium.layout import LayoutParser
+from lekto.core.domain.evidence import DocumentText
+from lekto.core.domain.labels import LabelOutcome, LaidWord, check_label, layout_words
 from tests.samples.make_samples import printout_pdf
 
 PAYSLIP = [

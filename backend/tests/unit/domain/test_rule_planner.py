@@ -4,14 +4,14 @@ from typing import Any
 
 import pytest
 
-from papiq.core.domain.documents import UNSET, Document, DocumentChanges
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.fields import FieldDefinition, FieldType, Money
-from papiq.core.domain.ids import ContactId, FieldId, RuleId, SpaceId, TagId, new_id
-from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.pipeline import Outcome
-from papiq.core.domain.rule_conditions import Facts, matches
-from papiq.core.domain.rule_planner import (
+from lekto.core.domain.documents import UNSET, Document, DocumentChanges
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.fields import FieldDefinition, FieldType, Money
+from lekto.core.domain.ids import ContactId, FieldId, RuleId, SpaceId, TagId, new_id
+from lekto.core.domain.json_value import JsonValue
+from lekto.core.domain.pipeline import Outcome
+from lekto.core.domain.rule_conditions import Facts, matches
+from lekto.core.domain.rule_planner import (
     Effect,
     Mode,
     Note,
@@ -23,7 +23,7 @@ from papiq.core.domain.rule_planner import (
     plan,
     reviewing_rules,
 )
-from papiq.core.domain.rules import (
+from lekto.core.domain.rules import (
     Action,
     AddTags,
     ConditionField,

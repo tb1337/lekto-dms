@@ -3,9 +3,9 @@ from decimal import Decimal
 
 import pytest
 
-from papiq.core.domain.evidence import DocumentText
-from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.labels import (
+from lekto.core.domain.evidence import DocumentText
+from lekto.core.domain.json_value import JsonValue
+from lekto.core.domain.labels import (
     LABEL_LINES,
     LabelCheck,
     LabelOutcome,
@@ -15,7 +15,7 @@ from papiq.core.domain.labels import (
     label_places,
     layout_words,
 )
-from papiq.core.domain.locations import Box, Location
+from lekto.core.domain.locations import Box, Location
 
 
 def pages_of(text: str) -> dict[int, tuple[LaidWord, ...]]:

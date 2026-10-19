@@ -13,9 +13,9 @@ from papiq_migration.cli import execute
 from papiq_migration.config import Config
 from papiq_migration.fake_paperless import FakePaperless, sample_archive
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.core.domain.pipeline import SIGNALS, Node
-from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.core.domain.pipeline import SIGNALS, Node
+from lekto.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
 from tests import api as helpers
 from tests.api import until
 from tests.builders import SAMPLES, PlaceholderNode

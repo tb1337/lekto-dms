@@ -2,10 +2,10 @@
 
 from dataclasses import replace
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.core.domain.documents import DocumentChanges
-from papiq.core.domain.master_data import Contact
-from papiq.core.services.objects import text_key
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.core.domain.documents import DocumentChanges
+from lekto.core.domain.master_data import Contact
+from lekto.core.services.objects import text_key
 from tests import builders
 from tests.api import auth
 from tests.unit.adapters.rest.support import Api

@@ -12,9 +12,9 @@ import httpx2
 import pytest
 from PIL import Image
 
-from papiq.adapters.outbound.logos import HttpLogoFetcher
-from papiq.adapters.outbound.logos.fetcher import MAX_REDIRECTS, _pixels
-from papiq.core.domain.errors import LogoFetchError
+from lekto.adapters.outbound.logos import HttpLogoFetcher
+from lekto.adapters.outbound.logos.fetcher import MAX_REDIRECTS, _pixels
+from lekto.core.domain.errors import LogoFetchError
 from tests.contracts.images import LOGO_PNG, image
 from tests.contracts.logos import LogoFetcherContract
 from tests.unit.adapters.logos.web import (
@@ -439,6 +439,6 @@ async def test_what_breaks_a_parser_is_a_failed_fetch(
     def broken(html: str, url: str) -> None:
         raise RuntimeError("unexpected")
 
-    monkeypatch.setattr("papiq.adapters.outbound.logos.fetcher.page_icons", broken)
+    monkeypatch.setattr("lekto.adapters.outbound.logos.fetcher.page_icons", broken)
     with pytest.raises(LogoFetchError, match="RuntimeError"):
         await fetcher(web).fetch("nord.example")

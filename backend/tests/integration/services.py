@@ -10,10 +10,10 @@ from typing import Any
 import aioboto3
 import httpx2
 
-from papiq.adapters.outbound.meilisearch import MeilisearchIndex
-from papiq.adapters.outbound.s3 import S3ObjectStore
-from papiq.adapters.outbound.sql import Database
-from papiq.composition.settings import Settings
+from lekto.adapters.outbound.meilisearch import MeilisearchIndex
+from lekto.adapters.outbound.s3 import S3ObjectStore
+from lekto.adapters.outbound.sql import Database
+from lekto.composition.settings import Settings
 from tests.builders import DEFAULT_SETTINGS
 from tests.contracts.search_index import DIMENSIONS
 

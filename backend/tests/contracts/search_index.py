@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-from papiq.core.domain.errors import SearchIndexError
-from papiq.core.domain.ids import (
+from lekto.core.domain.errors import SearchIndexError
+from lekto.core.domain.ids import (
     ContactId,
     DocumentId,
     DocumentTypeId,
@@ -17,10 +17,10 @@ from papiq.core.domain.ids import (
     UserId,
     new_id,
 )
-from papiq.core.domain.pipeline import Lane
-from papiq.core.domain.search import EmbeddingStamp, IndexDocument, Visibility
-from papiq.core.ports.repository import DocumentFilter, DocumentOrder, SortKey, TagSets
-from papiq.core.ports.search_index import SearchIndex, SearchQuery, SimilarQuery
+from lekto.core.domain.pipeline import Lane
+from lekto.core.domain.search import EmbeddingStamp, IndexDocument, Visibility
+from lekto.core.ports.repository import DocumentFilter, DocumentOrder, SortKey, TagSets
+from lekto.core.ports.search_index import SearchIndex, SearchQuery, SimilarQuery
 from tests.builders import index_document, search_query
 
 DIMENSIONS = 3

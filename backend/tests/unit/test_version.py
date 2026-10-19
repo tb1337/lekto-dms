@@ -4,7 +4,7 @@ import json
 import tomllib
 from pathlib import Path
 
-from papiq import __version__
+from lekto import __version__
 
 ROOT = Path(__file__).parents[3]
 

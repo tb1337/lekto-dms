@@ -5,13 +5,13 @@ from dataclasses import dataclass
 
 import pytest
 
-from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.ids import DocumentId, FieldId, TagId, new_id
-from papiq.core.domain.master_data import Tag, TagScope
-from papiq.core.domain.users import Role, User
-from papiq.core.ports.repository import CountBy, DocumentFilter
-from papiq.core.services._tags import matches
-from papiq.core.services.search import SearchService
+from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.ids import DocumentId, FieldId, TagId, new_id
+from lekto.core.domain.master_data import Tag, TagScope
+from lekto.core.domain.users import Role, User
+from lekto.core.ports.repository import CountBy, DocumentFilter
+from lekto.core.services._tags import matches
+from lekto.core.services.search import SearchService
 from tests import builders
 from tests.unit.services.search_support import Setup
 from tests.unit.services.support import World

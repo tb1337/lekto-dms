@@ -6,9 +6,9 @@ from datetime import timedelta
 
 import pytest
 
-from papiq import __version__
-from papiq.adapters.outbound.webhooks import HttpWebhookSender
-from papiq.core.ports.webhook_sender import WebhookRequest, WebhookSender
+from lekto import __version__
+from lekto.adapters.outbound.webhooks import HttpWebhookSender
+from lekto.core.ports.webhook_sender import WebhookRequest, WebhookSender
 from tests.contracts.webhook_sender import Receiver, WebhookSenderContract, request
 from tests.webhook_receiver import LocalReceiver
 

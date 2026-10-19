@@ -4,7 +4,7 @@ Which services apply comes from the `PAPIQ_` variables, the same ones the applic
 fixtures of `integration/conftest.py` skip when a service is not configured or does not answer.
 """
 
-from papiq.composition.settings import Settings
+from lekto.composition.settings import Settings
 from tests import probes
 
 

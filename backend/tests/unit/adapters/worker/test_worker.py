@@ -9,18 +9,18 @@ from typing import Any
 
 import pytest
 
-from papiq.adapters.inbound.worker import Worker
-from papiq.adapters.outbound.memory import MemoryEventBus, MemorySearchIndex
-from papiq.composition.container import Container, Services, build_memory_container
-from papiq.composition.container import build_services as build_all_services
-from papiq.core.domain.documents import Document
-from papiq.core.domain.events import DocumentReceived, DomainEvent, LaneChanged
-from papiq.core.domain.jobs import Job
-from papiq.core.domain.pipeline import Lane, Node, NodeResult
-from papiq.core.domain.users import Role, User
-from papiq.core.services.indexing import SUBSCRIBER
-from papiq.core.services.maintenance import CLEANUP_JOB
-from papiq.core.services.pipeline import NODE_JOB
+from lekto.adapters.inbound.worker import Worker
+from lekto.adapters.outbound.memory import MemoryEventBus, MemorySearchIndex
+from lekto.composition.container import Container, Services, build_memory_container
+from lekto.composition.container import build_services as build_all_services
+from lekto.core.domain.documents import Document
+from lekto.core.domain.events import DocumentReceived, DomainEvent, LaneChanged
+from lekto.core.domain.jobs import Job
+from lekto.core.domain.pipeline import Lane, Node, NodeResult
+from lekto.core.domain.users import Role, User
+from lekto.core.services.indexing import SUBSCRIBER
+from lekto.core.services.maintenance import CLEANUP_JOB
+from lekto.core.services.pipeline import NODE_JOB
 from tests import builders
 from tests.api import until
 from tests.builders import DEFAULT_SETTINGS, SAMPLES, incoming

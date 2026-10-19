@@ -14,11 +14,11 @@ import httpx2
 import uvicorn
 from fastapi import FastAPI
 
-from papiq.adapters.inbound.rest import PREFIX, close_event_streams
-from papiq.core.domain.identity import TokenScope
-from papiq.core.domain.ids import UserId
-from papiq.core.domain.users import User
-from papiq.core.services.auth import AuthService
+from lekto.adapters.inbound.rest import PREFIX, close_event_streams
+from lekto.core.domain.identity import TokenScope
+from lekto.core.domain.ids import UserId
+from lekto.core.domain.users import User
+from lekto.core.services.auth import AuthService
 
 # API tokens of the test users, issued through the real AuthService.
 _TOKENS: dict[UserId, str] = {}

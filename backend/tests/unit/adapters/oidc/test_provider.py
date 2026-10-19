@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-from papiq.adapters.outbound.oidc import AuthlibOidcProvider
-from papiq.core.domain.errors import AuthenticationError, IdentityProviderError
+from lekto.adapters.outbound.oidc import AuthlibOidcProvider
+from lekto.core.domain.errors import AuthenticationError, IdentityProviderError
 from tests.builders import DEFAULT_SETTINGS
 from tests.contracts.identity import Consent, OidcProviderContract
 from tests.oidc_idp import CLIENT_ID, CLIENT_SECRET, ISSUER, REDIRECT_URI, SimulatedIdp

@@ -5,16 +5,16 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.core.domain.errors import ConcurrencyError, NotFoundError
-from papiq.core.domain.ids import DocumentId, EventId, new_id
-from papiq.core.domain.users import User
-from papiq.core.domain.webhooks import (
+from lekto.core.domain.errors import ConcurrencyError, NotFoundError
+from lekto.core.domain.ids import DocumentId, EventId, new_id
+from lekto.core.domain.users import User
+from lekto.core.domain.webhooks import (
     ALL_EVENTS,
     DeliveryOutcome,
     Webhook,
     WebhookDelivery,
 )
-from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
 from tests.builders import HOUR, NOW
 from tests.contracts.unit_of_work import a_user

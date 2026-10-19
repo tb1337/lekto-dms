@@ -6,16 +6,16 @@ from collections.abc import AsyncIterator
 import httpx2
 import pytest
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.adapters.outbound.memory import (
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.adapters.outbound.memory import (
     FAKE_GIRO_CODE,
     FakeCodeReader,
     FakeParser,
     ManualClock,
 )
-from papiq.composition.container import build_memory_container, build_services
-from papiq.core.domain.codes import Code
-from papiq.core.domain.locations import Box
+from lekto.composition.container import build_memory_container, build_services
+from lekto.core.domain.codes import Code
+from lekto.core.domain.locations import Box
 from tests import builders
 from tests.api import auth
 from tests.unit.adapters.rest.support import DOCUMENTS, Api, make_app, upload

@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from papiq.core.domain.evidence import (
+from lekto.core.domain.evidence import (
     DocumentText,
     amounts_in,
     contains,
@@ -18,7 +18,7 @@ from papiq.core.domain.evidence import (
     read_period,
     truth_value,
 )
-from papiq.core.domain.periods import Period
+from lekto.core.domain.periods import Period
 
 
 def test_normalise() -> None:

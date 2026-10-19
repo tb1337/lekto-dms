@@ -1,0 +1,254 @@
+"""The technical pipeline nodes after receive: OCR, page images and parsing.
+
+Each node downloads its input into a temporary directory, runs the port (which does the heavy
+work outside the event loop) and uploads the derivatives. Derivatives are keyed by document, so
+reprocessing replaces them.
+"""
+
+import asyncio
+import json
+import re
+import shutil
+import tempfile
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, replace
+from datetime import datetime
+from pathlib import Path
+
+from lekto.core.domain import media_types
+from lekto.core.domain.documents import Document
+from lekto.core.domain.exchanges import tokens_of
+from lekto.core.domain.json_value import JsonObject
+from lekto.core.domain.pipeline import Node, NodeResult, Outcome
+from lekto.core.domain.reading import NO_TEXT_REASON, OcrOutput, reading_to_json
+from lekto.core.ports.object_store import ObjectStore
+from lekto.core.ports.ocr import Ocr, VisionReading
+from lekto.core.ports.pages import PAGE_MEDIA_TYPE, PREVIEW_FILE, PageRenderer
+from lekto.core.ports.parser import DocumentParser
+from lekto.core.ports.unit_of_work import UnitOfWork
+from lekto.core.services.exchanges import keep_calls
+from lekto.core.services.objects import (
+    archive_key,
+    codes_key,
+    legacy_text_key,
+    original_key,
+    page_key,
+    preview_key,
+    reading_key,
+    structure_key,
+    text_key,
+)
+
+# Markdown without any letter or digit has no text; comments are placeholders (`<!-- image -->`).
+_WORD = re.compile(r"\w")
+
+
+class OcrNode:
+    """Archive PDF with text layer. A damaged or encrypted file fails at once
+    (UnprocessableDocumentError, see PipelineService); an archive that is not PDF/A is
+    uncertain, with the engine's reason. An archive that is PDF/A but differs from what was
+    asked (a signature not carried over) is OK with the engine's note as reason. How well each
+    recognised page was read goes into the log (`readings`), and whether another OCR's text
+    layer was replaced (`read_again`); the judge and the fields node read the readings there.
+    The words Tesseract read, with their confidence and box, are kept beside the archive
+    (`reading_key`, gone when no page was recognised by Tesseract), for the same nodes.
+
+    In a run a person asked to read with the vision language model (`Processing.vision`), the
+    model reads every page: the log names it, its prompt and its tokens (`vision`), and what
+    was sent is kept beside the document (`exchanges_key`). Without a model configured, the
+    node fails."""
+
+    def __init__(self, store: ObjectStore, ocr: Ocr) -> None:
+        self._store = store
+        self._ocr = ocr
+
+    async def run(self, document: Document) -> NodeResult:
+        vision = document.processing.vision
+        input: JsonObject = {"original": original_key(document.sha256)}
+        if vision:
+            input["vision"] = True
+            if self._ocr.vision is None:
+                return NodeResult(
+                    outcome=Outcome.FAILED,
+                    reason=NO_VISION_MODEL,
+                    model_version=None,
+                    input=input,
+                    output={},
+                )
+        async with work_directory() as work:
+            original, archive = work / ORIGINAL_FILE, work / ARCHIVE_FILE
+            await self._store.download(original_key(document.sha256), original)
+            result = await self._ocr.make_archive(
+                original, archive, media_type=document.media_type, vision=vision
+            )
+            await self._store.upload(
+                archive_key(document.id), archive, content_type=media_types.PDF
+            )
+        # The codes were read from the archive before: the facts read the new one again.
+        await self._store.delete(codes_key(document.id))
+        # The words belong to the new archive. Should writing them fail, the run fails and
+        # its log entry is not written: the latest one that made a text stays the one before,
+        # whose words were not replaced, so entry and words still go together.
+        if result.words:
+            words = result.words
+            data = await asyncio.to_thread(
+                lambda: json.dumps(reading_to_json(words), ensure_ascii=False).encode("utf-8")
+            )
+            await self._store.put(reading_key(document.id), data, content_type=media_types.JSON)
+        else:
+            await self._store.delete(reading_key(document.id))
+        output = OcrOutput(
+            archive=archive_key(document.id),
+            pages=result.pages,
+            pdfa=result.pdfa,
+            note=result.note,
+            readings=tuple(result.readings),
+            read_again=result.read_again,
+        )
+        note = result.note
+        if not result.pdfa:
+            note = "the archive could not be made PDF/A" + ("" if note is None else f": {note}")
+        if result.vision is not None:
+            output = replace(
+                output,
+                vision=_vision_output(result.vision),
+                tokens=tuple(tokens_of(call.usage for call in result.vision.calls)),
+            )
+            note = read_by(result.vision) + ("" if note is None else f"; {note}")
+            await keep_calls(self._store, document, Node.OCR, list(result.vision.calls))
+        return NodeResult(
+            outcome=Outcome.OK if result.pdfa else Outcome.UNCERTAIN,
+            reason=note,
+            model_version=result.engine,
+            input=input,
+            output=output.to_json(),
+        )
+
+
+NO_VISION_MODEL = "a person asked for the vision language model, but none is configured"
+
+
+def read_by(vision: VisionReading) -> str:
+    return f"every page was read by the vision language model {vision.model} ({vision.endpoint})"
+
+
+def _vision_output(vision: VisionReading) -> JsonObject:
+    return {
+        "model": vision.model,
+        "endpoint": vision.endpoint,
+        "prompt": vision.prompt,
+        "calls": len(vision.calls),
+    }
+
+
+class PagesNode:
+    """Images of every page of the original, and the preview of the first: what the web UI
+    shows (and later, what grounding and vision models look at). Runs beside OCR, so it reads
+    the original, not the archive. A file that cannot be read fails at once."""
+
+    def __init__(self, store: ObjectStore, renderer: PageRenderer) -> None:
+        self._store = store
+        self._renderer = renderer
+
+    async def run(self, document: Document) -> "PagesResult":
+        async with work_directory() as work:
+            original, pages = work / ORIGINAL_FILE, work / "pages"
+            pages.mkdir()
+            await self._store.download(original_key(document.sha256), original)
+            rendered = await self._renderer.render_pages(
+                original, media_type=document.media_type, target=pages
+            )
+            for number in range(1, rendered.pages + 1):
+                await self._store.upload(
+                    page_key(document.id, number),
+                    pages / f"{number}.webp",
+                    content_type=PAGE_MEDIA_TYPE,
+                )
+            await self._store.upload(
+                preview_key(document.id), pages / PREVIEW_FILE, content_type=PAGE_MEDIA_TYPE
+            )
+        result = NodeResult(
+            outcome=Outcome.OK,
+            model_version=rendered.renderer,
+            input={"original": original_key(document.sha256)},
+            output={
+                "pages": rendered.pages,
+                "first_page": page_key(document.id, 1),
+                "preview": preview_key(document.id),
+            },
+        )
+        return PagesResult(result, rendered.pages)
+
+
+@dataclass(frozen=True)
+class PagesResult:
+    """The page images are there: the document's page count is stored with the result."""
+
+    result: NodeResult
+    pages: int
+
+    async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
+        document.set_page_count(self.pages, now)
+        return self.result
+
+
+class ParseNode:
+    """The text of the archive PDF as it is set, and its structure. A document without any text
+    fails: there is nothing to classify, a person has to look at it. The Markdown a document
+    parsed before 0.2 kept goes once its text is read again."""
+
+    def __init__(self, store: ObjectStore, parser: DocumentParser) -> None:
+        self._store = store
+        self._parser = parser
+
+    async def run(self, document: Document) -> NodeResult:
+        async with work_directory() as work:
+            archive, read, structure = work / ARCHIVE_FILE, work / TEXT_FILE, work / STRUCTURE_FILE
+            await self._store.download(archive_key(document.id), archive)
+            result = await self._parser.parse(archive, text=read, structure=structure)
+            text = await asyncio.to_thread(read.read_text, encoding="utf-8")
+            await self._store.upload(text_key(document.id), read, content_type=media_types.TEXT)
+            await self._store.upload(
+                structure_key(document.id), structure, content_type=media_types.JSON
+            )
+            await self._store.delete(legacy_text_key(document.id))
+        input: JsonObject = {"archive": archive_key(document.id)}
+        output: JsonObject = {
+            "text": text_key(document.id),
+            "structure": structure_key(document.id),
+            "pages": result.pages,
+            "characters": len(text),
+        }
+        if not has_text(text):
+            return NodeResult(
+                outcome=Outcome.FAILED,
+                reason=NO_TEXT_REASON,
+                model_version=result.parser,
+                input=input,
+                output=output,
+            )
+        return NodeResult(
+            outcome=Outcome.OK, model_version=result.parser, input=input, output=output
+        )
+
+
+def has_text(text: str) -> bool:
+    return _WORD.search(text) is not None
+
+
+# The files of a node's work directory.
+ORIGINAL_FILE = "original"
+ARCHIVE_FILE = "archive.pdf"
+TEXT_FILE = "content.txt"
+STRUCTURE_FILE = "content.json"
+
+
+@asynccontextmanager
+async def work_directory() -> AsyncIterator[Path]:
+    """A temporary directory, removed afterwards (also on error or cancellation)."""
+    path = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix="papiq-"))
+    try:
+        yield path
+    finally:
+        await asyncio.shield(asyncio.to_thread(shutil.rmtree, path, ignore_errors=True))

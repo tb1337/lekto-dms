@@ -2,8 +2,8 @@
 
 import pytest
 
-from papiq.adapters.inbound.bearer import bearer_token
-from papiq.core.domain.errors import AuthenticationError
+from lekto.adapters.inbound.bearer import bearer_token
+from lekto.core.domain.errors import AuthenticationError
 
 
 @pytest.mark.parametrize("header", ["Bearer papiq_abc", "bearer papiq_abc", "Bearer  papiq_abc "])

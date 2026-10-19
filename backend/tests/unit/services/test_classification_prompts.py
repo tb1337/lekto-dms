@@ -5,11 +5,11 @@ from typing import Any
 
 import pytest
 
-from papiq.adapters.outbound.memory.language_model import minimal_instance
-from papiq.core.domain.documents import MAX_TITLE
-from papiq.core.domain.fields import FieldDefinition, FieldType
-from papiq.core.domain.text import shorten, weight
-from papiq.core.services.classification.answers import (
+from lekto.adapters.outbound.memory.language_model import minimal_instance
+from lekto.core.domain.documents import MAX_TITLE
+from lekto.core.domain.fields import FieldDefinition, FieldType
+from lekto.core.domain.text import shorten, weight
+from lekto.core.services.classification.answers import (
     AnswerError,
     Proposal,
     StoredProposal,
@@ -19,7 +19,7 @@ from papiq.core.services.classification.answers import (
     parse_propose,
     propose_schema,
 )
-from papiq.core.services.classification.prompts import (
+from lekto.core.services.classification.prompts import (
     Listed,
     extract_message,
     propose_message,

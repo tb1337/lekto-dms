@@ -8,14 +8,14 @@ from uuid import UUID
 
 import pytest
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.core.domain.documents import Document
-from papiq.core.domain.errors import UnprocessableDocumentError
-from papiq.core.domain.identity import TokenScope
-from papiq.core.domain.pipeline import SIGNALS, Node, NodeResult
-from papiq.core.domain.users import User
-from papiq.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
-from papiq.core.services.pipeline import DeferredResult, NodeExecutor
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.core.domain.documents import Document
+from lekto.core.domain.errors import UnprocessableDocumentError
+from lekto.core.domain.identity import TokenScope
+from lekto.core.domain.pipeline import SIGNALS, Node, NodeResult
+from lekto.core.domain.users import User
+from lekto.core.services.imports import ImportedFieldsNode, ImportedJudgeNode, ImportedSignal
+from lekto.core.services.pipeline import DeferredResult, NodeExecutor
 from tests.api import auth, bearer
 from tests.builders import SAMPLES, PlaceholderNode
 from tests.unit.adapters.rest.support import DOCUMENTS, Api, post, sample_file

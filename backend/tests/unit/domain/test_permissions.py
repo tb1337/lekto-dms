@@ -1,7 +1,7 @@
 import pytest
 
-from papiq.core.domain.documents import Document
-from papiq.core.domain.permissions import (
+from lekto.core.domain.documents import Document
+from lekto.core.domain.permissions import (
     can_control_document,
     can_file_into,
     can_manage_space,
@@ -15,9 +15,9 @@ from papiq.core.domain.permissions import (
     reach_space_access,
     space_access,
 )
-from papiq.core.domain.pipeline import Lane, Node, NodeResult
-from papiq.core.domain.spaces import ShareLevel, Space
-from papiq.core.domain.users import User
+from lekto.core.domain.pipeline import Lane, Node, NodeResult
+from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.users import User
 from tests import builders
 from tests.builders import FAILED, UNCERTAIN
 

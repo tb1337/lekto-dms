@@ -4,10 +4,10 @@ import secrets
 
 import httpx2
 
-from papiq.adapters.outbound.meilisearch import MeilisearchIndex
-from papiq.composition.settings import Settings
-from papiq.core.domain.ids import UserId, new_id
-from papiq.core.domain.search import Visibility
+from lekto.adapters.outbound.meilisearch import MeilisearchIndex
+from lekto.composition.settings import Settings
+from lekto.core.domain.ids import UserId, new_id
+from lekto.core.domain.search import Visibility
 from tests.builders import index_document, search_query
 from tests.contracts.search_index import SearchIndexContract
 from tests.integration.services import drop, new_index

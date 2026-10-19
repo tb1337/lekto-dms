@@ -7,25 +7,25 @@ from uuid import UUID
 
 import pytest
 
-from papiq.core.domain.classification import FieldCheck, checks_to_json, field_key
-from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.errors import (
+from lekto.core.domain.classification import FieldCheck, checks_to_json, field_key
+from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.errors import (
     InvalidTransitionError,
     NotFoundError,
     OpenFieldsError,
     PermissionDeniedError,
     ValidationError,
 )
-from papiq.core.domain.events import DocumentFiled
-from papiq.core.domain.fields import FieldDefinition, FieldType, Money
-from papiq.core.domain.ids import ContactId, SpaceId, UserId
-from papiq.core.domain.inbox import Confirmation
-from papiq.core.domain.master_data import Assignment, Contact
-from papiq.core.domain.pipeline import PERSON, Lane, Node, NodeResult, Outcome, ProcessingStatus
-from papiq.core.domain.spaces import ShareLevel
-from papiq.core.domain.users import Role, User
-from papiq.core.services.inbox import OpenNode, decide, field_checks
-from papiq.core.services.pipeline import MetadataResult, PipelineService
+from lekto.core.domain.events import DocumentFiled
+from lekto.core.domain.fields import FieldDefinition, FieldType, Money
+from lekto.core.domain.ids import ContactId, SpaceId, UserId
+from lekto.core.domain.inbox import Confirmation
+from lekto.core.domain.master_data import Assignment, Contact
+from lekto.core.domain.pipeline import PERSON, Lane, Node, NodeResult, Outcome, ProcessingStatus
+from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.users import Role, User
+from lekto.core.services.inbox import OpenNode, decide, field_checks
+from lekto.core.services.pipeline import MetadataResult, PipelineService
 from tests.builders import FAILED, NOW, Returns, document, incoming
 from tests.unit.services.support import World
 

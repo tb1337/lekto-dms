@@ -3,8 +3,8 @@ from decimal import Decimal
 
 import pytest
 
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.fields import (
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.fields import (
     FieldDefinition,
     FieldType,
     Money,
@@ -12,8 +12,8 @@ from papiq.core.domain.fields import (
     field_from_json,
     field_to_json,
 )
-from papiq.core.domain.ids import DocumentTypeId, new_id
-from papiq.core.domain.periods import Period, PeriodKind
+from lekto.core.domain.ids import DocumentTypeId, new_id
+from lekto.core.domain.periods import Period, PeriodKind
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 

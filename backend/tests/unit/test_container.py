@@ -9,24 +9,24 @@ from typing import Any
 import httpx2
 import pytest
 
-from papiq.adapters.outbound.crypto import Argon2PasswordHasher, PyotpTotp
-from papiq.adapters.outbound.filesystem import FilesystemObjectStore
-from papiq.adapters.outbound.logos import HttpLogoFetcher, system_resolver
-from papiq.adapters.outbound.meilisearch import MeilisearchIndex
-from papiq.adapters.outbound.memory import FakeLogoFetcher, FakeOcr, FakeParser, ManualClock
-from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
-from papiq.adapters.outbound.ocrmypdf import engine as ocrmypdf_engine
-from papiq.adapters.outbound.ocrmypdf.vision import CONFIG_ENV, KEY_ENV
-from papiq.adapters.outbound.oidc import AuthlibOidcProvider
-from papiq.adapters.outbound.openai_compat import OpenAiCompatEmbeddings, OpenAiCompatLanguageModel
-from papiq.adapters.outbound.pdfium import LayoutParser
-from papiq.adapters.outbound.pillow import PillowImageNormaliser
-from papiq.adapters.outbound.s3 import S3ObjectStore
-from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory, migrate
-from papiq.adapters.outbound.system import Completed, SystemClock
-from papiq.composition import container
-from papiq.composition.api import health_checks
-from papiq.composition.container import (
+from lekto.adapters.outbound.crypto import Argon2PasswordHasher, PyotpTotp
+from lekto.adapters.outbound.filesystem import FilesystemObjectStore
+from lekto.adapters.outbound.logos import HttpLogoFetcher, system_resolver
+from lekto.adapters.outbound.meilisearch import MeilisearchIndex
+from lekto.adapters.outbound.memory import FakeLogoFetcher, FakeOcr, FakeParser, ManualClock
+from lekto.adapters.outbound.ocrmypdf import OcrmypdfEngine
+from lekto.adapters.outbound.ocrmypdf import engine as ocrmypdf_engine
+from lekto.adapters.outbound.ocrmypdf.vision import CONFIG_ENV, KEY_ENV
+from lekto.adapters.outbound.oidc import AuthlibOidcProvider
+from lekto.adapters.outbound.openai_compat import OpenAiCompatEmbeddings, OpenAiCompatLanguageModel
+from lekto.adapters.outbound.pdfium import LayoutParser
+from lekto.adapters.outbound.pillow import PillowImageNormaliser
+from lekto.adapters.outbound.s3 import S3ObjectStore
+from lekto.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory, migrate
+from lekto.adapters.outbound.system import Completed, SystemClock
+from lekto.composition import container
+from lekto.composition.api import health_checks
+from lekto.composition.container import (
     Closer,
     Opened,
     Persistence,
@@ -34,17 +34,17 @@ from papiq.composition.container import (
     build_memory_container,
     build_services,
 )
-from papiq.composition.errors import AdapterNotAvailableError
-from papiq.composition.settings import Settings
-from papiq.core.domain import media_types
-from papiq.core.domain.events import DocumentReceived, DomainEvent, LaneChanged
-from papiq.core.domain.ids import DocumentId, new_id
-from papiq.core.domain.jobs import WORK_LEASE_MARGIN, RetryPolicy
-from papiq.core.domain.pipeline import Lane, Node
-from papiq.core.domain.templates import TemplateValue
-from papiq.core.domain.users import Role
-from papiq.core.ports.ocr import VisionModel
-from papiq.core.services.nodes import OcrNode, ParseNode
+from lekto.composition.errors import AdapterNotAvailableError
+from lekto.composition.settings import Settings
+from lekto.core.domain import media_types
+from lekto.core.domain.events import DocumentReceived, DomainEvent, LaneChanged
+from lekto.core.domain.ids import DocumentId, new_id
+from lekto.core.domain.jobs import WORK_LEASE_MARGIN, RetryPolicy
+from lekto.core.domain.pipeline import Lane, Node
+from lekto.core.domain.templates import TemplateValue
+from lekto.core.domain.users import Role
+from lekto.core.ports.ocr import VisionModel
+from lekto.core.services.nodes import OcrNode, ParseNode
 from tests import builders
 from tests.builders import NOW, SAMPLES, incoming
 from tests.contracts.language_model import REQUEST

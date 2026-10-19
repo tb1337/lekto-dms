@@ -2,10 +2,10 @@
 
 import pytest
 
-from papiq.core.domain.classification import FieldCheck
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.locations import Box, Location, locations_from_json, locations_to_json
-from papiq.core.domain.pipeline import Outcome
+from lekto.core.domain.classification import FieldCheck
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.locations import Box, Location, locations_from_json, locations_to_json
+from lekto.core.domain.pipeline import Outcome
 
 
 def test_boxes_lie_on_the_page() -> None:

@@ -2,11 +2,11 @@
 
 from uuid import UUID
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.adapters.outbound.memory import FakeWebhookSender
-from papiq.core.domain.identity import TokenScope
-from papiq.core.domain.ids import DocumentId, EventId, WebhookId, new_id
-from papiq.core.domain.webhooks import DeliveryOutcome, WebhookDelivery
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.adapters.outbound.memory import FakeWebhookSender
+from lekto.core.domain.identity import TokenScope
+from lekto.core.domain.ids import DocumentId, EventId, WebhookId, new_id
+from lekto.core.domain.webhooks import DeliveryOutcome, WebhookDelivery
 from tests.api import auth, bearer
 from tests.unit.adapters.rest.support import Api, post
 

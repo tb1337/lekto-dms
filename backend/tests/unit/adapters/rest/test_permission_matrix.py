@@ -19,8 +19,8 @@ from uuid import UUID
 import httpx2
 import pytest
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.core.domain.encoding import base64url
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.core.domain.encoding import base64url
 from tests.contracts.images import image
 from tests.unit.adapters.rest.support import ACTORS, DENIED, Api, Scene, build_scene
 

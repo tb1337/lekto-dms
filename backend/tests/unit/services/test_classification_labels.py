@@ -7,14 +7,14 @@ from typing import Any
 
 import pytest
 
-from papiq.core.domain.classification import FieldCheck, checks_from_json, field_key
-from papiq.core.domain.documents import Document
-from papiq.core.domain.json_value import JsonObject
-from papiq.core.domain.labels import LabelCheck, LabelOutcome, grid_layout
-from papiq.core.domain.pipeline import Node, Outcome
-from papiq.core.services.classification import nodes
-from papiq.core.services.objects import structure_key
-from papiq.core.services.pipeline import MetadataResult
+from lekto.core.domain.classification import FieldCheck, checks_from_json, field_key
+from lekto.core.domain.documents import Document
+from lekto.core.domain.json_value import JsonObject
+from lekto.core.domain.labels import LabelCheck, LabelOutcome, grid_layout
+from lekto.core.domain.pipeline import Node, Outcome
+from lekto.core.services.classification import nodes
+from lekto.core.services.objects import structure_key
+from lekto.core.services.pipeline import MetadataResult
 from tests.unit.services.support import World
 from tests.unit.services.test_classification import (
     FIELDS,

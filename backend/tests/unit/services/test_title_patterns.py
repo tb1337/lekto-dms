@@ -4,12 +4,12 @@ the owner's that sets the title."""
 
 import pytest
 
-from papiq.core.domain.documents import Document
-from papiq.core.domain.errors import ConflictError
-from papiq.core.domain.fields import FieldType
-from papiq.core.domain.pipeline import Lane, Node
-from papiq.core.domain.rules import Rule, SetTitle
-from papiq.core.domain.users import User
+from lekto.core.domain.documents import Document
+from lekto.core.domain.errors import ConflictError
+from lekto.core.domain.fields import FieldType
+from lekto.core.domain.pipeline import Lane, Node
+from lekto.core.domain.rules import Rule, SetTitle
+from lekto.core.domain.users import User
 from tests.unit.services.rules_support import (
     Classifies,
     RuleWorld,

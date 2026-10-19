@@ -5,10 +5,10 @@ import json
 
 import pytest
 
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId, new_id
-from papiq.core.domain.json_value import JsonObject
-from papiq.core.domain.rules import (
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId, new_id
+from lekto.core.domain.json_value import JsonObject
+from lekto.core.domain.rules import (
     AddTags,
     Condition,
     ConditionField,
@@ -24,7 +24,7 @@ from papiq.core.domain.rules import (
     SetTitle,
     Trigger,
 )
-from papiq.core.domain.rules_json import definition_from_json, definition_to_json
+from lekto.core.domain.rules_json import definition_from_json, definition_to_json
 
 CONTACT = ContactId(new_id())
 TYPE = DocumentTypeId(new_id())

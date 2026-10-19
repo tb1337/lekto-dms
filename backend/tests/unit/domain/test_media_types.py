@@ -1,7 +1,7 @@
 """Reading an ICO's directory, which the logo fetcher and the normaliser both trust no further
 than its limits."""
 
-from papiq.core.domain.media_types import IconEntry, icon_entries
+from lekto.core.domain.media_types import IconEntry, icon_entries
 
 
 def directory(*entries: tuple[int, int, int, int]) -> bytes:

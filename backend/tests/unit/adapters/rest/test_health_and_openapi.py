@@ -11,15 +11,15 @@ from typing import Any
 import httpx2
 from pydantic import BaseModel
 
-from papiq.adapters.inbound.rest import (
+from lekto.adapters.inbound.rest import (
     HEALTH_PATH,
     OIDC_CALLBACK_PATH,
     PREFIX,
     create_app,
     schemas,
 )
-from papiq.composition.api import api_context
-from papiq.composition.container import build_memory_container, build_services
+from lekto.composition.api import api_context
+from lekto.composition.container import build_memory_container, build_services
 from tests import builders
 from tests.builders import PASSWORD, SECRET_KEY
 from tests.unit.adapters.rest.support import Api

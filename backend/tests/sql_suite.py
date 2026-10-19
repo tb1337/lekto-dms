@@ -19,22 +19,22 @@ from alembic.migration import MigrationContext
 from sqlalchemy import Connection, insert, inspect, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from papiq.adapters.outbound.memory import ManualClock, MemoryObjectStore
-from papiq.adapters.outbound.sql import Database, SqlUnitOfWorkFactory, migrate, schema_state
-from papiq.adapters.outbound.sql import tables as t
-from papiq.adapters.outbound.sql.migrations import downgrade
-from papiq.adapters.outbound.sql.types import UtcDateTime, json_type
-from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.errors import ConflictError, DuplicateDocumentError
-from papiq.core.domain.events import DomainEvent
-from papiq.core.domain.fields import FieldDefinition, FieldType, Money
-from papiq.core.domain.ids import new_id
-from papiq.core.domain.jobs import Job
-from papiq.core.domain.pipeline import NODES, Node
-from papiq.core.domain.templates import TemplateValue
-from papiq.core.domain.users import User
-from papiq.core.ports.event_bus import EventBus
-from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.adapters.outbound.memory import ManualClock, MemoryObjectStore
+from lekto.adapters.outbound.sql import Database, SqlUnitOfWorkFactory, migrate, schema_state
+from lekto.adapters.outbound.sql import tables as t
+from lekto.adapters.outbound.sql.migrations import downgrade
+from lekto.adapters.outbound.sql.types import UtcDateTime, json_type
+from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.errors import ConflictError, DuplicateDocumentError
+from lekto.core.domain.events import DomainEvent
+from lekto.core.domain.fields import FieldDefinition, FieldType, Money
+from lekto.core.domain.ids import new_id
+from lekto.core.domain.jobs import Job
+from lekto.core.domain.pipeline import NODES, Node
+from lekto.core.domain.templates import TemplateValue
+from lekto.core.domain.users import User
+from lekto.core.ports.event_bus import EventBus
+from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
 from tests.builders import NOW, PlaceholderNode, incoming
 from tests.contracts.event_bus import EventBusFactory, Recorder, publish, received

@@ -6,8 +6,8 @@ import time
 
 import pytest
 
-from papiq.core.domain.errors import PatternTimeoutError, ValidationError
-from papiq.core.ports.patterns import PatternMatcher
+from lekto.core.domain.errors import PatternTimeoutError, ValidationError
+from lekto.core.ports.patterns import PatternMatcher
 
 # Catastrophic backtracking: exponential in the number of `a`s, since the `b` never matches.
 CATASTROPHIC = r"(a|aa)+$"

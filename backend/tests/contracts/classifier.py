@@ -2,9 +2,9 @@
 
 import pytest
 
-from papiq.core.domain.errors import ClassifierError
-from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
-from papiq.core.ports.classifier import Classifier, TrainingExample
+from lekto.core.domain.errors import ClassifierError
+from lekto.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
+from lekto.core.ports.classifier import Classifier, TrainingExample
 
 UTILITY, BANK, INSURER = (ContactId(new_id()) for _ in range(3))
 INVOICE, STATEMENT = DocumentTypeId(new_id()), DocumentTypeId(new_id())

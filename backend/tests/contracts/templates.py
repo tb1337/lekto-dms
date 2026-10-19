@@ -6,10 +6,10 @@ from decimal import Decimal
 
 import pytest
 
-from papiq.core.domain.errors import MissingValueError, ValidationError
-from papiq.core.domain.fields import Money
-from papiq.core.domain.templates import TemplateValue
-from papiq.core.ports.templates import TemplateRenderer
+from lekto.core.domain.errors import MissingValueError, ValidationError
+from lekto.core.domain.fields import Money
+from lekto.core.domain.templates import TemplateValue
+from lekto.core.ports.templates import TemplateRenderer
 
 VALUES: dict[str, TemplateValue] = {
     "contact": "Stadtwerke Musterstadt",

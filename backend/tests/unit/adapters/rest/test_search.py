@@ -6,11 +6,11 @@ from uuid import UUID
 
 import pytest
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.core.domain.errors import SearchUnavailableError
-from papiq.core.domain.ids import DocumentId
-from papiq.core.domain.pipeline import Node
-from papiq.core.domain.spaces import ShareLevel
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.core.domain.errors import SearchUnavailableError
+from lekto.core.domain.ids import DocumentId
+from lekto.core.domain.pipeline import Node
+from lekto.core.domain.spaces import ShareLevel
 from tests.api import auth
 from tests.unit.adapters.rest.support import ACTORS, DENIED, Api, Scene, indexed_scene
 

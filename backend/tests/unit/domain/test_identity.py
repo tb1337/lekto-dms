@@ -2,8 +2,8 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.identity import (
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.identity import (
     ACCOUNT_THROTTLE,
     SOURCE_THROTTLE,
     Credential,
@@ -19,7 +19,7 @@ from papiq.core.domain.identity import (
     normalize_recovery_code,
     source_key,
 )
-from papiq.core.domain.ids import UserId, new_id
+from lekto.core.domain.ids import UserId, new_id
 from tests.builders import NOW
 
 

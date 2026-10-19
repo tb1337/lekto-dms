@@ -2,14 +2,14 @@
 
 from pathlib import Path
 
-from papiq.composition.openapi import main, openapi_document, render
+from lekto.composition.openapi import main, openapi_document, render
 
 CHECKED_IN = Path(__file__).resolve().parents[3] / "web" / "openapi.json"
 
 
 def test_the_web_ui_has_the_current_openapi_document() -> None:
     assert CHECKED_IN.read_text(encoding="utf-8") == render(openapi_document()), (
-        "web/openapi.json is out of date: run `uv run python -m papiq.composition.openapi "
+        "web/openapi.json is out of date: run `uv run python -m lekto.composition.openapi "
         "../web/openapi.json` in backend/, then `pnpm gen:api` in web/"
     )
 

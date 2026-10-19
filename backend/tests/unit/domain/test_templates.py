@@ -3,9 +3,9 @@ from decimal import Decimal
 
 import pytest
 
-from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url, template_key
-from papiq.core.domain.ids import SpaceId, UserId, new_id
-from papiq.core.domain.templates import (
+from lekto.core.domain.fields import FieldDefinition, FieldType, Money, Url, template_key
+from lekto.core.domain.ids import SpaceId, UserId, new_id
+from lekto.core.domain.templates import (
     TemplateValue,
     template_values,
     unknown_values,

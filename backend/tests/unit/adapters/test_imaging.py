@@ -3,7 +3,7 @@
 import pytest
 from PIL import Image
 
-from papiq.adapters.outbound.imaging import flatten_on_white
+from lekto.adapters.outbound.imaging import flatten_on_white
 
 RED = (200, 0, 0)
 GREY = 90

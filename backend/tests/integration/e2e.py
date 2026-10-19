@@ -13,16 +13,16 @@ from typing import Any, ClassVar
 
 import httpx2
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory
-from papiq.composition.api import build_app
-from papiq.composition.container import Container, Services, build_memory_container, build_services
-from papiq.composition.settings import Settings
-from papiq.composition.worker import build_worker
-from papiq.core.domain.users import Role, User
-from papiq.core.ports.object_store import ObjectStore
-from papiq.core.ports.ocr import OcrResult
-from papiq.core.ports.parser import ParseResult
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory
+from lekto.composition.api import build_app
+from lekto.composition.container import Container, Services, build_memory_container, build_services
+from lekto.composition.settings import Settings
+from lekto.composition.worker import build_worker
+from lekto.core.domain.users import Role, User
+from lekto.core.ports.object_store import ObjectStore
+from lekto.core.ports.ocr import OcrResult
+from lekto.core.ports.parser import ParseResult
 from tests import builders
 from tests.api import auth, issue_token, serving, until
 

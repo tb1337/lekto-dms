@@ -7,9 +7,9 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.core.domain.encoding import pkce_challenge, query_parameters
-from papiq.core.domain.errors import AuthenticationError, ConcurrencyError, ConflictError
-from papiq.core.domain.identity import (
+from lekto.core.domain.encoding import pkce_challenge, query_parameters
+from lekto.core.domain.errors import AuthenticationError, ConcurrencyError, ConflictError
+from lekto.core.domain.identity import (
     ACCOUNT_THROTTLE,
     ApiToken,
     Credential,
@@ -22,8 +22,8 @@ from papiq.core.domain.identity import (
     TotpSetting,
     hash_token,
 )
-from papiq.core.domain.users import User
-from papiq.core.ports.identity import (
+from lekto.core.domain.users import User
+from lekto.core.ports.identity import (
     TOTP_STEP,
     DecryptionError,
     OidcProvider,
@@ -31,7 +31,7 @@ from papiq.core.ports.identity import (
     SecretCipher,
     Totp,
 )
-from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from tests.builders import HOUR, NOW
 from tests.contracts.unit_of_work import a_user
 

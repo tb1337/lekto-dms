@@ -14,9 +14,9 @@ from ocrmypdf import OcrOptions
 from ocrmypdf.hocrtransform import BoundingBox
 from PIL import Image
 
-from papiq.adapters.outbound.ocrmypdf import plugin
-from papiq.adapters.outbound.ocrmypdf.plugin import VisionOcrEngine, page_element
-from papiq.adapters.outbound.ocrmypdf.vision import (
+from lekto.adapters.outbound.ocrmypdf import plugin
+from lekto.adapters.outbound.ocrmypdf.plugin import VisionOcrEngine, page_element
+from lekto.adapters.outbound.ocrmypdf.vision import (
     CONFIG_ENV,
     KEY_ENV,
     MAX_PIXELS,
@@ -35,7 +35,7 @@ from papiq.adapters.outbound.ocrmypdf.vision import (
     scaled,
     write_error,
 )
-from papiq.composition.container import VISION_REQUEST_TIMEOUT
+from lekto.composition.container import VISION_REQUEST_TIMEOUT
 
 SETTINGS = VisionSettings(
     base_url="https://vlm.example/v1",

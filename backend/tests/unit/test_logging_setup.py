@@ -5,9 +5,9 @@ from typing import Any
 import pytest
 import structlog
 
-from papiq.adapters.outbound.webhooks import HttpWebhookSender
-from papiq.composition.logging_setup import configure_logging
-from papiq.composition.settings import Settings
+from lekto.adapters.outbound.webhooks import HttpWebhookSender
+from lekto.composition.logging_setup import configure_logging
+from lekto.composition.settings import Settings
 from tests.contracts.webhook_sender import request
 from tests.webhook_receiver import LocalReceiver
 
@@ -19,7 +19,7 @@ def settings(**values: Any) -> Settings:
 def test_json_format_writes_one_json_object_per_line(capsys: pytest.CaptureFixture[str]) -> None:
     configure_logging(settings(log_format="json"))
     structlog.get_logger("papiq.test").info("document received", document_id="42")
-    logging.getLogger("papiq.stdlib").warning("from the core")
+    logging.getLogger("lekto.stdlib").warning("from the core")
 
     lines = capsys.readouterr().err.splitlines()
     assert len(lines) == 2
@@ -29,14 +29,14 @@ def test_json_format_writes_one_json_object_per_line(capsys: pytest.CaptureFixtu
     assert first["level"] == "info"
     assert first["timestamp"].endswith("Z")
     assert second["event"] == "from the core"
-    assert second["logger"] == "papiq.stdlib"
+    assert second["logger"] == "lekto.stdlib"
     assert second["level"] == "warning"
 
 
 def test_the_extra_fields_of_stdlib_records_are_kept(capsys: pytest.CaptureFixture[str]) -> None:
     """The core logs through `logging` and passes its context as `extra`."""
     configure_logging(settings(log_format="json"))
-    logging.getLogger("papiq.core").warning(
+    logging.getLogger("lekto.core").warning(
         "lost the claim of a job", extra={"job_id": "7", "document_id": "42"}
     )
 

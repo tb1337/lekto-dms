@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from papiq.core.domain.errors import NotFoundError
-from papiq.core.ports.object_store import ObjectStore
+from lekto.core.domain.errors import NotFoundError
+from lekto.core.ports.object_store import ObjectStore
 
 KEY = "originals/0123abcd"
 

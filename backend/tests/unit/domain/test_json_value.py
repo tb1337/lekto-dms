@@ -4,9 +4,9 @@ from uuid import UUID
 
 import pytest
 
-from papiq.core.domain.codes import Code
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.json_value import (
+from lekto.core.domain.codes import Code
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.json_value import (
     JsonObject,
     JsonValue,
     as_bool,
@@ -22,7 +22,7 @@ from papiq.core.domain.json_value import (
     require_object,
     require_uuid,
 )
-from papiq.core.domain.reading import readings_from_json
+from lekto.core.domain.reading import readings_from_json
 
 
 def test_values_of_the_expected_type() -> None:

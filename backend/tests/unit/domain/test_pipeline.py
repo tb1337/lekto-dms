@@ -2,17 +2,17 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.core.domain.documents import Document
-from papiq.core.domain.errors import InvalidTransitionError, ValidationError
-from papiq.core.domain.events import (
+from lekto.core.domain.documents import Document
+from lekto.core.domain.errors import InvalidTransitionError, ValidationError
+from lekto.core.domain.events import (
     DocumentFiled,
     LaneChanged,
     NodeCompleted,
     NodeDeferred,
     NodeStarted,
 )
-from papiq.core.domain.ids import new_id
-from papiq.core.domain.pipeline import (
+from lekto.core.domain.ids import new_id
+from lekto.core.domain.pipeline import (
     CURRENT_SIGNALS,
     GRAPH,
     NODES,

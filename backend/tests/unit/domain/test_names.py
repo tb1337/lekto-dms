@@ -1,6 +1,6 @@
 import pytest
 
-from papiq.core.domain.names import (
+from lekto.core.domain.names import (
     best_match,
     match_key,
     mentions,

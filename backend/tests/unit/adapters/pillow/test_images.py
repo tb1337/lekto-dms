@@ -9,9 +9,9 @@ import zlib
 import pytest
 from PIL import Image, ImageOps
 
-from papiq.adapters.outbound.pillow import PillowImageNormaliser
-from papiq.adapters.outbound.pillow.images import MAX_JPEG_SCANS
-from papiq.core.domain.errors import ImageError, UnsupportedMediaTypeError
+from lekto.adapters.outbound.pillow import PillowImageNormaliser
+from lekto.adapters.outbound.pillow.images import MAX_JPEG_SCANS
+from lekto.core.domain.errors import ImageError, UnsupportedMediaTypeError
 from tests.contracts.images import ImageNormaliserContract, image
 
 

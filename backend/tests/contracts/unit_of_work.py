@@ -6,17 +6,17 @@ from uuid import UUID
 
 import pytest
 
-from papiq.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
-from papiq.core.domain.classifier import ClassifierModel
-from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
-from papiq.core.domain.fields import FieldDefinition, FieldType, Money, Url
-from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from papiq.core.domain.ids import DocumentId, SpaceId, TagId, new_id
-from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
-from papiq.core.domain.periods import Period
-from papiq.core.domain.permissions import can_read_document
-from papiq.core.domain.pipeline import (
+from lekto.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
+from lekto.core.domain.classifier import ClassifierModel
+from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
+from lekto.core.domain.fields import FieldDefinition, FieldType, Money, Url
+from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
+from lekto.core.domain.ids import DocumentId, SpaceId, TagId, new_id
+from lekto.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
+from lekto.core.domain.periods import Period
+from lekto.core.domain.permissions import can_read_document
+from lekto.core.domain.pipeline import (
     NOT_GREEN,
     Lane,
     Node,
@@ -25,10 +25,10 @@ from papiq.core.domain.pipeline import (
     Outcome,
     ProcessingStatus,
 )
-from papiq.core.domain.spaces import ShareLevel, Space
-from papiq.core.domain.users import User
-from papiq.core.domain.verdict import KnownLabels
-from papiq.core.ports.repository import (
+from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.users import User
+from lekto.core.domain.verdict import KnownLabels
+from lekto.core.ports.repository import (
     NEWEST_FIRST,
     CountBy,
     DocumentFilter,
@@ -37,7 +37,7 @@ from papiq.core.ports.repository import (
     SortKey,
     TagSets,
 )
-from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from tests import builders
 from tests.builders import FAILED, NOW, OK, UNCERTAIN
 

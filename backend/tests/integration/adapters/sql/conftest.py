@@ -9,13 +9,13 @@ from collections.abc import AsyncIterator, Callable, Iterator
 import pytest
 from sqlalchemy import text
 
-from papiq.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory, migrate
-from papiq.adapters.outbound.sql.tables import metadata
-from papiq.composition.settings import Settings
-from papiq.core.domain.jobs import RetryPolicy
-from papiq.core.ports.clock import Clock
-from papiq.core.ports.event_bus import EventBus
-from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.adapters.outbound.sql import Database, SqlEventBus, SqlUnitOfWorkFactory, migrate
+from lekto.adapters.outbound.sql.tables import metadata
+from lekto.composition.settings import Settings
+from lekto.core.domain.jobs import RetryPolicy
+from lekto.core.ports.clock import Clock
+from lekto.core.ports.event_bus import EventBus
+from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
 from tests.contracts.event_bus import EventBusFactory
 from tests.integration.services import create_database, drop_database, postgres

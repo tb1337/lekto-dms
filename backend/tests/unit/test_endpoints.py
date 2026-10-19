@@ -2,8 +2,8 @@ from typing import Any
 
 import pytest
 
-from papiq.composition.endpoints import external_endpoints, is_local_host
-from papiq.composition.settings import Settings
+from lekto.composition.endpoints import external_endpoints, is_local_host
+from lekto.composition.settings import Settings
 
 
 @pytest.mark.parametrize(

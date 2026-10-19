@@ -11,20 +11,20 @@ from uuid import UUID
 import httpx2
 import pytest
 
-from papiq.adapters.outbound.meilisearch import MeilisearchIndex
-from papiq.adapters.outbound.meilisearch import index as index_module
-from papiq.adapters.outbound.meilisearch.index import (
+from lekto.adapters.outbound.meilisearch import MeilisearchIndex
+from lekto.adapters.outbound.meilisearch import index as index_module
+from lekto.adapters.outbound.meilisearch.index import (
     HIGHLIGHT_END,
     HIGHLIGHT_START,
     filter_expression,
     segments,
 )
-from papiq.core.domain.errors import SearchIndexError, SearchUnavailableError
-from papiq.core.domain.ids import ContactId, DocumentId, DocumentTypeId, SpaceId, TagId, UserId
-from papiq.core.domain.pipeline import Lane
-from papiq.core.domain.search import EmbeddingStamp, Segment, Visibility
-from papiq.core.ports.repository import DocumentFilter
-from papiq.core.ports.search_index import SearchQuery
+from lekto.core.domain.errors import SearchIndexError, SearchUnavailableError
+from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, SpaceId, TagId, UserId
+from lekto.core.domain.pipeline import Lane
+from lekto.core.domain.search import EmbeddingStamp, Segment, Visibility
+from lekto.core.ports.repository import DocumentFilter
+from lekto.core.ports.search_index import SearchQuery
 from tests.builders import DEFAULT_SETTINGS, NOW, index_document, search_query
 
 URL = "http://meilisearch:7700"

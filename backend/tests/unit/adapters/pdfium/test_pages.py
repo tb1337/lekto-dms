@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from papiq.adapters.outbound.pdfium import PdfiumPageRenderer
-from papiq.core.domain import media_types
+from lekto.adapters.outbound.pdfium import PdfiumPageRenderer
+from lekto.core.domain import media_types
 from tests.builders import SAMPLES
 from tests.contracts.processing import PageRendererContract
 
@@ -55,7 +55,7 @@ async def test_a_small_image_keeps_its_size_and_transparency_turns_white(tmp_pat
 
 
 async def test_a_file_that_is_no_image_is_unprocessable(tmp_path: Path) -> None:
-    from papiq.core.domain.errors import UnprocessableDocumentError
+    from lekto.core.domain.errors import UnprocessableDocumentError
 
     with pytest.raises(UnprocessableDocumentError, match="cannot be read"):
         await PdfiumPageRenderer().render_pages(

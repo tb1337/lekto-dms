@@ -6,16 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from papiq.adapters.outbound.memory import FakeOcr, FakePageRenderer, FakeParser
-from papiq.adapters.outbound.memory.processing import FAKE_PDF, FAKE_READING
-from papiq.core.domain.documents import Document
-from papiq.core.domain.locations import Box
-from papiq.core.domain.pipeline import Lane, Node, NodeRun, Outcome
-from papiq.core.domain.reading import PageReading, PageWords, ReadWord, reading_from_json
-from papiq.core.domain.users import User
-from papiq.core.ports.ocr import OcrResult
-from papiq.core.services.nodes import OcrNode, PagesNode, ParseNode, has_text
-from papiq.core.services.objects import (
+from lekto.adapters.outbound.memory import FakeOcr, FakePageRenderer, FakeParser
+from lekto.adapters.outbound.memory.processing import FAKE_PDF, FAKE_READING
+from lekto.core.domain.documents import Document
+from lekto.core.domain.locations import Box
+from lekto.core.domain.pipeline import Lane, Node, NodeRun, Outcome
+from lekto.core.domain.reading import PageReading, PageWords, ReadWord, reading_from_json
+from lekto.core.domain.users import User
+from lekto.core.ports.ocr import OcrResult
+from lekto.core.services.nodes import OcrNode, PagesNode, ParseNode, has_text
+from lekto.core.services.objects import (
     archive_key,
     legacy_text_key,
     load_text,
@@ -26,7 +26,7 @@ from papiq.core.services.objects import (
     structure_key,
     text_key,
 )
-from papiq.core.services.pipeline import PipelineService
+from lekto.core.services.pipeline import PipelineService
 from tests.builders import SAMPLES, incoming
 from tests.unit.services.support import World
 

@@ -10,15 +10,15 @@ from pathlib import Path
 import httpx2
 import pytest
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
-from papiq.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer
-from papiq.adapters.outbound.sql import Database
-from papiq.core.domain.spaces import ShareLevel
-from papiq.core.domain.users import User
-from papiq.core.ports.object_store import ObjectStore
-from papiq.core.ports.ocr import OcrResult, VisionModel
-from papiq.core.services.objects import archive_key, preview_key, structure_key, text_key
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.adapters.outbound.ocrmypdf import OcrmypdfEngine
+from lekto.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer
+from lekto.adapters.outbound.sql import Database
+from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.users import User
+from lekto.core.ports.object_store import ObjectStore
+from lekto.core.ports.ocr import OcrResult, VisionModel
+from lekto.core.services.objects import archive_key, preview_key, structure_key, text_key
 from tests import builders, probes
 from tests.api import Stream, auth, listen, until
 from tests.builders import DEFAULT_SETTINGS, SAMPLES

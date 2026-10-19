@@ -5,12 +5,12 @@ from datetime import date
 
 import pytest
 
-from papiq.core.domain.documents import DocumentChanges
-from papiq.core.domain.errors import NotFoundError, ValidationError
-from papiq.core.domain.master_data import TagScope
-from papiq.core.domain.pipeline import RULES_CHANGE, Lane, Outcome, ProcessingStatus
-from papiq.core.domain.rule_planner import Note, NoteKind
-from papiq.core.domain.rules import (
+from lekto.core.domain.documents import DocumentChanges
+from lekto.core.domain.errors import NotFoundError, ValidationError
+from lekto.core.domain.master_data import TagScope
+from lekto.core.domain.pipeline import RULES_CHANGE, Lane, Outcome, ProcessingStatus
+from lekto.core.domain.rule_planner import Note, NoteKind
+from lekto.core.domain.rules import (
     Condition,
     ConditionField,
     ForceReview,
@@ -20,8 +20,8 @@ from papiq.core.domain.rules import (
     SetTitle,
     Trigger,
 )
-from papiq.core.domain.spaces import ShareLevel
-from papiq.core.services.documents import MetadataChange
+from lekto.core.domain.spaces import ShareLevel
+from lekto.core.services.documents import MetadataChange
 from tests.unit.services.rules_support import (
     Classifies,
     add_tags,

@@ -2,8 +2,8 @@
 
 import pytest
 
-from papiq.adapters.outbound.memory import FakeWebhookSender
-from papiq.core.ports.webhook_sender import WebhookRequest, WebhookSender
+from lekto.adapters.outbound.memory import FakeWebhookSender
+from lekto.core.ports.webhook_sender import WebhookRequest, WebhookSender
 from tests.contracts.webhook_sender import Receiver, WebhookSenderContract
 from tests.webhook_receiver import Received, default_answer
 

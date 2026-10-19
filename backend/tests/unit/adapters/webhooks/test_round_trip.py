@@ -11,13 +11,13 @@ import time
 from dataclasses import replace
 from datetime import timedelta
 
-from papiq import __version__
-from papiq.adapters.inbound.worker import Worker
-from papiq.adapters.outbound.webhooks import HttpWebhookSender
-from papiq.composition.container import build_memory_container, build_services
-from papiq.composition.settings import Settings
-from papiq.core.domain.webhooks import DeliveryOutcome
-from papiq.core.services.webhooks import SUBSCRIBER
+from lekto import __version__
+from lekto.adapters.inbound.worker import Worker
+from lekto.adapters.outbound.webhooks import HttpWebhookSender
+from lekto.composition.container import build_memory_container, build_services
+from lekto.composition.settings import Settings
+from lekto.core.domain.webhooks import DeliveryOutcome
+from lekto.core.services.webhooks import SUBSCRIBER
 from tests import builders
 from tests.api import until
 from tests.builders import SAMPLES, incoming

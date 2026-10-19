@@ -1,7 +1,7 @@
 """The facts of a text and of the codes on its pages, with where they stand in the text."""
 
-from papiq.core.domain.codes import Code
-from papiq.core.domain.facts import (
+from lekto.core.domain.codes import Code
+from lekto.core.domain.facts import (
     FoundIdentifier,
     NamedContact,
     Span,
@@ -9,9 +9,9 @@ from papiq.core.domain.facts import (
     identifier_spans,
     name_spans,
 )
-from papiq.core.domain.identifiers import Identifier, IdentifierKind
-from papiq.core.domain.locations import Box
-from papiq.core.domain.master_data import Contact
+from lekto.core.domain.identifiers import Identifier, IdentifierKind
+from lekto.core.domain.locations import Box
+from lekto.core.domain.master_data import Contact
 from tests.builders import NOW
 
 TEXT = """\

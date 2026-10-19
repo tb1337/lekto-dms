@@ -16,14 +16,14 @@ from mcp.client import Client
 from mcp.client.streamable_http import streamable_http_client
 from mcp_types import CallToolResult
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.adapters.outbound.memory import ManualClock
-from papiq.composition.container import build_memory_container, build_services
-from papiq.core.domain.documents import DocumentChanges
-from papiq.core.domain.fields import FieldType, Money
-from papiq.core.domain.ids import DocumentId, new_id
-from papiq.core.domain.master_data import TagScope
-from papiq.core.services.objects import text_key
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.adapters.outbound.memory import ManualClock
+from lekto.composition.container import build_memory_container, build_services
+from lekto.core.domain.documents import DocumentChanges
+from lekto.core.domain.fields import FieldType, Money
+from lekto.core.domain.ids import DocumentId, new_id
+from lekto.core.domain.master_data import TagScope
+from lekto.core.services.objects import text_key
 from tests import builders
 from tests.api import auth, serving
 from tests.builders import SAMPLES

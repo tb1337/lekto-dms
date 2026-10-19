@@ -2,10 +2,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from papiq.core.domain.errors import NotFoundError, ValidationError
-from papiq.core.domain.ids import TagId
-from papiq.core.domain.master_data import Tag, TagScope
-from papiq.core.domain.tag_tree import MAX_LEVELS, SEPARATOR, TagTree
+from lekto.core.domain.errors import NotFoundError, ValidationError
+from lekto.core.domain.ids import TagId
+from lekto.core.domain.master_data import Tag, TagScope
+from lekto.core.domain.tag_tree import MAX_LEVELS, SEPARATOR, TagTree
 
 NOW = datetime(2026, 10, 16, 12, 0, tzinfo=UTC)
 

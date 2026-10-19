@@ -10,12 +10,12 @@ from typing import Any
 import httpx2
 import pytest
 
-from papiq.adapters.outbound.http_client import endpoint_of
-from papiq.adapters.outbound.openai_compat import (
+from lekto.adapters.outbound.http_client import endpoint_of
+from lekto.adapters.outbound.openai_compat import (
     OpenAiCompatEmbeddings,
     OpenAiCompatLanguageModel,
 )
-from papiq.core.domain.errors import EmbeddingsError, LanguageModelError
+from lekto.core.domain.errors import EmbeddingsError, LanguageModelError
 from tests.builders import DEFAULT_SETTINGS
 from tests.contracts.language_model import REQUEST, EmbeddingsContract, LanguageModelContract
 

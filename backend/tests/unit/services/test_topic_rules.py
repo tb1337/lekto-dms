@@ -2,12 +2,12 @@
 
 import pytest
 
-from papiq.core.domain.documents import DocumentChanges
-from papiq.core.domain.errors import ConflictError, NotFoundError, ValidationError
-from papiq.core.domain.ids import TagId, new_id
-from papiq.core.domain.master_data import TagScope
-from papiq.core.domain.pipeline import PERSON, RULES, RULES_CHANGE, Lane
-from papiq.core.domain.rules import (
+from lekto.core.domain.documents import DocumentChanges
+from lekto.core.domain.errors import ConflictError, NotFoundError, ValidationError
+from lekto.core.domain.ids import TagId, new_id
+from lekto.core.domain.master_data import TagScope
+from lekto.core.domain.pipeline import PERSON, RULES, RULES_CHANGE, Lane
+from lekto.core.domain.rules import (
     Condition,
     ConditionField,
     ForceReview,
@@ -17,7 +17,7 @@ from papiq.core.domain.rules import (
     SetTopic,
     Trigger,
 )
-from papiq.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import ShareLevel
 from tests.unit.services.rules_support import (
     Classifies,
     channel_api,

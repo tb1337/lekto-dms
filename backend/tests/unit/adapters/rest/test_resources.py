@@ -4,9 +4,9 @@ from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.core.domain.ids import DocumentId
-from papiq.core.services.objects import archive_key
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.core.domain.ids import DocumentId
+from lekto.core.services.objects import archive_key
 from tests.api import auth
 from tests.builders import PASSWORD, SAMPLES
 from tests.unit.adapters.rest.support import Api, post, unique_pdf, upload

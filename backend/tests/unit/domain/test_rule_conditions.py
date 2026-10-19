@@ -3,12 +3,12 @@ from decimal import Decimal
 
 import pytest
 
-from papiq.core.domain.documents import Channel
-from papiq.core.domain.evidence import DocumentText
-from papiq.core.domain.fields import FieldDefinition, Money, Url
-from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.periods import Period
-from papiq.core.domain.rule_conditions import (
+from lekto.core.domain.documents import Channel
+from lekto.core.domain.evidence import DocumentText
+from lekto.core.domain.fields import FieldDefinition, Money, Url
+from lekto.core.domain.json_value import JsonValue
+from lekto.core.domain.periods import Period
+from lekto.core.domain.rule_conditions import (
     Facts,
     Match,
     Truth,
@@ -17,8 +17,8 @@ from papiq.core.domain.rule_conditions import (
     pattern_subjects,
     pattern_text,
 )
-from papiq.core.domain.rule_planner import plan
-from papiq.core.domain.rules import (
+from lekto.core.domain.rule_planner import plan
+from lekto.core.domain.rules import (
     AddTags,
     Condition,
     ConditionField,

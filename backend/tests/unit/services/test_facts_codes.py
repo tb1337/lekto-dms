@@ -4,18 +4,18 @@ facts of documents from before (`read-codes`)."""
 
 from pathlib import Path
 
-from papiq.adapters.outbound.memory import FAKE_GIRO_CODE, FakeCodeReader, FakeOcr
-from papiq.adapters.outbound.memory.processing import FAKE_PDF
-from papiq.core.domain.codes import Code
-from papiq.core.domain.documents import Document
-from papiq.core.domain.identifiers import Identifier, IdentifierKind
-from papiq.core.domain.ids import ContactId
-from papiq.core.domain.master_data import Contact
-from papiq.core.domain.pipeline import Node
-from papiq.core.ports.codes import CodeReading
-from papiq.core.services.classification.signals import FactsResult, FactsSignal
-from papiq.core.services.nodes import OcrNode
-from papiq.core.services.objects import archive_key, codes_key, original_key
+from lekto.adapters.outbound.memory import FAKE_GIRO_CODE, FakeCodeReader, FakeOcr
+from lekto.adapters.outbound.memory.processing import FAKE_PDF
+from lekto.core.domain.codes import Code
+from lekto.core.domain.documents import Document
+from lekto.core.domain.identifiers import Identifier, IdentifierKind
+from lekto.core.domain.ids import ContactId
+from lekto.core.domain.master_data import Contact
+from lekto.core.domain.pipeline import Node
+from lekto.core.ports.codes import CodeReading
+from lekto.core.services.classification.signals import FactsResult, FactsSignal
+from lekto.core.services.nodes import OcrNode
+from lekto.core.services.objects import archive_key, codes_key, original_key
 from tests import builders
 from tests.unit.services.support import World
 from tests.unit.services.test_signals import contacts, stored

@@ -1,5 +1,5 @@
 [project]
-name = "papiq"
+name = "lekto"
 version = "0.1.0"
 description = "Self-hosted, headless document management system"
 readme = "README.md"
@@ -75,34 +75,34 @@ markers = [
 
 # Hexagonal boundaries, checked with `lint-imports`.
 [tool.importlinter]
-root_package = "papiq"
+root_package = "lekto"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "Layers: composition -> adapters -> core"
 type = "layers"
 layers = [
-    "papiq.composition",
-    "papiq.adapters",
-    "papiq.core",
+    "lekto.composition",
+    "lekto.adapters",
+    "lekto.core",
 ]
 
 [[tool.importlinter.contracts]]
 name = "Inbound and outbound adapters are independent"
 type = "independence"
 modules = [
-    "papiq.adapters.inbound",
-    "papiq.adapters.outbound",
+    "lekto.adapters.inbound",
+    "lekto.adapters.outbound",
 ]
 
 [[tool.importlinter.contracts]]
 name = "Inbound adapters are independent of each other"
 type = "independence"
 modules = [
-    "papiq.adapters.inbound.evaluation",
-    "papiq.adapters.inbound.mcp",
-    "papiq.adapters.inbound.rest",
-    "papiq.adapters.inbound.worker",
+    "lekto.adapters.inbound.evaluation",
+    "lekto.adapters.inbound.mcp",
+    "lekto.adapters.inbound.rest",
+    "lekto.adapters.inbound.worker",
 ]
 
 [[tool.importlinter.contracts]]
@@ -111,50 +111,50 @@ type = "independence"
 # Shared infrastructure, not adapters: `http_client`, `imaging` and `system`. OCRmyPDF checks
 # the PDFs it makes with PDFium, and ZXing renders pages under PDFium's lock.
 modules = [
-    "papiq.adapters.outbound.crypto",
-    "papiq.adapters.outbound.filesystem",
-    "papiq.adapters.outbound.liquid",
-    "papiq.adapters.outbound.logos",
-    "papiq.adapters.outbound.meilisearch",
-    "papiq.adapters.outbound.memory",
-    "papiq.adapters.outbound.ocrmypdf",
-    "papiq.adapters.outbound.oidc",
-    "papiq.adapters.outbound.openai_compat",
-    "papiq.adapters.outbound.pdfium",
-    "papiq.adapters.outbound.pikepdf",
-    "papiq.adapters.outbound.pillow",
-    "papiq.adapters.outbound.regex",
-    "papiq.adapters.outbound.s3",
-    "papiq.adapters.outbound.sklearn",
-    "papiq.adapters.outbound.sql",
-    "papiq.adapters.outbound.webhooks",
-    "papiq.adapters.outbound.zxing",
+    "lekto.adapters.outbound.crypto",
+    "lekto.adapters.outbound.filesystem",
+    "lekto.adapters.outbound.liquid",
+    "lekto.adapters.outbound.logos",
+    "lekto.adapters.outbound.meilisearch",
+    "lekto.adapters.outbound.memory",
+    "lekto.adapters.outbound.ocrmypdf",
+    "lekto.adapters.outbound.oidc",
+    "lekto.adapters.outbound.openai_compat",
+    "lekto.adapters.outbound.pdfium",
+    "lekto.adapters.outbound.pikepdf",
+    "lekto.adapters.outbound.pillow",
+    "lekto.adapters.outbound.regex",
+    "lekto.adapters.outbound.s3",
+    "lekto.adapters.outbound.sklearn",
+    "lekto.adapters.outbound.sql",
+    "lekto.adapters.outbound.webhooks",
+    "lekto.adapters.outbound.zxing",
 ]
 ignore_imports = [
-    "papiq.adapters.outbound.ocrmypdf.engine -> papiq.adapters.outbound.pdfium",
-    "papiq.adapters.outbound.zxing.reader -> papiq.adapters.outbound.pdfium.library",
+    "lekto.adapters.outbound.ocrmypdf.engine -> lekto.adapters.outbound.pdfium",
+    "lekto.adapters.outbound.zxing.reader -> lekto.adapters.outbound.pdfium.library",
 ]
 
 [[tool.importlinter.contracts]]
 name = "Service helpers do not import use cases"
 type = "forbidden"
 source_modules = [
-    "papiq.core.services._access",
-    "papiq.core.services._jobs",
-    "papiq.core.services.objects",
+    "lekto.core.services._access",
+    "lekto.core.services._jobs",
+    "lekto.core.services.objects",
 ]
-forbidden_modules = ["papiq.core.services"]
+forbidden_modules = ["lekto.core.services"]
 
 [[tool.importlinter.contracts]]
 name = "Domain model depends on nothing else in the core"
 type = "forbidden"
-source_modules = ["papiq.core.domain"]
-forbidden_modules = ["papiq.core.ports", "papiq.core.services"]
+source_modules = ["lekto.core.domain"]
+forbidden_modules = ["lekto.core.ports", "lekto.core.services"]
 
 [[tool.importlinter.contracts]]
 name = "Core is plain Python: no framework or client libraries"
 type = "forbidden"
-source_modules = ["papiq.core"]
+source_modules = ["lekto.core"]
 forbidden_modules = [
     "aioboto3",
     "aiobotocore",

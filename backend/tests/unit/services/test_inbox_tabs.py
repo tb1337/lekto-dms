@@ -6,16 +6,16 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.errors import NotFoundError, PermissionDeniedError, ValidationError
-from papiq.core.domain.inbox import DONE_PERIOD, Departure, Done, InboxTab
-from papiq.core.domain.master_data import Assignment, Contact
-from papiq.core.domain.pipeline import Lane, Node
-from papiq.core.domain.spaces import ShareLevel
-from papiq.core.domain.users import Role, User
-from papiq.core.ports.repository import DocumentFilter
-from papiq.core.services.inbox import InboxItem
-from papiq.core.services.pipeline import MetadataResult, NodeExecutor
+from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.errors import NotFoundError, PermissionDeniedError, ValidationError
+from lekto.core.domain.inbox import DONE_PERIOD, Departure, Done, InboxTab
+from lekto.core.domain.master_data import Assignment, Contact
+from lekto.core.domain.pipeline import Lane, Node
+from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.users import Role, User
+from lekto.core.ports.repository import DocumentFilter
+from lekto.core.services.inbox import InboxItem
+from lekto.core.services.pipeline import MetadataResult, NodeExecutor
 from tests.builders import FAILED, NOW, OK, UNCERTAIN, Returns, incoming
 from tests.unit.services.rules_support import Classifies
 from tests.unit.services.support import World

@@ -9,15 +9,15 @@ from pathlib import Path
 import pypdfium2
 import pytest
 
-from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
-from papiq.adapters.outbound.ocrmypdf.engine import UNREADABLE_NOTE
-from papiq.adapters.outbound.ocrmypdf.vision import VisionSettings
-from papiq.adapters.outbound.pdfium import PdfiumTextLocator, has_hidden_text
-from papiq.adapters.outbound.pdfium.library import unreadable_share
-from papiq.composition.container import VISION_REQUEST_TIMEOUT
-from papiq.core.domain import media_types
-from papiq.core.domain.errors import LanguageModelError
-from papiq.core.domain.reading import words_at
+from lekto.adapters.outbound.ocrmypdf import OcrmypdfEngine
+from lekto.adapters.outbound.ocrmypdf.engine import UNREADABLE_NOTE
+from lekto.adapters.outbound.ocrmypdf.vision import VisionSettings
+from lekto.adapters.outbound.pdfium import PdfiumTextLocator, has_hidden_text
+from lekto.adapters.outbound.pdfium.library import unreadable_share
+from lekto.composition.container import VISION_REQUEST_TIMEOUT
+from lekto.core.domain import media_types
+from lekto.core.domain.errors import LanguageModelError
+from lekto.core.domain.reading import words_at
 from tests import probes
 from tests.builders import DEFAULT_SETTINGS, SAMPLES
 from tests.contracts.processing import OcrContract

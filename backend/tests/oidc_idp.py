@@ -12,7 +12,7 @@ import httpx2
 from joserfc import jwt
 from joserfc.jwk import KeySet, RSAKey
 
-from papiq.core.domain.encoding import pkce_challenge, query_parameters
+from lekto.core.domain.encoding import pkce_challenge, query_parameters
 
 ISSUER = "https://idp.example"
 CLIENT_ID = "papiq"

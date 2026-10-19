@@ -1,6 +1,6 @@
 """Which icons a website declares and in which order they are tried."""
 
-from papiq.adapters.outbound.logos.icons import (
+from lekto.adapters.outbound.logos.icons import (
     Candidate,
     declared_size,
     manifest_icons,

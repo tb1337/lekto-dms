@@ -2,8 +2,8 @@
 
 import pytest
 
-from papiq.adapters.outbound.pdfium import has_unreadable_text
-from papiq.adapters.outbound.pdfium.library import unreadable_share
+from lekto.adapters.outbound.pdfium import has_unreadable_text
+from lekto.adapters.outbound.pdfium.library import unreadable_share
 from tests.builders import SAMPLES
 
 

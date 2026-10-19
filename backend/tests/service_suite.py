@@ -4,14 +4,14 @@ references: run on the in-memory adapters, SQLite and Postgres alike (each needs
 
 import asyncio
 
-from papiq.adapters.outbound.memory import ManualClock, MemoryObjectStore
-from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.master_data import TagScope
-from papiq.core.domain.pipeline import Lane
-from papiq.core.domain.users import User
-from papiq.core.ports.unit_of_work import UnitOfWorkFactory
-from papiq.core.services.documents import DocumentService
-from papiq.core.services.master_data import MasterDataService
+from lekto.adapters.outbound.memory import ManualClock, MemoryObjectStore
+from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.master_data import TagScope
+from lekto.core.domain.pipeline import Lane
+from lekto.core.domain.users import User
+from lekto.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.core.services.documents import DocumentService
+from lekto.core.services.master_data import MasterDataService
 from tests import builders
 from tests.builders import NOW
 from tests.contracts.unit_of_work import owner_with_space

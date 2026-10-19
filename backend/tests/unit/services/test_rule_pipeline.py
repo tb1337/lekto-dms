@@ -7,14 +7,14 @@ from typing import Any
 
 import pytest
 
-from papiq.core.domain.documents import DocumentChanges
-from papiq.core.domain.errors import OpenFieldsError
-from papiq.core.domain.events import DocumentFiled
-from papiq.core.domain.fields import FieldType
-from papiq.core.domain.master_data import Assignment
-from papiq.core.domain.pipeline import PERSON, RULES, Lane, Node, Outcome, ProcessingStatus
-from papiq.core.domain.rule_planner import Mode
-from papiq.core.domain.rules import (
+from lekto.core.domain.documents import DocumentChanges
+from lekto.core.domain.errors import OpenFieldsError
+from lekto.core.domain.events import DocumentFiled
+from lekto.core.domain.fields import FieldType
+from lekto.core.domain.master_data import Assignment
+from lekto.core.domain.pipeline import PERSON, RULES, Lane, Node, Outcome, ProcessingStatus
+from lekto.core.domain.rule_planner import Mode
+from lekto.core.domain.rules import (
     ForceReview,
     SetContact,
     SetDocumentType,
@@ -23,8 +23,8 @@ from papiq.core.domain.rules import (
     SetTitle,
     Trigger,
 )
-from papiq.core.domain.spaces import ShareLevel
-from papiq.core.services.rules.running import (
+from lekto.core.domain.spaces import ShareLevel
+from lekto.core.services.rules.running import (
     PatternBudget,
     Prepared,
     active_rules,

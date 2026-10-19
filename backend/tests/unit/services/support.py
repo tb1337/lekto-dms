@@ -4,7 +4,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from papiq.adapters.outbound.memory import (
+from lekto.adapters.outbound.memory import (
     FakeCipher,
     FakeImageNormaliser,
     FakeOidcProvider,
@@ -16,23 +16,23 @@ from papiq.adapters.outbound.memory import (
     MemoryObjectStore,
     MemoryUnitOfWorkFactory,
 )
-from papiq.core.domain.documents import Document
-from papiq.core.domain.events import DomainEvent
-from papiq.core.domain.pipeline import NODES, Node, NodeResult
-from papiq.core.domain.spaces import Space
-from papiq.core.domain.users import Role, User
-from papiq.core.ports.logos import LogoFetcher
-from papiq.core.ports.ocr import VisionModel
-from papiq.core.services.auth import AuthService
-from papiq.core.services.documents import DocumentService
-from papiq.core.services.inbox import InboxService
-from papiq.core.services.logos import LogoService
-from papiq.core.services.master_data import NORMALISE_BATCH, MasterDataService
-from papiq.core.services.oidc import OidcService
-from papiq.core.services.pipeline import NodeExecutor, PipelineService
-from papiq.core.services.spaces import SpaceService
-from papiq.core.services.users import UserService
-from papiq.core.services.webhooks import WebhookDeliveryService, WebhookPolicy, WebhookService
+from lekto.core.domain.documents import Document
+from lekto.core.domain.events import DomainEvent
+from lekto.core.domain.pipeline import NODES, Node, NodeResult
+from lekto.core.domain.spaces import Space
+from lekto.core.domain.users import Role, User
+from lekto.core.ports.logos import LogoFetcher
+from lekto.core.ports.ocr import VisionModel
+from lekto.core.services.auth import AuthService
+from lekto.core.services.documents import DocumentService
+from lekto.core.services.inbox import InboxService
+from lekto.core.services.logos import LogoService
+from lekto.core.services.master_data import NORMALISE_BATCH, MasterDataService
+from lekto.core.services.oidc import OidcService
+from lekto.core.services.pipeline import NodeExecutor, PipelineService
+from lekto.core.services.spaces import SpaceService
+from lekto.core.services.users import UserService
+from lekto.core.services.webhooks import WebhookDeliveryService, WebhookPolicy, WebhookService
 from tests import builders
 from tests.builders import PlaceholderNode
 

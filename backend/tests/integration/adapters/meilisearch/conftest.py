@@ -3,8 +3,8 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from papiq.adapters.outbound.meilisearch import MeilisearchIndex
-from papiq.composition.settings import Settings
+from lekto.adapters.outbound.meilisearch import MeilisearchIndex
+from lekto.composition.settings import Settings
 from tests.integration.services import drop, new_index
 
 

@@ -5,12 +5,12 @@ from decimal import Decimal
 
 import pytest
 
-from papiq.adapters.outbound.ocrmypdf.hocr import hocr_words
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.evidence import DocumentText
-from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.locations import Box, Location
-from papiq.core.domain.reading import (
+from lekto.adapters.outbound.ocrmypdf.hocr import hocr_words
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.evidence import DocumentText
+from lekto.core.domain.json_value import JsonValue
+from lekto.core.domain.locations import Box, Location
+from lekto.core.domain.reading import (
     READING_VERSION,
     SURROUNDING,
     OcrOutput,

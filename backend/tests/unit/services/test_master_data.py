@@ -1,18 +1,18 @@
 import pytest
 
-from papiq.core.domain.documents import DocumentChanges
-from papiq.core.domain.errors import (
+from lekto.core.domain.documents import DocumentChanges
+from lekto.core.domain.errors import (
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
     ValidationError,
 )
-from papiq.core.domain.events import DocumentUpdated
-from papiq.core.domain.fields import FieldType
-from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
-from papiq.core.domain.master_data import Assignment, Contact, TagScope
-from papiq.core.domain.rules import (
+from lekto.core.domain.events import DocumentUpdated
+from lekto.core.domain.fields import FieldType
+from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
+from lekto.core.domain.ids import ContactId, DocumentTypeId, TagId, new_id
+from lekto.core.domain.master_data import Assignment, Contact, TagScope
+from lekto.core.domain.rules import (
     AddTags,
     Condition,
     ConditionField,
@@ -22,9 +22,9 @@ from papiq.core.domain.rules import (
     RuleDefinition,
     RuleScope,
 )
-from papiq.core.domain.users import Role
-from papiq.core.services import master_data
-from papiq.core.services.master_data import learn_alias, replace_learned_identifiers
+from lekto.core.domain.users import Role
+from lekto.core.services import master_data
+from lekto.core.services.master_data import learn_alias, replace_learned_identifiers
 from tests import builders
 from tests.builders import incoming
 from tests.unit.services.support import World

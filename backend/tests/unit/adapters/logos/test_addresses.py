@@ -2,7 +2,7 @@
 
 import pytest
 
-from papiq.adapters.outbound.logos import is_public, system_resolver
+from lekto.adapters.outbound.logos import is_public, system_resolver
 
 
 @pytest.mark.parametrize(

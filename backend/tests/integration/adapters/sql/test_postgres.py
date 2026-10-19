@@ -7,14 +7,14 @@ from collections.abc import Callable
 import pytest
 from sqlalchemy import select
 
-from papiq.adapters.outbound.sql import Database
-from papiq.adapters.outbound.sql import tables as t
-from papiq.adapters.outbound.sql.unit_of_work import SqlOutbox
-from papiq.core.domain.errors import ConcurrencyError
-from papiq.core.domain.events import DomainEvent
-from papiq.core.domain.users import User
-from papiq.core.ports.event_bus import EventBus
-from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.adapters.outbound.sql import Database
+from lekto.adapters.outbound.sql import tables as t
+from lekto.adapters.outbound.sql.unit_of_work import SqlOutbox
+from lekto.core.domain.errors import ConcurrencyError
+from lekto.core.domain.events import DomainEvent
+from lekto.core.domain.users import User
+from lekto.core.ports.event_bus import EventBus
+from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
 from tests.contracts.event_bus import EventBusContract, Recorder, publish, received
 from tests.contracts.identity import IdentityRepositoriesContract

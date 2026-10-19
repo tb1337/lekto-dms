@@ -4,10 +4,10 @@ import json
 
 import pytest
 
-from papiq.core.domain.errors import EmbeddingsError, LanguageModelError
-from papiq.core.domain.json_value import JsonObject
-from papiq.core.ports.embeddings import Embeddings
-from papiq.core.ports.llm import LanguageModel, StructuredRequest
+from lekto.core.domain.errors import EmbeddingsError, LanguageModelError
+from lekto.core.domain.json_value import JsonObject
+from lekto.core.ports.embeddings import Embeddings
+from lekto.core.ports.llm import LanguageModel, StructuredRequest
 
 SCHEMA: JsonObject = {
     "type": "object",

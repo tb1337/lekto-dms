@@ -2,8 +2,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.identifiers import (
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.identifiers import (
     Identifier,
     IdentifierKind,
     IdentifierSource,
@@ -12,8 +12,8 @@ from papiq.core.domain.identifiers import (
     mine_identifiers,
     normalise_identifier,
 )
-from papiq.core.domain.ids import ContactId, TagId, new_id
-from papiq.core.domain.master_data import Contact
+from lekto.core.domain.ids import ContactId, TagId, new_id
+from lekto.core.domain.master_data import Contact
 
 NOW = datetime(2026, 10, 13, tzinfo=UTC)
 IBAN = IdentifierKind.IBAN

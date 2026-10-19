@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from papiq.adapters.outbound.memory import FakeLogoFetcher, FakeOcr, FakeParser, MemorySearchIndex
-from papiq.composition import container
-from papiq.composition.__main__ import main
+from lekto.adapters.outbound.memory import FakeLogoFetcher, FakeOcr, FakeParser, MemorySearchIndex
+from lekto.composition import container
+from lekto.composition.__main__ import main
 from tests.builders import PASSWORD, SECRET_KEY, TRUSTED_PROXY
 
 
@@ -209,7 +209,7 @@ def test_the_worker_stops_cleanly_on_sigterm(tmp_path: Path) -> None:
         "PAPIQ_SECRET_KEY": SECRET_KEY,
         "PAPIQ_FORWARDED_ALLOW_IPS": TRUSTED_PROXY,
     }
-    command = [sys.executable, "-m", "papiq.composition"]
+    command = [sys.executable, "-m", "lekto.composition"]
     subprocess.run([*command, "migrate"], env=environment, check=True, capture_output=True)
 
     with subprocess.Popen(
@@ -245,7 +245,7 @@ def test_the_api_serves_health_and_stops_on_sigterm(tmp_path: Path) -> None:
         "PAPIQ_ADMIN_USERNAME": "admin",
         "PAPIQ_ADMIN_PASSWORD_FILE": str(password_file),
     }
-    command = [sys.executable, "-m", "papiq.composition"]
+    command = [sys.executable, "-m", "lekto.composition"]
     subprocess.run([*command, "migrate"], env=environment, check=True, capture_output=True)
 
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -324,7 +324,7 @@ def test_check_schema_waits_for_the_migration(
 ) -> None:
     path = tmp_path / "papiq.db"
     monkeypatch.setenv("PAPIQ_DB_SQLITE_PATH", str(path))
-    monkeypatch.setattr("papiq.composition.database.SCHEMA_POLL_INTERVAL", 0.1)
+    monkeypatch.setattr("lekto.composition.database.SCHEMA_POLL_INTERVAL", 0.1)
 
     timer = threading.Timer(1.0, lambda: main(["migrate"]))
     timer.start()
@@ -345,8 +345,8 @@ def test_wait_only_goes_with_check_schema(capsys: pytest.CaptureFixture[str]) ->
 @pytest.mark.parametrize(
     ("command", "target"),
     [
-        (["evaluate", "--fake"], "papiq.composition.__main__.run_evaluation"),
-        (["check-schema"], "papiq.composition.__main__.check_schema"),
+        (["evaluate", "--fake"], "lekto.composition.__main__.run_evaluation"),
+        (["check-schema"], "lekto.composition.__main__.check_schema"),
     ],
 )
 def test_a_command_that_breaks_logs_why_and_exits_one(

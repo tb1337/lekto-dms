@@ -6,8 +6,8 @@ from collections.abc import AsyncIterator
 import httpx2
 import pytest
 
-from papiq.adapters.outbound.memory import ManualClock
-from papiq.composition.container import build_memory_container, build_services
+from lekto.adapters.outbound.memory import ManualClock
+from lekto.composition.container import build_memory_container, build_services
 from tests import builders
 from tests.unit.adapters.rest.support import Api, make_app
 

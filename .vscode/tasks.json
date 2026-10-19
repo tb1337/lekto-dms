@@ -18,7 +18,7 @@
 			"label": "Papiq: Schema migrieren",
 			"detail": "Bring the database of the dev instance to the newest schema",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m papiq.composition migrate",
+			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m lekto.composition migrate",
 			"problemMatcher": []
 		},
 		{
@@ -32,7 +32,7 @@
 			"label": "Papiq: API",
 			"detail": "REST API, MCP and the built UI on http://localhost:8000/ui/",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m papiq.composition api",
+			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m lekto.composition api",
 			"isBackground": true,
 			"problemMatcher": {
 				"owner": "papiq",
@@ -51,7 +51,7 @@
 			"label": "Papiq: Worker",
 			"detail": "Pipeline, events, webhooks, search index",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m papiq.composition worker",
+			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m lekto.composition worker",
 			"isBackground": true,
 			"problemMatcher": {
 				"owner": "papiq",
@@ -100,28 +100,28 @@
 			"label": "Papiq: Suche neu aufbauen",
 			"detail": "Rebuild the search index of the dev instance (reindex)",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m papiq.composition reindex",
+			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m lekto.composition reindex",
 			"problemMatcher": []
 		},
 		{
 			"label": "Papiq: Seitenbilder nachholen",
 			"detail": "Queue the page images of documents from before the pages node (render-pages)",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m papiq.composition render-pages",
+			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m lekto.composition render-pages",
 			"problemMatcher": []
 		},
 		{
 			"label": "Papiq: Codes nachholen",
 			"detail": "Queue reading the bar and QR codes of documents from before code reading (read-codes)",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m papiq.composition read-codes",
+			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m lekto.composition read-codes",
 			"problemMatcher": []
 		},
 		{
 			"label": "Papiq: Logos holen",
 			"detail": "Queue fetching the logos of contacts without one from their websites (fetch-logos; needs PAPIQ_LOGO_FETCH=true)",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m papiq.composition fetch-logos",
+			"command": "set -a && . .devcontainer/live.env && set +a && cd backend && uv run python -m lekto.composition fetch-logos",
 			"problemMatcher": []
 		},
 		{

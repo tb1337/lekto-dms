@@ -3,13 +3,13 @@ facts tell, and what the judge applies."""
 
 from typing import Any
 
-from papiq.core.domain.documents import UNSET, Document
-from papiq.core.domain.identifiers import Identifier, IdentifierKind
-from papiq.core.domain.json_value import JsonObject, JsonValue
-from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
-from papiq.core.domain.pipeline import NodeResult, Outcome
-from papiq.core.services.classification.signals import FactsResult, FactsSignal
-from papiq.core.services.pipeline import MetadataResult
+from lekto.core.domain.documents import UNSET, Document
+from lekto.core.domain.identifiers import Identifier, IdentifierKind
+from lekto.core.domain.json_value import JsonObject, JsonValue
+from lekto.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
+from lekto.core.domain.pipeline import NodeResult, Outcome
+from lekto.core.services.classification.signals import FactsResult, FactsSignal
+from lekto.core.services.pipeline import MetadataResult
 from tests.builders import NOW
 from tests.unit.services.support import World
 from tests.unit.services.test_classification import (

@@ -1,7 +1,7 @@
 import pytest
 
-from papiq.adapters.outbound.system import SystemClock
-from papiq.core.ports.clock import Clock
+from lekto.adapters.outbound.system import SystemClock
+from lekto.core.ports.clock import Clock
 from tests.contracts.clock import ClockContract
 
 

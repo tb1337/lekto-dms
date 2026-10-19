@@ -1,15 +1,15 @@
 import pytest
 
-from papiq.core.domain.errors import (
+from lekto.core.domain.errors import (
     AuthenticationError,
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
     ValidationError,
 )
-from papiq.core.domain.ids import SpaceId, UserId, new_id
-from papiq.core.domain.spaces import DEFAULT_SPACE_NAME, ShareLevel
-from papiq.core.domain.users import Role
+from lekto.core.domain.ids import SpaceId, UserId, new_id
+from lekto.core.domain.spaces import DEFAULT_SPACE_NAME, ShareLevel
+from lekto.core.domain.users import Role
 from tests.builders import incoming
 from tests.unit.services.support import World
 

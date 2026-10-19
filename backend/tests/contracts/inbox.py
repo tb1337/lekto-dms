@@ -8,15 +8,15 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.core.domain.documents import Document
-from papiq.core.domain.errors import ConflictError
-from papiq.core.domain.ids import DocumentId, UserId, new_id
-from papiq.core.domain.inbox import DONE_PERIOD, Confirmation, InboxTab, left_at
-from papiq.core.domain.pipeline import Node
-from papiq.core.domain.spaces import Space
-from papiq.core.domain.users import User
-from papiq.core.ports.repository import InboxPosition
-from papiq.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from lekto.core.domain.documents import Document
+from lekto.core.domain.errors import ConflictError
+from lekto.core.domain.ids import DocumentId, UserId, new_id
+from lekto.core.domain.inbox import DONE_PERIOD, Confirmation, InboxTab, left_at
+from lekto.core.domain.pipeline import Node
+from lekto.core.domain.spaces import Space
+from lekto.core.domain.users import User
+from lekto.core.ports.repository import InboxPosition
+from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from tests import builders
 from tests.builders import FAILED, NOW, UNCERTAIN
 from tests.contracts.unit_of_work import owner_with_space

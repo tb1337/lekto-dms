@@ -3,9 +3,9 @@ all, content and unsure words per page."""
 
 from pathlib import Path
 
-from papiq.adapters.outbound.ocrmypdf.hocr import hocr_words, read_hocr
-from papiq.core.domain.locations import Box
-from papiq.core.domain.reading import PageReading, ReadWord, content_words
+from lekto.adapters.outbound.ocrmypdf.hocr import hocr_words, read_hocr
+from lekto.core.domain.locations import Box
+from lekto.core.domain.reading import PageReading, ReadWord, content_words
 from tests.scans import PAYSLIP, ScanLine, hocr
 
 PAGE = "image &quot;000001_ocr.png&quot;; bbox 0 0 2000 1000; ppageno 0"

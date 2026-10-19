@@ -1,6 +1,6 @@
 """The processing graph over HTTP."""
 
-from papiq.adapters.inbound.rest import PREFIX
+from lekto.adapters.inbound.rest import PREFIX
 from tests.api import auth
 from tests.unit.adapters.rest.support import Api
 

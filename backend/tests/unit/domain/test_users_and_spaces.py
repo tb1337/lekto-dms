@@ -2,10 +2,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.ids import UserId, new_id
-from papiq.core.domain.spaces import DEFAULT_SPACE_NAME, ShareLevel, Space
-from papiq.core.domain.users import Role, User
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.ids import UserId, new_id
+from lekto.core.domain.spaces import DEFAULT_SPACE_NAME, ShareLevel, Space
+from lekto.core.domain.users import Role, User
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 

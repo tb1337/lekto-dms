@@ -7,22 +7,22 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.adapters.outbound.memory import FakeEmbeddings
-from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.errors import (
+from lekto.adapters.outbound.memory import FakeEmbeddings
+from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.errors import (
     AuthenticationError,
     PermissionDeniedError,
     SearchUnavailableError,
     ValidationError,
 )
-from papiq.core.domain.ids import DocumentId
-from papiq.core.domain.pipeline import Node
-from papiq.core.domain.spaces import ShareLevel, Space
-from papiq.core.domain.users import Role, User
-from papiq.core.ports.embeddings import EmbeddingResult, Embeddings
-from papiq.core.ports.repository import DocumentFilter
-from papiq.core.ports.search_index import SearchQuery, SearchResult
-from papiq.core.services.search import SearchPolicy, SearchService
+from lekto.core.domain.ids import DocumentId
+from lekto.core.domain.pipeline import Node
+from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.users import Role, User
+from lekto.core.ports.embeddings import EmbeddingResult, Embeddings
+from lekto.core.ports.repository import DocumentFilter
+from lekto.core.ports.search_index import SearchQuery, SearchResult
+from lekto.core.services.search import SearchPolicy, SearchService
 from tests import builders
 from tests.builders import UNCERTAIN, Returns
 from tests.unit.services.search_support import BrokenEmbeddings, Setup

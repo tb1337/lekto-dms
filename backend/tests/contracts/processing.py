@@ -6,16 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from papiq.core.domain import media_types
-from papiq.core.domain.codes import giro_code
-from papiq.core.domain.errors import UnprocessableDocumentError
-from papiq.core.domain.locations import Location
-from papiq.core.ports.codes import CodeReader
-from papiq.core.ports.locator import TextLocator
-from papiq.core.ports.metadata import MetadataReader
-from papiq.core.ports.ocr import Ocr
-from papiq.core.ports.pages import PageRenderer
-from papiq.core.ports.parser import DocumentParser
+from lekto.core.domain import media_types
+from lekto.core.domain.codes import giro_code
+from lekto.core.domain.errors import UnprocessableDocumentError
+from lekto.core.domain.locations import Location
+from lekto.core.ports.codes import CodeReader
+from lekto.core.ports.locator import TextLocator
+from lekto.core.ports.metadata import MetadataReader
+from lekto.core.ports.ocr import Ocr
+from lekto.core.ports.pages import PageRenderer
+from lekto.core.ports.parser import DocumentParser
 from tests.builders import SAMPLES
 
 

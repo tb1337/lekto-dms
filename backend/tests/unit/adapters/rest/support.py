@@ -13,18 +13,18 @@ from uuid import UUID
 import httpx2
 from fastapi import FastAPI
 
-from papiq.adapters.inbound.mcp import McpEndpoint
-from papiq.adapters.inbound.rest import MCP_PATH, PREFIX, create_app
-from papiq.adapters.inbound.rest.auth import CSRF_HEADER
-from papiq.adapters.outbound.memory import ManualClock
-from papiq.composition.api import api_context
-from papiq.composition.container import Container, Services
-from papiq.core.domain.identity import TokenScope
-from papiq.core.domain.ids import DocumentId
-from papiq.core.domain.pipeline import Node
-from papiq.core.domain.spaces import ShareLevel, Space
-from papiq.core.domain.users import Role, User
-from papiq.core.services.objects import archive_key, preview_key
+from lekto.adapters.inbound.mcp import McpEndpoint
+from lekto.adapters.inbound.rest import MCP_PATH, PREFIX, create_app
+from lekto.adapters.inbound.rest.auth import CSRF_HEADER
+from lekto.adapters.outbound.memory import ManualClock
+from lekto.composition.api import api_context
+from lekto.composition.container import Container, Services
+from lekto.core.domain.identity import TokenScope
+from lekto.core.domain.ids import DocumentId
+from lekto.core.domain.pipeline import Node
+from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.users import Role, User
+from lekto.core.services.objects import archive_key, preview_key
 from tests import builders
 from tests.api import auth, bearer, issue_token
 from tests.builders import PASSWORD, SAMPLES, UNCERTAIN, Returns

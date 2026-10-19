@@ -3,18 +3,18 @@
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.adapters.inbound.rest.cursors import encode_cursor
-from papiq.core.domain.classification import (
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.adapters.inbound.rest.cursors import encode_cursor
+from lekto.core.domain.classification import (
     Candidate,
     CandidateSource,
     FieldCheck,
     checks_to_json,
 )
-from papiq.core.domain.ids import DocumentId
-from papiq.core.domain.labels import LabelCheck, LabelOutcome
-from papiq.core.domain.master_data import Contact
-from papiq.core.domain.pipeline import Node, NodeResult, Outcome
+from lekto.core.domain.ids import DocumentId
+from lekto.core.domain.labels import LabelCheck, LabelOutcome
+from lekto.core.domain.master_data import Contact
+from lekto.core.domain.pipeline import Node, NodeResult, Outcome
 from tests.api import auth
 from tests.builders import NOW, Returns
 from tests.unit.adapters.rest.support import DOCUMENTS, Api, sample_file, unique_pdf, upload

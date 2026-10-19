@@ -4,9 +4,9 @@ put on it. Skips if the OCR programs are not installed (the devcontainer has the
 from datetime import timedelta
 from pathlib import Path
 
-from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
-from papiq.adapters.outbound.pdfium import LayoutParser
-from papiq.core.domain import media_types
+from lekto.adapters.outbound.ocrmypdf import OcrmypdfEngine
+from lekto.adapters.outbound.pdfium import LayoutParser
+from lekto.core.domain import media_types
 from tests import probes
 from tests.builders import DEFAULT_SETTINGS, SAMPLES
 from tests.samples.make_samples import LINES

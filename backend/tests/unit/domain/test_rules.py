@@ -4,9 +4,9 @@ from uuid import UUID
 
 import pytest
 
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.fields import FieldDefinition, FieldType
-from papiq.core.domain.ids import (
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.fields import FieldDefinition, FieldType
+from lekto.core.domain.ids import (
     ContactId,
     DocumentId,
     DocumentTypeId,
@@ -17,9 +17,9 @@ from papiq.core.domain.ids import (
     UserId,
     new_id,
 )
-from papiq.core.domain.json_value import JsonObject, JsonValue
-from papiq.core.domain.master_data import TagScope
-from papiq.core.domain.rules import (
+from lekto.core.domain.json_value import JsonObject, JsonValue
+from lekto.core.domain.master_data import TagScope
+from lekto.core.domain.rules import (
     GLOBAL_ACTIONS,
     MAX_ACTIONS,
     MAX_CONDITIONS,
@@ -51,7 +51,7 @@ from papiq.core.domain.rules import (
     check_fields,
     check_scope,
 )
-from papiq.core.domain.rules_json import (
+from lekto.core.domain.rules_json import (
     action_from_json,
     condition_from_json,
     condition_to_json,
@@ -59,7 +59,7 @@ from papiq.core.domain.rules_json import (
     definition_to_json,
     group_from_json,
 )
-from papiq.core.domain.validation import MAX_NAME
+from lekto.core.domain.validation import MAX_NAME
 from tests.builders import NOW
 
 OWNER = UserId(new_id())

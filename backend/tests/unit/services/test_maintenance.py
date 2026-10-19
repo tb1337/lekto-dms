@@ -6,14 +6,14 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from papiq.adapters.outbound.memory import MemoryEventBus
-from papiq.core.domain.errors import AuthenticationError
-from papiq.core.domain.ids import DocumentId, EventId, new_id
-from papiq.core.domain.inbox import DONE_PERIOD, Confirmation
-from papiq.core.domain.jobs import JobStatus
-from papiq.core.domain.webhooks import DeliveryOutcome, WebhookDelivery
-from papiq.core.services.maintenance import CLEANUP_JOB, REMOVE_FILES_JOB, MaintenanceService
-from papiq.core.services.objects import derivative_keys, original_key
+from lekto.adapters.outbound.memory import MemoryEventBus
+from lekto.core.domain.errors import AuthenticationError
+from lekto.core.domain.ids import DocumentId, EventId, new_id
+from lekto.core.domain.inbox import DONE_PERIOD, Confirmation
+from lekto.core.domain.jobs import JobStatus
+from lekto.core.domain.webhooks import DeliveryOutcome, WebhookDelivery
+from lekto.core.services.maintenance import CLEANUP_JOB, REMOVE_FILES_JOB, MaintenanceService
+from lekto.core.services.objects import derivative_keys, original_key
 from tests import builders
 from tests.builders import PASSWORD, incoming
 from tests.unit.services.support import World

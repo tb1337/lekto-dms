@@ -2,7 +2,7 @@
 
 import pytest
 
-from papiq.core.domain.encoding import (
+from lekto.core.domain.encoding import (
     base64url,
     from_base64url,
     pkce_challenge,

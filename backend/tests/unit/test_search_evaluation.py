@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from papiq.adapters.inbound.evaluation import EvaluationSetError, load_queries, load_set
-from papiq.adapters.inbound.evaluation.search import QueryOutcome, RatioResult, SearchCase
-from papiq.composition.__main__ import main
-from papiq.composition.errors import ConfigurationError
-from papiq.composition.search_evaluation import parse_ratios, run_search_evaluation
-from papiq.composition.settings import Settings
+from lekto.adapters.inbound.evaluation import EvaluationSetError, load_queries, load_set
+from lekto.adapters.inbound.evaluation.search import QueryOutcome, RatioResult, SearchCase
+from lekto.composition.__main__ import main
+from lekto.composition.errors import ConfigurationError
+from lekto.composition.search_evaluation import parse_ratios, run_search_evaluation
+from lekto.composition.settings import Settings
 
 SET = Path(__file__).parents[2] / "evaluation"
 

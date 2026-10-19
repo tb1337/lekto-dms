@@ -1,0 +1,319 @@
+"""Accounts: created and managed by admins; the first admin comes from configuration.
+
+The last active admin can be neither demoted, deactivated nor deleted. Two admins demoting
+each other at the same time must not both succeed: a change that takes away admin rights also
+writes the other active admins (version check), so one of two such transactions fails.
+"""
+
+import logging
+from dataclasses import dataclass
+from datetime import datetime
+
+from lekto.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
+from lekto.core.domain.identity import Credential, ExternalIdentity, check_new_password
+from lekto.core.domain.ids import UserId
+from lekto.core.domain.sorting import sort_key
+from lekto.core.domain.spaces import Space
+from lekto.core.domain.users import Role, User
+from lekto.core.ports.clock import Clock
+from lekto.core.ports.identity import PasswordHasher
+from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from lekto.core.services._access import load_actor, require_admin
+from lekto.core.services.rules.references import disable_rules, refers_to
+
+log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Account:
+    """A user with the state of their sign-in methods, for admins."""
+
+    user: User
+    has_password: bool
+    totp_enabled: bool
+    external_identities: list[ExternalIdentity]
+
+
+class UserService:
+    def __init__(
+        self, uow: UnitOfWorkFactory, clock: Clock, hasher: PasswordHasher | None = None
+    ) -> None:
+        self._uow = uow
+        self._clock = clock
+        self._hasher = hasher
+
+    # --- reading --------------------------------------------------------------------------------
+
+    async def list_users(self, actor: UserId) -> list[User]:
+        """Admins see all users; others see the active ones (to share spaces with them)."""
+        async with self._uow() as uow:
+            user = await load_actor(uow, actor)
+            users = await uow.users.list_all()
+        visible = users if user.is_active_admin else [u for u in users if u.active]
+        return sorted(visible, key=lambda u: sort_key(u.username))
+
+    async def get(self, actor: UserId, id: UserId) -> User:
+        """Like `list_users`: a deactivated user is not found for others than admins."""
+        async with self._uow() as uow:
+            user = await load_actor(uow, actor)
+            found = await uow.users.find(id)
+        if found is None or not (found.active or user.is_active_admin):
+            raise NotFoundError("user", id)
+        return found
+
+    async def own_account(self, actor: UserId) -> Account:
+        """The caller's own account."""
+        async with self._uow() as uow:
+            return await _account(uow, await load_actor(uow, actor))
+
+    async def account(self, actor: UserId, id: UserId) -> Account:
+        """Admins only."""
+        async with self._uow() as uow:
+            await require_admin(uow, actor, "manage users")
+            return await _account(uow, await uow.users.get(id))
+
+    # --- changes by admins ----------------------------------------------------------------------
+
+    async def create_user(
+        self,
+        actor: UserId,
+        username: str,
+        role: Role,
+        password: str | None = None,
+        *,
+        session: bool = True,
+    ) -> User:
+        """Admins only. Creates the user together with their private default space and, if
+        given, a password (which must meet the policy).
+
+        `session`: whether the caller is signed in with a session. With an API token (as a
+        migration uses) only a user with the role `user` and no password can be created: a
+        password or the role `admin` would turn a leaked token into a sign-in with more
+        rights than the token was meant to give (see `update`)."""
+        if not session and (password is not None or role is not Role.USER):
+            raise PermissionDeniedError(
+                "this needs a signed-in session: an API token can only create users with the "
+                "role 'user' and no password"
+            )
+        password_hash = await self._hash(username, password)
+        now = self._clock.now()
+        async with self._uow() as uow:
+            await require_admin(uow, actor, "manage users")
+            user = await add_user(uow, username, role, now)
+            if password_hash is not None:
+                await uow.credentials.add(
+                    Credential(
+                        user_id=user.id, password_hash=password_hash, password_changed_at=now
+                    )
+                )
+            await uow.commit()
+        log.info("user created", extra={"user_id": str(user.id), "role": role.value})
+        return user
+
+    async def update(
+        self,
+        actor: UserId,
+        id: UserId,
+        *,
+        role: Role | None = None,
+        active: bool | None = None,
+        session: bool = True,
+    ) -> User:
+        """Admins only; role and state in one transaction. Rights follow the role at once,
+        since every request reads the user anew; sessions and tokens stay. Deactivating ends
+        the user's sessions; their API tokens are refused while the account is inactive.
+
+        `session`: whether the caller is signed in with a session. An API token (a leaked one
+        above all) must not make anyone an admin, since that account then signs in with a
+        session and has everything the token was not meant to give; nor may it deactivate the
+        admins. A token only deactivates and reactivates users, as a migration does."""
+        async with self._uow() as uow:
+            await require_admin(uow, actor, "manage users")
+            user = await uow.users.get(id)
+            if not session and (
+                (role is not None and role is not user.role)
+                or (user.is_admin and active is not None and active is not user.active)
+            ):
+                raise PermissionDeniedError(
+                    "this needs a signed-in session: an API token cannot change a role or the "
+                    "state of an admin"
+                )
+            new_role = user.role if role is None else role
+            new_active = user.active if active is None else active
+            if (new_role, new_active) != (user.role, user.active):
+                if user.is_active_admin and not (new_active and new_role is Role.ADMIN):
+                    await _keep_an_admin(uow, user)
+                user.role, user.active = new_role, new_active
+                await uow.users.update(user)
+                if not new_active:
+                    await uow.sessions.remove_for_user(id)
+                await uow.commit()
+                log.info(
+                    "account changed",
+                    extra={"user_id": str(id), "role": user.role.value, "active": user.active},
+                )
+        return user
+
+    async def reset_password(
+        self, actor: UserId, id: UserId, password: str, *, revoke_tokens: bool = False
+    ) -> None:
+        """Admins only, not for their own account (that is `AuthService.change_password`, which
+        needs the current password). All sessions of the user end; API tokens stay unless
+        `revoke_tokens`."""
+        _not_own(actor, id, "reset their own password here")
+        async with self._uow() as uow:
+            await require_admin(uow, actor, "manage users")
+            user = await uow.users.get(id)
+        password_hash = await self._hash(user.username, password)
+        assert password_hash is not None
+        now = self._clock.now()
+        async with self._uow() as uow:
+            await require_admin(uow, actor, "manage users")
+            credential = await uow.credentials.find(id)
+            if credential is None:
+                await uow.credentials.add(
+                    Credential(user_id=id, password_hash=password_hash, password_changed_at=now)
+                )
+            else:
+                credential.password_hash = password_hash
+                credential.password_changed_at = now
+                await uow.credentials.update(credential)
+            await uow.sessions.remove_for_user(id)
+            if revoke_tokens:
+                await uow.api_tokens.remove_for_user(id)
+            await uow.commit()
+        log.info("password reset", extra={"user_id": str(id), "tokens_revoked": revoke_tokens})
+
+    async def disable_totp(self, actor: UserId, id: UserId) -> None:
+        """Admins only, for a user who lost their authenticator and recovery codes; not for
+        their own account (that is `AuthService.disable_totp`, which needs a code)."""
+        _not_own(actor, id, "turn off their own TOTP here")
+        async with self._uow() as uow:
+            await require_admin(uow, actor, "manage users")
+            await uow.users.get(id)
+            credential = await uow.credentials.find(id)
+            if credential is not None and credential.totp is not None:
+                credential.totp = None
+                credential.recovery_codes = set()
+                await uow.credentials.update(credential)
+                await uow.commit()
+                log.info("TOTP turned off by an admin", extra={"user_id": str(id)})
+
+    async def unlink_external_identities(self, actor: UserId, id: UserId) -> int:
+        """Admins only: remove the user's links to identity providers."""
+        async with self._uow() as uow:
+            await require_admin(uow, actor, "manage users")
+            await uow.users.get(id)
+            removed = await uow.external_identities.remove_for_user(id)
+            await uow.commit()
+        return removed
+
+    async def delete_user(self, actor: UserId, id: UserId) -> None:
+        """Admins only, and only for a user who owns no documents and whose spaces are empty.
+        Removes their spaces, the shares to them, their rules and webhooks, all their sign-in
+        data and what they saw in the inbox. Other users' rules that file into the removed spaces
+        are disabled."""
+        async with self._uow() as uow:
+            await require_admin(uow, actor, "manage users")
+            user = await uow.users.get(id)
+            if user.is_active_admin:
+                await _keep_an_admin(uow, user)
+            if await uow.documents.exists(owner=id):
+                raise ConflictError("the user owns documents; delete or move them first")
+            removed: list[Space] = []
+            for space in await uow.spaces.list_accessible(id):
+                if space.owner_id == id:
+                    if await uow.documents.exists(space=space.id):
+                        raise ConflictError(f"the user's space '{space.name}' is not empty")
+                    await uow.spaces.remove(space.id)
+                    removed.append(space)
+                else:
+                    space.unshare(id)
+                    await uow.spaces.update(space)
+            await uow.rules.remove_for_owner(id)
+            await uow.webhooks.remove_for_owner(id)
+            for space in removed:
+                await disable_rules(
+                    uow,
+                    self._clock.now(),
+                    f"space '{space.name}' was deleted",
+                    refers_to(lambda refs: refs.spaces, space.id),
+                )
+            await uow.sessions.remove_for_user(id)
+            await uow.api_tokens.remove_for_user(id)
+            await uow.external_identities.remove_for_user(id)
+            await uow.credentials.remove(id)
+            await uow.inbox.remove_for_user(id)
+            await uow.users.remove(id)
+            await uow.commit()
+        log.info("user deleted", extra={"user_id": str(id)})
+
+    # --- first admin ----------------------------------------------------------------------------
+
+    async def bootstrap_admin(self, username: str, password: str) -> User | None:
+        """Create the first admin, if there is no active admin; otherwise do nothing and return
+        None (an existing account is never changed, also not a deactivated admin: the operator
+        names a new one to get back in). ConflictError if the name is taken (`add_user`)."""
+        async with self._uow() as uow:
+            if any(user.is_active_admin for user in await uow.users.list_all()):
+                return None
+        password_hash = await self._hash(username, password)
+        assert password_hash is not None
+        now = self._clock.now()
+        async with self._uow() as uow:
+            if any(user.is_active_admin for user in await uow.users.list_all()):
+                return None
+            user = await add_user(uow, username, Role.ADMIN, now)
+            await uow.credentials.add(
+                Credential(user_id=user.id, password_hash=password_hash, password_changed_at=now)
+            )
+            await uow.commit()
+        log.info("first admin created", extra={"user_id": str(user.id)})
+        return user
+
+    async def _hash(self, username: str, password: str | None) -> str | None:
+        if password is None:
+            return None
+        if self._hasher is None:
+            raise RuntimeError("UserService needs a password hasher to set passwords")
+        return await self._hasher.hash(check_new_password(password, username))
+
+
+def _not_own(actor: UserId, id: UserId, what: str) -> None:
+    if actor == id:
+        raise PermissionDeniedError(f"admins cannot {what}")
+
+
+async def add_user(uow: UnitOfWork, username: str, role: Role, now: datetime) -> User:
+    """Add a user with their default space; ConflictError if the name is taken (looked up for
+    the message; the repository's rule catches two requests at once, `core.ports.repository`)."""
+    user = User.create(username=username, role=role, now=now)
+    if await uow.users.find_by_username(user.username) is not None:
+        raise ConflictError(f"username '{user.username}' is taken")
+    await uow.users.add(user)
+    await uow.spaces.add(Space.create_default(owner_id=user.id, now=user.created_at))
+    return user
+
+
+async def _keep_an_admin(uow: UnitOfWork, leaving: User) -> None:
+    """ConflictError unless another active admin remains. Writes the remaining ones, so a
+    concurrent change that relies on them fails its version check."""
+    others = [
+        user
+        for user in await uow.users.list_all()
+        if user.is_active_admin and user.id != leaving.id
+    ]
+    if not others:
+        raise ConflictError("the last active admin must stay an active admin")
+    for other in others:
+        await uow.users.update(other)
+
+
+async def _account(uow: UnitOfWork, user: User) -> Account:
+    credential = await uow.credentials.find(user.id)
+    return Account(
+        user=user,
+        has_password=credential is not None and credential.password_hash is not None,
+        totp_enabled=credential is not None and credential.totp_enabled,
+        external_identities=await uow.external_identities.list_for(user.id),
+    )

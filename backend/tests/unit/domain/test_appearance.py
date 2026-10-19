@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from papiq.core.domain.appearance import (
+from lekto.core.domain.appearance import (
     MAX_ICON,
     ContactLogo,
     FailedLogoFetch,
@@ -13,9 +13,9 @@ from papiq.core.domain.appearance import (
     checked_color,
     checked_icon,
 )
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from papiq.core.domain.master_data import Contact, DocumentType, Tag, TagScope
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
+from lekto.core.domain.master_data import Contact, DocumentType, Tag, TagScope
 
 NOW = datetime(2026, 10, 17, 12, 0, tzinfo=UTC)
 

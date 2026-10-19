@@ -2,10 +2,10 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.core.domain.errors import AuthenticationError, ConflictError
-from papiq.core.domain.identity import ExternalIdentity, LoginMethod, safe_redirect
-from papiq.core.domain.users import Role, User
-from papiq.core.services.oidc import OidcOutcome, OidcService, OidcStart
+from lekto.core.domain.errors import AuthenticationError, ConflictError
+from lekto.core.domain.identity import ExternalIdentity, LoginMethod, safe_redirect
+from lekto.core.domain.users import Role, User
+from lekto.core.services.oidc import OidcOutcome, OidcService, OidcStart
 from tests.builders import NOW
 from tests.unit.services.support import World
 

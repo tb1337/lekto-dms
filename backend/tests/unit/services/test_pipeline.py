@@ -5,9 +5,9 @@ from uuid import UUID
 
 import pytest
 
-from papiq.adapters.outbound.memory import MemoryObjectStore
-from papiq.core.domain.documents import Document, DocumentChanges, Sha256
-from papiq.core.domain.errors import (
+from lekto.adapters.outbound.memory import MemoryObjectStore
+from lekto.core.domain.documents import Document, DocumentChanges, Sha256
+from lekto.core.domain.errors import (
     DuplicateDocumentError,
     InvalidTransitionError,
     NotFoundError,
@@ -15,7 +15,7 @@ from papiq.core.domain.errors import (
     UnprocessableDocumentError,
     UnsupportedMediaTypeError,
 )
-from papiq.core.domain.events import (
+from lekto.core.domain.events import (
     DocumentEvent,
     DocumentFiled,
     DocumentReceived,
@@ -24,10 +24,10 @@ from papiq.core.domain.events import (
     NodeDeferred,
     NodeStarted,
 )
-from papiq.core.domain.ids import ContactId, TagId
-from papiq.core.domain.jobs import JobStatus, RetryPolicy
-from papiq.core.domain.master_data import Tag
-from papiq.core.domain.pipeline import (
+from lekto.core.domain.ids import ContactId, TagId
+from lekto.core.domain.jobs import JobStatus, RetryPolicy
+from lekto.core.domain.master_data import Tag
+from lekto.core.domain.pipeline import (
     CURRENT_SIGNALS,
     NODES,
     Lane,
@@ -38,10 +38,10 @@ from papiq.core.domain.pipeline import (
     Outcome,
     ProcessingStatus,
 )
-from papiq.core.domain.spaces import ShareLevel
-from papiq.core.domain.users import Role, User
-from papiq.core.services.objects import original_key
-from papiq.core.services.pipeline import (
+from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.users import Role, User
+from lekto.core.services.objects import original_key
+from lekto.core.services.pipeline import (
     CATCH_UP_JOB,
     NODE_JOB,
     REPARSE_JOB,

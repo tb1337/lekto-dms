@@ -7,14 +7,14 @@ import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
-from papiq.core.domain.classification import FieldCheck, checks_to_json
-from papiq.core.domain.documents import Channel, Document, DocumentChanges
-from papiq.core.domain.errors import PatternTimeoutError, ValidationError
-from papiq.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId
-from papiq.core.domain.json_value import JsonObject, JsonValue
-from papiq.core.domain.master_data import Contact, Tag
-from papiq.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
-from papiq.core.domain.rules import (
+from lekto.core.domain.classification import FieldCheck, checks_to_json
+from lekto.core.domain.documents import Channel, Document, DocumentChanges
+from lekto.core.domain.errors import PatternTimeoutError, ValidationError
+from lekto.core.domain.ids import ContactId, DocumentTypeId, SpaceId, TagId
+from lekto.core.domain.json_value import JsonObject, JsonValue
+from lekto.core.domain.master_data import Contact, Tag
+from lekto.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
+from lekto.core.domain.rules import (
     Action,
     AddTags,
     Condition,
@@ -26,19 +26,19 @@ from papiq.core.domain.rules import (
     RuleScope,
     Trigger,
 )
-from papiq.core.domain.users import Role, User
-from papiq.core.services.documents import DocumentService
-from papiq.core.services.objects import text_key
-from papiq.core.services.pipeline import (
+from lekto.core.domain.users import Role, User
+from lekto.core.services.documents import DocumentService
+from lekto.core.services.objects import text_key
+from lekto.core.services.pipeline import (
     IncomingFile,
     MetadataResult,
     NodeExecutor,
     PipelineService,
 )
-from papiq.core.services.rules import RuleService
-from papiq.core.services.rules.changes import ChangeRules
-from papiq.core.services.rules.nodes import ApplyRulesNode, FileNode
-from papiq.core.services.rules.retroactive import RuleApplicationService
+from lekto.core.services.rules import RuleService
+from lekto.core.services.rules.changes import ChangeRules
+from lekto.core.services.rules.nodes import ApplyRulesNode, FileNode
+from lekto.core.services.rules.retroactive import RuleApplicationService
 from tests.builders import TEMPLATES, incoming
 from tests.unit.services.support import World
 

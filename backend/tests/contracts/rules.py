@@ -5,8 +5,8 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
-from papiq.core.domain.ids import (
+from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
+from lekto.core.domain.ids import (
     ContactId,
     DocumentId,
     DocumentTypeId,
@@ -17,8 +17,8 @@ from papiq.core.domain.ids import (
     TagId,
     new_id,
 )
-from papiq.core.domain.master_data import DocumentType
-from papiq.core.domain.rules import (
+from lekto.core.domain.master_data import DocumentType
+from lekto.core.domain.rules import (
     AddTags,
     ApplicationStatus,
     Condition,
@@ -38,9 +38,9 @@ from papiq.core.domain.rules import (
     SetTitle,
     Trigger,
 )
-from papiq.core.domain.rules_json import definition_to_json
-from papiq.core.domain.users import User
-from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.core.domain.rules_json import definition_to_json
+from lekto.core.domain.users import User
+from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from tests.builders import NOW
 from tests.contracts.unit_of_work import owner_with_space, users
 

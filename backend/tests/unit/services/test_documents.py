@@ -4,23 +4,23 @@ from pathlib import Path
 
 import pytest
 
-from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.errors import (
+from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.errors import (
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
     ValidationError,
 )
-from papiq.core.domain.events import DocumentDeleted, DocumentFiled, DocumentUpdated
-from papiq.core.domain.exchanges import ModelCall, RunExchange, exchanges_to_json
-from papiq.core.domain.fields import FieldType
-from papiq.core.domain.ids import ContactId, DocumentId, SpaceId, TagId, UserId, new_id
-from papiq.core.domain.pipeline import PERSON_SPACE, Lane, Node
-from papiq.core.domain.spaces import ShareLevel, Space
-from papiq.core.domain.users import Role, User
-from papiq.core.ports.repository import DocumentFilter
-from papiq.core.services.documents import DocumentFile, FileInfo
-from papiq.core.services.objects import (
+from lekto.core.domain.events import DocumentDeleted, DocumentFiled, DocumentUpdated
+from lekto.core.domain.exchanges import ModelCall, RunExchange, exchanges_to_json
+from lekto.core.domain.fields import FieldType
+from lekto.core.domain.ids import ContactId, DocumentId, SpaceId, TagId, UserId, new_id
+from lekto.core.domain.pipeline import PERSON_SPACE, Lane, Node
+from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.users import Role, User
+from lekto.core.ports.repository import DocumentFilter
+from lekto.core.services.documents import DocumentFile, FileInfo
+from lekto.core.services.objects import (
     archive_key,
     exchanges_key,
     preview_key,

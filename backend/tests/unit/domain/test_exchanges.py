@@ -2,8 +2,8 @@
 
 import pytest
 
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.exchanges import (
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.exchanges import (
     ModelCall,
     RunExchange,
     exchanges_from_json,
@@ -11,7 +11,7 @@ from papiq.core.domain.exchanges import (
     tokens_of,
     with_run,
 )
-from papiq.core.domain.json_value import JsonObject
+from lekto.core.domain.json_value import JsonObject
 
 
 def call(answer: str = "{}") -> ModelCall:

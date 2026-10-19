@@ -6,19 +6,19 @@ from typing import Any
 
 import pytest
 
-from papiq.core.domain.classification import FieldCheck, field_key
-from papiq.core.domain.fields import FieldDefinition, FieldType
-from papiq.core.domain.json_value import JsonObject
-from papiq.core.domain.master_data import DocumentType
-from papiq.core.domain.periods import Period
-from papiq.core.domain.pipeline import Outcome
-from papiq.core.domain.text import shorten
-from papiq.core.services.classification.answers import extract_schema, field_keys
-from papiq.core.services.classification.prompts import (
+from lekto.core.domain.classification import FieldCheck, field_key
+from lekto.core.domain.fields import FieldDefinition, FieldType
+from lekto.core.domain.json_value import JsonObject
+from lekto.core.domain.master_data import DocumentType
+from lekto.core.domain.periods import Period
+from lekto.core.domain.pipeline import Outcome
+from lekto.core.domain.text import shorten
+from lekto.core.services.classification.answers import extract_schema, field_keys
+from lekto.core.services.classification.prompts import (
     extract_message,
     propose_message,
 )
-from papiq.core.services.pipeline import MetadataResult
+from lekto.core.services.pipeline import MetadataResult
 from tests.builders import NOW
 from tests.unit.services.support import World
 from tests.unit.services.test_classification import checks, document_with, fields_step, model

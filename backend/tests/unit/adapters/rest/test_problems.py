@@ -1,9 +1,9 @@
 """Every domain error a request can raise answers with a status of its own, not 500 (M13 review
 A-06)."""
 
-from papiq.adapters.inbound.rest.problems import NOT_FROM_REQUESTS, STATUSES
-from papiq.core.domain import errors
-from papiq.core.domain.errors import DomainError
+from lekto.adapters.inbound.rest.problems import NOT_FROM_REQUESTS, STATUSES
+from lekto.core.domain import errors
+from lekto.core.domain.errors import DomainError
 
 
 def _domain_errors() -> set[type[DomainError]]:

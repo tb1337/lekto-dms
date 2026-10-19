@@ -4,19 +4,19 @@ the event bus and the jobs keep up to date."""
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 
-from papiq.adapters.outbound.memory import FakeEmbeddings, MemoryEventBus, MemorySearchIndex
-from papiq.core.domain.documents import Document
-from papiq.core.domain.errors import EmbeddingsError
-from papiq.core.domain.ids import DocumentId
-from papiq.core.domain.jobs import Job
-from papiq.core.domain.search import IndexDocument
-from papiq.core.domain.users import User
-from papiq.core.ports.embeddings import EmbeddingResult
-from papiq.core.ports.search_index import IndexBuild
-from papiq.core.services.indexing import INDEX_JOB, SUBSCRIBER, IndexingPolicy, IndexingService
-from papiq.core.services.master_data import MasterDataService
-from papiq.core.services.objects import text_key
-from papiq.core.services.pipeline import PipelineService
+from lekto.adapters.outbound.memory import FakeEmbeddings, MemoryEventBus, MemorySearchIndex
+from lekto.core.domain.documents import Document
+from lekto.core.domain.errors import EmbeddingsError
+from lekto.core.domain.ids import DocumentId
+from lekto.core.domain.jobs import Job
+from lekto.core.domain.search import IndexDocument
+from lekto.core.domain.users import User
+from lekto.core.ports.embeddings import EmbeddingResult
+from lekto.core.ports.search_index import IndexBuild
+from lekto.core.services.indexing import INDEX_JOB, SUBSCRIBER, IndexingPolicy, IndexingService
+from lekto.core.services.master_data import MasterDataService
+from lekto.core.services.objects import text_key
+from lekto.core.services.pipeline import PipelineService
 from tests import builders
 from tests.builders import incoming
 from tests.unit.services.support import World

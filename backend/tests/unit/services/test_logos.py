@@ -6,15 +6,15 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.adapters.outbound.memory import (
+from lekto.adapters.outbound.memory import (
     FAKE_LOGO,
     FakeImageNormaliser,
     FakeLogoFetcher,
     MemoryObjectStore,
     MemoryUnitOfWork,
 )
-from papiq.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
-from papiq.core.domain.errors import (
+from lekto.core.domain.appearance import ContactLogo, FailedLogoFetch, LogoSource
+from lekto.core.domain.errors import (
     ConflictError,
     ImageError,
     LogoFetchDisabledError,
@@ -23,15 +23,15 @@ from papiq.core.domain.errors import (
     UnsupportedMediaTypeError,
     ValidationError,
 )
-from papiq.core.domain.identifiers import Identifier, IdentifierKind
-from papiq.core.domain.ids import ContactId, UserId, new_id
-from papiq.core.domain.jobs import JobStatus
-from papiq.core.domain.master_data import Contact
-from papiq.core.domain.users import Role
-from papiq.core.ports.logos import FetchedLogo
-from papiq.core.services.logos import FETCHING_OFF, LOGO_JOB, LOGO_MAX_SIZE, LogoService
-from papiq.core.services.master_data import replace_learned_identifiers
-from papiq.core.services.objects import logo_key
+from lekto.core.domain.identifiers import Identifier, IdentifierKind
+from lekto.core.domain.ids import ContactId, UserId, new_id
+from lekto.core.domain.jobs import JobStatus
+from lekto.core.domain.master_data import Contact
+from lekto.core.domain.users import Role
+from lekto.core.ports.logos import FetchedLogo
+from lekto.core.services.logos import FETCHING_OFF, LOGO_JOB, LOGO_MAX_SIZE, LogoService
+from lekto.core.services.master_data import replace_learned_identifiers
+from lekto.core.services.objects import logo_key
 from tests import builders
 from tests.builders import NOW
 from tests.contracts.images import SVG, image

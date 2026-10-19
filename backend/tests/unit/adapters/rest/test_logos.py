@@ -10,12 +10,12 @@ import httpx2
 import pytest
 from httpx2 import Response
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.adapters.outbound.memory import FAKE_LOGO, FakeLogoFetcher, ManualClock
-from papiq.composition.container import build_memory_container, build_services
-from papiq.core.domain.ids import ContactId
-from papiq.core.services.logos import LOGO_MAX_SIZE
-from papiq.core.services.objects import logo_key
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.adapters.outbound.memory import FAKE_LOGO, FakeLogoFetcher, ManualClock
+from lekto.composition.container import build_memory_container, build_services
+from lekto.core.domain.ids import ContactId
+from lekto.core.services.logos import LOGO_MAX_SIZE
+from lekto.core.services.objects import logo_key
 from tests import builders
 from tests.api import auth
 from tests.contracts.images import SVG, image

@@ -5,8 +5,8 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.adapters.outbound.memory import FakePasswordHasher
-from papiq.core.domain.errors import (
+from lekto.adapters.outbound.memory import FakePasswordHasher
+from lekto.core.domain.errors import (
     AuthenticationError,
     ConflictError,
     NotFoundError,
@@ -15,11 +15,11 @@ from papiq.core.domain.errors import (
     TooManyAttemptsError,
     ValidationError,
 )
-from papiq.core.domain.identity import TokenScope, csrf_token, hash_token
-from papiq.core.domain.ids import ApiTokenId, new_id
-from papiq.core.domain.users import Role, User
-from papiq.core.ports.identity import PasswordHasher
-from papiq.core.services.auth import AuthService
+from lekto.core.domain.identity import TokenScope, csrf_token, hash_token
+from lekto.core.domain.ids import ApiTokenId, new_id
+from lekto.core.domain.users import Role, User
+from lekto.core.ports.identity import PasswordHasher
+from lekto.core.services.auth import AuthService
 from tests import builders
 from tests.builders import PASSWORD
 from tests.unit.services.support import World
@@ -265,7 +265,7 @@ async def test_failed_sign_ins_do_not_log_the_typed_username(
     typed into the username field (a common slip) ends up in the log."""
     typed_into_the_wrong_field = "my secret passphrase 42"
     with (
-        caplog.at_level(logging.INFO, logger="papiq.core.services.auth"),
+        caplog.at_level(logging.INFO, logger="lekto.core.services.auth"),
         pytest.raises(AuthenticationError),
     ):
         await world.auth.login(typed_into_the_wrong_field, "x", source=SOURCE)
@@ -279,7 +279,7 @@ async def test_failed_sign_ins_log_the_user_id_of_known_accounts(
 ) -> None:
     user = await world.account("alice")
     with (
-        caplog.at_level(logging.INFO, logger="papiq.core.services.auth"),
+        caplog.at_level(logging.INFO, logger="lekto.core.services.auth"),
         pytest.raises(AuthenticationError),
     ):
         await world.auth.login("alice", "wrong password!", source=SOURCE)

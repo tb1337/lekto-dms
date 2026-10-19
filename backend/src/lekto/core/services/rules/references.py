@@ -1,0 +1,64 @@
+"""Rules whose references go away.
+
+Deleting a contact, type, field or space is not blocked by rules that refer to it: the
+person deleting it would have to change rules they may not see or should not have to look after
+(a space owner does not see the rules of users who may file into the space). Instead the
+affected rules are disabled, with the reason, in the same unit of work. Enabling such a rule
+checks its references again.
+
+Tags are the exception (0.3): a tag in use, by a rule too, is not deleted. Only admins delete
+tags, and they see every rule.
+"""
+
+from collections.abc import Callable, Mapping
+from datetime import datetime
+
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.fields import FieldDefinition
+from lekto.core.domain.ids import FieldId
+from lekto.core.domain.rules import References, Rule, check_fields
+from lekto.core.ports.unit_of_work import UnitOfWork
+
+
+async def disable_rules(
+    uow: UnitOfWork, now: datetime, reason: str, affected: Callable[[Rule], bool]
+) -> int:
+    """Disable every enabled rule (global or of any user) for which `affected` holds; returns
+    how many."""
+    count = 0
+    for rule in await uow.rules.list_for(owners=None, include_global=True):
+        if rule.enabled and affected(rule):
+            rule.disable(now, reason)
+            await uow.rules.update(rule)
+            count += 1
+    return count
+
+
+def refers_to(
+    select: Callable[[References], frozenset[object]], id: object
+) -> Callable[[Rule], bool]:
+    """`affected` for `disable_rules`: the rule refers to `id` among the selected references."""
+
+    def affected(rule: Rule) -> bool:
+        return id in select(rule.definition.references())
+
+    return affected
+
+
+def misfits(
+    changed: FieldId, definitions: Mapping[FieldId, FieldDefinition]
+) -> Callable[[Rule], bool]:
+    """`affected` for `disable_rules`: the rule refers to the `changed` field and its
+    field conditions or values no longer fit `definitions` (all field definitions), e.g.
+    because a choice it uses was removed."""
+
+    def affected(rule: Rule) -> bool:
+        if changed not in rule.definition.references().fields:
+            return False
+        try:
+            check_fields(rule.definition, definitions)
+        except ValidationError:
+            return True
+        return False
+
+    return affected

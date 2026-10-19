@@ -118,11 +118,11 @@ ok "healthy"
 check "init-migrations migrated the schema" grep -q 'database migrated' <(logs all)
 check "the API answers /health with ok" \
   bash -c "curl -fsS $(url all)/health | grep -q '\"status\":\"ok\"'"
-check "API and worker run (two processes)" test "$(count all papiq.composition)" -eq 2
+check "API and worker run (two processes)" test "$(count all lekto.composition)" -eq 2
 check "every Papiq process runs as $uid:$gid" \
-  test "$(processes all papiq.composition | grep -vc "^$uid:$gid " || true)" -eq 0
+  test "$(processes all lekto.composition | grep -vc "^$uid:$gid " || true)" -eq 0
 check "no Papiq process runs as root" \
-  test "$(processes all papiq.composition | grep -c '^0:' || true)" -eq 0
+  test "$(processes all lekto.composition | grep -c '^0:' || true)" -eq 0
 check "/data belongs to $uid:$gid" \
   docker exec "$prefix-all" sh -c "test \"\$(stat -c %u:%g /data /data/papiq.db /data/objects | sort -u)\" = $uid:$gid"
 check "the secret key does not show in the logs" \

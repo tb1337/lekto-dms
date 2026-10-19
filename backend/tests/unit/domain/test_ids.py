@@ -1,7 +1,7 @@
 import time
 from uuid import UUID
 
-from papiq.core.domain.ids import new_id
+from lekto.core.domain.ids import new_id
 
 
 def test_new_id_is_a_uuid_version_7() -> None:

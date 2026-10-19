@@ -70,4 +70,4 @@ fi
 echo "init-papiq: Papiq runs as $puid:$pgid, PAPIQ_ROLE=${PAPIQ_ROLE:-all}"
 # Fails with a readable message for any invalid or missing setting. Runs as the user of the
 # services, so that secret files must be readable by them.
-exec papiq-run python -m papiq.composition check
+exec papiq-run python -m lekto.composition check

@@ -6,12 +6,12 @@ from functools import partial
 
 import pytest
 
-from papiq.core.domain import verdict
-from papiq.core.domain.classification import CandidateSource, FieldCheck
-from papiq.core.domain.ids import ContactId, DocumentTypeId, TagId
-from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
-from papiq.core.domain.pipeline import Outcome
-from papiq.core.domain.verdict import (
+from lekto.core.domain import verdict
+from lekto.core.domain.classification import CandidateSource, FieldCheck
+from lekto.core.domain.ids import ContactId, DocumentTypeId, TagId
+from lekto.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
+from lekto.core.domain.pipeline import Outcome
+from lekto.core.domain.verdict import (
     ClassifierView,
     FactsView,
     KnownLabels,

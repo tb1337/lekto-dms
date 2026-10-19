@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from papiq.adapters.outbound.pdfium import PdfiumTextLocator
-from papiq.core.domain.locations import Box
+from lekto.adapters.outbound.pdfium import PdfiumTextLocator
+from lekto.core.domain.locations import Box
 from tests.builders import SAMPLES
 from tests.contracts.processing import TextLocatorContract
 from tests.samples.make_samples import LINES, pdf, text_lines, text_pdf
@@ -102,7 +102,7 @@ async def test_a_page_without_text_has_no_places() -> None:
 
 
 def test_the_words_of_a_line_make_one_box() -> None:
-    from papiq.adapters.outbound.pdfium.locator import _lines
+    from lekto.adapters.outbound.pdfium.locator import _lines
 
     words = [Box(0.1, 0.5, 0.1, 0.02), Box(0.21, 0.502, 0.05, 0.018), Box(0.27, 0.5, 0.08, 0.02)]
     below = Box(0.1, 0.55, 0.2, 0.02)

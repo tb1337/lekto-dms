@@ -9,14 +9,14 @@ from pathlib import Path
 
 import pytest
 
-from papiq.adapters.outbound.ocrmypdf import engine as module
-from papiq.adapters.outbound.ocrmypdf.engine import SIGNATURE_NOTE, OcrmypdfEngine, pdfa_reasons
-from papiq.adapters.outbound.ocrmypdf.vision import CONFIG_ENV, VisionSettings, write_error
-from papiq.adapters.outbound.system import Completed
-from papiq.core.domain import media_types
-from papiq.core.domain.errors import LanguageModelError, UnprocessableDocumentError
-from papiq.core.domain.reading import PageReading
-from papiq.core.ports.ocr import OcrResult
+from lekto.adapters.outbound.ocrmypdf import engine as module
+from lekto.adapters.outbound.ocrmypdf.engine import SIGNATURE_NOTE, OcrmypdfEngine, pdfa_reasons
+from lekto.adapters.outbound.ocrmypdf.vision import CONFIG_ENV, VisionSettings, write_error
+from lekto.adapters.outbound.system import Completed
+from lekto.core.domain import media_types
+from lekto.core.domain.errors import LanguageModelError, UnprocessableDocumentError
+from lekto.core.domain.reading import PageReading
+from lekto.core.ports.ocr import OcrResult
 from tests.builders import DEFAULT_SETTINGS
 
 SIGNATURE = (
@@ -282,7 +282,7 @@ async def test_without_the_plugin_s_file_its_reason_comes_from_the_output(
     runs: Runs, tmp_path: Path
 ) -> None:
     runs.outcomes = [
-        (15, "papiq.adapters.outbound.ocrmypdf.vision.VisionError: no usable configuration\n")
+        (15, "lekto.adapters.outbound.ocrmypdf.vision.VisionError: no usable configuration\n")
     ]
     with pytest.raises(LanguageModelError, match=r"^no usable configuration$"):
         await read_with_the_model(tmp_path)

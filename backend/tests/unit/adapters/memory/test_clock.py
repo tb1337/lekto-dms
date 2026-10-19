@@ -2,8 +2,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from papiq.adapters.outbound.memory import ManualClock
-from papiq.core.domain.errors import ValidationError
+from lekto.adapters.outbound.memory import ManualClock
+from lekto.core.domain.errors import ValidationError
 
 START = datetime(2026, 10, 6, tzinfo=UTC)
 

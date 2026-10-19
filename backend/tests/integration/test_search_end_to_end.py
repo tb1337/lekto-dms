@@ -11,16 +11,16 @@ from typing import Any
 import pytest
 from sqlalchemy import func, select
 
-from papiq.adapters.inbound.rest import PREFIX
-from papiq.adapters.outbound.memory import FakeEmbeddings
-from papiq.adapters.outbound.sql import Database
-from papiq.adapters.outbound.sql.tables import jobs
-from papiq.composition.settings import Settings
-from papiq.core.domain.jobs import JobStatus
-from papiq.core.domain.spaces import ShareLevel
-from papiq.core.domain.users import Role, User
-from papiq.core.ports.object_store import ObjectStore
-from papiq.core.services.indexing import INDEX_JOB, REBUILD_JOB, REFRESH_JOB
+from lekto.adapters.inbound.rest import PREFIX
+from lekto.adapters.outbound.memory import FakeEmbeddings
+from lekto.adapters.outbound.sql import Database
+from lekto.adapters.outbound.sql.tables import jobs
+from lekto.composition.settings import Settings
+from lekto.core.domain.jobs import JobStatus
+from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.users import Role, User
+from lekto.core.ports.object_store import ObjectStore
+from lekto.core.services.indexing import INDEX_JOB, REBUILD_JOB, REFRESH_JOB
 from tests import builders
 from tests.api import auth, until
 from tests.integration.e2e import DOCUMENTS, System, TextOcr, TextParser, running_system

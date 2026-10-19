@@ -6,10 +6,10 @@ import io
 import numpy as np
 import pytest
 
-from papiq.adapters.outbound.sklearn import SklearnClassifier
-from papiq.adapters.outbound.sklearn.classifier import FORMAT, _Model, analyze, fit
-from papiq.core.domain.errors import ClassifierError
-from papiq.core.ports.classifier import TrainingExample
+from lekto.adapters.outbound.sklearn import SklearnClassifier
+from lekto.adapters.outbound.sklearn.classifier import FORMAT, _Model, analyze, fit
+from lekto.core.domain.errors import ClassifierError
+from lekto.core.ports.classifier import TrainingExample
 from tests.contracts.classifier import INSURER, INVOICE, ClassifierContract, corpus
 
 

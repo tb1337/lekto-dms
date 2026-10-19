@@ -12,22 +12,22 @@ from pathlib import Path
 
 import pytest
 
-from papiq.adapters.outbound.filesystem import FilesystemObjectStore
-from papiq.adapters.outbound.memory import FakeLanguageModel
-from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
-from papiq.adapters.outbound.ocrmypdf.vision import VisionSettings
-from papiq.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer, PdfiumTextLocator
-from papiq.composition.container import (
+from lekto.adapters.outbound.filesystem import FilesystemObjectStore
+from lekto.adapters.outbound.memory import FakeLanguageModel
+from lekto.adapters.outbound.ocrmypdf import OcrmypdfEngine
+from lekto.adapters.outbound.ocrmypdf.vision import VisionSettings
+from lekto.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer, PdfiumTextLocator
+from lekto.composition.container import (
     VISION_REQUEST_TIMEOUT,
     build_memory_container,
     build_services,
 )
-from papiq.core.domain.fields import FieldDefinition, FieldType, Money
-from papiq.core.domain.master_data import Contact, DocumentType
-from papiq.core.domain.pipeline import Lane, Node
-from papiq.core.domain.reading import VisionAdvice
-from papiq.core.ports.llm import StructuredRequest
-from papiq.core.services.objects import text_key
+from lekto.core.domain.fields import FieldDefinition, FieldType, Money
+from lekto.core.domain.master_data import Contact, DocumentType
+from lekto.core.domain.pipeline import Lane, Node
+from lekto.core.domain.reading import VisionAdvice
+from lekto.core.ports.llm import StructuredRequest
+from lekto.core.services.objects import text_key
 from tests import builders, probes
 from tests.builders import DEFAULT_SETTINGS, NOW, SAMPLES, incoming
 from tests.vision_stub import Lines, VisionStub, serve

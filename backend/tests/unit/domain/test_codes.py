@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from papiq.core.domain.codes import (
+from lekto.core.domain.codes import (
     CODES_VERSION,
     Code,
     GiroCode,
@@ -13,10 +13,10 @@ from papiq.core.domain.codes import (
     codes_to_json,
     giro_code,
 )
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.fields import Money
-from papiq.core.domain.identifiers import IdentifierKind
-from papiq.core.domain.locations import Box
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.fields import Money
+from lekto.core.domain.identifiers import IdentifierKind
+from lekto.core.domain.locations import Box
 
 GIRO = "\n".join(
     [

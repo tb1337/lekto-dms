@@ -5,9 +5,9 @@ import re
 
 import pytest
 
-from papiq.adapters.outbound.regex import RegexPatternMatcher
-from papiq.adapters.outbound.regex.matcher import _compile
-from papiq.core.domain.errors import ValidationError
+from lekto.adapters.outbound.regex import RegexPatternMatcher
+from lekto.adapters.outbound.regex.matcher import _compile
+from lekto.core.domain.errors import ValidationError
 from tests.contracts.patterns import PatternMatcherContract
 
 TIMEOUT = 0.05  # seconds

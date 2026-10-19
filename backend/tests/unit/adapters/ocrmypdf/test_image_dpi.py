@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageSequence
 
-from papiq.adapters.outbound.ocrmypdf.engine import image_dpi, prepare_image
-from papiq.core.domain.errors import UnprocessableDocumentError
+from lekto.adapters.outbound.ocrmypdf.engine import image_dpi, prepare_image
+from lekto.core.domain.errors import UnprocessableDocumentError
 from tests.builders import SAMPLES
 
 

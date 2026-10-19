@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from papiq.composition.errors import ConfigurationError
-from papiq.composition.settings import (
+from lekto.composition.errors import ConfigurationError
+from lekto.composition.settings import (
     DEVELOPMENT_SECRET_KEY,
     ENV_PREFIX,
     Settings,

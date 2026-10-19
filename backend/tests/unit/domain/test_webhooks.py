@@ -3,10 +3,10 @@ from uuid import UUID
 
 import pytest
 
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.events import DOCUMENT_EVENT_TYPES
-from papiq.core.domain.ids import DocumentId, EventId, UserId, new_id
-from papiq.core.domain.webhooks import (
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.events import DOCUMENT_EVENT_TYPES
+from lekto.core.domain.ids import DocumentId, EventId, UserId, new_id
+from lekto.core.domain.webhooks import (
     ALL_EVENTS,
     DISABLED_FAILING,
     SIGNATURE_HEADER,

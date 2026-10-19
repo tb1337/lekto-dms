@@ -2,16 +2,16 @@ import itertools
 
 import pytest
 
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.permissions import can_read_document, in_reach
-from papiq.core.domain.pipeline import Lane
-from papiq.core.domain.search import (
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.permissions import can_read_document, in_reach
+from lekto.core.domain.pipeline import Lane
+from lekto.core.domain.search import (
     PROCESSING,
     EmbeddingStamp,
     Visibility,
     lane_value,
 )
-from papiq.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import ShareLevel
 from tests import builders
 
 LANES = [None, Lane.GREEN, Lane.YELLOW, Lane.RED]

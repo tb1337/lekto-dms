@@ -5,9 +5,9 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from papiq.core.domain.documents import Document, DocumentChanges, metadata_digest
-from papiq.core.domain.ids import ContactId, TagId, UserId, new_id
-from papiq.core.domain.inbox import (
+from lekto.core.domain.documents import Document, DocumentChanges, metadata_digest
+from lekto.core.domain.ids import ContactId, TagId, UserId, new_id
+from lekto.core.domain.inbox import (
     DONE_PERIOD,
     Confirmation,
     Departure,
@@ -18,7 +18,7 @@ from papiq.core.domain.inbox import (
     open_tab,
     worst_lane,
 )
-from papiq.core.domain.pipeline import Lane, Node, NodeResult, ProcessingStatus
+from lekto.core.domain.pipeline import Lane, Node, NodeResult, ProcessingStatus
 from tests import builders
 from tests.builders import FAILED, NOW, UNCERTAIN
 

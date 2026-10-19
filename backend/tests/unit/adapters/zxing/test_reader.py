@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from papiq.adapters.outbound.zxing import ZxingCodeReader
+from lekto.adapters.outbound.zxing import ZxingCodeReader
 from tests.builders import SAMPLES
 from tests.contracts.processing import CodeReaderContract
 

@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from papiq.adapters.inbound.rest import PREFIX
+from lekto.adapters.inbound.rest import PREFIX
 from tests import builders
 from tests.api import auth
 from tests.builders import SAMPLES

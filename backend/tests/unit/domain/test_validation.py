@@ -2,8 +2,8 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.validation import name_key, require_name, require_utc
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.validation import name_key, require_name, require_utc
 
 
 def test_require_utc_accepts_utc() -> None:

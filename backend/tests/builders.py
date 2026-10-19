@@ -8,8 +8,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
-from papiq.adapters.outbound.liquid import LiquidTemplateRenderer
-from papiq.composition.container import (
+from lekto.adapters.outbound.liquid import LiquidTemplateRenderer
+from lekto.composition.container import (
     classifier_policy_of,
     event_retry_of,
     indexing_policy_of,
@@ -21,21 +21,21 @@ from papiq.composition.container import (
     thresholds_of,
     webhook_policy_of,
 )
-from papiq.composition.settings import Settings
-from papiq.core.domain.documents import Document, Sha256
-from papiq.core.domain.identity import Credential, check_new_password
-from papiq.core.domain.ids import DocumentId, SpaceId, UserId, new_id
-from papiq.core.domain.pipeline import Lane, Node, NodeResult, Outcome
-from papiq.core.domain.search import IndexDocument, Visibility
-from papiq.core.domain.spaces import Space
-from papiq.core.domain.users import Role, User
-from papiq.core.ports.clock import Clock
-from papiq.core.ports.identity import PasswordHasher
-from papiq.core.ports.object_store import ObjectStore
-from papiq.core.ports.ocr import VisionModel
-from papiq.core.ports.search_index import SearchQuery
-from papiq.core.ports.unit_of_work import UnitOfWorkFactory
-from papiq.core.services.pipeline import (
+from lekto.composition.settings import Settings
+from lekto.core.domain.documents import Document, Sha256
+from lekto.core.domain.identity import Credential, check_new_password
+from lekto.core.domain.ids import DocumentId, SpaceId, UserId, new_id
+from lekto.core.domain.pipeline import Lane, Node, NodeResult, Outcome
+from lekto.core.domain.search import IndexDocument, Visibility
+from lekto.core.domain.spaces import Space
+from lekto.core.domain.users import Role, User
+from lekto.core.ports.clock import Clock
+from lekto.core.ports.identity import PasswordHasher
+from lekto.core.ports.object_store import ObjectStore
+from lekto.core.ports.ocr import VisionModel
+from lekto.core.ports.search_index import SearchQuery
+from lekto.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.core.services.pipeline import (
     DeferredResult,
     IncomingFile,
     NodeExecutor,

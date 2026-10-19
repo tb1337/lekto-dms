@@ -1,6 +1,6 @@
 from datetime import UTC
 
-from papiq.core.ports.clock import Clock
+from lekto.core.ports.clock import Clock
 
 
 class ClockContract:

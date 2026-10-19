@@ -7,14 +7,14 @@ from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
-from papiq.core.domain.documents import Document
-from papiq.core.domain.fields import FieldDefinition, FieldType
-from papiq.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId, UserId
-from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.master_data import Tag, TagScope
-from papiq.core.domain.rule_conditions import Facts, Taxonomy, matches
-from papiq.core.domain.rule_planner import Mode, RulePlan, Situation, SpaceTarget, plan
-from papiq.core.domain.rules import (
+from lekto.core.domain.documents import Document
+from lekto.core.domain.fields import FieldDefinition, FieldType
+from lekto.core.domain.ids import ContactId, DocumentTypeId, FieldId, SpaceId, TagId, UserId
+from lekto.core.domain.json_value import JsonValue
+from lekto.core.domain.master_data import Tag, TagScope
+from lekto.core.domain.rule_conditions import Facts, Taxonomy, matches
+from lekto.core.domain.rule_planner import Mode, RulePlan, Situation, SpaceTarget, plan
+from lekto.core.domain.rules import (
     Action,
     Condition,
     ConditionField,
@@ -24,7 +24,7 @@ from papiq.core.domain.rules import (
     RuleDefinition,
     RuleScope,
 )
-from papiq.core.domain.tag_tree import TagTree
+from lekto.core.domain.tag_tree import TagTree
 from tests import builders
 from tests.builders import NOW
 

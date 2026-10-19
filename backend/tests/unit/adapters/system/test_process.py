@@ -4,7 +4,7 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.adapters.outbound.system import run_process
+from lekto.adapters.outbound.system import run_process
 
 SHOW_ENVIRONMENT = (
     "import json, os; "

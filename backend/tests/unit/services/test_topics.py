@@ -2,13 +2,13 @@
 
 import pytest
 
-from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.errors import ConflictError, NotFoundError, ValidationError
-from papiq.core.domain.identifiers import Identifier, IdentifierKind
-from papiq.core.domain.ids import ContactId, TagId, new_id
-from papiq.core.domain.master_data import Contact, Tag, TagScope
-from papiq.core.domain.users import Role, User
-from papiq.core.ports.repository import CountBy, DocumentFilter
+from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.errors import ConflictError, NotFoundError, ValidationError
+from lekto.core.domain.identifiers import Identifier, IdentifierKind
+from lekto.core.domain.ids import ContactId, TagId, new_id
+from lekto.core.domain.master_data import Contact, Tag, TagScope
+from lekto.core.domain.users import Role, User
+from lekto.core.ports.repository import CountBy, DocumentFilter
 from tests.builders import incoming
 from tests.unit.services.support import World
 

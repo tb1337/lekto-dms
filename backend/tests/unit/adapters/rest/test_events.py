@@ -6,10 +6,10 @@ from datetime import timedelta
 
 import httpx2
 
-from papiq.adapters.inbound.rest import PREFIX, close_event_streams
-from papiq.composition.container import build_memory_container, build_services
-from papiq.core.domain.events import ClassifierTrained
-from papiq.core.domain.spaces import ShareLevel
+from lekto.adapters.inbound.rest import PREFIX, close_event_streams
+from lekto.composition.container import build_memory_container, build_services
+from lekto.core.domain.events import ClassifierTrained
+from lekto.core.domain.spaces import ShareLevel
 from tests.api import Stream, auth, issue_token, listen, serving, until
 from tests.builders import NOW, PASSWORD, SAMPLES
 from tests.unit.adapters.rest.support import Api, make_app

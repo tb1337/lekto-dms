@@ -6,10 +6,10 @@ from decimal import Decimal
 
 import pytest
 
-from papiq.adapters.outbound.liquid import LiquidTemplateRenderer, parse_locale
-from papiq.core.domain.fields import Money
-from papiq.core.domain.periods import Period
-from papiq.core.domain.templates import TemplateValue
+from lekto.adapters.outbound.liquid import LiquidTemplateRenderer, parse_locale
+from lekto.core.domain.fields import Money
+from lekto.core.domain.periods import Period
+from lekto.core.domain.templates import TemplateValue
 from tests.contracts.templates import TemplateRendererContract
 
 

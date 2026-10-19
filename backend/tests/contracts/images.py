@@ -5,9 +5,9 @@ import io
 import pytest
 from PIL import Image
 
-from papiq.core.domain import media_types
-from papiq.core.domain.errors import ImageError, UnsupportedMediaTypeError
-from papiq.core.ports.images import LOGO_SIZE, ImageNormaliser
+from lekto.core.domain import media_types
+from lekto.core.domain.errors import ImageError, UnsupportedMediaTypeError
+from lekto.core.ports.images import LOGO_SIZE, ImageNormaliser
 
 
 def image(

@@ -9,28 +9,28 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.core.domain.documents import Document
-from papiq.core.domain.errors import NotFoundError, TooManyAttemptsError
-from papiq.core.domain.events import (
+from lekto.core.domain.documents import Document
+from lekto.core.domain.errors import NotFoundError, TooManyAttemptsError
+from lekto.core.domain.events import (
     DocumentDeleted,
     DocumentFiled,
     DocumentReceived,
     LaneChanged,
 )
-from papiq.core.domain.ids import DocumentId, WebhookId, new_id
-from papiq.core.domain.jobs import Job, JobStatus
-from papiq.core.domain.pipeline import Lane
-from papiq.core.domain.spaces import ShareLevel, Space
-from papiq.core.domain.users import Role, User
-from papiq.core.domain.webhooks import (
+from lekto.core.domain.ids import DocumentId, WebhookId, new_id
+from lekto.core.domain.jobs import Job, JobStatus
+from lekto.core.domain.pipeline import Lane
+from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.users import Role, User
+from lekto.core.domain.webhooks import (
     DISABLED_FAILING,
     TEST_EVENT,
     DeliveryOutcome,
     Webhook,
     WebhookDelivery,
 )
-from papiq.core.ports.webhook_sender import WebhookRequest
-from papiq.core.services.webhooks import DELIVER_JOB, WebhookDeliveryService
+from lekto.core.ports.webhook_sender import WebhookRequest
+from lekto.core.services.webhooks import DELIVER_JOB, WebhookDeliveryService
 from tests import builders
 from tests.builders import NOW
 from tests.unit.services.support import World

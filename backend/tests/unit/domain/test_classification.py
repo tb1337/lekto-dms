@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from papiq.core.domain.classification import (
+from lekto.core.domain.classification import (
     CHANGE_FIELDS,
     CLASSIFIER_LABELS,
     CONFIRMING,
@@ -15,9 +15,9 @@ from papiq.core.domain.classification import (
     field_id_of,
     field_key,
 )
-from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.errors import ValidationError
-from papiq.core.domain.fields import (
+from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.fields import (
     FieldDefinition,
     FieldType,
     Money,
@@ -25,9 +25,9 @@ from papiq.core.domain.fields import (
     field_from_json,
     field_to_json,
 )
-from papiq.core.domain.json_value import JsonValue
-from papiq.core.domain.labels import LabelCheck, LabelOutcome
-from papiq.core.domain.pipeline import Outcome
+from lekto.core.domain.json_value import JsonValue
+from lekto.core.domain.labels import LabelCheck, LabelOutcome
+from lekto.core.domain.pipeline import Outcome
 from tests.builders import NOW
 
 

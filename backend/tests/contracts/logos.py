@@ -7,9 +7,9 @@ import io
 import pytest
 from PIL import Image
 
-from papiq.core.domain import media_types
-from papiq.core.domain.errors import LogoFetchError
-from papiq.core.ports.logos import MIN_LOGO_SIZE, LogoFetcher
+from lekto.core.domain import media_types
+from lekto.core.domain.errors import LogoFetchError
+from lekto.core.ports.logos import MIN_LOGO_SIZE, LogoFetcher
 from tests.contracts.images import LOGO_PNG
 
 __all__ = ["LOGO_PNG", "LogoFetcherContract"]

@@ -9,15 +9,15 @@ from pathlib import Path
 
 import pytest
 
-from papiq.adapters.outbound.filesystem import FilesystemObjectStore
-from papiq.adapters.outbound.ocrmypdf import OcrmypdfEngine
-from papiq.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer
-from papiq.composition.container import build_memory_container, build_services
-from papiq.composition.settings import Settings
-from papiq.core.domain import media_types
-from papiq.core.domain.pipeline import Lane, Node
-from papiq.core.ports.object_store import ObjectStore
-from papiq.core.services.objects import archive_key, preview_key, structure_key, text_key
+from lekto.adapters.outbound.filesystem import FilesystemObjectStore
+from lekto.adapters.outbound.ocrmypdf import OcrmypdfEngine
+from lekto.adapters.outbound.pdfium import LayoutParser, PdfiumPageRenderer
+from lekto.composition.container import build_memory_container, build_services
+from lekto.composition.settings import Settings
+from lekto.core.domain import media_types
+from lekto.core.domain.pipeline import Lane, Node
+from lekto.core.ports.object_store import ObjectStore
+from lekto.core.services.objects import archive_key, preview_key, structure_key, text_key
 from tests import builders, probes
 from tests.builders import DEFAULT_SETTINGS, SAMPLES, incoming
 from tests.integration.services import s3_test_store

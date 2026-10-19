@@ -8,23 +8,23 @@ from typing import Any
 
 import pytest
 
-from papiq.adapters.outbound.memory import FakeClassifier
-from papiq.core.domain.classifier import KEPT_MODELS
-from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
-from papiq.core.domain.events import ClassifierTrained
-from papiq.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from papiq.core.domain.ids import ContactId
-from papiq.core.domain.master_data import Assignment, Contact, Tag, TagScope
-from papiq.core.domain.users import Role, User
-from papiq.core.ports.unit_of_work import UnitOfWork
-from papiq.core.services.classifier import (
+from lekto.adapters.outbound.memory import FakeClassifier
+from lekto.core.domain.classifier import KEPT_MODELS
+from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
+from lekto.core.domain.events import ClassifierTrained
+from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
+from lekto.core.domain.ids import ContactId
+from lekto.core.domain.master_data import Assignment, Contact, Tag, TagScope
+from lekto.core.domain.users import Role, User
+from lekto.core.ports.unit_of_work import UnitOfWork
+from lekto.core.services.classifier import (
     CHECK_JOB,
     TRAIN_JOB,
     ClassifierService,
 )
-from papiq.core.services.master_data import replace_learned_identifiers
-from papiq.core.services.objects import classifier_key, text_key
+from lekto.core.services.master_data import replace_learned_identifiers
+from lekto.core.services.objects import classifier_key, text_key
 from tests import builders
 from tests.unit.services.support import World
 
@@ -178,7 +178,7 @@ async def test_a_contact_changed_meanwhile_stores_the_model_again(
             await world.master_data.change_contact(admin.id, utility.id, aliases=["SWM"])
         return staged
 
-    monkeypatch.setattr("papiq.core.services.classifier.replace_learned_identifiers", meanwhile)
+    monkeypatch.setattr("lekto.core.services.classifier.replace_learned_identifiers", meanwhile)
     model = await service(world).train()
     assert (model.number, calls) == (1, 2)
     async with world.uow() as uow:

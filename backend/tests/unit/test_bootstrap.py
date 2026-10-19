@@ -3,11 +3,11 @@
 import pytest
 from pydantic import SecretStr
 
-from papiq.adapters.outbound.memory import ManualClock
-from papiq.composition.bootstrap import ensure_first_admin
-from papiq.composition.container import build_memory_container, build_services
-from papiq.composition.errors import ConfigurationError
-from papiq.composition.settings import Settings
+from lekto.adapters.outbound.memory import ManualClock
+from lekto.composition.bootstrap import ensure_first_admin
+from lekto.composition.container import build_memory_container, build_services
+from lekto.composition.errors import ConfigurationError
+from lekto.composition.settings import Settings
 from tests import builders
 from tests.builders import PASSWORD
 

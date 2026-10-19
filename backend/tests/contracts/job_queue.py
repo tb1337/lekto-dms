@@ -3,10 +3,10 @@ from datetime import timedelta
 
 import pytest
 
-from papiq.core.domain.errors import ConcurrencyError, NotFoundError
-from papiq.core.domain.ids import JobId, new_id
-from papiq.core.domain.jobs import Job, JobStatus
-from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.core.domain.errors import ConcurrencyError, NotFoundError
+from lekto.core.domain.ids import JobId, new_id
+from lekto.core.domain.jobs import Job, JobStatus
+from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from tests.builders import NOW
 
 LEASE = timedelta(minutes=5)

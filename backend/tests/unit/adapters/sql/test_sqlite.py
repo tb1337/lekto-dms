@@ -6,10 +6,10 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import text
 
-from papiq.adapters.outbound.sql import Database
-from papiq.core.domain.documents import DocumentChanges
-from papiq.core.domain.fields import FieldDefinition, FieldType, Money
-from papiq.core.ports.unit_of_work import UnitOfWorkFactory
+from lekto.adapters.outbound.sql import Database
+from lekto.core.domain.documents import DocumentChanges
+from lekto.core.domain.fields import FieldDefinition, FieldType, Money
+from lekto.core.ports.unit_of_work import UnitOfWorkFactory
 from tests import builders
 from tests.builders import NOW
 from tests.contracts.event_bus import EventBusContract

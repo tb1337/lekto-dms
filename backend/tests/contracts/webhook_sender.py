@@ -11,7 +11,7 @@ from typing import Protocol
 
 import pytest
 
-from papiq.core.ports.webhook_sender import WebhookRequest, WebhookResponse, WebhookSender
+from lekto.core.ports.webhook_sender import WebhookRequest, WebhookResponse, WebhookSender
 
 BODY = b'{"id":"e","type":"webhook.test"}'
 HEADERS = {"webhook-id": "e", "content-type": "application/json"}

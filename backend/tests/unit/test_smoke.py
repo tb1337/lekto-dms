@@ -1,5 +1,5 @@
-import papiq
+import lekto
 
 
 def test_version_is_set() -> None:
-    assert papiq.__version__
+    assert lekto.__version__

@@ -3,16 +3,16 @@ references go away."""
 
 import pytest
 
-from papiq.adapters.outbound.regex import RegexPatternMatcher
-from papiq.core.domain.errors import (
+from lekto.adapters.outbound.regex import RegexPatternMatcher
+from lekto.core.domain.errors import (
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
     ValidationError,
 )
-from papiq.core.domain.fields import FieldType
-from papiq.core.domain.ids import ContactId, SpaceId, new_id
-from papiq.core.domain.rules import (
+from lekto.core.domain.fields import FieldType
+from lekto.core.domain.ids import ContactId, SpaceId, new_id
+from lekto.core.domain.rules import (
     AddTags,
     ForceReview,
     Rule,
@@ -23,8 +23,8 @@ from papiq.core.domain.rules import (
     SetSpace,
     SetTitle,
 )
-from papiq.core.domain.spaces import ShareLevel
-from papiq.core.services.rules import RuleService
+from lekto.core.domain.spaces import ShareLevel
+from lekto.core.services.rules import RuleService
 from tests.builders import TEMPLATES
 from tests.unit.services.rules_support import channel_api, definition, rule_world, text_matches
 from tests.unit.services.support import World

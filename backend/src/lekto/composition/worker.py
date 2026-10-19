@@ -1,0 +1,52 @@
+"""Start the worker service: build the container and services, run until SIGTERM or SIGINT."""
+
+import asyncio
+import signal
+
+from lekto.adapters.inbound.worker import Worker
+from lekto.composition.container import Container, Services, build_container, build_services
+from lekto.composition.settings import Settings
+from lekto.core.services.indexing import SUBSCRIBER
+from lekto.core.services.webhooks import SUBSCRIBER as WEBHOOK_SUBSCRIBER
+
+
+async def run_worker(settings: Settings) -> None:
+    """Run the worker until it receives SIGTERM or SIGINT; then finish running jobs (up to
+    `PAPIQ_WORKER_SHUTDOWN_TIMEOUT`) and close the database engine and the object store."""
+    container = build_container(settings)
+    try:
+        services = build_services(container, settings)
+        worker = build_worker(container, settings, services)
+        loop = asyncio.get_running_loop()
+        for signum in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(signum, worker.stop)
+        try:
+            await worker.run()
+        finally:
+            for signum in (signal.SIGTERM, signal.SIGINT):
+                loop.remove_signal_handler(signum)
+    finally:
+        await container.aclose()
+
+
+def build_worker(container: Container, settings: Settings, services: Services) -> Worker:
+    """The worker over `services`, with the indexing and the webhooks subscribed to the events."""
+    if services.indexing is not None:
+        container.event_bus.subscribe(SUBSCRIBER, services.indexing.on_event)
+    container.event_bus.subscribe(WEBHOOK_SUBSCRIBER, services.webhook_delivery.on_event)
+    return Worker(
+        pipeline=services.pipeline,
+        maintenance=services.maintenance,
+        event_bus=container.event_bus,
+        concurrency=settings.worker_concurrency,
+        poll_interval=settings.worker_poll_interval,
+        dispatch_interval=settings.events_poll_interval,
+        shutdown_timeout=settings.worker_shutdown_timeout,
+        indexing=services.indexing,
+        rules=services.rule_applications,
+        webhooks=services.webhook_delivery,
+        webhook_concurrency=settings.webhook_concurrency,
+        classifier=services.classifier,
+        logos=services.logos,
+        master_data=services.master_data,
+    )

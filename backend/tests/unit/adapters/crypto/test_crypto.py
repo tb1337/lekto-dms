@@ -5,14 +5,14 @@ from datetime import UTC, datetime
 
 import pytest
 
-from papiq.adapters.outbound.crypto import (
+from lekto.adapters.outbound.crypto import (
     AesGcmCipher,
     Argon2PasswordHasher,
     PyotpTotp,
     decode_key,
 )
-from papiq.core.domain.encoding import base64url
-from papiq.core.ports.identity import DecryptionError
+from lekto.core.domain.encoding import base64url
+from lekto.core.ports.identity import DecryptionError
 from tests.contracts.identity import PasswordHasherContract, SecretCipherContract, TotpContract
 
 # Low cost, so the tests stay fast; production uses the RFC 9106 low-memory profile.

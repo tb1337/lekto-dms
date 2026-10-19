@@ -9,27 +9,27 @@ from typing import Any
 
 import pytest
 
-from papiq.adapters.inbound.evaluation import EvaluationSetError, Run, evaluate, load_set
-from papiq.adapters.inbound.evaluation.cases import Case, FakeAnswer, _proposal_keys
-from papiq.adapters.inbound.evaluation.report import label_outcomes
-from papiq.adapters.outbound.memory import FakeLanguageModel
-from papiq.composition.__main__ import main
-from papiq.composition.errors import ConfigurationError
-from papiq.composition.evaluation import (
+from lekto.adapters.inbound.evaluation import EvaluationSetError, Run, evaluate, load_set
+from lekto.adapters.inbound.evaluation.cases import Case, FakeAnswer, _proposal_keys
+from lekto.adapters.inbound.evaluation.report import label_outcomes
+from lekto.adapters.outbound.memory import FakeLanguageModel
+from lekto.composition.__main__ import main
+from lekto.composition.errors import ConfigurationError
+from lekto.composition.evaluation import (
     FAKE_MODEL,
     build_environment,
     evaluation_container,
     run_evaluation,
 )
-from papiq.composition.settings import Settings
-from papiq.core.domain.fields import FieldDefinition, FieldType
-from papiq.core.domain.identifiers import IdentifierKind, IdentifierSource
-from papiq.core.domain.json_value import JsonObject
-from papiq.core.domain.labels import LabelOutcome
-from papiq.core.domain.pipeline import Lane
-from papiq.core.domain.text import Shortened
-from papiq.core.ports.llm import StructuredRequest
-from papiq.core.services.classification.prompts import (
+from lekto.composition.settings import Settings
+from lekto.core.domain.fields import FieldDefinition, FieldType
+from lekto.core.domain.identifiers import IdentifierKind, IdentifierSource
+from lekto.core.domain.json_value import JsonObject
+from lekto.core.domain.labels import LabelOutcome
+from lekto.core.domain.pipeline import Lane
+from lekto.core.domain.text import Shortened
+from lekto.core.ports.llm import StructuredRequest
+from lekto.core.services.classification.prompts import (
     EXTRACT_SCHEMA,
     Listed,
     extract_message,

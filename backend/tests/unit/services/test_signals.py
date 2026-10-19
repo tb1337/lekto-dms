@@ -4,28 +4,28 @@ import itertools
 from dataclasses import replace
 from typing import Any
 
-from papiq.adapters.outbound.memory import (
+from lekto.adapters.outbound.memory import (
     BagOfWordsEmbeddings,
     FakeClassifier,
     MemorySearchIndex,
 )
-from papiq.core.domain.documents import Document, DocumentChanges
-from papiq.core.domain.errors import EmbeddingsError
-from papiq.core.domain.identifiers import Identifier, IdentifierKind
-from papiq.core.domain.master_data import Assignment, Contact, Tag
-from papiq.core.domain.pipeline import NodeResult
-from papiq.core.domain.search import EmbeddingStamp, IndexDocument
-from papiq.core.domain.users import User
-from papiq.core.ports.embeddings import EmbeddingResult
-from papiq.core.services.classification.signals import (
+from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.errors import EmbeddingsError
+from lekto.core.domain.identifiers import Identifier, IdentifierKind
+from lekto.core.domain.master_data import Assignment, Contact, Tag
+from lekto.core.domain.pipeline import NodeResult
+from lekto.core.domain.search import EmbeddingStamp, IndexDocument
+from lekto.core.domain.users import User
+from lekto.core.ports.embeddings import EmbeddingResult
+from lekto.core.services.classification.signals import (
     ABSTAINED,
     ClassifierSignal,
     FactsResult,
     FactsSignal,
     NeighboursSignal,
 )
-from papiq.core.services.classifier import ClassifierService
-from papiq.core.services.objects import text_key
+from lekto.core.services.classifier import ClassifierService
+from lekto.core.services.objects import text_key
 from tests import builders
 from tests.unit.services.support import World
 

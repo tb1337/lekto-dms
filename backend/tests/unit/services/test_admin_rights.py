@@ -4,18 +4,18 @@ for all users."""
 
 import pytest
 
-from papiq.core.domain.documents import DocumentChanges
-from papiq.core.domain.errors import (
+from lekto.core.domain.documents import DocumentChanges
+from lekto.core.domain.errors import (
     AuthenticationError,
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
 )
-from papiq.core.domain.pipeline import Lane, Node
-from papiq.core.domain.rules import RuleScope, SetSpace
-from papiq.core.domain.spaces import ShareLevel
-from papiq.core.domain.users import Role, User
-from papiq.core.ports.repository import DocumentFilter
+from lekto.core.domain.pipeline import Lane, Node
+from lekto.core.domain.rules import RuleScope, SetSpace
+from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.users import Role, User
+from lekto.core.ports.repository import DocumentFilter
 from tests.builders import UNCERTAIN, Returns, incoming
 from tests.unit.services.rules_support import add_tags, channel_api, definition, rule_world
 from tests.unit.services.support import World

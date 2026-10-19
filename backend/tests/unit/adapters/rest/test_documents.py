@@ -10,15 +10,15 @@ from uuid import UUID
 import httpx2
 import pytest
 
-from papiq.adapters.inbound.rest.schemas.documents import UploadFields
-from papiq.composition.container import build_memory_container, build_services
-from papiq.core.domain.documents import Sha256
-from papiq.core.domain.errors import UnprocessableDocumentError
-from papiq.core.domain.exchanges import ModelCall, RunExchange, exchanges_to_json
-from papiq.core.domain.ids import DocumentId
-from papiq.core.domain.pipeline import Node
-from papiq.core.domain.spaces import ShareLevel
-from papiq.core.services.objects import exchanges_key, original_key
+from lekto.adapters.inbound.rest.schemas.documents import UploadFields
+from lekto.composition.container import build_memory_container, build_services
+from lekto.core.domain.documents import Sha256
+from lekto.core.domain.errors import UnprocessableDocumentError
+from lekto.core.domain.exchanges import ModelCall, RunExchange, exchanges_to_json
+from lekto.core.domain.ids import DocumentId
+from lekto.core.domain.pipeline import Node
+from lekto.core.domain.spaces import ShareLevel
+from lekto.core.services.objects import exchanges_key, original_key
 from tests import builders
 from tests.api import auth, issue_token
 from tests.builders import PASSWORD, SAMPLES

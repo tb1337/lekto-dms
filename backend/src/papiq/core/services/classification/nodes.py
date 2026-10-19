@@ -1065,7 +1065,7 @@ def _poorly_read(
     for location, words, value in places:
         around = None if value is None else surroundings(words, value)
         if around is not None:
-            if around.poor(threshold):
+            if around.poor():
                 return around.describe()
             judged.add(location.page)
     for location, _, _ in places:

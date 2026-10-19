@@ -58,6 +58,16 @@ letters only (`nur`, `an`) still has the x-height (0.55 and more)."""
 SURROUNDING = 20
 """The content words nearest to a value that tell whether its place was read poorly."""
 
+SURROUNDING_POOR = 3
+"""Unsure words among the `SURROUNDING` that make a value's place poorly read (Tobi,
+19.10.2026: 15 %, not the page's 8 %): among 20 words one stray reading is already 5 %, and two
+(a label beside its leader, a speck in a table) turned a date read sure yellow; the value's own
+words must be read sure in any case."""
+
+LEADER_GAP = 1.0
+"""How close, in heights of its line, a word stands to a leader beside it on the line to be
+tainted by it (`content_words`)."""
+
 CHARACTER = 0.5
 """How wide a character is for the height of its line (hOCR `x_size`, about the font size), as
 in the proportional fonts of letters: it turns a horizontal gap measured in characters into
@@ -134,11 +144,52 @@ def is_noise(word: ReadWord, typical_size: float | None = None) -> bool:
 
 
 def content_words(words: Sequence[ReadWord]) -> list[ReadWord]:
-    """The words of a page that are content (`is_noise`). The typical line size is the median
-    over the words, so that the body text sets it, not a few headings or marks."""
+    """The words of a page (in reading order) that are content (`is_noise`), without those
+    standing right beside a leader on their line (`beside_leaders`). The typical line size is
+    the median over the words, so that the body text sets it, not a few headings or marks."""
     sizes = [word.size for word in words if word.size is not None and not is_noise(word)]
     typical = statistics.median(sizes) if sizes else None
-    return [word for word in words if not is_noise(word, typical)]
+    beside = beside_leaders(words)
+    return [
+        word
+        for index, word in enumerate(words)
+        if index not in beside and not is_noise(word, typical)
+    ]
+
+
+def beside_leaders(words: Sequence[ReadWord]) -> set[int]:
+    """The indexes of the words (in reading order) that stand right before or after a leader on
+    their line, within `LEADER_GAP` of a line's height (Tobi, 19.10.2026): Tesseract reads a
+    label beside its dots unsure (`Krankenkasse` 38 % before `................`) though the
+    label is clean, so such a word is neither content nor unsure. A leader is a word that is
+    one (`Datum...........`, `—............`) or was read from one (a flat box, `FLAT_WORD`)."""
+    beside: set[int] = set()
+    for index, word in enumerate(words):
+        if not _is_leader(word):
+            continue
+        for other in (index - 1, index + 1):
+            if 0 <= other < len(words) and _side_by_side(word, words[other]):
+                beside.add(other)
+    return beside
+
+
+def _is_leader(word: ReadWord) -> bool:
+    if _LEADER.search(word.text.strip()):
+        return True
+    return (
+        word.box is not None and word.size is not None and word.box.height < FLAT_WORD * word.size
+    )
+
+
+def _side_by_side(first: ReadWord, second: ReadWord) -> bool:
+    """Whether two words stand on one line next to each other, within `LEADER_GAP`."""
+    a, b = first.box, second.box
+    if a is None or b is None:
+        return False
+    line = max(first.size or a.height, second.size or b.height)
+    middle_a, middle_b = a.y + a.height / 2, b.y + b.height / 2
+    gap = max(b.x - (a.x + a.width), a.x - (b.x + b.width), 0.0)
+    return abs(middle_a - middle_b) <= line / 2 and gap <= LEADER_GAP * line
 
 
 @dataclass(frozen=True)
@@ -372,10 +423,10 @@ class Surroundings:
     def unsure(self) -> int:
         return sum(word.unsure for word in self.words)
 
-    def poor(self, threshold: float) -> bool:
-        """Whether the value stands in a poorly read place: at least `threshold` of the words
-        around it unsure (`PAPIQ_POOR_READING_THRESHOLD`)."""
-        return bool(self.words) and self.unsure / len(self.words) >= threshold
+    def poor(self) -> bool:
+        """Whether the value stands in a poorly read place: at least `SURROUNDING_POOR` of the
+        words around it unsure."""
+        return bool(self.words) and self.unsure >= SURROUNDING_POOR
 
     def describe(self) -> str:
         """Why the value's place counts as poorly read, for a check's reason."""

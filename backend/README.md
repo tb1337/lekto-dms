@@ -486,8 +486,9 @@ which takes two conditions; the document date follows the same rules:
 
 - **The value's place is not poorly read, counting content only.** Where the value's words
   are found on the page (see the next condition), its place is the 20 content words nearest to
-  them, its own words not counted; it counts as poorly read from
-  `PAPIQ_POOR_READING_THRESHOLD` (8 %) of them unsure, that is two
+  them, its own words not counted; it counts as poorly read from three of them unsure (15 %:
+  among 20 words one stray reading is already 5 %; the page keeps
+  `PAPIQ_POOR_READING_THRESHOLD`)
   (`'Betrag': the text around the value was poorly read (3 of 20 content words unsure)`): on a
   broken scan a number may be anything, however sure Tesseract was of it. No layout is
   assumed, neither blocks nor tables: nearness is the gap between the words' boxes, Euclidean
@@ -511,8 +512,9 @@ which takes two conditions; the document date follows the same rules:
   word with fewer than half of its characters letters or digits (rules, marks), a dot, dash or
   underscore leader (`Datum..........`), also one Tesseract read as letters (`«oso:`, `see`,
   `EEE`: a box under 35 % of its line's height, where a word of small letters still has the
-  x-height), one or two characters without a digit (stray marks read as `gy`, `TI`, `j`), and
-  the words of a line under 60 % of the page's typical line height (hOCR `x_size`, the median
+  x-height), one or two characters without a digit (stray marks read as `gy`, `TI`, `j`), a
+  word right beside a leader on its line, within a line's height (Tesseract reads a clean
+  label beside its dots unsure, `Krankenkasse` at 38 %), and the words of a line under 60 % of the page's typical line height (hOCR `x_size`, the median
   over the words: a letterhead's small print; lines of the body font lie up to a fifth apart,
   footnotes stay content). On the pay slip that led to the rule, 10 % of all words were
   unsure, almost all of them leaders, letterhead and marks; on a synthetic scan shaped like it

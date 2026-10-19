@@ -227,12 +227,12 @@ class SearchIndexContract:
             return await found(search_index, "Rechnung", who, filter=DocumentFilter(**fields))  # type: ignore[arg-type]
 
         assert await with_filter() == {both.id, one_tag.id, processing.id}
-        assert await with_filter(contact=contact) == {both.id}
-        assert await with_filter(document_type=kind) == {both.id}
+        assert await with_filter(contacts=frozenset({contact})) == {both.id}
+        assert await with_filter(document_types=frozenset({kind})) == {both.id}
         assert await with_filter(tags=(frozenset({tag_1}),)) == {both.id, one_tag.id}
         assert await with_filter(tags=(frozenset({tag_1}), frozenset({tag_2}))) == {both.id}
         assert await with_filter(tags=(frozenset({tag_2, TagId(new_id())}),)) == {both.id}
-        assert await with_filter(space=space_b) == {one_tag.id, processing.id}
+        assert await with_filter(spaces=frozenset({space_b})) == {one_tag.id, processing.id}
         assert await with_filter(lanes=frozenset({Lane.GREEN})) == {both.id}
         assert await with_filter(lanes=frozenset({Lane.GREEN, Lane.YELLOW})) == {
             both.id,
@@ -241,9 +241,9 @@ class SearchIndexContract:
         assert await with_filter(lanes=frozenset({None})) == {processing.id}
         assert await with_filter(lanes=frozenset({None, Lane.RED})) == {processing.id}
         assert await with_filter(
-            tags=(frozenset({tag_1}),), space=space_b, lanes=frozenset({Lane.YELLOW})
+            tags=(frozenset({tag_1}),), spaces=frozenset({space_b}), lanes=frozenset({Lane.YELLOW})
         ) == {one_tag.id}
-        assert await with_filter(contact=ContactId(new_id())) == set()
+        assert await with_filter(contacts=frozenset({ContactId(new_id())})) == set()
 
     async def test_tags_with_their_ancestors_and_groups_are_found_by_name(
         self, search_index: SearchIndex
@@ -415,7 +415,9 @@ class SearchIndexContract:
         )
         await search_index.upsert([hidden])
         who = visibility(me, space)
-        fields = DocumentFilter(contact=contact, space=space, lanes=frozenset({Lane.YELLOW}))
+        fields = DocumentFilter(
+            contacts=frozenset({contact}), spaces=frozenset({space}), lanes=frozenset({Lane.YELLOW})
+        )
         assert await found(search_index, "Vertrag", who, filter=fields) == set()
 
     # --- paging ---------------------------------------------------------------------------------

@@ -129,21 +129,22 @@ type TagSets = tuple[frozenset[TagId], ...]
 class DocumentFilter:
     """Criteria for listing documents; all given ones must match.
 
-    `tags`: sets of tags; the document carries one tag of each set. The core gives a tag with
-    its descendants as one set (`TagTree.with_descendants`), so no adapter walks the tree.
+    `contacts`, `document_types`, `spaces`: the document's is one of them. `tags`: sets of
+    tags; the document carries one tag of each set. The core gives a tag with its descendants
+    as one set (`TagTree.with_descendants`), so no adapter walks the tree.
     `contact_groups`, `document_type_groups` likewise: the document's contact (type) is in one
     group of each set. `topics`: the document's topic is one of them (a topic with its
     descendants). `lanes`: one of them, where None stands for documents still in processing.
     `confirmed`: whether a person set or confirmed the metadata (`Document.confirmed_at`).
     `field`: a value for it is set."""
 
-    contact: ContactId | None = None
-    document_type: DocumentTypeId | None = None
+    contacts: frozenset[ContactId] | None = None
+    document_types: frozenset[DocumentTypeId] | None = None
     tags: TagSets = ()
     contact_groups: TagSets = ()
     document_type_groups: TagSets = ()
     topics: frozenset[TagId] | None = None
-    space: SpaceId | None = None
+    spaces: frozenset[SpaceId] | None = None
     lanes: frozenset[Lane | None] | None = None
     confirmed: bool | None = None
     field: FieldId | None = None
@@ -152,20 +153,26 @@ class DocumentFilter:
         for sets in (self.tags, self.contact_groups, self.document_type_groups):
             if any(not tags for tags in sets):
                 raise ValueError("a set of tags in a filter is never empty")
-        if self.topics is not None and not self.topics:
-            raise ValueError("a set of topics in a filter is never empty")
+        for name, chosen in (
+            ("topics", self.topics),
+            ("contacts", self.contacts),
+            ("document types", self.document_types),
+            ("spaces", self.spaces),
+        ):
+            if chosen is not None and not chosen:
+                raise ValueError(f"a set of {name} in a filter is never empty")
 
     def matches(self, view: "FilterView") -> bool:
         """Whether a document (as `view` shows it) matches; for the core and the in-memory
         adapters, where SQL and the search index have their query languages."""
         return (
-            (self.contact is None or view.contact == self.contact)
-            and (self.document_type is None or view.document_type == self.document_type)
+            (self.contacts is None or view.contact in self.contacts)
+            and (self.document_types is None or view.document_type in self.document_types)
             and (self.topics is None or bool(self.topics & view.topics))
             and all(tags & view.tags for tags in self.tags)
             and all(groups & view.contact_groups for groups in self.contact_groups)
             and all(groups & view.document_type_groups for groups in self.document_type_groups)
-            and (self.space is None or view.space == self.space)
+            and (self.spaces is None or view.space in self.spaces)
             and (self.lanes is None or view.lane in self.lanes)
             and (self.confirmed is None or view.confirmed is self.confirmed)
             and (self.field is None or self.field in view.fields)

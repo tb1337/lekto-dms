@@ -12,7 +12,7 @@ from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from lekto.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from lekto.core.domain.ids import DocumentId, SpaceId, TagId, new_id
+from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, SpaceId, TagId, new_id
 from lekto.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
 from lekto.core.domain.periods import Period
 from lekto.core.domain.permissions import can_read_document
@@ -928,14 +928,14 @@ class UnitOfWorkContract:
                 queried = await uow.documents.query_visible(user.id, DocumentFilter(), limit=100)
                 assert {document.id for document in queried} == expected, user.username
                 for lane in (Lane.YELLOW, Lane.RED, None):
-                    only = DocumentFilter(lanes=frozenset({lane}), space=shared.id)
+                    only = DocumentFilter(lanes=frozenset({lane}), spaces=frozenset({shared.id}))
                     found = await uow.documents.query_visible(user.id, only, limit=100)
                     assert {d.id for d in found} <= expected, user.username
         assert len(expected) == 0  # the stranger sees nothing
         async with uow_factory() as uow:
             every = await uow.documents.query(DocumentFilter(), limit=100)
             assert {d.id for d in every} >= {d.id for d in documents}
-            yellow = DocumentFilter(lanes=frozenset({Lane.YELLOW}), space=shared.id)
+            yellow = DocumentFilter(lanes=frozenset({Lane.YELLOW}), spaces=frozenset({shared.id}))
             yellow_ids = {d.id for d in await uow.documents.query(yellow, limit=100)}
             assert yellow_ids == {d.id for d in documents if d.lane is Lane.YELLOW}
 
@@ -1078,24 +1078,35 @@ class UnitOfWorkContract:
             everything = await query(owner.id, DocumentFilter(), limit=100)
             all_ids = [d.id for d in [*documents, processing]]
             assert [d.id for d in everything] == sorted(all_ids, reverse=True)
-            assert set(ids(await query(owner.id, DocumentFilter(contact=contact.id), limit=9))) == {
-                0,
-                2,
-                4,
-            }
-            by_type = DocumentFilter(document_type=invoice.id)
+            by_contact = DocumentFilter(contacts=frozenset({contact.id}))
+            assert set(ids(await query(owner.id, by_contact, limit=9))) == {0, 2, 4}
+            by_type = DocumentFilter(document_types=frozenset({invoice.id}))
             assert set(ids(await query(owner.id, by_type, limit=9))) == {0, 1, 2}
+            # Several contacts, types or spaces: one of them.
+            unknown = new_id()
+            either_contact = DocumentFilter(contacts=frozenset({contact.id, ContactId(unknown)}))
+            assert set(ids(await query(owner.id, either_contact, limit=9))) == {0, 2, 4}
+            either_type = DocumentFilter(
+                document_types=frozenset({invoice.id, DocumentTypeId(unknown)})
+            )
+            assert set(ids(await query(owner.id, either_type, limit=9))) == {0, 1, 2}
+            either_space = DocumentFilter(spaces=frozenset({space.id, other.id}))
+            assert set(ids(await query(owner.id, either_space, limit=9))) == {-1, 0, 1, 2, 3, 4, 5}
             both_tags = DocumentFilter(tags=(frozenset({tax.id}), frozenset({paid.id})))
             assert set(ids(await query(owner.id, both_tags, limit=9))) == {0, 1}
             either_tag = DocumentFilter(tags=(frozenset({tax.id, paid.id}),))
             assert set(ids(await query(owner.id, either_tag, limit=9))) == {0, 1, 2, 3}
-            assert set(ids(await query(owner.id, DocumentFilter(space=other.id), limit=9))) == {5}
+            assert set(
+                ids(await query(owner.id, DocumentFilter(spaces=frozenset({other.id})), limit=9))
+            ) == {5}
             yellow = DocumentFilter(lanes=frozenset({Lane.YELLOW}))
             assert set(ids(await query(owner.id, yellow, limit=9))) == {4}
             in_processing = await query(owner.id, DocumentFilter(lanes=frozenset({None})), limit=9)
             assert [d.id for d in in_processing] == [processing.id]
             combined = DocumentFilter(
-                contact=contact.id, document_type=invoice.id, tags=(frozenset({paid.id}),)
+                contacts=frozenset({contact.id}),
+                document_types=frozenset({invoice.id}),
+                tags=(frozenset({paid.id}),),
             )
             assert set(ids(await query(owner.id, combined, limit=9))) == {0}
 
@@ -1113,9 +1124,11 @@ class UnitOfWorkContract:
                 d.id for d in await uow.documents.query(both_tags, limit=9)
             ]
             in_space = [d.id for d in everything if d.space_id == space.id]
-            first = await uow.documents.query(DocumentFilter(space=space.id), limit=2)
+            first = await uow.documents.query(DocumentFilter(spaces=frozenset({space.id})), limit=2)
             rest = await uow.documents.query(
-                DocumentFilter(space=space.id), after=DocumentPosition(first[-1].id), limit=100
+                DocumentFilter(spaces=frozenset({space.id})),
+                after=DocumentPosition(first[-1].id),
+                limit=100,
             )
             assert [d.id for d in [*first, *rest]] == in_space
 

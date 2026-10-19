@@ -483,10 +483,14 @@ def filter_expression(visibility: Visibility, criteria: DocumentFilter) -> str |
     names go in, both quoted. A document indexed before `confirmed` existed counts as not
     confirmed."""
     parts = [] if visibility.everything else [_visibility_filter(visibility)]
-    if criteria.contact is not None:
-        parts.append(f"contact_id = {_quote(criteria.contact)}")
-    if criteria.document_type is not None:
-        parts.append(f"document_type_id = {_quote(criteria.document_type)}")
+    for attribute, chosen in (
+        ("contact_id", criteria.contacts),
+        ("document_type_id", criteria.document_types),
+        ("space_id", criteria.spaces),
+    ):
+        if chosen is not None:
+            listed = ", ".join(_quote(item) for item in sorted(chosen, key=str))
+            parts.append(f"{attribute} IN [{listed}]")
     if criteria.topics is not None:
         listed = ", ".join(_quote(topic) for topic in sorted(criteria.topics, key=str))
         parts.append(f"topic_ids IN [{listed}]")
@@ -498,8 +502,6 @@ def filter_expression(visibility: Visibility, criteria: DocumentFilter) -> str |
         for tags in sets:
             listed = ", ".join(_quote(tag) for tag in sorted(tags, key=str))
             parts.append(f"{attribute} IN [{listed}]")
-    if criteria.space is not None:
-        parts.append(f"space_id = {_quote(criteria.space)}")
     if criteria.lanes:
         lanes = sorted(lane_value(lane) for lane in criteria.lanes)
         parts.append(f"lane IN [{', '.join(_quote(lane) for lane in lanes)}]")

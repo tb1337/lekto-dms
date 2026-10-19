@@ -114,6 +114,22 @@ async def test_listing_filters_and_pages(api: Api) -> None:
         f"{PREFIX}/documents", params={"tag_id": tag["id"], "lane": "green"}, headers=auth(owner)
     )
     assert [item["id"] for item in tagged.json()["items"]] == [ids[1]]
+    # Several contacts: documents of one of them.
+    first, second = [
+        await post(api, "/contacts", {"name": name}, auth(admin)) for name in ("Nord", "Süd")
+    ]
+    for document, contact in ((ids[0], first), (ids[2], second)):
+        await api.client.patch(
+            f"{PREFIX}/documents/{document}",
+            json={"contact_id": contact["id"]},
+            headers=auth(owner),
+        )
+    either = await api.client.get(
+        f"{PREFIX}/documents",
+        params=[("contact_id", first["id"]), ("contact_id", second["id"])],
+        headers=auth(owner),
+    )
+    assert {item["id"] for item in either.json()["items"]} == {ids[0], ids[2]}
     for bad in ({"cursor": "!!"}, {"limit": 0}, {"limit": 201}, {"lane": "blue"}):
         response = await api.client.get(f"{PREFIX}/documents", params=bad, headers=auth(owner))
         assert response.status_code == 422, bad

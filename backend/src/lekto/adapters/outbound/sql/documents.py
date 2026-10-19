@@ -197,14 +197,14 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         sorting, behind = _sorting(order, after)
         if behind is not None:
             criteria.append(behind)
-        if filter.contact is not None:
-            criteria.append(documents.c.contact_id == filter.contact)
-        if filter.document_type is not None:
-            criteria.append(documents.c.document_type_id == filter.document_type)
+        if filter.contacts is not None:
+            criteria.append(documents.c.contact_id.in_(sorted(filter.contacts)))
+        if filter.document_types is not None:
+            criteria.append(documents.c.document_type_id.in_(sorted(filter.document_types)))
         if filter.topics is not None:
             criteria.append(documents.c.topic_id.in_(sorted(filter.topics)))
-        if filter.space is not None:
-            criteria.append(documents.c.space_id == filter.space)
+        if filter.spaces is not None:
+            criteria.append(documents.c.space_id.in_(sorted(filter.spaces)))
         for tag_set in filter.tags:
             tags = t.document_tags
             criteria.append(

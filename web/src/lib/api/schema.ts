@@ -1046,7 +1046,7 @@ export interface paths {
 		};
 		/**
 		 * List documents
-		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (all tags and groups, any topic, any lane; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `GET /documents/search`.
+		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type or space, all tags and groups, any topic, any lane; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `GET /documents/search`.
 		 */
 		get: operations['list_documents_api_v1_documents_get'];
 		put?: never;
@@ -13639,10 +13639,10 @@ export interface operations {
 				semantic_ratio?: number | null;
 				/** @description Every user's documents instead of the caller's reach (admins). */
 				all_users?: boolean;
-				contact_id?: string | null;
-				document_type_id?: string | null;
+				contact_id?: string[] | null;
+				document_type_id?: string[] | null;
 				tag_id?: string[] | null;
-				space_id?: string | null;
+				space_id?: string[] | null;
 				lane?: components['schemas']['LaneFilter'][] | null;
 				field_id?: string | null;
 				contact_group_id?: string[] | null;
@@ -14037,10 +14037,10 @@ export interface operations {
 				cursor?: string | null;
 				/** @description Every user's documents instead of the caller's reach (admins). */
 				all_users?: boolean;
-				contact_id?: string | null;
-				document_type_id?: string | null;
+				contact_id?: string[] | null;
+				document_type_id?: string[] | null;
 				tag_id?: string[] | null;
-				space_id?: string | null;
+				space_id?: string[] | null;
 				lane?: components['schemas']['LaneFilter'][] | null;
 				field_id?: string | null;
 				contact_group_id?: string[] | null;

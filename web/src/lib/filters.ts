@@ -63,13 +63,13 @@ export function writeFilters(params: URLSearchParams, filters: Filters): URLSear
 /** The query of the API for these filters; `allUsers` from the scope setting. */
 export function apiQuery(filters: Filters, allUsers = false) {
 	return {
-		contact_id: filters.contact ?? undefined,
-		document_type_id: filters.type ?? undefined,
+		contact_id: filters.contact ? [filters.contact] : undefined,
+		document_type_id: filters.type ? [filters.type] : undefined,
 		tag_id: filters.tags.length > 0 ? filters.tags : undefined,
 		contact_group_id: filters.contactGroups.length > 0 ? filters.contactGroups : undefined,
 		document_type_group_id: filters.typeGroups.length > 0 ? filters.typeGroups : undefined,
 		topic_id: filters.topics.length > 0 ? filters.topics : undefined,
-		space_id: filters.space ?? undefined,
+		space_id: filters.space ? [filters.space] : undefined,
 		field_id: filters.field ?? undefined,
 		all_users: allUsers || undefined
 	};

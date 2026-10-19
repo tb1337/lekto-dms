@@ -44,7 +44,7 @@
 			(
 				await unwrap(
 					api.GET('/api/v1/documents', {
-						params: { query: { limit: 50, document_type_id: type ?? undefined } }
+						params: { query: { limit: 50, document_type_id: type ? [type] : undefined } }
 					})
 				)
 			).items.map(short);

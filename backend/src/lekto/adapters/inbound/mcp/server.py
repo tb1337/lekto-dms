@@ -313,9 +313,11 @@ def build_server(context: ApiContext) -> MCPServer:
             user,
             query,
             DocumentFilter(
-                contact=None if contact is None else names.find_contact(contact),
-                document_type=(
-                    None if document_type is None else names.find_document_type(document_type)
+                contacts=None if contact is None else frozenset({names.find_contact(contact)}),
+                document_types=(
+                    None
+                    if document_type is None
+                    else frozenset({names.find_document_type(document_type)})
                 ),
                 tags=tuple(frozenset({names.find_tag(tag)}) for tag in tags or ()),
                 topics=frozenset(names.find_topic(topic) for topic in topics) if topics else None,

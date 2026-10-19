@@ -498,9 +498,12 @@ which takes two conditions; the document date follows the same rules:
   the next word on the line is usually nearer than the line below, and a word two lines down
   is about as far as one three characters' gap away on the same line. The page's shape does
   not count: line and character are measured on the page itself, a receipt like a letter.
-  With fewer than 20 other content words on the page, without the value's words (the quote
-  has no place, no words were kept, the words there do not show the value as written), and
-  for what the vision language model read, the place is the page: of the value's quote, or
+  A quote without a place (its words are not one run of the page's text layer, or the model
+  put it together) leaves the value itself to be found among Tesseract's words: where it
+  stands just once on the pages, its words decide as with a place. With fewer than 20 other
+  content words on the page, without the value's words (no words were kept, the words do not
+  show the value as written, the value stands more than once without a place), and for what
+  the vision language model read, the place is the page: of the value's quote, or
   any recognised page if the quote was not found, poorly read from the same share of unsure
   content words with at least ten of them. Where the quote stands more than once on a page
   and the value's words are found at one place, their surroundings stand for that page.

@@ -77,6 +77,7 @@ from papiq.core.domain.reading import (
     ReadWord,
     reading_from_json,
     surroundings,
+    value_on_pages,
     value_words,
     words_at,
 )
@@ -951,10 +952,10 @@ async def _ocr_reading(
     """How the OCR read the pages, by its latest entry that made a text (as
     `PipelineService.reading` tells it); nothing for a document recognised before readings, or
     with text of its own. The words it kept beside the archive only where one of `checks`
-    passed with a place for its quote: no other check looks at them."""
+    passed: no other check looks at them."""
     entry = ProcessingHistory(history).latest(Node.OCR, made=True)
     pages = () if entry is None else OcrOutput.from_json(entry.result.output).readings
-    if not pages or not any(check.ok and check.locations for check in checks):
+    if not pages or not any(check.ok and check.value is not None for check in checks):
         return _Reading(pages)
     key = reading_key(document.id)
     try:
@@ -1009,9 +1010,12 @@ def _readable(
     (counting content only), as on a broken scan a number may be anything, however sure the
     engine was of it; or where a word of the value itself was read unsure. The value's words
     are those in its quote's boxes that show it (`shows`); its place, the content words around
-    them (`surroundings`). Where they are not found (no place, no words kept, a value not
-    written as such), or too few words stand around them, the place is the page of the quote,
-    or any recognised page if the quote was not found on one."""
+    them (`surroundings`). A quote without a place (its words not one run on the page, or put
+    together by the model) leaves the value itself to be found among the words of the pages
+    (`value_on_pages`), where it stands just once. Where the value's words are not found (no
+    words kept, a value not written as such, or not just once), or too few words stand around
+    them, the place is the page of the quote, or any recognised page if the quote was not found
+    on one."""
     if not check.ok or check.value is None:
         return check
     places: list[_Place] = []
@@ -1019,6 +1023,11 @@ def _readable(
         words = reading.words.get(location.page, ())
         found = None if shows is None else value_words(words_at(location, words), shows)
         places.append((location, words, found))
+    if not places and shows is not None and (alone := value_on_pages(reading.words, shows)):
+        page, value = alone
+        boxes = tuple(word.box for word in value if word.box is not None)
+        if boxes:
+            places.append((Location(page, boxes), reading.words[page], value))
     reason = _poorly_read(places, reading.pages, threshold)
     if reason is None:
         unsure = [word.confidence for *_, value in places for word in value or () if word.unsure]

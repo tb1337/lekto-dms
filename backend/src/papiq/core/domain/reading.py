@@ -18,7 +18,7 @@ gives no confidences, so its readings have no words and no content counts.
 import math
 import re
 import statistics
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Self
@@ -323,6 +323,30 @@ def value_words(
             indexes = sorted({index + offset for index in found for offset in range(length)})
             return tuple(words[index] for index in indexes)
     return tuple(words)
+
+
+VALUE_RUN = 4
+"""The most words a value is looked for in across the page (`value_on_pages`): a date written
+out (`24. Juni 2022`) or an amount split by the reading (`1.180, 41`)."""
+
+
+def value_on_pages(
+    pages: Mapping[int, Sequence[ReadWord]], shows: Callable[[DocumentText], bool]
+) -> tuple[int, tuple[ReadWord, ...]] | None:
+    """Where a value stands among the words read on the pages, for one whose quote was not
+    found on them: the shortest runs of words in reading order that show it (`shows`, as
+    `value_words`), up to `VALUE_RUN` words; its page and words if it stands at exactly one
+    place, else None (nowhere, or more than once: which one the quote meant is not known)."""
+    for length in range(1, VALUE_RUN + 1):
+        found = [
+            (page, tuple(words[start : start + length]))
+            for page, words in sorted(pages.items())
+            for start in range(len(words) - length + 1)
+            if shows(DocumentText(" ".join(word.text for word in words[start : start + length])))
+        ]
+        if found:
+            return found[0] if len(found) == 1 else None
+    return None
 
 
 def gap(first: Box, second: Box, *, line: float, character: float) -> float:

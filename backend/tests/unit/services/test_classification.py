@@ -1239,7 +1239,6 @@ async def test_a_date_read_unsure_on_a_well_read_page_is_only_suggested(world: W
     ("kept", "located", "on_page"),
     [
         (False, True, 1),  # no words kept: read before, or by the vision language model
-        (True, False, 1),  # the quote has no place
         (True, True, 2),  # no words where the quote stands
     ],
 )
@@ -1331,7 +1330,6 @@ async def test_a_date_in_a_well_read_header_above_a_badly_read_table_is_applied(
     ("kept", "located", "on_page"),
     [
         (False, True, 1),  # no words kept: read before, or by the vision language model
-        (True, False, 1),  # the quote has no place
         (True, True, 2),  # no words where the quote stands
     ],
 )
@@ -1356,6 +1354,35 @@ async def test_words_that_do_not_show_the_value_leave_the_page_to_decide(world: 
     _, document = await scanned(world, BAD_TABLE, read=read)
     check = await judged_date(world, document)
     assert check.reason == "page 1 was poorly read (9% of its content words unsure)"
+
+
+async def test_a_value_whose_quote_has_no_place_is_found_among_the_words(world: World) -> None:
+    """The quote is not one run of the text layer (the model joined two blocks): the date
+    itself stands once among Tesseract's words, so its surroundings decide, as with a place."""
+    _, document = await scanned(world, BAD_TABLE)
+    check = await judged_date(world, document, located=False)
+    assert check.ok and check.value == "2022-06-24"
+
+
+async def test_a_value_found_among_the_words_must_be_read_sure(world: World) -> None:
+    _, document = await scanned(world, scan(PAYSLIP, {"24.06.2022": 30}))
+    check = await judged_date(world, document, located=False)
+    assert check.reason == "the value was read unsure (30%)"
+
+
+async def test_a_value_standing_twice_without_a_place_leaves_the_page_to_decide(
+    world: World,
+) -> None:
+    """Which of two places the quote meant is not known: the page decides by its content."""
+    read = tuple(
+        ScanLine(f"{line.text} 24.06.2022", line.size, line.confidence, line.unsure, line.flat)
+        if line.text.startswith("Lohnsteuer")
+        else line
+        for line in BAD_TABLE
+    )
+    _, document = await scanned(world, BAD_TABLE, read=read)
+    check = await judged_date(world, document, located=False)
+    assert check.reason is not None and check.reason.startswith("page 1 was poorly read")
 
 
 class TwoPlaces(FakeTextLocator):

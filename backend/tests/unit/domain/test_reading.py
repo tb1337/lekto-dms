@@ -26,6 +26,7 @@ from papiq.core.domain.reading import (
     readings_from_json,
     readings_to_json,
     surroundings,
+    value_on_pages,
     value_words,
     words_at,
 )
@@ -258,6 +259,24 @@ def test_the_words_of_a_value_are_the_shortest_runs_that_show_it() -> None:
 def test_a_value_the_words_do_not_show_has_no_words() -> None:
     assert value_words(line("Datum", "Juni", "2022"), shows_date) is None
     assert value_words([], shows_date) is None
+
+
+def test_a_value_without_a_place_is_found_where_it_stands_once() -> None:
+    header = line("Entgeltbescheinigung", "24.06.2022")
+    table = line("Lohnsteuer", "412,33", "EUR")
+    assert value_on_pages({1: header, 2: table}, shows_date) == (1, (header[1],))
+    amount = value_on_pages({1: header, 2: table}, lambda text: text.has_amount(Decimal("412.33")))
+    assert amount == (2, (table[1],))
+    # Written in three words: the shortest run that shows it.
+    spread = line("gezahlt", "am", "24.", "Juni", "2022")
+    assert value_on_pages({3: spread}, shows_date) == (3, tuple(spread[2:]))
+
+
+def test_a_value_standing_twice_or_nowhere_is_not_found() -> None:
+    twice = {1: line("24.06.2022", "Lohnsteuer"), 2: line("bis", "24.06.2022")}
+    assert value_on_pages(twice, shows_date) is None
+    assert value_on_pages({1: line("Datum", "Juni", "2022")}, shows_date) is None
+    assert value_on_pages({}, shows_date) is None
 
 
 # --- the value's surroundings ----------------------------------------------------------------

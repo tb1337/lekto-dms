@@ -1164,6 +1164,11 @@ Beobachtet: Auf `r2-payslip.pdf` wurde auch das Datum (96 %) gelb, weil zwei sei
 
 Offen: Ob zwei unsichere von 20 reichen sollen (die Schwelle gilt für Seite und Umgebung gleich); Punktführungen als Ziffern oder mit dem Label verschmolzen im Rauschfilter; der Rat zum VLM (`poor_page`) folgt weiter der Seite. In einer Tabelle zählen die Spalte darüber und darunter, nicht die weit links stehende Beschriftung der Zeile.
 
+**Ergänzung: Fundstelle über Zeilen, Wert ohne Fundstelle (Entscheidung 12.1/12.2, 19.10.2026).** Direkt auf `feature/reading-content` (Tobi: ohne Subagent). Anlass: Auf der echten Abrechnung hatte das Datum keine Fundstelle, also entschied wieder die Seite. Ursache: Das Zitat „Entgeltbescheinigung 24.06.2022“ ist eine Zeile des geparsten Texts, in der Textschicht des OCR-Archivs stehen aber Tesseracts Blöcke nacheinander (linke Spalte, dann rechte), sodass die Suche des Locators über die Zeichenfolge es nicht fand. Gebaut:
+- Locator (`pdfium/locator.py`): ein dritter Durchgang für ein Zitat, das weder streng noch locker gefunden wurde, über die Zeilen der Seite (`page_lines`, wie der Parser, Wortlücke `WORD_GAP`), streng und locker; die Boxen der getroffenen Zeichen, je Zeile verbunden (`_lines`). Am echten Archiv (nur lesend, Kopie danach gelöscht) gefunden: Seite 1, zwei Boxen.
+- Dienst (`_readable`): ein Zitat ohne Fundstelle lässt den Wert unter Tesseracts Wörtern suchen (`reading.value_on_pages`, kürzeste Folge bis `VALUE_RUN` = 4 Wörter); steht er genau einmal, entscheiden Umgebung und eigene Lesung wie an einer Fundstelle, sonst die Seite. Die Wörter werden dafür geladen, sobald ein Wert die Prüfung bestand, nicht erst mit Fundstelle.
+- Tests: Locator (Zeile über zwei Blöcke, ein Zitat in einer Folge bleibt beim alten Weg), Domäne (einmal, zweimal, nirgends, über drei Wörter), Dienst (ohne Fundstelle gefunden und nach Umgebung grün, unsicher gelesen nur Vorschlag, zweimal ohne Fundstelle nach Seite); zwei Fälle „Zitat ohne Fundstelle → Seite“ der alten Tests entfallen, weil der Wert jetzt gesucht wird.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

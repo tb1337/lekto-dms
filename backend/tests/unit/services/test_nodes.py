@@ -231,6 +231,15 @@ async def test_reprocessing_from_parse_reuses_the_archive(world: World) -> None:
     assert (await world.documents.get(owner.id, document.id)).lane is Lane.GREEN
 
 
+async def test_reprocessing_from_parse_keeps_the_words_of_the_archive(world: World) -> None:
+    service = pipeline(world, ocr=FakeOcr(words=WORDS))
+    owner, document = await ingest(world, service, "scan.pdf")
+    kept = await world.object_store.get(reading_key(document.id))
+    await service.reprocess_from(owner.id, document.id, Node.PARSE)
+    await world.drain(service)
+    assert await world.object_store.get(reading_key(document.id)) == kept
+
+
 async def test_work_directories_are_removed(
     world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

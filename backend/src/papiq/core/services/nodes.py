@@ -87,11 +87,15 @@ class OcrNode:
             )
         # The codes were read from the archive before: the facts read the new one again.
         await self._store.delete(codes_key(document.id))
+        # The words belong to the new archive. Should writing them fail, the run fails and
+        # its log entry is not written: the latest one that made a text stays the one before,
+        # whose words were not replaced, so entry and words still go together.
         if result.words:
-            data = json.dumps(reading_to_json(result.words), ensure_ascii=False)
-            await self._store.put(
-                reading_key(document.id), data.encode("utf-8"), content_type=media_types.JSON
+            words = result.words
+            data = await asyncio.to_thread(
+                lambda: json.dumps(reading_to_json(words), ensure_ascii=False).encode("utf-8")
             )
+            await self._store.put(reading_key(document.id), data, content_type=media_types.JSON)
         else:
             await self._store.delete(reading_key(document.id))
         output = OcrOutput(

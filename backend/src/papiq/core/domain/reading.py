@@ -170,10 +170,6 @@ class PageReading:
         )
 
     @property
-    def unsure_share(self) -> float:
-        return self.unsure / self.words if self.words else 0.0
-
-    @property
     def counted(self) -> tuple[int, int]:
         """The words that count and the unsure ones among them: the content where it was
         counted, otherwise all."""
@@ -259,10 +255,12 @@ def reading_to_json(pages: Sequence[PageWords]) -> JsonObject:
 def reading_from_json(data: JsonValue) -> dict[int, tuple[ReadWord, ...]] | None:
     """The words of a stored `reading.json` by page; None if it is of another version.
     ValidationError if it is not one."""
-    if not isinstance(data, dict) or not isinstance(data.get("pages"), list):
-        raise ValidationError("invalid reading: no list of pages")
+    if not isinstance(data, dict):
+        raise ValidationError("invalid reading: not an object")
     if data.get("version") != READING_VERSION:
         return None
+    if not isinstance(data.get("pages"), list):
+        raise ValidationError("invalid reading: no list of pages")
     found: dict[int, tuple[ReadWord, ...]] = {}
     for item in as_list(data.get("pages")):
         page = as_int(item.get("page")) if isinstance(item, dict) else None
@@ -297,9 +295,10 @@ def value_words(
     words: Sequence[ReadWord], shows: Callable[[DocumentText], bool]
 ) -> tuple[ReadWord, ...] | None:
     """The words that make up a value among `words` (those of its quote, in reading order):
-    the shortest runs of them that show it (`shows`, as the quote check reads the value), all
-    of them where it stands more than once. None if the words do not show it (it is not written
-    as such, or they are not the words of the quote)."""
+    the shortest runs of them that show it (`shows`, as the quote check reads the value); where
+    it stands more than once in as many words, all of them (a longer form beside a shorter one,
+    `24. Juni 2022` beside `24.06.2022`, is not looked at). None if the words do not show it
+    (it is not written as such, or they are not the words of the quote)."""
 
     def shown(run: Sequence[ReadWord]) -> bool:
         return shows(DocumentText(" ".join(word.text for word in run)))

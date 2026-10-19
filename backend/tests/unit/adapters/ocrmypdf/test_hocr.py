@@ -55,6 +55,14 @@ def test_without_a_page_size_words_have_no_box() -> None:
         "<span class='ocrx_word' title='bbox 1 2 3 4; x_wconf 80'>Wort</span></span>"
     )
     assert hocr_words(page) == (ReadWord("Wort", 80),)
+    # A stray end tag closes nothing: the line keeps its size.
+    stray = page.replace("<span class='ocrx_word'", "</em><span class='ocrx_word'")
+    assert hocr_words(stray) == (ReadWord("Wort", 80),)
+    sized = (
+        "<div class='ocr_page' title='bbox 0 0 100 100'><span class='ocr_line' title='x_size 10'>"
+        "</strong><span class='ocrx_word' title='bbox 1 2 3 4; x_wconf 80'>Wort</span></span></div>"
+    )
+    assert hocr_words(sized)[0].size == 0.1
     # A word without a confidence is not one of Tesseract's.
     assert hocr_words("<span class='ocrx_word' title='bbox 1 2 3 4'>Wort</span>") == ()
 
@@ -64,7 +72,7 @@ def test_the_pay_slip_is_poorly_read_by_all_words_but_not_by_its_content() -> No
     words = hocr_words(hocr(PAYSLIP))
     reading = PageReading.of(1, words)
     assert (reading.words, reading.unsure) == (237, 23)
-    assert reading.unsure_share > 0.09
+    assert reading.unsure / reading.words > 0.09
     assert PageReading(1, reading.words, reading.unsure).poor(0.08)  # as before
     assert (reading.content, reading.content_unsure) == (196, 3)
     assert reading.share < 0.02

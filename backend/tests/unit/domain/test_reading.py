@@ -125,7 +125,6 @@ def test_a_page_reading_counts_content_and_decides_by_it() -> None:
     words = [word(f"Wort{n}") for n in range(18)] + [word("412,33", 31), *noise]
     reading = PageReading.of(2, words)
     assert reading == PageReading(2, words=22, unsure=4, content=19, content_unsure=1)
-    assert reading.unsure_share == pytest.approx(4 / 22)  # 18 % of all words
     assert reading.share == pytest.approx(1 / 19)  # 5 % of the content
     assert not reading.poor(0.08)
     assert reading.counted == (19, 1)
@@ -176,7 +175,9 @@ def test_the_stored_words_round_trip() -> None:
     ]
     # A word without a box cannot be found by a quote and is not kept.
     assert reading_from_json(data) == {1: (pages[0].words[0],), 3: pages[1].words}
+    # Of another version, whatever its shape: read again.
     assert reading_from_json({"version": READING_VERSION + 1, "pages": []}) is None
+    assert reading_from_json({"version": READING_VERSION + 1, "words": {}}) is None
 
 
 @pytest.mark.parametrize(

@@ -472,7 +472,7 @@ class JudgeNode:
         contact, kind, topic, tagged, date_check = await _locate_quotes(
             self._store, self._locator, document, [contact, kind, topic, tagged, date_check]
         )
-        reading = await _ocr_reading(self._store, document, log)
+        reading = await _ocr_reading(self._store, document, log, [date_check])
         date_check = _readable(
             date_check, reading, self._policy.poor_reading, _date_shown(date_check.value)
         )
@@ -618,7 +618,7 @@ class FieldsNode(_ModelStep):
             for check, definition in zip(checks, definitions, strict=True)
         ]
         checks = await _locate_quotes(self._store, self._locator, document, checks)
-        reading = await _ocr_reading(self._store, document, log)
+        reading = await _ocr_reading(self._store, document, log, checks)
         checks = [
             _readable(
                 check,
@@ -941,18 +941,23 @@ class _Reading:
 
 
 async def _ocr_reading(
-    store: ObjectStore, document: Document, history: Sequence[NodeRun]
+    store: ObjectStore,
+    document: Document,
+    history: Sequence[NodeRun],
+    checks: Sequence[FieldCheck],
 ) -> _Reading:
     """How the OCR read the pages, by its latest entry that made a text (as
-    `PipelineService.reading` tells it), with the words it kept beside the archive; nothing for
-    a document recognised before readings, or with text of its own."""
+    `PipelineService.reading` tells it); nothing for a document recognised before readings, or
+    with text of its own. The words it kept beside the archive only where one of `checks`
+    passed with a place for its quote: no other check looks at them."""
     entry = ProcessingHistory(history).latest(Node.OCR, made=True)
     pages = () if entry is None else OcrOutput.from_json(entry.result.output).readings
-    if not pages:
-        return _Reading()
+    if not pages or not any(check.ok and check.locations for check in checks):
+        return _Reading(pages)
     key = reading_key(document.id)
     try:
-        words = reading_from_json(json.loads(await store.get(key)))
+        data = await store.get(key)
+        words = await asyncio.to_thread(lambda: reading_from_json(json.loads(data)))
     except NotFoundError:
         words = None
     except (ValueError, ValidationError):

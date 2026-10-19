@@ -1229,6 +1229,16 @@ async def test_without_the_value_s_words_the_page_alone_decides(
     assert check.ok and check.value == "2022-06-24"
 
 
+@pytest.mark.parametrize("data", [b"{broken", b'{"version": 99, "words": []}'])
+async def test_words_that_cannot_be_read_leave_the_page_to_decide(
+    world: World, data: bytes
+) -> None:
+    _, document = await scanned(world, scan(PAYSLIP, {"24.06.2022": 30}))
+    await world.object_store.put(reading_key(document.id), data, content_type="application/json")
+    check = await judged_date(world, document)
+    assert check.ok and check.value == "2022-06-24"
+
+
 async def test_the_poorly_read_page_names_itself_first(world: World) -> None:
     broken = scan(PAYSLIP, {"Abrechnung": 30, "Steuerbrutto": 30, "Gehalt": 20, "24.06.2022": 30})
     lines = tuple(

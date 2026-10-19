@@ -72,7 +72,10 @@ class _HocrParser(HTMLParser):
             self._word = (title, [])
 
     def handle_endtag(self, tag: str) -> None:
-        # Close up to the matching element; hOCR is XHTML, but stay lenient.
+        # Close up to the matching element (hOCR is XHTML, but stay lenient); a stray end
+        # tag closes nothing.
+        if all(open_tag != tag for open_tag, _ in self._open):
+            return
         while self._open:
             open_tag, kind = self._open.pop()
             if kind in _LINES and self._sizes:

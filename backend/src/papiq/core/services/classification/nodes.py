@@ -1045,15 +1045,22 @@ def _poorly_read(
 ) -> str | None:
     """Why a value stands in a poorly read place, at any of its quote's places; None if it
     does not. A place is the content around the value's words there, or, without them or with
-    too few words around, the page; without places, any recognised page."""
+    too few words around, the page; without places, any recognised page. A page whose
+    surroundings were judged at one place is not judged as a whole for another place on it
+    where the value's words were not found: the boxes of the text layer and Tesseract's differ
+    at a line's edge, and the whole page would undo its surroundings."""
     if not places:
         poor = next((page for page in pages if page.poor(threshold)), None)
         return None if poor is None else poor.describe()
+    judged: set[int] = set()
     for location, words, value in places:
         around = None if value is None else surroundings(words, value)
         if around is not None:
             if around.poor(threshold):
                 return around.describe()
+            judged.add(location.page)
+    for location, _, _ in places:
+        if location.page in judged:
             continue
         poor = next(
             (page for page in pages if page.page == location.page and page.poor(threshold)), None

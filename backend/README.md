@@ -492,16 +492,19 @@ which takes two conditions; the document date follows the same rules:
   broken scan a number may be anything, however sure Tesseract was of it. No layout is
   assumed, neither blocks nor tables: nearness is the gap between the words' boxes, Euclidean
   between their nearest edges, the vertical gap in line heights (the content's median hOCR
-  `x_size`) and the horizontal one in characters (the median width of one in the content's
-  boxes) at half a line each, about the width of a character for its font size; ties go by
-  reading order. So the next word on the line is usually nearer than the line below, and a
-  word two lines down is about as far as one three characters' gap away on the same line. The
-  page's shape does not count: line and character are measured on the page itself, a receipt
-  like a letter. With fewer than 20 other content words on the page, without the value's words (the
-  quote has no place, no words were kept, the words there do not show the value as written),
-  and for what the vision language model read, the place is the page: of the value's quote, or
+  `x_size`, without sizes its median box height) and the horizontal one in characters (the
+  median width of one in the content's boxes) at half a line each, about the width of a
+  character for its font size; equal gaps (to a millionth of a line) go by reading order. So
+  the next word on the line is usually nearer than the line below, and a word two lines down
+  is about as far as one three characters' gap away on the same line. The page's shape does
+  not count: line and character are measured on the page itself, a receipt like a letter.
+  With fewer than 20 other content words on the page, without the value's words (the quote
+  has no place, no words were kept, the words there do not show the value as written), and
+  for what the vision language model read, the place is the page: of the value's quote, or
   any recognised page if the quote was not found, poorly read from the same share of unsure
-  content words with at least ten of them. Noise counts neither as a word nor as unsure: a
+  content words with at least ten of them. Where the quote stands more than once on a page
+  and the value's words are found at one place, their surroundings stand for that page.
+  Noise counts neither as a word nor as unsure: a
   word with fewer than half of its characters letters or digits (rules, marks), a dot, dash or
   underscore leader (`Datum..........`), also one Tesseract read as letters (`«oso:`, `see`,
   `EEE`: a box under 35 % of its line's height, where a word of small letters still has the
@@ -511,8 +514,9 @@ which takes two conditions; the document date follows the same rules:
   footnotes stay content). On the pay slip that led to the rule, 10 % of all words were
   unsure, almost all of them leaders, letterhead and marks; on a synthetic scan shaped like it
   (`tests/scans.py`), 2 % of the content. Its table of amounts was also read badly: 9 % of the
-  page's content words were unsure, none of the 17 in the header around its date, which the
-  surroundings keep green.
+  page's content words were unsure, none of the 17 in the header with its date. On a
+  synthetic scan like that (`BAD_TABLE`), the 20 words around the date are all sure and keep
+  it green, while an amount inside the table is only suggested.
 - **The value itself was read sure.** Every word Tesseract read that makes up the value within
   its quote's boxes needs 60 % confidence or more (the shortest runs of the words there that
   show the value, read as the quote check reads it; a currency counts where the amount needs it

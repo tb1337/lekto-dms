@@ -337,6 +337,10 @@ def test_a_gap_is_euclidean_between_edges_in_lines_and_characters() -> None:
     assert to(Box(0.39, 0.34, 0.05, 0.02)) == pytest.approx((2.0**2 + 1.0**2) ** 0.5)
     # A word on the same line a little to the right is nearer than one two lines down.
     assert to(Box(0.38, 0.3, 0.05, 0.02)) < to(Box(0.3, 0.36, 0.05, 0.02))
+    # So too at the usual leading (a row 1.2 lines high): two rows down is 1.4 lines away,
+    # two characters to the right one line; the next but one word on the line is farther.
+    assert to(Box(0.3, 0.348, 0.05, 0.02)) == pytest.approx(1.4)
+    assert to(Box(0.37, 0.3, 0.05, 0.02)) < to(Box(0.3, 0.348, 0.05, 0.02))
 
 
 def test_the_same_line_is_nearer_than_the_lines_below() -> None:
@@ -365,6 +369,17 @@ def test_ties_go_by_reading_order() -> None:
     backwards = surroundings(words[::-1], value, count=3)
     assert backwards is not None
     assert [word.text for word in backwards.words] == ["w0105", "w0103", "w0204"]
+    # Gaps that differ only in the last digits of their floats are equal too.
+    plain = [
+        ReadWord(f"Wort{n:02d}", 93, Box(round(0.1 * (n % 7), 4), 0.1 * (n // 7), 0.05, 0.02))
+        for n in range(28)
+    ]
+    middle = [the(plain, "Wort10")]  # the fourth column of the second row
+    beside = surroundings(plain, middle, count=2)
+    reversed_ = surroundings(plain[::-1], middle, count=2)
+    assert beside is not None and reversed_ is not None
+    assert [word.text for word in beside.words] == ["Wort09", "Wort11"]
+    assert [word.text for word in reversed_.words] == ["Wort11", "Wort09"]
 
 
 def test_the_value_s_own_words_are_not_counted() -> None:
@@ -395,3 +410,7 @@ def test_with_too_few_words_besides_the_value_the_page_decides() -> None:
     # Without the value's words, or without boxes, nothing is near.
     assert surroundings(words, []) is None
     assert surroundings([ReadWord(f"Wort{n}", 93) for n in range(30)], [word("Wort1")]) is None
+    # Boxes without height and words without a line's size: nothing to measure by.
+    flat = [ReadWord(f"Wort{n}", 93, Box(0.03 * n, 0.5, 0.02, 0.0)) for n in range(30)]
+    assert surroundings(flat, [flat[3]]) is None
+    assert surroundings(words[10:11], words[10:11], count=0) is None  # no other content

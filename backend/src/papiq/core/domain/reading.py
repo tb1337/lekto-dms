@@ -365,17 +365,18 @@ def surroundings(
     words: Sequence[ReadWord], value: Sequence[ReadWord], count: int = SURROUNDING
 ) -> Surroundings | None:
     """The `count` content words of a page (`words`, `content_words`) nearest to the value's
-    words (`value`, among them, `value_words`), not counting those: by `gap` to the nearest of
-    them, a tie by reading order. The line is the median line height of the content (without
-    sizes, of its boxes), the character the median width of one in its boxes. No layout is
-    assumed: a table, a header or a form are words at a distance like any other. None where
-    the page has fewer than `count` content words besides the value's: the whole page decides
-    then."""
+    words (`value`, from `value_words`, which are among them), not counting those: by `gap` to
+    the nearest of them, rounded to a millionth of a line so that equal gaps are equal however
+    the boxes were rounded, a tie by reading order. The line is the median line height of the
+    content (without sizes, of its boxes), the character the median width of one in its boxes.
+    No layout is assumed: a table, a header or a form are words at a distance like any other.
+    None where the page has fewer than `count` content words besides the value's (or none):
+    the whole page decides then."""
     content = [(word, word.box) for word in content_words(words) if word.box is not None]
     places = [word.box for word in value if word.box is not None]
     own = set(value)
     others = [(word, box) for word, box in content if word not in own]
-    if len(others) < count or not places:
+    if len(others) < max(count, 1) or not places:
         return None
     sizes = [word.size for word, _ in content if word.size is not None]
     line = statistics.median(sizes or [box.height for _, box in content])
@@ -383,10 +384,10 @@ def surroundings(
     if line <= 0 or character <= 0:  # boxes without extent: nothing to measure by
         return None
     distances = [
-        (min(gap(box, place, line=line, character=character) for place in places), index)
-        for index, (_, box) in enumerate(others)
+        (round(min(gap(box, place, line=line, character=character) for place in places), 6), i)
+        for i, (_, box) in enumerate(others)
     ]
-    return Surroundings(tuple(others[index][0] for _, index in sorted(distances)[:count]))
+    return Surroundings(tuple(others[i][0] for _, i in sorted(distances)[:count]))
 
 
 class VisionAdvice(StrEnum):

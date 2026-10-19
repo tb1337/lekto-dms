@@ -2,10 +2,11 @@
 every check, the answer handling, and the way through the pipeline."""
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -22,6 +23,7 @@ from papiq.core.domain.exchanges import RunExchange, exchanges_from_json
 from papiq.core.domain.fields import FieldDefinition, FieldType, Money
 from papiq.core.domain.identifiers import Identifier, IdentifierKind
 from papiq.core.domain.json_value import JsonObject, JsonValue
+from papiq.core.domain.locations import Box, Location
 from papiq.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
 from papiq.core.domain.pipeline import (
     Lane,
@@ -1174,14 +1176,16 @@ async def scanned(
     kept: bool = True,
     counted: bool = True,
     on_page: int = 1,
+    read: tuple[ScanLine, ...] | None = None,
 ) -> tuple[Seeded, Document]:
-    """An invoice-typed document whose text is that of `lines`, recognised by Tesseract: the
-    OCR's entry with the counts (`counted`: with content; else as before content was counted)
-    and, if `kept`, its words beside the archive (for page `on_page`)."""
+    """An invoice-typed document whose text is that of `lines`, recognised by Tesseract (as
+    `read`, if given): the OCR's entry with the counts (`counted`: with content; else as
+    before content was counted) and, if `kept`, its words beside the archive (for page
+    `on_page`)."""
     seeded = await seed(world)
     text = "\n".join(line.text for line in lines)
     document = await document_with(world, text, seeded.types["Rechnung"])
-    words = hocr_words(hocr(lines))
+    words = hocr_words(hocr(read or lines))
     reading = PageReading.of(1, words)
     if not counted:
         reading = PageReading(1, reading.words, reading.unsure)
@@ -1338,6 +1342,46 @@ async def test_without_the_value_s_words_the_page_decides_by_its_content(
     check = await judged_date(world, document, located=located)
     assert check.reason == "page 1 was poorly read (9% of its content words unsure)"
     assert check.suggestion == "2022-06-24"
+
+
+async def test_words_that_do_not_show_the_value_leave_the_page_to_decide(world: World) -> None:
+    """Tesseract's words where the quote stands do not show the value as written (the text
+    layer was read again since, or is another engine's): the page decides."""
+    read = tuple(
+        ScanLine("Datum «oso: see 24.06.2O22", line.size, line.confidence, line.unsure, line.flat)
+        if line.text.startswith("Datum ")
+        else line
+        for line in BAD_TABLE
+    )
+    _, document = await scanned(world, BAD_TABLE, read=read)
+    check = await judged_date(world, document)
+    assert check.reason == "page 1 was poorly read (9% of its content words unsure)"
+
+
+class TwoPlaces(FakeTextLocator):
+    """Finds every quote a second time at the foot of its page, where the value's words are
+    not (the text layer's boxes and Tesseract's differ at a line's edge)."""
+
+    async def locate(self, pdf: Path, texts: Sequence[str]) -> list[tuple[Location, ...]]:
+        found = await super().locate(pdf, texts)
+        return [
+            (*places, Location(places[0].page, (Box(0.0, 0.95, 0.5, 0.02),))) if places else ()
+            for places in found
+        ]
+
+
+async def test_another_place_on_the_page_does_not_undo_the_surroundings(world: World) -> None:
+    _, document = await scanned(world, BAD_TABLE)
+    result = await judge(
+        world,
+        document,
+        model(proposal(document_date=PAYSLIP_DATE)),
+        locator=TwoPlaces([PAYSLIP_TEXT]),
+    )
+    assert isinstance(result, MetadataResult)
+    check = checks(result.result)["document_date"]
+    assert len(check.locations) == 2
+    assert check.ok and check.value == "2022-06-24"
 
 
 RECEIPT = (

@@ -61,8 +61,9 @@ as written in the document or as YYYY-MM-DD; not a due date or a period.
 - title: a short title for the document in its language, at most {TITLE_CHARACTERS} \
 characters, naming what it is (for example "Stromrechnung März 2026"); null if you cannot tell.
 - language: the language the document is written in, as ISO 639-1 code (de, en, fr, ...).
-- fields: the listed fields of the document type you chose, and the fields for every \
-document: one entry per field the document shows, with its key, the value as written in the \
+- fields: the fields of the document type you chose (the keys listed with it, each \
+described once under Fields), and the fields for every document: one entry per field the \
+document shows, with its key, the value as written in the \
 document (an amount with its currency), the evidence and the label. A description after a \
 field's name says what belongs in it (the name is often an internal one no document shows): \
 take the value it asks for. Leave out fields the document does not show and the fields of \
@@ -111,8 +112,12 @@ class Listed:
 
 # The fixed answers of the evaluation (`adapters/inbound/evaluation/cases.py`, `_proposal_keys`
 # and `_KEY_LINE`) read the field keys from the wording of the two messages: the line that opens
-# the document, the field lines `- a1: "Name"` and the headings "Document types" and "Fields for
-# every document". A test renders the messages to hold the two together.
+# the document, the field lines `- a1: "Name"`, the headings "Fields", "Document types" and
+# "Fields for every document", and a type's keys after ` — fields: `. A test renders the
+# messages to hold the two together.
+
+FIELDS_OF_TYPE = " — fields: "
+"""Between a document type (with its description) and the keys of its fields."""
 
 
 def propose_message(
@@ -122,18 +127,25 @@ def propose_message(
     tags: Sequence[str],
     text: Shortened,
 ) -> str:
-    """The lists come before the document; each document type with the keys of its fields,
-    then the fields for every document."""
+    """The lists come before the document: each field once, with its form and description (a
+    field may belong to several types); each document type with the keys of its fields; the
+    keys of the fields for every document."""
+    described: dict[str, FieldDefinition] = {}
     types = []
     for listed, fields in document_types:
-        types.append(_listed([listed]))
-        types.extend(f"  {_field_line(key, definition)}" for key, definition in fields)
+        for key, definition in fields:
+            described.setdefault(key, definition)
+        keys = ", ".join(key for key, _ in fields)
+        types.append(_listed([listed]) + (FIELDS_OF_TYPE + keys if keys else ""))
+    for key, definition in general:
+        described.setdefault(key, definition)
     return "\n\n".join(
         [
             "Contacts:\n" + _listed(contacts),
-            "Document types, each with its fields:\n" + ("\n".join(types) or "(none)"),
-            "Fields for every document:\n"
-            + ("\n".join(_field_line(key, item) for key, item in general) or "(none)"),
+            "Fields:\n"
+            + ("\n".join(_field_line(key, item) for key, item in described.items()) or "(none)"),
+            "Document types, each with the keys of its fields:\n" + ("\n".join(types) or "(none)"),
+            "Fields for every document:\n" + (", ".join(key for key, _ in general) or "(none)"),
             "Tags:\n" + _items(tags),
             _document(text),
         ]

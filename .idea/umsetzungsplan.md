@@ -1189,6 +1189,8 @@ Nach dem Review (separater, nur lesender Agent): Eine Beschriftung passte in lä
 
 Offen für Tobi: Auf der Zeile der Beschriftung zählt jeder Wert rechts davon, egal wie weit („Rechnungsdatum 01.03.2026 Lieferdatum 28.02.2026“ gibt für das Lieferdatum `beside`); so entschieden, für Schritt 2 vielleicht ein Wort dazwischen ausschließen. `LABEL_COLUMN` = 4 ist gewählt, nicht gemessen. Ein Wert, der ohne Fundstelle mehrmals dasteht, bleibt `unknown`. `grid_layout` liegt im Kern, weil es das Format des Parsers schreibt, das auch `layout_words` liest; die lockere Suche teilt der Kern nicht mit dem Locator-Adapter.
 
+**Ergänzung in `propose-4`: jedes Feld einmal (Entscheidung 16.1, 19.10.2026).** Direkt auf `feature/label-check` (in #100, damit es bei einer neuen Prompt-Version bleibt). Ein Feld, das zu mehreren Typen gehört, stand mit seiner Beschreibung bei jedem Typ (der Leistungszeitraum viermal). Jetzt beschreibt ein Abschnitt „Fields“ jedes Feld einmal (die der gelisteten Typen und die für jedes Dokument), die Typen nennen nur ihre Schlüssel (`— fields: a1, a2, a3`), „Fields for every document“ nur Schlüssel. `extract-5` bleibt (nur die Felder eines Typs). Die festen Antworten der Bewertung lesen die Schlüssel aus dem neuen Wortlaut (`_proposal_keys`, `FIELDS_OF_TYPE`). Prüfung: 3686 Backend-Tests mit Integration; `evaluate --fake` 89 Fälle, kein falsches Grün, Zählung der Beschriftungen unverändert (kalt 24/2/0/18/39, trainiert 20/2/0/13/32).
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

@@ -328,12 +328,14 @@ async def test_the_signal_asks_once_and_keeps_the_proposal(world: World) -> None
     assert request.schema_name == "proposal"
     assert request.system == PROPOSE_SYSTEM
     assert (
-        "Document types, each with its fields:\n- Rechnung\n"
-        '  - a2: "Fällig am" (date)\n'
-        '  - a3: "Rechnungsbetrag" (amount with currency)\n'
-        '  - a4: "Rechnungsnummer" (text)\n'
+        "Fields:\n"
+        '- a2: "Fällig am" (date)\n'
+        '- a3: "Rechnungsbetrag" (amount with currency)\n'
+        '- a4: "Rechnungsnummer" (text)\n'
+        '- a1: "Bezahlt" (yes or no)\n\n'
+        "Document types, each with the keys of its fields:\n- Rechnung — fields: a2, a3, a4\n"
         "- Vertrag\n\n"
-        'Fields for every document:\n- a1: "Bezahlt" (yes or no)\n\n'
+        "Fields for every document:\na1\n\n"
     ) in request.user
     assert "- Strom\n- Versicherung" in request.user
     # Contacts the text names (half of "Stadtwerke Beispielstadt"), not "AOK Bayern".
@@ -482,7 +484,7 @@ async def test_contacts_the_text_names_most_are_listed(world: World) -> None:
     fake = model(proposal())
     text = EXAMPLE_LETTER + "\nINTER, Südstadt\n"
     result = await signal_step(world, fake, max_contacts=3).run(await document_with(world, text))
-    contacts = fake.requests[0].user.split("\n\nDocument types")[0]
+    contacts = fake.requests[0].user.split("\n\nFields:")[0]
     assert contacts == (
         "Contacts:\n"
         "- Nord Versicherungsgruppe (also written as: Nord Krankenversicherung AG)\n"
@@ -501,7 +503,7 @@ async def test_type_descriptions_are_listed(world: World) -> None:
         await uow.commit()
     fake = model(proposal())
     await signal_step(world, fake).run(await document_with(world))
-    assert "- Lohnabrechnung: Entgeltbescheinigung\n- Rechnung\n" in fake.requests[0].user
+    assert "- Lohnabrechnung: Entgeltbescheinigung\n- Rechnung — fields: " in fake.requests[0].user
 
 
 # --- the judge --------------------------------------------------------------------------------

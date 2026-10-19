@@ -304,7 +304,11 @@ def test_the_fixed_answer_reads_the_keys_the_prompts_ask_for() -> None:
     total = field("Summe", FieldType.AMOUNT, description="Der Gesamtbetrag")
     method = field("Zahlart", FieldType.CHOICE, choices=["Karte", "Bar"])
     note = field("Notiz")
-    text = Shortened('- a9: "Im Text"\nDocument types, each with its fields:\n- Rechnung', 0)
+    text = Shortened(
+        '- a9: "Im Text"\nDocument types, each with the keys of its fields:\n'
+        "- Rechnung — fields: a9",
+        0,
+    )
     message = propose_message(
         [Listed("Stadtwerke", aliases=("SW",), topics=("Strom",))],
         [

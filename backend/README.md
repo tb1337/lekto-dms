@@ -418,7 +418,9 @@ the fields node reads the fields of the decided type and the title
   the topic (one of the automatic topics the listed contacts enable, or none; the prompt lists
   them at each of the at most 20 preselected contacts), type, tags (the automatic document
   tags), date, a title, the language, and the values of the fields of the type it chooses
-  and of the global ones, each with the quoted passage and its label. The answer must follow a
+  and of the global ones, each with the quoted passage and its label. The prompt describes each
+  field once and lists only its key at every type it belongs to (a field may serve several
+  types). The answer must follow a
   JSON schema (`response_format` `json_schema`, or `json_object` for providers without schema
   support); an answer that does not fit is asked for once more, then the signal fails (red).
   Without a configured model (`PAPIQ_LLM_BASE_URL` and `PAPIQ_LLM_MODEL`) it abstains with "no language

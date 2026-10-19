@@ -12,6 +12,7 @@ from papiq.core.domain.classification import (
     checks_to_json,
 )
 from papiq.core.domain.ids import DocumentId
+from papiq.core.domain.labels import LabelCheck, LabelOutcome
 from papiq.core.domain.master_data import Contact
 from papiq.core.domain.pipeline import Node, NodeResult, Outcome
 from tests.api import auth
@@ -58,6 +59,7 @@ def uncertain(contact: Contact) -> NodeResult:
             confidence=0,
             reason="the date does not appear in the text",
             proposed="2026-03-31",
+            label=LabelCheck("Datum", LabelOutcome.APART),
         ),
     ]
     return NodeResult(
@@ -107,6 +109,10 @@ async def test_confirm_from_the_inbox(api: Api) -> None:
     (classify,) = [node for node in review["nodes"] if node["node"] == "judge"]
     assert (classify["model_version"], classify["truncated"]) == ("fake-llm 1", False)
     assert classify["fields"][1]["proposed"] == "2026-03-31"
+    # The label check is exposed as recorded (the fields node's), null where there is none.
+    assert classify["fields"][1]["label"] == {"text": "Datum", "outcome": "apart"}
+    assert classify["fields"][0]["label"] is None
+    assert open["fields"][1]["label"] == {"text": "Datum", "outcome": "apart"}
 
     undecided = await api.client.post(
         f"{url}/confirm", json={"accept_suggestions": True}, headers=auth(owner)

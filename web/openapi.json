@@ -17636,6 +17636,17 @@
             "type": "array",
             "title": "Candidates",
             "description": "Contact, document type, topic and tags: the values the signals proposed, best first, with what each signal said; empty for other fields and older checks."
+          },
+          "label": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabelCheckOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fields the model read a value for: its label and whether the value stands by it. Recorded only, it changes no outcome; null for other checks and older ones."
           }
         },
         "type": "object",
@@ -18637,6 +18648,45 @@
           "done"
         ],
         "title": "InboxTab"
+      },
+      "LabelCheckOut": {
+        "properties": {
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text",
+            "description": "The label as the model copied it from the document; null for none."
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/LabelOutcome",
+            "description": "`beside`: the value stands on the label's line to its right, or below it in its column within three lines; `apart`: the label stands in the text, the value not by it; `label_missing`: the label is not in the text; `no_label`: the model gave none; `unknown`: no words with boxes, the value not found, or a type that is not checked (only amounts, numbers, dates and periods are)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "outcome"
+        ],
+        "title": "LabelCheckOut",
+        "description": "The label the model gave for a field's value, and whether the value stands by it."
+      },
+      "LabelOutcome": {
+        "type": "string",
+        "enum": [
+          "beside",
+          "apart",
+          "label_missing",
+          "no_label",
+          "unknown"
+        ],
+        "title": "LabelOutcome",
+        "description": "What the label check found."
       },
       "Lane": {
         "type": "string",

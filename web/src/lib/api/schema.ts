@@ -3164,6 +3164,8 @@ export interface components {
 			 * @description Contact, document type, topic and tags: the values the signals proposed, best first, with what each signal said; empty for other fields and older checks.
 			 */
 			candidates?: components['schemas']['CandidateOut'][];
+			/** @description Fields the model read a value for: its label and whether the value stands by it. Recorded only, it changes no outcome; null for other checks and older ones. */
+			label?: components['schemas']['LabelCheckOut'] | null;
 		};
 		/**
 		 * FieldCreate
@@ -3586,6 +3588,25 @@ export interface components {
 		 * @enum {string}
 		 */
 		InboxTab: 'new' | 'review' | 'intervene' | 'processing' | 'done';
+		/**
+		 * LabelCheckOut
+		 * @description The label the model gave for a field's value, and whether the value stands by it.
+		 */
+		LabelCheckOut: {
+			/**
+			 * Text
+			 * @description The label as the model copied it from the document; null for none.
+			 */
+			text: string | null;
+			/** @description `beside`: the value stands on the label's line to its right, or below it in its column within three lines; `apart`: the label stands in the text, the value not by it; `label_missing`: the label is not in the text; `no_label`: the model gave none; `unknown`: no words with boxes, the value not found, or a type that is not checked (only amounts, numbers, dates and periods are). */
+			outcome: components['schemas']['LabelOutcome'];
+		};
+		/**
+		 * LabelOutcome
+		 * @description What the label check found.
+		 * @enum {string}
+		 */
+		LabelOutcome: 'beside' | 'apart' | 'label_missing' | 'no_label' | 'unknown';
 		/**
 		 * Lane
 		 * @enum {string}

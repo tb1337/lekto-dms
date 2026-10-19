@@ -89,7 +89,7 @@ class SearchSystem(System):
 
 @pytest.fixture
 def index_name() -> str:
-    return f"papiq-test-{secrets.token_hex(6)}"
+    return f"lekto-test-{secrets.token_hex(6)}"
 
 
 @pytest.fixture

@@ -44,12 +44,12 @@ from lekto.adapters.inbound.rest.ui import ui_routes
 __all__ = ["PREFIX", "create_app"]
 
 DESCRIPTION = f"""\
-Papiq is a headless document management system; this API is the only way in.
+Lekto is a headless document management system; this API is the only way in.
 
 Errors are problem details (RFC 9457, `application/problem+json`).
 
 Authentication: a session cookie from `POST /auth/login` (web UI; changing requests also send
-the header `X-CSRF-Token`) or a personal API token as `Authorization: Bearer papiq_…`. Every
+the header `X-CSRF-Token`) or a personal API token as `Authorization: Bearer lekto_…`. Every
 endpoint needs one of them (401 without), except health and the sign-in endpoints: `POST
 /auth/login` and, below `/auth/oidc`, information, start and callback. A `read` token may only
 read (403). The own sign-in (password, sessions, TOTP, API tokens, provider links) and
@@ -111,7 +111,7 @@ def create_app(context: ApiContext, mounts: Sequence[Mount] = ()) -> FastAPI:
                 await dispatcher
 
     app = FastAPI(
-        title="Papiq API",
+        title="Lekto DMS API",
         version=__version__,
         description=DESCRIPTION,
         lifespan=lifespan,

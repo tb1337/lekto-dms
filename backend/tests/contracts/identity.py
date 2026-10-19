@@ -381,9 +381,9 @@ class TotpContract:
 
     def test_provisioning_uri(self, totp: Totp) -> None:
         secret = totp.new_secret()
-        uri = totp.provisioning_uri(secret, account="alice", issuer="Papiq")
+        uri = totp.provisioning_uri(secret, account="alice", issuer="Lekto")
         assert uri.startswith("otpauth://totp/")
-        assert secret in uri and "alice" in uri and "Papiq" in uri
+        assert secret in uri and "alice" in uri and "Lekto" in uri
 
 
 # --- identity provider --------------------------------------------------------------------------

@@ -35,7 +35,7 @@ class ClassifierModelOut(BaseModel):
     accuracy: AccuracyOut | None = Field(
         description="Measured from 50 examples on: trained on four fifths, tested on the rest."
     )
-    method: str | None = Field(examples=["scikit-learn 1.9.1 papiq-tfidf-logreg/1"])
+    method: str | None = Field(examples=["scikit-learn 1.9.1 lekto-tfidf-logreg/1"])
 
     @classmethod
     def of(cls, model: ClassifierModel) -> "ClassifierModelOut":

@@ -80,7 +80,7 @@ class VisionOcrEngine(TesseractOcrEngine):
 
     @staticmethod
     def creator_tag(options: OcrOptions) -> str:
-        return f"Papiq, vision language model {VisionOcrEngine.version()}"
+        return f"Lekto, vision language model {VisionOcrEngine.version()}"
 
     def __str__(self) -> str:
         return f"vision language model {VisionOcrEngine.version()}"

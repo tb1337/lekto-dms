@@ -6,12 +6,12 @@ from lekto.adapters.inbound.bearer import bearer_token
 from lekto.core.domain.errors import AuthenticationError
 
 
-@pytest.mark.parametrize("header", ["Bearer papiq_abc", "bearer papiq_abc", "Bearer  papiq_abc "])
+@pytest.mark.parametrize("header", ["Bearer lekto_abc", "bearer lekto_abc", "Bearer  lekto_abc "])
 def test_the_token_follows_the_scheme(header: str) -> None:
-    assert bearer_token(header) == "papiq_abc"
+    assert bearer_token(header) == "lekto_abc"
 
 
-@pytest.mark.parametrize("header", ["", "Bearer", "Bearer ", "Basic papiq_abc", "papiq_abc"])
+@pytest.mark.parametrize("header", ["", "Bearer", "Bearer ", "Basic lekto_abc", "lekto_abc"])
 def test_anything_else_is_refused(header: str) -> None:
     with pytest.raises(AuthenticationError):
         bearer_token(header)

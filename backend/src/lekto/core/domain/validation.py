@@ -18,7 +18,7 @@ def require_utc(value: datetime, what: str = "timestamp") -> datetime:
 
 def require_name(value: str, what: str = "name", *, max_length: int | None = MAX_NAME) -> str:
     """Names are stripped, must not be empty and have at most `max_length` characters (None:
-    no limit, for values that are not names of Papiq's own, such as file names)."""
+    no limit, for values that are not names of Lekto's own, such as file names)."""
     name = value.strip()
     if not name:
         raise ValidationError(f"{what} must not be empty")

@@ -46,10 +46,10 @@ from lekto.adapters.outbound.sql.users import SqlUserRepository
 from lekto.adapters.outbound.sql.webhooks import SqlWebhookRepository
 from lekto.core.domain.events import DomainEvent
 
-# Key of the Postgres advisory lock that orders commits with events ("papiq:outbox").
-OUTBOX_LOCK_KEY = 0x7061_7069_713A_6F62
-# Class of the two-key advisory locks taken by `lock` ("papi"); a key space of its own.
-NAMED_LOCK_CLASS = 0x7061_7069
+# Key of the Postgres advisory lock that orders commits with events ("lekto:ob").
+OUTBOX_LOCK_KEY = 0x6C65_6B74_6F3A_6F62
+# Class of the two-key advisory locks taken by `lock` ("lekt"); a key space of its own.
+NAMED_LOCK_CLASS = 0x6C65_6B74
 
 
 class SqlOutbox:

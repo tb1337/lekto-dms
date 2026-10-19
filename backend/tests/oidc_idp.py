@@ -15,9 +15,9 @@ from joserfc.jwk import KeySet, RSAKey
 from lekto.core.domain.encoding import pkce_challenge, query_parameters
 
 ISSUER = "https://idp.example"
-CLIENT_ID = "papiq"
+CLIENT_ID = "lekto"
 CLIENT_SECRET = "idp-client-secret"
-REDIRECT_URI = "https://papiq.example/api/v1/auth/oidc/callback"
+REDIRECT_URI = "https://lekto.example/api/v1/auth/oidc/callback"
 
 _KEYS: dict[str, RSAKey] = {}
 

@@ -29,7 +29,7 @@ async def oidc_api() -> AsyncIterator[tuple[Api, FakeOidcProvider]]:
     services = build_services(container)
     app = make_app(container, services)
     transport = httpx2.ASGITransport(app=app)
-    async with httpx2.AsyncClient(transport=transport, base_url="https://papiq") as client:
+    async with httpx2.AsyncClient(transport=transport, base_url="https://lekto") as client:
         yield Api(container, services, app, client, clock), provider
 
 
@@ -59,13 +59,13 @@ async def test_sign_in_through_the_provider(oidc_api: tuple[Api, FakeOidcProvide
     url = start.headers["location"]
     assert url.startswith("https://idp.test/authorize?")
     flow_cookie = start.headers["set-cookie"]
-    assert flow_cookie.startswith("__Host-papiq_oidc=") and "httponly" in flow_cookie.lower()
+    assert flow_cookie.startswith("__Host-lekto_oidc=") and "httponly" in flow_cookie.lower()
 
     code = provider.consent(url, "sub-alice")
     back = await api.client.get(f"{OIDC}/callback", params={"code": code, "state": state(url)})
     assert back.status_code == 303, back.text
     assert back.headers["location"] == "/inbox"
-    assert "__Host-papiq_session=" in str(back.headers.get_list("set-cookie"))
+    assert "__Host-lekto_session=" in str(back.headers.get_list("set-cookie"))
     me = (await api.client.get(f"{PREFIX}/auth/me")).json()
     assert me["user"]["username"] == "alice"
 
@@ -102,13 +102,13 @@ async def test_a_denied_callback_clears_the_flow_cookie(
     as after every other failure."""
     api, _ = oidc_api
     start = await api.client.get(f"{OIDC}/login")
-    assert start.headers["set-cookie"].startswith("__Host-papiq_oidc=")
+    assert start.headers["set-cookie"].startswith("__Host-lekto_oidc=")
     back = await api.client.get(f"{OIDC}/callback", params={"error": "access_denied"})
     assert back.status_code == 303
     assert back.headers["location"] == "/ui/login?error=denied"
-    cleared = [c for c in back.headers.get_list("set-cookie") if c.startswith("__Host-papiq_oidc=")]
+    cleared = [c for c in back.headers.get_list("set-cookie") if c.startswith("__Host-lekto_oidc=")]
     assert cleared and ("max-age=0" in cleared[0].lower() or "expires=" in cleared[0].lower())
-    assert "__Host-papiq_oidc" not in api.client.cookies
+    assert "__Host-lekto_oidc" not in api.client.cookies
 
 
 async def test_unlinked_accounts_are_refused(oidc_api: tuple[Api, FakeOidcProvider]) -> None:
@@ -169,7 +169,7 @@ async def test_signing_in_ends_the_session_the_browser_had(
     alice, bob = await api.user("alice"), await api.user("bob")
     await link(api, "sub-bob", bob.id)
     async with api.sign_in(alice) as session:
-        old_cookie = session.client.cookies.get("__Host-papiq_session")
+        old_cookie = session.client.cookies.get("__Host-lekto_session")
         url = (await session.client.get(f"{OIDC}/login")).headers["location"]
         code = provider.consent(url, "sub-bob")
         back = await session.client.get(

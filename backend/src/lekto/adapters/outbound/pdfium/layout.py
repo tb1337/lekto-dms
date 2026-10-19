@@ -15,7 +15,7 @@ address stay where they are printed. The characters and their lines come from `c
   line per run, after the rest of its page.
 - A hyphen PDFium marks at the end of a line is written as the hyphen it prints as.
 
-Pages are separated by a form feed on a line of its own (`PAGE_BREAK`). The structure is Papiq's
+Pages are separated by a form feed on a line of its own (`PAGE_BREAK`). The structure is Lekto's
 own JSON: the pages with their size in points, their lines with text, box and words, each word
 with its box; a box is `[x1, y1, x2, y2]` in fractions of the page as shown, from its top left.
 """

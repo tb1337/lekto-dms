@@ -29,7 +29,7 @@ class WebhookCreate(BaseModel):
             "examples": [
                 {
                     "name": "n8n",
-                    "url": "http://n8n.lan:5678/webhook/papiq",
+                    "url": "http://n8n.lan:5678/webhook/lekto",
                     "event_types": ["document.lane_changed", "document.filed"],
                 }
             ]
@@ -40,7 +40,7 @@ class WebhookCreate(BaseModel):
     url: str = Field(
         max_length=MAX_URL_LENGTH,
         description=(
-            "Where Papiq sends the events (POST). `http` or `https`; targets in the own "
+            "Where Lekto sends the events (POST). `http` or `https`; targets in the own "
             "network are fine. Redirects are not followed."
         ),
     )
@@ -69,7 +69,7 @@ class WebhookOut(BaseModel):
     event_types: list[str]
     active: bool
     disabled_reason: str | None = Field(
-        description="`failing`: Papiq switched the webhook off after repeated failed deliveries."
+        description="`failing`: Lekto switched the webhook off after repeated failed deliveries."
     )
     failed_streak: int = Field(description="Deliveries given up in a row since the last success.")
     previous_secret_valid_until: datetime | None = Field(

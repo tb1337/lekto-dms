@@ -50,7 +50,7 @@ async def test_a_green_document_reaches_the_receiver_signed_after_a_failed_try()
     async with LocalReceiver(lambda _: (next(answers, 200), {})) as receiver:
         container = replace(
             build_memory_container(),
-            webhook_sender=HttpWebhookSender(user_agent=f"Papiq/{__version__}"),
+            webhook_sender=HttpWebhookSender(user_agent=f"Lekto/{__version__}"),
         )
         settings = Settings.model_construct(webhook_retry_delay=timedelta(milliseconds=50))
         services = build_services(container, settings)
@@ -90,7 +90,7 @@ async def test_a_green_document_reaches_the_receiver_signed_after_a_failed_try()
             assert set(body) == {"id", "type", "occurred_at", "document_id"}
         assert first.headers["webhook-id"] == second.headers["webhook-id"]  # the same event
         assert first.headers["content-type"] == "application/json"
-        assert first.headers["user-agent"].startswith("Papiq/")
+        assert first.headers["user-agent"].startswith("Lekto/")
 
         deliveries = await services.webhooks.deliveries(user.id, created.webhook.id)
         assert [(d.attempt, d.outcome, d.status_code) for d in reversed(deliveries)] == [

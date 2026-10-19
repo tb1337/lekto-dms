@@ -7,7 +7,7 @@
 - Settings (searchable, filterable and sortable attributes, languages, the embedder) are applied
   by the adapter itself, on first use and only when they differ from what the index has, so that
   a restart does not index again.
-- Vectors are computed by Papiq and handed over (embedder `userProvided`, named `default`); a
+- Vectors are computed by Lekto and handed over (embedder `userProvided`, named `default`); a
   document may have several, one per section. A document without vectors opts out with `null`.
 - The rights filter is part of every search and built from `Visibility`. Values in filters are
   ids and lane names only; the text of the user goes into `q`.

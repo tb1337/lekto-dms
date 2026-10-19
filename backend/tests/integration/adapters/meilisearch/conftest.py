@@ -11,7 +11,7 @@ from tests.integration.services import drop, new_index
 @pytest.fixture
 async def search_index(meilisearch_settings: Settings) -> AsyncIterator[MeilisearchIndex]:
     """An empty index of its own that takes vectors of `DIMENSIONS` numbers; removed afterwards."""
-    name = f"papiq-test-{secrets.token_hex(6)}"
+    name = f"lekto-test-{secrets.token_hex(6)}"
     index = new_index(meilisearch_settings, name)
     try:
         yield index

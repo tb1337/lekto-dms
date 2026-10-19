@@ -29,7 +29,7 @@ async def test_compound_words_are_split(search_index: MeilisearchIndex) -> None:
 async def test_the_settings_are_applied_once(meilisearch_settings: Settings) -> None:
     """A second adapter on the same index finds the settings in place and changes nothing, so a
     restart does not index again."""
-    name = f"papiq-test-{secrets.token_hex(6)}"
+    name = f"lekto-test-{secrets.token_hex(6)}"
     first, again = new_index(meilisearch_settings, name), new_index(meilisearch_settings, name)
     try:
         await first.check()
@@ -58,7 +58,7 @@ async def _settings_tasks(settings: Settings, name: str) -> int:
 async def test_an_index_without_embedder_takes_documents_without_vectors(
     meilisearch_settings: Settings,
 ) -> None:
-    name = f"papiq-test-{secrets.token_hex(6)}"
+    name = f"lekto-test-{secrets.token_hex(6)}"
     index = new_index(meilisearch_settings, name, dimensions=None)
     try:
         owner = UserId(new_id())

@@ -1,5 +1,5 @@
 """The text of a PDF as it is set: lines with their words in columns, printouts as printed,
-text across the page read along its direction, and Papiq's own structure."""
+text across the page read along its direction, and Lekto's own structure."""
 
 import json
 from pathlib import Path

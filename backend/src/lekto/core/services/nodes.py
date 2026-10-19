@@ -247,7 +247,7 @@ STRUCTURE_FILE = "content.json"
 @asynccontextmanager
 async def work_directory() -> AsyncIterator[Path]:
     """A temporary directory, removed afterwards (also on error or cancellation)."""
-    path = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix="papiq-"))
+    path = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix="lekto-"))
     try:
         yield path
     finally:

@@ -39,7 +39,7 @@ async def test_the_store_can_be_closed_and_reused(object_store: S3ObjectStore) -
 
 async def test_check_needs_the_bucket(object_store: S3ObjectStore, s3_settings: Settings) -> None:
     await object_store.check()
-    missing = s3_store(s3_settings.model_copy(update={"s3_bucket": "papiq-missing"}), "")
+    missing = s3_store(s3_settings.model_copy(update={"s3_bucket": "lekto-missing"}), "")
     try:
         with pytest.raises(Exception, match=r"404|NoSuchBucket|Not Found"):
             await missing.check()

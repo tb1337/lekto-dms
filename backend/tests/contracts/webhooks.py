@@ -30,7 +30,7 @@ def a_webhook(
     values: dict[str, object] = {
         "owner_id": owner.id,
         "name": "n8n",
-        "url": "http://n8n.lan:5678/webhook/papiq",
+        "url": "http://n8n.lan:5678/webhook/lekto",
         "event_types": types,
         "encrypted_secret": b"\x01encrypted",
         "now": NOW + at,

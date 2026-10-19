@@ -1003,7 +1003,7 @@ class MigrationSuite:
             assert len((await connection.execute(select(documents.c.id))).all()) == 2
 
     async def test_drawers_become_spaces_and_back(self, empty_database: Database) -> None:
-        """Revision 0024 renames the tables and the names Papiq stores; the rows that refer to
+        """Revision 0024 renames the tables and the names Lekto stores; the rows that refer to
         a document stay, and so does text a person wrote. The downgrade restores all of it."""
         await migrate(empty_database, "0023")
         async with empty_database.reading() as connection:

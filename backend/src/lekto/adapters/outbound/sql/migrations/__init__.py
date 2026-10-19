@@ -72,7 +72,7 @@ async def migrate(database: Database, revision: str = "head") -> None:
 
 async def downgrade(database: Database, revision: str) -> None:
     """Downgrade the schema to `revision`, in one transaction like `migrate` (for tests and
-    recovery by hand; Papiq itself only upgrades)."""
+    recovery by hand; Lekto itself only upgrades)."""
     await _run(database, lambda sync: command.downgrade(alembic_config(sync), revision))
 
 

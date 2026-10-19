@@ -144,7 +144,7 @@ class TotpSetupOut(BaseModel):
     """Shown once. Confirm with a code to turn TOTP on."""
 
     secret: str = Field(examples=["JBSWY3DPEHPK3PXP"])
-    otpauth_uri: str = Field(examples=["otpauth://totp/Papiq:alice?secret=JBSWY3DPEHPK3PXP"])
+    otpauth_uri: str = Field(examples=["otpauth://totp/Lekto:alice?secret=JBSWY3DPEHPK3PXP"])
 
 
 class CodeIn(BaseModel):
@@ -223,14 +223,14 @@ class TokenCreated(TokenOut):
                     "created_at": "2026-04-01T10:00:00Z",
                     "expires_at": "2027-01-01T00:00:00Z",
                     "last_used_at": None,
-                    "token": "papiq_<token shown once>",
+                    "token": "lekto_<token shown once>",
                 }
             ]
         }
     )
 
     token: str = Field(
-        description="The token itself; shown only now.", examples=["papiq_<token shown once>"]
+        description="The token itself; shown only now.", examples=["lekto_<token shown once>"]
     )
 
 

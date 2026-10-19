@@ -40,7 +40,7 @@ from lekto.core.services.users import add_user
 log = logging.getLogger(__name__)
 
 FLOW_LIFETIME = timedelta(minutes=10)
-_FLOW_CONTEXT = b"papiq-oidc-flow"
+_FLOW_CONTEXT = b"lekto-oidc-flow"
 
 
 @dataclass(frozen=True)

@@ -19,7 +19,7 @@ from lekto.core.services.webhooks.management import secret_context
 from tests import builders
 from tests.unit.services.support import World
 
-URL = "http://n8n.lan:5678/webhook/papiq"
+URL = "http://n8n.lan:5678/webhook/lekto"
 
 
 async def test_a_user_creates_a_webhook_and_sees_the_secret_once(world: World) -> None:

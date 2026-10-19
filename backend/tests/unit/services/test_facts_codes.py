@@ -22,7 +22,7 @@ from tests.unit.services.test_signals import contacts, stored
 
 GIRO_IBAN = "DE89370400440532013000"
 OWN_IBAN = "DE02120300000000202051"
-TEXT = f"Papiq Test GmbH\nRechnung 4711\nLastschrift von {OWN_IBAN}\n"
+TEXT = f"Lekto Test GmbH\nRechnung 4711\nLastschrift von {OWN_IBAN}\n"
 
 
 async def with_archive(world: World, document: Document) -> Document:
@@ -38,13 +38,13 @@ async def facts(world: World, document: Document, reader: FakeCodeReader) -> Fac
 
 async def test_the_identifiers_and_the_payee_of_a_code_count(world: World) -> None:
     iban = Identifier.parse(IdentifierKind.IBAN, GIRO_IBAN)
-    payee = Contact.create(name="Papiq Test GmbH", now=builders.NOW, identifiers=[iban])
+    payee = Contact.create(name="Lekto Test GmbH", now=builders.NOW, identifiers=[iban])
     await contacts(world, payee)
     text = "Rechnung 4711\nBetrag 123,45 EUR\n"  # neither the payee nor its IBAN in the text
     document = await with_archive(world, await stored(world, await world.user(), text))
     result = await facts(world, document, FakeCodeReader([FAKE_GIRO_CODE]))
     assert result.output["named"] == [
-        {"contact_id": str(payee.id), "name": "Papiq Test GmbH", "alias": False, "in_code": True}
+        {"contact_id": str(payee.id), "name": "Lekto Test GmbH", "alias": False, "in_code": True}
     ]
     assert result.output["identifiers"] == [
         {"contact_id": str(payee.id), "kind": "iban", "value": GIRO_IBAN, "in_code": True}

@@ -243,7 +243,7 @@ def processed(
 
 
 # Received files of the tests; the directory is removed when the test process ends.
-_INCOMING = tempfile.TemporaryDirectory(prefix="papiq-tests-")
+_INCOMING = tempfile.TemporaryDirectory(prefix="lekto-tests-")
 
 
 def incoming(data: bytes) -> IncomingFile:

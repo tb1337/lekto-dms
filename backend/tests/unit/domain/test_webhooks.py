@@ -27,7 +27,7 @@ def hook(**fields: object) -> Webhook:
     values: dict[str, object] = {
         "owner_id": UserId(new_id()),
         "name": "n8n",
-        "url": "http://n8n.lan:5678/webhook/papiq",
+        "url": "http://n8n.lan:5678/webhook/lekto",
         "event_types": [ALL_EVENTS],
         "encrypted_secret": b"secret-1",
         "now": NOW,
@@ -42,7 +42,7 @@ def hook(**fields: object) -> Webhook:
     "url",
     [
         "https://example.org/hook",
-        "http://n8n.lan:5678/webhook/papiq?token=1",
+        "http://n8n.lan:5678/webhook/lekto?token=1",
         "http://192.168.1.20/hook",
         "http://[fd00::1]:8123/api/webhook/x",
         "  https://example.org/a  ",

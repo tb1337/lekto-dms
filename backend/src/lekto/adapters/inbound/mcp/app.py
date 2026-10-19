@@ -5,7 +5,7 @@
 - **Bearer tokens only**: the same personal API tokens as for the REST API (`read` may read, the
   tool that changes needs `read_write`). Cookies and sessions do not count. Without a valid
   token the answer is a 401 problem with `WWW-Authenticate: Bearer`. The SDK's own OAuth
-  support is not used: Papiq announces no authorisation server it does not have.
+  support is not used: Lekto announces no authorisation server it does not have.
 - **DNS rebinding protection** of the SDK is off: it would only let `localhost` names in. A
   request needs the token in a header, which a page in a browser cannot send to another origin
   without the server's consent, and which it does not know.

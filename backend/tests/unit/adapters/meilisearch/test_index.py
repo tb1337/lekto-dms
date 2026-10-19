@@ -102,7 +102,7 @@ class SimulatedMeilisearch:
             **arguments,
         }
         return MeilisearchIndex(
-            url=URL, transport=httpx2.MockTransport(self.handle), index="papiq-test", **tuning
+            url=URL, transport=httpx2.MockTransport(self.handle), index="lekto-test", **tuning
         )
 
     def calls(self, method: str, suffix: str = "") -> list[httpx2.Request]:
@@ -126,7 +126,7 @@ async def test_a_missing_index_is_created_with_its_settings() -> None:
     index = sim.index(dimensions=3, locales=["deu"])
     await index.upsert([index_document()])
     (create,) = sim.calls("POST", "/indexes")
-    assert sim.body(create) == {"uid": "papiq-test", "primaryKey": "id"}
+    assert sim.body(create) == {"uid": "lekto-test", "primaryKey": "id"}
     (patch,) = sim.calls("PATCH", "/settings")
     settings = sim.body(patch)
     assert settings["localizedAttributes"] == [{"locales": ["deu"], "attributePatterns": ["*"]}]
@@ -177,7 +177,7 @@ async def test_an_answer_that_the_index_is_gone_sets_it_up_again() -> None:
     def lose(request: httpx2.Request) -> httpx2.Response | None:
         if request.url.path.endswith("/search") and gone:
             gone.clear()
-            body = {"code": "index_not_found", "message": "Index `papiq-test` not found."}
+            body = {"code": "index_not_found", "message": "Index `lekto-test` not found."}
             return httpx2.Response(404, json=body)
         return None
 
@@ -466,11 +466,11 @@ async def test_the_rebuild_swaps_and_removes_the_old_index() -> None:
         for request in sim.requests
         if request.url.path != "/tasks/1"
     ]
-    assert ("DELETE", "/indexes/papiq-test-rebuild") in nodes
-    assert ("PUT", "/indexes/papiq-test-rebuild/documents") in nodes
+    assert ("DELETE", "/indexes/lekto-test-rebuild") in nodes
+    assert ("PUT", "/indexes/lekto-test-rebuild/documents") in nodes
     swap = [request for request in sim.requests if request.url.path == "/swap-indexes"]
-    assert sim.body(swap[0]) == [{"indexes": ["papiq-test", "papiq-test-rebuild"]}]
-    assert nodes[-1] == ("DELETE", "/indexes/papiq-test-rebuild")
+    assert sim.body(swap[0]) == [{"indexes": ["lekto-test", "lekto-test-rebuild"]}]
+    assert nodes[-1] == ("DELETE", "/indexes/lekto-test-rebuild")
     assert nodes.index(("POST", "/swap-indexes")) < len(nodes) - 1
 
 
@@ -497,7 +497,7 @@ async def test_dropping_tries_both_indexes_even_if_the_first_fails() -> None:
     with pytest.raises(SearchIndexError, match="disk full"):
         await sim.index().drop()
     deleted = [request.url.path for request in sim.calls("DELETE")]
-    assert "/indexes/papiq-test-rebuild" in deleted
+    assert "/indexes/lekto-test-rebuild" in deleted
 
 
 async def test_dropping_removes_the_index_and_the_remains_of_a_rebuild() -> None:
@@ -508,7 +508,7 @@ async def test_dropping_removes_the_index_and_the_remains_of_a_rebuild() -> None
     deleted = [
         request.url.path for request in sim.calls("DELETE") if "/indexes/" in request.url.path
     ]
-    assert deleted == ["/indexes/papiq-test", "/indexes/papiq-test-rebuild"]
+    assert deleted == ["/indexes/lekto-test", "/indexes/lekto-test-rebuild"]
 
 
 # --- filters and segments --------------------------------------------------------------------

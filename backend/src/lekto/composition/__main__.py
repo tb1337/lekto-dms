@@ -191,7 +191,7 @@ def _check_schema(settings: Settings, arguments: argparse.Namespace) -> int:
             log.info("database schema is current", db_type=settings.db_type)
             return 0
         if state == "newer":
-            log.error("the database was migrated by a newer version of Papiq: update this image")
+            log.error("the database was migrated by a newer version of Lekto: update this image")
         else:
             log.error("the database schema is not migrated", db_type=settings.db_type)
         return 1

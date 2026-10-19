@@ -11,7 +11,7 @@ from lekto.adapters.inbound.rest.ui import IMMUTABLE, REVALIDATE, SECURITY_HEADE
 from lekto.composition.container import build_memory_container, build_services
 from tests.unit.adapters.rest.support import make_app
 
-INDEX = "<!doctype html><title>papiq</title>"
+INDEX = "<!doctype html><title>lekto</title>"
 SCRIPT = "export const x = 1;"
 SCRIPT_PATH = "_app/immutable/entry/start.Bx1y2z.js"
 
@@ -33,7 +33,7 @@ def build(tmp_path: Path) -> Path:
 async def client_for(directory: Path | None) -> httpx2.AsyncClient:
     container = build_memory_container()
     app = make_app(container, build_services(container), ui_directory=directory)
-    return httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="https://papiq")
+    return httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="https://lekto")
 
 
 @pytest.fixture

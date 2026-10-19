@@ -13,7 +13,7 @@ SHOW_ENVIRONMENT = (
 )
 
 
-async def test_a_child_gets_no_papiq_settings_but_what_the_caller_adds(
+async def test_a_child_gets_no_lekto_settings_but_what_the_caller_adds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """OCRmyPDF, Ghostscript and Tesseract process documents of unknown origin; the secret key

@@ -125,7 +125,7 @@ async def test_a_too_large_file_is_rejected(api: Api) -> None:
 async def test_the_limit_holds_without_content_length(api: Api) -> None:
     """A chunked body is stopped once the file part passes the limit."""
     owner = await api.user()
-    boundary = "papiq-test-boundary"
+    boundary = "lekto-test-boundary"
     sent = 0
 
     async def body() -> AsyncIterator[bytes]:
@@ -151,7 +151,7 @@ async def test_the_limit_holds_without_content_length(api: Api) -> None:
 async def test_fields_count_against_the_limit(api: Api) -> None:
     """Many fields in a chunked body are neither kept nor read without end."""
     owner = await api.user()
-    boundary = "papiq-test-boundary"
+    boundary = "lekto-test-boundary"
     sent = 0
 
     async def body() -> AsyncIterator[bytes]:
@@ -342,7 +342,7 @@ async def test_one_piece_of_text_holds_what_the_setting_allows() -> None:
     assert owner is not None
     await issue_token(services.auth, owner)
     async with httpx2.AsyncClient(
-        transport=httpx2.ASGITransport(app=app), base_url="https://papiq"
+        transport=httpx2.ASGITransport(app=app), base_url="https://lekto"
     ) as client:
         response = await client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
         await builders.drain(services.pipeline)
@@ -524,7 +524,7 @@ async def test_the_limit_is_configured() -> None:
     assert owner is not None
     await issue_token(services.auth, owner)
     async with httpx2.AsyncClient(
-        transport=httpx2.ASGITransport(app=app), base_url="http://papiq"
+        transport=httpx2.ASGITransport(app=app), base_url="http://lekto"
     ) as client:
         response = await client.post(DOCUMENTS, files=sample_file(), headers=auth(owner))
     assert response.status_code == 413
@@ -540,7 +540,7 @@ async def test_unexpected_errors_are_problems_without_details(
     owner = await api.user()
     async with httpx2.AsyncClient(
         transport=httpx2.ASGITransport(app=api.app, raise_app_exceptions=False),
-        base_url="http://papiq",
+        base_url="http://lekto",
     ) as client:
         response = await client.get(f"{DOCUMENTS}/{UUID(int=1)}", headers=auth(owner))
     assert response.status_code == 500
@@ -559,7 +559,7 @@ async def test_uploads_have_their_own_limit() -> None:
     await issue_token(services.auth, owner)
     content = b"%PDF-1.7\n%" + b"0" * (2 * 1024 * 1024 - 64 * 1024) + b"\n%%EOF\n"
     async with httpx2.AsyncClient(
-        transport=httpx2.ASGITransport(app=app), base_url="http://papiq"
+        transport=httpx2.ASGITransport(app=app), base_url="http://lekto"
     ) as client:
         files = {"file": ("big.pdf", content, "application/pdf")}
         response = await client.post(DOCUMENTS, files=files, headers=auth(owner))

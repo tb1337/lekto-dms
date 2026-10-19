@@ -32,7 +32,7 @@ class FakeOidcProvider:
     async def authorization_url(self, *, state: str, nonce: str, code_verifier: str) -> str:
         query = {
             "response_type": "code",
-            "client_id": "papiq",
+            "client_id": "lekto",
             "scope": "openid profile email",
             "state": state,
             "nonce": nonce,

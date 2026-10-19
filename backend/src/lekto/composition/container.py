@@ -141,8 +141,8 @@ def _closing[T: _Closable](adapter: T) -> Opened[T]:
     return Opened(adapter, adapter.aclose)
 
 
-USER_AGENT = f"Papiq/{__version__}"
-"""How Papiq names itself in requests to other sites: logo fetches and webhooks."""
+USER_AGENT = f"Lekto/{__version__}"
+"""How Lekto names itself in requests to other sites: logo fetches and webhooks."""
 
 
 @dataclass(frozen=True)
@@ -350,7 +350,7 @@ class Container:
     language_model: LanguageModel | None
     embeddings: Embeddings | None
     classifier: Classifier | None
-    # With `LEKTO_LOGO_FETCH`: Papiq asks the websites of contacts for their logos.
+    # With `LEKTO_LOGO_FETCH`: Lekto asks the websites of contacts for their logos.
     logo_fetcher: LogoFetcher | None = None
     closers: tuple[Closer, ...] = field(default=(), repr=False)
 

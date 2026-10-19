@@ -42,7 +42,7 @@ MAX_TOPICS = 100
 
 
 class Assignment(StrEnum):
-    """Who sets a value: Papiq's classification (`auto`: the signals propose it, the model is
+    """Who sets a value: Lekto's classification (`auto`: the signals propose it, the model is
     asked for it) or only a person or a rule (`manual`: values no document shows, such as the
     number stamped on the paper copy)."""
 

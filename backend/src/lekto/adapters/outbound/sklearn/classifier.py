@@ -31,7 +31,7 @@ from lekto.core.domain.ids import ContactId, DocumentTypeId, TagId
 from lekto.core.domain.json_value import JsonObject
 from lekto.core.ports.classifier import Prediction, TrainedModel, TrainingExample
 
-FORMAT = "papiq-tfidf-logreg/1"
+FORMAT = "lekto-tfidf-logreg/1"
 MAX_TERMS = 20_000
 # A word in more than half of the documents (the owner's name and address) tells nothing; one
 # in a single document is a typo or a number. Small corpora keep every word.

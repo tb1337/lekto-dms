@@ -23,9 +23,9 @@ router = APIRouter(tags=["pipeline"], dependencies=PROTECTED)
     description=(
         "The nodes a document goes through and what each one needs, in graph order: every "
         "node after the nodes it needs. Nodes that do not need each other run side by side. "
-        "The graph is fixed for a version of Papiq; `processing.nodes` of a document names the "
+        "The graph is fixed for a version of Lekto; `processing.nodes` of a document names the "
         "state of each node. `vision` names the vision language model documents can be read "
-        "with, if one is configured; `logo_fetch` says whether Papiq fetches the logos of "
+        "with, if one is configured; `logo_fetch` says whether Lekto fetches the logos of "
         "contacts from their websites."
     ),
     response_model=PipelineOut,

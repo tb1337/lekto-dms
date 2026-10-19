@@ -571,7 +571,7 @@ async def test_api_tokens(world: World) -> None:
     write, write_token = await world.auth.create_api_token(
         user.id, "mcp", TokenScope.READ_WRITE, expires_at=world.clock.now() + timedelta(days=1)
     )
-    assert read_token.startswith("papiq_") and read.token_hash == hash_token(read_token)
+    assert read_token.startswith("lekto_") and read.token_hash == hash_token(read_token)
     assert [t.id for t in await world.auth.list_api_tokens(user.id)] == [read.id, write.id]
 
     principal = await world.auth.authenticate_token(read_token)
@@ -587,7 +587,7 @@ async def test_api_tokens(world: World) -> None:
     with pytest.raises(AuthenticationError):
         await world.auth.authenticate_token(read_token)
     with pytest.raises(AuthenticationError):
-        await world.auth.authenticate_token("papiq_made-up")
+        await world.auth.authenticate_token("lekto_made-up")
 
 
 async def test_tokens_of_others_cannot_be_revoked(world: World) -> None:

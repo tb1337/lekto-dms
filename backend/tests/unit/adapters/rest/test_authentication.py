@@ -59,12 +59,12 @@ async def test_every_other_route_needs_authentication(api: Api) -> None:
         if (method, template) in PUBLIC:
             continue
         path = re.sub(r"\{[^}]+\}", str(UUID(int=1)), template)
-        for headers in ({}, {"Authorization": "Bearer papiq_wrong"}, {"Authorization": "Basic x"}):
+        for headers in ({}, {"Authorization": "Bearer lekto_wrong"}, {"Authorization": "Basic x"}):
             response = await api.client.request(method, path, headers=headers, json={})
             assert response.status_code == 401, (method, path, headers, response.text)
             assert response.headers["content-type"] == PROBLEM
             assert response.headers["www-authenticate"] == "Bearer"
-        api.client.cookies.set("__Host-papiq_session", "forged")
+        api.client.cookies.set("__Host-lekto_session", "forged")
         response = await api.client.request(method, path, json={})
         api.client.cookies.clear()
         assert response.status_code == 401, (method, path)
@@ -84,7 +84,7 @@ async def test_login_sets_a_secure_cookie(api: Api) -> None:
     body = response.json()
     assert body["user"]["id"] == str(user.id) and body["method"] == "password"
     cookie = response.headers["set-cookie"]
-    assert cookie.startswith("__Host-papiq_session=")
+    assert cookie.startswith("__Host-lekto_session=")
     for attribute in ("HttpOnly", "Secure", "SameSite=lax", "Path=/", "Max-Age=2592000"):
         assert attribute.lower() in cookie.lower(), attribute
     assert "Domain" not in cookie
@@ -101,12 +101,12 @@ async def test_insecure_cookies_only_when_configured() -> None:
     await services.users.bootstrap_admin("alice", PASSWORD)
     app = make_app(container, services, cookie_secure=False)
     transport = httpx2.ASGITransport(app=app)
-    async with httpx2.AsyncClient(transport=transport, base_url="http://papiq") as client:
+    async with httpx2.AsyncClient(transport=transport, base_url="http://lekto") as client:
         response = await client.post(
             f"{PREFIX}/auth/login", json={"username": "alice", "password": PASSWORD}
         )
         cookie = response.headers["set-cookie"]
-        assert cookie.startswith("papiq_session=") and "secure" not in cookie.lower()
+        assert cookie.startswith("lekto_session=") and "secure" not in cookie.lower()
         assert (await client.get(f"{PREFIX}/auth/me")).status_code == 200
 
 
@@ -181,12 +181,12 @@ async def test_signing_in_again_ends_the_former_session(api: Api) -> None:
     user = await api.user()
     async with api.sign_in(user) as session:
         client = session.client
-        former = client.cookies["__Host-papiq_session"]
+        former = client.cookies["__Host-lekto_session"]
         again = await client.post(
             f"{PREFIX}/auth/login", json={"username": user.username, "password": PASSWORD}
         )
         assert again.status_code == 200
-        assert client.cookies["__Host-papiq_session"] != former
+        assert client.cookies["__Host-lekto_session"] != former
         with pytest.raises(AuthenticationError):
             await api.services.auth.authenticate_session(former)
         assert (await client.get(f"{PREFIX}/auth/me")).status_code == 200
@@ -238,7 +238,7 @@ async def test_password_change_over_http(api: Api) -> None:
             headers=session.headers,
         )
         assert response.status_code == 200
-        assert "__Host-papiq_session=" in response.headers["set-cookie"]
+        assert "__Host-lekto_session=" in response.headers["set-cookie"]
         new_csrf = response.json()["csrf_token"]
         assert new_csrf != session.csrf_token
         assert (await client.get(f"{PREFIX}/auth/me")).status_code == 200  # renewed
@@ -260,7 +260,7 @@ async def test_tokens_over_http(api: Api) -> None:
         )
         assert created.status_code == 201
         token = created.json()["token"]
-        assert token.startswith("papiq_")
+        assert token.startswith("lekto_")
         listed = (await client.get(f"{PREFIX}/auth/tokens")).json()
         assert [t["name"] for t in listed] == ["tests", "scanner"]
         assert token not in str(listed)
@@ -285,7 +285,7 @@ async def test_a_bearer_header_wins_over_a_cookie(api: Api) -> None:
         client = session.client
         me = await client.get(f"{PREFIX}/auth/me", headers=auth(bob))
         assert me.json()["user"]["username"] == "bob"
-        broken = await client.get(f"{PREFIX}/auth/me", headers=bearer("papiq_wrong"))
+        broken = await client.get(f"{PREFIX}/auth/me", headers=bearer("lekto_wrong"))
         assert broken.status_code == 401
 
 

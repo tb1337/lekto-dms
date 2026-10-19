@@ -285,7 +285,7 @@ async def _receive(
 ) -> Document:
     """Receive a document and store its text as the parse node would have, with its structure
     on a fixed grid: the words a label check looks at."""
-    with tempfile.TemporaryDirectory(prefix="papiq-evaluation-") as directory:
+    with tempfile.TemporaryDirectory(prefix="lekto-evaluation-") as directory:
         path = Path(directory) / "case.pdf"
         # A distinct file per document: the owner cannot have the same file twice.
         path.write_bytes(f"%PDF-1.7\n% evaluation {marker}\n%%EOF\n".encode())

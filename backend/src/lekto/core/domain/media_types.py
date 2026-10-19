@@ -1,4 +1,4 @@
-"""File types Papiq accepts, recognised by their content, not by name or declared type."""
+"""File types Lekto accepts, recognised by their content, not by name or declared type."""
 
 from dataclasses import dataclass
 

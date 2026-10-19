@@ -181,7 +181,7 @@ def _backends(
         index = MeilisearchIndex(
             url=str(settings.meilisearch_url),
             api_key=None if key is None else key.get_secret_value(),
-            index=f"papiq-eval-{secrets.token_hex(4)}",
+            index=f"lekto-eval-{secrets.token_hex(4)}",
             dimensions=dimensions,
             locales=settings.search_locales.split("+"),
             timeout=settings.meilisearch_timeout.total_seconds(),

@@ -4,7 +4,7 @@ Compute-heavy steps (OCR, parsing) run in child processes, so the event loop sta
 step that hangs can be stopped. The child starts a new session; on timeout or cancellation the
 whole process group is killed, including the programs it started (Tesseract, Ghostscript).
 
-A child gets the process's environment without Papiq's own settings (`LEKTO_*`): they carry the
+A child gets the process's environment without Lekto's own settings (`LEKTO_*`): they carry the
 secret key and the database and storage credentials, and OCRmyPDF, Ghostscript and Tesseract,
 which process documents of unknown origin, have no use for them. What a child needs beyond that
 (the vision plugin's configuration) the caller passes in `env`.
@@ -20,7 +20,7 @@ from datetime import timedelta
 
 # Output kept for error messages.
 _TAIL = 4000
-# The prefix of Papiq's configuration variables (`composition/settings.py`); none of them
+# The prefix of Lekto's configuration variables (`composition/settings.py`); none of them
 # reaches a child.
 _SETTINGS_PREFIX = "LEKTO_"
 
@@ -70,7 +70,7 @@ async def run_process(
 
 
 def child_environment(extra: Mapping[str, str] | None = None) -> dict[str, str]:
-    """The environment for a child process: this process's own without Papiq's settings,
+    """The environment for a child process: this process's own without Lekto's settings,
     plus `extra`."""
     inherited = {
         name: value for name, value in os.environ.items() if not name.startswith(_SETTINGS_PREFIX)

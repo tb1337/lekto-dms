@@ -16,7 +16,7 @@ from tests.webhook_receiver import LocalReceiver
 class TestHttpWebhookSender(WebhookSenderContract):
     @pytest.fixture
     def sender(self) -> WebhookSender:
-        return HttpWebhookSender(user_agent=f"Papiq/{__version__}")
+        return HttpWebhookSender(user_agent=f"Lekto/{__version__}")
 
     @pytest.fixture
     async def receiver(self) -> AsyncIterator[Receiver]:
@@ -29,7 +29,7 @@ class TestHttpWebhookSender(WebhookSenderContract):
         await sender.send(request(f"{receiver.url}/status/200"))
         sent = receiver.received[-1]
         assert sent.method == "POST"
-        assert sent.headers["user-agent"] == f"Papiq/{__version__}"
+        assert sent.headers["user-agent"] == f"Lekto/{__version__}"
 
     async def test_the_timeout_covers_the_whole_exchange(
         self, sender: WebhookSender, receiver: LocalReceiver

@@ -69,7 +69,7 @@ async def read_upload(
     if length is not None and length.isdigit() and int(length) > max_size + _OVERHEAD:
         raise UploadTooLargeError(max_size)
 
-    descriptor, name = await asyncio.to_thread(tempfile.mkstemp, prefix="papiq-upload-")
+    descriptor, name = await asyncio.to_thread(tempfile.mkstemp, prefix="lekto-upload-")
     path = Path(name)
     try:
         with os.fdopen(descriptor, "wb") as target:

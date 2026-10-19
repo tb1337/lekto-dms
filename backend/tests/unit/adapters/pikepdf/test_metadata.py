@@ -29,11 +29,11 @@ def pdf_a(*, encrypted: bool = False) -> bytes:
     pdf.add_blank_page()
     pdf.add_blank_page()
     with pdf.open_metadata(set_pikepdf_as_editor=False, update_docinfo=False) as xmp:
-        xmp["xmp:CreatorTool"] = "Papiq Test Scanner"
+        xmp["xmp:CreatorTool"] = "Lekto Test Scanner"
         xmp["pdfaid:part"] = "2"
         xmp["pdfaid:conformance"] = "B"
     pdf.docinfo["/Title"] = "Stromrechnung"
-    pdf.docinfo["/Producer"] = "Papiq Test 1.0"
+    pdf.docinfo["/Producer"] = "Lekto Test 1.0"
     out = io.BytesIO()
     encryption = pikepdf.Encryption(owner="owner", user="user") if encrypted else False
     pdf.save(out, encryption=encryption)
@@ -47,8 +47,8 @@ async def test_a_pdf_with_its_information_xmp_and_pdf_a_level(
     assert (metadata.format, metadata.pages, metadata.pdfa) == ("PDF", 2, "2B")
     entries = {(entry.source, entry.key): entry.value for entry in metadata.entries}
     assert entries[MetadataSource.INFO, "Title"] == "Stromrechnung"
-    assert entries[MetadataSource.INFO, "Producer"] == "Papiq Test 1.0"
-    assert entries[MetadataSource.XMP, "xmp:CreatorTool"] == "Papiq Test Scanner"
+    assert entries[MetadataSource.INFO, "Producer"] == "Lekto Test 1.0"
+    assert entries[MetadataSource.XMP, "xmp:CreatorTool"] == "Lekto Test Scanner"
     assert entries[MetadataSource.XMP, "pdfaid:part"] == "2"
 
 
@@ -62,7 +62,7 @@ async def test_a_photo_with_its_camera_but_not_how_its_pixels_are_stored(
 ) -> None:
     image = Image.new("RGB", (120, 80), "white")
     exif = Image.Exif()
-    exif[ExifTags.Base.Make] = "Papiq"
+    exif[ExifTags.Base.Make] = "Lekto"
     exif[ExifTags.Base.Model] = "Test Camera"
     exif.get_ifd(ExifTags.IFD.Exif)[ExifTags.Base.DateTimeOriginal] = "2026:10:16 09:30:00"
     out = io.BytesIO()
@@ -75,7 +75,7 @@ async def test_a_photo_with_its_camera_but_not_how_its_pixels_are_stored(
         300.0,
     )
     entries = {entry.key: entry.value for entry in metadata.entries}
-    assert entries["Make"] == "Papiq"
+    assert entries["Make"] == "Lekto"
     assert entries["Model"] == "Test Camera"
     assert entries["DateTimeOriginal"] == "2026:10:16 09:30:00"
     assert "ExifOffset" not in entries

@@ -53,7 +53,7 @@ async def test_a_failing_check_makes_the_api_unavailable() -> None:
     checks = {"database": broken, "object_store": ok}
     app = create_app(replace(context, health_checks=checks))
     async with httpx2.AsyncClient(
-        transport=httpx2.ASGITransport(app=app), base_url="http://papiq"
+        transport=httpx2.ASGITransport(app=app), base_url="http://lekto"
     ) as client:
         response = await client.get(f"{PREFIX}/health")
     assert response.status_code == 503
@@ -76,7 +76,7 @@ async def test_a_failing_search_only_degrades_the_api() -> None:
         context = api_context(container, builders.DEFAULT_SETTINGS, services)
         app = create_app(replace(context, health_checks=checks))
         async with httpx2.AsyncClient(
-            transport=httpx2.ASGITransport(app=app), base_url="http://papiq"
+            transport=httpx2.ASGITransport(app=app), base_url="http://lekto"
         ) as client:
             return await client.get(f"{PREFIX}/health")
 
@@ -353,7 +353,7 @@ async def test_no_secrets_in_the_contract(api: Api) -> None:
     text = json.dumps(await openapi(api))
     for secret in (PASSWORD, SECRET_KEY):
         assert secret not in text
-    assert not re.search(r"papiq_[A-Za-z0-9_-]{20,}", text)
+    assert not re.search(r"lekto_[A-Za-z0-9_-]{20,}", text)
     assert "BEGIN" not in text and "PRIVATE" not in text
     assert (
         "password"

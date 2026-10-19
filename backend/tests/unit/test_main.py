@@ -20,7 +20,7 @@ from tests.builders import PASSWORD, SECRET_KEY, TRUSTED_PROXY
 @pytest.fixture
 def sqlite_instance(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A migrated SQLite database in `tmp_path`; OCR and parser are fakes."""
-    monkeypatch.setenv("LEKTO_DB_SQLITE_PATH", str(tmp_path / "papiq.db"))
+    monkeypatch.setenv("LEKTO_DB_SQLITE_PATH", str(tmp_path / "lekto.db"))
     monkeypatch.setitem(container.OCR_ENGINES, "ocrmypdf", lambda _: FakeOcr())
     monkeypatch.setitem(container.PARSERS, "layout", lambda _: FakeParser())
     assert main(["migrate"]) == 0
@@ -75,7 +75,7 @@ def test_invalid_configuration_exits_one_with_message(
 def test_migrate_sets_up_an_empty_sqlite_database(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    path = tmp_path / "data" / "papiq.db"
+    path = tmp_path / "data" / "lekto.db"
     monkeypatch.setenv("LEKTO_DB_SQLITE_PATH", str(path))
 
     assert main(["migrate"]) == 0
@@ -134,7 +134,7 @@ def test_fetch_logos_queues_the_contacts_without_a_logo(
 ) -> None:
     monkeypatch.setitem(container.LOGO_FETCHERS, "httpx2", lambda _: FakeLogoFetcher())
 
-    # Off by default: Papiq asks no website.
+    # Off by default: Lekto asks no website.
     assert main(["fetch-logos"]) == 1
     assert "set LEKTO_LOGO_FETCH=true" in capsys.readouterr().err
 
@@ -174,8 +174,8 @@ def test_failed_migration_exits_one(
         "DB_TYPE": "postgres",
         "DB_HOST": "127.0.0.1",
         "DB_PORT": "1",  # nothing listens here
-        "DB_NAME": "papiq",
-        "DB_USER": "papiq",
+        "DB_NAME": "lekto",
+        "DB_USER": "lekto",
         "DB_PASSWORD": "secret",
     }.items():
         monkeypatch.setenv(f"LEKTO_{name}", value)
@@ -203,7 +203,7 @@ def test_the_worker_stops_cleanly_on_sigterm(tmp_path: Path) -> None:
     """In a process of its own: start on SQLite and the filesystem, then SIGTERM."""
     environment = {key: value for key, value in os.environ.items() if not key.startswith("LEKTO_")}
     environment |= {
-        "LEKTO_DB_SQLITE_PATH": str(tmp_path / "papiq.db"),
+        "LEKTO_DB_SQLITE_PATH": str(tmp_path / "lekto.db"),
         "LEKTO_STORAGE_PATH": str(tmp_path / "objects"),
         "LEKTO_LOG_LEVEL": "INFO",
         "LEKTO_SECRET_KEY": SECRET_KEY,
@@ -236,7 +236,7 @@ def test_the_api_serves_health_and_stops_on_sigterm(tmp_path: Path) -> None:
     password_file.write_text(PASSWORD + "\n")
     environment = {key: value for key, value in os.environ.items() if not key.startswith("LEKTO_")}
     environment |= {
-        "LEKTO_DB_SQLITE_PATH": str(tmp_path / "papiq.db"),
+        "LEKTO_DB_SQLITE_PATH": str(tmp_path / "lekto.db"),
         "LEKTO_STORAGE_PATH": str(tmp_path / "objects"),
         "LEKTO_API_HOST": "127.0.0.1",
         "LEKTO_API_PORT": "0",
@@ -277,7 +277,7 @@ def test_the_api_serves_health_and_stops_on_sigterm(tmp_path: Path) -> None:
         assert process.wait(timeout=30) == 0, output
     assert health == {"status": "ok", "checks": {"database": "ok", "object_store": "ok"}}
     assert signed_in["user"]["role"] == "admin"
-    assert cookie.startswith("__Host-papiq_session=") and "Secure" in cookie
+    assert cookie.startswith("__Host-lekto_session=") and "Secure" in cookie
     assert "first admin created" in output
     assert PASSWORD not in output
 
@@ -289,7 +289,7 @@ def _events(capsys: pytest.CaptureFixture[str]) -> list[str]:
 def test_check_schema_tells_whether_the_database_is_migrated(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    path = tmp_path / "data" / "papiq.db"
+    path = tmp_path / "data" / "lekto.db"
     monkeypatch.setenv("LEKTO_DB_SQLITE_PATH", str(path))
 
     assert main(["check-schema"]) == 1
@@ -305,7 +305,7 @@ def test_check_schema_tells_whether_the_database_is_migrated(
 def test_check_schema_rejects_a_database_of_a_newer_version(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    path = tmp_path / "papiq.db"
+    path = tmp_path / "lekto.db"
     monkeypatch.setenv("LEKTO_DB_SQLITE_PATH", str(path))
     assert main(["migrate"]) == 0
     with sqlite3.connect(path) as connection:
@@ -322,7 +322,7 @@ def test_check_schema_rejects_a_database_of_a_newer_version(
 def test_check_schema_waits_for_the_migration(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    path = tmp_path / "papiq.db"
+    path = tmp_path / "lekto.db"
     monkeypatch.setenv("LEKTO_DB_SQLITE_PATH", str(path))
     monkeypatch.setattr("lekto.composition.database.SCHEMA_POLL_INTERVAL", 0.1)
 

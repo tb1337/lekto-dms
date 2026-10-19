@@ -74,7 +74,7 @@ class HttpLogoFetcher:
     def __init__(
         self,
         *,
-        user_agent: str = "Papiq",
+        user_agent: str = "Lekto",
         resolver: Resolver = system_resolver,
         transport: httpx2.AsyncBaseTransport | None = None,
         timeout: float = TIMEOUT,

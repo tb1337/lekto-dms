@@ -17,7 +17,7 @@ type Lines = Sequence[tuple[str, tuple[float, float, float, float]]]
 
 LINES: Lines = (
     ("Rechnung Nummer 4711", (0.1, 0.11, 0.6, 0.14)),
-    ("Papiq Testdokument", (0.1, 0.17, 0.55, 0.2)),
+    ("Lekto Testdokument", (0.1, 0.17, 0.55, 0.2)),
     ("Betrag 123,45 EUR", (0.1, 0.24, 0.5, 0.27)),
 )
 

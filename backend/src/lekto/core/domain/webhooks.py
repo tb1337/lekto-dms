@@ -44,7 +44,7 @@ SECRET_BYTES = 32
 MAX_NAME_LENGTH = 100
 MAX_ERROR_LENGTH = 300
 DISABLED_FAILING = "failing"
-"""`Webhook.disabled_reason` of a webhook that Papiq switched off after repeated failures."""
+"""`Webhook.disabled_reason` of a webhook that Lekto switched off after repeated failures."""
 
 SIGNATURE_VERSION = "v1"
 ID_HEADER = "webhook-id"

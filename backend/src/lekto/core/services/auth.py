@@ -66,7 +66,7 @@ from lekto.core.services._access import load_actor
 
 log = logging.getLogger(__name__)
 
-TOTP_ISSUER = "Papiq"
+TOTP_ISSUER = "Lekto"
 
 
 @dataclass(frozen=True, kw_only=True)

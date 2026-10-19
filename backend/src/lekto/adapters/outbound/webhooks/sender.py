@@ -25,7 +25,7 @@ class HttpWebhookSender:
     def __init__(
         self,
         *,
-        user_agent: str = "Papiq",
+        user_agent: str = "Lekto",
         connect_timeout: float = CONNECT_TIMEOUT,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:

@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Papiq API",
-    "description": "Papiq is a headless document management system; this API is the only way in.\n\nErrors are problem details (RFC 9457, `application/problem+json`).\n\nAuthentication: a session cookie from `POST /auth/login` (web UI; changing requests also send\nthe header `X-CSRF-Token`) or a personal API token as `Authorization: Bearer papiq_…`. Every\nendpoint needs one of them (401 without), except health and the sign-in endpoints: `POST\n/auth/login` and, below `/auth/oidc`, information, start and callback. A `read` token may only\nread (403). The own sign-in (password, sessions, TOTP, API tokens, provider links) and\ncreating users or resetting their sign-in need a session; a token gets 403 there. Documents\nand spaces the caller may not see are \"not found\" (404), the same as ones that do not exist.\n\nThe same services are available to AI clients over MCP (Streamable HTTP, stateless) at\n`/api/v1/mcp`, with the same API tokens as bearer; it is not part of this OpenAPI document.\nTools: `search`, `get_document`, `get_text`, `update_metadata` (needs a `read_write` token),\n`list_tags`.\n",
+    "title": "Lekto DMS API",
+    "description": "Lekto is a headless document management system; this API is the only way in.\n\nErrors are problem details (RFC 9457, `application/problem+json`).\n\nAuthentication: a session cookie from `POST /auth/login` (web UI; changing requests also send\nthe header `X-CSRF-Token`) or a personal API token as `Authorization: Bearer lekto_…`. Every\nendpoint needs one of them (401 without), except health and the sign-in endpoints: `POST\n/auth/login` and, below `/auth/oidc`, information, start and callback. A `read` token may only\nread (403). The own sign-in (password, sessions, TOTP, API tokens, provider links) and\ncreating users or resetting their sign-in need a session; a token gets 403 there. Documents\nand spaces the caller may not see are \"not found\" (404), the same as ones that do not exist.\n\nThe same services are available to AI clients over MCP (Streamable HTTP, stateless) at\n`/api/v1/mcp`, with the same API tokens as bearer; it is not part of this OpenAPI document.\nTools: `search`, `get_document`, `get_text`, `update_metadata` (needs a `read_write` token),\n`list_tags`.\n",
     "version": "0.1.0"
   },
   "paths": {
@@ -3619,7 +3619,7 @@
           "master data"
         ],
         "summary": "Upload a contact's logo",
-        "description": "Admins only. One part `file`: a PNG, JPEG or WebP image of at most 1 MiB (413 otherwise); another kind, SVG among them, is 415, an image that cannot be read 422. Papiq keeps it scaled to fit 128 px as WebP, in place of any other logo; a fetched one never replaces it.",
+        "description": "Admins only. One part `file`: a PNG, JPEG or WebP image of at most 1 MiB (413 otherwise); another kind, SVG among them, is 415, an image that cannot be read 422. Lekto keeps it scaled to fit 128 px as WebP, in place of any other logo; a fetched one never replaces it.",
         "operationId": "upload_logo_api_v1_contacts__id__logo_put",
         "parameters": [
           {
@@ -13409,7 +13409,7 @@
           "pipeline"
         ],
         "summary": "The processing graph",
-        "description": "The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Papiq; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured; `logo_fetch` says whether Papiq fetches the logos of contacts from their websites.",
+        "description": "The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Lekto; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured; `logo_fetch` says whether Lekto fetches the logos of contacts from their websites.",
         "operationId": "pipeline_api_v1_pipeline_get",
         "responses": {
           "200": {
@@ -13792,7 +13792,7 @@
           "webhooks"
         ],
         "summary": "Create a webhook",
-        "description": "Papiq sends a signed request to the URL for each event of the chosen types on documents within the owner's reach: their own, and green ones in spaces they own or that are shared with them (an admin's webhooks too; the rights of an admin do not widen them). The answer holds the secret, shown only once. A user has at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409).",
+        "description": "Lekto sends a signed request to the URL for each event of the chosen types on documents within the owner's reach: their own, and green ones in spaces they own or that are shared with them (an admin's webhooks too; the rights of an admin do not widen them). The answer holds the secret, shown only once. A user has at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409).",
         "operationId": "create_webhook_api_v1_webhooks_post",
         "requestBody": {
           "required": true,
@@ -15200,7 +15200,7 @@
           "manual"
         ],
         "title": "Assignment",
-        "description": "Who sets a value: Papiq's classification (`auto`: the signals propose it, the model is\nasked for it) or only a person or a rule (`manual`: values no document shows, such as the\nnumber stamped on the paper copy)."
+        "description": "Who sets a value: Lekto's classification (`auto`: the signals propose it, the model is\nasked for it) or only a person or a rule (`manual`: values no document shows, such as the\nnumber stamped on the paper copy)."
       },
       "AuthorizationUrl": {
         "properties": {
@@ -15487,7 +15487,7 @@
             ],
             "title": "Method",
             "examples": [
-              "scikit-learn 1.9.1 papiq-tfidf-logreg/1"
+              "scikit-learn 1.9.1 lekto-tfidf-logreg/1"
             ]
           }
         },
@@ -15824,7 +15824,7 @@
             "type": "array",
             "maxItems": 100,
             "title": "Aliases",
-            "description": "Other names the contact is written as in documents. Unique across contacts, together with the names; papiq also learns them when a contact is chosen in the review.",
+            "description": "Other names the contact is written as in documents. Unique across contacts, together with the names; lekto also learns them when a contact is chosen in the review.",
             "examples": [
               [
                 "ACME Energy Services GmbH"
@@ -16013,7 +16013,7 @@
                 },
                 "type": "array",
                 "maxItems": 100,
-                "description": "Other names the contact is written as in documents. Unique across contacts, together with the names; papiq also learns them when a contact is chosen in the review.",
+                "description": "Other names the contact is written as in documents. Unique across contacts, together with the names; lekto also learns them when a contact is chosen in the review.",
                 "examples": [
                   [
                     "ACME Energy Services GmbH"
@@ -18401,7 +18401,7 @@
           "value"
         ],
         "title": "IdentifierIn",
-        "description": "Written as in documents; papiq stores it normalised (an IBAN without spaces, a domain\nwithout `www.`).",
+        "description": "Written as in documents; lekto stores it normalised (an IBAN without spaces, a domain\nwithout `www.`).",
         "examples": [
           {
             "kind": "customer_number",
@@ -19987,7 +19987,7 @@
           "logo_fetch": {
             "type": "boolean",
             "title": "Logo Fetch",
-            "description": "Whether Papiq fetches the logos of contacts from their websites (`LEKTO_LOGO_FETCH`; `POST /contacts/{id}/logo/fetch`)."
+            "description": "Whether Lekto fetches the logos of contacts from their websites (`LEKTO_LOGO_FETCH`; `POST /contacts/{id}/logo/fetch`)."
           }
         },
         "type": "object",
@@ -21313,7 +21313,7 @@
             "type": "string",
             "maxLength": 500,
             "title": "Template",
-            "description": "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/papiq/blob/main/docs/templates.md",
+            "description": "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md",
             "examples": [
               "{{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}"
             ]
@@ -21953,7 +21953,7 @@
             "type": "string",
             "maxLength": 500,
             "title": "Template",
-            "description": "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/papiq/blob/main/docs/templates.md"
+            "description": "A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md"
           },
           "document_id": {
             "anyOf": [
@@ -22163,7 +22163,7 @@
             "title": "Token",
             "description": "The token itself; shown only now.",
             "examples": [
-              "papiq_<token shown once>"
+              "lekto_<token shown once>"
             ]
           }
         },
@@ -22185,7 +22185,7 @@
             "id": "01999d5e-6666-7c1e-b6a3-2f4d5e6f7a8b",
             "name": "scanner",
             "scope": "read_write",
-            "token": "papiq_<token shown once>"
+            "token": "lekto_<token shown once>"
           }
         ]
       },
@@ -22275,7 +22275,7 @@
             "type": "string",
             "title": "Otpauth Uri",
             "examples": [
-              "otpauth://totp/Papiq:alice?secret=JBSWY3DPEHPK3PXP"
+              "otpauth://totp/Lekto:alice?secret=JBSWY3DPEHPK3PXP"
             ]
           }
         },
@@ -22522,7 +22522,7 @@
             "type": "string",
             "maxLength": 2000,
             "title": "Url",
-            "description": "Where Papiq sends the events (POST). `http` or `https`; targets in the own network are fine. Redirects are not followed."
+            "description": "Where Lekto sends the events (POST). `http` or `https`; targets in the own network are fine. Redirects are not followed."
           },
           "event_types": {
             "items": {
@@ -22554,7 +22554,7 @@
               "document.filed"
             ],
             "name": "n8n",
-            "url": "http://n8n.lan:5678/webhook/papiq"
+            "url": "http://n8n.lan:5678/webhook/lekto"
           }
         ]
       },
@@ -22599,7 +22599,7 @@
               }
             ],
             "title": "Disabled Reason",
-            "description": "`failing`: Papiq switched the webhook off after repeated failed deliveries."
+            "description": "`failing`: Lekto switched the webhook off after repeated failed deliveries."
           },
           "failed_streak": {
             "type": "integer",
@@ -22696,7 +22696,7 @@
               }
             ],
             "title": "Disabled Reason",
-            "description": "`failing`: Papiq switched the webhook off after repeated failed deliveries."
+            "description": "`failing`: Lekto switched the webhook off after repeated failed deliveries."
           },
           "failed_streak": {
             "type": "integer",
@@ -22960,13 +22960,13 @@
       "session": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "__Host-papiq_session",
-        "description": "Session cookie from `POST /auth/login` or the OIDC callback (`papiq_session` when the server runs without `Secure` cookies). Changing requests also need the header `X-CSRF-Token`."
+        "name": "__Host-lekto_session",
+        "description": "Session cookie from `POST /auth/login` or the OIDC callback (`lekto_session` when the server runs without `Secure` cookies). Changing requests also need the header `X-CSRF-Token`."
       },
       "token": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Personal API token (`papiq_…`); scope `read` allows reading only."
+        "description": "Personal API token (`lekto_…`); scope `read` allows reading only."
       }
     }
   }

@@ -22,10 +22,10 @@ from lekto.core.domain.ids import UserId
 from lekto.core.services.auth import Principal, SignedIn
 from lekto.core.services.oidc import FLOW_LIFETIME
 
-SECURE_SESSION_COOKIE = "__Host-papiq_session"
-SESSION_COOKIE = "papiq_session"  # without `Secure`, for development over plain HTTP
-SECURE_FLOW_COOKIE = "__Host-papiq_oidc"
-FLOW_COOKIE = "papiq_oidc"
+SECURE_SESSION_COOKIE = "__Host-lekto_session"
+SESSION_COOKIE = "lekto_session"  # without `Secure`, for development over plain HTTP
+SECURE_FLOW_COOKIE = "__Host-lekto_oidc"
+FLOW_COOKIE = "lekto_oidc"
 CSRF_HEADER = "X-CSRF-Token"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -37,7 +37,7 @@ SECURITY_SCHEMES = {
         "in": "cookie",
         "name": SECURE_SESSION_COOKIE,
         "description": (
-            "Session cookie from `POST /auth/login` or the OIDC callback (`papiq_session` "
+            "Session cookie from `POST /auth/login` or the OIDC callback (`lekto_session` "
             "when the server runs without `Secure` cookies). Changing requests also need the "
             f"header `{CSRF_HEADER}`."
         ),
@@ -45,7 +45,7 @@ SECURITY_SCHEMES = {
     "token": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Personal API token (`papiq_…`); scope `read` allows reading only.",
+        "description": "Personal API token (`lekto_…`); scope `read` allows reading only.",
     },
 }
 SECURITY: list[dict[str, list[str]]] = [{"session": []}, {"token": []}]

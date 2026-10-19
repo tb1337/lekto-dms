@@ -82,7 +82,7 @@ class LogoFetchError(DomainError):
 
 
 class LogoFetchDisabledError(DomainError):
-    """Papiq does not fetch logos (`LEKTO_LOGO_FETCH` is off)."""
+    """Lekto does not fetch logos (`LEKTO_LOGO_FETCH` is off)."""
 
 
 class AuthenticationError(DomainError):

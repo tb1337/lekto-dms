@@ -341,7 +341,7 @@ async def test_sends_no_cookies_and_ignores_proxies_of_the_environment(
     await fetcher(web).fetch("nord.example")
     # The transport saw both (the web stand-in checks that no cookie came along).
     assert len(web.requests) == 2
-    assert web.requests[0].headers["user-agent"] == "Papiq"
+    assert web.requests[0].headers["user-agent"] == "Lekto"
 
 
 @pytest.mark.parametrize(

@@ -43,7 +43,7 @@ class PipelineOut(BaseModel):
     )
     logo_fetch: bool = Field(
         description=(
-            "Whether Papiq fetches the logos of contacts from their websites "
+            "Whether Lekto fetches the logos of contacts from their websites "
             "(`LEKTO_LOGO_FETCH`; `POST /contacts/{id}/logo/fetch`)."
         )
     )

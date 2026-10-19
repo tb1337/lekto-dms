@@ -365,7 +365,7 @@ async def _download(
     *,
     page: int = 1,
 ) -> FileResponse:
-    descriptor, name = await asyncio.to_thread(tempfile.mkstemp, prefix="papiq-download-")
+    descriptor, name = await asyncio.to_thread(tempfile.mkstemp, prefix="lekto-download-")
     os.close(descriptor)
     path = Path(name)
     try:

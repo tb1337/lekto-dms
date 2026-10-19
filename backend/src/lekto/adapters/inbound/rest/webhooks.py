@@ -53,7 +53,7 @@ async def list_webhooks(
     status_code=201,
     summary="Create a webhook",
     description=(
-        "Papiq sends a signed request to the URL for each event of the chosen types on "
+        "Lekto sends a signed request to the URL for each event of the chosen types on "
         "documents within the owner's reach: their own, and green ones in spaces they own or "
         "that are shared with them (an admin's webhooks too; the rights of an admin do not "
         "widen them). The answer holds the secret, shown only once. A user has at most as "

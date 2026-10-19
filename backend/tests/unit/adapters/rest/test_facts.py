@@ -21,7 +21,7 @@ from tests.api import auth
 from tests.unit.adapters.rest.support import DOCUMENTS, Api, make_app, upload
 
 TEXT = """\
-Papiq Test GmbH
+Lekto Test GmbH
 Kundennummer 2004-7718
 IBAN DE89 3704 0044 0532 0130 00
 Lastschrift von DE02 1203 0000 0000 2020 51
@@ -48,7 +48,7 @@ async def facts_api() -> AsyncIterator[Api]:
     builders.skip_classification(services.pipeline)
     app = make_app(container, services)
     transport = httpx2.ASGITransport(app=app)
-    async with httpx2.AsyncClient(transport=transport, base_url="https://papiq") as client:
+    async with httpx2.AsyncClient(transport=transport, base_url="https://lekto") as client:
         yield Api(container, services, app, client, clock)
 
 
@@ -63,7 +63,7 @@ async def test_names_identifiers_and_codes_with_their_places(facts_api: Api) -> 
         api,
         "/contacts",
         {
-            "name": "Papiq Test GmbH",
+            "name": "Lekto Test GmbH",
             "identifiers": [{"kind": "iban", "value": "DE89370400440532013000"}],
         },
         auth(admin),
@@ -90,7 +90,7 @@ async def test_names_identifiers_and_codes_with_their_places(facts_api: Api) -> 
     facts = response.json()
     (named,) = facts["named"]
     assert (named["contact_id"], named["in_text"], named["in_code"]) == (contact_id, True, True)
-    assert [TEXT[span["start"] : span["end"]] for span in named["spans"]] == ["Papiq Test"]
+    assert [TEXT[span["start"] : span["end"]] for span in named["spans"]] == ["Lekto Test"]
     by_value = {item["value"]: item for item in facts["identifiers"]}
     iban = by_value["DE89370400440532013000"]
     assert (iban["contact_id"], iban["in_text"], iban["in_code"]) == (contact_id, True, True)
@@ -118,7 +118,7 @@ async def test_names_identifiers_and_codes_with_their_places(facts_api: Api) -> 
         [1],
     )
     assert code["giro"] == {
-        "name": "Papiq Test GmbH",
+        "name": "Lekto Test GmbH",
         "iban": "DE89370400440532013000",
         "bic": "MUSTDEM1XXX",
         "amount": {"amount": "123.45", "currency": "EUR"},

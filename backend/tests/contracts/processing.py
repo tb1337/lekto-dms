@@ -165,7 +165,7 @@ class PageRendererContract:
 
 class TextLocatorContract:
     """Needs the fixture `text_locator`, which knows `text.pdf`: one page with the lines
-    "Rechnung Nummer 4711", "Papiq Testdokument" and "Betrag 123,45 EUR"."""
+    "Rechnung Nummer 4711", "Lekto Testdokument" and "Betrag 123,45 EUR"."""
 
     @staticmethod
     def on_the_page(location: Location) -> None:
@@ -199,7 +199,7 @@ class TextLocatorContract:
 
     async def test_one_answer_per_text_in_order(self, text_locator: TextLocator) -> None:
         second, missing, first = await text_locator.locate(
-            SAMPLES / "text.pdf", ["Papiq Testdokument", "Kündigung", "Rechnung Nummer 4711"]
+            SAMPLES / "text.pdf", ["Lekto Testdokument", "Kündigung", "Rechnung Nummer 4711"]
         )
         assert missing == ()
         assert first[0].boxes[0].y < second[0].boxes[0].y  # the first line is higher up
@@ -223,7 +223,7 @@ class CodeReaderContract:
         assert (giro.page, giro.format) == (1, "QR Code")
         transfer = giro_code(giro.text)
         assert transfer is not None
-        assert (transfer.name, transfer.iban) == ("Papiq Test GmbH", "DE89370400440532013000")
+        assert (transfer.name, transfer.iban) == ("Lekto Test GmbH", "DE89370400440532013000")
         # At the bottom right of the page.
         assert giro.box.x > 0.5 and giro.box.y > 0.5
         assert giro.box.width > 0 and giro.box.height > 0

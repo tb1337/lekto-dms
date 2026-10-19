@@ -35,7 +35,7 @@ def sqlite_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
 async def database(sqlite_template: Path, tmp_path: Path) -> AsyncIterator[Database]:
     """A fresh SQLite file in the test's directory (not `:memory:`: units of work need
     connections of their own)."""
-    path = tmp_path / "papiq.db"
+    path = tmp_path / "lekto.db"
     shutil.copyfile(sqlite_template, path)
     database = Database.sqlite(path)
     yield database

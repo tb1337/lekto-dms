@@ -45,11 +45,11 @@ async def test_an_invalid_pattern_names_the_pattern(pattern_matcher: RegexPatter
 async def test_compiled_patterns_are_cached_per_case_setting(
     pattern_matcher: RegexPatternMatcher,
 ) -> None:
-    pattern = "papiq-cache-test-[0-9]+"
+    pattern = "lekto-cache-test-[0-9]+"
     before = _compile.cache_info()
     for _ in range(3):
-        assert await pattern_matcher.search(pattern, "papiq-cache-test-42", case_sensitive=True)
-        assert await pattern_matcher.search(pattern, "PAPIQ-CACHE-TEST-42", case_sensitive=False)
+        assert await pattern_matcher.search(pattern, "lekto-cache-test-42", case_sensitive=True)
+        assert await pattern_matcher.search(pattern, "LEKTO-CACHE-TEST-42", case_sensitive=False)
     after = _compile.cache_info()
     assert after.misses - before.misses == 2  # once per case setting
     assert after.hits - before.hits == 4

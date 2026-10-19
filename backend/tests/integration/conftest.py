@@ -61,7 +61,7 @@ async def stores(
     request: pytest.FixtureRequest, tmp_path: Path
 ) -> AsyncIterator[tuple[Database, ObjectStore]]:
     if request.param == "sqlite+filesystem":
-        database = Database.sqlite(tmp_path / "papiq.db")
+        database = Database.sqlite(tmp_path / "lekto.db")
         await migrate(database)
         yield database, FilesystemObjectStore(tmp_path / "objects")
         await database.dispose()

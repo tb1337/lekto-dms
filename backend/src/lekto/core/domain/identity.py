@@ -46,7 +46,7 @@ PASSWORD_MAX_LENGTH = 256
 MAX_TOKEN_NAME = 100
 """Characters of an API token's name; the REST schema takes its limit from here."""
 
-API_TOKEN_PREFIX = "papiq_"
+API_TOKEN_PREFIX = "lekto_"
 RECOVERY_CODE_COUNT = 10
 _RECOVERY_CODE_BYTES = 10  # 80 bits, 16 base32 characters
 _TOKEN_BYTES = 32  # 256 bits
@@ -205,7 +205,7 @@ class Session:
 def csrf_token(session_token: str) -> str:
     """The CSRF token of a session, derived from its token, so nothing more is stored. Only
     someone who knows the session token (sent in an HTTP-only cookie) can compute it."""
-    return hmac.new(session_token.encode(), b"papiq-csrf", hashlib.sha256).hexdigest()
+    return hmac.new(session_token.encode(), b"lekto-csrf", hashlib.sha256).hexdigest()
 
 
 def csrf_matches(session_token: str, candidate: str) -> bool:

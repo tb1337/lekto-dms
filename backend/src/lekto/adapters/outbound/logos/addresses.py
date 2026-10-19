@@ -1,4 +1,4 @@
-"""Where Papiq may connect when it fetches on behalf of data learned from documents: public
+"""Where Lekto may connect when it fetches on behalf of data learned from documents: public
 addresses only, as a protection against server-side request forgery (SSRF).
 
 A domain learned from a document may name any host, also one that resolves to the local
@@ -28,7 +28,7 @@ _IPV4_COMPATIBLE = ipaddress.IPv6Network("::/96")
 
 
 def is_public(address: str) -> bool:
-    """Whether Papiq may connect to `address` (text, IPv4 or IPv6); False for what is no
+    """Whether Lekto may connect to `address` (text, IPv4 or IPv6); False for what is no
     address."""
     try:
         parsed = ipaddress.ip_address(address)

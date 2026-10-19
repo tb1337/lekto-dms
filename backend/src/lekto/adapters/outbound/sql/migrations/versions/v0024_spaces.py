@@ -5,7 +5,7 @@ Revises: 0023
 Create Date: 2026-10-16 22:00:00.000000
 
 The unit of filing and of permissions is called a space (Tobi, 16.10.2026: "Space" in German
-and English). Tables, columns, keys and indexes take the name, and so do the names Papiq stores:
+and English). Tables, columns, keys and indexes take the name, and so do the names Lekto stores:
 the rule action `set_space`, the variable `space` in templates, `space_id` in the outbox and in
 the processing log, the field `space` in the log's checks and changes, the model version
 `person:space`. Text a person wrote stays, as do the messages of older log entries.

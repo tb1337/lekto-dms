@@ -139,7 +139,7 @@ async def fetching() -> AsyncIterator[Api]:
     services = build_services(container)
     app = make_app(container, services)
     transport = httpx2.ASGITransport(app=app)
-    async with httpx2.AsyncClient(transport=transport, base_url="https://papiq") as client:
+    async with httpx2.AsyncClient(transport=transport, base_url="https://lekto") as client:
         yield Api(container, services, app, client, clock)
 
 

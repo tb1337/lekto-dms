@@ -256,7 +256,7 @@ _LOGO_BODY = upload_body(
     description=(
         ADMINS_ONLY + " One part `file`: a PNG, JPEG or WebP image of at most 1 MiB (413 "
         "otherwise); another kind, SVG among them, is 415, an image that cannot be read 422. "
-        "Papiq keeps it scaled to fit 128 px as WebP, in place of any other logo; a fetched "
+        "Lekto keeps it scaled to fit 128 px as WebP, in place of any other logo; a fetched "
         "one never replaces it."
     ),
     response_model=ContactOut,

@@ -35,7 +35,7 @@ from tests import builders
 from tests.builders import NOW
 from tests.unit.services.support import World
 
-URL = "http://n8n.lan:5678/webhook/papiq"
+URL = "http://n8n.lan:5678/webhook/lekto"
 
 
 async def hook(world: World, owner: User, *types: str, url: str = URL) -> tuple[Webhook, str]:

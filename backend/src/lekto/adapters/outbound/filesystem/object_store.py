@@ -6,7 +6,7 @@ crash only a temporary file may be left. Temporary names start with a dot, which
 may, so they never collide with objects.
 
 The content type is not stored; the port does not return it. File operations run in threads.
-Unlike S3, a key cannot also be the directory of another key (`a` and `a/b`); Papiq's key
+Unlike S3, a key cannot also be the directory of another key (`a` and `a/b`); Lekto's key
 scheme never needs that.
 """
 

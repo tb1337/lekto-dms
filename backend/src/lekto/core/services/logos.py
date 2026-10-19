@@ -164,7 +164,7 @@ class LogoService:
         async with self._uow() as uow:
             await require_admin(uow, actor, "change master data")
             if self._fetcher is None:
-                raise LogoFetchDisabledError("Papiq does not fetch logos")
+                raise LogoFetchDisabledError("Lekto does not fetch logos")
             contact = await uow.contacts.get(id)
             if contact.logo is not None and contact.logo.source is LogoSource.UPLOADED:
                 raise ConflictError(
@@ -180,7 +180,7 @@ class LogoService:
         whose fetch has not failed. Returns how many. LogoFetchDisabledError without
         fetching."""
         if self._fetcher is None:
-            raise LogoFetchDisabledError("Papiq does not fetch logos")
+            raise LogoFetchDisabledError("Lekto does not fetch logos")
         queued = 0
         async with self._uow() as uow:
             for contact in await uow.contacts.list_all():

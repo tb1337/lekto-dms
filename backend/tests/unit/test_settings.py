@@ -16,14 +16,14 @@ from lekto.composition.settings import (
 POSTGRES = {
     "LEKTO_DB_TYPE": "postgres",
     "LEKTO_DB_HOST": "db",
-    "LEKTO_DB_NAME": "papiq",
-    "LEKTO_DB_USER": "papiq",
+    "LEKTO_DB_NAME": "lekto",
+    "LEKTO_DB_USER": "lekto",
     "LEKTO_DB_PASSWORD": "pw",
 }
 S3 = {
     "LEKTO_STORAGE_TYPE": "s3",
     "LEKTO_S3_ENDPOINT_URL": "http://garage:3900",
-    "LEKTO_S3_BUCKET": "papiq",
+    "LEKTO_S3_BUCKET": "lekto",
     "LEKTO_S3_ACCESS_KEY_ID": "key",
     "LEKTO_S3_SECRET_ACCESS_KEY": "secret",
 }
@@ -358,16 +358,16 @@ def test_unknown_variables_are_listed(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_variables_of_the_migration_client_are_not_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The development instance shares its environment with `papiq-migration`."""
+    """The development instance shares its environment with `lekto-migration`."""
     set_env(
         monkeypatch,
-        {"PAPIQ_MIGRATION_PAPERLESS_URL": "http://paperless:8000", "PAPIQ_MIGRATION_TYPO": "x"},
+        {"LEKTO_MIGRATION_PAPERLESS_URL": "http://paperless:8000", "LEKTO_MIGRATION_TYPO": "x"},
     )
     assert find_unknown_variables() == []
 
 
 def test_variables_of_the_image_are_not_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`PUID`, `PGID` and the `S6_` variables belong to the container, not to Papiq."""
+    """`PUID`, `PGID` and the `S6_` variables belong to the container, not to Lekto."""
     set_env(
         monkeypatch,
         {"PUID": "1000", "PGID": "1000", "S6_SERVICES_GRACETIME": "40000", "TZ": "Europe/Berlin"},
@@ -505,9 +505,9 @@ def test_inconsistent_identity_settings(monkeypatch: pytest.MonkeyPatch) -> None
 
 OIDC = {
     "LEKTO_OIDC_ISSUER": "https://idp.example/realms/home",
-    "LEKTO_OIDC_CLIENT_ID": "papiq",
+    "LEKTO_OIDC_CLIENT_ID": "lekto",
     "LEKTO_OIDC_CLIENT_SECRET": "client-secret",
-    "LEKTO_PUBLIC_URL": "https://papiq.example",
+    "LEKTO_PUBLIC_URL": "https://lekto.example",
 }
 
 
@@ -548,7 +548,7 @@ def test_inconsistent_oidc_settings(
 
 
 def test_secure_cookies_need_the_trusted_proxies(monkeypatch: pytest.MonkeyPatch) -> None:
-    """M4-01: Papiq speaks plain HTTP; with `Secure` cookies (default) a TLS-terminating proxy
+    """M4-01: Lekto speaks plain HTTP; with `Secure` cookies (default) a TLS-terminating proxy
     is in front of it. Without `LEKTO_FORWARDED_ALLOW_IPS` every request then carries the
     proxy's address, and the per-source throttle would hit everyone at once."""
     monkeypatch.delenv("LEKTO_FORWARDED_ALLOW_IPS")
@@ -585,7 +585,7 @@ def test_the_development_key_is_refused_with_secure_cookies(
 
 def test_search_defaults() -> None:
     settings = load_settings()
-    assert settings.meilisearch_index == "papiq-documents"
+    assert settings.meilisearch_index == "lekto-documents"
     assert settings.meilisearch_timeout == timedelta(seconds=30)
     assert settings.meilisearch_task_timeout == timedelta(minutes=2)
     assert settings.search_locales == "deu+eng"
@@ -639,7 +639,7 @@ def test_search_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch,
         {
             "LEKTO_MEILISEARCH_URL": "http://meilisearch:7700",
-            "LEKTO_MEILISEARCH_INDEX": "papiq-test",
+            "LEKTO_MEILISEARCH_INDEX": "lekto-test",
             "LEKTO_MEILISEARCH_TIMEOUT": "5",
             "LEKTO_MEILISEARCH_TASK_TIMEOUT": "PT10M",
             "LEKTO_SEARCH_LOCALES": "deu",
@@ -649,7 +649,7 @@ def test_search_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         },
     )
     settings = load_settings()
-    assert settings.meilisearch_index == "papiq-test"
+    assert settings.meilisearch_index == "lekto-test"
     assert settings.meilisearch_timeout == timedelta(seconds=5)
     assert settings.meilisearch_task_timeout == timedelta(minutes=10)
     assert settings.search_locales == "deu"
@@ -702,7 +702,7 @@ def test_either_embeddings_or_search_alone_needs_no_vector_length(
 def test_invalid_search_settings(monkeypatch: pytest.MonkeyPatch, name: str, value: str) -> None:
     set_env(monkeypatch, {name: value})
     if value == "":
-        assert load_settings().meilisearch_index == "papiq-documents"  # blank means unset
+        assert load_settings().meilisearch_index == "lekto-documents"  # blank means unset
         return
     with pytest.raises(ConfigurationError, match=name):
         load_settings()

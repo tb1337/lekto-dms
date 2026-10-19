@@ -12,7 +12,7 @@ from tests.unit.adapters.rest.support import Api, post
 
 BODY = {
     "name": "n8n",
-    "url": "http://n8n.lan:5678/webhook/papiq",
+    "url": "http://n8n.lan:5678/webhook/lekto",
     "event_types": ["document.filed", "document.lane_changed"],
 }
 

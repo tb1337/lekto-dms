@@ -135,7 +135,7 @@ class SetTopicAction(BaseModel):
     topic_id: UUID = Field(description="A tag of scope `topic`.")
 
 
-TEMPLATES_GUIDE = "https://github.com/tb1337/papiq/blob/main/docs/templates.md"
+TEMPLATES_GUIDE = "https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md"
 """The documentation of templates, linked from the API and the template editor."""
 
 TEMPLATE_DESCRIPTION = (

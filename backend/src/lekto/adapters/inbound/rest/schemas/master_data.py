@@ -45,7 +45,7 @@ Aliases = Annotated[
         max_length=MAX_ALIASES,
         description=(
             "Other names the contact is written as in documents. Unique across contacts, "
-            "together with the names; papiq also learns them when a contact is chosen in the "
+            "together with the names; lekto also learns them when a contact is chosen in the "
             "review."
         ),
         examples=[["ACME Energy Services GmbH"]],
@@ -54,7 +54,7 @@ Aliases = Annotated[
 
 
 class IdentifierIn(BaseModel):
-    """Written as in documents; papiq stores it normalised (an IBAN without spaces, a domain
+    """Written as in documents; lekto stores it normalised (an IBAN without spaces, a domain
     without `www.`)."""
 
     model_config = ConfigDict(

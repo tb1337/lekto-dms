@@ -507,7 +507,7 @@ export interface paths {
 		get: operations['get_logo_api_v1_contacts__id__logo_get'];
 		/**
 		 * Upload a contact's logo
-		 * @description Admins only. One part `file`: a PNG, JPEG or WebP image of at most 1 MiB (413 otherwise); another kind, SVG among them, is 415, an image that cannot be read 422. Papiq keeps it scaled to fit 128 px as WebP, in place of any other logo; a fetched one never replaces it.
+		 * @description Admins only. One part `file`: a PNG, JPEG or WebP image of at most 1 MiB (413 otherwise); another kind, SVG among them, is 415, an image that cannot be read 422. Lekto keeps it scaled to fit 128 px as WebP, in place of any other logo; a fetched one never replaces it.
 		 */
 		put: operations['upload_logo_api_v1_contacts__id__logo_put'];
 		post?: never;
@@ -1542,7 +1542,7 @@ export interface paths {
 		};
 		/**
 		 * The processing graph
-		 * @description The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Papiq; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured; `logo_fetch` says whether Papiq fetches the logos of contacts from their websites.
+		 * @description The nodes a document goes through and what each one needs, in graph order: every node after the nodes it needs. Nodes that do not need each other run side by side. The graph is fixed for a version of Lekto; `processing.nodes` of a document names the state of each node. `vision` names the vision language model documents can be read with, if one is configured; `logo_fetch` says whether Lekto fetches the logos of contacts from their websites.
 		 */
 		get: operations['pipeline_api_v1_pipeline_get'];
 		put?: never;
@@ -1608,7 +1608,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Create a webhook
-		 * @description Papiq sends a signed request to the URL for each event of the chosen types on documents within the owner's reach: their own, and green ones in spaces they own or that are shared with them (an admin's webhooks too; the rights of an admin do not widen them). The answer holds the secret, shown only once. A user has at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409).
+		 * @description Lekto sends a signed request to the URL for each event of the chosen types on documents within the owner's reach: their own, and green ones in spaces they own or that are shared with them (an admin's webhooks too; the rights of an admin do not widen them). The answer holds the secret, shown only once. A user has at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409).
 		 */
 		post: operations['create_webhook_api_v1_webhooks_post'];
 		delete?: never;
@@ -1944,7 +1944,7 @@ export interface components {
 		};
 		/**
 		 * Assignment
-		 * @description Who sets a value: Papiq's classification (`auto`: the signals propose it, the model is
+		 * @description Who sets a value: Lekto's classification (`auto`: the signals propose it, the model is
 		 *     asked for it) or only a person or a rule (`manual`: values no document shows, such as the
 		 *     number stamped on the paper copy).
 		 * @enum {string}
@@ -2113,7 +2113,7 @@ export interface components {
 			accuracy: components['schemas']['AccuracyOut'] | null;
 			/**
 			 * Method
-			 * @example scikit-learn 1.9.1 papiq-tfidf-logreg/1
+			 * @example scikit-learn 1.9.1 lekto-tfidf-logreg/1
 			 */
 			method: string | null;
 		};
@@ -2322,7 +2322,7 @@ export interface components {
 			name: string;
 			/**
 			 * Aliases
-			 * @description Other names the contact is written as in documents. Unique across contacts, together with the names; papiq also learns them when a contact is chosen in the review.
+			 * @description Other names the contact is written as in documents. Unique across contacts, together with the names; lekto also learns them when a contact is chosen in the review.
 			 * @example [
 			 *       "ACME Energy Services GmbH"
 			 *     ]
@@ -3458,7 +3458,7 @@ export interface components {
 		};
 		/**
 		 * IdentifierIn
-		 * @description Written as in documents; papiq stores it normalised (an IBAN without spaces, a domain
+		 * @description Written as in documents; lekto stores it normalised (an IBAN without spaces, a domain
 		 *     without `www.`).
 		 * @example {
 		 *       "kind": "customer_number",
@@ -4323,7 +4323,7 @@ export interface components {
 			vision: components['schemas']['VisionOut'] | null;
 			/**
 			 * Logo Fetch
-			 * @description Whether Papiq fetches the logos of contacts from their websites (`LEKTO_LOGO_FETCH`; `POST /contacts/{id}/logo/fetch`).
+			 * @description Whether Lekto fetches the logos of contacts from their websites (`LEKTO_LOGO_FETCH`; `POST /contacts/{id}/logo/fetch`).
 			 */
 			logo_fetch: boolean;
 		};
@@ -4962,7 +4962,7 @@ export interface components {
 			type: 'set_title';
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/papiq/blob/main/docs/templates.md
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md
 			 * @example {{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}
 			 */
 			template: string;
@@ -5257,7 +5257,7 @@ export interface components {
 		TemplatePreviewIn: {
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/papiq/blob/main/docs/templates.md
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md
 			 */
 			template: string;
 			/**
@@ -5331,7 +5331,7 @@ export interface components {
 		 *       "id": "01999d5e-6666-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "name": "scanner",
 		 *       "scope": "read_write",
-		 *       "token": "papiq_<token shown once>"
+		 *       "token": "lekto_<token shown once>"
 		 *     }
 		 */
 		TokenCreated: {
@@ -5355,7 +5355,7 @@ export interface components {
 			/**
 			 * Token
 			 * @description The token itself; shown only now.
-			 * @example papiq_<token shown once>
+			 * @example lekto_<token shown once>
 			 */
 			token: string;
 		};
@@ -5406,7 +5406,7 @@ export interface components {
 			secret: string;
 			/**
 			 * Otpauth Uri
-			 * @example otpauth://totp/Papiq:alice?secret=JBSWY3DPEHPK3PXP
+			 * @example otpauth://totp/Lekto:alice?secret=JBSWY3DPEHPK3PXP
 			 */
 			otpauth_uri: string;
 		};
@@ -5523,7 +5523,7 @@ export interface components {
 		 *         "document.filed"
 		 *       ],
 		 *       "name": "n8n",
-		 *       "url": "http://n8n.lan:5678/webhook/papiq"
+		 *       "url": "http://n8n.lan:5678/webhook/lekto"
 		 *     }
 		 */
 		WebhookCreate: {
@@ -5534,7 +5534,7 @@ export interface components {
 			name: string;
 			/**
 			 * Url
-			 * @description Where Papiq sends the events (POST). `http` or `https`; targets in the own network are fine. Redirects are not followed.
+			 * @description Where Lekto sends the events (POST). `http` or `https`; targets in the own network are fine. Redirects are not followed.
 			 */
 			url: string;
 			/**
@@ -5570,7 +5570,7 @@ export interface components {
 			active: boolean;
 			/**
 			 * Disabled Reason
-			 * @description `failing`: Papiq switched the webhook off after repeated failed deliveries.
+			 * @description `failing`: Lekto switched the webhook off after repeated failed deliveries.
 			 */
 			disabled_reason: string | null;
 			/**
@@ -5622,7 +5622,7 @@ export interface components {
 			active: boolean;
 			/**
 			 * Disabled Reason
-			 * @description `failing`: Papiq switched the webhook off after repeated failed deliveries.
+			 * @description `failing`: Lekto switched the webhook off after repeated failed deliveries.
 			 */
 			disabled_reason: string | null;
 			/**

@@ -25,7 +25,7 @@ from lekto.core.ports.ocr import OcrResult, VisionModel, VisionReading
 from lekto.core.ports.pages import PREVIEW_FILE, RenderedPages
 from lekto.core.ports.parser import ParseResult
 
-FAKE_PDF = b"%PDF-1.7\n% papiq fake archive\n%%EOF\n"
+FAKE_PDF = b"%PDF-1.7\n% lekto fake archive\n%%EOF\n"
 FAKE_WEBP = b"RIFF\x0c\x00\x00\x00WEBPVP8 "
 
 
@@ -99,7 +99,7 @@ class FakeOcr:
 FAKE_GIRO_CODE = Code(
     page=1,
     format="QR Code",
-    text="BCD\n002\n1\nSCT\nMUSTDEM1XXX\nPapiq Test GmbH\nDE89370400440532013000\nEUR123.45\n\n\n"
+    text="BCD\n002\n1\nSCT\nMUSTDEM1XXX\nLekto Test GmbH\nDE89370400440532013000\nEUR123.45\n\n\n"
     "Rechnung 4711",
     box=Box(0.74, 0.78, 0.12, 0.085),
 )

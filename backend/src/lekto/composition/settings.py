@@ -113,7 +113,7 @@ class Settings(BaseSettings):
 
     # Database: SQLite or Postgres.
     db_type: Literal["sqlite", "postgres"] = "sqlite"
-    db_sqlite_path: Path = Path("data/papiq.db")
+    db_sqlite_path: Path = Path("data/lekto.db")
     db_host: str | None = None
     db_port: Annotated[int, Field(ge=1, le=65535)] = 5432
     db_name: str | None = None
@@ -152,7 +152,7 @@ class Settings(BaseSettings):
     session_max_age: Seconds = timedelta(days=30)
     # `false` only for development over plain HTTP: the session cookie loses `Secure`.
     cookie_secure: bool = True
-    # Where browsers reach Papiq (e.g. `https://papiq.example.org`); needed for OIDC.
+    # Where browsers reach Lekto (e.g. `https://lekto.example.org`); needed for OIDC.
     public_url: AnyHttpUrl | None = None
 
     # OpenID Connect (optional): one provider, Authorization Code Flow with PKCE.
@@ -204,7 +204,7 @@ class Settings(BaseSettings):
     meilisearch_url: AnyHttpUrl | None = None
     meilisearch_api_key: SecretStr | None = None
     # The active index; a rebuild fills `<name>-rebuild` and swaps it in.
-    meilisearch_index: Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,100}$")] = "papiq-documents"
+    meilisearch_index: Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,100}$")] = "lekto-documents"
     meilisearch_timeout: Seconds = timedelta(seconds=30)
     # How long a write waits for its task (indexing a batch of documents).
     meilisearch_task_timeout: Seconds = timedelta(minutes=2)
@@ -281,7 +281,7 @@ class Settings(BaseSettings):
     neighbours: Annotated[int, Field(ge=0, le=20)] = 5
 
     # Logos of contacts: fetched from the contact's own website (its domain among its
-    # identifiers) when on. Off, Papiq never asks the web on its own; uploads work either way.
+    # identifiers) when on. Off, Lekto never asks the web on its own; uploads work either way.
     logo_fetch: bool = False
 
     # Rules: the time limit of one regular expression, the characters of document text that
@@ -328,7 +328,7 @@ class Settings(BaseSettings):
         if self.role in API_ROLES and self.cookie_secure and self.forwarded_allow_ips is None:
             problems.append(
                 f"{_env('forwarded_allow_ips')} is required with {_env('cookie_secure')}=true: "
-                "secure cookies need a TLS-terminating proxy in front of Papiq; name its address "
+                "secure cookies need a TLS-terminating proxy in front of Lekto; name its address "
                 "(`*` only if the proxy sets X-Forwarded-For itself, replacing what clients "
                 f"send). For development over plain HTTP set {_env('cookie_secure')}=false"
             )
@@ -502,13 +502,13 @@ def _missing(settings: Settings, selector: str, *names: str) -> list[str]:
 
 
 # Variables of the migration client (`migration/`), which shares the environment of the
-# development instance; they are no settings of Papiq itself.
+# development instance; they are no settings of Lekto itself.
 MIGRATION_PREFIX = ENV_PREFIX + "MIGRATION_"
 
 
 def find_unknown_variables(environ: Mapping[str, str] | None = None) -> list[str]:
     """`LEKTO_` variables that match no setting; usually typos. The migration client's
-    `PAPIQ_MIGRATION_*` are left alone."""
+    `LEKTO_MIGRATION_*` are left alone."""
     environ = os.environ if environ is None else environ
     secrets = {_env(name) + FILE_SUFFIX for name in _secret_fields(Settings)}
     known = {_env(name) for name in Settings.model_fields} | secrets

@@ -36,7 +36,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = Path(__file__).parent
 
-LINES = ["Rechnung Nummer 4711", "Papiq Testdokument", "Betrag 123,45 EUR"]
+LINES = ["Rechnung Nummer 4711", "Lekto Testdokument", "Betrag 123,45 EUR"]
 
 PRINTOUT_TITLE = "Zeitnachweis"
 PRINTOUT = [
@@ -90,7 +90,7 @@ GIRO_CODE = "\n".join(
         "1",
         "SCT",
         "MUSTDEM1XXX",
-        "Papiq Test GmbH",
+        "Lekto Test GmbH",
         "DE89370400440532013000",
         "EUR123.45",
         "",
@@ -107,7 +107,7 @@ def with_codes(image: Image.Image) -> Image.Image:
     for content, format, scale, place in [
         (GIRO_CODE, zxingcpp.BarcodeFormat.QRCode, 4, (900, 1350)),
         ("K-20047718", zxingcpp.BarcodeFormat.Code128, 3, (120, 600)),
-        ("PAPIQ-DM-0001", zxingcpp.BarcodeFormat.DataMatrix, 5, (1000, 60)),
+        ("LEKTO-DM-0001", zxingcpp.BarcodeFormat.DataMatrix, 5, (1000, 60)),
     ]:
         barcode = zxingcpp.create_barcode(content, format)
         symbol = numpy.asarray(zxingcpp.write_barcode_to_image(barcode, scale=scale))
@@ -290,7 +290,7 @@ def main() -> None:
     )
     transparent.save(HERE / "screenshot.png", dpi=(150, 150))
     first = page(LINES).convert("1")
-    second = page(["Seite zwei", "Papiq Testdokument"]).convert("1")
+    second = page(["Seite zwei", "Lekto Testdokument"]).convert("1")
     first.save(
         HERE / "pages.tiff",
         save_all=True,

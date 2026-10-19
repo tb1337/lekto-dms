@@ -160,7 +160,7 @@ def test_missing_adapter_is_reported_with_port_and_name(
 
 def test_the_database_type_selects_the_sql_adapter(tmp_path: Path) -> None:
     for configured in (
-        settings(db_sqlite_path=tmp_path / "papiq.db"),
+        settings(db_sqlite_path=tmp_path / "lekto.db"),
         settings(db_type="postgres", db_host="h", db_name="n", db_user="u", db_password="p"),
     ):
         persistence = container.PERSISTENCE[configured.db_type](configured)
@@ -292,11 +292,11 @@ def test_optional_ports_are_only_selected_when_configured(
     assert isinstance(built.password_hasher, Argon2PasswordHasher)
     assert isinstance(built.totp, PyotpTotp)
     assert built.oidc is None
-    assert built.logo_fetcher is None  # Papiq asks no website unless told to
+    assert built.logo_fetcher is None  # Lekto asks no website unless told to
     assert isinstance(built.images, PillowImageNormaliser)
     fetching = build_container(settings(logo_fetch="true")).logo_fetcher
     assert isinstance(fetching, HttpLogoFetcher)
-    assert fetching.user_agent.startswith("Papiq/")
+    assert fetching.user_agent.startswith("Lekto/")
     assert fetching.resolver is system_resolver and fetching.transport is None
 
     monkeypatch.setitem(container.SEARCH_INDEXES, "meilisearch", lambda _: Opened(object()))
@@ -368,7 +368,7 @@ async def test_search_index_from_settings(network: Network) -> None:
         settings(
             meilisearch_url="http://meilisearch:7700",
             meilisearch_api_key="key",
-            meilisearch_index="papiq-test",
+            meilisearch_index="lekto-test",
             meilisearch_timeout=timedelta(seconds=7),
             meilisearch_task_timeout=timedelta(seconds=9),
             search_locales="deu",
@@ -382,7 +382,7 @@ async def test_search_index_from_settings(network: Network) -> None:
     assert index.task_timeout == 9
     assert index.aclose in built.closers
     wanted = await index_settings(index, network)
-    assert wanted.url == "http://meilisearch:7700/indexes/papiq-test/settings"
+    assert wanted.url == "http://meilisearch:7700/indexes/lekto-test/settings"
     assert (wanted.headers["Authorization"], timeout_of(wanted)) == ("Bearer key", 7)
     body = body_of(wanted)
     assert body["localizedAttributes"] == [{"locales": ["deu"], "attributePatterns": ["*"]}]
@@ -498,7 +498,7 @@ def test_memory_containers_are_independent() -> None:
 
 
 async def test_health_checks_reach_database_and_store(tmp_path: Path) -> None:
-    database = Database.sqlite(tmp_path / "papiq.db")
+    database = Database.sqlite(tmp_path / "lekto.db")
     built = replace(
         build_memory_container(),
         unit_of_work=SqlUnitOfWorkFactory(database),
@@ -518,11 +518,11 @@ async def test_health_checks_reach_database_and_store(tmp_path: Path) -> None:
 def test_oidc_provider_with_its_redirect_uri() -> None:
     configured = settings(
         oidc_issuer="https://idp.example",
-        oidc_client_id="papiq",
+        oidc_client_id="lekto",
         oidc_client_secret="secret",
-        public_url="https://papiq.example/",
+        public_url="https://lekto.example/",
     )
-    assert container.redirect_uri(configured) == "https://papiq.example/api/v1/auth/oidc/callback"
+    assert container.redirect_uri(configured) == "https://lekto.example/api/v1/auth/oidc/callback"
     assert isinstance(container.oidc_provider(configured), AuthlibOidcProvider)
     services = build_services(build_memory_container(), configured)
     assert services.oidc is None  # the memory container has no provider

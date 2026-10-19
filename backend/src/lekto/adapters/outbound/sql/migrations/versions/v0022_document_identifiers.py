@@ -5,7 +5,7 @@ Revises: 0021
 Create Date: 2026-10-15 20:00:00.000000
 
 The facts signal keeps the identifiers it found on a document (in its text or its codes) in
-`document_identifiers`, so that Papiq can tell on how many contacts' confirmed documents a value
+`document_identifiers`, so that Lekto can tell on how many contacts' confirmed documents a value
 stands. Documents processed before get theirs when their signals run again, or with the command
 `read-codes`.
 """

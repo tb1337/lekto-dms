@@ -25,7 +25,7 @@ async def test_every_code_of_the_sample_with_its_format() -> None:
     assert found == {
         ("QR Code", "BCD"),
         ("Code 128", "K-20047718"),
-        ("Data Matrix", "PAPIQ-DM-0001"),
+        ("Data Matrix", "LEKTO-DM-0001"),
     }
     assert reading.reader.startswith("zxing-cpp ")
 

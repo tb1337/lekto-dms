@@ -29,7 +29,7 @@ from tests.api import auth, serving
 from tests.builders import SAMPLES
 from tests.unit.adapters.rest.support import Api, Scene, indexed_scene, make_app, post, upload
 
-URL = f"https://papiq{PREFIX}/mcp"
+URL = f"https://lekto{PREFIX}/mcp"
 TEXT = "Strom Rechnung März\n" + "Zeile mit Inhalt\n" * 20
 
 
@@ -64,14 +64,14 @@ async def api() -> AsyncIterator[Api]:
     app = make_app(container, services, mcp=True, text_max=100)
     async with running(app):
         transport = httpx2.ASGITransport(app=app)
-        async with httpx2.AsyncClient(transport=transport, base_url="https://papiq") as client:
+        async with httpx2.AsyncClient(transport=transport, base_url="https://lekto") as client:
             yield Api(container, services, app, client, clock)
 
 
 @asynccontextmanager
 async def connected(api: Api, headers: dict[str, str]) -> AsyncIterator[Client]:
     http = httpx2.AsyncClient(
-        transport=httpx2.ASGITransport(app=api.app), base_url="https://papiq", headers=headers
+        transport=httpx2.ASGITransport(app=api.app), base_url="https://lekto", headers=headers
     )
     async with http, Client(streamable_http_client(URL, http_client=http)) as client:
         yield client
@@ -146,7 +146,7 @@ async def test_both_spellings_of_the_path_work(api: Api, scene: Scene, path: str
     "headers",
     [
         {},
-        {"Authorization": "Bearer papiq_nonsense"},
+        {"Authorization": "Bearer lekto_nonsense"},
         {"Authorization": "Basic abc"},
         {"Authorization": "Bearer "},
     ],
@@ -189,7 +189,7 @@ async def test_the_endpoint_is_absent_when_switched_off() -> None:
     container = build_memory_container(ManualClock(builders.NOW))
     app = make_app(container, build_services(container), mcp=False)
     async with httpx2.AsyncClient(
-        transport=httpx2.ASGITransport(app=app), base_url="https://papiq"
+        transport=httpx2.ASGITransport(app=app), base_url="https://lekto"
     ) as client:
         response = await client.post(f"{PREFIX}/mcp", json={})
     assert response.status_code == 404
@@ -202,7 +202,7 @@ async def test_the_server_works_over_a_real_connection() -> None:
     services = build_services(container)
     builders.skip_classification(services.pipeline)
     app = make_app(container, services, mcp=True)  # Uvicorn runs its lifespan
-    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="https://papiq")
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="https://lekto")
     api = Api(container, services, app, client, clock)
     user = await api.user()
     received = await services.pipeline.receive(
@@ -413,7 +413,7 @@ async def test_search_without_an_index_says_so() -> None:
             container,
             services,
             app,
-            httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="https://papiq"),
+            httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="https://lekto"),
             ManualClock(builders.NOW),
         )
         user = await api.user()

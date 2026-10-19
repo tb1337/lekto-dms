@@ -204,7 +204,7 @@ class TestFakeParser(ParserContract):
 
 @pytest.fixture
 def text_locator() -> FakeTextLocator:
-    return FakeTextLocator(["Rechnung Nummer 4711\nPapiq Testdokument\nBetrag 123,45 EUR"])
+    return FakeTextLocator(["Rechnung Nummer 4711\nLekto Testdokument\nBetrag 123,45 EUR"])
 
 
 class TestFakeTextLocator(TextLocatorContract):

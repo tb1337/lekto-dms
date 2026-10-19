@@ -93,7 +93,7 @@ class Api:
 
     def new_client(self) -> httpx2.AsyncClient:
         transport = httpx2.ASGITransport(app=self.app)
-        return httpx2.AsyncClient(transport=transport, base_url="https://papiq")
+        return httpx2.AsyncClient(transport=transport, base_url="https://lekto")
 
     @asynccontextmanager
     async def sign_in(self, user: User, password: str = PASSWORD) -> AsyncIterator[Session]:

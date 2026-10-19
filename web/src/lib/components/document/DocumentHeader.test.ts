@@ -50,7 +50,7 @@ function document(outcome: 'ok' | 'failed' = 'ok'): Document {
 
 const NO_TEXT: Reading = {
 	vision: false,
-	pages: [{ page: 1, words: 0, unsure: 0, poor: false }],
+	pages: [{ page: 1, words: 0, unsure: 0, content: 0, content_unsure: 0, poor: false }],
 	advice: 'no_text'
 };
 

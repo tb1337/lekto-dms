@@ -849,6 +849,7 @@
 	"log_runs": "Läufe",
 	"log_reading": "Lesung",
 	"log_reading_page": "Seite {page}: {unsure} von {words} Wörtern unsicher",
+	"log_reading_page_content": "Seite {page}: {unsure} von {words} Wörtern unsicher, {content_unsure} von {content} Inhaltswörtern",
 	"log_from_run": "aus Lauf {run}",
 	"log_not_run": "Nicht gelaufen",
 	"master_identifiers": "Kennungen",

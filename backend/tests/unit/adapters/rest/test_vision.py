@@ -45,7 +45,16 @@ async def test_the_owner_has_the_document_read_with_the_model(vision_api: Api) -
     assert reading.status_code == 200
     assert reading.json() == {
         "vision": False,
-        "pages": [{"page": 1, "words": 20, "unsure": 0, "poor": False}],
+        "pages": [
+            {
+                "page": 1,
+                "words": 20,
+                "unsure": 0,
+                "content": None,  # the fake counts no content
+                "content_unsure": None,
+                "poor": False,
+            }
+        ],
         "advice": None,
     }
 

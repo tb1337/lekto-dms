@@ -41,6 +41,25 @@ describe('signalSummary', () => {
 		expect(signalSummary(entry('ocr', { pages: 1 }), lookup)).toEqual([]);
 	});
 
+	it('adds the content words where the OCR counted them', () => {
+		const readings = [{ page: 1, words: 237, unsure: 23, content: 200, content_unsure: 7 }];
+		const rows = texts(signalSummary(entry('ocr', { readings }), lookup));
+		expect(rows).toEqual([
+			[
+				m.log_reading(),
+				[
+					m.log_reading_page_content({
+						page: '1',
+						unsure: '10%',
+						words: '237',
+						content_unsure: '4%',
+						content: '200'
+					})
+				]
+			]
+		]);
+	});
+
 	it('tells why a signal abstained', () => {
 		const rows = signalSummary(entry('signal_classifier', { abstained: 'no model' }), lookup);
 		expect(texts(rows)).toEqual([[m.signal_abstained(), ['no model']]]);

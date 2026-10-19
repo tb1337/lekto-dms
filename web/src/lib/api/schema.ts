@@ -4173,8 +4173,18 @@ export interface components {
 			 */
 			unsure: number;
 			/**
+			 * Content
+			 * @description Of the words, those that are content: not dot leaders, rules, stray marks of one or two characters, or small print. Null where content was not counted (read before it was, or by the vision language model).
+			 */
+			content: number | null;
+			/**
+			 * Content Unsure
+			 * @description Of the content words, those the reader was unsure of; null with `content`.
+			 */
+			content_unsure: number | null;
+			/**
 			 * Poor
-			 * @description The page counts as poorly read (`PAPIQ_POOR_READING_THRESHOLD`).
+			 * @description The page counts as poorly read (`PAPIQ_POOR_READING_THRESHOLD`): by its content words where counted, else by all.
 			 */
 			poor: boolean;
 		};
@@ -4327,6 +4337,8 @@ export interface components {
 		 *       "advice": "poor_page",
 		 *       "pages": [
 		 *         {
+		 *           "content": 42,
+		 *           "content_unsure": 4,
 		 *           "page": 1,
 		 *           "poor": true,
 		 *           "unsure": 6,

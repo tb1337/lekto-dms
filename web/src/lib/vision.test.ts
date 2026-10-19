@@ -45,9 +45,9 @@ describe('visionAvailable', () => {
 
 describe('adviceText', () => {
 	const pages: Reading['pages'] = [
-		{ page: 1, words: 120, unsure: 2, poor: false },
-		{ page: 2, words: 50, unsure: 9, poor: true },
-		{ page: 3, words: 40, unsure: 8, poor: true }
+		{ page: 1, words: 120, unsure: 2, content: null, content_unsure: null, poor: false },
+		{ page: 2, words: 50, unsure: 9, content: 45, content_unsure: 9, poor: true },
+		{ page: 3, words: 40, unsure: 8, content: null, content_unsure: null, poor: true }
 	];
 
 	it('says why the model is advised', () => {

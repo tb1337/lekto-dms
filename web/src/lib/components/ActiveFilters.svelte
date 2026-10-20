@@ -1,10 +1,10 @@
 <script lang="ts">
 	import X from '@lucide/svelte/icons/x';
 	import { Button } from '#lib/components/ui/button/index.ts';
-	import { NO_FILTERS, isFiltered, periodOf, type Filters } from '#lib/filters.ts';
-	import { formatDate } from '#lib/i18n.ts';
+	import { NO_FILTERS, isFiltered, type Filters } from '#lib/filters.ts';
 	import { spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { periodLabel } from '#lib/period-label.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { pathLabel } from '#lib/tags.ts';
 
@@ -24,32 +24,15 @@
 		without: Partial<Filters>;
 	}
 
-	function day(value: string): string {
-		return formatDate(new Date(`${value}T00:00:00`), { dateStyle: 'medium' });
-	}
-
 	const chips = $derived.by(() => {
 		const tags = new Map(lookup.tags.map((tag) => [tag.id, pathLabel(tag)]));
 		const result: Chip[] = [];
-		const period = periodOf(filters);
+		const period = periodLabel(filters);
 		if (period) {
-			const name =
-				period.kind === 'year'
-					? String(period.year)
-					: period.kind === 'month'
-						? formatDate(new Date(`${period.month}-01T00:00:00`), {
-								month: 'long',
-								year: 'numeric'
-							})
-						: period.from && period.to
-							? m.period_span({ from: day(period.from), to: day(period.to) })
-							: period.from
-								? m.period_from({ date: day(period.from) })
-								: m.period_to({ date: day(period.to ?? '') });
 			result.push({
 				key: 'period',
-				name,
-				label: m.filter_remove({ name }),
+				name: period,
+				label: m.filter_remove({ name: period }),
 				shape: 'round',
 				without: { dateFrom: null, dateTo: null }
 			});

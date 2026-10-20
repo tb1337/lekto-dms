@@ -20,7 +20,14 @@
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { events } from '#lib/events.svelte.ts';
-	import { apiQuery, isFiltered, parseFilters, writeFilters, type Filters } from '#lib/filters.ts';
+	import {
+		NO_FILTERS,
+		apiQuery,
+		isFiltered,
+		parseFilters,
+		writeFilters,
+		type Filters
+	} from '#lib/filters.ts';
 	import { formatDate, formatNumber } from '#lib/i18n.ts';
 	import {
 		LIST_SORTS,
@@ -116,6 +123,9 @@
 			next: data.next_cursor
 		};
 	});
+
+	// How many documents the filters leave: estimated while searching.
+	const shownCount = $derived(searching ? list.total : (facets?.total ?? null));
 
 	// Reload when the words, filters or sort change, and after a reconnect of the event stream.
 	$effect(() => {
@@ -241,7 +251,7 @@
 	</div>
 
 	<div class="flex gap-8">
-		<aside class="hidden w-60 shrink-0 lg:block" aria-label={m.filters_title()}>
+		<aside class="hidden w-72 shrink-0 lg:block" aria-label={m.filters_title()}>
 			<div class="sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto pr-1 pb-4">
 				{@render filterPanel()}
 			</div>
@@ -297,11 +307,40 @@
 								</span>
 							{/if}
 						</Sheet.Trigger>
-						<Sheet.Content side="bottom" class="max-h-[85dvh] overflow-y-auto rounded-t-2xl p-4">
-							<Sheet.Header class="px-2">
+						<!-- Title and close stay at the top, reset and show at the bottom; between them
+						the filters scroll. -->
+						<Sheet.Content
+							side="bottom"
+							showCloseButton={false}
+							class="max-h-[85dvh] gap-0 rounded-t-2xl"
+						>
+							<Sheet.Header class="flex-row items-center justify-between border-b py-2 pr-2 pl-4">
 								<Sheet.Title>{m.filters_title()}</Sheet.Title>
+								<Sheet.Close>
+									{#snippet child({ props })}
+										<Button variant="ghost" size="icon" {...props} aria-label={m.close()}>
+											<X aria-hidden="true" />
+										</Button>
+									{/snippet}
+								</Sheet.Close>
 							</Sheet.Header>
-							{@render filterPanel()}
+							<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
+								{@render filterPanel()}
+							</div>
+							<Sheet.Footer class="flex-row border-t py-3">
+								<Button
+									variant="ghost"
+									disabled={!isFiltered(filters)}
+									onclick={() => change(NO_FILTERS)}
+								>
+									{m.filters_reset()}
+								</Button>
+								<Button class="flex-1" onclick={() => (filtersOpen = false)}>
+									{shownCount === null
+										? m.filters_show_all()
+										: m.filters_show({ count: formatNumber(shownCount) })}
+								</Button>
+							</Sheet.Footer>
 						</Sheet.Content>
 					</Sheet.Root>
 				</div>

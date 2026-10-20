@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/svelte';
+import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatDate } from '#lib/i18n.ts';
 import { rememberView } from '#lib/listing.ts';
@@ -117,6 +118,8 @@ describe('the archive page', () => {
 				total: 7,
 				contacts: [],
 				document_types: [],
+				contact_groups: [],
+				document_type_groups: [],
 				topics: [],
 				tags: [],
 				years: [],
@@ -131,6 +134,36 @@ describe('the archive page', () => {
 			expect(call).toContain('contact_id=c1&contact_id=c2');
 			expect(call).toContain('document_date_from=2026-01-01');
 		}
+	});
+
+	it('keeps title and close of the filter sheet at the top, reset and show at the bottom', async () => {
+		state.url = new URL('http://lekto/ui/documents?contact=c1');
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({ items: [], next_cursor: null }),
+			'GET /api/v1/documents/facets': () => ({
+				total: 3,
+				contacts: [],
+				document_types: [],
+				contact_groups: [],
+				document_type_groups: [],
+				topics: [],
+				tags: [],
+				years: [],
+				undated: 0
+			})
+		});
+		vi.stubGlobal('fetch', api);
+		const user = userEvent.setup();
+		render(Page);
+		await screen.findByText(m.documents_total({ count: '3' }));
+		await user.click(screen.getByRole('button', { name: m.filters_open() }));
+		const sheet = await screen.findByRole('dialog', { name: m.filters_title() });
+		const close = within(sheet).getAllByRole('button', { name: m.close() });
+		expect(close).toHaveLength(1);
+		const show = within(sheet).getByRole('button', { name: m.filters_show({ count: '3' }) });
+		expect(within(sheet).getByRole('button', { name: m.filters_reset() })).toBeTruthy();
+		await user.click(show);
+		expect(screen.queryByRole('dialog', { name: m.filters_title() })).toBeNull();
 	});
 
 	it('takes no lane from an older link', async () => {

@@ -1,124 +1,195 @@
 <script lang="ts">
-	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import type { components } from '#lib/api/schema.ts';
 	import { monthPeriod, periodOf, yearPeriod, type Filters } from '#lib/filters.ts';
 	import { formatDate, formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
 	type Period = Pick<Filters, 'dateFrom' | 'dateTo'>;
+	type Year = components['schemas']['YearCount'];
 
-	// The period of the document date: the years with documents, newest first, each with its
-	// months to open; one year or one month is chosen, a second tap lets it go. `showCounts`:
-	// how many documents each holds (not while searching, the counts know no words).
+	// The period of the document date, compact however many years there are: quick picks, the
+	// newest years as tiles (four to a row, a bar for how many documents each holds), the
+	// older ones behind one tile; a chosen year (or the year of a chosen month) shows its
+	// months as bars to choose from. A second tap lets a choice go. `showCounts`: not while
+	// searching, the counts know no words.
 	let {
 		years,
 		undated,
 		period,
 		showCounts,
-		onchange
+		onchange,
+		shown = 8
 	}: {
-		years: readonly components['schemas']['YearCount'][];
+		years: readonly Year[];
 		undated: number;
 		period: Period;
 		showCounts: boolean;
 		onchange: (next: Period) => void;
+		shown?: number;
 	} = $props();
 
-	const id = $props.id();
-	const chosen = $derived(periodOf(period));
-	let opened = $state<number[]>([]);
-	// A chosen month opens its year.
-	const open = $derived(
-		chosen?.kind === 'month' ? [...opened, Number(chosen.month.slice(0, 4))] : opened
-	);
 	const NONE: Period = { dateFrom: null, dateTo: null };
+	const chosen = $derived(periodOf(period));
+	let older = $state(false);
 
-	function monthName(month: string): string {
-		const [year, number] = month.split('-').map(Number);
-		return formatDate(new Date(year, number - 1, 1), { month: 'long' });
-	}
+	const today = new Date();
+	const iso = (day: Date) =>
+		`${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+	const yearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate() + 1);
+	const QUICK: { label: () => string; period: Period }[] = [
+		{ label: m.facet_this_year, period: yearPeriod(today.getFullYear()) },
+		{ label: m.facet_last_12_months, period: { dateFrom: iso(yearAgo), dateTo: null } },
+		{ label: m.facet_last_year, period: yearPeriod(today.getFullYear() - 1) }
+	];
 
-	function toggleYear(year: number) {
-		opened = open.includes(year) ? opened.filter((entry) => entry !== year) : [...opened, year];
+	const most = $derived(Math.max(1, ...years.map((year) => year.count)));
+	const newest = $derived(years.slice(0, shown));
+	const rest = $derived(years.slice(shown));
+	const tiles = $derived(older ? years : newest);
+	// The year whose months show: the chosen one, or that of the chosen month.
+	const focus = $derived(
+		chosen?.kind === 'year'
+			? chosen.year
+			: chosen?.kind === 'month'
+				? Number(chosen.month.slice(0, 4))
+				: null
+	);
+	const months = $derived.by(() => {
+		if (focus === null) return [];
+		const counts = new Map(
+			(years.find((year) => year.year === focus)?.months ?? []).map((entry) => [
+				entry.month,
+				entry.count
+			])
+		);
+		return Array.from({ length: 12 }, (_, index) => {
+			const month = `${focus}-${String(index + 1).padStart(2, '0')}`;
+			const date = new Date(focus, index, 1);
+			return {
+				month,
+				count: counts.get(month) ?? 0,
+				letter: formatDate(date, { month: 'narrow' }),
+				name: formatDate(date, { month: 'long', year: 'numeric' })
+			};
+		});
+	});
+	const monthMost = $derived(Math.max(1, ...months.map((month) => month.count)));
+
+	function same(a: Period, b: Period): boolean {
+		return a.dateFrom === b.dateFrom && a.dateTo === b.dateTo;
 	}
 </script>
 
-{#if years.length > 0}
-	<section class="flex flex-col gap-0.5" aria-labelledby="{id}-title">
-		<h3
-			id="{id}-title"
-			class="mb-1 px-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase"
-		>
-			{m.facet_period()}
-		</h3>
-		<ul class="flex flex-col">
-			{#each years as year (year.year)}
-				{@const yearChosen = chosen?.kind === 'year' && chosen.year === year.year}
-				{@const expanded = open.includes(year.year)}
-				<li>
-					<div class="flex items-center">
-						<button
-							type="button"
-							class="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-secondary"
-							aria-expanded={expanded}
-							aria-controls="{id}-{year.year}"
-							aria-label={m.facet_months({ year: String(year.year) })}
-							onclick={() => toggleYear(year.year)}
-						>
-							<ChevronRight
-								class={['size-4 transition-transform', expanded && 'rotate-90']}
-								aria-hidden="true"
-							/>
-						</button>
-						<button
-							type="button"
-							aria-pressed={yearChosen}
+<div class="flex flex-col gap-2.5">
+	<div class="grid grid-cols-3 rounded-lg border bg-background p-0.5">
+		{#each QUICK as quick (quick.label())}
+			{@const active = same(quick.period, period)}
+			<button
+				type="button"
+				aria-pressed={active}
+				class={[
+					'h-7 truncate rounded-md px-1 text-xs transition-colors',
+					active ? 'bg-primary font-semibold text-primary-foreground' : 'hover:bg-secondary'
+				]}
+				onclick={() => onchange(active ? NONE : quick.period)}
+			>
+				{quick.label()}
+			</button>
+		{/each}
+	</div>
+	{#if years.length > 0}
+		<div class="grid grid-cols-4 gap-1.5">
+			{#each tiles as year (year.year)}
+				{@const active = chosen?.kind === 'year' && chosen.year === year.year}
+				<button
+					type="button"
+					aria-pressed={active}
+					class={[
+						'relative flex h-11 flex-col items-start overflow-hidden rounded-lg border px-2 py-1 text-left transition-colors',
+						active
+							? 'border-primary bg-primary text-primary-foreground'
+							: 'bg-background hover:border-primary/60'
+					]}
+					onclick={() => onchange(active ? NONE : yearPeriod(year.year))}
+				>
+					{#if showCounts}
+						<span
+							aria-hidden="true"
 							class={[
-								'flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1 text-left text-sm transition-colors hover:bg-secondary',
-								yearChosen && 'bg-panel font-medium text-brand'
+								'absolute bottom-0 left-0 h-1',
+								active ? 'bg-primary-foreground/50' : 'bg-primary/40'
 							]}
-							onclick={() => onchange(yearChosen ? NONE : yearPeriod(year.year))}
-						>
-							<span class="flex-1 tabular-nums">{year.year}</span>
-							{#if showCounts}
-								<span class="text-xs text-muted-foreground tabular-nums">
-									{formatNumber(year.count)}
-								</span>
-							{/if}
-						</button>
-					</div>
-					{#if expanded}
-						<ul id="{id}-{year.year}" class="flex flex-col pl-8">
-							{#each year.months as month (month.month)}
-								{@const monthChosen = chosen?.kind === 'month' && chosen.month === month.month}
-								<li>
-									<button
-										type="button"
-										aria-pressed={monthChosen}
-										class={[
-											'flex min-h-8 w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-sm transition-colors hover:bg-secondary',
-											monthChosen && 'bg-panel font-medium text-brand'
-										]}
-										onclick={() => onchange(monthChosen ? NONE : monthPeriod(month.month))}
-									>
-										<span class="flex-1">{monthName(month.month)}</span>
-										{#if showCounts}
-											<span class="text-xs text-muted-foreground tabular-nums">
-												{formatNumber(month.count)}
-											</span>
-										{/if}
-									</button>
-								</li>
-							{/each}
-						</ul>
+							style:width={`${Math.round((year.count / most) * 100)}%`}
+						></span>
 					{/if}
-				</li>
+					<span class="relative text-sm font-semibold tabular-nums">{year.year}</span>
+					{#if showCounts}
+						<span
+							class={[
+								'relative text-[0.6875rem] tabular-nums',
+								active ? 'text-primary-foreground/80' : 'text-muted-foreground'
+							]}
+						>
+							{formatNumber(year.count)}
+						</span>
+					{/if}
+				</button>
 			{/each}
-		</ul>
-		{#if showCounts && undated > 0}
-			<p class="px-2 pt-1 text-xs text-muted-foreground">
-				{m.facet_undated({ count: formatNumber(undated) })}
-			</p>
+		</div>
+		{#if rest.length > 0}
+			<button
+				type="button"
+				aria-expanded={older}
+				class="flex h-8 items-center justify-between rounded-lg border border-dashed px-2.5 text-xs text-muted-foreground hover:bg-secondary"
+				onclick={() => (older = !older)}
+			>
+				<span>
+					{m.facet_older({ from: String(rest[rest.length - 1].year), to: String(rest[0].year) })}
+				</span>
+				{#if showCounts}
+					<span class="tabular-nums">
+						{formatNumber(rest.reduce((sum, year) => sum + year.count, 0))}
+					</span>
+				{/if}
+			</button>
 		{/if}
-	</section>
-{/if}
+		{#if months.length > 0}
+			<div
+				class="grid h-14 grid-cols-12 items-end gap-0.5 border-t pt-2"
+				role="group"
+				aria-label={m.facet_months({ year: String(focus) })}
+			>
+				{#each months as month (month.month)}
+					{@const active = chosen?.kind === 'month' && chosen.month === month.month}
+					<button
+						type="button"
+						aria-pressed={active}
+						aria-label={m.facet_month_count({
+							month: month.name,
+							count: formatNumber(month.count)
+						})}
+						title={m.facet_month_count({ month: month.name, count: formatNumber(month.count) })}
+						disabled={month.count === 0 && !active}
+						class="flex h-full flex-col items-center justify-end gap-0.5 text-[0.625rem] text-muted-foreground disabled:opacity-40"
+						onclick={() => onchange(active ? yearPeriod(focus ?? 0) : monthPeriod(month.month))}
+					>
+						<span
+							aria-hidden="true"
+							class={[
+								'min-h-0.5 w-full max-w-2.5 rounded-sm',
+								active ? 'bg-brand' : month.count > 0 ? 'bg-primary/70' : 'bg-border'
+							]}
+							style:height={`${Math.round((month.count / monthMost) * 32)}px`}
+						></span>
+						<span class={active ? 'font-semibold text-brand' : ''}>{month.letter}</span>
+					</button>
+				{/each}
+			</div>
+		{/if}
+	{/if}
+	{#if showCounts && undated > 0}
+		<p class="text-xs text-muted-foreground">
+			{m.facet_undated({ count: formatNumber(undated) })}
+		</p>
+	{/if}
+</div>

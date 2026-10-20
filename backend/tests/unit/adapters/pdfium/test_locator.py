@@ -101,26 +101,6 @@ async def test_a_page_without_text_has_no_places() -> None:
     assert await PdfiumTextLocator().locate(SAMPLES / "scan.pdf", ["Rechnung"]) == [()]
 
 
-def test_the_words_of_a_line_make_one_box() -> None:
-    from lekto.adapters.outbound.pdfium.locator import _lines
-
-    words = [Box(0.1, 0.5, 0.1, 0.02), Box(0.21, 0.502, 0.05, 0.018), Box(0.27, 0.5, 0.08, 0.02)]
-    below = Box(0.1, 0.55, 0.2, 0.02)
-    far = Box(0.9, 0.5, 0.05, 0.02)  # in another column
-    assert _lines([*reversed(words), below, far]) == (
-        Box(0.1, 0.5, 0.25, 0.02),
-        far,
-        below,
-    )
-    # Tops on either side of a rounding step, lines closer than 1 % of the page: still apart.
-    tight = [
-        Box(0.1, 0.3049, 0.1, 0.008),
-        Box(0.21, 0.3051, 0.1, 0.008),
-        Box(0.1, 0.3135, 0.2, 0.008),
-    ]
-    assert _lines(tight) == (Box(0.1, 0.3049, 0.21, 0.0082), Box(0.1, 0.3135, 0.2, 0.008))
-
-
 async def test_entities_of_an_older_parse_do_not_hide_a_quote(tmp_path: Path) -> None:
     pdf = tmp_path / "entities.pdf"
     pdf.write_bytes(text_pdf(["Mueller & Soehne", "Std.|TAZPL 7,48"]))

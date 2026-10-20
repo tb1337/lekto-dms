@@ -23,18 +23,12 @@ from pathlib import Path
 
 import pypdfium2
 
-from lekto.adapters.outbound.pdfium.chars import (
-    SAME_LINE,
-    Char,
-    Geometry,
-    page_chars,
-    page_fractions,
-)
+from lekto.adapters.outbound.pdfium.chars import Char, Geometry, page_chars, page_fractions
 from lekto.adapters.outbound.pdfium.fixed_pitch import page_lines
 from lekto.adapters.outbound.pdfium.layout import WORD_GAP
 from lekto.adapters.outbound.pdfium.library import LOCK
 from lekto.core.domain.errors import UnprocessableDocumentError
-from lekto.core.domain.locations import Box, Location
+from lekto.core.domain.locations import Box, Location, line_boxes
 
 log = logging.getLogger(__name__)
 
@@ -222,7 +216,7 @@ class _Lined:
             start = spelt.find(needle)
             while start >= 0 and len(places) < limit:
                 matched = origin[start : start + len(needle)]
-                boxes = _lines([box for char in matched if (box := self._box(char))])
+                boxes = line_boxes([box for char in matched if (box := self._box(char))])
                 if boxes:
                     places.append(boxes)
                 start = spelt.find(needle, start + len(needle))
@@ -270,42 +264,4 @@ def _boxes(
         box = geometry.fraction_box(*textpage.get_rect(index))
         if box is not None and box.width > 0 and box.height > 0:
             boxes.append(box)
-    return _lines(boxes)
-
-
-def _lines(boxes: list[Box]) -> tuple[Box, ...]:
-    """One box per line: an OCR text layer places every word on its own, PDFium gives a box
-    per word then. Boxes whose middles lie within half a box height of each other form a line
-    (top to bottom); in a line, boxes that stand close are joined (left to right), a wide gap
-    (another column) keeps them apart."""
-    rows: list[list[Box]] = []
-    for box in sorted(boxes, key=_middle):
-        row = rows[-1] if rows else None
-        if (
-            row is not None
-            and abs(_middle(box) - _middle(row[-1])) <= max(box.height, row[-1].height) * SAME_LINE
-        ):
-            row.append(box)
-        else:
-            rows.append([box])
-    joined: list[Box] = []
-    for row in rows:
-        pieces: list[Box] = []
-        for box in sorted(row, key=lambda box: box.x):
-            last = pieces[-1] if pieces else None
-            gap = box.x - (last.x + last.width) if last is not None else 0.0
-            if last is not None and gap <= 2 * max(last.height, box.height):
-                pieces[-1] = Box.clamped(
-                    last.x,
-                    min(last.y, box.y),
-                    max(last.x + last.width, box.x + box.width),
-                    max(last.y + last.height, box.y + box.height),
-                )
-            else:
-                pieces.append(box)
-        joined.extend(pieces)
-    return tuple(joined)
-
-
-def _middle(box: Box) -> float:
-    return box.y + box.height / 2
+    return line_boxes(boxes)

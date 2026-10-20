@@ -21,14 +21,11 @@ from dataclasses import dataclass
 import pypdfium2
 import pypdfium2.raw as pdfium_c
 
-from lekto.core.domain.locations import Box
+from lekto.core.domain.locations import SAME_LINE, Box
 
 REPLACEMENT = "�"
 UPRIGHT = 10.0  # degrees: a character turned less than this is upright
 SAME = 0.02  # advances within this fraction of each other are the same
-SAME_LINE = 0.5
-"""Characters (or word boxes) whose middles lie within this share of a height of each other
-stand in one line."""
 _FIXED_PITCH_FLAG = 1  # bit of the flags of a font descriptor
 
 type Font = tuple[str, float]  # name and height of its characters' boxes

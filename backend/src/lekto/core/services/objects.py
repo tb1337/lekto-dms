@@ -1,10 +1,18 @@
 """Object keys of originals and derivatives in the object store."""
 
+import asyncio
+import json
+import logging
+from collections.abc import Mapping
+
 from lekto.core.domain.documents import Sha256
 from lekto.core.domain.errors import NotFoundError
 from lekto.core.domain.ids import ContactId, DocumentId
+from lekto.core.domain.labels import LaidWord, layout_words
 from lekto.core.domain.pipeline import Node
 from lekto.core.ports.object_store import ObjectStore
+
+log = logging.getLogger(__name__)
 
 EXCHANGE_NODES = (Node.OCR, Node.SIGNAL_LLM, Node.FIELDS)
 """The nodes that ask a language model and keep what they sent (`exchanges_key`): OCR when the
@@ -67,6 +75,29 @@ async def load_text(store: ObjectStore, document: DocumentId) -> bytes:
         return await store.get(text_key(document))
     except NotFoundError:
         return await store.get(legacy_text_key(document))
+
+
+async def load_layout(
+    store: ObjectStore, document: DocumentId
+) -> Mapping[int, tuple[LaidWord, ...]]:
+    """The words of the document's parsed text by page; none without it, for one of another
+    kind (`layout_words`), or where it cannot be read (the words only add to what is shown or
+    recorded, so a store that fails leaves them out instead of failing the caller)."""
+    key = structure_key(document)
+    try:
+        data = await store.get(key)
+        pages = await asyncio.to_thread(lambda: layout_words(json.loads(data)))
+    except NotFoundError:
+        return {}
+    except Exception as error:
+        log.warning(
+            "the structure of the text cannot be read: %s",
+            error,
+            exc_info=not isinstance(error, ValueError),
+            extra={"key": key},
+        )
+        return {}
+    return pages or {}
 
 
 def exchanges_key(document: DocumentId, node: Node) -> str:

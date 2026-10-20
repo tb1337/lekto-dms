@@ -19,10 +19,8 @@
 	import { BASE } from '#lib/base.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import LaneBadge from '#lib/components/LaneBadge.svelte';
-	import NamesLine from '#lib/components/NamesLine.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import ProcessingProgress from '#lib/components/ProcessingProgress.svelte';
-	import TagChips from '#lib/components/TagChips.svelte';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
@@ -45,8 +43,9 @@
 	type ReprocessNode = components['schemas']['ReprocessNode'];
 
 	// The head of the document view: the way back (to the inbox, with the place among the
-	// documents there, or to the documents), title, lane and file, contact (logo or initials)
-	// and type (icon), tags, and what one can do with it.
+	// documents there, or to the documents), title, lane and file, and what one can do with it.
+	// Contact, type, topic and tags are in the form beside the pages, not here (Tobi,
+	// 20.10.2026).
 	let {
 		document,
 		lookup,
@@ -87,10 +86,6 @@
 	const manageable = $derived(canManage(document, user));
 	const movable = $derived(canMove(document, user));
 	const status = $derived(document.processing.status);
-	const contact = $derived(lookup?.contacts.find((entry) => entry.id === document.contact_id));
-	const kind = $derived(
-		lookup?.documentTypes.find((entry) => entry.id === document.document_type_id)
-	);
 	const spaces = $derived(
 		writableSpaces(lookup?.spaces ?? [], user).filter((space) => space.id !== document.space_id)
 	);
@@ -253,15 +248,6 @@
 				{#if spaceName}· {spaceName}{/if}
 				{#if document.page_count}· {m.doc_pages({ count: document.page_count })}{/if}
 			</p>
-			<NamesLine
-				parts={[
-					{ name: contact?.name, avatar: contact },
-					{ name: kind?.name, icon: kind?.icon }
-				]}
-				tags={lookup?.tags ?? []}
-				class="text-sm"
-			/>
-			<TagChips {document} {lookup} interactive size="md" />
 			{#if status === 'processing'}
 				{#if visionRunning}
 					<p class="text-sm text-muted-foreground" role="status">

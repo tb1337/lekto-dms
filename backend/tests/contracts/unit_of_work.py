@@ -1347,7 +1347,7 @@ class UnitOfWorkContract:
             "e",
         ]
         # Periods by their first day: January 2025 and the year 2025 tie.
-        assert await paged(span, ascending=True) == ["c", *by_id("a", "d"), "b", "e"]
+        assert await paged(span, ascending=True) == ["c", *by_id("a", "d"), *by_id("b", "e")]
 
     async def test_documents_are_counted_by_master_data(
         self, uow_factory: UnitOfWorkFactory

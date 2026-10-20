@@ -46,17 +46,19 @@ const LISTS = {
 	spaces: 'space'
 } as const;
 
-/** The filters in `params`. Whom the list covers is no filter but a setting (`scope`). */
+/** The filters in `params`; empty values (`?contact=`) count as none. Whom the list covers is no
+ * filter but a setting (`scope`). */
 export function parseFilters(params: URLSearchParams): Filters {
+	const all = (key: string) => params.getAll(key).filter((value) => value !== '');
 	return {
-		contacts: params.getAll(LISTS.contacts),
-		types: params.getAll(LISTS.types),
-		tags: params.getAll(LISTS.tags),
-		contactGroups: params.getAll(LISTS.contactGroups),
-		typeGroups: params.getAll(LISTS.typeGroups),
-		topics: params.getAll(LISTS.topics),
-		spaces: params.getAll(LISTS.spaces),
-		field: params.get('field'),
+		contacts: all(LISTS.contacts),
+		types: all(LISTS.types),
+		tags: all(LISTS.tags),
+		contactGroups: all(LISTS.contactGroups),
+		typeGroups: all(LISTS.typeGroups),
+		topics: all(LISTS.topics),
+		spaces: all(LISTS.spaces),
+		field: params.get('field') || null,
 		dateFrom: day(params.get('date_from')),
 		dateTo: day(params.get('date_to'))
 	};

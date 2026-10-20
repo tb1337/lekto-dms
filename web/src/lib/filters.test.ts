@@ -71,6 +71,10 @@ describe('filters in the URL', () => {
 			all_users: undefined
 		});
 		expect(parseFilters(new URLSearchParams('date_from=gestern')).dateFrom).toBeNull();
+		expect(parseFilters(new URLSearchParams('contact_group=&contact=c1&field='))).toEqual({
+			...NO_FILTERS,
+			contacts: ['c1']
+		});
 		expect(isFiltered(NO_FILTERS)).toBe(false);
 		expect(isFiltered({ ...NO_FILTERS, tags: ['a'] })).toBe(true);
 		expect(isFiltered({ ...NO_FILTERS, contacts: ['c1'] })).toBe(true);

@@ -6,6 +6,8 @@
 	import ContactLogoEditor from '#lib/components/ContactLogoEditor.svelte';
 	import IconPicker from '#lib/components/IconPicker.svelte';
 	import EditorShell from '#lib/components/EditorShell.svelte';
+	import HintLabel from '#lib/components/HintLabel.svelte';
+	import InfoHint from '#lib/components/InfoHint.svelte';
 	import TagChip from '#lib/components/TagChip.svelte';
 	import TagPicker from '#lib/components/TagPicker.svelte';
 	import Select from '#lib/components/Select.svelte';
@@ -218,8 +220,11 @@
 	{deleteDescription}
 >
 	{#if extra === 'tag' && chooseScope}
-		<fieldset class="flex flex-col gap-2">
-			<legend class="mb-2 text-sm font-medium">{m.tag_kind()}</legend>
+		<fieldset class="flex flex-col gap-2" aria-labelledby="{uid}-kind-label">
+			<div class="mb-2 flex items-center gap-1">
+				<span id="{uid}-kind-label" class="text-sm font-medium">{m.tag_kind()}</span>
+				<InfoHint text={m.tag_kind_hint()} about={m.tag_kind()} />
+			</div>
 			<div class="grid gap-2 sm:grid-cols-2">
 				{#each KIND_CARDS as card (card.scope)}
 					<label
@@ -243,7 +248,6 @@
 					</label>
 				{/each}
 			</div>
-			<p class="text-sm text-muted-foreground">{m.tag_kind_hint()}</p>
 		</fieldset>
 	{/if}
 	{#if extra !== 'tag' || kind !== null}
@@ -305,8 +309,16 @@
 			<ColorPicker id="{uid}-color" bind:value={color} />
 		</Field.Field>
 		{#if !isGroup}
-			<fieldset class="flex flex-col gap-2">
-				<legend class="mb-2 text-sm font-medium">{m.tag_assignment()}</legend>
+			<fieldset class="flex flex-col gap-2" aria-labelledby="{uid}-assignment-label">
+				<div class="mb-2 flex items-center gap-1">
+					<span id="{uid}-assignment-label" class="text-sm font-medium">
+						{m.tag_assignment()}
+					</span>
+					<InfoHint
+						text={isTopic ? m.topic_assignment_hint() : m.tag_assignment_hint()}
+						about={m.tag_assignment()}
+					/>
+				</div>
 				<div class="flex flex-wrap gap-x-6 gap-y-2">
 					<label class="flex items-center gap-2 text-sm">
 						<input
@@ -329,12 +341,9 @@
 						{m.tag_assignment_manual()}
 					</label>
 				</div>
-				<Field.Description>
-					{isTopic ? m.topic_assignment_hint() : m.tag_assignment_hint()}
-				</Field.Description>
 			</fieldset>
 		{/if}
-		<Field.Field>
+		<div class="flex items-center gap-1">
 			<label class="flex items-center gap-2 text-sm font-medium">
 				<input
 					type="checkbox"
@@ -344,10 +353,16 @@
 				/>
 				{m.tag_shown()}
 			</label>
-			<Field.Description id="{uid}-shown-hint">
-				{isGroup ? m.tag_group_shown_hint() : isTopic ? m.topic_shown_hint() : m.tag_shown_hint()}
-			</Field.Description>
-		</Field.Field>
+			<InfoHint
+				text={isGroup
+					? m.tag_group_shown_hint()
+					: isTopic
+						? m.topic_shown_hint()
+						: m.tag_shown_hint()}
+				about={m.tag_shown()}
+				id="{uid}-shown-hint"
+			/>
+		</div>
 		<div
 			class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-muted/60 px-3 py-2.5 text-sm text-muted-foreground"
 		>
@@ -375,7 +390,13 @@
 	{/if}
 	{#if groupScope !== null}
 		<Field.Field>
-			<Field.Label id="{uid}-groups-label">{m.master_groups()}</Field.Label>
+			<HintLabel
+				id="{uid}-groups-label"
+				label={m.master_groups()}
+				hint={groupScope === 'contact'
+					? m.master_contact_groups_hint()
+					: m.master_type_groups_hint()}
+			/>
 			<TagPicker
 				id="{uid}-groups"
 				label={m.master_groups()}
@@ -387,14 +408,15 @@
 				onchange={(next) => (groupIds = next)}
 				oncreated={ontagcreated}
 			/>
-			<Field.Description>
-				{groupScope === 'contact' ? m.master_contact_groups_hint() : m.master_type_groups_hint()}
-			</Field.Description>
 		</Field.Field>
 	{/if}
 	{#if extra === 'aliases'}
 		<Field.Field>
-			<Field.Label id="{uid}-topics-label">{m.master_topics()}</Field.Label>
+			<HintLabel
+				id="{uid}-topics-label"
+				label={m.master_topics()}
+				hint={m.master_contact_topics_hint()}
+			/>
 			<TagPicker
 				id="{uid}-topics"
 				label={m.master_topics()}
@@ -406,38 +428,54 @@
 				onchange={(next) => (topicIds = next)}
 				oncreated={ontagcreated}
 			/>
-			<Field.Description>{m.master_contact_topics_hint()}</Field.Description>
 		</Field.Field>
 		<Field.Field>
-			<Field.Label>{m.master_identifiers()}</Field.Label>
+			<HintLabel label={m.master_identifiers()} hint={m.master_identifiers_hint()} />
 			<IdentifiersEditor bind:rows={identifiers} topics={enabledTopics} />
-			<Field.Description>{m.master_identifiers_hint()}</Field.Description>
 		</Field.Field>
 		<Field.Field>
-			<Field.Label for="{uid}-aliases">{m.master_aliases()}</Field.Label>
+			<HintLabel
+				for="{uid}-aliases"
+				label={m.master_aliases()}
+				hint={m.master_aliases_hint()}
+				hintId="{uid}-aliases-hint"
+			/>
 			<!-- Compact on a phone: as many lines as there are aliases, and one more. -->
 			<Textarea
 				id="{uid}-aliases"
 				bind:value={aliases}
 				rows={phone.current ? Math.min(Math.max(aliases.split('\n').length + 1, 2), 6) : 4}
+				aria-describedby="{uid}-aliases-hint"
 			/>
-			<Field.Description>{m.master_aliases_hint()}</Field.Description>
 		</Field.Field>
 	{:else if extra === 'description'}
 		<Field.Field>
-			<Field.Label for="{uid}-description">{m.master_description()}</Field.Label>
-			<Textarea id="{uid}-description" bind:value={description} rows={3} maxlength={300} />
-			<Field.Description>{m.master_description_hint()}</Field.Description>
+			<HintLabel
+				for="{uid}-description"
+				label={m.master_description()}
+				hint={m.master_description_hint()}
+				hintId="{uid}-description-hint"
+			/>
+			<Textarea
+				id="{uid}-description"
+				bind:value={description}
+				rows={3}
+				maxlength={300}
+				aria-describedby="{uid}-description-hint"
+			/>
 		</Field.Field>
 		<Field.Field>
-			<Field.Label for="{uid}-title-pattern">{m.master_title_pattern()}</Field.Label>
+			<HintLabel
+				for="{uid}-title-pattern"
+				label={m.master_title_pattern()}
+				hint={m.master_title_pattern_hint()}
+			/>
 			<TemplateInput
 				id="{uid}-title-pattern"
 				bind:value={titlePattern}
 				label={m.master_title_pattern()}
 				documentType={initial?.id ?? null}
 			/>
-			<Field.Description>{m.master_title_pattern_hint()}</Field.Description>
 			{#if ruleHref}
 				<a
 					href={ruleHref}
@@ -478,8 +516,7 @@
 
 {#snippet iconField()}
 	<Field.Field>
-		<Field.Label id="{uid}-icon-label">{m.master_icon()}</Field.Label>
+		<HintLabel id="{uid}-icon-label" label={m.master_icon()} hint={m.master_icon_hint()} />
 		<IconPicker id="{uid}-icon" bind:value={icon} />
-		<Field.Description>{m.master_icon_hint()}</Field.Description>
 	</Field.Field>
 {/snippet}

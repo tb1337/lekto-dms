@@ -5,6 +5,8 @@
 	import type { components } from '#lib/api/schema.ts';
 	import AssignmentList from '#lib/components/AssignmentList.svelte';
 	import EditorShell from '#lib/components/EditorShell.svelte';
+	import HintLabel from '#lib/components/HintLabel.svelte';
+	import InfoHint from '#lib/components/InfoHint.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
@@ -130,7 +132,6 @@
 	bind:open
 	title={initial === null ? m.master_add_field() : m.field_def_edit()}
 	shortTitle={initial === null ? m.master_add_field() : m.master_field()}
-	description={m.field_def_hint()}
 	submitLabel={m.save()}
 	{busy}
 	disabled={name.trim() === ''}
@@ -144,20 +145,20 @@
 	<Field.Field>
 		<Field.Label for="field-def-name">{m.field_name()}</Field.Label>
 		<Input id="field-def-name" bind:value={name} maxlength={200} required />
+		{#if initial}
+			<!-- The key templates use, from the saved name (a new name renames it in templates). -->
+			<div class="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+				<span id="field-def-key-label">{m.field_def_key()}:</span>
+				<code
+					class="rounded-md bg-secondary px-1.5 py-0.5 font-mono text-[0.8125rem] break-all text-foreground"
+					aria-labelledby="field-def-key-label">{`field.${initial.key}`}</code
+				>
+				<InfoHint text={m.field_def_key_hint()} about={m.field_def_key()} />
+			</div>
+		{/if}
 	</Field.Field>
-	{#if initial}
-		<!-- The key templates use, from the saved name (a new name renames it in templates). -->
-		<Field.Field>
-			<span id="field-def-key-label" class="text-sm font-medium">{m.field_def_key()}</span>
-			<code
-				class="w-fit rounded-md bg-secondary px-2 py-1 font-mono text-sm break-all"
-				aria-labelledby="field-def-key-label">{`field.${initial.key}`}</code
-			>
-			<Field.Description>{m.field_def_key_hint()}</Field.Description>
-		</Field.Field>
-	{/if}
 	<Field.Field>
-		<Field.Label for="field-def-type">{m.field_def_type()}</Field.Label>
+		<HintLabel for="field-def-type" label={m.field_def_type()} hint={m.field_def_hint()} />
 		<Select
 			id="field-def-type"
 			bind:value={dataType as string}
@@ -166,31 +167,54 @@
 		/>
 	</Field.Field>
 	<Field.Field>
-		<Field.Label for="field-def-description">{m.field_def_description()}</Field.Label>
-		<Textarea id="field-def-description" bind:value={description} rows={3} maxlength={300} />
-		<Field.Description>{m.field_def_description_hint()}</Field.Description>
+		<HintLabel
+			for="field-def-description"
+			label={m.field_def_description()}
+			hint={m.field_def_description_hint()}
+			hintId="field-def-description-hint"
+		/>
+		<Textarea
+			id="field-def-description"
+			bind:value={description}
+			rows={3}
+			maxlength={300}
+			aria-describedby="field-def-description-hint"
+		/>
 	</Field.Field>
 	<Field.Field>
-		<label class="flex items-center gap-2 text-sm font-medium">
-			<input
-				type="checkbox"
-				bind:checked={manual}
-				class="size-4 accent-primary"
-				aria-describedby="field-def-manual-hint"
+		<div class="flex items-center gap-1">
+			<label class="flex items-center gap-2 text-sm font-medium">
+				<input
+					type="checkbox"
+					bind:checked={manual}
+					class="size-4 accent-primary"
+					aria-describedby="field-def-manual-hint"
+				/>
+				{m.field_def_manual()}
+			</label>
+			<InfoHint
+				text={m.field_def_manual_hint()}
+				about={m.field_def_manual()}
+				id="field-def-manual-hint"
 			/>
-			{m.field_def_manual()}
-		</label>
-		<Field.Description id="field-def-manual-hint">{m.field_def_manual_hint()}</Field.Description>
+		</div>
+		<Field.Description>{m.field_def_manual_line()}</Field.Description>
 	</Field.Field>
 	{#if isChoice}
 		<Field.Field>
-			<Field.Label for="field-def-choices">{m.field_def_choices()}</Field.Label>
+			<HintLabel
+				for="field-def-choices"
+				label={m.field_def_choices()}
+				hint={m.field_def_choices_hint()}
+			/>
 			<Textarea id="field-def-choices" bind:value={choices} rows={4} />
-			<Field.Description>{m.field_def_choices_hint()}</Field.Description>
 		</Field.Field>
 	{/if}
-	<fieldset class="flex flex-col gap-2">
-		<legend class="mb-1 text-sm font-medium">{m.field_def_scope()}</legend>
+	<fieldset class="flex flex-col gap-2" aria-labelledby="field-def-scope-label">
+		<div class="mb-1 flex items-center gap-1">
+			<span id="field-def-scope-label" class="text-sm font-medium">{m.field_def_scope()}</span>
+			<InfoHint text={m.field_def_required_hint()} about={m.field_def_scope()} />
+		</div>
 		<label class="flex items-center gap-2 text-sm">
 			<input type="checkbox" bind:checked={global} class="size-4 accent-primary" />
 			{m.field_def_scope_global()}
@@ -213,6 +237,5 @@
 				}}
 			/>
 		{/if}
-		<p class="text-sm text-muted-foreground">{m.field_def_required_hint()}</p>
 	</fieldset>
 </EditorShell>

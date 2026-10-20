@@ -1172,5 +1172,7 @@
 	"code_giro_bic": "BIC",
 	"code_giro_amount": "Amount",
 	"code_giro_purpose": "Purpose",
-	"code_same_as": "as {field}"
+	"code_same_as": "as {field}",
+	"hint_about": "About {name}",
+	"field_def_manual_line": "Lekto never asks the model for this field."
 }

@@ -5,6 +5,7 @@
 	import Upload from '@lucide/svelte/icons/upload';
 	import { toast } from 'svelte-sonner';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
+	import InfoHint from '#lib/components/InfoHint.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
@@ -98,7 +99,7 @@
 	{@const pill = beside
 		? 'relative h-8 rounded-full px-3 text-[0.8125rem] after:absolute after:inset-x-0 after:-inset-y-1.5'
 		: ''}
-	<div class="flex flex-wrap gap-2">
+	<div class="flex flex-wrap items-center gap-2">
 		<input
 			bind:this={input}
 			type="file"
@@ -149,14 +150,11 @@
 				{m.logo_remove()}
 			</Button>
 		{/if}
+		<InfoHint
+			text={canFetch ? `${m.logo_upload_hint()} ${m.logo_fetch_hint()}` : m.logo_upload_hint()}
+			about={m.logo_title()}
+		/>
 	</div>
-{/snippet}
-
-{#snippet hint()}
-	<p class="text-xs text-muted-foreground">
-		{m.logo_upload_hint()}
-		{#if canFetch}{m.logo_fetch_hint()}{/if}
-	</p>
 {/snippet}
 
 {#if beside}
@@ -178,6 +176,5 @@
 			<div class="flex min-w-0 flex-col text-sm">{@render origin()}</div>
 		</div>
 		{@render actions()}
-		{@render hint()}
 	</div>
 {/if}

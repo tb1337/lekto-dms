@@ -1,10 +1,12 @@
 /**
  * The dialogs that add and change master data, opened from anywhere: one host in the app's
  * layout shows them (`MasterDataDialogHost`). Lists watch `changed` and load again. A picker
- * makes a tag with its details in a second dialog over the one it is in (`createTag`).
+ * makes a contact, type or tag in a dialog over the page or the dialog it is in (`create`),
+ * the name it searched for filled in, and gets back what was made; these dialogs stack (a
+ * contact made from a document may make a group of its own).
  */
 import type { FieldDefinition, Tag, TagScope } from '#lib/masterdata.svelte.ts';
-import type { Item, SimpleKind } from '#lib/masterdata-api.ts';
+import { kindOfScope, type Item, type SimpleKind } from '#lib/masterdata-api.ts';
 
 /** `any-tag`: a new tag whose kind is chosen in the dialog first. */
 export type MasterDataKind = SimpleKind | 'fields' | 'any-tag';
@@ -17,17 +19,18 @@ export interface MasterDataRequest {
 	fromRule: string | null;
 }
 
-/** A tag to make with its details over the dialog a picker is in: of `scope`, named `name`
- * for a start; `resolve` gets the tag made, or null. */
-export interface TagRequest {
-	scope: TagScope;
+/** Something to make with its details over the page or dialog a picker is in: of `kind`,
+ * named `name` for a start; `resolve` gets what was made, or null. */
+export interface CreateRequest {
+	kind: SimpleKind;
 	name: string;
-	resolve: (tag: Tag | null) => void;
+	resolve: (item: Item | null) => void;
 }
 
 class MasterDataDialogs {
 	request = $state<MasterDataRequest | null>(null);
-	nested = $state.raw<TagRequest | null>(null);
+	/** The dialogs that make something for a picker, the last on top. */
+	nested = $state.raw<CreateRequest[]>([]);
 	/** Counts saves; a list that shows master data loads again when it changes. */
 	changed = $state(0);
 
@@ -47,20 +50,29 @@ class MasterDataDialogs {
 		this.changed += 1;
 	}
 
-	/** The tag dialog over the current one, the kind set, the name filled in: the tag made, or
-	 * null once it closes without. */
-	createTag(scope: TagScope, name: string): Promise<Tag | null> {
-		this.nested?.resolve(null);
+	/** A dialog of `kind` over the current one, the name filled in: what it made, or null
+	 * once it closes without. */
+	create(kind: SimpleKind, name: string): Promise<Item | null> {
 		return new Promise((resolve) => {
-			this.nested = { scope, name, resolve };
+			this.nested = [...this.nested, { kind, name: name.trim(), resolve }];
 		});
 	}
 
-	/** The tag dialog closed: with the tag it made, or without (null). */
-	finishTag(tag: Tag | null) {
-		const nested = this.nested;
-		this.nested = null;
-		nested?.resolve(tag);
+	/** The tag dialog of `scope` over the current one (`create`). */
+	createTag(scope: TagScope, name: string): Promise<Tag | null> {
+		return this.create(kindOfScope(scope), name) as Promise<Tag | null>;
+	}
+
+	/** The dialog of `request` (the one on top) closed: with what it made, or without (null). */
+	finish(item: Item | null, request: CreateRequest | undefined = this.nested.at(-1)) {
+		if (!request || !this.nested.includes(request)) return;
+		this.nested = this.nested.filter((entry) => entry !== request);
+		request.resolve(item);
+	}
+
+	/** Every dialog that makes something closed, without (tests start afresh). */
+	finishAll() {
+		while (this.nested.length > 0) this.finish(null);
 	}
 }
 

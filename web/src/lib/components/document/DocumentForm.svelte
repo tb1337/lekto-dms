@@ -37,7 +37,7 @@
 		type Place,
 		type Review
 	} from '#lib/document-view.ts';
-	import { describeError, fieldErrors as fieldMessages, reportError } from '#lib/errors.ts';
+	import { describeError, fieldErrors as fieldMessages } from '#lib/errors.ts';
 	import { sameValue, toApi, toInput, type ApiValue, type InputValue } from '#lib/fields.ts';
 	import {
 		spaceLabel,
@@ -265,21 +265,14 @@
 	const typeName = $derived(
 		lookup.documentTypes.find((entry) => entry.id === documentType)?.name ?? null
 	);
-	/** A contact or type named `name`, made at once by an admin from the search (the lists
-	 * load again); null, the problem shown, when the API refuses. */
+	/** A contact or type an admin makes from the search, in its dialog with `name` filled in
+	 * (the lists load again); null when the dialog closed without. */
 	async function createMasterData(
-		path: '/api/v1/contacts' | '/api/v1/document-types',
+		kind: 'contacts' | 'document-types',
 		name: string
 	): Promise<SearchOption | null> {
-		try {
-			const made = await unwrap(api.POST(path, { body: { name } }));
-			toast.success(m.tag_created({ name: made.name }));
-			masterDataDialogs.saved();
-			return { value: made.id, label: made.name };
-		} catch (error) {
-			reportError(error);
-			return null;
-		}
+		const made = await masterDataDialogs.create(kind, name);
+		return made ? { value: made.id, label: made.name } : null;
 	}
 
 	/** What differs from the stored document, in the form of the API (null removes a value). */
@@ -640,9 +633,7 @@
 						noneLabel={m.value_unset()}
 						searchLabel={session.isAdmin ? m.picker_search_create() : m.assignment_search()}
 						onchange={chooseContact}
-						create={session.isAdmin
-							? (name) => createMasterData('/api/v1/contacts', name)
-							: undefined}
+						create={session.isAdmin ? (name) => createMasterData('contacts', name) : undefined}
 					/>
 				</div>
 				<GroupChips
@@ -717,7 +708,7 @@
 						noneLabel={m.value_unset()}
 						searchLabel={session.isAdmin ? m.picker_search_create() : m.assignment_search()}
 						create={session.isAdmin
-							? (name) => createMasterData('/api/v1/document-types', name)
+							? (name) => createMasterData('document-types', name)
 							: undefined}
 					/>
 				</div>

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
-	import CreateOffers from '#lib/components/CreateOffers.svelte';
+	import CreateOffer from '#lib/components/CreateOffer.svelte';
 	import TagChip from '#lib/components/TagChip.svelte';
 	import TagPickerDialog from '#lib/components/TagPickerDialog.svelte';
 	import TagPickerList from '#lib/components/TagPickerList.svelte';
@@ -10,7 +10,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
-	import { creatable, createQuickly, createWithDetails } from '#lib/tag-create.ts';
+	import { creatable, createWithDetails } from '#lib/tag-create.ts';
 	import { pathLabel } from '#lib/tags.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -19,7 +19,8 @@
 	// wider than a phone in a popover at the button, on a phone a sheet from the bottom
 	// (`TagPickerDialog`; Tobi, 20.10.2026). A chosen tag missing from `tags` (deleted meanwhile)
 	// stays as a chip until removed. An admin's search that finds no tag named so offers to
-	// create one (`tag-create.ts`), chosen at once; `oncreated` tells the editor. `offered`
+	// create one in the tag dialog (`tag-create.ts`), chosen when made; `oncreated` tells the
+	// editor. `offered`
 	// narrows what may be chosen (a document: no tag above one set).
 	let {
 		id,
@@ -53,7 +54,6 @@
 
 	let open = $state(false);
 	let query = $state('');
-	let busy = $state(false);
 	let search = $state<HTMLInputElement | null>(null);
 	// Tags made here, until `tags` holds them too.
 	let made = $state<Tag[]>([]);
@@ -78,33 +78,22 @@
 	);
 	const searchLabel = $derived(session.isAdmin ? m.picker_search_create() : m.assignment_search());
 
-	function chosen(tag: Tag) {
-		made = [...made, tag];
-		oncreated(tag);
-		onchange([...selected, tag.id]);
-	}
-
-	async function quick() {
-		busy = true;
-		const tag = await createQuickly(scope, query);
-		busy = false;
-		if (!tag) return;
-		chosen(tag);
-		query = '';
-	}
-
-	async function details() {
+	// The choice gives way to the tag dialog; the tag it makes is chosen.
+	async function create() {
 		const name = query;
 		query = '';
 		open = false;
 		const tag = await createWithDetails(scope, name);
-		if (tag) chosen(tag);
+		if (!tag) return;
+		made = [...made, tag];
+		oncreated(tag);
+		onchange([...selected, tag.id]);
 	}
 </script>
 
 {#snippet offers()}
 	{#if canCreate}
-		<CreateOffers name={query.trim()} {busy} onquick={quick} ondetails={details} />
+		<CreateOffer name={query.trim()} onclick={create} />
 	{/if}
 {/snippet}
 

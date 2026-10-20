@@ -103,7 +103,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	masterDataDialogs.finishTag(null);
+	masterDataDialogs.finishAll();
 	masterDataDialogs.close();
 	phone.override(null);
 	session.clear();
@@ -393,7 +393,7 @@ describe('creating from a picker', () => {
 		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
 		const picker = await pickerNamed(m.master_contact_groups());
 		await user.type(within(picker).getByRole('searchbox', { hidden: true }), 'Makler');
-		await user.click(within(picker).getByText(m.tag_create_details()));
+		await user.click(within(picker).getByText(m.create_named({ name: 'Makler' })));
 		// The tag dialog over the contact's: its kind set, the name filled in.
 		const nested = await screen.findByRole('dialog', { name: m.master_add_contact_group() });
 		expect((within(nested).getByLabelText(m.field_name()) as HTMLInputElement).value).toBe(
@@ -414,6 +414,45 @@ describe('creating from a picker', () => {
 	});
 });
 
+describe('creating from a search', () => {
+	it('makes a contact in its dialog over the page, the name filled in, and hands it back', async () => {
+		const user = userEvent.setup();
+		const BAKERY = { ...CONTACT, id: 'c9', name: 'Bäckerei Korn' };
+		const before = fetchMock.getMockImplementation()!;
+		fetchMock.mockImplementation(async (request) => {
+			const path = new URL(request.url).pathname;
+			if (path === '/api/v1/contacts' && request.method === 'POST') return json(BAKERY, 201);
+			return before(request);
+		});
+		const changed = masterDataDialogs.changed;
+		render(WithDialogs);
+		const made = masterDataDialogs.create('contacts', 'Bäckerei Korn');
+		const dialog = await screen.findByRole('dialog', { name: m.master_add_contact() });
+		expect((within(dialog).getByLabelText(m.field_name()) as HTMLInputElement).value).toBe(
+			'Bäckerei Korn'
+		);
+		await user.click(within(dialog).getByRole('button', { name: m.create() }));
+		expect(await made).toMatchObject({ id: 'c9', name: 'Bäckerei Korn' });
+		const post = fetchMock.mock.calls.map((call) => call[0]).find((r) => r.method === 'POST');
+		expect(await post!.json()).toMatchObject({ name: 'Bäckerei Korn' });
+		expect(masterDataDialogs.changed).toBe(changed + 1);
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(masterDataDialogs.nested).toEqual([]);
+	});
+
+	it('hands back nothing when the dialog closes without', async () => {
+		const user = userEvent.setup();
+		render(WithDialogs);
+		const made = masterDataDialogs.create('document-types', 'Mahnung');
+		const dialog = await screen.findByRole('dialog', { name: m.master_add_type() });
+		expect(within(dialog).getByDisplayValue('Mahnung')).toBeTruthy();
+		await user.keyboard('{Escape}');
+		expect(await made).toBeNull();
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(fetchMock.mock.calls.some((call) => call[0].method === 'POST')).toBe(false);
+	});
+});
+
 describe('stacked dialogs', () => {
 	it('closes only the tag dialog on top with Escape', async () => {
 		const user = userEvent.setup();
@@ -423,14 +462,14 @@ describe('stacked dialogs', () => {
 		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
 		const picker = await pickerNamed(m.master_contact_groups());
 		await user.type(within(picker).getByRole('searchbox', { hidden: true }), 'Makler');
-		await user.click(within(picker).getByText(m.tag_create_details()));
+		await user.click(within(picker).getByText(m.create_named({ name: 'Makler' })));
 		const nested = await screen.findByRole('dialog', { name: m.master_add_contact_group() });
 		expect(within(nested).getByDisplayValue('Makler')).toBeTruthy();
 		await user.keyboard('{Escape}');
 		await waitFor(() =>
 			expect(screen.queryByRole('dialog', { name: m.master_add_contact_group() })).toBeNull()
 		);
-		expect(masterDataDialogs.nested).toBeNull();
+		expect(masterDataDialogs.nested).toEqual([]);
 		expect(masterDataDialogs.request).not.toBeNull();
 		expect(screen.getByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
 		const posted = fetchMock.mock.calls.some((call) => call[0].method === 'POST');

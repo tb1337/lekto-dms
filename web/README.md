@@ -128,10 +128,11 @@ On a phone (below `sm`, `lib/phone.svelte.ts`) a whole row opens the editor (`Ma
 the editors fill the screen with a bar on top (`EditorShell`); wider, the editors are dialogs
 whose footer stays while the body scrolls. The contact editor puts the logo beside the name on a
 phone, uploading and fetching below them (`ContactLogoEditor` with `beside`). Deleting is in the editors. Groups and topics are
-picked in a sheet or dialog over the editor (`TagPicker`); there, in the document's tag input
-and in its topic field, an admin's search that finds no tag of the kind named so offers to
-create one at once or with details in a second dialog (`lib/tag-create.ts`,
-`masterDataDialogs.createTag`).
+picked in a sheet or dialog over the editor (`TagPicker`). There, in the document's tag input
+and in its contact, type and topic fields, an admin's search that finds nothing of the kind
+named so offers to create it: the kind's full dialog over the page or the current one, the
+name filled in (`masterDataDialogs.create`, `MasterDataCreate`); what it makes is chosen,
+closing it chooses nothing. Nothing is made from the name alone.
 
 Icons come from Lucide in the own build, each its own file loaded when it is shown. Chips and
 type icons draw the 170 offered first from a small map (`lib/icons/curated-modules.ts`, which a

@@ -22,8 +22,8 @@
 	// A choice from a long list, by searching: contact, document type, topic. Closed it looks like
 	// a `Select` (the chosen one as `chosen` draws it, else its label, else `placeholder`); open,
 	// a search over label and hint, "none" first while nothing is typed. With `create` (admins)
-	// a search that names nothing offers to make it at once, with `details` in a dialog too; the
-	// one made is chosen.
+	// a search that names nothing offers "„…“ anlegen …": the choice gives way to `create`'s
+	// dialog, and the one it makes is chosen.
 	let {
 		value = $bindable(''),
 		options,
@@ -34,7 +34,6 @@
 		searchLabel = m.assignment_search(),
 		onchange,
 		create,
-		details,
 		chosen
 	}: {
 		value?: string;
@@ -48,10 +47,8 @@
 		searchLabel?: string;
 		/** Called with the new value when the user picks one. */
 		onchange?: (value: string) => void;
-		/** Make an entry named so at once; null when that failed. */
+		/** Make an entry named so to begin with (a dialog); null when it closed without. */
 		create?: (name: string) => Promise<SearchOption | null>;
-		/** Make it with its details (a dialog); null when it closed without. */
-		details?: (name: string) => Promise<SearchOption | null>;
 		chosen?: Snippet<[SearchOption]>;
 	} = $props();
 
@@ -60,8 +57,6 @@
 	let query = $state('');
 	// Entries made here, until `options` hold them too.
 	let made = $state<SearchOption[]>([]);
-	// Something is being made: a second Enter or click must not send it again.
-	let busy = $state(false);
 	const all = $derived([
 		...options,
 		...made.filter((entry) => !options.some((option) => option.value === entry.value))
@@ -88,17 +83,12 @@
 		onchange?.(next);
 	}
 
-	/** Make what the search names; `away`: close first (a dialog comes over the page). */
-	async function make(how: (name: string) => Promise<SearchOption | null>, away = false) {
-		if (busy) return;
+	/** Make what the search names: the choice closes, a dialog comes over the page. */
+	async function make(how: (name: string) => Promise<SearchOption | null>) {
 		const name = query.trim();
-		if (away) {
-			open = false;
-			query = '';
-		}
-		busy = true;
+		open = false;
+		query = '';
 		const entry = await how(name);
-		busy = false;
 		if (!entry) return;
 		made = [...made, entry];
 		pick(entry.value);
@@ -153,24 +143,10 @@
 				{/each}
 				{#if offered && create}
 					<Command.Group class={cn(found.length > 0 && 'border-t')}>
-						<Command.Item
-							value="create:quick"
-							onSelect={() => make(create)}
-							disabled={busy}
-							class="text-brand"
-						>
+						<Command.Item value="create:" onSelect={() => make(create)} class="text-brand">
 							<Plus aria-hidden="true" class="text-brand" />
-							{m.tag_create_quick({ name: query.trim() })}
+							{m.create_named({ name: query.trim() })}
 						</Command.Item>
-						{#if details}
-							<Command.Item
-								value="create:details"
-								onSelect={() => make(details, true)}
-								class="pl-8 text-brand"
-							>
-								{m.tag_create_details()}
-							</Command.Item>
-						{/if}
 					</Command.Group>
 				{/if}
 			</Command.List>

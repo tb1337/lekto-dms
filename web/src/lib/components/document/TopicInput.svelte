@@ -3,14 +3,14 @@
 	import TagChip from '#lib/components/TagChip.svelte';
 	import type { Tag } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { createQuickly, createWithDetails } from '#lib/tag-create.ts';
+	import { createWithDetails } from '#lib/tag-create.ts';
 	import { pathLabel } from '#lib/tags.ts';
 
 	// The topic of a document, or none (`SearchSelect`): the chosen one as its chip, a search
 	// over `topics` (the ones that may be chosen; the search finds a topic by the name of one
 	// above it too). Where `creating` (an admin, with a contact), a search that finds no topic
-	// named so offers to create one (`tag-create.ts`), chosen at once; `oncreated` tells the
-	// form.
+	// named so offers to create one in the topic dialog (`tag-create.ts`), chosen when made;
+	// `oncreated` tells the form.
 	let {
 		value = $bindable(''),
 		topics,
@@ -47,20 +47,12 @@
 		}))
 	);
 
-	function option(tag: Tag) {
+	async function create(name: string) {
+		const tag = await createWithDetails('topic', name);
+		if (!tag) return null;
 		made = [...made, tag];
 		oncreated(tag);
 		return { value: tag.id, label: tag.name };
-	}
-
-	async function quick(name: string) {
-		const tag = await createQuickly('topic', name);
-		return tag ? option(tag) : null;
-	}
-
-	async function withDetails(name: string) {
-		const tag = await createWithDetails('topic', name);
-		return tag ? option(tag) : null;
 	}
 </script>
 
@@ -72,8 +64,7 @@
 	{options}
 	noneLabel={m.topic_none()}
 	searchLabel={creating ? m.picker_search_create() : m.assignment_search()}
-	create={creating ? quick : undefined}
-	details={creating ? withDetails : undefined}
+	create={creating ? create : undefined}
 >
 	{#snippet chosen(entry)}
 		{@const tag = known.find((candidate) => candidate.id === entry.value)}

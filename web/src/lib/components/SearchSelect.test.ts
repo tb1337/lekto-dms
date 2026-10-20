@@ -41,20 +41,33 @@ describe('SearchSelect', () => {
 		expect(trigger.textContent).toContain('none yet');
 	});
 
-	it('makes what the search names, once, and chooses it', async () => {
+	it('makes what the search names after closing, once, and chooses it', async () => {
 		const user = userEvent.setup();
 		const create = vi.fn(async (name: string) => ({ value: 'c3', label: name }));
 		const { onchange, trigger } = field({ create });
 		await fireEvent.click(trigger);
 		await user.type(await screen.findByLabelText(m.assignment_search()), 'Bäckerei Korn');
-		const wanted = m.tag_create_quick({ name: 'Bäckerei Korn' });
+		const wanted = m.create_named({ name: 'Bäckerei Korn' });
 		const offer = (await screen.findAllByRole('option', { hidden: true })).find(
 			(option) => option.textContent?.trim() === wanted
 		)!;
-		await user.click(offer);
+		await fireEvent.click(offer);
+		await fireEvent.click(offer);
 		await waitFor(() => expect(onchange).toHaveBeenLastCalledWith('c3'));
 		expect(create).toHaveBeenCalledTimes(1);
 		expect(create).toHaveBeenCalledWith('Bäckerei Korn');
 		expect(trigger.textContent).toContain('Bäckerei Korn');
+	});
+
+	it('keeps the value when what was to be made was not', async () => {
+		const user = userEvent.setup();
+		const create = vi.fn(async () => null);
+		const { onchange, trigger } = field({ create });
+		await fireEvent.click(trigger);
+		await user.type(await screen.findByLabelText(m.assignment_search()), 'Bäckerei Korn');
+		await user.click(await screen.findByText(m.create_named({ name: 'Bäckerei Korn' })));
+		await waitFor(() => expect(create).toHaveBeenCalledOnce());
+		expect(onchange).not.toHaveBeenCalled();
+		expect(selectedValue(trigger)).toBe('c2');
 	});
 });

@@ -4,6 +4,8 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { components } from '#lib/api/schema.ts';
 import type { Mark, Review } from '#lib/document-view.ts';
+import type { Item } from '#lib/masterdata-api.ts';
+import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
@@ -162,6 +164,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	session.clear();
+	masterDataDialogs.finishAll();
 	vi.unstubAllGlobals();
 	// A dialog makes the page unclickable until it has closed; the next test must not wait.
 	globalThis.document.body.style.pointerEvents = '';
@@ -725,7 +728,7 @@ describe('the topic', () => {
 		expect(onenabled).toHaveBeenCalledOnce();
 	});
 
-	it('lets an admin create a topic named as searched; saving enables it at the contact', async () => {
+	it('lets an admin create a topic named as searched in its dialog; saving enables it at the contact', async () => {
 		session.start({
 			user: { id: OWNER, username: 'admin', role: 'admin' },
 			method: 'password',
@@ -733,31 +736,54 @@ describe('the topic', () => {
 			csrf_token: 'token'
 		});
 		const DENTAL = '0199a6c4-0000-7000-8000-0000000000b9';
-		fetchMock.mockImplementation(async (request) => {
-			if (request.method === 'POST' && new URL(request.url).pathname === '/api/v1/tags') {
-				const body = await request.clone().json();
-				return json({ ...topic(DENTAL, body.name), scope: body.scope });
-			}
-			return json(PREVIEW);
-		});
+		fetchMock.mockImplementation(async () => json(PREVIEW));
 		const bank = { ...filed, contact_id: BANK, topic_id: null } as Document;
 		render(DocumentForm, props({ document: bank, lookup: topics, review: null }));
 		await userEvent.click(topicField());
 		await userEvent.type(await screen.findByLabelText(m.picker_search_create()), 'Zahnzusatz');
-		await userEvent.click(screen.getByText(m.tag_create_quick({ name: 'Zahnzusatz' })));
+		await userEvent.click(screen.getByText(m.create_named({ name: 'Zahnzusatz' })));
+		// The topic dialog takes over (the layout hosts it), the name filled in.
+		expect(masterDataDialogs.nested).toMatchObject([{ kind: 'topics', name: 'Zahnzusatz' }]);
+		masterDataDialogs.finish(topic(DENTAL, 'Zahnzusatz') as unknown as Item);
 		await waitFor(() => expect(topicValue()).toBe(DENTAL));
-		const created = fetchMock.mock.calls[0][0];
-		expect(await created.json()).toEqual({ name: 'Zahnzusatz', scope: 'topic' });
 		expect(topicField().textContent?.trim()).toBe('Zahnzusatz');
 		expect(screen.getByText(m.topic_enables_hint())).toBeTruthy();
 		expect(await sentPatch()).toEqual({ topic_id: DENTAL });
+	});
+
+	it('lets an admin create a contact or type named as searched in its dialog, chosen after', async () => {
+		session.start({
+			user: { id: OWNER, username: 'admin', role: 'admin' },
+			method: 'password',
+			expires_at: '2026-10-09T12:00:00Z',
+			csrf_token: 'token'
+		});
+		const BAKERY = '0199a6c4-0000-7000-8000-0000000000c9';
+		const REMINDER = '0199a6c4-0000-7000-8000-0000000000e9';
+		fetchMock.mockImplementation(async () => json(PREVIEW));
+		const bank = { ...filed, contact_id: BANK, topic_id: null } as Document;
+		render(DocumentForm, props({ document: bank, lookup: topics, review: null }));
+		for (const [label, kind, name, id] of [
+			[m.field_contact(), 'contacts', 'Bäckerei Korn', BAKERY],
+			[m.field_document_type(), 'document-types', 'Mahnung', REMINDER]
+		] as const) {
+			await userEvent.click(select(label));
+			await userEvent.type(await screen.findByLabelText(m.picker_search_create()), name);
+			await userEvent.click(screen.getByText(m.create_named({ name })));
+			expect(masterDataDialogs.nested).toMatchObject([{ kind, name }]);
+			masterDataDialogs.finish({ id, name } as Item);
+			await waitFor(() => expect(selectedValue(select(label))).toBe(id));
+			expect(select(label).textContent).toContain(name);
+		}
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(await sentPatch()).toEqual({ contact_id: BAKERY, document_type_id: REMINDER });
 	});
 
 	it('offers others no topic to create', async () => {
 		render(DocumentForm, props({ document: filed, lookup: topics, review: null }));
 		await userEvent.click(topicField());
 		await userEvent.type(await screen.findByLabelText(m.assignment_search()), 'Zahnzusatz');
-		expect(screen.queryByText(m.tag_create_quick({ name: 'Zahnzusatz' }))).toBeNull();
+		expect(screen.queryByText(m.create_named({ name: 'Zahnzusatz' }))).toBeNull();
 	});
 
 	it('confirms a topic the rules left open, also as none', async () => {

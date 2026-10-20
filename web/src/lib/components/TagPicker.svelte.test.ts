@@ -35,20 +35,13 @@ const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
 
 beforeEach(() => {
 	fetchMock.mockReset();
-	fetchMock.mockImplementation(async (request) => {
-		const body = await request.clone().json();
-		return new Response(JSON.stringify({ ...tag('new', [body.name], null, body.scope), ...body }), {
-			status: 201,
-			headers: { 'content-type': 'application/json' }
-		});
-	});
 	vi.stubGlobal('fetch', fetchMock);
 });
 
 afterEach(() => {
 	phone.override(null);
 	session.clear();
-	masterDataDialogs.finishTag(null);
+	masterDataDialogs.finishAll();
 	vi.unstubAllGlobals();
 	document.body.style.pointerEvents = '';
 });
@@ -151,7 +144,7 @@ describe('TagPicker on a phone', () => {
 		expect(within(dialog).getAllByRole('checkbox')).toHaveLength(3);
 	});
 
-	it('lets an admin create a group named as searched, chosen at once', async () => {
+	it('lets an admin create a group named as searched in the tag dialog, chosen after', async () => {
 		signIn('admin');
 		const user = userEvent.setup();
 		const props = picker();
@@ -160,32 +153,32 @@ describe('TagPicker on a phone', () => {
 		const search = within(dialog).getByRole('searchbox');
 		// A name that exists (in another case) is chosen, not created.
 		await user.type(search, 'bank');
-		expect(within(dialog).queryByText(m.tag_create_quick({ name: 'bank' }))).toBeNull();
+		expect(within(dialog).queryByText(m.create_named({ name: 'bank' }))).toBeNull();
 		await user.clear(search);
 		await user.type(search, 'Versicherungsmakler ');
-		await user.click(within(dialog).getByText(m.tag_create_quick({ name: 'Versicherungsmakler' })));
-		await waitFor(() => expect(props.selected).toEqual(['g1', 'new']));
-		const sent = fetchMock.mock.calls[0][0];
-		expect([sent.method, new URL(sent.url).pathname]).toEqual(['POST', '/api/v1/tags']);
-		expect(await sent.clone().json()).toEqual({ name: 'Versicherungsmakler', scope: 'contact' });
-		expect(props.made.map((made) => made.id)).toEqual(['new']);
-		expect((search as HTMLInputElement).value).toBe('');
+		await user.click(within(dialog).getByText(m.create_named({ name: 'Versicherungsmakler' })));
+		// The picker gives way to the tag dialog, the name filled in.
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(masterDataDialogs.nested).toMatchObject([
+			{ kind: 'contact-groups', name: 'Versicherungsmakler' }
+		]);
+		masterDataDialogs.finish(tag('g9', ['Versicherungsmakler'], null));
+		await waitFor(() => expect(props.selected).toEqual(['g1', 'g9']));
+		expect(props.made.map((made) => made.id)).toEqual(['g9']);
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	it('opens the tag dialog for one with details, and chooses the tag it makes', async () => {
+	it('chooses nothing when the tag dialog closes without', async () => {
 		signIn('admin');
 		const user = userEvent.setup();
 		const props = picker([]);
-		const create = vi.spyOn(masterDataDialogs, 'createTag');
 		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
 		await user.type(within(await screen.findByRole('dialog')).getByRole('searchbox'), 'Makler');
-		await user.click(screen.getByText(m.tag_create_details()));
-		expect(create).toHaveBeenCalledWith('contact', 'Makler');
-		// The picker gives way to the tag dialog.
-		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-		masterDataDialogs.finishTag(tag('g9', ['Makler'], null));
-		await waitFor(() => expect(props.selected).toEqual(['g9']));
-		expect(fetchMock).not.toHaveBeenCalled();
+		await user.click(screen.getByText(m.create_named({ name: 'Makler' })));
+		masterDataDialogs.finish(null);
+		await waitFor(() => expect(masterDataDialogs.nested).toEqual([]));
+		expect(props.selected).toEqual([]);
+		expect(props.made).toEqual([]);
 	});
 
 	it('offers no creating to others than admins', async () => {
@@ -195,8 +188,7 @@ describe('TagPicker on a phone', () => {
 		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
 		await user.type(within(await screen.findByRole('dialog')).getByRole('searchbox'), 'Makler');
 		expect(screen.getByText(m.picker_no_match())).toBeTruthy();
-		expect(screen.queryByText(m.tag_create_quick({ name: 'Makler' }))).toBeNull();
-		expect(screen.queryByText(m.tag_create_details())).toBeNull();
+		expect(screen.queryByText(m.create_named({ name: 'Makler' }))).toBeNull();
 	});
 });
 

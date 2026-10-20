@@ -7,6 +7,10 @@
 		icon?: typeof FileIcon;
 		/** A longer explanation, shown on hover. */
 		hint?: string;
+		/** A number after the name (what a tab holds). */
+		count?: number | string;
+		/** A red dot after the name, read out as this (a problem in there). */
+		alert?: string;
 	}
 </script>
 
@@ -90,6 +94,13 @@
 				<span class={cn(names === 'wide' && option.icon && 'sr-only sm:not-sr-only')}>
 					{option.label}
 				</span>
+			{/if}
+			{#if option.count !== undefined}
+				<span class="text-xs font-normal text-muted-foreground tabular-nums">{option.count}</span>
+			{/if}
+			{#if option.alert}
+				<span class="size-[7px] rounded-full bg-destructive" aria-hidden="true"></span>
+				<span class="sr-only">{option.alert}</span>
 			{/if}
 		</button>
 	{/each}

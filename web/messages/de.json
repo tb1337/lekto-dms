@@ -1174,5 +1174,8 @@
 	"code_giro_purpose": "Zweck",
 	"code_same_as": "wie {field}",
 	"hint_about": "Hinweis zu {name}",
-	"field_def_manual_line": "Lekto fragt das Modell nicht nach diesem Feld."
+	"field_def_manual_line": "Lekto fragt das Modell nicht nach diesem Feld.",
+	"master_tab_general": "Allgemein",
+	"field_def_scope_all_short": "alle",
+	"editor_tab_problem": "Hier stimmt etwas nicht"
 }

@@ -78,6 +78,8 @@ describe('FieldsPanel', () => {
 		await screen.findByText('Rechnungsnummer');
 		masterDataDialogs.open('fields');
 		await userEvent.type(await screen.findByLabelText(m.field_name()), 'Betrag');
+		// The types it applies to have a tab of their own.
+		await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${m.master_types()}`) }));
 		await userEvent.click(screen.getByLabelText(m.field_def_scope_global()));
 		expect(screen.getByText(m.field_def_no_type())).toBeTruthy();
 		// The types come from a search, each then required or not.

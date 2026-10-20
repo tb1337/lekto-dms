@@ -186,6 +186,33 @@ describe('MasterDataDialogHost', () => {
 	});
 });
 
+describe('tabs', () => {
+	it('shows a contact’s identifiers in a tab of their own, counted', async () => {
+		const user = userEvent.setup();
+		render(WithDialogs);
+		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
+		expect(await screen.findByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
+		const tabs = screen.getByRole('group', {
+			name: m.master_edit({ name: 'Nord Versicherungsgruppe' })
+		});
+		const [general, identifiers] = within(tabs).getAllByRole('button');
+		expect(general.getAttribute('aria-pressed')).toBe('true');
+		expect(identifiers.textContent).toContain(m.master_identifiers());
+		expect(identifiers.textContent).toContain('1');
+		expect(screen.queryByDisplayValue('nord.example')).toBeNull();
+		await user.click(identifiers);
+		expect(screen.getByDisplayValue('nord.example')).toBeTruthy();
+		expect(screen.queryByDisplayValue('Nord Versicherungsgruppe')).toBeNull();
+	});
+
+	it('has none for a tag', async () => {
+		render(WithDialogs);
+		masterDataDialogs.open('tags', TAGS[2] as Item);
+		expect(await screen.findByDisplayValue('Dental')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.master_tab_general() })).toBeNull();
+	});
+});
+
 describe('a contact’s topics', () => {
 	it('enables topics and lets its identifiers point to one of them', async () => {
 		render(WithDialogs);
@@ -200,10 +227,15 @@ describe('a contact’s topics', () => {
 		};
 		masterDataDialogs.open('contacts', contact as unknown as Item);
 		expect(await screen.findByDisplayValue('Nord')).toBeTruthy();
-		const topic = screen.getByLabelText(m.identifier_topic());
+		// The identifiers have a tab of their own.
+		const openTab = (name: string) =>
+			userEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}`) }));
+		await openTab(m.master_identifiers());
+		let topic = screen.getByLabelText(m.identifier_topic());
 		expect(selectedValue(topic)).toBe('p1');
 		expect((await optionsOf(topic)).map((option) => option.value)).toEqual(['', 'p1']);
 		// Enabling another (in the picker over the dialog) offers it to the identifiers.
+		await openTab(m.master_tab_general());
 		const chips = screen.getByRole('group', { name: m.master_topics() });
 		expect(within(chips).getByText('Arbeit')).toBeTruthy();
 		await userEvent.click(within(chips).getByRole('button', { name: m.picker_add_topic_label() }));
@@ -211,6 +243,8 @@ describe('a contact’s topics', () => {
 		await userEvent.click(within(picker).getByLabelText('Krankenversicherung'));
 		await userEvent.click(within(picker).getByText(m.picker_done()));
 		expect(within(chips).getByText('Krankenversicherung')).toBeTruthy();
+		await openTab(m.master_identifiers());
+		topic = screen.getByLabelText(m.identifier_topic());
 		expect((await optionsOf(topic)).map((option) => option.value)).toEqual(['', 'p1', 'p2']);
 		await choose(userEvent.setup(), topic, 'p2');
 		await userEvent.click(screen.getByRole('button', { name: m.save() }));

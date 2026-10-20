@@ -74,7 +74,7 @@
 			{emptyLabel}
 		</p>
 	{:else}
-		<ul class="flex max-h-64 flex-col divide-y overflow-y-auto rounded-xl border">
+		<ul class="flex flex-col divide-y rounded-xl border">
 			{#each rows as item (item.id)}
 				{@const name = nameOf(item.id)}
 				<li class="flex items-center gap-3 px-3 py-1.5">

@@ -1174,5 +1174,8 @@
 	"code_giro_purpose": "Purpose",
 	"code_same_as": "as {field}",
 	"hint_about": "About {name}",
-	"field_def_manual_line": "Lekto never asks the model for this field."
+	"field_def_manual_line": "Lekto never asks the model for this field.",
+	"master_tab_general": "General",
+	"field_def_scope_all_short": "all",
+	"editor_tab_problem": "Something here is wrong"
 }

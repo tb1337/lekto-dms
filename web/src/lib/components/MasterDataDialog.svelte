@@ -131,9 +131,27 @@
 	const typed = $derived((fields ?? []).filter((field) => field.document_type_ids !== null));
 	const everywhere = $derived((fields ?? []).filter((field) => field.document_type_ids === null));
 	let busy = $state(false);
+	// A contact and a document type are long: their identifiers or fields stand in a tab of
+	// their own (Tobi, 20.10.2026); a tag's editor is short and has none.
+	let tab = $state('general');
+	const tabs = $derived.by(() => {
+		const general = { value: 'general', label: m.master_tab_general() };
+		if (extra === 'aliases') {
+			return [
+				general,
+				{ value: 'identifiers', label: m.master_identifiers(), count: identifiers.length }
+			];
+		}
+		if (extra === 'description' && fields) {
+			return [general, { value: 'fields', label: m.master_type_fields(), count: assigned.length }];
+		}
+		return undefined;
+	});
+	const part = $derived(tabs ? tab : 'general');
 
 	$effect(() => {
 		if (open) {
+			tab = 'general';
 			name = initial?.name ?? presetName;
 			aliases = (initial?.aliases ?? []).join('\n');
 			identifiers = rowsOf(initial?.identifiers);
@@ -218,278 +236,285 @@
 	ondelete={initial && ondelete ? ondelete : undefined}
 	deleteTitle={m.master_delete({ name: initial?.name ?? '' })}
 	{deleteDescription}
+	{tabs}
+	bind:tab
+	class={tabs ? 'h-[min(53.75rem,calc(100dvh-2rem))] sm:max-w-[40rem]' : undefined}
 >
-	{#if extra === 'tag' && chooseScope}
-		<fieldset class="flex flex-col gap-2" aria-labelledby="{uid}-kind-label">
-			<div class="mb-2 flex items-center gap-1">
-				<span id="{uid}-kind-label" class="text-sm font-medium">{m.tag_kind()}</span>
-				<InfoHint text={m.tag_kind_hint()} about={m.tag_kind()} />
-			</div>
-			<div class="grid gap-2 sm:grid-cols-2">
-				{#each KIND_CARDS as card (card.scope)}
-					<label
-						class={cn(
-							'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors hover:bg-secondary/60',
-							kind === card.scope && 'border-primary bg-primary/10 hover:bg-primary/10'
-						)}
-					>
-						<input
-							type="radio"
-							name="{uid}-kind"
-							value={card.scope}
-							checked={kind === card.scope}
-							onchange={() => chooseKind(card.scope)}
-							class="mt-0.5 size-4 shrink-0 accent-primary"
-						/>
-						<span class="flex flex-col gap-0.5">
-							<span class="text-sm font-medium">{card.title()}</span>
-							<span class="text-sm text-muted-foreground">{card.example()}</span>
-						</span>
-					</label>
-				{/each}
-			</div>
-		</fieldset>
-	{/if}
-	{#if extra !== 'tag' || kind !== null}
-		{#if extra === 'aliases' && phone.current}
-			<!-- On a phone the logo stands beside the name, what to do with it below. -->
-			{#if initial}
-				<ContactLogoEditor contact={initial as Contact} {fetching} onchanged={onlogo}>
-					{#snippet beside()}{@render nameField()}{/snippet}
-				</ContactLogoEditor>
-			{:else}
-				<div class="flex flex-col gap-2" data-logo-beside>
-					<div class="flex items-center gap-3">
-						<ContactAvatar contact={{ name }} size="xl" />
-						<div class="min-w-0 flex-1">{@render nameField()}</div>
-					</div>
-					<p class="pl-17 text-xs text-muted-foreground">{m.logo_after_create()}</p>
-				</div>
-			{/if}
-		{:else}
-			{@render nameField()}
-		{/if}
-	{/if}
-	{#if extra === 'aliases' && !phone.current}
-		<Field.Field>
-			<Field.Label>{m.logo_title()}</Field.Label>
-			{#if initial}
-				<ContactLogoEditor contact={initial as Contact} {fetching} onchanged={onlogo} />
-			{:else}
-				<Field.Description>{m.logo_after_create()}</Field.Description>
-			{/if}
-		</Field.Field>
-	{/if}
-	{#if extra === 'description'}{@render iconField()}{/if}
-	{#if extra === 'tag' && kind !== null}
-		<Field.Field>
-			<Field.Label for="{uid}-parent">
-				{isGroup ? m.tag_parent_group() : isTopic ? m.topic_parent() : m.tag_parent()}
-			</Field.Label>
-			<Select
-				id="{uid}-parent"
-				bind:value={parentId}
-				options={[
-					{
-						value: '',
-						label: isGroup
-							? m.tag_parent_group_none()
-							: isTopic
-								? m.topic_parent_none()
-								: m.tag_parent_none()
-					},
-					...parents
-				]}
-				class="h-10"
-			/>
-		</Field.Field>
-		{@render iconField()}
-		<Field.Field>
-			<Field.Label id="{uid}-color-label">{m.master_color()}</Field.Label>
-			<ColorPicker id="{uid}-color" bind:value={color} />
-		</Field.Field>
-		{#if !isGroup}
-			<fieldset class="flex flex-col gap-2" aria-labelledby="{uid}-assignment-label">
+	{#if part === 'general'}
+		{#if extra === 'tag' && chooseScope}
+			<fieldset class="flex flex-col gap-2" aria-labelledby="{uid}-kind-label">
 				<div class="mb-2 flex items-center gap-1">
-					<span id="{uid}-assignment-label" class="text-sm font-medium">
-						{m.tag_assignment()}
-					</span>
-					<InfoHint
-						text={isTopic ? m.topic_assignment_hint() : m.tag_assignment_hint()}
-						about={m.tag_assignment()}
-					/>
+					<span id="{uid}-kind-label" class="text-sm font-medium">{m.tag_kind()}</span>
+					<InfoHint text={m.tag_kind_hint()} about={m.tag_kind()} />
 				</div>
-				<div class="flex flex-wrap gap-x-6 gap-y-2">
-					<label class="flex items-center gap-2 text-sm">
-						<input
-							type="radio"
-							name="{uid}-assignment"
-							checked={!manual}
-							onchange={() => (manual = false)}
-							class="size-4 accent-primary"
-						/>
-						{m.tag_assignment_auto()}
-					</label>
-					<label class="flex items-center gap-2 text-sm">
-						<input
-							type="radio"
-							name="{uid}-assignment"
-							checked={manual}
-							onchange={() => (manual = true)}
-							class="size-4 accent-primary"
-						/>
-						{m.tag_assignment_manual()}
-					</label>
+				<div class="grid gap-2 sm:grid-cols-2">
+					{#each KIND_CARDS as card (card.scope)}
+						<label
+							class={cn(
+								'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors hover:bg-secondary/60',
+								kind === card.scope && 'border-primary bg-primary/10 hover:bg-primary/10'
+							)}
+						>
+							<input
+								type="radio"
+								name="{uid}-kind"
+								value={card.scope}
+								checked={kind === card.scope}
+								onchange={() => chooseKind(card.scope)}
+								class="mt-0.5 size-4 shrink-0 accent-primary"
+							/>
+							<span class="flex flex-col gap-0.5">
+								<span class="text-sm font-medium">{card.title()}</span>
+								<span class="text-sm text-muted-foreground">{card.example()}</span>
+							</span>
+						</label>
+					{/each}
 				</div>
 			</fieldset>
 		{/if}
-		<div class="flex items-center gap-1">
-			<label class="flex items-center gap-2 text-sm font-medium">
-				<input
-					type="checkbox"
-					bind:checked={shown}
-					class="size-4 accent-primary"
-					aria-describedby="{uid}-shown-hint"
+		{#if extra !== 'tag' || kind !== null}
+			{#if extra === 'aliases' && phone.current}
+				<!-- On a phone the logo stands beside the name, what to do with it below. -->
+				{#if initial}
+					<ContactLogoEditor contact={initial as Contact} {fetching} onchanged={onlogo}>
+						{#snippet beside()}{@render nameField()}{/snippet}
+					</ContactLogoEditor>
+				{:else}
+					<div class="flex flex-col gap-2" data-logo-beside>
+						<div class="flex items-center gap-3">
+							<ContactAvatar contact={{ name }} size="xl" />
+							<div class="min-w-0 flex-1">{@render nameField()}</div>
+						</div>
+						<p class="pl-17 text-xs text-muted-foreground">{m.logo_after_create()}</p>
+					</div>
+				{/if}
+			{:else}
+				{@render nameField()}
+			{/if}
+		{/if}
+		{#if extra === 'aliases' && !phone.current}
+			<Field.Field>
+				<Field.Label>{m.logo_title()}</Field.Label>
+				{#if initial}
+					<ContactLogoEditor contact={initial as Contact} {fetching} onchanged={onlogo} />
+				{:else}
+					<Field.Description>{m.logo_after_create()}</Field.Description>
+				{/if}
+			</Field.Field>
+		{/if}
+		{#if extra === 'description'}{@render iconField()}{/if}
+		{#if extra === 'tag' && kind !== null}
+			<Field.Field>
+				<Field.Label for="{uid}-parent">
+					{isGroup ? m.tag_parent_group() : isTopic ? m.topic_parent() : m.tag_parent()}
+				</Field.Label>
+				<Select
+					id="{uid}-parent"
+					bind:value={parentId}
+					options={[
+						{
+							value: '',
+							label: isGroup
+								? m.tag_parent_group_none()
+								: isTopic
+									? m.topic_parent_none()
+									: m.tag_parent_none()
+						},
+						...parents
+					]}
+					class="h-10"
 				/>
-				{m.tag_shown()}
-			</label>
-			<InfoHint
-				text={isGroup
-					? m.tag_group_shown_hint()
-					: isTopic
-						? m.topic_shown_hint()
-						: m.tag_shown_hint()}
-				about={m.tag_shown()}
-				id="{uid}-shown-hint"
-			/>
-		</div>
-		<div
-			class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-muted/60 px-3 py-2.5 text-sm text-muted-foreground"
-		>
-			{m.master_color_preview()}
-			<TagChip
-				tag={{
-					id: initial?.id ?? 'new',
-					name: name.trim() || m.field_name(),
-					path: [name.trim() || m.field_name()],
-					icon,
-					color
-				}}
-				topic={isTopic}
-				group={isGroup}
-				size="md"
-			/>
-			<span class="text-xs">
-				{isTopic
-					? m.tag_preview_topic()
-					: isGroup
-						? m.tag_preview_group()
-						: m.tag_preview_document()}
-			</span>
-		</div>
+			</Field.Field>
+			{@render iconField()}
+			<Field.Field>
+				<Field.Label id="{uid}-color-label">{m.master_color()}</Field.Label>
+				<ColorPicker id="{uid}-color" bind:value={color} />
+			</Field.Field>
+			{#if !isGroup}
+				<fieldset class="flex flex-col gap-2" aria-labelledby="{uid}-assignment-label">
+					<div class="mb-2 flex items-center gap-1">
+						<span id="{uid}-assignment-label" class="text-sm font-medium">
+							{m.tag_assignment()}
+						</span>
+						<InfoHint
+							text={isTopic ? m.topic_assignment_hint() : m.tag_assignment_hint()}
+							about={m.tag_assignment()}
+						/>
+					</div>
+					<div class="flex flex-wrap gap-x-6 gap-y-2">
+						<label class="flex items-center gap-2 text-sm">
+							<input
+								type="radio"
+								name="{uid}-assignment"
+								checked={!manual}
+								onchange={() => (manual = false)}
+								class="size-4 accent-primary"
+							/>
+							{m.tag_assignment_auto()}
+						</label>
+						<label class="flex items-center gap-2 text-sm">
+							<input
+								type="radio"
+								name="{uid}-assignment"
+								checked={manual}
+								onchange={() => (manual = true)}
+								class="size-4 accent-primary"
+							/>
+							{m.tag_assignment_manual()}
+						</label>
+					</div>
+				</fieldset>
+			{/if}
+			<div class="flex items-center gap-1">
+				<label class="flex items-center gap-2 text-sm font-medium">
+					<input
+						type="checkbox"
+						bind:checked={shown}
+						class="size-4 accent-primary"
+						aria-describedby="{uid}-shown-hint"
+					/>
+					{m.tag_shown()}
+				</label>
+				<InfoHint
+					text={isGroup
+						? m.tag_group_shown_hint()
+						: isTopic
+							? m.topic_shown_hint()
+							: m.tag_shown_hint()}
+					about={m.tag_shown()}
+					id="{uid}-shown-hint"
+				/>
+			</div>
+			<div
+				class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-muted/60 px-3 py-2.5 text-sm text-muted-foreground"
+			>
+				{m.master_color_preview()}
+				<TagChip
+					tag={{
+						id: initial?.id ?? 'new',
+						name: name.trim() || m.field_name(),
+						path: [name.trim() || m.field_name()],
+						icon,
+						color
+					}}
+					topic={isTopic}
+					group={isGroup}
+					size="md"
+				/>
+				<span class="text-xs">
+					{isTopic
+						? m.tag_preview_topic()
+						: isGroup
+							? m.tag_preview_group()
+							: m.tag_preview_document()}
+				</span>
+			</div>
+		{/if}
+		{#if groupScope !== null}
+			<Field.Field>
+				<HintLabel
+					id="{uid}-groups-label"
+					label={m.master_groups()}
+					hint={groupScope === 'contact'
+						? m.master_contact_groups_hint()
+						: m.master_type_groups_hint()}
+				/>
+				<TagPicker
+					id="{uid}-groups"
+					label={m.master_groups()}
+					labelledby="{uid}-groups-label"
+					title={groupScope === 'contact' ? m.master_contact_groups() : m.master_type_groups()}
+					scope={groupScope}
+					{tags}
+					selected={groupIds}
+					onchange={(next) => (groupIds = next)}
+					oncreated={ontagcreated}
+				/>
+			</Field.Field>
+		{/if}
+		{#if extra === 'aliases'}
+			<Field.Field>
+				<HintLabel
+					id="{uid}-topics-label"
+					label={m.master_topics()}
+					hint={m.master_contact_topics_hint()}
+				/>
+				<TagPicker
+					id="{uid}-topics"
+					label={m.master_topics()}
+					labelledby="{uid}-topics-label"
+					title={m.master_topics()}
+					scope="topic"
+					{tags}
+					selected={topicIds}
+					onchange={(next) => (topicIds = next)}
+					oncreated={ontagcreated}
+				/>
+			</Field.Field>
+			<Field.Field>
+				<HintLabel
+					for="{uid}-aliases"
+					label={m.master_aliases()}
+					hint={m.master_aliases_hint()}
+					hintId="{uid}-aliases-hint"
+				/>
+				<!-- Compact on a phone: as many lines as there are aliases, and one more. -->
+				<Textarea
+					id="{uid}-aliases"
+					bind:value={aliases}
+					rows={phone.current ? Math.min(Math.max(aliases.split('\n').length + 1, 2), 6) : 4}
+					aria-describedby="{uid}-aliases-hint"
+				/>
+			</Field.Field>
+		{:else if extra === 'description'}
+			<Field.Field>
+				<HintLabel
+					for="{uid}-description"
+					label={m.master_description()}
+					hint={m.master_description_hint()}
+					hintId="{uid}-description-hint"
+				/>
+				<Textarea
+					id="{uid}-description"
+					bind:value={description}
+					rows={3}
+					maxlength={300}
+					aria-describedby="{uid}-description-hint"
+				/>
+			</Field.Field>
+			<Field.Field>
+				<HintLabel
+					for="{uid}-title-pattern"
+					label={m.master_title_pattern()}
+					hint={m.master_title_pattern_hint()}
+				/>
+				<TemplateInput
+					id="{uid}-title-pattern"
+					bind:value={titlePattern}
+					label={m.master_title_pattern()}
+					documentType={initial?.id ?? null}
+				/>
+				{#if ruleHref}
+					<a
+						href={ruleHref}
+						class="inline-flex items-center gap-1 self-start text-sm text-brand hover:underline"
+						onclick={() => (open = false)}
+					>
+						<Workflow class="size-3.5" aria-hidden="true" />
+						{m.master_title_rule()}
+					</a>
+				{/if}
+			</Field.Field>
+		{/if}
 	{/if}
-	{#if groupScope !== null}
-		<Field.Field>
-			<HintLabel
-				id="{uid}-groups-label"
-				label={m.master_groups()}
-				hint={groupScope === 'contact'
-					? m.master_contact_groups_hint()
-					: m.master_type_groups_hint()}
-			/>
-			<TagPicker
-				id="{uid}-groups"
-				label={m.master_groups()}
-				labelledby="{uid}-groups-label"
-				title={groupScope === 'contact' ? m.master_contact_groups() : m.master_type_groups()}
-				scope={groupScope}
-				{tags}
-				selected={groupIds}
-				onchange={(next) => (groupIds = next)}
-				oncreated={ontagcreated}
-			/>
-		</Field.Field>
-	{/if}
-	{#if extra === 'aliases'}
-		<Field.Field>
-			<HintLabel
-				id="{uid}-topics-label"
-				label={m.master_topics()}
-				hint={m.master_contact_topics_hint()}
-			/>
-			<TagPicker
-				id="{uid}-topics"
-				label={m.master_topics()}
-				labelledby="{uid}-topics-label"
-				title={m.master_topics()}
-				scope="topic"
-				{tags}
-				selected={topicIds}
-				onchange={(next) => (topicIds = next)}
-				oncreated={ontagcreated}
-			/>
-		</Field.Field>
+	{#if part === 'identifiers'}
 		<Field.Field>
 			<HintLabel label={m.master_identifiers()} hint={m.master_identifiers_hint()} />
 			<IdentifiersEditor bind:rows={identifiers} topics={enabledTopics} />
 		</Field.Field>
-		<Field.Field>
-			<HintLabel
-				for="{uid}-aliases"
-				label={m.master_aliases()}
-				hint={m.master_aliases_hint()}
-				hintId="{uid}-aliases-hint"
-			/>
-			<!-- Compact on a phone: as many lines as there are aliases, and one more. -->
-			<Textarea
-				id="{uid}-aliases"
-				bind:value={aliases}
-				rows={phone.current ? Math.min(Math.max(aliases.split('\n').length + 1, 2), 6) : 4}
-				aria-describedby="{uid}-aliases-hint"
-			/>
-		</Field.Field>
-	{:else if extra === 'description'}
-		<Field.Field>
-			<HintLabel
-				for="{uid}-description"
-				label={m.master_description()}
-				hint={m.master_description_hint()}
-				hintId="{uid}-description-hint"
-			/>
-			<Textarea
-				id="{uid}-description"
-				bind:value={description}
-				rows={3}
-				maxlength={300}
-				aria-describedby="{uid}-description-hint"
-			/>
-		</Field.Field>
-		<Field.Field>
-			<HintLabel
-				for="{uid}-title-pattern"
-				label={m.master_title_pattern()}
-				hint={m.master_title_pattern_hint()}
-			/>
-			<TemplateInput
-				id="{uid}-title-pattern"
-				bind:value={titlePattern}
-				label={m.master_title_pattern()}
-				documentType={initial?.id ?? null}
-			/>
-			{#if ruleHref}
-				<a
-					href={ruleHref}
-					class="inline-flex items-center gap-1 self-start text-sm text-brand hover:underline"
-					onclick={() => (open = false)}
-				>
-					<Workflow class="size-3.5" aria-hidden="true" />
-					{m.master_title_rule()}
-				</a>
-			{/if}
-		</Field.Field>
+	{:else if part === 'fields'}
 		{#if fields}
 			<Field.Field>
-				<Field.Label>{m.master_type_fields()}</Field.Label>
 				<AssignmentList
 					{assigned}
 					candidates={typed.map((field) => ({

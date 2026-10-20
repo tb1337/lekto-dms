@@ -592,8 +592,28 @@ describe('the topic', () => {
 		await choose(userEvent, select(m.field_contact()), BANK);
 		expect(await topicChoices()).toEqual([m.topic_none(), 'Arbeit']);
 		await choose(userEvent, select(m.field_contact()), m.value_unset());
-		expect(topicField().disabled).toBe(true);
-		expect(topicField().textContent?.trim()).toBe(m.topic_no_contact());
+		expect(screen.queryByRole('combobox', { name: m.field_topic() })).toBeNull();
+	});
+
+	it('has the field only for a contact with topics, and keeps a topic the document has', async () => {
+		const PLAIN = '0199a6c4-0000-7000-8000-0000000000c3';
+		const plain = {
+			...topics,
+			contacts: [...topics.contacts, named(PLAIN, 'Ohne Themen')]
+		} as unknown as Lookup;
+		const field = () => screen.queryByRole('combobox', { name: m.field_topic() });
+		const unknown = { ...filed, contact_id: null, topic_id: null } as Document;
+		const view = render(DocumentForm, props({ document: unknown, lookup: plain, review: null }));
+		expect(field()).toBeNull();
+		await choose(userEvent, select(m.field_contact()), PLAIN);
+		expect(field()).toBeNull();
+		await choose(userEvent, select(m.field_contact()), BANK);
+		expect(field()).not.toBeNull();
+		view.unmount();
+		// A topic its contact no longer has stays in view, to be removed.
+		const left = { ...filed, contact_id: PLAIN, topic_id: WORK } as Document;
+		render(DocumentForm, props({ document: left, lookup: plain, review: null }));
+		expect(topicValue()).toBe(WORK);
 	});
 
 	it('lets an admin choose any topic, which saving enables at the contact', async () => {

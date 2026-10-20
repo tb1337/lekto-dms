@@ -214,6 +214,9 @@
 		)
 	);
 	const enablesTopic = $derived(topic !== '' && contact !== '' && !enabledTopics.includes(topic));
+	// Only a contact with topics has the field (Tobi, 20.10.2026): it appears when such a
+	// contact is chosen. A topic the document has stays in view, to be seen and removed.
+	const showsTopic = $derived(enabledTopics.length > 0 || topic !== '');
 	const topicCheck = $derived(evidence.get('topic')?.check);
 	// Lekto suggests a topic it did not set (a topic never waits): a card with the candidates.
 	const topicAdvice = $derived(
@@ -651,35 +654,39 @@
 					</a>
 				{/if}
 			</FieldShell>
-			<FieldShell
-				key="topic"
-				label={m.field_topic()}
-				inputId="doc-topic"
-				evidence={evidence.get('topic')}
-				{lookup}
-				review={reviewing}
-				advice={topicAdvice}
-				quoted={false}
-				applies={applies('topic')}
-				active={focused === 'topic' || pinned === 'topic'}
-				onfocus={focus}
-				onjump={jump}
-				onpick={take}
-			>
-				<!-- An admin creates a topic here, too; saving enables it at the contact. -->
-				<TopicInput
-					id="doc-topic"
-					bind:value={topic}
-					topics={topicChoices}
-					all={lookup.tags}
-					disabled={!editable || contact === '' || (topicChoices.length === 0 && !session.isAdmin)}
-					placeholder={contact === '' ? m.topic_no_contact() : m.value_unset()}
-					creating={session.isAdmin && contact !== ''}
-				/>
-				{#if enablesTopic && session.isAdmin}
-					<p class="mt-1 text-xs text-muted-foreground">{m.topic_enables_hint()}</p>
-				{/if}
-			</FieldShell>
+			{#if showsTopic}
+				<FieldShell
+					key="topic"
+					label={m.field_topic()}
+					inputId="doc-topic"
+					evidence={evidence.get('topic')}
+					{lookup}
+					review={reviewing}
+					advice={topicAdvice}
+					quoted={false}
+					applies={applies('topic')}
+					active={focused === 'topic' || pinned === 'topic'}
+					onfocus={focus}
+					onjump={jump}
+					onpick={take}
+				>
+					<!-- An admin creates a topic here, too; saving enables it at the contact. -->
+					<TopicInput
+						id="doc-topic"
+						bind:value={topic}
+						topics={topicChoices}
+						all={lookup.tags}
+						disabled={!editable ||
+							contact === '' ||
+							(topicChoices.length === 0 && !session.isAdmin)}
+						placeholder={contact === '' ? m.topic_no_contact() : m.value_unset()}
+						creating={session.isAdmin && contact !== ''}
+					/>
+					{#if enablesTopic && session.isAdmin}
+						<p class="mt-1 text-xs text-muted-foreground">{m.topic_enables_hint()}</p>
+					{/if}
+				</FieldShell>
+			{/if}
 			<FieldShell
 				key="document_type"
 				label={m.field_document_type()}

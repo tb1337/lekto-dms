@@ -36,7 +36,7 @@ from lekto.composition.errors import ConfigurationError
 ENV_PREFIX = "LEKTO_"
 FILE_SUFFIX = "_FILE"
 
-# The secret key of the devcontainer (`.devcontainer/dev.env`); public, so never for production.
+# The secret key of the devcontainer (`.devcontainer/test.env`); public, so never for production.
 DEVELOPMENT_SECRET_KEY = "ZGV2LWtleS1kZXYta2V5LWRldi1rZXktZGV2LWtleS0="
 
 # The roles that run the API and the worker (`LEKTO_ROLE`).

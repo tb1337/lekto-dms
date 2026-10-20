@@ -2,31 +2,31 @@
 
 The devcontainer (`devcontainer.json`, `compose.yml`) is where Lekto is developed and tested, and
 where the **development instance** runs: a Lekto with real documents, started from VS Code tasks,
-sharing Postgres, Garage and Meilisearch with development and tests but with its own database,
-bucket and search index. Nothing here is reachable from outside the machine; Lekto speaks plain
-HTTP on `localhost`.
+sharing Postgres, Garage and Meilisearch with the tests but with its own database, bucket and
+search index. Nothing here is reachable from outside the machine; Lekto speaks plain HTTP on
+`localhost`.
 
 | Service (`compose.yml`) | Purpose |
 | --- | --- |
 | `dev` | The workspace: target `dev` of the `Dockerfile` (the system packages of the runtime image, Python 3.13 with uv, Node.js with pnpm, Git, GitHub CLI, Claude Code) |
-| `postgres` | Databases `lekto` (development), `lekto_test_*` (integration tests, created and dropped per test) and `lekto_live` (the development instance) |
-| `garage` | S3 object store; `garage-init` creates the key and the buckets `lekto` (development, tests below `tests/`) and `lekto-live` (the development instance) at every start |
-| `meilisearch` | Search; indexes `lekto-documents` (development), `lekto-test-*` (tests) and `lekto-live-documents` (the development instance) |
+| `postgres` | Databases `lekto_dev` (the development instance) and `lekto_test_*` (integration tests, created and dropped per test); `lekto` is only the server's first database |
+| `garage` | S3 object store; `garage-init` creates the key and the buckets `lekto-dev` (the development instance) and `lekto` (tests, below `tests/`) at every start |
+| `meilisearch` | Search; indexes `lekto-dev-documents` (the development instance) and `lekto-test-*` (tests) |
 
-The credentials in `dev.env` are fixed development values and never leave the machine. Ports
-8000 (API), 5173 (Vite), 7700 (Meilisearch) and 3900 (Garage) are forwarded to the host.
+The credentials of the services are fixed development values in `test.env` and never leave the
+machine. Ports 8000 (API), 5173 (Vite), 7700 (Meilisearch) and 3900 (Garage) are forwarded to
+the host.
 
-## Three sets of data that never touch each other
+## Two sets of data that never touch each other
 
 | Use | Settings | Database | Bucket | Index |
 | --- | --- | --- | --- | --- |
-| Development (`uv run python -m lekto.composition api`, `pnpm dev`) | `dev.env`, injected into the container | `lekto` | `lekto` | `lekto-documents` |
-| Tests (`uv run pytest -m integration`) | `dev.env`; the tests derive their own names | `lekto_test_<random>` | `lekto`, prefix `tests/<random>/` | `lekto-test-<random>` |
-| Development instance (the tasks) | `live.env` (not in the repository) | `lekto_live` | `lekto-live` | `lekto-live-documents` |
+| Development instance (the tasks) | `dev.env` (not in the repository) | `lekto_dev` | `lekto-dev` | `lekto-dev-documents` |
+| Tests (`uv run pytest -m integration`), CI | `test.env`, injected into the container; the tests derive their own names | `lekto_test_<random>` | `lekto`, prefix `tests/<random>/` | `lekto-test-<random>` |
 
 The tests create and remove their databases, prefixes and indexes themselves. Running
-`pytest -m integration` while the development instance is up changes nothing in `lekto_live`,
-`lekto-live` or `lekto-live-documents`. The volumes (`postgres-data`, `garage-meta`,
+`pytest -m integration` while the development instance is up changes nothing in `lekto_dev`,
+`lekto-dev` or `lekto-dev-documents`. The volumes (`postgres-data`, `garage-meta`,
 `garage-data`, `meilisearch-data`) outlive rebuilds of the devcontainer; `docker compose down -v`
 in `.devcontainer/` deletes them all, including the development instance.
 The Compose project keeps the former name `papiq-dev`, so the volumes of a devcontainer from
@@ -36,13 +36,13 @@ before the rename to Lekto stay (containers `papiq-dev-postgres-1`, network `pap
 
 Once, in the devcontainer (VS Code: Terminal → Run Task):
 
-1. **Lekto: Devinstanz einrichten** copies `live.env.example` to `live.env` with a fresh
-   `LEKTO_SECRET_KEY` and creates the database `lekto_live` (the bucket comes from
-   `garage-init`, the index from Lekto). It never overwrites an existing `live.env`. In a
-   devcontainer that was started before the bucket `lekto-live` existed, run `garage-init`
+1. **Lekto: Devinstanz einrichten** copies `dev.env.example` to `dev.env` with a fresh
+   `LEKTO_SECRET_KEY` and creates the database `lekto_dev` (the bucket comes from
+   `garage-init`, the index from Lekto). It never overwrites an existing `dev.env`. In a
+   devcontainer that was started before the bucket `lekto-dev` existed, run `garage-init`
    once (`docker compose -f .devcontainer/compose.yml run --rm garage-init`, from the container
    or the host) or rebuild the container; `/api/v1/health` says `object_store: failed` until then.
-2. Fill in `live.env`: `LEKTO_ADMIN_USERNAME` and `LEKTO_ADMIN_PASSWORD` for the first admin
+2. Fill in `dev.env`: `LEKTO_ADMIN_USERNAME` and `LEKTO_ADMIN_PASSWORD` for the first admin
    (use the user name you have in Paperless, so the migration maps the documents to you), the
    address of your Open WebUI (`https://<host>/api`) in `LEKTO_LLM_BASE_URL` and
    `LEKTO_EMBEDDING_BASE_URL` and its API key in `LEKTO_LLM_API_KEY` and
@@ -52,7 +52,7 @@ Once, in the devcontainer (VS Code: Terminal → Run Task):
 3. **Lekto starten** (below).
 
 Keep `LEKTO_SECRET_KEY` (TOTP and webhook secrets are encrypted with it) and the admin password
-in your password manager, not only in `live.env`.
+in your password manager, not only in `dev.env`.
 
 ## Start, stop, update
 
@@ -61,16 +61,16 @@ in your password manager, not only in `live.env`.
 | **Lekto starten** | `Lekto: Schema migrieren`, `Lekto: UI bauen`, then `Lekto: API` and `Lekto: Worker` side by side, each in its own terminal |
 | **Lekto stoppen** | Ends the API and worker tasks (SIGTERM; the worker finishes running jobs within `LEKTO_WORKER_SHUTDOWN_TIMEOUT`, 30 s) |
 | Lekto: API, Lekto: Worker | One service alone (both run migration first; the API also builds the UI) |
-| Lekto: Schema migrieren | `python -m lekto.composition migrate` with `live.env` |
+| Lekto: Schema migrieren | `python -m lekto.composition migrate` with `dev.env` |
 | Lekto: UI bauen | `pnpm build` in `web/`; the API serves `web/build` below `/ui` (`LEKTO_UI_DIR`) |
 | Lekto: UI dev | Vite on <http://localhost:5173/ui/> with `/api` proxied to the API, for UI work with hot reload |
 | Lekto: Suche neu aufbauen | `reindex`: rebuild the search index from database and bucket (after a restore, a model change, or to add vectors) |
 | Lekto: Seitenbilder nachholen | `render-pages`: queue the page images of documents from before the pages node; the worker renders them |
 | Lekto: Codes nachholen | `read-codes`: queue reading the bar and QR codes of documents from before code reading; the worker reads them and keeps the identifiers each document shows |
-| Migration: plan, run, verify | The Paperless migration client with the `LEKTO_MIGRATION_*` variables of `live.env` (see below) |
+| Migration: plan, run, verify | The Paperless migration client with the `LEKTO_MIGRATION_*` variables of `dev.env` (see below) |
 
 Nothing starts when the container opens. After **Lekto starten**, open
-<http://localhost:8000/ui/> and sign in as the admin from `live.env`; the API documentation is
+<http://localhost:8000/ui/> and sign in as the admin from `dev.env`; the API documentation is
 at <http://localhost:8000/api/v1/docs>. The tasks use the terminals of VS Code; the logs are
 there (`LEKTO_LOG_FORMAT=console`).
 
@@ -80,12 +80,12 @@ starten**: the start migrates the schema (a new Alembic revision is applied befo
 worker come up) and builds the UI anew. A schema migration cannot be undone: take a backup first
 when the pull brings a new revision (`git log --stat -- backend/src/lekto/adapters/outbound/sql/migrations/versions`).
 
-**Rebuild of the devcontainer** ("Rebuild Container"): the volumes stay, `live.env` stays (it is
+**Rebuild of the devcontainer** ("Rebuild Container"): the volumes stay, `dev.env` stays (it is
 a file in the workspace), the tasks work as before.
 
 ## The language model
 
-`live.env.example` points at Open WebUI (in front of Ollama) with `qwen3:8b-ctx8k` (classification) and
+`dev.env.example` points at Open WebUI (in front of Ollama) with `qwen3:8b-ctx8k` (classification) and
 `snowflake-arctic-embed2` (search vectors), the models evaluated in `.idea/architektur.md`. On a
 CPU a document takes 3 to 10 minutes in the model (`LEKTO_LLM_TIMEOUT=600`); embeddings take
 about 0.6 s per section. Single uploads are fine at any time. Mass runs (the migration with
@@ -100,7 +100,7 @@ endpoint outside the local network.
 ## Memory
 
 A job needs little memory (OCRmyPDF about 150 MB, the worker about 0.5 GB); the OCR is bound
-by the CPU. `live.env.example` sets `LEKTO_WORKER_CONCURRENCY=3`; more jobs than the VM has
+by the CPU. `dev.env.example` sets `LEKTO_WORKER_CONCURRENCY=3`; more jobs than the VM has
 cores gain nothing (Docker Desktop or OrbStack: the cores of the VM, not of the Mac). See
 [backend/README.md](../backend/README.md#worker).
 
@@ -110,7 +110,7 @@ cores gain nothing (Docker Desktop or OrbStack: the cores of the VM, not of the 
 instance:
 
 1. In Lekto (as the admin): Settings → API tokens → create a token with scope `read_write`;
-   write it to the file `LEKTO_MIGRATION_LEKTO_TOKEN_FILE` names in `live.env`
+   write it to the file `LEKTO_MIGRATION_LEKTO_TOKEN_FILE` names in `dev.env`
    (`/tmp/lekto-token`, outside the repository). Write the Paperless API key to
    `LEKTO_MIGRATION_PAPERLESS_TOKEN_FILE` (`/tmp/paperless-token`). `/tmp` is emptied when the
    container restarts; recreate the files then.
@@ -123,7 +123,7 @@ instance:
    `migration/migration-state.sqlite`.
 4. **Migration: verify** compares Paperless and Lekto object by object.
 
-Run the migration with the embedding variables commented out in `live.env` (restart API and
+Run the migration with the embedding variables commented out in `dev.env` (restart API and
 worker after changing it): the pipeline then does not call Ollama for every document. Afterwards
 switch them on again, restart, and run **Lekto: Suche neu aufbauen** once to get the vectors.
 The rebuild runs in one go and cannot be split: measured in M13 over the reverse proxy it took
@@ -131,12 +131,12 @@ about 10 s per document (1525 documents: over four hours), not the 0.7 s of the 
 on the NUC itself, so check the model's machine first or plan the time. Switching embeddings
 **off** again while the index exists makes every indexing job fail (`vector_embedding_error`:
 the index keeps its `userProvided` embedder); delete the index in Meilisearch then (`curl -X
-DELETE -H "Authorization: Bearer $LEKTO_MEILISEARCH_API_KEY" $LEKTO_MEILISEARCH_URL/indexes/lekto-live-documents`),
+DELETE -H "Authorization: Bearer $LEKTO_MEILISEARCH_API_KEY" $LEKTO_MEILISEARCH_URL/indexes/lekto-dev-documents`),
 the worker recreates it at its next reconcile.
 
 ## Backup and restore
 
-What to back up: the database `lekto_live` and the bucket `lekto-live`. Not Meilisearch (the
+What to back up: the database `lekto_dev` and the bucket `lekto-dev`. Not Meilisearch (the
 index is derived; `reindex` rebuilds it). Database first, then the objects (originals never
 change; an object that arrived after the database copy is only an unused file). Keep
 `LEKTO_SECRET_KEY` in your password manager.
@@ -150,38 +150,38 @@ folder `backup/` in the repository is ignored by Git.
 ```sh
 BACKUP=$PWD/backup/$(date +%Y-%m-%d)
 mkdir -p "$BACKUP"
-docker exec papiq-dev-postgres-1 pg_dump -U lekto -Fc lekto_live > "$BACKUP/lekto_live.dump"
+docker exec papiq-dev-postgres-1 pg_dump -U lekto -Fc lekto_dev > "$BACKUP/lekto_dev.dump"
 docker run --rm --network papiq-dev_default -v "$BACKUP:/backup" \
   -e RCLONE_CONFIG_GARAGE_TYPE=s3 -e RCLONE_CONFIG_GARAGE_PROVIDER=Other \
   -e RCLONE_CONFIG_GARAGE_ENDPOINT=http://garage:3900 -e RCLONE_CONFIG_GARAGE_REGION=garage \
   -e RCLONE_CONFIG_GARAGE_ACCESS_KEY_ID=GKdeadbeefdeadbeefdeadbeef \
   -e RCLONE_CONFIG_GARAGE_SECRET_ACCESS_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
-  rclone/rclone:1.75.1 sync garage:lekto-live /backup/objects
+  rclone/rclone:1.75.1 sync garage:lekto-dev /backup/objects
 ```
 
 Restore (into the same devcontainer; stop Lekto first with **Lekto stoppen**):
 
 ```sh
-docker exec papiq-dev-postgres-1 dropdb -U lekto --if-exists lekto_live
-docker exec papiq-dev-postgres-1 createdb -U lekto lekto_live
-docker exec -i papiq-dev-postgres-1 pg_restore -U lekto -d lekto_live --no-owner < "$BACKUP/lekto_live.dump"
+docker exec papiq-dev-postgres-1 dropdb -U lekto --if-exists lekto_dev
+docker exec papiq-dev-postgres-1 createdb -U lekto lekto_dev
+docker exec -i papiq-dev-postgres-1 pg_restore -U lekto -d lekto_dev --no-owner < "$BACKUP/lekto_dev.dump"
 docker run --rm --network papiq-dev_default -v "$BACKUP:/backup:ro" \
   -e RCLONE_CONFIG_GARAGE_TYPE=s3 -e RCLONE_CONFIG_GARAGE_PROVIDER=Other \
   -e RCLONE_CONFIG_GARAGE_ENDPOINT=http://garage:3900 -e RCLONE_CONFIG_GARAGE_REGION=garage \
   -e RCLONE_CONFIG_GARAGE_ACCESS_KEY_ID=GKdeadbeefdeadbeefdeadbeef \
   -e RCLONE_CONFIG_GARAGE_SECRET_ACCESS_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
-  rclone/rclone:1.75.1 sync /backup/objects garage:lekto-live
+  rclone/rclone:1.75.1 sync /backup/objects garage:lekto-dev
 ```
 
 Then **Lekto starten** and **Lekto: Suche neu aufbauen**. `rclone sync` makes the target equal
 to the source: a restore removes objects that are not in the backup. The Garage key above is the
-fixed development key from `dev.env`.
+fixed development key from `test.env`.
 
 ## Without VS Code
 
-Every task is a shell command (`.vscode/tasks.json`): load `live.env` and run it, for example
+Every task is a shell command (`.vscode/tasks.json`): load `dev.env` and run it, for example
 
 ```sh
-set -a; . .devcontainer/live.env; set +a
+set -a; . .devcontainer/dev.env; set +a
 cd backend && uv run python -m lekto.composition api      # and `worker` in a second terminal
 ```

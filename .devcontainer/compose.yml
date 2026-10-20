@@ -1,4 +1,4 @@
-# Devcontainer services. Credentials are fixed development values (see dev.env); never reuse them.
+# Devcontainer services. Credentials are fixed development values (see test.env); never reuse them.
 name: papiq-dev
 
 x-garage-admin-token: &garage-admin-token dev-garage-admin-token
@@ -10,7 +10,7 @@ services:
       dockerfile: Dockerfile
       target: dev
     command: sleep infinity
-    env_file: dev.env
+    env_file: test.env
     volumes:
       - ..:/workspaces/papiq:cached
       - uv-cache:/home/vscode/.cache/uv
@@ -53,12 +53,12 @@ services:
   # Creates layout, access key and bucket; safe to run on every start.
   garage-init:
     build: garage-init
-    env_file: dev.env
+    env_file: test.env
     environment:
       GARAGE_ADMIN_URL: http://garage:3903
       GARAGE_ADMIN_TOKEN: *garage-admin-token
-      # The bucket of the development instance (live.env, see README.md).
-      LEKTO_S3_EXTRA_BUCKETS: lekto-live
+      # The bucket of the development instance (dev.env, see README.md).
+      LEKTO_S3_EXTRA_BUCKETS: lekto-dev
     depends_on:
       - garage
     restart: "no"

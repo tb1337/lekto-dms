@@ -572,8 +572,8 @@ def test_the_development_key_is_refused_with_secure_cookies(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """M4-11: the devcontainer's key is public; production (secure cookies) must not use it."""
-    dev_env = Path(__file__).parents[3] / ".devcontainer" / "dev.env"
-    assert f"LEKTO_SECRET_KEY={DEVELOPMENT_SECRET_KEY}" in dev_env.read_text().splitlines()
+    test_env = Path(__file__).parents[3] / ".devcontainer" / "test.env"
+    assert f"LEKTO_SECRET_KEY={DEVELOPMENT_SECRET_KEY}" in test_env.read_text().splitlines()
     message = error_message(monkeypatch, {"LEKTO_SECRET_KEY": DEVELOPMENT_SECRET_KEY})
     assert "LEKTO_SECRET_KEY is the development key" in message
     assert DEVELOPMENT_SECRET_KEY not in message

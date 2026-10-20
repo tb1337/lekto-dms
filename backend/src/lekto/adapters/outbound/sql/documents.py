@@ -9,11 +9,13 @@ from uuid import UUID
 
 from sqlalchemy import (
     ColumnElement,
+    Float,
     FromClause,
     Row,
     Table,
     and_,
     case,
+    cast,
     delete,
     distinct,
     func,
@@ -27,7 +29,7 @@ from lekto.adapters.outbound.sql.repositories import KEYS_PER_QUERY, SqlReposito
 from lekto.adapters.outbound.sql.spaces import visible_to
 from lekto.adapters.outbound.sql.transaction import Transaction
 from lekto.core.domain.documents import Channel, Document, Sha256
-from lekto.core.domain.fields import FieldValue, Money, Url
+from lekto.core.domain.fields import FieldType, FieldValue, Money, Url
 from lekto.core.domain.ids import (
     ContactId,
     DocumentId,
@@ -230,7 +232,16 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         limit: int,
     ) -> list[Document]:
         documents = t.documents
-        sorting, behind = _sorting(order, after)
+        numeric = False
+        if order.key is SortKey.FIELD:
+            definitions = t.field_definitions
+            kind = (
+                await self._tx.read(
+                    select(definitions.c.data_type).where(definitions.c.id == order.field)
+                )
+            ).scalar_one_or_none()
+            numeric = kind in {FieldType.NUMBER, FieldType.AMOUNT}
+        sorting, behind = _sorting(order, after, numeric=numeric)
         if behind is not None:
             criteria.append(behind)
         criteria.extend(_matching(filter))
@@ -599,11 +610,12 @@ def _matching(filter: DocumentFilter) -> list[ColumnElement[bool]]:
 
 
 def _sorting(
-    order: DocumentOrder, after: DocumentPosition | None
+    order: DocumentOrder, after: DocumentPosition | None, *, numeric: bool = False
 ) -> tuple[list[ColumnElement[Any]], ColumnElement[bool] | None]:
     """The ORDER BY of `order`, and the criterion for the rows after `after` in it. Ties go
-    by id; documents without a date come last in both directions, so the criterion for a
-    position with a date also takes every row without one."""
+    by id; documents without a date (a value of the field, which is a number or an amount if
+    `numeric`, else a date or a period) come last in both directions, so the criterion for a
+    position with a value also takes every row without one."""
     documents = t.documents
     id_ = documents.c.id
     ascending = order.ascending
@@ -638,3 +650,33 @@ def _sorting(
                     day.is_(None),
                 )
             return [day.is_(None).asc(), direction(day), direction(id_)], behind
+        case SortKey.FIELD:
+            value = _sort_value(order.field, documents.c.id, numeric=numeric)
+            behind = None
+            if after is not None and after.value is None:
+                behind = and_(value.is_(None), beyond(id_, after.id))
+            elif after is not None:
+                # The cursor's value as the database reads it, so that ties compare equal.
+                mark = _sort_value(order.field, after.id, numeric=numeric)
+                behind = or_(
+                    beyond(value, mark),
+                    and_(value == mark, beyond(id_, after.id)),
+                    value.is_(None),
+                )
+            return [value.is_(None).asc(), direction(value), direction(id_)], behind
+
+
+def _sort_value(
+    field: FieldId | None, document: ColumnElement[Any] | UUID, *, numeric: bool
+) -> ColumnElement[Any]:
+    """The value of `field` that a document sorts by: its day (a period's first) or its number
+    (an amount's value; SQLite holds decimals as text, so as a float on both databases)."""
+    values = t.document_fields
+    column: ColumnElement[Any] = (
+        cast(values.c.value_decimal, Float) if numeric else values.c.value_date
+    )
+    return (
+        select(column)
+        .where(values.c.document_id == document, values.c.field_id == field)
+        .scalar_subquery()
+    )

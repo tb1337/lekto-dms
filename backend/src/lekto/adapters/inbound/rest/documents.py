@@ -99,6 +99,26 @@ class DocumentSort(StrEnum):
         return DocumentOrder(SortKey(self.value.lstrip("-")), ascending=not self.startswith("-"))
 
 
+class DocumentListSort(StrEnum):
+    """The keys of `DocumentSort`, and `field`: by the value of the field `sort_field_id`.
+    Only the list sorts by a field; the search index holds no field values."""
+
+    CREATED = "created_at"
+    CREATED_DESC = "-created_at"
+    DOCUMENT_DATE = "document_date"
+    DOCUMENT_DATE_DESC = "-document_date"
+    TITLE = "title"
+    TITLE_DESC = "-title"
+    FIELD = "field"
+    FIELD_DESC = "-field"
+
+    def order(self, field: FieldId | None) -> DocumentOrder:
+        """ValidationError unless `field` is given exactly for `field` and `-field`."""
+        return DocumentOrder(
+            SortKey(self.value.lstrip("-")), ascending=not self.startswith("-"), field=field
+        )
+
+
 _UPLOAD_BODY = upload_body(
     "PDF, JPEG, PNG or TIFF; recognised by content.", **UploadFields.form_schema()
 )
@@ -194,9 +214,10 @@ async def upload(
         "`field_id`: a value for the field is set. `document_date_from` and "
         "`document_date_to`: the document date lies between them, both days included, "
         "either end open (a document without a date does not match). `sort` orders by "
-        "arrival (the default, "
-        "newest first), "
-        "document date or title; documents without a date come last. Each document says whether "
+        "arrival (the default, newest first), document date, title, or (`field` with "
+        "`sort_field_id`) the value of a field of type date, period (by its first day), number "
+        "or amount (by its value); documents without a date or value come last. Each document "
+        "says whether "
         "it stands in the caller's inbox (`in_inbox`). To search by words and meaning use "
         "`GET /documents/search`."
     ),
@@ -207,7 +228,10 @@ async def list_documents(
     user: CurrentUser,
     context: Context,
     filter: Filter,
-    sort: DocumentSort = DocumentSort.CREATED_DESC,
+    sort: DocumentListSort = DocumentListSort.CREATED_DESC,
+    sort_field_id: Annotated[
+        UUID | None, Query(description="The field to sort by with `sort=field` or `-field`.")
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=PAGE_LIMIT)] = PAGE_SIZE,
     cursor: Cursor = None,
     all_users: AllDocuments = False,
@@ -215,7 +239,7 @@ async def list_documents(
     views = await context.documents.query(
         user,
         filter,
-        order=sort.order,
+        order=sort.order(None if sort_field_id is None else FieldId(sort_field_id)),
         after=decode_cursor(cursor),
         limit=limit,
         all_users=all_users,

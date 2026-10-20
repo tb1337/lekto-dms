@@ -5,7 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from lekto.adapters.inbound.rest import PREFIX
-from lekto.core.domain.ids import DocumentId
+from lekto.core.domain.ids import DocumentId, new_id
 from lekto.core.services.objects import archive_key
 from tests.api import auth
 from tests.builders import PASSWORD, SAMPLES
@@ -135,10 +135,12 @@ async def test_listing_filters_and_pages(api: Api) -> None:
         assert response.status_code == 422, bad
 
 
-async def test_listing_sorts_by_date_and_title_and_filters_by_field(api: Api) -> None:
+async def test_listing_sorts_by_date_title_and_field_and_filters_by_field(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
     definition = {"name": "Note", "data_type": "text", "document_type_ids": None}
     note = await post(api, "/fields", definition, auth(admin))
+    due_field = {"name": "Due", "data_type": "date", "document_type_ids": None}
+    due = await post(api, "/fields", due_field, auth(admin))
     ids = []
     for number in range(3):
         content = unique_pdf(str(10 + number))
@@ -147,8 +149,12 @@ async def test_listing_sorts_by_date_and_title_and_filters_by_field(api: Api) ->
         )
     await api.drain()
     changes = [
-        {"title": "Zahnarzt", "document_date": "2026-03-01", "fields": {note["id"]: "x"}},
-        {"title": "arzt", "document_date": "2025-01-01"},
+        {
+            "title": "Zahnarzt",
+            "document_date": "2026-03-01",
+            "fields": {note["id"]: "x", due["id"]: "2026-12-01"},
+        },
+        {"title": "arzt", "document_date": "2025-01-01", "fields": {due["id"]: "2026-11-01"}},
         {"title": "Ärztebrief", "document_date": None},
     ]
     for id, change in zip(ids, changes, strict=True):
@@ -174,6 +180,9 @@ async def test_listing_sorts_by_date_and_title_and_filters_by_field(api: Api) ->
     # By title, case and accents aside.
     assert await listed(sort="title") == [ids[1], ids[2], ids[0]]
     assert await listed(field_id=note["id"]) == [ids[0]]
+    # By the value of a field; without one last.
+    assert await listed(sort="field", sort_field_id=due["id"]) == [ids[1], ids[0], ids[2]]
+    assert await listed(sort="-field", sort_field_id=due["id"]) == [ids[0], ids[1], ids[2]]
     # Dated within a period, both days included; either end may stay open.
     year = {"document_date_from": "2026-01-01", "document_date_to": "2026-12-31"}
     assert await listed(**year) == [ids[0]]
@@ -181,11 +190,19 @@ async def test_listing_sorts_by_date_and_title_and_filters_by_field(api: Api) ->
     assert await listed(document_date_from="2025-01-01", sort="document_date") == ids[1::-1]
     for bad_params in (
         {"sort": "size"},
+        {"sort": "field"},
+        {"sort": "title", "sort_field_id": due["id"]},
+        {"sort": "field", "sort_field_id": note["id"]},  # text does not sort
+        {"sort": "field", "sort_field_id": str(new_id())},
         {"document_date_from": "2026-02-01", "document_date_to": "2026-01-01"},
         {"document_date_from": "2026-02-30"},
     ):
         bad = await api.client.get(f"{PREFIX}/documents", params=bad_params, headers=auth(owner))
         assert bad.status_code == 422, bad_params
+    # The search index holds no field values.
+    search = {"q": "arzt", "sort": "field", "sort_field_id": due["id"]}
+    bad = await api.client.get(f"{PREFIX}/documents/search", params=search, headers=auth(owner))
+    assert bad.status_code == 422
 
 
 async def test_counts_for_the_filters_of_the_documents(api: Api) -> None:

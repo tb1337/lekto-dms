@@ -24,7 +24,7 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.exchanges import RunExchange, exchanges_from_json
 from lekto.core.domain.facts import Facts, facts_in
-from lekto.core.domain.fields import FieldType, FieldValue
+from lekto.core.domain.fields import SORTABLE_TYPES, FieldType, FieldValue
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
     ContactId,
@@ -167,6 +167,18 @@ class DocumentFacts:
     facts: Facts
     codes: tuple[CodeFacts, ...] | None
     other_contacts: dict[tuple[IdentifierKind, str], int] | None
+
+
+async def _check_sortable(uow: UnitOfWork, order: DocumentOrder) -> None:
+    """ValidationError if `order` sorts by a field that is missing or of another type than
+    `SORTABLE_TYPES`."""
+    if order.field is None:
+        return
+    definition = await uow.fields.find(order.field)
+    if definition is None or definition.data_type not in SORTABLE_TYPES:
+        raise ValidationError(
+            "sort_field_id: not a field a list sorts by (date, period, number or amount)"
+        )
 
 
 async def _position(
@@ -396,10 +408,12 @@ class DocumentService:
         after the page ending at the document `after`; with `all_users` (admins only), every
         document. Each is checked against the permission rules once more, and says whether it
         stands open in the caller's inbox (with `all_users`, in every user's). ValidationError
-        if `after` is gone while the list sorts by another key than the order of arrival."""
+        if `after` is gone while the list sorts by another key than the order of arrival, or
+        if the order is by a field that is missing or of a type no list sorts by."""
         limit = max(1, min(limit, PAGE_LIMIT))
         async with self._uow() as uow:
             user = await load_lister(uow, actor, all_users, "list the documents of all users")
+            await _check_sortable(uow, order)
             position = await _position(uow, order, after)
             filter = await expanded(uow, filter)
             if all_users:

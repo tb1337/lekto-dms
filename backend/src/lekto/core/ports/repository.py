@@ -19,13 +19,15 @@ Common rules for every adapter:
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
 from lekto.core.domain.classifier import ClassifierModel
 from lekto.core.domain.documents import Document, Sha256
-from lekto.core.domain.fields import FieldDefinition
+from lekto.core.domain.errors import ValidationError
+from lekto.core.domain.fields import FieldDefinition, sort_value
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
     ClassifierModelId,
@@ -244,15 +246,22 @@ class SortKey(StrEnum):
     CREATED = "created_at"  # the order documents came in, which is their ids'
     DOCUMENT_DATE = "document_date"
     TITLE = "title"  # by `sort_key` of the title
+    FIELD = "field"  # by the value of a field (`DocumentOrder.field`, `fields.sort_value`)
 
 
 @dataclass(frozen=True)
 class DocumentOrder:
     """How a list of documents is sorted: by `key`, descending unless `ascending`, ties by id
-    the same way. Documents without a document date come last either way."""
+    the same way. Documents without a document date come last either way, as do those without
+    a value when sorted by the field `field` (only then given; one of `SORTABLE_TYPES`)."""
 
     key: SortKey = SortKey.CREATED
     ascending: bool = False
+    field: FieldId | None = None
+
+    def __post_init__(self) -> None:
+        if (self.key is SortKey.FIELD) != (self.field is not None):
+            raise ValidationError("sort_field_id: needed to sort by a field, and only then")
 
 
 NEWEST_FIRST = DocumentOrder()
@@ -281,7 +290,7 @@ class DocumentPosition:
     the sort key (none for `CREATED`, which sorts by id)."""
 
     id: DocumentId
-    value: date | str | None = None
+    value: date | str | Decimal | None = None
 
     @classmethod
     def after(cls, id: DocumentId | None) -> "DocumentPosition | None":
@@ -298,6 +307,9 @@ class DocumentPosition:
                 return cls(document.id, document.document_date)
             case SortKey.TITLE:
                 return cls(document.id, sort_key(document.title))
+            case SortKey.FIELD:
+                value = None if order.field is None else document.fields.get(order.field)
+                return cls(document.id, sort_value(value))
 
 
 class DocumentRepository(Repository[DocumentId, Document], Protocol):

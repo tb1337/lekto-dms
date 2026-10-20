@@ -1046,7 +1046,7 @@ export interface paths {
 		};
 		/**
 		 * List documents
-		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type, space, group, topic or lane, all tags; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `document_date_from` and `document_date_to`: the document date lies between them, both days included, either end open (a document without a date does not match). `sort` orders by arrival (the default, newest first), document date or title; documents without a date come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `GET /documents/search`.
+		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type, space, group, topic or lane, all tags; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `document_date_from` and `document_date_to`: the document date lies between them, both days included, either end open (a document without a date does not match). `sort` orders by arrival (the default, newest first), document date, title, or (`field` with `sort_field_id`) the value of a field of type date, period (by its first day), number or amount (by its value); documents without a date or value come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `GET /documents/search`.
 		 */
 		get: operations['list_documents_api_v1_documents_get'];
 		put?: never;
@@ -2879,6 +2879,21 @@ export interface components {
 			/** @description Null while there is none. */
 			archive: components['schemas']['StoredFileOut'] | null;
 		};
+		/**
+		 * DocumentListSort
+		 * @description The keys of `DocumentSort`, and `field`: by the value of the field `sort_field_id`.
+		 *     Only the list sorts by a field; the search index holds no field values.
+		 * @enum {string}
+		 */
+		DocumentListSort:
+			| 'created_at'
+			| '-created_at'
+			| 'document_date'
+			| '-document_date'
+			| 'title'
+			| '-title'
+			| 'field'
+			| '-field';
 		/**
 		 * DocumentOutOfReach
 		 * @description After a change by an editor: the owner's rules filed the document where the editor can
@@ -14139,7 +14154,9 @@ export interface operations {
 	list_documents_api_v1_documents_get: {
 		parameters: {
 			query?: {
-				sort?: components['schemas']['DocumentSort'];
+				sort?: components['schemas']['DocumentListSort'];
+				/** @description The field to sort by with `sort=field` or `-field`. */
+				sort_field_id?: string | null;
 				limit?: number;
 				/** @description `next_cursor`. */
 				cursor?: string | null;

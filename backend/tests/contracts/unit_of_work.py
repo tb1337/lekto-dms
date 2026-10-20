@@ -1281,6 +1281,74 @@ class UnitOfWorkContract:
         before = DocumentFilter(document_dates=Period(date.min, date(2025, 12, 23)))
         assert await paged(NEWEST_FIRST, before) == []
 
+    async def test_query_sorts_by_the_value_of_a_field(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner, space = await owner_with_space(uow_factory)
+        due = FieldDefinition.create(name="Due", data_type=FieldType.DATE, now=NOW)
+        total = FieldDefinition.create(name="Total", data_type=FieldType.AMOUNT, now=NOW)
+        span = FieldDefinition.create(name="Span", data_type=FieldType.PERIOD, now=NOW)
+        definitions = {item.id: item for item in (due, total, span)}
+        rows = [  # title, due, total, span; in the order they come in
+            ("a", date(2026, 11, 1), Money(Decimal("100"), "EUR"), Period.year(2025)),
+            ("b", date(2026, 10, 1), Money(Decimal("9.50"), "EUR"), None),
+            ("c", None, Money(Decimal("10.00"), "EUR"), Period.month(2024, 5)),
+            ("d", date(2026, 10, 1), Money(Decimal("10"), "USD"), Period.month(2025, 1)),
+            ("e", date(2027, 1, 1), None, None),
+        ]
+        documents = []
+        for title, day, amount, period in rows:
+            document = builders.processed(owner, space)
+            values = {due.id: day, total.id: amount, span.id: period}
+            changes = DocumentChanges(
+                title=title,
+                fields={id: value for id, value in values.items() if value is not None},
+            )
+            document.apply_changes(changes, definitions, NOW)
+            documents.append(document)
+        async with uow_factory() as uow:
+            for definition in definitions.values():
+                await uow.fields.add(definition)
+            for document in documents:
+                await uow.documents.add(document)
+            await uow.commit()
+        titles = {document.id: document.title for document in documents}
+
+        async def paged(field: FieldDefinition, *, ascending: bool) -> list[str]:
+            order = DocumentOrder(SortKey.FIELD, ascending=ascending, field=field.id)
+            found: list[Document] = []
+            after = None
+            async with uow_factory() as uow:
+                while page := await uow.documents.query_visible(
+                    owner.id, DocumentFilter(), order=order, after=after, limit=2
+                ):
+                    found += page
+                    after = DocumentPosition.of(page[-1], order)
+            return [titles[document.id] for document in found]
+
+        def by_id(*names: str, descending: bool = False) -> list[str]:
+            ids = {title: id for id, title in titles.items()}
+            return sorted(names, key=lambda name: ids[name], reverse=descending)
+
+        # Ties by id the same way, without a value last in both directions.
+        assert await paged(due, ascending=True) == [*by_id("b", "d"), "a", "e", "c"]
+        assert await paged(due, ascending=False) == [
+            "e",
+            "a",
+            *by_id("b", "d", descending=True),
+            "c",
+        ]
+        # Amounts by value, whatever the currency; 9.50 before 10 before 100, not as text.
+        assert await paged(total, ascending=True) == ["b", *by_id("c", "d"), "a", "e"]
+        assert await paged(total, ascending=False) == [
+            "a",
+            *by_id("c", "d", descending=True),
+            "b",
+            "e",
+        ]
+        # Periods by their first day: January 2025 and the year 2025 tie.
+        assert await paged(span, ascending=True) == ["c", *by_id("a", "d"), "b", "e"]
+
     async def test_documents_are_counted_by_master_data(
         self, uow_factory: UnitOfWorkFactory
     ) -> None:

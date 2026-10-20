@@ -20,8 +20,9 @@ describe('the archive', () => {
 	it('shows no lane and no progress on a card, but that the document is in the inbox', () => {
 		const { container } = render(DocumentCard, { document: listed(), lookup: null });
 		expect(container.querySelector('[data-lane]')).toBeNull();
+		// To the document, as opened from the inbox.
 		const mark = screen.getByRole('link', { name: m.in_inbox() });
-		expect(mark.getAttribute('href')).toBe('/ui/inbox?tab=review');
+		expect(mark.getAttribute('href')).toBe('/ui/documents/doc-1?from=inbox');
 		// A badge on the card's corner: beside the card, which cuts off what overflows it.
 		const card = screen.getByRole('link', { name: /Stromrechnung/ }).parentElement!;
 		expect(card.contains(mark)).toBe(false);
@@ -35,7 +36,7 @@ describe('the archive', () => {
 		render(DocumentCard, { document: listed({ lane: null }), lookup: null });
 		expect(screen.queryByRole('progressbar')).toBeNull();
 		expect(screen.getByRole('link', { name: m.in_inbox() }).getAttribute('href')).toBe(
-			'/ui/inbox?tab=processing'
+			'/ui/documents/doc-1?from=inbox'
 		);
 	});
 
@@ -104,15 +105,10 @@ describe('the archive', () => {
 		expect(screen.getByRole('button', { name: 'beside' })).toBeTruthy();
 	});
 
-	it.each([
-		[null, 'processing'],
-		['yellow', 'review'],
-		['red', 'intervene'],
-		['green', 'new']
-	] as const)('leads a document with lane %s to the inbox tab %s', (lane, tab) => {
-		render(InboxMark, { lane });
+	it('leads to the document as opened from the inbox', () => {
+		render(InboxMark, { id: 'doc-7' });
 		expect(screen.getByRole('link', { name: m.in_inbox() }).getAttribute('href')).toBe(
-			`/ui/inbox?tab=${tab}`
+			'/ui/documents/doc-7?from=inbox'
 		);
 	});
 });

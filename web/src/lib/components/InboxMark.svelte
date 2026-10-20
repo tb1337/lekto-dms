@@ -1,23 +1,23 @@
 <script lang="ts">
 	import Inbox from '@lucide/svelte/icons/inbox';
-	import type { components } from '#lib/api/schema.ts';
-	import { inboxTabHref, openTabOf } from '#lib/inbox-view.ts';
+	import { inboxDocument } from '#lib/document-view.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
 
-	// "In the inbox" at a document of the archive that stands open there: a link to the tab it
-	// stands under. On a phone only its icon shows. As a `badge` (on a card's corner, Tobi,
-	// 20.10.2026) only its icon always, filled, the words as tooltip; a ring in the page's colour
-	// cuts it free of the card. Its area reaches about 44 pixels for a finger.
+	// "In the inbox" at a document of the archive that stands open there: a link to the document
+	// as opened from the inbox (Tobi, 20.10.2026: to the document, not to the inbox), with its
+	// neighbours there and the next one to decide. On a phone only its icon shows. As a `badge`
+	// (on a card's corner) only its icon always, filled, the words as tooltip; a ring in the
+	// page's colour cuts it free of the card. Its area reaches about 44 pixels for a finger.
 	let {
-		lane,
+		id,
 		badge = false,
 		class: className = ''
-	}: { lane: components['schemas']['Lane'] | null; badge?: boolean; class?: string } = $props();
+	}: { id: string; badge?: boolean; class?: string } = $props();
 </script>
 
 <a
-	href={inboxTabHref(openTabOf(lane))}
+	href={inboxDocument(id)}
 	title={badge ? m.in_inbox() : undefined}
 	class={cn(
 		'relative inline-flex shrink-0 items-center gap-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors after:absolute after:-inset-2',

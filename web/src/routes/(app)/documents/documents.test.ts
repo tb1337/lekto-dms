@@ -53,7 +53,7 @@ describe('the archive page', () => {
 		const waiting = (await screen.findByText('Wartet')).closest('li')!;
 		const filed = screen.getByText('Abgelegt').closest('li')!;
 		expect(within(waiting).getByRole('link', { name: m.in_inbox() }).getAttribute('href')).toBe(
-			'/ui/inbox?tab=intervene'
+			'/ui/documents/d1?from=inbox'
 		);
 		expect(within(filed).queryByRole('link', { name: m.in_inbox() })).toBeNull();
 		expect(document.querySelector('[data-lane]')).toBeNull();

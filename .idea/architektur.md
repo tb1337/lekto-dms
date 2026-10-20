@@ -259,7 +259,7 @@ Der Posteingang ist der Eingang: Dort stellt ein Nutzer Dokumente ein, und dort 
 - **Wessen:** der Posteingang des Besitzers; Admins mit „Alle Nutzer“ den aller. Wer ein Dokument nur über einen geteilten Space sieht, bekommt es nicht.
 - **Reiter:** Alle · Neu · Prüfen · Eingreifen · In Verarbeitung · Erledigt; „Alle“ zeigt alles außer „Erledigt“.
 - **Badge** am Menüpunkt: zählt alle Fälle; sein Hintergrund hat die Farbe der schlechtesten Lane darin (Rot vor Gelb vor Grün, grau, wenn nur Dokumente in Verarbeitung darin sind), die Zahl bleibt lesbar; der Screenreader nennt, was darin steht.
-- **Archiv** (Dokumente): zeigt alles in Reichweite, die Suche findet alles. Ohne Lane-Filter, Lane-Abzeichen und Fortschritt in Raster und Liste; ein Dokument, das im Posteingang steht, trägt „Im Posteingang“ mit Link. Die Dokumentansicht zeigt die Lane weiter, die API behält den Filter `lane`.
+- **Archiv** (Dokumente): zeigt alles in Reichweite, die Suche findet alles. Ohne Lane-Filter, Lane-Abzeichen und Fortschritt in Raster und Liste; ein Dokument, das im Posteingang steht, trägt „Im Posteingang“; der Link öffnet das Dokument wie aus dem Posteingang, mit Vor und Zurück dort (Tobi, 20.10.2026: zum Dokument, nicht in den Posteingang). Die Dokumentansicht zeigt die Lane weiter, die API behält den Filter `lane`.
 
 **Signale**
 

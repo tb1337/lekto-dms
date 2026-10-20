@@ -114,6 +114,6 @@
 		</a>
 	</div>
 	{#if document.in_inbox}
-		<InboxMark lane={document.lane} badge class="absolute -top-[7px] -right-[7px] z-10" />
+		<InboxMark id={document.id} badge class="absolute -top-[7px] -right-[7px] z-10" />
 	{/if}
 </div>

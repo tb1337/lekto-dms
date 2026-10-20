@@ -659,7 +659,7 @@ row of filters, on a desktop narrow by the title. -->
 											<DocumentRow document={item.document} {lookup} fields={linesOf(item)}>
 												{@render snippetLine(item)}
 												{#snippet aside()}
-													{#if item.document.in_inbox}<InboxMark lane={item.document.lane} />{/if}
+													{#if item.document.in_inbox}<InboxMark id={item.document.id} />{/if}
 												{/snippet}
 											</DocumentRow>
 										</li>

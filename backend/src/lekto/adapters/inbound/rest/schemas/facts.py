@@ -48,6 +48,13 @@ class FoundIdentifierOut(BaseModel):
             "others."
         )
     )
+    other_contact_ids: list[UUID] | None = Field(
+        default=None,
+        description=(
+            "For admins: those contacts (`other_contacts` of them), to name and open them; "
+            "null for others."
+        ),
+    )
 
 
 class IdentifierFoundOut(BaseModel):
@@ -129,6 +136,7 @@ class FactsOut(BaseModel):
                             "in_code": False,
                             "spans": [{"start": 412, "end": 421}],
                             "other_contacts": 0,
+                            "other_contact_ids": [],
                         }
                     ],
                     "codes": [],
@@ -171,7 +179,10 @@ class FactsOut(BaseModel):
                     in_text=item.in_text,
                     in_code=item.in_code,
                     spans=[SpanOut.of(span) for span in item.spans],
-                    other_contacts=None if others is None else others.get(item.key, 0),
+                    other_contacts=None if others is None else len(others.get(item.key, ())),
+                    other_contact_ids=(
+                        None if others is None else sorted(others.get(item.key, frozenset()))
+                    ),
                 )
                 for item in report.facts.identifiers
             ],

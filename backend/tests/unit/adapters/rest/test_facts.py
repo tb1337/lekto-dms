@@ -98,7 +98,7 @@ async def test_names_identifiers_and_codes_with_their_places(facts_api: Api) -> 
     assert customer["contact_id"] is None
     assert [TEXT[span["start"] : span["end"]] for span in customer["spans"]] == ["2004-7718"]
     # Only admins learn on how many contacts' documents a value stands.
-    assert customer["other_contacts"] is None
+    assert (customer["other_contacts"], customer["other_contact_ids"]) == (None, None)
     # Once for its format and text, with every place it stands.
     code, bar = facts["codes"]
     assert code["format"] == "QR Code"
@@ -128,10 +128,13 @@ async def test_names_identifiers_and_codes_with_their_places(facts_api: Api) -> 
     assert code["fields"] == [field.json()["id"]]
 
     as_admin = (await api.client.get(f"{url}/facts", headers=auth(admin))).json()
-    assert {item["value"]: item["other_contacts"] for item in as_admin["identifiers"]} == {
-        "DE89370400440532013000": 0,
-        "20047718": 0,
-        "DE02120300000000202051": 0,
+    assert {
+        item["value"]: (item["other_contacts"], item["other_contact_ids"])
+        for item in as_admin["identifiers"]
+    } == {
+        "DE89370400440532013000": (0, []),
+        "20047718": (0, []),
+        "DE02120300000000202051": (0, []),
     }
 
 

@@ -161,12 +161,12 @@ class CodeFacts:
 class DocumentFacts:
     """What the document shows of its contact (`domain.facts`, with spans of the text), the
     codes on its pages (None while they are not read), and, for admins, on the confirmed
-    documents of how many contacts besides the document's an identifier stands."""
+    documents of which contacts besides the document's an identifier stands."""
 
     contact_id: ContactId | None
     facts: Facts
     codes: tuple[CodeFacts, ...] | None
-    other_contacts: dict[tuple[IdentifierKind, str], int] | None
+    other_contacts: dict[tuple[IdentifierKind, str], frozenset[ContactId]] | None
 
 
 async def _check_sortable(uow: UnitOfWork, order: DocumentOrder) -> None:
@@ -362,10 +362,7 @@ class DocumentService:
                 carrying = await uow.document_identifiers.contacts_of(
                     [item.key for item in facts.identifiers]
                 )
-            others = {
-                key: len(contacts_ - {document.contact_id} if document.contact_id else contacts_)
-                for key, contacts_ in carrying.items()
-            }
+            others = {key: contacts_ - {document.contact_id} for key, contacts_ in carrying.items()}
         return DocumentFacts(
             contact_id=document.contact_id, facts=facts, codes=views, other_contacts=others
         )

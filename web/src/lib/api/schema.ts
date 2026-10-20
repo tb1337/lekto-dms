@@ -3183,6 +3183,7 @@ export interface components {
 		 *           "in_code": false,
 		 *           "in_text": true,
 		 *           "kind": "customer_number",
+		 *           "other_contact_ids": [],
 		 *           "other_contacts": 0,
 		 *           "spans": [
 		 *             {
@@ -3563,6 +3564,11 @@ export interface components {
 			 * @description For admins: on the confirmed documents of how many contacts other than the document's it stands (the IBAN of one's own account stands on many); null for others.
 			 */
 			other_contacts: number | null;
+			/**
+			 * Other Contact Ids
+			 * @description For admins: those contacts (`other_contacts` of them), to name and open them; null for others.
+			 */
+			other_contact_ids?: string[] | null;
 		};
 		/**
 		 * GiroCodeOut

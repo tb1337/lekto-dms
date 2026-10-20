@@ -1187,5 +1187,7 @@
 	"alias_add": "Schreibweise",
 	"alias_input": "Neue Schreibweise",
 	"alias_remove": "{name} entfernen",
-	"field_def_scope_some": "Bestimmte Dokumenttypen"
+	"field_def_scope_some": "Bestimmte Dokumenttypen",
+	"facts_other_contacts_of": "Steht auch auf Dokumenten von",
+	"facts_attach_value": "{value} als Kennung anheften"
 }

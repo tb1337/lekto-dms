@@ -130,7 +130,8 @@ describe('FactsPanel', () => {
 		expect(screen.getByText('20047718')).toBeTruthy();
 		// The owner's own IBAN stands on many contacts' documents.
 		expect(screen.getByText(m.facts_other_contacts({ count: 6 }))).toBeTruthy();
-		expect(screen.getAllByRole('button', { name: m.facts_attach() })).toHaveLength(2);
+		// Only a pin to attach, its label on hover.
+		expect(screen.getAllByTitle(m.facts_attach())).toHaveLength(2);
 		// The GiroCode read, its amount as the field's; another code as it is.
 		expect(screen.getByText(m.code_giro())).toBeTruthy();
 		expect(screen.getByText(m.code_same_as({ field: 'Rechnungsbetrag' }))).toBeTruthy();
@@ -140,7 +141,9 @@ describe('FactsPanel', () => {
 	it('marks a fact in the text while hovered, and keeps it on a click', async () => {
 		const onmark = vi.fn();
 		render(FactsPanel, props({ onmark }));
-		const customer = screen.getByRole('button', { name: /20047718/ });
+		const customer = screen.getByRole('button', {
+			name: new RegExp(`^${m.identifier_kind_customer_number()}`)
+		});
 		await fireEvent.mouseEnter(customer.parentElement!.parentElement!);
 		expect(onmark).toHaveBeenLastCalledWith([{ start: 80, end: 89 }], false);
 		await fireEvent.click(customer);
@@ -168,7 +171,7 @@ describe('FactsPanel', () => {
 		const onchanged = vi.fn();
 		render(FactsPanel, props({ onchanged }));
 		const user = userEvent.setup();
-		await user.click(screen.getAllByRole('button', { name: m.facts_attach() })[0]);
+		await user.click(screen.getAllByTitle(m.facts_attach())[0]);
 		const form = screen.getByText(
 			m.facts_attach_title({ kind: m.identifier_kind_customer_number() })
 		).parentElement!;
@@ -193,11 +196,29 @@ describe('FactsPanel', () => {
 		open.mockRestore();
 	});
 
+	it('names the other contacts an identifier stands with, each to open, and the code’s', async () => {
+		const open = vi.spyOn(masterDataDialogs, 'open').mockImplementation(() => {});
+		const facts = {
+			...FACTS,
+			identifiers: FACTS.identifiers.map((item) =>
+				item.other_contacts ? { ...item, other_contacts: 1, other_contact_ids: [BANK] } : item
+			)
+		};
+		render(FactsPanel, props({ facts }));
+		const warning = screen.getByText(m.facts_other_contacts_of()).closest('div')!;
+		await fireEvent.click(within(warning).getByRole('button', { name: 'Bank Musterstadt' }));
+		expect(open).toHaveBeenLastCalledWith('contacts', BANK);
+		// The GiroCode's IBAN is the utility's: the code names it.
+		const giro = screen.getByText(m.code_giro()).closest('div')!.parentElement!;
+		expect(within(giro).getByRole('button', { name: 'Stadtwerke Musterstadt GmbH' })).toBeTruthy();
+		open.mockRestore();
+	});
+
 	it('offers nothing to attach to those who are no admins', () => {
 		render(FactsPanel, props({ admin: false }));
 		const own = screen.getByRole('heading', { name: /Stadtwerke Musterstadt GmbH/ });
 		expect(within(own).queryByRole('button')).toBeNull();
-		expect(screen.queryByRole('button', { name: m.facts_attach() })).toBeNull();
+		expect(screen.queryAllByTitle(m.facts_attach())).toHaveLength(0);
 		expect(screen.getByText(m.facts_attach_admins())).toBeTruthy();
 	});
 

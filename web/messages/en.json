@@ -1187,5 +1187,7 @@
 	"alias_add": "Spelling",
 	"alias_input": "New spelling",
 	"alias_remove": "Remove {name}",
-	"field_def_scope_some": "Certain document types"
+	"field_def_scope_some": "Certain document types",
+	"facts_other_contacts_of": "Also on documents of",
+	"facts_attach_value": "Pin {value} as an identifier"
 }

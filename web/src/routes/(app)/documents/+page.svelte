@@ -33,6 +33,7 @@
 		writeFilters,
 		type Filters
 	} from '#lib/filters.ts';
+	import { searchPlaces } from '#lib/header-search.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { cardLines } from '#lib/card-fields.ts';
 	import { groupDocuments } from '#lib/grouping.ts';
@@ -59,6 +60,7 @@
 	import { PagedList } from '#lib/paging.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
+	import { session } from '#lib/session.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// The documents (the archive): listed (newest document date first) or, with words in `q`,
@@ -80,7 +82,6 @@
 	const sortField = $derived(sortFieldOf(params, searching));
 	// The search field follows the URL (back button, links) until the user types.
 	let text = $derived(query);
-	let searchField = $state<HTMLInputElement | null>(null);
 	let layout = $state<Layout>(rememberedLayout());
 	let lookup = $state<Lookup | null>(null);
 	let lookupError = $state<string | null>(null);
@@ -256,7 +257,13 @@
 		);
 		void loadLenses();
 		// Opened from the search icon of a narrow header: the field takes the focus.
-		if (location.hash === '#search') void tick().then(() => searchField?.focus());
+		if (location.hash === '#search') {
+			void tick().then(() => {
+				// The field that shows at this width (`header-search.ts`).
+				const fields = document.querySelectorAll<HTMLInputElement>('[data-page-search]');
+				[...fields].find((field) => field.offsetParent !== null)?.focus();
+			});
+		}
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		// Events are thin: fetch the list again, at most once in a while.
 		const refresh = () => {
@@ -360,6 +367,50 @@
 	{/if}
 {/snippet}
 
+<!-- The page's own search, where the header has none (`header-search.ts`): on a phone in the
+row of filters, on a desktop narrow by the title. -->
+{#snippet searchForm(compact: boolean)}
+	{@const places = searchPlaces(session.isAdmin)}
+	<form
+		role="search"
+		class={cn(
+			'min-w-0 items-center gap-2 rounded-full border border-input bg-background focus-within:border-ring',
+			compact
+				? cn('h-9 w-64 pr-1 pl-3', places.title)
+				: cn('flex h-11 flex-1 pr-1.5 pl-4', places.phone)
+		)}
+		onsubmit={(event) => {
+			event.preventDefault();
+			search(text.trim());
+		}}
+	>
+		<SearchIcon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+		<input
+			data-page-search
+			bind:value={text}
+			type="search"
+			aria-label={m.documents_search_label()}
+			placeholder={lens ? m.header_search_in({ name: lens.name }) : m.search_placeholder()}
+			class="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
+		/>
+		{#if query}
+			<Button
+				type="button"
+				variant="ghost"
+				size="icon"
+				class="size-7"
+				aria-label={m.documents_search_clear()}
+				onclick={() => {
+					text = '';
+					search('');
+				}}
+			>
+				<X aria-hidden="true" />
+			</Button>
+		{/if}
+	</form>
+{/snippet}
+
 {#snippet sortMenu(compact: boolean)}
 	<SortMenu
 		options={sorts}
@@ -408,6 +459,7 @@
 			{/if}
 			<div class="ml-auto flex items-center gap-2">
 				<div class="hidden items-center gap-2 lg:flex">
+					{@render searchForm(true)}
 					{@render sortMenu(false)}
 					<div
 						role="group"
@@ -464,43 +516,10 @@
 		</aside>
 		<div class="flex min-w-0 flex-1 flex-col gap-6">
 			<div class="flex flex-col gap-3">
-				<!-- On a phone the page has its own search (the header only a magnifier), with
-				filters, sort and layout beside it; on a desktop the header's search is the
-				page's and the rest stands by the title. -->
-				<div class="flex items-center gap-2 lg:hidden">
-					<form
-						role="search"
-						class="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full border border-input bg-background pr-1.5 pl-4 focus-within:border-ring"
-						onsubmit={(event) => {
-							event.preventDefault();
-							search(text.trim());
-						}}
-					>
-						<SearchIcon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-						<input
-							bind:this={searchField}
-							bind:value={text}
-							type="search"
-							aria-label={m.documents_search_label()}
-							placeholder={m.search_placeholder()}
-							class="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
-						/>
-						{#if query}
-							<Button
-								type="button"
-								variant="ghost"
-								size="icon"
-								class="size-8"
-								aria-label={m.documents_search_clear()}
-								onclick={() => {
-									text = '';
-									search('');
-								}}
-							>
-								<X aria-hidden="true" />
-							</Button>
-						{/if}
-					</form>
+				<!-- Below the desktop the filters, sort and layout stand in a row, on a phone beside
+				the page's own search (the header has only a magnifier there). -->
+				<div class="flex items-center justify-end gap-2 lg:hidden">
+					{@render searchForm(false)}
 					<Sheet.Root bind:open={filtersOpen}>
 						<Sheet.Trigger
 							class="relative grid size-11 shrink-0 place-items-center rounded-full border border-input bg-background hover:bg-secondary lg:hidden"

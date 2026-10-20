@@ -17,6 +17,7 @@
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
 	import { reportError } from '#lib/errors.ts';
+	import { searchPlaces } from '#lib/header-search.ts';
 	import { home, loginHref } from '#lib/navigation.ts';
 	import { BADGE_TONES, badgeLabel, badgeText, badgeTone, inbox } from '#lib/inbox.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -156,20 +157,14 @@
 			</nav>
 
 			<div class="ml-auto flex items-center gap-1.5 max-[380px]:gap-1 sm:gap-2">
-				<!-- The field where there is room: instead of the menu from md, beside it from xl
-				     (the admin's menu from xl, the field beside it from 2xl). -->
-				<HeaderSearch
-					class={cn(
-						'hidden w-64 md:flex',
-						adminSections.length ? 'xl:hidden 2xl:flex 2xl:w-80' : 'lg:hidden xl:flex xl:w-80'
-					)}
-				/>
+				<!-- The field where there is room, else a magnifier to the documents page's own
+				     field (`header-search.ts`). -->
+				<HeaderSearch class={searchPlaces(adminSections.length > 0).field} />
 				<a
 					href="{BASE}/documents#search"
 					class={cn(
 						buttonVariants({ variant: 'ghost', size: 'icon' }),
-						'md:hidden',
-						adminSections.length ? 'xl:inline-flex 2xl:hidden' : 'lg:inline-flex xl:hidden'
+						searchPlaces(adminSections.length > 0).icon
 					)}
 					aria-label={m.header_search_label()}
 				>

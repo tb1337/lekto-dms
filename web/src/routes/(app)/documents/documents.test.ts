@@ -202,6 +202,56 @@ describe('the archive page', () => {
 		expect(all[0].getAttribute('href')).toBe('/ui/documents');
 	});
 
+	it('groups a lens by its deadline and shows its fields on the cards', async () => {
+		state.url = new URL('http://lekto/ui/documents?lens=l1');
+		const yesterday = new Date(Date.now() - 86_400_000);
+		const due = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+		vi.stubGlobal(
+			'fetch',
+			fakeApi({
+				'GET /api/v1/documents': () => ({
+					items: [
+						listedOf({
+							id: 'd1',
+							title: 'Strom',
+							fields: { f1: due, f2: { amount: '89.00', currency: 'EUR' } }
+						}),
+						listedOf({ id: 'd2', title: 'Brief' })
+					],
+					next_cursor: null
+				}),
+				'GET /api/v1/fields': () => [
+					{ id: 'f1', name: 'Fällig am', data_type: 'date' },
+					{ id: 'f2', name: 'Betrag', data_type: 'amount' }
+				],
+				'GET /api/v1/lenses': () => [
+					{
+						id: 'l1',
+						name: 'Zu bezahlen',
+						position: 0,
+						filter: {},
+						query: null,
+						sort: null,
+						sort_field_id: null,
+						grouping: 'due',
+						layout: 'grid',
+						card_field_ids: ['f2', 'f1'],
+						due_field_id: 'f1',
+						created_at: '2026-10-20T10:00:00Z',
+						updated_at: '2026-10-20T10:00:00Z'
+					}
+				]
+			})
+		);
+		render(Page);
+		const overdue = await screen.findByRole('region', { name: m.lens_group_overdue() });
+		expect(within(overdue).getByText('Strom')).toBeTruthy();
+		expect(within(overdue).getByText(m.due_overdue_one(), { exact: false })).toBeTruthy();
+		expect(within(overdue).getByText(/89/)).toBeTruthy();
+		const none = screen.getByRole('region', { name: m.lens_group_no_due() });
+		expect(within(none).getByText('Brief')).toBeTruthy();
+	});
+
 	it('takes no lane from an older link', async () => {
 		state.url = new URL('http://lekto/ui/documents?lane=yellow');
 		const api = fakeApi({

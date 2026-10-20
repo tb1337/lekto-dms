@@ -2,6 +2,8 @@
 	import type { Snippet } from 'svelte';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
+	import type { CardLine } from '#lib/card-fields.ts';
+	import CardFields from '#lib/components/CardFields.svelte';
 	import DocumentThumb from '#lib/components/DocumentThumb.svelte';
 	import NamesLine from '#lib/components/NamesLine.svelte';
 	import TagChips from '#lib/components/TagChips.svelte';
@@ -12,19 +14,21 @@
 
 	// One document in a list: preview, title, contact (with its logo or initials) and type
 	// (with its icon) each with its shown groups, date, its shown tags, for admins the owner of
-	// another user's document. `children` adds a line; `aside` stands at the end of the row,
-	// beside its link (a button, a link of its own).
+	// another user's document. `children` adds a line, `fields` the fields of a lens;
+	// `aside` stands at the end of the row, beside its link (a button, a link of its own).
 	let {
 		document,
 		lookup,
 		href = `${BASE}/documents/${document.id}`,
 		children,
+		fields = [],
 		aside
 	}: {
 		document: components['schemas']['DocumentDetails'];
 		lookup: Lookup | null;
 		href?: string;
 		children?: Snippet;
+		fields?: readonly CardLine[];
 		aside?: Snippet;
 	} = $props();
 
@@ -64,6 +68,7 @@
 			/>
 			<TagChips {document} {lookup} />
 			{@render children?.()}
+			{#if fields.length > 0}<div class="max-w-sm"><CardFields lines={fields} /></div>{/if}
 		</div>
 	</a>
 	{@render aside?.()}

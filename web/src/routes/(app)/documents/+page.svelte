@@ -29,13 +29,14 @@
 		writeFilters,
 		type Filters
 	} from '#lib/filters.ts';
-	import { formatDate, formatNumber } from '#lib/i18n.ts';
+	import { formatNumber } from '#lib/i18n.ts';
+	import { cardLines } from '#lib/card-fields.ts';
+	import { groupDocuments } from '#lib/grouping.ts';
 	import { lensParams, type Lens } from '#lib/lenses.ts';
 	import {
 		FIELD_SORTS,
 		LIST_SORTS,
 		SEARCH_SORTS,
-		byMonth,
 		isFieldSort,
 		rememberSort,
 		rememberLayout,
@@ -259,15 +260,27 @@
 		];
 	});
 
-	// Sorted by a date, the documents stand by month, each under its own heading.
-	const groups = $derived(byMonth(list.items, sort, (item) => item.document));
-
-	function monthLabel(month: string | null): string | undefined {
-		if (month === null) return undefined;
-		if (month === '') return m.documents_no_date();
-		const [year, number] = month.split('-').map(Number);
-		return formatDate(new Date(year, number - 1, 1), { month: 'long', year: 'numeric' });
+	// Without a lens, sorted by a date, the documents stand by month under headings; a lens
+	// groups as it says.
+	const groups = $derived(
+		groupDocuments(list.items, lens?.grouping ?? 'sort', (item) => item.document, {
+			sort,
+			dueField: lens?.due_field_id ?? null,
+			today,
+			lookup
+		})
+	);
+	function linesOf(item: Item) {
+		return cardFields.length > 0
+			? cardLines(item.document.fields, cardFields, lens?.due_field_id ?? null, today)
+			: [];
 	}
+	// The fields a lens shows on its cards, in its order.
+	const cardFields = $derived(
+		(lens?.card_field_ids ?? []).flatMap(
+			(id) => lookup?.fields.find((field) => field.id === id) ?? []
+		)
+	);
 </script>
 
 <svelte:head><title>{m.nav_documents()} · {m.app_name()}</title></svelte:head>
@@ -479,11 +492,22 @@
 				</p>
 			{:else}
 				<div class="flex flex-col gap-6" aria-busy={list.loading}>
-					{#each groups as group (group.start)}
-						<section class="flex flex-col gap-3" aria-label={monthLabel(group.month)}>
-							{#if group.month !== null}
-								<h2 class="flex items-center gap-3 text-[0.95rem] font-semibold">
-									{monthLabel(group.month)}
+					{#each groups as group (group.key)}
+						<section class="flex flex-col gap-3" aria-label={group.label ?? undefined}>
+							{#if group.label !== null}
+								<h2
+									class={[
+										'flex items-center gap-3 text-[0.95rem] font-semibold',
+										group.tone === 'overdue' && 'text-lane-red-foreground',
+										group.tone === 'soon' && 'text-lane-yellow-foreground'
+									]}
+								>
+									{group.label}
+									{#if lens}
+										<span class="text-sm font-normal text-muted-foreground tabular-nums">
+											{formatNumber(group.items.length)}
+										</span>
+									{/if}
 									<span aria-hidden="true" class="h-px flex-1 bg-border"></span>
 								</h2>
 							{/if}
@@ -493,7 +517,7 @@
 								>
 									{#each group.items as item (item.document.id)}
 										<li class="min-w-0">
-											<DocumentCard document={item.document} {lookup}>
+											<DocumentCard document={item.document} {lookup} fields={linesOf(item)}>
 												{@render snippetLine(item)}
 											</DocumentCard>
 										</li>
@@ -503,7 +527,7 @@
 								<ul class="flex flex-col gap-2">
 									{#each group.items as item (item.document.id)}
 										<li>
-											<DocumentRow document={item.document} {lookup}>
+											<DocumentRow document={item.document} {lookup} fields={linesOf(item)}>
 												{@render snippetLine(item)}
 												{#snippet aside()}
 													{#if item.document.in_inbox}<InboxMark lane={item.document.lane} />{/if}

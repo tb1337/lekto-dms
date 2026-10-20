@@ -1218,6 +1218,7 @@ Die Devinstanz liest nach dem Merge `LEKTO_`: in `live.env` das Präfix umstelle
   6. Web: der Editor mit Vorschau (`LensEditor` auf `EditorShell`; „+“ legt aus der Seite an, wie sie steht).
   7. Web: die Leiste „weicht ab“ (`LensChanges`, ein Punkt an der Lens).
 
+- **Kennzeichen auf dem Vorschaubild** (Tobi, 20.10.2026, Variante I des Canvas „Kennzeichen“; verworfen: Umfärben nach dem Untergrund, Schleier, Medien-Stil): `.mark-glass` in `app.css` (Unschärfe, Rand aus `--mark-edge` und `--mark-light`), `TagChip`/`TagChips`/`GroupChips` mit `onImage`, `InboxMark` mit `badge` an der Ecke der Karte (statt `compact` auf dem Bild).
 - **Kopf und Bedienelemente** (Tobi, 20.10.2026): Kopf der Liste in einer Zeile (Variante A); Buttons in einer Form, `Select` statt nativem Select (am Handy nativ), `SearchSelect` für Kontakt, Typ und Thema, `TagPicker` als ein Tag-Feld auch für Dokument-Tags (`TagPickerList` in Popover oder Blatt); Test-Helfer `testing/select.ts` für beide Formen der Auswahl.
 
 **Prüfung:** Vertragstests für Filter, Zählen, Sortieren nach Feld und Lenses auf Speicher, SQLite und Postgres; Suchindex-Verträge für die Filter; REST mit Rechten (nur der Besitzer, andere 404, auch Admins); Vitest für Filterleiste, Lenses, Editor, Kartenfelder und Gruppen; im Browser gegen den Build einer Prüfinstanz mit erfundenen Daten (62 Dokumente, Felder mit Fristen, zwei Lenses), Desktop und Handy.

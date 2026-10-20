@@ -11,11 +11,14 @@
 		tags,
 		ids,
 		interactive = true,
+		onImage = false,
 		class: className
 	}: {
 		tags: readonly Tag[];
 		ids: readonly string[];
 		interactive?: boolean;
+		/** On a document's image (a card): as glass with an edge. */
+		onImage?: boolean;
 		class?: string;
 	} = $props();
 	const groups = $derived(shownChips(tags, ids));
@@ -23,6 +26,6 @@
 
 {#if groups.length > 0}
 	<span class={cn('inline-flex max-w-full flex-wrap gap-1', className)}>
-		{#each groups as tag (tag.id)}<TagChip {tag} group {interactive} size="sm" />{/each}
+		{#each groups as tag (tag.id)}<TagChip {tag} group {interactive} size="sm" {onImage} />{/each}
 	</span>
 {/if}

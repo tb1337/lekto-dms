@@ -11,12 +11,14 @@
 	// `interactive`, on a tap (a phone has no hover); a group outlined, a topic square (tags are
 	// round); `onremove` adds a button that removes it. On a phone both take a finger's tap
 	// beyond their edges (44 pixels high; the button also to its right, never over the name).
+	// `onImage`: on a document's image (a card), as glass with an edge (`.mark-glass`).
 	let {
 		tag,
 		group = false,
 		topic = false,
 		interactive = false,
 		size = 'md',
+		onImage = false,
 		onremove,
 		removeLabel = ''
 	}: {
@@ -25,6 +27,7 @@
 		topic?: boolean;
 		interactive?: boolean;
 		size?: 'sm' | 'md';
+		onImage?: boolean;
 		onremove?: () => void;
 		removeLabel?: string;
 	} = $props();
@@ -47,8 +50,14 @@
 				: cn('bg-(--chip-bg) font-medium text-(--chip-fg)', topic && 'border-(--chip-fg)/25')),
 		isHex(tag.color) && 'chip-own',
 		// An own colour may be close to the card (white in light, black in dark): a faint ring
-		// keeps the chip's shape.
-		isHex(tag.color) && !group && !topic && 'ring-1 ring-(--chip-fg)/15 ring-inset',
+		// keeps the chip's shape (on an image the glass's edge does).
+		isHex(tag.color) && !group && !topic && !onImage && 'ring-1 ring-(--chip-fg)/15 ring-inset',
+		// On an image: the same ground, 82 % of it, on glass.
+		onImage &&
+			cn(
+				'mark-glass',
+				coloured && !group ? 'bg-(--chip-bg)/82' : group ? 'bg-card/82' : 'bg-secondary/82'
+			),
 		size === 'sm' ? 'h-6 px-2 text-xs' : 'h-8 pl-3 text-sm',
 		size === 'md' && (onremove ? 'pr-1' : 'pr-3')
 	)}

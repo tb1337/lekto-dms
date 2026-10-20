@@ -22,6 +22,10 @@ describe('the archive', () => {
 		expect(container.querySelector('[data-lane]')).toBeNull();
 		const mark = screen.getByRole('link', { name: m.in_inbox() });
 		expect(mark.getAttribute('href')).toBe('/ui/inbox?tab=review');
+		// A badge on the card's corner: beside the card, which cuts off what overflows it.
+		const card = screen.getByRole('link', { name: /Stromrechnung/ }).parentElement!;
+		expect(card.contains(mark)).toBe(false);
+		expect(card.parentElement!.contains(mark)).toBe(true);
 		expect(screen.getByRole('link', { name: /Stromrechnung/ }).getAttribute('href')).toBe(
 			'/ui/documents/doc-1'
 		);
@@ -69,7 +73,11 @@ describe('the archive', () => {
 		// The tag and the contact's group stand on the page, with its page count.
 		expect(within(page as HTMLElement).getByText('zu bezahlen')).toBeTruthy();
 		expect(within(page as HTMLElement).getByText('Versorger')).toBeTruthy();
-		expect(within(page as HTMLElement).getByText(m.doc_pages_short({ count: 2 }))).toBeTruthy();
+		const count = within(page as HTMLElement).getByText(m.doc_pages_short({ count: 2 }));
+		// On glass with an edge, apart from light and dark pages alike.
+		for (const mark of [within(page as HTMLElement).getByTitle('zu bezahlen'), count]) {
+			expect(mark.classList.contains('mark-glass')).toBe(true);
+		}
 		expect(text.textContent).toContain('Stromrechnung');
 		expect(text.textContent).toContain('Rechnung');
 		expect(text.textContent).toContain(formatDate('2026-10-01'));

@@ -515,7 +515,14 @@ row of filters, on a desktop narrow by the title. -->
 			</div>
 		</aside>
 		<div class="flex min-w-0 flex-1 flex-col gap-6">
-			<div class="flex flex-col gap-3">
+			<!-- Empty on a desktop without filters, words or changes: then it takes no room, and
+			the list stands level with the lenses. -->
+			<div
+				class={[
+					'flex flex-col gap-3',
+					!(changed || query || isFiltered(filters) || lookupError) && 'lg:hidden'
+				]}
+			>
 				<!-- Below the desktop the filters, sort and layout stand in a row, on a phone beside
 				the page's own search (the header has only a magnifier there). -->
 				<div class="flex items-center justify-end gap-2 lg:hidden">

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import Archive from '@lucide/svelte/icons/archive';
-	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Share2 from '@lucide/svelte/icons/share-2';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -9,6 +8,7 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import EditButton from '#lib/components/EditButton.svelte';
 	import SpaceShares from '#lib/components/SpaceShares.svelte';
 	import NameDialog from '#lib/components/NameDialog.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
@@ -174,14 +174,6 @@
 					<Share2 aria-hidden="true" />
 				</Button>
 			{/if}
-			<Button
-				variant="ghost"
-				size="icon"
-				aria-label={m.space_rename({ name: space.name })}
-				onclick={() => (renaming = space)}
-			>
-				<Pencil aria-hidden="true" />
-			</Button>
 			{#if !space.is_default}
 				<Button
 					variant="ghost"
@@ -193,6 +185,7 @@
 				</Button>
 			{/if}
 		</div>
+		<EditButton label={m.space_rename({ name: space.name })} onclick={() => (renaming = space)} />
 	</li>
 {/snippet}
 

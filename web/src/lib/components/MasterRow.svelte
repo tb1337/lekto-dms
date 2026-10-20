@@ -1,9 +1,8 @@
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	import Pencil from '@lucide/svelte/icons/pencil';
 	import type { Snippet } from 'svelte';
+	import EditButton from '#lib/components/EditButton.svelte';
 	import UsageCount, { type Unit, usageLabel } from '#lib/components/UsageCount.svelte';
-	import { Button } from '#lib/components/ui/button/index.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { phone } from '#lib/phone.svelte.ts';
 	import { cn } from '#lib/utils.ts';
@@ -75,10 +74,6 @@
 				{/each}
 			</span>
 		{/if}
-		<div class="flex shrink-0 items-center self-stretch border-l pl-2">
-			<Button variant="ghost" size="icon" aria-label={editLabel} onclick={onopen}>
-				<Pencil aria-hidden="true" />
-			</Button>
-		</div>
+		<EditButton label={editLabel} onclick={onopen} />
 	</li>
 {/if}

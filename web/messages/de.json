@@ -539,6 +539,7 @@
 	"user_state": "Status",
 	"user_created_at": "Angelegt",
 	"user_manage": "Verwalten",
+	"user_manage_named": "{name} verwalten",
 	"user_active": "Aktiv",
 	"user_inactive": "Deaktiviert",
 	"user_activate": "Aktivieren",

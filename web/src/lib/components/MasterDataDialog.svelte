@@ -8,7 +8,7 @@
 	import EditorShell from '#lib/components/EditorShell.svelte';
 	import TagChip from '#lib/components/TagChip.svelte';
 	import TagPicker from '#lib/components/TagPicker.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import IdentifiersEditor from '#lib/components/IdentifiersEditor.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
@@ -282,7 +282,7 @@
 			<Field.Label for="{uid}-parent">
 				{isGroup ? m.tag_parent_group() : isTopic ? m.topic_parent() : m.tag_parent()}
 			</Field.Label>
-			<NativeSelect
+			<Select
 				id="{uid}-parent"
 				bind:value={parentId}
 				options={[

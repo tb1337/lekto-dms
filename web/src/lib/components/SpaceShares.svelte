@@ -4,7 +4,7 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
@@ -94,7 +94,7 @@
 				{#each shares as share (share.user_id)}
 					<li class="flex items-center gap-2">
 						<span class="min-w-0 flex-1 truncate">{name(share.user_id)}</span>
-						<NativeSelect
+						<Select
 							aria-label={m.share_level_of({ name: name(share.user_id) })}
 							value={share.level}
 							options={levels}
@@ -120,7 +120,7 @@
 			<div class="flex flex-col gap-3 border-t pt-4">
 				<Field.Field>
 					<Field.Label for="share-user">{m.share_add()}</Field.Label>
-					<NativeSelect
+					<Select
 						id="share-user"
 						bind:value={userId}
 						options={[
@@ -131,7 +131,7 @@
 				</Field.Field>
 				<Field.Field>
 					<Field.Label for="share-level">{m.share_level()}</Field.Label>
-					<NativeSelect
+					<Select
 						id="share-level"
 						value={level}
 						options={levels}

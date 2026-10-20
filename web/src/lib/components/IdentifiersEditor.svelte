@@ -2,7 +2,7 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Plus from '@lucide/svelte/icons/plus';
 	import X from '@lucide/svelte/icons/x';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import TagChip from '#lib/components/TagChip.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -55,7 +55,7 @@
 </script>
 
 {#snippet manualFields(item: IdentifierRow, index: number, stacked: boolean)}
-	<NativeSelect
+	<Select
 		bind:value={rows[index].kind}
 		options={kinds}
 		aria-label={m.identifier_kind()}
@@ -68,7 +68,7 @@
 		class={stacked ? 'w-full font-mono' : 'min-w-0 flex-1'}
 	/>
 	{#if topics.length > 0}
-		<NativeSelect
+		<Select
 			bind:value={rows[index].topic_id}
 			options={topicOf(item.topic_id) || item.topic_id === ''
 				? topicOptions

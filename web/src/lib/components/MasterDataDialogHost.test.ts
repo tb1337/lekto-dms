@@ -5,6 +5,7 @@ import type { Item } from '#lib/masterdata-api.ts';
 import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { phone } from '#lib/phone.svelte.ts';
+import { choose, optionsOf, selectedValue } from '#lib/testing/select.ts';
 import { session } from '#lib/session.svelte.ts';
 import WithDialogs from '#lib/testing/WithDialogs.svelte';
 
@@ -151,10 +152,10 @@ describe('MasterDataDialogHost', () => {
 		render(WithDialogs);
 		masterDataDialogs.open('tags', TAGS[1] as Item);
 		expect(await screen.findByDisplayValue('Health')).toBeTruthy();
-		const parent = screen.getByLabelText(m.tag_parent()) as HTMLSelectElement;
-		const options = [...parent.options].map((option) => option.textContent?.trim());
+		const parent = screen.getByLabelText(m.tag_parent());
+		const options = (await optionsOf(parent)).map((option) => option.label);
 		expect(options).toEqual([m.tag_parent_none(), 'Insurance']);
-		expect(parent.value).toBe('t1');
+		expect(selectedValue(parent)).toBe('t1');
 		expect(screen.getByLabelText(m.tag_assignment_auto())).toBeTruthy();
 	});
 
@@ -163,9 +164,10 @@ describe('MasterDataDialogHost', () => {
 		masterDataDialogs.open('contact-groups');
 		expect(await screen.findByLabelText(m.tag_parent_group())).toBeTruthy();
 		expect(screen.queryByLabelText(m.tag_assignment_auto())).toBeNull();
-		const parent = screen.getByLabelText(m.tag_parent_group()) as HTMLSelectElement;
-		expect([...parent.options].map((option) => option.value)).toEqual(['', 'g1']);
-		expect(parent.options[0].textContent?.trim()).toBe(m.tag_parent_group_none());
+		const parent = screen.getByLabelText(m.tag_parent_group());
+		const options = await optionsOf(parent);
+		expect(options.map((option) => option.value)).toEqual(['', 'g1']);
+		expect(options[0].label).toBe(m.tag_parent_group_none());
 		expect((screen.getByLabelText(m.tag_shown()) as HTMLInputElement).checked).toBe(false);
 	});
 });
@@ -184,9 +186,9 @@ describe('a contact’s topics', () => {
 		};
 		masterDataDialogs.open('contacts', contact as unknown as Item);
 		expect(await screen.findByDisplayValue('Nord')).toBeTruthy();
-		const topic = screen.getByLabelText(m.identifier_topic()) as HTMLSelectElement;
-		expect(topic.value).toBe('p1');
-		expect([...topic.options].map((option) => option.value)).toEqual(['', 'p1']);
+		const topic = screen.getByLabelText(m.identifier_topic());
+		expect(selectedValue(topic)).toBe('p1');
+		expect((await optionsOf(topic)).map((option) => option.value)).toEqual(['', 'p1']);
 		// Enabling another (in the picker over the dialog) offers it to the identifiers.
 		const chips = screen.getByRole('group', { name: m.master_topics() });
 		expect(within(chips).getByText('Arbeit')).toBeTruthy();
@@ -195,8 +197,8 @@ describe('a contact’s topics', () => {
 		await userEvent.click(within(picker).getByLabelText('Krankenversicherung'));
 		await userEvent.click(within(picker).getByRole('button', { name: m.picker_done() }));
 		expect(within(chips).getByText('Krankenversicherung')).toBeTruthy();
-		expect([...topic.options].map((option) => option.value)).toEqual(['', 'p1', 'p2']);
-		await userEvent.selectOptions(topic, 'p2');
+		expect((await optionsOf(topic)).map((option) => option.value)).toEqual(['', 'p1', 'p2']);
+		await choose(userEvent.setup(), topic, 'p2');
 		await userEvent.click(screen.getByRole('button', { name: m.save() }));
 		const patch = fetchMock.mock.calls
 			.map((call) => call[0])
@@ -323,17 +325,17 @@ describe('a new tag', () => {
 			true
 		);
 		await user.click(within(kinds).getByLabelText(m.tag_kind_topic(), { exact: false }));
-		const parent = screen.getByLabelText(m.topic_parent()) as HTMLSelectElement;
-		expect([...parent.options].map((option) => option.value)).toEqual(['', 'p1', 'p2']);
+		const parent = screen.getByLabelText(m.topic_parent());
+		expect((await optionsOf(parent)).map((option) => option.value)).toEqual(['', 'p1', 'p2']);
 		expect(screen.getByText(m.tag_preview_topic())).toBeTruthy();
 		// Another kind: its parents, no assignment for a group, hidden at documents.
 		await user.click(within(kinds).getByLabelText(m.tag_kind_contact(), { exact: false }));
-		const groups = screen.getByLabelText(m.tag_parent_group()) as HTMLSelectElement;
-		expect([...groups.options].map((option) => option.value)).toEqual(['', 'g1']);
+		const groups = screen.getByLabelText(m.tag_parent_group());
+		expect((await optionsOf(groups)).map((option) => option.value)).toEqual(['', 'g1']);
 		expect(screen.queryByLabelText(m.tag_assignment_auto())).toBeNull();
 		expect((screen.getByLabelText(m.tag_shown()) as HTMLInputElement).checked).toBe(false);
 		await user.type(screen.getByLabelText(m.field_name()), 'Versicherungsmakler');
-		await user.selectOptions(groups, 'g1');
+		await choose(user, groups, 'g1');
 		await user.click(screen.getByRole('button', { name: m.create() }));
 		const post = fetchMock.mock.calls.map((call) => call[0]).find((r) => r.method === 'POST');
 		expect(new URL(post!.url).pathname).toBe('/api/v1/tags');

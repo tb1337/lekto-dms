@@ -5,7 +5,7 @@
 	import type { components } from '#lib/api/schema.ts';
 	import AssignmentList from '#lib/components/AssignmentList.svelte';
 	import EditorShell from '#lib/components/EditorShell.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { Textarea } from '#lib/components/ui/textarea/index.ts';
@@ -158,7 +158,7 @@
 	{/if}
 	<Field.Field>
 		<Field.Label for="field-def-type">{m.field_def_type()}</Field.Label>
-		<NativeSelect
+		<Select
 			id="field-def-type"
 			bind:value={dataType as string}
 			disabled={initial !== null}

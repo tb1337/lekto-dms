@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Lens } from '#lib/lenses.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { choose } from '#lib/testing/select.ts';
 import LensEditor, { type LensDraft } from './LensEditor.svelte';
 
 const TODAY = new Date(2026, 9, 20);
@@ -95,7 +96,7 @@ describe('the lens editor', () => {
 		// Grouping by deadline needs a deadline.
 		const byDue = within(dialog).getByRole('button', { name: m.lens_grouping_due() });
 		expect((byDue as HTMLButtonElement).disabled).toBe(true);
-		await user.selectOptions(within(dialog).getByLabelText(m.lens_due()), 'due');
+		await choose(user, within(dialog).getByLabelText(m.lens_due()), 'due');
 		await user.click(byDue);
 		await user.click(within(dialog).getByRole('button', { name: m.save() }));
 		await waitFor(() => expect(onsaved).toHaveBeenCalled());
@@ -119,8 +120,8 @@ describe('the lens editor', () => {
 		const user = userEvent.setup();
 		const { onsaved } = editor(LENS);
 		const dialog = screen.getByRole('dialog');
-		await user.selectOptions(within(dialog).getByLabelText(m.lens_sort()), 'field:due');
-		await user.selectOptions(within(dialog).getByLabelText(m.lens_field_add()), 'due');
+		await choose(user, within(dialog).getByLabelText(m.lens_sort()), 'field:due');
+		await choose(user, within(dialog).getByLabelText(m.lens_field_add()), 'due');
 		await user.click(
 			within(dialog).getByRole('button', { name: m.lens_field_up({ name: 'Fällig am' }) })
 		);

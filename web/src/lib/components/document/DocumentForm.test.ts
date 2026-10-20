@@ -7,6 +7,7 @@ import type { Mark, Review } from '#lib/document-view.ts';
 import type { Lookup } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
+import { choose, selectedValue } from '#lib/testing/select.ts';
 import DocumentForm from './DocumentForm.svelte';
 
 type Document = components['schemas']['DocumentDetails'];
@@ -226,8 +227,8 @@ describe('DocumentForm', () => {
 		expect(within(card).getByText(m.review_evidence())).toBeTruthy();
 		expect(within(card).getByText('Stadtwerke Musterstadt GmbH')).toBeTruthy();
 		// The suggestion is preselected.
-		const select = screen.getByLabelText(m.field_contact(), { selector: 'select' });
-		expect((select as HTMLSelectElement).value).toBe(CONTACT);
+		const select = screen.getByRole('combobox', { name: m.field_contact() });
+		expect(selectedValue(select)).toBe(CONTACT);
 	});
 
 	it('lists what the signals propose; a click takes one, a contradiction is marked', async () => {
@@ -293,12 +294,12 @@ describe('DocumentForm', () => {
 		const similar = within(card).getByRole('link', { name: m.candidate_document({ number: 1 }) });
 		expect(similar.getAttribute('href')).toBe(`/ui/documents/${SIMILAR}`);
 
-		const select = screen.getByLabelText(m.field_contact(), { selector: 'select' });
-		expect((select as HTMLSelectElement).value).toBe(CONTACT);
+		const select = screen.getByRole('combobox', { name: m.field_contact() });
+		expect(selectedValue(select)).toBe(CONTACT);
 		await userEvent.click(
 			within(card).getByRole('button', { name: m.candidate_pick({ name: 'Beispielbank' }) })
 		);
-		expect((select as HTMLSelectElement).value).toBe(BANK);
+		expect(selectedValue(select)).toBe(BANK);
 	});
 
 	it('tells where a green value comes from, and marks required fields', async () => {
@@ -416,7 +417,7 @@ describe('DocumentForm', () => {
 			nodes: []
 		} as unknown as Review;
 		render(DocumentForm, props({ document: documentOf('completed'), review: waiting, next: null }));
-		expect(screen.getByLabelText(m.field_space(), { selector: 'select' })).toBeTruthy();
+		expect(screen.getByRole('combobox', { name: m.field_space() })).toBeTruthy();
 		await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
 		expect(await fetchMock.mock.calls[0][0].json()).toEqual({
 			changes: {},
@@ -461,10 +462,7 @@ describe('DocumentForm', () => {
 			documentTypes: [...lookup.documentTypes, named(OTHER, 'Vertrag')]
 		};
 		render(DocumentForm, props({ review: typed, lookup: withOther, next: null }));
-		await userEvent.selectOptions(
-			screen.getByLabelText(m.field_document_type(), { selector: 'select' }),
-			OTHER
-		);
+		await choose(userEvent, screen.getByRole('combobox', { name: m.field_document_type() }), OTHER);
 		await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
 		expect(await fetchMock.mock.calls[0][0].json()).toEqual({
 			changes: { document_type_id: OTHER },
@@ -509,10 +507,7 @@ describe('DocumentForm', () => {
 		render(DocumentForm, props({ review: typed, lookup: withOther, next: null }));
 		expect(screen.getByText(m.review_by_hand())).toBeTruthy();
 		await userEvent.type(document.getElementById(`field-${ASN}`) as HTMLInputElement, 'A-17');
-		await userEvent.selectOptions(
-			screen.getByLabelText(m.field_document_type(), { selector: 'select' }),
-			OTHER
-		);
+		await choose(userEvent, screen.getByRole('combobox', { name: m.field_document_type() }), OTHER);
 		await userEvent.click(screen.getByRole('button', { name: m.review_confirm() }));
 		const sent = await fetchMock.mock.calls[0][0].json();
 		expect(sent.changes.fields).toEqual({ [ASN]: 'A-17' });
@@ -546,8 +541,7 @@ describe('the topic', () => {
 		contact_id: CONTACT,
 		topic_id: HEALTH
 	} as Document;
-	const select = (label: string) =>
-		screen.getByLabelText(label, { selector: 'select' }) as HTMLSelectElement;
+	const select = (label: string) => screen.getByRole('combobox', { name: label });
 	// The topic is a search in a popover: its button carries the chosen topic.
 	const topicField = () =>
 		screen.getByLabelText(m.field_topic(), { selector: 'button' }) as HTMLButtonElement;
@@ -584,7 +578,7 @@ describe('the topic', () => {
 		render(DocumentForm, props({ document: filed, lookup: topics, review: null }));
 		expect(topicValue()).toBe(HEALTH);
 		expect(await topicChoices()).toEqual([m.topic_none(), 'Arbeit', 'Krankenversicherung']);
-		await userEvent.selectOptions(select(m.field_contact()), BANK);
+		await choose(userEvent, select(m.field_contact()), BANK);
 		expect(topicValue()).toBe('');
 		await chooseTopic('Arbeit');
 		await userEvent.click(screen.getByRole('button', { name: m.edit_review() }));
@@ -592,9 +586,9 @@ describe('the topic', () => {
 		expect(await fetchMock.mock.calls[0][0].json()).toEqual({ contact_id: BANK, topic_id: WORK });
 		await userEvent.click(await screen.findByRole('button', { name: m.cancel() }));
 		await closed();
-		await userEvent.selectOptions(select(m.field_contact()), BANK);
+		await choose(userEvent, select(m.field_contact()), BANK);
 		expect(await topicChoices()).toEqual([m.topic_none(), 'Arbeit']);
-		await userEvent.selectOptions(select(m.field_contact()), '');
+		await choose(userEvent, select(m.field_contact()), '');
 		expect(topicField().disabled).toBe(true);
 		expect(topicField().textContent?.trim()).toBe(m.topic_no_contact());
 	});
@@ -688,7 +682,7 @@ describe('the topic', () => {
 	it('leaves a topic the next contact does not enable to the API to clear', async () => {
 		fetchMock.mockImplementation(async () => json(PREVIEW));
 		render(DocumentForm, props({ document: filed, lookup: topics, review: null }));
-		await userEvent.selectOptions(select(m.field_contact()), BANK);
+		await choose(userEvent, select(m.field_contact()), BANK);
 		expect(topicValue()).toBe('');
 		// Cleared by the contact, not by the person: no decision on the topic is sent.
 		expect(await sentPatch()).toEqual({ contact_id: BANK });
@@ -698,7 +692,7 @@ describe('the topic', () => {
 		fetchMock.mockImplementation(async () => json(PREVIEW));
 		const working = { ...filed, topic_id: WORK } as Document;
 		render(DocumentForm, props({ document: working, lookup: topics, review: null }));
-		await userEvent.selectOptions(select(m.field_contact()), BANK);
+		await choose(userEvent, select(m.field_contact()), BANK);
 		expect(topicValue()).toBe(WORK);
 		expect(await sentPatch()).toEqual({ contact_id: BANK });
 		await chooseTopic(m.topic_none());
@@ -721,7 +715,7 @@ describe('the topic', () => {
 			DocumentForm,
 			props({ document: filed, lookup: topics, review: null, onenabled, onsaved })
 		);
-		await userEvent.selectOptions(select(m.field_contact()), BANK);
+		await choose(userEvent, select(m.field_contact()), BANK);
 		await chooseTopic('Krankenversicherung');
 		await userEvent.click(screen.getByRole('button', { name: m.edit_review() }));
 		expect(await fetchMock.mock.calls[0][0].json()).toEqual({ contact_id: BANK, topic_id: HEALTH });

@@ -6,7 +6,7 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import SecretDialog from '#lib/components/SecretDialog.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -153,7 +153,7 @@
 			</Field.Field>
 			<Field.Field>
 				<Field.Label for="token-scope">{m.token_scope()}</Field.Label>
-				<NativeSelect
+				<Select
 					id="token-scope"
 					value={scope}
 					onchange={(value) => (scope = value as Scope)}

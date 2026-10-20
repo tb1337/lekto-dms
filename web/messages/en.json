@@ -162,7 +162,7 @@
 	"lens_grouping": "Group by",
 	"lens_grouping_none": "Nothing",
 	"lens_grouping_month": "Month",
-	"lens_grouping_due": "Deadline",
+	"lens_grouping_due": "Due",
 	"lens_grouping_document_type": "Document type",
 	"lens_grouping_contact": "Contact",
 	"lens_grouping_due_hint": "By deadline only with a deadline.",

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import ActionRow from '#lib/components/rules/ActionRow.svelte';
 	import ConditionGroup from '#lib/components/rules/ConditionGroup.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -108,7 +108,7 @@
 	{#if scopes.length > 1}
 		<Field.Field>
 			<Field.Label for="rule-scope">{m.rule_scope()}</Field.Label>
-			<NativeSelect
+			<Select
 				id="rule-scope"
 				value={scope}
 				options={scopes.map((entry) => ({ value: entry, label: scopeLabels[entry]() }))}
@@ -151,7 +151,7 @@
 				ondown={index < model.actions.length - 1 ? () => move(model.actions, index, 1) : undefined}
 			/>
 		{/each}
-		<NativeSelect
+		<Select
 			aria-label={m.rule_add_action()}
 			bind:value={adding}
 			options={addable}

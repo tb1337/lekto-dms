@@ -1,5 +1,5 @@
 <script lang="ts">
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
@@ -62,7 +62,7 @@
 {:else if type === 'period' && isPeriod(value)}
 	<PeriodInput {id} {label} {invalid} {value} onchange={(next) => onchange(next)} />
 {:else if type === 'boolean'}
-	<NativeSelect
+	<Select
 		{id}
 		aria-label={label}
 		aria-invalid={invalid || undefined}
@@ -94,7 +94,7 @@
 		/>
 	</div>
 {:else if type === 'choice'}
-	<NativeSelect
+	<Select
 		{id}
 		aria-label={label}
 		aria-invalid={invalid || undefined}

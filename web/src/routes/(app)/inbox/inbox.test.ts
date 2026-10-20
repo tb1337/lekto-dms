@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { inbox } from '#lib/inbox.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { choose, optionsOf } from '#lib/testing/select.ts';
 import { phone } from '#lib/phone.svelte.ts';
 import { session, type User } from '#lib/session.svelte.ts';
 import { calls, fakeApi, inboxItem, json, OWNER, summaryOf } from '#lib/testing/documents.ts';
@@ -396,15 +397,12 @@ describe('uploading in the inbox', () => {
 			await user.click(screen.getByRole('button', { name: m.upload_title() }));
 			const dialog = await screen.findByRole('dialog');
 			const owner = within(dialog).getByLabelText(m.upload_owner());
-			await waitFor(() => expect(owner.querySelectorAll('option')).toHaveLength(2));
-			await user.selectOptions(owner, OWNER);
+			await waitFor(async () => expect(await optionsOf(owner)).toHaveLength(2));
+			await choose(user, owner, OWNER);
 			const space = within(dialog).getByLabelText(m.upload_space());
 			// Only the spaces the owner may write to.
-			expect([...space.querySelectorAll('option')].map((option) => option.value)).toEqual([
-				'',
-				'space-1'
-			]);
-			await user.selectOptions(space, 'space-1');
+			expect((await optionsOf(space)).map((option) => option.value)).toEqual(['', 'space-1']);
+			await choose(user, space, 'space-1');
 			await user.upload(within(dialog).getByLabelText(m.upload_choose()), [pdf('a.pdf')]);
 			await waitFor(() => expect(calls(api)).toContain('POST /api/v1/documents'));
 			await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

@@ -21,7 +21,7 @@
 	import TopicInput from '#lib/components/document/TopicInput.svelte';
 	import GroupChips from '#lib/components/GroupChips.svelte';
 	import FieldValueInput from '#lib/components/FieldValueInput.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import RuleEffects from '#lib/components/rules/RuleEffects.svelte';
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -611,7 +611,7 @@
 			>
 				<div class="flex min-w-0 items-center gap-2">
 					{#if chosenContact}<ContactAvatar contact={chosenContact} size="md" />{/if}
-					<NativeSelect
+					<Select
 						id="doc-contact"
 						value={contact}
 						disabled={!editable}
@@ -682,7 +682,7 @@
 							<TypeIcon icon={chosenType.icon} class="size-5" />
 						</span>
 					{/if}
-					<NativeSelect
+					<Select
 						id="doc-type"
 						bind:value={documentType}
 						disabled={!editable}
@@ -719,7 +719,7 @@
 					onfocus={focus}
 					onjump={jump}
 				>
-					<NativeSelect
+					<Select
 						id="doc-space"
 						bind:value={spaceId}
 						disabled={!editable}

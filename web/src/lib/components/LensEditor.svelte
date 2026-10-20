@@ -25,7 +25,7 @@
 	import ActiveFilters from '#lib/components/ActiveFilters.svelte';
 	import DocumentCard from '#lib/components/DocumentCard.svelte';
 	import EditorShell from '#lib/components/EditorShell.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { describeError } from '#lib/errors.ts';
@@ -252,11 +252,11 @@
 			<div class="grid gap-4 sm:grid-cols-2">
 				<Field.Field>
 					<Field.Label for="lens-sort">{m.lens_sort()}</Field.Label>
-					<NativeSelect id="lens-sort" bind:value={sort} options={sortOptions} />
+					<Select id="lens-sort" bind:value={sort} options={sortOptions} />
 				</Field.Field>
 				<Field.Field>
 					<Field.Label for="lens-due">{m.lens_due()}</Field.Label>
-					<NativeSelect id="lens-due" bind:value={dueId} options={dueOptions} />
+					<Select id="lens-due" bind:value={dueId} options={dueOptions} />
 					<Field.Description>{m.lens_due_hint()}</Field.Description>
 				</Field.Field>
 			</div>
@@ -359,7 +359,7 @@
 					{/each}
 				</ol>
 				{#if cardIds.length < MAX_FIELDS}
-					<NativeSelect
+					<Select
 						aria-label={m.lens_field_add()}
 						value=""
 						options={addOptions}

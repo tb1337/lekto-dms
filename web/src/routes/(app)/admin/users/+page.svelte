@@ -5,7 +5,7 @@
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import UserManage from '#lib/components/UserManage.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -145,7 +145,7 @@
 			</Field.Field>
 			<Field.Field>
 				<Field.Label for="new-role">{m.user_role()}</Field.Label>
-				<NativeSelect
+				<Select
 					id="new-role"
 					value={role}
 					options={[

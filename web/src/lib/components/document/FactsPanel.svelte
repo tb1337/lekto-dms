@@ -11,7 +11,7 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import CodeThumb from '#lib/components/document/CodeThumb.svelte';
 	import SourceChip from '#lib/components/document/SourceChip.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { reportError } from '#lib/errors.ts';
 	import {
@@ -281,7 +281,7 @@
 					{m.facts_attach_other()}
 				</label>
 				{#if target === 'other'}
-					<NativeSelect
+					<Select
 						bind:value={other}
 						aria-label={m.facts_attach_other()}
 						options={[
@@ -293,7 +293,7 @@
 				{#if attachTopics.length > 0}
 					<label class="flex flex-col gap-1 text-sm">
 						<span class="text-xs text-muted-foreground">{m.facts_attach_topic()}</span>
-						<NativeSelect
+						<Select
 							bind:value={attachTopic}
 							aria-label={m.facts_attach_topic()}
 							options={[{ value: '', label: m.topic_none() }, ...attachTopics]}

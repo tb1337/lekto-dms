@@ -4,7 +4,7 @@
 	import FacetChips, { type ChipItem } from '#lib/components/FacetChips.svelte';
 	import FacetList, { type FacetItem } from '#lib/components/FacetList.svelte';
 	import FilterSection from '#lib/components/FilterSection.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import PeriodFacet from '#lib/components/PeriodFacet.svelte';
 	import type { Filters } from '#lib/filters.ts';
 	import { formatNumber } from '#lib/i18n.ts';
@@ -264,7 +264,7 @@
 				/>
 			{/if}
 			{#if lookup.fields.length > 0}
-				<NativeSelect
+				<Select
 					aria-label={m.filter_field()}
 					value={filters.field ?? ''}
 					options={fields}

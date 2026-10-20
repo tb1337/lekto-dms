@@ -20,7 +20,7 @@
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import LaneBadge from '#lib/components/LaneBadge.svelte';
 	import NamesLine from '#lib/components/NamesLine.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import Select from '#lib/components/Select.svelte';
 	import ProcessingProgress from '#lib/components/ProcessingProgress.svelte';
 	import TagChips from '#lib/components/TagChips.svelte';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.ts';
@@ -366,7 +366,7 @@
 		</Dialog.Header>
 		<Field.Field>
 			<Field.Label for="move-space">{m.field_space()}</Field.Label>
-			<NativeSelect
+			<Select
 				id="move-space"
 				bind:value={target}
 				options={spaces.map((space) => ({
@@ -403,7 +403,7 @@
 		</Dialog.Header>
 		<Field.Field>
 			<Field.Label for="reprocess-node">{m.reprocess_from()}</Field.Label>
-			<NativeSelect id="reprocess-node" bind:value={fromNode} options={nodes} />
+			<Select id="reprocess-node" bind:value={fromNode} options={nodes} />
 		</Field.Field>
 		{#if askVision && readable && vision}
 			<div class="flex flex-col gap-1.5">

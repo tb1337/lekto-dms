@@ -342,8 +342,9 @@ describe('DocumentForm', () => {
 		);
 		const kind = screen.getByRole('group', { name: m.field_document_type() });
 		await userEvent.click(within(kind).getByRole('button', { name: m.sources_details() }));
-		expect(within(kind).getByText(m.candidate_classifier({ score: '94%' }))).toBeTruthy();
-		expect(within(kind).getByText(m.candidate_llm())).toBeTruthy();
+		// The box lies in a layer over the page, outside the field.
+		expect(await screen.findByText(m.candidate_classifier({ score: '94%' }))).toBeTruthy();
+		expect(screen.getByText(m.candidate_llm())).toBeTruthy();
 
 		const number = screen.getByRole('group', { name: /Rechnungsnummer/ });
 		expect(within(number).getByText(`(${m.field_required()})`)).toBeTruthy();

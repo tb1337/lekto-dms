@@ -12,6 +12,7 @@
 		active,
 		href,
 		allHref,
+		changed = false,
 		onadd,
 		variant = 'list'
 	}: {
@@ -20,6 +21,8 @@
 		active: string | null;
 		href: (lens: Lens) => string;
 		allHref: string;
+		/** The open lens differs from what the page shows. */
+		changed?: boolean;
 		onadd?: () => void;
 		variant?: 'list' | 'chips';
 	} = $props();
@@ -76,6 +79,13 @@
 							/>
 						{/if}
 						<span class="min-w-0 flex-1 truncate">{entry.name}</span>
+						{#if current && changed && entry.id !== null}
+							<span
+								class="size-2 shrink-0 rounded-full bg-lane-yellow-foreground"
+								title={m.lens_changed_mark()}
+							></span>
+							<span class="sr-only">{m.lens_changed_mark()}</span>
+						{/if}
 					</a>
 				</li>
 			{/each}

@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { goto } from '$app/navigation';
 import { formatDate } from '#lib/i18n.ts';
 import { rememberLayout } from '#lib/listing.ts';
 import { m } from '#lib/paraglide/messages.js';
@@ -250,6 +251,47 @@ describe('the archive page', () => {
 		expect(within(overdue).getByText(/89/)).toBeTruthy();
 		const none = screen.getByRole('region', { name: m.lens_group_no_due() });
 		expect(within(none).getByText('Brief')).toBeTruthy();
+	});
+
+	it('offers to keep in the lens what the page shows beyond it, or to go back', async () => {
+		state.url = new URL('http://lekto/ui/documents?lens=l1&tag=t1&tag=t2');
+		const lens = {
+			id: 'l1',
+			name: 'Zu bezahlen',
+			position: 0,
+			filter: { tag_ids: ['t1'] },
+			query: null,
+			sort: null,
+			sort_field_id: null,
+			grouping: 'none',
+			layout: 'grid',
+			card_field_ids: [],
+			due_field_id: null,
+			created_at: '2026-10-20T10:00:00Z',
+			updated_at: '2026-10-20T10:00:00Z'
+		};
+		const patched: unknown[] = [];
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({ items: [], next_cursor: null }),
+			'GET /api/v1/lenses': () => [lens],
+			'PATCH /api/v1/lenses/l1': async (request) => {
+				const body = await request.json();
+				patched.push(body);
+				return { ...lens, ...body };
+			}
+		});
+		vi.stubGlobal('fetch', api);
+		const user = userEvent.setup();
+		render(Page);
+		const keep = await screen.findByRole('button', {
+			name: m.lens_save_into({ name: 'Zu bezahlen' })
+		});
+		expect(screen.getByText(m.lens_changed())).toBeTruthy();
+		await user.click(keep);
+		await vi.waitFor(() => expect(patched).toHaveLength(1));
+		expect(patched[0]).toMatchObject({ filter: { tag_ids: ['t1', 't2'] }, query: null });
+		await user.click(screen.getByRole('button', { name: m.lens_discard() }));
+		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('?lens=l1&tag=t1', { reset: false });
 	});
 
 	it('takes no lane from an older link', async () => {

@@ -68,3 +68,13 @@ export function lensFilter(filters: Filters, today: Date): LensFilter {
 		document_period: relative
 	};
 }
+
+/** Whether the page (`params`) shows other filters, words or another sort than `lens` as of
+ * `today`; the order of repeated values does not count. */
+export function lensDiffers(lens: Lens, params: URLSearchParams, today: Date): boolean {
+	const wanted = lensParams(lens, today);
+	const keys = new Set([...wanted.keys(), ...params.keys()]);
+	keys.delete('lens');
+	const values = (from: URLSearchParams, key: string) => from.getAll(key).toSorted().join('\n');
+	return [...keys].some((key) => values(wanted, key) !== values(params, key));
+}

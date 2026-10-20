@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { NO_FILTERS, relativeOf, relativePeriod } from './filters.ts';
-import { lensFilter, lensFilters, lensParams, type Lens } from './lenses.ts';
+import { lensDiffers, lensFilter, lensFilters, lensParams, type Lens } from './lenses.ts';
 
 const TODAY = new Date(2026, 9, 20); // 20 October 2026
 
@@ -77,5 +77,29 @@ describe('a lens in the URL', () => {
 			document_date_from: '2024-01-01',
 			document_date_to: '2024-12-31'
 		});
+	});
+});
+
+describe('a page and its lens', () => {
+	it('differ in filters, words or sort, not in the order of repeated values', () => {
+		const open = lens({ filter: { tag_ids: ['t1', 't2'] }, sort: 'title' });
+		const same = new URLSearchParams('lens=l1&sort=title&tag=t2&tag=t1');
+		expect(lensDiffers(open, same, TODAY)).toBe(false);
+		for (const other of [
+			'lens=l1&sort=title&tag=t1',
+			'lens=l1&sort=title&tag=t1&tag=t2&contact=c1',
+			'lens=l1&tag=t1&tag=t2',
+			'lens=l1&sort=title&tag=t1&tag=t2&q=power'
+		]) {
+			expect(lensDiffers(open, new URLSearchParams(other), TODAY)).toBe(true);
+		}
+		const moving = lens({ filter: { document_period: 'this_year' } });
+		expect(
+			lensDiffers(
+				moving,
+				new URLSearchParams('lens=l1&date_from=2026-01-01&date_to=2026-12-31'),
+				TODAY
+			)
+		).toBe(false);
 	});
 });

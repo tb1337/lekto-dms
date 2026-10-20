@@ -5,6 +5,7 @@
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
 	import { onMount, tick } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '#lib/api/client.ts';
@@ -16,6 +17,7 @@
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
 	import FilterPanel from '#lib/components/FilterPanel.svelte';
 	import InboxMark from '#lib/components/InboxMark.svelte';
+	import LensChanges from '#lib/components/LensChanges.svelte';
 	import LensEditor, { type LensDraft } from '#lib/components/LensEditor.svelte';
 	import Lenses from '#lib/components/Lenses.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
@@ -34,7 +36,7 @@
 	import { formatNumber } from '#lib/i18n.ts';
 	import { cardLines } from '#lib/card-fields.ts';
 	import { groupDocuments } from '#lib/grouping.ts';
-	import { lensFilter, lensParams, type Lens, type LensSort } from '#lib/lenses.ts';
+	import { lensDiffers, lensFilter, lensParams, type Lens, type LensSort } from '#lib/lenses.ts';
 	import {
 		FIELD_SORTS,
 		LIST_SORTS,
@@ -97,6 +99,34 @@
 		sortField,
 		layout
 	});
+
+	// The page differs from the open lens: keep it there, as a new lens, or go back.
+	const changed = $derived(lens !== null && lensDiffers(lens, params, today));
+	let keeping = $state(false);
+
+	async function keep() {
+		if (!lens) return;
+		keeping = true;
+		try {
+			const kept = await unwrap(
+				api.PATCH('/api/v1/lenses/{id}', {
+					params: { path: { id: lens.id } },
+					body: {
+						filter: draft.filter,
+						query: draft.query,
+						sort: draft.sort,
+						sort_field_id: draft.sortField
+					}
+				})
+			);
+			toast.success(m.lens_saved({ name: kept.name }));
+			await loadLenses();
+		} catch (error) {
+			toast.error(describeError(error));
+		} finally {
+			keeping = false;
+		}
+	}
 
 	function edit(target: Lens | null) {
 		editing = target;
@@ -329,6 +359,7 @@
 		active={lens?.id ?? null}
 		href={(entry) => `?${lensParams(entry, today)}`}
 		allHref={page.url.pathname}
+		{changed}
 		onadd={lookup ? () => edit(null) : undefined}
 	/>
 {/snippet}
@@ -459,6 +490,15 @@
 						</Sheet.Content>
 					</Sheet.Root>
 				</div>
+				{#if lens && changed}
+					<LensChanges
+						name={lens.name}
+						busy={keeping}
+						onsave={keep}
+						onsaveas={() => edit(null)}
+						ondiscard={() => lens && go(lensParams(lens, today))}
+					/>
+				{/if}
 				{#if lookup}
 					<ActiveFilters {filters} {lookup} onchange={change} />
 				{:else if lookupError}

@@ -6,6 +6,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import { onMount, tick, type Snippet } from 'svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
+	import Segmented from '#lib/components/Segmented.svelte';
 	import type { Mark, Place } from '#lib/document-view.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
@@ -326,30 +327,19 @@
 			<Plus aria-hidden="true" />
 		</Button>
 		<span class="mx-1 h-5 w-px bg-border" aria-hidden="true"></span>
-		<div
-			role="group"
-			aria-label={m.pdf_layouts()}
-			class="flex gap-0.5 rounded-full bg-secondary p-[3px]"
-		>
-			{#each LAYOUTS as entry (entry)}
-				{@const name = NAMES[entry]}
-				<button
-					type="button"
-					aria-pressed={layout === entry}
-					title={name.hint()}
-					onclick={() => choose(entry)}
-					class={cn(
-						'inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-xs transition-colors',
-						layout === entry
-							? 'bg-card font-medium text-foreground shadow-sm'
-							: 'text-muted-foreground hover:text-foreground'
-					)}
-				>
-					<name.icon class="size-3.5" aria-hidden="true" />
-					<span class="sr-only sm:not-sr-only">{name.label()}</span>
-				</button>
-			{/each}
-		</div>
+		<Segmented
+			size="sm"
+			names="wide"
+			label={m.pdf_layouts()}
+			value={layout ?? ''}
+			options={LAYOUTS.map((entry) => ({
+				value: entry,
+				label: NAMES[entry].label(),
+				hint: NAMES[entry].hint(),
+				icon: NAMES[entry].icon
+			}))}
+			onchange={(next) => choose(next as Layout)}
+		/>
 		<span class="ml-auto text-sm text-muted-foreground">
 			{#if note}{note} ·{/if}
 			{last > current

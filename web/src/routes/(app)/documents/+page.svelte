@@ -20,6 +20,7 @@
 	import LensChanges from '#lib/components/LensChanges.svelte';
 	import LensEditor, { type LensDraft } from '#lib/components/LensEditor.svelte';
 	import Lenses from '#lib/components/Lenses.svelte';
+	import Segmented from '#lib/components/Segmented.svelte';
 	import SortMenu from '#lib/components/SortMenu.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
@@ -461,29 +462,16 @@ row of filters, on a desktop narrow by the title. -->
 				<div class="hidden items-center gap-2 lg:flex">
 					{@render searchForm(true)}
 					{@render sortMenu(false)}
-					<div
-						role="group"
-						aria-label={m.layout_label()}
-						class="flex h-10 items-center gap-0.5 rounded-xl bg-secondary p-1"
-					>
-						{#each [{ value: 'grid', label: m.layout_grid, icon: LayoutGrid }, { value: 'list', label: m.layout_list, icon: List }] as const as entry (entry.value)}
-							<button
-								type="button"
-								aria-pressed={layout === entry.value}
-								aria-label={entry.label()}
-								title={entry.label()}
-								onclick={() => show(entry.value)}
-								class={cn(
-									'grid size-8 place-items-center rounded-lg transition-colors',
-									layout === entry.value
-										? 'bg-card text-foreground shadow-sm'
-										: 'text-muted-foreground hover:text-foreground'
-								)}
-							>
-								<entry.icon class="size-4" aria-hidden="true" />
-							</button>
-						{/each}
-					</div>
+					<Segmented
+						names="hidden"
+						label={m.layout_label()}
+						value={layout}
+						options={[
+							{ value: 'grid', label: m.layout_grid(), icon: LayoutGrid },
+							{ value: 'list', label: m.layout_list(), icon: List }
+						]}
+						onchange={(next) => show(next as Layout)}
+					/>
 				</div>
 				{#if lens && lookup}
 					<Button

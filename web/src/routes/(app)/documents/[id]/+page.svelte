@@ -14,6 +14,7 @@
 	import DocumentHeader from '#lib/components/document/DocumentHeader.svelte';
 	import PageImages from '#lib/components/document/PageImages.svelte';
 	import PdfViewer from '#lib/components/PdfViewer.svelte';
+	import TabBar from '#lib/components/TabBar.svelte';
 	import * as Alert from '#lib/components/ui/alert/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import {
@@ -40,7 +41,6 @@
 	import { scope } from '#lib/scope.svelte.ts';
 	import { hasText, type GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
-	import { cn } from '#lib/utils.ts';
 	import { factCounts, type CodeFacts, type CodePlace, type Facts } from '#lib/facts.ts';
 	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
 
@@ -313,30 +313,16 @@
 			</Alert.Root>
 		{/if}
 
-		<nav
-			aria-label={m.tabs_label()}
-			class="flex w-fit max-w-full gap-1 overflow-x-auto rounded-full bg-secondary p-1"
-		>
-			{#each tabs as entry (entry.tab)}
-				<a
-					href={tabHref(page.url, entry.tab)}
-					aria-current={tab === entry.tab ? 'page' : undefined}
-					class={cn(
-						'inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-full px-3 text-sm whitespace-nowrap transition-colors sm:px-4',
-						tab === entry.tab
-							? 'bg-card font-medium text-foreground shadow-sm'
-							: 'text-muted-foreground hover:text-foreground'
-					)}
-				>
-					{entry.label()}
-					{#if entry.tab === 'log' && attention}
-						<span class="size-[7px] rounded-full bg-lane-yellow-foreground" aria-hidden="true"
-						></span>
-						<span class="sr-only">{m.tab_log_attention()}</span>
-					{/if}
-				</a>
-			{/each}
-		</nav>
+		<TabBar
+			label={m.tabs_label()}
+			tabs={tabs.map((entry) => ({
+				key: entry.tab,
+				href: tabHref(page.url, entry.tab),
+				label: entry.label(),
+				marker: entry.tab === 'log' && attention ? m.tab_log_attention() : undefined
+			}))}
+			current={tab}
+		/>
 
 		{#if tab === 'details'}
 			<div

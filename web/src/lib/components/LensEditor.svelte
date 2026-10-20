@@ -25,6 +25,7 @@
 	import ActiveFilters from '#lib/components/ActiveFilters.svelte';
 	import DocumentCard from '#lib/components/DocumentCard.svelte';
 	import EditorShell from '#lib/components/EditorShell.svelte';
+	import Segmented from '#lib/components/Segmented.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
@@ -285,25 +286,19 @@
 				</div>
 			</div>
 
-			<div class="flex flex-col gap-2" role="group" aria-labelledby="lens-layout">
+			<div class="flex flex-col gap-2">
 				<span id="lens-layout" class="text-sm font-medium">{m.lens_layout()}</span>
-				<div class="inline-grid w-56 grid-cols-2 rounded-lg border bg-background p-0.5">
-					{#each [{ value: 'grid', label: m.layout_grid }, { value: 'list', label: m.layout_list }] as const as option (option.value)}
-						<button
-							type="button"
-							aria-pressed={layout === option.value}
-							class={[
-								'h-8 rounded-md text-sm transition-colors',
-								layout === option.value
-									? 'bg-primary font-semibold text-primary-foreground'
-									: 'hover:bg-secondary'
-							]}
-							onclick={() => (layout = option.value)}
-						>
-							{option.label()}
-						</button>
-					{/each}
-				</div>
+				<Segmented
+					labelledby="lens-layout"
+					equal
+					class="w-56"
+					value={layout}
+					options={[
+						{ value: 'grid', label: m.layout_grid() },
+						{ value: 'list', label: m.layout_list() }
+					]}
+					onchange={(next) => (layout = next as 'grid' | 'list')}
+				/>
 			</div>
 
 			<div class="flex flex-col gap-2">

@@ -9,6 +9,7 @@
 	import { ApiError } from '#lib/api/problem.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import InboxRow from '#lib/components/InboxRow.svelte';
+	import TabBar from '#lib/components/TabBar.svelte';
 	import UploadDialog from '#lib/components/UploadDialog.svelte';
 	import UploadSummary from '#lib/components/UploadSummary.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -23,7 +24,6 @@
 	import { phone } from '#lib/phone.svelte.ts';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { uploads } from '#lib/upload.svelte.ts';
-	import { cn } from '#lib/utils.ts';
 
 	// The inbox, the way in: documents come here by the upload button (with the dialog) or by
 	// dropping files and folders on the page (at once into the default space; not on a phone),
@@ -37,24 +37,12 @@
 	let busy = $state<string | null>(null);
 	let askAll = $state(false);
 	let uploadOpen = $state(false);
-	let tabsNav = $state<HTMLElement | null>(null);
 	let dragging = $state(false);
 	// Dropping on the page: not on a phone, and not while the dialog takes drops itself.
 	const droppable = $derived(!phone.current && !uploadOpen);
 
 	$effect(() => {
 		if (!droppable) dragging = false;
-	});
-
-	// Where the tabs scroll sideways (a phone), the current one stands in view, in their row
-	// only: the page itself does not move. Again once the counts widen the tabs.
-	$effect(() => {
-		void tab;
-		void inbox.summary;
-		const current = tabsNav?.querySelector<HTMLElement>('[aria-current="page"]');
-		if (!tabsNav || !current) return;
-		const left = current.offsetLeft - (tabsNav.clientWidth - current.offsetWidth) / 2;
-		tabsNav.scrollLeft = Math.max(0, left);
 	});
 
 	function carriesFiles(event: DragEvent): boolean {
@@ -194,31 +182,16 @@
 	<UploadSummary />
 
 	<div class="flex flex-wrap items-center justify-between gap-3">
-		<!-- On a phone the tabs scroll sideways in their own row. -->
-		<nav
-			bind:this={tabsNav}
-			aria-label={m.inbox_tabs_label()}
-			class="relative flex w-fit max-w-full gap-1 overflow-x-auto rounded-full bg-secondary p-1"
-		>
-			{#each TABS as entry (entry.tab)}
-				{@const count = inbox.summary ? entry.count(inbox.summary) : 0}
-				<a
-					href={inboxTabHref(entry.tab)}
-					aria-current={tab === entry.tab ? 'page' : undefined}
-					class={cn(
-						'inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm whitespace-nowrap transition-colors sm:h-[34px] sm:px-4',
-						tab === entry.tab
-							? 'bg-card font-medium text-foreground shadow-sm'
-							: 'text-muted-foreground hover:text-foreground'
-					)}
-				>
-					{entry.label()}
-					{#if count > 0}
-						<span class="text-xs font-normal text-muted-foreground tabular-nums">{count}</span>
-					{/if}
-				</a>
-			{/each}
-		</nav>
+		<TabBar
+			label={m.inbox_tabs_label()}
+			tabs={TABS.map((entry) => ({
+				key: entry.tab ?? '',
+				href: inboxTabHref(entry.tab),
+				label: entry.label(),
+				count: inbox.summary ? entry.count(inbox.summary) : 0
+			}))}
+			current={tab ?? ''}
+		/>
 		{#if (tab === null || tab === 'new') && fresh > 0}
 			<Button variant="ghost" class="h-11 sm:h-9" onclick={() => (askAll = true)}>
 				<CheckCheck aria-hidden="true" />

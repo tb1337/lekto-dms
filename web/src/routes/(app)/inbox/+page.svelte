@@ -179,15 +179,16 @@
 <svelte:window ondragenter={dragOver} ondragover={dragOver} ondrop={drop} />
 
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<div class="flex min-w-0 flex-col gap-1">
+	<!-- The button stands level with the title, as on the other pages; the hint goes below. -->
+	<div class="flex flex-col gap-1">
+		<div class="flex flex-wrap items-center justify-between gap-3">
 			<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_inbox()}</h1>
-			<p class="text-sm text-muted-foreground max-sm:hidden">{m.upload_page_hint()}</p>
+			<Button class="h-11 sm:h-10" onclick={() => (uploadOpen = true)}>
+				<Upload aria-hidden="true" />
+				{m.upload_title()}
+			</Button>
 		</div>
-		<Button class="h-11 sm:h-10" onclick={() => (uploadOpen = true)}>
-			<Upload aria-hidden="true" />
-			{m.upload_title()}
-		</Button>
+		<p class="text-sm text-muted-foreground max-sm:hidden">{m.upload_page_hint()}</p>
 	</div>
 
 	<UploadSummary />

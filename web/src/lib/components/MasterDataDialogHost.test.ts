@@ -538,6 +538,43 @@ describe('creating from a search', () => {
 	});
 });
 
+describe('a group made in a dialog that makes something', () => {
+	it('stays chosen there, and what was typed stays too', async () => {
+		const user = userEvent.setup();
+		const MAKLER = tag('g9', ['Makler'], null, 'contact');
+		let made = false;
+		const before = fetchMock.getMockImplementation()!;
+		fetchMock.mockImplementation(async (request) => {
+			const path = new URL(request.url).pathname;
+			if (path === '/api/v1/tags' && request.method === 'POST') {
+				made = true;
+				return json(MAKLER, 201);
+			}
+			if (path === '/api/v1/tags') return json(made ? [...TAGS, MAKLER] : TAGS);
+			return before(request);
+		});
+		render(WithDialogs);
+		// A contact made from a document's search.
+		void masterDataDialogs.create('contacts', 'N27');
+		const dialog = await screen.findByRole('dialog', { name: m.master_add_contact() });
+		const name = within(dialog).getByLabelText(m.field_name()) as HTMLInputElement;
+		await user.clear(name);
+		await user.type(name, 'N27 Bank');
+		await user.click(within(dialog).getByRole('button', { name: m.picker_add_group_label() }));
+		const picker = await pickerNamed(m.master_contact_groups());
+		await user.type(within(picker).getByRole('searchbox', { hidden: true }), 'Makler');
+		await user.click(within(picker).getByText(m.create_named({ name: 'Makler' })));
+		const nested = await screen.findByRole('dialog', { name: m.master_add_contact_group() });
+		await user.click(within(nested).getByRole('button', { name: m.create() }));
+		await waitFor(() =>
+			expect(
+				within(screen.getByRole('group', { name: m.master_groups() })).getByText('Makler')
+			).toBeTruthy()
+		);
+		expect((screen.getByLabelText(m.field_name()) as HTMLInputElement).value).toBe('N27 Bank');
+	});
+});
+
 describe('stacked dialogs', () => {
 	it('closes only the tag dialog on top with Escape', async () => {
 		const user = userEvent.setup();

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import Workflow from '@lucide/svelte/icons/workflow';
 	import AssignmentList, { type Assignment } from '#lib/components/AssignmentList.svelte';
 	import ColorPicker from '#lib/components/ColorPicker.svelte';
@@ -159,36 +160,45 @@
 	});
 	const part = $derived(tabs ? tab : 'general');
 
+	// The form starts from the item when the dialog opens or shows another one, never again
+	// while it is open: the lists it is given change under it (a group made in a dialog over
+	// this one loads the tags again), and what the person typed and chose stays.
+	let filledFor: string | null = null;
 	$effect(() => {
-		if (open) {
-			tab = 'general';
-			openedIdentifier = null;
-			identifierErrors = {};
-			name = initial?.name ?? presetName;
-			aliases = [...(initial?.aliases ?? [])];
-			identifiers = rowsOf(initial?.identifiers);
-			description = initial?.description ?? '';
-			titlePattern = initial?.title_pattern ?? '';
-			groupIds = [...(initial?.group_ids ?? [])];
-			topicIds = [...(initial?.topic_ids ?? [])];
-			kind = scope;
-			parentId = initial?.parent_id ?? '';
-			manual = initial?.assignment === 'manual';
-			shown = initial?.shown ?? (scope === null || scope === 'document' || scope === 'topic');
-			icon = initial?.icon ?? null;
-			color = initial?.color ?? null;
-			const id = initial?.id;
-			assigned = id
-				? typed
-						.filter((field) => field.document_type_ids?.includes(id))
-						.map((field) => ({
-							id: field.id,
-							required: field.required_document_type_ids.includes(id)
-						}))
-				: [];
-			error = null;
-		}
+		const key = open ? (initial?.id ?? `new:${presetName}`) : null;
+		if (key === filledFor) return;
+		filledFor = key;
+		if (key !== null) untrack(fill);
 	});
+
+	function fill() {
+		tab = 'general';
+		openedIdentifier = null;
+		identifierErrors = {};
+		name = initial?.name ?? presetName;
+		aliases = [...(initial?.aliases ?? [])];
+		identifiers = rowsOf(initial?.identifiers);
+		description = initial?.description ?? '';
+		titlePattern = initial?.title_pattern ?? '';
+		groupIds = [...(initial?.group_ids ?? [])];
+		topicIds = [...(initial?.topic_ids ?? [])];
+		kind = scope;
+		parentId = initial?.parent_id ?? '';
+		manual = initial?.assignment === 'manual';
+		shown = initial?.shown ?? (scope === null || scope === 'document' || scope === 'topic');
+		icon = initial?.icon ?? null;
+		color = initial?.color ?? null;
+		const id = initial?.id;
+		assigned = id
+			? typed
+					.filter((field) => field.document_type_ids?.includes(id))
+					.map((field) => ({
+						id: field.id,
+						required: field.required_document_type_ids.includes(id)
+					}))
+			: [];
+		error = null;
+	}
 
 	/** A new tag becomes one of `next`: no parent yet, shown and set as that kind's are. */
 	function chooseKind(next: TagScope) {

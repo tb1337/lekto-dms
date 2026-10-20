@@ -126,8 +126,15 @@ lists filter by `?group=` and `?topic=`). A new tag without a kind asks for it f
 
 On a phone (below `sm`, `lib/phone.svelte.ts`) a whole row opens the editor (`MasterRow`), and
 the editors fill the screen with a bar on top (`EditorShell`); wider, the editors are dialogs
-whose footer stays while the body scrolls. The contact editor puts the logo beside the name on a
-phone, uploading and fetching below them (`ContactLogoEditor` with `beside`). Deleting is in the editors. Groups and topics are
+whose footer stays while the body scrolls. The long editors have tabs of one height
+(`EditorShell` `tabs`): a contact's General and Identifiers, a document type's General and
+Fields, a field's General and Document types; each tab counts what it holds. The help of a field
+opens from an info button beside its label (`InfoHint`, `HintLabel`). A contact's identifiers
+stand one per line under their kind, with a search; a line opens with its arrow
+(`IdentifiersEditor`), and when the API refuses a value (it quotes it) saving opens that tab and
+line with the message. Its other spellings are chips (`ChipInput`). The contact editor puts the
+logo beside the name on a phone, uploading and fetching below them (`ContactLogoEditor` with
+`beside`). Deleting is in the editors. Groups and topics are
 picked in a sheet or dialog over the editor (`TagPicker`). There, in the document's tag input
 and in its contact, type and topic fields, an admin's search that finds nothing of the kind
 named so offers to create it: the kind's full dialog over the page or the current one, the

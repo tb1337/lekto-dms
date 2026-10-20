@@ -7,6 +7,9 @@
  * lens may; that is not remembered.
  */
 
+import type { FieldDefinition } from '#lib/masterdata.svelte.ts';
+import { m } from '#lib/paraglide/messages.js';
+
 export type FieldSort = 'field' | '-field';
 export type ListSort =
 	| '-document_date'
@@ -56,6 +59,31 @@ function store(key: string, value: string): void {
 function valid(value: string | null, searching: boolean): Sort | null {
 	const sorts: readonly string[] = searching ? SEARCH_SORTS : LIST_SORTS;
 	return value !== null && sorts.includes(value) ? (value as Sort) : null;
+}
+
+const SORT_LABELS: Record<Exclude<Sort, FieldSort>, () => string> = {
+	relevance: m.sort_relevance,
+	'-document_date': m.sort_document_date_desc,
+	document_date: m.sort_document_date_asc,
+	'-created_at': m.sort_created_desc,
+	created_at: m.sort_created_asc,
+	title: m.sort_title_asc,
+	'-title': m.sort_title_desc
+};
+
+/** How a sort reads in a menu; a sort by `field` with its name and direction. */
+export function sortLabel(sort: Sort, field?: Pick<FieldDefinition, 'name' | 'data_type'>): string {
+	if (!isFieldSort(sort)) return SORT_LABELS[sort]();
+	const numeric = field?.data_type === 'number' || field?.data_type === 'amount';
+	const label =
+		sort === 'field'
+			? numeric
+				? m.sort_field_asc_number
+				: m.sort_field_asc_date
+			: numeric
+				? m.sort_field_desc_number
+				: m.sort_field_desc_date;
+	return label({ field: field?.name ?? '' });
 }
 
 export function isFieldSort(sort: Sort): sort is FieldSort {

@@ -19,9 +19,8 @@ export type LensFilter = components['schemas']['LensFilterBody'];
 export type LensSort = components['schemas']['LensSort'];
 export type Grouping = components['schemas']['Grouping'];
 
-/** The filters of `lens` as of `today`. */
-export function lensFilters(lens: Lens, today: Date): Filters {
-	const filter = lens.filter;
+/** The filters a lens keeps, as of `today` (a moving period as its days). */
+export function filtersOf(filter: LensFilter, today: Date): Filters {
 	const period = filter.document_period
 		? relativePeriod(filter.document_period, today)
 		: { dateFrom: filter.document_date_from ?? null, dateTo: filter.document_date_to ?? null };
@@ -36,6 +35,11 @@ export function lensFilters(lens: Lens, today: Date): Filters {
 		field: filter.field_id ?? null,
 		...period
 	};
+}
+
+/** The filters of `lens` as of `today`. */
+export function lensFilters(lens: Lens, today: Date): Filters {
+	return filtersOf(lens.filter, today);
 }
 
 /** The query of the documents page that opens `lens` as of `today`. */

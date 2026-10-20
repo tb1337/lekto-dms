@@ -9,12 +9,19 @@
 	import { pathLabel } from '#lib/tags.ts';
 
 	// What narrows the list, each as a chip that lets it go (a topic square, a group outlined),
-	// and a reset; nothing while nothing is chosen.
+	// and a reset; nothing while nothing is chosen. `readonly`: the chips only (what a lens
+	// keeps).
 	let {
 		filters,
 		lookup,
-		onchange
-	}: { filters: Filters; lookup: Lookup; onchange: (filters: Filters) => void } = $props();
+		onchange,
+		readonly = false
+	}: {
+		filters: Filters;
+		lookup: Lookup;
+		onchange?: (filters: Filters) => void;
+		readonly?: boolean;
+	} = $props();
 
 	interface Chip {
 		key: string;
@@ -116,7 +123,8 @@
 		{#each chips as chip (chip.key)}
 			<span
 				class={[
-					'inline-flex h-8 max-w-full items-center gap-1 pr-1 pl-3 text-sm',
+					'inline-flex h-8 max-w-full items-center gap-1 pl-3 text-sm',
+					readonly ? 'pr-3' : 'pr-1',
 					chip.shape === 'square' ? 'rounded-md' : 'rounded-full',
 					chip.shape === 'outline'
 						? 'border bg-background'
@@ -124,18 +132,22 @@
 				]}
 			>
 				<span class="truncate">{chip.name}</span>
-				<button
-					type="button"
-					class="grid size-6 shrink-0 place-items-center rounded-full hover:bg-background"
-					aria-label={chip.label}
-					onclick={() => onchange({ ...filters, ...chip.without })}
-				>
-					<X class="size-3.5" aria-hidden="true" />
-				</button>
+				{#if !readonly}
+					<button
+						type="button"
+						class="grid size-6 shrink-0 place-items-center rounded-full hover:bg-background"
+						aria-label={chip.label}
+						onclick={() => onchange?.({ ...filters, ...chip.without })}
+					>
+						<X class="size-3.5" aria-hidden="true" />
+					</button>
+				{/if}
 			</span>
 		{/each}
-		<Button variant="ghost" size="sm" onclick={() => onchange(NO_FILTERS)}>
-			{m.filter_reset()}
-		</Button>
+		{#if !readonly}
+			<Button variant="ghost" size="sm" onclick={() => onchange?.(NO_FILTERS)}>
+				{m.filter_reset()}
+			</Button>
+		{/if}
 	</div>
 {/if}

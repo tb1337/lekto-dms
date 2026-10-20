@@ -1,5 +1,6 @@
 <script lang="ts">
 	import LayoutGrid from '@lucide/svelte/icons/layout-grid';
+	import Pencil from '@lucide/svelte/icons/pencil';
 	import List from '@lucide/svelte/icons/list';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
@@ -15,6 +16,7 @@
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
 	import FilterPanel from '#lib/components/FilterPanel.svelte';
 	import InboxMark from '#lib/components/InboxMark.svelte';
+	import LensEditor, { type LensDraft } from '#lib/components/LensEditor.svelte';
 	import Lenses from '#lib/components/Lenses.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -32,7 +34,7 @@
 	import { formatNumber } from '#lib/i18n.ts';
 	import { cardLines } from '#lib/card-fields.ts';
 	import { groupDocuments } from '#lib/grouping.ts';
-	import { lensParams, type Lens } from '#lib/lenses.ts';
+	import { lensFilter, lensParams, type Lens, type LensSort } from '#lib/lenses.ts';
 	import {
 		FIELD_SORTS,
 		LIST_SORTS,
@@ -42,6 +44,7 @@
 		rememberLayout,
 		rememberedLayout,
 		sortFieldOf,
+		sortLabel,
 		sortOf,
 		type ListSort,
 		type Sort,
@@ -84,6 +87,44 @@
 	let lenses = $state<Lens[]>([]);
 	const lens = $derived(lenses.find((entry) => entry.id === params.get('lens')) ?? null);
 	const today = new Date();
+	// The editor of a lens: a new one (null) from the page as it stands, or the open one.
+	let editorOpen = $state(false);
+	let editing = $state<Lens | null>(null);
+	const draft = $derived<LensDraft>({
+		filter: lensFilter(filters, today),
+		query: query || null,
+		sort: params.has('sort') ? (sort as LensSort) : null,
+		sortField,
+		layout
+	});
+
+	function edit(target: Lens | null) {
+		editing = target;
+		editorOpen = true;
+	}
+
+	async function saved(saved: Lens, created: boolean) {
+		await loadLenses();
+		if (created) {
+			go(lensParams(saved, today));
+			return;
+		}
+		// The page takes the lens's sort and layout; its filters stay as they stand.
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const next = new URLSearchParams(page.url.search);
+		if (saved.sort) next.set('sort', saved.sort);
+		else next.delete('sort');
+		if (saved.sort_field_id) next.set('sort_field', saved.sort_field_id);
+		else next.delete('sort_field');
+		layout = saved.layout;
+		go(next);
+	}
+
+	async function deleted(id: string) {
+		await loadLenses();
+		if (params.get('lens') === id) go(new URLSearchParams());
+	}
+
 	// Opening a lens shows its layout (not remembered: that is the choice outside lenses).
 	let shownLens: string | null = null;
 	$effect(() => {
@@ -230,33 +271,17 @@
 		rememberLayout(next);
 	}
 
-	const SORT_LABELS: Record<Exclude<Sort, 'field' | '-field'>, () => string> = {
-		relevance: m.sort_relevance,
-		'-document_date': m.sort_document_date_desc,
-		document_date: m.sort_document_date_asc,
-		'-created_at': m.sort_created_desc,
-		created_at: m.sort_created_asc,
-		title: m.sort_title_asc,
-		'-title': m.sort_title_desc
-	};
 	// While a list sorts by a field (a lens may), its two directions are offered too.
 	const sorts = $derived.by(() => {
 		const standard = (searching ? SEARCH_SORTS : LIST_SORTS).map((value) => ({
 			value,
-			label: SORT_LABELS[value as keyof typeof SORT_LABELS]()
+			label: sortLabel(value)
 		}));
 		const field = lookup?.fields.find((entry) => entry.id === sortField);
 		if (!field) return standard;
-		const numeric = field.data_type === 'number' || field.data_type === 'amount';
-		const labels = numeric
-			? [m.sort_field_asc_number, m.sort_field_desc_number]
-			: [m.sort_field_asc_date, m.sort_field_desc_date];
 		return [
 			...standard,
-			...FIELD_SORTS.map((value, index) => ({
-				value,
-				label: labels[index]({ field: field.name })
-			}))
+			...FIELD_SORTS.map((value) => ({ value, label: sortLabel(value, field) }))
 		];
 	});
 
@@ -304,6 +329,7 @@
 		active={lens?.id ?? null}
 		href={(entry) => `?${lensParams(entry, today)}`}
 		allHref={page.url.pathname}
+		onadd={lookup ? () => edit(null) : undefined}
 	/>
 {/snippet}
 
@@ -315,7 +341,7 @@
 
 <div class="flex flex-col gap-6" data-roomy>
 	<div class="flex flex-col gap-3">
-		<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+		<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
 			<h1 class="text-[1.75rem] font-semibold tracking-tight">
 				{lens?.name ?? m.nav_documents()}
 			</h1>
@@ -324,12 +350,16 @@
 					{m.documents_total({ count: formatNumber(facets.total) })}
 				</p>
 			{/if}
+			{#if lens && lookup}
+				<Button variant="outline" size="sm" class="ml-auto rounded-full" onclick={() => edit(lens)}>
+					<Pencil aria-hidden="true" />
+					{m.lens_edit()}
+				</Button>
+			{/if}
 		</div>
-		{#if lenses.length > 0}
-			<div class="lg:hidden">
-				{@render lensLinks('chips')}
-			</div>
-		{/if}
+		<div class="lg:hidden">
+			{@render lensLinks('chips')}
+		</div>
 	</div>
 
 	<div class="flex gap-8">
@@ -554,3 +584,16 @@
 		</div>
 	</div>
 </div>
+
+{#if lookup}
+	<LensEditor
+		bind:open={editorOpen}
+		initial={editing}
+		{draft}
+		{lookup}
+		sample={list.items[0]?.document ?? null}
+		{today}
+		onsaved={saved}
+		ondeleted={deleted}
+	/>
+{/if}

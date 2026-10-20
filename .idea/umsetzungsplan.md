@@ -1218,6 +1218,8 @@ Die Devinstanz liest nach dem Merge `LEKTO_`: in `live.env` das Präfix umstelle
   6. Web: der Editor mit Vorschau (`LensEditor` auf `EditorShell`; „+“ legt aus der Seite an, wie sie steht).
   7. Web: die Leiste „weicht ab“ (`LensChanges`, ein Punkt an der Lens).
 
+- **Kopf und Bedienelemente** (Tobi, 20.10.2026): Kopf der Liste in einer Zeile (Variante A); Buttons in einer Form, `Select` statt nativem Select (am Handy nativ), `SearchSelect` für Kontakt, Typ und Thema, `TagPicker` als ein Tag-Feld auch für Dokument-Tags (`TagPickerList` in Popover oder Blatt); Test-Helfer `testing/select.ts` für beide Formen der Auswahl.
+
 **Prüfung:** Vertragstests für Filter, Zählen, Sortieren nach Feld und Lenses auf Speicher, SQLite und Postgres; Suchindex-Verträge für die Filter; REST mit Rechten (nur der Besitzer, andere 404, auch Admins); Vitest für Filterleiste, Lenses, Editor, Kartenfelder und Gruppen; im Browser gegen den Build einer Prüfinstanz mit erfundenen Daten (62 Dokumente, Felder mit Fristen, zwei Lenses), Desktop und Handy.
 
 **Offen:** Die Devinstanz braucht Revision 0031 und einen Neustart (nur auf Tobis Wunsch). Gruppen ohne Dokumente blendet die Leiste aus wie Tags (die Devinstanz hat eine Kontaktgruppe ohne Kontakte). Ob die Chips über der Liste die Farben der Tags tragen sollen. Zahlen je Lens in der Leiste (im Entwurf) fehlen noch.

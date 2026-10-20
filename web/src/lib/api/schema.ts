@@ -3842,7 +3842,7 @@ export interface components {
 			due_field_id?: string | null;
 		};
 		/**
-		 * LensFilter
+		 * LensFilterBody
 		 * @description The filters as `GET /documents` takes them, with a list for each repeated parameter.
 		 */
 		LensFilterBody: {

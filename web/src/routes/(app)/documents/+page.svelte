@@ -15,6 +15,7 @@
 	import DocumentRow from '#lib/components/DocumentRow.svelte';
 	import FilterPanel from '#lib/components/FilterPanel.svelte';
 	import InboxMark from '#lib/components/InboxMark.svelte';
+	import Lenses from '#lib/components/Lenses.svelte';
 	import NativeSelect from '#lib/components/NativeSelect.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
@@ -29,16 +30,21 @@
 		type Filters
 	} from '#lib/filters.ts';
 	import { formatDate, formatNumber } from '#lib/i18n.ts';
+	import { lensParams, type Lens } from '#lib/lenses.ts';
 	import {
+		FIELD_SORTS,
 		LIST_SORTS,
 		SEARCH_SORTS,
 		byMonth,
+		isFieldSort,
 		rememberSort,
 		rememberLayout,
 		rememberedLayout,
+		sortFieldOf,
 		sortOf,
 		type ListSort,
 		type Sort,
+		type FieldSort,
 		type Layout
 	} from '#lib/listing.ts';
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
@@ -63,6 +69,7 @@
 	const query = $derived(params.get('q')?.trim() ?? '');
 	const searching = $derived(query !== '');
 	const sort = $derived(sortOf(params, searching));
+	const sortField = $derived(sortFieldOf(params, searching));
 	// The search field follows the URL (back button, links) until the user types.
 	let text = $derived(query);
 	let searchField = $state<HTMLInputElement | null>(null);
@@ -72,6 +79,16 @@
 	// How many documents each value of the filters holds; the words of a search aside.
 	let facets = $state<Facets | null>(null);
 	let filtersOpen = $state(false);
+	// The user's lenses; the open one is in the URL (`lens`).
+	let lenses = $state<Lens[]>([]);
+	const lens = $derived(lenses.find((entry) => entry.id === params.get('lens')) ?? null);
+	const today = new Date();
+	// Opening a lens shows its layout (not remembered: that is the choice outside lenses).
+	let shownLens: string | null = null;
+	$effect(() => {
+		if (lens && lens.id !== shownLens) layout = lens.layout;
+		shownLens = lens?.id ?? null;
+	});
 	const activeFilters = $derived(
 		filters.contacts.length +
 			filters.types.length +
@@ -83,6 +100,15 @@
 			(filters.field ? 1 : 0) +
 			(filters.dateFrom || filters.dateTo ? 1 : 0)
 	);
+
+	async function loadLenses() {
+		try {
+			lenses = await unwrap(api.GET('/api/v1/lenses'));
+		} catch {
+			// Without lenses the documents stand as ever.
+			lenses = [];
+		}
+	}
 
 	async function loadFacets() {
 		const query = apiQuery(filters, scope.allUsers);
@@ -100,7 +126,13 @@
 			const data = await unwrap(
 				api.GET('/api/v1/documents/search', {
 					params: {
-						query: { ...base, q: query, sort, offset: (after as number | null) ?? 0 }
+						query: {
+							...base,
+							q: query,
+							// A search never sorts by a field (`sortOf`).
+							sort: sort as Exclude<Sort, FieldSort>,
+							offset: (after as number | null) ?? 0
+						}
 					}
 				})
 			);
@@ -113,6 +145,7 @@
 					query: {
 						...base,
 						sort: sort as ListSort,
+						sort_field_id: sortField ?? undefined,
 						cursor: (after as string | null) ?? undefined
 					}
 				}
@@ -141,6 +174,7 @@
 			(value) => (lookup = value),
 			(error) => (lookupError = describeError(error))
 		);
+		void loadLenses();
 		// Opened from the search icon of a narrow header: the field takes the focus.
 		if (location.hash === '#search') void tick().then(() => searchField?.focus());
 		let timer: ReturnType<typeof setTimeout> | undefined;
@@ -176,6 +210,7 @@
 		else next.delete('q');
 		// A list sort may not suit a search and back: the remembered one of the mode holds.
 		next.delete('sort');
+		next.delete('sort_field');
 		go(next);
 	}
 
@@ -185,6 +220,7 @@
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const next = new URLSearchParams(page.url.search);
 		next.set('sort', chosen);
+		if (!isFieldSort(chosen)) next.delete('sort_field');
 		go(next);
 	}
 
@@ -193,7 +229,7 @@
 		rememberLayout(next);
 	}
 
-	const SORT_LABELS: Record<Sort, () => string> = {
+	const SORT_LABELS: Record<Exclude<Sort, 'field' | '-field'>, () => string> = {
 		relevance: m.sort_relevance,
 		'-document_date': m.sort_document_date_desc,
 		document_date: m.sort_document_date_asc,
@@ -202,12 +238,26 @@
 		title: m.sort_title_asc,
 		'-title': m.sort_title_desc
 	};
-	const sorts = $derived(
-		(searching ? SEARCH_SORTS : LIST_SORTS).map((value) => ({
+	// While a list sorts by a field (a lens may), its two directions are offered too.
+	const sorts = $derived.by(() => {
+		const standard = (searching ? SEARCH_SORTS : LIST_SORTS).map((value) => ({
 			value,
-			label: SORT_LABELS[value]()
-		}))
-	);
+			label: SORT_LABELS[value as keyof typeof SORT_LABELS]()
+		}));
+		const field = lookup?.fields.find((entry) => entry.id === sortField);
+		if (!field) return standard;
+		const numeric = field.data_type === 'number' || field.data_type === 'amount';
+		const labels = numeric
+			? [m.sort_field_asc_number, m.sort_field_desc_number]
+			: [m.sort_field_asc_date, m.sort_field_desc_date];
+		return [
+			...standard,
+			...FIELD_SORTS.map((value, index) => ({
+				value,
+				label: labels[index]({ field: field.name })
+			}))
+		];
+	});
 
 	// Sorted by a date, the documents stand by month, each under its own heading.
 	const groups = $derived(byMonth(list.items, sort, (item) => item.document));
@@ -234,6 +284,16 @@
 	{/if}
 {/snippet}
 
+{#snippet lensLinks(variant: 'list' | 'chips')}
+	<Lenses
+		{lenses}
+		{variant}
+		active={lens?.id ?? null}
+		href={(entry) => `?${lensParams(entry, today)}`}
+		allHref={page.url.pathname}
+	/>
+{/snippet}
+
 {#snippet filterPanel()}
 	{#if lookup}
 		<FilterPanel {filters} {lookup} {facets} showCounts={!searching} onchange={change} />
@@ -241,18 +301,30 @@
 {/snippet}
 
 <div class="flex flex-col gap-6" data-roomy>
-	<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-		<h1 class="text-[1.75rem] font-semibold tracking-tight">{m.nav_documents()}</h1>
-		{#if facets && !searching}
-			<p class="text-sm text-muted-foreground" aria-live="polite">
-				{m.documents_total({ count: formatNumber(facets.total) })}
-			</p>
+	<div class="flex flex-col gap-3">
+		<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+			<h1 class="text-[1.75rem] font-semibold tracking-tight">
+				{lens?.name ?? m.nav_documents()}
+			</h1>
+			{#if facets && !searching}
+				<p class="text-sm text-muted-foreground" aria-live="polite">
+					{m.documents_total({ count: formatNumber(facets.total) })}
+				</p>
+			{/if}
+		</div>
+		{#if lenses.length > 0}
+			<div class="lg:hidden">
+				{@render lensLinks('chips')}
+			</div>
 		{/if}
 	</div>
 
 	<div class="flex gap-8">
 		<aside class="hidden w-72 shrink-0 lg:block" aria-label={m.filters_title()}>
-			<div class="sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto pr-1 pb-4">
+			<div
+				class="sticky top-20 flex max-h-[calc(100dvh-6rem)] flex-col gap-2 overflow-y-auto pr-1 pb-4"
+			>
+				{@render lensLinks('list')}
 				{@render filterPanel()}
 			</div>
 		</aside>

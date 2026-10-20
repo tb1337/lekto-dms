@@ -166,6 +166,42 @@ describe('the archive page', () => {
 		expect(screen.queryByRole('dialog', { name: m.filters_title() })).toBeNull();
 	});
 
+	it('opens a lens: its name as title, its sort by a field asked of the API', async () => {
+		state.url = new URL('http://lekto/ui/documents?lens=l1&tag=t1&sort=field&sort_field=f1');
+		const lens = (id: string, name: string) => ({
+			id,
+			name,
+			position: 0,
+			filter: {},
+			query: null,
+			sort: null,
+			sort_field_id: null,
+			grouping: 'none',
+			layout: 'grid',
+			card_field_ids: [],
+			due_field_id: null,
+			created_at: '2026-10-20T10:00:00Z',
+			updated_at: '2026-10-20T10:00:00Z'
+		});
+		const api = fakeApi({
+			'GET /api/v1/documents': () => ({ items: [], next_cursor: null }),
+			'GET /api/v1/lenses': () => [lens('l1', 'Zu bezahlen'), lens('l2', 'Steuer')]
+		});
+		vi.stubGlobal('fetch', api);
+		render(Page);
+		expect(await screen.findByRole('heading', { level: 1, name: 'Zu bezahlen' })).toBeTruthy();
+		const listed = calls(api).filter((call) => call.startsWith('GET /api/v1/documents?'));
+		expect(listed.at(-1)).toContain('sort=field');
+		expect(listed.at(-1)).toContain('sort_field_id=f1');
+		// Each lens is a link that opens it (beside the list and, on a phone, as a chip).
+		const tax = screen.getAllByRole('link', { name: 'Steuer' });
+		expect(tax.map((link) => link.getAttribute('href'))).toEqual(['?lens=l2', '?lens=l2']);
+		const open = screen.getAllByRole('link', { name: 'Zu bezahlen' });
+		expect(open.every((link) => link.getAttribute('aria-current') === 'page')).toBe(true);
+		const all = screen.getAllByRole('link', { name: m.lens_all() });
+		expect(all[0].getAttribute('href')).toBe('/ui/documents');
+	});
+
 	it('takes no lane from an older link', async () => {
 		state.url = new URL('http://lekto/ui/documents?lane=yellow');
 		const api = fakeApi({

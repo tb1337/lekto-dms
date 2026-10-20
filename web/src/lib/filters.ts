@@ -118,6 +118,50 @@ export function monthPeriod(month: string): Pick<Filters, 'dateFrom' | 'dateTo'>
 	return { dateFrom: `${month}-01`, dateTo: `${month}-${String(last).padStart(2, '0')}` };
 }
 
+/** A period that moves with the day: the quick picks of the filters, as a lens keeps them. */
+export type RelativePeriod = 'this_year' | 'last_12_months' | 'last_year';
+export const RELATIVE_PERIODS: readonly RelativePeriod[] = [
+	'this_year',
+	'last_12_months',
+	'last_year'
+];
+
+/** An ISO day in the browser's time. */
+export function isoDay(day: Date): string {
+	return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+}
+
+/** The days of `period` as of `today`: this or last year, or the twelve months up to today. */
+export function relativePeriod(
+	period: RelativePeriod,
+	today: Date
+): Pick<Filters, 'dateFrom' | 'dateTo'> {
+	const year = today.getFullYear();
+	switch (period) {
+		case 'this_year':
+			return yearPeriod(year);
+		case 'last_year':
+			return yearPeriod(year - 1);
+		case 'last_12_months': {
+			const start = new Date(year - 1, today.getMonth(), today.getDate() + 1);
+			return { dateFrom: isoDay(start), dateTo: null };
+		}
+	}
+}
+
+/** Which relative period the period of the filters is as of `today`, if any. */
+export function relativeOf(
+	filters: Pick<Filters, 'dateFrom' | 'dateTo'>,
+	today: Date
+): RelativePeriod | null {
+	return (
+		RELATIVE_PERIODS.find((period) => {
+			const days = relativePeriod(period, today);
+			return days.dateFrom === filters.dateFrom && days.dateTo === filters.dateTo;
+		}) ?? null
+	);
+}
+
 /** What the period of the filters is: a whole year, a whole month, another span, or none. */
 export type PeriodChoice =
 	| { kind: 'year'; year: number }

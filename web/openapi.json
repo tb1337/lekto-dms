@@ -20204,7 +20204,7 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "title": "LensFilter",
+        "title": "LensFilterBody",
         "description": "The filters as `GET /documents` takes them, with a list for each repeated parameter."
       },
       "LensOrder": {

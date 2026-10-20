@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { components } from '#lib/api/schema.ts';
-	import { monthPeriod, periodOf, yearPeriod, type Filters } from '#lib/filters.ts';
+	import { monthPeriod, periodOf, relativePeriod, yearPeriod, type Filters } from '#lib/filters.ts';
 	import { formatDate, formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
@@ -33,13 +33,10 @@
 	let older = $state(false);
 
 	const today = new Date();
-	const iso = (day: Date) =>
-		`${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-	const yearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate() + 1);
 	const QUICK: { label: () => string; period: Period }[] = [
-		{ label: m.facet_this_year, period: yearPeriod(today.getFullYear()) },
-		{ label: m.facet_last_12_months, period: { dateFrom: iso(yearAgo), dateTo: null } },
-		{ label: m.facet_last_year, period: yearPeriod(today.getFullYear() - 1) }
+		{ label: m.facet_this_year, period: relativePeriod('this_year', today) },
+		{ label: m.facet_last_12_months, period: relativePeriod('last_12_months', today) },
+		{ label: m.facet_last_year, period: relativePeriod('last_year', today) }
 	];
 
 	const most = $derived(Math.max(1, ...years.map((year) => year.count)));

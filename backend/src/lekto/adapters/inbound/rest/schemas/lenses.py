@@ -35,7 +35,7 @@ def _ids() -> Any:
 class LensFilterBody(BaseModel):
     """The filters as `GET /documents` takes them, with a list for each repeated parameter."""
 
-    model_config = ConfigDict(extra="forbid", title="LensFilter")
+    model_config = ConfigDict(extra="forbid")
 
     contact_ids: list[UUID] = _ids()
     document_type_ids: list[UUID] = _ids()

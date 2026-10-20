@@ -5,6 +5,7 @@ import {
 	rememberSort,
 	rememberLayout,
 	rememberedLayout,
+	sortFieldOf,
 	sortOf
 } from './listing.ts';
 
@@ -25,6 +26,20 @@ describe('the sort of the document view', () => {
 		// Relevance only where something is searched; nonsense counts as missing.
 		expect(sortOf(new URLSearchParams('sort=relevance'), false)).toBe('title');
 		expect(sortOf(new URLSearchParams('sort=size'), true)).toBe('-created_at');
+	});
+
+	it('sorts a list by a field named in the URL, never a search, and does not remember it', () => {
+		const byDue = new URLSearchParams('sort=field&sort_field=f1');
+		expect(sortOf(byDue, false)).toBe('field');
+		expect(sortFieldOf(byDue, false)).toBe('f1');
+		expect(sortOf(new URLSearchParams('sort=-field&sort_field=f1'), false)).toBe('-field');
+		// Without the field, or while searching, it counts as missing.
+		expect(sortOf(new URLSearchParams('sort=field'), false)).toBe('-document_date');
+		expect(sortOf(byDue, true)).toBe('relevance');
+		expect(sortFieldOf(byDue, true)).toBeNull();
+		expect(sortFieldOf(new URLSearchParams('sort=title&sort_field=f1'), false)).toBeNull();
+		rememberSort('field', false);
+		expect(sortOf(new URLSearchParams(), false)).toBe('-document_date');
 	});
 
 	it('remembers grid or list, grid at first', () => {

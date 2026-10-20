@@ -2,14 +2,24 @@
  * How the document view sorts and shows its documents. The sort stands in the URL (`sort`);
  * without it, the one this browser last chose for a list or for a search, else the default:
  * a search by relevance, a list by document date, newest first. Grid or list is remembered
- * too. Remembering is a convenience: without storage the defaults hold.
+ * too. Remembering is a convenience: without storage the defaults hold. A list (not a search)
+ * sorts by the value of a field with `field` or `-field` and the field in `sort_field`, as a
+ * lens may; that is not remembered.
  */
 
+export type FieldSort = 'field' | '-field';
 export type ListSort =
-	'-document_date' | 'document_date' | '-created_at' | 'created_at' | 'title' | '-title';
+	| '-document_date'
+	| 'document_date'
+	| '-created_at'
+	| 'created_at'
+	| 'title'
+	| '-title'
+	| FieldSort;
 export type Sort = ListSort | 'relevance';
 export type Layout = 'grid' | 'list';
 
+export const FIELD_SORTS: readonly FieldSort[] = ['field', '-field'];
 export const LIST_SORTS: readonly ListSort[] = [
 	'-document_date',
 	'document_date',
@@ -48,9 +58,22 @@ function valid(value: string | null, searching: boolean): Sort | null {
 	return value !== null && sorts.includes(value) ? (value as Sort) : null;
 }
 
+export function isFieldSort(sort: Sort): sort is FieldSort {
+	return (FIELD_SORTS as readonly string[]).includes(sort);
+}
+
+/** The field a list sorts by (`sort_field`), while its sort is by a field. */
+export function sortFieldOf(params: URLSearchParams, searching: boolean): string | null {
+	return isFieldSort(sortOf(params, searching)) ? params.get('sort_field') : null;
+}
+
 /** The sort of the view: from the URL, else remembered, else the default. */
 export function sortOf(params: URLSearchParams, searching: boolean): Sort {
 	const mode = searching ? 'search' : 'list';
+	const asked = params.get('sort') ?? '';
+	if (!searching && params.get('sort_field') && isFieldSort(asked as Sort)) {
+		return asked as FieldSort;
+	}
 	return (
 		valid(params.get('sort'), searching) ?? valid(stored(KEYS[mode]), searching) ?? DEFAULT[mode]
 	);
@@ -58,7 +81,7 @@ export function sortOf(params: URLSearchParams, searching: boolean): Sort {
 
 /** Remember `sort` for the next list or search; the URL carries it now. */
 export function rememberSort(sort: Sort, searching: boolean): void {
-	store(KEYS[searching ? 'search' : 'list'], sort);
+	if (!isFieldSort(sort)) store(KEYS[searching ? 'search' : 'list'], sort);
 }
 
 /**

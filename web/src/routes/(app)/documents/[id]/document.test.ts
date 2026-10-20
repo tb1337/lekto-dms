@@ -318,4 +318,18 @@ describe('the document tab', () => {
 		await waitFor(() => expect(screen.getByRole('form', { name: m.edit_title() })).toBeTruthy());
 		expect(titleField()?.value).toBe('Neu');
 	});
+
+	it('sets both panes with the quick choice, which shows the pair open', async () => {
+		goTo('/ui/documents/doc-1?left=text&right=form', { id: 'doc-1' });
+		serve(parsed, readable);
+		render(Page);
+		const quick = await screen.findByRole('group', { name: m.view_presets() });
+		const compare = within(quick).getByRole('button', { name: m.view_preset_compare() });
+		expect(compare.getAttribute('aria-pressed')).toBe('true');
+		await userEvent.click(within(quick).getByRole('button', { name: m.view_preset_read() }));
+		expect(goto).toHaveBeenCalledWith('/ui/documents/doc-1?left=text&right=facts', {
+			replace: true,
+			reset: false
+		});
+	});
 });

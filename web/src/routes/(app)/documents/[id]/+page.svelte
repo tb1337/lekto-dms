@@ -31,6 +31,10 @@
 		nextDecision,
 		type InboxPlace,
 		type Left,
+		PRESETS,
+		presetOf,
+		presetView,
+		type Preset,
 		rememberedView,
 		rememberView,
 		type Right,
@@ -304,6 +308,14 @@
 		await goto(next ? inboxDocument(next) : `${BASE}/inbox`);
 	}
 
+	const PRESET_NAMES: Record<Preset, { label: () => string; hint: () => string }> = {
+		check: { label: m.view_preset_check, hint: m.view_preset_check_hint },
+		read: { label: m.view_preset_read, hint: m.view_preset_read_hint },
+		locate: { label: m.view_preset_locate, hint: m.view_preset_locate_hint },
+		compare: { label: m.view_preset_compare, hint: m.view_preset_compare_hint }
+	};
+	const presetsId = $props.id();
+
 	const tabs: { tab: Tab; label: () => string }[] = [
 		{ tab: 'document', label: m.tab_document },
 		{ tab: 'metadata', label: m.tab_metadata },
@@ -355,16 +367,36 @@
 			</Alert.Root>
 		{/if}
 
-		<TabBar
-			label={m.tabs_label()}
-			tabs={tabs.map((entry) => ({
-				key: entry.tab,
-				href: tabHref(page.url, entry.tab),
-				label: entry.label(),
-				marker: entry.tab === 'log' && attention ? m.tab_log_attention() : undefined
-			}))}
-			current={tab}
-		/>
+		<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+			<TabBar
+				label={m.tabs_label()}
+				tabs={tabs.map((entry) => ({
+					key: entry.tab,
+					href: tabHref(page.url, entry.tab),
+					label: entry.label(),
+					marker: entry.tab === 'log' && attention ? m.tab_log_attention() : undefined
+				}))}
+				current={tab}
+			/>
+			{#if tab === 'document'}
+				<!-- Both panes at once, by what the view is for; on a phone the panes' bar does it. -->
+				<div class="ml-auto flex items-center gap-2 max-sm:hidden">
+					<span id="{presetsId}-presets" class="text-xs text-muted-foreground">
+						{m.view_presets()}
+					</span>
+					<Segmented
+						labelledby="{presetsId}-presets"
+						value={presetOf(view)}
+						options={PRESETS.map((preset) => ({
+							value: preset,
+							label: PRESET_NAMES[preset].label(),
+							hint: PRESET_NAMES[preset].hint()
+						}))}
+						onchange={(next) => show(presetView(next as Preset))}
+					/>
+				</div>
+			{/if}
+		</div>
 
 		{#if tab === 'document'}
 			{#snippet leftSwitch()}

@@ -8,8 +8,8 @@
 	type Year = components['schemas']['YearCount'];
 
 	// The period of the document date, compact however many years there are: quick picks, the
-	// newest years as tiles (four to a row, a bar for how many documents each holds), the
-	// older ones behind one tile; a chosen year (or the year of a chosen month) shows its
+	// newest years as tiles (three to a row, year and count on one line, a bar for how many
+	// documents each holds), the older ones behind one tile (a single one stays a tile); a chosen year (or the year of a chosen month) shows its
 	// months as bars to choose from. A second tap lets a choice go. `showCounts`: not while
 	// searching, the counts know no words.
 	let {
@@ -18,7 +18,7 @@
 		period,
 		showCounts,
 		onchange,
-		shown = 8
+		shown = 9
 	}: {
 		years: readonly Year[];
 		undated: number;
@@ -43,8 +43,9 @@
 	];
 
 	const most = $derived(Math.max(1, ...years.map((year) => year.count)));
-	const newest = $derived(years.slice(0, shown));
-	const rest = $derived(years.slice(shown));
+	const cut = $derived(years.length > shown + 1 ? shown : years.length);
+	const newest = $derived(years.slice(0, cut));
+	const rest = $derived(years.slice(cut));
 	const tiles = $derived(older ? years : newest);
 	// The year whose months show: the chosen one, or that of the chosen month.
 	const focus = $derived(
@@ -98,14 +99,14 @@
 		{/each}
 	</div>
 	{#if years.length > 0}
-		<div class="grid grid-cols-4 gap-1.5">
+		<div class="grid grid-cols-3 gap-1.5">
 			{#each tiles as year (year.year)}
 				{@const active = chosen?.kind === 'year' && chosen.year === year.year}
 				<button
 					type="button"
 					aria-pressed={active}
 					class={[
-						'relative flex h-11 flex-col items-start overflow-hidden rounded-lg border px-2 py-1 text-left transition-colors',
+						'relative flex h-9 items-center justify-between gap-1 overflow-hidden rounded-lg border px-2 text-left transition-colors',
 						active
 							? 'border-primary bg-primary text-primary-foreground'
 							: 'bg-background hover:border-primary/60'
@@ -122,11 +123,11 @@
 							style:width={`${Math.round((year.count / most) * 100)}%`}
 						></span>
 					{/if}
-					<span class="relative text-sm font-semibold tabular-nums">{year.year}</span>
+					<span class="relative text-sm tabular-nums">{year.year}</span>
 					{#if showCounts}
 						<span
 							class={[
-								'relative text-[0.6875rem] tabular-nums',
+								'relative text-xs tabular-nums',
 								active ? 'text-primary-foreground/80' : 'text-muted-foreground'
 							]}
 						>

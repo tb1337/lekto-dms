@@ -248,25 +248,25 @@ describe('FilterPanel', () => {
 });
 
 describe('PeriodFacet', () => {
-	it('keeps the older years behind one tile', async () => {
+	it('keeps the older years behind one tile, but not a single one', async () => {
 		const user = userEvent.setup();
-		const years = Array.from({ length: 10 }, (_, index) => ({
-			year: 2026 - index,
-			count: 1,
-			months: []
-		}));
-		render(PeriodFacet, {
-			years,
+		const years = (count: number) =>
+			Array.from({ length: count }, (_, index) => ({ year: 2026 - index, count: 1, months: [] }));
+		const props = {
 			undated: 0,
 			period: { dateFrom: null, dateTo: null },
 			showCounts: true,
 			onchange: vi.fn()
-		});
-		expect(screen.queryByRole('button', { name: /^2018/ })).toBeNull();
-		await user.click(
-			screen.getByRole('button', { name: m.facet_older({ from: '2017', to: '2018' }) + ' 2' })
-		);
+		};
+		const { unmount } = render(PeriodFacet, { ...props, years: years(10) });
 		expect(screen.getByRole('button', { name: /^2017/ })).toBeTruthy();
+		unmount();
+		render(PeriodFacet, { ...props, years: years(12) });
+		expect(screen.queryByRole('button', { name: /^2017/ })).toBeNull();
+		await user.click(
+			screen.getByRole('button', { name: `${m.facet_older({ from: '2015', to: '2017' })} 3` })
+		);
+		expect(screen.getByRole('button', { name: /^2015/ })).toBeTruthy();
 	});
 });
 

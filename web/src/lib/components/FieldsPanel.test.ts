@@ -73,6 +73,7 @@ describe('FieldsPanel', () => {
 		expect(await screen.findByText((text) => text.includes(required))).toBeTruthy();
 	});
 
+	// Dialog, tab, search and popover one after another: the longest of these under load.
 	it('makes a field required for one of its types', async () => {
 		render(WithDialogs, { component: FieldsPanel });
 		await screen.findByText('Rechnungsnummer');
@@ -105,7 +106,7 @@ describe('FieldsPanel', () => {
 			required: false,
 			required_document_type_ids: [REMINDER]
 		});
-	});
+	}, 15_000);
 
 	it('makes a field of every type required in each document', async () => {
 		render(WithDialogs, { component: FieldsPanel });

@@ -143,6 +143,18 @@
 	:focus-visible {
 		@apply outline-2 outline-offset-2 outline-ring;
 	}
+	/* Safari on iOS sizes a date field by its own native control: wider than its column (two
+	   side by side overlap) and taller than the other fields. Without that look it takes the
+	   size it is given; the picker still opens on a tap. Only there (`-webkit-touch-callout`). */
+	@supports (-webkit-touch-callout: none) {
+		input:is([type='date'], [type='datetime-local'], [type='month'], [type='time']) {
+			-webkit-appearance: none;
+			appearance: none;
+		}
+		input::-webkit-date-and-time-value {
+			text-align: start;
+		}
+	}
 }
 
 /*

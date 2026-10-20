@@ -262,11 +262,16 @@
 				/>
 			{/if}
 		</div>
+		<!-- On a phone the actions are icons, so that they stand in one row; their names are read
+		     out and shown on hover. -->
 		<div class="flex flex-wrap gap-2">
 			<DropdownMenu.Root>
-				<DropdownMenu.Trigger class={cn(buttonVariants({ variant: 'outline' }))}>
+				<DropdownMenu.Trigger
+					class={cn(buttonVariants({ variant: 'outline' }), 'max-sm:px-3')}
+					title={m.doc_download()}
+				>
 					<Download aria-hidden="true" />
-					{m.doc_download()}
+					<span class="max-sm:sr-only">{m.doc_download()}</span>
 					<ChevronDown aria-hidden="true" />
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Content align="end">
@@ -283,6 +288,8 @@
 			{#if movable}
 				<Button
 					variant="outline"
+					class="max-sm:px-3"
+					title={m.move_title()}
 					onclick={() => {
 						target = spaces[0]?.id ?? '';
 						moveOpen = true;
@@ -290,7 +297,7 @@
 					disabled={spaces.length === 0}
 				>
 					<FolderInput aria-hidden="true" />
-					{m.move_title()}
+					<span class="max-sm:sr-only">{m.move_title()}</span>
 				</Button>
 			{/if}
 			{#if manageable}

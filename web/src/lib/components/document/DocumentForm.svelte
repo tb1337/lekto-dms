@@ -537,7 +537,8 @@
 	novalidate
 	aria-label={m.edit_title()}
 >
-	{#if end}
+	<!-- The head only where it holds something: on a phone the pane has no switch. -->
+	{#if end || (reviewing && undecided > 0)}
 		<PaneHead {end}>
 			{#if reviewing && undecided > 0}
 				<span

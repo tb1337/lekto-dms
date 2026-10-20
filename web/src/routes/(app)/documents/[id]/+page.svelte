@@ -3,7 +3,7 @@
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import SquarePen from '@lucide/svelte/icons/square-pen';
 	import TextAlignStart from '@lucide/svelte/icons/text-align-start';
-	import { onMount, tick, untrack } from 'svelte';
+	import { onMount, tick, untrack, type Snippet } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -311,6 +311,11 @@
 			for (const wait of [300, 900, 1800]) setTimeout(() => viewer?.reveal(place), wait);
 	}
 
+	/** A pane's switch for its head; none on a phone, where the bar of four takes its place. */
+	function paneSwitch(snippet: Snippet): Snippet | undefined {
+		return phone.current ? undefined : snippet;
+	}
+
 	/** The pane a phone shows, by what it shows: one of the left's or the right's. */
 	function showOnPhone(next: string) {
 		if ((LEFT as readonly string[]).includes(next)) {
@@ -462,30 +467,30 @@
 
 		{#if tab === 'document'}
 			{#snippet leftSwitch()}
-				{#if !phone.current}<Segmented
-						size="sm"
-						names="@xl"
-						label={m.view_left()}
-						value={view.left}
-						options={[
-							{ value: 'pages', label: m.view_pages(), icon: File },
-							{ value: 'text', label: m.view_text(), icon: TextAlignStart }
-						]}
-						onchange={(next) => show({ ...view, left: next as Left })}
-					/>{/if}
+				<Segmented
+					size="sm"
+					names="@xl"
+					label={m.view_left()}
+					value={view.left}
+					options={[
+						{ value: 'pages', label: m.view_pages(), icon: File },
+						{ value: 'text', label: m.view_text(), icon: TextAlignStart }
+					]}
+					onchange={(next) => show({ ...view, left: next as Left })}
+				/>
 			{/snippet}
 			{#snippet rightSwitch()}
-				{#if !phone.current}<Segmented
-						size="sm"
-						names="wide"
-						label={m.view_right()}
-						value={view.right}
-						options={[
-							{ value: 'form', label: m.view_form(), icon: SquarePen },
-							{ value: 'facts', label: m.view_facts(), icon: ListChecks }
-						]}
-						onchange={(next) => show({ ...view, right: next as Right })}
-					/>{/if}
+				<Segmented
+					size="sm"
+					names="wide"
+					label={m.view_right()}
+					value={view.right}
+					options={[
+						{ value: 'form', label: m.view_form(), icon: SquarePen },
+						{ value: 'facts', label: m.view_facts(), icon: ListChecks }
+					]}
+					onchange={(next) => show({ ...view, right: next as Right })}
+				/>
 			{/snippet}
 			<div
 				class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_28rem] lg:grid-rows-[minmax(0,1fr)]"
@@ -506,14 +511,14 @@
 										marks={archive
 											? [...(view.right === 'form' ? marks : factMarks), ...codeMarks]
 											: []}
-										end={leftSwitch}
+										end={paneSwitch(leftSwitch)}
 									/>
 								{:else}
 									<PageImages
 										documentId={id}
 										pageCount={document.page_count}
 										label={document.title}
-										end={leftSwitch}
+										end={paneSwitch(leftSwitch)}
 									/>
 								{/if}
 							{/key}
@@ -528,7 +533,7 @@
 								hasText={hasText(document.processing)}
 								marks={view.right === 'facts' ? textMarks : []}
 								quotes={view.right === 'form' ? fieldQuotes : []}
-								end={leftSwitch}
+								end={paneSwitch(leftSwitch)}
 							/>
 						</div>
 					{/if}
@@ -548,7 +553,7 @@
 								onmark={markFact}
 								onshowcode={showCode}
 								onchanged={reloadFacts}
-								end={rightSwitch}
+								end={paneSwitch(rightSwitch)}
 							/>
 						</div>
 					{/if}
@@ -570,7 +575,7 @@
 										factCounts={facts ? factCounts(facts) : null}
 										factsHref={viewHref(page.url, { ...view, right: 'facts' })}
 										onreveal={reveal}
-										end={rightSwitch}
+										end={paneSwitch(rightSwitch)}
 									/>
 								{/key}
 							{:else}

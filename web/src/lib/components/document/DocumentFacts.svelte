@@ -40,17 +40,20 @@
 		/** At the end of the head: the pane's switch. */
 		end?: Snippet;
 	} = $props();
+
+	const summary = $derived(facts ? factsSummary(factCounts(facts)) : '');
 </script>
 
 <aside
 	aria-label={m.facts_title()}
 	class="flex min-h-[32rem] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-card lg:min-h-0"
 >
-	<PaneHead {end}>
-		{#if facts}
-			<span class="px-1 text-sm text-muted-foreground">{factsSummary(factCounts(facts))}</span>
-		{/if}
-	</PaneHead>
+	<!-- The head only where it holds something: on a phone the pane has no switch. -->
+	{#if end || summary}
+		<PaneHead {end}>
+			{#if summary}<span class="px-1 text-sm text-muted-foreground">{summary}</span>{/if}
+		</PaneHead>
+	{/if}
 	<div class="relative min-h-0 flex-1 overflow-y-auto bg-surface p-3.5">
 		{#if facts}
 			<FactsPanel

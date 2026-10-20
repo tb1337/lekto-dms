@@ -27,7 +27,7 @@ describe('TopicInput', () => {
 	it('offers no topic to create where it is not to (others than admins)', async () => {
 		const user = userEvent.setup();
 		render(TopicInput, { id: 'topic', topics: [WORK], all: [WORK], placeholder: '—' });
-		await user.click(screen.getByRole('button'));
+		await user.click(screen.getByRole('combobox'));
 		await user.type(await screen.findByLabelText(m.assignment_search()), 'Zahnzusatz');
 		expect(screen.queryByText(m.tag_create_quick({ name: 'Zahnzusatz' }))).toBeNull();
 		expect(screen.queryByText(m.tag_create_details())).toBeNull();
@@ -49,7 +49,7 @@ describe('TopicInput', () => {
 			creating: true
 		});
 		render(TopicInput, props);
-		await user.click(screen.getByRole('button'));
+		await user.click(screen.getByRole('combobox'));
 		await user.type(await screen.findByLabelText(m.picker_search_create()), 'Zahnzusatz');
 		const offer = screen.getByText(m.tag_create_quick({ name: 'Zahnzusatz' }));
 		await fireEvent.click(offer);

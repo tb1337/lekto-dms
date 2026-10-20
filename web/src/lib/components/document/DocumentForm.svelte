@@ -19,6 +19,7 @@
 	import FieldShell from '#lib/components/document/FieldShell.svelte';
 	import TagsInput from '#lib/components/document/TagsInput.svelte';
 	import TopicInput from '#lib/components/document/TopicInput.svelte';
+	import SearchSelect, { type SearchOption } from '#lib/components/SearchSelect.svelte';
 	import GroupChips from '#lib/components/GroupChips.svelte';
 	import FieldValueInput from '#lib/components/FieldValueInput.svelte';
 	import Select from '#lib/components/Select.svelte';
@@ -36,7 +37,7 @@
 		type Place,
 		type Review
 	} from '#lib/document-view.ts';
-	import { describeError, fieldErrors as fieldMessages } from '#lib/errors.ts';
+	import { describeError, fieldErrors as fieldMessages, reportError } from '#lib/errors.ts';
 	import { sameValue, toApi, toInput, type ApiValue, type InputValue } from '#lib/fields.ts';
 	import {
 		spaceLabel,
@@ -46,6 +47,7 @@
 	} from '#lib/masterdata.svelte.ts';
 	import { writableSpaces } from '#lib/permissions.ts';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
+	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { fieldId, initialValue, isRuleField, type ReviewValue } from '#lib/review.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -261,10 +263,22 @@
 	const typeName = $derived(
 		lookup.documentTypes.find((entry) => entry.id === documentType)?.name ?? null
 	);
-	const options = (list: readonly { id: string; name: string }[]) => [
-		{ value: '', label: m.value_unset() },
-		...list.map((entry) => ({ value: entry.id, label: entry.name }))
-	];
+	/** A contact or type named `name`, made at once by an admin from the search (the lists
+	 * load again); null, the problem shown, when the API refuses. */
+	async function createMasterData(
+		path: '/api/v1/contacts' | '/api/v1/document-types',
+		name: string
+	): Promise<SearchOption | null> {
+		try {
+			const made = await unwrap(api.POST(path, { body: { name } }));
+			toast.success(m.tag_created({ name: made.name }));
+			masterDataDialogs.saved();
+			return { value: made.id, label: made.name };
+		} catch (error) {
+			reportError(error);
+			return null;
+		}
+	}
 
 	/** What differs from the stored document, in the form of the API (null removes a value). */
 	function buildPatch(): Patch {
@@ -611,12 +625,22 @@
 			>
 				<div class="flex min-w-0 items-center gap-2">
 					{#if chosenContact}<ContactAvatar contact={chosenContact} size="md" />{/if}
-					<Select
+					<SearchSelect
 						id="doc-contact"
 						value={contact}
 						disabled={!editable}
-						options={options(lookup.contacts)}
+						options={lookup.contacts.map((entry) => ({
+							value: entry.id,
+							label: entry.name,
+							keywords: entry.aliases?.join(' ')
+						}))}
+						placeholder={m.value_unset()}
+						noneLabel={m.value_unset()}
+						searchLabel={session.isAdmin ? m.picker_search_create() : m.assignment_search()}
 						onchange={chooseContact}
+						create={session.isAdmin
+							? (name) => createMasterData('/api/v1/contacts', name)
+							: undefined}
 					/>
 				</div>
 				<GroupChips
@@ -682,11 +706,17 @@
 							<TypeIcon icon={chosenType.icon} class="size-5" />
 						</span>
 					{/if}
-					<Select
+					<SearchSelect
 						id="doc-type"
 						bind:value={documentType}
 						disabled={!editable}
-						options={options(lookup.documentTypes)}
+						options={lookup.documentTypes.map((entry) => ({ value: entry.id, label: entry.name }))}
+						placeholder={m.value_unset()}
+						noneLabel={m.value_unset()}
+						searchLabel={session.isAdmin ? m.picker_search_create() : m.assignment_search()}
+						create={session.isAdmin
+							? (name) => createMasterData('/api/v1/document-types', name)
+							: undefined}
 					/>
 				</div>
 				<GroupChips

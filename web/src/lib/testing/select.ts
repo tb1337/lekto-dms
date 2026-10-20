@@ -24,13 +24,14 @@ type User = Pick<UserEvent, 'click' | 'selectOptions'>;
 /** Open the list of `field`: a select opens on the pointer going down, a popover on a click. */
 async function open(field: HTMLElement): Promise<HTMLElement> {
 	await fireEvent.pointerDown(field, { button: 0, pointerType: 'mouse' });
-	if (!screen.queryByRole('listbox')) await fireEvent.click(field);
-	return screen.findByRole('listbox');
+	if (!screen.queryByRole('listbox', { hidden: true })) await fireEvent.click(field);
+	// A popover is placed by measuring, which jsdom does not: it may count as hidden.
+	return screen.findByRole('listbox', { hidden: true });
 }
 
 function choices(list: HTMLElement): { element: HTMLElement; choice: Choice }[] {
 	return within(list)
-		.getAllByRole('option')
+		.getAllByRole('option', { hidden: true })
 		.map((element) => ({
 			element,
 			choice: { value: element.dataset.value ?? '', label: element.textContent?.trim() ?? '' }

@@ -544,7 +544,7 @@ describe('the topic', () => {
 	const select = (label: string) => screen.getByRole('combobox', { name: label });
 	// The topic is a search in a popover: its button carries the chosen topic.
 	const topicField = () =>
-		screen.getByLabelText(m.field_topic(), { selector: 'button' }) as HTMLButtonElement;
+		screen.getByRole('combobox', { name: m.field_topic() }) as HTMLButtonElement;
 	const topicValue = () => topicField().dataset.value;
 	// The popover is placed by measuring, which jsdom does not: its options are found as elements.
 	const options = () => [...globalThis.document.querySelectorAll<HTMLElement>('[role="option"]')];
@@ -588,7 +588,7 @@ describe('the topic', () => {
 		await closed();
 		await choose(userEvent, select(m.field_contact()), BANK);
 		expect(await topicChoices()).toEqual([m.topic_none(), 'Arbeit']);
-		await choose(userEvent, select(m.field_contact()), '');
+		await choose(userEvent, select(m.field_contact()), m.value_unset());
 		expect(topicField().disabled).toBe(true);
 		expect(topicField().textContent?.trim()).toBe(m.topic_no_contact());
 	});

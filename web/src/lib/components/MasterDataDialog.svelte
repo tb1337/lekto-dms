@@ -3,6 +3,7 @@
 	import AssignmentList, { type Assignment } from '#lib/components/AssignmentList.svelte';
 	import ColorPicker from '#lib/components/ColorPicker.svelte';
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
+	import ChipInput from '#lib/components/ChipInput.svelte';
 	import ContactLogoEditor from '#lib/components/ContactLogoEditor.svelte';
 	import IconPicker from '#lib/components/IconPicker.svelte';
 	import EditorShell from '#lib/components/EditorShell.svelte';
@@ -18,7 +19,7 @@
 	import { Textarea } from '#lib/components/ui/textarea/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { changesOf, type IdentifierRow, rowsOf } from '#lib/identifiers.ts';
-	import { type Extra, type Item, parseAliases, type Values } from '#lib/masterdata-api.ts';
+	import { type Extra, type Item, type Values } from '#lib/masterdata-api.ts';
 	import type { Contact, FieldDefinition, Tag, TagScope } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { phone } from '#lib/phone.svelte.ts';
@@ -95,7 +96,7 @@
 	// Ids of this dialog's fields: a second one may stand over it (a tag made from a picker).
 	const uid = $props.id();
 	let name = $state('');
-	let aliases = $state('');
+	let aliases = $state<string[]>([]);
 	let identifiers = $state<IdentifierRow[]>([]);
 	let description = $state('');
 	let titlePattern = $state('');
@@ -164,7 +165,7 @@
 			openedIdentifier = null;
 			identifierErrors = {};
 			name = initial?.name ?? presetName;
-			aliases = (initial?.aliases ?? []).join('\n');
+			aliases = [...(initial?.aliases ?? [])];
 			identifiers = rowsOf(initial?.identifiers);
 			description = initial?.description ?? '';
 			titlePattern = initial?.title_pattern ?? '';
@@ -206,7 +207,7 @@
 		try {
 			await onsubmit({
 				name: name.trim(),
-				aliases: parseAliases(aliases),
+				aliases,
 				...changesOf(identifiers, topicIds),
 				description: description.trim() || null,
 				title_pattern: titlePattern.trim() || null,
@@ -473,17 +474,17 @@
 			</Field.Field>
 			<Field.Field>
 				<HintLabel
-					for="{uid}-aliases"
+					id="{uid}-aliases-label"
 					label={m.master_aliases()}
 					hint={m.master_aliases_hint()}
 					hintId="{uid}-aliases-hint"
 				/>
-				<!-- Compact on a phone: as many lines as there are aliases, and one more. -->
-				<Textarea
-					id="{uid}-aliases"
-					bind:value={aliases}
-					rows={phone.current ? Math.min(Math.max(aliases.split('\n').length + 1, 2), 6) : 4}
-					aria-describedby="{uid}-aliases-hint"
+				<ChipInput
+					bind:values={aliases}
+					labelledby="{uid}-aliases-label"
+					describedby="{uid}-aliases-hint"
+					addLabel={m.alias_add()}
+					inputLabel={m.alias_input()}
 				/>
 			</Field.Field>
 		{:else if extra === 'description'}

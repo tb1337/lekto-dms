@@ -1183,5 +1183,8 @@
 	"identifier_none": "No identifiers yet.",
 	"identifier_remove_named": "Remove {value}",
 	"identifier_learned_note": "Lekto learned this identifier from confirmed documents. Taken over, it counts as one entered by hand and can be changed.",
-	"identifier_rejected_note": "Rejected: Lekto does not learn this identifier again."
+	"identifier_rejected_note": "Rejected: Lekto does not learn this identifier again.",
+	"alias_add": "Spelling",
+	"alias_input": "New spelling",
+	"alias_remove": "Remove {name}"
 }

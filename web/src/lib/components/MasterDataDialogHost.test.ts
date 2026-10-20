@@ -246,6 +246,21 @@ describe('tabs', () => {
 	});
 });
 
+describe('a contact’s spellings', () => {
+	it('are chips, sent as a list', async () => {
+		const user = userEvent.setup();
+		render(WithDialogs);
+		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
+		expect(await screen.findByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
+		const spellings = screen.getByRole('group', { name: m.master_aliases() });
+		await user.click(within(spellings).getByRole('button', { name: m.alias_add() }));
+		await user.type(within(spellings).getByLabelText(m.alias_input()), 'Nord KV{Enter}');
+		await user.click(screen.getByRole('button', { name: m.save() }));
+		const patch = fetchMock.mock.calls.map((call) => call[0]).find((r) => r.method === 'PATCH');
+		expect((await patch!.json()).aliases).toEqual(['Nord KV']);
+	});
+});
+
 describe('a contact’s topics', () => {
 	it('enables topics and lets its identifiers point to one of them', async () => {
 		render(WithDialogs);

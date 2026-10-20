@@ -1183,5 +1183,8 @@
 	"identifier_none": "Noch keine Kennung.",
 	"identifier_remove_named": "{value} entfernen",
 	"identifier_learned_note": "Lekto hat diese Kennung aus bestätigten Dokumenten gelernt. Übernommen gilt sie wie eine eingetragene und lässt sich ändern.",
-	"identifier_rejected_note": "Verworfen: Lekto lernt diese Kennung nicht wieder."
+	"identifier_rejected_note": "Verworfen: Lekto lernt diese Kennung nicht wieder.",
+	"alias_add": "Schreibweise",
+	"alias_input": "Neue Schreibweise",
+	"alias_remove": "{name} entfernen"
 }

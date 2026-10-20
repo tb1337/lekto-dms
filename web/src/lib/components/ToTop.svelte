@@ -5,7 +5,8 @@
 
 	// Back to the top of a long page where the window scrolls (a phone): it comes once more than
 	// a screen lies above and says on which page of the document one stands, `current` of
-	// `total` (Tobi, 20.10.2026); with fewer than two pages only the arrow.
+	// `total` (Tobi, 20.10.2026); with fewer than two pages only the arrow. It keeps clear of the
+	// screen's edge and of the pane's: 28 pixels in from the right and from the bottom.
 	let { current = 0, total = 0 }: { current?: number; total?: number } = $props();
 
 	let scrollY = $state(0);
@@ -25,7 +26,7 @@
 	<button
 		type="button"
 		class={cn(
-			'fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 inline-flex h-11 animate-in items-center gap-1.5 rounded-full border bg-card/90 text-sm font-medium tabular-nums shadow-lg backdrop-blur duration-150 fade-in-0 motion-reduce:animate-none',
+			'fixed right-7 bottom-[max(1.75rem,calc(env(safe-area-inset-bottom)+0.75rem))] z-30 inline-flex h-11 animate-in items-center gap-1.5 rounded-full border bg-card/90 text-sm font-medium tabular-nums shadow-lg backdrop-blur duration-150 fade-in-0 motion-reduce:animate-none',
 			counted ? 'px-4' : 'w-11 justify-center'
 		)}
 		aria-label={counted ? m.to_top_page({ current, total }) : m.to_top()}

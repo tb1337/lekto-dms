@@ -123,7 +123,11 @@
 		{/if}
 		<ChevronDown class="ml-auto size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 	</Popover.Trigger>
-	<Popover.Content class="w-(--bits-popover-anchor-width) min-w-64 p-0" align="start">
+	<Popover.Content
+		class="w-(--bits-popover-anchor-width) min-w-64 p-0"
+		align="start"
+		collisionPadding={8}
+	>
 		<Command.Root shouldFilter={false}>
 			<Command.Input bind:value={query} placeholder={searchLabel} aria-label={searchLabel} />
 			<Command.List>

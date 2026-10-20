@@ -115,6 +115,20 @@ afterEach(() => {
 // while.
 const LOADED = { timeout: 5000 };
 
+/** The choice of a tag field, wider than a phone a popover: placed by measuring, which jsdom
+ * does not, it counts as hidden and has no computed name; its title names it. */
+async function pickerNamed(name: string): Promise<HTMLElement> {
+	let found: HTMLElement | undefined;
+	await waitFor(() => {
+		found = screen.getAllByRole('dialog', { hidden: true }).find((dialog) => {
+			const title = document.getElementById(dialog.getAttribute('aria-labelledby') ?? '');
+			return title?.textContent?.trim() === name;
+		});
+		expect(found).toBeTruthy();
+	});
+	return found!;
+}
+
 describe('MasterDataDialogHost', () => {
 	it('opens a document type from anywhere and links the rule of its pattern', async () => {
 		render(WithDialogs);
@@ -193,9 +207,9 @@ describe('a contact’s topics', () => {
 		const chips = screen.getByRole('group', { name: m.master_topics() });
 		expect(within(chips).getByText('Arbeit')).toBeTruthy();
 		await userEvent.click(within(chips).getByRole('button', { name: m.picker_add_topic_label() }));
-		const picker = await screen.findByRole('dialog', { name: m.master_topics() });
+		const picker = await pickerNamed(m.master_topics());
 		await userEvent.click(within(picker).getByLabelText('Krankenversicherung'));
-		await userEvent.click(within(picker).getByRole('button', { name: m.picker_done() }));
+		await userEvent.click(within(picker).getByText(m.picker_done()));
 		expect(within(chips).getByText('Krankenversicherung')).toBeTruthy();
 		expect((await optionsOf(topic)).map((option) => option.value)).toEqual(['', 'p1', 'p2']);
 		await choose(userEvent.setup(), topic, 'p2');
@@ -377,8 +391,8 @@ describe('creating from a picker', () => {
 		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
 		expect(await screen.findByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
 		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
-		const picker = await screen.findByRole('dialog', { name: m.master_contact_groups() });
-		await user.type(within(picker).getByRole('searchbox'), 'Makler');
+		const picker = await pickerNamed(m.master_contact_groups());
+		await user.type(within(picker).getByRole('searchbox', { hidden: true }), 'Makler');
 		await user.click(within(picker).getByText(m.tag_create_details()));
 		// The tag dialog over the contact's: its kind set, the name filled in.
 		const nested = await screen.findByRole('dialog', { name: m.master_add_contact_group() });
@@ -407,8 +421,8 @@ describe('stacked dialogs', () => {
 		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
 		expect(await screen.findByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
 		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
-		const picker = await screen.findByRole('dialog', { name: m.master_contact_groups() });
-		await user.type(within(picker).getByRole('searchbox'), 'Makler');
+		const picker = await pickerNamed(m.master_contact_groups());
+		await user.type(within(picker).getByRole('searchbox', { hidden: true }), 'Makler');
 		await user.click(within(picker).getByText(m.tag_create_details()));
 		const nested = await screen.findByRole('dialog', { name: m.master_add_contact_group() });
 		expect(within(nested).getByDisplayValue('Makler')).toBeTruthy();

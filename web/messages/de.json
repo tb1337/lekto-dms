@@ -970,6 +970,7 @@
 	"master_contact_topics_hint": "Worum es mit diesem Kontakt geht: Ein Dokument des Kontakts trägt höchstens eines dieser Themen, eine Kennung kann auf eines zeigen.",
 	"master_type_groups_hint": "Die Dokumente des Typs gehören auch zu diesen Gruppen.",
 	"picker_add_group": "Gruppe",
+	"picker_add_tag": "Tag",
 	"picker_add_topic": "Thema",
 	"picker_add_group_label": "Gruppe hinzufügen",
 	"picker_add_topic_label": "Thema hinzufügen",

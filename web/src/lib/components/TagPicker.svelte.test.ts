@@ -81,7 +81,10 @@ function picker(selected: string[] = ['g1']) {
 	return props;
 }
 
-describe('TagPicker', () => {
+// On a phone the choice is a sheet from the bottom (a dialog); wider, a popover at the button.
+describe('TagPicker on a phone', () => {
+	beforeEach(() => phone.override(true));
+
 	it('shows the chosen tags as chips to remove', async () => {
 		const props = picker(['g1', 'gone']);
 		const chips = screen.getByRole('group', { name: m.master_groups() });
@@ -194,5 +197,81 @@ describe('TagPicker', () => {
 		expect(screen.getByText(m.picker_no_match())).toBeTruthy();
 		expect(screen.queryByText(m.tag_create_quick({ name: 'Makler' }))).toBeNull();
 		expect(screen.queryByText(m.tag_create_details())).toBeNull();
+	});
+});
+
+describe('TagPicker wider than a phone', () => {
+	// The popover is placed by measuring, which jsdom does not: it counts as hidden, and
+	// hidden things have no computed name; its title names it.
+	const hidden = { hidden: true };
+	async function popoverNamed(name: string): Promise<HTMLElement> {
+		const popover = await screen.findByRole('dialog', hidden);
+		const title = document.getElementById(popover.getAttribute('aria-labelledby') ?? '');
+		expect(title?.textContent?.trim()).toBe(name);
+		return popover;
+	}
+
+	it('picks in a popover at the button, named by the kind', async () => {
+		const user = userEvent.setup();
+		const props = picker();
+		await user.click(screen.getByRole('button', { name: m.picker_add_group_label() }));
+		const popover = await popoverNamed(m.master_contact_groups());
+		const boxes = within(popover).getAllByRole('checkbox', hidden) as HTMLInputElement[];
+		expect(boxes.map((box) => box.getAttribute('aria-label'))).toEqual([
+			'Insurer',
+			`Insurer${SEPARATOR}Health insurer`,
+			'Bank'
+		]);
+		await user.click(boxes[2]);
+		expect(props.selected).toEqual(['g1', 'g3']);
+		await user.click(within(popover).getByText(m.picker_done()));
+		await waitFor(() => expect(screen.queryByRole('dialog', hidden)).toBeNull());
+	});
+
+	it('offers a document only what may be chosen, as the form says', async () => {
+		const user = userEvent.setup();
+		const documentTags = [
+			tag('t1', ['Insurance'], null, 'document'),
+			tag('t2', ['Insurance', 'Health'], 't1', 'document'),
+			tag('t3', ['Paid'], null, 'document'),
+			...TAGS
+		];
+		render(TagPicker, {
+			id: 'tags',
+			label: m.field_tags(),
+			title: m.field_tags(),
+			scope: 'document',
+			tags: documentTags,
+			selected: ['t2'],
+			onchange: () => {},
+			// As the document form does: no tag above one set.
+			offered: (candidate: Tag) => candidate.id !== 't1'
+		});
+		await user.click(screen.getByRole('button', { name: m.field_tag_add() }));
+		const popover = await popoverNamed(m.field_tags());
+		const boxes = within(popover).getAllByRole('checkbox', hidden);
+		// No groups, not the tag above the one set; the one set stays to take off.
+		expect(boxes.map((box) => box.getAttribute('aria-label'))).toEqual([
+			`Insurance${SEPARATOR}Health`,
+			'Paid'
+		]);
+	});
+
+	it('shows only the chips where nothing may change', () => {
+		render(TagPicker, {
+			id: 'tags',
+			label: m.field_tags(),
+			title: m.field_tags(),
+			scope: 'document',
+			tags: [tag('t3', ['Paid'], null, 'document')],
+			selected: ['t3'],
+			onchange: () => {},
+			disabled: true
+		});
+		expect(screen.getByText('Paid')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: m.field_tag_add() })).toBeNull();
+		expect(
+			screen.queryByRole('button', { name: m.rule_remove_value({ name: 'Paid' }) })
+		).toBeNull();
 	});
 });

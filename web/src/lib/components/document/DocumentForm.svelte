@@ -17,13 +17,13 @@
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import FieldGroup from '#lib/components/document/FieldGroup.svelte';
 	import FieldShell from '#lib/components/document/FieldShell.svelte';
-	import TagsInput from '#lib/components/document/TagsInput.svelte';
 	import TopicInput from '#lib/components/document/TopicInput.svelte';
 	import SearchSelect, { type SearchOption } from '#lib/components/SearchSelect.svelte';
 	import GroupChips from '#lib/components/GroupChips.svelte';
 	import FieldValueInput from '#lib/components/FieldValueInput.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import RuleEffects from '#lib/components/rules/RuleEffects.svelte';
+	import TagPicker from '#lib/components/TagPicker.svelte';
 	import TypeIcon from '#lib/components/TypeIcon.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Dialog from '#lib/components/ui/dialog/index.ts';
@@ -51,7 +51,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { fieldId, initialValue, isRuleField, type ReviewValue } from '#lib/review.ts';
 	import { session } from '#lib/session.svelte.ts';
-	import { ofScope } from '#lib/tags.ts';
+	import { above, normalise, ofScope } from '#lib/tags.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 	type Patch = components['schemas']['DocumentPatch'];
@@ -204,6 +204,8 @@
 	const enabledTopics = $derived(
 		lookup.contacts.find((entry) => entry.id === contact)?.topic_ids ?? []
 	);
+	// The tags above those set: not offered, the tag set says more.
+	const tagsAbove = $derived(above(lookup.tags, tags));
 	const topicChoices = $derived(
 		ofScope(lookup.tags, 'topic').filter(
 			(option) =>
@@ -737,7 +739,20 @@
 				onfocus={focus}
 				onjump={jump}
 			>
-				<TagsInput bind:tags all={lookup.tags} id="doc-tags" disabled={!editable} />
+				<!-- A tag set below another replaces it, as the API keeps them; tags above one set
+				are not offered. -->
+				<TagPicker
+					id="doc-tags"
+					label={m.field_tags()}
+					labelledby="doc-tags-label"
+					title={m.field_tags()}
+					scope="document"
+					tags={lookup.tags}
+					selected={tags}
+					onchange={(next) => (tags = normalise(lookup.tags, next))}
+					offered={(tag) => !tagsAbove.has(tag.id)}
+					disabled={!editable}
+				/>
 			</FieldShell>
 			{#if hasSpace}
 				<FieldShell

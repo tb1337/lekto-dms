@@ -970,6 +970,7 @@
 	"master_contact_topics_hint": "What documents of this contact are about: a document of the contact carries one of these topics at most, an identifier may point to one.",
 	"master_type_groups_hint": "The type’s documents belong to these groups too.",
 	"picker_add_group": "Group",
+	"picker_add_tag": "Tag",
 	"picker_add_topic": "Topic",
 	"picker_add_group_label": "Add a group",
 	"picker_add_topic_label": "Add a topic",

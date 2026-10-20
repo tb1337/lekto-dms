@@ -464,7 +464,7 @@ row of filters, on a desktop narrow by the title. -->
 					<div
 						role="group"
 						aria-label={m.layout_label()}
-						class="flex gap-0.5 rounded-full bg-secondary p-0.75"
+						class="flex h-10 items-center gap-0.5 rounded-xl bg-secondary p-1"
 					>
 						{#each [{ value: 'grid', label: m.layout_grid, icon: LayoutGrid }, { value: 'list', label: m.layout_list, icon: List }] as const as entry (entry.value)}
 							<button
@@ -474,7 +474,7 @@ row of filters, on a desktop narrow by the title. -->
 								title={entry.label()}
 								onclick={() => show(entry.value)}
 								class={cn(
-									'grid size-8 place-items-center rounded-full transition-colors',
+									'grid size-8 place-items-center rounded-lg transition-colors',
 									layout === entry.value
 										? 'bg-card text-foreground shadow-sm'
 										: 'text-muted-foreground hover:text-foreground'
@@ -488,8 +488,7 @@ row of filters, on a desktop narrow by the title. -->
 				{#if lens && lookup}
 					<Button
 						variant="outline"
-						size="sm"
-						class="rounded-full max-lg:size-9 max-lg:px-0"
+						class="max-lg:size-10 max-lg:px-0"
 						aria-label={m.lens_edit()}
 						title={m.lens_edit()}
 						onclick={() => edit(lens)}
@@ -529,7 +528,7 @@ row of filters, on a desktop narrow by the title. -->
 					{@render searchForm(false)}
 					<Sheet.Root bind:open={filtersOpen}>
 						<Sheet.Trigger
-							class="relative grid size-11 shrink-0 place-items-center rounded-full border border-input bg-background hover:bg-secondary lg:hidden"
+							class="relative grid size-11 shrink-0 place-items-center rounded-xl border border-input bg-background hover:bg-secondary lg:hidden"
 							aria-label={m.filters_open()}
 						>
 							<SlidersHorizontal class="size-4" aria-hidden="true" />
@@ -581,7 +580,7 @@ row of filters, on a desktop narrow by the title. -->
 					{@render sortMenu(true)}
 					<button
 						type="button"
-						class="grid size-11 shrink-0 place-items-center rounded-full border border-input bg-background hover:bg-secondary"
+						class="grid size-11 shrink-0 place-items-center rounded-xl border border-input bg-background hover:bg-secondary"
 						aria-label={layout === 'grid' ? m.layout_list() : m.layout_grid()}
 						onclick={() => show(layout === 'grid' ? 'list' : 'grid')}
 					>

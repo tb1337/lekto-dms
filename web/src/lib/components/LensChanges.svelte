@@ -27,13 +27,13 @@
 	<CircleAlert class="size-4 shrink-0 text-lane-yellow-foreground" aria-hidden="true" />
 	<span class="min-w-0 flex-1 text-sm">{m.lens_changed()}</span>
 	<div class="flex flex-wrap gap-2">
-		<Button variant="ghost" size="sm" class="rounded-full" disabled={busy} onclick={ondiscard}>
+		<Button variant="ghost" size="sm" disabled={busy} onclick={ondiscard}>
 			{m.lens_discard()}
 		</Button>
-		<Button variant="outline" size="sm" class="rounded-full" disabled={busy} onclick={onsaveas}>
+		<Button variant="outline" size="sm" disabled={busy} onclick={onsaveas}>
 			{m.lens_save_as()}
 		</Button>
-		<Button size="sm" class="rounded-full" disabled={busy} onclick={onsave}>
+		<Button size="sm" disabled={busy} onclick={onsave}>
 			{m.lens_save_into({ name })}
 		</Button>
 	</div>

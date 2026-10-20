@@ -3,6 +3,7 @@
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import ArrowUpDown from '@lucide/svelte/icons/arrow-up-down';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import { buttonVariants } from '#lib/components/ui/button/index.ts';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
@@ -31,8 +32,8 @@
 <DropdownMenu.Root>
 	<DropdownMenu.Trigger
 		class={cn(
-			'inline-flex shrink-0 items-center justify-center rounded-full border border-input bg-background text-sm hover:bg-secondary',
-			compact ? 'size-11' : 'h-9 gap-1.5 px-3.5',
+			buttonVariants({ variant: 'outline', size: compact ? 'icon' : 'default' }),
+			compact && 'size-11',
 			className
 		)}
 		aria-label={m.sort_current({ label: current })}

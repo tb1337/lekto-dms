@@ -8,7 +8,7 @@
 export type ListSort =
 	'-document_date' | 'document_date' | '-created_at' | 'created_at' | 'title' | '-title';
 export type Sort = ListSort | 'relevance';
-export type View = 'grid' | 'list';
+export type Layout = 'grid' | 'list';
 
 export const LIST_SORTS: readonly ListSort[] = [
 	'-document_date',
@@ -24,7 +24,7 @@ const DEFAULT: Record<'list' | 'search', Sort> = { list: '-document_date', searc
 const KEYS = {
 	list: 'lekto.documents.sort.list',
 	search: 'lekto.documents.sort.search',
-	view: 'lekto.documents.view'
+	layout: 'lekto.documents.layout'
 };
 
 function stored(key: string): string | null {
@@ -108,10 +108,10 @@ export function byMonth<T>(
 	return groups;
 }
 
-export function rememberedView(): View {
-	return stored(KEYS.view) === 'list' ? 'list' : 'grid';
+export function rememberedLayout(): Layout {
+	return stored(KEYS.layout) === 'list' ? 'list' : 'grid';
 }
 
-export function rememberView(view: View): void {
-	store(KEYS.view, view);
+export function rememberLayout(layout: Layout): void {
+	store(KEYS.layout, layout);
 }

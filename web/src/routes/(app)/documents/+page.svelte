@@ -34,12 +34,12 @@
 		SEARCH_SORTS,
 		byMonth,
 		rememberSort,
-		rememberView,
-		rememberedView,
+		rememberLayout,
+		rememberedLayout,
 		sortOf,
 		type ListSort,
 		type Sort,
-		type View
+		type Layout
 	} from '#lib/listing.ts';
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { PagedList } from '#lib/paging.svelte.ts';
@@ -66,7 +66,7 @@
 	// The search field follows the URL (back button, links) until the user types.
 	let text = $derived(query);
 	let searchField = $state<HTMLInputElement | null>(null);
-	let view = $state<View>(rememberedView());
+	let layout = $state<Layout>(rememberedLayout());
 	let lookup = $state<Lookup | null>(null);
 	let lookupError = $state<string | null>(null);
 	// How many documents each value of the filters holds; the words of a search aside.
@@ -188,9 +188,9 @@
 		go(next);
 	}
 
-	function show(next: View) {
-		view = next;
-		rememberView(next);
+	function show(next: Layout) {
+		layout = next;
+		rememberLayout(next);
 	}
 
 	const SORT_LABELS: Record<Sort, () => string> = {
@@ -365,19 +365,19 @@
 						/>
 						<div
 							role="group"
-							aria-label={m.view_label()}
+							aria-label={m.layout_label()}
 							class="flex gap-0.5 rounded-full bg-secondary p-0.75"
 						>
-							{#each [{ value: 'grid', label: m.view_grid, icon: LayoutGrid }, { value: 'list', label: m.view_list, icon: List }] as const as entry (entry.value)}
+							{#each [{ value: 'grid', label: m.layout_grid, icon: LayoutGrid }, { value: 'list', label: m.layout_list, icon: List }] as const as entry (entry.value)}
 								<button
 									type="button"
-									aria-pressed={view === entry.value}
+									aria-pressed={layout === entry.value}
 									aria-label={entry.label()}
 									title={entry.label()}
 									onclick={() => show(entry.value)}
 									class={cn(
 										'grid size-8 place-items-center rounded-full transition-colors',
-										view === entry.value
+										layout === entry.value
 											? 'bg-card text-foreground shadow-sm'
 											: 'text-muted-foreground hover:text-foreground'
 									)}
@@ -415,7 +415,7 @@
 									<span aria-hidden="true" class="h-px flex-1 bg-border"></span>
 								</h2>
 							{/if}
-							{#if view === 'grid'}
+							{#if layout === 'grid'}
 								<ul
 									class="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(13rem,1fr))]"
 								>

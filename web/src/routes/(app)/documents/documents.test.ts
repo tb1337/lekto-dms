@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatDate } from '#lib/i18n.ts';
-import { rememberView } from '#lib/listing.ts';
+import { rememberLayout } from '#lib/listing.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
 import { calls, fakeApi, listedOf, OWNER } from '#lib/testing/documents.ts';
@@ -27,11 +27,11 @@ beforeEach(() => {
 		csrf_token: 'token'
 	});
 	// Rows: their mark stands beside their link (the grid's is tested with the card).
-	rememberView('list');
+	rememberLayout('list');
 });
 
 afterEach(() => {
-	rememberView('grid');
+	rememberLayout('grid');
 	session.clear();
 	vi.unstubAllGlobals();
 });

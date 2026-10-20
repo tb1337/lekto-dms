@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { byMonth, monthOf, rememberSort, rememberView, rememberedView, sortOf } from './listing.ts';
+import {
+	byMonth,
+	monthOf,
+	rememberSort,
+	rememberLayout,
+	rememberedLayout,
+	sortOf
+} from './listing.ts';
 
 afterEach(() => localStorage.clear());
 
@@ -21,9 +28,9 @@ describe('the sort of the document view', () => {
 	});
 
 	it('remembers grid or list, grid at first', () => {
-		expect(rememberedView()).toBe('grid');
-		rememberView('list');
-		expect(rememberedView()).toBe('list');
+		expect(rememberedLayout()).toBe('grid');
+		rememberLayout('list');
+		expect(rememberedLayout()).toBe('list');
 	});
 });
 

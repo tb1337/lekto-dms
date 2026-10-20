@@ -294,6 +294,21 @@ describe('ActiveFilters', () => {
 		expect(onchange).toHaveBeenLastCalledWith(NO_FILTERS);
 	});
 
+	it('shows tags, topics and groups as their chips, in their colours', async () => {
+		const user = userEvent.setup();
+		const onchange = vi.fn<(filters: Filters) => void>();
+		const filters = { ...NO_FILTERS, tags: ['t1'], contactGroups: ['g1'] };
+		render(ActiveFilters, { filters, lookup, onchange });
+		const remove = screen.getByRole('button', { name: m.filter_tag_remove({ name: 'Steuer' }) });
+		expect(remove.closest('span')?.getAttribute('style')).toContain('--tag-amber-foreground');
+		const group = screen.getByRole('button', {
+			name: m.filter_group_remove({ name: 'Versorger' })
+		});
+		expect(group.closest('span')?.className).toContain('border-(--chip-fg)/45');
+		await user.click(remove);
+		expect(onchange).toHaveBeenLastCalledWith({ ...filters, tags: [] });
+	});
+
 	it('shows nothing while nothing is chosen, and no lane', () => {
 		const { container } = render(ActiveFilters, { filters: NO_FILTERS, lookup, onchange: vi.fn() });
 		expect(container.textContent?.trim()).toBe('');

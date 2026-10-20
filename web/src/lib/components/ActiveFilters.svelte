@@ -2,15 +2,17 @@
 	import X from '@lucide/svelte/icons/x';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { NO_FILTERS, isFiltered, type Filters } from '#lib/filters.ts';
-	import { spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+	import TagChip from '#lib/components/TagChip.svelte';
+	import { spaceLabel, type Lookup, type Tag } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { periodLabel } from '#lib/period-label.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { pathLabel } from '#lib/tags.ts';
 
-	// What narrows the list, each as a chip that lets it go (a topic square, a group outlined),
-	// and a reset; nothing while nothing is chosen. `readonly`: the chips only (what a lens
-	// keeps).
+	// What narrows the list, each as a chip that lets it go, and a reset; nothing while nothing
+	// is chosen. Tags, topics and groups are their chips as everywhere (`TagChip`: colour and
+	// icon, a topic square, a group outlined); the rest is brand-coloured. `readonly`: the chips
+	// only (what a lens keeps).
 	let {
 		filters,
 		lookup,
@@ -29,9 +31,12 @@
 		label: string;
 		shape: 'round' | 'square' | 'outline';
 		without: Partial<Filters>;
+		/** A tag, topic or group: drawn as its chip. */
+		tag?: Tag;
 	}
 
 	const chips = $derived.by(() => {
+		const byId = new Map(lookup.tags.map((tag) => [tag.id, tag]));
 		const tags = new Map(lookup.tags.map((tag) => [tag.id, pathLabel(tag)]));
 		const result: Chip[] = [];
 		const period = periodLabel(filters);
@@ -94,12 +99,14 @@
 		for (const list of lists) {
 			for (const id of filters[list.key]) {
 				const name = list.named(id) ?? id;
+				const tagged = ['topics', 'tags', 'contactGroups', 'typeGroups'].includes(list.key);
 				result.push({
 					key: `${list.key}:${id}`,
 					name,
 					label: list.remove({ name }),
 					shape: list.shape,
-					without: { [list.key]: filters[list.key].filter((entry) => entry !== id) }
+					without: { [list.key]: filters[list.key].filter((entry) => entry !== id) },
+					tag: tagged ? byId.get(id) : undefined
 				});
 			}
 		}
@@ -121,28 +128,38 @@
 {#if isFiltered(filters)}
 	<div class="flex flex-wrap items-center gap-2" role="group" aria-label={m.filters_active()}>
 		{#each chips as chip (chip.key)}
-			<span
-				class={[
-					'inline-flex h-8 max-w-full items-center gap-1 pl-3 text-sm',
-					readonly ? 'pr-3' : 'pr-1',
-					chip.shape === 'square' ? 'rounded-md' : 'rounded-full',
-					chip.shape === 'outline'
-						? 'border bg-background'
-						: 'border border-primary/40 bg-panel text-brand'
-				]}
-			>
-				<span class="truncate">{chip.name}</span>
-				{#if !readonly}
-					<button
-						type="button"
-						class="grid size-6 shrink-0 place-items-center rounded-full hover:bg-background"
-						aria-label={chip.label}
-						onclick={() => onchange?.({ ...filters, ...chip.without })}
-					>
-						<X class="size-3.5" aria-hidden="true" />
-					</button>
-				{/if}
-			</span>
+			{#if chip.tag}
+				<TagChip
+					tag={chip.tag}
+					group={chip.shape === 'outline'}
+					topic={chip.shape === 'square'}
+					onremove={readonly ? undefined : () => onchange?.({ ...filters, ...chip.without })}
+					removeLabel={chip.label}
+				/>
+			{:else}
+				<span
+					class={[
+						'inline-flex h-8 max-w-full items-center gap-1 pl-3 text-sm',
+						readonly ? 'pr-3' : 'pr-1',
+						chip.shape === 'square' ? 'rounded-md' : 'rounded-full',
+						chip.shape === 'outline'
+							? 'border bg-background'
+							: 'border border-primary/40 bg-panel text-brand'
+					]}
+				>
+					<span class="truncate">{chip.name}</span>
+					{#if !readonly}
+						<button
+							type="button"
+							class="grid size-6 shrink-0 place-items-center rounded-full hover:bg-background"
+							aria-label={chip.label}
+							onclick={() => onchange?.({ ...filters, ...chip.without })}
+						>
+							<X class="size-3.5" aria-hidden="true" />
+						</button>
+					{/if}
+				</span>
+			{/if}
 		{/each}
 		{#if !readonly}
 			<Button variant="ghost" size="sm" onclick={() => onchange?.(NO_FILTERS)}>

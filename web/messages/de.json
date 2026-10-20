@@ -1186,5 +1186,6 @@
 	"identifier_rejected_note": "Verworfen: Lekto lernt diese Kennung nicht wieder.",
 	"alias_add": "Schreibweise",
 	"alias_input": "Neue Schreibweise",
-	"alias_remove": "{name} entfernen"
+	"alias_remove": "{name} entfernen",
+	"field_def_scope_some": "Bestimmte Dokumenttypen"
 }

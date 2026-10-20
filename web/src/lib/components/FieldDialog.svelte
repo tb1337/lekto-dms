@@ -8,6 +8,7 @@
 	import HintLabel from '#lib/components/HintLabel.svelte';
 	import InfoHint from '#lib/components/InfoHint.svelte';
 	import Select from '#lib/components/Select.svelte';
+	import { Switch } from '#lib/components/ui/switch/index.ts';
 	import * as Field from '#lib/components/ui/field/index.ts';
 	import { Input } from '#lib/components/ui/input/index.ts';
 	import { Textarea } from '#lib/components/ui/textarea/index.ts';
@@ -15,6 +16,7 @@
 	import { FIELD_TYPES, fieldTypeLabel } from '#lib/fields.ts';
 	import type { FieldDefinition, MasterData } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { cn } from '#lib/utils.ts';
 
 	type DataType = components['schemas']['FieldType'];
 
@@ -195,25 +197,27 @@
 				aria-describedby="field-def-description-hint"
 			/>
 		</Field.Field>
-		<Field.Field>
-			<div class="flex items-center gap-1">
-				<label class="flex items-center gap-2 text-sm font-medium">
-					<input
-						type="checkbox"
-						bind:checked={manual}
-						class="size-4 accent-primary"
-						aria-describedby="field-def-manual-hint"
+		<!-- Set by hand: a switch at the end of its line, as the required ones of the types. -->
+		<div class="flex items-center gap-3">
+			<div class="flex min-w-0 flex-1 flex-col gap-0.5">
+				<div class="flex items-center gap-1">
+					<span id="field-def-manual-label" class="text-sm font-medium">
+						{m.field_def_manual()}
+					</span>
+					<InfoHint
+						text={m.field_def_manual_hint()}
+						about={m.field_def_manual()}
+						id="field-def-manual-hint"
 					/>
-					{m.field_def_manual()}
-				</label>
-				<InfoHint
-					text={m.field_def_manual_hint()}
-					about={m.field_def_manual()}
-					id="field-def-manual-hint"
-				/>
+				</div>
+				<p class="text-sm text-muted-foreground">{m.field_def_manual_line()}</p>
 			</div>
-			<Field.Description>{m.field_def_manual_line()}</Field.Description>
-		</Field.Field>
+			<Switch
+				bind:checked={manual}
+				aria-labelledby="field-def-manual-label"
+				aria-describedby="field-def-manual-hint"
+			/>
+		</div>
 		{#if isChoice}
 			<Field.Field>
 				<HintLabel
@@ -230,15 +234,33 @@
 				<span id="field-def-scope-label" class="text-sm font-medium">{m.field_def_scope()}</span>
 				<InfoHint text={m.field_def_required_hint()} about={m.field_def_scope()} />
 			</div>
-			<label class="flex items-center gap-2 text-sm">
-				<input type="checkbox" bind:checked={global} class="size-4 accent-primary" />
-				{m.field_def_scope_global()}
-			</label>
+			<!-- Every type or certain ones, as the kind of a new tag is chosen. -->
+			<div class="grid gap-2 sm:grid-cols-2">
+				{#each [true, false] as every (every)}
+					<label
+						class={cn(
+							'flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors hover:bg-secondary/60',
+							global === every && 'border-primary bg-primary/10 hover:bg-primary/10'
+						)}
+					>
+						<input
+							type="radio"
+							name="field-def-scope"
+							checked={global === every}
+							onchange={() => (global = every)}
+							class="size-4 shrink-0 accent-primary"
+						/>
+						{every ? m.field_def_scope_global() : m.field_def_scope_some()}
+					</label>
+				{/each}
+			</div>
 			{#if global}
-				<label class="flex items-center gap-2 pl-6 text-sm">
-					<input type="checkbox" bind:checked={required} class="size-4 accent-primary" />
-					{m.field_def_required_everywhere()}
-				</label>
+				<div class="mt-1 flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
+					<span id="field-def-required-label" class="text-sm">
+						{m.field_def_required_everywhere()}
+					</span>
+					<Switch bind:checked={required} aria-labelledby="field-def-required-label" />
+				</div>
 			{:else}
 				<AssignmentList
 					assigned={scope.map((id) => ({ id, required: requiredTypes.includes(id) }))}

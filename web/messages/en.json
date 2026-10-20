@@ -1186,5 +1186,6 @@
 	"identifier_rejected_note": "Rejected: Lekto does not learn this identifier again.",
 	"alias_add": "Spelling",
 	"alias_input": "New spelling",
-	"alias_remove": "Remove {name}"
+	"alias_remove": "Remove {name}",
+	"field_def_scope_some": "Certain document types"
 }

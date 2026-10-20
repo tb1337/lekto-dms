@@ -80,7 +80,7 @@ describe('FieldsPanel', () => {
 		await userEvent.type(await screen.findByLabelText(m.field_name()), 'Betrag');
 		// The types it applies to have a tab of their own.
 		await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${m.master_types()}`) }));
-		await userEvent.click(screen.getByLabelText(m.field_def_scope_global()));
+		await userEvent.click(screen.getByLabelText(m.field_def_scope_some()));
 		expect(screen.getByText(m.field_def_no_type())).toBeTruthy();
 		// The types come from a search, each then required or not.
 		await userEvent.click(screen.getByRole('button', { name: m.field_def_add_type() }));
@@ -104,6 +104,25 @@ describe('FieldsPanel', () => {
 			document_type_ids: [REMINDER],
 			required: false,
 			required_document_type_ids: [REMINDER]
+		});
+	});
+
+	it('makes a field of every type required in each document', async () => {
+		render(WithDialogs, { component: FieldsPanel });
+		masterDataDialogs.open('fields');
+		await userEvent.type(await screen.findByLabelText(m.field_name()), 'Datum');
+		await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${m.master_types()}`) }));
+		expect((screen.getByLabelText(m.field_def_scope_global()) as HTMLInputElement).checked).toBe(
+			true
+		);
+		await userEvent.click(screen.getByRole('switch', { name: m.field_def_required_everywhere() }));
+		await userEvent.click(screen.getByRole('button', { name: m.save() }));
+		const post = fetchMock.mock.calls.map((call) => call[0]).find((call) => call.method === 'POST');
+		expect(await post?.json()).toMatchObject({
+			name: 'Datum',
+			document_type_ids: null,
+			required: true,
+			required_document_type_ids: []
 		});
 	});
 

@@ -1199,6 +1199,29 @@ Ein Branch `maintenance/rename-lekto`, ein Pull Request (`maintenance`, `minor`,
 
 Die Devinstanz liest nach dem Merge `LEKTO_`: in `live.env` das Präfix umstellen; ihre Daten liegen weiter in `papiq_live`, `papiq-live` und `papiq-live-documents` (Werte behalten oder umziehen).
 
+### Zwischenschritt: Dokumentliste – Karte, Filter mit Zahlen, Lenses
+
+**Anlass (Tobi, 19.10.2026):** Die Dokumentliste sah noch nach Paperless-ngx aus: schmal, drei hohe Karten je Reihe, Filter als lange Listen. Entwürfe auf dem Canvas „Lekto Dokumentliste“ (Seiten Entwürfe, Karte „Mischung“, Filter, Lenses).
+
+**Entscheidungen (Tobi, 19. und 20.10.2026):** siehe `architektur.md` › Schnittstellen › Web-UI (Dokumentliste, Filter, Lenses) und Datenmodell (Lens). Nicht gebaut: Massenaktionen und „Bezahlt“ (offen, ob gewollt), ein Upload-Knopf im Kopf (Upload nur im Posteingang).
+
+**Umsetzung (Branch `enhancement/ui-optimization`, je Anforderung ein Commit):**
+- **Breite, Karte, Monate:** `data-roomy` an der AppShell (bis 1600 px); `DocumentCard` „Kontakt oben“, `InboxMark` kompakt; `listing.ts` gruppiert nach Monat.
+- **Filter:** mehrere Kontakte, Typen und Spaces je „eins davon“; Zeitraum des Dokumentdatums (`document_date_from`/`_to`, beide Tage eingeschlossen; Meilisearch filtert das Datum als Bereich); mehrere Kontakt- und Typgruppen ebenfalls „eins davon“ (vorher alle zugleich). `GET /documents/facets` zählt aus `DocumentRepository.facet_rows`: wer „eins davon“ ist, zählt ohne die eigene Wahl; Tags, Themen und Gruppen zählen mit ihren Nachfahren. Leere Werte in der URL gelten nicht.
+- **Filterleiste:** `FilterSection`, `PeriodFacet`, `FacetChips` (Chips wie `TagChip`), `FacetList` mit `FacetPicker`; am Handy ein Blatt mit festem Kopf und Fuß.
+- **Lenses**, in dieser Reihenfolge:
+  1. Nach einem Feld sortieren: `sort=field`/`-field` mit `sort_field_id` an `GET /documents` (Felder vom Typ Datum, Zeitraum nach Beginn, Zahl, Betrag nach Wert); `DocumentOrder` trägt das Feld, die Position den Wert; Dokumente ohne Wert zuletzt. Nicht in der Suche: der Index kennt keine Feldwerte.
+  2. Lens im Backend: `core/domain/lenses.py` (`Lens`, `LensFilter`, `Grouping`, `Layout`, `RelativePeriod`), `LensRepository` (`uow.lenses`) mit Speicher-Adapter und Vertragstests, Tabelle `lenses` (Revision 0031, mit dem Nutzer gelöscht), `LensService`, REST `/lenses` mit `PUT /lenses/order`.
+  3. Web: `View` (Raster oder Liste) heißt `Layout`, der Browser-Schlüssel `lekto.documents.layout`.
+  4. Web: Lenses in der Leiste und als Chips; öffnen, neu aus den Filtern.
+  5. Web: die Leiste „weicht ab“.
+  6. Web: der Editor mit Vorschau.
+  7. Web: Kartenfelder, Frist und Gruppierung.
+
+**Prüfung:** Vertragstests für Filter, Zählen, Sortieren nach Feld und Lenses auf Speicher, SQLite und Postgres; Suchindex-Verträge für die Filter; REST mit Rechten (nur der Besitzer, andere 404); Vitest für Filterleiste, Lenses und Karte; im Browser gegen den Build einer Prüfinstanz mit erfundenen Daten, Desktop und Handy.
+
+**Offen:** Gruppen ohne Dokumente blendet die Leiste aus wie Tags (die Devinstanz hat eine Kontaktgruppe ohne Kontakte); ob die Chips über der Liste die Farben der Tags tragen sollen.
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

@@ -30,6 +30,7 @@
 		neighbours,
 		nextDecision,
 		type InboxPlace,
+		LEFT,
 		type Left,
 		PRESETS,
 		presetOf,
@@ -58,6 +59,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
 	import { hasText, type GraphNode } from '#lib/pipeline.ts';
+	import { phone } from '#lib/phone.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import {
 		factCounts,
@@ -99,6 +101,8 @@
 	let fieldQuotes = $state<string[]>([]);
 	let factMarks = $state<Mark[]>([]);
 	let textMarks = $state<Span[]>([]);
+	// On a phone one pane at a time: the left one or the right one, chosen in the bar of four.
+	let side = $state<'left' | 'right'>('left');
 	let viewer = $state<PdfViewer | null>(null);
 	let textPane = $state<DocumentText | null>(null);
 	let header = $state<DocumentHeader | null>(null);
@@ -189,6 +193,7 @@
 			derived: false,
 			pinned: each.page === place.page
 		}));
+		side = 'left';
 		await show({ ...view, left: 'pages' });
 		// The viewer lays its pages out after it is shown.
 		for (const wait of [300, 900, 1800]) setTimeout(() => viewer?.reveal(place), wait);
@@ -290,8 +295,31 @@
 
 	/** Show a field's quote where it stands in the pane on the left. */
 	function reveal(place: Place) {
+		revealLeft(place);
+	}
+
+	/** Show what is marked in the pane on the left: in the text, or `place` on the pages (none:
+	 * nothing to show there). On a phone the left pane takes the screen first. */
+	function revealLeft(place: Place | undefined) {
+		if (view.left === 'pages' && !place) return;
+		const hidden = phone.current && side !== 'left';
+		side = 'left';
 		if (view.left === 'text') void tick().then(() => textPane?.revealMark());
-		else viewer?.reveal(place);
+		else if (place && !hidden) viewer?.reveal(place);
+		// The viewer lays its pages out once it is shown.
+		else if (place)
+			for (const wait of [300, 900, 1800]) setTimeout(() => viewer?.reveal(place), wait);
+	}
+
+	/** The pane a phone shows, by what it shows: one of the left's or the right's. */
+	function showOnPhone(next: string) {
+		if ((LEFT as readonly string[]).includes(next)) {
+			side = 'left';
+			if (next !== view.left) void show({ ...view, left: next as Left });
+		} else {
+			side = 'right';
+			if (next !== view.right) void show({ ...view, right: next as Right });
+		}
 	}
 
 	// A pane once shown stays, hidden while the other one is: the form keeps what was typed,
@@ -315,12 +343,7 @@
 	function markFact(spans: Span[], scroll: boolean, label: string) {
 		textMarks = spans;
 		factMarks = spanMarks(spans, label);
-		if (!scroll || spans.length === 0) return;
-		if (view.left === 'text') void textPane?.revealMark();
-		else {
-			const first = spans.flatMap((span) => span.locations)[0];
-			if (first) viewer?.reveal(first);
-		}
+		if (scroll && spans.length > 0) revealLeft(spans.flatMap((span) => span.locations)[0]);
 	}
 
 	async function confirmed(next: string | null) {
@@ -420,37 +443,57 @@
 			{/if}
 		</div>
 
+		{#if tab === 'document' && phone.current}
+			<!-- On a phone one pane at a time (Tobi, 20.10.2026): the four in one bar. -->
+			<Segmented
+				equal
+				class="w-full"
+				label={m.view_pane()}
+				value={side === 'left' ? view.left : view.right}
+				options={[
+					{ value: 'pages', label: m.view_pages() },
+					{ value: 'text', label: m.view_text() },
+					{ value: 'form', label: m.view_form() },
+					{ value: 'facts', label: m.view_facts() }
+				]}
+				onchange={showOnPhone}
+			/>
+		{/if}
+
 		{#if tab === 'document'}
 			{#snippet leftSwitch()}
-				<Segmented
-					size="sm"
-					names="@xl"
-					label={m.view_left()}
-					value={view.left}
-					options={[
-						{ value: 'pages', label: m.view_pages(), icon: File },
-						{ value: 'text', label: m.view_text(), icon: TextAlignStart }
-					]}
-					onchange={(next) => show({ ...view, left: next as Left })}
-				/>
+				{#if !phone.current}<Segmented
+						size="sm"
+						names="@xl"
+						label={m.view_left()}
+						value={view.left}
+						options={[
+							{ value: 'pages', label: m.view_pages(), icon: File },
+							{ value: 'text', label: m.view_text(), icon: TextAlignStart }
+						]}
+						onchange={(next) => show({ ...view, left: next as Left })}
+					/>{/if}
 			{/snippet}
 			{#snippet rightSwitch()}
-				<Segmented
-					size="sm"
-					names="wide"
-					label={m.view_right()}
-					value={view.right}
-					options={[
-						{ value: 'form', label: m.view_form(), icon: SquarePen },
-						{ value: 'facts', label: m.view_facts(), icon: ListChecks }
-					]}
-					onchange={(next) => show({ ...view, right: next as Right })}
-				/>
+				{#if !phone.current}<Segmented
+						size="sm"
+						names="wide"
+						label={m.view_right()}
+						value={view.right}
+						options={[
+							{ value: 'form', label: m.view_form(), icon: SquarePen },
+							{ value: 'facts', label: m.view_facts(), icon: ListChecks }
+						]}
+						onchange={(next) => show({ ...view, right: next as Right })}
+					/>{/if}
 			{/snippet}
 			<div
 				class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_28rem] lg:grid-rows-[minmax(0,1fr)]"
 			>
-				<div class="flex min-h-[32rem] flex-col lg:min-h-0">
+				<div
+					class="flex min-h-[32rem] flex-col lg:min-h-0"
+					hidden={phone.current && side !== 'left'}
+				>
 					{#if view.left === 'pages' || opened.has('pages')}
 						<div class="flex min-h-0 flex-1 flex-col" hidden={view.left !== 'pages'}>
 							<!-- Anew once the archive exists: the marks belong to it, not to the original. -->
@@ -490,7 +533,10 @@
 						</div>
 					{/if}
 				</div>
-				<div class="flex min-h-[32rem] flex-col lg:min-h-0">
+				<div
+					class="flex min-h-[32rem] flex-col lg:min-h-0"
+					hidden={phone.current && side !== 'right'}
+				>
 					{#if view.right === 'facts' || opened.has('facts')}
 						<div class="flex min-h-0 flex-1 flex-col" hidden={view.right !== 'facts'}>
 							<DocumentFacts

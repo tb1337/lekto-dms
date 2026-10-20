@@ -51,6 +51,7 @@
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { phone } from '#lib/phone.svelte.ts';
 	import { fieldId, initialValue, isRuleField, type ReviewValue } from '#lib/review.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { above, normalise, ofScope } from '#lib/tags.ts';
@@ -519,10 +520,11 @@
 			: documentType !== '' && field.required_document_type_ids.includes(documentType);
 	}
 
+	// On a phone the pages take the place of the form: the mark stays until the next jump.
 	function jump(key: string, place: Place) {
 		pinned = key;
 		clearTimeout(unpin);
-		unpin = setTimeout(() => (pinned = null), 2500);
+		if (!phone.current) unpin = setTimeout(() => (pinned = null), 2500);
 		onreveal(place);
 	}
 
@@ -555,11 +557,15 @@
 				<TriangleAlert class="mt-0.5 size-[18px] shrink-0" aria-hidden="true" strokeWidth={2.2} />
 				<div class="flex flex-col gap-0.5">
 					<p class="font-semibold">{m.review_banner_title()}</p>
-					{#if located}<p class="text-sm">{m.review_banner_hint()}</p>{/if}
+					{#if located}<p class="text-sm">
+							{phone.current ? m.review_banner_hint_phone() : m.review_banner_hint()}
+						</p>{/if}
 				</div>
 			</div>
 		{:else if located}
-			<p class="px-1 text-sm text-muted-foreground">{m.review_banner_hint()}</p>
+			<p class="px-1 text-sm text-muted-foreground">
+				{phone.current ? m.review_banner_hint_phone() : m.review_banner_hint()}
+			</p>
 		{/if}
 
 		{#if reviewing && failedNode}

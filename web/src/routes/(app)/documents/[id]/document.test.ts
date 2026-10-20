@@ -6,6 +6,7 @@ import type { components } from '#lib/api/schema.ts';
 import type { Facts } from '#lib/facts.ts';
 import { events } from '#lib/events.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { phone } from '#lib/phone.svelte.ts';
 import { session } from '#lib/session.svelte.ts';
 import {
 	calls,
@@ -85,6 +86,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	phone.override(null);
 	events.stop();
 	session.clear();
 	vi.unstubAllGlobals();
@@ -353,6 +355,35 @@ describe('the document tab', () => {
 		goTo('/ui/documents/doc-1?left=text&right=form', { id: 'doc-1' });
 		await waitFor(() => expect(screen.getByRole('form', { name: m.edit_title() })).toBeTruthy());
 		expect(titleField()?.value).toBe('Neu');
+	});
+
+	it('shows one pane at a time on a phone, and a tapped fact where it stands', async () => {
+		phone.override(true);
+		Element.prototype.scrollIntoView = vi.fn();
+		goTo('/ui/documents/doc-1?left=text&right=facts', { id: 'doc-1' });
+		serve(parsed, readable);
+		render(Page);
+		const bar = await screen.findByRole('group', { name: m.view_pane() });
+		const text = () => screen.queryByRole('region', { name: m.content_page({ page: 1 }) });
+		await waitFor(() => expect(text()).not.toBeNull());
+		// The bar of four instead of the panes' switches; the right pane hidden.
+		expect(screen.queryByRole('group', { name: m.view_left() })).toBeNull();
+		expect(screen.queryByRole('complementary', { name: m.facts_title() })).toBeNull();
+		await userEvent.click(within(bar).getByRole('button', { name: m.view_facts() }));
+		const facts = await screen.findByRole('complementary', { name: m.facts_title() });
+		expect(text()).toBeNull();
+		// A tap on a fact shows the text again, the fact marked in it.
+		await userEvent.click(await within(facts).findByRole('button', { name: /EBeschV/ }));
+		await waitFor(() => expect(text()).not.toBeNull());
+		expect(globalThis.document.querySelector('mark[data-mark]')?.textContent).toBe('EBeschV');
+		const shown = within(bar).getByRole('button', { name: m.view_text() });
+		expect(shown.getAttribute('aria-pressed')).toBe('true');
+		// The pages: the left pane shows them, the link says so.
+		await userEvent.click(within(bar).getByRole('button', { name: m.view_pages() }));
+		expect(goto).toHaveBeenCalledWith('/ui/documents/doc-1?left=pages&right=facts', {
+			replace: true,
+			reset: false
+		});
 	});
 
 	it('sets both panes with the quick choice, which shows the pair open', async () => {

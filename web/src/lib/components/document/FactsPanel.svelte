@@ -32,6 +32,7 @@
 	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
+	import { phone } from '#lib/phone.svelte.ts';
 	import { pathLabel, tagOptions } from '#lib/tags.ts';
 	import { cn } from '#lib/utils.ts';
 
@@ -373,7 +374,9 @@
 	<section aria-labelledby="facts-title" class="rounded-2xl border bg-card p-3.5">
 		<div class="flex items-baseline gap-2 px-1 pb-1">
 			<h2 id="facts-title" class="text-[15px] font-semibold">{m.facts_title()}</h2>
-			<span class="text-xs text-muted-foreground">{m.facts_hint()}</span>
+			<span class="text-xs text-muted-foreground"
+				>{phone.current ? m.facts_hint_phone() : m.facts_hint()}</span
+			>
 		</div>
 		{#if groups.own.length + groups.others.length + groups.unknown.length === 0}
 			<p class="px-1 py-2 text-sm text-muted-foreground">{m.facts_none()}</p>

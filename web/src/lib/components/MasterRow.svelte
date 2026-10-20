@@ -16,7 +16,8 @@
 
 	// A row of a master data list. On a phone the whole row is a button that opens the editor:
 	// its usage as a bare number (the last of `usage`) and a chevron, no other buttons. Wider,
-	// the usage links to where it is listed and a pencil opens the editor. `before` stands
+	// the usage links to where it is listed and a pencil, in a column of its own behind a line,
+	// opens the editor. `before` stands
 	// outside the button (a tree's chevron), `lead` before the content (avatar, icon).
 	let {
 		onopen,
@@ -74,8 +75,10 @@
 				{/each}
 			</span>
 		{/if}
-		<Button variant="ghost" size="icon" class="shrink-0" aria-label={editLabel} onclick={onopen}>
-			<Pencil aria-hidden="true" />
-		</Button>
+		<div class="flex shrink-0 items-center self-stretch border-l pl-2">
+			<Button variant="ghost" size="icon" aria-label={editLabel} onclick={onopen}>
+				<Pencil aria-hidden="true" />
+			</Button>
+		</div>
 	</li>
 {/if}

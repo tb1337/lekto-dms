@@ -4,11 +4,13 @@
 	import { page } from '$app/state';
 	import { m } from '#lib/paraglide/messages.js';
 	import { BASE } from '#lib/base.ts';
+	import { openLens } from '#lib/open-lens.svelte.ts';
 	import { cn } from '#lib/utils.ts';
 
 	// The search field of the header: Enter searches the documents with the words (and, in the
-	// document view, the filters already set); `/` jumps here from anywhere but a field one
-	// types into.
+	// document view, the filters already set, and its lens, which it names); `/` jumps here from
+	// anywhere but a field one types into. On a desktop the document view has no field of its
+	// own: this is it.
 	let { class: className = '' }: { class?: string } = $props();
 
 	let input = $state<HTMLInputElement | null>(null);
@@ -58,7 +60,9 @@
 		bind:value={text}
 		type="search"
 		aria-label={m.header_search_label()}
-		placeholder={m.header_search_placeholder()}
+		placeholder={inDocuments && openLens.name
+			? m.header_search_in({ name: openLens.name })
+			: m.header_search_placeholder()}
 		class="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
 	/>
 	<kbd

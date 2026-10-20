@@ -86,6 +86,23 @@ export function sortLabel(sort: Sort, field?: Pick<FieldDefinition, 'name' | 'da
 	return label({ field: field?.name ?? '' });
 }
 
+/** What a sort orders by, in a word (a field by its name), and whether it goes up or down
+ * (none for relevance): the face of a compact sort menu. */
+export function sortShort(
+	sort: Sort,
+	field?: Pick<FieldDefinition, 'name'>
+): { key: string; direction: 'up' | 'down' | null } {
+	if (sort === 'relevance') return { key: m.sort_short_relevance(), direction: null };
+	const direction = sort.startsWith('-') ? 'down' : 'up';
+	const key = sort.replace(/^-/, '');
+	const names: Record<string, () => string> = {
+		document_date: m.sort_short_document_date,
+		created_at: m.sort_short_created,
+		title: m.sort_short_title
+	};
+	return { key: key === 'field' ? (field?.name ?? '') : names[key](), direction };
+}
+
 export function isFieldSort(sort: Sort): sort is FieldSort {
 	return (FIELD_SORTS as readonly string[]).includes(sort);
 }

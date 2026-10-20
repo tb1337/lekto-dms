@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SearchIcon from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { NO_FILTERS, isFiltered, type Filters } from '#lib/filters.ts';
@@ -12,16 +13,21 @@
 	// What narrows the list, each as a chip that lets it go, and a reset; nothing while nothing
 	// is chosen. Tags, topics and groups are their chips as everywhere (`TagChip`: colour and
 	// icon, a topic square, a group outlined); the rest is brand-coloured. `readonly`: the chips
-	// only (what a lens keeps).
+	// only (what a lens keeps). The words of a search (`query`) stand first, `onclearquery` ends
+	// the search.
 	let {
 		filters,
 		lookup,
 		onchange,
+		query = '',
+		onclearquery,
 		readonly = false
 	}: {
 		filters: Filters;
 		lookup: Lookup;
 		onchange?: (filters: Filters) => void;
+		query?: string;
+		onclearquery?: () => void;
 		readonly?: boolean;
 	} = $props();
 
@@ -125,8 +131,26 @@
 	});
 </script>
 
-{#if isFiltered(filters)}
+{#if isFiltered(filters) || query}
 	<div class="flex flex-wrap items-center gap-2" role="group" aria-label={m.filters_active()}>
+		{#if query}
+			<span
+				class="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border bg-card pr-1 pl-3 text-sm"
+			>
+				<SearchIcon class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+				<span class="truncate">{m.search_chip({ words: query })}</span>
+				{#if onclearquery}
+					<button
+						type="button"
+						class="grid size-6 shrink-0 place-items-center rounded-full hover:bg-secondary"
+						aria-label={m.search_chip_remove({ words: query })}
+						onclick={onclearquery}
+					>
+						<X class="size-3.5" aria-hidden="true" />
+					</button>
+				{/if}
+			</span>
+		{/if}
 		{#each chips as chip (chip.key)}
 			{#if chip.tag}
 				<TagChip
@@ -161,7 +185,7 @@
 				</span>
 			{/if}
 		{/each}
-		{#if !readonly}
+		{#if !readonly && isFiltered(filters)}
 			<Button variant="ghost" size="sm" onclick={() => onchange?.(NO_FILTERS)}>
 				{m.filter_reset()}
 			</Button>

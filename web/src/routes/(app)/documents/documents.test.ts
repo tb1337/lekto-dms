@@ -294,6 +294,28 @@ describe('the archive page', () => {
 		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('?lens=l1&tag=t1', { reset: false });
 	});
 
+	it('shows the words of a search as a chip that ends it, their count by the title', async () => {
+		state.url = new URL('http://lekto/ui/documents?q=Strom&tag=t1');
+		vi.stubGlobal(
+			'fetch',
+			fakeApi({
+				'GET /api/v1/documents/search': () => ({
+					items: [],
+					estimated_total: 4,
+					next_offset: null,
+					semantic: false
+				})
+			})
+		);
+		const user = userEvent.setup();
+		render(Page);
+		expect(await screen.findByText(m.search_total({ count: '4' }))).toBeTruthy();
+		await user.click(
+			screen.getByRole('button', { name: m.search_chip_remove({ words: 'Strom' }) })
+		);
+		expect(vi.mocked(goto)).toHaveBeenLastCalledWith('?tag=t1', { reset: false });
+	});
+
 	it('takes no lane from an older link', async () => {
 		state.url = new URL('http://lekto/ui/documents?lane=yellow');
 		const api = fakeApi({

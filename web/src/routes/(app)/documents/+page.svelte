@@ -20,7 +20,7 @@
 	import LensChanges from '#lib/components/LensChanges.svelte';
 	import LensEditor, { type LensDraft } from '#lib/components/LensEditor.svelte';
 	import Lenses from '#lib/components/Lenses.svelte';
-	import NativeSelect from '#lib/components/NativeSelect.svelte';
+	import SortMenu from '#lib/components/SortMenu.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import * as Sheet from '#lib/components/ui/sheet/index.ts';
 	import { describeError } from '#lib/errors.ts';
@@ -47,6 +47,7 @@
 		rememberedLayout,
 		sortFieldOf,
 		sortLabel,
+		sortShort,
 		sortOf,
 		type ListSort,
 		type Sort,
@@ -54,6 +55,7 @@
 		type Layout
 	} from '#lib/listing.ts';
 	import { loadLookup, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { openLens } from '#lib/open-lens.svelte.ts';
 	import { PagedList } from '#lib/paging.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { scope } from '#lib/scope.svelte.ts';
@@ -154,6 +156,12 @@
 		await loadLenses();
 		if (params.get('lens') === id) go(new URLSearchParams());
 	}
+
+	// The header's search names the open lens.
+	$effect(() => {
+		openLens.name = lens?.name ?? null;
+		return () => (openLens.name = null);
+	});
 
 	// Opening a lens shows its layout (not remembered: that is the choice outside lenses).
 	let shownLens: string | null = null;
@@ -352,6 +360,19 @@
 	{/if}
 {/snippet}
 
+{#snippet sortMenu(compact: boolean)}
+	<SortMenu
+		options={sorts}
+		value={sort}
+		short={sortShort(
+			sort,
+			lookup?.fields.find((field) => field.id === sortField)
+		)}
+		onchange={sortBy}
+		{compact}
+	/>
+{/snippet}
+
 {#snippet lensLinks(variant: 'list' | 'chips')}
 	<Lenses
 		{lenses}
@@ -376,17 +397,56 @@
 			<h1 class="text-[1.75rem] font-semibold tracking-tight">
 				{lens?.name ?? m.nav_documents()}
 			</h1>
-			{#if facets && !searching}
+			{#if searching && list.total !== null && list.loaded}
+				<p class="text-sm text-muted-foreground" aria-live="polite">
+					{m.search_total({ count: formatNumber(list.total) })}
+				</p>
+			{:else if facets && !searching}
 				<p class="text-sm text-muted-foreground" aria-live="polite">
 					{m.documents_total({ count: formatNumber(facets.total) })}
 				</p>
 			{/if}
-			{#if lens && lookup}
-				<Button variant="outline" size="sm" class="ml-auto rounded-full" onclick={() => edit(lens)}>
-					<Pencil aria-hidden="true" />
-					{m.lens_edit()}
-				</Button>
-			{/if}
+			<div class="ml-auto flex items-center gap-2">
+				<div class="hidden items-center gap-2 lg:flex">
+					{@render sortMenu(false)}
+					<div
+						role="group"
+						aria-label={m.layout_label()}
+						class="flex gap-0.5 rounded-full bg-secondary p-0.75"
+					>
+						{#each [{ value: 'grid', label: m.layout_grid, icon: LayoutGrid }, { value: 'list', label: m.layout_list, icon: List }] as const as entry (entry.value)}
+							<button
+								type="button"
+								aria-pressed={layout === entry.value}
+								aria-label={entry.label()}
+								title={entry.label()}
+								onclick={() => show(entry.value)}
+								class={cn(
+									'grid size-8 place-items-center rounded-full transition-colors',
+									layout === entry.value
+										? 'bg-card text-foreground shadow-sm'
+										: 'text-muted-foreground hover:text-foreground'
+								)}
+							>
+								<entry.icon class="size-4" aria-hidden="true" />
+							</button>
+						{/each}
+					</div>
+				</div>
+				{#if lens && lookup}
+					<Button
+						variant="outline"
+						size="sm"
+						class="rounded-full max-lg:size-9 max-lg:px-0"
+						aria-label={m.lens_edit()}
+						title={m.lens_edit()}
+						onclick={() => edit(lens)}
+					>
+						<Pencil aria-hidden="true" />
+						<span class="max-lg:hidden">{m.lens_edit()}</span>
+					</Button>
+				{/if}
+			</div>
 		</div>
 		<div class="lg:hidden">
 			{@render lensLinks('chips')}
@@ -404,7 +464,10 @@
 		</aside>
 		<div class="flex min-w-0 flex-1 flex-col gap-6">
 			<div class="flex flex-col gap-3">
-				<div class="flex items-center gap-2">
+				<!-- On a phone the page has its own search (the header only a magnifier), with
+				filters, sort and layout beside it; on a desktop the header's search is the
+				page's and the rest stands by the title. -->
+				<div class="flex items-center gap-2 lg:hidden">
 					<form
 						role="search"
 						class="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full border border-input bg-background pr-1.5 pl-4 focus-within:border-ring"
@@ -489,6 +552,19 @@
 							</Sheet.Footer>
 						</Sheet.Content>
 					</Sheet.Root>
+					{@render sortMenu(true)}
+					<button
+						type="button"
+						class="grid size-11 shrink-0 place-items-center rounded-full border border-input bg-background hover:bg-secondary"
+						aria-label={layout === 'grid' ? m.layout_list() : m.layout_grid()}
+						onclick={() => show(layout === 'grid' ? 'list' : 'grid')}
+					>
+						{#if layout === 'grid'}
+							<List class="size-4" aria-hidden="true" />
+						{:else}
+							<LayoutGrid class="size-4" aria-hidden="true" />
+						{/if}
+					</button>
 				</div>
 				{#if lens && changed}
 					<LensChanges
@@ -500,49 +576,19 @@
 					/>
 				{/if}
 				{#if lookup}
-					<ActiveFilters {filters} {lookup} onchange={change} />
+					<ActiveFilters
+						{filters}
+						{lookup}
+						onchange={change}
+						{query}
+						onclearquery={() => {
+							text = '';
+							search('');
+						}}
+					/>
 				{:else if lookupError}
 					<p class="text-destructive" role="alert">{lookupError}</p>
 				{/if}
-				<div class="flex flex-wrap items-center gap-3">
-					{#if searching && list.total !== null && list.loaded}
-						<p class="text-sm text-muted-foreground" aria-live="polite">
-							{m.search_total({ count: formatNumber(list.total) })}
-						</p>
-					{/if}
-					<div class="ml-auto flex w-full items-center gap-2 sm:w-auto">
-						<NativeSelect
-							aria-label={m.sort_label()}
-							value={sort}
-							options={sorts}
-							onchange={sortBy}
-							class="h-9 min-w-0 flex-1 sm:w-64 sm:flex-none"
-						/>
-						<div
-							role="group"
-							aria-label={m.layout_label()}
-							class="flex gap-0.5 rounded-full bg-secondary p-0.75"
-						>
-							{#each [{ value: 'grid', label: m.layout_grid, icon: LayoutGrid }, { value: 'list', label: m.layout_list, icon: List }] as const as entry (entry.value)}
-								<button
-									type="button"
-									aria-pressed={layout === entry.value}
-									aria-label={entry.label()}
-									title={entry.label()}
-									onclick={() => show(entry.value)}
-									class={cn(
-										'grid size-8 place-items-center rounded-full transition-colors',
-										layout === entry.value
-											? 'bg-card text-foreground shadow-sm'
-											: 'text-muted-foreground hover:text-foreground'
-									)}
-								>
-									<entry.icon class="size-4" aria-hidden="true" />
-								</button>
-							{/each}
-						</div>
-					</div>
-				</div>
 			</div>
 
 			{#if list.error}

@@ -1,7 +1,10 @@
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Plus from '@lucide/svelte/icons/plus';
+	import SearchIcon from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
+	import { tick } from 'svelte';
+	import InfoHint from '#lib/components/InfoHint.svelte';
 	import Select from '#lib/components/Select.svelte';
 	import TagChip from '#lib/components/TagChip.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
@@ -19,23 +22,58 @@
 	import { phone } from '#lib/phone.svelte.ts';
 	import { pathLabel } from '#lib/tags.ts';
 
-	// A contact's identifiers: those entered by hand can be changed and removed, and point to
-	// one of the contact's `topics` (or none); learned ones can be taken over (then they are
-	// entered by hand) or rejected (training does not learn them again); a rejected one can be
-	// allowed again. On a phone each is a row (kind, value, topic) that opens in place.
-	let { rows = $bindable(), topics = [] }: { rows: IdentifierRow[]; topics?: readonly Tag[] } =
-		$props();
+	// A contact's identifiers, one line each under their kind (Tobi, 20.10.2026): the value, a
+	// mark if learned or rejected, the topic it points to. A line opens with its arrow, one at a
+	// time (`opened`): one entered by hand shows kind, value and topic, changed at once (saved
+	// with the editor); a learned one can be taken over (then it is entered by hand) or
+	// rejected (training does not learn it again); a rejected one can be allowed again. Enter
+	// in the value closes the line. A search finds them by value, kind and topic; a new one
+	// opens empty. `errors` (by row key) show in their open line.
+	let {
+		rows = $bindable(),
+		topics = [],
+		opened = $bindable(null),
+		errors = {},
+		hint
+	}: {
+		rows: IdentifierRow[];
+		topics?: readonly Tag[];
+		opened?: number | null;
+		errors?: Record<number, string>;
+		/** The help of the identifiers, behind an info button beside the search. */
+		hint?: string;
+	} = $props();
 
+	const uid = $props.id();
+	let query = $state('');
 	const kinds = IDENTIFIER_KINDS.map((kind) => ({ value: kind, label: kindLabel(kind) }));
 	const topicOptions = $derived([
 		{ value: '', label: m.topic_none() },
 		...topics.map((topic) => ({ value: topic.id, label: pathLabel(topic) }))
 	]);
-	// The row open on a phone.
-	let editing = $state<number | null>(null);
+	const compact = (text: string) => text.replace(/\s+/g, '').toLocaleLowerCase();
+	const shown = $derived.by(() => {
+		const wanted = compact(query);
+		if (wanted === '') return rows;
+		return rows.filter((item) =>
+			compact(
+				`${item.value} ${kindLabel(item.kind)} ${topicOf(item.topic_id)?.name ?? ''}`
+			).includes(wanted)
+		);
+	});
+	const groups = $derived(
+		IDENTIFIER_KINDS.map((kind) => ({
+			kind,
+			rows: shown.filter((item) => item.kind === kind)
+		})).filter((group) => group.rows.length > 0)
+	);
 
 	function topicOf(id: string): Tag | null {
 		return topics.find((topic) => topic.id === id) ?? null;
+	}
+
+	function indexOf(item: IdentifierRow): number {
+		return rows.findIndex((other) => other.key === item.key);
 	}
 
 	function become(item: IdentifierRow, source: IdentifierSource) {
@@ -44,180 +82,205 @@
 
 	function drop(item: IdentifierRow) {
 		rows = rows.filter((other) => other.key !== item.key);
-		editing = null;
+		if (opened === item.key) opened = null;
 	}
 
-	function add() {
+	async function add() {
 		const fresh = row();
+		query = '';
 		rows = [...rows, fresh];
-		editing = fresh.key;
+		opened = fresh.key;
+		await tick();
+		document.getElementById(`${uid}-${fresh.key}-value`)?.focus();
+	}
+
+	function closeOnEnter(event: KeyboardEvent) {
+		if (event.key !== 'Enter') return;
+		// Not the editor's form: Enter only closes the line.
+		event.preventDefault();
+		opened = null;
 	}
 </script>
 
-{#snippet manualFields(item: IdentifierRow, index: number, stacked: boolean)}
-	<Select
-		bind:value={rows[index].kind}
-		options={kinds}
-		aria-label={m.identifier_kind()}
-		class={stacked ? 'w-full' : 'w-44 shrink-0'}
-	/>
-	<Input
-		bind:value={rows[index].value}
-		aria-label={m.identifier_value()}
-		maxlength={100}
-		class={stacked ? 'w-full font-mono' : 'min-w-0 flex-1'}
-	/>
-	{#if topics.length > 0}
-		<Select
-			bind:value={rows[index].topic_id}
-			options={topicOf(item.topic_id) || item.topic_id === ''
-				? topicOptions
-				: [...topicOptions, { value: item.topic_id, label: m.topic_not_enabled() }]}
-			aria-label={m.identifier_topic()}
-			class={stacked ? 'w-full' : 'order-last w-full'}
-		/>
-	{/if}
-{/snippet}
+<div class="flex flex-col gap-1" role="group" aria-label={m.master_identifiers()}>
+	<div class="flex items-center gap-2 pb-1">
+		<label
+			class="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full border border-input bg-card px-3.5 text-muted-foreground focus-within:border-ring sm:h-10 dark:bg-input/30"
+		>
+			<SearchIcon class="size-4 shrink-0" aria-hidden="true" />
+			<input
+				type="search"
+				bind:value={query}
+				placeholder={m.identifier_search()}
+				aria-label={m.identifier_search()}
+				class="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground sm:text-sm"
+			/>
+		</label>
+		{#if hint}<InfoHint text={hint} about={m.master_identifiers()} />{/if}
+		{#if phone.current}
+			<Button
+				type="button"
+				size="icon"
+				class="size-11 shrink-0"
+				aria-label={m.identifier_add()}
+				onclick={add}
+			>
+				<Plus class="size-5" aria-hidden="true" />
+			</Button>
+		{:else}
+			<Button type="button" variant="outline" class="h-10 shrink-0" onclick={add}>
+				<Plus aria-hidden="true" />
+				{m.identifier_add_short()}
+			</Button>
+		{/if}
+	</div>
 
-{#snippet learnedActions(item: IdentifierRow)}
-	{#if item.source === 'learned'}
-		<Button type="button" variant="ghost" size="sm" onclick={() => become(item, 'manual')}>
-			{m.identifier_keep()}
-		</Button>
-		<Button type="button" variant="ghost" size="sm" onclick={() => become(item, 'rejected')}>
-			{m.identifier_reject()}
-		</Button>
-	{:else}
-		<Button type="button" variant="ghost" size="sm" onclick={() => drop(item)}>
-			{m.identifier_unblock()}
-		</Button>
+	{#if rows.length === 0}
+		<p class="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+			{m.identifier_none()}
+		</p>
+	{:else if groups.length === 0}
+		<p class="px-1 py-2 text-sm text-muted-foreground">{m.assignment_none_found()}</p>
 	{/if}
-{/snippet}
 
-{#if phone.current}
-	<ul class="divide-y overflow-hidden rounded-2xl border bg-card">
-		{#each rows as item, index (item.key)}
-			{@const topic = topicOf(item.topic_id)}
-			<li>
-				{#if editing === item.key}
-					<div class="flex flex-col gap-2 p-3">
-						{#if item.source === 'manual'}
-							{@render manualFields(item, index, true)}
-							<div class="flex items-center justify-between gap-2">
-								<Button
-									type="button"
-									variant="ghost"
-									size="sm"
-									class="text-destructive"
-									onclick={() => drop(item)}
-								>
-									<X aria-hidden="true" />
-									{m.identifier_remove()}
-								</Button>
-								<Button type="button" variant="outline" size="sm" onclick={() => (editing = null)}>
-									{m.picker_done()}
-								</Button>
-							</div>
-						{:else}
-							<span class="text-sm break-all">
-								{kindLabel(item.kind)}:&nbsp;<span class="font-mono">{item.value}</span>
-							</span>
-							<div class="flex flex-wrap items-center gap-1">
-								{@render learnedActions(item)}
-								<Button
-									type="button"
-									variant="outline"
-									size="sm"
-									class="ml-auto"
-									onclick={() => (editing = null)}
-								>
-									{m.picker_done()}
-								</Button>
-							</div>
-						{/if}
-					</div>
-				{:else}
-					<button
-						type="button"
-						class="flex min-h-14 w-full items-center gap-2.5 py-2 pr-3 pl-3.5 text-left hover:bg-secondary/60"
-						onclick={() => (editing = item.key)}
-					>
-						<span class="flex min-w-0 flex-1 flex-col gap-0.5">
-							<span class="text-xs text-muted-foreground">{kindLabel(item.kind)}</span>
+	{#each groups as group (group.kind)}
+		<h3
+			class="flex items-baseline gap-2 px-1 pt-2 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+		>
+			{kindLabel(group.kind)}
+			<span class="font-medium tabular-nums">{group.rows.length}</span>
+		</h3>
+		<ul class="divide-y overflow-hidden rounded-2xl border bg-card">
+			{#each group.rows as item (item.key)}
+				{@const open = opened === item.key}
+				{@const topic = topicOf(item.topic_id)}
+				{@const index = indexOf(item)}
+				<li>
+					<div class={['flex items-center gap-1 pr-1', open && 'bg-secondary/60']}>
+						<button
+							type="button"
+							class="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 py-1.5 pl-3 text-left"
+							aria-expanded={open}
+							aria-controls={open ? `${uid}-${item.key}` : undefined}
+							onclick={() => (opened = open ? null : item.key)}
+						>
+							<ChevronRight
+								class={[
+									'size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none',
+									open && 'rotate-90 text-foreground'
+								]}
+								aria-hidden="true"
+							/>
 							<span
 								class={[
-									'font-mono text-sm break-all',
+									'min-w-0 flex-1 truncate',
+									item.value ? 'font-mono text-sm' : 'text-sm text-muted-foreground',
 									item.source === 'rejected' && 'text-muted-foreground line-through'
 								]}
 							>
-								{item.value || m.value_unset()}
+								{item.value || m.identifier_new()}
 							</span>
-						</span>
-						{#if topic}<TagChip tag={topic} topic size="sm" />{/if}
-						{#if item.source !== 'manual'}
-							<Badge variant={item.source === 'learned' ? 'secondary' : 'outline'}>
-								{item.source === 'learned' ? m.identifier_learned() : m.identifier_rejected()}
-							</Badge>
+							{#if item.source !== 'manual'}
+								<Badge variant={item.source === 'learned' ? 'secondary' : 'outline'}>
+									{item.source === 'learned' ? m.identifier_learned() : m.identifier_rejected()}
+								</Badge>
+							{/if}
+							{#if topic}<TagChip tag={topic} topic size="sm" />{/if}
+							{#if errors[item.key]}
+								<span class="size-[7px] shrink-0 rounded-full bg-destructive" aria-hidden="true"
+								></span>
+							{/if}
+						</button>
+						{#if item.source === 'manual'}
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon"
+								class="size-9 shrink-0"
+								aria-label={m.identifier_remove_named({ value: item.value || m.identifier_new() })}
+								onclick={() => drop(item)}
+							>
+								<X aria-hidden="true" />
+							</Button>
+						{:else}
+							<span class="size-9 shrink-0" aria-hidden="true"></span>
 						{/if}
-						<ChevronRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-					</button>
-				{/if}
-			</li>
-		{/each}
-		<li>
-			<button
-				type="button"
-				class="flex min-h-12 w-full items-center gap-2 px-3.5 text-left text-brand hover:bg-secondary/60"
-				onclick={add}
-			>
-				<Plus class="size-4" aria-hidden="true" />
-				{m.identifier_add()}
-			</button>
-		</li>
-	</ul>
-{:else}
-	<div class="flex flex-col gap-2">
-		{#each rows as item, index (item.key)}
-			{#if item.source === 'manual'}
-				<!-- Kind, value and removal on a line, the topic below them. -->
-				<div class={['flex flex-wrap items-center gap-2', topics.length > 0 && 'pb-1']}>
-					{@render manualFields(item, index, false)}
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon"
-						aria-label={m.identifier_remove()}
-						onclick={() => drop(item)}
-					>
-						<X aria-hidden="true" />
-					</Button>
-				</div>
-			{:else}
-				<div class="flex flex-wrap items-center gap-2 rounded-xl border border-dashed px-3 py-1.5">
-					<span
-						class={[
-							// Readable whole: on a narrow screen the actions go to the next line.
-							'min-w-60 flex-1 text-sm break-all',
-							item.source === 'rejected' && 'text-muted-foreground line-through'
-						]}
-					>
-						{kindLabel(item.kind)}:&nbsp;<span class="font-mono">{item.value}</span>
-						{#if item.source === 'learned' && topicOf(item.topic_id)}
-							<span class="text-muted-foreground"> · {pathLabel(topicOf(item.topic_id)!)}</span>
-						{/if}
-					</span>
-					<Badge variant={item.source === 'learned' ? 'secondary' : 'outline'}>
-						{item.source === 'learned' ? m.identifier_learned() : m.identifier_rejected()}
-					</Badge>
-					{@render learnedActions(item)}
-				</div>
-			{/if}
-		{/each}
-		<div>
-			<Button type="button" variant="outline" size="sm" onclick={add}>
-				<Plus aria-hidden="true" />
-				{m.identifier_add()}
-			</Button>
-		</div>
-	</div>
-{/if}
+					</div>
+					{#if open}
+						<div id="{uid}-{item.key}" class="border-t bg-secondary/30 px-3 py-3 sm:pl-10">
+							{#if item.source === 'manual'}
+								<div
+									class={[
+										'grid gap-2',
+										topics.length > 0
+											? 'sm:grid-cols-[12.5rem_minmax(0,1fr)_9.5rem]'
+											: 'sm:grid-cols-[12.5rem_minmax(0,1fr)]'
+									]}
+								>
+									<Select
+										bind:value={rows[index].kind}
+										options={kinds}
+										aria-label={m.identifier_kind()}
+										class="h-10"
+									/>
+									<Input
+										id="{uid}-{item.key}-value"
+										bind:value={rows[index].value}
+										aria-label={m.identifier_value()}
+										aria-invalid={errors[item.key] ? true : undefined}
+										maxlength={100}
+										class="h-10 font-mono"
+										onkeydown={closeOnEnter}
+									/>
+									{#if topics.length > 0}
+										<Select
+											bind:value={rows[index].topic_id}
+											options={topic || item.topic_id === ''
+												? topicOptions
+												: [...topicOptions, { value: item.topic_id, label: m.topic_not_enabled() }]}
+											aria-label={m.identifier_topic()}
+											class="h-10"
+										/>
+									{/if}
+								</div>
+								{#if errors[item.key]}
+									<p class="mt-2 text-sm text-destructive" role="alert">{errors[item.key]}</p>
+								{/if}
+							{:else}
+								<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+									<p class="min-w-48 flex-1 text-sm text-muted-foreground">
+										{item.source === 'learned'
+											? m.identifier_learned_note()
+											: m.identifier_rejected_note()}
+									</p>
+									{#if item.source === 'learned'}
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											onclick={() => become(item, 'manual')}
+										>
+											{m.identifier_keep()}
+										</Button>
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											onclick={() => become(item, 'rejected')}
+										>
+											{m.identifier_reject()}
+										</Button>
+									{:else}
+										<Button type="button" variant="outline" size="sm" onclick={() => drop(item)}>
+											{m.identifier_unblock()}
+										</Button>
+									{/if}
+								</div>
+							{/if}
+						</div>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+	{/each}
+</div>

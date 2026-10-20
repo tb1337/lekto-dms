@@ -134,12 +134,21 @@
 	// A contact and a document type are long: their identifiers or fields stand in a tab of
 	// their own (Tobi, 20.10.2026); a tag's editor is short and has none.
 	let tab = $state('general');
+	// The identifier line that is open, and what the API said about one (it quotes the value it
+	// refuses): saving then opens its tab and its line.
+	let openedIdentifier = $state<number | null>(null);
+	let identifierErrors = $state<Record<number, string>>({});
 	const tabs = $derived.by(() => {
 		const general = { value: 'general', label: m.master_tab_general() };
 		if (extra === 'aliases') {
 			return [
 				general,
-				{ value: 'identifiers', label: m.master_identifiers(), count: identifiers.length }
+				{
+					value: 'identifiers',
+					label: m.master_identifiers(),
+					count: identifiers.length,
+					alert: Object.keys(identifierErrors).length > 0 ? m.editor_tab_problem() : undefined
+				}
 			];
 		}
 		if (extra === 'description' && fields) {
@@ -152,6 +161,8 @@
 	$effect(() => {
 		if (open) {
 			tab = 'general';
+			openedIdentifier = null;
+			identifierErrors = {};
 			name = initial?.name ?? presetName;
 			aliases = (initial?.aliases ?? []).join('\n');
 			identifiers = rowsOf(initial?.identifiers);
@@ -191,6 +202,7 @@
 		if (busy || (extra === 'tag' && kind === null)) return;
 		busy = true;
 		error = null;
+		identifierErrors = {};
 		try {
 			await onsubmit({
 				name: name.trim(),
@@ -211,6 +223,14 @@
 			open = false;
 		} catch (problem) {
 			error = describeError(problem);
+			const refused = identifiers.find(
+				(item) => item.value.trim() !== '' && error?.includes(`'${item.value.trim()}'`)
+			);
+			if (refused) {
+				identifierErrors = { [refused.key]: error };
+				openedIdentifier = refused.key;
+				tab = 'identifiers';
+			}
 		} finally {
 			busy = false;
 		}
@@ -508,10 +528,13 @@
 		{/if}
 	{/if}
 	{#if part === 'identifiers'}
-		<Field.Field>
-			<HintLabel label={m.master_identifiers()} hint={m.master_identifiers_hint()} />
-			<IdentifiersEditor bind:rows={identifiers} topics={enabledTopics} />
-		</Field.Field>
+		<IdentifiersEditor
+			bind:rows={identifiers}
+			bind:opened={openedIdentifier}
+			topics={enabledTopics}
+			errors={identifierErrors}
+			hint={m.master_identifiers_hint()}
+		/>
 	{:else if part === 'fields'}
 		{#if fields}
 			<Field.Field>

@@ -199,10 +199,43 @@ describe('tabs', () => {
 		expect(general.getAttribute('aria-pressed')).toBe('true');
 		expect(identifiers.textContent).toContain(m.master_identifiers());
 		expect(identifiers.textContent).toContain('1');
-		expect(screen.queryByDisplayValue('nord.example')).toBeNull();
+		expect(screen.queryByRole('button', { name: /^nord\.example/ })).toBeNull();
 		await user.click(identifiers);
-		expect(screen.getByDisplayValue('nord.example')).toBeTruthy();
+		expect(screen.getByRole('button', { name: /^nord\.example/ })).toBeTruthy();
 		expect(screen.queryByDisplayValue('Nord Versicherungsgruppe')).toBeNull();
+	});
+
+	it('opens the tab and the line of an identifier the API refuses', async () => {
+		const user = userEvent.setup();
+		const before = fetchMock.getMockImplementation()!;
+		fetchMock.mockImplementation(async (request) =>
+			request.method === 'PATCH'
+				? json(
+						{ title: 'Unprocessable', status: 422, detail: "'DE00 1234' is not a valid IBAN" },
+						422
+					)
+				: before(request)
+		);
+		render(WithDialogs);
+		masterDataDialogs.open('contacts', CONTACT as unknown as Item);
+		expect(await screen.findByDisplayValue('Nord Versicherungsgruppe')).toBeTruthy();
+		await user.click(
+			screen.getByRole('button', { name: new RegExp(`^${m.master_identifiers()}`) })
+		);
+		await user.click(screen.getByRole('button', { name: m.identifier_add_short() }));
+		await user.type(screen.getByLabelText(m.identifier_value()), 'DE00 1234');
+		await user.click(screen.getByRole('button', { name: m.master_tab_general() }));
+		await user.click(screen.getByRole('button', { name: m.save() }));
+		const tab = await screen.findByRole('button', {
+			name: new RegExp(`^${m.master_identifiers()}`)
+		});
+		await waitFor(() => expect(tab.getAttribute('aria-pressed')).toBe('true'));
+		expect(tab.textContent).toContain(m.editor_tab_problem());
+		const value = screen.getByLabelText(m.identifier_value());
+		expect(value.getAttribute('aria-invalid')).toBe('true');
+		expect(
+			screen.getAllByRole('alert').some((alert) => alert.textContent?.includes('not a valid IBAN'))
+		).toBe(true);
 	});
 
 	it('has none for a tag', async () => {
@@ -231,6 +264,8 @@ describe('a contact’s topics', () => {
 		const openTab = (name: string) =>
 			userEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}`) }));
 		await openTab(m.master_identifiers());
+		// Each identifier is a line that opens.
+		await userEvent.click(screen.getByRole('button', { name: /^4711/ }));
 		let topic = screen.getByLabelText(m.identifier_topic());
 		expect(selectedValue(topic)).toBe('p1');
 		expect((await optionsOf(topic)).map((option) => option.value)).toEqual(['', 'p1']);
@@ -243,6 +278,7 @@ describe('a contact’s topics', () => {
 		await userEvent.click(within(picker).getByLabelText('Krankenversicherung'));
 		await userEvent.click(within(picker).getByText(m.picker_done()));
 		expect(within(chips).getByText('Krankenversicherung')).toBeTruthy();
+		// Back in its tab, the line is still open.
 		await openTab(m.master_identifiers());
 		topic = screen.getByLabelText(m.identifier_topic());
 		expect((await optionsOf(topic)).map((option) => option.value)).toEqual(['', 'p1', 'p2']);

@@ -991,7 +991,6 @@
 	"topic_not_enabled": "Thema nicht freigeschaltet",
 	"topic_no_contact": "Erst einen Kontakt wählen",
 	"topic_enables_hint": "Der Kontakt führt dieses Thema noch nicht: Speichern schaltet es am Kontakt frei.",
-	"identifier_remove": "Kennung entfernen",
 	"identifier_kind_iban": "IBAN",
 	"identifier_kind_vat_id": "USt-IdNr.",
 	"identifier_kind_customer_number": "Kunden- oder Vertragsnummer",
@@ -1177,5 +1176,12 @@
 	"field_def_manual_line": "Lekto fragt das Modell nicht nach diesem Feld.",
 	"master_tab_general": "Allgemein",
 	"field_def_scope_all_short": "alle",
-	"editor_tab_problem": "Hier stimmt etwas nicht"
+	"editor_tab_problem": "Hier stimmt etwas nicht",
+	"identifier_search": "Kennung suchen",
+	"identifier_add_short": "Kennung",
+	"identifier_new": "Neue Kennung",
+	"identifier_none": "Noch keine Kennung.",
+	"identifier_remove_named": "{value} entfernen",
+	"identifier_learned_note": "Lekto hat diese Kennung aus bestätigten Dokumenten gelernt. Übernommen gilt sie wie eine eingetragene und lässt sich ändern.",
+	"identifier_rejected_note": "Verworfen: Lekto lernt diese Kennung nicht wieder."
 }

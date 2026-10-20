@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
-import { kindLabel, row } from '#lib/identifiers.ts';
+import { type IdentifierRow, kindLabel, row } from '#lib/identifiers.ts';
 import type { Tag } from '#lib/masterdata.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { phone } from '#lib/phone.svelte.ts';
@@ -22,40 +22,100 @@ const WORK = {
 
 afterEach(() => phone.override(null));
 
-describe('IdentifiersEditor on a phone', () => {
-	it('lists identifiers as rows that open in place, and adds one opened', async () => {
-		phone.override(true);
+function editor(rows: IdentifierRow[], extra: Record<string, unknown> = {}) {
+	const props = $state({ rows, topics: [WORK], opened: null as number | null, ...extra });
+	render(IdentifiersEditor, props);
+	return props;
+}
+
+const line = (value: string | RegExp) => screen.getByRole('button', { name: value });
+
+describe('IdentifiersEditor', () => {
+	it('groups the identifiers by kind, one line each, and opens one at a time', async () => {
 		const user = userEvent.setup();
-		const props = $state({
-			rows: [
-				row('personnel_number', '4711', 'manual', 'p1'),
-				row('iban', 'DE89370400440532013000', 'learned')
-			],
-			topics: [WORK]
-		});
-		render(IdentifiersEditor, props);
-		const personnel = screen.getByText('4711').closest('button')!;
-		expect(within(personnel).getByText(kindLabel('personnel_number'))).toBeTruthy();
+		const props = editor([
+			row('personnel_number', '4711', 'manual', 'p1'),
+			row('iban', 'DE89370400440532013000', 'learned'),
+			row('customer_number', 'KD-1', 'rejected')
+		]);
+		expect(
+			screen.getByRole('heading', { name: `${kindLabel('personnel_number')} 1` })
+		).toBeTruthy();
+		expect(screen.getByRole('heading', { name: `${kindLabel('iban')} 1` })).toBeTruthy();
+		const personnel = line(/^4711/);
 		expect(within(personnel).getByText('Arbeit')).toBeTruthy();
-		const learned = screen.getByText('DE89370400440532013000').closest('button')!;
-		expect(within(learned).getByText(m.identifier_learned())).toBeTruthy();
-		// Closed, the rows have no fields.
+		expect(within(line(/^DE89/)).getByText(m.identifier_learned())).toBeTruthy();
+		expect(within(line(/^KD-1/)).getByText(m.identifier_rejected())).toBeTruthy();
+		// Closed, the lines have no fields.
+		expect(personnel.getAttribute('aria-expanded')).toBe('false');
 		expect(screen.queryByLabelText(m.identifier_value())).toBeNull();
 		await user.click(personnel);
+		expect(personnel.getAttribute('aria-expanded')).toBe('true');
 		const value = screen.getByLabelText(m.identifier_value()) as HTMLInputElement;
 		expect(value.value).toBe('4711');
 		await user.clear(value);
-		await user.type(value, '0815');
-		await user.click(screen.getByRole('button', { name: m.picker_done() }));
+		await user.type(value, '0815{Enter}');
+		// Enter closes the line; the change stays.
+		expect(screen.queryByLabelText(m.identifier_value())).toBeNull();
 		expect(props.rows[0].value).toBe('0815');
-		await user.click(screen.getByText('DE89370400440532013000').closest('button')!);
+		// A learned one is taken over, a rejected one allowed again.
+		await user.click(line(/^DE89/));
+		expect(screen.getByText(m.identifier_learned_note())).toBeTruthy();
 		await user.click(screen.getByRole('button', { name: m.identifier_keep() }));
 		expect(props.rows[1].source).toBe('manual');
-		await user.click(screen.getByRole('button', { name: m.picker_done() }));
-		await user.click(screen.getByRole('button', { name: m.identifier_add() }));
-		expect(props.rows).toHaveLength(3);
-		expect((screen.getByLabelText(m.identifier_value()) as HTMLInputElement).value).toBe('');
-		await user.click(screen.getByRole('button', { name: m.identifier_remove() }));
+		await user.click(line(/^KD-1/));
+		expect(line(/^DE89/).getAttribute('aria-expanded')).toBe('false');
+		await user.click(screen.getByRole('button', { name: m.identifier_unblock() }));
+		expect(props.rows.map((item) => item.value)).toEqual(['0815', 'DE89370400440532013000']);
+	});
+
+	it('adds one opened, ready to type, and removes it', async () => {
+		const user = userEvent.setup();
+		const props = editor([row('iban', 'DE89370400440532013000')]);
+		await user.click(screen.getByRole('button', { name: m.identifier_add_short() }));
 		expect(props.rows).toHaveLength(2);
+		expect(document.activeElement).toBe(screen.getByLabelText(m.identifier_value()));
+		expect(line(m.identifier_new()).getAttribute('aria-expanded')).toBe('true');
+		await user.click(
+			screen.getByRole('button', { name: m.identifier_remove_named({ value: m.identifier_new() }) })
+		);
+		expect(props.rows).toHaveLength(1);
+	});
+
+	it('finds identifiers by value written with spaces, by kind and by topic', async () => {
+		const user = userEvent.setup();
+		editor([
+			row('personnel_number', '4711', 'manual', 'p1'),
+			row('iban', 'DE89370400440532013000')
+		]);
+		const search = screen.getByLabelText(m.identifier_search());
+		await user.type(search, 'arbeit');
+		expect(screen.queryByRole('button', { name: /^DE89/ })).toBeNull();
+		expect(line(/^4711/)).toBeTruthy();
+		await user.clear(search);
+		await user.type(search, 'DE89 3704');
+		expect(screen.queryByRole('button', { name: /^4711/ })).toBeNull();
+		await user.clear(search);
+		await user.type(search, 'nichts');
+		expect(screen.getByText(m.assignment_none_found())).toBeTruthy();
+	});
+
+	it('shows what the API refused in the open line', () => {
+		const refused = row('iban', 'DE00 1234');
+		editor([refused], {
+			opened: refused.key,
+			errors: { [refused.key]: "'DE00 1234' is not a valid IBAN" }
+		});
+		expect(screen.getByRole('alert').textContent).toContain('is not a valid IBAN');
+		expect(screen.getByLabelText(m.identifier_value()).getAttribute('aria-invalid')).toBe('true');
+	});
+
+	it('says so when there is none, and adds with a round button on a phone', async () => {
+		phone.override(true);
+		const user = userEvent.setup();
+		const props = editor([]);
+		expect(screen.getByText(m.identifier_none())).toBeTruthy();
+		await user.click(screen.getByRole('button', { name: m.identifier_add() }));
+		expect(props.rows).toHaveLength(1);
 	});
 });

@@ -991,7 +991,6 @@
 	"topic_not_enabled": "Topic not enabled",
 	"topic_no_contact": "Choose a contact first",
 	"topic_enables_hint": "The contact does not have this topic yet: saving enables it at the contact.",
-	"identifier_remove": "Remove identifier",
 	"identifier_kind_iban": "IBAN",
 	"identifier_kind_vat_id": "VAT number",
 	"identifier_kind_customer_number": "Customer or contract number",
@@ -1177,5 +1176,12 @@
 	"field_def_manual_line": "Lekto never asks the model for this field.",
 	"master_tab_general": "General",
 	"field_def_scope_all_short": "all",
-	"editor_tab_problem": "Something here is wrong"
+	"editor_tab_problem": "Something here is wrong",
+	"identifier_search": "Search identifiers",
+	"identifier_add_short": "Identifier",
+	"identifier_new": "New identifier",
+	"identifier_none": "No identifiers yet.",
+	"identifier_remove_named": "Remove {value}",
+	"identifier_learned_note": "Lekto learned this identifier from confirmed documents. Taken over, it counts as one entered by hand and can be changed.",
+	"identifier_rejected_note": "Rejected: Lekto does not learn this identifier again."
 }

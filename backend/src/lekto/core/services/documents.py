@@ -124,6 +124,8 @@ class DocumentFacets:
     total: int
     contacts: dict[ContactId | None, int]
     document_types: dict[DocumentTypeId | None, int]
+    contact_groups: dict[TagId, int]
+    document_type_groups: dict[TagId, int]
     topics: dict[TagId, int]
     tags: dict[TagId, int]
     months: dict[str, int]
@@ -500,11 +502,12 @@ class DocumentService:
         self, actor: UserId, filter: DocumentFilter, *, all_users: bool = False
     ) -> DocumentFacets:
         """How many documents within the caller's reach (with `all_users`, admins only: every
-        document) that match `filter` have each contact, type, topic, tag and month of their
-        document date. A group whose values combine as either-or (contacts, types, topics, the
-        period) counts without its own choice, so that it tells what one more would add; tags
-        and groups combine as all-of and count with the whole filter. A tag or topic counts
-        the documents with it or one below it, each once, as its filter finds them."""
+        document) that match `filter` have each contact, type, group of contacts and types,
+        topic, tag and month of their document date. What combines as either-or (contacts,
+        types, groups, topics, the period) counts without its own choice, so that it tells
+        what one more would add; tags combine as all-of and count with the whole filter. A
+        tag, topic or group counts the documents with it or one below it, each once, as its
+        filter finds them."""
         async with self._uow() as uow:
             await load_lister(uow, actor, all_users, "count the documents of all users")
             user = None if all_users else actor
@@ -522,11 +525,25 @@ class DocumentService:
             by_type = await rows(replace(filter, document_types=None))
             by_topic = await rows(replace(filter, topics=None))
             by_date = await rows(replace(filter, document_dates=None))
+            by_contact_group = await rows(replace(filter, contact_groups=()))
+            by_type_group = await rows(replace(filter, document_type_groups=()))
+            contact_groups = {item.id: item.group_ids for item in await uow.contacts.list_all()}
+            type_groups = {item.id: item.group_ids for item in await uow.document_types.list_all()}
         dates = [row.document_date for row in by_date]
         return DocumentFacets(
             total=len(whole),
             contacts=dict(Counter(row.contact for row in by_contact)),
             document_types=dict(Counter(row.document_type for row in by_type)),
+            contact_groups=tree.holders(
+                contact_groups.get(row.contact, frozenset())
+                for row in by_contact_group
+                if row.contact is not None
+            ),
+            document_type_groups=tree.holders(
+                type_groups.get(row.document_type, frozenset())
+                for row in by_type_group
+                if row.document_type is not None
+            ),
             topics=tree.holders([row.topic] for row in by_topic if row.topic is not None),
             tags=tree.holders(row.tags for row in whole),
             months=dict(Counter(f"{day.year:04d}-{day.month:02d}" for day in dates if day)),

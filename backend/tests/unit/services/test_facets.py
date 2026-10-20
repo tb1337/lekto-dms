@@ -28,14 +28,20 @@ class Scene:
     health: Tag
     car: Tag
     topic: Tag
+    insurer: Tag
+    health_insurer: Tag
+    bank: Tag
+    bills: Tag
     documents: list[Document]
 
 
 @pytest.fixture
 async def scene(world: World) -> Scene:
-    """Insurance with Health below it, and Car; the topic Vehicle. The owner's documents: Nord's
-    invoice with Health on 30 September in Vehicle, Nord's letter with Car on 1 October, and
-    Süd's invoice without a date or tags. A stranger's document lies outside their reach."""
+    """Insurance with Health below it, and Car; the topic Vehicle; the contact groups Insurer
+    with Health insurer (Nord) and Bank (Süd), the type group Bills (Invoice). The owner's
+    documents: Nord's invoice with Health on 30 September in Vehicle, Nord's letter with Car on
+    1 October, and Süd's invoice without a date or tags. A stranger's document lies outside
+    their reach."""
     setup = Setup(world, embeddings=None)
     admin, owner, stranger = (
         await world.user(role=Role.ADMIN),
@@ -47,9 +53,17 @@ async def scene(world: World) -> Scene:
     health = await master.create_tag(admin.id, "Health", parent_id=insurance.id)
     car = await master.create_tag(admin.id, "Car")
     topic = await master.create_tag(admin.id, "Vehicle", scope=TagScope.TOPIC)
-    nord = await master.create_contact(admin.id, "Nord", topic_ids=[topic.id])
-    sued = await master.create_contact(admin.id, "Süd")
-    invoice = await master.create_document_type(admin.id, "Invoice")
+    insurer = await master.create_tag(admin.id, "Insurer", scope=TagScope.CONTACT)
+    health_insurer = await master.create_tag(
+        admin.id, "Health insurer", scope=TagScope.CONTACT, parent_id=insurer.id
+    )
+    bank = await master.create_tag(admin.id, "Bank", scope=TagScope.CONTACT)
+    bills = await master.create_tag(admin.id, "Bills", scope=TagScope.DOCUMENT_TYPE)
+    nord = await master.create_contact(
+        admin.id, "Nord", topic_ids=[topic.id], group_ids=[health_insurer.id]
+    )
+    sued = await master.create_contact(admin.id, "Süd", group_ids=[bank.id])
+    invoice = await master.create_document_type(admin.id, "Invoice", group_ids=[bills.id])
     documents = []
     for number, (user, changes) in enumerate(
         (
@@ -77,7 +91,23 @@ async def scene(world: World) -> Scene:
         await world.documents.update_metadata(user.id, document.id, changes)
         documents.append(document)
     await setup.settle()
-    return Scene(world, admin, owner, nord, sued, invoice, insurance, health, car, topic, documents)
+    return Scene(
+        world,
+        admin,
+        owner,
+        nord,
+        sued,
+        invoice,
+        insurance,
+        health,
+        car,
+        topic,
+        insurer,
+        health_insurer,
+        bank,
+        bills,
+        documents,
+    )
 
 
 async def test_counts_every_value_of_the_documents_within_reach(scene: Scene) -> None:
@@ -125,3 +155,24 @@ async def test_every_document_only_for_admins(scene: Scene) -> None:
     facets = await scene.world.documents.facets(scene.admin.id, DocumentFilter(), all_users=True)
     assert facets.total == 4
     assert facets.contacts == {scene.nord.id: 2, scene.sued.id: 2}
+
+
+async def test_groups_count_the_documents_of_their_contacts_and_types(scene: Scene) -> None:
+    facets = await scene.world.documents.facets(scene.owner.id, DocumentFilter())
+    # A group counts those of the groups below it too.
+    assert facets.contact_groups == {
+        scene.insurer.id: 2,
+        scene.health_insurer.id: 2,
+        scene.bank.id: 1,
+    }
+    assert facets.document_type_groups == {scene.bills.id: 2}
+    # Groups combine as either-or: the Bank counts without its own choice.
+    banks = DocumentFilter(contact_groups=(frozenset({scene.bank.id}),))
+    facets = await scene.world.documents.facets(scene.owner.id, banks)
+    assert facets.total == 1
+    assert facets.contact_groups == {
+        scene.insurer.id: 2,
+        scene.health_insurer.id: 2,
+        scene.bank.id: 1,
+    }
+    assert facets.document_type_groups == {scene.bills.id: 1}

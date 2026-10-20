@@ -54,13 +54,16 @@ def document_filter(
     document_date_to: date | None = None,
 ) -> DocumentFilter:
     """The query parameters of the document list as a filter (the search takes the same).
-    Several contacts, types or spaces: one of them. Each tag or group is one set, the topics one
-    more (a document has one topic: one of them); the service adds the tags below them.
-    `document_date_from`, `document_date_to`: the document date lies between them, both days
-    included (either end may stay open)."""
+    Several contacts, types, spaces, contact groups, type groups or topics: one of them (each
+    kind one set). Each tag is a set of its own: all of them. The service adds the tags below
+    them. `document_date_from`, `document_date_to`: the document date lies between them, both
+    days included (either end may stay open)."""
 
     def sets(ids: list[UUID] | None) -> tuple[frozenset[TagId], ...]:
         return tuple(frozenset({TagId(id)}) for id in dict.fromkeys(ids or ()))
+
+    def either(ids: list[UUID] | None) -> tuple[frozenset[TagId], ...]:
+        return (frozenset(TagId(id) for id in ids),) if ids else ()
 
     return DocumentFilter(
         contacts=frozenset(ContactId(id) for id in contact_id) if contact_id else None,
@@ -68,8 +71,8 @@ def document_filter(
             frozenset(DocumentTypeId(id) for id in document_type_id) if document_type_id else None
         ),
         tags=sets(tag_id),
-        contact_groups=sets(contact_group_id),
-        document_type_groups=sets(document_type_group_id),
+        contact_groups=either(contact_group_id),
+        document_type_groups=either(document_type_group_id),
         topics=frozenset(TagId(id) for id in topic_id) if topic_id else None,
         spaces=frozenset(SpaceId(id) for id in space_id) if space_id else None,
         lanes=None if not lane else frozenset(_LANES[item] for item in lane),

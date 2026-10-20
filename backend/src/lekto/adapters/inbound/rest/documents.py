@@ -186,8 +186,8 @@ async def upload(
         "documents in spaces they own or that are shared with them. Admins may read every "
         "document and list them all with `all_users` (others: 403). Filters combine; "
         "`contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, "
-        "`document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type or "
-        "space, all tags and groups, any topic, any lane; `processing`: no lane yet). A tag "
+        "`document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type, "
+        "space, group, topic or lane, all tags; `processing`: no lane yet). A tag "
         "matches the "
         "documents with it or a tag below it; a group those whose contact (type) is in it or a "
         "group below it; a topic the documents with it or one below it. "
@@ -232,11 +232,12 @@ async def list_documents(
     summary="Counts for the filters of the documents",
     description=(
         "How many documents within the caller's reach that match the filter (the parameters "
-        "of `GET /documents`) have each contact, type, topic, tag and month of their document "
-        "date. Contacts, types, topics and the period combine as either-or: each counts "
-        "without its own choice, so it tells what one more would add. Tags combine as all-of "
-        "and count with the whole filter. A tag or topic counts the documents with it or one "
-        "below it, each once. Admins count every document with `all_users` (others: 403)."
+        "of `GET /documents`) have each contact, type, group of contacts and types, topic, "
+        "tag and month of their document date. Contacts, types, groups, topics and the period "
+        "combine as either-or: each counts without its own choice, so it tells what one more "
+        "would add. Tags combine as all-of and count with the whole filter. A tag, topic or "
+        "group counts the documents with it or one below it, each once. Admins count every "
+        "document with `all_users` (others: 403)."
     ),
     response_model=DocumentFacetsOut,
     responses=problem_responses(401, 403, 422),

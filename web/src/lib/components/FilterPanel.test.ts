@@ -38,6 +38,8 @@ const facets: components['schemas']['DocumentFacetsOut'] = {
 		...['ost', 'west', 'mitte', 'hafen', 'bahn'].map((id) => ({ id, count: 1 }))
 	],
 	document_types: [{ id: 'k1', count: 9 }],
+	contact_groups: [],
+	document_type_groups: [],
 	topics: [{ id: 'p1', count: 2 }],
 	tags: [
 		{ id: 't1', count: 4 },

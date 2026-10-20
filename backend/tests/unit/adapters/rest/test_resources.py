@@ -744,6 +744,9 @@ async def test_tags_with_scopes_trees_and_groups(api: Api) -> None:
     assert await listed(contact_group_id=insurer["id"]) == [document]
     assert await listed(document_type_group_id=bills["id"]) == [document]
     assert await listed(document_type_group_id=insurer["id"]) == []
+    # Several groups: the contact (type) in one of them.
+    assert await listed(contact_group_id=[str(UUID(int=9)), insurer["id"]]) == [document]
+    assert await listed(document_type_group_id=[bills["id"], insurer["id"]]) == [document]
 
     # The tree in order, with counts; one scope.
     response = await api.client.get(f"{PREFIX}/tags", params={"document_counts": True}, headers=o)

@@ -261,12 +261,18 @@ class YearCount(BaseModel):
 
 class DocumentFacetsOut(BaseModel):
     """How many documents of the filter have each value, for the filters of the document view.
-    Contacts, types, topics and the period combine as either-or and count without their own
-    choice (what one more would add); tags count with the whole filter."""
+    Contacts, types, groups, topics and the period combine as either-or and count without
+    their own choice (what one more would add); tags count with the whole filter."""
 
     total: int = Field(description="The documents of the whole filter.")
     contacts: list[ValueCount] = Field(description="Most first; null: without a contact.")
     document_types: list[ValueCount] = Field(description="Most first; null: without a type.")
+    contact_groups: list[ValueCount] = Field(
+        description="Most first; a group counts the documents of its contacts and those below."
+    )
+    document_type_groups: list[ValueCount] = Field(
+        description="Most first; a group counts the documents of its types and those below."
+    )
     topics: list[ValueCount] = Field(
         description="Most first; a topic counts the documents with it or one below it."
     )
@@ -289,6 +295,8 @@ class DocumentFacetsOut(BaseModel):
             total=facets.total,
             contacts=counted(facets.contacts),
             document_types=counted(facets.document_types),
+            contact_groups=counted(facets.contact_groups),
+            document_type_groups=counted(facets.document_type_groups),
             topics=counted(facets.topics),
             tags=counted(facets.tags),
             years=[

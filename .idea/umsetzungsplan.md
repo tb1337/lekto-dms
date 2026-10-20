@@ -1222,7 +1222,24 @@ Die Devinstanz liest nach dem Merge `LEKTO_`: in `live.env` das Präfix umstelle
 
 **Prüfung:** Vertragstests für Filter, Zählen, Sortieren nach Feld und Lenses auf Speicher, SQLite und Postgres; Suchindex-Verträge für die Filter; REST mit Rechten (nur der Besitzer, andere 404, auch Admins); Vitest für Filterleiste, Lenses, Editor, Kartenfelder und Gruppen; im Browser gegen den Build einer Prüfinstanz mit erfundenen Daten (62 Dokumente, Felder mit Fristen, zwei Lenses), Desktop und Handy.
 
-**Offen:** Die Devinstanz braucht Revision 0031 und einen Neustart (nur auf Tobis Wunsch). Gruppen ohne Dokumente blendet die Leiste aus wie Tags (die Devinstanz hat eine Kontaktgruppe ohne Kontakte). Ob die Chips über der Liste die Farben der Tags tragen sollen. Zahlen je Lens in der Leiste (im Entwurf) fehlen noch.
+**Offen:** Gruppen ohne Dokumente blendet die Leiste aus wie Tags (die Devinstanz hat eine Kontaktgruppe ohne Kontakte). Ob die Chips über der Liste die Farben der Tags tragen sollen. Zahlen je Lens in der Leiste (im Entwurf) fehlen noch.
+
+### Zwischenschritt: Dokumentansicht – ein Reiter „Dokument“, Dateipass, Markierungen über Kreuz
+
+**Anlass (Tobi, 20.10.2026):** Die Metadaten sahen aus wie in Paperless-ngx („genauso billig“), und „Details“ und „Inhalt“ sollten eine Ansicht werden, in der man links Seiten oder Text und rechts Angaben oder Fakten frei mischt. Mock: Artefakt „Lekto Dokumentansicht“.
+
+**Entscheidungen (Tobi, 20.10.2026):** siehe `architektur.md` › Schnittstellen › Web-UI (Dokument und Dateipass). Reitername „Dokument“, die PDF-Werkzeuge bleiben oben links, die Schnellwahl zum Ausprobieren, die Leiste mit vier Teilen am Handy, der Dateipass mit festen Spaltenbreiten in „Alle Einträge“. Die Stellen der Fakten auf der Seite berechnet das Backend (Variante 1, nicht die Oberfläche aus `/structure` und nicht der Quote-Locator auf dem Archiv-PDF).
+
+**Umsetzung (Branch `enhancement/ui-optimization`, je Schritt ein Commit):**
+1. Dateipass: `file-passport.ts` liest Info, XMP, PDF/A und EXIF aus `/files`, `DocumentFiles` zeigt Lebenslauf, Pässe und Einträge.
+2. Reiter „Dokument“: `document-view.ts` (`View`, `viewOf`, `viewHref`, gemerkt unter `lekto.document.view`), `PaneHead`, `DocumentContent` geteilt in `DocumentText` und `DocumentFacts`, der Umschalter als Snippet am Ende der Köpfe (`Segmented` mit `names="@xl"`, Container-Queries).
+3. Schnellwahl (`PRESETS`, `presetOf`).
+4. Markierungen über Kreuz: `line_boxes` und `load_layout` in den Kern gezogen; `core/domain/text_places.py` (`TextPlaces`) legt die Wörter von `content.json` der Reihe nach über den Text (Läufe zwischen Leerraum, ein fehlendes Wort bringt den Rest nicht aus dem Tritt), `facts.on_pages` gibt jeder Fundstelle ihre `locations`; im Web `spanMarks` (Fakten auf der Seite) und `quoteStretches` (Zitate im Text).
+5. Handy: eine Leiste mit vier Teilen, ein Bereich zur Zeit; Tipp statt Überfahren.
+
+**Prüfung:** Domänentests für `TextPlaces` und `on_pages`, ein Test gegen echte Ausgabe des Layout-Parsers (Spalten, fester Zeichenabstand, Text am Rand, mehrere Seiten: jedes Wort findet seinen Kasten), REST mit `locations`; Vitest für Bereiche, Schnellwahl, Markierungen in beide Richtungen und das Handy; im Browser gegen den Build einer Prüfinstanz mit erfundenen Daten, Desktop und Handy.
+
+**Offen:** Ob die Schnellwahl bleibt. Wie viele Wörter der echten Dokumente ihren Kasten finden, ist nicht gemessen (nur mit Tobis Okay an der Devinstanz, nur Zahlen).
 
 ### M16 – Lesen
 
@@ -1295,5 +1312,6 @@ Entwickelt und getestet wird im Devcontainer; er startet alle Abhängigkeiten pe
 - Nach dem Erstellen: `uv sync` und `pnpm install` automatisch.
 - Tests: Kern-Tests mit In-Memory-Adaptern; Vertragstests gegen SQLite, Postgres, Dateisystem, Garage und Meilisearch aus dem Compose-Netz.
 - LLM: kein Modell im Devcontainer. Tests nutzen einen Fake-Adapter; für echte Läufe zeigt `LEKTO_LLM_BASE_URL` auf ein vorhandenes Ollama (z. B. auf dem Host über `host.docker.internal`). Docker auf macOS hat keinen GPU-Zugriff, ein Ollama im Container wäre dort langsam.
+- Einstellungen (Tobi, 20.10.2026): `test.env` (im Repository) hält die festen Zugangsdaten der Dienste; sie ist die Umgebung des Containers und von CI, für die Integrationstests und `garage-init`. Die Devinstanz liest `dev.env` (nicht im Repository; Vorlage `dev.env.example`, angelegt von `dev-setup.sh`), ebenso die VS-Code-Tasks; ihre Daten: Datenbank `lekto_dev`, Bucket `lekto-dev`, Index `lekto-dev-documents`. Bis dahin hieß sie `live.env` mit `lekto_live`, `lekto-live` und `lekto-live-documents` (umbenannt, nicht kopiert); die alte `dev.env` mit eigenen Entwicklungsdaten (`lekto`) gibt es nicht mehr.
 - Alle Images müssen amd64 und arm64 unterstützen.
 - Versionen der Abhängigkeiten werden gepinnt.

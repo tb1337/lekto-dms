@@ -22,7 +22,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('DocumentContent', () => {
 	it('shows the text as it is set, page by page', async () => {
-		render(DocumentContent, { documentId: 'doc-1', filename: 'payslip.pdf' });
+		render(DocumentContent, { documentId: 'doc-1' });
 		const first = await screen.findByRole('region', { name: m.content_page({ page: 1 }) });
 		const second = screen.getByRole('region', { name: m.content_page({ page: 2 }) });
 		// Columns stay where they are set: no Markdown, no collapsed spaces.
@@ -37,7 +37,7 @@ describe('DocumentContent', () => {
 	});
 
 	it('asks for no text before the document has it', async () => {
-		render(DocumentContent, { documentId: 'doc-1', filename: 'scan.pdf', hasText: false });
+		render(DocumentContent, { documentId: 'doc-1', hasText: false });
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(screen.queryByRole('region', { name: m.content_page({ page: 1 }) })).toBeNull();
@@ -64,7 +64,7 @@ describe('DocumentContent', () => {
 			codes: []
 		};
 		const lookup = { contacts: [], fields: [] } as unknown as Lookup;
-		render(DocumentContent, { documentId: 'doc-1', filename: 'payslip.pdf', facts, lookup });
+		render(DocumentContent, { documentId: 'doc-1', facts, lookup });
 		await screen.findByRole('region', { name: m.content_page({ page: 1 }) });
 		const panel = screen.getByRole('complementary', { name: m.facts_title() });
 		await fireEvent.click(within(panel).getByRole('button', { name: /EBeschV/ }));

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import Copy from '@lucide/svelte/icons/copy';
-	import Download from '@lucide/svelte/icons/download';
 	import { tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
@@ -30,7 +29,6 @@
 	// is until it is read again.
 	let {
 		documentId,
-		filename,
 		vision = false,
 		hasText = true,
 		facts = null,
@@ -41,7 +39,6 @@
 		onfactschanged = () => {}
 	}: {
 		documentId: string;
-		filename: string;
 		/** The vision language model read the text (a person asked for it). */
 		vision?: boolean;
 		/** The document has its text: before, nothing is asked for (409). */
@@ -59,7 +56,7 @@
 		onfactschanged?: () => void;
 	} = $props();
 
-	// More than this is not shown (the download has all of it).
+	// More than this is not shown (copying takes all of it).
 	const MOST_TEXT = 2_000_000;
 
 	// What the facts mark in the text: spans in characters of the whole text.
@@ -145,36 +142,18 @@
 		await tick();
 		textBox?.querySelector('[data-mark]')?.scrollIntoView({ block: 'center' });
 	}
-	const stem = $derived(filename.replace(/\.[^.]+$/, '') || 'document');
 
+	// Copying is the way out of the text (Tobi, 20.10.2026: no download): all of it, also when
+	// what is shown stops short.
 	async function copy() {
 		if (text === null) return;
 		try {
-			await navigator.clipboard.writeText(text);
+			const whole = text.length < total ? (await readText(documentId, Infinity)).text : text;
+			await navigator.clipboard.writeText(whole);
 			toast.success(m.content_copied());
 		} catch (error) {
 			toast.error(describeError(error));
 		}
-	}
-
-	async function download() {
-		if (text === null) return;
-		let whole = text;
-		if (text.length < total) {
-			// What is shown stops short; the file has all of it.
-			try {
-				whole = (await readText(documentId, Infinity)).text;
-			} catch (error) {
-				toast.error(describeError(error));
-				return;
-			}
-		}
-		const link = window.document.createElement('a');
-		const url = URL.createObjectURL(new Blob([whole], { type: 'text/plain;charset=utf-8' }));
-		link.href = url;
-		link.download = `${stem}.txt`;
-		link.click();
-		setTimeout(() => URL.revokeObjectURL(url), 1000);
 	}
 </script>
 
@@ -196,10 +175,6 @@
 				<Button variant="ghost" size="sm" disabled={text === null} onclick={copy}>
 					<Copy aria-hidden="true" />
 					{m.content_copy()}
-				</Button>
-				<Button variant="ghost" size="sm" disabled={text === null} onclick={download}>
-					<Download aria-hidden="true" />
-					{m.doc_download()}
 				</Button>
 			</div>
 		</div>

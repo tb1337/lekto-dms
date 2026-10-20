@@ -369,7 +369,6 @@
 		{:else if tab === 'content'}
 			<DocumentContent
 				documentId={id}
-				filename={document.original_filename}
 				vision={reading?.vision ?? false}
 				hasText={hasText(document.processing)}
 				{facts}

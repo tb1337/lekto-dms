@@ -11,25 +11,97 @@ export type Review = components['schemas']['ReviewOut'];
 export type Place = components['schemas']['LocationOut'];
 export type Box = components['schemas']['BoxOut'];
 
-export const TABS = ['details', 'content', 'metadata', 'log'] as const;
+export const TABS = ['document', 'metadata', 'log'] as const;
 export type Tab = (typeof TABS)[number];
 
 /** What the tabs read of a URL (SvelteKit's `page.url` is a read-only one). */
 type Address = { pathname: string; search: string; searchParams: Pick<URLSearchParams, 'get'> };
 
-/** The tab a URL names (`?tab=`); the details without one. */
+/** The tab a URL names (`?tab=`); the document without one, and for the links of before
+ * (`?tab=details`, `?tab=content`). */
 export function tabOf(url: Address): Tab {
 	const tab = url.searchParams.get('tab') ?? '';
-	return (TABS as readonly string[]).includes(tab) ? (tab as Tab) : 'details';
+	return (TABS as readonly string[]).includes(tab) ? (tab as Tab) : 'document';
 }
 
-/** The URL of `tab`, keeping the other parameters (`from=inbox`). */
+/** The URL of `tab`, keeping the other parameters (`from=inbox`, the view). */
 export function tabHref(url: Address, tab: Tab): string {
 	const params = new URLSearchParams(url.search);
-	if (tab === 'details') params.delete('tab');
+	if (tab === 'document') params.delete('tab');
 	else params.set('tab', tab);
+	return hrefOf(url, params);
+}
+
+function hrefOf(url: Address, params: URLSearchParams): string {
 	const query = params.toString();
 	return query ? `${url.pathname}?${query}` : url.pathname;
+}
+
+/**
+ * The document tab (Tobi, 20.10.2026): two panes, each with its switch. On the left the pages
+ * or the recognised text, on the right the details (the form) or the facts. Checking takes the
+ * pages and the details (once the "details" tab), reading the text and the facts (once
+ * "content"); anything in between goes.
+ */
+export const LEFT = ['pages', 'text'] as const;
+export const RIGHT = ['form', 'facts'] as const;
+export type Left = (typeof LEFT)[number];
+export type Right = (typeof RIGHT)[number];
+export interface View {
+	left: Left;
+	right: Right;
+}
+
+export const CHECKING: View = { left: 'pages', right: 'form' };
+const READING: View = { left: 'text', right: 'facts' };
+const VIEW_KEY = 'lekto.document.view';
+
+/** The view a URL names (`?left=`, `?right=`); what it does not name comes from a link of
+ * before (`?tab=details` checks, `?tab=content` reads), else from `remembered`. */
+export function viewOf(url: Address, remembered: View = CHECKING): View {
+	const tab = url.searchParams.get('tab');
+	const base = tab === 'details' ? CHECKING : tab === 'content' ? READING : remembered;
+	const left = url.searchParams.get('left') ?? '';
+	const right = url.searchParams.get('right') ?? '';
+	return {
+		left: (LEFT as readonly string[]).includes(left) ? (left as Left) : base.left,
+		right: (RIGHT as readonly string[]).includes(right) ? (right as Right) : base.right
+	};
+}
+
+/** The URL of the document tab showing `view`, keeping the other parameters. */
+export function viewHref(url: Address, view: View): string {
+	const params = new URLSearchParams(url.search);
+	params.delete('tab');
+	params.set('left', view.left);
+	params.set('right', view.right);
+	return hrefOf(url, params);
+}
+
+/** The view this browser showed last; checking at first. */
+export function rememberedView(): View {
+	try {
+		const stored: unknown = JSON.parse(globalThis.localStorage?.getItem(VIEW_KEY) ?? 'null');
+		if (typeof stored !== 'object' || stored === null) return CHECKING;
+		const { left, right } = stored as Record<string, unknown>;
+		return {
+			left: (LEFT as readonly unknown[]).includes(left) ? (left as Left) : CHECKING.left,
+			right: (RIGHT as readonly unknown[]).includes(right) ? (right as Right) : CHECKING.right
+		};
+	} catch {
+		return CHECKING; // no storage or garbage in it
+	}
+}
+
+export function rememberView(view: View): void {
+	try {
+		globalThis.localStorage?.setItem(
+			VIEW_KEY,
+			JSON.stringify({ left: view.left, right: view.right })
+		);
+	} catch {
+		// Kept for this page only.
+	}
 }
 
 type Viewed = Pick<components['schemas']['DocumentDetails'], 'id' | 'media_type' | 'page_count'>;

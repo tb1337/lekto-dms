@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
 import type { components } from '#lib/api/schema.ts';
+import type { Facts } from '#lib/facts.ts';
 import { events } from '#lib/events.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
 import { session } from '#lib/session.svelte.ts';
@@ -87,6 +88,7 @@ afterEach(() => {
 	events.stop();
 	session.clear();
 	vi.unstubAllGlobals();
+	localStorage.clear();
 });
 
 describe('the document view and seen', () => {
@@ -241,5 +243,79 @@ describe('confirming from the inbox', () => {
 		await userEvent.click(await screen.findByRole('button', { name: m.review_confirm() }));
 		await waitFor(() => expect(calls(api)).toContain('POST /api/v1/documents/doc-2/confirm'));
 		await waitFor(() => expect(goto).toHaveBeenLastCalledWith('/ui/inbox'));
+	});
+});
+
+describe('the document tab', () => {
+	const TEXT = 'Kundennummer EBeschV 4711\n\f\nSeite zwei';
+	const FACTS: Facts = {
+		contact_id: null,
+		named: [],
+		identifiers: [
+			{
+				kind: 'customer_number',
+				value: 'EBeschV',
+				contact_id: null,
+				in_text: true,
+				in_code: false,
+				spans: [{ start: 13, end: 20 }],
+				other_contacts: null
+			}
+		],
+		codes: []
+	};
+	const readable = {
+		'GET /api/v1/documents/doc-1/text': () => ({
+			text: TEXT,
+			offset: 0,
+			total_length: TEXT.length,
+			next_offset: null
+		}),
+		'GET /api/v1/documents/doc-1/facts': () => FACTS
+	};
+	// Read again: it has its text.
+	const parsed = () =>
+		documentOf({ lane: 'green', processing: { ...documentOf().processing, run: 2 } });
+	const titleField = () =>
+		globalThis.document.getElementById('doc-title') as HTMLInputElement | null;
+
+	it('opens a link of before on the text and the facts, and marks a fact in the text', async () => {
+		Element.prototype.scrollIntoView = vi.fn();
+		goTo('/ui/documents/doc-1?tab=content', { id: 'doc-1' });
+		serve(parsed, readable);
+		render(Page);
+		const facts = await screen.findByRole('complementary', { name: m.facts_title() });
+		await screen.findByRole('region', { name: m.content_page({ page: 1 }) });
+		await userEvent.click(await within(facts).findByRole('button', { name: /EBeschV/ }));
+		expect(globalThis.document.querySelector('mark[data-mark]')?.textContent).toBe('EBeschV');
+		// The browser remembers the view; a switch puts it in the link.
+		expect(JSON.parse(localStorage.getItem('lekto.document.view') ?? '')).toEqual({
+			left: 'text',
+			right: 'facts'
+		});
+		const left = screen.getByRole('group', { name: m.view_left() });
+		await userEvent.click(within(left).getByRole('button', { name: m.view_pages() }));
+		expect(goto).toHaveBeenCalledWith('/ui/documents/doc-1?left=pages&right=facts', {
+			replace: true,
+			reset: false
+		});
+	});
+
+	it('keeps what was typed in the form while the facts are shown', async () => {
+		localStorage.setItem('lekto.document.view', JSON.stringify({ left: 'text', right: 'form' }));
+		goTo('/ui/documents/doc-1', { id: 'doc-1' });
+		serve(parsed, readable);
+		render(Page);
+		await waitFor(() => expect(titleField()).not.toBeNull());
+		await userEvent.clear(titleField()!);
+		await userEvent.type(titleField()!, 'Neu');
+		goTo('/ui/documents/doc-1?left=text&right=facts', { id: 'doc-1' });
+		await screen.findByRole('complementary', { name: m.facts_title() });
+		// Hidden, not gone.
+		expect(screen.queryByRole('form', { name: m.edit_title() })).toBeNull();
+		expect(titleField()?.value).toBe('Neu');
+		goTo('/ui/documents/doc-1?left=text&right=form', { id: 'doc-1' });
+		await waitFor(() => expect(screen.getByRole('form', { name: m.edit_title() })).toBeTruthy());
+		expect(titleField()?.value).toBe('Neu');
 	});
 });

@@ -1,5 +1,10 @@
 <script lang="ts">
+	import File from '@lucide/svelte/icons/file';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import SquarePen from '@lucide/svelte/icons/square-pen';
+	import TextAlignStart from '@lucide/svelte/icons/text-align-start';
 	import { onMount, untrack } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '#lib/api/client.ts';
@@ -7,13 +12,15 @@
 	import { ApiError } from '#lib/api/problem.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import { BASE } from '#lib/base.ts';
-	import DocumentContent from '#lib/components/document/DocumentContent.svelte';
+	import DocumentFacts from '#lib/components/document/DocumentFacts.svelte';
 	import DocumentFiles from '#lib/components/document/DocumentFiles.svelte';
 	import DocumentForm from '#lib/components/document/DocumentForm.svelte';
 	import DocumentLog from '#lib/components/document/DocumentLog.svelte';
 	import DocumentHeader from '#lib/components/document/DocumentHeader.svelte';
+	import DocumentText from '#lib/components/document/DocumentText.svelte';
 	import PageImages from '#lib/components/document/PageImages.svelte';
 	import PdfViewer from '#lib/components/PdfViewer.svelte';
+	import Segmented from '#lib/components/Segmented.svelte';
 	import TabBar from '#lib/components/TabBar.svelte';
 	import * as Alert from '#lib/components/ui/alert/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
@@ -23,13 +30,20 @@
 		neighbours,
 		nextDecision,
 		type InboxPlace,
+		type Left,
+		rememberedView,
+		rememberView,
+		type Right,
 		tabHref,
 		tabOf,
 		type Mark,
 		type Place,
 		type Review,
 		type Tab,
-		viewerSources
+		type View,
+		viewerSources,
+		viewHref,
+		viewOf
 	} from '#lib/document-view.ts';
 	import { describeError, reportError } from '#lib/errors.ts';
 	import { events, NODE_EVENTS } from '#lib/events.svelte.ts';
@@ -41,15 +55,18 @@
 	import { scope } from '#lib/scope.svelte.ts';
 	import { hasText, type GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
-	import { factCounts, type CodeFacts, type CodePlace, type Facts } from '#lib/facts.ts';
+	import { factCounts, type CodeFacts, type CodePlace, type Facts, type Span } from '#lib/facts.ts';
 	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
 
-	// One view for every document, from the inbox and from the list: the pages and the fields
-	// (details), the recognised text and structure (content), and the processing (log).
+	// One view for every document, from the inbox and from the list: the document (on the left
+	// its pages or its text, on the right its details or its facts), its files (metadata) and
+	// the processing (log). The view of the document tab is in the link; without one, the
+	// browser's last.
 	const id = $derived(page.params.id ?? '');
 	const tab = $derived(tabOf(page.url));
+	const view = $derived(viewOf(page.url, rememberedView()));
 	const fromInbox = $derived(page.url.searchParams.get('from') === 'inbox');
 	let document = $state<Document | null>(null);
 	let review = $state<Review | null>(null);
@@ -65,7 +82,10 @@
 	let inboxReady: Promise<void> = Promise.resolve();
 	let problem = $state<unknown>(null);
 	let marks = $state<Mark[]>([]);
+	// What a fact marks in the text.
+	let textMarks = $state<Span[]>([]);
 	let viewer = $state<PdfViewer | null>(null);
+	let textPane = $state<DocumentText | null>(null);
 	let header = $state<DocumentHeader | null>(null);
 
 	const user = $derived(session.user);
@@ -154,7 +174,7 @@
 			derived: false,
 			pinned: each.page === place.page
 		}));
-		await goto(tabHref(page.url, 'details'));
+		await show({ ...view, left: 'pages' });
 		// The viewer lays its pages out after it is shown.
 		for (const wait of [300, 900, 1800]) setTimeout(() => viewer?.reveal(place), wait);
 	}
@@ -203,6 +223,7 @@
 				facts = null;
 				marks = [];
 				codeMarks = [];
+				textMarks = [];
 			}
 		});
 	});
@@ -254,6 +275,28 @@
 		viewer?.reveal(place);
 	}
 
+	// A pane once shown stays, hidden while the other one is: the form keeps what was typed,
+	// the pages their zoom and place.
+	const opened = new SvelteSet<Left | Right>();
+	$effect(() => {
+		if (tab !== 'document') return;
+		rememberView(view);
+		untrack(() => {
+			opened.add(view.left);
+			opened.add(view.right);
+		});
+	});
+
+	/** Show `view` in the document tab; a switch, not a step back in the history. */
+	function show(next: View) {
+		return goto(viewHref(page.url, next), { replace: true, reset: false });
+	}
+
+	function markText(spans: Span[], scroll: boolean) {
+		textMarks = spans;
+		if (scroll && spans.length > 0) void textPane?.revealMark();
+	}
+
 	async function confirmed(next: string | null) {
 		// It waits for no decision any more, whatever the next list says.
 		const left = id;
@@ -262,8 +305,7 @@
 	}
 
 	const tabs: { tab: Tab; label: () => string }[] = [
-		{ tab: 'details', label: m.tab_details },
-		{ tab: 'content', label: m.tab_content },
+		{ tab: 'document', label: m.tab_document },
 		{ tab: 'metadata', label: m.tab_metadata },
 		{ tab: 'log', label: m.tab_log }
 	];
@@ -324,60 +366,116 @@
 			current={tab}
 		/>
 
-		{#if tab === 'details'}
+		{#if tab === 'document'}
+			{#snippet leftSwitch()}
+				<Segmented
+					size="sm"
+					names="@xl"
+					label={m.view_left()}
+					value={view.left}
+					options={[
+						{ value: 'pages', label: m.view_pages(), icon: File },
+						{ value: 'text', label: m.view_text(), icon: TextAlignStart }
+					]}
+					onchange={(next) => show({ ...view, left: next as Left })}
+				/>
+			{/snippet}
+			{#snippet rightSwitch()}
+				<Segmented
+					size="sm"
+					names="wide"
+					label={m.view_right()}
+					value={view.right}
+					options={[
+						{ value: 'form', label: m.view_form(), icon: SquarePen },
+						{ value: 'facts', label: m.view_facts(), icon: ListChecks }
+					]}
+					onchange={(next) => show({ ...view, right: next as Right })}
+				/>
+			{/snippet}
 			<div
 				class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_28rem] lg:grid-rows-[minmax(0,1fr)]"
 			>
 				<div class="flex min-h-[32rem] flex-col lg:min-h-0">
-					<!-- Anew once the archive exists: the marks belong to it, not to the original. -->
-					{#key `${id}:${archive}`}
-						{#if archive || !document.page_count}
-							<PdfViewer
-								bind:this={viewer}
-								sources={viewerSources(document, archive)}
-								label={document.title}
-								marks={archive ? [...marks, ...codeMarks] : []}
+					{#if view.left === 'pages' || opened.has('pages')}
+						<div class="flex min-h-0 flex-1 flex-col" hidden={view.left !== 'pages'}>
+							<!-- Anew once the archive exists: the marks belong to it, not to the original. -->
+							{#key `${id}:${archive}`}
+								{#if archive || !document.page_count}
+									<PdfViewer
+										bind:this={viewer}
+										sources={viewerSources(document, archive)}
+										label={document.title}
+										marks={archive ? [...marks, ...codeMarks] : []}
+										end={leftSwitch}
+									/>
+								{:else}
+									<PageImages
+										documentId={id}
+										pageCount={document.page_count}
+										label={document.title}
+										end={leftSwitch}
+									/>
+								{/if}
+							{/key}
+						</div>
+					{/if}
+					{#if view.left === 'text' || opened.has('text')}
+						<div class="flex min-h-0 flex-1 flex-col" hidden={view.left !== 'text'}>
+							<DocumentText
+								bind:this={textPane}
+								documentId={id}
+								vision={reading?.vision ?? false}
+								hasText={hasText(document.processing)}
+								marks={textMarks}
+								end={leftSwitch}
 							/>
-						{:else}
-							<PageImages documentId={id} pageCount={document.page_count} label={document.title} />
-						{/if}
-					{/key}
+						</div>
+					{/if}
 				</div>
 				<div class="flex min-h-[32rem] flex-col lg:min-h-0">
-					{#if lookup}
-						{#key id}
-							<DocumentForm
-								{document}
+					{#if view.right === 'facts' || opened.has('facts')}
+						<div class="flex min-h-0 flex-1 flex-col" hidden={view.right !== 'facts'}>
+							<DocumentFacts
+								{facts}
+								documentId={id}
 								{lookup}
-								{review}
-								{editable}
-								next={nextUp}
-								onsaved={(updated) => (document = updated)}
-								onenabled={() => loadLookup().then((value) => (lookup = value), reportError)}
-								onconfirmed={confirmed}
-								onmarks={(next) => (marks = next)}
-								factCounts={facts ? factCounts(facts) : null}
-								factsHref={tabHref(page.url, 'content')}
-								onreveal={reveal}
+								topicId={document.topic_id}
+								admin={session.isAdmin}
+								onmark={markText}
+								onshowcode={showCode}
+								onchanged={reloadFacts}
+								end={rightSwitch}
 							/>
-						{/key}
-					{:else}
-						<p class="text-muted-foreground">{m.loading()}</p>
+						</div>
+					{/if}
+					{#if view.right === 'form' || opened.has('form')}
+						<div class="flex min-h-0 flex-1 flex-col" hidden={view.right !== 'form'}>
+							{#if lookup}
+								{#key id}
+									<DocumentForm
+										{document}
+										{lookup}
+										{review}
+										{editable}
+										next={nextUp}
+										onsaved={(updated) => (document = updated)}
+										onenabled={() => loadLookup().then((value) => (lookup = value), reportError)}
+										onconfirmed={confirmed}
+										onmarks={(next) => (marks = next)}
+										factCounts={facts ? factCounts(facts) : null}
+										factsHref={viewHref(page.url, { ...view, right: 'facts' })}
+										onreveal={reveal}
+										end={rightSwitch}
+									/>
+								{/key}
+							{:else}
+								<p class="text-muted-foreground">{m.loading()}</p>
+							{/if}
+						</div>
 					{/if}
 				</div>
 			</div>
-		{:else if tab === 'content'}
-			<DocumentContent
-				documentId={id}
-				vision={reading?.vision ?? false}
-				hasText={hasText(document.processing)}
-				{facts}
-				{lookup}
-				topicId={document.topic_id}
-				admin={session.isAdmin}
-				onshowcode={showCode}
-				onfactschanged={reloadFacts}
-			/>
 		{:else if tab === 'metadata'}
 			<DocumentFiles documentId={id} />
 		{:else if tab === 'log'}

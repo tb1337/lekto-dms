@@ -39,6 +39,7 @@
 		problem = null,
 		note = null,
 		page,
+		end,
 		onshow,
 		onsettle
 	}: {
@@ -51,6 +52,8 @@
 		/** Said in the toolbar beside the page count. */
 		note?: string | null;
 		page: Snippet<[number]>;
+		/** At the end of the toolbar (the switch of a pane). */
+		end?: Snippet;
 		onshow?: (number: number, node: HTMLElement) => void;
 		onsettle?: (pages: { number: number; node: HTMLElement }[]) => void;
 	} = $props();
@@ -299,7 +302,7 @@
 	<div
 		role="toolbar"
 		aria-label={m.pdf_toolbar()}
-		class="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-card px-3 py-2"
+		class="@container flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-card px-3 py-2"
 	>
 		<Button
 			variant="ghost"
@@ -329,7 +332,7 @@
 		<span class="mx-1 h-5 w-px bg-border" aria-hidden="true"></span>
 		<Segmented
 			size="sm"
-			names="wide"
+			names="@3xl"
 			label={m.pdf_layouts()}
 			value={layout ?? ''}
 			options={LAYOUTS.map((entry) => ({
@@ -346,6 +349,7 @@
 				? m.pdf_pages({ first: current, last, total: sizes.length })
 				: m.pdf_page({ current, total: sizes.length })}
 		</span>
+		{@render end?.()}
 	</div>
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 	<div

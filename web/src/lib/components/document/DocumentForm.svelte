@@ -6,7 +6,7 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Shapes from '@lucide/svelte/icons/shapes';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, untrack, type Snippet } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { api } from '#lib/api/client.ts';
@@ -17,6 +17,7 @@
 	import ContactAvatar from '#lib/components/ContactAvatar.svelte';
 	import FieldGroup from '#lib/components/document/FieldGroup.svelte';
 	import FieldShell from '#lib/components/document/FieldShell.svelte';
+	import PaneHead from '#lib/components/document/PaneHead.svelte';
 	import TopicInput from '#lib/components/document/TopicInput.svelte';
 	import SearchSelect, { type SearchOption } from '#lib/components/SearchSelect.svelte';
 	import GroupChips from '#lib/components/GroupChips.svelte';
@@ -38,6 +39,7 @@
 		type Review
 	} from '#lib/document-view.ts';
 	import { describeError, fieldErrors as fieldMessages } from '#lib/errors.ts';
+	import { factsSummary } from '#lib/facts.ts';
 	import { sameValue, toApi, toInput, type ApiValue, type InputValue } from '#lib/fields.ts';
 	import {
 		spaceLabel,
@@ -75,7 +77,8 @@
 		onreveal,
 		onenabled,
 		factCounts = null,
-		factsHref = ''
+		factsHref = '',
+		end
 	}: {
 		document: Document;
 		lookup: Lookup;
@@ -94,22 +97,14 @@
 		onenabled?: () => void;
 		/** What the document shows of its contact, counted; a chip at the contact leads there. */
 		factCounts?: { evidence: number; unknown: number; codes: number } | null;
-		/** Where the facts are: the content. */
+		/** Where the facts are: the other pane of the document tab. */
 		factsHref?: string;
+		/** At the end of the head: the pane's switch. */
+		end?: Snippet;
 	} = $props();
 
 	// The chip's text: what there is, counted; nothing for none.
-	const factsChip = $derived.by(() => {
-		if (!factCounts) return '';
-		const { evidence, unknown, codes } = factCounts;
-		const count = (n: number, one: () => string, many: (args: { count: number }) => string) =>
-			n === 0 ? [] : [n === 1 ? one() : many({ count: n })];
-		return [
-			...count(evidence, m.facts_chip_evidence_one, m.facts_chip_evidence),
-			...count(unknown, m.facts_chip_unknown_one, m.facts_chip_unknown),
-			...count(codes, m.facts_chip_codes_one, m.facts_chip_codes)
-		].join(' · ');
-	});
+	const factsChip = $derived(factCounts ? factsSummary(factCounts) : '');
 
 	let title = $state('');
 	let date = $state('');
@@ -137,6 +132,8 @@
 			!document.processing.nodes.some((state) => state.status === 'running')
 	);
 	const reviewing = $derived(review !== null && review.open.length > 0 && confirmable);
+	// The fields still to decide, counted in the head.
+	const undecided = $derived([...evidence.values()].filter((entry) => entry.open).length);
 	const decisions = $derived(openChecks.filter((check) => !isRuleField(check.field)));
 	const ruleNotes = $derived(
 		openChecks.filter((check) => check.field === 'review' || check.field === 'title')
@@ -526,6 +523,18 @@
 	novalidate
 	aria-label={m.edit_title()}
 >
+	{#if end}
+		<PaneHead {end}>
+			{#if reviewing && undecided > 0}
+				<span
+					class="inline-flex h-6 items-center gap-1.5 rounded-full bg-lane-yellow px-2.5 text-xs font-medium text-lane-yellow-foreground"
+				>
+					<span class="size-[7px] rounded-full bg-lane-yellow-foreground" aria-hidden="true"></span>
+					{undecided === 1 ? m.review_undecided_one() : m.review_undecided({ count: undecided })}
+				</span>
+			{/if}
+		</PaneHead>
+	{/if}
 	<div class="relative flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto bg-surface p-3.5">
 		{#if reviewing}
 			<div

@@ -5,6 +5,7 @@
  * JavaScript's units and splits the text into pages.
  */
 import type { components } from '#lib/api/schema.ts';
+import { m } from '#lib/paraglide/messages.js';
 
 export type Facts = components['schemas']['FactsOut'];
 export type FoundIdentifier = components['schemas']['FoundIdentifierOut'];
@@ -121,4 +122,15 @@ export function factCounts(facts: Facts): { evidence: number; unknown: number; c
 		unknown: groups.unknown.length,
 		codes: facts.codes?.length ?? 0
 	};
+}
+
+/** What there is, counted, in words (`1 Beleg · 2 Codes`); empty for nothing. */
+export function factsSummary({ evidence, unknown, codes }: ReturnType<typeof factCounts>): string {
+	const count = (n: number, one: () => string, many: (args: { count: number }) => string) =>
+		n === 0 ? [] : [n === 1 ? one() : many({ count: n })];
+	return [
+		...count(evidence, m.facts_chip_evidence_one, m.facts_chip_evidence),
+		...count(unknown, m.facts_chip_unknown_one, m.facts_chip_unknown),
+		...count(codes, m.facts_chip_codes_one, m.facts_chip_codes)
+	].join(' · ');
 }

@@ -41,6 +41,16 @@ describe('SearchSelect', () => {
 		expect(trigger.textContent).toContain('none yet');
 	});
 
+	it('opens without scrolling the page to the list before it is placed', async () => {
+		const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+		const { trigger } = field();
+		await fireEvent.click(trigger);
+		await screen.findByLabelText(m.assignment_search());
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(scroll).not.toHaveBeenCalled();
+		scroll.mockRestore();
+	});
+
 	it('makes what the search names after closing, once, and chooses it', async () => {
 		const user = userEvent.setup();
 		const create = vi.fn(async (name: string) => ({ value: 'c3', label: name }));

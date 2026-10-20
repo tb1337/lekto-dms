@@ -232,6 +232,7 @@ class UserService:
                     await uow.spaces.update(space)
             await uow.rules.remove_for_owner(id)
             await uow.webhooks.remove_for_owner(id)
+            await uow.lenses.remove_for_owner(id)
             for space in removed:
                 await disable_rules(
                     uow,

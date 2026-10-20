@@ -19,6 +19,7 @@ from lekto.core.ports.repository import (
     DocumentTypeRepository,
     FieldDefinitionRepository,
     InboxRepository,
+    LensRepository,
     ProcessingLog,
     RuleApplicationRepository,
     RuleRepository,
@@ -75,6 +76,8 @@ class UnitOfWork(Protocol):
     def classifier_models(self) -> ClassifierModelRepository: ...
     @property
     def webhooks(self) -> WebhookRepository: ...
+    @property
+    def lenses(self) -> LensRepository: ...
     @property
     def outbox(self) -> Outbox: ...
     @property

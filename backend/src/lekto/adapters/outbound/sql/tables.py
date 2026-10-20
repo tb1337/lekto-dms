@@ -644,6 +644,30 @@ webhooks = Table(
     Column("version", Integer, nullable=False),
 )
 
+# A user's lenses (`domain.lenses`). The filter and the card fields are JSON; the ids in them
+# have no foreign keys: master data may go, and the services drop what is gone.
+lenses = Table(
+    "lenses",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("owner_id", Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+    Column("name", Text, nullable=False),
+    Column("name_key", Text, nullable=False),
+    Column("position", Integer, nullable=False),
+    Column("filter", json_type(), nullable=False),
+    Column("query", Text, nullable=True),
+    Column("sort", Text, nullable=True),
+    Column("sort_field_id", Uuid, nullable=True),
+    Column("grouping", Text, nullable=False),
+    Column("layout", Text, nullable=False),
+    Column("card_field_ids", json_type(), nullable=False),
+    Column("due_field_id", Uuid, nullable=True),
+    Column("created_at", UtcDateTime, nullable=False),
+    Column("updated_at", UtcDateTime, nullable=False),
+    Column("version", Integer, nullable=False),
+    Index(None, "owner_id", "name_key", unique=True),
+)
+
 # The log of delivery attempts. The answer of the receiver is not kept. `document_id` has no
 # foreign key: the document may be deleted while its log lives on.
 webhook_deliveries = Table(

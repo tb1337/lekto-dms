@@ -1725,6 +1725,78 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/v1/lenses': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List lenses
+		 * @description The caller's lenses in their order. Contacts, types, tags, spaces and fields a lens names that were deleted are left out; a sort or grouping that needed a deleted field falls back to the default.
+		 */
+		get: operations['list_lenses_api_v1_lenses_get'];
+		put?: never;
+		/**
+		 * Create a lens
+		 * @description A saved look at the documents: filters, words, sort, grouping, layout, the fields its cards show and the date field that is their deadline; it goes after the caller's other lenses. The card fields must exist, the deadline must be a date field, the sort field one of type date, period, number or amount (422). 409: the caller has a lens of that name (regardless of case) or 100 lenses.
+		 */
+		post: operations['create_lens_api_v1_lenses_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/lenses/order': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/**
+		 * Order the lenses
+		 * @description `ids` names each of the caller's lenses once (422 otherwise).
+		 */
+		put: operations['order_lenses_api_v1_lenses_order_put'];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/v1/lenses/{id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * A lens
+		 * @description Only its owner sees and changes a lens; other users' lenses are not found (404). Contacts, types, tags, spaces and fields a lens names that were deleted are left out; a sort or grouping that needed a deleted field falls back to the default.
+		 */
+		get: operations['get_lens_api_v1_lenses__id__get'];
+		put?: never;
+		post?: never;
+		/**
+		 * Delete a lens
+		 * @description Only its owner sees and changes a lens; other users' lenses are not found (404).
+		 */
+		delete: operations['delete_lens_api_v1_lenses__id__delete'];
+		options?: never;
+		head?: never;
+		/**
+		 * Change a lens
+		 * @description Checks as when creating. Only its owner sees and changes a lens; other users' lenses are not found (404).
+		 */
+		patch: operations['update_lens_api_v1_lenses__id__patch'];
+		trace?: never;
+	};
 	'/api/v1/health': {
 		parameters: {
 			query?: never;
@@ -3519,6 +3591,13 @@ export interface components {
 			 */
 			requires: components['schemas']['Node'][];
 		};
+		/**
+		 * Grouping
+		 * @description What the documents of a lens stand under: nothing, the month of their document date, how
+		 *     soon their deadline is due, their type or their contact.
+		 * @enum {string}
+		 */
+		Grouping: 'none' | 'month' | 'due' | 'document_type' | 'contact';
 		/** Health */
 		Health: {
 			/**
@@ -3706,6 +3785,192 @@ export interface components {
 		 * @enum {string}
 		 */
 		LaneFilter: 'green' | 'yellow' | 'red' | 'processing';
+		/**
+		 * Layout
+		 * @enum {string}
+		 */
+		Layout: 'grid' | 'list';
+		/**
+		 * LensCreate
+		 * @example {
+		 *       "card_field_ids": [
+		 *         "01a1f0c2-7c5e-7d43-9b1e-3c4b5d6e7f82",
+		 *         "01a1f0c2-7c5e-7d43-9b1e-3c4b5d6e7f81"
+		 *       ],
+		 *       "due_field_id": "01a1f0c2-7c5e-7d43-9b1e-3c4b5d6e7f81",
+		 *       "filter": {
+		 *         "tag_ids": [
+		 *           "01a1f0c2-7c5e-7d43-9b1e-3c4b5d6e7f80"
+		 *         ]
+		 *       },
+		 *       "grouping": "due",
+		 *       "name": "To pay"
+		 *     }
+		 */
+		LensCreate: {
+			/**
+			 * Name
+			 * @description Unique per user.
+			 */
+			name: string;
+			filter?: components['schemas']['LensFilterBody'];
+			/**
+			 * Query
+			 * @description Words.
+			 */
+			query?: string | null;
+			/** @description `relevance` (only with `query`), or a key of `GET /documents`; `field` and `-field` sort by `sort_field_id` (not with `query`). None: as the list or the search sorts by default. */
+			sort?: components['schemas']['LensSort'] | null;
+			/** Sort Field Id */
+			sort_field_id?: string | null;
+			/**
+			 * @description What the documents stand under: `month` of their document date, `due`: how soon `due_field_id` is due (overdue, within seven days, later, none), `document_type`, `contact`.
+			 * @default none
+			 */
+			grouping: components['schemas']['Grouping'];
+			/** @default grid */
+			layout: components['schemas']['Layout'];
+			/**
+			 * Card Field Ids
+			 * @description The fields a card shows, in this order; at most 3.
+			 */
+			card_field_ids?: string[];
+			/**
+			 * Due Field Id
+			 * @description A date field: the deadline of the documents (yellow from seven days before, red after).
+			 */
+			due_field_id?: string | null;
+		};
+		/**
+		 * LensFilter
+		 * @description The filters as `GET /documents` takes them, with a list for each repeated parameter.
+		 */
+		LensFilterBody: {
+			/** Contact Ids */
+			contact_ids?: string[];
+			/** Document Type Ids */
+			document_type_ids?: string[];
+			/** Contact Group Ids */
+			contact_group_ids?: string[];
+			/** Document Type Group Ids */
+			document_type_group_ids?: string[];
+			/** Topic Ids */
+			topic_ids?: string[];
+			/** Tag Ids */
+			tag_ids?: string[];
+			/** Space Ids */
+			space_ids?: string[];
+			/** Field Id */
+			field_id?: string | null;
+			/** Document Date From */
+			document_date_from?: string | null;
+			/** Document Date To */
+			document_date_to?: string | null;
+			/** @description A period that moves with the day the lens is opened; not together with `document_date_from` or `_to`. */
+			document_period?: components['schemas']['RelativePeriod'] | null;
+		};
+		/**
+		 * LensOrder
+		 * @example {
+		 *       "ids": [
+		 *         "01a1f0c2-7c5e-7d43-9b1e-3c4b5d6e7f83",
+		 *         "01a1f0c2-7c5e-7d43-9b1e-3c4b5d6e7f84"
+		 *       ]
+		 *     }
+		 */
+		LensOrder: {
+			/**
+			 * Ids
+			 * @description Each of the caller's lenses once, in the new order.
+			 */
+			ids: string[];
+		};
+		/** LensOut */
+		LensOut: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Name */
+			name: string;
+			/**
+			 * Position
+			 * @description Where it stands among the user's lenses, from 0.
+			 */
+			position: number;
+			filter: components['schemas']['LensFilterBody'];
+			/** Query */
+			query: string | null;
+			sort: components['schemas']['LensSort'] | null;
+			/** Sort Field Id */
+			sort_field_id: string | null;
+			grouping: components['schemas']['Grouping'];
+			layout: components['schemas']['Layout'];
+			/** Card Field Ids */
+			card_field_ids: string[];
+			/** Due Field Id */
+			due_field_id: string | null;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/**
+			 * Updated At
+			 * Format: date-time
+			 */
+			updated_at: string;
+		};
+		/**
+		 * LensPatch
+		 * @description Parts left out stay as they are; `null` clears `query`, `sort`, `sort_field_id` and
+		 *     `due_field_id`.
+		 * @example {
+		 *       "name": "Bills"
+		 *     }
+		 */
+		LensPatch: {
+			/** Name */
+			name?: string | null;
+			filter?: components['schemas']['LensFilterBody'] | null;
+			/** Query */
+			query?: string | null;
+			/** @description `relevance` (only with `query`), or a key of `GET /documents`; `field` and `-field` sort by `sort_field_id` (not with `query`). None: as the list or the search sorts by default. */
+			sort?: components['schemas']['LensSort'] | null;
+			/** Sort Field Id */
+			sort_field_id?: string | null;
+			/** @description What the documents stand under: `month` of their document date, `due`: how soon `due_field_id` is due (overdue, within seven days, later, none), `document_type`, `contact`. */
+			grouping?: components['schemas']['Grouping'] | null;
+			layout?: components['schemas']['Layout'] | null;
+			/**
+			 * Card Field Ids
+			 * @description The fields a card shows, in this order; at most 3.
+			 */
+			card_field_ids?: string[] | null;
+			/**
+			 * Due Field Id
+			 * @description A date field: the deadline of the documents (yellow from seven days before, red after).
+			 */
+			due_field_id?: string | null;
+		};
+		/**
+		 * LensSort
+		 * @description The sort of a lens: by relevance (only with words), or a key of the documents list,
+		 *     descending with a `-`; `field` sorts by `Lens.sort_field_id` (not with words: the search
+		 *     index holds no field values).
+		 * @enum {string}
+		 */
+		LensSort:
+			| 'relevance'
+			| 'created_at'
+			| '-created_at'
+			| 'document_date'
+			| '-document_date'
+			| 'title'
+			| '-title'
+			| 'field'
+			| '-field';
 		/**
 		 * LinkOut
 		 * @description A link to an account at the identity provider.
@@ -4495,6 +4760,12 @@ export interface components {
 			 */
 			recovery_codes: string[];
 		};
+		/**
+		 * RelativePeriod
+		 * @description A period that moves with the day the lens is opened (the quick picks of the filters).
+		 * @enum {string}
+		 */
+		RelativePeriod: 'this_year' | 'last_12_months' | 'last_year';
 		/** RemoveTagsAction */
 		RemoveTagsAction: {
 			/**
@@ -18475,6 +18746,652 @@ export interface operations {
 					 *       "title": "Too Many Requests",
 					 *       "status": 429,
 					 *       "detail": "too many failed attempts; try again later"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	list_lenses_api_v1_lenses_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['LensOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	create_lens_api_v1_lenses_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['LensCreate'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['LensOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	order_lenses_api_v1_lenses_order_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['LensOrder'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['LensOut'][];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	get_lens_api_v1_lenses__id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['LensOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	delete_lens_api_v1_lenses__id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Internal Server Error",
+					 *       "status": 500,
+					 *       "detail": "an unexpected error occurred"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+		};
+	};
+	update_lens_api_v1_lenses__id__patch: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['LensPatch'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['LensOut'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unauthorized",
+					 *       "status": 401,
+					 *       "detail": "authentication is required"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Forbidden",
+					 *       "status": 403,
+					 *       "detail": "only the owner and admins control the processing of this document"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Not Found",
+					 *       "status": 404,
+					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Content Too Large",
+					 *       "status": 413,
+					 *       "detail": "the request body is larger than 1048576 bytes"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Unprocessable Content",
+					 *       "status": 422,
+					 *       "detail": "from_node: Input should be 'ocr', 'parse', ..."
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

@@ -36,6 +36,7 @@ from lekto.core.domain.ids import (
     DocumentId,
     DocumentTypeId,
     FieldId,
+    LensId,
     RuleApplicationId,
     RuleId,
     SpaceId,
@@ -44,6 +45,7 @@ from lekto.core.domain.ids import (
     WebhookId,
 )
 from lekto.core.domain.inbox import Confirmation, InboxTab
+from lekto.core.domain.lenses import Lens
 from lekto.core.domain.master_data import Contact, DocumentType, Tag, TagScope
 from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane, NodeRun
@@ -595,6 +597,34 @@ class ClassifierModelRepository(Protocol):
         ...
 
     async def remove(self, id: ClassifierModelId) -> None: ...
+
+
+class LensRepository(Protocol):
+    """A user's lenses (`domain.lenses`)."""
+
+    async def get(self, id: LensId) -> Lens: ...
+
+    async def find(self, id: LensId) -> Lens | None: ...
+
+    async def add(self, lens: Lens) -> None:
+        """ConflictError if the owner has a lens of that name (regardless of case)."""
+        ...
+
+    async def update(self, lens: Lens) -> None:
+        """As `add` for the name; ConcurrencyError if it was changed meanwhile."""
+        ...
+
+    async def remove(self, id: LensId) -> None:
+        """NotFoundError if it does not exist."""
+        ...
+
+    async def remove_for_owner(self, owner: UserId) -> int:
+        """Delete the user's lenses; returns how many."""
+        ...
+
+    async def list_for_owner(self, owner: UserId) -> list[Lens]:
+        """The user's lenses by `position`, ties oldest first."""
+        ...
 
 
 class WebhookRepository(Protocol):

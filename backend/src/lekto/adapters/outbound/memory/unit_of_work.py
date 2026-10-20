@@ -26,6 +26,7 @@ from lekto.adapters.outbound.memory.database import (
     DOCUMENTS,
     EXTERNAL_IDENTITIES,
     FIELDS,
+    LENSES,
     LOGIN_FAILURES,
     RULE_APPLICATIONS,
     RULES,
@@ -46,6 +47,7 @@ from lekto.adapters.outbound.memory.identity import (
     MemorySessionRepository,
 )
 from lekto.adapters.outbound.memory.inbox import MemoryInboxRepository, SeenKey
+from lekto.adapters.outbound.memory.lenses import MemoryLensRepository
 from lekto.adapters.outbound.memory.ordering import Rank, rank
 from lekto.adapters.outbound.memory.rows import _REMOVED, MemoryRepository, _copy
 from lekto.adapters.outbound.memory.rules import (
@@ -124,6 +126,7 @@ class MemoryUnitOfWork:
         self.rule_applications = MemoryRuleApplicationRepository(self, RULE_APPLICATIONS)
         self.classifier_models = MemoryClassifierModelRepository(self, CLASSIFIER_MODELS)
         self.webhooks = MemoryWebhookRepository(self, WEBHOOKS)
+        self.lenses = MemoryLensRepository(self, LENSES)
         self.outbox = MemoryOutbox(self)
         self.jobs = MemoryJobQueue(self)
         self.credentials = MemoryCredentialRepository(self, CREDENTIALS)

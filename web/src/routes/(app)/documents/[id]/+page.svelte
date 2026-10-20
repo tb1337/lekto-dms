@@ -22,6 +22,7 @@
 	import PdfViewer from '#lib/components/PdfViewer.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
 	import TabBar from '#lib/components/TabBar.svelte';
+	import ToTop from '#lib/components/ToTop.svelte';
 	import * as Alert from '#lib/components/ui/alert/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import {
@@ -99,6 +100,11 @@
 	let textMarks = $state<Span[]>([]);
 	// On a phone one pane at a time: the left one or the right one, chosen in the bar of four.
 	let side = $state<'left' | 'right'>('left');
+	// Where one stands in the pages and in the text, for the way back to the top on a phone.
+	let pagesAt = $state({ current: 0, total: 0 });
+	let textAt = $state({ current: 0, total: 0 });
+	const leftAt = $derived(view.left === 'pages' ? pagesAt : textAt);
+	let panes = $state<HTMLDivElement | null>(null);
 	let viewer = $state<PdfViewer | null>(null);
 	let textPane = $state<DocumentText | null>(null);
 	let header = $state<DocumentHeader | null>(null);
@@ -312,7 +318,8 @@
 		return phone.current ? undefined : snippet;
 	}
 
-	/** The pane a phone shows, by what it shows: one of the left's or the right's. */
+	/** The pane a phone shows, by what it shows: one of the left's or the right's. Chosen deep
+	 * down the one before, the new one shows from its start, below the bar. */
 	function showOnPhone(next: string) {
 		if ((LEFT as readonly string[]).includes(next)) {
 			side = 'left';
@@ -321,6 +328,9 @@
 			side = 'right';
 			if (next !== view.right) void show({ ...view, right: next as Right });
 		}
+		void tick().then(() => {
+			if (panes && panes.getBoundingClientRect().top < 0) panes.scrollIntoView({ block: 'start' });
+		});
 	}
 
 	// A pane once shown stays, hidden while the other one is: the form keeps what was typed,
@@ -417,20 +427,24 @@
 		/>
 
 		{#if tab === 'document' && phone.current}
-			<!-- On a phone one pane at a time (Tobi, 20.10.2026): the four in one bar. -->
-			<Segmented
-				equal
-				class="w-full"
-				label={m.view_pane()}
-				value={side === 'left' ? view.left : view.right}
-				options={[
-					{ value: 'pages', label: m.view_pages() },
-					{ value: 'text', label: m.view_text() },
-					{ value: 'form', label: m.view_form() },
-					{ value: 'facts', label: m.view_facts() }
-				]}
-				onchange={showOnPhone}
-			/>
+			<!-- On a phone one pane at a time (Tobi, 20.10.2026): the four in one bar, which stays
+			     below the head while the pages scroll by; the way back to the top beside them. -->
+			<div class="sticky top-16 z-30 -my-2 bg-background py-2">
+				<Segmented
+					equal
+					class="w-full"
+					label={m.view_pane()}
+					value={side === 'left' ? view.left : view.right}
+					options={[
+						{ value: 'pages', label: m.view_pages() },
+						{ value: 'text', label: m.view_text() },
+						{ value: 'form', label: m.view_form() },
+						{ value: 'facts', label: m.view_facts() }
+					]}
+					onchange={showOnPhone}
+				/>
+			</div>
+			{#if side === 'left'}<ToTop current={leftAt.current} total={leftAt.total} />{/if}
 		{/if}
 
 		{#if tab === 'document'}
@@ -460,8 +474,10 @@
 					onchange={(next) => show({ ...view, right: next as Right })}
 				/>
 			{/snippet}
+			<!-- `scroll-mt`: below the head and the bar of four, when a phone shows a pane from its start. -->
 			<div
-				class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_28rem] lg:grid-rows-[minmax(0,1fr)]"
+				bind:this={panes}
+				class="grid scroll-mt-32 grid-cols-[minmax(0,1fr)] gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_28rem] lg:grid-rows-[minmax(0,1fr)]"
 			>
 				<div
 					class="flex min-h-[32rem] flex-col lg:min-h-0"
@@ -480,6 +496,7 @@
 											? [...(view.right === 'form' ? marks : factMarks), ...codeMarks]
 											: []}
 										end={paneSwitch(leftSwitch)}
+										onpage={(current, total) => (pagesAt = { current, total })}
 									/>
 								{:else}
 									<PageImages
@@ -487,6 +504,7 @@
 										pageCount={document.page_count}
 										label={document.title}
 										end={paneSwitch(leftSwitch)}
+										onpage={(current, total) => (pagesAt = { current, total })}
 									/>
 								{/if}
 							{/key}
@@ -502,6 +520,7 @@
 								marks={view.right === 'facts' ? textMarks : []}
 								quotes={view.right === 'form' ? fieldQuotes : []}
 								end={paneSwitch(leftSwitch)}
+								onpage={(current, total) => (textAt = { current, total })}
 							/>
 						</div>
 					{/if}

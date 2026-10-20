@@ -10,13 +10,16 @@
 		documentId,
 		pageCount,
 		label,
-		end
+		end,
+		onpage
 	}: {
 		documentId: string;
 		pageCount: number;
 		label: string;
 		/** At the end of the toolbar (the switch of a pane). */
 		end?: Snippet;
+		/** The page in the upper third of the view, and how many there are. */
+		onpage?: (current: number, total: number) => void;
 	} = $props();
 
 	/** An image is as wide as its page: 100 % is A4's width; its height once it is loaded. */
@@ -30,7 +33,7 @@
 	);
 </script>
 
-<PageViewer {sizes} {label} note={m.pages_preview()} {end}>
+<PageViewer {sizes} {label} note={m.pages_preview()} {end} {onpage}>
 	{#snippet page(number: number)}
 		<img
 			src="/api/v1/documents/{documentId}/pages/{number}"

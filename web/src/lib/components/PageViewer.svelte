@@ -30,7 +30,8 @@
 	// + − 0 zoom around the pointer; a double click enlarges a page and goes back. `marks` are
 	// drawn over the pages (boxes are fractions of a page), `reveal` scrolls to one. What a page
 	// shows comes from `page`; `onshow` tells when a page comes near the view, `onsettle` when
-	// the zoom has come to rest, with the pages in view (to be drawn anew at their size).
+	// the zoom has come to rest, with the pages in view (to be drawn anew at their size);
+	// `onpage` the page in the upper third of the view, as the toolbar counts it.
 	let {
 		sizes,
 		label,
@@ -41,7 +42,8 @@
 		page,
 		end,
 		onshow,
-		onsettle
+		onsettle,
+		onpage
 	}: {
 		/** Each page's size at 100 %, in CSS pixels. */
 		sizes: readonly { width: number; height: number }[];
@@ -56,6 +58,7 @@
 		end?: Snippet;
 		onshow?: (number: number, node: HTMLElement) => void;
 		onsettle?: (pages: { number: number; node: HTMLElement }[]) => void;
+		onpage?: (current: number, total: number) => void;
 	} = $props();
 
 	const NAMES: Record<Layout, { label: () => string; hint: () => string; icon: typeof File }> = {
@@ -87,6 +90,7 @@
 	let resting: ReturnType<typeof setTimeout> | undefined;
 
 	const widest = $derived(sizes.reduce((most, size) => Math.max(most, size.width), 1));
+	$effect(() => onpage?.(current, sizes.length));
 
 	function room(): Room {
 		if (!container) return { width: 800, padding: 24, gap: 12 };

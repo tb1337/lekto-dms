@@ -20,7 +20,8 @@
 		label,
 		marks = [],
 		end,
-		onsource
+		onsource,
+		onpage
 	}: {
 		sources: readonly string[];
 		label: string;
@@ -28,6 +29,8 @@
 		/** At the end of the toolbar (the switch of a pane). */
 		end?: Snippet;
 		onsource?: (source: string) => void;
+		/** The page in the upper third of the view, and how many there are. */
+		onpage?: (current: number, total: number) => void;
 	} = $props();
 
 	pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -156,6 +159,7 @@
 	{loading}
 	{problem}
 	{end}
+	{onpage}
 	onshow={(number, node) => void draw(number, node)}
 	onsettle={(pages) => {
 		for (const { number, node } of pages) void draw(number, node);

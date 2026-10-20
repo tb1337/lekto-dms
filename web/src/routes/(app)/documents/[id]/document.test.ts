@@ -357,6 +357,26 @@ describe('the document tab', () => {
 		expect(titleField()?.value).toBe('Neu');
 	});
 
+	it('shows a pane chosen deep down the one before from its start, on a phone', async () => {
+		phone.override(true);
+		const scrolled = vi.fn();
+		Element.prototype.scrollIntoView = scrolled;
+		goTo('/ui/documents/doc-1?left=text&right=facts', { id: 'doc-1' });
+		serve(parsed, readable);
+		render(Page);
+		const bar = await screen.findByRole('group', { name: m.view_pane() });
+		// Far down the text: the panes start above the window.
+		vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+			top: -2000,
+			bottom: 400,
+			left: 0,
+			right: 390
+		} as DOMRect);
+		await userEvent.click(within(bar).getByRole('button', { name: m.view_facts() }));
+		await waitFor(() => expect(scrolled).toHaveBeenCalledWith({ block: 'start' }));
+		vi.restoreAllMocks();
+	});
+
 	it('shows one pane at a time on a phone, and a tapped fact where it stands', async () => {
 		phone.override(true);
 		Element.prototype.scrollIntoView = vi.fn();

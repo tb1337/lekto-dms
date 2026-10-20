@@ -16,7 +16,10 @@ beforeEach(() => {
 	vi.stubGlobal('fetch', fetchMock);
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
+});
 
 describe('DocumentText', () => {
 	it('shows the text as it is set, page by page', async () => {
@@ -51,6 +54,31 @@ describe('DocumentText', () => {
 		expect(document.querySelector('mark[data-mark]')?.textContent).toBe('EBeschV');
 		await view.component.revealMark();
 		expect(scrolled).toHaveBeenCalled();
+	});
+
+	it('tells the page in the upper third of what is seen', async () => {
+		// Page 1 has gone up, page 2 starts above the line a third down the window, page 3 below.
+		const tops: Record<string, number> = { '1': -500, '2': 100, '3': 900 };
+		vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+			this: Element
+		) {
+			const page = (this as HTMLElement).dataset?.page;
+			const top = page ? tops[page] : 0;
+			return { top, bottom: page ? top + 400 : 800, left: 0, right: 400 } as DOMRect;
+		});
+		fetchMock.mockImplementation(async () =>
+			Response.json({
+				text: 'eins\n\f\nzwei\n\f\ndrei',
+				offset: 0,
+				total_length: 17,
+				next_offset: null
+			})
+		);
+		const onpage = vi.fn();
+		render(DocumentText, { documentId: 'doc-1', onpage });
+		await screen.findByRole('region', { name: m.content_page({ page: 3 }) });
+		window.dispatchEvent(new Event('scroll'));
+		await vi.waitFor(() => expect(onpage).toHaveBeenLastCalledWith(2, 3));
 	});
 
 	it('marks the quotes it is given where they stand, however their spaces fall', async () => {

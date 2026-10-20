@@ -24,7 +24,8 @@
 		hasText = true,
 		marks = [],
 		quotes = [],
-		end
+		end,
+		onpage
 	}: {
 		documentId: string;
 		/** The vision language model read the text (a person asked for it). */
@@ -37,6 +38,8 @@
 		quotes?: readonly string[];
 		/** At the end of the head: the pane's switch. */
 		end?: Snippet;
+		/** The page in the upper third of what is seen of the text, and how many there are. */
+		onpage?: (current: number, total: number) => void;
 	} = $props();
 
 	// More than this is not shown (copying takes all of it).
@@ -120,6 +123,27 @@
 		return [...inUnits(whole, marks), ...quotes.flatMap((quote) => quoteStretches(whole, quote))];
 	});
 
+	// The page in the upper third of what is seen of the text, as the pages' viewer counts: the
+	// text scrolls itself on a wide screen, with the window on a narrow one.
+	let current = $state(1);
+	function follow() {
+		if (!textBox) return;
+		const box = textBox.getBoundingClientRect();
+		const top = Math.max(box.top, 0);
+		const line = top + (Math.min(box.bottom, window.innerHeight) - top) / 3;
+		let at = 1;
+		for (const section of textBox.querySelectorAll<HTMLElement>('[data-page]')) {
+			if (section.getBoundingClientRect().top > line) break;
+			at = Number(section.dataset.page);
+		}
+		current = at;
+	}
+	$effect(() => {
+		void pages;
+		void tick().then(follow);
+	});
+	$effect(() => onpage?.(current, text === null ? 0 : pages.length));
+
 	/** Scroll the first mark into view, once it is drawn. */
 	export async function revealMark() {
 		await tick();
@@ -140,6 +164,8 @@
 	}
 </script>
 
+<svelte:window onscroll={follow} />
+
 <section
 	aria-label={m.view_text()}
 	class="flex min-h-[32rem] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-card lg:min-h-0"
@@ -157,14 +183,18 @@
 		</Button>
 	</PaneHead>
 	<!-- As set: no wrapping, the card scrolls sideways. -->
-	<div bind:this={textBox} class="relative min-h-0 flex-1 overflow-auto">
+	<div bind:this={textBox} class="relative min-h-0 flex-1 overflow-auto" onscroll={follow}>
 		{#if problem}
 			<p class="p-6 text-destructive" role="alert">{problem}</p>
 		{:else if text === null}
 			<p class="p-6 text-sm text-muted-foreground">{loading ? m.loading() : m.text_none()}</p>
 		{:else}
 			{#each pages as page, index (index)}
-				<section aria-label={m.content_page({ page: index + 1 })} class="px-7 py-6">
+				<section
+					aria-label={m.content_page({ page: index + 1 })}
+					data-page={index + 1}
+					class="px-7 py-6"
+				>
 					{#if pages.length > 1}
 						<p class="mb-3 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
 							{m.content_page({ page: index + 1 })}

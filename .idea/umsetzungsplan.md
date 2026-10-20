@@ -1213,14 +1213,14 @@ Die Devinstanz liest nach dem Merge `LEKTO_`: in `live.env` das Präfix umstelle
   1. Nach einem Feld sortieren: `sort=field`/`-field` mit `sort_field_id` an `GET /documents` (Felder vom Typ Datum, Zeitraum nach Beginn, Zahl, Betrag nach Wert); `DocumentOrder` trägt das Feld, die Position den Wert; Dokumente ohne Wert zuletzt. Nicht in der Suche: der Index kennt keine Feldwerte.
   2. Lens im Backend: `core/domain/lenses.py` (`Lens`, `LensFilter`, `Grouping`, `Layout`, `RelativePeriod`), `LensRepository` (`uow.lenses`) mit Speicher-Adapter und Vertragstests, Tabelle `lenses` (Revision 0031, mit dem Nutzer gelöscht), `LensService`, REST `/lenses` mit `PUT /lenses/order`.
   3. Web: `View` (Raster oder Liste) heißt `Layout`, der Browser-Schlüssel `lekto.documents.layout`.
-  4. Web: Lenses in der Leiste und als Chips; öffnen, neu aus den Filtern.
-  5. Web: die Leiste „weicht ab“.
-  6. Web: der Editor mit Vorschau.
-  7. Web: Kartenfelder, Frist und Gruppierung.
+  4. Web: Lenses in der Leiste und als Chips öffnen (`lenses.ts`: Lens in die URL und zurück, ein Zeitraum der Schnellwahl bleibt relativ; die Liste sortiert mit `sort=field` und `sort_field` nach einem Feld, nicht gemerkt).
+  5. Web: Kartenfelder, Frist und Gruppierung (`card-fields.ts`, `grouping.ts`, `CardFields`); in schmalen Karten umbrechen statt kürzen.
+  6. Web: der Editor mit Vorschau (`LensEditor` auf `EditorShell`; „+“ legt aus der Seite an, wie sie steht).
+  7. Web: die Leiste „weicht ab“ (`LensChanges`, ein Punkt an der Lens).
 
-**Prüfung:** Vertragstests für Filter, Zählen, Sortieren nach Feld und Lenses auf Speicher, SQLite und Postgres; Suchindex-Verträge für die Filter; REST mit Rechten (nur der Besitzer, andere 404); Vitest für Filterleiste, Lenses und Karte; im Browser gegen den Build einer Prüfinstanz mit erfundenen Daten, Desktop und Handy.
+**Prüfung:** Vertragstests für Filter, Zählen, Sortieren nach Feld und Lenses auf Speicher, SQLite und Postgres; Suchindex-Verträge für die Filter; REST mit Rechten (nur der Besitzer, andere 404, auch Admins); Vitest für Filterleiste, Lenses, Editor, Kartenfelder und Gruppen; im Browser gegen den Build einer Prüfinstanz mit erfundenen Daten (62 Dokumente, Felder mit Fristen, zwei Lenses), Desktop und Handy.
 
-**Offen:** Gruppen ohne Dokumente blendet die Leiste aus wie Tags (die Devinstanz hat eine Kontaktgruppe ohne Kontakte); ob die Chips über der Liste die Farben der Tags tragen sollen.
+**Offen:** Die Devinstanz braucht Revision 0031 und einen Neustart (nur auf Tobis Wunsch). Gruppen ohne Dokumente blendet die Leiste aus wie Tags (die Devinstanz hat eine Kontaktgruppe ohne Kontakte). Ob die Chips über der Liste die Farben der Tags tragen sollen. Zahlen je Lens in der Leiste (im Entwurf) fehlen noch.
 
 ### M16 – Lesen
 

@@ -18738,6 +18738,19 @@
                 "spans": [
                   {
                     "end": 421,
+                    "locations": [
+                      {
+                        "boxes": [
+                          {
+                            "height": 0.012,
+                            "width": 0.11,
+                            "x": 0.62,
+                            "y": 0.18
+                          }
+                        ],
+                        "page": 1
+                      }
+                    ],
                     "start": 412
                   }
                 ],
@@ -23370,12 +23383,21 @@
             "type": "integer",
             "title": "End",
             "description": "After the last character."
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/LocationOut"
+            },
+            "type": "array",
+            "title": "Locations",
+            "description": "Where it stands on the archive's pages, a box per line; empty where the words of the text have no boxes (a text parsed before 0.2)."
           }
         },
         "type": "object",
         "required": [
           "start",
-          "end"
+          "end",
+          "locations"
         ],
         "title": "SpanOut"
       },

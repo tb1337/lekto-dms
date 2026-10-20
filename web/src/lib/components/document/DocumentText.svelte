@@ -9,12 +9,13 @@
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { events } from '#lib/events.svelte.ts';
-	import { inUnits, pageRanges, segmentsOf, type Span } from '#lib/facts.ts';
+	import { inUnits, pageRanges, quoteStretches, segmentsOf, type Stretch } from '#lib/facts.ts';
 	import { formatNumber } from '#lib/i18n.ts';
 	import { m } from '#lib/paraglide/messages.js';
 
 	// What was read from the document: the text as it is set, in a fixed-pitch font so that its
-	// columns line up, page by page; `marks` (what a fact or a field points to) marked in it.
+	// columns line up, page by page; `marks` (what a fact points to) and `quotes` (those of the
+	// fields) marked in it.
 	// The text comes as soon as the document is parsed. A document parsed before 0.2 shows
 	// Docling's Markdown as it is until it is read again.
 	let {
@@ -22,6 +23,7 @@
 		vision = false,
 		hasText = true,
 		marks = [],
+		quotes = [],
 		end
 	}: {
 		documentId: string;
@@ -30,7 +32,9 @@
 		/** The document has its text: before, nothing is asked for (409). */
 		hasText?: boolean;
 		/** Spans in characters of the whole text. */
-		marks?: readonly Span[];
+		marks?: readonly Stretch[];
+		/** Passages to find in the text and mark there. */
+		quotes?: readonly string[];
 		/** At the end of the head: the pane's switch. */
 		end?: Snippet;
 	} = $props();
@@ -110,7 +114,11 @@
 	// The pages of the text: a form feed on a line of its own separates them.
 	const pages = $derived((text ?? '').split(/\n?\f\n?/));
 	const ranges = $derived(pageRanges(text ?? ''));
-	const marked = $derived(text === null ? [] : inUnits(text, marks));
+	const marked = $derived.by(() => {
+		if (text === null) return [];
+		const whole = text;
+		return [...inUnits(whole, marks), ...quotes.flatMap((quote) => quoteStretches(whole, quote))];
+	});
 
 	/** Scroll the first mark into view, once it is drawn. */
 	export async function revealMark() {

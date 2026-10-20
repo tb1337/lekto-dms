@@ -3,7 +3,7 @@
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import SquarePen from '@lucide/svelte/icons/square-pen';
 	import TextAlignStart from '@lucide/svelte/icons/text-align-start';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -59,7 +59,14 @@
 	import { scope } from '#lib/scope.svelte.ts';
 	import { hasText, type GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
-	import { factCounts, type CodeFacts, type CodePlace, type Facts, type Span } from '#lib/facts.ts';
+	import {
+		factCounts,
+		spanMarks,
+		type CodeFacts,
+		type CodePlace,
+		type Facts,
+		type Span
+	} from '#lib/facts.ts';
 	import { adviceText, visionAvailable, type Reading, type Vision } from '#lib/vision.ts';
 
 	type Document = components['schemas']['DocumentDetails'];
@@ -85,8 +92,12 @@
 	let inboxPlaces = $state<InboxPlace[] | null>(null);
 	let inboxReady: Promise<void> = Promise.resolve();
 	let problem = $state<unknown>(null);
+	// Each pane on the right marks what it holds in the one on the left: the form its fields'
+	// quotes, on the pages (`marks`) and in the text (`fieldQuotes`); the facts where they
+	// stand, on the pages (`factMarks`) and in the text (`textMarks`).
 	let marks = $state<Mark[]>([]);
-	// What a fact marks in the text.
+	let fieldQuotes = $state<string[]>([]);
+	let factMarks = $state<Mark[]>([]);
 	let textMarks = $state<Span[]>([]);
 	let viewer = $state<PdfViewer | null>(null);
 	let textPane = $state<DocumentText | null>(null);
@@ -227,6 +238,8 @@
 				facts = null;
 				marks = [];
 				codeMarks = [];
+				fieldQuotes = [];
+				factMarks = [];
 				textMarks = [];
 			}
 		});
@@ -275,8 +288,10 @@
 		});
 	});
 
+	/** Show a field's quote where it stands in the pane on the left. */
 	function reveal(place: Place) {
-		viewer?.reveal(place);
+		if (view.left === 'text') void tick().then(() => textPane?.revealMark());
+		else viewer?.reveal(place);
 	}
 
 	// A pane once shown stays, hidden while the other one is: the form keeps what was typed,
@@ -296,9 +311,16 @@
 		return goto(viewHref(page.url, next), { replace: true, reset: false });
 	}
 
-	function markText(spans: Span[], scroll: boolean) {
+	/** Mark where a fact stands; after a click, show the first place in the pane on the left. */
+	function markFact(spans: Span[], scroll: boolean, label: string) {
 		textMarks = spans;
-		if (scroll && spans.length > 0) void textPane?.revealMark();
+		factMarks = spanMarks(spans, label);
+		if (!scroll || spans.length === 0) return;
+		if (view.left === 'text') void textPane?.revealMark();
+		else {
+			const first = spans.flatMap((span) => span.locations)[0];
+			if (first) viewer?.reveal(first);
+		}
 	}
 
 	async function confirmed(next: string | null) {
@@ -438,7 +460,9 @@
 										bind:this={viewer}
 										sources={viewerSources(document, archive)}
 										label={document.title}
-										marks={archive ? [...marks, ...codeMarks] : []}
+										marks={archive
+											? [...(view.right === 'form' ? marks : factMarks), ...codeMarks]
+											: []}
 										end={leftSwitch}
 									/>
 								{:else}
@@ -459,7 +483,8 @@
 								documentId={id}
 								vision={reading?.vision ?? false}
 								hasText={hasText(document.processing)}
-								marks={textMarks}
+								marks={view.right === 'facts' ? textMarks : []}
+								quotes={view.right === 'form' ? fieldQuotes : []}
 								end={leftSwitch}
 							/>
 						</div>
@@ -474,7 +499,7 @@
 								{lookup}
 								topicId={document.topic_id}
 								admin={session.isAdmin}
-								onmark={markText}
+								onmark={markFact}
 								onshowcode={showCode}
 								onchanged={reloadFacts}
 								end={rightSwitch}
@@ -495,6 +520,7 @@
 										onenabled={() => loadLookup().then((value) => (lookup = value), reportError)}
 										onconfirmed={confirmed}
 										onmarks={(next) => (marks = next)}
+										onquotes={(next) => (fieldQuotes = next)}
 										factCounts={facts ? factCounts(facts) : null}
 										factsHref={viewHref(page.url, { ...view, right: 'facts' })}
 										onreveal={reveal}

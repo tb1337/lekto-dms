@@ -3188,6 +3188,19 @@ export interface components {
 		 *           "spans": [
 		 *             {
 		 *               "end": 421,
+		 *               "locations": [
+		 *                 {
+		 *                   "boxes": [
+		 *                     {
+		 *                       "height": 0.012,
+		 *                       "width": 0.11,
+		 *                       "x": 0.62,
+		 *                       "y": 0.18
+		 *                     }
+		 *                   ],
+		 *                   "page": 1
+		 *                 }
+		 *               ],
 		 *               "start": 412
 		 *             }
 		 *           ],
@@ -5471,6 +5484,11 @@ export interface components {
 			 * @description After the last character.
 			 */
 			end: number;
+			/**
+			 * Locations
+			 * @description Where it stands on the archive's pages, a box per line; empty where the words of the text have no boxes (a text parsed before 0.2).
+			 */
+			locations: components['schemas']['LocationOut'][];
 		};
 		/** StoredFileOut */
 		StoredFileOut: {

@@ -8,10 +8,13 @@ from lekto.core.domain.facts import (
     facts_in,
     identifier_spans,
     name_spans,
+    on_pages,
 )
 from lekto.core.domain.identifiers import Identifier, IdentifierKind
-from lekto.core.domain.locations import Box
+from lekto.core.domain.labels import grid_layout, layout_words
+from lekto.core.domain.locations import Box, Location
 from lekto.core.domain.master_data import Contact
+from lekto.core.domain.text_places import TextPlaces
 from tests.builders import NOW
 
 TEXT = """\
@@ -99,3 +102,20 @@ def test_facts_of_text_and_codes_with_their_places() -> None:
     assert facts.identifiers[0].contact_id == utility.id
     # Without places, no spans.
     assert all(item.spans == () for item in facts_in(TEXT, [utility], [GIRO]).identifiers)
+
+
+def test_on_the_pages_each_span_has_its_places() -> None:
+    utility = Contact.create(name="Stadtwerke Müllheim-Süd", now=NOW)
+    pages = layout_words(grid_layout(TEXT))
+    assert pages is not None
+    facts = on_pages(facts_in(TEXT, [utility], places=True), TextPlaces(TEXT, pages))
+    ((named,),) = [item.spans for item in facts.named]
+    # `Stadtwerke   Müllheim-Süd`: words that far apart stay apart.
+    assert named.locations == (
+        Location(1, (Box(0.0, 0.0025, 0.125, 0.0117), Box(0.1625, 0.0025, 0.15, 0.0117))),
+    )
+    by_value = {item.value: item for item in facts.identifiers}
+    ((customer,),) = [by_value["20047718"].spans]
+    assert [location.page for location in customer.locations] == [1]
+    # No words with boxes: no places.
+    assert on_pages(facts, TextPlaces(TEXT, {})).named[0].spans[0].locations == ()

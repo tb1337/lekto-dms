@@ -1,6 +1,5 @@
 import asyncio
 import copy
-import functools
 import hashlib
 import json
 import logging
@@ -23,7 +22,7 @@ from lekto.core.domain.errors import (
     ValidationError,
 )
 from lekto.core.domain.exchanges import RunExchange, exchanges_from_json
-from lekto.core.domain.facts import Facts, facts_in
+from lekto.core.domain.facts import Facts, facts_in, on_pages
 from lekto.core.domain.fields import SORTABLE_TYPES, FieldType, FieldValue
 from lekto.core.domain.identifiers import IdentifierKind
 from lekto.core.domain.ids import (
@@ -46,6 +45,7 @@ from lekto.core.domain.permissions import (
 )
 from lekto.core.domain.pipeline import Node, NodeRun
 from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.text_places import TextPlaces
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.metadata import FileMetadata, MetadataReader
 from lekto.core.ports.object_store import ObjectStore
@@ -82,6 +82,7 @@ from lekto.core.services.objects import (
     codes_key,
     exchanges_key,
     legacy_exchanges_key,
+    load_layout,
     load_text,
     original_key,
     page_key,
@@ -344,10 +345,14 @@ class DocumentService:
         except NotFoundError:
             raise ConflictError("document has no text yet") from None
         codes = await self._codes(id)
+        pages = await load_layout(store, id)
+
+        def found() -> Facts:
+            facts = facts_in(text, contacts, codes or (), places=True)
+            return on_pages(facts, TextPlaces(text, pages)) if pages else facts
+
         # Matching every contact's names against a long text takes a while: not in the loop.
-        facts = await asyncio.to_thread(
-            functools.partial(facts_in, text, contacts, codes or (), places=True)
-        )
+        facts = await asyncio.to_thread(found)
         amounts = {
             field: value
             for field, value in document.fields.items()

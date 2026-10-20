@@ -38,9 +38,9 @@
 	// The facts beside the text: what supports the document's contact, what speaks of other
 	// contacts, the identifiers of no contact (admins attach them, with a topic of the contact,
 	// the document's by default), and the codes on the pages. Hovering or focusing an entry
-	// marks it in the text; a click keeps the mark. A contact named here shows its logo, and for
-	// admins it opens its editor (Tobi, 20.10.2026), also the other contacts whose documents
-	// show an identifier.
+	// marks it in the text and on the pages; a click keeps the mark. A contact named here
+	// shows its logo, and for admins it opens its editor (Tobi, 20.10.2026), also the other
+	// contacts whose documents show an identifier.
 	let {
 		facts,
 		documentId,
@@ -58,8 +58,9 @@
 		topicId?: string | null;
 		/** Admins attach identifiers (they are master data). */
 		admin: boolean;
-		/** The spans to mark in the text, none to mark nothing; `reveal` after a click. */
-		onmark: (spans: Span[], reveal: boolean) => void;
+		/** The spans to mark in the text and on the pages under `label`, none to mark nothing;
+		 * `reveal` after a click. */
+		onmark: (spans: Span[], reveal: boolean, label: string) => void;
 		/** Show a code where it stands on its page. */
 		/** Show the code on one of its pages, all its places marked. */
 		onshowcode: (code: CodeFacts, place: CodePlace) => void;
@@ -118,17 +119,24 @@
 		const scroll = reveal;
 		reveal = false;
 		if (id === null) {
-			onmark([], false);
+			onmark([], false, '');
 			return;
 		}
 		if (id.startsWith('code:')) {
 			const code = facts.codes?.[Number(id.slice(5))];
-			onmark(code ? codeSpans(facts, code) : [], scroll);
+			onmark(code ? codeSpans(facts, code) : [], scroll, code?.format ?? '');
 			return;
 		}
 		const entry = [...facts.named, ...facts.identifiers].find((item) => entryId(item) === id);
-		onmark(entry?.spans ?? [], scroll);
+		onmark(entry?.spans ?? [], scroll, entry ? entryLabel(entry) : '');
 	});
+
+	/** What a mark of the entry on the page says: the kind of an identifier, a contact's name. */
+	function entryLabel(entry: Entry): string {
+		return 'kind' in entry
+			? kindLabel(entry.kind)
+			: (contactOf(entry.contact_id)?.name ?? entry.name);
+	}
 
 	function pin(id: string) {
 		pinned = pinned === id ? null : id;

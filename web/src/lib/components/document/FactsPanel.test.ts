@@ -32,7 +32,7 @@ const FACTS: Facts = {
 			alias: false,
 			in_text: true,
 			in_code: false,
-			spans: [{ start: 0, end: 22 }]
+			spans: [{ start: 0, end: 22, locations: [] }]
 		}
 	],
 	identifiers: [
@@ -42,7 +42,7 @@ const FACTS: Facts = {
 			contact_id: UTILITY,
 			in_text: true,
 			in_code: true,
-			spans: [{ start: 40, end: 67 }],
+			spans: [{ start: 40, end: 67, locations: [] }],
 			other_contacts: 0
 		},
 		{
@@ -51,7 +51,7 @@ const FACTS: Facts = {
 			contact_id: null,
 			in_text: true,
 			in_code: false,
-			spans: [{ start: 80, end: 89 }],
+			spans: [{ start: 80, end: 89, locations: [] }],
 			other_contacts: 0
 		},
 		{
@@ -60,7 +60,7 @@ const FACTS: Facts = {
 			contact_id: null,
 			in_text: true,
 			in_code: false,
-			spans: [{ start: 100, end: 127 }],
+			spans: [{ start: 100, end: 127, locations: [] }],
 			other_contacts: 6
 		}
 	],
@@ -138,16 +138,19 @@ describe('FactsPanel', () => {
 		expect(screen.getByText('DEA5E12C0001')).toBeTruthy();
 	});
 
-	it('marks a fact in the text while hovered, and keeps it on a click', async () => {
+	it('marks a fact while hovered, and keeps it on a click', async () => {
 		const onmark = vi.fn();
 		render(FactsPanel, props({ onmark }));
 		const customer = screen.getByRole('button', {
 			name: new RegExp(`^${m.identifier_kind_customer_number()}`)
 		});
 		await fireEvent.mouseEnter(customer.parentElement!.parentElement!);
-		expect(onmark).toHaveBeenLastCalledWith([{ start: 80, end: 89 }], false);
+		const spans = [{ start: 80, end: 89, locations: [] }];
+		// On the pages under its kind.
+		const kind = m.identifier_kind_customer_number();
+		expect(onmark).toHaveBeenLastCalledWith(spans, false, kind);
 		await fireEvent.click(customer);
-		expect(onmark).toHaveBeenLastCalledWith([{ start: 80, end: 89 }], true);
+		expect(onmark).toHaveBeenLastCalledWith(spans, true, kind);
 		expect(customer.getAttribute('aria-pressed')).toBe('true');
 	});
 
@@ -158,7 +161,11 @@ describe('FactsPanel', () => {
 		await fireEvent.click(
 			screen.getByRole('button', { name: m.codes_mark({ format: 'QR Code' }) })
 		);
-		expect(onmark).toHaveBeenLastCalledWith([{ start: 40, end: 67 }], true);
+		expect(onmark).toHaveBeenLastCalledWith(
+			[{ start: 40, end: 67, locations: [] }],
+			true,
+			'QR Code'
+		);
 		await fireEvent.click(screen.getByRole('button', { name: m.source_jump({ page: 1 }) }));
 		expect(onshowcode).toHaveBeenLastCalledWith(FACTS.codes![0], FACTS.codes![0].places[0]);
 		const matrix = FACTS.codes![1];

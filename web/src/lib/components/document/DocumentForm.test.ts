@@ -354,17 +354,21 @@ describe('DocumentForm', () => {
 
 	it('marks the quote of the field under the pointer, while the value is the checked one', async () => {
 		const onmarks = vi.fn<(marks: Mark[]) => void>();
-		render(DocumentForm, props({ onmarks }));
+		const onquotes = vi.fn<(quotes: string[]) => void>();
+		render(DocumentForm, props({ onmarks, onquotes }));
 		const dated = screen.getByRole('group', { name: m.field_date() });
 		await fireEvent.mouseEnter(dated);
 		await tick();
+		// On the pages, and in the text.
 		expect(onmarks).toHaveBeenLastCalledWith([
 			{ key: 'document_date', label: m.field_date(), ...place, derived: false, pinned: false }
 		]);
+		expect(onquotes).toHaveBeenLastCalledWith(['Rechnungsdatum 12.03.2026']);
 		const input = screen.getByLabelText(m.field_date(), { selector: 'input' });
 		await fireEvent.input(input, { target: { value: '2026-04-01' } });
 		await tick();
 		expect(onmarks).toHaveBeenLastCalledWith([]);
+		expect(onquotes).toHaveBeenLastCalledWith([]);
 	});
 
 	it('jumps to a source from its page', async () => {

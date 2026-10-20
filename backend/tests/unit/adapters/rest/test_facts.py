@@ -15,6 +15,7 @@ from lekto.adapters.outbound.memory import (
 )
 from lekto.composition.container import build_memory_container, build_services
 from lekto.core.domain.codes import Code
+from lekto.core.domain.labels import grid_layout
 from lekto.core.domain.locations import Box
 from tests import builders
 from tests.api import auth
@@ -41,7 +42,7 @@ async def facts_api() -> AsyncIterator[Api]:
     clock = ManualClock(builders.NOW)
     container = dataclasses.replace(
         build_memory_container(clock),
-        parser=FakeParser(TEXT),
+        parser=FakeParser(TEXT, grid_layout(TEXT)),
         codes=FakeCodeReader(CODES),
     )
     services = build_services(container)
@@ -97,6 +98,10 @@ async def test_names_identifiers_and_codes_with_their_places(facts_api: Api) -> 
     customer = by_value["20047718"]
     assert customer["contact_id"] is None
     assert [TEXT[span["start"] : span["end"]] for span in customer["spans"]] == ["2004-7718"]
+    # Where it stands on the page, a box per line: the word on the grid of the parsed text.
+    assert customer["spans"][0]["locations"] == [
+        {"page": 1, "boxes": [{"x": 0.1625, "y": 0.0192, "width": 0.1125, "height": 0.0116}]}
+    ]
     # Only admins learn on how many contacts' documents a value stands.
     assert (customer["other_contacts"], customer["other_contact_ids"]) == (None, None)
     # Once for its format and text, with every place it stands.

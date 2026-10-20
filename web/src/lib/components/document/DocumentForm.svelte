@@ -63,8 +63,8 @@
 	// The metadata of a document in three groups: basics, global fields, the fields of its
 	// type. While it waits in the inbox, the open fields are cards and "Confirm" decides them
 	// all at once (with any other change); otherwise a change is shown as a dry run before it
-	// is saved. Hovering a field marks its quote in the viewer (`onmarks`), a click on the
-	// page of a quote jumps there (`onreveal`).
+	// is saved. Hovering a field marks its quote on the pages (`onmarks`) and in the text
+	// (`onquotes`), a click on the page of a quote jumps there (`onreveal`).
 	let {
 		document,
 		lookup,
@@ -74,6 +74,7 @@
 		onsaved,
 		onconfirmed,
 		onmarks,
+		onquotes,
 		onreveal,
 		onenabled,
 		factCounts = null,
@@ -92,6 +93,8 @@
 		/** After confirming: the document to open next, or null for the inbox. */
 		onconfirmed: (next: string | null) => void;
 		onmarks: (marks: Mark[]) => void;
+		/** The quotes of the fields marked, to mark in the text. */
+		onquotes?: (quotes: string[]) => void;
 		onreveal: (place: Place) => void;
 		/** An admin's choice enabled the topic at the contact: the master data changed. */
 		onenabled?: () => void;
@@ -481,15 +484,24 @@
 		return found ? placesApply(found.check, current(key)) : true;
 	}
 
-	const marks = $derived.by(() => {
-		const keys = [...new Set([focused, pinned])].filter((key): key is string => key !== null);
-		return keys.flatMap((key) => {
-			const found = evidence.get(key);
-			if (!found || !applies(key)) return [];
-			return marksOf(key, fieldLabel(key, lookup), found.check, { pinned: key === pinned });
-		});
-	});
+	// The fields marked: hovered or focused, and the one jumped to; their quotes while they
+	// still belong to the value.
+	const marked = $derived(
+		[...new Set([focused, pinned])].flatMap((key) => {
+			const found = key === null ? undefined : evidence.get(key);
+			return key !== null && found && applies(key) ? [{ key, check: found.check }] : [];
+		})
+	);
+	const marks = $derived(
+		marked.flatMap(({ key, check }) =>
+			marksOf(key, fieldLabel(key, lookup), check, { pinned: key === pinned })
+		)
+	);
+	const quotes = $derived(
+		marked.map(({ check }) => check.evidence?.trim() ?? '').filter((quote) => quote !== '')
+	);
 	$effect(() => onmarks(marks));
+	$effect(() => onquotes?.(quotes));
 
 	function focus(key: string | null) {
 		focused = key;

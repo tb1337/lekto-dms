@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
@@ -258,7 +258,7 @@ describe('the document tab', () => {
 				contact_id: null,
 				in_text: true,
 				in_code: false,
-				spans: [{ start: 13, end: 20 }],
+				spans: [{ start: 13, end: 20, locations: [] }],
 				other_contacts: null
 			}
 		],
@@ -299,6 +299,42 @@ describe('the document tab', () => {
 			replace: true,
 			reset: false
 		});
+	});
+
+	it('marks the quote of a field in the text while the field is hovered', async () => {
+		goTo('/ui/documents/doc-1?left=text&right=form', { id: 'doc-1' });
+		const dated = () => ({ ...parsed(), document_date: '2026-03-12' });
+		const date = {
+			field: 'document_date',
+			outcome: 'ok',
+			confidence: 1,
+			reason: null,
+			proposed: null,
+			evidence: 'EBeschV 4711',
+			value: '2026-03-12',
+			suggestion: null,
+			new_name: null,
+			quote_shows_value: true,
+			locations: [{ page: 1, boxes: [{ x: 0.1, y: 0.2, width: 0.3, height: 0.02 }] }],
+			candidates: []
+		};
+		serve(dated, {
+			...readable,
+			'GET /api/v1/documents/doc-1/review': () => ({
+				document: dated(),
+				open: [],
+				nodes: [{ node: 'fields', run: 2, outcome: 'ok', reason: null, fields: [date] }]
+			})
+		});
+		render(Page);
+		await screen.findByRole('region', { name: m.content_page({ page: 1 }) });
+		await fireEvent.mouseEnter(await screen.findByRole('group', { name: m.field_date() }));
+		await waitFor(() =>
+			expect(globalThis.document.querySelector('mark[data-mark]')?.textContent).toBe('EBeschV 4711')
+		);
+		// Gone once the pointer leaves the field.
+		await fireEvent.mouseLeave(screen.getByRole('group', { name: m.field_date() }));
+		await waitFor(() => expect(globalThis.document.querySelector('mark[data-mark]')).toBeNull());
 	});
 
 	it('keeps what was typed in the form while the facts are shown', async () => {

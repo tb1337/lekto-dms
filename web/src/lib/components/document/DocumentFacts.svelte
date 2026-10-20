@@ -33,7 +33,7 @@
 		topicId?: string | null;
 		/** Admins attach identifiers to contacts. */
 		admin?: boolean;
-		onmark: (spans: Span[], reveal: boolean) => void;
+		onmark: (spans: Span[], reveal: boolean, label: string) => void;
 		onshowcode: (code: CodeFacts, place: CodePlace) => void;
 		/** After an identifier was attached: the facts are read again. */
 		onchanged: () => void;

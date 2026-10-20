@@ -52,4 +52,17 @@ describe('DocumentText', () => {
 		await view.component.revealMark();
 		expect(scrolled).toHaveBeenCalled();
 	});
+
+	it('marks the quotes it is given where they stand, however their spaces fall', async () => {
+		render(DocumentText, {
+			documentId: 'doc-1',
+			marks: [{ start: 14, end: 21 }],
+			quotes: ['Steuer-Brutto, EZ 3.544,50', 'nicht im Text']
+		});
+		await screen.findByRole('region', { name: m.content_page({ page: 1 }) });
+		const marked = [...document.querySelectorAll('mark[data-mark]')].map(
+			(mark) => mark.textContent
+		);
+		expect(marked).toEqual(['EBeschV', 'Steuer-Brutto, EZ           3.544,50']);
+	});
 });

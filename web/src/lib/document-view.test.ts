@@ -8,9 +8,6 @@ import {
 	neighbours,
 	nextDecision,
 	type InboxPlace,
-	PRESETS,
-	presetOf,
-	presetView,
 	placesApply,
 	provenance,
 	rememberedView,
@@ -84,12 +81,6 @@ describe('the view of the document tab', () => {
 		expect(viewHref(url, { left: 'pages', right: 'facts' })).toBe(
 			'/ui/documents/1?from=inbox&left=pages&right=facts'
 		);
-	});
-
-	it('has a preset for every pair', () => {
-		for (const preset of PRESETS) expect(presetOf(presetView(preset))).toBe(preset);
-		expect(presetOf({ left: 'pages', right: 'facts' })).toBe('locate');
-		expect(presetOf({ left: 'text', right: 'form' })).toBe('compare');
 	});
 
 	it('is remembered by the browser, checking at first', () => {

@@ -56,27 +56,6 @@ export const CHECKING: View = { left: 'pages', right: 'form' };
 const READING: View = { left: 'text', right: 'facts' };
 const VIEW_KEY = 'lekto.document.view';
 
-/** The quick choice of the tab row: each pair of the view by what it is for. */
-export const PRESETS = ['check', 'read', 'locate', 'compare'] as const;
-export type Preset = (typeof PRESETS)[number];
-const PRESET_VIEWS: Record<Preset, View> = {
-	check: CHECKING,
-	read: READING,
-	locate: { left: 'pages', right: 'facts' },
-	compare: { left: 'text', right: 'form' }
-};
-
-export function presetView(preset: Preset): View {
-	return PRESET_VIEWS[preset];
-}
-
-/** The preset that shows `view`: every pair has one. */
-export function presetOf(view: View): Preset {
-	return PRESETS.find(
-		(preset) => PRESET_VIEWS[preset].left === view.left && PRESET_VIEWS[preset].right === view.right
-	)!;
-}
-
 /** The view a URL names (`?left=`, `?right=`); what it does not name comes from a link of
  * before (`?tab=details` checks, `?tab=content` reads), else from `remembered`. */
 export function viewOf(url: Address, remembered: View = CHECKING): View {

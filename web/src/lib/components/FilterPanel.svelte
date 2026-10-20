@@ -52,12 +52,12 @@
 
 	const tagById = $derived(new Map(lookup.tags.map((tag) => [tag.id, tag])));
 
-	/** The tags of `scope` as chips: those with documents (or chosen), most first. */
+	/** The tags of `scope` as their chips (colour, icon): those with documents (or chosen), most
+	 * first. */
 	function chips(
 		scope: TagScope,
 		counted: Map<string, number>,
-		chosen: readonly string[],
-		coloured: boolean
+		chosen: readonly string[]
 	): ChipItem[] {
 		return ofScope(lookup.tags, scope)
 			.filter((tag) => facets === null || counted.has(tag.id) || chosen.includes(tag.id))
@@ -66,8 +66,8 @@
 				label: tag.name,
 				title: pathLabel(tag),
 				count: counting ? (counted.get(tag.id) ?? 0) : null,
-				color: coloured ? tag.color : null,
-				icon: coloured ? tag.icon : null
+				color: tag.color,
+				icon: tag.icon
 			}))
 			.toSorted((a, b) => (counting ? byCount(a, b) : 0));
 	}
@@ -102,13 +102,13 @@
 	}
 
 	const contactGroups = $derived(
-		chips('contact', counts(facets?.contact_groups), filters.contactGroups, false)
+		chips('contact', counts(facets?.contact_groups), filters.contactGroups)
 	);
 	const typeGroups = $derived(
-		chips('document_type', counts(facets?.document_type_groups), filters.typeGroups, false)
+		chips('document_type', counts(facets?.document_type_groups), filters.typeGroups)
 	);
-	const topics = $derived(chips('topic', counts(facets?.topics), filters.topics, true));
-	const tags = $derived(chips('document', counts(facets?.tags), filters.tags, true));
+	const topics = $derived(chips('topic', counts(facets?.topics), filters.topics));
+	const tags = $derived(chips('document', counts(facets?.tags), filters.tags));
 	const contacts = $derived(
 		values(lookup.contacts, counts(facets?.contacts), filters.contactGroups)
 	);

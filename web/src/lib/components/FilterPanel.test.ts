@@ -43,7 +43,7 @@ const lookup = {
 	tags: [
 		tag('t1', ['Steuer'], 'document', 'amber'),
 		tag('t2', ['Steuer', 'Lohn'], 'document', null, 't1'),
-		tag('g1', ['Versorger'], 'contact'),
+		tag('g1', ['Versorger'], 'contact', 'blue'),
 		tag('g1a', ['Versorger', 'Wasser'], 'contact', null, 'g1'),
 		tag('g2', ['Finanzen'], 'document_type'),
 		tag('p1', ['Wohnung'], 'topic')
@@ -136,7 +136,11 @@ describe('FilterPanel', () => {
 		const groups = within(contacts).getByRole('group', { name: m.facet_contact_groups() });
 		const list = within(contacts).getByRole('group', { name: m.facet_top_contacts() });
 		expect(groups.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		await user.click(within(groups).getByRole('button', { name: /^Versorger/ }));
+		// A group as its chip: outlined in its colour.
+		const versorger = within(groups).getByRole('button', { name: /^Versorger/ });
+		expect(versorger.getAttribute('style')).toContain('--tag-blue-foreground');
+		expect(versorger.className).toContain('border-(--chip-fg)/45');
+		await user.click(versorger);
 		expect(onchange).toHaveBeenLastCalledWith({ ...NO_FILTERS, contactGroups: ['g1'] });
 	});
 

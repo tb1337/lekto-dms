@@ -19,8 +19,8 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { cn } from '#lib/utils.ts';
 
-	// Values of the filters as the chips they are everywhere: a tag round in its colour, a topic
-	// square, a group outlined; the count in the chip, a chosen one with a tick and a ring. The
+	// Values of the filters as the chips they are everywhere (as TagChip draws them): a tag round
+	// in its colour, a topic square, a group outlined in its colour; the count in the chip, a chosen one with a tick and a ring. The
 	// first `limit` show and the chosen ones; `more` (a label) shows the rest on a tap.
 	let {
 		items,
@@ -55,7 +55,7 @@
 	<div class="flex flex-col items-start gap-2">
 		<div class="flex flex-wrap gap-1.5" role="group" aria-label={label}>
 			{#each shown as item (item.id)}
-				{@const style = look === 'tag' || look === 'topic' ? chipStyle(item.color) : null}
+				{@const style = look === 'plain' ? null : chipStyle(item.color)}
 				{@const active = selected.includes(item.id)}
 				<button
 					type="button"
@@ -72,13 +72,21 @@
 									? 'border bg-background'
 									: 'bg-secondary'),
 						style !== null &&
-							cn(
-								'bg-(--chip-bg) font-medium text-(--chip-fg)',
-								look === 'topic' && 'border-(--chip-fg)/25'
-							),
-						isHex(item.color) && 'chip-own ring-1 ring-(--chip-fg)/15 ring-inset',
+							(look === 'group'
+								? 'border border-(--chip-fg)/45 bg-background text-(--chip-fg)'
+								: cn(
+										'bg-(--chip-bg) font-medium text-(--chip-fg)',
+										look === 'topic' && 'border-(--chip-fg)/25'
+									)),
+						isHex(item.color) && 'chip-own',
+						// An own colour may be close to the card: a faint ring keeps a tag's shape.
+						isHex(item.color) &&
+							look === 'tag' &&
+							!active &&
+							'ring-1 ring-(--chip-fg)/15 ring-inset',
 						active && 'ring-2 ring-primary ring-offset-2 ring-offset-card',
 						active &&
+							style === null &&
 							(look === 'group' || look === 'plain') &&
 							'border-primary bg-panel font-semibold text-brand'
 					)}

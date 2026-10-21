@@ -1,7 +1,7 @@
 {
 	// Lekto as a development instance inside the devcontainer (see .devcontainer/README.md).
 	// Every task runs in /workspaces/lekto with the settings of .devcontainer/dev.env (not in the
-	// repository; "Lekto: Devinstanz einrichten" creates it). Only "zsh" starts on its own.
+	// repository; "Lekto: Set up dev instance" creates it). Only "zsh" starts on its own.
 	"version": "2.0.0",
 	"options": {
 		"shell": { "executable": "/bin/bash", "args": ["-c"] }
@@ -20,21 +20,21 @@
 			"runOptions": { "runOn": "folderOpen" }
 		},
 		{
-			"label": "Lekto: Devinstanz einrichten",
+			"label": "Lekto: Set up dev instance",
 			"detail": "Once: dev.env from the example, database lekto_dev, bucket lekto-dev",
 			"type": "shell",
 			"command": ".devcontainer/dev-setup.sh",
 			"problemMatcher": []
 		},
 		{
-			"label": "Lekto: Schema migrieren",
+			"label": "Lekto: Migrate schema",
 			"detail": "Bring the database of the dev instance to the newest schema",
 			"type": "shell",
 			"command": "set -a && . .devcontainer/dev.env && set +a && cd backend && uv run python -m lekto.composition migrate",
 			"problemMatcher": []
 		},
 		{
-			"label": "Lekto: UI bauen",
+			"label": "Lekto: Build UI",
 			"detail": "Build the web UI into web/build; the API serves it below /ui",
 			"type": "shell",
 			"command": "cd web && pnpm build",
@@ -57,7 +57,7 @@
 			},
 			"presentation": { "group": "lekto", "panel": "dedicated", "reveal": "always" },
 			"dependsOrder": "sequence",
-			"dependsOn": ["Lekto: Schema migrieren", "Lekto: UI bauen"]
+			"dependsOn": ["Lekto: Migrate schema", "Lekto: Build UI"]
 		},
 		{
 			"label": "Lekto: Worker",
@@ -75,17 +75,17 @@
 				}
 			},
 			"presentation": { "group": "lekto", "panel": "dedicated", "reveal": "always" },
-			"dependsOn": ["Lekto: Schema migrieren"]
+			"dependsOn": ["Lekto: Migrate schema"]
 		},
 		{
-			"label": "Lekto starten",
+			"label": "Lekto: Start",
 			"detail": "Migrate, build the UI, then API and worker side by side",
 			"dependsOrder": "parallel",
 			"dependsOn": ["Lekto: API", "Lekto: Worker"],
 			"problemMatcher": []
 		},
 		{
-			"label": "Lekto stoppen",
+			"label": "Lekto: Stop",
 			"detail": "End the API and the worker tasks",
 			"type": "shell",
 			"command": "echo '${input:stopApi}${input:stopWorker}' >/dev/null; echo 'Lekto stopped'",
@@ -109,28 +109,28 @@
 			"presentation": { "group": "lekto", "panel": "dedicated" }
 		},
 		{
-			"label": "Lekto: Suche neu aufbauen",
+			"label": "Lekto: Rebuild search index",
 			"detail": "Rebuild the search index of the dev instance (reindex)",
 			"type": "shell",
 			"command": "set -a && . .devcontainer/dev.env && set +a && cd backend && uv run python -m lekto.composition reindex",
 			"problemMatcher": []
 		},
 		{
-			"label": "Lekto: Seitenbilder nachholen",
+			"label": "Lekto: Render page images",
 			"detail": "Queue the page images of documents from before the pages node (render-pages)",
 			"type": "shell",
 			"command": "set -a && . .devcontainer/dev.env && set +a && cd backend && uv run python -m lekto.composition render-pages",
 			"problemMatcher": []
 		},
 		{
-			"label": "Lekto: Codes nachholen",
+			"label": "Lekto: Read codes",
 			"detail": "Queue reading the bar and QR codes of documents from before code reading (read-codes)",
 			"type": "shell",
 			"command": "set -a && . .devcontainer/dev.env && set +a && cd backend && uv run python -m lekto.composition read-codes",
 			"problemMatcher": []
 		},
 		{
-			"label": "Lekto: Logos holen",
+			"label": "Lekto: Fetch logos",
 			"detail": "Queue fetching the logos of contacts without one from their websites (fetch-logos; needs LEKTO_LOGO_FETCH=true)",
 			"type": "shell",
 			"command": "set -a && . .devcontainer/dev.env && set +a && cd backend && uv run python -m lekto.composition fetch-logos",

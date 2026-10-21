@@ -45,7 +45,7 @@ done
 
 Once, in the devcontainer (VS Code: Terminal → Run Task):
 
-1. **Lekto: Devinstanz einrichten** copies `dev.env.example` to `dev.env` with a fresh
+1. **Lekto: Set up dev instance** copies `dev.env.example` to `dev.env` with a fresh
    `LEKTO_SECRET_KEY` and creates the database `lekto_dev` (the bucket comes from
    `garage-init`, the index from Lekto). It never overwrites an existing `dev.env`. In a
    devcontainer that was started before the bucket `lekto-dev` existed, run `garage-init`
@@ -58,7 +58,7 @@ Once, in the devcontainer (VS Code: Terminal → Run Task):
    `LEKTO_EMBEDDING_API_KEY` (or remove the model variables to run without a language model: documents then stop yellow for the
    contact and the type, and the search works with words only). The other values fit the
    devcontainer. All variables: [backend/README.md](../backend/README.md#configuration).
-3. **Lekto starten** (below).
+3. **Lekto: Start** (below).
 
 Keep `LEKTO_SECRET_KEY` (TOTP and webhook secrets are encrypted with it) and the admin password
 in your password manager, not only in `dev.env`.
@@ -67,27 +67,27 @@ in your password manager, not only in `dev.env`.
 
 | Task | What it does |
 | --- | --- |
-| **Lekto starten** | `Lekto: Schema migrieren`, `Lekto: UI bauen`, then `Lekto: API` and `Lekto: Worker` side by side, each in its own terminal |
-| **Lekto stoppen** | Ends the API and worker tasks (SIGTERM; the worker finishes running jobs within `LEKTO_WORKER_SHUTDOWN_TIMEOUT`, 30 s) |
+| **Lekto: Start** | `Lekto: Migrate schema`, `Lekto: Build UI`, then `Lekto: API` and `Lekto: Worker` side by side, each in its own terminal |
+| **Lekto: Stop** | Ends the API and worker tasks (SIGTERM; the worker finishes running jobs within `LEKTO_WORKER_SHUTDOWN_TIMEOUT`, 30 s) |
 | Lekto: API, Lekto: Worker | One service alone (both run migration first; the API also builds the UI) |
-| Lekto: Schema migrieren | `python -m lekto.composition migrate` with `dev.env` |
-| Lekto: UI bauen | `pnpm build` in `web/`; the API serves `web/build` below `/ui` (`LEKTO_UI_DIR`) |
+| Lekto: Migrate schema | `python -m lekto.composition migrate` with `dev.env` |
+| Lekto: Build UI | `pnpm build` in `web/`; the API serves `web/build` below `/ui` (`LEKTO_UI_DIR`) |
 | Lekto: UI dev | Vite on <http://localhost:5173/ui/> with `/api` proxied to the API, for UI work with hot reload |
-| Lekto: Suche neu aufbauen | `reindex`: rebuild the search index from database and bucket (after a restore, a model change, or to add vectors) |
-| Lekto: Seitenbilder nachholen | `render-pages`: queue the page images of documents from before the pages node; the worker renders them |
-| Lekto: Codes nachholen | `read-codes`: queue reading the bar and QR codes of documents from before code reading; the worker reads them and keeps the identifiers each document shows |
+| Lekto: Rebuild search index | `reindex`: rebuild the search index from database and bucket (after a restore, a model change, or to add vectors) |
+| Lekto: Render page images | `render-pages`: queue the page images of documents from before the pages node; the worker renders them |
+| Lekto: Read codes | `read-codes`: queue reading the bar and QR codes of documents from before code reading; the worker reads them and keeps the identifiers each document shows |
 | Migration: plan, run, verify | The Paperless migration client with the `LEKTO_MIGRATION_*` variables of `dev.env` (see below) |
 
 When the folder opens, only the task **zsh** starts: a terminal without `dev.env` (VS Code asks
-once whether automatic tasks may run). After **Lekto starten**, open
+once whether automatic tasks may run). After **Lekto: Start**, open
 <http://localhost:8000/ui/> and sign in as the admin from `dev.env`; the API documentation is
 at <http://localhost:8000/api/v1/docs>. The tasks use the terminals of VS Code; the logs are
 there (`LEKTO_LOG_FORMAT=console`).
 
 **Update after `git pull`:** `uv sync` in `backend/` and `pnpm install` in `web/` when the lock
-files changed (the devcontainer runs both after a rebuild), then **Lekto stoppen** and **Lekto
-starten**: the start migrates the schema (a new Alembic revision is applied before API and
-worker come up) and builds the UI anew. A schema migration cannot be undone: take a backup first
+files changed (the devcontainer runs both after a rebuild), then **Lekto: Stop** and
+**Lekto: Start**: the start migrates the schema (a new Alembic revision is applied before API
+and worker come up) and builds the UI anew. A schema migration cannot be undone: take a backup first
 when the pull brings a new revision (`git log --stat -- backend/src/lekto/adapters/outbound/sql/migrations/versions`).
 
 **Rebuild of the devcontainer** ("Rebuild Container"): the volumes stay, `dev.env` stays (it is
@@ -136,7 +136,7 @@ instance:
 
 Run the migration with the embedding variables commented out in `dev.env` (restart API and
 worker after changing it): the pipeline then does not call Ollama for every document. Afterwards
-switch them on again, restart, and run **Lekto: Suche neu aufbauen** once to get the vectors.
+switch them on again, restart, and run **Lekto: Rebuild search index** once to get the vectors.
 The rebuild runs in one go and cannot be split: measured in M13 over the reverse proxy it took
 about 10 s per document (1525 documents: over four hours), not the 0.7 s of the M6 measurement
 on the NUC itself, so check the model's machine first or plan the time. Switching embeddings
@@ -170,7 +170,7 @@ docker run --rm --network lekto-dev_default -v "$BACKUP:/backup" \
   rclone/rclone:1.75.1 sync garage:lekto-dev /backup/objects
 ```
 
-Restore (into the same devcontainer; stop Lekto first with **Lekto stoppen**):
+Restore (into the same devcontainer; stop Lekto first with **Lekto: Stop**):
 
 ```sh
 docker exec lekto-dev-postgres-1 dropdb -U lekto --if-exists lekto_dev
@@ -184,7 +184,7 @@ docker run --rm --network lekto-dev_default -v "$BACKUP:/backup:ro" \
   rclone/rclone:1.75.1 sync /backup/objects garage:lekto-dev
 ```
 
-Then **Lekto starten** and **Lekto: Suche neu aufbauen**. `rclone sync` makes the target equal
+Then **Lekto: Start** and **Lekto: Rebuild search index**. `rclone sync` makes the target equal
 to the source: a restore removes objects that are not in the backup. The Garage key above is the
 fixed development key from `test.env`.
 

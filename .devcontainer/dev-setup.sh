@@ -3,7 +3,7 @@
 #   - .devcontainer/dev.env from dev.env.example, with a fresh LEKTO_SECRET_KEY
 #   - the database lekto_dev (the bucket lekto-dev is created by garage-init at every start,
 #     the search index by Lekto itself)
-# Run from the repository root (the VS Code task "Lekto: Devinstanz einrichten" does).
+# Run from the repository root (the VS Code task "Lekto: Set up dev instance" does).
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -53,4 +53,4 @@ async def main() -> None:
 
 asyncio.run(main())
 PY
-echo "Done. Next: the task 'Lekto starten'."
+echo "Done. Next: the task 'Lekto: Start'."

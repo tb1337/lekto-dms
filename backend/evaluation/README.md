@@ -53,9 +53,9 @@ inbox or changing a green one; the log's `corrected` tells which automatic value
 Run it from `backend/`:
 
 ```sh
-uv run python -m lekto.composition evaluate --fake       # fixed answers, both runs, as in CI
-uv run python -m lekto.composition evaluate              # the model in LEKTO_LLM_*
-uv run python -m lekto.composition evaluate --runs cold --cases DIR --output FILE
+uv run lekto evaluate --fake       # fixed answers, both runs, as in CI
+uv run lekto evaluate              # the model in LEKTO_LLM_*
+uv run lekto evaluate --runs cold --cases DIR --output FILE
 ```
 
 A real run needs `LEKTO_LLM_BASE_URL` and `LEKTO_LLM_MODEL`, and a configuration that is valid
@@ -86,9 +86,9 @@ alike: the pay slips, the electrician's, the mail-order house's, the statements,
 `question` (asked as a person asks) and `purpose` (what a document is for, in none of its words).
 
 ```sh
-uv run python -m lekto.composition evaluate-search --fake                # flow only, as in CI
-uv run python -m lekto.composition evaluate-search --models bge-m3,other # models of the endpoint
-uv run python -m lekto.composition evaluate-search --ratios 0,0.5,1 --queries FILE --output FILE
+uv run lekto evaluate-search --fake                # flow only, as in CI
+uv run lekto evaluate-search --models bge-m3,other # models of the endpoint
+uv run lekto evaluate-search --ratios 0,0.5,1 --queries FILE --output FILE
 ```
 
 Each model gets a temporary Meilisearch index (`lekto-eval-…`, removed afterwards) and the

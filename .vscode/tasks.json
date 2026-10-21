@@ -1,7 +1,7 @@
 {
 	// Lekto as a development instance inside the devcontainer (see .devcontainer/README.md).
-	// Every task runs in /workspaces/lekto with the settings of .devcontainer/dev.local.env (not in the
-	// repository; "Lekto: Set up dev instance" creates it). Only "zsh" starts on its own.
+	// Every task runs with the settings of .devcontainer/dev.local.env (not in the repository;
+	// "Lekto: Set up dev instance" creates it): `lekto --env-file`. Only "zsh" starts on its own.
 	"version": "2.0.0",
 	"options": {
 		"shell": { "executable": "/bin/bash", "args": ["-c"] }
@@ -30,7 +30,7 @@
 			"label": "Lekto: Migrate schema",
 			"detail": "Bring the database of the dev instance to the newest schema",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd backend && uv run python -m lekto.composition migrate",
+			"command": "cd backend && uv run lekto --env-file ../.devcontainer/dev.local.env migrate",
 			"problemMatcher": []
 		},
 		{
@@ -44,7 +44,7 @@
 			"label": "Lekto: API",
 			"detail": "REST API, MCP and the built UI on http://localhost:8000/ui/",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd backend && uv run python -m lekto.composition api",
+			"command": "cd backend && uv run lekto --env-file ../.devcontainer/dev.local.env api",
 			"isBackground": true,
 			"problemMatcher": {
 				"owner": "lekto",
@@ -63,7 +63,7 @@
 			"label": "Lekto: Worker",
 			"detail": "Pipeline, events, webhooks, search index",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd backend && uv run python -m lekto.composition worker",
+			"command": "cd backend && uv run lekto --env-file ../.devcontainer/dev.local.env worker",
 			"isBackground": true,
 			"problemMatcher": {
 				"owner": "lekto",
@@ -112,34 +112,35 @@
 			"label": "Lekto: Rebuild search index",
 			"detail": "Rebuild the search index of the dev instance (reindex)",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd backend && uv run python -m lekto.composition reindex",
+			"command": "cd backend && uv run lekto --env-file ../.devcontainer/dev.local.env reindex",
 			"problemMatcher": []
 		},
 		{
 			"label": "Lekto: Render page images",
 			"detail": "Queue the page images of documents from before the pages node (render-pages)",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd backend && uv run python -m lekto.composition render-pages",
+			"command": "cd backend && uv run lekto --env-file ../.devcontainer/dev.local.env render-pages",
 			"problemMatcher": []
 		},
 		{
 			"label": "Lekto: Read codes",
 			"detail": "Queue reading the bar and QR codes of documents from before code reading (read-codes)",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd backend && uv run python -m lekto.composition read-codes",
+			"command": "cd backend && uv run lekto --env-file ../.devcontainer/dev.local.env read-codes",
 			"problemMatcher": []
 		},
 		{
 			"label": "Lekto: Fetch logos",
 			"detail": "Queue fetching the logos of contacts without one from their websites (fetch-logos; needs LEKTO_LOGO_FETCH=true)",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd backend && uv run python -m lekto.composition fetch-logos",
+			"command": "cd backend && uv run lekto --env-file ../.devcontainer/dev.local.env fetch-logos",
 			"problemMatcher": []
 		},
 		{
 			// A new terminal for the migration from Paperless-ngx: in migration/, with the settings
-			// of dev.local.env, the commands shown; it stays open for plan, check, prepare and run.
-			"label": "Lekto: Migrate",
+			// of dev.local.env loaded for it, the commands shown; it stays open for plan, check,
+			// prepare and run.
+			"label": "Lekto: Paperless migration",
 			"detail": "Take a Paperless-ngx archive over: a terminal in migration/ with dev.local.env, showing lekto-migration --help",
 			"type": "shell",
 			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd migration && uv run lekto-migration --help; exec zsh -l",

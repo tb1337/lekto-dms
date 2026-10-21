@@ -1216,7 +1216,7 @@ Secrets (marked *secret*) can also be passed as `LEKTO_<NAME>_FILE=/run/secrets/
 secrets): the file content, without one trailing newline, is the value. Setting both
 `LEKTO_<NAME>` and `LEKTO_<NAME>_FILE` is an error. In production, pass at least
 `LEKTO_SECRET_KEY_FILE` and `LEKTO_ADMIN_PASSWORD_FILE` that way. The key and the admin
-password in `.devcontainer/test.env` are public; with secure cookies the start refuses the
+password in `.devcontainer/compose.yml` are public; with secure cookies the start refuses the
 development key.
 
 Variables for the variant that is not selected (for example `LEKTO_DB_HOST` with

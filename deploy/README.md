@@ -68,7 +68,7 @@ openssl rand -base64 32 > secrets/lekto_secret_key   # LEKTO_SECRET_KEY: 32 rand
 ```
 
 `LEKTO_SECRET_KEY` is required by every service (it encrypts TOTP and webhook secrets). Losing it
-means losing both. The key from `.devcontainer/test.env` is public and refused with secure cookies
+means losing both. The key from `.devcontainer/compose.yml` is public and refused with secure cookies
 (the default; the example stacks run with `LEKTO_COOKIE_SECURE=false` and would take it, so never
 copy it). Meilisearch has no
 `*_FILE` variable: its key reaches it through `secrets/meilisearch.env`, the one secret that is an

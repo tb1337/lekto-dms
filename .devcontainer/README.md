@@ -78,7 +78,8 @@ in your password manager, not only in `dev.env`.
 | Lekto: Codes nachholen | `read-codes`: queue reading the bar and QR codes of documents from before code reading; the worker reads them and keeps the identifiers each document shows |
 | Migration: plan, run, verify | The Paperless migration client with the `LEKTO_MIGRATION_*` variables of `dev.env` (see below) |
 
-Nothing starts when the container opens. After **Lekto starten**, open
+When the folder opens, only the task **zsh** starts: a terminal without `dev.env` (VS Code asks
+once whether automatic tasks may run). After **Lekto starten**, open
 <http://localhost:8000/ui/> and sign in as the admin from `dev.env`; the API documentation is
 at <http://localhost:8000/api/v1/docs>. The tasks use the terminals of VS Code; the logs are
 there (`LEKTO_LOG_FORMAT=console`).

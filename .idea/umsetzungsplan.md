@@ -1245,6 +1245,97 @@ Die Devinstanz liest nach dem Merge `LEKTO_`: in `live.env` das Präfix umstelle
 
 **Offen:** Wie viele Wörter der echten Dokumente ihren Kasten finden, ist nicht gemessen (nur mit Tobis Okay an der Devinstanz, nur Zahlen).
 
+### Release 0.5.0 – Rechte über Spaces
+
+**Anlass (Tobi, 21.10.2026):** Das Berechtigungssystem aus Nutzern und Spaces ging nicht gut auf, es war schwer zu handhaben und unverständlich. Drei Dinge entschieden nebeneinander, wer was darf: der Besitzer des Dokuments (sieht es in jeder Lane, löscht, verarbeitet neu, bestätigt, verschiebt), der Besitzer des Space (verwaltet ihn, sieht das Grüne darin) und Freigaben je Nutzer („lesen“, „lesen/schreiben“, das weder Verschieben noch Löschen erlaubte). Daraus entstanden Fälle, die niemand verstand: ein fremdes Dokument im eigenen Space, das man weder löschen noch verschieben durfte; eine entzogene Freigabe, nach der der andere sein Dokument im eigenen Space weiter sah; Gelbes in einem geteilten Space, bei dem niemand helfen konnte; je Kombination aus Lesern und Schreibern ein Space nach der Migration.
+
+**Entscheidungen (Tobi, 21.10.2026, in einer Diskussion über zehn Runden; Ergebnis in `architektur.md`: Datenhaltung, Datenmodell, Berechtigungen, Posteingang, Signale, Urteil, Training, Kontakte, Suche, Regel-Engine, Migration; `ingest-v2.md` Entscheidung 6 aufgehoben):**
+- **Verworfen:** Spaces als gespeicherte Filter über die eigenen Dokumente, geteilt mit anderen (Tobis erste These: der Besitzer bleibt, der Space filtert einen Ausschnitt per Tags und Merkmalen) – zu undurchsichtig, und jede Umklassifizierung hätte Nebenwirkungen auf die Sichtbarkeit; dazu je Besitzer doppelte Spaces („Haushalt“ von beiden) und eine Schwelle „gesehen“, bevor ein Dokument geteilt wird. Gruppen und Rechte je Nutzer: nicht nötig, ein geteilter Space deckt beides ab. Ein Merkmal „privat/gemeinsam“ ohne Spaces: reicht nur für einen Haushalt. Phasen (erst Spaces, dann Personen): nein, gebaut wird alles in einem Zug, sobald der Plan steht.
+- **Tresor-Modell** (Vorbild die Tresore in 1Password und die Spaces bei N26, nach denen der Name gewählt ist): Ein Dokument liegt in genau einem Space, nur der Space trägt Rechte. Kein Besitzer des Dokuments mehr, „eingestellt von“ nur als Auskunft. Zwei Rollen, Lesen und Bearbeiten (eine dritte zum Verwalten entfiel, als Bearbeiter auch Regeln und Mitglieder pflegen); Leser sehen nur Grünes, Bearbeiter jede Lane.
+- **Persönlicher Space:** jeder Nutzer einen, dort landen Uploads; nicht löschbar, aber teilbar („Aufweichung“: der private Space muss auch teilbar sein); seine Mitglieder bestimmt nur sein Nutzer.
+- **Upload ohne Wahl:** Der Nutzer soll nicht wählen müssen, das System soll smart sein und Arbeit abnehmen (Grundregel). Die API behält `space_id` (und `uploaded_by` für Admins).
+- **Lekto schlägt den Space vor:** Der Space wird Ziel der Klassifizierung (Klassifikator und Nachbarn lernen ihn, „Dokumente vom Vermieter liegen immer in Haushalt“), mit einer Beschreibung für das Modell wie Typen und Felder. Bedingungen am Space verworfen, weil Regeln dasselbe tun (zwei Wege wären wieder undurchsichtig).
+- **Mehr Sichtbarkeit nur mit Klick:** Die Werte müssen bestätigt sein, damit Regeln korrekt arbeiten; der Klick ist in Ordnung (verworfen: Claudes Vorschlag, harte Belege wie IBAN oder Kennung wie bestätigt zählen zu lassen). Einengen geht ohne Rückfrage, unsichere Vorschläge lassen den Space, ohne Gelb (im freigegebenen Plan).
+- **Übergeben:** in den persönlichen Space eines anderen ohne Mitgliedschaft, von Hand und per Regel; ersetzt den Besitzerwechsel. Erkennt Lekto, dass ein Dokument für Anna ist, legt es das Übergeben nahe.
+- **Personen:** Nutzer bekommen Namen, Aliasse, Geburtsdatum, E-Mail und Kennungen; kein Klassifizierungsmerkmal und keine Grunddaten wie Titel und Kontakt, sondern Beleg („wessen“ neben „worum“); nicht jedes Dokument nennt einen Empfänger. Tobi meinte mit „Usertags“ etwas anderes, fand den Gedanken aber gut (hatte ihn selbst).
+- **Regeln:** gehören zu einem Space (Nutzer ← Space → Regeln) oder sind global; „Space setzen“ bleibt („für Dokumente in meinem Space per Regel sagen: schieb es nach Haushalt“); Space-Regeln pflegen alle Bearbeiter („geteilter Space ist geteilter Space“); sie laufen beim Einzug, ohne Endlosschleifen. Globale Regeln dürfen alles, keine Einschränkung für Admins.
+- **Posteingang:** Dokumente der Spaces, in denen ich bearbeite; neu beim Einzug für Bearbeiter, die es vorher nicht sahen.
+- **Bestand:** Standard-Space → persönlich, Besitzer eines Space → Bearbeiter, „lesen“ → Lesen, „lesen/schreiben“ → Bearbeiten; Dokumente bleiben, wo sie liegen; Nutzer-Regeln → Regeln des persönlichen Space. Paperless: ein Space je Kombination, mit Lesen und Bearbeiten.
+- **Release:** in 0.5.0 (Entwurf mit Umbenennung, Dokumentliste, Migration in Phasen, CLI), Labels `refactor` und `new-feature`, der Bruch im Titel des PR (kein `breaking-change`, das höbe auf 1.0.0); wie 0.3.0 und 0.4.0: `release/0.5.0` von `main` (e1a7ed4), je Paket eine Branch und ein PR dorthin.
+- **Offen für Tobi:** Dubletten ohne Besitzer – Claude wählte als Vorgabe (a) „je Space eindeutig, geprüft gegen alle Spaces, die der Einstellende sieht“ (verrät nichts über fremde Dokumente); die Alternative (b) „global eindeutig“ verriete mit ihrer Meldung, dass jemand die Datei hat.
+- **Bauen:** autonom über Nacht auf Tobis Wunsch (21.10.2026); alle Branches bleiben lokal, bis Tobi „pushen“ sagt; Fragen klärt er am nächsten Tag.
+
+Grundlage des Plans: drei Kartierungen durch Agenten (Backend, Web-UI und Migrationsclient, Klassifizierung). Was sie fanden und der Plan berücksichtigt: Dubletten sind je Besitzer eindeutig (Index `owner_id, sha256`), Namen von Spaces je Besitzer; die Template-Variable `owner` steht in gespeicherten Regeln; das Nachbarn-Signal sucht aus Sicht des Besitzers; `DocumentDeleted.readers` wird in der Outbox gespeichert; die Bewertung prüft, dass Space und Besitzer bleiben; ein Verschieben bestätigt nichts (eine reine Korrektur des Space trainiert nicht); der Posteingang hält den Space für „immer gesetzt“ (`ALWAYS_SET`) und kann keinen Vorschlag übernehmen; der Klassifikator ist ein Modell für alle (der eigene persönliche Space braucht eine Pseudoklasse, ein neues Ziel geht als optionales Array ohne Wechsel des Formats); ein eigener Knoten für Personen hieße, jedes Dokument zu migrieren (darum in `signal_facts`); die eigene IBAN ist heute das „unbekannte IBAN“; Paperless liefert Vor- und Nachname und E-Mail jedes Nutzers.
+
+| # | Branch | Inhalt | Label | Revision | Modell |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `refactor/space-members-0.5.0` | Spaces mit Mitgliedern, kein Besitzer, Regeln am Space | `refactor` | 0033 | Opus 5.5 |
+| 2 | `feature/space-suggestion-0.5.0` | Lekto schlägt den Space vor, Regeln beim Einzug | `new-feature` | 0034 | Opus 5.5 |
+| 3 | `feature/persons-0.5.0` | Nutzerprofile, Personen als Beleg | `new-feature` | 0035 | Opus 5.5 |
+
+Jedes Paket umfasst Backend, Web und Migrationsclient (sonst wären `pnpm check` und der OpenAPI-Test rot), beginnt mit einem Plan der Branch und endet mit einem Review durch einen separaten Agenten. Die Branches bauen aufeinander auf (2 auf 1, 3 auf 2). Keine neuen Abhängigkeiten.
+
+#### Paket 1 – Spaces mit Mitgliedern (`refactor/space-members-0.5.0`)
+
+PR mit Label `refactor`, der Bruch im Titel, etwa „Carry rights by space members (breaking: no document owner, members instead of shares)“.
+
+**Umsetzung:**
+- **Kern:** `Space` mit `members` (Rolle `read` oder `edit`) und `personal_of` statt `owner_id`, `is_default` und `shares`; ein geteilter Space behält mindestens einen Bearbeiter; Namen geteilter Spaces global eindeutig (ohne Groß- und Kleinschreibung), der persönliche heißt für seinen Nutzer „Persönlich“, für andere wie sein Nutzer. `Document.uploaded_by` statt `owner_id` (leer, wenn der Nutzer gelöscht ist). `permissions.py` neu: Zugriff aus der Rolle, Admins überall Bearbeiten; Leser nur Grünes; Verschieben (Bearbeiter in Quelle und Ziel) und Übergeben (Ziel ein fremder persönlicher Space); `may_file` mit dem Sonderweg für Admins entfällt. Upload landet im persönlichen Space des Einstellenden; API `space_id` (Bearbeiter des Ziels) und `uploaded_by` (nur Admins). Dubletten je Space, geprüft gegen alle Spaces, die der Einstellende sieht (Vorgabe (a)); Verschieben in einen Space mit derselben Datei: 409.
+- **Regeln:** Geltungsbereich `global` oder `space` (`space_id` statt `owner_id`); eine Space-Regel wirkt auf die Dokumente ihres Space, beim Eingang die Regeln des persönlichen Space des Einstellenden; „Space setzen“ zielt auf einen Space, in dem der zuletzt Speichernde (`rule_versions.created_by` der aktiven Version) bearbeitet, oder auf einen fremden persönlichen Space. Die Sperre (M7) greift, wenn das Ziel Mitglieder hat, die die Quelle nicht hat; globale Regeln dürfen den Space setzen. Regeln pflegen und rückwirkend anwenden die Bearbeiter des Space; Leser sehen sie nicht.
+- **Reichweite:** Posteingang (Bearbeiter), Webhooks (Reichweite ihres Besitzers nach Rollen), SSE und `DocumentDeleted.readers` aus den Mitgliedern; neu beim Einzug für Bearbeiter, die es vorher nicht sahen. Nutzer löschen: persönlicher Space leer, nicht letzter Bearbeiter eines geteilten Space. Das Nachbarn-Signal sucht aus Sicht des Einstellenden.
+- **Revision 0033:** `space_members` aus Besitzer (Bearbeiten) und Freigaben („lesen“ → Lesen, „lesen/schreiben“ → Bearbeiten); `spaces.personal_of` aus `is_default`; `owner_id`, `is_default`, `space_shares` entfallen; kollidieren Namen verschiedener Besitzer, bekommt einer „(Benutzername)“ angehängt. `documents.owner_id` → `uploaded_by`, der Index für Dubletten je Space (verletzt der Bestand ihn, hält die Revision mit den IDs an). `rules.owner_id` → `space_id` (persönlicher Space des Besitzers), `scope` `user` → `space`. Templates in Regeln und Titelmustern: `owner` → `uploaded_by` über python-liquid wie in 0024, Abbruch, wenn ein Template `uploaded_by` schon anders nutzt. Rückrichtung, so weit möglich (der erste Bearbeiter wird Besitzer). Test mit Daten auf SQLite und Postgres, hin und zurück.
+- **Suche:** Layout 6, `owner_id` fällt aus dem Index; Filter „Space, in dem ich bearbeite, oder Space, den ich lese, und Grün“.
+- **API:** `SpaceOut` mit `members`, `role` (des Aufrufers) und `personal_of`; `POST /spaces` (Admins mit Mitgliedern, ohne selbst Mitglied zu werden); `PUT`/`DELETE /spaces/{id}/members/{user_id}` statt der Freigaben; `DocumentDetails` mit `uploaded_by` und `access` (`read`, `edit`); `move` übergibt auch; `RuleOut` mit `scope` und `space_id`; MCP entsprechend; `openapi.json` und `schema.ts` neu.
+- **Web:** Spaces-Seite (persönlicher zuerst, dann die übrigen mit meiner Rolle, für Admins „Spaces anderer Nutzer“), Mitglieder-Dialog statt `SpaceShares`; Upload ohne Wahl von Space und Besitzer; Dokumentkopf mit Space und „sichtbar für …“, Verschieben mit „Übergeben an“; Regeln „Gilt für: Global / Space X“; Probelauf mit den Mitgliedern; `permissions.ts` neu; Texte in beiden Sprachen.
+- **Migrationsclient:** `prepare` legt Spaces mit Mitgliedern an (Besitzer und Schreiber bearbeiten, Leser lesen); Upload mit `uploaded_by` = Paperless-Besitzer; Dokumente ohne weitere Rechte in den persönlichen Space des Besitzers; Fake der API angepasst.
+- **Bewertung:** Statt „Besitzer und Space bleiben“ „eingestellt von und Space bleiben“.
+- **Doku:** `README.md` (Glossar), `backend/README.md` (Rechte, „After the update to 0.5“), `web/README.md`, `migration/README.md`, `docs/templates.md`.
+
+**Prüfung:** alle Prüfungen in `backend/`, `web/` und `migration/`; Verträge auf Speicher, SQLite und Postgres; eine Rechtematrix in REST (Leser, Bearbeiter, Admin, Fremder; Grün, Gelb, in Verarbeitung); Revision 0033 hin und zurück mit Daten (Space mit Freigaben beider Stufen, kollidierende Namen, Nutzer-Regel mit „Space setzen“ und `{{ owner }}`, Titelmuster mit `{{ owner }}`, Dubletten verschiedener Besitzer in verschiedenen Spaces); Browser gegen den Build auf einer Prüfinstanz (Port 8001): Space anlegen, Mitglieder, persönlichen teilen, Hochladen, Verschieben, Übergeben, Regel mit Geltungsbereich, hell, dunkel, Handybreite.
+
+**Nach dem Merge:** Devinstanz: Revision 0033, Neustart (der Abgleich schreibt den Index in Layout 6 neu und behält die Vektoren).
+
+#### Paket 2 – Lekto schlägt den Space vor (`feature/space-suggestion-0.5.0`)
+
+PR mit Label `new-feature`.
+
+**Umsetzung:**
+- **Beschreibung am Space** (bis 300 Zeichen, wie bei Typen), im Dialog des Space.
+- **Bestätigter Space:** Verschieben durch eine Person und Bestätigen bestätigen den Space; nur bestätigte Spaces sind Trainingsbeispiele und zählen fürs Nachtrainieren (der Plan der Branch wählt zwischen eigenem Zeitpunkt und `confirmed_at`).
+- **Klassifikator:** Ziel `space` als optionales Array (kein Wechsel von `FORMAT`); der eigene persönliche Space des Einstellenden als Pseudoklasse; Vorhersage auf die infrage kommenden Spaces beschränkt und neu normiert.
+- **Nachbarn:** der Space der ähnlichen bestätigten Dokumente, nur infrage kommende.
+- **LLM:** Prompt `propose-5` mit den infrage kommenden Spaces und ihren Beschreibungen, als Schlüssel statt Namen; der Parser der Bewertung angepasst.
+- **Urteil:** Prüfung des Space: nur ein sicherer Vorschlag zählt; weitet er die Sichtbarkeit, gelb mit „Vorschlag: Haushalt (sichtbar für Anna)“; engt er ein, verschieben; unsicher, bleiben ohne Gelb; widerspricht eine Regel, gelb. Der Space kommt in die Werte der Herkunft (`Provenance`), damit Widersprüche zwischen Regel und Modell greifen.
+- **Posteingang:** Bestätigen übernimmt den vorgeschlagenen Space (bisher `ALWAYS_SET`); das Formular startet beim Vorschlag.
+- **Regeln beim Einzug:** Kommt ein Dokument in einen Space (Ablage, Verschieben, Bestätigen), laufen dessen Regeln; Sperre gegen Schleifen („Regeln schieben hin und her: A → B → A“).
+- **Bewertung:** der erwartete Space je Fall statt „Space bleibt“.
+- **Revision 0034:** Beschreibung des Space, ggf. die Bestätigung des Space.
+
+**Prüfung:** Unit für Klassifikator (Pseudoklasse, Beschränkung, Normierung), Nachbarn, Prompt, Urteil (sicher, unsicher, weitet, engt ein, Regel widerspricht), Posteingang (Vorschlag übernehmen), Einzug und Schleife; Revision hin und zurück; Browser: Vorschlag im Posteingang bestätigen.
+
+**Nach dem Merge:** Devinstanz: Revision 0034, Neustart, der Klassifikator trainiert neu (`train`), sobald Tobi es will.
+
+#### Paket 3 – Personen (`feature/persons-0.5.0`)
+
+PR mit Label `new-feature`.
+
+**Umsetzung:**
+- **Profil:** Anzeigename, Aliasse, Geburtsdatum, E-Mail, Kennungen; gepflegt vom Nutzer selbst (Einstellungen) und von Admins; andere sehen nur den Anzeigenamen, der überall den Benutzernamen ersetzt.
+- **Kennungen:** neue Arten Steuer-ID (mit Prüfziffer), Sozialversicherungsnummer, ganze E-Mail-Adresse; eindeutig über Kontakte und Nutzer; Kennungen von Nutzern lernt kein Kontakt (`taken`); die eigene IBAN ist nicht mehr „unbekannt“; eine Vertragskennung am Kontakt kann einen Nutzer nennen.
+- **`signal_facts` findet Personen:** Name oder Alias schwach, Geburtsdatum mittel, Kennung hart; dazu der Empfänger des Modells, im Urteil mit den Namen der Nutzer abgeglichen. Ergebnis im Protokoll, nicht am Dokument; persönliche Daten nie an das Modell.
+- **Urteil:** Fehlt eine gefundene Person im vorgeschlagenen Space, warnt der Vorschlag; ist genau eine andere Person hart belegt und passt kein Space, schlägt er „Übergeben an …“ vor.
+- **Migrationsclient:** Anzeigename aus Vor- und Nachname, E-Mail aus Paperless.
+- **Web:** Profil in den Einstellungen und unter Admin › Nutzer, der Editor für Kennungen der Kontakte wiederverwendet, die Fakten-Ansicht mit Personen, Anzeigenamen überall.
+- **Revision 0035:** Profil, Aliasse und Kennungen der Nutzer.
+
+**Prüfung:** Unit für die neuen Kennungen (Prüfziffer der Steuer-ID, E-Mail), Eindeutigkeit über Kontakte und Nutzer, Personen in den Fakten (schwach, mittel, hart; mehrere Personen), Urteil (Warnung, Übergeben vorschlagen), Sichtbarkeit des Profils in REST; Revision hin und zurück; Browser: Profil pflegen, Fakten mit Personen.
+
+**Nach dem Merge:** Devinstanz: Revision 0035, Neustart; Profile pflegt Tobi.
+
+#### Abschluss des Release
+
+- `release/0.5.0` → `main` als Draft-PR mit `skip-changelog`; gemergt auf Tobis Wort, danach die Notes prüfen (beim Ändern eines Entwurfs `tag_name` mitschicken).
+
 ### M16 – Lesen
 
 - `PageRenderer` statt `PreviewRenderer`: alle Seiten als WebP-Derivate; Endpunkt `GET /documents/{id}/pages/{n}`.

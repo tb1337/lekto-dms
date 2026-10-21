@@ -10,8 +10,6 @@ import {
 	type InboxPlace,
 	placesApply,
 	provenance,
-	rememberedView,
-	rememberView,
 	tabHref,
 	tabOf,
 	viewerSources,
@@ -64,14 +62,15 @@ describe('tabs', () => {
 describe('the view of the document tab', () => {
 	afterEach(() => localStorage.clear());
 
-	it('comes from the URL, a link of before, else what is remembered', () => {
+	it('comes from the URL, a link of before, else checks: nothing is remembered', () => {
 		const at = (query: string) => new URL(`http://lekto/ui/documents/1${query}`);
 		const reading = { left: 'text', right: 'facts' } as const;
+		// What an earlier version kept in the browser counts no more.
+		localStorage.setItem('lekto.document.view', JSON.stringify(reading));
 		expect(viewOf(at(''))).toEqual({ left: 'pages', right: 'form' });
-		expect(viewOf(at(''), reading)).toEqual(reading);
-		expect(viewOf(at('?left=text&right=form'), reading)).toEqual({ left: 'text', right: 'form' });
+		expect(viewOf(at('?left=text&right=form'))).toEqual({ left: 'text', right: 'form' });
 		expect(viewOf(at('?tab=content'))).toEqual(reading);
-		expect(viewOf(at('?tab=details'), reading)).toEqual({ left: 'pages', right: 'form' });
+		expect(viewOf(at('?tab=details'))).toEqual({ left: 'pages', right: 'form' });
 		expect(viewOf(at('?tab=content&right=form'))).toEqual({ left: 'text', right: 'form' });
 		expect(viewOf(at('?left=nonsense&right=facts'))).toEqual({ left: 'pages', right: 'facts' });
 	});
@@ -81,16 +80,6 @@ describe('the view of the document tab', () => {
 		expect(viewHref(url, { left: 'pages', right: 'facts' })).toBe(
 			'/ui/documents/1?from=inbox&left=pages&right=facts'
 		);
-	});
-
-	it('is remembered by the browser, checking at first', () => {
-		expect(rememberedView()).toEqual({ left: 'pages', right: 'form' });
-		rememberView({ left: 'text', right: 'facts' });
-		expect(rememberedView()).toEqual({ left: 'text', right: 'facts' });
-		localStorage.setItem('lekto.document.view', '{"left": "nonsense"');
-		expect(rememberedView()).toEqual({ left: 'pages', right: 'form' });
-		localStorage.setItem('lekto.document.view', '{"left": "text", "right": 3}');
-		expect(rememberedView()).toEqual({ left: 'text', right: 'form' });
 	});
 });
 

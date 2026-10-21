@@ -52,15 +52,14 @@ export interface View {
 	right: Right;
 }
 
-export const CHECKING: View = { left: 'pages', right: 'form' };
+const CHECKING: View = { left: 'pages', right: 'form' };
 const READING: View = { left: 'text', right: 'facts' };
-const VIEW_KEY = 'lekto.document.view';
 
 /** The view a URL names (`?left=`, `?right=`); what it does not name comes from a link of
- * before (`?tab=details` checks, `?tab=content` reads), else from `remembered`. */
-export function viewOf(url: Address, remembered: View = CHECKING): View {
+ * before (`?tab=content` reads), else it checks: no view is remembered (Tobi, 21.10.2026). */
+export function viewOf(url: Address): View {
 	const tab = url.searchParams.get('tab');
-	const base = tab === 'details' ? CHECKING : tab === 'content' ? READING : remembered;
+	const base = tab === 'content' ? READING : CHECKING;
 	const left = url.searchParams.get('left') ?? '';
 	const right = url.searchParams.get('right') ?? '';
 	return {
@@ -76,32 +75,6 @@ export function viewHref(url: Address, view: View): string {
 	params.set('left', view.left);
 	params.set('right', view.right);
 	return hrefOf(url, params);
-}
-
-/** The view this browser showed last; checking at first. */
-export function rememberedView(): View {
-	try {
-		const stored: unknown = JSON.parse(globalThis.localStorage?.getItem(VIEW_KEY) ?? 'null');
-		if (typeof stored !== 'object' || stored === null) return CHECKING;
-		const { left, right } = stored as Record<string, unknown>;
-		return {
-			left: (LEFT as readonly unknown[]).includes(left) ? (left as Left) : CHECKING.left,
-			right: (RIGHT as readonly unknown[]).includes(right) ? (right as Right) : CHECKING.right
-		};
-	} catch {
-		return CHECKING; // no storage or garbage in it
-	}
-}
-
-export function rememberView(view: View): void {
-	try {
-		globalThis.localStorage?.setItem(
-			VIEW_KEY,
-			JSON.stringify({ left: view.left, right: view.right })
-		);
-	} catch {
-		// Kept for this page only.
-	}
 }
 
 type Viewed = Pick<components['schemas']['DocumentDetails'], 'id' | 'media_type' | 'page_count'>;

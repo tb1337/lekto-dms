@@ -290,11 +290,8 @@ describe('the document tab', () => {
 		await screen.findByRole('region', { name: m.content_page({ page: 1 }) });
 		await userEvent.click(await within(facts).findByRole('button', { name: /EBeschV/ }));
 		expect(globalThis.document.querySelector('mark[data-mark]')?.textContent).toBe('EBeschV');
-		// The browser remembers the view; a switch puts it in the link.
-		expect(JSON.parse(localStorage.getItem('lekto.document.view') ?? '')).toEqual({
-			left: 'text',
-			right: 'facts'
-		});
+		// Nothing is remembered in the browser; a switch puts the view in the link.
+		expect(localStorage.getItem('lekto.document.view')).toBeNull();
 		const left = screen.getByRole('group', { name: m.view_left() });
 		await userEvent.click(within(left).getByRole('button', { name: m.view_pages() }));
 		expect(goto).toHaveBeenCalledWith('/ui/documents/doc-1?left=pages&right=facts', {
@@ -340,8 +337,7 @@ describe('the document tab', () => {
 	});
 
 	it('keeps what was typed in the form while the facts are shown', async () => {
-		localStorage.setItem('lekto.document.view', JSON.stringify({ left: 'text', right: 'form' }));
-		goTo('/ui/documents/doc-1', { id: 'doc-1' });
+		goTo('/ui/documents/doc-1?left=text&right=form', { id: 'doc-1' });
 		serve(parsed, readable);
 		render(Page);
 		await waitFor(() => expect(titleField()).not.toBeNull());

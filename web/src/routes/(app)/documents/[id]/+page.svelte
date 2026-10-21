@@ -33,8 +33,6 @@
 		type InboxPlace,
 		LEFT,
 		type Left,
-		rememberedView,
-		rememberView,
 		type Right,
 		tabHref,
 		tabOf,
@@ -72,11 +70,11 @@
 
 	// One view for every document, from the inbox and from the list: the document (on the left
 	// its pages or its text, on the right its details or its facts), its files (metadata) and
-	// the processing (log). The view of the document tab is in the link; without one, the
-	// browser's last.
+	// the processing (log). The view of the document tab is in the link; without one, the pages
+	// and the details: the browser remembers none (Tobi, 21.10.2026).
 	const id = $derived(page.params.id ?? '');
 	const tab = $derived(tabOf(page.url));
-	const view = $derived(viewOf(page.url, rememberedView()));
+	const view = $derived(viewOf(page.url));
 	const fromInbox = $derived(page.url.searchParams.get('from') === 'inbox');
 	let document = $state<Document | null>(null);
 	let review = $state<Review | null>(null);
@@ -245,6 +243,7 @@
 				facts = null;
 				marks = [];
 				codeMarks = [];
+				side = 'left';
 				fieldQuotes = [];
 				factMarks = [];
 				textMarks = [];
@@ -338,7 +337,6 @@
 	const opened = new SvelteSet<Left | Right>();
 	$effect(() => {
 		if (tab !== 'document') return;
-		rememberView(view);
 		untrack(() => {
 			opened.add(view.left);
 			opened.add(view.right);

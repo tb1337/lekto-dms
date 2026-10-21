@@ -1233,7 +1233,7 @@ Die Devinstanz liest nach dem Merge `LEKTO_`: in `live.env` das Präfix umstelle
 
 **Umsetzung (Branch `enhancement/ui-optimization`, je Schritt ein Commit):**
 1. Dateipass: `file-passport.ts` liest Info, XMP, PDF/A und EXIF aus `/files`, `DocumentFiles` zeigt Lebenslauf, Pässe und Einträge.
-2. Reiter „Dokument“: `document-view.ts` (`View`, `viewOf`, `viewHref`, gemerkt unter `lekto.document.view`), `PaneHead`, `DocumentContent` geteilt in `DocumentText` und `DocumentFacts`, der Umschalter als Snippet am Ende der Köpfe (`Segmented` mit `names="@xl"`, Container-Queries).
+2. Reiter „Dokument“: `document-view.ts` (`View`, `viewOf`, `viewHref`; die Wahl wurde zuerst unter `lekto.document.view` gemerkt, seit 21.10. nicht mehr), `PaneHead`, `DocumentContent` geteilt in `DocumentText` und `DocumentFacts`, der Umschalter als Snippet am Ende der Köpfe (`Segmented` mit `names="@xl"`, Container-Queries).
 3. Schnellwahl (`PRESETS`, `presetOf`); wieder entfernt.
 4. Markierungen über Kreuz: `line_boxes` und `load_layout` in den Kern gezogen; `core/domain/text_places.py` (`TextPlaces`) legt die Wörter von `content.json` der Reihe nach über den Text (Läufe zwischen Leerraum, ein fehlendes Wort bringt den Rest nicht aus dem Tritt), `facts.on_pages` gibt jeder Fundstelle ihre `locations`; im Web `spanMarks` (Fakten auf der Seite) und `quoteStretches` (Zitate im Text).
 5. Handy: eine Leiste mit vier Teilen, ein Bereich zur Zeit; Tipp statt Überfahren.

@@ -582,7 +582,7 @@
 				</div>
 			</div>
 		{:else if tab === 'metadata'}
-			<DocumentFiles documentId={id} document={document ?? undefined} />
+			<DocumentFiles documentId={id} document={document ?? undefined} {editable} onchanged={load} />
 		{:else if tab === 'log'}
 			<div class="lg:min-h-0 lg:flex-1">
 				<DocumentLog

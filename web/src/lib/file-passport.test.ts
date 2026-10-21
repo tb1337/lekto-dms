@@ -5,6 +5,7 @@ import {
 	fingerprint,
 	gapOf,
 	lifeOf,
+	localMinute,
 	madeWith,
 	saidBy,
 	type Reviewed
@@ -183,6 +184,12 @@ describe('the passport of a file', () => {
 		expect(
 			kinds(lifeOf(files, document({ lane: 'yellow', processing: processing('processing') }), now))
 		).toEqual(['added', 'archived', 'modified']);
+	});
+
+	it('writes a moment as a datetime-local field holds it, in local time', () => {
+		expect(localMinute(new Date(2026, 0, 5, 7, 4, 59))).toBe('2026-01-05T07:04');
+		const at = new Date('2026-10-20T07:13:00Z');
+		expect(new Date(localMinute(at)).getTime()).toBe(at.getTime());
 	});
 
 	it('says how long lay between two steps, in the largest unit that fits', () => {

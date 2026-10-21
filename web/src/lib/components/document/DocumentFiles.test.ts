@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatDate, formatNumber } from '#lib/i18n.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { localMinute } from '#lib/file-passport.ts';
 import DocumentFiles from './DocumentFiles.svelte';
 
 const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
@@ -130,6 +131,40 @@ describe('DocumentFiles', () => {
 			)
 		).toBeTruthy();
 		vi.useRealTimers();
+	});
+
+	it('sets anew when the document came in, at its milestone', async () => {
+		fetchMock.mockImplementation(async (request) =>
+			request.method === 'PATCH' ? Response.json({}) : Response.json(FILES)
+		);
+		const onchanged = vi.fn();
+		render(DocumentFiles, { documentId: 'doc-1', editable: true, onchanged });
+		await userEvent.click(await screen.findByRole('button', { name: m.files_received_edit() }));
+		// jsdom never places the popover: it stays invisible to the queries by role, and its
+		// name with it.
+		const dialog = await screen.findByRole('dialog', { hidden: true });
+		const title = globalThis.document.getElementById(dialog.getAttribute('aria-labelledby')!);
+		expect(title?.textContent).toBe(m.files_received_label());
+		const field = within(dialog).getByLabelText(m.files_received_label()) as HTMLInputElement;
+		expect(field.value).toBe(localMinute(new Date(FILES.added)));
+		await userEvent.clear(field);
+		await userEvent.type(field, '2026-06-30T09:15');
+		await userEvent.click(within(dialog).getByText(m.save()));
+		await vi.waitFor(() => expect(onchanged).toHaveBeenCalledOnce());
+		const patch = fetchMock.mock.calls
+			.map(([request]) => request)
+			.find((r) => r.method === 'PATCH')!;
+		expect(new URL(patch.url).pathname).toBe('/api/v1/documents/doc-1');
+		expect(await patch.json()).toEqual({
+			created_at: new Date('2026-06-30T09:15').toISOString()
+		});
+	});
+
+	it('offers no pencil to someone who may not change the document', async () => {
+		fetchMock.mockImplementation(async () => Response.json(FILES));
+		render(DocumentFiles, { documentId: 'doc-1' });
+		await screen.findByRole('list');
+		expect(screen.queryByRole('button', { name: m.files_received_edit() })).toBeNull();
 	});
 
 	it('says when a file’s metadata cannot be read', async () => {

@@ -244,7 +244,7 @@
 				<LaneBadge lane={document.lane} />
 			</div>
 			<p class="text-sm text-muted-foreground">
-				{document.original_filename} · {m.doc_uploaded({ date: formatDate(document.created_at) })}
+				{document.original_filename} · {m.doc_received({ date: formatDate(document.created_at) })}
 				{#if spaceName}· {spaceName}{/if}
 				{#if document.page_count}· {m.doc_pages({ count: document.page_count })}{/if}
 			</p>

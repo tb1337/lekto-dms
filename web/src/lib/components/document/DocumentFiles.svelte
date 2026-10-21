@@ -15,6 +15,7 @@
 	import { unwrap } from '#lib/api/call.ts';
 	import type { components } from '#lib/api/schema.ts';
 	import Segmented from '#lib/components/Segmented.svelte';
+	import ReceiptEdit from '#lib/components/document/ReceiptEdit.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
 	import { events } from '#lib/events.svelte.ts';
@@ -41,7 +42,18 @@
 	// search and to narrow by file and source, in columns that keep their width. With the
 	// document, the life ends with its review, and the line between two steps says how long
 	// lay between them (Tobi, 21.10.2026).
-	let { documentId, document }: { documentId: string; document?: Reviewed } = $props();
+	// `editable`: when the document came in can be set at its milestone; `onchanged` follows.
+	let {
+		documentId,
+		document,
+		editable = false,
+		onchanged
+	}: {
+		documentId: string;
+		document?: Reviewed;
+		editable?: boolean;
+		onchanged?: () => void;
+	} = $props();
 
 	type Files = components['schemas']['DocumentFilesOut'];
 	type Stored = components['schemas']['StoredFileOut'];
@@ -159,6 +171,8 @@
 			return m.files_step_as({ format: kind(files.archive) });
 		if (step.kind === 'confirmed')
 			return step.takenOver ? m.files_step_taken_over() : m.files_step_by_hand();
+		if (step.kind === 'added' && document?.channel === 'migration')
+			return m.files_step_taken_over();
 		if (step.kind === 'unreviewed') return m.files_step_pipeline();
 		if (step.kind === 'review' && files)
 			return m.files_step_since({ date: formatDate(files.added, { dateStyle: 'medium' }) });
@@ -422,12 +436,24 @@
 											{m.files_step_pending()}
 										</span>
 									{:else}
-										<time
-											class="text-xs text-muted-foreground tabular-nums"
-											datetime={step.at.toISOString()}
-										>
-											{when(step.at)}
-										</time>
+										<span class="flex items-center gap-1">
+											<time
+												class="text-xs text-muted-foreground tabular-nums"
+												datetime={step.at.toISOString()}
+											>
+												{when(step.at)}
+											</time>
+											{#if step.kind === 'added' && editable}
+												<ReceiptEdit
+													{documentId}
+													value={files.added}
+													onchanged={() => {
+														void load();
+														onchanged?.();
+													}}
+												/>
+											{/if}
+										</span>
 									{/if}
 									<span class="text-xs text-muted-foreground">{stepNote(step)}</span>
 									{#if gap && !step.open}

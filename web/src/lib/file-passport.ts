@@ -185,6 +185,12 @@ export function gapOf(from: Date, to: Date): { value: number; unit: GapUnit } | 
 	return { value: minutes, unit: 'minute' };
 }
 
+/** A moment as a `datetime-local` field holds it: to the minute, in local time. */
+export function localMinute(at: Date): string {
+	const pad = (value: number) => String(value).padStart(2, '0');
+	return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}`;
+}
+
 const notBefore = (at: Date, floor: Date) => (at.getTime() < floor.getTime() ? floor : at);
 const later = (a: Date, b: Date) => a.getTime() - b.getTime() > MINUTE;
 const before = (a: Date, b: Date) => b.getTime() - a.getTime() > MINUTE;

@@ -257,6 +257,22 @@ def _check(report: dict[str, Any]) -> list[str]:
                 for d in new
             ],
         )
+        beyond = [d for d in new if d["becomes"].get("beyond")]
+        if beyond:
+            out += [f"## New documents visible beyond Paperless' permissions ({len(beyond)})", ""]
+            out += _table(
+                ["Paperless", "Title", "Uploaded by", "Space", "Also seen by"],
+                [
+                    [
+                        d["id"],
+                        d["title"],
+                        d["becomes"]["uploaded_by"],
+                        d["becomes"]["space"],
+                        d["becomes"]["beyond"],
+                    ]
+                    for d in beyond
+                ],
+            )
     for status, title in (
         ("deleted in Lekto", "Migrated, deleted in Lekto"),
         ("gone from Paperless", "Migrated, gone from Paperless"),

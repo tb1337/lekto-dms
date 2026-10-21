@@ -165,14 +165,16 @@ def test_groups_are_resolved_and_writers_win_over_readers() -> None:
     assert access.shares == (("anna", "edit"), ("tobias", "edit"))
 
 
-def test_no_owner_unknown_owner_and_unusable_users_are_noted() -> None:
+def test_no_owner_unknown_owner_and_users_that_are_gone_are_noted() -> None:
     nobody = access_of({"owner": None, "permissions": permissions([2])}, USERS)
     assert nobody.owner is None and nobody.shares == (("anna", "read"),)
     assert "no owner" in nobody.notes[0]
     deleted = access_of({"owner": 99, "permissions": permissions()}, USERS)
     assert deleted.owner is None and "no longer exists" in deleted.notes[0]
-    unusable = access_of({"owner": 1, "permissions": permissions([4, 77])}, USERS)
-    assert unusable.shares == () and len(unusable.notes) == 2
+    # A user deactivated in Paperless is a member as an owner would be; one that is gone not.
+    partly = access_of({"owner": 1, "permissions": permissions([4, 77])}, USERS)
+    assert partly.shares == (("gone", "read"),)
+    assert len(partly.notes) == 1 and "77" in partly.notes[0]
 
 
 def test_missing_permission_data_is_no_permission() -> None:

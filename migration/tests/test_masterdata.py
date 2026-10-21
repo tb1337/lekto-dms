@@ -64,10 +64,16 @@ def test_an_empty_lekto_needs_everything_of_the_first_plan() -> None:
     fields = by(actions, "field")
     assert fields["Kind"].data == {"data_type": "choice", "choices": ["One", "Two"]}
     assert fields["ASN"].data == {"data_type": "number"}
-    (space,) = by(actions, "space").values()
-    assert space.name == "Geteilt: anna (bearbeiten), bob (lesen), tobias (bearbeiten)"
+    spaces = by(actions, "space")
+    assert set(spaces) == {
+        "Geteilt: anna (bearbeiten), bob (lesen), tobias (bearbeiten)",
+        "Geteilt: gone (lesen), tobias (bearbeiten)",  # deactivated in Paperless, still a member
+    }
+    space = spaces["Geteilt: anna (bearbeiten), bob (lesen), tobias (bearbeiten)"]
     assert space.data["members"] == [("anna", "edit"), ("bob", "read"), ("tobias", "edit")]
+    assert space.data["after"] == space.data["members"]
     assert space.status == CREATE and space.source == "the permissions in Paperless"
+    assert space.notes == []  # its members are those Paperless lets see the document
     assert is_open(actions)
     # The order prepare works in: users, objects, fields, groups, spaces.
     kinds = [a.kind for a in actions]
@@ -123,12 +129,66 @@ def test_a_space_the_plan_names_is_made_with_the_uploaders_as_editors() -> None:
     space = by(actions_of(world), "space")["Energie"]
     assert space.status == CREATE  # documents of tobias and anna
     assert space.data["members"] == [("anna", "edit"), ("tobias", "edit")]
-    # An existing space of that name is used as it is: its members decide who sees them.
+    # Paperless kept their documents apart; the report says that this space does not.
+    assert space.notes == ["anna and tobias see each other's documents in 'Energie'"]
+
+
+def test_an_existing_space_the_plan_names_gets_its_uploaders_and_keeps_its_members() -> None:
+    world = World()
+    world.set(
+        "correspondents",
+        "ACME Energy",
+        "[{to: contact, name: ACME Energy}, {to: space, name: Energie}]",
+    )
+    for id, name in (("u1", "tobias"), ("u2", "anna"), ("u3", "bob")):
+        world.directory.add("user", {"id": id, "username": name, "active": True})
     world.directory.spaces.append(
-        {"id": "s1", "name": "ENERGIE", "personal_of": None, "members": []}
+        {
+            "id": "s1",
+            "name": "ENERGIE",
+            "personal_of": None,
+            "members": [{"user_id": "u3", "role": "edit"}, {"user_id": "u2", "role": "read"}],
+        }
     )
     space = by(actions_of(world), "space")["Energie"]
-    assert (space.status, space.data["id"], space.data["members"]) == (EXISTS, "s1", [])
+    # Every uploader edits it, to see their own documents in every lane; bob stays.
+    assert (space.status, space.data["id"]) == (UPDATE, "s1")
+    assert space.data["members"] == [("anna", "edit"), ("tobias", "edit")]
+    assert space.data["after"] == [("anna", "edit"), ("bob", "edit"), ("tobias", "edit")]
+    assert space.notes[0] == "gains access: anna (read → edit), tobias (edit)"
+    assert "anna and tobias see each other's documents in 'Energie'" in space.notes
+    assert any(n.startswith("bob sees documents of anna") for n in space.notes)
+    # Once the uploaders are in, nothing is left to do.
+    world.directory.spaces[-1]["members"] += [
+        {"user_id": "u1", "role": "edit"},
+        {"user_id": "u2", "role": "edit"},
+    ]
+    assert by(actions_of(world), "space")["Energie"].status == EXISTS
+
+
+def test_a_space_an_earlier_prepare_made_gets_only_uploaders_again() -> None:
+    world = World()
+    for id, name in (("u1", "tobias"), ("u2", "anna"), ("u3", "bob")):
+        world.directory.add("user", {"id": id, "username": name, "active": True})
+    name = "Geteilt: anna (bearbeiten), bob (lesen), tobias (bearbeiten)"
+    # An editor took bob and tobias (who writes in Paperless) out since; anna uploads.
+    world.directory.spaces.append(
+        {
+            "id": "s1",
+            "name": name,
+            "personal_of": None,
+            "members": [
+                {"user_id": "u2", "role": "edit"},
+            ],
+        }
+    )
+    plan, snapshot = world.plan(), world.snapshot()
+    infos = field_infos(plan, world.directory, snapshot)
+    fresh = by(needs(plan, world.directory, snapshot, world.all(), infos), "space")[name]
+    assert fresh.status == UPDATE  # the migration has not touched it: Paperless' members
+    assert fresh.data["members"] == [("bob", "read"), ("tobias", "edit")]
+    made = needs(plan, world.directory, snapshot, world.all(), infos, recorded=frozenset({"s1"}))
+    assert by(made, "space")[name].status == EXISTS  # the uploader anna is in; they stay out
 
 
 async def test_a_space_of_members_gets_who_is_missing_and_keeps_more() -> None:

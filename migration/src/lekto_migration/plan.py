@@ -63,6 +63,8 @@ TAG_SCOPES: Mapping[str, str] = {
     "contact_group": "contact",
     "type_group": "document_type",
 }
+# What Lekto and its web UI call a personal space; no shared space of the plan is named so.
+PERSONAL_NAMES = frozenset({"personal", "persönlich"})
 BY_VALUE = frozenset({"contact", "document_type", "topic", "tag", "contact_group", "type_group"})
 DATA_TYPES = frozenset({"text", "number", "amount", "date", "boolean", "choice", "link", "period"})
 _TARGET_KEYS = frozenset(
@@ -438,6 +440,12 @@ def _target(section: str, where: str, raw: Mapping[str, Any], problems: list[str
         return None
     if name is None and to != "document_date" and not by_value:
         problems.append(f"{where}: 'name' says which Lekto object")
+        return None
+    if to == "space" and isinstance(name, str) and norm(name) in PERSONAL_NAMES:
+        problems.append(
+            f"{where}.name: '{name}' is what Lekto calls a personal space; a document without "
+            "a shared space goes to its uploader's personal space, so name a shared space here"
+        )
         return None
     if name is not None and (to == "document_date" or by_value):
         problems.append(f"{where}: no 'name' here")

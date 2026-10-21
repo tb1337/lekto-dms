@@ -21,6 +21,7 @@ from lekto_migration.expect import Context, expect, field_infos
 from lekto_migration.lekto import DELAYS, ApiError, Lekto
 from lekto_migration.masterdata import (
     CREATE,
+    CREATED,
     FAILED,
     MISSING,
     OPEN,
@@ -369,9 +370,17 @@ async def _prepare(
     def record(action: Action, id: str) -> None:
         if action.kind in ("choices", "group"):
             return
-        state.put_object(action.kind, action.name, action.name, id, "new", action.notes)
+        status = "new" if action.status == CREATED else "updated"
+        state.put_object(action.kind, action.name, action.name, id, status, action.notes)
 
-    await prepare(loaded.actions, target, loaded.directory, record=record, progress=progress)
+    await prepare(
+        loaded.actions,
+        target,
+        loaded.directory,
+        ours=frozenset(loaded.ours),
+        record=record,
+        progress=progress,
+    )
     report["actions"] = reports.actions(loaded.actions)
     _write(config, "prepare", report)
     failed = [a for a in loaded.actions if a.status == FAILED]

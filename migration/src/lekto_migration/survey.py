@@ -18,8 +18,9 @@ HEADER = """\
 Lekto migration plan: what is taken over from Paperless-ngx, and how (migration/README.md).
 Every Paperless object has an entry under its name: {to: <target>, name: <Lekto name>}, a list
 of such targets, or drop. Targets: user, contact, document_type, topic, tag, contact_group,
-type_group, field (with value: from a name alone), space (a shared space by name; the
-documents of a user without further permissions go to their personal space), document_date.
+type_group, field (with value: from a name alone), space (a shared space by name, which
+every uploader of its documents edits; the documents of a user without further permissions go
+to their personal space), document_date.
 create: true lets `prepare` create what Lekto lacks (without it, a missing target is an error);
 review: true, or a reason, has a person look at every document with it in Lekto;
 override: true lets a reinterpretation win over what the document has anyway.

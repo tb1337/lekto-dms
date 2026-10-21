@@ -73,6 +73,29 @@ async def test_a_run_that_failed_for_an_inactive_uploader_wakes_the_user_for_the
     assert gone["active"] is False
 
 
+async def test_prepare_wakes_a_user_it_deactivated_to_make_them_a_member(setup: Setup) -> None:
+    assert await setup.migrate() == 0
+    gone = next(u for u in setup.lekto.users.values() if u["username"] == "gone")
+    assert gone["active"] is False
+    # tobias' new document is one gone (deactivated in Paperless) may change: a new space.
+    add_document(
+        setup,
+        30,
+        1,
+        permissions={"view": {"users": [], "groups": []}, "change": {"users": [4], "groups": []}},
+    )
+    assert await setup.run("prepare") == 0
+    space = next(
+        s
+        for s in setup.lekto.spaces.values()
+        if s["name"] == "Geteilt: gone (bearbeiten), tobias (bearbeiten)"
+    )
+    assert {"user_id": gone["id"], "role": "edit"} in space["members"]
+    assert gone["active"] is False  # deactivated again
+    assert await setup.run("run") == 0
+    assert titled(setup, "Extra 30")["space_id"] == space["id"]
+
+
 async def test_a_share_with_the_executing_admin_makes_it_an_editor(setup: Setup) -> None:
     setup.archive.users.append(
         {
@@ -108,7 +131,7 @@ async def test_a_space_that_cannot_be_made_holds_the_run_back(setup: Setup) -> N
     setup.lekto.refuse["POST /spaces"] = 422
     assert await setup.migrate() == 1  # prepare
     spaces = [a for a in setup.report("prepare")["actions"] if a["kind"] == "space"]
-    assert [a["status"] for a in spaces] == ["failed"]
+    assert [a["status"] for a in spaces] == ["failed", "failed"]
     assert await setup.run("run") == 2
     assert setup.lekto.documents == {}
     setup.lekto.refuse.clear()

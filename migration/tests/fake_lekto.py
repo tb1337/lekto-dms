@@ -206,7 +206,7 @@ class FakeLekto:
             self.errors[filename] = (status, times - 1)
             return _problem(status, f"injected failure {status}")
         uploader = fields.get("uploaded_by", ADMIN["id"])
-        if uploader in self.users and not self.users[uploader]["active"]:
+        if uploader not in self.users or not self.users[uploader]["active"]:
             return _problem(404, "user not found")
         space = fields.get("space_id", f"personal:{uploader}")
         sha256 = hashlib.sha256(content).hexdigest()

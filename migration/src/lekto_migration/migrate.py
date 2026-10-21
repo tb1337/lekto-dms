@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from lekto_migration.align import KEPT, Alignment, align, current, uploaded
+from lekto_migration.align import KEPT, Alignment, align, current, foreign, uploaded
 from lekto_migration.config import Config
 from lekto_migration.expect import Expected
 from lekto_migration.lekto import ApiError, Lekto
@@ -295,14 +295,25 @@ class Run:
         return str(accepted["id"]), download.sha256, False
 
     async def _duplicate(self, item: Expected, lekto_id: str, resolved: Resolved) -> None:
-        """Lekto has the file already (in the target or a space the uploader is a member of):
-        that document stands for this one; if it is a migrated one, it is aligned like one."""
+        """Lekto has the file already (in the target or a space the uploader sees): that
+        document stands for this one. A migrated one is aligned like one, unless it is
+        another Paperless document's or lies outside the planned space (`foreign`)."""
         details = await self._target.document(lekto_id)
-        alignment = None
+        alignment, reason = None, None
         if details.get("channel") == "migration":
-            base = await self._baseline(lekto_id, None, details)
-            alignment = await self._align(lekto_id, details, base, resolved)
-        await self._finish(item.id, "duplicate", lekto_id, alignment, None, details=details)
+            reason = self._foreign(item, lekto_id, details, resolved)
+            if reason is None:
+                base = await self._baseline(lekto_id, None, details)
+                alignment = await self._align(lekto_id, details, base, resolved)
+        await self._finish(
+            item.id, "duplicate", lekto_id, alignment, None, details=details, reason=reason
+        )
+
+    def _foreign(
+        self, item: Expected, lekto_id: str, details: dict[str, Any], resolved: Resolved
+    ) -> str | None:
+        target = space_of(resolved, self._loaded.directory)
+        return foreign(self._state.claimant(lekto_id, item.id), details.get("space_id"), target)
 
     async def _existing(self, item: Expected, row: DocumentRow, resolved: Resolved) -> None:
         assert row.lekto_id is not None
@@ -330,6 +341,13 @@ class Run:
                 reason="not taken over by the migration: not aligned",
             )
             return
+        if row.status == "duplicate":
+            reason = self._foreign(item, row.lekto_id, details, resolved)
+            if reason is not None:
+                await self._finish(
+                    item.id, row.status, row.lekto_id, None, None, details=details, reason=reason
+                )
+                return
         base = await self._baseline(row.lekto_id, row.applied, details)
         alignment = await self._align(row.lekto_id, details, base, resolved)
         await self._finish(item.id, row.status, row.lekto_id, alignment, None, details=details)
@@ -383,6 +401,7 @@ class Run:
         waited: float | None,
         *,
         details: dict[str, Any] | None = None,
+        reason: str | None = None,
     ) -> None:
         details = details or await self._target.document(lekto_id)
         if alignment is not None and alignment.needed:
@@ -391,6 +410,8 @@ class Run:
         reasons = []
         if status == "duplicate":
             reasons.append("Lekto has the file already, in a space the uploader sees")
+        if reason is not None:
+            reasons.append(reason)
         if lane != "green":
             reasons.append(await self._why_not_green(lekto_id))
         kept = [d.what for d in alignment.differences if d.action == KEPT] if alignment else []

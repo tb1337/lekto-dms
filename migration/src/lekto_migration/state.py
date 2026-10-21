@@ -149,6 +149,20 @@ class State:
     def documents(self) -> list[DocumentRow]:
         return self._select("ORDER BY source_id", ())
 
+    def claimant(self, lekto_id: str, source_id: int) -> int | None:
+        """The Paperless document other than `source_id` whose upload the Lekto document is
+        (not one that only met it as a duplicate)."""
+        return next(
+            (
+                row.source_id
+                for row in self._select("WHERE lekto_id = ? ORDER BY source_id", (lekto_id,))
+                if row.source_id != source_id
+                and row.status in ("done", "uploaded")
+                and not row.detail.get("duplicate")
+            ),
+            None,
+        )
+
     def put_document(
         self,
         source_id: int,

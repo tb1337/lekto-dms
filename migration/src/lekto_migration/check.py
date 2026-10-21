@@ -12,13 +12,13 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from lekto_migration.align import Alignment, align, current, uploaded
+from lekto_migration.align import Alignment, align, current, foreign, uploaded
 from lekto_migration.config import Config
 from lekto_migration.directory import Directory
 from lekto_migration.expect import Expected
 from lekto_migration.lekto import ApiError, Lekto
 from lekto_migration.mapping import EDIT, READ
-from lekto_migration.masterdata import MISSING
+from lekto_migration.masterdata import MISSING, Action, visible_to
 from lekto_migration.paperless import Paperless, PaperlessError, checksum
 from lekto_migration.plan import norm
 from lekto_migration.resolve import resolve, space_of
@@ -129,10 +129,12 @@ class _Checker:
         }
         self._types = {str(f["id"]): str(f.get("data_type")) for f in directory.fields.values()}
         self._unmanaged = unmanaged(state)
+        self._state = state
 
     def new(self, item: Expected, row: DocumentRow | None) -> dict[str, Any]:
         entry = _entry(item.id, item.title, "new", row, item=item)
-        entry["becomes"] = _becomes(item)
+        members, beyond = visible_to(item, self._loaded.actions, self._loaded.directory)
+        entry["becomes"] = _becomes(item, members, beyond)
         missing = resolve(item, self._loaded.directory).missing
         if missing:
             entry["prepare"] = missing  # what `prepare` creates first
@@ -146,6 +148,12 @@ class _Checker:
         if details.get("channel") != "migration":
             reason = "the document in Lekto was not taken over by the migration"
             return _entry(item.id, item.title, "not aligned", row, item=item, reason=reason)
+        space = space_of(resolved, self._loaded.directory)
+        if row.status == "duplicate":
+            claimant = self._state.claimant(row.lekto_id, item.id)
+            why = foreign(claimant, details.get("space_id"), space)
+            if why is not None:
+                return _entry(item.id, item.title, "not aligned", row, item=item, reason=why)
         base = row.applied
         if base is None and self._target is not None:
             try:
@@ -153,7 +161,6 @@ class _Checker:
             except ApiError:
                 log = []
             base = uploaded(log, details.get("space_id"))
-        space = space_of(resolved, self._loaded.directory)
         alignment = align(
             base or current(details),
             current(details),
@@ -218,12 +225,14 @@ def _entry(
     }
 
 
-def _becomes(item: Expected) -> dict[str, Any]:
-    """What a new document becomes, by Lekto's names, and where each value comes from."""
+def _becomes(item: Expected, members: list[tuple[str, str]], beyond: list[str]) -> dict[str, Any]:
+    """What a new document becomes, by Lekto's names, and where each value comes from: who
+    sees it once `prepare` has run, and who of them Paperless kept it from (`beyond`)."""
     return {
         "uploaded_by": item.uploader or "(you)",
         "space": item.space or "personal",
-        "members": [f"{name}: {role}" for name, role in item.members],
+        "members": [f"{name}: {role}" for name, role in members],
+        "beyond": beyond,
         "contact": item.contact,
         "document_type": item.document_type,
         "topic": item.topic,
@@ -310,7 +319,7 @@ async def _files(
         spaces = held.setdefault(str(document.get("sha256")), {})
         spaces[str(document.get("space_id"))] = (str(document["id"]), document.get("lane"))
     taken = [item for item in loaded.expected.values() if item.skip is None]
-    planned = _planned_members(taken, directory)
+    planned = _planned_members(loaded.actions, directory)
     # sha256 -> (space key, Paperless id, green: True, or False if in Lekto and not green)
     seen: dict[str, list[tuple[str, int, bool]]] = {}
     gate = asyncio.Semaphore(config.concurrency)
@@ -391,20 +400,16 @@ def _space_key(item: Expected, directory: Directory) -> str:
     return str(found["id"]) if found is not None else f"space:{norm(item.space)}"
 
 
-def _planned_members(items: list[Expected], directory: Directory) -> dict[str, dict[str, str]]:
-    """The members (norm(name) -> role, edit wins) of the shared spaces `prepare` creates or
-    completes."""
+def _planned_members(actions: list[Action], directory: Directory) -> dict[str, dict[str, str]]:
+    """The members (norm(name) -> role) the shared spaces have once `prepare` has run, by the
+    key of `_space_key`."""
     planned: dict[str, dict[str, str]] = {}
-    for item in items:
-        if item.space is None:
+    for action in actions:
+        if action.kind != "space":
             continue
-        members = planned.setdefault(_space_key(item, directory), {})
-        given = list(item.members)
-        if not item.members and directory.space(item.space) is None:
-            given.append((_uploader_of(item, directory), EDIT))  # a new space of the plan
-        for name, role in given:
-            if members.get(norm(name)) != EDIT:
-                members[norm(name)] = role
+        found = directory.space(action.name)
+        key = str(found["id"]) if found is not None else f"space:{norm(action.name)}"
+        planned[key] = {norm(name): role for name, role in action.data.get("after", ())}
     return planned
 
 

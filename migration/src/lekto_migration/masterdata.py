@@ -58,7 +58,11 @@ def needs(
     snapshot: Snapshot,
     expected: Sequence[Expected],
     fields: Mapping[str, FieldInfo],
+    *,
+    recorded: frozenset[str] = frozenset(),
 ) -> list[Action]:
+    """What Lekto needs; `recorded` are the ids of the spaces an earlier `prepare` created
+    or completed (from the state)."""
     actions: list[Action] = []
     taken = [item for item in expected if item.skip is None]
     actions += _users(plan, directory, snapshot)
@@ -79,7 +83,7 @@ def needs(
         actions += _objects(kind, named[kind], by_value[kind], used[kind], directory)
     actions += _fields(plan, directory, snapshot, taken, fields)
     actions += _groups(taken, directory)
-    actions += _spaces(taken, directory)
+    actions += _spaces(taken, directory, recorded)
     return sorted(actions, key=lambda a: ORDER.index(a.kind))
 
 
@@ -255,43 +259,144 @@ def _groups(taken: Sequence[Expected], directory: Directory) -> list[Action]:
     return actions
 
 
-def _spaces(taken: Sequence[Expected], directory: Directory) -> list[Action]:
-    """The shared spaces the documents go to. A space of a combination of members (its name
-    names them) gets these members, with edit winning, never fewer; a space the plan names
-    is used as it is, and created with the uploaders of its documents as editors."""
-    wanted: dict[str, Action] = {}
+def _spaces(
+    taken: Sequence[Expected], directory: Directory, recorded: frozenset[str]
+) -> list[Action]:
+    """The shared spaces the documents go to, with the members `prepare` adds or raises
+    (`members`; edit wins, never fewer) and those the space has afterwards (`after`).
+
+    Every uploader edits the space their documents go to, so they see their own documents,
+    in a space the plan names too, whether it exists or not. The members Paperless'
+    permissions name join a space the migration has not touched yet; a space an earlier
+    `prepare` created or completed (`recorded`, by Lekto id) gets only missing uploaders, so
+    a member an editor took out since stays out. The notes say who gains access and who sees
+    documents Paperless kept from them."""
+    spaces: dict[str, _Space] = {}
+    admin = str(directory.admin["username"])
     for item in taken:
         if item.space is None:
             continue
-        action = wanted.get(norm(item.space))
-        if action is None:
-            source = item.sources.get("space", "")
-            action = Action("space", item.space, EXISTS, source)
-            action.data = {"members": {}, "uploaders": {}}
-            wanted[norm(item.space)] = action
+        space = spaces.get(norm(item.space))
+        if space is None:
+            space = spaces[norm(item.space)] = _Space(item.space, item.sources.get("space", ""))
+        uploader = item.uploader or admin
+        _join(space.uploaders, uploader, EDIT)
         for name, role in item.members:
-            _join(action.data["members"], name, role)
-        if not item.members:
-            _join(action.data["uploaders"], item.uploader or directory.admin["username"], EDIT)
-    for action in wanted.values():
-        members: dict[str, tuple[str, str]] = action.data["members"]
-        found = directory.space(action.name)
-        if found is None:
-            action.status = CREATE
-            for name, role in action.data["uploaders"].values():
-                _join(members, name, role)
-        else:
-            action.data["id"] = found["id"]
-            have = {m["user_id"]: m["role"] for m in found.get("members") or []}
-            for name, role in members.values():
-                user = directory.find("user", name)
-                if user is None or not _covers(have.get(user["id"]), role):
-                    action.status = UPDATE
-        action.data["members"] = sorted(members.values(), key=lambda item: norm(item[0]))
-        del action.data["uploaders"]
-        if action.data["members"]:
-            action.detail = ", ".join(f"{name}: {role}" for name, role in action.data["members"])
-    return list(wanted.values())
+            _join(space.permitted, name, role)
+        allowed = frozenset({norm(uploader), *(norm(name) for name, _ in item.members)})
+        space.documents.append((uploader, allowed))
+    return [_space_action(space, directory, recorded) for space in spaces.values()]
+
+
+@dataclass
+class _Space:
+    """What the documents planned into a shared space ask of it."""
+
+    name: str
+    source: str
+    uploaders: dict[str, tuple[str, str]] = field(default_factory=dict)  # norm -> (name, edit)
+    permitted: dict[str, tuple[str, str]] = field(default_factory=dict)  # by the permissions
+    # (uploader, norm names of those Paperless lets see the document), per document
+    documents: list[tuple[str, frozenset[str]]] = field(default_factory=list)
+
+
+def _space_action(space: _Space, directory: Directory, recorded: frozenset[str]) -> Action:
+    action = Action("space", space.name, EXISTS, space.source)
+    found = directory.space(space.name)
+    have = {} if found is None else members_of(found, directory)
+    wanted = dict(space.uploaders)
+    if found is None or str(found["id"]) not in recorded:
+        for name, role in space.permitted.values():
+            _join(wanted, name, role)
+    added = [
+        (name, role)
+        for key, (name, role) in wanted.items()
+        if not _covers(have[key][1] if key in have else None, role)
+    ]
+    after = dict(have)
+    for name, role in added:
+        after[norm(name)] = (name, role)
+    if found is None:
+        action.status = CREATE
+    else:
+        action.data["id"] = found["id"]
+        if added:
+            action.status = UPDATE
+            action.notes.append(
+                "gains access: "
+                + ", ".join(
+                    f"{name} ({have[norm(name)][1]} → {role})"
+                    if norm(name) in have
+                    else f"{name} ({role})"
+                    for name, role in _sorted(added)
+                )
+            )
+    action.data["members"] = _sorted(added)
+    action.data["after"] = _sorted(after.values())
+    if action.data["after"]:
+        action.detail = ", ".join(f"{name}: {role}" for name, role in action.data["after"])
+    action.notes += _beyond(space, after)
+    return action
+
+
+def members_of(space: dict[str, Any], directory: Directory) -> dict[str, tuple[str, str]]:
+    """The members of a Lekto space by norm(user name): (name, role)."""
+    out: dict[str, tuple[str, str]] = {}
+    for member in space.get("members") or []:
+        user = directory.by_id("user", str(member["user_id"]))
+        name = str(user["username"]) if user is not None else str(member["user_id"])
+        out[norm(name)] = (name, str(member["role"]))
+    return out
+
+
+def _beyond(space: _Space, after: Mapping[str, tuple[str, str]]) -> list[str]:
+    """Who of the members sees documents of an uploader that Paperless kept from them."""
+    gains: dict[str, set[str]] = {}  # norm(uploader) -> norm names of members who gain
+    names = {key: name for key, (name, _) in after.items()}
+    for uploader, allowed in space.documents:
+        names.setdefault(norm(uploader), uploader)
+        gains.setdefault(norm(uploader), set()).update(k for k in after if k not in allowed)
+    notes, told = [], set()
+    for owner in sorted(gains):
+        for viewer in sorted(gains[owner]):
+            if (owner, viewer) in told:
+                continue
+            if owner in gains.get(viewer, ()):
+                first, second = sorted((names[owner], names[viewer]), key=norm)
+                notes.append(f"{first} and {second} see each other's documents in '{space.name}'")
+                told |= {(owner, viewer), (viewer, owner)}
+            else:
+                notes.append(
+                    f"{names[viewer]} sees documents of {names[owner]} in '{space.name}' "
+                    "that Paperless kept from them"
+                )
+                told.add((owner, viewer))
+    return notes
+
+
+def visible_to(
+    item: Expected, actions: Sequence[Action], directory: Directory
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """Who sees a document in Lekto once `prepare` has run, (name, role), and who of them
+    Paperless kept it from."""
+    uploader = item.uploader or str(directory.admin["username"])
+    if item.space is not None:
+        action = next(
+            (a for a in actions if a.kind == "space" and norm(a.name) == norm(item.space)), None
+        )
+        members = list(action.data.get("after", ())) if action is not None else []
+    else:
+        user = directory.find("user", uploader)
+        personal = directory.personal_space(str(user["id"])) if user is not None else None
+        found = members_of(personal, directory) if personal is not None else {}
+        found.setdefault(norm(uploader), (uploader, EDIT))
+        members = _sorted(found.values())
+    allowed = {norm(uploader), *(norm(name) for name, _ in item.members)}
+    return members, [name for name, _ in members if norm(name) not in allowed]
+
+
+def _sorted(members: Any) -> list[tuple[str, str]]:
+    return sorted(members, key=lambda item: norm(item[0]))
 
 
 def _join(members: dict[str, tuple[str, str]], name: str, role: str) -> None:
@@ -314,24 +419,64 @@ async def prepare(
     lekto: Lekto,
     directory: Directory,
     *,
+    ours: frozenset[str] = frozenset(),
     record: Callable[[Action, str], None] = lambda action, id: None,
     progress: Progress = lambda message: None,
 ) -> None:
     """Create and change what is open, in order (users, objects with their parents, fields,
-    groups, spaces). A failure is noted at its action; the rest goes on."""
+    groups, spaces). A failure is noted at its action; the rest goes on.
+
+    Lekto adds only active users to a space: users the migration created (`ours`, by id) and
+    deactivated before are active while their spaces are made, and deactivated again at the
+    end."""
+    woken = await _wake(actions, lekto, directory, ours, progress)
+    try:
+        for action in actions:
+            if action.status not in (CREATE, UPDATE):
+                continue
+            try:
+                id = await _do(action, lekto, directory)
+            except ApiError as error:
+                progress(f"cannot {action.status} {action.kind} '{action.name}': {error}")
+                action.status = FAILED
+                action.notes.append(str(error))
+                continue
+            action.status = CREATED if action.status == CREATE else UPDATED
+            if id is not None:
+                record(action, id)
+    finally:
+        for user in woken:
+            try:
+                await lekto.set_active(str(user["id"]), False)
+                user["active"] = False
+            except ApiError as error:
+                progress(f"cannot deactivate {user['username']} again: {error}")
+
+
+async def _wake(
+    actions: Sequence[Action],
+    lekto: Lekto,
+    directory: Directory,
+    ours: frozenset[str],
+    progress: Progress,
+) -> list[dict[str, Any]]:
+    """Activate the deactivated users of `ours` that become members of a space."""
+    woken: list[dict[str, Any]] = []
     for action in actions:
-        if action.status not in (CREATE, UPDATE):
+        if action.kind != "space" or action.status not in (CREATE, UPDATE):
             continue
-        try:
-            id = await _do(action, lekto, directory)
-        except ApiError as error:
-            progress(f"cannot {action.status} {action.kind} '{action.name}': {error}")
-            action.status = FAILED
-            action.notes.append(str(error))
-            continue
-        action.status = CREATED if action.status == CREATE else UPDATED
-        if id is not None:
-            record(action, id)
+        for name, _ in action.data["members"]:
+            user = directory.find("user", name)
+            if user is None or user.get("active") is not False or str(user["id"]) not in ours:
+                continue
+            try:
+                await lekto.set_active(str(user["id"]), True)
+            except ApiError as error:
+                progress(f"cannot activate {name} to make them a member: {error}")
+                continue
+            user["active"] = True
+            woken.append(user)
+    return woken
 
 
 async def _do(action: Action, lekto: Lekto, directory: Directory) -> str | None:

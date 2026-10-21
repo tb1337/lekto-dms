@@ -194,8 +194,10 @@ def access_of(
     users: dict[int, dict[str, Any]],
 ) -> Access:
     """Readers and writers of a document with groups resolved to their members: writers edit,
-    readers read. The owner is left out of the shares; users that are deactivated or gone
-    cannot be members."""
+    readers read. The owner is left out of the shares; users that are gone cannot be members.
+    A user deactivated in Paperless is a member as their owner would be: the migration
+    creates them, and the run deactivates them at its end (`deactivate_inactive_users`), so
+    they get back what Paperless allowed them if they are let in again."""
     notes: list[str] = []
     owner_id = document.get("owner")
     owner = None
@@ -226,9 +228,6 @@ def access_of(
         member = users.get(user_id)
         if member is None:
             notes.append(f"shared with user {user_id}, who no longer exists: not a member")
-            continue
-        if not member.get("is_active", True):
-            notes.append(f"shared with inactive user {member['username']}: not a member")
             continue
         shares[str(member["username"])] = EDIT if user_id in writers else READ
     return Access(

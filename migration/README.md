@@ -147,6 +147,10 @@ uv run lekto-migration prepare    # create the master data in Lekto
 uv run lekto-migration run        # take the documents over; Ctrl-C stops, run again to continue
 ```
 
+In the devcontainer, `--env-file ../.devcontainer/dev.local.env` (before or after the command)
+takes the `LEKTO_MIGRATION_*` settings of the development instance from that file of
+`KEY=value` lines instead of the environment.
+
 Options (all commands): `--plan` (default `migration-plan.yaml`), `--state` (SQLite file,
 default `migration-state.sqlite`), `--report-dir` (default `migration-reports`), `--limit N`
 (the first N selected documents), `--concurrency` (documents at a time, default 4); `--yes`

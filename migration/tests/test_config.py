@@ -94,3 +94,38 @@ def test_without_a_terminal_only_yes_writes() -> None:
         )("Write it?")
         is True
     )
+
+
+def test_an_env_file_replaces_the_lekto_variables(tmp_path: Path) -> None:
+    from lekto_migration.config import env_file
+
+    path = tmp_path / "dev.env"
+    path.write_text(
+        "# the development instance\n"
+        "LEKTO_MIGRATION_PAPERLESS_URL=http://paperless:8000\n"
+        "export LEKTO_MIGRATION_PAPERLESS_TOKEN='a b'  # quoted\n"
+        'LEKTO_MIGRATION_LEKTO_URL="http://lekto:8000"\n'
+    )
+    environ = {"LEKTO_MIGRATION_LEKTO_TOKEN": "test", "HOME": "/home/x"}
+    assert env_file(path, environ) == {
+        "HOME": "/home/x",
+        "LEKTO_MIGRATION_PAPERLESS_URL": "http://paperless:8000",
+        "LEKTO_MIGRATION_PAPERLESS_TOKEN": "a b",
+        "LEKTO_MIGRATION_LEKTO_URL": "http://lekto:8000",
+    }
+    path.write_text("LEKTO_MIGRATION_X=two words\n")
+    with pytest.raises(ConfigError, match=r"dev.env:1: .*needs quotes"):
+        env_file(path, environ)
+    with pytest.raises(ConfigError, match="--env-file"):
+        env_file(tmp_path / "missing.env", environ)
+
+
+def test_the_env_file_goes_before_or_after_the_command(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from lekto_migration.cli import main
+
+    missing = str(tmp_path / "missing.env")
+    assert main(["--env-file", missing, "check"]) == 2
+    assert main(["check", "--env-file", missing]) == 2
+    assert capsys.readouterr().err.count("--env-file") == 2

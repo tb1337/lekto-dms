@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -362,3 +363,58 @@ def test_a_command_that_breaks_logs_why_and_exits_one(
     assert main(command) == 1
     failed = [json.loads(line) for line in capsys.readouterr().err.splitlines()][-1]
     assert failed["level"] == "error" and "RuntimeError: broken" in failed["exception"]
+
+
+@pytest.fixture
+def environment() -> Iterator[None]:
+    """`--env-file` changes the process' environment; it is restored afterwards."""
+    saved = dict(os.environ)
+    yield
+    os.environ.clear()
+    os.environ.update(saved)
+
+
+def test_the_settings_can_come_from_a_file(
+    environment: None, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    path = tmp_path / "dev.env"
+    path.write_text(
+        f"LEKTO_SECRET_KEY={SECRET_KEY}\nLEKTO_DB_SQLITE_PATH={tmp_path / 'dev.db'}\n"
+        "LEKTO_FORWARDED_ALLOW_IPS=127.0.0.1\n"
+    )
+    os.environ["LEKTO_DB_TYPO"] = "from the environment, not the file"
+
+    assert main(["--env-file", str(path)]) == 0
+    assert main(["check", "--env-file", str(path)]) == 0  # after the command, too
+
+    events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
+    assert "unknown configuration variable" not in [e["event"] for e in events]
+    assert events[-1]["db_sqlite_path"] == str(tmp_path / "dev.db")
+
+
+def test_a_file_that_is_no_setting_exits_one(
+    environment: None, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    path = tmp_path / "dev.env"
+    path.write_text("LEKTO_DB_NAME=two words\n")
+    assert main(["--env-file", str(path)]) == 1
+    assert "needs quotes" in capsys.readouterr().err
+
+
+def test_as_root_it_warns_and_stops_unless_root_is_meant(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    monkeypatch.delenv("PUID", raising=False)
+    assert main(["check"]) == 1
+    assert "lekto-run lekto" in capsys.readouterr().err
+    monkeypatch.setenv("PUID", "0")
+    assert main(["check"]) == 0
+
+
+def test_the_command_is_called_lekto(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    out = capsys.readouterr().out
+    assert out.startswith("usage: lekto ")
+    assert "reindex          rebuild the search index" in out

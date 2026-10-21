@@ -14,6 +14,7 @@ DOCUMENT_FIELDS = ",".join(
         "id",
         "title",
         "created",
+        "added",
         "owner",
         "correspondent",
         "document_type",

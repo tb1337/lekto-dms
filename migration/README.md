@@ -15,12 +15,13 @@ Lekto image.
 | Custom fields | global fields: string/longtext → text, url → link, date → date, boolean → yes/no, integer/float → number, monetary → amount, select → choice |
 | ASN, notes | fields `ASN` (number) and `Notizen` (text, one paragraph per note with date and author) |
 | Document date | document date |
+| Date added | when the document came in (`created_at`), where the milestones of its file start; one without a time zone or ahead is left out with a note |
 | Owner | owner (no owner, or a deleted one: the admin who runs the migration) |
 | Permissions | a space of the owner for every combination of readers and writers (groups resolved to users), named `Geteilt: anna (schreiben), bob (lesen)`; without extra permissions the owner's default space |
 | File | the original (not Paperless' archive PDF) |
 
-Not taken over, and listed or counted in the report: storage paths, `documentlink` fields, the
-date added, history, share links, saved views, workflows, mail rules and accounts, documents in
+Not taken over, and listed or counted in the report: storage paths, `documentlink` fields,
+history, share links, saved views, workflows, mail rules and accounts, documents in
 Paperless' trash, further versions of a file, matching rules of master data, tag hierarchy and
 inbox flag. Users who are inactive in Paperless are created active, because they may own
 documents or receive shares, and deactivated when the migration is through. Files Lekto does not accept (anything but PDF, JPEG, PNG, TIFF) and

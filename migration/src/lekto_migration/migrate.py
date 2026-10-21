@@ -375,15 +375,14 @@ class Migration:
         for name, count in snapshot.counted.items():
             what = "could not be read" if count < 0 else f"{count} not taken over"
             self._record("other", name, name.replace("_", " "), None, OMITTED, [what])
-        for name, text in (("date_added", "date added"), ("history", "history")):
-            self._record(
-                "other",
-                name,
-                text,
-                None,
-                OMITTED,
-                [f"not taken over for the {len(snapshot.documents)} documents"],
-            )
+        self._record(
+            "other",
+            "history",
+            "history",
+            None,
+            OMITTED,
+            [f"not taken over for the {len(snapshot.documents)} documents"],
+        )
         # Make sure the ids of fields that could not be created do not linger.
         for key in list(self.ids.specs):
             if key not in self.ids.fields:

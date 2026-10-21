@@ -140,6 +140,7 @@ def sample_archive(base_pdf: bytes, jpeg: bytes | None = None) -> Archive:
             "id": id,
             "title": f"Document {id}",
             "created": "2024-03-31",
+            "added": "2024-04-02T09:30:00+02:00",
             "owner": owner,
             "correspondent": None,
             "document_type": None,

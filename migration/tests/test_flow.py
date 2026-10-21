@@ -3,6 +3,7 @@
 import asyncio
 import json
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -129,6 +130,8 @@ async def test_the_migration_takes_everything_over(setup: Setup) -> None:
     assert first["channel"] == "migration"
     assert first["owner_id"] == named(lekto.users, "tobias")["id"]
     assert first["document_date"] == "2024-05-01"
+    # When it came in at Paperless, for the milestones.
+    assert datetime.fromisoformat(first["created_at"]) == datetime(2024, 4, 2, 7, 30, tzinfo=UTC)
     assert first["contact_id"] == named(lekto.contacts, "ACME Energy")["id"]
     assert first["document_type_id"] == named(lekto.document_types, "Invoice")["id"]
     assert len(first["tag_ids"]) == 2
@@ -374,6 +377,7 @@ async def test_the_check_reports_every_difference(setup: Setup) -> None:
     document["tag_ids"] = []
     document["owner_id"] = "someone-else"
     document["sha256"] = "0" * 64
+    document["created_at"] = "2026-10-21T08:00:00Z"
     gone = by_title(setup, "Document 12")
     del setup.lekto.documents[gone["id"]]
     named(setup.lekto.contacts, "Unused")["name"] = "Renamed"
@@ -385,6 +389,7 @@ async def test_the_check_reports_every_difference(setup: Setup) -> None:
     assert ("document", "tags differ") in what
     assert ("document", "owner differs") in what
     assert ("document", "SHA-256 of the original differs") in what
+    assert ("document", "date added differs") in what
     assert ("document", "missing in Lekto") in what
     assert ("contact", "name differs") in what
     assert ("tag", "missing in Lekto") in what

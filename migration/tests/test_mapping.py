@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -10,6 +11,7 @@ from lekto_migration.mapping import (
     document_title,
     field_spec,
     notes_text,
+    received_at,
     space_name,
 )
 
@@ -113,6 +115,19 @@ def test_titles_and_dates() -> None:
     assert document_date({"created": "2024-05-01"}) == "2024-05-01"
     assert document_date({"created": "2024-05-01T10:00:00+02:00"}) == "2024-05-01"
     assert document_date({"created": None}) is None
+
+
+def test_the_date_added_is_taken_over_with_its_time_zone_and_never_ahead() -> None:
+    now = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
+    assert received_at({"added": "2024-04-02T09:30:00.123+02:00"}, now) == (
+        "2024-04-02T09:30:00.123000+02:00",
+        [],
+    )
+    assert received_at({"added": "2024-04-02T07:30:00Z"}, now)[0] == "2024-04-02T07:30:00+00:00"
+    assert received_at({"added": None}, now) == (None, [])
+    for wrong in ("2024-04-02T09:30:00", "2027-01-01T00:00:00+00:00", "yesterday"):
+        value, notes = received_at({"added": wrong}, now)
+        assert value is None and len(notes) == 1, wrong
 
 
 def test_notes_become_one_text_oldest_first() -> None:

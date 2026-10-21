@@ -6,6 +6,7 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from email.parser import BytesParser
 from email.policy import HTTP
 from typing import Any, cast
@@ -231,6 +232,7 @@ class FakeLekto:
             "tag_ids": sorted(metadata.get("tag_ids", [])),
             "document_date": metadata.get("document_date"),
             "fields": metadata.get("fields", {}),
+            "created_at": metadata.get("created_at") or datetime.now(UTC).isoformat(),
             "lane": None,
             "processing": {"status": "processing", "run": 1, "nodes": _nodes({"receive": "ok"})},
             "_lane": self.lanes.get(filename, "green"),

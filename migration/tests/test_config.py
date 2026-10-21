@@ -73,3 +73,24 @@ def test_missing_or_wrong_settings_are_refused(
 ) -> None:
     with pytest.raises(ConfigError, match=text):
         load(env, **changes)
+
+
+def test_without_a_terminal_only_yes_writes() -> None:
+    from lekto_migration.cli import terminal
+
+    config = load(
+        {"LEKTO_MIGRATION_PAPERLESS_URL": "http://p", "LEKTO_MIGRATION_PAPERLESS_TOKEN": "k"}
+    )
+    assert terminal(config)("Write it?") is False  # pytest's stdin is no terminal
+    assert (
+        terminal(
+            load(
+                {
+                    "LEKTO_MIGRATION_PAPERLESS_URL": "http://p",
+                    "LEKTO_MIGRATION_PAPERLESS_TOKEN": "k",
+                },
+                yes=True,
+            )
+        )("Write it?")
+        is True
+    )

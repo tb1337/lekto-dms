@@ -500,10 +500,10 @@ Eine Migration ist ein Ingest (Tobi, 21.10.2026): Lekto liest jedes Original sel
 **Migrationsplan**
 
 - YAML, gelesen und geschrieben mit `ruamel.yaml`, das Kommentare und Reihenfolge behält (Abhängigkeit nur des Migrationsclients, Tobi 21.10.2026). Der Plan nennt Paperless- und Lekto-Adresse; einen Plan für andere Server lehnt der Client ab.
-- Abschnitte: `settings`, `documents` (die Auswahl), `users`, `correspondents`, `document_types`, `tags`, `custom_fields`, `storage_paths`.
+- Abschnitte: `settings`, `documents` (die Auswahl), `users`, `correspondents`, `document_types`, `tags`, `custom_fields`, `storage_paths` und der eine Eintrag `asn` (die ASN).
 - Zugeordnet wird immer über den Namen: Schlüssel eines Eintrags ist der Paperless-Name (gleiche Namen in Paperless werden ein Eintrag), das Ziel ein Lekto-Name. Ein Eintrag hat eine Form für alles: `{to: <Ziel>, name: …, value: …, create: true, review: true, override: true}`, eine Liste solcher Ziele oder `drop`. Fehlt das Ziel in Lekto, braucht der Eintrag `create: true` (die Vorgabe von `plan` für alles, was fehlt); sonst ist er ungültig, damit ein Tippfehler nichts anlegt.
 - `review: true` an einem Eintrag: Jedes Dokument mit diesem Objekt kommt gelb in die Prüfung, mit einem Grund, der das Objekt nennt (Beispiel: Korrespondent „Sonstiges“, in Lekto aufzulösen; mit `drop` bleibt der Kontakt leer). An einem Nutzer heißt das nur „gelb mit Grund“: Den Besitzer ändert eine Person von Hand.
-- Einstellungen: Währung für Beträge ohne eine, Besitzer für Dokumente ohne einen, inaktive Nutzer am Ende deaktivieren, `added` übernehmen, Name des Felds für die ASN, Namensschema der Spaces, Schwelle des Textvergleichs (Vorgabe 80 %). Paperless-Superuser werden Nutzer mit der Rolle „Nutzer“, weil ein Token keine Admins anlegt; der Bericht nennt sie.
+- Einstellungen: Währung für Beträge ohne eine, Besitzer für Dokumente ohne einen, inaktive Nutzer am Ende deaktivieren, `added` übernehmen, Namensschema der Spaces, Schwelle des Textvergleichs (Vorgabe 80 %). Paperless-Superuser werden Nutzer mit der Rolle „Nutzer“, weil ein Token keine Admins anlegt; der Bericht nennt sie.
 - Auswahl (`documents`): `include` (alle Bedingungen müssen gelten) und `exclude` (eine genügt), über jedes Attribut eines Paperless-Dokuments: ID, Titel, Korrespondent, Typ, Speicherpfad, Tags, Besitzer, Freigaben, Custom Fields und ihre Werte, ASN, Datum, `added`, Änderungsdatum, Dateityp, Dateiname, Notizen vorhanden. `--limit` bleibt zum Testen.
 
 **Vorgaben**, die `plan` einträgt:
@@ -555,7 +555,7 @@ Jede Quelle (Nutzer, Korrespondent, Dokumenttyp, Tag, Speicherpfad, Custom Field
 **API-Erweiterungen für die Migration (21.10.2026)**
 
 - Die Upload-Metadaten (`channel=migration`) nehmen `review`: Gründe, aus denen das Dokument in die Prüfung kommt. Der Judge-Knoten ist dann `uncertain` mit diesen Gründen, die übernommenen Werte gelten wie sonst.
-- Eine Metadatenänderung für Admins an Dokumenten des Kanals `migration`, die nicht bestätigt und keine Entscheidung festhält; Prüfungen und Regeln wie beim normalen `PATCH`. Die Form steht im Umsetzungsplan.
+- `PATCH /documents/{id}?confirm=false` (ebenso `POST /documents/{id}/dry-run?confirm=false`): nur Admins, nur an Dokumenten des Kanals `migration`; bestätigt nicht und hält keine Entscheidung fest, Prüfungen und Regeln wie beim normalen `PATCH`.
 
 ## Offene Punkte
 

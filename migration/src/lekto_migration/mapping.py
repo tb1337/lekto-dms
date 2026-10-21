@@ -1,6 +1,5 @@
 """How Paperless-ngx objects map to Lekto: pure functions, no I/O."""
 
-import hashlib
 import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -8,12 +7,9 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import urlsplit
 
-NOTES_LIMIT = 20_000  # characters of the notes field (the upload's metadata is limited)
 TITLE_LIMIT = 500
 NAME_LIMIT = 200
 
-ASN = "ASN"
-NOTES = "Notizen"
 READ, READ_WRITE = "read", "read_write"
 _MONEY = re.compile(r"(?P<currency>[A-Za-z]{3})?\s*(?P<amount>[-+]?\d+(?:\.\d+)?)")
 
@@ -27,7 +23,7 @@ def norm(name: str) -> str:
 class FieldSpec:
     """The Lekto field definition for a Paperless custom field (or ASN, notes)."""
 
-    key: str  # "field:<id>", "asn", "notes"
+    key: str  # "field:<id>"
     name: str
     data_type: str  # Lekto: text, number, amount, date, boolean, choice, link, period
     choices: tuple[str, ...] = ()
@@ -44,8 +40,6 @@ _TYPES = {
     "monetary": "amount",
     "select": "choice",
 }
-ASN_SPEC = FieldSpec("asn", ASN, "number")
-NOTES_SPEC = FieldSpec("notes", NOTES, "text")
 
 
 def field_key(id: int) -> str:
@@ -182,27 +176,6 @@ def received_at(
     return at.isoformat(), []
 
 
-def notes_text(notes: list[dict[str, Any]]) -> tuple[str | None, list[str]]:
-    """The notes of a document as one text: `date, author: note`, one paragraph each."""
-    paragraphs = []
-    for note in sorted(notes, key=lambda item: item.get("created") or ""):
-        user = note.get("user") or {}
-        author = user.get("username") if isinstance(user, dict) else None
-        stamp = str(note.get("created") or "")[:10]
-        head = ", ".join(part for part in (stamp, author) if part)
-        text = str(note.get("note") or "").strip()
-        if text:
-            paragraphs.append(f"{head}: {text}" if head else text)
-    if not paragraphs:
-        return None, []
-    joined = "\n\n".join(paragraphs)
-    if len(joined) > NOTES_LIMIT:
-        return joined[:NOTES_LIMIT].rstrip(), [
-            f"the notes were shortened to {NOTES_LIMIT} characters"
-        ]
-    return joined, []
-
-
 # --- permissions ------------------------------------------------------------------------------
 
 
@@ -259,14 +232,3 @@ def access_of(
     return Access(
         owner, tuple(sorted(shares.items(), key=lambda item: norm(item[0]))), tuple(notes)
     )
-
-
-def space_name(shares: tuple[tuple[str, str], ...]) -> str:
-    """The name of the space for a combination of readers and writers; it names the users, so
-    the same combination gets the same space."""
-    words = {READ: "lesen", READ_WRITE: "schreiben"}
-    text = "Geteilt: " + ", ".join(f"{user} ({words[level]})" for user, level in shares)
-    if len(text) <= NAME_LIMIT:
-        return text
-    key = hashlib.sha256(repr(shares).encode()).hexdigest()[:8]
-    return text[: NAME_LIMIT - 13].rstrip() + f"... #{key}"

@@ -1,5 +1,5 @@
 """Edge cases found in review: inactive owners, shares with the executing admin, spaces that
-cannot be made, lost answers, big values, what the check says about default spaces."""
+cannot be made, lost answers, big values, documents moved in Lekto, old state files."""
 
 import json
 from pathlib import Path
@@ -31,6 +31,10 @@ def titled(setup: Setup, title: str) -> dict[str, Any]:
     return next(d for d in setup.lekto.documents.values() if d["title"] == title)
 
 
+def row(setup: Setup, command: str, id: int) -> dict[str, Any]:
+    return next(d for d in setup.report(command)["documents"] if d["id"] == id)
+
+
 async def test_documents_of_an_inactive_user_are_taken_over_and_the_user_deactivated(
     setup: Setup,
 ) -> None:
@@ -41,7 +45,7 @@ async def test_documents_of_an_inactive_user_are_taken_over_and_the_user_deactiv
         4,
         permissions={"view": {"users": [2], "groups": []}, "change": {"users": [], "groups": []}},
     )
-    assert await setup.run("run") == 0
+    assert await setup.migrate() == 0
     document = titled(setup, "Extra 30")
     gone = next(u for u in setup.lekto.users.values() if u["username"] == "gone")
     assert document["owner_id"] == gone["id"] and gone["active"] is False
@@ -50,7 +54,7 @@ async def test_documents_of_an_inactive_user_are_taken_over_and_the_user_deactiv
     writes = len(setup.lekto.writes())
     assert await setup.run("run") == 0
     assert len(setup.lekto.writes()) == writes
-    assert await setup.run("verify") == 0
+    assert await setup.run("check") == 0
 
 
 async def test_a_run_that_failed_for_an_inactive_owner_wakes_the_user_for_the_retry(
@@ -58,7 +62,7 @@ async def test_a_run_that_failed_for_an_inactive_owner_wakes_the_user_for_the_re
 ) -> None:
     add_document(setup, 30, 4)
     setup.lekto.errors["extra-30.pdf"] = (422, 99)
-    assert await setup.run("run") == 1
+    assert await setup.migrate() == 1
     gone = next(u for u in setup.lekto.users.values() if u["username"] == "gone")
     assert gone["active"] is False
     setup.lekto.errors.clear()
@@ -87,62 +91,56 @@ async def test_a_share_with_the_executing_admin_is_dropped_not_fatal(setup: Setu
             "change": {"users": [], "groups": []},
         },
     )
-    assert await setup.run("run") == 0
+    assert await setup.migrate() == 0
     document = titled(setup, "Extra 31")
     assert document["owner_id"] == ADMIN["id"]
     space = setup.lekto.spaces[document["space_id"]]
     assert [s["level"] for s in space["shares"]] == ["read"]  # bob only
-    row = next(d for d in setup.report("run")["documents"] if d["id"] == 31)
-    assert any("owns the document" in note for note in row["notes"])
+    assert any("owns the document" in note for note in row(setup, "run", 31)["notes"])
 
 
-async def test_a_space_that_cannot_be_made_fails_its_documents_only(setup: Setup) -> None:
+async def test_a_space_that_cannot_be_made_holds_the_run_back(setup: Setup) -> None:
     setup.lekto.refuse["POST /spaces"] = 422
-    assert await setup.run("run") == 1
-    report = setup.report("run")
-    failed = [d for d in report["documents"] if d["status"] == "failed"]
-    assert [d["id"] for d in failed] == [13] and "space" in failed[0]["reason"]
-    assert len(setup.lekto.documents) == 7
-    assert [d["status"] for d in report["objects"]["space"]] == ["failed"]
+    assert await setup.migrate() == 1  # prepare
+    spaces = [a for a in setup.report("prepare")["actions"] if a["kind"] == "space"]
+    assert [a["status"] for a in spaces] == ["failed"]
+    assert await setup.run("run") == 2
+    assert setup.lekto.documents == {}
     setup.lekto.refuse.clear()
-    assert await setup.run("run") == 0
+    assert await setup.migrate() == 0
     assert len(setup.lekto.documents) == 8
 
 
 async def test_a_lost_answer_after_creating_a_user_is_not_an_error(setup: Setup) -> None:
     setup.lekto.lose_answer = {"anna", "ACME Energy"}
-    assert await setup.run("run") == 0
+    assert await setup.migrate() == 0
     names = [u["username"] for u in setup.lekto.users.values()]
     assert names.count("anna") == 1
     assert [c["name"] for c in setup.lekto.contacts.values()].count("ACME Energy") == 1
 
 
-async def test_a_refusal_that_stops_the_migration_still_leaves_a_report(setup: Setup) -> None:
+async def test_a_refusal_of_prepare_leaves_a_report_and_no_document(setup: Setup) -> None:
     setup.lekto.refuse["POST /users"] = 422
+    assert await setup.migrate() == 1
+    users = [a for a in setup.report("prepare")["actions"] if a["kind"] == "user"]
+    assert {u["status"] for u in users if u["name"] != "root"} == {"failed"}
     assert await setup.run("run") == 2
-    report = setup.report("run")
-    assert {u["status"] for u in report["objects"]["user"]} == {"failed"}
     assert setup.lekto.documents == {}
 
 
 async def test_a_huge_value_is_left_out_not_the_whole_document(setup: Setup) -> None:
-    setup.archive.documents[0]["custom_fields"].append({"field": 2, "value": "x" * 60_000})
-    assert await setup.run("run") == 0
+    setup.archive.documents[0]["custom_fields"][1] = {"field": 2, "value": "x" * 60_000}
+    assert await setup.migrate() == 0
     document = titled(setup, "Document 10")
     assert len(json.dumps(document["fields"])) < 45_000
-    row = next(d for d in setup.report("run")["documents"] if d["id"] == 10)
-    assert any("too large" in note for note in row["notes"])
+    assert any("too large" in note for note in row(setup, "run", 10)["notes"])
 
 
 async def test_what_paperless_has_beyond_documents_is_counted(setup: Setup) -> None:
     setup.archive.trash, setup.archive.mail_accounts = 3, 2
     assert await setup.run("plan") == 0
-    others = {o["source_id"]: o for o in setup.report("plan")["objects"]["other"]}
-    assert others["trash"]["notes"] == ["3 not taken over"]
-    assert others["mail_accounts"]["notes"] == ["2 not taken over"]
-    # The date added comes along (Tobi, 21.10.2026); the history does not.
-    assert "date_added" not in others
-    assert others["history"]["status"] == "omitted"
+    counts = setup.report("plan")["source_counts"]
+    assert (counts["trash"], counts["mail_accounts"], counts["saved_views"]) == (3, 2, 2)
 
 
 async def test_further_versions_of_a_file_are_reported(setup: Setup) -> None:
@@ -150,23 +148,26 @@ async def test_further_versions_of_a_file_are_reported(setup: Setup) -> None:
         {"id": 10, "is_root": True, "checksum": "x"},
         {"id": 99, "is_root": False, "checksum": "y"},
     ]
-    assert await setup.run("run") == 0
-    row = next(d for d in setup.report("run")["documents"] if d["id"] == 10)
-    assert any("further versions" in note for note in row["notes"])
+    assert await setup.migrate() == 0
+    assert any("further versions" in note for note in row(setup, "run", 10)["notes"])
 
 
-async def test_the_check_looks_at_the_default_space_too(setup: Setup) -> None:
-    assert await setup.run("run") == 0
+async def test_a_document_a_person_moved_stays_where_it_is(setup: Setup) -> None:
+    assert await setup.migrate() == 0
     document = titled(setup, "Document 12")  # anna's, in her default space
-    assert await setup.run("verify") == 0
     document["space_id"] = f"default:{ADMIN['id']}"  # a rule or a person filed it elsewhere
-    assert await setup.run("verify") == 1
-    assert "space differs" in {d["what"] for d in setup.report("verify")["deviations"]}
+    assert await setup.run("check") == 0
+    differences = row(setup, "check", 12)["differences"]
+    assert [(d["what"], d["action"]) for d in differences] == [("space", "kept")]
+    assert await setup.run("run") == 0
+    assert document["space_id"] == f"default:{ADMIN['id']}"
 
 
 async def test_a_duplicate_gets_its_lane_too(setup: Setup) -> None:
-    assert await setup.run("run") == 0
-    assert await setup.run("run", state=setup.directory / "other.sqlite") == 0
+    assert await setup.migrate() == 0
+    other = setup.directory / "other.sqlite"
+    assert await setup.run("prepare", state=other) == 0
+    assert await setup.run("run", state=other) == 0
     lanes = {d["lane"] for d in setup.report("run")["documents"] if d["status"] == "duplicate"}
     assert lanes == {"green"}
 
@@ -179,14 +180,14 @@ def test_addresses_lose_their_credentials() -> None:
 
 async def test_a_run_notes_that_a_document_was_repaired_since(setup: Setup) -> None:
     setup.lekto.lanes["scan-12.pdf"] = "red"
-    assert await setup.run("run") == 0
+    assert await setup.migrate() == 0
     assert setup.report("run")["lanes"] == {"green": 7, "red": 1}
     document = titled(setup, "Document 12")
     document["_lane"] = "green"  # retried and fixed in Lekto
     assert await setup.run("run") == 0
     report = setup.report("run")
     assert report["lanes"] == {"green": 8}
-    assert next(d for d in report["documents"] if d["id"] == 12)["reason"] is None
+    assert row(setup, "run", 12)["reason"] is None
 
 
 def test_a_state_from_before_spaces_reads_its_drawers_as_spaces(tmp_path: Path) -> None:
@@ -199,7 +200,35 @@ def test_a_state_from_before_spaces_reads_its_drawers_as_spaces(tmp_path: Path) 
     state = State(path)
     assert state.object("space", "anna|bob") == ("id-1", "new")
     assert state.object("drawer", "anna|bob") is None
-    row = state.document(7)
-    assert row is not None
-    assert row.detail == {"title": "T", "space": "Shared", "owner": "anna"}
+    found = state.document(7)
+    assert found is not None
+    assert found.detail == {"title": "T", "space": "Shared", "owner": "anna"}
+    state.close()
+
+
+def test_a_state_from_before_the_plan_learns_what_was_applied(tmp_path: Path) -> None:
+    import sqlite3
+
+    path = tmp_path / "state.sqlite"
+    old = sqlite3.connect(path)
+    old.executescript(
+        """
+        CREATE TABLE documents (
+            source_id INTEGER PRIMARY KEY, status TEXT NOT NULL, lekto_id TEXT, sha256 TEXT,
+            lane TEXT, reason TEXT, notes TEXT NOT NULL DEFAULT '[]',
+            detail TEXT NOT NULL DEFAULT '{}', upload_seconds REAL, pipeline_seconds REAL,
+            updated_at TEXT NOT NULL
+        );
+        INSERT INTO documents (source_id, status, lekto_id, updated_at)
+            VALUES (7, 'done', 'l7', '2026-10-10');
+        """
+    )
+    old.commit()
+    old.close()
+    state = State(path)
+    found = state.document(7)
+    assert found is not None and found.lekto_id == "l7" and found.applied is None
+    state.put_document(7, "done", applied={"title": "T"})
+    again = state.document(7)
+    assert again is not None and again.applied == {"title": "T"} and again.lekto_id == "l7"
     state.close()

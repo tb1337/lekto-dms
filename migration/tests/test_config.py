@@ -11,7 +11,7 @@ def load(env: dict[str, str], **changes: object) -> Config:
         "lekto_url": None,
         "state": Path("s"),
         "report_dir": Path("r"),
-        "currency": "eur",
+        "plan": Path("p.yaml"),
         "concurrency": 2,
         "limit": None,
         "pipeline_timeout": 10.0,
@@ -28,10 +28,10 @@ def test_the_environment_configures_everything() -> None:
             "LEKTO_MIGRATION_LEKTO_TOKEN": "other",
         }
     )
-    assert (config.paperless_url, config.lekto_url, config.currency) == (
+    assert (config.paperless_url, config.lekto_url, config.plan) == (
         "http://p",
         "http://q",
-        "EUR",
+        Path("p.yaml"),
     )
     assert (config.paperless_token, config.lekto_token) == ("key", "other")
 
@@ -61,11 +61,6 @@ def test_a_key_may_come_from_a_file(tmp_path: Path) -> None:
     [
         ({}, {}, "Paperless URL"),
         ({"LEKTO_MIGRATION_PAPERLESS_URL": "http://p"}, {}, "API key"),
-        (
-            {"LEKTO_MIGRATION_PAPERLESS_URL": "http://p", "LEKTO_MIGRATION_PAPERLESS_TOKEN": "k"},
-            {"currency": "euro"},
-            "currency",
-        ),
         (
             {"LEKTO_MIGRATION_PAPERLESS_URL": "http://p", "LEKTO_MIGRATION_PAPERLESS_TOKEN": "k"},
             {"concurrency": 0},

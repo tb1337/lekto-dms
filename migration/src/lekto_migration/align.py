@@ -98,7 +98,9 @@ def align(
     _tags(base, now, want, parents, result)
     _fields(base, now, want, types, unmanaged, result)
     space, before, wanted_space = now.get("space_id"), base.get("space_id"), want.get("space_id")
-    if wanted_space is not None and space != wanted_space:
+    if wanted_space is not None and space == wanted_space:
+        result.applied["space_id"] = wanted_space
+    elif wanted_space is not None:
         if before is None or space == before:
             result.move = wanted_space
             result.applied["space_id"] = wanted_space

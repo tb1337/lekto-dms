@@ -10,9 +10,7 @@ from lekto_migration.mapping import (
     document_date,
     document_title,
     field_spec,
-    notes_text,
     received_at,
-    space_name,
 )
 
 
@@ -130,20 +128,6 @@ def test_the_date_added_is_taken_over_with_its_time_zone_and_never_ahead() -> No
         assert value is None and len(notes) == 1, wrong
 
 
-def test_notes_become_one_text_oldest_first() -> None:
-    text, notes = notes_text(
-        [
-            {"note": "Second", "created": "2024-02-02T10:00:00Z", "user": {"username": "anna"}},
-            {"note": "First", "created": "2024-01-01T10:00:00Z", "user": {"username": "tobias"}},
-            {"note": "  ", "created": "2024-03-03T10:00:00Z", "user": None},
-        ]
-    )
-    assert text == "2024-01-01, tobias: First\n\n2024-02-02, anna: Second" and notes == []
-    assert notes_text([]) == (None, [])
-    long, notes = notes_text([{"note": "x" * 30_000, "created": "2024-01-01", "user": None}])
-    assert long is not None and len(long) <= 20_000 and notes
-
-
 USERS = {
     1: {"id": 1, "username": "tobias", "is_active": True, "groups": [1]},
     2: {"id": 2, "username": "anna", "is_active": True, "groups": [1]},
@@ -192,13 +176,3 @@ def test_no_owner_unknown_owner_and_unusable_users_are_noted() -> None:
 
 def test_missing_permission_data_is_no_permission() -> None:
     assert access_of({"owner": 1}, USERS).shares == ()
-
-
-def test_space_names_name_the_users_and_stay_in_bounds() -> None:
-    assert space_name((("anna", "read_write"), ("bob", "read"))) == (
-        "Geteilt: anna (schreiben), bob (lesen)"
-    )
-    many = tuple((f"user-{n:03d}-" + "x" * 20, "read") for n in range(30))
-    name = space_name(many)
-    assert len(name) <= 200 and name != space_name(many[:-1])
-    assert space_name(many) == name

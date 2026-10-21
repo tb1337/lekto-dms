@@ -1,5 +1,6 @@
-"""The local state of a migration: which Paperless object became which Lekto object, and how far
-each document got. A SQLite file next to the run, so an interrupted migration continues where it
+"""The local state of a migration: which Paperless object became which Lekto object, how far
+each document got, and what the migration set on it last (`applied`, the base of the next
+alignment). A SQLite file next to the run, so an interrupted migration continues where it
 stopped and a second run creates nothing twice. It holds no secrets."""
 
 import json
@@ -31,7 +32,8 @@ CREATE TABLE IF NOT EXISTS documents (
     detail TEXT NOT NULL DEFAULT '{}',
     upload_seconds REAL,
     pipeline_seconds REAL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    applied TEXT
 );
 """
 # Document states: `uploaded` (accepted, pipeline not finished), `done` (pipeline finished),
@@ -55,6 +57,7 @@ class DocumentRow:
     detail: dict[str, Any]
     upload_seconds: float | None
     pipeline_seconds: float | None
+    applied: dict[str, Any] | None = None  # what the migration set last, in Lekto's ids
 
 
 class State:
@@ -62,6 +65,9 @@ class State:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(path)
         self._db.executescript(SCHEMA)
+        columns = {row[1] for row in self._db.execute("PRAGMA table_info(documents)")}
+        if "applied" not in columns:  # state files from before the plan
+            self._db.execute("ALTER TABLE documents ADD COLUMN applied TEXT")
         # Version 0.1 called fields "attributes", versions before 0.3 spaces "drawers".
         self._db.execute("UPDATE objects SET kind = 'field' WHERE kind = 'attribute'")
         self._db.execute("UPDATE objects SET kind = 'space' WHERE kind = 'drawer'")
@@ -156,10 +162,14 @@ class State:
         detail: dict[str, Any] | None = None,
         upload_seconds: float | None = None,
         pipeline_seconds: float | None = None,
+        applied: dict[str, Any] | None = None,
     ) -> None:
+        """Record a document; what is not given stays as it was (the lane and the reason are
+        always this call's)."""
         before = self.document(source_id)
+        kept = applied if applied is not None else (before.applied if before else None)
         self._db.execute(
-            "INSERT OR REPLACE INTO documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 source_id,
                 status,
@@ -176,19 +186,35 @@ class State:
                 if pipeline_seconds is not None
                 else (before.pipeline_seconds if before else None),
                 datetime.now(UTC).isoformat(timespec="seconds"),
+                None if kept is None else json.dumps(kept),
             ),
         )
+        self._db.commit()
+
+    def forget(self, source_id: int) -> None:
+        """Forget a document (deleted in Lekto, to be uploaded again)."""
+        self._db.execute("DELETE FROM documents WHERE source_id = ?", (source_id,))
         self._db.commit()
 
     def _select(self, where: str, args: tuple[Any, ...]) -> list[DocumentRow]:
         rows = self._db.execute(
             "SELECT source_id, status, lekto_id, sha256, lane, reason, notes, detail, "
-            f"upload_seconds, pipeline_seconds FROM documents {where}",
+            f"upload_seconds, pipeline_seconds, applied FROM documents {where}",
             args,
         ).fetchall()
         return [
             DocumentRow(
-                r[0], r[1], r[2], r[3], r[4], r[5], json.loads(r[6]), json.loads(r[7]), r[8], r[9]
+                r[0],
+                r[1],
+                r[2],
+                r[3],
+                r[4],
+                r[5],
+                json.loads(r[6]),
+                json.loads(r[7]),
+                r[8],
+                r[9],
+                None if r[10] is None else json.loads(r[10]),
             )
             for r in rows
         ]

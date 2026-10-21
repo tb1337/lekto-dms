@@ -248,3 +248,21 @@ def test_values_are_coerced(value: Any, source: str, data_type: str, expected: A
 def test_values_that_do_not_fit_are_refused(value: Any, source: str, data_type: str) -> None:
     converted, note = coerce(value, source, data_type, "EUR")
     assert converted is None and note is not None and data_type in note
+
+
+def test_a_long_space_name_stays_in_bounds_and_apart(world: World) -> None:
+    users = [
+        {"id": 100 + n, "username": f"user-{n:03d}-" + "x" * 20, "is_active": True, "groups": []}
+        for n in range(30)
+    ]
+    world.archive.users += users
+    world.document(13)["permissions"] = {
+        "view": {"users": [u["id"] for u in users], "groups": []},
+        "change": {"users": [], "groups": []},
+    }
+    long = world.expect(13).space
+    world.document(13)["permissions"]["view"]["users"].pop()
+    shorter = world.expect(13).space
+    assert long is not None and shorter is not None
+    assert len(long) <= 200 and len(shorter) <= 200 and long != shorter
+    assert long.startswith("Geteilt: user-000-")

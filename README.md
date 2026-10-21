@@ -49,8 +49,8 @@ repository in VS Code, "Reopen in Container", run the task **Lekto: Set up dev i
 in `.devcontainer/dev.local.env`, run **Lekto: Start**. Details, data separation, backup and the
 migration from Paperless: [.devcontainer/README.md](.devcontainer/README.md).
 
-**Take a Paperless-ngx archive over:** [migration/README.md](migration/README.md) (`plan`, `run`,
-`verify`; only through the two APIs).
+**Take a Paperless-ngx archive over:** [migration/README.md](migration/README.md) (`plan`, `check`,
+`prepare`, `run`; only through the two APIs).
 
 ## Documentation
 

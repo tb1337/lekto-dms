@@ -9,6 +9,7 @@ Where several compete on equal terms, the value stays as it would be without the
 note.
 """
 
+import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -312,8 +313,18 @@ def _owner(document: dict[str, Any], context: Context, expected: Expected) -> No
             f"{user} ({'schreiben' if level == READ_WRITE else 'lesen'})"
             for user, level in expected.shares
         )
-        expected.space = settings.space_name.replace("{shares}", users)[:NAME_LIMIT]
+        expected.space = _space_name(settings.space_name, expected.shares, users)
         expected.sources["space"] = PERMISSIONS
+
+
+def _space_name(template: str, shares: tuple[tuple[str, str], ...], users: str) -> str:
+    """The name of the space of a combination of users; it names them, so the same combination
+    gets the same space, and a long one ends in a short hash to stay apart."""
+    name = template.replace("{shares}", users)
+    if len(name) <= NAME_LIMIT:
+        return name
+    key = hashlib.sha256(repr(shares).encode()).hexdigest()[:8]
+    return name[: NAME_LIMIT - 13].rstrip() + f"... #{key}"
 
 
 def _from_entry(

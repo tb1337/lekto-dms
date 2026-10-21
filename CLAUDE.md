@@ -10,7 +10,7 @@ only way in.
 | --- | --- |
 | `backend/` | Python package `lekto`: `core` (domain, ports, services), `adapters` (inbound, outbound), `composition` |
 | `web/` | Web UI: SvelteKit single-page app below `/ui`, client generated from `web/openapi.json` (see `web/README.md`) |
-| `migration/` | Paperless-ngx migration client: separate uv project `lekto_migration` (`plan`, `run`, `verify`; see `migration/README.md`) |
+| `migration/` | Paperless-ngx migration client: separate uv project `lekto_migration` (`plan`, `check`, `prepare`, `run`; see `migration/README.md`) |
 | `deploy/` | Runtime image files (s6-overlay services, `image/rootfs`), example Compose stacks (SQLite, Postgres + Garage), `test-image.sh`, `README.md` (operation, backup) |
 | `.devcontainer/` | Devcontainer: Compose services (Postgres, Garage, Meilisearch), the fixed credentials for tests and CI (in `compose.yml`), the development instance (`README.md`, `dev.local.env.example`, `dev-setup.sh`) |
 | `.vscode/tasks.json` | VS Code tasks that run the development instance from the devcontainer (start, stop, migrate, UI, reindex, render-pages, read-codes, migration) |

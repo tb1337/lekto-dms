@@ -42,6 +42,8 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pytest-xdist>=3.8.0",
     "ruff",
+    # The migration client's own dependency (its plan), for the flow tests that run it.
+    "ruamel.yaml==0.19.1",
 ]
 
 [build-system]
@@ -59,7 +61,7 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "N"]
 strict = true
 files = ["src", "tests"]
 # The migration client's package, which the flow tests in tests/unit/adapters/rest run against
-# the API (it needs nothing but httpx2).
+# the API (it needs httpx2 and ruamel.yaml).
 mypy_path = "../migration/src"
 
 [tool.pytest.ini_options]

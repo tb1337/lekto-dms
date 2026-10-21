@@ -8,9 +8,10 @@
 				default: 'bg-card text-card-foreground',
 				destructive:
 					'text-destructive bg-card *:data-[slot=alert-description]:text-destructive/90 *:[svg]:text-current',
-				// Admonitions, as GitHub and Docusaurus name them, each with its icon.
+				// Admonitions, as GitHub and Docusaurus name them, each with its icon. A tip is blue,
+				// not green: green is the lane of what is done (Tobi, 21.10.2026).
 				note: 'border-note-foreground/25 bg-note text-note-foreground *:data-[slot=alert-description]:text-note-foreground',
-				tip: 'border-lane-green-foreground/25 bg-lane-green text-lane-green-foreground *:data-[slot=alert-description]:text-lane-green-foreground',
+				tip: 'border-note-foreground/25 bg-note text-note-foreground *:data-[slot=alert-description]:text-note-foreground',
 				warning:
 					'border-lane-yellow-foreground/25 bg-lane-yellow text-lane-yellow-foreground *:data-[slot=alert-description]:text-lane-yellow-foreground',
 				caution:

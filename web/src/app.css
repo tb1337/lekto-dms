@@ -51,7 +51,7 @@
 	--lane-red-foreground: #a11d17;
 	--lane-running: #efeeea;
 	--lane-running-foreground: #5f5c55;
-	/* Notes (alerts of the kind `note`): blue, as GitHub and Docusaurus draw them. */
+	/* Notes and tips (alerts `note` and `tip`): blue, as GitHub and Docusaurus draw notes. */
 	--note: #e7f0fb;
 	--note-foreground: #1d4f91;
 }

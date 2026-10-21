@@ -407,9 +407,20 @@
 		/>
 
 		{#if advice}
-			<Alert.Root variant="tip" role="status" class="flex flex-wrap items-center gap-3">
-				<Alert.Description class="min-w-0 flex-1">{advice}</Alert.Description>
-				<Button size="sm" onclick={() => header?.startVision()}>{m.vision_read()}</Button>
+			<!-- Icon, text and button from the top, the text and the icon half a button's height
+			     down: on one line all three in the middle, wrapped the icon at the first line and
+			     the button below. The button in the tip's blue, not in the green of what is done. -->
+			<Alert.Root
+				variant="tip"
+				role="status"
+				class="flex flex-wrap items-start gap-x-2 gap-y-2 *:[svg]:translate-y-2"
+			>
+				<Alert.Description class="min-w-0 flex-1 py-1.5">{advice}</Alert.Description>
+				<Button
+					size="sm"
+					class="bg-note-foreground text-note hover:bg-note-foreground/85"
+					onclick={() => header?.startVision()}>{m.vision_read()}</Button
+				>
 			</Alert.Root>
 		{/if}
 

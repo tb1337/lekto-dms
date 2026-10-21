@@ -137,32 +137,14 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "Migration: plan",
-			"detail": "Write migration-plan.yaml, or add what is new in Paperless to it (asks first)",
+			// A new terminal for the migration from Paperless-ngx: in migration/, with the settings
+			// of dev.local.env, the commands shown; it stays open for plan, check, prepare and run.
+			"label": "Lekto: Migrate",
+			"detail": "Take a Paperless-ngx archive over: a terminal in migration/ with dev.local.env, showing lekto-migration --help",
 			"type": "shell",
-			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd migration && uv run lekto-migration plan",
-			"problemMatcher": []
-		},
-		{
-			"label": "Migration: check",
-			"detail": "Cold run: what prepare and run would do; writes nothing",
-			"type": "shell",
-			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd migration && uv run lekto-migration check",
-			"problemMatcher": []
-		},
-		{
-			"label": "Migration: prepare",
-			"detail": "Create in the dev instance what the plan needs before the documents come (asks first)",
-			"type": "shell",
-			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd migration && uv run lekto-migration prepare",
-			"problemMatcher": []
-		},
-		{
-			"label": "Migration: run",
-			"detail": "Take the documents over and align the migrated ones (asks first; Ctrl-C stops, run again continues)",
-			"type": "shell",
-			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd migration && uv run lekto-migration run",
-			"problemMatcher": []
+			"command": "set -a && . .devcontainer/dev.local.env && set +a && cd migration && uv run lekto-migration --help; exec zsh -l",
+			"problemMatcher": [],
+			"presentation": { "panel": "new", "reveal": "always", "focus": true, "clear": true }
 		}
 	],
 	"inputs": [

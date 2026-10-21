@@ -484,20 +484,66 @@ Lekto wird als ein Docker-Image ausgeliefert. Darin überwacht s6-overlay alle L
 
 Ein eigener CLI-Client (`migration/`) liest die Paperless-REST-API und schreibt über die Lekto-API – damit beweist er zugleich, dass die API vollständig ist. Ein Admin-Token genügt für die ganze Migration (Tobi, 08.10.2026).
 
+Eine Migration ist ein Ingest (Tobi, 21.10.2026): Lekto liest jedes Original selbst, mit der OCR wie sonst (je Seite: eine eigene Textebene bleibt, eine fremde unsichtbare wird ersetzt, Bilder werden gelesen); die Klassifizierungsmerkmale bringt der Migrationsplan mit; Regeln und alles Weitere laufen wie sonst. Lekto bekommt keinen Migrationsmodus: Was die Migration braucht, bereitet sie vorher vor.
+
+**Ablauf** (Tobi, 21.10.2026)
+
+| Befehl | Phase | Was er tut |
+| --- | --- | --- |
+| `plan` | Erfassen und zuordnen | Liest Paperless und Lekto und schreibt den Migrationsplan `migration-plan.yaml`: Einstellungen, Auswahl der Dokumente, je Paperless-Objekt ein Eintrag mit Vorgabe. Mit einem bestehenden Plan bleiben die eigenen Entscheidungen; neue Paperless-Objekte kommen dazu, verschwundene und ungültige werden markiert. `plan` zeigt, was sich ändert, und schreibt erst nach Rückfrage (`[y/N]`, ohne Terminal nur mit `--yes`) |
+| `check` | Kalter Lauf | Schreibt nichts. Zeigt, was `prepare` anlegen würde, und je ausgewähltem Dokument, was es würde: neu, in Lekto gleich, in Lekto anders (je Wert), in Lekto gelöscht; mit der Herkunft jedes Werts und den Konflikten. Vergleicht die Texte (unten). `--download` lädt die Originale und prüft Prüfsumme, Dateityp und doppelte Dateien. Ersetzt `verify` |
+| `prepare` | Ziel vorbereiten | Legt die Stammdaten an: Nutzer, Kontakte, Typen, Tags mit Hierarchie, Kontakt- und Typgruppen, Felder, Spaces und Freigaben. Pflicht vor `run`; dazwischen lässt sich Lekto vorbereiten (Regeln, Feldzuordnungen), bevor Dokumente kommen |
+| `run` | Warmer Lauf | Prüft zuerst, ob der Plan noch zu Paperless und Lekto passt und jedes Ziel in Lekto existiert; sonst Abbruch mit „erst `plan`“ bzw. „erst `prepare`“. Lädt neue Dokumente hoch, setzt nach ihrer Pipeline das Thema, gleicht übernommene an. Abbrechen und fortsetzen wie bisher |
+
+`prepare` und `run` zeigen vor dem Schreiben eine Zusammenfassung und fragen nach (ohne Terminal `--yes`). Was den Lauf steuert, bleibt auf der Kommandozeile (Parallelität, Timeout, `--limit`, Pfade). Die Zustandsdatei hält weiter, welche Paperless-ID welche Lekto-ID wurde, wie weit jedes Dokument ist und was die Migration zuletzt gesetzt hat; bestehende Zustandsdateien gelten weiter.
+
+**Migrationsplan**
+
+- YAML, gelesen und geschrieben mit `ruamel.yaml`, das Kommentare und Reihenfolge behält (Abhängigkeit nur des Migrationsclients, Tobi 21.10.2026). Der Plan nennt Paperless- und Lekto-Adresse; einen Plan für andere Server lehnt der Client ab.
+- Abschnitte: `settings`, `documents` (die Auswahl), `users`, `correspondents`, `document_types`, `tags`, `custom_fields`, `storage_paths`.
+- Zugeordnet wird immer über den Namen: Schlüssel eines Eintrags ist der Paperless-Name (gleiche Namen in Paperless werden ein Eintrag), das Ziel ein Lekto-Name. Ein Eintrag hat eine Form für alles: `{to: <Ziel>, name: …, value: …, create: true, review: true, override: true}`, eine Liste solcher Ziele oder `drop`. Fehlt das Ziel in Lekto, braucht der Eintrag `create: true` (die Vorgabe von `plan` für alles, was fehlt); sonst ist er ungültig, damit ein Tippfehler nichts anlegt.
+- `review: true` an einem Eintrag: Jedes Dokument mit diesem Objekt kommt gelb in die Prüfung, mit einem Grund, der das Objekt nennt (Beispiel: Korrespondent „Sonstiges“, in Lekto aufzulösen; mit `drop` bleibt der Kontakt leer). An einem Nutzer heißt das nur „gelb mit Grund“: Den Besitzer ändert eine Person von Hand.
+- Einstellungen: Währung für Beträge ohne eine, Besitzer für Dokumente ohne einen, inaktive Nutzer am Ende deaktivieren, `added` übernehmen, Name des Felds für die ASN, Namensschema der Spaces, Schwelle des Textvergleichs (Vorgabe 80 %). Paperless-Superuser werden Nutzer mit der Rolle „Nutzer“, weil ein Token keine Admins anlegt; der Bericht nennt sie.
+- Auswahl (`documents`): `include` (alle Bedingungen müssen gelten) und `exclude` (eine genügt), über jedes Attribut eines Paperless-Dokuments: ID, Titel, Korrespondent, Typ, Speicherpfad, Tags, Besitzer, Freigaben, Custom Fields und ihre Werte, ASN, Datum, `added`, Änderungsdatum, Dateityp, Dateiname, Notizen vorhanden. `--limit` bleibt zum Testen.
+
+**Vorgaben**, die `plan` einträgt:
+
 | Paperless-ngx | Lekto | Hinweis |
 | --- | --- | --- |
-| Nutzer | Nutzer | Zuordnung über den Benutzernamen; fehlende ohne Passwort, Rolle „Nutzer“, inaktive deaktiviert |
+| Nutzer | Nutzer | Zuordnung über den Benutzernamen; fehlende ohne Passwort, Rolle „Nutzer“, inaktive am Ende deaktiviert |
 | Korrespondent | Kontakt | per Name zugeordnet |
 | Dokumenttyp | Dokumenttyp | per Name zugeordnet |
-| Tag | Tag der Art `document` | per Name zugeordnet; Hierarchie und Farben entfallen (die Übernahme kommt in einem späteren Release, Tobi 16.10.2026) |
-| Custom Field | Feld, global | string/longtext → Text, url → Link, date → Datum, boolean → Ja/Nein, integer/float → Zahl, monetary → Betrag (Währung aus dem Wert, sonst Option, Standard EUR), select → Auswahl; documentlink entfällt |
-| ASN, Notizen | Felder „ASN“ (Zahl), „Notizen“ (Text) | |
+| Tag | Tag der Art `document` | per Name zugeordnet; die Hierarchie wird übernommen (Tobi, 21.10.2026; bis dahin entfallen), Farben entfallen |
+| Custom Field | Feld, global | string/longtext → Text, url → Link, date → Datum, boolean → Ja/Nein, integer/float → Zahl, monetary → Betrag (Währung aus dem Wert, sonst Einstellung, Standard EUR), select → Auswahl; documentlink entfällt |
+| ASN | Feld „ASN“ (Zahl) | |
+| Notizen | – | entfallen, der Bericht zählt sie: Lekto hat keine Notizen (Tobi, 21.10.2026; bis dahin Feld „Notizen“) |
 | Besitzer | Besitzer | ohne Besitzer: der ausführende Admin |
-| Speicherpfad | – | entfällt, nur gezählt |
+| Speicherpfad | – | Vorgabe `drop`, umdeutbar |
 | Berechtigungen pro Dokument | Space des Besitzers | ohne zusätzliche Rechte: Standard-Space; sonst ein Space je Kombination aus Lesern und Schreibern (Gruppen zu Nutzern aufgelöst), geteilt mit „lesen“ bzw. „lesen/schreiben“ |
 | Datei | Original | nicht das Archiv-PDF; Lekto erzeugt ein eigenes |
+| Text (`content`) | – | nie übernommen, Lekto liest selbst (mit Layout); nur zum Vergleich in `check` |
 | Datum „hinzugefügt“ (`added`) | Eingang (`created_at`) | Tobi, 21.10.2026 (bis dahin entfallen): mit den Metadaten übergeben, damit die Meilensteine nach einer Migration stimmen |
 | Verlauf, Freigabelinks, gespeicherte Ansichten, Workflows, Mail-Regeln, Zuordnungsregeln | – | entfallen, im Bericht |
+
+**Umdeutungen** (Tobi, 21.10.2026: größtmögliche Gestaltungsfreiheit)
+
+Jede Quelle (Nutzer, Korrespondent, Dokumenttyp, Tag, Speicherpfad, Custom Field, ASN) kann auf jedes Ziel zeigen (Kontakt, Dokumenttyp, Thema, Dokument-Tag, Kontaktgruppe, Typgruppe, Feld, Space, Dokumentdatum), auch auf mehrere; ein Nutzer zeigt immer auch auf einen Nutzer.
+
+- Merkmal und Wert: Quellen ohne Wert (Nutzer, Korrespondent, Typ, Tag, Speicherpfad) brauchen für ein Feld einen festen `value`. Custom Fields brauchen für Kontakt, Typ, Tag oder Thema eine Wertetabelle (`values`) oder `by_value` (der Wert ist der Name). Ein Wert, der nicht zum Feldtyp passt, wird ein Hinweis am Dokument.
+- Konflikte bei einwertigen Zielen (Kontakt, Typ, Thema, Space, Dokumentdatum, jedes Feld): Eine Umdeutung füllt nur, was leer ist; mit `override: true` gewinnt sie; konkurrieren mehrere gleichrangig, bleibt der Wert, wie er ohne sie wäre, mit Hinweis. `check` zeigt jeden Konflikt.
+- Space: je Besitzer ein Space dieses Namens. Er konkurriert mit dem Space aus den Berechtigungen; es gilt die Konfliktregel.
+- Kontakt- und Typgruppen hängen am Kontakt bzw. Typ: Jeder Kontakt (Typ) eines Dokuments mit der Quelle kommt in die Gruppe. Das erledigt `prepare`.
+- Thema: Die Upload-Metadaten kennen keins; `run` setzt es nach der Pipeline beim Angleichen, ein Admin schaltet es dabei am Kontakt frei. Die Regeln der Pipeline sehen es nicht, die des Angleichens schon.
+- Tag-Hierarchie: der übergeordnete Tag wie in Paperless, im Plan änderbar. Liegt der übergeordnete auf einem anderen Ziel, entfällt die Ebene mit Hinweis.
+- Felder, die an Dokumenttypen gebunden sind, sind Ziele; der Wert kommt nur, wenn der Typ des Dokuments dazugehört, sonst ein Hinweis (Tobi, 21.10.2026; bis dahin abgelehnt).
+
+**Textvergleich:** Paperless' Text wird nie übernommen. `check` zählt die Wörter beider Texte ohne Layout und Satzzeichen (Paperless `content`, Lekto `GET /documents/{id}/text`) und listet Dokumente, bei denen Lekto unter der Schwelle liegt oder selbst das Lesen mit dem VLM empfiehlt (`GET /documents/{id}/reading`). Das VLM fordert weiter nur eine Person an, nie die Migration (Tobi, 21.10.2026).
+
+**Übernommene Dokumente angleichen** (Tobi, 21.10.2026)
+
+- Drei Stände: was die Migration zuletzt gesetzt hat (Zustandsdatei), was Lekto jetzt hat, was der Plan jetzt ergibt. Geändert wird nur, was in Lekto noch den Wert der Migration trägt; was eine Person oder eine Regel seitdem geändert hat, bleibt und steht mit Urheber im Bericht.
+- Das Angleichen bestätigt nicht, hält keine Entscheidung fest und markiert nicht als neu; die Regeln laufen. So kommt auch der Eingang (`created_at`) an Dokumente, die vor dem 21.10.2026 migriert wurden.
+- In Lekto gelöscht: nur gemeldet, neu hochgeladen nur mit Option. In Paperless gelöscht oder nicht mehr ausgewählt: bleibt in Lekto, im Bericht.
 
 **API-Erweiterungen für die Migration (M12)**
 
@@ -505,6 +551,11 @@ Ein eigener CLI-Client (`migration/`) liest die Paperless-REST-API und schreibt 
 - Die Metadaten stehen im Protokolleintrag `receive` (`imported`); das Schema bleibt unverändert. Klassifizieren und Felder extrahieren übernehmen sie bei Kanal `migration` ohne LLM (Ergebnis ok, Grund „taken over from the source system“, `model_version` `imported`). Empfangen, OCR, Parsen und Regeln laufen normal, die Lane ergibt sich wie sonst. Die übernommenen Werte haben keine Feldprüfungen im Protokoll und gelten für Regeln damit als von Menschen gesetzt, nicht als Modellvorschlag. Ein „ab Schritt neu verarbeiten“ wendet dieselben Werte erneut an.
 - `POST /spaces` (bis 0.2: `/drawers`) nimmt `owner_id` (nur Admins), `POST /users` genügt mit Admin-Token (`read_write`) für die Rolle „Nutzer“ ohne Passwort (Passwort oder Rolle Admin weiter nur mit Sitzung). Die Dokumentdetails nennen `sha256`.
 - Keine Erweiterung gibt Nicht-Admins Rechte.
+
+**API-Erweiterungen für die Migration (21.10.2026)**
+
+- Die Upload-Metadaten (`channel=migration`) nehmen `review`: Gründe, aus denen das Dokument in die Prüfung kommt. Der Judge-Knoten ist dann `uncertain` mit diesen Gründen, die übernommenen Werte gelten wie sonst.
+- Eine Metadatenänderung für Admins an Dokumenten des Kanals `migration`, die nicht bestätigt und keine Entscheidung festhält; Prüfungen und Regeln wie beim normalen `PATCH`. Die Form steht im Umsetzungsplan.
 
 ## Offene Punkte
 

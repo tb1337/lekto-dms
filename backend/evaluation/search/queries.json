@@ -1,5 +1,5 @@
 {
-  "description": "Search queries on the synthetic documents of the evaluation set. `expected`: the cases that answer the query; the first one found in the results counts. `kind`: exact (words of the document), number (identifiers and amounts), compound (compound words), typo, paraphrase (other words for the same thing), english (query in English, document in German), late (only in the back part of the long statement 26).",
+  "description": "Search queries on the synthetic documents of the evaluation set. `expected`: the cases that answer the query; the first one found in the results counts. `kind`: exact (words of the document), number (identifiers and amounts), compound (compound words), typo, paraphrase (other words for the same thing), english (query in English, document in German), late (only in the back part of the long statement 26), confusable (the right one among documents alike: pay slips, the electrician's, the mail-order house's, statements, the insurer's), question (asked as a person asks), purpose (what a document is for, in none of its words).",
   "queries": [
     {
       "query": "Probezeit sechs Monate",
@@ -54,7 +54,12 @@
       "query": "Steuerklasse",
       "kind": "exact",
       "expected": [
-        "15-lohnabrechnung"
+        "15-lohnabrechnung",
+        "29-lohnabrechnung-angestellte",
+        "34-betraege-ohne-waehrung",
+        "35-lohnabrechnung-gesamtbrutto",
+        "39-lohnabrechnung-versicherung",
+        "43-lohnabrechnung-falsche-zeile"
       ]
     },
     {
@@ -83,7 +88,8 @@
       "query": "HR-2026-55501",
       "kind": "number",
       "expected": [
-        "13-hausratversicherung"
+        "13-hausratversicherung",
+        "45-versicherung-jahresbeitrag"
       ]
     },
     {
@@ -109,7 +115,8 @@
         "18-gutschrift",
         "23-ohne-datum",
         "27-anweisungen-zusatzfelder",
-        "28-anweisungen-werte"
+        "28-anweisungen-werte",
+        "31-absender-nur-kennung"
       ]
     },
     {
@@ -130,7 +137,8 @@
       "query": "Hausratsversicherung",
       "kind": "compound",
       "expected": [
-        "13-hausratversicherung"
+        "13-hausratversicherung",
+        "45-versicherung-jahresbeitrag"
       ]
     },
     {
@@ -144,7 +152,9 @@
       "query": "Krankenversicherungsbeitrag",
       "kind": "compound",
       "expected": [
-        "14-beitragsanpassung-krankenversicherung"
+        "14-beitragsanpassung-krankenversicherung",
+        "40-krankenversicherung-versicherungsschein",
+        "41-kennungen-zweier-themen"
       ]
     },
     {
@@ -193,7 +203,12 @@
       "query": "Gehaltsabrechnung",
       "kind": "paraphrase",
       "expected": [
-        "15-lohnabrechnung"
+        "15-lohnabrechnung",
+        "29-lohnabrechnung-angestellte",
+        "34-betraege-ohne-waehrung",
+        "35-lohnabrechnung-gesamtbrutto",
+        "39-lohnabrechnung-versicherung",
+        "43-lohnabrechnung-falsche-zeile"
       ]
     },
     {
@@ -242,7 +257,8 @@
       "query": "Versicherung für Möbel und Hausrat",
       "kind": "paraphrase",
       "expected": [
-        "13-hausratversicherung"
+        "13-hausratversicherung",
+        "45-versicherung-jahresbeitrag"
       ]
     },
     {
@@ -305,7 +321,12 @@
       "query": "salary slip",
       "kind": "english",
       "expected": [
-        "15-lohnabrechnung"
+        "15-lohnabrechnung",
+        "29-lohnabrechnung-angestellte",
+        "34-betraege-ohne-waehrung",
+        "35-lohnabrechnung-gesamtbrutto",
+        "39-lohnabrechnung-versicherung",
+        "43-lohnabrechnung-falsche-zeile"
       ]
     },
     {
@@ -341,6 +362,315 @@
       "kind": "late",
       "expected": [
         "26-langer-kontoauszug"
+      ]
+    },
+    {
+      "query": "Gehaltsabrechnung mit Zulage für Rufbereitschaft",
+      "kind": "confusable",
+      "expected": [
+        "35-lohnabrechnung-gesamtbrutto"
+      ]
+    },
+    {
+      "query": "Lohnabrechnung mit Schichtzulage",
+      "kind": "confusable",
+      "expected": [
+        "43-lohnabrechnung-falsche-zeile"
+      ]
+    },
+    {
+      "query": "Gehaltsabrechnung von Max Mustermann",
+      "kind": "confusable",
+      "expected": [
+        "39-lohnabrechnung-versicherung"
+      ]
+    },
+    {
+      "query": "Elektriker hat die Unterverteilung im Keller erneuert",
+      "kind": "confusable",
+      "expected": [
+        "32-betrag-deutsch"
+      ]
+    },
+    {
+      "query": "Rechnung für zwei neue Steckdosen",
+      "kind": "confusable",
+      "expected": [
+        "44-rechnung-spalten"
+      ]
+    },
+    {
+      "query": "Barzahlung an den Elektriker",
+      "kind": "confusable",
+      "expected": [
+        "38-quittung-ablagenummer"
+      ]
+    },
+    {
+      "query": "Klappstühle für den Garten bestellt",
+      "kind": "confusable",
+      "expected": [
+        "31-absender-nur-kennung"
+      ]
+    },
+    {
+      "query": "Umzug beim Versandhändler gemeldet",
+      "kind": "confusable",
+      "expected": [
+        "23-ohne-datum"
+      ]
+    },
+    {
+      "query": "Kontoauszug, auf dem die Internetrechnung abgebucht wurde",
+      "kind": "confusable",
+      "expected": [
+        "30-kontoauszug-fremde-kontakte"
+      ]
+    },
+    {
+      "query": "Gasabschlag ab Sommer",
+      "kind": "confusable",
+      "expected": [
+        "21-kontakt-tippfehler"
+      ]
+    },
+    {
+      "query": "Internet und Telefon Rechnung vom Februar",
+      "kind": "confusable",
+      "expected": [
+        "33-optionales-feld-unsinn"
+      ]
+    },
+    {
+      "query": "Arbeitgeber zahlt die Zahnzusatzversicherung",
+      "kind": "confusable",
+      "expected": [
+        "41-kennungen-zweier-themen"
+      ]
+    },
+    {
+      "query": "Zahnzusatzversicherung zahlt jetzt auch die Zahnreinigung",
+      "kind": "confusable",
+      "expected": [
+        "42-gelber-kontakt-thema"
+      ]
+    },
+    {
+      "query": "Police der Zahnzusatzversicherung",
+      "kind": "confusable",
+      "expected": [
+        "40-krankenversicherung-versicherungsschein"
+      ]
+    },
+    {
+      "query": "Stundenübersicht für den ganzen September",
+      "kind": "confusable",
+      "expected": [
+        "36-zeitnachweis-monat"
+      ]
+    },
+    {
+      "query": "Arbeitszeiten einer einzelnen Woche",
+      "kind": "confusable",
+      "expected": [
+        "37-zeitnachweis-woche"
+      ]
+    },
+    {
+      "query": "Girokonto-Auszug vom April",
+      "kind": "confusable",
+      "expected": [
+        "11-kontoauszug"
+      ]
+    },
+    {
+      "query": "Wanderschuhe zurückgeschickt",
+      "kind": "confusable",
+      "expected": [
+        "18-gutschrift"
+      ]
+    },
+    {
+      "query": "Ab wann bekomme ich Rente?",
+      "kind": "question",
+      "expected": [
+        "10-renteninformation"
+      ]
+    },
+    {
+      "query": "Bis wann kann ich die Krankenkasse wechseln?",
+      "kind": "question",
+      "expected": [
+        "14-beitragsanpassung-krankenversicherung"
+      ]
+    },
+    {
+      "query": "Wie viel Kfz-Steuer zahle ich im Jahr?",
+      "kind": "question",
+      "expected": [
+        "09-kfz-steuerbescheid"
+      ]
+    },
+    {
+      "query": "Wann läuft mein Internetvertrag aus?",
+      "kind": "question",
+      "expected": [
+        "16-kuendigungsbestaetigung"
+      ]
+    },
+    {
+      "query": "Was hat der neue Sicherungskasten gekostet?",
+      "kind": "question",
+      "expected": [
+        "03-handwerkerrechnung"
+      ]
+    },
+    {
+      "query": "Wie groß ist die Wohnung?",
+      "kind": "question",
+      "expected": [
+        "06-mietvertrag"
+      ]
+    },
+    {
+      "query": "Wie hoch ist die Selbstbeteiligung bei der Hausratversicherung?",
+      "kind": "question",
+      "expected": [
+        "45-versicherung-jahresbeitrag"
+      ]
+    },
+    {
+      "query": "Welche Krankheit hat die Hausärztin festgestellt?",
+      "kind": "question",
+      "expected": [
+        "04-arztrechnung"
+      ]
+    },
+    {
+      "query": "Ab wann arbeite ich bei Nordlicht?",
+      "kind": "question",
+      "expected": [
+        "07-arbeitsvertrag"
+      ]
+    },
+    {
+      "query": "Wie viel netto gab es im März?",
+      "kind": "question",
+      "expected": [
+        "15-lohnabrechnung",
+        "39-lohnabrechnung-versicherung"
+      ]
+    },
+    {
+      "query": "Handwerkerleistungen für die Steuererklärung",
+      "kind": "purpose",
+      "expected": [
+        "03-handwerkerrechnung",
+        "20-unbekannter-kontakt",
+        "22-netto-brutto",
+        "32-betrag-deutsch",
+        "38-quittung-ablagenummer",
+        "44-rechnung-spalten"
+      ]
+    },
+    {
+      "query": "Unterlagen zur Altersvorsorge",
+      "kind": "purpose",
+      "expected": [
+        "10-renteninformation"
+      ]
+    },
+    {
+      "query": "Kosten für den gemieteten Cloud-Server",
+      "kind": "purpose",
+      "expected": [
+        "25-englische-rechnung"
+      ]
+    },
+    {
+      "query": "Werbung für den Reifenwechsel",
+      "kind": "purpose",
+      "expected": [
+        "24-werbebrief"
+      ]
+    },
+    {
+      "query": "Bon vom Lebensmitteleinkauf",
+      "kind": "purpose",
+      "expected": [
+        "19-kassenbon"
+      ]
+    },
+    {
+      "query": "Nachweis über Arbeitszeiten",
+      "kind": "purpose",
+      "expected": [
+        "36-zeitnachweis-monat",
+        "37-zeitnachweis-woche"
+      ]
+    },
+    {
+      "query": "Bescheid vom Zoll",
+      "kind": "purpose",
+      "expected": [
+        "09-kfz-steuerbescheid"
+      ]
+    },
+    {
+      "query": "Ausgaben auf Dienstreise",
+      "kind": "purpose",
+      "expected": [
+        "12-kreditkartenabrechnung"
+      ]
+    },
+    {
+      "query": "pension forecast",
+      "kind": "english",
+      "expected": [
+        "10-renteninformation"
+      ]
+    },
+    {
+      "query": "health insurance premium increase",
+      "kind": "english",
+      "expected": [
+        "14-beitragsanpassung-krankenversicherung"
+      ]
+    },
+    {
+      "query": "reminder for an unpaid invoice",
+      "kind": "english",
+      "expected": [
+        "17-mahnung"
+      ]
+    },
+    {
+      "query": "confirmation that my phone contract was cancelled",
+      "kind": "english",
+      "expected": [
+        "16-kuendigungsbestaetigung"
+      ]
+    },
+    {
+      "query": "timesheet for September",
+      "kind": "english",
+      "expected": [
+        "36-zeitnachweis-monat"
+      ]
+    },
+    {
+      "query": "home contents insurance",
+      "kind": "english",
+      "expected": [
+        "13-hausratversicherung",
+        "45-versicherung-jahresbeitrag"
+      ]
+    },
+    {
+      "query": "refund for returned shoes",
+      "kind": "english",
+      "expected": [
+        "18-gutschrift"
       ]
     }
   ]

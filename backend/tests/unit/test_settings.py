@@ -634,6 +634,13 @@ def test_indexing_and_query_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def test_a_prefix_writes_a_line_break_as_backslash_n(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Qwen3-Embedding wants its instruction and the query on lines of their own; an environment
+    file keeps the value on one line."""
+    set_env(monkeypatch, {"LEKTO_EMBEDDING_QUERY_PREFIX": "Instruct: find the documents\\nQuery:"})
+    assert load_settings().embedding_query_prefix == "Instruct: find the documents\nQuery:"
+
+
 def test_search_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     set_env(
         monkeypatch,

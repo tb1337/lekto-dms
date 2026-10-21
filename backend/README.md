@@ -856,8 +856,12 @@ meaning took part.
   gives one vector per document. A vector is made again only when model or section texts change.
 - **Embeddings.** The query is embedded at request time (`LEKTO_SEARCH_EMBED_TIMEOUT`); if the
   endpoint is down or slow, the search falls back to words (`semantic: false`).
-  The model is `snowflake-arctic-embed2` with `LEKTO_EMBEDDING_QUERY_PREFIX=query:` (compared with
-  `bge-m3` and `qwen3-embedding:0.6b` in `evaluation/search/reports`).
+  The model is Qwen3-Embedding 4B (`hf.co/Qwen/Qwen3-Embedding-4B-GGUF:Q8_0` in Ollama, 2560
+  dimensions) with an instruction before each query and none before the documents
+  (`LEKTO_EMBEDDING_QUERY_PREFIX='Instruct: Given a search query, retrieve the German personal
+  documents (letters, invoices, statements, contracts) that answer it\nQuery:'`, on one line);
+  compared with `snowflake-arctic-embed2` (the model before), `bge-m3` and Qwen3-Embedding 0.6B
+  and 8B in `evaluation/search/reports`.
   `LEKTO_EMBEDDING_DIMENSIONS` is the length of the vectors and required with Meilisearch and an
   embedding endpoint; vectors of another length are refused ("the vectors of <model> do not
   have the <n> dimensions configured"; the query then goes by words).
@@ -1311,9 +1315,9 @@ Durations are seconds (`30`, `1.5`) or ISO 8601 (`PT1H`, `P7D`).
 | `LEKTO_EMBEDDING_MODEL` | both | unset | see above |
 | `LEKTO_EMBEDDING_API_KEY` | both | unset | *secret* |
 | `LEKTO_EMBEDDING_TIMEOUT` | both | `60` | Seconds per request |
-| `LEKTO_EMBEDDING_DIMENSIONS` | both | unset | Length of the vectors (`snowflake-arctic-embed2`, `bge-m3`: 1024); required with Meilisearch and an embedding endpoint |
-| `LEKTO_EMBEDDING_QUERY_PREFIX` | API | unset | Put before queries, for models that ask for it (`query:`) |
-| `LEKTO_EMBEDDING_DOCUMENT_PREFIX` | Worker | unset | Put before document sections, for models that ask for it |
+| `LEKTO_EMBEDDING_DIMENSIONS` | both | unset | Length of the vectors (Qwen3-Embedding 4B: 2560; `snowflake-arctic-embed2`, `bge-m3`: 1024); required with Meilisearch and an embedding endpoint |
+| `LEKTO_EMBEDDING_QUERY_PREFIX` | API | unset | Put before queries, for models that ask for it (`query:`; Qwen3-Embedding an instruction and `Query:`); `\n` stands for a line break |
+| `LEKTO_EMBEDDING_DOCUMENT_PREFIX` | Worker | unset | Put before document sections, for models that ask for it; `\n` stands for a line break |
 | `LEKTO_VLM_BASE_URL` | both | unset | OpenAI-compatible endpoint of a vision language model that reads a document's pages when a person asks for it (`POST /documents/{id}/vision`); the page images go there. Set together with the model or neither; off without. The API names model and endpoint in `GET /pipeline` |
 | `LEKTO_VLM_MODEL` | both | unset | see above: a model that takes images and gives each line's box in pixels (measured with Claude Sonnet 5.5) |
 | `LEKTO_VLM_API_KEY` | Worker | unset | *secret* |

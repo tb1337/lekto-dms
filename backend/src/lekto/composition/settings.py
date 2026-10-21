@@ -88,6 +88,12 @@ def _locale(value: str) -> str:
     return value
 
 
+def _line_breaks(value: str) -> str:
+    """`\\n` (a backslash and an n) for a line break, so that the value stays on one line in an
+    environment file, whatever reads it."""
+    return value.replace("\\n", "\n")
+
+
 def _unset_if_none(value: Any) -> Any:
     return None if isinstance(value, str) and value.strip().lower() == "none" else value
 
@@ -244,10 +250,11 @@ class Settings(BaseSettings):
     embedding_timeout: Seconds = timedelta(minutes=1)
     # Length of the vectors (`bge-m3`: 1024); the search index needs it to be set up.
     embedding_dimensions: Annotated[int, Field(ge=1, le=65535)] | None = None
-    # Some models want a hint in front of the text (e5: `query:` and `passage:`); a space
-    # separates it from the text.
-    embedding_query_prefix: str | None = None
-    embedding_document_prefix: str | None = None
+    # Some models want a hint in front of the text (e5: `query:` and `passage:`; Qwen3-Embedding
+    # an instruction, then `Query:` on a line of its own); a space separates it from the text.
+    # `\n` stands for a line break.
+    embedding_query_prefix: Annotated[str, AfterValidator(_line_breaks)] | None = None
+    embedding_document_prefix: Annotated[str, AfterValidator(_line_breaks)] | None = None
     # A vision language model that reads a document's pages when a person asks for it (`POST
     # /documents/{id}/vision`): an OpenAI-compatible endpoint whose model takes images. The page
     # images go there. Reading a whole document has this time limit; one page at most five

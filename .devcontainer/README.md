@@ -85,10 +85,11 @@ a file in the workspace), the tasks work as before.
 
 ## The language model
 
-`dev.env.example` points at Open WebUI (in front of Ollama) with `qwen3:8b-ctx8k` (classification) and
-`snowflake-arctic-embed2` (search vectors), the models evaluated in `.idea/architektur.md`. On a
-CPU a document takes 3 to 10 minutes in the model (`LEKTO_LLM_TIMEOUT=600`); embeddings take
-about 0.6 s per section. Single uploads are fine at any time. Mass runs (the migration with
+`dev.env.example` points at Open WebUI (in front of Ollama) with `qwen3:8b-ctx8k` (classification)
+and Qwen3-Embedding 4B (search vectors), the models evaluated in
+`.idea/architektur.md`. On a CPU a document takes 3 to 10 minutes in the model
+(`LEKTO_LLM_TIMEOUT=600`); embeddings take about 4 s per section of 1500 characters on Ollama
+with two vGPUs (21.10.2026), a query about 0.5 s. Single uploads are fine at any time. Mass runs (the migration with
 embeddings on, `reindex` after switching embeddings on, a reprocessing of many documents) load
 the model's machine for a long time: run them in sections of at most 40 minutes, not after
 23:00 CET, and let Ollama unload the model afterwards (`keep_alive=0`). The migration below is

@@ -1,7 +1,8 @@
 """Contract of the search index. Needs the fixture `search_index`: an empty index that takes
 vectors of three numbers (`DIMENSIONS`)."""
 
-from datetime import date
+from dataclasses import replace
+from datetime import UTC, date, datetime
 from typing import Any
 
 import pytest
@@ -360,6 +361,19 @@ class SearchIndexContract:
         assert await ordered(oldest) == [december.id, march.id, undated.id]
         by_title = DocumentOrder(SortKey.TITLE, ascending=True)
         assert await ordered(by_title) == [undated.id, march.id, december.id]
+        # By when they came in, which a migration or a person may have set: not the ids'.
+        came_in = {
+            march.id: datetime(2026, 3, 2, 9, 0, tzinfo=UTC),
+            december.id: datetime(2023, 1, 5, 8, 0, tzinfo=UTC),
+            undated.id: datetime(2026, 9, 1, 7, 0, tzinfo=UTC),
+        }
+        await search_index.upsert(
+            [replace(item, created_at=came_in[item.id]) for item in (march, december, undated)]
+        )
+        latest = DocumentOrder(SortKey.CREATED)
+        assert await ordered(latest) == [undated.id, march.id, december.id]
+        earliest = DocumentOrder(SortKey.CREATED, ascending=True)
+        assert await ordered(earliest) == [december.id, march.id, undated.id]
         # Words and meaning together keep the order.
         if (await search_index.search(query("Rechnung", who, vector=(1.0, 0.0, 0.0)))).semantic:
             assert await ordered(newest, vector=(1.0, 0.0, 0.0), semantic_ratio=0.5) == [

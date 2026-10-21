@@ -1,6 +1,7 @@
 """Endpoints for users, master data, spaces and document metadata: they do what they say."""
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -491,6 +492,35 @@ async def test_secrets_do_not_come_back(api: Api) -> None:
     )
     assert response.status_code == 422
     assert "12345678901234" not in response.text
+
+
+async def test_when_a_document_came_in_is_set_and_orders_the_list(api: Api) -> None:
+    owner = await api.user()
+    o = auth(owner)
+    first = await upload(api, o, content=unique_pdf("first"))
+    second = await upload(api, o, content=unique_pdf("second"))
+    await api.drain()
+    url = f"{PREFIX}/documents/{first}"
+    log = (await api.client.get(f"{url}/log", headers=o)).json()
+
+    response = await api.client.patch(
+        url, json={"created_at": "2023-01-02T09:30:00+01:00"}, headers=o
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert datetime.fromisoformat(body["created_at"]) == datetime(2023, 1, 2, 8, 30, tzinfo=UTC)
+    # It confirms nothing, and the rules do not run: the log has no entry more.
+    assert body["confirmed_at"] is None
+    assert len((await api.client.get(f"{url}/log", headers=o)).json()) == len(log)
+    # Sorted by when they came in, the first arrival is the older one now.
+    listed = await api.client.get(f"{PREFIX}/documents?sort=-created_at", headers=o)
+    assert [item["id"] for item in listed.json()["items"]] == [second, first]
+    oldest = await api.client.get(f"{PREFIX}/documents?sort=created_at", headers=o)
+    assert [item["id"] for item in oldest.json()["items"]] == [first, second]
+    # Never ahead, always with a time zone, never null.
+    for wrong in ("2999-01-01T00:00:00Z", "2023-01-02T09:30:00", None):
+        response = await api.client.patch(url, json={"created_at": wrong}, headers=o)
+        assert response.status_code == 422, (wrong, response.text)
 
 
 async def test_field_definitions_change(api: Api) -> None:

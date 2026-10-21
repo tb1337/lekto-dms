@@ -188,7 +188,7 @@ async def _position(
     """Where a page ended: by the last document's id, and its value of the sort key."""
     if after is None:
         return None
-    if order.key is SortKey.CREATED:
+    if order.key is SortKey.ARRIVAL:
         return DocumentPosition(after)
     last = await uow.documents.find(after)
     if last is None:
@@ -653,7 +653,9 @@ class DocumentService:
         """As `update_metadata`, and the change rules of the document's owner and the global
         ones run (see `rules.changes`). The rules' report is for the owner and admins. With
         `dry_run`, nothing is stored: what would happen."""
-        rules = self._rules
+        # When the document came in is no metadata the rules decide on: changed alone, they
+        # do not run (Tobi, 21.10.2026).
+        rules = None if changes.only_receipt else self._rules
         prepared = Prepared()
         if rules is not None:
             async with self._uow() as uow:

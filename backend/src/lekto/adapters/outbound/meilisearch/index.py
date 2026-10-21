@@ -90,6 +90,7 @@ SORTABLE = ["document_date", "created_at", "title_key"]
 # order and relevance only breaks ties.
 RANKING_RULES = ["sort", "words", "typo", "proximity", "attribute", "exactness"]
 SORTED_BY = {
+    SortKey.ARRIVAL: "created_at",  # nearest to the ids, which the index does not sort by
     SortKey.CREATED: "created_at",
     SortKey.DOCUMENT_DATE: "document_date",
     SortKey.TITLE: "title_key",

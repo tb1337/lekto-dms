@@ -17580,7 +17580,8 @@
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "title": "Created At"
+            "title": "Created At",
+            "description": "When the document came in: when Lekto received it, unless a migration took over the source system's date or it was set since (`PATCH`). `sort=created_at` orders by it."
           },
           "updated_at": {
             "type": "string",
@@ -17848,7 +17849,8 @@
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "title": "Created At"
+            "title": "Created At",
+            "description": "When the document came in: when Lekto received it, unless a migration took over the source system's date or it was set since (`PATCH`). `sort=created_at` orders by it."
           },
           "updated_at": {
             "type": "string",
@@ -18255,6 +18257,19 @@
             ],
             "title": "Fields",
             "description": "Values by field id, in the form of `fields` above; null removes."
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At",
+            "description": "When the document came in, with a time zone; not in the future, not null. Changed alone, it confirms nothing and the rules do not run."
           }
         },
         "additionalProperties": false,
@@ -20709,7 +20724,8 @@
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "title": "Created At"
+            "title": "Created At",
+            "description": "When the document came in: when Lekto received it, unless a migration took over the source system's date or it was set since (`PATCH`). `sort=created_at` orders by it."
           },
           "updated_at": {
             "type": "string",

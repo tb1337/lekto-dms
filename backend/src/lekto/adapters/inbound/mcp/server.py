@@ -13,14 +13,14 @@ import functools
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 from starlette.requests import Request
 
 from lekto import __version__
@@ -399,7 +399,9 @@ def build_server(context: ApiContext) -> MCPServer:
             "amount as {amount, currency}, period as {start, end} with YYYY-MM-DD, a single "
             "day as start = end); null removes a value. Contact, type, topic, tags and "
             "fields must exist (see list_tags). The owner's rules that the change "
-            "triggers run, as after a change in the web UI."
+            "triggers run, as after a change in the web UI. `created_at`: when the document "
+            "came in (ISO date and time with an offset, not in the future); changed alone, it "
+            "confirms nothing and no rules run."
         ),
         annotations=CHANGES,
     )
@@ -418,6 +420,7 @@ def build_server(context: ApiContext) -> MCPServer:
         tags: Annotated[list[str], Field(default_factory=lambda: UNSET, max_length=50)],
         document_date: Annotated[date | None, Field(default_factory=lambda: UNSET)],
         fields: Annotated[dict[str, Any], Field(default_factory=lambda: UNSET)],
+        created_at: Annotated[AwareDatetime, Field(default_factory=lambda: UNSET)],
     ) -> UpdateOut:
         principal = principal_of(ctx)
         if not principal.can_write:
@@ -434,6 +437,9 @@ def build_server(context: ApiContext) -> MCPServer:
             ),
             document_date=document_date,
             fields=_fields(fields, names),
+            created_at=(
+                created_at if isinstance(created_at, Unset) else created_at.astimezone(UTC)
+            ),
         )
         change = await context.documents.change_metadata(user, DocumentId(id), changes)
         if change.access is None:

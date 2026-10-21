@@ -2706,6 +2706,7 @@ export interface components {
 			/**
 			 * Created At
 			 * Format: date-time
+			 * @description When the document came in: when Lekto received it, unless a migration took over the source system's date or it was set since (`PATCH`). `sort=created_at` orders by it.
 			 */
 			created_at: string;
 			/**
@@ -2843,6 +2844,7 @@ export interface components {
 			/**
 			 * Created At
 			 * Format: date-time
+			 * @description When the document came in: when Lekto received it, unless a migration took over the source system's date or it was set since (`PATCH`). `sort=created_at` orders by it.
 			 */
 			created_at: string;
 			/**
@@ -3033,6 +3035,11 @@ export interface components {
 			fields?: {
 				[key: string]: unknown;
 			} | null;
+			/**
+			 * Created At
+			 * @description When the document came in, with a time zone; not in the future, not null. Changed alone, it confirms nothing and the rules do not run.
+			 */
+			created_at?: string | null;
 		};
 		/**
 		 * DocumentPreviewOut
@@ -4133,6 +4140,7 @@ export interface components {
 			/**
 			 * Created At
 			 * Format: date-time
+			 * @description When the document came in: when Lekto received it, unless a migration took over the source system's date or it was set since (`PATCH`). `sort=created_at` orders by it.
 			 */
 			created_at: string;
 			/**

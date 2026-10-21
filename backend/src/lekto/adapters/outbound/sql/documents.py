@@ -627,9 +627,17 @@ def _sorting(
         return column.asc() if ascending else column.desc()
 
     match order.key:
-        case SortKey.CREATED:
+        case SortKey.ARRIVAL:
             behind = None if after is None else beyond(id_, after.id)
             return [direction(id_)], behind
+        case SortKey.CREATED:
+            at = documents.c.created_at
+            behind = None
+            if after is not None:
+                behind = or_(
+                    beyond(at, after.value), and_(at == after.value, beyond(id_, after.id))
+                )
+            return [direction(at), direction(id_)], behind
         case SortKey.TITLE:
             key = documents.c.title_key
             behind = None

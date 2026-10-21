@@ -15,7 +15,7 @@ from lekto.core.domain.classification import (
     field_id_of,
     field_key,
 )
-from lekto.core.domain.documents import Document, DocumentChanges
+from lekto.core.domain.documents import RECEIPT, Document, DocumentChanges
 from lekto.core.domain.errors import ValidationError
 from lekto.core.domain.fields import (
     FieldDefinition,
@@ -121,8 +121,10 @@ def test_field_values_from_json_are_checked() -> None:
 
 
 def test_the_change_table_names_every_attribute_a_change_sets() -> None:
-    names = {*CHANGE_FIELDS.values(), CUSTOM_FIELDS}
+    # When the document came in is set the same way, and is no metadata a person confirms.
+    names = {*CHANGE_FIELDS.values(), CUSTOM_FIELDS, RECEIPT}
     assert names == {item.name for item in dataclasses.fields(DocumentChanges)}
+    assert RECEIPT not in CONFIRMING
     assert names <= {item.name for item in dataclasses.fields(Document)}
 
 

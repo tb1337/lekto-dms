@@ -1,6 +1,6 @@
 """How the in-memory repository and search index sort documents, as the real ones do."""
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -11,7 +11,11 @@ type Rank = tuple[int | Decimal | tuple[int, ...], ...]
 
 
 def rank(
-    order: DocumentOrder, id: UUID, value: date | str | Decimal | None, *, ties_by_id: bool
+    order: DocumentOrder,
+    id: UUID,
+    value: datetime | date | str | Decimal | None,
+    *,
+    ties_by_id: bool,
 ) -> Rank:
     """A key that sorts ascending as `order` sorts a document with `id` and its `value` of the
     sort key (`DocumentPosition.value`): documents without a date (or a field's value) last.
@@ -20,8 +24,11 @@ def rank(
     sign = 1 if order.ascending else -1
     tie = (sign * id.int,) if ties_by_id else ()
     match order.key:
-        case SortKey.CREATED:
+        case SortKey.ARRIVAL:
             return (sign * id.int,)
+        case SortKey.CREATED:
+            stamp = round(value.timestamp() * 1_000_000) if isinstance(value, datetime) else 0
+            return (sign * stamp, *tie)
         case SortKey.DOCUMENT_DATE:
             if not isinstance(value, date):
                 return (1, 0, *tie)

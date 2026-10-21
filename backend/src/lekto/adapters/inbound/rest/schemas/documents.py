@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Any, ClassVar, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, Json, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, Json, field_validator
 
 from lekto.adapters.inbound.rest.schemas.spaces import ShareOut
 from lekto.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
@@ -181,7 +181,13 @@ class DocumentDetails(BaseModel):
         )
     )
     processing: Processing
-    created_at: datetime
+    created_at: datetime = Field(
+        description=(
+            "When the document came in: when Lekto received it, unless a migration took over "
+            "the source system's date or it was set since (`PATCH`). `sort=created_at` orders "
+            "by it."
+        )
+    )
     updated_at: datetime
 
     @classmethod
@@ -342,6 +348,13 @@ class DocumentPatch(BaseModel):
         default=None,
         description="Values by field id, in the form of `fields` above; null removes.",
     )
+    created_at: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "When the document came in, with a time zone; not in the future, not null. Changed "
+            "alone, it confirms nothing and the rules do not run."
+        ),
+    )
 
 
 class ImportedMetadataIn(BaseModel):
@@ -358,6 +371,7 @@ class ImportedMetadataIn(BaseModel):
                     "tag_ids": ["01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b"],
                     "document_date": "2026-03-31",
                     "fields": {"01999d5e-4444-7c1e-b6a3-2f4d5e6f7a8b": "84.20"},
+                    "created_at": "2026-04-02T09:15:00+02:00",
                 }
             ]
         },
@@ -370,6 +384,13 @@ class ImportedMetadataIn(BaseModel):
     document_date: date | None = None
     fields: dict[UUID, Any] = Field(
         default_factory=dict, description="Values by field id, as in `PATCH /documents/{id}`."
+    )
+    created_at: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "When the document came in at the source system (Paperless-ngx: `added`), with a "
+            "time zone; not in the future. It becomes the document's `created_at`."
+        ),
     )
 
 

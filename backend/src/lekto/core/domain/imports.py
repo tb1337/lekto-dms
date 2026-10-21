@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 
 from lekto.core.domain.documents import UNSET, DocumentChanges
@@ -19,6 +19,7 @@ from lekto.core.domain.json_value import (
     require_object,
     require_uuid,
 )
+from lekto.core.domain.validation import require_utc
 
 IMPORTED = "imported"
 """Key of the receive log entry's output that holds the metadata, and the `model_version` of
@@ -36,6 +37,9 @@ class ImportedMetadata:
     tag_ids: frozenset[TagId] = frozenset()
     document_date: date | None = None
     fields: Mapping[FieldId, FieldValue] = field(default_factory=dict)
+    # When it came in at the source system (Paperless-ngx: `added`); the document keeps it as
+    # its `created_at`. In UTC.
+    created_at: datetime | None = None
 
     def classification(self) -> DocumentChanges:
         """Title, contact, type and date as a change; the tags are added separately."""
@@ -56,6 +60,7 @@ class ImportedMetadata:
             "tag_ids": [str(tag) for tag in sorted(self.tag_ids)],
             "document_date": None if self.document_date is None else self.document_date.isoformat(),
             "fields": {str(key): field_to_json(value) for key, value in self.fields.items()},
+            "created_at": None if self.created_at is None else self.created_at.isoformat(),
         }
 
     @classmethod
@@ -86,6 +91,11 @@ class ImportedMetadata:
                     else require_date(day, "document_date")
                 ),
                 fields=fields,
+                created_at=(
+                    None
+                    if (at := data.get("created_at")) is None
+                    else require_utc(datetime.fromisoformat(as_text(at) or ""), "created_at")
+                ),
             )
         except (ValidationError, ValueError, TypeError) as error:
             raise ValidationError(f"imported metadata: {error}") from None

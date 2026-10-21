@@ -9,6 +9,7 @@ import asyncio
 import os
 import tempfile
 from collections.abc import Callable
+from datetime import UTC
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -816,6 +817,8 @@ async def _changes(body: DocumentPatch, user: UserId, context: Context) -> Docum
             )
     if "title" in given and body.title is None:
         raise ValidationError("title: must not be null")
+    if "created_at" in given and body.created_at is None:
+        raise ValidationError("created_at: must not be null")
     return DocumentChanges(
         title=body.title if body.title is not None else UNSET,
         contact_id=_given(given, "contact_id", body.contact_id, ContactId),
@@ -826,6 +829,7 @@ async def _changes(body: DocumentPatch, user: UserId, context: Context) -> Docum
         ),
         document_date=body.document_date if "document_date" in given else UNSET,
         fields=fields,
+        created_at=UNSET if body.created_at is None else body.created_at.astimezone(UTC),
     )
 
 
@@ -860,6 +864,7 @@ async def _imported_metadata(
             tag_ids=frozenset(TagId(tag) for tag in body.tag_ids),
             document_date=body.document_date,
             fields={key: field_from_json(definitions[key], raw) for key, raw in fields.items()},
+            created_at=None if body.created_at is None else body.created_at.astimezone(UTC),
         )
     except ValidationError as error:
         raise ValidationError(f"metadata: {error}") from None

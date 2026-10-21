@@ -1,6 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable, Collection
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -1280,6 +1280,55 @@ class UnitOfWorkContract:
         assert sorted(await paged(NEWEST_FIRST, since_christmas)) == ["arzt", "bank", "Ärztebrief"]
         before = DocumentFilter(document_dates=Period(date.min, date(2025, 12, 23)))
         assert await paged(NEWEST_FIRST, before) == []
+
+    async def test_query_sorts_by_when_documents_came_in_and_by_arrival(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        owner, space = await owner_with_space(uow_factory)
+        # In the order they reach Lekto; two came in at the same moment, the last long before
+        # (a migration took over the source system's date).
+        came_in = [
+            datetime(2026, 5, 1, 9, 0, tzinfo=UTC),
+            datetime(2026, 7, 1, 9, 0, tzinfo=UTC),
+            datetime(2026, 5, 1, 9, 0, tzinfo=UTC),
+            datetime(2023, 1, 2, 8, 30, tzinfo=UTC),
+        ]
+        documents = []
+        for at in came_in:
+            document = builders.processed(owner, space)
+            document.apply_changes(DocumentChanges(created_at=at), {}, NOW)
+            documents.append(document)
+        async with uow_factory() as uow:
+            for document in documents:
+                await uow.documents.add(document)
+            await uow.commit()
+        index = {document.id: number for number, document in enumerate(documents)}
+
+        async def paged(order: DocumentOrder) -> list[int]:
+            found: list[Document] = []
+            after = None
+            async with uow_factory() as uow:
+                while page := await uow.documents.query_visible(
+                    owner.id, DocumentFilter(), order=order, after=after, limit=2
+                ):
+                    found += page
+                    after = DocumentPosition.of(page[-1], order)
+            return [index[document.id] for document in found]
+
+        def by_id(*numbers: int, descending: bool = False) -> list[int]:
+            # Ids of one millisecond need not grow in the order they were made.
+            return sorted(numbers, key=lambda number: documents[number].id, reverse=descending)
+
+        # By when they came in, ties by id the same way.
+        newest = await paged(DocumentOrder(SortKey.CREATED))
+        assert newest == [1, *by_id(0, 2, descending=True), 3], newest
+        oldest = await paged(DocumentOrder(SortKey.CREATED, ascending=True))
+        assert oldest == [3, *by_id(0, 2), 1], oldest
+        # By when they reached Lekto: their ids, whatever date they carry.
+        assert await paged(NEWEST_FIRST) == by_id(0, 1, 2, 3, descending=True)
+        assert await paged(DocumentOrder(SortKey.ARRIVAL, ascending=True)) == by_id(0, 1, 2, 3)
+        async with uow_factory() as uow:
+            assert (await uow.documents.get(documents[3].id)).created_at == came_in[3]
 
     async def test_query_sorts_by_the_value_of_a_field(
         self, uow_factory: UnitOfWorkFactory

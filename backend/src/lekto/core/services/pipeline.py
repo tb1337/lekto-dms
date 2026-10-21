@@ -19,6 +19,7 @@ from lekto.core.domain.documents import (
     DocumentChanges,
     Sha256,
     checked_fields,
+    received_at,
 )
 from lekto.core.domain.errors import (
     ConflictError,
@@ -297,6 +298,8 @@ class PipelineService:
             target = await self._target_space(uow, owner, space, sha256)
             if imported is not None:
                 await _check_imported(uow, imported)
+                if imported.created_at is not None:
+                    received_at(imported.created_at, started)  # before anything is stored
         key = original_key(sha256)
         if not await self._store.exists(key):
             await self._store.upload(key, file.path, content_type=media_type)
@@ -320,6 +323,7 @@ class PipelineService:
                 result,
                 started,
                 chosen=space is not None,
+                received=None if imported is None else imported.created_at,
             )
         except ConflictError:
             # The same file arrived twice at the same moment; the other upload won.
@@ -343,8 +347,10 @@ class PipelineService:
         started: datetime,
         *,
         chosen: bool,
+        received: datetime | None = None,
     ) -> Document:
-        """`chosen`: the person chose the space; rules leave it."""
+        """`chosen`: the person chose the space; rules leave it. `received`: when it came in,
+        if not now (taken over from the source system)."""
         now = self._clock.now()
         key = original_key(sha256)
         async with self._uow() as uow:
@@ -364,6 +370,7 @@ class PipelineService:
                 result=result,
                 now=now,
                 channel=channel,
+                received=received,
             )
             await uow.documents.add(document)
             await self._log(uow, document.id, Node.RECEIVE, 1, result, started, now)

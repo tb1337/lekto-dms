@@ -305,9 +305,10 @@ documents = Table(
     Column("version", Integer, nullable=False),
     # The original is unique per owner, also against concurrent uploads.
     Index(None, "owner_id", "sha256", unique=True),
-    # Lists sorted by date or title page by these and the id.
+    # Lists sorted by date, title or when documents came in page by these and the id.
     Index(None, "document_date", "id"),
     Index(None, "title_key", "id"),
+    Index(None, "created_at", "id"),
 )
 
 document_tags = Table(

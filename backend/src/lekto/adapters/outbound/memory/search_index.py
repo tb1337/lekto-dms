@@ -8,7 +8,7 @@ import math
 import re
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import replace
-from datetime import date
+from datetime import date, datetime
 
 from lekto.adapters.outbound.memory.ordering import rank
 from lekto.core.domain.errors import SearchIndexError
@@ -256,8 +256,10 @@ def _ordered(
     """`scored` in `order`, as Meilisearch sorts: documents without a date last, ties by
     relevance."""
 
-    def value(document: IndexDocument) -> date | str | None:
+    def value(document: IndexDocument) -> datetime | date | str | None:
         match order.key:
+            case SortKey.CREATED:
+                return document.created_at
             case SortKey.DOCUMENT_DATE:
                 return document.document_date
             case SortKey.TITLE:

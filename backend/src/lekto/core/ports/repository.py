@@ -245,7 +245,8 @@ class FilterView:
 
 
 class SortKey(StrEnum):
-    CREATED = "created_at"  # the order documents came in, which is their ids'
+    ARRIVAL = "arrival"  # the order documents reached Lekto, which is their ids'
+    CREATED = "created_at"  # by when they came in (`Document.created_at`, which may be set)
     DOCUMENT_DATE = "document_date"
     TITLE = "title"  # by `sort_key` of the title
     FIELD = "field"  # by the value of a field (`DocumentOrder.field`, `fields.sort_value`)
@@ -257,7 +258,7 @@ class DocumentOrder:
     the same way. Documents without a document date come last either way, as do those without
     a value when sorted by the field `field` (only then given; one of `SORTABLE_TYPES`)."""
 
-    key: SortKey = SortKey.CREATED
+    key: SortKey = SortKey.ARRIVAL
     ascending: bool = False
     field: FieldId | None = None
 
@@ -289,22 +290,24 @@ PAGE_LIMIT = 200
 @dataclass(frozen=True)
 class DocumentPosition:
     """Where a page of a sorted list ended: its last document, and that document's value of
-    the sort key (none for `CREATED`, which sorts by id)."""
+    the sort key (none for `ARRIVAL`, which sorts by id)."""
 
     id: DocumentId
-    value: date | str | Decimal | None = None
+    value: datetime | date | str | Decimal | None = None
 
     @classmethod
     def after(cls, id: DocumentId | None) -> "DocumentPosition | None":
-        """The position after the document `id` in a list sorted by `CREATED`; None: from the
+        """The position after the document `id` in a list sorted by `ARRIVAL`; None: from the
         start."""
         return None if id is None else cls(id)
 
     @classmethod
     def of(cls, document: Document, order: DocumentOrder) -> "DocumentPosition":
         match order.key:
-            case SortKey.CREATED:
+            case SortKey.ARRIVAL:
                 return cls(document.id)
+            case SortKey.CREATED:
+                return cls(document.id, document.created_at)
             case SortKey.DOCUMENT_DATE:
                 return cls(document.id, document.document_date)
             case SortKey.TITLE:

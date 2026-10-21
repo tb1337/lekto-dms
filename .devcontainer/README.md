@@ -74,13 +74,13 @@ name without asking.
 | **Lekto: Start** | `Lekto: Migrate schema`, `Lekto: Build UI`, then `Lekto: API` and `Lekto: Worker` side by side, each in its own terminal |
 | **Lekto: Stop** | Ends the API and worker tasks (SIGTERM; the worker finishes running jobs within `LEKTO_WORKER_SHUTDOWN_TIMEOUT`, 30 s) |
 | Lekto: API, Lekto: Worker | One service alone (both run migration first; the API also builds the UI) |
-| Lekto: Migrate schema | `python -m lekto.composition migrate` with `dev.local.env` |
+| Lekto: Migrate schema | `lekto migrate` with `dev.local.env` |
 | Lekto: Build UI | `pnpm build` in `web/`; the API serves `web/build` below `/ui` (`LEKTO_UI_DIR`) |
 | Lekto: UI dev | Vite on <http://localhost:5173/ui/> with `/api` proxied to the API, for UI work with hot reload |
 | Lekto: Rebuild search index | `reindex`: rebuild the search index from database and bucket (after a restore, a model change, or to add vectors) |
 | Lekto: Render page images | `render-pages`: queue the page images of documents from before the pages node; the worker renders them |
 | Lekto: Read codes | `read-codes`: queue reading the bar and QR codes of documents from before code reading; the worker reads them and keeps the identifiers each document shows |
-| Lekto: Migrate | A new terminal in `migration/` with the variables of `dev.local.env` (`LEKTO_MIGRATION_*`), showing `lekto-migration --help`; the commands are typed there (see below) |
+| Lekto: Paperless migration | A new terminal in `migration/` with the variables of `dev.local.env` (`LEKTO_MIGRATION_*`), showing `lekto-migration --help`; the commands are typed there (see below) |
 
 When the folder opens, only the task **zsh** starts: a terminal without `dev.local.env` (VS Code
 asks once whether automatic tasks may run). After **Lekto: Start**, open
@@ -129,7 +129,7 @@ instance:
    (`/tmp/lekto-token`, outside the repository). Write the Paperless API key to
    `LEKTO_MIGRATION_PAPERLESS_TOKEN_FILE` (`/tmp/paperless-token`). `/tmp` is emptied when the
    container restarts; recreate the files then.
-2. **Lekto: Migrate** opens a terminal for the client; run the phases there:
+2. **Lekto: Paperless migration** opens a terminal for the client; run the phases there:
    - `uv run lekto-migration plan` reads Paperless and Lekto and writes
      `migration/migration-plan.yaml`: what is taken over, and how. Change it as you like; run
      it again after changes in Paperless (it asks before it writes).
@@ -201,9 +201,14 @@ fixed development key from `compose.yml`.
 
 ## Without VS Code
 
-Every task is a shell command (`.vscode/tasks.json`): load `dev.local.env` and run it, for example
+Every task is a shell command (`.vscode/tasks.json`). Lekto's commands are `lekto` (`lekto --help`
+lists them); `--env-file` gives them the settings of the development instance instead of the
+test settings the container's environment holds, for example
 
 ```sh
-set -a; . .devcontainer/dev.local.env; set +a
-cd backend && uv run python -m lekto.composition api      # and `worker` in a second terminal
+cd backend
+uv run lekto --env-file ../.devcontainer/dev.local.env api      # and `worker` in a second terminal
+uv run lekto --env-file ../.devcontainer/dev.local.env reindex
 ```
+
+Without `--env-file`, `lekto` works on the tests' database, bucket and index.

@@ -30,11 +30,12 @@ uv run pytest                    # all tests; integration tests skip if a servic
 uv run pytest -m unit            # no external services
 uv run pytest -m integration     # needs Postgres, Garage, Meilisearch, OCR programs
 uv run pytest -n auto            # in parallel (pytest-xdist), as CI does
-uv run python -m lekto.composition   # validate LEKTO_ configuration
-uv run python -m lekto.composition migrate   # bring the configured database to the newest schema
-uv run python -m lekto.composition check-schema   # exit 0 if the schema is at the newest revision
-uv run python -m lekto.composition api       # serve the REST API until SIGTERM
-uv run python -m lekto.composition worker    # run the worker until SIGTERM
+uv run lekto                     # validate LEKTO_ configuration (= python -m lekto.composition)
+uv run lekto migrate             # bring the configured database to the newest schema
+uv run lekto check-schema        # exit 0 if the schema is at the newest revision
+uv run lekto api                 # serve the REST API until SIGTERM
+uv run lekto worker              # run the worker until SIGTERM
+uv run lekto --env-file ../.devcontainer/dev.local.env reindex   # a command on the dev instance
 ```
 
 Web UI, in `web/` (`web/README.md`):

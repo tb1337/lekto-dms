@@ -36,7 +36,7 @@ LEKTO_ADMIN_USERNAME=… LEKTO_ADMIN_PASSWORD=… pnpm e2e
 `LEKTO_E2E_URL` (default `http://127.0.0.1:8000`) names the API, `LEKTO_E2E_CHROMIUM` a Chromium
 of another Playwright version instead of `pnpm exec playwright install chromium`.
 
-For `pnpm dev`, start the API in `backend/` with `uv run python -m lekto.composition api` and
+For `pnpm dev`, start the API in `backend/` with `uv run lekto api` and
 `LEKTO_COOKIE_SECURE=false` (plain HTTP). Open http://localhost:5173/ui/.
 
 ## PDF viewer and CSP

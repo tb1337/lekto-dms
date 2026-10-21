@@ -12,7 +12,7 @@ src/lekto/
     inbound/       call the core: REST API, MCP server, worker, evaluation
     outbound/      implement ports: database, object store, search, LLM, OCR, parser
   composition/     composition root: reads configuration, wires adapters to ports, the
-                   commands of `python -m lekto.composition`
+                   command line `lekto` (`python -m lekto.composition`)
 ```
 
 Dependency rules, enforced by `uv run lint-imports`:
@@ -130,8 +130,8 @@ SQLAlchemy 2 Core (async; aiosqlite, asyncpg); the domain classes are not ORM-ma
 - Claiming jobs uses `FOR UPDATE SKIP LOCKED` on Postgres and the write lock on SQLite.
 
 Migrations are one Alembic chain for both databases (batch mode on SQLite), in
-`adapters/outbound/sql/migrations`. Apply them with `python -m lekto.composition migrate`; it
-creates a missing SQLite file. `python -m lekto.composition check-schema [--wait SECONDS]` only
+`adapters/outbound/sql/migrations`. Apply them with `lekto migrate`; it
+creates a missing SQLite file. `lekto check-schema [--wait SECONDS]` only
 looks (exit 0 if the schema is at the newest revision of this version; a database migrated by a
 newer version fails at once); the image's worker waits with it for the API container's migration.
 A schema change needs both an edit of `tables.py` and a new
@@ -610,7 +610,7 @@ it confirms. A recurring job (`classifier.check`,
 every ten minutes) queues the training (`classifier.train`, which may take an hour before another
 worker takes it over) once `LEKTO_CLASSIFIER_MIN_EXAMPLES`
 documents are confirmed and no model exists, or `LEKTO_CLASSIFIER_RETRAIN_AFTER` were confirmed
-since the last one; `python -m lekto.composition train` and `POST /classifier/train` train at
+since the last one; `lekto train` and `POST /classifier/train` train at
 once. Training also learns identifiers of contacts: one that stands in at least two confirmed
 documents, all of one contact (the household's own IBAN stands on letters of many and is never
 learned); a learned identifier an admin rejected stays rejected. The model is stored as `npz`
@@ -630,12 +630,12 @@ alone, so a new scikit-learn version cannot break it. It sees about the first 8,
    index's layout 2 (fields with a value, the title's sort key, periods in ISO), with the
    vectors it has.
 2. 0.2 reads the text as it is set instead of Docling's Markdown. A document parsed before
-   keeps its Markdown, which is read meanwhile, until `python -m lekto.composition reparse` (or
+   keeps its Markdown, which is read meanwhile, until `lekto reparse` (or
    `POST /pipeline/reparse`) has the worker read its text again; nodes, lane and metadata stay
    as they are. The search index then takes up the new texts, which embeds every document anew
    (with an embedding service elsewhere this takes a while: choose the time), and the
    classifier is trained on the new texts afterwards (`train`).
-3. 0.2 reads the bar and QR codes on the pages. `python -m lekto.composition read-codes` has
+3. 0.2 reads the bar and QR codes on the pages. `lekto read-codes` has
    the worker read them for the documents from before and keep the identifiers each document
    shows (`document_identifiers`), so that the warning when attaching an identifier counts
    every confirmed document. It reads locally and sends nothing out; nodes, lane and metadata
@@ -663,7 +663,7 @@ alone, so a new scikit-learn version cannot break it. It sees about the first 8,
    next run (`train` trains at once).
 4. Logos of contacts come by upload. Fetching them from the contacts' websites is off: with
    `LEKTO_LOGO_FETCH=true` a contact without a logo that gets a domain has it fetched, and
-   `python -m lekto.composition fetch-logos` fetches them for the contacts from before
+   `lekto fetch-logos` fetches them for the contacts from before
    (outgoing HTTPS to their domains only).
 
 **After the update to 0.4.** Revision 0030 runs at start. Nothing is new then: the documents
@@ -677,7 +677,7 @@ everything open, not only yellow and red documents: a client that wants those as
 search index, SQLite file and classifier format have new names, and nothing reads the old ones.
 The steps are in [deploy/README.md](../deploy/README.md) ("Upgrading from Papiq").
 
-**Evaluation.** `python -m lekto.composition evaluate [--fake]` runs the synthetic documents in
+**Evaluation.** `lekto evaluate [--fake]` runs the synthetic documents in
 `evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).
 
 ## Rules
@@ -840,10 +840,10 @@ meaning took part.
 - **Sorting.** `sort` comes first among Meilisearch's ranking rules, so relevance breaks ties,
   also with vectors; document date, arrival and the title's sort key are sortable. Without
   `sort` (or with `relevance`), the hits come by relevance.
-- **Rebuild at any time.** `POST /search/reindex` (admins) or `python -m lekto.composition
-  reindex` builds `<index>-rebuild` from the database and the object store, 50 documents per
-  request, while the active index keeps serving, swaps it in and reconciles what changed
-  meanwhile. The index holds no information that is not in the database.
+- **Rebuild at any time.** `POST /search/reindex` (admins) or `lekto reindex` builds
+  `<index>-rebuild` from the database and the object store, 50 documents per request, while the
+  active index keeps serving, swaps it in and reconciles what changed meanwhile. The index holds
+  no information that is not in the database.
 - **Rights.** The index query contains the rights (own documents in any lane; green documents of
   spaces the caller owns or that are shared with them). Every hit is checked against the
   database once more and the filter applied again, so a withdrawn share ends the search for that
@@ -874,7 +874,7 @@ meaning took part.
 - **Health.** `GET /health` includes `search` when it is configured. If only the search is
   down, the status is `degraded` and the answer stays `200`: the API works without it.
 
-**Evaluation of the embedding model.** `python -m lekto.composition evaluate-search [--fake]
+**Evaluation of the embedding model.** `lekto evaluate-search [--fake]
 [--models a,b] [--ratios 0,0.5,1]` indexes the documents of the evaluation set with each model in
 a temporary Meilisearch index and runs the queries of `evaluation/search/queries.json`; see
 [evaluation/README.md](evaluation/README.md).
@@ -907,7 +907,7 @@ a temporary Meilisearch index and runs the queries of `evaluation/search/queries
     by training, attached from a document; a logo found there replaces the fetched one, none
     found leaves it), by an admin (`POST /contacts/{id}/logo/fetch`; all its domains in turn,
     also one that failed; may replace a fetched logo) and for the contacts without a logo with
-    `python -m lekto.composition fetch-logos`. A job that runs while `LEKTO_LOGO_FETCH` is off
+    `lekto fetch-logos`. A job that runs while `LEKTO_LOGO_FETCH` is off
     (switched off after it was queued) ends at once with the note "not fetched: fetching logos
     is off", without waiting or retries; the button answers `503` ("Lekto does not fetch
     logos") then. It reads the page of the domain (or of `www.`),
@@ -929,7 +929,7 @@ a temporary Meilisearch index and runs the queries of `evaluation/search/queries
 
 ## REST API
 
-`python -m lekto.composition api` (with `LEKTO_ROLE` `all` or `api`) serves
+`lekto api` (with `LEKTO_ROLE` `all` or `api`) serves
 `adapters/inbound/rest` with Uvicorn on `LEKTO_API_HOST`:`LEKTO_API_PORT`. All routes are below
 `/api/v1`; the OpenAPI document is `/api/v1/openapi.json`, the interactive docs `/api/v1/docs`.
 
@@ -1037,7 +1037,7 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 
 ## Worker
 
-`python -m lekto.composition worker` (with `LEKTO_ROLE` `all` or `worker`) runs
+`lekto worker` (with `LEKTO_ROLE` `all` or `worker`) runs
 `adapters/inbound/worker`:
 
 - `LEKTO_WORKER_CONCURRENCY` loops claim and run due jobs; each waits
@@ -1208,9 +1208,12 @@ handling; requests are plain `POST`s with JSON bodies, limited by `LEKTO_REQUEST
 
 ## Configuration
 
-Environment variables with the prefix `LEKTO_` only; there is no configuration file. Invalid or
+Environment variables with the prefix `LEKTO_` only; there is no configuration file. The command
+line alone takes them from a file, too: `lekto --env-file FILE`, for the development instance in
+the devcontainer (`.devcontainer/dev.local.env`), whose environment holds the test settings; the
+file's `LEKTO_` variables then replace all others. Invalid or
 contradictory configuration stops the start with a message naming the variables. Check it with
-`python -m lekto.composition`, which prints the effective configuration without secrets.
+`lekto` (`lekto check`), which prints the effective configuration without secrets.
 
 Secrets (marked *secret*) can also be passed as `LEKTO_<NAME>_FILE=/run/secrets/...` (Docker
 secrets): the file content, without one trailing newline, is the value. Setting both

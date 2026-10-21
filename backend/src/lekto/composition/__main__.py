@@ -1,5 +1,12 @@
-"""`python -m lekto.composition [check | migrate | check-schema | api | worker | evaluate |
-evaluate-search | reindex | render-pages | read-codes | fetch-logos | reparse | train]`.
+"""`lekto [--env-file FILE] [check | migrate | check-schema | api | worker | evaluate |
+evaluate-search | reindex | render-pages | read-codes | fetch-logos | reparse | train]`, the
+command line of Lekto (`[project.scripts]`; also `python -m lekto.composition`).
+
+The settings come from the `LEKTO_` environment variables, in the image from the container's
+environment. `--env-file FILE` takes them from a file of `KEY=value` lines instead
+(`env_file`), for the development instance in the devcontainer. As root, `lekto` warns and
+stops (in the image: `lekto-run lekto ...` runs it as `PUID:PGID`), unless `PUID=0` says root is
+meant.
 
 - `check` (default): validate the configuration and print it without secrets.
 - `migrate`: validate, then bring the configured database to the newest schema. Run before the
@@ -47,6 +54,7 @@ error in the log, as when the command does not fit `LEKTO_ROLE`.
 
 import argparse
 import asyncio
+import os
 import sys
 from collections.abc import Callable, Coroutine, Mapping, Sequence
 from pathlib import Path
@@ -59,6 +67,7 @@ from lekto.composition.api import run_api
 from lekto.composition.codes import run_read_codes
 from lekto.composition.database import check_schema, migrate_database
 from lekto.composition.endpoints import external_endpoints
+from lekto.composition.env_file import apply_env_file
 from lekto.composition.errors import ConfigurationError
 from lekto.composition.evaluation import run_evaluation
 from lekto.composition.logging_setup import configure_logging
@@ -93,7 +102,12 @@ def main(argv: Sequence[str] = ()) -> int:
     arguments = _parser().parse_args(argv)
     command: str = arguments.command or "check"
 
+    if _as_root():
+        print(ROOT_WARNING, file=sys.stderr)
+        return 1
     try:
+        if arguments.env_file is not None:
+            apply_env_file(arguments.env_file)
         settings = load_settings()
     except ConfigurationError as error:
         print(error, file=sys.stderr)
@@ -120,11 +134,60 @@ def main(argv: Sequence[str] = ()) -> int:
     return COMMANDS[command](settings, arguments)
 
 
+def cli() -> None:
+    """The `lekto` command (`[project.scripts]`)."""
+    sys.exit(main(sys.argv[1:]))
+
+
+ROOT_WARNING = (
+    "warning: lekto runs as root, and what it writes would belong to root: stopped. In the "
+    "image, run it as `lekto-run lekto ...` (as PUID:PGID); with PUID=0, root is meant."
+)
+
+
+def _as_root() -> bool:
+    """Root, and not as the image's `PUID=0` asks for."""
+    return os.geteuid() == 0 and os.environ.get("PUID") != "0"
+
+
+HELP: Mapping[str, str] = {
+    "check": "validate the configuration and print it without secrets (the default)",
+    "migrate": "bring the database to the newest schema",
+    "check-schema": "exit 0 if the database is at the newest schema",
+    "api": "serve the REST API until SIGTERM or Ctrl-C",
+    "worker": "run the worker until SIGTERM or Ctrl-C",
+    "evaluate": "run the evaluation set against the language model and write a report",
+    "evaluate-search": "compare embedding models on the evaluation set",
+    "reindex": "rebuild the search index, in the foreground",
+    "render-pages": "queue the page images of documents from before the pages node",
+    "read-codes": "queue reading the codes on the pages of every document",
+    "fetch-logos": "queue fetching the logos of contacts without one",
+    "reparse": "queue reading the text of every document again",
+    "train": "train the classifier from the confirmed documents now",
+}
+ENV_FILE = (
+    "take the LEKTO_ settings from this file of KEY=value lines instead of the environment "
+    "(the development instance: .devcontainer/dev.local.env)"
+)
+
+
 def _parser() -> argparse.ArgumentParser:
-    """A subcommand each, with its own options; none is `check`."""
-    parser = argparse.ArgumentParser(prog="python -m lekto.composition")
-    commands = parser.add_subparsers(dest="command")
-    parsers = {name: commands.add_parser(name) for name in COMMANDS}
+    """A subcommand each, with its own options; none is `check`. `--env-file` goes before or
+    after the command."""
+    parser = argparse.ArgumentParser(
+        prog="lekto",
+        description="Lekto's commands, with the settings of the LEKTO_ environment variables.",
+    )
+    parser.add_argument("--env-file", type=Path, metavar="FILE", help=ENV_FILE)
+    shared = argparse.ArgumentParser(add_help=False)
+    shared.add_argument(
+        "--env-file", type=Path, metavar="FILE", help=ENV_FILE, default=argparse.SUPPRESS
+    )
+    commands = parser.add_subparsers(dest="command", metavar="COMMAND")
+    parsers = {
+        name: commands.add_parser(name, parents=[shared], help=HELP[name], description=HELP[name])
+        for name in COMMANDS
+    }
     parsers["check-schema"].add_argument(
         "--wait", type=float, default=0, help="seconds to wait (default: 0)"
     )
@@ -337,4 +400,4 @@ COMMANDS: dict[str, Command] = {
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    cli()

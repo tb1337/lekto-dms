@@ -1,4 +1,0 @@
-#!/command/with-contenv sh
-# lekto COMMAND [ARGUMENT...]: `python -m lekto.composition` with the container's configuration,
-# for `docker exec <container> lekto reindex`. Runs as PUID:PGID, like the services.
-exec lekto-run python -m lekto.composition "$@"

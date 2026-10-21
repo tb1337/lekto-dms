@@ -3,6 +3,7 @@ Lekto) and `run` (the migration, resumable)."""
 
 import argparse
 import asyncio
+import os
 import signal
 import sys
 from collections import Counter
@@ -15,7 +16,7 @@ import httpx2
 from lekto_migration import plan as plans
 from lekto_migration import report as reports
 from lekto_migration.check import check
-from lekto_migration.config import Config, ConfigError, public
+from lekto_migration.config import Config, ConfigError, env_file, public
 from lekto_migration.expect import Context, expect, field_infos
 from lekto_migration.lekto import DELAYS, ApiError, Lekto
 from lekto_migration.masterdata import (
@@ -50,12 +51,19 @@ COMMANDS = (
 )
 
 
+ENV_FILE = (
+    "take the LEKTO_MIGRATION_ settings from this file of KEY=value lines, before or after the "
+    "command (the development instance: .devcontainer/dev.local.env)"
+)
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(
         prog="lekto-migration",
         description=DESCRIPTION,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    root.add_argument("--env-file", type=Path, metavar="FILE", help=ENV_FILE)
     commands = root.add_subparsers(dest="command", required=True)
     for name, text in COMMANDS:
         command = commands.add_parser(name, help=text, description=text)
@@ -66,6 +74,9 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--report-dir", type=Path, default=Path("migration-reports"))
         command.add_argument("--limit", type=int, help="only the first N selected documents")
         command.add_argument("--concurrency", type=int, default=4, help="documents at a time")
+        command.add_argument(
+            "--env-file", type=Path, metavar="FILE", help=ENV_FILE, default=argparse.SUPPRESS
+        )
         if name != "check":
             command.add_argument("--yes", action="store_true", help="write without asking")
         if name == "check":
@@ -85,6 +96,7 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
+        environ = os.environ if args.env_file is None else env_file(args.env_file, os.environ)
         config = Config.load(
             paperless_url=args.paperless_url,
             lekto_url=args.lekto_url,
@@ -97,6 +109,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             download=getattr(args, "download", False),
             yes=getattr(args, "yes", False),
             reupload=getattr(args, "reupload", False),
+            env=environ,
         )
     except ConfigError as error:
         print(f"error: {error}", file=sys.stderr)

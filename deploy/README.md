@@ -52,7 +52,7 @@ before anyone else uses it (see [Reverse proxy](#reverse-proxy)).
 Environment variables with the prefix `LEKTO_`, no configuration file; the Compose files show
 the ones that matter. The start stops with a message naming every invalid variable (`docker compose
 up` without `-d`, or `docker compose logs lekto`). A running container prints its effective
-configuration, secrets masked, with `docker compose exec lekto lekto check`. The complete list is
+configuration, secrets masked, with `docker compose exec lekto lekto-run lekto check`. The complete list is
 in [backend/README.md](../backend/README.md#configuration).
 
 **Secrets** are passed as files (Docker secrets): `LEKTO_<NAME>_FILE=/run/secrets/…`; the file's
@@ -157,8 +157,10 @@ The caches of the libraries go to a `HOME` that disappears with the container.
   `chown` makes `init-lekto` fail with that message: set the owner on the share instead.
 - After restoring files into the volume as root, give them to `PUID`:`PGID` again (the restore
   commands below do).
-- Run commands of the application with `lekto` (it is `python -m lekto.composition` as that user):
-  `docker compose exec lekto lekto reindex`, `… lekto check-schema`.
+- Run commands of the application with `lekto`, the command line of Lekto, through `lekto-run`
+  (as `PUID`:`PGID`, like the services): `docker compose exec lekto lekto-run lekto reindex`,
+  `… lekto-run lekto check-schema`; `… lekto --help` lists the commands. `lekto` as root warns
+  and stops, because what it wrote would belong to root; with `PUID=0`, root is meant.
 
 ## Health and logs
 
@@ -286,7 +288,7 @@ docker run --rm -v lekto-sqlite_lekto-data:/data -v "$PWD/backup:/backup:ro" alp
   cp /backup/lekto.db /data/lekto.db && cp -a /backup/objects /data/objects &&
   chown -R 1000:1000 /data'                                  # PUID:PGID
 docker compose -f compose.sqlite.yml up -d
-docker compose -f compose.sqlite.yml exec lekto lekto reindex   # rebuild the search index
+docker compose -f compose.sqlite.yml exec lekto lekto-run lekto reindex   # rebuild the search index
 ```
 
 ### Postgres and Garage
@@ -311,7 +313,7 @@ docker compose -f compose.postgres.yml exec -T postgres pg_restore -U lekto -d l
 docker run --rm -v lekto-postgres_garage-meta:/meta -v lekto-postgres_garage-data:/data \
   -v "$PWD/backup:/backup:ro" alpine:3.24.2 sh -c 'rm -rf /meta/* /data/* && tar -C / -xzf /backup/garage.tar.gz'
 docker compose -f compose.postgres.yml up -d
-docker compose -f compose.postgres.yml exec lekto lekto reindex
+docker compose -f compose.postgres.yml exec lekto lekto-run lekto reindex
 ```
 
 Another S3 server or an external Postgres: use its own tools (`pg_dump`, `rclone sync`); the order
@@ -361,8 +363,8 @@ installation needs these steps once, with the containers stopped and a backup ma
   or run `lekto reindex` (it computes every embedding again).
 - **Classifier.** Stored models are in the old format and are not loaded; `lekto train` (or
   `POST /classifier/train`) trains a new one.
-- **Commands.** In the container, `lekto` replaces `papiq`: `docker compose exec lekto lekto
-  reindex`.
+- **Commands.** In the container, `lekto` replaces `papiq`: `docker compose exec lekto lekto-run
+  lekto reindex`.
 - **Sign-in.** The cookies are now `__Host-lekto_session` and `__Host-lekto_oidc`: everyone signs
   in once more. API tokens that start with `papiq_` keep working; new ones start with `lekto_`.
   Authenticator apps keep the label Papiq for an existing second factor.

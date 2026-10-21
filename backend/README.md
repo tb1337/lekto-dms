@@ -28,7 +28,7 @@ pattern matcher (`regex`, a search with a time limit) and the template renderer 
 
 ## Core
 
-- `core/domain`: users, spaces and shares, master data (contacts, document types, tags with
+- `core/domain`: users, spaces with their members, master data (contacts, document types, tags with
   their scopes and trees, `tag_tree.py`), field definitions and values, the document aggregate with the pipeline state machine and
   lanes, domain events, jobs and the permission rules. IDs are UUIDv7, timestamps are UTC.
 - `core/ports`: repositories, processing log, outbox and job queue share one `UnitOfWork`, so
@@ -84,8 +84,10 @@ whether it is active. A deactivated user has no rights and cannot authenticate.
   deactivated.
 - Accounts: admins create users (optionally with a password), change roles, reset passwords,
   deactivate, turn TOTP off and remove links to identity providers. Deleting a user needs that
-  they own no documents and their spaces are empty; it removes their spaces, the shares to
-  them and their sign-in data. The last active admin cannot be demoted, deactivated or deleted.
+  their personal space is empty and that they are not the last editor of a space; it removes
+  their personal space with its rules, their memberships and their sign-in data, and the
+  documents they uploaded keep no uploader. The last active admin cannot be demoted,
+  deactivated or deleted.
 - The first admin: `LEKTO_ADMIN_USERNAME` and `LEKTO_ADMIN_PASSWORD[_FILE]` create an admin at
   API start while there is no admin at all. Afterwards they are ignored; they never change an
   existing account. A name taken by another user stops the start.
@@ -178,7 +180,7 @@ jobs of the old run are recognised as stale.
 | Judge (`JudgeNode`) | the signals' entries in the log, `content.txt` | contact, document type, tags, document date (applied if green) | see Understanding |
 | Fields (`FieldsNode`) | `content.txt`, the fields of the type and the global ones | field values and the title (applied if checked) | see Understanding |
 | Apply rules (`ApplyRulesNode`) | `content.txt` (only if a rule looks at the text), the rules | space, contact, type, title, tags, fields | uncertain on conflicts, refused actions and forced reviews; see Rules |
-| File (`FileNode`) | the space | - | uncertain if the owner may no longer file into the space (field `space`) |
+| File (`FileNode`) | the space | - | - (rights hang on the space; filing always succeeds) |
 
 - A node that raises is retried (`LEKTO_NODE_MAX_ATTEMPTS`, delay `LEKTO_NODE_RETRY_DELAY`,
   doubling); it waits meanwhile (`document.node_deferred`); after the last attempt the
@@ -207,7 +209,7 @@ jobs of the old run are recognised as stale.
   white, CMYK is converted, all pages of a TIFF are kept. OCRmyPDF shares the CPU cores among
   `LEKTO_WORKER_CONCURRENCY` jobs.
 - A vision language model (`LEKTO_VLM_*`, off without) reads a document only when a person
-  asks for it (`POST /documents/{id}/vision`, owner or admin); nothing asks on its own. Without
+  asks for it (`POST /documents/{id}/vision`, editors and admins); nothing asks on its own. Without
   `LEKTO_VLM_BASE_URL` and `LEKTO_VLM_MODEL` the request answers `409` ("no vision language
   model is configured"), and a run that asked before the model was taken away fails at `ocr`
   ("a person asked for the vision language model, but none is configured"). The
@@ -240,7 +242,7 @@ jobs of the old run are recognised as stale.
   written as a plain PDF (`--output-type pdf`); the node is uncertain with the reason. When
   Ghostscript itself refuses a construct of the file (overprint mode, a font with CID 0; exit
   code 10), the archive is a plain PDF as well and the reason comes from Ghostscript's
-  messages. Such a document is yellow until its owner confirms it; the file cannot be made
+  messages. Such a document is yellow until an editor of its space confirms it; the file cannot be made
   PDF/A without changing its content.
 - The text is read from the archive's text layer as it is set (`adapters/outbound/pdfium/
   layout.py`, in a thread, milliseconds per page): every line as printed, its words in columns
@@ -277,16 +279,16 @@ jobs of the old run are recognised as stale.
 - What the model nodes (`signal_llm`, `fields`, and `ocr` when the vision model read) send is
   kept beside the document, one file per node with every run
   (`documents/{id}/exchanges/<node>.json`: system and user message, the raw answer and the
-  endpoint's whole usage report); owner and admins read it through
+  endpoint's whole usage report); editors and admins read it through
   `GET /documents/{id}/exchanges/{node}`. The files go with the document's other derivatives.
 - Deleting a document queues `documents.remove_files` in the same transaction: the worker
-  removes its derivatives and its original, unless a document of any owner still has the same
+  removes its derivatives and its original, unless a document in any space still has the same
   file (failures are repeated up to five times, from one minute, doubling). The removal and an
   upload of the same file lock the original's key (`UnitOfWork.lock`: a Postgres advisory lock,
   on SQLite the write lock); under that lock the upload stores the original again if it is
   gone, so no document is left without its original.
 - A document with an uncertain step stops before filing with status `review` (yellow) and waits
-  in its owner's inbox; `document.filed` comes only when it is green. Confirming it (see
+  in the inbox of its space's editors; `document.filed` comes only when it is green. Confirming it (see
   Inbox) lets processing continue up to filing.
 - Known gap: an original is stored before its document is created; if creating fails (e.g.
   the space's rights changed meanwhile), the object stays without a document. Removing such
@@ -295,9 +297,11 @@ jobs of the old run are recognised as stale.
 ## Inbox
 
 The inbox is the way in (`core/domain/inbox.py`, `core/services/inbox.py`, `GET /inbox`): what
-waits for a user stands there, their own documents only; an admin with `all_users` has every
-user's, with their own seen. A document someone reaches through a shared space never stands in
-their inbox.
+waits for a user stands there: the documents in the spaces they edit; an admin with
+`all_users` has every user's, with their own seen. A document in a space someone only reads
+never stands in their inbox. A green document moved into a space is new there for the editors
+who could not read it before (handing it over into another user's personal space, too); the
+members of the space it left keep their state, moving is no seeing.
 
 - **Open**, newest first, in the one cursor format: in processing (`processing`, no lane yet),
   yellow (`review`) and red (`intervene`) until a person confirms them, and new documents
@@ -311,7 +315,7 @@ their inbox.
   document that was not green always does: its first run, a retry from red, a reprocessing of a
   yellow document, also with its metadata unchanged. A run that started on a green document
   does only if contact, type, topic, tags, date or fields differ from when it started
-  (`processing_baseline`, a digest of them). Confirming out of yellow or red, by the owner or an
+  (`processing_baseline`, a digest of them). Confirming out of yellow or red, by an editor or an
   admin, makes it new for no one.
 - **Seen** is per user (`inbox_seen`, when each user saw a document last; new for them again
   once it became new after). The web UI reports it when the document view opens
@@ -424,12 +428,12 @@ the fields node reads the fields of the decided type and the title
   JSON schema (`response_format` `json_schema`, or `json_object` for providers without schema
   support); an answer that does not fit is asked for once more, then the signal fails (red).
   Without a configured model (`LEKTO_LLM_BASE_URL` and `LEKTO_LLM_MODEL`) it abstains with "no language
-  model is configured", and the owner classifies.
+  model is configured", and a person classifies.
 - **`signal_classifier`**: TF-IDF of words and word pairs and a logistic regression per target
   (contact, topic, type, each automatic document tag), trained on the confirmed documents
   (`LEKTO_CLASSIFIER`, see Classifier). It abstains without a trained model.
-- **`signal_neighbours`**: the `LEKTO_NEIGHBOURS` most similar confirmed documents the owner may
-  read, by the vector of the start of the text against the search index; their contact, topic,
+- **`signal_neighbours`**: the `LEKTO_NEIGHBOURS` most similar confirmed documents the uploader
+  may read (it abstains when the uploader's account is gone or deactivated), by the vector of the start of the text against the search index; their contact, topic,
   type and automatic document tags come from the database. It abstains without embeddings or
   index.
 - **`signal_facts`**: names and aliases of contacts standing whole in the text, identifiers of
@@ -581,8 +585,8 @@ candidates and the raw answer is in the processing log (`fields`, `answer`), so 
 traceable after a correction; the rules read them with `core.services.inbox.field_checks`.
 
 The document text is sent between markers derived from its hash, and the model is told to treat
-it as data. It can only answer with the fixed schema: there is no field for spaces, owners,
-shares or actions, and additional fields make the answer unfit. Long documents are shortened to
+it as data. It can only answer with the fixed schema: there is no field for spaces, users,
+members or actions, and additional fields make the answer unfit. Long documents are shortened to
 `LEKTO_LLM_INPUT_BUDGET` characters, a run of spaces counted once (the columns of the text as it
 is set cost a model little; beginning and end kept, the middle left out); with many
 tags, at most `LEKTO_LLM_MAX_TAGS` are listed, those named in the text first; of the contacts,
@@ -654,7 +658,7 @@ alone, so a new scikit-learn version cannot break it. It sees about the first 8,
 2. The worker's reconciliation at its start writes every entry in the index's layout 5 (the
    space, tags with their ancestors, the groups of contact and type, the topic), with the
    vectors it has: no embedding calls and no `reindex`. Until it is through, the search of
-   other users misses documents shared with them.
+   other users misses documents in spaces they read.
 3. Tags and fields from before are automatic document tags at the top level, shown on the
    document, and automatic fields. Mark status tags such as "to pay" "by hand only": the
    classification then never proposes them, and changing them alone confirms no document. Nest
@@ -676,6 +680,29 @@ everything open, not only yellow and red documents: a client that wants those as
 **After the update to 0.5.** The project is called Lekto now, not Papiq: variables, cookies,
 search index, SQLite file and classifier format have new names, and nothing reads the old ones.
 The steps are in [deploy/README.md](../deploy/README.md) ("Upgrading from Papiq").
+
+Rights hang on spaces alone (a break of the API). Revision 0033 runs at start:
+
+1. Every user's default space becomes their personal space (`personal_of`, stored name
+   "Personal"; a user without one gets one). The owner of every other space becomes an
+   editor of it, a share `read` a reader, a share `read_write` an editor
+   (`PUT/DELETE /spaces/{id}/members/{user_id}` replace the shares). Spaces of several owners
+   with the same name keep the oldest's; the others get " (username)".
+2. A document's owner becomes who uploaded it (`uploaded_by`), information only. Two equal
+   files of two owners in one space are kept: the newer goes back to its owner's personal
+   space (the original is unique per space now; if that space holds the file too, the
+   revision stops and names both documents: delete one first).
+3. A user rule becomes a rule of its owner's personal space (`scope` `space`, `space_id`);
+   `{{ owner }}` in rule templates and title patterns becomes `{{ uploaded_by }}` (a template
+   that uses `uploaded_by` otherwise stops the revision). Global rules may do everything now.
+4. The worker's reconciliation writes every entry in the index's layout 6 (no owner), with
+   the vectors it has. Until it is through, the search filters entries of layout 5 by space
+   only: an editor misses nothing, a document whose owner is no member of its space stays
+   hidden from that owner.
+
+The downgrade restores owners and shares where the data allow (a personal space becomes the
+default space, any other space belongs to its oldest editor; it stops if an owner would get
+the same file twice).
 
 **Evaluation.** `lekto evaluate [--fake]` runs the synthetic documents in
 `evaluation/` cold and trained and writes a report; see [evaluation/README.md](evaluation/README.md).
@@ -706,11 +733,18 @@ disabling make no version; deleting is a soft delete.
 }
 ```
 
-- **Scope.** A user rule (any user) acts on its owner's documents with all actions and files
-  only into spaces its owner may write to. A global rule (admins) acts on every document, but
-  only with `add_tags`, `remove_tags`, `set_field` and `force_review`: nothing that changes
-  who sees a document. Everyone reads the global rules; user rules are read by their owner and
-  admins (`all_users=true`).
+- **Scope.** A space rule (`scope` `space`, `space_id`; default: the caller's personal space)
+  belongs to a space: its editors make, read and change it, and it acts on the documents in
+  that space. A global rule (admins) acts on every document. Both have every action. Everyone
+  reads the global rules; space rules are read by the editors of their space and admins
+  (`all_users=true`: every space's; `space_id` narrows the list to one space). On arrival the
+  global rules and those of the space the document lies in run (its uploader's personal space,
+  unless the upload named another).
+- **Filing.** `set_space` files into a space whoever saved the rule's current version may file
+  into (an editor of it, or an admin), or hands the document over into another user's
+  personal space (no membership needed). If that right is gone, the action is refused and the
+  document waits in the inbox (`no right to file into space 'X' (any more)`). A space rule never
+  moves a document that lies in another space.
 - **Triggers.** `ingest`: the pipeline node `apply_rules`, when a document arrives. `change`:
   a person changed the metadata of a document whose processing is complete.
 - **Conditions.** Groups `all` or `any`, each may be negated with `"not": true`; at most 5 deep
@@ -734,7 +768,7 @@ disabling make no version; deleting is a soft delete.
   markup, at most `LEKTO_RULES_MAX_TEXT` characters; it is loaded only if a rule looks at it.
 - **Actions.** `set_space`, `set_contact`, `set_topic`, `set_document_type`, `set_title`,
   `add_tags`, `remove_tags`, `set_field`, `force_review` (with a reason). `set_topic` is for
-  user rules only; it is skipped (and noted) if the contact the document ends up with does not
+  every rule; it is skipped (and noted) if the contact the document ends up with does not
   enable the topic. `add_tags` and `remove_tags` take document tags (also those set by hand);
   a tag above one the document keeps or gets is not added, a parent gives way to a child
   added. Saving a rule checks the scope of every tag it names (`422`).
@@ -743,8 +777,9 @@ disabling make no version; deleting is a soft delete.
   `adapters/outbound/liquid`): `{{ contact }}`, `{% if field.la_brutto %}`,
   filters with `|`. They see `title`, `filename`, `original_filename`, `contact`, `topic`,
   `document_type`, `document_date`, `added`, `tags` (those set), `contact_groups` and
-  `document_type_groups` (the groups the contact and the type are in, by name, sorted), `space`,
-  `owner`, `channel`, `pages` and
+  `document_type_groups` (the groups the contact and the type are in, by name, sorted), `space`
+  (a personal space by its user's name), `uploaded_by` (who uploaded it, by username),
+  `channel`, `pages` and
   `field.<key>` (`FieldOut.key`, from the name: `LA_Brutto` is `la_brutto`; an amount has
   `.amount` and `.currency`, a period `.start` and `.end`), as the rules leave the document. A
   period writes itself in ISO 8601 by what it is (`Period.notation`): `2026-09`, `2026-W38`,
@@ -764,8 +799,8 @@ disabling make no version; deleting is a soft delete.
 - **Evaluation.** All conditions see the state before any rule acts; a rule's action never makes
   another rule match in the same run. Contact, topic, type and tags the model set and no
   person confirmed are distrusted, and so are the groups of such a contact or type: a rule that
-  matches only because of them does not file into a space that others see (shared or another
-  user's); it is reported instead. Retroactively
+  matches only because of them does not file into a space that shows the document to someone
+  new (a member the space it lies in lacks; handing it over, too); it is reported instead. Retroactively
   such a move is a conflict: it acts only where the person accepts it.
 - **Combining.** A field set by one rule, or by several to the same value, is set. Different
   values are a conflict and nothing is set; priority never decides. A value a person decided
@@ -779,27 +814,27 @@ disabling make no version; deleting is a soft delete.
   something that no longer exists is named by its id.
 - **On arrival** conflicts, refused actions and forced reviews make `apply_rules` uncertain: the
   document waits in the inbox. Confirming it there (`POST /documents/{id}/confirm`, optionally
-  with `space_id`) decides the open fields and continues to filing; a forced review the owner
-  saw counts as answered. Filing checks once more that the owner may file into the space; if
-  not, confirming needs a `space_id` (`422` with `open_fields: ["space"]`).
+  with `space_id`, as moving) decides the open fields and continues to filing; a forced review
+  the person saw counts as answered. Filing always succeeds: rights hang on the space.
 - **On a change** (`PATCH /documents/{id}`) rules are edge-triggered: a rule acts only if it
   holds after the change and did not hold before. Fields the person set in this change, or
   decided before in this processing run, are not touched. Nothing turns yellow: what cannot be applied is only reported, in the `rules`
-  block of the answer (to the owner). If the rules file the document where an editor who made
+  block of the answer (to the editors). If the rules file the document where an editor who made
   the change can no longer read it, the editor's answer is only `{"id": …, "access": null}`.
   `POST /documents/{id}/dry-run` shows the same without storing anything.
 - **Retroactively.** `POST /rules/{id}/apply/preview` lists the documents the current version
   would change, newest first, with changes and conflicts (a page looks at 200 documents at
   most). `POST /rules/{id}/apply` pins a version and applies it to the selected documents (at
   most `LEKTO_RULES_APPLY_MAX_DOCUMENTS`) in the background, job `rules.apply`, 25 documents per
-  job; conflicts only where accepted (`accept_conflicts`), forced reviews do not act. A user rule
-  is applied by its owner to their documents, a global rule by anyone to the documents they may
-  write to; rights are checked again per document. Progress: `GET /rule-applications/{id}`.
+  job; conflicts only where accepted (`accept_conflicts`), forced reviews do not act. A space
+  rule is applied by the editors of its space to the documents in it, a global rule by anyone to
+  the documents they may edit; rights are checked again per document. Progress: `GET /rule-applications/{id}`.
 - **References.** Contacts, types, tags, fields and spaces a rule names must exist (`404`),
-  spaces must be writable for the owner (`403`). Deleting one of them, or removing a choice a
-  rule uses, disables the rules that use it with a reason; enabling checks again. A tag a rule
-  uses is not deleted (`409`). Deleting a user
-  removes their rules.
+  spaces must be ones the caller may file into, or another user's personal space (`403`).
+  Deleting one of them, or removing a choice a rule uses, disables the rules that use it with
+  a reason; enabling checks again for the author of the current version. A tag a rule uses is
+  not deleted (`409`). Deleting a space removes its rules; deleting a user removes the rules of
+  their personal space.
 - **Log.** Every run is a processing log entry of node `apply_rules` with the rules and versions
   checked, matches, effects and notes. `model_version`: `rules` (the pipeline node),
   `rules:change` (after a change; it also records what the person changed), `rules:apply`
@@ -844,11 +879,11 @@ meaning took part.
   `<index>-rebuild` from the database and the object store, 50 documents per request, while the
   active index keeps serving, swaps it in and reconciles what changed meanwhile. The index holds
   no information that is not in the database.
-- **Rights.** The index query contains the rights (own documents in any lane; green documents of
-  spaces the caller owns or that are shared with them). Every hit is checked against the
-  database once more and the filter applied again, so a withdrawn share ends the search for that
-  document at once, before the index has changed; a page can therefore hold fewer items than
-  `limit`. Documents still in processing are in the index, for their owner only.
+- **Rights.** The index query contains the rights (every document of the spaces the caller
+  edits, in any lane; green documents of the spaces they read). Every hit is checked against
+  the database once more and the filter applied again, so a removed member finds nothing of
+  the space at once, before the index has changed; a page can therefore hold fewer items than
+  `limit`. Documents still in processing are in the index, for the editors of their space.
 - **Sections.** The text (at most `LEKTO_SEARCH_MAX_TEXT` characters) is cut into sections of
   about `LEKTO_SEARCH_CHUNK_SIZE` characters, at most `LEKTO_SEARCH_MAX_CHUNKS`; each gets a
   vector, and the first one starts with title, contact, type and the tags set (not their
@@ -966,32 +1001,32 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 | `POST /contacts/{id}/logo/fetch` | Fetch the logo from the contact's website (admins, `202`); `503` without `LEKTO_LOGO_FETCH`, `409` with an uploaded logo, `422` without a domain |
 | `PUT /document-types/{id}/fields` | The fields of a document type, each required or optional, set from the type in one transaction (admins); answers its fields. A global field is `422`; taking off a field that has values on its documents or that the type's title pattern uses is `409` |
 | `POST /contacts/{id}/identifiers` | Attach one identifier to a contact, entered by hand (admins), optionally with a `topic_id` the contact enables; the others stay; `409` if another contact has it by hand. `PATCH` replaces the whole list |
-| `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/shares/{user_id}` | Spaces and shares (owner) |
+| `GET/POST /spaces`, `GET/PATCH/DELETE /spaces/{id}`, `PUT/DELETE /spaces/{id}/members/{user_id}` | Spaces the caller is a member of (admins: all), with `personal_of`, the caller's `role` and the `members`; create (`members`; the caller edits it, an admin may give the members alone), rename, delete (empty, never a personal space), members with `role` `read` or `edit` (editors; of a personal space its user) |
 | `GET /documents/search` | Search: `q`, the filters of `GET /documents`, `sort` (`relevance`, the default, or a key of `GET /documents`; relevance breaks ties), `limit`, `offset`, `semantic_ratio`; hits with snippet (the document with `in_inbox`, as in `GET /documents`), `estimated_total`, `next_offset`, `semantic` |
 | `POST /search/reindex` | Rebuild the search index in the background (admins); `202` |
 | `GET /documents` | Readable documents, each with `in_inbox` (it stands open in the caller's inbox); `sort`: `-created_at` (the default, newest first), `created_at`, `document_date`, `-document_date`, `title`, `-title` (without case and accents), `field`, `-field` (the value of the field `sort_field_id`: a date, a period by its first day, a number, an amount by its value; `422` for other types), documents without a date or value last either way; filters `contact_id`, `document_type_id`, `space_id` (each repeats, one of them must match), `tag_id` (with the tags below it; repeats, all must match), `contact_group_id` and `document_type_group_id` (the document's contact or type in the group or one below it; each repeats, one of them must match), `topic_id` (the topic or one below it; repeats, one of them must match), `document_date_from` and `document_date_to` (the document date lies between them, both days included, either end open; a document without a date does not match; `422` if the end lies before the start), `lane`, `field_id` (a value for the field), `all_users` (admins); `limit`, `cursor` (`next_cursor` of the page before, an opaque value naming its last document; its sort value is looked up, `422` if that document is gone) |
 | `GET /documents/facets` | Counts for the filters of the document view, with the filters of `GET /documents` and `all_users` (admins): `total`, per contact and type (`id` null: without one), group of contacts and of types, topic and tag (each with the documents of those below it, once), year and its months of the document date (`undated`: without one). Contacts, types, groups, topics and the period combine as either-or and count without their own choice, so each tells what one more would add; tags count with the whole filter |
-| `POST /documents` | Upload (multipart: `file`, optional `space_id`, optional `channel=migration`; otherwise the channel is `web` with a session, `api` with a token); `202` with `id`, `status_url` |
-| `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`, `topic_id` (see Topics); change (write access; the answer has the change rules' `rules` report for the owner); delete (owner or admin) |
-| `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result and the differences |
-| `POST /documents/{id}/move` | Into another space (owner, or an admin without read access) |
+| `POST /documents` | Upload (multipart: `file`, optional `space_id` (a space the caller edits; default: the uploader's personal space), optional `channel=migration`, `uploaded_by` and `metadata` for admins; otherwise the channel is `web` with a session, `api` with a token); `202` with `id`, `status_url` |
+| `GET/PATCH/DELETE /documents/{id}` | Metadata and state with the caller's access, `channel`, `topic_id` (see Topics); change (editors; the answer has the change rules' `rules` report); delete (editors and admins); `uploaded_by` names who uploaded it, `access` is `read` or `edit` |
+| `POST /documents/{id}/dry-run` | A change as with `PATCH`, with the change rules, nothing stored: the result, the differences and who would see it (`visibility`: the space and its `members`) |
+| `POST /documents/{id}/move` | Into a space the caller edits, or into another user's personal space (hand over; `personal_space_id` in `GET /users`); editors of the document's space, admins anywhere; `409` if the target holds the same file |
 | `GET /documents/{id}/original`, `/archive`, `/preview`, `/pages/{number}` | Files (read access); pages from 1 to `page_count` |
 | `GET /documents/{id}/text` | The text as it is set (plain text, pages apart by form feeds) in pieces: `offset`, `limit` (at most `LEKTO_MCP_TEXT_MAX`, the default); `409` while not parsed |
 | `GET /documents/{id}/files` | The files as stored (read access): when the document was added and changed, its original's name and type, and for the original and the archive (null while there is none) size, SHA-256 and metadata: a PDF's version, PDF/A level, pages, document information and XMP; an image's format, size, resolution and EXIF |
 | `GET /documents/{id}/facts` | What the document shows of its contacts (read access): names and identifiers with the contact they belong to now and their spans in the text (characters, as `/text` counts them), each with where it stands on the archive's pages (a box per line; none for a text parsed before 0.2); the codes on its pages, each once for its format and text, with the pages and boxes where it stands (a box per copy), the GiroCode read, their identifiers and the amount fields of the same value; for admins, on the documents of how many other contacts an identifier stands; `409` while not parsed |
-| `GET /documents/{id}/log` | Processing log (owner or admin) |
-| `POST /documents/{id}/retry` | Repeat the failed nodes (owner or admin) |
-| `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (owner or admin) |
-| `POST /documents/{id}/vision` | Process again from OCR with the vision language model reading every page (owner or admin); `409` without a model |
-| `GET /documents/{id}/reading` | How the archive's text was read: by the vision model or not, each recognised page, the advice to read with the model (owner or admin) |
+| `GET /documents/{id}/log` | Processing log (editors and admins) |
+| `POST /documents/{id}/retry` | Repeat the failed nodes (editors and admins) |
+| `POST /documents/{id}/reprocess` | `{"from_node": "ocr"}`: process again from a node, with every node after it (editors and admins) |
+| `POST /documents/{id}/vision` | Process again from OCR with the vision language model reading every page (editors and admins); `409` without a model |
+| `GET /documents/{id}/reading` | How the archive's text was read: by the vision model or not, each recognised page, the advice to read with the model (editors and admins) |
 | `GET /pipeline` | The graph: every node and what it needs, in graph order; the vision model, if one is configured; whether logos are fetched (`logo_fetch`) |
 | `POST /pipeline/reparse` | Read the text of every document again in the background (admins, after the update to 0.2); `202` with `queued` |
 | `GET /inbox` | The caller's inbox (see Inbox), newest first, with open nodes and fields: everything open, or one `tab` (`new`, `review`, `intervene`, `processing`, `done` with how, when and by whom, newest first by when it left); `limit`, `cursor`, `all_users` (admins) |
 | `GET /inbox/summary` | The count of each tab, `open` (all but done) and the worst lane among the open documents; `all_users` (admins) |
 | `PUT/DELETE /documents/{id}/seen`, `POST /inbox/seen` | Seen per user: the caller saw a document (read access; the web UI, when its view opens), it is new again (read access), everything new in the inbox as seen (`marked`; `all_users` for admins) |
-| `GET /documents/{id}/review` | What the model proposed and how each field was checked (owner or admin) |
-| `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `space_id`), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (owner or admin); undecided fields: `422` with `open_fields` |
-| `GET/POST /rules`, `GET/PUT/PATCH/DELETE /rules/{id}`, `GET /rules/{id}/versions`, `/versions/{number}` | Rules: list (`scope`, `include_disabled`, `all_users` for admins), create, change (new version), enable or disable, delete; see Rules |
+| `GET /documents/{id}/review` | What the model proposed and how each field was checked (editors and admins) |
+| `POST /documents/{id}/confirm` | Decide the open fields (`changes` as with `PATCH`, `accept_suggestions`, `space_id`), then continue from `resume_at` (`apply_rules`, or `fields` after a type change) up to filing (editors and admins); undecided fields: `422` with `open_fields` |
+| `GET/POST /rules`, `GET/PUT/PATCH/DELETE /rules/{id}`, `GET /rules/{id}/versions`, `/versions/{number}` | Rules: list (`scope`, `space_id`, `include_disabled`, `all_users` for admins), create (`scope`, `space_id`), change (new version), enable or disable, delete; see Rules |
 | `POST /rules/{id}/apply/preview`, `POST /rules/{id}/apply`, `GET /rule-applications/{id}` | Apply a rule to existing documents: preview, start (`202`), progress |
 | `GET /events` | Server-sent events of the documents the caller may read, for admins also `classifier.trained`; `?document_id=` |
 | `GET/POST /webhooks`, `GET/PATCH/DELETE /webhooks/{id}` | Webhooks: the caller's own (admins read everybody's, `?owner=`); create (the answer shows the secret once), change, switch on or off, delete; see Webhooks |
@@ -1001,15 +1036,19 @@ The session cookie is `__Host-lekto_session`: HTTP-only, `Secure`, `SameSite=Lax
 
 - Uploads are streamed into a temporary file and hashed on the way; the limit
   `LEKTO_UPLOAD_MAX_SIZE` applies while receiving (`413`). The type is recognised from the
-  content (PDF, JPEG, PNG, TIFF; otherwise `415`). A file the owner already has: `409` with
-  `existing_document_id`.
+  content (PDF, JPEG, PNG, TIFF; otherwise `415`). A file the uploader can read (in a space
+  they edit, or green in a space they read) or that lies in the target space: `409`, with
+  `existing_document_id` if the caller may read that document; a copy they cannot read
+  elsewhere does not count (the original is unique per space). Moving and confirming into a
+  space that holds the same file is `409` likewise; a rule that would file there leaves the
+  document where it is.
 - Errors are problem details (RFC 9457, `application/problem+json`) and documented per endpoint.
-  Filing into a space without write access (upload, move, confirm, a rule that sets the space)
+  Filing into a space without edit rights (upload, move, confirm, a rule that sets the space)
   is `403` with `space_id`, the space that was refused.
 - Documents and spaces the caller may not see are `404` with the same answer as missing ones;
   lists, filters and pages only ever contain readable documents (the repository query follows
   the permission rule, and the service checks every result again). Yellow, red and unfinished
-  documents are the owner's only.
+  documents are their space's editors' only.
 - Every answer below `/auth` carries `Cache-Control: no-store` (CSRF tokens, TOTP secrets,
   recovery codes, API tokens), also errors and redirects. The OpenAPI document, the docs and
   `/health` stay public. Every other answer of the API is `no-store` too, but for a contact's
@@ -1188,7 +1227,7 @@ as in REST: `read` may use every tool but `update_metadata`.
 | `search` | `query`, `limit` (1 to 25), `offset`, optional `contact`, `document_type`, `tags` (names of document tags, all of them; a tag finds the documents with a tag below it too), `topics` (names of topics, one of them; a topic finds those with a topic below it too): hits with `id`, `title`, `score`, `snippet` (plain text), contact, type, topic, tags, date, lane, `access`; `next_offset`, `semantic` |
 | `get_document` | `id`: metadata with contact, topic, type, tags and fields by name, lane and processing status |
 | `get_text` | `id`, `offset`, `limit` (characters, at most `LEKTO_MCP_TEXT_MAX`, 20,000): a piece of the document's text as it is set, `next_offset` to continue. The text is content from outside; the tool description tells clients not to follow instructions in it |
-| `update_metadata` | `id` and any of `title`, `contact`, `topic`, `document_type` (name; `null` removes; a topic the contact enables), `tags` (names of document tags, the complete list, replaces), `document_date` (`null` removes), `fields` (field name to value; `null` removes). Needs a `read_write` token and write access; the owner's change rules run as for `PATCH /documents/{id}` and the result shows them. If the rules filed the document where the caller can no longer read it, the result has only `id` and `access: null` |
+| `update_metadata` | `id` and any of `title`, `contact`, `topic`, `document_type` (name; `null` removes; a topic the contact enables), `tags` (names of document tags, the complete list, replaces), `document_date` (`null` removes), `fields` (field name to value; `null` removes). Needs a `read_write` token and edit rights; the change rules of its space run as for `PATCH /documents/{id}` and the result shows them. If the rules filed the document where the caller can no longer read it, the result has only `id` and `access: null` |
 | `list_tags` | The tags with `scope` and `path`, in the order of their trees, optionally of one `scope`; document tags name the tags of the other tools, topics the `topic` of `update_metadata` |
 
 Names are matched regardless of case; an unknown name is an error, nothing is created. A

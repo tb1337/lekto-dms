@@ -1,22 +1,23 @@
 <script lang="ts">
 	import Archive from '@lucide/svelte/icons/archive';
 	import Plus from '@lucide/svelte/icons/plus';
-	import Share2 from '@lucide/svelte/icons/share-2';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import UserRound from '@lucide/svelte/icons/user-round';
+	import Users from '@lucide/svelte/icons/users';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '#lib/api/client.ts';
 	import { unwrap } from '#lib/api/call.ts';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import EditButton from '#lib/components/EditButton.svelte';
-	import SpaceShares from '#lib/components/SpaceShares.svelte';
+	import SpaceMembers from '#lib/components/SpaceMembers.svelte';
 	import NameDialog from '#lib/components/NameDialog.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.ts';
 	import { Button } from '#lib/components/ui/button/index.ts';
 	import { describeError } from '#lib/errors.ts';
-	import type { Space, UserName } from '#lib/masterdata.svelte.ts';
+	import { spaceLabel, userName, type Space, type UserName } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
-	import { canManageSpace } from '#lib/permissions.ts';
+	import { canChooseMembers, canManageSpace } from '#lib/permissions.ts';
 	import { session } from '#lib/session.svelte.ts';
 
 	let spaces = $state<Space[] | null>(null);
@@ -25,21 +26,28 @@
 	let creating = $state(false);
 	let renaming = $state<Space | null>(null);
 	let removing = $state<Space | null>(null);
-	let sharing = $state<string | null>(null);
+	let choosing = $state<string | null>(null);
 
 	const me = $derived(session.user?.id);
-	const own = $derived((spaces ?? []).filter((space) => space.owner_id === me));
-	// Admins list every space; theirs to manage, apart from the ones shared with them.
-	const sharedWithMe = (space: Space) =>
-		!session.isAdmin || (space.shares ?? []).some((share) => share.user_id === me);
-	const shared = $derived(
-		(spaces ?? []).filter((space) => space.owner_id !== me && sharedWithMe(space))
+	const isMember = (space: Space) => space.members.some((member) => member.user_id === me);
+	// The caller's spaces, their personal one first; admins also see every other space.
+	const mine = $derived(
+		(spaces ?? [])
+			.filter(isMember)
+			.toSorted((a, b) => Number(b.personal_of === me) - Number(a.personal_of === me))
 	);
-	const others = $derived(
-		(spaces ?? []).filter((space) => space.owner_id !== me && !sharedWithMe(space))
-	);
-	const sharedSpace = $derived(spaces?.find((space) => space.id === sharing) ?? null);
-	const ownerName = (id: string) => users.find((user) => user.id === id)?.username ?? id;
+	const others = $derived((spaces ?? []).filter((space) => !isMember(space)));
+	const chosen = $derived(spaces?.find((space) => space.id === choosing) ?? null);
+	const label = (space: Space) => spaceLabel(space, users, me);
+	const memberLine = (space: Space) =>
+		space.members
+			.filter((member) => member.user_id !== me)
+			.map((member) =>
+				member.role === 'read'
+					? m.space_member_reads({ name: userName(users, member.user_id) })
+					: userName(users, member.user_id)
+			)
+			.join(', ');
 
 	async function load() {
 		try {
@@ -103,40 +111,18 @@
 		<section class="flex flex-col gap-3" aria-labelledby="own-spaces">
 			<h2 id="own-spaces" class="text-lg font-semibold">{m.spaces_own()}</h2>
 			<ul class="flex flex-col gap-2">
-				{#each own as space (space.id)}
-					{@render managed(space)}
+				{#each mine as space (space.id)}
+					{@render row(space)}
 				{/each}
 			</ul>
 		</section>
-
-		{#if shared.length > 0}
-			<section class="flex flex-col gap-3" aria-labelledby="shared-spaces">
-				<h2 id="shared-spaces" class="text-lg font-semibold">{m.spaces_shared()}</h2>
-				<ul class="flex flex-col gap-2">
-					{#each shared as space (space.id)}
-						{#if canManageSpace(space, session.user)}
-							{@render managed(space)}
-						{:else}
-							<li class="flex flex-wrap items-center gap-3 rounded-2xl border bg-card p-4">
-								<Archive class="size-5 text-muted-foreground" aria-hidden="true" />
-								<span class="min-w-0 flex-1 truncate font-medium">{space.name}</span>
-								<span class="text-sm text-muted-foreground">
-									{m.space_from({ owner: ownerName(space.owner_id) })} ·
-									{space.access === 'read_write' ? m.share_read_write() : m.share_read()}
-								</span>
-							</li>
-						{/if}
-					{/each}
-				</ul>
-			</section>
-		{/if}
 
 		{#if others.length > 0}
 			<section class="flex flex-col gap-3" aria-labelledby="other-spaces">
 				<h2 id="other-spaces" class="text-lg font-semibold">{m.spaces_others()}</h2>
 				<ul class="flex flex-col gap-2">
 					{#each others as space (space.id)}
-						{@render managed(space)}
+						{@render row(space)}
 					{/each}
 				</ul>
 			</section>
@@ -144,37 +130,37 @@
 	{/if}
 </div>
 
-{#snippet managed(space: Space)}
+{#snippet row(space: Space)}
+	{@const Icon = space.personal_of === null ? Archive : UserRound}
+	{@const members = memberLine(space)}
 	<li class="flex flex-wrap items-center gap-3 rounded-2xl border bg-card p-4">
-		<Archive class="size-5 text-muted-foreground" aria-hidden="true" />
+		<Icon class="size-5 text-muted-foreground" aria-hidden="true" />
 		<div class="flex min-w-0 flex-1 flex-col gap-1">
 			<span class="flex flex-wrap items-center gap-2 font-medium">
-				<span class="truncate">{space.name}</span>
-				{#if space.is_default}<Badge variant="secondary">{m.space_default()}</Badge>{/if}
-				{#if space.owner_id !== me}
-					<Badge variant="outline">{ownerName(space.owner_id)}</Badge>
+				<span class="truncate">{label(space)}</span>
+				{#if space.personal_of !== null && space.personal_of !== me}
+					<Badge variant="secondary">{m.space_personal()}</Badge>
+				{/if}
+				{#if isMember(space) && space.role === 'read'}
+					<Badge variant="outline">{m.space_role_read()}</Badge>
 				{/if}
 			</span>
-			{#if (space.shares ?? []).length > 0}
-				<span class="text-sm text-muted-foreground">
-					{m.space_shared_with({
-						names: (space.shares ?? []).map((share) => ownerName(share.user_id)).join(', ')
-					})}
-				</span>
-			{/if}
+			<span class="text-sm text-muted-foreground">
+				{members ? m.space_members_line({ names: members }) : m.space_only_you()}
+			</span>
 		</div>
 		<div class="flex gap-1">
-			{#if !space.is_default}
+			{#if canChooseMembers(space, session.user)}
 				<Button
 					variant="ghost"
 					size="icon"
-					aria-label={m.space_share({ name: space.name })}
-					onclick={() => (sharing = space.id)}
+					aria-label={m.space_members({ name: label(space) })}
+					onclick={() => (choosing = space.id)}
 				>
-					<Share2 aria-hidden="true" />
+					<Users aria-hidden="true" />
 				</Button>
 			{/if}
-			{#if !space.is_default}
+			{#if canManageSpace(space, session.user)}
 				<Button
 					variant="ghost"
 					size="icon"
@@ -185,7 +171,9 @@
 				</Button>
 			{/if}
 		</div>
-		<EditButton label={m.space_rename({ name: space.name })} onclick={() => (renaming = space)} />
+		{#if canManageSpace(space, session.user)}
+			<EditButton label={m.space_rename({ name: space.name })} onclick={() => (renaming = space)} />
+		{/if}
 	</li>
 {/snippet}
 
@@ -203,10 +191,10 @@
 	confirmLabel={m.delete_title()}
 	onconfirm={remove}
 />
-{#if sharedSpace}
-	<SpaceShares
-		bind:open={() => sharing !== null, (open) => !open && (sharing = null)}
-		space={sharedSpace}
+{#if chosen}
+	<SpaceMembers
+		bind:open={() => choosing !== null, (open) => !open && (choosing = null)}
+		space={chosen}
 		{users}
 		onchanged={load}
 	/>

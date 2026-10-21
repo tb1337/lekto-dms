@@ -1,80 +1,68 @@
 /**
  * What the UI offers. The API checks every call; these rules only keep the UI from showing
  * actions it would reject, and from hiding ones it allows. They follow the endpoint descriptions
- * in `openapi.json`: admins have every right and see everything (Tobi, 08.10.2026).
+ * in `openapi.json`: rights hang on the space a document lies in, as the caller's role there
+ * (`read`, `edit`); admins have every right and see everything (Tobi, 08.10.2026), so their role
+ * is `edit` in every space.
  */
 import type { components } from '#lib/api/schema.ts';
 
-type Document = Pick<components['schemas']['DocumentDetails'], 'owner_id' | 'access'>;
+type Document = Pick<components['schemas']['DocumentDetails'], 'access'>;
 type Actor = {
 	id: string;
 	role?: components['schemas']['Role'] | null;
 	active?: boolean | null;
 } | null;
 type Owned = { owner_id: string | null };
+type SpaceLike = Pick<components['schemas']['SpaceOut'], 'id' | 'role' | 'personal_of'>;
+type UserLike = Pick<components['schemas']['UserOut'], 'id' | 'personal_space_id' | 'active'>;
+type RuleLike = Pick<components['schemas']['RuleOut'], 'scope' | 'space_id'> & {
+	managed_by_document_type_id?: string | null;
+};
 
 const isAdmin = (user: Actor): boolean => user?.role === 'admin';
 const owns = (item: Owned, user: Actor): boolean => user !== null && item.owner_id === user.id;
+const isOthersPersonal = (space: SpaceLike, user: Actor): boolean =>
+	space.personal_of !== null && space.personal_of !== user?.id;
+const edits = (spaces: readonly SpaceLike[], id: string | null): boolean =>
+	spaces.some((space) => space.id === id && space.role === 'edit');
 
-/** Change the metadata: the owner, a `read_write` share, an admin (their access is `read_write`). */
+/** Change the metadata, review, retry, reprocess, delete, read the processing log and move:
+ * the editors of the document's space and admins (their access is `edit`). */
 export function canEdit(document: Document, user: Actor): boolean {
-	return user !== null && (owns(document, user) || document.access === 'read_write');
+	return user !== null && document.access === 'edit';
 }
 
-/** Retry, reprocess, delete, read the processing log, review: the owner and admins. */
-export function canManage(document: Document, user: Actor): boolean {
-	return owns(document, user) || isAdmin(user);
+/** Spaces the caller files into and moves into: the ones they edit (every one for admins),
+ * apart from other users' personal spaces, which take documents as a hand-over. */
+export function editableSpaces<T extends SpaceLike>(spaces: readonly T[], user: Actor): T[] {
+	return spaces.filter((space) => space.role === 'edit' && !isOthersPersonal(space, user));
 }
 
-/** Move: the owner into spaces they may write to; an admin any document into any space. */
-export function canMove(document: Document, user: Actor): boolean {
-	return owns(document, user) || isAdmin(user);
-}
-
-/** Spaces the caller may file into: own spaces, `read_write` shares; every one for admins. */
-export function writableSpaces<T extends { owner_id: string; access: string }>(
-	spaces: readonly T[],
-	user: Actor,
-	admin = isAdmin(user)
-): T[] {
-	return spaces.filter(
-		(space) => admin || space.owner_id === user?.id || space.access === 'read_write'
+/** The other users a document is handed over to: into their personal space
+ * (`personal_space_id` of `GET /users`), without being a member there. Deactivated users take
+ * nothing. */
+export function handOverTargets<T extends UserLike>(
+	users: readonly T[],
+	user: Actor
+): (T & { personal_space_id: string })[] {
+	return users.filter(
+		(other): other is T & { personal_space_id: string } =>
+			other.id !== user?.id && other.active !== false && !!other.personal_space_id
 	);
 }
 
-/** Spaces another user may write to, as far as the shares show it (admins see every share):
- * where that user's rule files when an admin changes it. */
-export function spacesWritableBy<
-	T extends { owner_id: string; shares?: readonly { user_id: string; level: string }[] | null }
->(spaces: readonly T[], owner: Actor): T[] {
-	// A deactivated user files nowhere (the API refuses).
-	if (owner === null || owner.active === false) return [];
-	if (isAdmin(owner)) return [...spaces];
-	return spaces.filter(
-		(space) =>
-			space.owner_id === owner.id ||
-			(space.shares ?? []).some(
-				(share) => share.user_id === owner.id && share.level === 'read_write'
-			)
-	);
+/** Rename and delete a space: its editors and admins; never a personal space. */
+export function canManageSpace(space: SpaceLike, user: Actor): boolean {
+	return user !== null && space.personal_of === null && space.role === 'edit';
 }
 
-/** Spaces a rule of `owner` may file into when `caller` changes it: the caller's own choice
- * for themselves, else the owner's (an admin changing another user's rule). */
-export function spacesFor<
-	T extends {
-		owner_id: string;
-		access: string;
-		shares?: readonly { user_id: string; level: string }[] | null;
-	}
->(spaces: readonly T[], owner: Actor, caller: Actor): T[] {
-	if (owner !== null && owner.id === caller?.id) return writableSpaces(spaces, caller);
-	return spacesWritableBy(spaces, owner);
-}
-
-/** Rename, share and delete a space: its owner and admins. */
-export function canManageSpace(space: Owned, user: Actor): boolean {
-	return owns(space, user) || isAdmin(user);
+/** Add, change and remove members: the editors of a space and admins; the members of a personal
+ * space only its user and admins. */
+export function canChooseMembers(space: SpaceLike, user: Actor): boolean {
+	if (user === null) return false;
+	if (space.personal_of !== null) return space.personal_of === user.id || isAdmin(user);
+	return space.role === 'edit';
 }
 
 /** Change, delete, test a webhook and renew its secret: its owner and admins. */
@@ -82,20 +70,25 @@ export function canManageWebhook(webhook: Owned, user: Actor): boolean {
 	return owns(webhook, user) || isAdmin(user);
 }
 
-/** Change, enable, disable and delete a rule: a user rule's owner, and admins (any rule); the
- * rule of a document type's title pattern nobody (it follows the type). */
-export function canChangeRule(
-	rule: Owned & { scope: string; managed_by_document_type_id?: string | null },
-	user: Actor
-): boolean {
-	if (rule.managed_by_document_type_id) return false;
-	if (isAdmin(user)) return true;
-	return rule.scope === 'user' && owns(rule, user);
+/** The spaces a rule may belong to: those the caller edits (every one for admins). */
+export function ruleSpaces<T extends SpaceLike>(spaces: readonly T[]): T[] {
+	return spaces.filter((space) => space.role === 'edit');
 }
 
-/** Apply a rule to existing documents: a user rule's owner and admins; a global rule anyone. */
-export function canApplyRule(rule: Owned & { scope: string }, user: Actor): boolean {
-	return user !== null && (rule.scope === 'global' || owns(rule, user) || isAdmin(user));
+/** Change, enable, disable and delete a rule: a space rule the editors of its space, a global
+ * rule admins (admins any rule); the rule of a document type's title pattern nobody (it follows
+ * the type). */
+export function canChangeRule(rule: RuleLike, user: Actor, spaces: readonly SpaceLike[]): boolean {
+	if (rule.managed_by_document_type_id) return false;
+	if (isAdmin(user)) return true;
+	return user !== null && rule.scope === 'space' && edits(spaces, rule.space_id);
+}
+
+/** Apply a rule to existing documents: a space rule the editors of its space and admins; a
+ * global rule anyone (on the documents they edit). */
+export function canApplyRule(rule: RuleLike, user: Actor, spaces: readonly SpaceLike[]): boolean {
+	if (user === null) return false;
+	return rule.scope === 'global' || isAdmin(user) || edits(spaces, rule.space_id);
 }
 
 /** Lists of every user (documents, inbox, search, rules): admins only. */

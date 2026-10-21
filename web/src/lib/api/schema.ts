@@ -321,13 +321,13 @@ export interface paths {
 		};
 		/**
 		 * List users
-		 * @description Admins see all users with role and state; others see the active users' id and name.
+		 * @description Admins see all users with role and state; others see the active users' id, name and personal space (to hand documents over to them).
 		 */
 		get: operations['list_users_api_v1_users_get'];
 		put?: never;
 		/**
 		 * Create a user
-		 * @description Admins only. Creates the user's private default space, too. A user with the role `user` and no password can be created with an admin's API token (`read_write`), e.g. by a migration; a password or the role `admin` needs a session, as for `/auth/*`.
+		 * @description Admins only. Creates the user's personal space, too. A user with the role `user` and no password can be created with an admin's API token (`read_write`), e.g. by a migration; a password or the role `admin` needs a session, as for `/auth/*`.
 		 */
 		post: operations['create_user_api_v1_users_post'];
 		delete?: never;
@@ -345,14 +345,14 @@ export interface paths {
 		};
 		/**
 		 * A user
-		 * @description Admins see the account with its sign-in methods; others only active users' id and name.
+		 * @description Admins see the account with its sign-in methods; others only active users' id, name and personal space.
 		 */
 		get: operations['get_user_api_v1_users__id__get'];
 		put?: never;
 		post?: never;
 		/**
 		 * Delete a user
-		 * @description Admins only. Only a user who owns no documents and whose spaces are empty (409); removes their spaces, the shares to them and their sign-in data.
+		 * @description Admins only. Only a user whose personal space is empty and who is not the last editor of a space (409); removes their personal space with its rules, their memberships and their sign-in data. The documents they uploaded stay, without uploader.
 		 */
 		delete: operations['delete_user_api_v1_users__id__delete'];
 		options?: never;
@@ -717,13 +717,13 @@ export interface paths {
 		};
 		/**
 		 * List spaces
-		 * @description The spaces the caller owns or that are shared with them; every space for admins.
+		 * @description The spaces the caller is a member of, their personal space first among them by its `personal_of`; every space for admins.
 		 */
 		get: operations['list_spaces_api_v1_spaces_get'];
 		put?: never;
 		/**
 		 * Create a space
-		 * @description Names are unique per owner regardless of case. The caller owns the space; admins may give `owner_id` to create one for another active user (others: 403, an unknown or deactivated user: 404).
+		 * @description Names of the spaces that are nobody's personal one are unique regardless of case (409). The caller edits the space; `members` adds active users (an unknown or deactivated user: 404). An admin may give the members alone, one of whom edits (422 otherwise).
 		 */
 		post: operations['create_space_api_v1_spaces_post'];
 		delete?: never;
@@ -745,19 +745,19 @@ export interface paths {
 		post?: never;
 		/**
 		 * Delete a space
-		 * @description The owner and admins. Not the default space, and only while it is empty (409).
+		 * @description Editors of the space and admins. Not a personal space, and only while it is empty (409). Its rules go with it; other rules that file into it are switched off.
 		 */
 		delete: operations['delete_space_api_v1_spaces__id__delete'];
 		options?: never;
 		head?: never;
 		/**
 		 * Rename a space
-		 * @description The owner and admins.
+		 * @description Editors of the space and admins. Not a personal space (422).
 		 */
 		patch: operations['rename_space_api_v1_spaces__id__patch'];
 		trace?: never;
 	};
-	'/api/v1/spaces/{id}/shares/{user_id}': {
+	'/api/v1/spaces/{id}/members/{user_id}': {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -766,16 +766,16 @@ export interface paths {
 		};
 		get?: never;
 		/**
-		 * Share a space
-		 * @description The owner and admins. Sets the user's access: `read` or `read_write`. The default space cannot be shared (422); an unknown or deactivated user is not found (404). Other users see documents in it once they are green.
+		 * Add a member or change their role
+		 * @description Editors of the space and admins. The members of a personal space are chosen by its user and admins. The user of a personal space always edits it, and a space keeps one editor (422); an unknown or deactivated user is not found (404). Readers see the green documents, editors every document.
 		 */
-		put: operations['share_space_api_v1_spaces__id__shares__user_id__put'];
+		put: operations['set_member_api_v1_spaces__id__members__user_id__put'];
 		post?: never;
 		/**
-		 * Stop sharing a space with a user
-		 * @description The owner and admins.
+		 * Remove a member
+		 * @description Editors of the space and admins. As adding one. The user of a personal space stays, and a space keeps one editor (422).
 		 */
-		delete: operations['unshare_space_api_v1_spaces__id__shares__user_id__delete'];
+		delete: operations['remove_member_api_v1_spaces__id__members__user_id__delete'];
 		options?: never;
 		head?: never;
 		patch?: never;
@@ -790,13 +790,13 @@ export interface paths {
 		};
 		/**
 		 * List rules
-		 * @description The caller's rules and the global rules, in the order they are applied (priority, then global before user rules, then older first). Deleted rules are not listed.
+		 * @description The global rules and the rules of the spaces the caller edits (with `space_id`, only that space's), in the order they are applied (priority, then global before space rules, then older first). Deleted rules are not listed.
 		 */
 		get: operations['list_rules_api_v1_rules_get'];
 		put?: never;
 		/**
 		 * Create a rule
-		 * @description Global rules: admins only (403). The content is checked: operators fit the field and the field's data type, patterns compile, a global rule only tags, sets fields and forces reviews (422, the message names the place, such as `conditions.all[1].any[0]` or `actions[2]`); contacts, types, tags, fields and spaces exist (404); a user rule files only into spaces its owner may write to (403).
+		 * @description Global rules: admins only (403). A space rule needs edit rights on its space (403; 404 for a space the caller is no member of). The content is checked: operators fit the field and the field's data type, patterns compile (422, the message names the place, such as `conditions.all[1].any[0]` or `actions[2]`); contacts, types, tags, fields and spaces exist (404); a rule files only into spaces the caller may file into (403), or hands documents over into another user's personal space.
 		 */
 		post: operations['create_rule_api_v1_rules_post'];
 		delete?: never;
@@ -814,25 +814,25 @@ export interface paths {
 		};
 		/**
 		 * A rule
-		 * @description Global rules: everyone; user rules: their owner and admins. Other users' rules are not found (404).
+		 * @description Global rules: everyone; space rules: the editors of their space and admins. The rules of other spaces are not found (404).
 		 */
 		get: operations['get_rule_api_v1_rules__id__get'];
 		/**
 		 * Change a rule
-		 * @description Makes a new version; earlier ones stay readable. A user rule: its owner and admins (its references are checked for its owner). A global rule: admins. The content is checked: operators fit the field and the field's data type, patterns compile, a global rule only tags, sets fields and forces reviews (422, the message names the place, such as `conditions.all[1].any[0]` or `actions[2]`); contacts, types, tags, fields and spaces exist (404); a user rule files only into spaces its owner may write to (403).
+		 * @description Makes a new version; earlier ones stay readable. A space rule: the editors of its space and admins (its references are checked for the caller, who saves it). A global rule: admins. The content is checked: operators fit the field and the field's data type, patterns compile (422, the message names the place, such as `conditions.all[1].any[0]` or `actions[2]`); contacts, types, tags, fields and spaces exist (404); a rule files only into spaces the caller may file into (403), or hands documents over into another user's personal space.
 		 */
 		put: operations['change_rule_api_v1_rules__id__put'];
 		post?: never;
 		/**
 		 * Delete a rule
-		 * @description A user rule: its owner and admins (its references are checked for its owner). A global rule: admins. The rule never runs again and is no longer listed; its versions stay readable, so the processing log can be read.
+		 * @description A space rule: the editors of its space and admins (its references are checked for the caller, who saves it). A global rule: admins. The rule never runs again and is no longer listed; its versions stay readable, so the processing log can be read.
 		 */
 		delete: operations['delete_rule_api_v1_rules__id__delete'];
 		options?: never;
 		head?: never;
 		/**
 		 * Enable or disable a rule
-		 * @description A user rule: its owner and admins (its references are checked for its owner). A global rule: admins. Makes no version. Enabling checks the references again: a rule disabled because something it uses was deleted stays disabled until it is changed.
+		 * @description A space rule: the editors of its space and admins (its references are checked for the caller, who saves it). A global rule: admins. Makes no version. Enabling checks the references again: a rule disabled because something it uses was deleted stays disabled until it is changed.
 		 */
 		patch: operations['patch_rule_api_v1_rules__id__patch'];
 		trace?: never;
@@ -846,7 +846,7 @@ export interface paths {
 		};
 		/**
 		 * Versions of a rule
-		 * @description Oldest first; also of a deleted rule. Global rules: everyone; user rules: their owner and admins. Other users' rules are not found (404).
+		 * @description Oldest first; also of a deleted rule. Global rules: everyone; space rules: the editors of their space and admins. The rules of other spaces are not found (404).
 		 */
 		get: operations['list_rule_versions_api_v1_rules__id__versions_get'];
 		put?: never;
@@ -866,7 +866,7 @@ export interface paths {
 		};
 		/**
 		 * A version of a rule
-		 * @description Global rules: everyone; user rules: their owner and admins. Other users' rules are not found (404).
+		 * @description Global rules: everyone; space rules: the editors of their space and admins. The rules of other spaces are not found (404).
 		 */
 		get: operations['get_rule_version_api_v1_rules__id__versions__number__get'];
 		put?: never;
@@ -888,7 +888,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Preview applying a rule to existing documents
-		 * @description The documents the rule's current version would change, newest first, with what would change and the conflicts (a field that has another value). Nothing is stored. A user rule: its owner and admins, on the documents of the rule's owner. A global rule: anyone, on the documents they may write to (admins: every document). Documents in processing are left out.
+		 * @description The documents the rule's current version would change, newest first, with what would change and the conflicts (a field that has another value). Nothing is stored. A space rule: the editors of its space and admins, on the documents in its space. A global rule: anyone, on the documents they may edit (admins: every document). Documents in processing are left out.
 		 */
 		post: operations['preview_apply_api_v1_rules__id__apply_preview_post'];
 		delete?: never;
@@ -908,7 +908,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Apply a rule to existing documents
-		 * @description Applies the given version to the selected documents in the background; follow it at `GET /rule-applications/{id}`. Rights are checked again for every document. Conflicts are applied only for documents in `accept_conflicts`; forced reviews do not act. A user rule: its owner and admins, on the documents of the rule's owner. A global rule: anyone, on the documents they may write to (admins: every document). Documents in processing are left out.
+		 * @description Applies the given version to the selected documents in the background; follow it at `GET /rule-applications/{id}`. Rights are checked again for every document. Conflicts are applied only for documents in `accept_conflicts`; forced reviews do not act. A space rule: the editors of its space and admins, on the documents in its space. A global rule: anyone, on the documents they may edit (admins: every document). Documents in processing are left out.
 		 */
 		post: operations['apply_rule_api_v1_rules__id__apply_post'];
 		delete?: never;
@@ -1046,13 +1046,13 @@ export interface paths {
 		};
 		/**
 		 * List documents
-		 * @description The documents within the caller's reach, newest first: their own, and green documents in spaces they own or that are shared with them. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type, space, group, topic or lane, all tags; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `document_date_from` and `document_date_to`: the document date lies between them, both days included, either end open (a document without a date does not match). `sort` orders by arrival (the default, newest first), document date, title, or (`field` with `sort_field_id`) the value of a field of type date, period (by its first day), number or amount (by its value); documents without a date or value come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `GET /documents/search`.
+		 * @description The documents within the caller's reach, newest first: every document in the spaces they edit, the green ones in the spaces they read. Admins may read every document and list them all with `all_users` (others: 403). Filters combine; `contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, `document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type, space, group, topic or lane, all tags; `processing`: no lane yet). A tag matches the documents with it or a tag below it; a group those whose contact (type) is in it or a group below it; a topic the documents with it or one below it. `field_id`: a value for the field is set. `document_date_from` and `document_date_to`: the document date lies between them, both days included, either end open (a document without a date does not match). `sort` orders by arrival (the default, newest first), document date, title, or (`field` with `sort_field_id`) the value of a field of type date, period (by its first day), number or amount (by its value); documents without a date or value come last. Each document says whether it stands in the caller's inbox (`in_inbox`). To search by words and meaning use `GET /documents/search`.
 		 */
 		get: operations['list_documents_api_v1_documents_get'];
 		put?: never;
 		/**
 		 * Upload a document
-		 * @description Stores the file and starts processing in the background. The file is hashed while it is received; a file the caller already has is rejected with 409. Follow the progress at `status_url` or with `GET /events`.
+		 * @description Stores the file and starts processing in the background, in the uploader's personal space unless `space_id` names another. The file is hashed while it is received; a file the uploader can read (in a space they edit, or green in a space they read), or one in the target space, is rejected with 409, naming the document if the caller may read it. Follow the progress at `status_url` or with `GET /events`.
 		 */
 		post: operations['upload_api_v1_documents_post'];
 		delete?: never;
@@ -1097,14 +1097,14 @@ export interface paths {
 		post?: never;
 		/**
 		 * Delete a document
-		 * @description The owner and admins.
+		 * @description Editors of the document's space and admins.
 		 */
 		delete: operations['delete_document_api_v1_documents__id__delete'];
 		options?: never;
 		head?: never;
 		/**
 		 * Change a document's metadata
-		 * @description Needs write access (owner or a `read_write` share). Referenced contact, type, tags and fields must exist; field values must fit their type and apply to the document type. On a filed document, the change sets off the owner's rules and the global ones with trigger `change` that hold after it and did not before; fields set in the change stay as they are. The owner sees what the rules did in `rules`. If the rules filed the document where the caller can no longer read it, the answer has only its `id` and `access: null`.
+		 * @description Editors of the document's space and admins. Referenced contact, type, tags and fields must exist; field values must fit their type and apply to the document type. On a filed document, the change sets off the rules of its space and the global ones with trigger `change` that hold after it and did not before; fields set in the change stay as they are. `rules` says what the rules did. If the rules filed the document where the caller can no longer read it, the answer has only its `id` and `access: null`.
 		 */
 		patch: operations['update_document_api_v1_documents__id__patch'];
 		trace?: never;
@@ -1120,7 +1120,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Try a metadata change
-		 * @description What `PATCH /documents/{id}` with this body would do, without storing anything: the document afterwards, the fields that would change, what the rules would do (owner and admins) and who would see it. Needs write access.
+		 * @description What `PATCH /documents/{id}` with this body would do, without storing anything: the document afterwards, the fields that would change, what the rules would do and who would see it (the members of the space it would lie in). Editors and admins.
 		 */
 		post: operations['preview_change_api_v1_documents__id__dry_run_post'];
 		delete?: never;
@@ -1140,7 +1140,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Move a document to another space
-		 * @description The owner moves into spaces they may write to; an admin moves any document into any space. Shares do not allow moving.
+		 * @description Editors of the document's space move it into a space they edit, or hand it over into another active user's personal space (they need not be a member there); an admin moves any document anywhere. Readers do not move. 409 if the target holds the same file (naming it if the caller may read it). A green document becomes new for the target's editors who could not read it before.
 		 */
 		post: operations['move_document_api_v1_documents__id__move_post'];
 		delete?: never;
@@ -1278,7 +1278,7 @@ export interface paths {
 		};
 		/**
 		 * What a node sent to the language model
-		 * @description The owner and admins, as the log. The messages, the answer and the usage report of every call of `node` to the language model, per processing run, oldest first; empty if it never asked one (also for runs from before the messages were kept). For `ocr`, the vision language model's calls, one per page; the page image stands in the message as a placeholder.
+		 * @description Editors of the document's space and admins, as the log. The messages, the answer and the usage report of every call of `node` to the language model, per processing run, oldest first; empty if it never asked one (also for runs from before the messages were kept). For `ocr`, the vision language model's calls, one per page; the page image stands in the message as a placeholder.
 		 */
 		get: operations['model_exchanges_api_v1_documents__id__exchanges__node__get'];
 		put?: never;
@@ -1298,7 +1298,7 @@ export interface paths {
 		};
 		/**
 		 * Processing log of a document
-		 * @description The owner and admins. Every execution of every node, oldest first.
+		 * @description Editors of the document's space and admins. Every execution of every node, oldest first.
 		 */
 		get: operations['processing_log_api_v1_documents__id__log_get'];
 		put?: never;
@@ -1320,7 +1320,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Repeat the failed node
-		 * @description The owner and admins. Processing continues with the following nodes.
+		 * @description Editors of the document's space and admins. Processing continues with the following nodes.
 		 */
 		post: operations['retry_api_v1_documents__id__retry_post'];
 		delete?: never;
@@ -1340,7 +1340,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Read the document with the vision language model
-		 * @description The owner and admins. Sends every page as an image to the vision language model (`LEKTO_VLM_*`, named in `GET /pipeline`) and processes the document again from `ocr`: the model's text becomes the archive's text layer and is checked like any other OCR. Only a person asks for it; the advice is in `GET /documents/{id}/reading`. 409 without a model, while processing runs, or past a failed node.
+		 * @description Editors of the document's space and admins. Sends every page as an image to the vision language model (`LEKTO_VLM_*`, named in `GET /pipeline`) and processes the document again from `ocr`: the model's text becomes the archive's text layer and is checked like any other OCR. Only a person asks for it; the advice is in `GET /documents/{id}/reading`. 409 without a model, while processing runs, or past a failed node.
 		 */
 		post: operations['read_with_vision_api_v1_documents__id__vision_post'];
 		delete?: never;
@@ -1398,7 +1398,7 @@ export interface paths {
 		};
 		/**
 		 * How the text of a document was read
-		 * @description The owner and admins, as the log. Whether the archive's text is the vision language model's, the words and unsure words of each page its latest OCR recognised, and whether reading it with the model is advised.
+		 * @description Editors of the document's space and admins, as the log. Whether the archive's text is the vision language model's, the words and unsure words of each page its latest OCR recognised, and whether reading it with the model is advised.
 		 */
 		get: operations['reading_api_v1_documents__id__reading_get'];
 		put?: never;
@@ -1420,7 +1420,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Process again from a node
-		 * @description The owner and admins. Discards the results from `from_node` on, e.g. after a model change. Not while processing runs, not past a failed node, and not from `file` while uncertain fields wait for confirmation.
+		 * @description Editors of the document's space and admins. Discards the results from `from_node` on, e.g. after a model change. Not while processing runs, not past a failed node, and not from `file` while uncertain fields wait for confirmation.
 		 */
 		post: operations['reprocess_api_v1_documents__id__reprocess_post'];
 		delete?: never;
@@ -1439,7 +1439,7 @@ export interface paths {
 		get?: never;
 		/**
 		 * Mark a document as seen
-		 * @description The caller saw the document: if it stands in their inbox as new, it leaves it (`done`, `GET /inbox`); seen again later, it keeps that time. The web UI calls it when the document view opens; reading a document (`GET /documents/{id}`, MCP) does not. Needs read access; nothing changes for a document that is new for no one, or one the caller reaches through a share only (it never stands in their inbox). Seen is per user and changes nothing else: not `confirmed_at`, the training, rules or the lane.
+		 * @description The caller saw the document: if it stands in their inbox as new, it leaves it (`done`, `GET /inbox`); seen again later, it keeps that time. The web UI calls it when the document view opens; reading a document (`GET /documents/{id}`, MCP) does not. Needs read access; nothing changes for a document that is new for no one, or one in a space the caller only reads (it never stands in their inbox). Seen is per user and changes nothing else: not `confirmed_at`, the training, rules or the lane.
 		 */
 		put: operations['mark_seen_api_v1_documents__id__seen_put'];
 		post?: never;
@@ -1462,7 +1462,7 @@ export interface paths {
 		};
 		/**
 		 * What the model proposed for a document
-		 * @description The owner and admins. The open nodes and fields, and the latest classification and field extraction by the model: each field as proposed, checked and applied.
+		 * @description Editors of the document's space and admins. The open nodes and fields, and the latest classification and field extraction by the model: each field as proposed, checked and applied.
 		 */
 		get: operations['review_api_v1_documents__id__review_get'];
 		put?: never;
@@ -1484,7 +1484,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Confirm a document from the inbox
-		 * @description The owner and admins, for yellow and red documents that are not being processed. `space_id` must be a space the owner may write to; an admin chooses any space. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `space`, `title` and `review` always have a value: confirming keeps it, `space_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the owner decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's).
+		 * @description Editors of the document's space and admins, for yellow and red documents that are not being processed. `space_id` moves the document as `POST /documents/{id}/move` does: into a space the caller edits, or another user's personal space; an admin chooses any space. Every open field of the nodes before `resume_at` (and of `apply_rules` when processing resumes with it) needs a decision: a value or null in `changes`, a value the document already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 lists the open fields in `open_fields`. The rules' fields `space`, `title` and `review` always have a value: confirming keeps it, `space_id` moves the document. The results before `resume_at` count as confirmed; processing continues from there up to filing, and the rules leave what the person decided or changed as it is. From `fields` on, the fields read again replace the ones the document has; otherwise the type's title pattern is rendered with the decided values (while the title is the machine's).
 		 */
 		post: operations['confirm_api_v1_documents__id__confirm_post'];
 		delete?: never;
@@ -1502,7 +1502,7 @@ export interface paths {
 		};
 		/**
 		 * The caller's inbox
-		 * @description The caller's own documents that wait for them, newest first: in processing, yellow (`review`), red (`intervene`), and new ones, which went green without a person's decision and are not seen by the caller since (`PUT /documents/{id}/seen`); each with its open nodes and fields. Documents the caller reaches through a share never stand there. `tab` takes one of them, or `done`: what left the inbox in the last 14 days, with how (confirmed out of yellow or red, or seen), when and by whom, newest first by when it left (a `cursor` whose document is no longer done: 422). With `all_users` (admins, others: 403) every user's inbox, with the caller's own seen. Confirm yellow and red documents with `POST /documents/{id}/confirm`, or repeat a failed node with `retry`.
+		 * @description The documents in the spaces the caller edits that wait for them, newest first: in processing, yellow (`review`), red (`intervene`), and new ones, which went green without a person's decision and are not seen by the caller since (`PUT /documents/{id}/seen`); each with its open nodes and fields. Documents in spaces the caller only reads never stand there. `tab` takes one of them, or `done`: what left the inbox in the last 14 days, with how (confirmed out of yellow or red, or seen), when and by whom, newest first by when it left (a `cursor` whose document is no longer done: 422). With `all_users` (admins, others: 403) every user's inbox, with the caller's own seen. Confirm yellow and red documents with `POST /documents/{id}/confirm`, or repeat a failed node with `retry`.
 		 */
 		get: operations['list_inbox_api_v1_inbox_get'];
 		put?: never;
@@ -1628,7 +1628,7 @@ export interface paths {
 		put?: never;
 		/**
 		 * Create a webhook
-		 * @description Lekto sends a signed request to the URL for each event of the chosen types on documents within the owner's reach: their own, and green ones in spaces they own or that are shared with them (an admin's webhooks too; the rights of an admin do not widen them). The answer holds the secret, shown only once. A user has at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409).
+		 * @description Lekto sends a signed request to the URL for each event of the chosen types on documents within the reach of the webhook's owner: every document in the spaces they edit, the green ones in the spaces they read (an admin's webhooks too; the rights of an admin do not widen them). The answer holds the secret, shown only once. A user has at most as many webhooks as `LEKTO_WEBHOOKS_PER_USER` allows (409).
 		 */
 		post: operations['create_webhook_api_v1_webhooks_post'];
 		delete?: never;
@@ -1830,6 +1830,11 @@ export interface components {
 			 * @example alice
 			 */
 			username: string;
+			/**
+			 * Personal Space Id
+			 * @description The user's personal space, where a document is handed over to them (`POST /documents/{id}/move`); in `GET /users` and `GET /users/{id}`.
+			 */
+			personal_space_id?: string | null;
 			role?: components['schemas']['Role'] | null;
 			/** Active */
 			active?: boolean | null;
@@ -2393,7 +2398,7 @@ export interface components {
 			resume_at: components['schemas']['ResumeNode'];
 			/**
 			 * Space Id
-			 * @description Move the document into this space (one the owner may write to); decides the rules' open field `space`. Default: it stays where it is.
+			 * @description Move the document into this space (one the caller edits, or another user's personal space); decides the rules' open field `space`. Default: it stays where it is.
 			 */
 			space_id?: string | null;
 		};
@@ -2586,7 +2591,7 @@ export interface components {
 		/**
 		 * DocumentChanged
 		 * @example {
-		 *       "access": "read_write",
+		 *       "access": "edit",
 		 *       "channel": "web",
 		 *       "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "created_at": "2026-04-02T08:15:00Z",
@@ -2601,7 +2606,6 @@ export interface components {
 		 *       "lane": "green",
 		 *       "media_type": "application/pdf",
 		 *       "original_filename": "scan_0042.pdf",
-		 *       "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "page_count": 2,
 		 *       "processing": {
 		 *         "nodes": [
@@ -2628,7 +2632,8 @@ export interface components {
 		 *       "space_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "tag_ids": [],
 		 *       "title": "Electricity bill March",
-		 *       "updated_at": "2026-04-02T08:16:10Z"
+		 *       "updated_at": "2026-04-02T08:16:10Z",
+		 *       "uploaded_by": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b"
 		 *     }
 		 */
 		DocumentChanged: {
@@ -2655,17 +2660,18 @@ export interface components {
 			 */
 			sha256: string;
 			/**
-			 * Owner Id
-			 * Format: uuid
+			 * Uploaded By
+			 * @description Who put the document into Lekto; information only, no rights come with it. Null once their account is deleted.
 			 */
-			owner_id: string;
+			uploaded_by: string | null;
 			/**
 			 * Space Id
 			 * Format: uuid
+			 * @description The space it lies in: its members have the rights.
 			 */
 			space_id: string;
-			/** @description What the caller may do: read, or read and write. */
-			access: components['schemas']['ShareLevel'];
+			/** @description What the caller may do: `read`, or `edit` (change, confirm, move, delete); admins edit every document. */
+			access: components['schemas']['SpaceRole'];
 			/** Contact Id */
 			contact_id: string | null;
 			/** Document Type Id */
@@ -2716,7 +2722,7 @@ export interface components {
 			updated_at: string;
 			/**
 			 * Rules
-			 * @description For the owner: the rules the change set off (they hold now and did not before) and what they did. Nothing turns yellow; what could not be applied is listed.
+			 * @description For editors: the rules the change set off (they hold now and did not before) and what they did. Nothing turns yellow; what could not be applied is listed.
 			 */
 			rules?: components['schemas']['RuleReportOut'][] | null;
 		};
@@ -2724,7 +2730,7 @@ export interface components {
 		 * DocumentDetails
 		 * @description A document's metadata and processing state, with the caller's access.
 		 * @example {
-		 *       "access": "read_write",
+		 *       "access": "edit",
 		 *       "channel": "web",
 		 *       "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "created_at": "2026-04-02T08:15:00Z",
@@ -2739,7 +2745,6 @@ export interface components {
 		 *       "lane": "green",
 		 *       "media_type": "application/pdf",
 		 *       "original_filename": "scan_0042.pdf",
-		 *       "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "page_count": 2,
 		 *       "processing": {
 		 *         "nodes": [
@@ -2766,7 +2771,8 @@ export interface components {
 		 *       "space_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "tag_ids": [],
 		 *       "title": "Electricity bill March",
-		 *       "updated_at": "2026-04-02T08:16:10Z"
+		 *       "updated_at": "2026-04-02T08:16:10Z",
+		 *       "uploaded_by": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b"
 		 *     }
 		 */
 		DocumentDetails: {
@@ -2793,17 +2799,18 @@ export interface components {
 			 */
 			sha256: string;
 			/**
-			 * Owner Id
-			 * Format: uuid
+			 * Uploaded By
+			 * @description Who put the document into Lekto; information only, no rights come with it. Null once their account is deleted.
 			 */
-			owner_id: string;
+			uploaded_by: string | null;
 			/**
 			 * Space Id
 			 * Format: uuid
+			 * @description The space it lies in: its members have the rights.
 			 */
 			space_id: string;
-			/** @description What the caller may do: read, or read and write. */
-			access: components['schemas']['ShareLevel'];
+			/** @description What the caller may do: `read`, or `edit` (change, confirm, move, delete); admins edit every document. */
+			access: components['schemas']['SpaceRole'];
 			/** Contact Id */
 			contact_id: string | null;
 			/** Document Type Id */
@@ -2970,8 +2977,8 @@ export interface components {
 			| '-field';
 		/**
 		 * DocumentOutOfReach
-		 * @description After a change by an editor: the owner's rules filed the document where the editor can
-		 *     no longer read it. The change is stored; nothing else about the document is shown.
+		 * @description After a change: the rules filed the document where the caller can no longer read it.
+		 *     The change is stored; nothing else about the document is shown.
 		 */
 		DocumentOutOfReach: {
 			/**
@@ -3055,7 +3062,7 @@ export interface components {
 			changed: string[];
 			/**
 			 * Rules
-			 * @description For the owner: the rules the change would set off, and what they would do.
+			 * @description For editors: the rules the change would set off, and what they would do.
 			 */
 			rules: components['schemas']['RuleReportOut'][] | null;
 			/** @description Who would see the document; null if the caller could not read it then. */
@@ -4019,7 +4026,7 @@ export interface components {
 		 * ListedDocument
 		 * @description A document of a list or a search, with whether it stands in the caller's inbox.
 		 * @example {
-		 *       "access": "read_write",
+		 *       "access": "edit",
 		 *       "channel": "web",
 		 *       "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "created_at": "2026-04-02T08:15:00Z",
@@ -4035,7 +4042,6 @@ export interface components {
 		 *       "lane": "green",
 		 *       "media_type": "application/pdf",
 		 *       "original_filename": "scan_0042.pdf",
-		 *       "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "page_count": 2,
 		 *       "processing": {
 		 *         "nodes": [
@@ -4062,7 +4068,8 @@ export interface components {
 		 *       "space_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
 		 *       "tag_ids": [],
 		 *       "title": "Electricity bill March",
-		 *       "updated_at": "2026-04-02T08:16:10Z"
+		 *       "updated_at": "2026-04-02T08:16:10Z",
+		 *       "uploaded_by": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b"
 		 *     }
 		 */
 		ListedDocument: {
@@ -4089,17 +4096,18 @@ export interface components {
 			 */
 			sha256: string;
 			/**
-			 * Owner Id
-			 * Format: uuid
+			 * Uploaded By
+			 * @description Who put the document into Lekto; information only, no rights come with it. Null once their account is deleted.
 			 */
-			owner_id: string;
+			uploaded_by: string | null;
 			/**
 			 * Space Id
 			 * Format: uuid
+			 * @description The space it lies in: its members have the rights.
 			 */
 			space_id: string;
-			/** @description What the caller may do: read, or read and write. */
-			access: components['schemas']['ShareLevel'];
+			/** @description What the caller may do: `read`, or `edit` (change, confirm, move, delete); admins edit every document. */
+			access: components['schemas']['SpaceRole'];
 			/** Contact Id */
 			contact_id: string | null;
 			/** Document Type Id */
@@ -4328,6 +4336,25 @@ export interface components {
 			totp_enabled: boolean;
 			/** Linked Accounts */
 			linked_accounts: components['schemas']['LinkOut'][];
+		};
+		/**
+		 * MemberIn
+		 * @example {
+		 *       "role": "read"
+		 *     }
+		 */
+		MemberIn: {
+			/** @description `read`: the space's green documents; `edit`: every document in it in every lane, changing, confirming, moving and deleting them, the space's rules, members and name. */
+			role: components['schemas']['SpaceRole'];
+		};
+		/** MemberOut */
+		MemberOut: {
+			/**
+			 * User Id
+			 * Format: uuid
+			 */
+			user_id: string;
+			role: components['schemas']['SpaceRole'];
 		};
 		/** MetadataEntryOut */
 		MetadataEntryOut: {
@@ -4938,7 +4965,7 @@ export interface components {
 		 *       },
 		 *       "name": "Telekom to household",
 		 *       "priority": 100,
-		 *       "scope": "user",
+		 *       "scope": "space",
 		 *       "triggers": [
 		 *         "ingest",
 		 *         "change"
@@ -4977,10 +5004,15 @@ export interface components {
 				| components['schemas']['ForceReviewAction']
 			)[];
 			/**
-			 * @description `user`: the caller's rule, for their documents. `global` (admins): for every document, but only tags, fields and reviews.
-			 * @default user
+			 * @description `space`: a rule of the space `space_id` (one the caller edits; default: the caller's personal space), for the documents in it. `global` (admins): for every document.
+			 * @default space
 			 */
 			scope: components['schemas']['RuleScope'];
+			/**
+			 * Space Id
+			 * @description The space a space rule belongs to; none for a global rule.
+			 */
+			space_id?: string | null;
 		};
 		/**
 		 * RuleDefinitionIn
@@ -5103,10 +5135,10 @@ export interface components {
 			id: string;
 			scope: components['schemas']['RuleScope'];
 			/**
-			 * Owner Id
-			 * @description None for global rules.
+			 * Space Id
+			 * @description The space the rule belongs to and acts in; None for global rules.
 			 */
-			owner_id: string | null;
+			space_id: string | null;
 			/**
 			 * Version
 			 * @description The current version.
@@ -5172,7 +5204,7 @@ export interface components {
 		 * RuleScope
 		 * @enum {string}
 		 */
-		RuleScope: 'global' | 'user';
+		RuleScope: 'global' | 'space';
 		/** RuleVersionOut */
 		RuleVersionOut: {
 			/** Name */
@@ -5346,7 +5378,7 @@ export interface components {
 			/**
 			 * Space Id
 			 * Format: uuid
-			 * @description A space the rule's owner may write to (user rules).
+			 * @description A space whoever saves the rule may file into, or another user's personal space (handing the document over).
 			 */
 			space_id: string;
 		};
@@ -5359,7 +5391,7 @@ export interface components {
 			type: 'set_title';
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md
 			 * @example {{ contact }} {{ document_type }} {{ document_date | date: '%Y-%m' }}
 			 */
 			template: string;
@@ -5381,29 +5413,6 @@ export interface components {
 			 * @description A tag of scope `topic`.
 			 */
 			topic_id: string;
-		};
-		/**
-		 * ShareIn
-		 * @example {
-		 *       "level": "read"
-		 *     }
-		 */
-		ShareIn: {
-			level: components['schemas']['ShareLevel'];
-		};
-		/**
-		 * ShareLevel
-		 * @enum {string}
-		 */
-		ShareLevel: 'read' | 'read_write';
-		/** ShareOut */
-		ShareOut: {
-			/**
-			 * User Id
-			 * Format: uuid
-			 */
-			user_id: string;
-			level: components['schemas']['ShareLevel'];
 		};
 		/**
 		 * Signal
@@ -5443,10 +5452,19 @@ export interface components {
 			 */
 			name: string;
 			/**
-			 * Owner Id
-			 * @description Admins only: the user who will own the space. Default: the caller.
+			 * Members
+			 * @description Who else is a member, with their role. The caller always edits a space they create; an admin may give the members alone (one of them must edit).
 			 */
-			owner_id?: string | null;
+			members?: components['schemas']['SpaceMember'][] | null;
+		};
+		/** SpaceMember */
+		SpaceMember: {
+			/**
+			 * User Id
+			 * Format: uuid
+			 */
+			user_id: string;
+			role: components['schemas']['SpaceRole'];
 		};
 		/** SpaceOut */
 		SpaceOut: {
@@ -5457,29 +5475,32 @@ export interface components {
 			id: string;
 			/**
 			 * Name
+			 * @description A personal space has a fixed name; it is shown by its user's name.
 			 * @example Household
 			 */
 			name: string;
 			/**
-			 * Owner Id
-			 * Format: uuid
+			 * Personal Of
+			 * @description The user whose personal space it is: what they upload lands there.
 			 */
-			owner_id: string;
-			/** Is Default */
-			is_default: boolean;
-			/** @description The caller's access: owner and admins (read_write), or the share. */
-			access: components['schemas']['ShareLevel'];
-			/**
-			 * Shares
-			 * @description Only for the owner and admins.
-			 */
-			shares: components['schemas']['ShareOut'][] | null;
+			personal_of: string | null;
+			/** @description The caller's role; admins edit every space. */
+			role: components['schemas']['SpaceRole'];
+			/** Members */
+			members: components['schemas']['MemberOut'][];
 			/**
 			 * Created At
 			 * Format: date-time
 			 */
 			created_at: string;
+			/** Version */
+			version: number;
 		};
+		/**
+		 * SpaceRole
+		 * @enum {string}
+		 */
+		SpaceRole: 'read' | 'edit';
 		/** SpanOut */
 		SpanOut: {
 			/**
@@ -5659,7 +5680,7 @@ export interface components {
 		TemplatePreviewIn: {
 			/**
 			 * Template
-			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `owner`, `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md
+			 * @description A Liquid template (`{{ value }}`, `{% if value %}…{% endif %}`, filters with `|`). Values: `title`, `filename` (the original's name without extension), `original_filename`, `contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, those set), `contact_groups` and `document_type_groups` (lists, the groups the contact and the type are in), `space`, `uploaded_by` (who uploaded it), `channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and `.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, `2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM yyyy'`), `currency`, `decimal`, in `LEKTO_TEMPLATE_LOCALE`. Writing a missing value sets nothing (`| default: ''` or `{% if %}` make it optional). All of it, with examples: https://github.com/tb1337/lekto-dms/blob/main/docs/templates.md
 			 */
 			template: string;
 			/**
@@ -5838,7 +5859,7 @@ export interface components {
 		};
 		/**
 		 * UserOut
-		 * @description A user. Others than admins see only `id` and `username`.
+		 * @description A user. Others than admins see only `id`, `username` and `personal_space_id`.
 		 */
 		UserOut: {
 			/**
@@ -5851,6 +5872,11 @@ export interface components {
 			 * @example alice
 			 */
 			username: string;
+			/**
+			 * Personal Space Id
+			 * @description The user's personal space, where a document is handed over to them (`POST /documents/{id}/move`); in `GET /users` and `GET /users/{id}`.
+			 */
+			personal_space_id?: string | null;
 			role?: components['schemas']['Role'] | null;
 			/** Active */
 			active?: boolean | null;
@@ -5884,31 +5910,19 @@ export interface components {
 		};
 		/**
 		 * VisibilityOut
-		 * @description Who sees the document. Its owner always; while it is green also the space's owner and
-		 *     the users the space is shared with.
+		 * @description Who sees the document: the members of its space; readers only once it is green.
 		 */
 		VisibilityOut: {
-			/**
-			 * Owner Id
-			 * Format: uuid
-			 * @description The document's owner.
-			 */
-			owner_id: string;
 			/**
 			 * Space Id
 			 * Format: uuid
 			 */
 			space_id: string;
 			/**
-			 * Space Owner Id
-			 * @description None unless the document is green.
+			 * Members
+			 * @description The space's members with their roles; readers see the document once green.
 			 */
-			space_owner_id: string | null;
-			/**
-			 * Shares
-			 * @description The space's shares, if the document is green and the caller owns the space or is an admin; otherwise not shown.
-			 */
-			shares: components['schemas']['ShareOut'][] | null;
+			members: components['schemas']['MemberOut'][];
 		};
 		/**
 		 * VisionAdvice
@@ -6152,7 +6166,7 @@ export interface components {
 			detail: string | null;
 			/**
 			 * Existing Document Id
-			 * @description For a duplicate: the document that has the same file.
+			 * @description For a duplicate: the document that has the same file, if the caller may read it.
 			 * @default null
 			 */
 			existing_document_id: string | null;
@@ -6555,7 +6569,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6684,7 +6698,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6806,7 +6820,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6877,7 +6891,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -6969,7 +6983,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7093,7 +7107,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7236,7 +7250,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7375,7 +7389,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7450,7 +7464,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7555,7 +7569,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7663,7 +7677,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7785,7 +7799,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -7948,7 +7962,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8161,7 +8175,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8289,7 +8303,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8432,7 +8446,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8554,7 +8568,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8661,7 +8675,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8771,7 +8785,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -8863,7 +8877,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9092,7 +9106,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9220,7 +9234,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9365,7 +9379,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9623,7 +9637,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9762,7 +9776,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -9867,7 +9881,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10011,7 +10025,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10103,7 +10117,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10332,7 +10346,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10460,7 +10474,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10605,7 +10619,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10750,7 +10764,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -10842,7 +10856,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11071,7 +11085,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11199,7 +11213,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11343,7 +11357,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11435,7 +11449,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11664,7 +11678,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11792,7 +11806,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -11989,7 +12003,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12218,7 +12232,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12346,7 +12360,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12439,7 +12453,7 @@ export interface operations {
 			};
 		};
 	};
-	share_space_api_v1_spaces__id__shares__user_id__put: {
+	set_member_api_v1_spaces__id__members__user_id__put: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -12451,7 +12465,7 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				'application/json': components['schemas']['ShareIn'];
+				'application/json': components['schemas']['MemberIn'];
 			};
 		};
 		responses: {
@@ -12492,7 +12506,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12568,7 +12582,7 @@ export interface operations {
 			};
 		};
 	};
-	unshare_space_api_v1_spaces__id__shares__user_id__delete: {
+	remove_member_api_v1_spaces__id__members__user_id__delete: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -12617,7 +12631,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12680,8 +12694,9 @@ export interface operations {
 		parameters: {
 			query?: {
 				scope?: components['schemas']['RuleScope'] | null;
+				space_id?: string | null;
 				include_disabled?: boolean;
-				/** @description The rules of every user instead of the caller's (admins). */
+				/** @description The rules of every space instead of the caller's (admins). */
 				all_users?: boolean;
 			};
 			header?: never;
@@ -12727,7 +12742,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -12819,7 +12834,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13037,7 +13052,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13176,7 +13191,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13304,7 +13319,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13630,7 +13645,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13758,7 +13773,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -13974,7 +13989,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -14118,7 +14133,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -14221,7 +14236,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -14309,7 +14324,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -14395,7 +14410,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -14520,7 +14535,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -14579,7 +14594,7 @@ export interface operations {
 					file: string;
 					/**
 					 * Format: uuid
-					 * @description Target space; default: the owner's default space.
+					 * @description Target space, one the caller edits; default: the uploader's personal space.
 					 */
 					space_id?: string;
 					/**
@@ -14589,9 +14604,9 @@ export interface operations {
 					channel?: 'migration';
 					/**
 					 * Format: uuid
-					 * @description Admins only: the active user who owns the document. Default: the caller. The duplicate check, the default space and the write access to `space_id` are the owner's.
+					 * @description Admins only: the active user named as the document's uploader. Default: the caller. Without `space_id` the document goes to their personal space; the duplicate check covers what they can read.
 					 */
-					owner?: string;
+					uploaded_by?: string;
 					/** @description Admins only, with `channel=migration`: JSON of the metadata the document comes with (up to 48 KiB), as `ImportedMetadataIn`. Classification and field extraction apply it instead of asking the language model; the other nodes and the rules run as usual. */
 					metadata?: string;
 				};
@@ -14660,7 +14675,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -14830,7 +14845,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -15008,7 +15023,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -15123,7 +15138,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -15271,7 +15286,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -15414,7 +15429,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -15432,6 +15447,23 @@ export interface operations {
 					 *       "title": "Not Found",
 					 *       "status": 404,
 					 *       "detail": "document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b not found"
+					 *     }
+					 */
+					'application/problem+json': components['schemas']['Problem'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					/**
+					 * @example {
+					 *       "type": "about:blank",
+					 *       "title": "Conflict",
+					 *       "status": 409,
+					 *       "detail": "duplicate of document 01999d5e-8a7f-7c1e-b6a3-2f4d5e6f7a8b"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -16119,7 +16151,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -16226,7 +16258,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -16333,7 +16365,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -16457,7 +16489,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -16778,7 +16810,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -16889,7 +16921,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -17028,7 +17060,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -17133,7 +17165,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -17240,7 +17272,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -17351,7 +17383,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -17498,7 +17530,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -17589,7 +17621,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -17680,7 +17712,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -17822,7 +17854,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -18067,7 +18099,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -18279,7 +18311,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -18390,7 +18422,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -18531,7 +18563,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -18732,7 +18764,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -18912,7 +18944,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -19038,7 +19070,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -19250,7 +19282,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];
@@ -19361,7 +19393,7 @@ export interface operations {
 					 *       "type": "about:blank",
 					 *       "title": "Forbidden",
 					 *       "status": 403,
-					 *       "detail": "only the owner and admins control the processing of this document"
+					 *       "detail": "only editors and admins control the processing of this document"
 					 *     }
 					 */
 					'application/problem+json': components['schemas']['Problem'];

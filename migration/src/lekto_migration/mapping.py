@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 TITLE_LIMIT = 500
 NAME_LIMIT = 200
 
-READ, READ_WRITE = "read", "read_write"
+READ, EDIT = "read", "edit"  # the roles of a space's members
 _MONEY = re.compile(r"(?P<currency>[A-Za-z]{3})?\s*(?P<amount>[-+]?\d+(?:\.\d+)?)")
 
 
@@ -181,10 +181,11 @@ def received_at(
 
 @dataclass(frozen=True)
 class Access:
-    """Who owns a document and who else may read or write it (by Lekto user name)."""
+    """Who owns a document in Paperless and who else may read or change it (by Paperless user
+    name, with the role that becomes in Lekto: `read` or `edit`)."""
 
     owner: str | None
-    shares: tuple[tuple[str, str], ...]  # (username, level), sorted by name
+    shares: tuple[tuple[str, str], ...]  # (username, role), sorted by name
     notes: tuple[str, ...] = ()
 
 
@@ -192,15 +193,16 @@ def access_of(
     document: dict[str, Any],
     users: dict[int, dict[str, Any]],
 ) -> Access:
-    """Readers and writers of a document with groups resolved to their members. The owner is
-    left out of the shares; users that are deactivated or gone cannot be shared with."""
+    """Readers and writers of a document with groups resolved to their members: writers edit,
+    readers read. The owner is left out of the shares; users that are deactivated or gone
+    cannot be members."""
     notes: list[str] = []
     owner_id = document.get("owner")
     owner = None
     if owner_id is None:
-        notes.append("no owner in Paperless: the executing admin owns it")
+        notes.append("no owner in Paperless: the fallback uploads it")
     elif owner_id not in users:
-        notes.append(f"owner {owner_id} no longer exists in Paperless: the executing admin owns it")
+        notes.append(f"owner {owner_id} no longer exists in Paperless: the fallback uploads it")
     else:
         owner = str(users[owner_id]["username"])
     permissions = document.get("permissions") or {}
@@ -223,12 +225,12 @@ def access_of(
             continue
         member = users.get(user_id)
         if member is None:
-            notes.append(f"shared with user {user_id}, who no longer exists: not shared")
+            notes.append(f"shared with user {user_id}, who no longer exists: not a member")
             continue
         if not member.get("is_active", True):
-            notes.append(f"shared with inactive user {member['username']}: not shared")
+            notes.append(f"shared with inactive user {member['username']}: not a member")
             continue
-        shares[str(member["username"])] = READ_WRITE if user_id in writers else READ
+        shares[str(member["username"])] = EDIT if user_id in writers else READ
     return Access(
         owner, tuple(sorted(shares.items(), key=lambda item: norm(item[0]))), tuple(notes)
     )

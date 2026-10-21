@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { inbox } from '#lib/inbox.svelte.ts';
 import { m } from '#lib/paraglide/messages.js';
-import { choose, optionsOf } from '#lib/testing/select.ts';
 import { phone } from '#lib/phone.svelte.ts';
 import { session, type User } from '#lib/session.svelte.ts';
 import { calls, fakeApi, inboxItem, json, OWNER, summaryOf } from '#lib/testing/documents.ts';
@@ -27,19 +26,17 @@ const USERS = [
 const SPACES = [
 	{
 		id: 'space-1',
-		name: 'Privat',
-		owner_id: OWNER,
-		is_default: true,
-		access: 'read_write',
-		shares: []
+		name: 'Personal',
+		personal_of: OWNER,
+		role: 'edit',
+		members: [{ user_id: OWNER, role: 'edit' }]
 	},
 	{
 		id: 'space-2',
-		name: 'Büro',
-		owner_id: 'admin-1',
-		is_default: true,
-		access: 'read_write',
-		shares: []
+		name: 'Personal',
+		personal_of: 'admin-1',
+		role: 'edit',
+		members: [{ user_id: 'admin-1', role: 'edit' }]
 	}
 ];
 
@@ -342,7 +339,7 @@ function droppedFolder() {
 }
 
 describe('uploading in the inbox', () => {
-	it('drops files and folders on the page into the default space', async () => {
+	it('drops files and folders on the page into the personal space', async () => {
 		const api = start([]);
 		await screen.findByText(m.inbox_empty());
 		expect(screen.queryByText(m.upload_drop_overlay())).toBeNull();
@@ -387,7 +384,7 @@ describe('uploading in the inbox', () => {
 		expect(screen.getByRole('button', { name: m.upload_title() })).toBeTruthy();
 	});
 
-	it('uploads with the dialog, into the space and for the owner an admin chose', async () => {
+	it('uploads with the dialog into the personal space, without asking for a space or owner', async () => {
 		signIn('admin');
 		const user = userEvent.setup();
 		const append = vi.spyOn(FormData.prototype, 'append');
@@ -396,36 +393,16 @@ describe('uploading in the inbox', () => {
 			await screen.findByText(m.inbox_empty());
 			await user.click(screen.getByRole('button', { name: m.upload_title() }));
 			const dialog = await screen.findByRole('dialog');
-			const owner = within(dialog).getByLabelText(m.upload_owner());
-			await waitFor(async () => expect(await optionsOf(owner)).toHaveLength(2));
-			await choose(user, owner, OWNER);
-			const space = within(dialog).getByLabelText(m.upload_space());
-			// Only the spaces the owner may write to.
-			expect((await optionsOf(space)).map((option) => option.value)).toEqual(['', 'space-1']);
-			await choose(user, space, 'space-1');
+			expect(within(dialog).queryByRole('combobox')).toBeNull();
 			await user.upload(within(dialog).getByLabelText(m.upload_choose()), [pdf('a.pdf')]);
 			await waitFor(() => expect(calls(api)).toContain('POST /api/v1/documents'));
 			await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 			await waitFor(() => expect(document.body.style.pointerEvents).not.toBe('none'));
 			expect(
 				append.mock.calls.map(([name, value]) => [name, value instanceof File ? value.name : value])
-			).toEqual([
-				['file', 'a.pdf'],
-				['space_id', 'space-1'],
-				['owner', OWNER]
-			]);
+			).toEqual([['file', 'a.pdf']]);
 		} finally {
 			append.mockRestore();
 		}
-	});
-
-	it('asks a user for no owner', async () => {
-		const user = userEvent.setup();
-		start([]);
-		await screen.findByText(m.inbox_empty());
-		await user.click(screen.getByRole('button', { name: m.upload_title() }));
-		const dialog = await screen.findByRole('dialog');
-		expect(within(dialog).queryByLabelText(m.upload_owner())).toBeNull();
-		expect(within(dialog).getByLabelText(m.upload_space())).toBeTruthy();
 	});
 });

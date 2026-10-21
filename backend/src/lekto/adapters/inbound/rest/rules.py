@@ -24,7 +24,7 @@ from lekto.adapters.inbound.rest.schemas.rules import (
     TemplatePreviewOut,
 )
 from lekto.adapters.inbound.schemas import RuleEffectOut, RuleNoteOut
-from lekto.core.domain.ids import DocumentId, DocumentTypeId, RuleApplicationId, RuleId
+from lekto.core.domain.ids import DocumentId, DocumentTypeId, RuleApplicationId, RuleId, SpaceId
 from lekto.core.domain.rules import RuleScope
 from lekto.core.domain.rules_json import definition_from_json
 
@@ -32,19 +32,19 @@ router = APIRouter(prefix="/rules", tags=["rules"], dependencies=PROTECTED)
 templates = APIRouter(prefix="/templates", tags=["rules"], dependencies=PROTECTED)
 
 WHO_CHANGES = (
-    "A user rule: its owner and admins (its references are checked for its owner). A global "
-    "rule: admins."
+    "A space rule: the editors of its space and admins (its references are checked for the "
+    "caller, who saves it). A global rule: admins."
 )
 WHO_READS = (
-    "Global rules: everyone; user rules: their owner and admins. Other users' rules are not "
-    "found (404)."
+    "Global rules: everyone; space rules: the editors of their space and admins. The rules of "
+    "other spaces are not found (404)."
 )
 CHECKS = (
     " The content is checked: operators fit the field and the field's data type, patterns "
-    "compile, a global rule only tags, sets fields and forces reviews (422, the message "
-    "names the place, such as `conditions.all[1].any[0]` or `actions[2]`); contacts, "
-    "types, tags, fields and spaces exist (404); a user rule files only into spaces its "
-    "owner may write to (403)."
+    "compile (422, the message names the place, such as `conditions.all[1].any[0]` or "
+    "`actions[2]`); contacts, types, tags, fields and spaces exist (404); a rule files only "
+    "into spaces the caller may file into (403), or hands documents over into another user's "
+    "personal space."
 )
 
 
@@ -52,8 +52,9 @@ CHECKS = (
     "",
     summary="List rules",
     description=(
-        "The caller's rules and the global rules, in the order they are applied (priority, "
-        "then global before user rules, then older first). Deleted rules are not listed."
+        "The global rules and the rules of the spaces the caller edits (with `space_id`, only "
+        "that space's), in the order they are applied (priority, then global before space "
+        "rules, then older first). Deleted rules are not listed."
     ),
     response_model=list[RuleOut],
     responses=problem_responses(401, 403, 422),
@@ -62,11 +63,16 @@ async def list_rules(
     user: CurrentUser,
     context: Context,
     scope: RuleScope | None = None,
+    space_id: UUID | None = None,
     include_disabled: bool = True,
     all_users: AllRules = False,
 ) -> list[RuleOut]:
     rules = await context.rules.list_rules(
-        user, scope=scope, include_disabled=include_disabled, all_users=all_users
+        user,
+        scope=scope,
+        space=None if space_id is None else SpaceId(space_id),
+        include_disabled=include_disabled,
+        all_users=all_users,
     )
     return [RuleOut.of(rule) for rule in rules]
 
@@ -75,13 +81,17 @@ async def list_rules(
     "",
     status_code=201,
     summary="Create a rule",
-    description="Global rules: admins only (403)." + CHECKS,
+    description=(
+        "Global rules: admins only (403). A space rule needs edit rights on its space (403; "
+        "404 for a space the caller is no member of)." + CHECKS
+    ),
     response_model=RuleOut,
     responses=problem_responses(401, 403, 404, 422),
 )
 async def create_rule(body: RuleCreate, user: CurrentUser, context: Context) -> RuleOut:
     definition = definition_from_json(body.to_json())
-    return RuleOut.of(await context.rules.create(user, body.scope, definition))
+    space = None if body.space_id is None else SpaceId(body.space_id)
+    return RuleOut.of(await context.rules.create(user, body.scope, definition, space=space))
 
 
 @router.get(
@@ -162,9 +172,9 @@ async def get_rule_version(
 
 
 WHO_APPLIES = (
-    "A user rule: its owner and admins, on the documents of the rule's owner. A global rule: "
-    "anyone, on the documents they may write to (admins: every document). Documents in "
-    "processing are left out."
+    "A space rule: the editors of its space and admins, on the documents in its space. A "
+    "global rule: anyone, on the documents they may edit (admins: every document). Documents "
+    "in processing are left out."
 )
 
 

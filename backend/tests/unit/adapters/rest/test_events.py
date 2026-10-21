@@ -9,7 +9,7 @@ import httpx2
 from lekto.adapters.inbound.rest import PREFIX, close_event_streams
 from lekto.composition.container import build_memory_container, build_services
 from lekto.core.domain.events import ClassifierTrained
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from tests.api import Stream, auth, issue_token, listen, serving, until
 from tests.builders import NOW, PASSWORD, SAMPLES
 from tests.unit.adapters.rest.support import Api, make_app
@@ -21,7 +21,7 @@ async def test_events_reach_only_users_who_may_read_the_document(api: Api) -> No
     owner, reader, stranger = await api.user(), await api.user(), await api.user()
     admin = await api.admin()
     shared = await api.services.spaces.create(owner.id, "Shared")
-    await api.services.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
+    await api.services.spaces.set_member(owner.id, shared.id, reader.id, SpaceRole.READ)
 
     async with serving(api.app) as url, httpx2.AsyncClient(base_url=url, timeout=10) as client:
         streams = {user.id: Stream() for user in (owner, reader, stranger, admin)}

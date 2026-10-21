@@ -289,7 +289,7 @@ def _run_section(
             lines.append(
                 f"- {result.case.name}: lane {_lane(result.lane)}; applied fields: "
                 f"{', '.join(changed) or 'none'}; changes without a passed check: "
-                f"{len(result.violations)}; owner and space unchanged, title only as "
+                f"{len(result.violations)}; uploader and space unchanged, title only as "
                 f"checked: {'no' if result.violations else 'yes'}"
             )
     lines += [

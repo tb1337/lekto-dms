@@ -1,6 +1,7 @@
 """Contract of the search index. Needs the fixture `search_index`: an empty index that takes
 vectors of three numbers (`DIMENSIONS`)."""
 
+from collections.abc import Iterable
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from typing import Any
@@ -15,7 +16,6 @@ from lekto.core.domain.ids import (
     FieldId,
     SpaceId,
     TagId,
-    UserId,
     new_id,
 )
 from lekto.core.domain.periods import Period
@@ -29,8 +29,9 @@ DIMENSIONS = 3
 STAMP = EmbeddingStamp("test-model", "abc")
 
 
-def visibility(user: UserId, *spaces: SpaceId) -> Visibility:
-    return Visibility(user, frozenset(spaces))
+def visibility(*edits: SpaceId, reads: Iterable[SpaceId] = ()) -> Visibility:
+    """Who edits `edits` (every document) and reads `reads` (the green ones)."""
+    return Visibility(frozenset(edits), frozenset(reads))
 
 
 def query(text: str, who: Visibility, **fields: Any) -> SearchQuery:
@@ -63,11 +64,11 @@ class SearchIndexContract:
         assert await search_index.state(DocumentId(new_id())) is None
 
     async def test_upsert_replaces_a_document(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
-        document = index_document(owner_id=owner, title="Stromrechnung", version=1)
+        owner = SpaceId(new_id())
+        document = index_document(space_id=owner, title="Stromrechnung", version=1)
         await search_index.upsert([document])
         await search_index.upsert(
-            [index_document(id=document.id, owner_id=owner, title="Mietvertrag", version=2)]
+            [index_document(id=document.id, space_id=owner, title="Mietvertrag", version=2)]
         )
         who = visibility(owner)
         assert await found(search_index, "Stromrechnung", who) == set()
@@ -79,13 +80,13 @@ class SearchIndexContract:
     async def test_vectors_can_be_kept_when_the_document_changes(
         self, search_index: SearchIndex
     ) -> None:
-        owner = UserId(new_id())
+        owner = SpaceId(new_id())
         document = index_document(
-            owner_id=owner, title="Eins", vectors=((0.0, 1.0, 0.0),), embedding=STAMP, version=1
+            space_id=owner, title="Eins", vectors=((0.0, 1.0, 0.0),), embedding=STAMP, version=1
         )
         await search_index.upsert([document])
         await search_index.upsert(
-            [index_document(id=document.id, owner_id=owner, title="Zwei", vectors=None, version=2)]
+            [index_document(id=document.id, space_id=owner, title="Zwei", vectors=None, version=2)]
         )
         state = await search_index.state(document.id)
         assert state is not None
@@ -97,13 +98,13 @@ class SearchIndexContract:
         assert by_meaning.hits[0].id == document.id
 
     async def test_vectors_can_be_dropped(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
+        owner = SpaceId(new_id())
         document = index_document(
-            owner_id=owner, title="Eins", vectors=((0.0, 1.0, 0.0),), embedding=STAMP
+            space_id=owner, title="Eins", vectors=((0.0, 1.0, 0.0),), embedding=STAMP
         )
         await search_index.upsert([document])
         await search_index.upsert(
-            [index_document(id=document.id, owner_id=owner, title="Eins", vectors=())]
+            [index_document(id=document.id, space_id=owner, title="Eins", vectors=())]
         )
         state = await search_index.state(document.id)
         assert state is not None
@@ -114,8 +115,8 @@ class SearchIndexContract:
         assert [state async for state in search_index.states()] == []
 
     async def test_remove(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
-        document = index_document(owner_id=owner, title="Mahnung")
+        owner = SpaceId(new_id())
+        document = index_document(space_id=owner, title="Mahnung")
         await search_index.upsert([document])
         await search_index.remove(document.id)
         await search_index.remove(document.id)  # not there any more: fine
@@ -137,9 +138,9 @@ class SearchIndexContract:
     # --- words ----------------------------------------------------------------------------------
 
     async def test_words_are_found_in_every_field(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
+        owner = SpaceId(new_id())
         document = index_document(
-            owner_id=owner,
+            space_id=owner,
             title="Jahresabrechnung",
             filename="scan0815.pdf",
             text="Der Zählerstand beträgt 4711 Kilowattstunden.",
@@ -148,7 +149,7 @@ class SearchIndexContract:
             tags=("Energie",),
             fields=("Rechnungsnummer: R-2026-77",),
         )
-        other = index_document(owner_id=owner, title="Unrelated")
+        other = index_document(space_id=owner, title="Unrelated")
         await search_index.upsert([document, other])
         who = visibility(owner)
         for word in (
@@ -163,33 +164,32 @@ class SearchIndexContract:
             assert await found(search_index, word, who) == {document.id}, word
 
     async def test_case_does_not_matter(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
-        document = index_document(owner_id=owner, title="Mietvertrag")
+        owner = SpaceId(new_id())
+        document = index_document(space_id=owner, title="Mietvertrag")
         await search_index.upsert([document])
         assert await found(search_index, "MIETVERTRAG", visibility(owner)) == {document.id}
 
     async def test_no_match_no_hit(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
-        await search_index.upsert([index_document(owner_id=owner, title="Mietvertrag")])
+        owner = SpaceId(new_id())
+        await search_index.upsert([index_document(space_id=owner, title="Mietvertrag")])
         result = await search_index.search(query("Zahnarzt", visibility(owner)))
         assert result.hits == []
         assert result.estimated_total == 0
         assert not result.semantic
 
     async def test_query_text_is_text_not_syntax(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
-        other = UserId(new_id())
-        await search_index.upsert([index_document(owner_id=other, title="Geheim")])
-        for text in ['" OR owner_id != "', "lane = green", "*", "\\", "a'b\"c", "(("]:
+        owner = SpaceId(new_id())
+        await search_index.upsert([index_document(title="Geheim")])
+        for text in ['" OR space_id != "', "lane = green", "*", "\\", "a'b\"c", "(("]:
             await search_index.search(query(text, visibility(owner)))  # no error
-        assert await found(search_index, '" OR owner_id != "', visibility(owner)) == set()
+        assert await found(search_index, '" OR space_id != "', visibility(owner)) == set()
 
     async def test_hits_carry_version_score_and_marked_snippet(
         self, search_index: SearchIndex
     ) -> None:
-        owner = UserId(new_id())
+        owner = SpaceId(new_id())
         text = "Sehr geehrte Damen und Herren, wir mahnen die offene Zahlung an. Mit Gruß"
-        document = index_document(owner_id=owner, title="Brief", text=text, version=4)
+        document = index_document(space_id=owner, title="Brief", text=text, version=4)
         await search_index.upsert([document])
         result = await search_index.search(query("Zahlung", visibility(owner)))
         (hit,) = result.hits
@@ -200,9 +200,9 @@ class SearchIndexContract:
         assert shown in text or text in shown or "Zahlung" in shown
 
     async def test_the_snippet_is_plain_text(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
+        owner = SpaceId(new_id())
         text = "Vorsicht <script>alert(1)</script> bei Rechnung & Co"
-        await search_index.upsert([index_document(owner_id=owner, title="x", text=text)])
+        await search_index.upsert([index_document(space_id=owner, title="x", text=text)])
         (hit,) = (await search_index.search(query("Rechnung", visibility(owner)))).hits
         shown = "".join(segment.text for segment in hit.snippet)
         assert "<script>" in shown  # as written, not interpreted: the client escapes
@@ -211,11 +211,10 @@ class SearchIndexContract:
     # --- filters --------------------------------------------------------------------------------
 
     async def test_filters(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
         space_a, space_b = SpaceId(new_id()), SpaceId(new_id())
         contact, kind = ContactId(new_id()), DocumentTypeId(new_id())
         tag_1, tag_2 = TagId(new_id()), TagId(new_id())
-        base = {"owner_id": owner, "text": "Rechnung"}
+        base = {"text": "Rechnung"}
         both = index_document(
             **base, space_id=space_a, contact_id=contact, document_type_id=kind,
             tag_ids=(tag_1, tag_2), lane=Lane.GREEN,
@@ -223,7 +222,7 @@ class SearchIndexContract:
         one_tag = index_document(**base, space_id=space_b, tag_ids=(tag_1,), lane=Lane.YELLOW)
         processing = index_document(**base, space_id=space_b, lane=None)
         await search_index.upsert([both, one_tag, processing])
-        who = visibility(owner)
+        who = visibility(space_a, space_b)
 
         async def with_filter(**fields: object) -> set[DocumentId]:
             return await found(search_index, "Rechnung", who, filter=DocumentFilter(**fields))  # type: ignore[arg-type]
@@ -250,15 +249,15 @@ class SearchIndexContract:
     async def test_tags_with_their_ancestors_and_groups_are_found_by_name(
         self, search_index: SearchIndex
     ) -> None:
-        owner = UserId(new_id())
+        owner = SpaceId(new_id())
         grouped = index_document(
-            owner_id=owner,
+            space_id=owner,
             text="Schreiben",
             tags=("Krankenversicherung", "Versicherungen"),
             contact_groups=("Versorger",),
             document_type_groups=("Belege",),
         )
-        other = index_document(owner_id=owner, text="Schreiben")
+        other = index_document(space_id=owner, text="Schreiben")
         await search_index.upsert([grouped, other])
         who = visibility(owner)
         for word in ("Versicherungen", "Versorger", "Belege"):
@@ -266,16 +265,16 @@ class SearchIndexContract:
         assert await found(search_index, "Schreiben", who) == {grouped.id, other.id}
 
     async def test_groups_of_contact_and_type(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
+        owner = SpaceId(new_id())
         insurer, employer, bills = (TagId(new_id()) for _ in range(3))
         both = index_document(
-            owner_id=owner,
+            space_id=owner,
             text="Rechnung",
             contact_group_ids=(insurer, employer),
             document_type_group_ids=(bills,),
         )
-        employed = index_document(owner_id=owner, text="Rechnung", contact_group_ids=(employer,))
-        neither = index_document(owner_id=owner, text="Rechnung")
+        employed = index_document(space_id=owner, text="Rechnung", contact_group_ids=(employer,))
+        neither = index_document(space_id=owner, text="Rechnung")
         await search_index.upsert([both, employed, neither])
 
         async def with_filter(contacts: TagSets = (), types: TagSets = ()) -> set[DocumentId]:
@@ -290,16 +289,16 @@ class SearchIndexContract:
         assert await with_filter(types=(frozenset({insurer}),)) == set()
 
     async def test_a_topic_with_those_above_it(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
+        owner = SpaceId(new_id())
         insurance, health, work = (TagId(new_id()) for _ in range(3))
         insured = index_document(
-            owner_id=owner,
+            space_id=owner,
             text="Schreiben",
             topic_ids=(health, insurance),
             topics=("Krankenversicherung", "Versicherungen"),
         )
-        working = index_document(owner_id=owner, text="Schreiben", topic_ids=(work,))
-        neither = index_document(owner_id=owner, text="Schreiben")
+        working = index_document(space_id=owner, text="Schreiben", topic_ids=(work,))
+        neither = index_document(space_id=owner, text="Schreiben")
         await search_index.upsert([insured, working, neither])
         who = visibility(owner)
         assert await found(search_index, "Versicherungen", who) == {insured.id}
@@ -313,20 +312,20 @@ class SearchIndexContract:
         assert await with_topics(TagId(new_id())) == set()
 
     async def test_a_field_with_a_value(self, search_index: SearchIndex) -> None:
-        owner, field = UserId(new_id()), FieldId(new_id())
-        with_value = index_document(owner_id=owner, text="Rechnung", field_ids=(field,))
-        without = index_document(owner_id=owner, text="Rechnung")
+        owner, field = SpaceId(new_id()), FieldId(new_id())
+        with_value = index_document(space_id=owner, text="Rechnung", field_ids=(field,))
+        without = index_document(space_id=owner, text="Rechnung")
         await search_index.upsert([with_value, without])
         assert await found(
             search_index, "Rechnung", visibility(owner), filter=DocumentFilter(field=field)
         ) == {with_value.id}
 
     async def test_dated_within_a_period(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
-        first = index_document(owner_id=owner, text="Rechnung", document_date=date(2026, 9, 1))
-        last = index_document(owner_id=owner, text="Rechnung", document_date=date(2026, 9, 30))
-        october = index_document(owner_id=owner, text="Rechnung", document_date=date(2026, 10, 1))
-        undated = index_document(owner_id=owner, text="Rechnung")
+        owner = SpaceId(new_id())
+        first = index_document(space_id=owner, text="Rechnung", document_date=date(2026, 9, 1))
+        last = index_document(space_id=owner, text="Rechnung", document_date=date(2026, 9, 30))
+        october = index_document(space_id=owner, text="Rechnung", document_date=date(2026, 10, 1))
+        undated = index_document(space_id=owner, text="Rechnung")
         await search_index.upsert([first, last, october, undated])
 
         async def within(period: Period) -> set[DocumentId]:
@@ -340,14 +339,14 @@ class SearchIndexContract:
     async def test_sorted_by_date_and_title_without_a_date_last(
         self, search_index: SearchIndex
     ) -> None:
-        owner = UserId(new_id())
+        owner = SpaceId(new_id())
         march = index_document(
-            owner_id=owner, title="Ärztebrief", text="Rechnung", document_date=date(2026, 3, 1)
+            space_id=owner, title="Ärztebrief", text="Rechnung", document_date=date(2026, 3, 1)
         )
         december = index_document(
-            owner_id=owner, title="bank", text="Rechnung", document_date=date(2025, 12, 24)
+            space_id=owner, title="bank", text="Rechnung", document_date=date(2025, 12, 24)
         )
-        undated = index_document(owner_id=owner, title="Abrechnung", text="Rechnung")
+        undated = index_document(space_id=owner, title="Abrechnung", text="Rechnung")
         await search_index.upsert([march, december, undated])
         who = visibility(owner)
 
@@ -385,67 +384,50 @@ class SearchIndexContract:
     # --- rights ---------------------------------------------------------------------------------
 
     async def test_rights_filter(self, search_index: SearchIndex) -> None:
-        me, other = UserId(new_id()), UserId(new_id())
-        mine, shared, foreign = SpaceId(new_id()), SpaceId(new_id()), SpaceId(new_id())
+        edited, read, foreign = SpaceId(new_id()), SpaceId(new_id()), SpaceId(new_id())
+        lanes = (None, Lane.GREEN, Lane.YELLOW, Lane.RED)
 
-        def doc(owner: UserId, space: SpaceId, lane: Lane | None) -> IndexDocument:
-            return index_document(owner_id=owner, space_id=space, lane=lane, text="Vertrag")
+        def doc(space: SpaceId, lane: Lane | None) -> IndexDocument:
+            return index_document(space_id=space, lane=lane, text="Vertrag")
 
-        own = {lane: doc(me, mine, lane) for lane in (None, Lane.GREEN, Lane.YELLOW, Lane.RED)}
-        own_elsewhere = doc(me, foreign, Lane.RED)  # my document in a space I cannot see
-        green_shared = doc(other, shared, Lane.GREEN)
-        green_mine = doc(other, mine, Lane.GREEN)  # another user filed it into my space
-        green_foreign = doc(other, foreign, Lane.GREEN)
-        others_unfinished = [doc(other, shared, lane) for lane in (None, Lane.YELLOW, Lane.RED)]
-        await search_index.upsert(
-            [
-                *own.values(),
-                own_elsewhere,
-                green_shared,
-                green_mine,
-                green_foreign,
-                *others_unfinished,
-            ]
-        )
+        in_edited = {lane: doc(edited, lane) for lane in lanes}
+        in_read = {lane: doc(read, lane) for lane in lanes}
+        in_foreign = {lane: doc(foreign, lane) for lane in lanes}
+        await search_index.upsert([*in_edited.values(), *in_read.values(), *in_foreign.values()])
 
-        expected = {
-            *(document.id for document in own.values()),
-            own_elsewhere.id,
-            green_shared.id,
-            green_mine.id,
+        expected = {*(document.id for document in in_edited.values()), in_read[Lane.GREEN].id}
+        who = visibility(edited, reads=[read])
+        assert await found(search_index, "Vertrag", who) == expected
+        # Reading only: the green documents.
+        assert await found(search_index, "Vertrag", visibility(reads=[read, edited])) == {
+            in_read[Lane.GREEN].id,
+            in_edited[Lane.GREEN].id,
         }
-        assert await found(search_index, "Vertrag", visibility(me, mine, shared)) == expected
-        # Without spaces only the own documents remain.
-        assert await found(search_index, "Vertrag", visibility(me)) == {
-            *(document.id for document in own.values()),
-            own_elsewhere.id,
-        }
-        # A user with no documents and no spaces finds nothing.
-        assert await found(search_index, "Vertrag", visibility(UserId(new_id()))) == set()
+        # A user with no spaces finds nothing.
+        assert await found(search_index, "Vertrag", visibility()) == set()
         # An admin who asks for everything finds every document, in every lane.
-        everything = Visibility(UserId(new_id()), frozenset(), everything=True)
-        assert await found(search_index, "Vertrag", everything) == {
-            *expected,
-            green_foreign.id,
-            *(document.id for document in others_unfinished),
+        everything = Visibility(frozenset(), everything=True)
+        every = {
+            document.id for group in (in_edited, in_read, in_foreign) for document in group.values()
         }
+        assert await found(search_index, "Vertrag", everything) == every
         yellow = DocumentFilter(lanes=frozenset({Lane.YELLOW}))
         assert await found(search_index, "Vertrag", everything, filter=yellow) == {
-            own[Lane.YELLOW].id,
-            others_unfinished[1].id,
+            in_edited[Lane.YELLOW].id,
+            in_read[Lane.YELLOW].id,
+            in_foreign[Lane.YELLOW].id,
         }
 
     async def test_the_rights_filter_applies_with_every_other_filter(
         self, search_index: SearchIndex
     ) -> None:
-        me, other = UserId(new_id()), UserId(new_id())
         space = SpaceId(new_id())
         contact = ContactId(new_id())
         hidden = index_document(
-            owner_id=other, space_id=space, lane=Lane.YELLOW, contact_id=contact, text="Vertrag"
+            space_id=space, lane=Lane.YELLOW, contact_id=contact, text="Vertrag"
         )
         await search_index.upsert([hidden])
-        who = visibility(me, space)
+        who = visibility(reads=[space])
         fields = DocumentFilter(
             contacts=frozenset({contact}), spaces=frozenset({space}), lanes=frozenset({Lane.YELLOW})
         )
@@ -454,8 +436,8 @@ class SearchIndexContract:
     # --- paging ---------------------------------------------------------------------------------
 
     async def test_paging(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
-        documents = [index_document(owner_id=owner, title=f"Rechnung {n}") for n in range(7)]
+        owner = SpaceId(new_id())
+        documents = [index_document(space_id=owner, title=f"Rechnung {n}") for n in range(7)]
         await search_index.upsert(documents)
         who = visibility(owner)
         seen: list[DocumentId] = []
@@ -471,14 +453,14 @@ class SearchIndexContract:
     # --- vectors --------------------------------------------------------------------------------
 
     async def test_vector_search_finds_by_meaning(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
+        owner = SpaceId(new_id())
         near = index_document(
-            owner_id=owner, title="Eins", vectors=((0.0, 1.0, 0.0),), embedding=STAMP
+            space_id=owner, title="Eins", vectors=((0.0, 1.0, 0.0),), embedding=STAMP
         )
         far = index_document(
-            owner_id=owner, title="Zwei", vectors=((0.0, 0.0, 1.0),), embedding=STAMP
+            space_id=owner, title="Zwei", vectors=((0.0, 0.0, 1.0),), embedding=STAMP
         )
-        no_vector = index_document(owner_id=owner, title="Drei")
+        no_vector = index_document(space_id=owner, title="Drei")
         await search_index.upsert([far, near, no_vector])
         result = await search_index.search(
             query("irgendwas", visibility(owner), vector=(0.0, 1.0, 0.0), semantic_ratio=1.0)
@@ -487,15 +469,15 @@ class SearchIndexContract:
         assert result.semantic
 
     async def test_any_section_may_match(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
+        owner = SpaceId(new_id())
         sections = index_document(
-            owner_id=owner,
+            space_id=owner,
             title="Lang",
             vectors=((1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
             embedding=STAMP,
         )
         other = index_document(
-            owner_id=owner, title="Anders", vectors=((0.0, 0.0, 1.0),), embedding=STAMP
+            space_id=owner, title="Anders", vectors=((0.0, 0.0, 1.0),), embedding=STAMP
         )
         await search_index.upsert([other, sections])
         result = await search_index.search(
@@ -506,10 +488,10 @@ class SearchIndexContract:
     async def test_hybrid_search_combines_words_and_vectors(
         self, search_index: SearchIndex
     ) -> None:
-        owner = UserId(new_id())
-        by_word = index_document(owner_id=owner, title="Kündigung", text="Kündigung des Vertrags")
+        owner = SpaceId(new_id())
+        by_word = index_document(space_id=owner, title="Kündigung", text="Kündigung des Vertrags")
         by_meaning = index_document(
-            owner_id=owner, title="Beendigung", vectors=((0.0, 1.0, 0.0),), embedding=STAMP
+            space_id=owner, title="Beendigung", vectors=((0.0, 1.0, 0.0),), embedding=STAMP
         )
         await search_index.upsert([by_word, by_meaning])
         who = visibility(owner)
@@ -527,10 +509,8 @@ class SearchIndexContract:
     async def test_a_vector_never_shows_what_the_rights_hide(
         self, search_index: SearchIndex
     ) -> None:
-        me, other = UserId(new_id()), UserId(new_id())
-        secret = index_document(
-            owner_id=other, vectors=((0.0, 1.0, 0.0),), embedding=STAMP, lane=Lane.GREEN
-        )
+        me = SpaceId(new_id())
+        secret = index_document(vectors=((0.0, 1.0, 0.0),), embedding=STAMP, lane=Lane.GREEN)
         await search_index.upsert([secret])
         result = await search_index.search(
             query("irgendwas", visibility(me), vector=(0.0, 1.0, 0.0), semantic_ratio=1.0)
@@ -540,27 +520,24 @@ class SearchIndexContract:
     async def test_similar_documents(self, search_index: SearchIndex) -> None:
         """Nearest first, as the rights and the criteria allow, without the document itself;
         documents without vectors are not among them."""
-        me, other = UserId(new_id()), UserId(new_id())
-        shared = SpaceId(new_id())
+        me, shared = SpaceId(new_id()), SpaceId(new_id())
 
         def vectored(vector: tuple[float, ...], **fields: object) -> IndexDocument:
             return index_document(vectors=(vector,), embedding=STAMP, **fields)
 
-        itself = vectored((0.0, 1.0, 0.0), owner_id=me, confirmed=True)
-        near = vectored((0.1, 0.9, 0.0), owner_id=me, confirmed=True)
-        farther = vectored((0.5, 0.5, 0.0), owner_id=me, confirmed=True)
-        unconfirmed = vectored((0.0, 1.0, 0.0), owner_id=me)
-        hidden = vectored((0.0, 1.0, 0.0), owner_id=other, confirmed=True, lane=Lane.YELLOW)
-        visible = vectored(
-            (0.0, 0.0, 1.0), owner_id=other, space_id=shared, confirmed=True, lane=Lane.GREEN
-        )
-        plain = index_document(owner_id=me, confirmed=True)
+        itself = vectored((0.0, 1.0, 0.0), space_id=me, confirmed=True)
+        near = vectored((0.1, 0.9, 0.0), space_id=me, confirmed=True)
+        farther = vectored((0.5, 0.5, 0.0), space_id=me, confirmed=True)
+        unconfirmed = vectored((0.0, 1.0, 0.0), space_id=me)
+        hidden = vectored((0.0, 1.0, 0.0), space_id=shared, confirmed=True, lane=Lane.YELLOW)
+        visible = vectored((0.0, 0.0, 1.0), space_id=shared, confirmed=True, lane=Lane.GREEN)
+        plain = index_document(space_id=me, confirmed=True)
         await search_index.upsert([itself, near, farther, unconfirmed, hidden, visible, plain])
         confirmed = DocumentFilter(confirmed=True)
         found = await search_index.similar(
             SimilarQuery(
                 vector=(0.0, 1.0, 0.0),
-                visibility=visibility(me, shared),
+                visibility=visibility(me, reads=[shared]),
                 filter=confirmed,
                 exclude=itself.id,
                 limit=3,
@@ -576,16 +553,16 @@ class SearchIndexContract:
     # --- rebuild --------------------------------------------------------------------------------
 
     async def test_rebuild_replaces_the_index(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
-        old = index_document(owner_id=owner, title="Alt")
-        kept = index_document(owner_id=owner, title="Bleibt", version=1)
+        owner = SpaceId(new_id())
+        old = index_document(space_id=owner, title="Alt")
+        kept = index_document(space_id=owner, title="Bleibt", version=1)
         await search_index.upsert([old, kept])
         who = visibility(owner)
 
         build = await search_index.begin_rebuild()
-        fresh = index_document(owner_id=owner, title="Neu")
+        fresh = index_document(space_id=owner, title="Neu")
         await build.add(
-            [fresh, index_document(id=kept.id, owner_id=owner, title="Bleibt", version=2)]
+            [fresh, index_document(id=kept.id, space_id=owner, title="Bleibt", version=2)]
         )
         # The active index serves until the new one is ready.
         assert await found(search_index, "Alt", who) == {old.id}
@@ -599,11 +576,11 @@ class SearchIndexContract:
         assert state.version == 2
 
     async def test_an_aborted_rebuild_changes_nothing(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
-        old = index_document(owner_id=owner, title="Alt")
+        owner = SpaceId(new_id())
+        old = index_document(space_id=owner, title="Alt")
         await search_index.upsert([old])
         build = await search_index.begin_rebuild()
-        await build.add([index_document(owner_id=owner, title="Neu")])
+        await build.add([index_document(space_id=owner, title="Neu")])
         await build.abort()
         who = visibility(owner)
         assert await found(search_index, "Alt", who) == {old.id}
@@ -612,11 +589,11 @@ class SearchIndexContract:
     async def test_a_new_rebuild_discards_the_remains_of_an_old_one(
         self, search_index: SearchIndex
     ) -> None:
-        owner = UserId(new_id())
+        owner = SpaceId(new_id())
         first = await search_index.begin_rebuild()
-        await first.add([index_document(owner_id=owner, title="Erster")])
+        await first.add([index_document(space_id=owner, title="Erster")])
         second = await search_index.begin_rebuild()
-        fresh = index_document(owner_id=owner, title="Zweiter")
+        fresh = index_document(space_id=owner, title="Zweiter")
         await second.add([fresh])
         await second.finish()
         who = visibility(owner)
@@ -624,8 +601,8 @@ class SearchIndexContract:
         assert await found(search_index, "Zweiter", who) == {fresh.id}
 
     async def test_a_rebuild_to_an_empty_index(self, search_index: SearchIndex) -> None:
-        owner = UserId(new_id())
-        await search_index.upsert([index_document(owner_id=owner, title="Alt")])
+        owner = SpaceId(new_id())
+        await search_index.upsert([index_document(space_id=owner, title="Alt")])
         build = await search_index.begin_rebuild()
         await build.finish()
         assert [state async for state in search_index.states()] == []
@@ -633,10 +610,10 @@ class SearchIndexContract:
     async def test_writes_go_to_the_new_index_after_the_rebuild(
         self, search_index: SearchIndex
     ) -> None:
-        owner = UserId(new_id())
+        owner = SpaceId(new_id())
         build = await search_index.begin_rebuild()
         await build.finish()
-        document = index_document(owner_id=owner, title="Danach")
+        document = index_document(space_id=owner, title="Danach")
         await search_index.upsert([document])
         assert await found(search_index, "Danach", visibility(owner)) == {document.id}
 

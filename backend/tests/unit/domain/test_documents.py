@@ -39,8 +39,8 @@ def test_sha256_is_lower_case_hex() -> None:
 def test_receive_records_received_and_step_completed() -> None:
     owner = builders.user()
     document = Document.receive(
-        owner_id=owner.id,
-        space_id=builders.default_space(owner).id,
+        uploaded_by=owner.id,
+        space_id=builders.personal_space(owner).id,
         sha256=builders.sha256(),
         original_filename="2026-10 Invoice.pdf",
         media_type="application/pdf",
@@ -58,8 +58,8 @@ def test_receive_cannot_fail() -> None:
     owner = builders.user()
     with pytest.raises(ValidationError):
         Document.receive(
-            owner_id=owner.id,
-            space_id=builders.default_space(owner).id,
+            uploaded_by=owner.id,
+            space_id=builders.personal_space(owner).id,
             sha256=builders.sha256(),
             original_filename="a.pdf",
             media_type="application/pdf",
@@ -73,8 +73,8 @@ def test_receive_takes_over_when_it_came_in_but_never_a_moment_ahead() -> None:
 
     def received(at: datetime) -> Document:
         return Document.receive(
-            owner_id=owner.id,
-            space_id=builders.default_space(owner).id,
+            uploaded_by=owner.id,
+            space_id=builders.personal_space(owner).id,
             sha256=builders.sha256(),
             original_filename="a.pdf",
             media_type="application/pdf",

@@ -17,7 +17,7 @@ from lekto.core.domain.errors import (
 )
 from lekto.core.domain.ids import DocumentId
 from lekto.core.domain.pipeline import Node
-from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.ports.embeddings import EmbeddingResult, Embeddings
 from lekto.core.ports.repository import DocumentFilter
@@ -60,7 +60,7 @@ async def scene(world: World) -> Scene:
     owner, reader = await world.user("owner"), await world.user("reader")
     stranger = await world.user("stranger")
     shared = await world.spaces.create(owner.id, "Household")
-    await world.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
+    await world.spaces.set_member(owner.id, shared.id, reader.id, SpaceRole.READ)
     shared_document = await setup.document(owner, "Stromrechnung September")
     await world.documents.move(owner.id, shared_document.id, shared.id)
     private_document = await setup.document(owner, "Mietvertrag Wohnung")
@@ -125,7 +125,7 @@ async def test_a_yellow_document_is_not_found_by_others(scene: Scene) -> None:
 
 
 async def test_a_withdrawn_share_hides_the_documents_at_once(scene: Scene) -> None:
-    await scene.setup.world.spaces.unshare(scene.owner.id, scene.shared.id, scene.reader.id)
+    await scene.setup.world.spaces.remove_member(scene.owner.id, scene.shared.id, scene.reader.id)
     assert await scene.ids(scene.reader, "Stromrechnung") == set()
 
 
@@ -184,11 +184,11 @@ async def test_a_deactivated_user_finds_nothing(scene: Scene) -> None:
 async def test_the_page_carries_access_score_and_snippet(scene: Scene) -> None:
     page = await scene.search().search(scene.reader.id, "Stromrechnung")
     (item,) = page.items
-    assert item.access is ShareLevel.READ
+    assert item.access is SpaceRole.READ
     assert item.score is not None
     assert any(segment.match for segment in item.snippet)
     owner_page = await scene.search().search(scene.owner.id, "Stromrechnung")
-    assert owner_page.items[0].access is ShareLevel.READ_WRITE
+    assert owner_page.items[0].access is SpaceRole.EDIT
 
 
 async def test_paging_goes_through_all_hits(scene: Scene) -> None:
@@ -341,9 +341,8 @@ async def test_the_index_never_sees_a_query_without_the_callers_rights(scene: Sc
     service = SearchService(scene.setup.world.uow, Spy(), builders.SEARCH)  # type: ignore[arg-type]
     await service.search(scene.reader.id, "Strom")
     (query,) = seen
-    assert query.visibility.user == scene.reader.id
-    assert scene.shared.id in query.visibility.spaces
-    assert len(query.visibility.spaces) == 2  # the shared space and the reader's own
+    assert query.visibility.reads == {scene.shared.id}
+    assert query.visibility.edits == {(await scene.setup.world.personal_space(scene.reader)).id}
 
 
 def test_policy_ratio_is_checked() -> None:
@@ -363,7 +362,7 @@ async def test_admins_search_their_reach_or_everything(scene: Scene) -> None:
     ):
         everything = await search.search(admin.id, text, all_users=True)
         assert [(item.document.id, item.access) for item in everything.items] == [
-            (document.id, ShareLevel.READ_WRITE)
+            (document.id, SpaceRole.EDIT)
         ]
     for user in (scene.owner, scene.reader, scene.stranger):
         with pytest.raises(PermissionDeniedError):

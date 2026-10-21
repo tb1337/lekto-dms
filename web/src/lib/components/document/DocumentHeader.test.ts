@@ -5,8 +5,13 @@ import type { components } from '#lib/api/schema.ts';
 import { m } from '#lib/paraglide/messages.js';
 import type { GraphNode } from '#lib/pipeline.ts';
 import { session } from '#lib/session.svelte.ts';
+import type { Lookup } from '#lib/masterdata.svelte.ts';
+import { choose, optionsOf } from '#lib/testing/select.ts';
 import type { Reading } from '#lib/vision.ts';
+import { goto } from '$app/navigation';
 import DocumentHeader from './DocumentHeader.svelte';
+
+vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 
 type Document = components['schemas']['DocumentDetails'];
 
@@ -27,9 +32,9 @@ function document(outcome: 'ok' | 'failed' = 'ok'): Document {
 		id: 'doc-1',
 		title: 'Scan',
 		original_filename: 'scan.pdf',
-		owner_id: OWNER,
+		uploaded_by: OWNER,
 		space_id: 'space-1',
-		access: 'read_write',
+		access: 'edit',
 		lane: outcome === 'failed' ? 'red' : 'yellow',
 		page_count: 1,
 		created_at: '2026-10-15T08:00:00Z',
@@ -172,6 +177,90 @@ describe('DocumentHeader', () => {
 			const { dialog } = await openReprocess({ vision: null });
 			expect(within(dialog).queryByRole('checkbox')).toBeNull();
 			expect(within(dialog).getByText(m.reprocess_vision_lost())).toBeTruthy();
+		});
+	});
+
+	describe('space', () => {
+		const lookup = {
+			users: [
+				{ id: OWNER, username: 'tobi', role: 'user', personal_space_id: 'space-2' },
+				{ id: 'user-2', username: 'anna', role: 'user', personal_space_id: 'space-3' }
+			],
+			spaces: [
+				{
+					id: 'space-1',
+					name: 'Haushalt',
+					personal_of: null,
+					role: 'edit',
+					members: [
+						{ user_id: OWNER, role: 'edit' },
+						{ user_id: 'user-2', role: 'read' }
+					]
+				},
+				{
+					id: 'space-2',
+					name: 'Personal',
+					personal_of: OWNER,
+					role: 'edit',
+					members: [{ user_id: OWNER, role: 'edit' }]
+				},
+				{
+					id: 'space-3',
+					name: 'Personal',
+					personal_of: 'user-2',
+					role: 'read',
+					members: [
+						{ user_id: 'user-2', role: 'edit' },
+						{ user_id: OWNER, role: 'read' }
+					]
+				}
+			]
+		} as unknown as Lookup;
+
+		it('names the space and who else sees the document', () => {
+			render(DocumentHeader, props({ lookup }));
+			expect(screen.getByText(new RegExp(m.visible_to({ names: 'anna' })))).toBeTruthy();
+		});
+
+		it('moves into an edited space or hands over into another personal one', async () => {
+			const onchanged = vi.fn();
+			render(DocumentHeader, props({ lookup, onchanged }));
+			// A dialog of an earlier test may still leave the body without pointer events.
+			const user = userEvent.setup({ pointerEventsCheck: 0 });
+			await user.click(screen.getByRole('button', { name: m.move_title() }));
+			const dialog = await screen.findByRole('dialog');
+			const field = within(dialog).getByLabelText(m.field_space());
+			expect(await optionsOf(field)).toEqual([
+				{ value: 'space-2', label: m.space_personal() },
+				{ value: 'space-3', label: m.move_hand_over({ name: 'anna' }) }
+			]);
+			await user.click(within(dialog).getByRole('button', { name: m.move_title() }));
+			await waitFor(() => expect(onchanged).toHaveBeenCalled());
+			const [request] = fetchMock.mock.calls[0];
+			expect(new URL(request.url).pathname).toBe('/api/v1/documents/doc-1/move');
+			expect(await request.json()).toEqual({ space_id: 'space-2' });
+		});
+
+		it('goes back to the documents after handing the document over', async () => {
+			const onchanged = vi.fn();
+			render(DocumentHeader, props({ lookup, onchanged }));
+			const user = userEvent.setup({ pointerEventsCheck: 0 });
+			await user.click(screen.getByRole('button', { name: m.move_title() }));
+			const dialog = await screen.findByRole('dialog');
+			await choose(user, within(dialog).getByLabelText(m.field_space()), 'space-3');
+			await user.click(within(dialog).getByRole('button', { name: m.move_title() }));
+			await waitFor(() => expect(goto).toHaveBeenCalledWith('/ui/documents'));
+			expect(await fetchMock.mock.calls[0][0].json()).toEqual({ space_id: 'space-3' });
+			expect(onchanged).not.toHaveBeenCalled();
+		});
+
+		it('offers a reader no move', () => {
+			render(
+				DocumentHeader,
+				props({ lookup, document: { ...document(), access: 'read' } as Document })
+			);
+			expect(screen.queryByRole('button', { name: m.move_title() })).toBeNull();
+			expect(screen.queryByRole('button', { name: m.doc_more() })).toBeNull();
 		});
 	});
 });

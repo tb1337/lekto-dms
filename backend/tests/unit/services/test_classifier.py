@@ -44,7 +44,7 @@ def service(world: World, **policy: Any) -> ClassifierService:
 
 
 async def confirmed(world: World, owner: User, contact: Contact, text: str) -> Document:
-    space = await world.default_space(owner)
+    space = await world.personal_space(owner)
     document = builders.processed(owner, space, content=text)
     document.apply_changes(DocumentChanges(contact_id=contact.id), {}, world.clock.now())
     document.mark_confirmed(world.clock.now())

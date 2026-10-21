@@ -6,6 +6,7 @@ import { api } from '#lib/api/client.ts';
 import { unwrap } from '#lib/api/call.ts';
 import type { components } from '#lib/api/schema.ts';
 import { m } from '#lib/paraglide/messages.js';
+import { editableSpaces, handOverTargets } from '#lib/permissions.ts';
 
 export type Contact = components['schemas']['ContactOut'];
 export type DocumentType = components['schemas']['DocumentTypeOut'];
@@ -57,13 +58,49 @@ export function fieldsFor(
 	);
 }
 
-/** A space's name, with its owner's for another user's space (admins see every space). */
+/** A space's name; a personal space is "Personal" for its user and its user's name for others. */
 export function spaceLabel(
-	space: Pick<Space, 'name' | 'owner_id'>,
+	space: Pick<Space, 'name' | 'personal_of'>,
 	users: readonly UserName[],
 	me: string | undefined
 ): string {
-	if (space.owner_id === me) return space.name;
-	const owner = users.find((user) => user.id === space.owner_id)?.username ?? space.owner_id;
-	return m.space_of({ name: space.name, owner });
+	if (space.personal_of === null) return space.name;
+	if (space.personal_of === me) return m.space_personal();
+	return userName(users, space.personal_of);
+}
+
+/** A user's name by id; the id while unknown. */
+export function userName(users: readonly UserName[], id: string): string {
+	return users.find((user) => user.id === id)?.username ?? id;
+}
+
+/** The name of a space the caller is no member of (an admin sees every space), for a badge on a
+ * document lying there; null for the caller's own spaces. */
+export function foreignSpace(
+	spaceId: string,
+	lookup: Pick<Lookup, 'spaces' | 'users'> | null,
+	me: string | undefined
+): string | null {
+	const space = lookup?.spaces.find((entry) => entry.id === spaceId);
+	if (!space || space.members.some((member) => member.user_id === me)) return null;
+	return spaceLabel(space, lookup?.users ?? [], me);
+}
+
+/** The spaces a document goes to, as options: those the caller edits, then the other users'
+ * personal spaces, as a hand-over ("Hand over to Anna"). */
+export function spaceOptions(
+	spaces: readonly Space[],
+	users: readonly UserName[],
+	user: { id: string; role?: UserName['role'] } | null
+): { value: string; label: string }[] {
+	return [
+		...editableSpaces(spaces, user).map((space) => ({
+			value: space.id,
+			label: spaceLabel(space, users, user?.id)
+		})),
+		...handOverTargets(users, user).map((other) => ({
+			value: other.personal_space_id,
+			label: m.move_hand_over({ name: userName(users, other.id) })
+		}))
+	];
 }

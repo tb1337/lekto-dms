@@ -42,7 +42,7 @@ def test_the_values_of_a_document() -> None:
         contact="Stadtwerke",
         document_type=None,
         space="Privat",
-        owner="tobi",
+        uploaded_by="tobi",
         tags=["strom", "Gas"],
         document_date=date(2026, 3, 31),
         fields=[
@@ -63,7 +63,7 @@ def test_the_values_of_a_document() -> None:
         "contact_groups": ["Arbeitgeber", "Versorger"],
         "document_type_groups": [],
         "space": "Privat",
-        "owner": "tobi",
+        "uploaded_by": "tobi",
         "channel": document.channel.value,
         "field": {"la_brutto": Money(Decimal("3650.00"), "EUR"), "portal": "https://example.org/a"},
     }

@@ -34,16 +34,18 @@ def _fixed(number: int) -> UUID:
     return UUID(f"00000000-0000-7000-8000-{number:012d}")
 
 
-OWNER = UserId(_fixed(1))
+OWNER = UserId(_fixed(1))  # who uploads the documents and saves the rules
 STRANGER = UserId(_fixed(2))
-DEFAULT = SpaceId(_fixed(3))
-OWN = SpaceId(_fixed(4))  # the owner's own, not shared
-SHARED = SpaceId(_fixed(5))  # others see documents in it
-READ_ONLY = SpaceId(_fixed(6))
+DEFAULT = SpaceId(_fixed(3))  # OWNER's personal space, where the documents lie
+OWN = SpaceId(_fixed(4))  # OWNER edits it, nobody else is a member
+SHARED = SpaceId(_fixed(5))  # OWNER edits it, others are members too
+READ_ONLY = SpaceId(_fixed(6))  # OWNER only reads it
+THEIRS = SpaceId(_fixed(14))  # STRANGER's personal space
 SPACES = {
-    OWN: SpaceTarget("Taxes", writable=True, shared=False),
-    SHARED: SpaceTarget("Family", writable=True, shared=True),
-    READ_ONLY: SpaceTarget("Boss", writable=False, shared=True),
+    OWN: SpaceTarget("Taxes", filers=frozenset({OWNER}), personal=False, widens=False),
+    SHARED: SpaceTarget("Family", filers=frozenset({OWNER}), personal=False, widens=True),
+    READ_ONLY: SpaceTarget("Boss", filers=frozenset({STRANGER}), personal=False, widens=True),
+    THEIRS: SpaceTarget("stranger", filers=frozenset({STRANGER}), personal=True, widens=True),
 }
 ACME, BETA = ContactId(_fixed(7)), ContactId(_fixed(8))
 INVOICE, LETTER = DocumentTypeId(_fixed(9)), DocumentTypeId(_fixed(10))
@@ -85,25 +87,28 @@ def rule(
     *actions: Action,
     when: Group = ALWAYS,
     priority: int = 100,
-    scope: RuleScope = RuleScope.USER,
-    owner: UserId | None = OWNER,
+    scope: RuleScope = RuleScope.SPACE,
+    space: SpaceId = DEFAULT,
+    by: UserId = OWNER,
     name: str | None = None,
 ) -> Rule:
-    """A rule; each is created a minute after the previous one."""
+    """A rule (of DEFAULT, the documents' space, unless global), saved by `by`; each is
+    created a minute after the previous one."""
     number = next(_numbers)
     return Rule.create(
         scope=scope,
-        owner_id=None if scope is RuleScope.GLOBAL else owner,
+        space_id=None if scope is RuleScope.GLOBAL else space,
         definition=RuleDefinition(
             name=name or f"rule {number}", conditions=when, actions=actions, priority=priority
         ),
-        by=OWNER,
+        by=by,
         now=NOW + timedelta(minutes=number),
     )
 
 
 def doc(**fields: Any) -> Document:
-    """A document of OWNER in their default space, from `Rechnung 2026.pdf`, via the API."""
+    """A document OWNER uploaded into their personal space, from `Rechnung 2026.pdf`, via the
+    API."""
     document = builders.document(OWNER, DEFAULT, filename="Rechnung 2026.pdf")
     for name, value in fields.items():
         setattr(document, name, value)
@@ -112,7 +117,7 @@ def doc(**fields: Any) -> Document:
 
 def situation(document: Document, mode: Mode = Mode.INGEST, **fields: Any) -> Situation:
     values: dict[str, Any] = {
-        "default_space": DEFAULT,
+        "in_personal_space": True,
         "definitions": {},
         "spaces": SPACES,
         "existing": EXISTING,

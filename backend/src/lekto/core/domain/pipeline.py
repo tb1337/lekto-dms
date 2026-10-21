@@ -157,7 +157,7 @@ class NodeRun:
 
 # Entries that people and rules write carry these as `model_version`, in place of a model.
 PERSON = "person"
-"""`model_version` of a log entry in which the owner confirmed a node's results."""
+"""`model_version` of a log entry in which a person confirmed a node's results."""
 RULES = "rules"
 """`model_version` of the log entry of the pipeline node `apply_rules`."""
 RULES_CHANGE = "rules:change"
@@ -184,11 +184,11 @@ ACTOR = "actor"
 """Key of the person who set off an entry (a change, a rule applied on request, a space they
 chose), in its input."""
 CONFIRMED_BY = "confirmed_by"
-"""Key of the owner who confirmed, in the output of a `PERSON` entry."""
+"""Key of the person who confirmed, in the output of a `PERSON` entry."""
 ACCEPTED = "accepted"
 ENTERED = "entered"
 KEPT = "kept"
-"""Keys of the fields the owner decided in the output of a `PERSON` entry: the suggestions they
+"""Keys of the fields the person decided in the output of a `PERSON` entry: the suggestions they
 accepted, the values they entered, the values they kept."""
 CHANGED = "changed"
 TAGS_ADDED = "tags_added"
@@ -308,7 +308,7 @@ class ProcessingStatus(StrEnum):
     PROCESSING = "processing"  # nodes are due or running
     COMPLETED = "completed"  # every node done or skipped
     FAILED = "failed"  # a node failed; running nodes finish, nothing new starts
-    REVIEW = "review"  # uncertain results; filing waits for the owner
+    REVIEW = "review"  # uncertain results; filing waits for an editor
 
 
 @dataclass(kw_only=True)

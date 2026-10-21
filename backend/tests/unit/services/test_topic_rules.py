@@ -17,7 +17,7 @@ from lekto.core.domain.rules import (
     SetTopic,
     Trigger,
 )
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from tests.unit.services.rules_support import (
     Classifies,
     channel_api,
@@ -40,8 +40,8 @@ async def test_a_rule_sets_a_topic_the_contact_enables(world: World) -> None:
     work = await service.create_tag(r.admin.id, "Arbeit", scope=TagScope.TOPIC)
     health = await service.create_tag(r.admin.id, "Krankenversicherung", scope=TagScope.TOPIC)
     nord = await service.create_contact(r.admin.id, "Nord", topic_ids=[work.id])
-    await r.user_rule(owner, definition("work", contact_is(nord.id), SetTopic(work.id)))
-    await r.user_rule(owner, definition("health", contact_is(nord.id), SetTopic(health.id)))
+    await r.personal_rule(owner, definition("work", contact_is(nord.id), SetTopic(work.id)))
+    await r.personal_rule(owner, definition("health", contact_is(nord.id), SetTopic(health.id)))
     document = await r.arrive(owner, classify=Classifies(contact=nord.id))
     assert (document.topic_id, document.lane) == (work.id, Lane.GREEN)
     (entry,) = await r.rule_entries(document, RULES)
@@ -57,12 +57,12 @@ async def test_a_rule_on_a_topic_the_model_set_files_into_a_shared_space_only_co
     work = await service.create_tag(r.admin.id, "Arbeit", scope=TagScope.TOPIC)
     nord = await service.create_contact(r.admin.id, "Nord", topic_ids=[work.id])
     shared = await world.spaces.create(owner.id, "Shared")
-    await world.spaces.share(owner.id, shared.id, partner.id, ShareLevel.READ)
-    await r.user_rule(owner, definition("file", topic_is(work.id), SetSpace(shared.id)))
+    await world.spaces.set_member(owner.id, shared.id, partner.id, SpaceRole.READ)
+    await r.personal_rule(owner, definition("file", topic_is(work.id), SetSpace(shared.id)))
     document = await r.arrive(owner, classify=Classifies(contact=nord.id, topic=work.id))
     assert (document.topic_id, document.space_id, document.lane) == (
         work.id,
-        (await world.default_space(owner)).id,
+        (await world.personal_space(owner)).id,
         Lane.YELLOW,
     )
     (entry,) = await r.rule_entries(document, RULES)
@@ -77,12 +77,14 @@ async def test_rules_refer_to_topics_where_a_topic_belongs(world: World) -> None
     tag = await service.create_tag(r.admin.id, "Bezahlt")
     nord = await service.create_contact(r.admin.id, "Nord")
     with pytest.raises(ValidationError, match="topic"):
-        await r.user_rule(owner, definition("x", contact_is(nord.id), SetTopic(tag.id)))
+        await r.personal_rule(owner, definition("x", contact_is(nord.id), SetTopic(tag.id)))
     with pytest.raises(ValidationError, match="topic"):
-        await r.user_rule(owner, definition("x", topic_is(tag.id), SetTopic(work.id)))
+        await r.personal_rule(owner, definition("x", topic_is(tag.id), SetTopic(work.id)))
     with pytest.raises(NotFoundError):
-        await r.user_rule(owner, definition("x", contact_is(nord.id), SetTopic(TagId(new_id()))))
-    await r.user_rule(owner, definition("Arbeit", topic_is(work.id), SetTopic(work.id)))
+        await r.personal_rule(
+            owner, definition("x", contact_is(nord.id), SetTopic(TagId(new_id())))
+        )
+    await r.personal_rule(owner, definition("Arbeit", topic_is(work.id), SetTopic(work.id)))
     with pytest.raises(ConflictError, match="'Arbeit' is used by the rules"):
         await service.delete_tag(r.admin.id, work.id)
 
@@ -96,7 +98,7 @@ async def test_a_change_of_the_contact_by_a_person_runs_the_rules_on_the_topic_l
     work = await service.create_tag(r.admin.id, "Arbeit", scope=TagScope.TOPIC)
     nord = await service.create_contact(r.admin.id, "Nord", topic_ids=[work.id])
     sued = await service.create_contact(r.admin.id, "Süd", topic_ids=[work.id])
-    await r.user_rule(owner, definition("Süd at work", contact_is(sued.id), SetTopic(work.id)))
+    await r.personal_rule(owner, definition("Süd at work", contact_is(sued.id), SetTopic(work.id)))
     document = await r.arrive(owner)
     await r.documents.change_metadata(owner.id, document.id, DocumentChanges(contact_id=nord.id))
     change = await r.documents.change_metadata(
@@ -117,7 +119,7 @@ async def test_a_topic_the_contact_change_cleared_is_no_decision_of_the_person(
     health = await service.create_tag(r.admin.id, "Krankenversicherung", scope=TagScope.TOPIC)
     nord = await service.create_contact(r.admin.id, "Nord", topic_ids=[health.id])
     sued = await service.create_contact(r.admin.id, "Süd", topic_ids=[work.id])
-    await r.user_rule(owner, definition("Süd at work", contact_is(sued.id), SetTopic(work.id)))
+    await r.personal_rule(owner, definition("Süd at work", contact_is(sued.id), SetTopic(work.id)))
     document = await r.arrive(owner, classify=Classifies(contact=nord.id, topic=health.id))
     assert document.topic_id == health.id
     change = await r.documents.change_metadata(
@@ -155,8 +157,8 @@ async def test_a_topic_the_confirmed_contact_cleared_is_no_decision_of_the_perso
     health = await service.create_tag(r.admin.id, "Krankenversicherung", scope=TagScope.TOPIC)
     nord = await service.create_contact(r.admin.id, "Nord", topic_ids=[health.id])
     sued = await service.create_contact(r.admin.id, "Süd", topic_ids=[work.id])
-    await r.user_rule(owner, definition("look", channel_api(), ForceReview("look at it")))
-    await r.user_rule(owner, definition("Süd at work", contact_is(sued.id), SetTopic(work.id)))
+    await r.personal_rule(owner, definition("look", channel_api(), ForceReview("look at it")))
+    await r.personal_rule(owner, definition("Süd at work", contact_is(sued.id), SetTopic(work.id)))
     document = await r.arrive(owner, classify=Classifies(contact=nord.id, topic=health.id))
     assert (document.lane, document.topic_id) == (Lane.YELLOW, health.id)
     await r.pipeline().confirm(owner.id, document.id, DocumentChanges(contact_id=sued.id))
@@ -180,11 +182,11 @@ async def test_a_rule_keeps_the_topic_a_person_chose(world: World) -> None:
     work = await service.create_tag(r.admin.id, "Arbeit", scope=TagScope.TOPIC)
     nord = await service.create_contact(r.admin.id, "Nord", topic_ids=[work.id])
     sued = await service.create_contact(r.admin.id, "Süd")
-    await r.user_rule(
+    await r.personal_rule(
         owner,
         definition("ingest", channel_api(), SetContact(nord.id), triggers=[Trigger.INGEST]),
     )
-    await r.user_rule(
+    await r.personal_rule(
         owner,
         definition("change", topic_is(work.id), SetContact(sued.id), triggers=[Trigger.CHANGE]),
     )

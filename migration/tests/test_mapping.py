@@ -158,10 +158,11 @@ def test_groups_are_resolved_and_writers_win_over_readers() -> None:
         {"owner": 1, "permissions": permissions([3], [1], [2], [])},
         USERS,
     )
-    # tobias (the owner) is left out; anna reads via the group and writes directly; bob reads.
-    assert access.shares == (("anna", "read_write"), ("bob", "read"))
+    # tobias (the owner) is left out; anna reads via the group and writes directly (edits); bob
+    # reads.
+    assert access.shares == (("anna", "edit"), ("bob", "read"))
     access = access_of({"owner": 3, "permissions": permissions([], [], [], [1])}, USERS)
-    assert access.shares == (("anna", "read_write"), ("tobias", "read_write"))
+    assert access.shares == (("anna", "edit"), ("tobias", "edit"))
 
 
 def test_no_owner_unknown_owner_and_unusable_users_are_noted() -> None:

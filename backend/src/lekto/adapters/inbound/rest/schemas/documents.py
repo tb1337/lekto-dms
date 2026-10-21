@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, Json, field_validator
 
-from lekto.adapters.inbound.rest.schemas.spaces import ShareOut
+from lekto.adapters.inbound.rest.schemas.spaces import MemberOut
 from lekto.adapters.inbound.schemas import FieldJson, RuleReportOut, field_json
 from lekto.core.domain.documents import MAX_TITLE, Channel, Document
 from lekto.core.domain.exchanges import ModelCall, RunExchange
@@ -24,8 +24,7 @@ from lekto.core.domain.pipeline import (
     ProcessingStatus,
 )
 from lekto.core.domain.reading import DocumentReading, VisionAdvice
-from lekto.core.domain.spaces import ShareLevel, Space
-from lekto.core.domain.users import User
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.services.documents import DocumentFacets
 from lekto.core.services.objects import EXCHANGE_NODES
 
@@ -99,9 +98,9 @@ _DOCUMENT_EXAMPLE: dict[str, Any] = {
     "media_type": "application/pdf",
     "channel": "web",
     "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-    "owner_id": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
+    "uploaded_by": "01999d5e-1111-7c1e-b6a3-2f4d5e6f7a8b",
     "space_id": "01999d5e-2222-7c1e-b6a3-2f4d5e6f7a8b",
-    "access": "read_write",
+    "access": "edit",
     "contact_id": "01999d5e-3333-7c1e-b6a3-2f4d5e6f7a8b",
     "document_type_id": None,
     "topic_id": None,
@@ -158,9 +157,19 @@ class DocumentDetails(BaseModel):
         description="SHA-256 of the original file, in lower-case hex.",
         examples=["9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"],
     )
-    owner_id: UUID
-    space_id: UUID
-    access: ShareLevel = Field(description="What the caller may do: read, or read and write.")
+    uploaded_by: UUID | None = Field(
+        description=(
+            "Who put the document into Lekto; information only, no rights come with it. Null "
+            "once their account is deleted."
+        )
+    )
+    space_id: UUID = Field(description="The space it lies in: its members have the rights.")
+    access: SpaceRole = Field(
+        description=(
+            "What the caller may do: `read`, or `edit` (change, confirm, move, delete); admins "
+            "edit every document."
+        )
+    )
     contact_id: UUID | None
     document_type_id: UUID | None
     topic_id: UUID | None = Field(
@@ -192,7 +201,7 @@ class DocumentDetails(BaseModel):
     updated_at: datetime
 
     @classmethod
-    def of(cls, document: Document, access: ShareLevel) -> "DocumentDetails":
+    def of(cls, document: Document, access: SpaceRole) -> "DocumentDetails":
         state = document.processing
         return cls(
             id=document.id,
@@ -201,7 +210,7 @@ class DocumentDetails(BaseModel):
             media_type=document.media_type,
             channel=document.channel,
             sha256=document.sha256.hex,
-            owner_id=document.owner_id,
+            uploaded_by=document.uploaded_by,
             space_id=document.space_id,
             access=access,
             contact_id=document.contact_id,
@@ -239,7 +248,7 @@ class ListedDocument(DocumentDetails):
     )
 
     @classmethod
-    def listed(cls, document: Document, access: ShareLevel, in_inbox: bool) -> "ListedDocument":
+    def listed(cls, document: Document, access: SpaceRole, in_inbox: bool) -> "ListedDocument":
         return cls(**DocumentDetails.of(document, access).model_dump(), in_inbox=in_inbox)
 
 
@@ -434,7 +443,7 @@ class UploadFields(BaseModel):
 
     space_id: UUID | None = Field(
         default=None,
-        description="Target space; default: the owner's default space.",
+        description=("Target space, one the caller edits; default: the uploader's personal space."),
         json_schema_extra={"format": "uuid"},
     )
     channel: Literal["migration"] | None = Field(
@@ -445,12 +454,12 @@ class UploadFields(BaseModel):
         ),
         json_schema_extra={"enum": [Channel.MIGRATION.value]},
     )
-    owner: UUID | None = Field(
+    uploaded_by: UUID | None = Field(
         default=None,
         description=(
-            "Admins only: the active user who owns the document. Default: the caller. The "
-            "duplicate check, the default space and the write access to `space_id` are the "
-            "owner's."
+            "Admins only: the active user named as the document's uploader. Default: the "
+            "caller. Without `space_id` the document goes to their personal space; the "
+            "duplicate check covers what they can read."
         ),
         json_schema_extra={"format": "uuid"},
     )
@@ -591,43 +600,35 @@ class DocumentChanged(DocumentDetails):
     rules: list[RuleReportOut] | None = Field(
         default=None,
         description=(
-            "For the owner: the rules the change set off (they hold now and did not before) "
+            "For editors: the rules the change set off (they hold now and did not before) "
             "and what they did. Nothing turns yellow; what could not be applied is listed."
         ),
     )
 
 
 class DocumentOutOfReach(BaseModel):
-    """After a change by an editor: the owner's rules filed the document where the editor can
-    no longer read it. The change is stored; nothing else about the document is shown."""
+    """After a change: the rules filed the document where the caller can no longer read it.
+    The change is stored; nothing else about the document is shown."""
 
     id: UUID
     access: None = Field(default=None, description="The caller can no longer read the document.")
 
 
 class VisibilityOut(BaseModel):
-    """Who sees the document. Its owner always; while it is green also the space's owner and
-    the users the space is shared with."""
+    """Who sees the document: the members of its space; readers only once it is green."""
 
-    owner_id: UUID = Field(description="The document's owner.")
     space_id: UUID
-    space_owner_id: UUID | None = Field(description="None unless the document is green.")
-    shares: list[ShareOut] | None = Field(
-        description=(
-            "The space's shares, if the document is green and the caller owns the space or is "
-            "an admin; otherwise not shown."
-        )
+    members: list[MemberOut] = Field(
+        description="The space's members with their roles; readers see the document once green."
     )
 
     @classmethod
-    def of(cls, document: Document, space: Space, viewer: User) -> "VisibilityOut":
-        green = document.lane is Lane.GREEN
-        shares = ShareOut.of_space(space, viewer) if green else None
+    def of(cls, document: Document, space: Space) -> "VisibilityOut":
         return cls(
-            owner_id=document.owner_id,
             space_id=space.id,
-            space_owner_id=space.owner_id if green else None,
-            shares=shares,
+            members=[
+                MemberOut(user_id=user, role=role) for user, role in sorted(space.members.items())
+            ],
         )
 
 
@@ -642,7 +643,7 @@ class DocumentPreviewOut(BaseModel):
         "`tags`, `document_date`, `field:<id>`, `space`."
     )
     rules: list[RuleReportOut] | None = Field(
-        description="For the owner: the rules the change would set off, and what they would do."
+        description="For editors: the rules the change would set off, and what they would do."
     )
     visibility: VisibilityOut | None = Field(
         description="Who would see the document; null if the caller could not read it then."

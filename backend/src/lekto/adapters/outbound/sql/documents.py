@@ -71,11 +71,12 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
     kind = "document"
     table = t.documents
 
-    async def find_by_sha256(self, owner: UserId, sha256: Sha256) -> Document | None:
-        found = await self._load(
-            and_(t.documents.c.owner_id == owner, t.documents.c.sha256 == sha256.hex)
+    async def list_by_sha256(self, sha256: Sha256, spaces: Collection[SpaceId]) -> list[Document]:
+        if not spaces:
+            return []
+        return await self._load(
+            and_(t.documents.c.sha256 == sha256.hex, t.documents.c.space_id.in_(list(spaces)))
         )
-        return found[0] if found else None
 
     async def list_visible_to(self, user: UserId) -> list[Document]:
         return await self._load(visible_to(user))
@@ -284,7 +285,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
     async def exists(
         self,
         *,
-        owner: UserId | None = None,
+        uploaded_by: UserId | None = None,
         space: SpaceId | None = None,
         contact: ContactId | None = None,
         document_type: DocumentTypeId | None = None,
@@ -295,8 +296,8 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
     ) -> bool:
         documents = t.documents
         criteria: list[ColumnElement[bool]] = []
-        if owner is not None:
-            criteria.append(documents.c.owner_id == owner)
+        if uploaded_by is not None:
+            criteria.append(documents.c.uploaded_by == uploaded_by)
         if space is not None:
             criteria.append(documents.c.space_id == space)
         if contact is not None:
@@ -329,7 +330,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         return [
             Document(
                 id=DocumentId(row.id),
-                owner_id=UserId(row.owner_id),
+                uploaded_by=None if row.uploaded_by is None else UserId(row.uploaded_by),
                 space_id=SpaceId(row.space_id),
                 sha256=Sha256(row.sha256),
                 title=row.title,
@@ -370,7 +371,7 @@ class SqlDocumentRepository(SqlRepository[DocumentId, Document]):
         processing = entity.processing
         return {
             "id": entity.id,
-            "owner_id": entity.owner_id,
+            "uploaded_by": entity.uploaded_by,
             "space_id": entity.space_id,
             "sha256": entity.sha256.hex,
             "title": entity.title,

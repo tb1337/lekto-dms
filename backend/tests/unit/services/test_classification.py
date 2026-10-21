@@ -183,7 +183,7 @@ async def document_with(
     world: World, text: str = INVOICE, type: DocumentType | None = None
 ) -> Document:
     owner = await world.user()
-    document = builders.document(owner, await world.default_space(owner))
+    document = builders.document(owner, await world.personal_space(owner))
     document.document_type_id = None if type is None else type.id
     async with world.uow() as uow:
         await uow.documents.add(document)

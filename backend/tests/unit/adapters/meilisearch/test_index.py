@@ -20,7 +20,7 @@ from lekto.adapters.outbound.meilisearch.index import (
     segments,
 )
 from lekto.core.domain.errors import SearchIndexError, SearchUnavailableError
-from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, SpaceId, TagId, UserId
+from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, SpaceId, TagId
 from lekto.core.domain.periods import Period
 from lekto.core.domain.pipeline import Lane
 from lekto.core.domain.search import EmbeddingStamp, Segment, Visibility
@@ -133,7 +133,8 @@ async def test_a_missing_index_is_created_with_its_settings() -> None:
     assert settings["localizedAttributes"] == [{"locales": ["deu"], "attributePatterns": ["*"]}]
     assert settings["embedders"] == {"default": {"source": "userProvided", "dimensions": 3}}
     assert settings["pagination"] == {"maxTotalHits": 1000}
-    assert "owner_id" in settings["filterableAttributes"]
+    assert "space_id" in settings["filterableAttributes"]
+    assert "owner_id" not in settings["filterableAttributes"]
     assert settings["searchableAttributes"][0] == "title"
 
 
@@ -183,7 +184,7 @@ async def test_an_answer_that_the_index_is_gone_sets_it_up_again() -> None:
         return None
 
     sim.fail = lose
-    visibility = Visibility(UserId(uid(5)), frozenset())
+    visibility = Visibility(frozenset({SpaceId(uid(5))}))
     with pytest.raises(SearchIndexError, match="index_not_found"):
         await index.search(search_query("x", visibility))
     settings_checks = len(sim.calls("GET", "/settings"))
@@ -226,7 +227,6 @@ async def test_a_document_is_sent_whole() -> None:
     document = index_document(
         id=DocumentId(uid(10)),
         version=5,
-        owner_id=UserId(uid(11)),
         space_id=SpaceId(uid(12)),
         lane=None,
         title="Rechnung",
@@ -516,16 +516,22 @@ async def test_dropping_removes_the_index_and_the_remains_of_a_rebuild() -> None
 
 
 def _query(**fields: Any) -> SearchQuery:
-    visibility = Visibility(UserId(uid(100)), frozenset())
+    visibility = Visibility(frozenset({SpaceId(uid(100))}))
     return search_query("Zahlung", visibility, **fields)
 
 
 def test_the_filter_for_a_user_without_spaces() -> None:
-    assert filter_expression(_query().visibility, _query().filter) == f'(owner_id = "{uid(100)}")'
+    nothing = Visibility(frozenset())
+    assert filter_expression(nothing, DocumentFilter()) == f'(space_id = "{UUID(int=0)}")'
+    assert filter_expression(_query().visibility, _query().filter) == (
+        f'(space_id IN ["{uid(100)}"])'
+    )
 
 
 def test_the_filter_for_a_user_with_spaces_and_criteria() -> None:
-    visibility = Visibility(UserId(uid(100)), frozenset({SpaceId(uid(2)), SpaceId(uid(1))}))
+    visibility = Visibility(
+        frozenset({SpaceId(uid(100))}), frozenset({SpaceId(uid(2)), SpaceId(uid(1))})
+    )
     query = search_query(
         "x",
         visibility,
@@ -541,7 +547,7 @@ def test_the_filter_for_a_user_with_spaces_and_criteria() -> None:
         ),
     )
     assert filter_expression(query.visibility, query.filter) == (
-        f'(owner_id = "{uid(100)}" OR (lane = "green" AND space_id IN '
+        f'(space_id IN ["{uid(100)}"] OR (lane = "green" AND space_id IN '
         f'["{uid(1)}", "{uid(2)}"])) '
         f'AND contact_id IN ["{uid(3)}", "{uid(10)}"] AND document_type_id IN ["{uid(4)}"] '
         f'AND space_id IN ["{uid(1)}"] '
@@ -553,7 +559,7 @@ def test_the_filter_for_a_user_with_spaces_and_criteria() -> None:
 
 
 def test_the_filter_of_a_search_over_everything() -> None:
-    everything = Visibility(UserId(uid(100)), frozenset(), everything=True)
+    everything = Visibility(frozenset(), everything=True)
     assert filter_expression(everything, DocumentFilter()) is None
     query = search_query(
         "x", everything, filter=DocumentFilter(contacts=frozenset({ContactId(uid(3))}))
@@ -563,7 +569,7 @@ def test_the_filter_of_a_search_over_everything() -> None:
 
 def test_the_filter_for_confirmed_documents() -> None:
     """A document indexed before the attribute existed counts as not confirmed."""
-    everything = Visibility(UserId(uid(100)), frozenset(), everything=True)
+    everything = Visibility(frozenset(), everything=True)
     assert filter_expression(everything, DocumentFilter(confirmed=True)) == "confirmed = true"
     assert filter_expression(everything, DocumentFilter(confirmed=False)) == (
         "NOT confirmed = true"

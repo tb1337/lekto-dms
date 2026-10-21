@@ -1,5 +1,6 @@
-"""What a migration needs from the API: uploading for another owner with the metadata of the
-source system, spaces and users created by an admin's token, the original's hash."""
+"""What a migration needs from the API: uploading in another user's name with the metadata of
+the source system, spaces with their members and users created by an admin's token, the
+original's hash."""
 
 import hashlib
 import json
@@ -73,13 +74,13 @@ async def test_an_admin_uploads_for_another_owner_with_the_metadata(api: Api) ->
     admin, owner = await api.admin(), await api.user()
     data = await master_data(api, admin)
     response = await upload(
-        api, auth(admin), channel="migration", owner=str(owner.id), metadata=metadata(data)
+        api, auth(admin), channel="migration", uploaded_by=str(owner.id), metadata=metadata(data)
     )
     assert response.status_code == 202, response.text
     await api.drain()
 
     document = (await api.client.get(response.json()["status_url"], headers=auth(owner))).json()
-    assert document["owner_id"] == str(owner.id)
+    assert document["uploaded_by"] == str(owner.id)
     assert document["channel"] == "migration"
     assert (document["lane"], document["processing"]["status"]) == ("green", "completed")
     assert document["title"] == "Electricity March"
@@ -92,7 +93,7 @@ async def test_an_admin_uploads_for_another_owner_with_the_metadata(api: Api) ->
         data["note"]["id"]: "paid by transfer",
     }
     spaces = (await api.client.get(f"{PREFIX}/spaces", headers=auth(owner))).json()
-    default = next(item for item in spaces if item["is_default"])
+    default = next(item for item in spaces if item["personal_of"] == str(owner.id))
     assert document["space_id"] == default["id"]
 
     log = (await api.client.get(f"{DOCUMENTS}/{document['id']}/log", headers=auth(owner))).json()
@@ -104,7 +105,7 @@ async def test_an_admin_uploads_for_another_owner_with_the_metadata(api: Api) ->
     assert applied["judge"]["reason"] == "taken over from the source system"
     assert applied["judge"]["model_version"] == "imported"
     assert applied["fields"]["model_version"] == "imported"
-    # The admin does not own it.
+    # It lies in the owner's personal space, not in the admin's reach.
     other = await api.client.get(f"{DOCUMENTS}?limit=50", headers=auth(admin))
     assert other.json()["items"] == []
 
@@ -118,7 +119,7 @@ async def test_the_metadata_say_when_the_document_came_in_at_the_source(api: Api
             api,
             auth(admin),
             channel="migration",
-            owner=str(owner.id),
+            uploaded_by=str(owner.id),
             metadata=metadata(data, created_at=created_at),
         )
 
@@ -157,7 +158,7 @@ async def test_a_red_document_keeps_the_metadata_and_gets_them_when_retried(api:
     admin, owner = await api.admin(), await api.user()
     data = await master_data(api, admin)
     response = await upload(
-        api, auth(admin), channel="migration", owner=str(owner.id), metadata=metadata(data)
+        api, auth(admin), channel="migration", uploaded_by=str(owner.id), metadata=metadata(data)
     )
     assert response.status_code == 202, response.text
     await api.drain()
@@ -193,62 +194,70 @@ async def test_the_original_hash_is_in_the_details(api: Api) -> None:
     assert document["sha256"] == hashlib.sha256((SAMPLES / "scan.pdf").read_bytes()).hexdigest()
 
 
-async def test_the_owner_needs_write_access_to_the_space(api: Api) -> None:
+async def test_an_admin_files_into_any_space_in_another_users_name(api: Api) -> None:
     admin, owner, other = await api.admin(), await api.user(), await api.user()
     theirs = await post(api, "/spaces", {"name": "Work"}, auth(other))
     response = await upload(
-        api, auth(admin), owner=str(owner.id), space_id=theirs["id"], channel="migration"
+        api, auth(admin), uploaded_by=str(owner.id), space_id=theirs["id"], channel="migration"
     )
-    assert response.status_code in (403, 404)
-    mine = await post(api, "/spaces", {"name": "Work", "owner_id": str(owner.id)}, auth(admin))
-    assert mine["owner_id"] == str(owner.id)
+    assert response.status_code == 202, response.text
+    url = response.json()["status_url"]
+    document = (await api.client.get(url, headers=auth(other))).json()
+    assert (document["space_id"], document["uploaded_by"]) == (theirs["id"], str(owner.id))
+    assert (await api.client.get(url, headers=auth(owner))).status_code == 404  # no member
+    # A user files only into spaces they edit.
+    refused = await upload(api, auth(owner), name="photo.jpg", space_id=theirs["id"])
+    assert refused.status_code == 404
+    members = [{"user_id": str(owner.id), "role": "edit"}]
+    mine = await post(api, "/spaces", {"name": "Mine", "members": members}, auth(admin))
+    assert mine["members"] == members
     response = await upload(
-        api, auth(admin), owner=str(owner.id), space_id=mine["id"], channel="migration"
+        api, auth(admin), uploaded_by=str(owner.id), space_id=mine["id"], name="photo.jpg"
     )
     assert response.status_code == 202, response.text
     document = (await api.client.get(response.json()["status_url"], headers=auth(owner))).json()
     assert document["space_id"] == mine["id"]
 
 
-async def test_the_duplicate_check_is_the_owners(api: Api) -> None:
+async def test_the_duplicate_check_covers_the_uploaders_spaces(api: Api) -> None:
     admin, one, two = await api.admin(), await api.user(), await api.user()
-    first = await upload(api, auth(admin), owner=str(one.id))
+    first = await upload(api, auth(admin), uploaded_by=str(one.id))
     assert first.status_code == 202
-    again = await upload(api, auth(admin), owner=str(one.id))
+    again = await upload(api, auth(admin), uploaded_by=str(one.id))
     assert again.status_code == 409
     assert again.json()["existing_document_id"] == first.json()["id"]
-    assert (await upload(api, auth(admin), owner=str(two.id))).status_code == 202
+    assert (await upload(api, auth(admin), uploaded_by=str(two.id))).status_code == 202
     assert (await upload(api, auth(admin))).status_code == 202  # the admin's own copy
 
 
-async def test_only_admins_choose_the_owner_or_give_metadata(api: Api) -> None:
+async def test_only_admins_name_the_uploader_or_give_metadata(api: Api) -> None:
     admin, user, owner = await api.admin(), await api.user(), await api.user()
     data = await master_data(api, admin)
-    response = await upload(api, auth(user), owner=str(owner.id))
+    response = await upload(api, auth(user), uploaded_by=str(owner.id))
     assert response.status_code == 403
     response = await upload(api, auth(user), channel="migration", metadata=metadata(data))
     assert response.status_code == 403
     # Naming themselves is no change.
-    assert (await upload(api, auth(user), owner=str(user.id))).status_code == 202
+    assert (await upload(api, auth(user), uploaded_by=str(user.id))).status_code == 202
 
 
-async def test_an_owner_who_is_gone_or_inactive_is_not_found(api: Api) -> None:
+async def test_an_uploader_who_is_gone_or_inactive_is_not_found(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
-    unknown = await upload(api, auth(admin), owner=str(UUID(int=5)))
+    unknown = await upload(api, auth(admin), uploaded_by=str(UUID(int=5)))
     assert unknown.status_code == 404
     await api.services.users.update(admin.id, owner.id, active=False)
-    inactive = await upload(api, auth(admin), owner=str(owner.id))
+    inactive = await upload(api, auth(admin), uploaded_by=str(owner.id))
     assert inactive.status_code == 404
-    assert (await upload(api, auth(admin), owner="not-a-uuid")).status_code == 422
+    assert (await upload(api, auth(admin), uploaded_by="not-a-uuid")).status_code == 422
 
 
 async def test_a_deactivated_admin_and_a_read_token_can_neither(api: Api) -> None:
     admin, owner, boss = await api.admin(), await api.user(), await api.admin()
     _, token = await api.services.auth.create_api_token(admin.id, "read", TokenScope.READ)
-    response = await upload(api, bearer(token), owner=str(owner.id))
+    response = await upload(api, bearer(token), uploaded_by=str(owner.id))
     assert response.status_code == 403
     await api.services.users.update(boss.id, admin.id, active=False)
-    response = await upload(api, auth(admin), owner=str(owner.id))
+    response = await upload(api, auth(admin), uploaded_by=str(owner.id))
     assert response.status_code == 401
 
 
@@ -301,7 +310,7 @@ async def test_metadata_needs_the_channel_and_must_fit_the_master_data(api: Api)
             "review",
         ),
     ]:
-        response = await upload(api, headers, owner=str(owner.id), **fields)
+        response = await upload(api, headers, uploaded_by=str(owner.id), **fields)
         assert response.status_code == 422, (fields, response.text)
         assert text in response.json()["detail"], response.json()
     # Nothing was stored.
@@ -317,7 +326,7 @@ async def test_metadata_may_be_long(api: Api) -> None:
     response = await upload(
         api,
         auth(admin),
-        owner=str(owner.id),
+        uploaded_by=str(owner.id),
         channel="migration",
         metadata=metadata(data, fields=notes),
     )
@@ -327,7 +336,7 @@ async def test_metadata_may_be_long(api: Api) -> None:
         api,
         auth(admin),
         name="photo.jpg",
-        owner=str(owner.id),
+        uploaded_by=str(owner.id),
         channel="migration",
         metadata=metadata(data, fields=too_long),
     )
@@ -348,7 +357,7 @@ async def test_reprocessing_applies_the_metadata_again(api: Api) -> None:
     admin, owner = await api.admin(), await api.user()
     data = await master_data(api, admin)
     response = await upload(
-        api, auth(admin), channel="migration", owner=str(owner.id), metadata=metadata(data)
+        api, auth(admin), channel="migration", uploaded_by=str(owner.id), metadata=metadata(data)
     )
     await api.drain()
     url = response.json()["status_url"]
@@ -376,7 +385,7 @@ async def test_a_review_holds_the_document_until_a_person_decides(api: Api) -> N
         api,
         auth(admin),
         channel="migration",
-        owner=str(owner.id),
+        uploaded_by=str(owner.id),
         metadata=metadata(data, contact_id=None, review=review),
     )
     assert response.status_code == 202, response.text
@@ -416,7 +425,7 @@ async def test_a_review_of_a_field_with_a_value_keeps_it(api: Api) -> None:
         api,
         auth(admin),
         channel="migration",
-        owner=str(owner.id),
+        uploaded_by=str(owner.id),
         metadata=metadata(data, review=[{"reason": "currency guessed", "field": amount}]),
     )
     url = response.json()["status_url"]
@@ -439,7 +448,10 @@ async def test_an_admin_aligns_a_migrated_document_without_confirming_it(api: Ap
     data = await master_data(api, admin)
     other = await post(api, "/contacts", {"name": "Nord Strom"}, auth(admin))
     household = await post(
-        api, "/spaces", {"name": "Household", "owner_id": str(owner.id)}, auth(admin)
+        api,
+        "/spaces",
+        {"name": "Household", "members": [{"user_id": str(owner.id), "role": "edit"}]},
+        auth(admin),
     )
     await post(
         api,
@@ -453,7 +465,7 @@ async def test_an_admin_aligns_a_migrated_document_without_confirming_it(api: Ap
         auth(owner),
     )
     response = await upload(
-        api, auth(admin), channel="migration", owner=str(owner.id), metadata=metadata(data)
+        api, auth(admin), channel="migration", uploaded_by=str(owner.id), metadata=metadata(data)
     )
     url = response.json()["status_url"]
     await api.drain()
@@ -476,7 +488,7 @@ async def test_an_admin_aligns_a_migrated_document_without_confirming_it(api: Ap
         api,
         auth(admin),
         channel="migration",
-        owner=str(owner.id),
+        uploaded_by=str(owner.id),
         name="photo.jpg",
         metadata=metadata(data, contact_id=None, review=review),
     )
@@ -497,7 +509,7 @@ async def test_only_an_admin_aligns_and_only_a_migrated_document(api: Api) -> No
     admin, owner = await api.admin(), await api.user()
     data = await master_data(api, admin)
     migrated = await upload(
-        api, auth(admin), channel="migration", owner=str(owner.id), metadata=metadata(data)
+        api, auth(admin), channel="migration", uploaded_by=str(owner.id), metadata=metadata(data)
     )
     own = await upload(api, auth(owner), name="photo.jpg")
     await api.drain()
@@ -515,39 +527,48 @@ async def test_only_an_admin_aligns_and_only_a_migrated_document(api: Api) -> No
     assert document["title"] != "Aligned"
 
 
-async def test_spaces_for_another_owner(api: Api) -> None:
+async def test_spaces_with_members(api: Api) -> None:
     admin, owner, other = await api.admin(), await api.user(), await api.user()
+    members = [{"user_id": str(owner.id), "role": "edit"}]
     created = await api.client.post(
-        f"{PREFIX}/spaces", json={"name": "Shared", "owner_id": str(owner.id)}, headers=auth(admin)
+        f"{PREFIX}/spaces", json={"name": "Shared", "members": members}, headers=auth(admin)
     )
-    assert created.status_code == 201
-    assert created.json()["owner_id"] == str(owner.id)
-    # The name is unique per owner, not across owners.
-    again = await api.client.post(
-        f"{PREFIX}/spaces", json={"name": "shared", "owner_id": str(owner.id)}, headers=auth(admin)
-    )
+    assert created.status_code == 201, created.text
+    assert created.json()["members"] == members  # the admin alone gives the members
+    assert created.json()["personal_of"] is None
+    # Names of spaces are unique.
+    again = await api.client.post(f"{PREFIX}/spaces", json={"name": "shared"}, headers=auth(admin))
     assert again.status_code == 409
-    own = await api.client.post(f"{PREFIX}/spaces", json={"name": "Shared"}, headers=auth(admin))
-    assert own.status_code == 201
-    # Others may not, naming themselves is no change.
-    refused = await api.client.post(
-        f"{PREFIX}/spaces", json={"name": "X", "owner_id": str(owner.id)}, headers=auth(other)
+    # Anyone else always edits what they create.
+    readers = [{"user_id": str(owner.id), "role": "read"}]
+    theirs = await api.client.post(
+        f"{PREFIX}/spaces", json={"name": "X", "members": readers}, headers=auth(other)
     )
-    assert refused.status_code == 403
-    mine = await api.client.post(
-        f"{PREFIX}/spaces", json={"name": "X", "owner_id": str(other.id)}, headers=auth(other)
+    assert theirs.status_code == 201
+    assert {(m["user_id"], m["role"]) for m in theirs.json()["members"]} == {
+        (str(other.id), "edit"),
+        (str(owner.id), "read"),
+    }
+    nobody_edits = await api.client.post(
+        f"{PREFIX}/spaces", json={"name": "Z", "members": readers}, headers=auth(admin)
     )
-    assert mine.status_code == 201
-    unknown = await api.client.post(
-        f"{PREFIX}/spaces", json={"name": "Y", "owner_id": str(UUID(int=4))}, headers=auth(admin)
+    assert nobody_edits.status_code == 422
+    unknown = [{"user_id": str(UUID(int=4)), "role": "read"}]
+    missing = await api.client.post(
+        f"{PREFIX}/spaces", json={"name": "Y", "members": unknown}, headers=auth(admin)
     )
-    assert unknown.status_code == 404
-    shared = await api.client.put(
-        f"{PREFIX}/spaces/{created.json()['id']}/shares/{other.id}",
-        json={"level": "read"},
+    assert missing.status_code == 404
+    added = await api.client.put(
+        f"{PREFIX}/spaces/{created.json()['id']}/members/{other.id}",
+        json={"role": "read"},
         headers=auth(admin),
     )
-    assert shared.status_code == 200
+    assert added.status_code == 200
+    removed = await api.client.delete(
+        f"{PREFIX}/spaces/{created.json()['id']}/members/{other.id}", headers=auth(owner)
+    )
+    assert removed.status_code == 200
+    assert removed.json()["members"] == members
 
 
 async def test_an_admin_token_creates_users_without_password(api: Api) -> None:
@@ -605,7 +626,7 @@ async def test_rules_run_and_trust_the_imported_values(api: Api) -> None:
         auth(owner),
     )
     response = await upload(
-        api, auth(admin), channel="migration", owner=str(owner.id), metadata=metadata(data)
+        api, auth(admin), channel="migration", uploaded_by=str(owner.id), metadata=metadata(data)
     )
     await api.drain()
     document = (await api.client.get(response.json()["status_url"], headers=auth(owner))).json()

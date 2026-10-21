@@ -10,7 +10,7 @@ model's signal fails, when its answers do not fit or it cannot be reached after 
   identifiers like those of the text, the payee of a GiroCode like a name in the text.
 - `signal_classifier`: the trained classifier's probabilities for contact, type, topic and
   tags.
-- `signal_neighbours`: the most similar confirmed documents the owner may read, by vector,
+- `signal_neighbours`: the most similar confirmed documents the uploader may read, by vector,
   with their contact, type, topic and tags.
 """
 
@@ -50,7 +50,7 @@ from lekto.core.domain.json_value import (
     as_uuid,
 )
 from lekto.core.domain.master_data import Contact
-from lekto.core.domain.permissions import reach_access
+from lekto.core.domain.permissions import Reach, reach_access
 from lekto.core.domain.pipeline import Node, NodeResult, NodeRun, Outcome
 from lekto.core.domain.search import Visibility
 from lekto.core.domain.verdict import (
@@ -264,7 +264,7 @@ class NeighboursPolicy:
 
 
 class NeighboursSignal:
-    """The most similar confirmed documents the owner may read: by the vector of the start of
+    """The most similar confirmed documents the uploader may read: by the vector of the start of
     the text, against the index's vectors; their contact, type, topic and tags (from the
     database, not the index, which lags a little), and what any confirmed document carries
     (`known`): the values similar documents could have named."""
@@ -301,9 +301,13 @@ class NeighboursSignal:
         if not vector or (wanted is not None and len(vector) != wanted):
             return abstained("the text's vector does not fit the index")
         async with self._uow() as uow:
-            owner = await uow.users.get(document.owner_id)
+            owner = (
+                None if document.uploaded_by is None else await uow.users.find(document.uploaded_by)
+            )
+            if owner is None or not owner.active:
+                return abstained("the document has no active uploader to look from")
             spaces = await uow.spaces.list_accessible(owner.id)
-        visibility = Visibility(owner.id, frozenset(space.id for space in spaces))
+        visibility = Visibility.of(Reach.of(owner.id, spaces))
         try:
             hits = await self._index.similar(
                 SimilarQuery(

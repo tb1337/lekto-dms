@@ -1,10 +1,12 @@
 """Loading entities, together with the caller's rights where they matter."""
 
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
 
 from lekto.core.domain.documents import Document, DocumentChanges, Unset
 from lekto.core.domain.errors import (
     AuthenticationError,
+    DuplicateDocumentError,
     NotFoundError,
     PermissionDeniedError,
     ValidationError,
@@ -13,15 +15,12 @@ from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.ids import ContactId, DocumentId, FieldId, SpaceId, UserId
 from lekto.core.domain.master_data import TagScope
 from lekto.core.domain.permissions import (
-    can_control_document,
-    can_file_into,
+    can_edit_document,
     can_read_document,
-    can_write_document,
     document_access,
-    space_access,
+    space_role,
 )
-from lekto.core.domain.pipeline import ProcessingHistory
-from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
 from lekto.core.ports.unit_of_work import UnitOfWork
 from lekto.core.services._tags import tag_tree
@@ -74,50 +73,61 @@ async def readable_document(uow: UnitOfWork, user: User, id: DocumentId) -> tupl
 
 
 async def writable_document(uow: UnitOfWork, user: User, id: DocumentId) -> tuple[Document, Space]:
+    """The document and its space, if `user` edits it (`can_edit_document`); NotFoundError if
+    they cannot read it, PermissionDeniedError if they only read it."""
     document, space = await readable_document(uow, user, id)
-    if not can_write_document(user, document, space):
+    if not can_edit_document(user, document, space):
         raise PermissionDeniedError(f"no write access to document {id}")
     return document, space
 
 
 async def controllable_document(
     uow: UnitOfWork, user: User, id: DocumentId, action: str
-) -> Document:
-    """The document, if `user` controls it (`can_control_document`: its owner or an admin);
-    NotFoundError if they cannot read it, PermissionDeniedError ("only the owner and admins
-    <action>") if they only read it."""
-    document, _ = await readable_document(uow, user, id)
-    if not can_control_document(user, document):
-        raise PermissionDeniedError(f"only the owner and admins {action}")
-    return document
+) -> tuple[Document, Space]:
+    """The document and its space, if `user` edits it (`can_edit_document`: an editor of its
+    space or an admin); NotFoundError if they cannot read it, PermissionDeniedError ("only
+    editors and admins <action>") if they only read it."""
+    document, space = await readable_document(uow, user, id)
+    if not can_edit_document(user, document, space):
+        raise PermissionDeniedError(f"only editors and admins {action}")
+    return document, space
 
 
-async def access_to(uow: UnitOfWork, user: User, document: Document) -> ShareLevel:
+async def access_to(uow: UnitOfWork, user: User, document: Document) -> SpaceRole:
     """The access of `user`, who may read `document`, to it in the space it lies in now."""
     access = document_access(user, document, await uow.spaces.get(document.space_id))
     assert access is not None  # readable
     return access
 
 
+def space_label(space: Space, users: Mapping[UserId, User]) -> str:
+    """How a person reads a space's name: a personal space by its user's name."""
+    if space.personal_of is not None and (user := users.get(space.personal_of)) is not None:
+        return user.username
+    return space.name
+
+
 async def visible_space(uow: UnitOfWork, user: User, id: SpaceId) -> Space:
+    """The space, if `user` is a member or an admin; NotFoundError otherwise."""
     space = await uow.spaces.find(id)
-    if space is None or space_access(user, space) is None:
+    if space is None or space_role(user, space) is None:
         raise NotFoundError("space", id)
     return space
 
 
-async def may_file(uow: UnitOfWork, document: Document, space: Space) -> bool:
-    """Whether filing may put the document into `space`: its owner may write to the space, or
-    an active admin put the document there by hand (admins file into any space)."""
-    owner = await uow.users.get(document.owner_id)
-    if can_file_into(owner, space):
-        return True
-    log = await uow.processing_log.list_for(document.id)
-    chooser = ProcessingHistory(log).space_chooser(space.id)
-    if chooser is None:
-        return False
-    user = await uow.users.find(UserId(chooser))
-    return user is not None and user.is_active_admin
+def duplicate_error(
+    user: User, duplicates: Iterable[Document], spaces: Mapping[SpaceId, Space]
+) -> DuplicateDocumentError | None:
+    """The error for `duplicates`, documents with the same file in the way of another one (they
+    lie in `spaces`): it names one that `user` may read; one they may not read stays unnamed.
+    None without duplicates."""
+    found = list(duplicates)
+    if not found:
+        return None
+    readable = next(
+        (item for item in found if can_read_document(user, item, spaces[item.space_id])), None
+    )
+    return DuplicateDocumentError(None if readable is None else readable.id)
 
 
 def contact_topics_lock(contact: ContactId) -> str:

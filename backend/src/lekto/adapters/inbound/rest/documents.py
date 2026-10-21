@@ -82,7 +82,10 @@ from lekto.core.ports.repository import PAGE_LIMIT, PAGE_SIZE, DocumentOrder, So
 from lekto.core.services.documents import DocumentFile, DocumentView, MetadataChange
 
 router = APIRouter(prefix="/documents", tags=["documents"], dependencies=PROTECTED)
+
 inbox = APIRouter(prefix="/inbox", tags=["inbox"], dependencies=PROTECTED)
+
+EDITORS = "Editors of the document's space and admins"
 
 
 class DocumentSort(StrEnum):
@@ -131,9 +134,11 @@ _UPLOAD_BODY = upload_body(
     status_code=202,
     summary="Upload a document",
     description=(
-        "Stores the file and starts processing in the background. The file is hashed while it "
-        "is received; a file the caller already has is rejected with 409. Follow the progress "
-        "at `status_url` or with `GET /events`."
+        "Stores the file and starts processing in the background, in the uploader's personal "
+        "space unless `space_id` names another. The file is hashed while it is received; a "
+        "file the uploader can read (in a space they edit, or green in a space they read), or "
+        "one in the target space, is rejected with 409, naming the document if the caller may "
+        "read it. Follow the progress at `status_url` or with `GET /events`."
     ),
     response_model=DocumentAccepted,
     responses={
@@ -190,7 +195,7 @@ async def upload(
             filename=received.filename,
             space=None if form.space_id is None else SpaceId(form.space_id),
             channel=channel,
-            owner=None if form.owner is None else UserId(form.owner),
+            uploaded_by=None if form.uploaded_by is None else UserId(form.uploaded_by),
             imported=imported,
         )
     finally:
@@ -204,8 +209,8 @@ async def upload(
     "",
     summary="List documents",
     description=(
-        "The documents within the caller's reach, newest first: their own, and green "
-        "documents in spaces they own or that are shared with them. Admins may read every "
+        "The documents within the caller's reach, newest first: every document in the spaces "
+        "they edit, the green ones in the spaces they read. Admins may read every "
         "document and list them all with `all_users` (others: 403). Filters combine; "
         "`contact_id`, `document_type_id`, `space_id`, `tag_id`, `contact_group_id`, "
         "`document_type_group_id`, `topic_id` and `lane` may repeat (any contact, type, "
@@ -304,13 +309,13 @@ Confirm = Annotated[
     "/{id}",
     summary="Change a document's metadata",
     description=(
-        "Needs write access (owner or a `read_write` share). Referenced contact, type, tags "
-        "and fields must exist; field values must fit their type and apply to the "
-        "document type. On a filed document, the change sets off the owner's rules and the "
-        "global ones with trigger `change` that hold after it and did not before; fields set "
-        "in the change stay as they are. The owner sees what the rules did in `rules`. If the "
-        "rules filed the document where the caller can no longer read it, the answer has only "
-        "its `id` and `access: null`."
+        "Editors of the document's space and admins. Referenced contact, type, tags and "
+        "fields must exist; field values must fit their type and apply to the document type. "
+        "On a filed document, the change sets off the rules of its space and the global ones "
+        "with trigger `change` that hold after it and did not before; fields set in the "
+        "change stay as they are. `rules` says what the rules did. If the rules filed the "
+        "document where the caller can no longer read it, the answer has only its `id` and "
+        "`access: null`."
     ),
     response_model=DocumentChanged | DocumentOutOfReach,
     responses=problem_responses(401, 403, 404, 409, 422),
@@ -328,8 +333,8 @@ async def update_document(
     summary="Try a metadata change",
     description=(
         "What `PATCH /documents/{id}` with this body would do, without storing anything: the "
-        "document afterwards, the fields that would change, what the rules would do (owner "
-        "and admins) and who would see it. Needs write access."
+        "document afterwards, the fields that would change, what the rules would do and who "
+        "would see it (the members of the space it would lie in). Editors and admins."
     ),
     response_model=DocumentPreviewOut,
     responses=problem_responses(401, 403, 404, 409, 422),
@@ -355,9 +360,7 @@ async def preview_change(
             if change.rules is None
             else [RuleReportOut.of(report) for report in change.rules.plan.reports]
         ),
-        visibility=(
-            VisibilityOut.of(change.document, change.space, principal.user) if readable else None
-        ),
+        visibility=(VisibilityOut.of(change.document, change.space) if readable else None),
     )
 
 
@@ -366,10 +369,13 @@ async def preview_change(
     status_code=204,
     summary="Move a document to another space",
     description=(
-        "The owner moves into spaces they may write to; an admin moves any document into any "
-        "space. Shares do not allow moving."
+        "Editors of the document's space move it into a space they edit, or hand it over into "
+        "another active user's personal space (they need not be a member there); an admin "
+        "moves any document anywhere. Readers do not move. 409 if the target holds the same "
+        "file (naming it if the caller may read it). A green document becomes new for the "
+        "target's editors who could not read it before."
     ),
-    responses=problem_responses(401, 403, 404, 422),
+    responses=problem_responses(401, 403, 404, 409, 422),
 )
 async def move_document(id: UUID, body: MoveRequest, user: CurrentUser, context: Context) -> None:
     await context.documents.move(user, DocumentId(id), SpaceId(body.space_id))
@@ -379,7 +385,7 @@ async def move_document(id: UUID, body: MoveRequest, user: CurrentUser, context:
     "/{id}",
     status_code=204,
     summary="Delete a document",
-    description="The owner and admins.",
+    description="Editors of the document's space and admins.",
     responses=problem_responses(401, 403, 404, 422),
 )
 async def delete_document(id: UUID, user: CurrentUser, context: Context) -> None:
@@ -518,7 +524,7 @@ async def document_structure(id: UUID, user: CurrentUser, context: Context) -> R
     "/{id}/exchanges/{node}",
     summary="What a node sent to the language model",
     description=(
-        "The owner and admins, as the log. The messages, the answer and the usage report of "
+        EDITORS + ", as the log. The messages, the answer and the usage report of "
         "every call of `node` to the language model, per processing run, oldest first; empty "
         "if it never asked one (also for runs from before the messages were kept). For `ocr`, "
         "the vision language model's calls, one per page; the page image stands in the "
@@ -537,7 +543,7 @@ async def model_exchanges(
 @router.get(
     "/{id}/log",
     summary="Processing log of a document",
-    description="The owner and admins. Every execution of every node, oldest first.",
+    description=EDITORS + ". Every execution of every node, oldest first.",
     response_model=list[LogEntry],
     responses=problem_responses(401, 403, 404, 422),
 )
@@ -551,7 +557,7 @@ async def processing_log(id: UUID, user: CurrentUser, context: Context) -> list[
     "/{id}/retry",
     status_code=202,
     summary="Repeat the failed node",
-    description="The owner and admins. Processing continues with the following nodes.",
+    description=EDITORS + ". Processing continues with the following nodes.",
     response_model=DocumentDetails,
     responses=problem_responses(401, 403, 404, 409, 422),
 )
@@ -564,7 +570,7 @@ async def retry(id: UUID, user: CurrentUser, context: Context) -> DocumentDetail
     status_code=202,
     summary="Read the document with the vision language model",
     description=(
-        "The owner and admins. Sends every page as an image to the vision language model "
+        EDITORS + ". Sends every page as an image to the vision language model "
         "(`LEKTO_VLM_*`, named in `GET /pipeline`) and processes the document again from "
         "`ocr`: the model's text becomes the archive's text layer and is checked like any "
         "other OCR. Only a person asks for it; the advice is in `GET /documents/{id}/reading`. "
@@ -616,7 +622,7 @@ async def document_files(id: UUID, user: CurrentUser, context: Context) -> Docum
     "/{id}/reading",
     summary="How the text of a document was read",
     description=(
-        "The owner and admins, as the log. Whether the archive's text is the vision language "
+        EDITORS + ", as the log. Whether the archive's text is the vision language "
         "model's, the words and unsure words of each page its latest OCR recognised, and "
         "whether reading it with the model is advised."
     ),
@@ -632,7 +638,7 @@ async def reading(id: UUID, user: CurrentUser, context: Context) -> ReadingOut:
     status_code=202,
     summary="Process again from a node",
     description=(
-        "The owner and admins. Discards the results from `from_node` on, e.g. after a model "
+        EDITORS + ". Discards the results from `from_node` on, e.g. after a model "
         "change. Not while processing runs, not past a failed node, and not from `file` while "
         "uncertain fields wait for confirmation."
     ),
@@ -655,8 +661,8 @@ async def reprocess(
         "`GET /inbox`); seen again later, it keeps that time. The web UI calls it when the "
         "document view opens; reading a document "
         "(`GET /documents/{id}`, MCP) does not. Needs read access; nothing changes for a "
-        "document that is new for no one, or one the caller reaches through a share only (it "
-        "never stands in their inbox). Seen is per user and changes nothing else: not "
+        "document that is new for no one, or one in a space the caller only reads (it never "
+        "stands in their inbox). Seen is per user and changes nothing else: not "
         "`confirmed_at`, the training, rules or the lane."
     ),
     responses=problem_responses(401, 403, 404, 422),
@@ -683,7 +689,7 @@ async def mark_unseen(id: UUID, user: CurrentUser, context: Context) -> None:
     "/{id}/review",
     summary="What the model proposed for a document",
     description=(
-        "The owner and admins. The open nodes and fields, and the latest classification and "
+        EDITORS + ". The open nodes and fields, and the latest classification and "
         "field extraction by the model: each field as proposed, checked and applied."
     ),
     response_model=ReviewOut,
@@ -698,15 +704,17 @@ async def review(id: UUID, user: CurrentUser, context: Context) -> ReviewOut:
     status_code=202,
     summary="Confirm a document from the inbox",
     description=(
-        "The owner and admins, for yellow and red documents that are not being processed. "
-        "`space_id` must be a space the owner may write to; an admin chooses any space. "
+        "Editors of the document's space and admins, for yellow and red documents that are "
+        "not being processed. `space_id` moves the document as `POST /documents/{id}/move` "
+        "does: into a space the caller edits, or another user's personal space; an admin "
+        "chooses any space. "
         "Every open field of the nodes before `resume_at` (and of `apply_rules` when processing "
         "resumes with it) needs a decision: a value or null in `changes`, a value the document "
         "already has (it is kept), or its suggestion with `accept_suggestions`. Otherwise 422 "
         "lists the open fields in `open_fields`. The rules' fields `space`, `title` and "
         "`review` always have a value: confirming keeps it, `space_id` moves the document. The "
         "results before `resume_at` count as confirmed; processing continues from there up to "
-        "filing, and the rules leave what the owner decided or changed as it is. From "
+        "filing, and the rules leave what the person decided or changed as it is. From "
         "`fields` on, the fields read again replace the ones the document has; otherwise the "
         "type's title pattern is rendered with the decided values (while the title is the "
         "machine's)."
@@ -733,10 +741,11 @@ async def confirm(
     "",
     summary="The caller's inbox",
     description=(
-        "The caller's own documents that wait for them, newest first: in processing, yellow "
+        "The documents in the spaces the caller edits that wait for them, newest first: in "
+        "processing, yellow "
         "(`review`), red (`intervene`), and new ones, which went green without a person's "
         "decision and are not seen by the caller since (`PUT /documents/{id}/seen`); each with "
-        "its open nodes and fields. Documents the caller reaches through a share never stand "
+        "its open nodes and fields. Documents in spaces the caller only reads never stand "
         "there. `tab` takes one of them, or `done`: what left the inbox in the last 14 days, "
         "with how (confirmed out of yellow or red, or seen), when and by whom, newest first by "
         "when it left (a `cursor` whose document is no longer done: 422). With "

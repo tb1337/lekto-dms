@@ -6,7 +6,7 @@ import httpx2
 
 from lekto.adapters.outbound.meilisearch import MeilisearchIndex
 from lekto.composition.settings import Settings
-from lekto.core.domain.ids import UserId, new_id
+from lekto.core.domain.ids import SpaceId, new_id
 from lekto.core.domain.search import Visibility
 from tests.builders import index_document, search_query
 from tests.contracts.search_index import SearchIndexContract
@@ -18,11 +18,11 @@ class TestMeilisearchIndex(SearchIndexContract):
 
 
 async def test_compound_words_are_split(search_index: MeilisearchIndex) -> None:
-    owner = UserId(new_id())
-    document = index_document(owner_id=owner, title="Stromrechnung", text="Ihre Jahresabrechnung")
+    space = SpaceId(new_id())
+    document = index_document(space_id=space, title="Stromrechnung", text="Ihre Jahresabrechnung")
     await search_index.upsert([document])
     for word in ("Strom", "rechnung", "Abrechnung"):
-        result = await search_index.search(search_query(word, Visibility(owner, frozenset())))
+        result = await search_index.search(search_query(word, Visibility(frozenset({space}))))
         assert [hit.id for hit in result.hits] == [document.id], word
 
 
@@ -61,10 +61,10 @@ async def test_an_index_without_embedder_takes_documents_without_vectors(
     name = f"lekto-test-{secrets.token_hex(6)}"
     index = new_index(meilisearch_settings, name, dimensions=None)
     try:
-        owner = UserId(new_id())
-        document = index_document(owner_id=owner, title="Mahnung")
+        space = SpaceId(new_id())
+        document = index_document(space_id=space, title="Mahnung")
         await index.upsert([document])
-        result = await index.search(search_query("Mahnung", Visibility(owner, frozenset())))
+        result = await index.search(search_query("Mahnung", Visibility(frozenset({space}))))
         assert [hit.id for hit in result.hits] == [document.id]
     finally:
         await index.aclose()

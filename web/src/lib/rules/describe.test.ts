@@ -125,3 +125,24 @@ describe('the topic', () => {
 		);
 	});
 });
+
+describe('where a rule files', () => {
+	const spaces = {
+		...lookup,
+		spaces: [{ id: 's1', name: 'Haushalt', personal_of: null }],
+		users: [{ id: 'u2', username: 'anna', personal_space_id: 'p2' }]
+	} as unknown as Lookup;
+
+	it('names a known space, and the personal space of another user as a hand-over', () => {
+		const label = m.rule_action_set_space();
+		expect(describeAction({ type: 'set_space', space_id: 's1' }, spaces)).toBe(
+			`${label}: Haushalt`
+		);
+		expect(describeAction({ type: 'set_space', space_id: 'p2' }, spaces)).toBe(
+			`${label}: ${m.move_hand_over({ name: 'anna' })}`
+		);
+		expect(describeAction({ type: 'set_space', space_id: 'gone' }, spaces)).toBe(
+			`${label}: ${m.rule_unknown()}`
+		);
+	});
+});

@@ -228,7 +228,7 @@ async def test_cleanup_removes_what_only_done_needs_after_its_period(world: Worl
     it tells that the document is not new."""
     service = maintenance(world)
     owner = await world.user()
-    space = await world.default_space(owner)
+    space = await world.personal_space(owner)
     confirmed, seen = builders.processed(owner, space), builders.processed(owner, space)
     confirmed.new_at = None
     async with world.uow() as uow:

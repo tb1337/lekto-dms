@@ -39,7 +39,7 @@ async def test_the_pattern_is_a_rule_of_its_type(world: World) -> None:
         r.admin.id, "Rechnung", title_pattern="{{ document_type }} {{ filename }}"
     )
     (rule,) = await title_rules(r)
-    assert rule.managed_by == kind.id and rule.owner_id is None
+    assert rule.managed_by == kind.id and rule.space_id is None
     assert rule.definition.name == "Rechnung"
     assert rule.definition.actions == (SetTitle("{{ document_type }} {{ filename }}"),)
 
@@ -123,7 +123,9 @@ async def test_a_rule_of_the_owner_s_wins_over_the_pattern(world: World) -> None
     kind = await world.master_data.create_document_type(
         r.admin.id, "Rechnung", title_pattern="{{ document_type }}"
     )
-    await r.user_rule(owner, definition("Mine", channel_api(), SetTitle("Meine {{ filename }}")))
+    await r.personal_rule(
+        owner, definition("Mine", channel_api(), SetTitle("Meine {{ filename }}"))
+    )
 
     document = await r.arrive(
         owner, classify=Classifies(document_type=kind.id), fields=Titles("Strom")

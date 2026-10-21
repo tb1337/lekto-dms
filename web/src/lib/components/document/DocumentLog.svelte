@@ -462,7 +462,7 @@
 										</span>
 									</summary>
 									{#if !manageable}
-										<p class="mt-2 ml-7 text-sm text-muted-foreground">{m.log_owner_only()}</p>
+										<p class="mt-2 ml-7 text-sm text-muted-foreground">{m.log_editors_only()}</p>
 									{:else if view.done.entries.length === 0 && isCurrent}
 										<p class="mt-2 ml-7 text-sm text-muted-foreground">
 											{entries === null ? m.loading() : m.log_none()}

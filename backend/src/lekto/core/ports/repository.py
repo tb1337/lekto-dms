@@ -7,12 +7,12 @@ Common rules for every adapter:
 - `add` keeps the entity's version; `update` succeeds only if the stored version equals the
   entity's version, then increments both. Otherwise it raises ConcurrencyError (at the latest on
   commit).
-- Uniqueness (raises ConflictError at the latest on commit): usernames; space names per owner;
-  one default space per owner; names of contacts, document types and field definitions, and
-  of tags per scope; the original (SHA-256) per document owner. Names compare regardless of
-  case. The services look a name up before they write, for a message that names it ("'X'
-  already exists"); the adapter's rule is the net for two requests at once, which the look-up
-  cannot see.
+- Uniqueness (raises ConflictError at the latest on commit): usernames; names of the spaces
+  that are nobody's personal one; one personal space per user; names of contacts, document
+  types and field definitions, and of tags per scope; the original (SHA-256) per space.
+  Names compare regardless of case. The services look a name up before they write, for a
+  message that names it ("'X' already exists"); the adapter's rule is the net for two
+  requests at once, which the look-up cannot see.
 - `get` raises NotFoundError, `find` returns None.
 """
 
@@ -87,23 +87,32 @@ class UserRepository(Repository[UserId, User], Protocol):
         ...
 
     async def remove(self, id: UserId) -> None:
-        """Delete the user; NotFoundError if missing. Documents, spaces, shares and identity
-        data that refer to the user must be removed first."""
+        """Delete the user; NotFoundError if missing. Their personal space, their memberships
+        of other spaces and their identity data must be removed first; the documents they
+        uploaded keep no uploader (`Document.uploaded_by` becomes None)."""
         ...
 
 
 class SpaceRepository(Repository[SpaceId, Space], Protocol):
-    async def get_default(self, owner: UserId) -> Space:
-        """The owner's default space; NotFoundError if there is none."""
+    async def get_personal(self, user: UserId) -> Space:
+        """The user's personal space; NotFoundError if there is none."""
+        ...
+
+    async def personal_ids(self) -> dict[UserId, SpaceId]:
+        """The id of every user's personal space, by user."""
+        ...
+
+    async def find_by_name(self, name: str) -> Space | None:
+        """Case-insensitive lookup among the spaces that are nobody's personal one."""
         ...
 
     async def list_accessible(self, user: UserId) -> list[Space]:
-        """Spaces the user owns or that are shared with them."""
+        """Spaces the user is a member of, in any role."""
         ...
 
     async def remove(self, id: SpaceId) -> None:
-        """Delete the space and its shares; NotFoundError if missing. It must hold no
-        documents."""
+        """Delete the space with its members and rules; NotFoundError if missing. It must hold
+        no documents."""
         ...
 
 
@@ -318,11 +327,13 @@ class DocumentPosition:
 
 
 class DocumentRepository(Repository[DocumentId, Document], Protocol):
-    async def find_by_sha256(self, owner: UserId, sha256: Sha256) -> Document | None: ...
+    async def list_by_sha256(self, sha256: Sha256, spaces: Collection[SpaceId]) -> list[Document]:
+        """The documents with that original in `spaces` (at most one per space)."""
+        ...
 
     async def list_visible_to(self, user: UserId) -> list[Document]:
-        """Documents within the user's reach (`lekto.core.domain.permissions.within_reach`): own
-        documents, and green documents in spaces the user owns or that are shared with them.
+        """Documents within the user's reach (`lekto.core.domain.permissions.within_reach`):
+        every document in the spaces they edit, the green ones in the spaces they read.
         Whether the user is active the services check."""
         ...
 
@@ -400,7 +411,7 @@ class DocumentRepository(Repository[DocumentId, Document], Protocol):
     async def exists(
         self,
         *,
-        owner: UserId | None = None,
+        uploaded_by: UserId | None = None,
         space: SpaceId | None = None,
         contact: ContactId | None = None,
         document_type: DocumentTypeId | None = None,
@@ -458,36 +469,36 @@ class InboxRepository(Protocol):
     document last, and who confirmed a document out of yellow or red last; and the inbox's
     queries over both and the documents.
 
-    `owner`: whose inbox, a user's or, None, every user's (an admin with `all_users`); `viewer`:
-    whose seen counts. `since`: from when done counts (`DONE_PERIOD` back). Marks go with their
-    document and their user; the seen marks of a user who is deleted are removed first
-    (`remove_for_user`)."""
+    `editor`: whose inbox, a user's (the documents in the spaces they edit) or, None, every
+    user's (an admin with `all_users`); `viewer`: whose seen counts. `since`: from when done
+    counts (`DONE_PERIOD` back). Marks go with their document and their user; the seen marks
+    of a user who is deleted are removed first (`remove_for_user`)."""
 
     async def query(
         self,
         viewer: UserId,
         *,
-        owner: UserId | None,
+        editor: UserId | None,
         tab: InboxTab | None,
         since: datetime,
         after: InboxPosition | None = None,
         limit: int,
     ) -> list[InboxEntry]:
-        """The documents of `owner` that stand under `tab` in the inbox (`inbox_state`; None:
+        """The documents of `editor` that stand under `tab` in the inbox (`inbox_state`; None:
         under any open tab), newest first: by id, and under done by when they left
         (`domain.inbox.left_at`), ties by id; those after `after` in that order, at most
         `limit`."""
         ...
 
     async def entry(self, viewer: UserId, document: DocumentId) -> InboxEntry | None:
-        """The document with `viewer`'s seen mark and its confirmation, whoever owns it and
-        wherever it stands; None if it does not exist."""
+        """The document with `viewer`'s seen mark and its confirmation, wherever it lies and
+        stands; None if it does not exist."""
         ...
 
     async def count(
-        self, viewer: UserId, *, owner: UserId | None, since: datetime
+        self, viewer: UserId, *, editor: UserId | None, since: datetime
     ) -> dict[InboxTab, int]:
-        """How many documents of `owner` stand under each tab of the inbox (as `query`)."""
+        """How many documents of `editor` stand under each tab of the inbox (as `query`)."""
         ...
 
     async def seen(
@@ -500,8 +511,8 @@ class InboxRepository(Protocol):
         """`viewer` saw `document` at `at`, which replaces when they saw it before."""
         ...
 
-    async def mark_all_seen(self, viewer: UserId, *, owner: UserId | None, at: datetime) -> int:
-        """Mark every document of `owner` that is new and unseen in the inbox as seen by
+    async def mark_all_seen(self, viewer: UserId, *, editor: UserId | None, at: datetime) -> int:
+        """Mark every document of `editor` that is new and unseen in the inbox as seen by
         `viewer` at `at` (`domain.inbox.is_unseen`); returns how many."""
         ...
 
@@ -554,10 +565,10 @@ class RuleRepository(Protocol):
         ...
 
     async def list_for(
-        self, *, owners: Collection[UserId] | None, include_global: bool
+        self, *, spaces: Collection[SpaceId] | None, include_global: bool
     ) -> list[Rule]:
-        """Rules that are not deleted: user rules of `owners` (None: of every user), and global
-        rules if `include_global`."""
+        """Rules that are not deleted: the rules of `spaces` (None: of every space), and
+        global rules if `include_global`."""
         ...
 
     async def versions(self, id: RuleId) -> list[RuleVersion]:
@@ -568,9 +579,14 @@ class RuleRepository(Protocol):
         """NotFoundError if the rule or the version does not exist."""
         ...
 
-    async def remove_for_owner(self, owner: UserId) -> int:
-        """Delete the user's rules with their versions, and all applications of these rules or
-        by this user, for good; returns how many rules."""
+    async def remove_for_space(self, space: SpaceId) -> int:
+        """Delete the rules of the space with their versions and applications, for good;
+        returns how many rules."""
+        ...
+
+    async def remove_applications_by(self, user: UserId) -> int:
+        """Delete every application of a rule the user asked for, for good; returns how
+        many."""
         ...
 
 

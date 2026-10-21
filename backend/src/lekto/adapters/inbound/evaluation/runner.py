@@ -1,6 +1,6 @@
 """Running the evaluation set through the pipeline's signals, judge and fields node.
 
-Each case becomes a document of one owner, whose text is stored as if the parse node had
+Each case becomes a document one user uploads, whose text is stored as if the parse node had
 produced it, with its structure set on a fixed grid (`labels.grid_layout`). OCR, parsing,
 rules and filing pass through; the signals, the judge and the fields node are the same as in
 the pipeline, with the given model.
@@ -106,7 +106,7 @@ class CaseResult:
 
     case: Case
     document_id: DocumentId
-    owner_id: UserId
+    owner_id: UserId  # who uploaded it: the documents lie in their personal space
     lane: Lane | None
     status: ProcessingStatus
     contact: str | None
@@ -258,7 +258,7 @@ async def _take_over(
             actor=admin.id,
             filename=f"{item.name}.pdf",
             channel=Channel.MIGRATION,
-            owner=owner.id,
+            uploaded_by=owner.id,
             imported=imported,
         )
         await _drain(pipeline)
@@ -280,21 +280,21 @@ async def _receive(
     actor: UserId,
     filename: str,
     channel: Channel = Channel.API,
-    owner: UserId | None = None,
+    uploaded_by: UserId | None = None,
     imported: ImportedMetadata | None = None,
 ) -> Document:
     """Receive a document and store its text as the parse node would have, with its structure
     on a fixed grid: the words a label check looks at."""
     with tempfile.TemporaryDirectory(prefix="lekto-evaluation-") as directory:
         path = Path(directory) / "case.pdf"
-        # A distinct file per document: the owner cannot have the same file twice.
+        # A distinct file per document: a space cannot hold the same file twice.
         path.write_bytes(f"%PDF-1.7\n% evaluation {marker}\n%%EOF\n".encode())
         received = await pipeline.receive(
             actor,
             IncomingFile.of(path),
             filename=filename,
             channel=channel,
-            owner=owner,
+            uploaded_by=uploaded_by,
             imported=imported,
         )
     await environment.store.put(
@@ -414,6 +414,11 @@ def _expected_changes(
     return changes
 
 
+def _uploader(document: Document) -> UserId:
+    assert document.uploaded_by is not None  # the evaluation's user stays
+    return document.uploaded_by
+
+
 def _date(value: str | None) -> date | None:
     return None if value is None else date.fromisoformat(value)
 
@@ -444,7 +449,7 @@ def _result(
     return CaseResult(
         case=case,
         document_id=after.id,
-        owner_id=after.owner_id,
+        owner_id=_uploader(after),
         lane=after.lane,
         status=after.processing.status,
         contact=None if after.contact_id is None else master.contacts[after.contact_id],
@@ -499,9 +504,9 @@ def _violations(
     before: Document, after: Document, checks: dict[str, FieldCheck]
 ) -> tuple[str, ...]:
     """Changes the checks do not back: every changed field must have an OK check with the
-    applied value; space and owner must stay."""
+    applied value; space and uploader must stay."""
     problems = []
-    for name in ("owner_id", "space_id"):
+    for name in ("uploaded_by", "space_id"):
         if getattr(before, name) != getattr(after, name):
             problems.append(f"{name} changed")
 

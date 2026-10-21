@@ -1,9 +1,9 @@
 """Applying a rule to existing documents, on request: a preview, then a background job.
 
-- Who, on what: a user rule by its owner or an admin, on the documents of the rule's owner; a
-  global rule by anyone, on the documents they may write to (an admin: every document, Tobi,
-  08.10.2026). Documents the caller may not write to appear neither one by one nor as a count;
-  documents in processing are left out.
+- Who, on what: a space rule by the editors of its space or an admin, on the documents in its
+  space; a global rule by anyone, on the documents they may edit (an admin: every document,
+  Tobi, 08.10.2026). Documents the caller may not edit appear neither one by one nor as a
+  count; documents in processing are left out.
 - The preview evaluates the rule's current version on each document (its state, not a change)
   and lists the documents it would change, with conflicts: a field that has another value.
 - The application pins one version. A background job works through the selected documents, one
@@ -29,7 +29,7 @@ from lekto.core.domain.errors import (
 from lekto.core.domain.ids import DocumentId, RuleApplicationId, RuleId, UserId
 from lekto.core.domain.jobs import Job
 from lekto.core.domain.json_value import JsonValue
-from lekto.core.domain.permissions import can_write_document
+from lekto.core.domain.permissions import can_edit_document, space_role
 from lekto.core.domain.pipeline import (
     ACTOR,
     RULES_APPLY,
@@ -327,7 +327,7 @@ class RuleApplicationService:
             return
         now = self._clock.now()
         definitions = await field_definitions(uow)
-        problem = apply_plan(document, run.plan, definitions, now)
+        problem = await apply_plan(uow, document, run.plan, definitions, now)
         if problem is not None:
             application.record_skipped(id, problem)
             return
@@ -361,7 +361,6 @@ class RuleApplicationService:
         accept: bool,
     ) -> RuleRun | None:
         """The rule on the document; None if it does not hold."""
-        owner = await uow.users.get(document.owner_id)
         definitions = await field_definitions(uow)
         run = await run_rules(
             uow,
@@ -369,7 +368,6 @@ class RuleApplicationService:
             self._templates,
             mode=Mode.RETROACTIVE,
             document=document,
-            owner=owner,
             rules=[rule],
             prepared=prepared,
             origin=provenance(await uow.processing_log.list_for(document.id), document),
@@ -380,24 +378,28 @@ class RuleApplicationService:
 
 
 async def _applicable_rule(uow: UnitOfWork, user: User, id: RuleId) -> Rule:
-    """A user rule its owner or an admin applies; a global rule anyone applies."""
+    """A space rule the editors of its space or an admin apply; a global rule anyone
+    applies."""
     rule = await visible_rule(uow, user, id)
     if rule.deleted_at is not None:
         raise NotFoundError("rule", id)
-    if rule.scope is RuleScope.USER and not (rule.owner_id == user.id or user.is_active_admin):
-        raise PermissionDeniedError("only the owner and admins apply a user rule")
+    if rule.space_id is not None:
+        space = await uow.spaces.find(rule.space_id)
+        role = None if space is None else space_role(user, space)
+        if role is None or not role.can_edit:
+            raise PermissionDeniedError("only the space's editors and admins apply a space rule")
     return rule
 
 
 async def _candidate(uow: UnitOfWork, user: User, rule: Rule, document: Document) -> bool:
-    """The caller may write to the document, it is not being processed, and a user rule's
-    document is its owner's."""
+    """The caller may edit the document, it is not being processed, and a space rule's
+    document lies in its space."""
     if document.lane is None:
         return False
-    if rule.scope is RuleScope.USER and document.owner_id != rule.owner_id:
+    if rule.scope is RuleScope.SPACE and document.space_id != rule.space_id:
         return False
     space = await uow.spaces.get(document.space_id)
-    return can_write_document(user, document, space)
+    return can_edit_document(user, document, space)
 
 
 async def _enqueue(uow: UnitOfWork, id: RuleApplicationId, now: datetime) -> None:

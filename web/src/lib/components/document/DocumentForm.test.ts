@@ -52,7 +52,15 @@ const lookup = {
 			choices: []
 		}
 	],
-	spaces: [{ id: SPACE, name: 'Haushalt', owner_id: OWNER, access: 'read_write' }],
+	spaces: [
+		{
+			id: SPACE,
+			name: 'Haushalt',
+			personal_of: null,
+			role: 'edit',
+			members: [{ user_id: OWNER, role: 'edit' }]
+		}
+	],
 	users: []
 } as unknown as Lookup;
 
@@ -61,9 +69,9 @@ function documentOf(status: string, lane: string | null = 'yellow'): Document {
 		lane,
 		id: 'doc-1',
 		title: 'Stromrechnung März 2026',
-		owner_id: OWNER,
+		uploaded_by: OWNER,
 		space_id: SPACE,
-		access: 'read_write',
+		access: 'edit',
 		contact_id: null,
 		document_type_id: INVOICE,
 		tag_ids: [],
@@ -497,7 +505,7 @@ describe('DocumentForm', () => {
 		expect(screen.getByRole('button', { name: m.edit_review() })).toBeTruthy();
 	});
 
-	it("after a corrected type sends no suggestion of the old type as the owner's value", async () => {
+	it("after a corrected type sends no suggestion of the old type as the person's value", async () => {
 		fetchMock.mockResolvedValue(
 			new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
 		);

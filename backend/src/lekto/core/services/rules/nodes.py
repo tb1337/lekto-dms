@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 
-from lekto.core.domain.classification import CHECKS, SPACE, FieldCheck, field_key
+from lekto.core.domain.classification import CHECKS, FieldCheck, field_key
 from lekto.core.domain.documents import Document
 from lekto.core.domain.fields import FieldDefinition
 from lekto.core.domain.ids import FieldId
@@ -17,7 +17,7 @@ from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.patterns import PatternMatcher
 from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
-from lekto.core.services._access import field_definitions, may_file
+from lekto.core.services._access import field_definitions
 from lekto.core.services.rules.running import (
     Prepared,
     active_rules,
@@ -30,7 +30,7 @@ from lekto.core.services.rules.running import (
 
 
 class ApplyRulesNode:
-    """Runs the rules with trigger `ingest`: the global ones and those of the document's owner.
+    """Runs the rules with trigger `ingest`: the global ones and those of the document's space.
 
     The text is loaded and its patterns run here, outside any transaction; the rules are
     evaluated and applied when the result is stored, on the state that is stored. Conflicts,
@@ -55,8 +55,7 @@ class ApplyRulesNode:
 
     async def run(self, document: Document) -> "RulesResult":
         async with self._uow() as uow:
-            owner = await uow.users.find(document.owner_id)
-            rules = await active_rules(uow, owner, Trigger.INGEST)
+            rules = await active_rules(uow, document.space_id, Trigger.INGEST)
         prepared = await prepare(
             self._store, self._matcher, rules, document, max_text=self._max_text
         )
@@ -70,8 +69,7 @@ class RulesResult:
     templates: TemplateRenderer
 
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
-        owner = await uow.users.get(document.owner_id)
-        rules = await active_rules(uow, owner, Trigger.INGEST)
+        rules = await active_rules(uow, document.space_id, Trigger.INGEST)
         input: dict[str, JsonValue] = {
             TRIGGER: Trigger.INGEST.value,
             "rules": checked_rules(rules),
@@ -87,7 +85,6 @@ class RulesResult:
             self.templates,
             mode=Mode.INGEST,
             document=document,
-            owner=owner,
             rules=rules,
             prepared=self.prepared,
             origin=origin,
@@ -95,7 +92,7 @@ class RulesResult:
             locked=origin.person,
         )
         output = run.output()
-        problem = apply_plan(document, run.plan, definitions, now)
+        problem = await apply_plan(uow, document, run.plan, definitions, now)
         reasons = run.plan.reasons + ([problem] if problem else [])
         if reasons:
             result = NodeResult(
@@ -140,10 +137,8 @@ def _waiting_for_hand(
 
 
 class FileNode:
-    """Files the document into its space. The owner must still be allowed to write to it (a
-    share can be withdrawn while the document is processed), unless an active admin put the
-    document there; otherwise the node is uncertain and the owner chooses another space in the
-    inbox."""
+    """Files the document into its space. Rights hang on the space; whoever put the document
+    there (an upload, a person, a rule) was allowed to, so filing always succeeds."""
 
     async def run(self, document: Document) -> "FileResult":
         return FileResult()
@@ -152,11 +147,4 @@ class FileNode:
 @dataclass(frozen=True)
 class FileResult:
     async def apply(self, uow: UnitOfWork, document: Document, now: datetime) -> NodeResult:
-        space = await uow.spaces.get(document.space_id)
-        if not await may_file(uow, document, space):
-            reason = f"the owner may not file into space '{space.name}' (any more)"
-            check = FieldCheck(field=SPACE, outcome=Outcome.UNCERTAIN, confidence=0, reason=reason)
-            return NodeResult(
-                outcome=Outcome.UNCERTAIN, reason=reason, output={CHECKS: [check.to_json()]}
-            )
         return NodeResult(outcome=Outcome.OK)

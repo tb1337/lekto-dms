@@ -135,7 +135,7 @@ async def test_prepare_asks_and_creates_the_master_data(setup: Setup) -> None:
     assert tags["tax/2024"]["parent_id"] == tags["tax"]["id"]
     assert "Notizen" not in {f["name"] for f in lekto.fields.values()}
     assert named(lekto.fields, "Kind")["choices"] == ["One", "Two"]
-    assert sum(1 for s in lekto.spaces.values() if not s["is_default"]) == 1
+    assert sum(1 for s in lekto.spaces.values() if s["personal_of"] is None) == 1
     writes = len(lekto.writes())
     assert await setup.run("prepare") == 0  # nothing left to do
     assert len(lekto.writes()) == writes
@@ -151,7 +151,8 @@ async def test_the_migration_takes_everything_over(setup: Setup) -> None:
     assert len(lekto.documents) == 8
     first = by_title(setup, "Document 10")
     assert first["channel"] == "migration"
-    assert first["owner_id"] == named(lekto.users, "tobias")["id"]
+    assert first["uploaded_by"] == named(lekto.users, "tobias")["id"]
+    assert first["space_id"] == f"personal:{first['uploaded_by']}"
     assert first["document_date"] == "2024-05-01"
     assert datetime.fromisoformat(first["created_at"]) == datetime(2024, 4, 2, 7, 30, tzinfo=UTC)
     assert first["contact_id"] == named(lekto.contacts, "ACME Energy")["id"]
@@ -172,15 +173,18 @@ async def test_the_migration_takes_everything_over(setup: Setup) -> None:
         "ASN": "77",
     }
     assert by_title(setup, "Document 11")["fields"] == {}  # an invalid URL is left out
-    assert by_title(setup, "Document 14")["owner_id"] == fake_lekto.ADMIN["id"]
-    assert by_title(setup, "Document 15")["owner_id"] == fake_lekto.ADMIN["id"]
-    assert by_title(setup, "Document 12")["space_id"].startswith("default:")
+    assert by_title(setup, "Document 14")["uploaded_by"] == fake_lekto.ADMIN["id"]
+    assert by_title(setup, "Document 15")["uploaded_by"] == fake_lekto.ADMIN["id"]
+    assert by_title(setup, "Document 12")["space_id"].startswith("personal:")
     shared = by_title(setup, "Document 13")
     space = lekto.spaces[shared["space_id"]]
-    assert space["name"] == "Geteilt: bob (lesen), tobias (schreiben)"
-    assert space["owner_id"] == named(lekto.users, "anna")["id"]
+    assert space["name"] == "Geteilt: anna (bearbeiten), bob (lesen), tobias (bearbeiten)"
+    anna = named(lekto.users, "anna")["id"]
+    assert shared["uploaded_by"] == anna
+    assert {"user_id": anna, "role": "edit"} in space["members"]
     upload = next(u for u in lekto.uploads if u["filename"] == "scan-13.pdf")
     assert upload["channel"] == "migration" and upload["space_id"] == space["id"]
+    assert upload["uploaded_by"] == anna
     assert json.loads(upload["metadata"])["review"] == []
     report = setup.report("run")
     assert report["document_results"] == {"done": 8, "skipped": 2}
@@ -413,6 +417,47 @@ async def test_a_duplicate_is_mapped_not_counted_as_an_error(setup: Setup) -> No
     found = row(setup.report("run"), 30)
     assert found["status"] == "duplicate" and found["lekto_id"] == existing["id"]
     assert len(setup.lekto.documents) == 8
+
+
+async def test_the_same_file_is_a_duplicate_only_where_its_uploader_sees_it(
+    setup: Setup,
+) -> None:
+    assert await setup.migrate() == 0
+    twelve = setup.archive.documents[2]  # anna's, in her personal space
+    setup.archive.documents += [
+        {**twelve, "id": 30, "title": "Anna's copy"},
+        {**twelve, "id": 31, "title": "Bob's copy", "owner": 3},
+    ]
+    setup.archive.files[30] = setup.archive.files[31] = setup.archive.files[12]
+    assert await setup.run("check", download=True) == 0
+    files = {f["id"]: f for f in setup.report("check")["files"]}
+    assert "Lekto has the file already" in files[30]["note"]
+    assert 31 not in files  # bob is no member of anna's personal space
+    assert await setup.run("run") == 0
+    results = {d["id"]: d["status"] for d in setup.report("run")["documents"]}
+    assert (results[30], results[31]) == ("duplicate", "done")
+
+
+async def test_a_reader_meets_only_green_duplicates(setup: Setup) -> None:
+    """Bob reads anna's personal space: a copy of her red document is not in his way, as Lekto
+    shows a reader only green documents."""
+    setup.lekto.lanes["scan-12.pdf"] = "red"
+    assert await setup.migrate() == 0
+    users = {user["username"]: user for user in setup.lekto.users.values()}
+    personal = next(
+        space
+        for space in setup.lekto.spaces.values()
+        if space.get("personal_of") == users["anna"]["id"]
+    )
+    personal["members"].append({"user_id": users["bob"]["id"], "role": "read"})
+    twelve = setup.archive.documents[2]
+    setup.archive.documents.append({**twelve, "id": 31, "title": "Bob's copy", "owner": 3})
+    setup.archive.files[31] = setup.archive.files[12]
+    assert await setup.run("check", download=True) == 0
+    files = {f["id"]: f for f in setup.report("check")["files"]}
+    assert 31 not in files
+    assert await setup.run("run") == 0
+    assert row(setup.report("run"), 31)["status"] == "done"
 
 
 async def test_a_new_state_file_finds_what_is_there(setup: Setup) -> None:

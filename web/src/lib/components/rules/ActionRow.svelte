@@ -7,18 +7,19 @@
 	import ValueInput from '#lib/components/rules/ValueInput.svelte';
 	import TemplateInput from '#lib/components/templates/TemplateInput.svelte';
 	import { Button } from '#lib/components/ui/button/index.ts';
-	import type { Space, Lookup } from '#lib/masterdata.svelte.ts';
+	import type { Lookup } from '#lib/masterdata.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { ACTION_LABELS } from '#lib/rules/describe.ts';
 	import { defaultValue, type ActionNode } from '#lib/rules/model.ts';
 	import { tagOptions } from '#lib/tags.ts';
 
-	// One action. `spaces` are the ones the rule's owner may file into. `onunreadable` says
-	// while the value's text cannot be read (see `ValueInput`).
+	// One action. `targets` are where the rule may file: the spaces whoever saves it edits, and
+	// other users' personal spaces (handing the document over). `onunreadable` says while the
+	// value's text cannot be read (see `ValueInput`).
 	let {
 		action,
 		lookup,
-		spaces,
+		targets,
 		error,
 		onremove,
 		onup,
@@ -27,7 +28,7 @@
 	}: {
 		action: ActionNode;
 		lookup: Lookup;
-		spaces: readonly Space[];
+		targets: readonly { value: string; label: string }[];
 		error?: string;
 		onunreadable?: (unreadable: boolean) => void;
 		onremove: () => void;
@@ -72,7 +73,7 @@
 					aria-label={label}
 					aria-invalid={invalid || undefined}
 					bind:value={action.space_id}
-					options={options(spaces, action.space_id)}
+					options={withUnknown([...targets], action.space_id)}
 					class="h-10"
 				/>
 			{:else if action.type === 'set_contact'}

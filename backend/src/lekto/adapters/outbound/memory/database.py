@@ -46,10 +46,9 @@ def _user_keys(user: User) -> Iterable[Hashable]:
 
 
 def _space_keys(space: Space) -> Iterable[Hashable]:
-    keys: list[Hashable] = [("name", space.owner_id, name_key(space.name))]
-    if space.is_default:
-        keys.append(("default", space.owner_id))
-    return keys
+    if space.personal_of is not None:
+        return [("personal", space.personal_of)]
+    return [("name", name_key(space.name))]
 
 
 def _name_keys(item: MasterData) -> Iterable[Hashable]:
@@ -69,7 +68,7 @@ def _tag_keys(tag: Tag) -> Iterable[Hashable]:
 
 
 def _document_keys(document: Document) -> Iterable[Hashable]:
-    return [("sha256", document.owner_id, document.sha256)]
+    return [("sha256", document.space_id, document.sha256)]
 
 
 def _lens_keys(lens: Lens) -> Iterable[Hashable]:

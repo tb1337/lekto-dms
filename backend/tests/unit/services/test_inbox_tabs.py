@@ -11,7 +11,7 @@ from lekto.core.domain.errors import NotFoundError, PermissionDeniedError, Valid
 from lekto.core.domain.inbox import DONE_PERIOD, Departure, Done, InboxTab
 from lekto.core.domain.master_data import Assignment, Contact
 from lekto.core.domain.pipeline import Lane, Node
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.ports.repository import DocumentFilter
 from lekto.core.services.inbox import InboxItem
@@ -52,7 +52,7 @@ async def test_a_document_green_by_itself_is_new_until_its_owner_sees_it(world: 
     assert (item.state.tab, item.open, item.access) == (
         InboxTab.PROCESSING,
         (),
-        ShareLevel.READ_WRITE,
+        SpaceRole.EDIT,
     )
     summary = await world.inbox.summary(owner.id)
     assert (summary.counts[InboxTab.PROCESSING], summary.open, summary.worst_lane) == (1, 1, None)
@@ -209,10 +209,11 @@ async def test_seen_is_per_user(world: World) -> None:
     assert await world.inbox.items(admin.id, all_users=True) == []
 
 
-async def test_a_share_never_brings_a_document_into_an_inbox(world: World) -> None:
-    owner, reader = await world.user(), await world.user()
+async def test_reading_a_space_never_brings_a_document_into_an_inbox(world: World) -> None:
+    owner, reader, editor = await world.user(), await world.user(), await world.user()
     shared = await world.spaces.create(owner.id, "Shared")
-    await world.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ_WRITE)
+    await world.spaces.set_member(owner.id, shared.id, reader.id, SpaceRole.READ)
+    await world.spaces.set_member(owner.id, shared.id, editor.id, SpaceRole.EDIT)
     pipeline = world.pipeline()
     received = await pipeline.receive(
         owner.id, incoming(b"%PDF-1.7 s"), filename="s.pdf", space=shared.id
@@ -225,6 +226,7 @@ async def test_a_share_never_brings_a_document_into_an_inbox(world: World) -> No
     assert await world.inbox.items(reader.id) == []
     assert (await world.inbox.summary(reader.id)).open == 0
     assert tabs(await world.inbox.items(owner.id)) == [("s", InboxTab.NEW)]
+    assert tabs(await world.inbox.items(editor.id)) == [("s", InboxTab.NEW)]  # every editor's
 
 
 async def test_seeing_it_again_keeps_when_it_left(world: World) -> None:
@@ -370,12 +372,12 @@ async def test_done_goes_by_when_documents_left(world: World) -> None:
 
 
 async def test_lists_say_whether_a_document_stands_in_the_callers_inbox(world: World) -> None:
-    """In processing, yellow, red, or new and unseen: in the owner's inbox, and in an admin's
-    of every user; never in the inbox of someone it is shared with."""
+    """In processing, yellow, red, or new and unseen: in the inbox of its space's editors, and
+    in an admin's of every user; never in the inbox of someone who only reads its space."""
     owner, reader = await world.user(), await world.user()
     admin = await world.user(role=Role.ADMIN)
     shared = await world.spaces.create(owner.id, "Shared")
-    await world.spaces.share(owner.id, shared.id, reader.id, ShareLevel.READ)
+    await world.spaces.set_member(owner.id, shared.id, reader.id, SpaceRole.READ)
     seen, new = await arrive(world, owner), await arrive(world, owner)
     yellow = await arrive(world, owner, {Node.JUDGE: Returns(UNCERTAIN)})
     await world.documents.move(owner.id, new.id, shared.id)
@@ -401,3 +403,32 @@ async def test_lists_say_whether_a_document_stands_in_the_callers_inbox(world: W
         "new": True,
         "seen": True,  # the owner's seen is not the admin's
     }
+
+
+async def test_a_moved_document_is_new_for_who_could_not_read_it_before(world: World) -> None:
+    """Moved into a space, a green document is new for its editors who could not read it
+    where it lay; who could keeps their state (Tobi, 21.10.2026)."""
+    owner, partner, admin = (
+        await world.user(),
+        await world.user(),
+        await world.user(role=Role.ADMIN),
+    )
+    household = await world.spaces.create(owner.id, "Household")
+    await world.spaces.set_member(owner.id, household.id, partner.id, SpaceRole.EDIT)
+    seen, unseen = await arrive(world, owner), await arrive(world, owner)
+    await world.inbox.mark_seen(owner.id, seen.id)
+    world.clock.advance(MINUTE)
+    for document in (seen, unseen):
+        await world.documents.move(owner.id, document.id, household.id)
+
+    owners = {item.document.id: item.state.tab for item in await world.inbox.items(owner.id)}
+    assert owners == {unseen.id: InboxTab.NEW}  # moving is no seeing
+    partners = {item.document.id: item.state.tab for item in await world.inbox.items(partner.id)}
+    assert partners == {seen.id: InboxTab.NEW, unseen.id: InboxTab.NEW}
+
+    # An admin who moves it from outside the space has seen it.
+    personal = await world.personal_space(partner)
+    await world.inbox.mark_seen(partner.id, seen.id)
+    await world.spaces.set_member(partner.id, personal.id, admin.id, SpaceRole.EDIT)
+    await world.documents.move(admin.id, seen.id, personal.id)
+    assert await world.inbox.items(admin.id) == []

@@ -38,7 +38,6 @@ from lekto.core.domain.ids import (
     UserId,
 )
 from lekto.core.domain.json_value import JsonObject, JsonValue, as_list
-from lekto.core.domain.permissions import can_file_into
 from lekto.core.domain.pipeline import (
     ACCEPTED,
     ACTOR,
@@ -76,13 +75,13 @@ from lekto.core.domain.rule_planner import (
     reviewing_rules,
 )
 from lekto.core.domain.rules import Rule, SetSpace, Trigger
-from lekto.core.domain.users import User
 from lekto.core.ports.object_store import ObjectStore
 from lekto.core.ports.patterns import PatternMatcher
 from lekto.core.ports.templates import TemplateRenderer
 from lekto.core.ports.unit_of_work import UnitOfWork
+from lekto.core.services._access import space_label
 from lekto.core.services._tags import tag_tree
-from lekto.core.services.inbox import MODEL_NODES, field_checks, latest_entries
+from lekto.core.services.inbox import MODEL_NODES, arrived, field_checks, latest_entries
 from lekto.core.services.objects import load_text
 from lekto.core.services.titles import machine_title
 
@@ -92,11 +91,10 @@ log = logging.getLogger(__name__)
 type PatternKey = tuple[str, str, bool]
 
 
-async def active_rules(uow: UnitOfWork, owner: User | None, trigger: Trigger | None) -> list[Rule]:
-    """The enabled rules for a document of `owner`: the global ones, and the owner's own while
-    the owner is active. `trigger` None: any trigger."""
-    owners = [owner.id] if owner is not None and owner.active else []
-    rules = await uow.rules.list_for(owners=owners, include_global=True)
+async def active_rules(uow: UnitOfWork, space: SpaceId, trigger: Trigger | None) -> list[Rule]:
+    """The enabled rules for a document in `space`: the global ones, and the space's own.
+    `trigger` None: any trigger."""
+    rules = await uow.rules.list_for(spaces=[space], include_global=True)
     return sorted(
         (
             rule
@@ -440,7 +438,6 @@ async def situation(
     *,
     mode: Mode,
     document: Document,
-    owner: User,
     rules: Iterable[Rule],
     definitions: Mapping[FieldId, FieldDefinition],
     origin: Provenance,
@@ -453,7 +450,7 @@ async def situation(
 ) -> Situation:
     """Everything `plan` needs to know besides the matching rules. `loaded`: the master data
     of the run (`taxonomy`, for the document and at least `rules`); beyond it, only the
-    spaces are read."""
+    spaces and the users are read."""
     rules = list(rules)
     references = [rule.definition.references() for rule in rules]
     existing: set[object] = set(definitions)
@@ -478,30 +475,32 @@ async def situation(
         if tag_id in tree:
             existing.add(tag_id)
             names[tag_id] = tree.tags[tag_id].name
+    users = {user.id: user for user in await uow.users.list_all()}
+    admins = frozenset(id for id, user in users.items() if user.is_active_admin)
+    current = await uow.spaces.get(document.space_id)
+    names[current.id] = space_label(current, users)
     spaces: dict[SpaceId, SpaceTarget] = {}
     for rule in rules:
         for action in rule.definition.actions:
             if isinstance(action, SetSpace) and action.space_id not in spaces:
                 space = await uow.spaces.find(action.space_id)
                 if space is not None:
+                    editors = {id for id in space.editors if id in users and users[id].active}
                     spaces[space.id] = SpaceTarget(
-                        name=space.name,
-                        writable=can_file_into(owner, space),
-                        shared=space.owner_id != owner.id or bool(space.shares),
+                        name=space_label(space, users),
+                        filers=admins | editors,
+                        personal=space.is_personal,
+                        widens=current.widens(space),
                     )
-    for space_id in {*spaces, document.space_id}:
-        if space_id in spaces:
-            names[space_id] = spaces[space_id].name
-        elif (current := await uow.spaces.find(space_id)) is not None:
-            names[space_id] = current.name
-    default = await uow.spaces.get_default(owner.id)
+                    names[space.id] = spaces[space.id].name
+    uploader = None if document.uploaded_by is None else users.get(document.uploaded_by)
     return Situation(
         mode=mode,
         document=document,
-        default_space=default.id,
         definitions=definitions,
         render=templates.render,
-        owner_name=owner.username,
+        in_personal_space=current.is_personal,
+        uploader_name=None if uploader is None else uploader.username,
         spaces=spaces,
         existing=frozenset(existing),
         names=names,
@@ -545,7 +544,6 @@ async def run_rules(
     *,
     mode: Mode,
     document: Document,
-    owner: User,
     rules: Sequence[Rule],
     prepared: Prepared,
     origin: Provenance,
@@ -568,7 +566,6 @@ async def run_rules(
         uow,
         mode=mode,
         document=document,
-        owner=owner,
         rules=[match.rule for match in matched],
         definitions=definitions,
         origin=origin,
@@ -582,18 +579,24 @@ async def run_rules(
     return RuleRun(plan(matched, context), prepared.problems + problems)
 
 
-def apply_plan(
+async def apply_plan(
+    uow: UnitOfWork,
     document: Document,
     rule_plan: RulePlan,
     definitions: Mapping[FieldId, FieldDefinition],
     now: datetime,
 ) -> str | None:
     """Apply the planned change and space; the reason if the change no longer fits (nothing
-    is applied then)."""
+    is applied then), or if the space holds the same file already (the space is left)."""
     try:
         document.apply_changes(rule_plan.changes, definitions, now)
     except ValidationError as error:
         return f"the rules' change does not fit: {error}"
-    if rule_plan.space is not None:
+    if rule_plan.space is not None and rule_plan.space != document.space_id:
+        if await uow.documents.list_by_sha256(document.sha256, [rule_plan.space]):
+            # Not named: the editors of the document may not read the other one.
+            return "the space the rules file into holds the same file already"
+        source = await uow.spaces.get(document.space_id)
         document.move_to(rule_plan.space, now)
+        await arrived(uow, document, source, now)
     return None

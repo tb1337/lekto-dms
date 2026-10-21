@@ -32,7 +32,7 @@ from lekto.core.domain.fields import FieldDefinition, field_from_json
 from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, FieldId, TagId, UserId
 from lekto.core.domain.master_data import TagScope
 from lekto.core.domain.sorting import sort_key
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.tag_tree import TagTree
 from lekto.core.domain.validation import name_key
 from lekto.core.ports.repository import DocumentFilter
@@ -72,9 +72,11 @@ class DocumentOut(BaseModel):
         description="green (filed), yellow (needs review), red (failed); null while processing."
     )
     status: str = Field(description="processing, review, completed or failed.")
-    owner_id: UUID
+    uploaded_by: UUID | None = Field(description="Who put it into Lekto; no rights come with it.")
     space_id: UUID
-    access: ShareLevel = Field(description="What you may do: read, or read_write.")
+    access: SpaceRole = Field(
+        description="What you may do: read, or edit (change, confirm, move, delete)."
+    )
     contact: NameRef | None
     document_type: NameRef | None
     topic: NameRef | None = Field(description="What the document is about with its contact.")
@@ -96,7 +98,7 @@ class SearchItem(BaseModel):
     score: float | None = Field(description="Relevance; higher is better, null if not known.")
     snippet: str = Field(description="Where the words were found, as plain text.")
     lane: str | None
-    access: ShareLevel
+    access: SpaceRole
     contact: NameRef | None
     document_type: NameRef | None
     topic: NameRef | None
@@ -123,12 +125,12 @@ class TextOut(BaseModel):
 
 class UpdateOut(BaseModel):
     id: UUID
-    access: ShareLevel | None = Field(
+    access: SpaceRole | None = Field(
         description="null: the rules filed the document where you can no longer read it."
     )
     document: DocumentOut | None = Field(description="The document after the change.")
     rules: list[RuleReportOut] | None = Field(
-        description="For the owner: what the rules did that the change set off."
+        description="For editors: what the rules did that the change set off."
     )
 
 
@@ -218,7 +220,7 @@ def _find(kind: str, name: str, names: dict[UUID, str]) -> UUID:
     raise ValidationError(f"no {kind} named {name!r}")
 
 
-def document_out(document: Document, access: ShareLevel, names: Names) -> DocumentOut:
+def document_out(document: Document, access: SpaceRole, names: Names) -> DocumentOut:
     return DocumentOut(
         id=document.id,
         title=document.title,
@@ -227,7 +229,7 @@ def document_out(document: Document, access: ShareLevel, names: Names) -> Docume
         channel=document.channel.value,
         lane=None if document.lane is None else document.lane.value,
         status=document.processing.status.value,
-        owner_id=document.owner_id,
+        uploaded_by=document.uploaded_by,
         space_id=document.space_id,
         access=access,
         contact=names.contact(document.contact_id),
@@ -398,7 +400,7 @@ def build_server(context: ApiContext) -> MCPServer:
             "values (text, choice, link and date as text, number as text or number, boolean, "
             "amount as {amount, currency}, period as {start, end} with YYYY-MM-DD, a single "
             "day as start = end); null removes a value. Contact, type, topic, tags and "
-            "fields must exist (see list_tags). The owner's rules that the change "
+            "fields must exist (see list_tags). The rules of its space that the change "
             "triggers run, as after a change in the web UI. `created_at`: when the document "
             "came in (ISO date and time with an offset, not in the future); changed alone, it "
             "confirms nothing and no rules run."

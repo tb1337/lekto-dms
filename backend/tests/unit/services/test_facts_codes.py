@@ -128,7 +128,8 @@ async def test_admins_learn_which_other_contacts_show_an_identifier(world: World
     assert report.other_contacts is not None
     # The owner's own IBAN stands on the bank's documents too, never counting the utility.
     assert report.other_contacts[(IdentifierKind.IBAN, OWN_IBAN)] == {bank.id}
-    assert (await world.documents.facts(document.owner_id, document.id)).other_contacts is None
+    assert document.uploaded_by is not None
+    assert (await world.documents.facts(document.uploaded_by, document.id)).other_contacts is None
 
 
 async def test_read_codes_reads_the_facts_of_documents_from_before(world: World) -> None:

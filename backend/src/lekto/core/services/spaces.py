@@ -1,12 +1,13 @@
+from collections.abc import Mapping
+
 from lekto.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
 from lekto.core.domain.ids import SpaceId, UserId
-from lekto.core.domain.permissions import can_manage_space
-from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.permissions import can_choose_members, can_manage_space
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
-from lekto.core.domain.validation import name_key
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
-from lekto.core.services._access import admin_only, load_actor, visible_space
+from lekto.core.services._access import load_actor, visible_space
 from lekto.core.services.rules.references import disable_rules, refers_to
 
 
@@ -16,7 +17,7 @@ class SpaceService:
         self._clock = clock
 
     async def list_spaces(self, actor: UserId) -> list[Space]:
-        """Spaces the user owns or that are shared with them; every space for admins."""
+        """The spaces the user is a member of; every space for admins."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
             if user.is_active_admin:
@@ -24,18 +25,17 @@ class SpaceService:
             return await uow.spaces.list_accessible(actor)
 
     async def get(self, actor: UserId, id: SpaceId) -> Space:
-        """A space the user owns or that is shared with them, any space for admins;
-        NotFoundError otherwise."""
+        """A space the user is a member of, any space for admins; NotFoundError otherwise."""
         async with self._uow() as uow:
             return await visible_space(uow, await load_actor(uow, actor), id)
 
     async def delete(self, actor: UserId, id: SpaceId) -> None:
-        """Owner or admin; not the default space, and only while it holds no documents. Rules
-        that file into it are disabled."""
+        """Editors and admins; never a personal space, and only while it holds no documents.
+        Its rules go with it; other rules that file into it are disabled."""
         async with self._uow() as uow:
             space = await _managed_space(uow, await load_actor(uow, actor), id)
-            if space.is_default:
-                raise ConflictError("the default space cannot be deleted")
+            if space.is_personal:
+                raise ConflictError("a personal space cannot be deleted")
             if await uow.documents.exists(space=id):
                 raise ConflictError(f"space '{space.name}' is not empty")
             await uow.spaces.remove(id)
@@ -47,17 +47,20 @@ class SpaceService:
             )
             await uow.commit()
 
-    async def create(self, actor: UserId, name: str, *, owner: UserId | None = None) -> Space:
-        """A space owned by the caller; an admin may create one for another active user."""
+    async def create(
+        self, actor: UserId, name: str, *, members: Mapping[UserId, SpaceRole] | None = None
+    ) -> Space:
+        """A space the caller edits, shared with `members`. An admin may give the members
+        alone (without being one), as long as one of them edits; everyone else is always an
+        editor of what they create. Members are active users."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            if owner is not None and owner != actor:
-                admin_only(user, "create spaces for other users")
-                target = await uow.users.find(owner)
-                if target is None or not target.active:
-                    raise NotFoundError("user", owner)
-                user = target
-            space = Space.create(owner_id=user.id, name=name, now=self._clock.now())
+            chosen = dict(members or {})
+            if not user.is_active_admin or not chosen:
+                chosen[user.id] = SpaceRole.EDIT
+            for member in chosen:
+                await _active_user(uow, member)
+            space = Space.create(name=name, members=chosen, now=self._clock.now())
             await _check_name_free(uow, space)
             await uow.spaces.add(space)
             await uow.commit()
@@ -72,22 +75,24 @@ class SpaceService:
             await uow.commit()
         return space
 
-    async def share(self, actor: UserId, id: SpaceId, user: UserId, level: ShareLevel) -> Space:
+    async def set_member(
+        self, actor: UserId, id: SpaceId, member: UserId, role: SpaceRole
+    ) -> Space:
+        """Add `member` or change their role: editors and admins; in a personal space its user
+        and admins. The member is an active user."""
         async with self._uow() as uow:
-            space = await _managed_space(uow, await load_actor(uow, actor), id)
-            recipient = await uow.users.find(user)
-            if recipient is None or not recipient.active:
-                # As in the user list: deactivated users are not there for others.
-                raise NotFoundError("user", user)
-            space.share(user, level)
+            space = await _members_space(uow, await load_actor(uow, actor), id)
+            await _active_user(uow, member)
+            space.set_member(member, role)
             await uow.spaces.update(space)
             await uow.commit()
         return space
 
-    async def unshare(self, actor: UserId, id: SpaceId, user: UserId) -> Space:
+    async def remove_member(self, actor: UserId, id: SpaceId, member: UserId) -> Space:
+        """As `set_member`. A space keeps one editor; the user of a personal space stays."""
         async with self._uow() as uow:
-            space = await _managed_space(uow, await load_actor(uow, actor), id)
-            space.unshare(user)
+            space = await _members_space(uow, await load_actor(uow, actor), id)
+            space.remove_member(member)
             await uow.spaces.update(space)
             await uow.commit()
         return space
@@ -96,17 +101,31 @@ class SpaceService:
 async def _managed_space(uow: UnitOfWork, user: User, id: SpaceId) -> Space:
     space = await visible_space(uow, user, id)
     if not can_manage_space(user, space):
-        raise PermissionDeniedError(f"only the owner and admins manage space {id}")
+        raise PermissionDeniedError(f"only editors and admins manage space {id}")
     return space
 
 
+async def _members_space(uow: UnitOfWork, user: User, id: SpaceId) -> Space:
+    space = await visible_space(uow, user, id)
+    if not can_choose_members(user, space):
+        who = "its user" if space.is_personal else "editors"
+        raise PermissionDeniedError(f"only {who} and admins choose the members of space {id}")
+    return space
+
+
+async def _active_user(uow: UnitOfWork, id: UserId) -> User:
+    user = await uow.users.find(id)
+    if user is None or not user.active:
+        # As in the user list: deactivated users are not there for others.
+        raise NotFoundError("user", id)
+    return user
+
+
 async def _check_name_free(uow: UnitOfWork, space: Space) -> None:
-    """Space names are unique per owner. The repository holds that rule too
-    (`core.ports.repository`); this look-up gives the message."""
-    for other in await uow.spaces.list_accessible(space.owner_id):
-        if (
-            other.id != space.id
-            and other.owner_id == space.owner_id
-            and name_key(other.name) == name_key(space.name)
-        ):
-            raise ConflictError(f"space '{space.name}' already exists")
+    """Names of the spaces that are nobody's personal one are unique. The repository holds
+    that rule too (`core.ports.repository`); this look-up gives the message."""
+    if space.is_personal:
+        return
+    other = await uow.spaces.find_by_name(space.name)
+    if other is not None and other.id != space.id:
+        raise ConflictError(f"space '{space.name}' already exists")

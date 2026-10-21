@@ -32,7 +32,7 @@ async def system(stores: tuple[Database, ObjectStore]) -> AsyncIterator[RulesSys
         yield system
 
 
-async def test_a_user_rule_files_and_tags_arriving_documents(system: RulesSystem) -> None:
+async def test_a_rule_of_the_personal_space_files_and_tags_arrivals(system: RulesSystem) -> None:
     admin, owner = await system.user(Role.ADMIN), await system.user()
     energy = await system.post(admin, "/tags", {"name": "Energie"})
     space = await system.post(owner, "/spaces", {"name": "Strom"})
@@ -51,7 +51,7 @@ async def test_a_user_rule_files_and_tags_arriving_documents(system: RulesSystem
         ],
     }
     rule = await system.post(owner, "/rules", body)
-    assert (rule["version"], rule["scope"], rule["owner_id"]) == (1, "user", str(owner.id))
+    assert (rule["version"], rule["scope"]) == (1, "space")
 
     bill = await system.upload(owner, "Stromrechnung der Stadtwerke, Nr. 4711")
     reminder = await system.upload(owner, "Mahnung zur Stromrechnung Nr. 4711")
@@ -71,7 +71,7 @@ async def test_a_user_rule_files_and_tags_arriving_documents(system: RulesSystem
     assert entry["input"]["trigger"] == "ingest"
     assert {"id": rule["id"], "version": 1} in entry["input"]["rules"]
     (report,) = entry["output"]["rules"]
-    assert (report["rule_id"], report["version"], report["scope"]) == (rule["id"], 1, "user")
+    assert (report["rule_id"], report["version"], report["scope"]) == (rule["id"], 1, "space")
     assert report["name"] == "Stromrechnungen"
     applied = {(effect["field"], effect["new"]) for effect in report["applied"]}
     assert applied == {("space", space["id"]), ("tags", energy["id"])}

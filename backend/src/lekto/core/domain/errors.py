@@ -51,10 +51,15 @@ class ConflictError(DomainError):
 
 
 class DuplicateDocumentError(ConflictError):
-    """The owner already has a document with the same content."""
+    """A document with the same content lies in a space the uploader reads, or in the space the
+    document would go into. `existing` names it if the caller may read it, else None."""
 
-    def __init__(self, existing: UUID) -> None:
-        super().__init__(f"duplicate of document {existing}")
+    def __init__(self, existing: UUID | None) -> None:
+        super().__init__(
+            "the space holds the same file already"
+            if existing is None
+            else f"duplicate of document {existing}"
+        )
         self.existing = existing
 
 

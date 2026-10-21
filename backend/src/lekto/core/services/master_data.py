@@ -741,7 +741,7 @@ class MasterDataService:
                 raise ConflictError(f"the contacts {', '.join(enabling)} enable '{tag.name}'")
             rules = [
                 rule
-                for rule in await uow.rules.list_for(owners=None, include_global=True)
+                for rule in await uow.rules.list_for(spaces=None, include_global=True)
                 if id in rule.definition.references().tags
             ]
             if rules:
@@ -784,7 +784,7 @@ class MasterDataService:
         fields = await uow.fields.list_all()
         return [
             rule
-            for rule in await uow.rules.list_for(owners=None, include_global=True)
+            for rule in await uow.rules.list_for(spaces=None, include_global=True)
             if rule.managed_by is None and uses_field(self._templates, rule.definition, fields, key)
         ]
 
@@ -835,7 +835,7 @@ class MasterDataService:
             await uow.rules.add(
                 Rule.create(
                     scope=RuleScope.GLOBAL,
-                    owner_id=None,
+                    space_id=None,
                     definition=definition,
                     by=actor,
                     now=now,
@@ -1076,7 +1076,7 @@ async def _check_key_free(uow: UnitOfWork, definition: FieldDefinition) -> None:
 
 async def _title_rule(uow: UnitOfWork, document_type: DocumentTypeId) -> Rule | None:
     """The live rule of the type's title pattern, if it has one."""
-    for rule in await uow.rules.list_for(owners=[], include_global=True):
+    for rule in await uow.rules.list_for(spaces=[], include_global=True):
         if rule.managed_by == document_type:
             return rule
     return None

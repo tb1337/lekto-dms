@@ -26,7 +26,7 @@
 	import { uploads } from '#lib/upload.svelte.ts';
 
 	// The inbox, the way in: documents come here by the upload button (with the dialog) or by
-	// dropping files and folders on the page (at once into the default space; not on a phone),
+	// dropping files and folders on the page (at once into the personal space; not on a phone),
 	// and everything new stands here until a person saw it or decided, by tab (`?tab=`; none:
 	// all that is open). Documents in processing with their progress, yellow and red ones to
 	// decide, new ones (green by themselves) calmly with "seen", and what left in the last 14
@@ -249,7 +249,7 @@
 	onconfirm={markAll}
 />
 
-<UploadDialog bind:open={uploadOpen} spaces={lookup?.spaces ?? []} users={lookup?.users ?? []} />
+<UploadDialog bind:open={uploadOpen} />
 
 {#if dragging}
 	<div

@@ -287,6 +287,6 @@ describe('DocumentLog', () => {
 	it('shows only the states to someone who may not read the log', () => {
 		render(DocumentLog, { document, graph, manageable: false, onreprocess: vi.fn() });
 		expect(fetchMock).not.toHaveBeenCalled();
-		expect(screen.getAllByText(m.log_owner_only()).length).toBeGreaterThan(0);
+		expect(screen.getAllByText(m.log_editors_only()).length).toBeGreaterThan(0);
 	});
 });

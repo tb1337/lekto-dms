@@ -12,7 +12,7 @@ from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.errors import ConcurrencyError, ConflictError, NotFoundError
 from lekto.core.domain.fields import FieldDefinition, FieldType, Money, Url
 from lekto.core.domain.identifiers import Identifier, IdentifierKind, IdentifierSource
-from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, SpaceId, TagId, new_id
+from lekto.core.domain.ids import ContactId, DocumentId, DocumentTypeId, TagId, new_id
 from lekto.core.domain.master_data import Assignment, Contact, DocumentType, Tag, TagScope
 from lekto.core.domain.periods import Period
 from lekto.core.domain.permissions import can_read_document
@@ -25,7 +25,17 @@ from lekto.core.domain.pipeline import (
     Outcome,
     ProcessingStatus,
 )
-from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.rules import (
+    AddTags,
+    Condition,
+    ConditionField,
+    Group,
+    Operator,
+    Rule,
+    RuleDefinition,
+    RuleScope,
+)
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import User
 from lekto.core.domain.verdict import KnownLabels
 from lekto.core.ports.repository import (
@@ -68,9 +78,20 @@ async def a_user(uow_factory: UnitOfWorkFactory) -> User:
 
 
 async def owner_with_space(uow_factory: UnitOfWorkFactory) -> tuple[User, Space]:
+    """A user with their personal space."""
     owner = await builders.seed_user(uow_factory)
     async with uow_factory() as uow:
-        return owner, await uow.spaces.get_default(owner.id)
+        return owner, await uow.spaces.get_personal(owner.id)
+
+
+_RULE_DEFINITION = RuleDefinition(
+    name="Tag API uploads",
+    priority=100,
+    conditions=Group(
+        mode="all", items=(Condition(field=ConditionField.CHANNEL, op=Operator.IS, value="api"),)
+    ),
+    actions=(AddTags(frozenset({TagId(new_id())})),),
+)
 
 
 def _repository_of(item: object) -> str:
@@ -302,52 +323,89 @@ class UnitOfWorkContract:
     # --- spaces --------------------------------------------------------------------------------
 
     async def test_space_round_trip(self, uow_factory: UnitOfWorkFactory) -> None:
-        owner, reader, writer = builders.user(), builders.user(), builders.user()
-        space = builders.space(owner, "Household")
-        space.share(reader.id, ShareLevel.READ)
-        space.share(writer.id, ShareLevel.READ_WRITE)
-        await seed(uow_factory, owner, reader, writer, spaces=(space,))
+        editor, reader, other = builders.user(), builders.user(), builders.user()
+        space = builders.space(editor, "Household", readers=[reader], editors=[other])
+        personal = builders.personal_space(reader)
+        personal.set_member(editor.id, SpaceRole.READ)
+        await seed(uow_factory, editor, reader, other, spaces=(space, personal))
         async with uow_factory() as uow:
             assert await uow.spaces.get(space.id) == space
+            assert await uow.spaces.get(personal.id) == personal
+            space = await uow.spaces.get(space.id)
+            space.remove_member(other.id)
+            space.set_member(reader.id, SpaceRole.EDIT)
+            await uow.spaces.update(space)
+            await uow.commit()
+        async with uow_factory() as uow:
+            stored = await uow.spaces.get(space.id)
+            assert stored.members == {editor.id: SpaceRole.EDIT, reader.id: SpaceRole.EDIT}
 
-    async def test_space_names_are_unique_per_owner(self, uow_factory: UnitOfWorkFactory) -> None:
+    async def test_names_of_shared_spaces_are_unique(self, uow_factory: UnitOfWorkFactory) -> None:
         alice, bob = builders.user(), builders.user()
         await seed(
             uow_factory,
             alice,
             bob,
-            spaces=(builders.space(alice, "Taxes"), builders.space(bob, "Taxes")),
+            spaces=(
+                builders.space(alice, "Taxes"),
+                builders.personal_space(alice),
+                builders.personal_space(bob),
+            ),
         )
         with pytest.raises(ConflictError):
-            await seed(uow_factory, spaces=(builders.space(alice, "TAXES"),))
-
-    async def test_one_default_space_per_owner(self, uow_factory: UnitOfWorkFactory) -> None:
-        owner, _ = await owner_with_space(uow_factory)
-        second = Space(
-            id=SpaceId(new_id()),
-            owner_id=owner.id,
-            name="Another default",
-            is_default=True,
-            created_at=NOW,
-        )
-        with pytest.raises(ConflictError):
-            await seed(uow_factory, spaces=(second,))
-
-    async def test_default_and_accessible_spaces(self, uow_factory: UnitOfWorkFactory) -> None:
-        alice, bob, carol = builders.user(), builders.user(), builders.user()
-        alice_default, bob_default = builders.default_space(alice), builders.default_space(bob)
-        shared = builders.space(alice, "Shared")
-        shared.share(bob.id, ShareLevel.READ)
-        await seed(uow_factory, alice, bob, carol, spaces=(alice_default, bob_default, shared))
+            await seed(uow_factory, spaces=(builders.space(bob, "TAXES"),))
         async with uow_factory() as uow:
-            assert await uow.spaces.get_default(alice.id) == alice_default
+            found = await uow.spaces.find_by_name("taxes")
+            assert found is not None and found.name == "Taxes"
+            assert await uow.spaces.find_by_name("Personal") is None  # personal ones apart
+
+    async def test_one_personal_space_per_user(self, uow_factory: UnitOfWorkFactory) -> None:
+        owner, _ = await owner_with_space(uow_factory)
+        with pytest.raises(ConflictError):
+            await seed(uow_factory, spaces=(builders.personal_space(owner),))
+
+    async def test_personal_and_accessible_spaces(self, uow_factory: UnitOfWorkFactory) -> None:
+        alice, bob, carol = builders.user(), builders.user(), builders.user()
+        alice_personal, bob_personal = builders.personal_space(alice), builders.personal_space(bob)
+        shared = builders.space(alice, "Shared", readers=[bob])
+        await seed(uow_factory, alice, bob, carol, spaces=(alice_personal, bob_personal, shared))
+        async with uow_factory() as uow:
+            assert await uow.spaces.get_personal(alice.id) == alice_personal
+            assert await uow.spaces.personal_ids() == {
+                alice.id: alice_personal.id,
+                bob.id: bob_personal.id,
+            }
             with pytest.raises(NotFoundError):
-                await uow.spaces.get_default(carol.id)
+                await uow.spaces.get_personal(carol.id)
             accessible = {space.id for space in await uow.spaces.list_accessible(bob.id)}
-            assert accessible == {bob_default.id, shared.id}
+            assert accessible == {bob_personal.id, shared.id}
             assert await uow.spaces.list_accessible(carol.id) == []
             every = {space.id for space in await uow.spaces.list_all()}
-            assert every >= {alice_default.id, bob_default.id, shared.id}
+            assert every >= {alice_personal.id, bob_personal.id, shared.id}
+
+    async def test_a_space_goes_with_its_members_and_rules(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        editor, reader = builders.user(), builders.user()
+        shared = builders.space(editor, "Gone", readers=[reader])
+        await seed(uow_factory, editor, reader, spaces=(shared,))
+        rule = Rule.create(
+            scope=RuleScope.SPACE,
+            space_id=shared.id,
+            definition=_RULE_DEFINITION,
+            by=editor.id,
+            now=NOW,
+        )
+        async with uow_factory() as uow:
+            await uow.rules.add(rule)
+            await uow.commit()
+        async with uow_factory() as uow:
+            await uow.spaces.remove(shared.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.spaces.find(shared.id) is None
+            assert await uow.rules.find(rule.id) is None
+            assert await uow.spaces.list_accessible(reader.id) == []
 
     # --- master data ----------------------------------------------------------------------------
 
@@ -825,7 +883,7 @@ class UnitOfWorkContract:
         async with uow_factory() as uow:
             assert (await uow.documents.get(document.id)).pull_events() == []
 
-    async def test_original_is_unique_per_owner(self, uow_factory: UnitOfWorkFactory) -> None:
+    async def test_original_is_unique_per_space(self, uow_factory: UnitOfWorkFactory) -> None:
         alice, alice_space = await owner_with_space(uow_factory)
         bob, bob_space = await owner_with_space(uow_factory)
         first = builders.document(alice, alice_space, content="same")
@@ -834,12 +892,33 @@ class UnitOfWorkContract:
             await uow.documents.add(builders.document(bob, bob_space, content="same"))
             await uow.commit()
         async with uow_factory() as uow:
-            assert await uow.documents.find_by_sha256(alice.id, first.sha256) == first
-            assert await uow.documents.find_by_sha256(alice.id, builders.sha256()) is None
+            assert await uow.documents.list_by_sha256(first.sha256, [alice_space.id]) == [first]
+            found = await uow.documents.list_by_sha256(first.sha256, [alice_space.id, bob_space.id])
+            assert sorted(item.space_id for item in found) == sorted([alice_space.id, bob_space.id])
+            assert await uow.documents.list_by_sha256(builders.sha256(), [alice_space.id]) == []
+            assert await uow.documents.list_by_sha256(first.sha256, []) == []
         with pytest.raises(ConflictError):
             async with uow_factory() as uow:
-                await uow.documents.add(builders.document(alice, alice_space, content="same"))
+                await uow.documents.add(builders.document(bob, alice_space, content="same"))
                 await uow.commit()
+
+    async def test_a_deleted_uploader_leaves_the_document(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        _, space = await owner_with_space(uow_factory)
+        leaving = builders.user()
+        await seed(uow_factory, leaving)
+        document = builders.document(leaving, space)
+        async with uow_factory() as uow:
+            await uow.documents.add(document)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert await uow.documents.exists(uploaded_by=leaving.id)
+            await uow.users.remove(leaving.id)
+            await uow.commit()
+        async with uow_factory() as uow:
+            assert (await uow.documents.get(document.id)).uploaded_by is None
+            assert not await uow.documents.exists(uploaded_by=leaving.id)
 
     async def test_document_identifiers_tell_the_contacts_that_show_them(
         self, uow_factory: UnitOfWorkFactory
@@ -897,10 +976,9 @@ class UnitOfWorkContract:
         self, uow_factory: UnitOfWorkFactory
     ) -> None:
         owner, reader, stranger = builders.user(), builders.user(), builders.user()
-        private = builders.default_space(owner)
-        shared = builders.space(owner, "Shared")
-        shared.share(reader.id, ShareLevel.READ)
-        reader_default = builders.default_space(reader)
+        private = builders.personal_space(owner)
+        shared = builders.space(owner, "Shared", readers=[reader])
+        reader_default = builders.personal_space(reader)
         await seed(uow_factory, owner, reader, stranger, spaces=(private, shared, reader_default))
         documents = [
             builders.processed(owner, private),
@@ -1580,9 +1658,11 @@ class UnitOfWorkContract:
     async def test_users_and_spaces_are_removed(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, space = await owner_with_space(uow_factory)
         other = builders.user()
-        shared = builders.space(owner)
-        shared.share(other.id, ShareLevel.READ)
+        shared = builders.space(owner, readers=[other])
         await seed(uow_factory, other, spaces=(shared,))
+        async with uow_factory() as uow:
+            with pytest.raises(ConflictError):  # still a member of a space
+                await uow.users.remove(other.id)
         async with uow_factory() as uow:
             await uow.spaces.remove(shared.id)
             await uow.spaces.remove(space.id)
@@ -1596,6 +1676,8 @@ class UnitOfWorkContract:
                 await uow.users.remove(owner.id)
             with pytest.raises(NotFoundError):
                 await uow.spaces.remove(space.id)
+            await uow.users.remove(other.id)  # no membership left
+            await uow.commit()
 
     async def test_a_lock_makes_other_units_wait(self, uow_factory: UnitOfWorkFactory) -> None:
         order: list[str] = []
@@ -1768,16 +1850,16 @@ class UnitOfWorkContract:
             await uow.commit()
         unused_tag = Tag.create(name="unused", now=NOW)
         async with uow_factory() as uow:
-            assert await uow.documents.exists(owner=owner.id)
+            assert await uow.documents.exists(uploaded_by=owner.id)
             assert await uow.documents.exists(space=space.id)
             assert await uow.documents.exists(contact=contact.id)
             assert await uow.documents.exists(document_type=document_type.id)
             assert await uow.documents.exists(tag=tag.id)
             assert await uow.documents.exists(field=field.id)
-            assert await uow.documents.exists(owner=owner.id, tag=tag.id)
-            assert not await uow.documents.exists(owner=stranger.id)
+            assert await uow.documents.exists(uploaded_by=owner.id, tag=tag.id)
+            assert not await uow.documents.exists(uploaded_by=stranger.id)
             assert not await uow.documents.exists(space=empty.id)
-            assert not await uow.documents.exists(owner=stranger.id, tag=tag.id)
+            assert not await uow.documents.exists(uploaded_by=stranger.id, tag=tag.id)
             assert not await uow.documents.exists(tag=unused_tag.id)
             assert await uow.documents.exists(sha256=document.sha256)
             assert not await uow.documents.exists(sha256=builders.sha256("other"))

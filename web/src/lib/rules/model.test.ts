@@ -159,7 +159,7 @@ describe('the rule model', () => {
 		const model = fromApi(many);
 		expect(conditionsOf(model.conditions)).toHaveLength(LIMITS.conditions);
 		expect(toApi(model)).toEqual(many);
-		expect(validate(model, 'user', FIELDS)).toEqual({});
+		expect(validate(model, FIELDS)).toEqual({});
 	});
 
 	it('round-trips references to deleted things as they are', () => {
@@ -255,9 +255,9 @@ describe('editing conditions', () => {
 });
 
 describe('checking a rule', () => {
-	function problems(model: RuleModel, scope: 'user' | 'global' = 'user') {
+	function problems(model: RuleModel) {
 		return Object.fromEntries(
-			Object.entries(validate(model, scope, FIELDS)).map(([key, problem]) => [key, problem.code])
+			Object.entries(validate(model, FIELDS)).map(([key, problem]) => [key, problem.code])
 		);
 	}
 
@@ -336,7 +336,7 @@ describe('checking a rule', () => {
 		}
 	});
 
-	it('checks actions, their scope and fields set twice', () => {
+	it('checks actions and fields set twice; a global rule may do everything', () => {
 		const model = newModel();
 		model.name = 'x';
 		model.conditions.items = [{ ...newCondition('channel'), value: 'web' }];
@@ -363,10 +363,9 @@ describe('checking a rule', () => {
 			[second.key]: 'twice',
 			[tags.key]: 'list'
 		});
-		expect(problems(model, 'global')[space.key]).toBe('scope');
 	});
 
-	it('takes a topic like a contact: one value, set by user rules only', () => {
+	it('takes a topic like a contact: one value', () => {
 		const model = newModel();
 		model.name = 'x';
 		model.conditions.items = [{ ...newCondition('topic'), value: ID(5) }];
@@ -374,7 +373,6 @@ describe('checking a rule', () => {
 		const topic = newAction('set_topic');
 		model.actions = [topic];
 		expect(problems(model)).toEqual({ [topic.key]: 'choose' });
-		expect(problems(model, 'global')[topic.key]).toBe('scope');
 		expect(referencedIds({ ...topic, topic_id: ID(6) } as never)).toEqual([ID(6)]);
 		expect(referencedIds(model.conditions.items[0] as never)).toEqual([ID(5)]);
 	});

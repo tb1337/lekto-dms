@@ -100,7 +100,8 @@ CRITERIA = frozenset(
     }
 )
 _TOP_KEYS = frozenset({"source", "target", "settings", "documents", ASN, *SECTIONS})
-SHARES = "{shares}"
+MEMBERS = "{members}"  # in `space_name`: every member of a shared space with their role
+SHARES = "{shares}"  # before 0.5, when a space had an owner; now an error
 
 
 def norm(name: str) -> str:
@@ -170,10 +171,12 @@ class Entry:
 @dataclass(frozen=True)
 class Settings:
     currency: str = "EUR"  # for amounts without a currency
-    fallback_owner: str | None = None  # Lekto user name; None: the executing admin
+    # Lekto user name who uploads documents without a (taken over) Paperless owner; None: the
+    # executing admin
+    fallback_owner: str | None = None
     deactivate_inactive_users: bool = True
     take_over_added: bool = True
-    space_name: str = "Geteilt: " + SHARES
+    space_name: str = "Geteilt: " + MEMBERS
     text_threshold: float = 0.8  # Lekto's words below this share of Paperless' are listed
 
 
@@ -281,8 +284,14 @@ def _settings(raw: Any, problems: list[str]) -> Settings:
         problems.append("settings.fallback_owner: a Lekto user name, or empty")
         owner = None
     space_name = raw.get("space_name", defaults.space_name)
-    if not isinstance(space_name, str) or SHARES not in space_name:
-        problems.append(f"settings.space_name: a name with {SHARES} for the users")
+    if isinstance(space_name, str) and SHARES in space_name:
+        problems.append(
+            f"settings.space_name: {SHARES} is now {MEMBERS}, which names every member of the "
+            "space, the uploader too"
+        )
+        space_name = defaults.space_name
+    elif not isinstance(space_name, str) or MEMBERS not in space_name:
+        problems.append(f"settings.space_name: a name with {MEMBERS} for the members")
         space_name = defaults.space_name
     threshold = raw.get("text_threshold", defaults.text_threshold)
     if (

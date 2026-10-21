@@ -42,12 +42,11 @@
 	import { factsSummary } from '#lib/facts.ts';
 	import { sameValue, toApi, toInput, type ApiValue, type InputValue } from '#lib/fields.ts';
 	import {
-		spaceLabel,
 		fieldsFor,
+		spaceOptions,
 		type FieldDefinition,
 		type Lookup
 	} from '#lib/masterdata.svelte.ts';
-	import { writableSpaces } from '#lib/permissions.ts';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
 	import { masterDataDialogs } from '#lib/masterdata-dialog.svelte.ts';
 	import { m } from '#lib/paraglide/messages.js';
@@ -84,7 +83,7 @@
 	}: {
 		document: Document;
 		lookup: Lookup;
-		/** What the model proposed: owner and admins only, else null. */
+		/** What the model proposed: editors and admins only, else null. */
 		review: Review | null;
 		editable: boolean;
 		/** The document offered to open after confirming: the inbox's next one that waits for a
@@ -154,8 +153,9 @@
 	// Something to confirm. A failed node alone is repeated, not confirmed; its document can
 	// still be changed (dry run and save).
 	const confirming = $derived(reviewing && (!failedNode || decisions.length > 0 || hasSpace));
-	// The owner confirms into spaces they may write to; an admin into any space.
-	const spaces = $derived(writableSpaces(lookup.spaces, session.user));
+	// Confirmed into a space the caller edits (an admin: any), or handed over into another user's
+	// personal space.
+	const spaceChoices = $derived(spaceOptions(lookup.spaces, lookup.users, session.user));
 
 	const snapshot = () =>
 		JSON.stringify([title, date, contact, topic, documentType, tags, values, spaceId]);
@@ -794,15 +794,7 @@
 					onfocus={focus}
 					onjump={jump}
 				>
-					<Select
-						id="doc-space"
-						bind:value={spaceId}
-						disabled={!editable}
-						options={spaces.map((space) => ({
-							value: space.id,
-							label: spaceLabel(space, lookup.users, session.user?.id)
-						}))}
-					/>
+					<Select id="doc-space" bind:value={spaceId} disabled={!editable} options={spaceChoices} />
 				</FieldShell>
 			{/if}
 		</FieldGroup>
@@ -938,16 +930,12 @@
 							{m.dryrun_space({ space: describeValue(preview.visibility.space_id, lookup) })}
 						</p>
 						<p class="text-muted-foreground">
-							{[
-								describeValue(preview.visibility.owner_id, lookup),
-								preview.visibility.space_owner_id
-									? describeValue(preview.visibility.space_owner_id, lookup)
-									: null,
-								...(preview.visibility.shares ?? []).map((share) =>
-									describeValue(share.user_id, lookup)
+							{preview.visibility.members
+								.map((member) =>
+									member.role === 'read'
+										? m.space_member_reads({ name: describeValue(member.user_id, lookup) })
+										: describeValue(member.user_id, lookup)
 								)
-							]
-								.filter((name, index, all) => name && all.indexOf(name) === index)
 								.join(', ')}
 						</p>
 					</section>

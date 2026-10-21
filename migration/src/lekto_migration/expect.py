@@ -1,6 +1,7 @@
-"""What a Paperless document becomes in Lekto by the plan, in terms of Lekto's names: owner,
-shares and space, contact, type, topic, tags, groups, date, fields, the reviews it needs, and
-where each value came from. Pure functions; `resolve` turns the names into ids.
+"""What a Paperless document becomes in Lekto by the plan, in terms of Lekto's names: who
+uploads it, its space with the members its permissions need, contact, type, topic, tags,
+groups, date, fields, the reviews it needs, and where each value came from. Pure functions;
+`resolve` turns the names into ids.
 
 Every Paperless object the document references contributes the targets of its entry. The
 natural ones (a correspondent's contact, the date Paperless has, the space its permissions
@@ -19,7 +20,7 @@ from urllib.parse import urlsplit
 
 from lekto_migration.directory import Directory
 from lekto_migration.mapping import (
-    READ_WRITE,
+    EDIT,
     access_of,
     convert_value,
     document_date,
@@ -29,7 +30,7 @@ from lekto_migration.mapping import (
     select_options,
 )
 from lekto_migration.paperless import Snapshot
-from lekto_migration.plan import ASN, NATURAL, SECTIONS, Entry, Plan, Target, norm
+from lekto_migration.plan import ASN, MEMBERS, NATURAL, SECTIONS, Entry, Plan, Target, norm
 
 SUPPORTED = ("application/pdf", "image/jpeg", "image/png", "image/tiff")
 NAME_LIMIT = 200
@@ -71,10 +72,12 @@ class Expected:
     filename: str
     media_type: str
     skip: str | None = None
-    owner: str | None = None  # Lekto user name; None: the executing admin
+    uploader: str | None = None  # Lekto user name; None: the executing admin
     owner_source: str | None = None  # the Paperless owner's name
-    shares: tuple[tuple[str, str], ...] = ()  # (Lekto user name, level), by name
-    space: str | None = None  # a space of the owner; None: the owner's default space
+    # The members of the space the permissions need, the uploader among them: (Lekto user
+    # name, `read` or `edit`), by name; empty without further permissions.
+    members: tuple[tuple[str, str], ...] = ()
+    space: str | None = None  # a shared space by name; None: the uploader's personal space
     contact: str | None = None
     document_type: str | None = None
     topic: str | None = None
@@ -97,7 +100,8 @@ class Context:
     snapshot: Snapshot
     fields: Mapping[str, FieldInfo]  # norm(Lekto field name) -> the field
     admin: str  # the executing admin's user name
-    inactive: frozenset[str] = frozenset()  # norm(Lekto user names) that can neither own nor share
+    # norm(Lekto user names) that can neither upload nor be members
+    inactive: frozenset[str] = frozenset()
     now: datetime | None = None
     users: dict[int, dict[str, Any]] = field(init=False)
     custom_fields: dict[int, dict[str, Any]] = field(init=False)
@@ -218,7 +222,7 @@ def expect(document: dict[str, Any], context: Context) -> Expected:
         expected.notes.append(f"{len(further)} further versions of the file are not taken over")
 
     collected = _Collected()
-    _owner(document, context, expected)
+    _uploader(document, context, expected)
     if expected.owner_source is not None:
         owner = plan.entry("users", expected.owner_source)
         if owner is not None:
@@ -280,50 +284,55 @@ def _lekto_user(context: Context, paperless: str) -> str | None:
     return next((t.name for t in entry.targets if t.to == "user"), None)
 
 
-def _owner(document: dict[str, Any], context: Context, expected: Expected) -> None:
-    """Owner and shares by the plan's users; the fallback owner where there is none."""
+def _uploader(document: dict[str, Any], context: Context, expected: Expected) -> None:
+    """Who uploads the document (its Paperless owner by the plan's users, the fallback where
+    there is none) and, if Paperless lets others see it, the shared space of all of them: the
+    uploader and the writers edit, the readers read. Without further permissions the
+    document goes to the uploader's personal space."""
     settings = context.plan.settings
     access = access_of(document, context.users)
     expected.notes += access.notes
-    owner = None
+    uploader = None
     if access.owner is not None:
         expected.owner_source = access.owner
-        owner = _lekto_user(context, access.owner)
-        if owner is None:
-            expected.notes.append(f"user '{access.owner}' is not taken over: the fallback owns it")
-    if owner is not None and norm(owner) in context.inactive:
-        expected.notes.append(f"{owner} is not an active user in Lekto: the fallback owns it")
-        owner = None
-    expected.owner = owner or settings.fallback_owner
-    final = norm(expected.owner or context.admin)
-    shares: dict[str, tuple[str, str]] = {}  # norm(name) -> (name, level); writers win
-    for name, level in access.shares:
+        uploader = _lekto_user(context, access.owner)
+        if uploader is None:
+            expected.notes.append(
+                f"user '{access.owner}' is not taken over: the fallback uploads it"
+            )
+    if uploader is not None and norm(uploader) in context.inactive:
+        expected.notes.append(f"{uploader} is not an active user in Lekto: the fallback uploads it")
+        uploader = None
+    expected.uploader = uploader or settings.fallback_owner
+    final = expected.uploader or context.admin
+    members: dict[str, tuple[str, str]] = {}  # norm(name) -> (name, role); edit wins
+    for name, role in access.shares:
         target = _lekto_user(context, name)
         if target is None:
-            expected.notes.append(f"shared with {name}, who is not taken over: not shared")
+            expected.notes.append(f"shared with {name}, who is not taken over: not a member")
         elif norm(target) in context.inactive:
-            expected.notes.append(f"shared with {name}, not an active user in Lekto: not shared")
-        elif norm(target) == final:
-            expected.notes.append(f"shared with {name}, who owns the document in Lekto: not shared")
-        elif shares.get(norm(target), ("", ""))[1] != READ_WRITE:
-            shares[norm(target)] = (target, level)
-    expected.shares = tuple(sorted(shares.values(), key=lambda item: norm(item[0])))
-    if expected.shares:
-        users = ", ".join(
-            f"{user} ({'schreiben' if level == READ_WRITE else 'lesen'})"
-            for user, level in expected.shares
-        )
-        expected.space = _space_name(settings.space_name, expected.shares, users)
-        expected.sources["space"] = PERMISSIONS
+            expected.notes.append(f"shared with {name}, not an active user in Lekto: not a member")
+        elif norm(target) != norm(final) and members.get(norm(target), ("", ""))[1] != EDIT:
+            members[norm(target)] = (target, role)
+    if not members:
+        return
+    members[norm(final)] = (final, EDIT)
+    expected.members = tuple(sorted(members.values(), key=lambda item: norm(item[0])))
+    users = ", ".join(
+        f"{user} ({'bearbeiten' if role == EDIT else 'lesen'})" for user, role in expected.members
+    )
+    expected.space = _space_name(settings.space_name, expected.members, users)
+    expected.sources["space"] = PERMISSIONS
 
 
-def _space_name(template: str, shares: tuple[tuple[str, str], ...], users: str) -> str:
-    """The name of the space of a combination of users; it names them, so the same combination
-    gets the same space, and a long one ends in a short hash to stay apart."""
-    name = template.replace("{shares}", users)
+def _space_name(template: str, members: tuple[tuple[str, str], ...], users: str) -> str:
+    """The name of the shared space of a combination of members; it names all of them, so the
+    same combination gets the same space and another one another space (names of shared
+    spaces are unique in Lekto), and a long one ends in a short hash to stay apart."""
+    name = template.replace(MEMBERS, users)
     if len(name) <= NAME_LIMIT:
         return name
-    key = hashlib.sha256(repr(shares).encode()).hexdigest()[:8]
+    key = hashlib.sha256(repr(members).encode()).hexdigest()[:8]
     return name[: NAME_LIMIT - 13].rstrip() + f"... #{key}"
 
 
@@ -383,7 +392,7 @@ def _contribute(
         targets = (*targets, *(chosen or ()))
     for target in targets:
         if target.to == "user":
-            continue  # the owner is set apart
+            continue  # the uploader is set apart
         naming = target.to in GROUPS or target.to in NAMED
         if naming and valued is not None and value is False and not target.by_value:
             continue  # a "no" takes nothing that only names something
@@ -423,11 +432,11 @@ def _apply(kind: str, offered: list[_Candidate], expected: Expected) -> None:
     chosen = _choose(kind, offered, expected)
     if chosen is None:
         return
-    if kind == "space" and chosen.source != PERMISSIONS and expected.shares:
+    if kind == "space" and chosen.source != PERMISSIONS and expected.members:
         expected.notes.append(
             f"space '{chosen.value}' ({chosen.source}) wins: the permissions are not taken over"
         )
-        expected.shares = ()
+        expected.members = ()
     expected.sources[kind] = chosen.source
     if kind.startswith("field:"):
         expected.fields[kind.removeprefix("field:")] = chosen.value

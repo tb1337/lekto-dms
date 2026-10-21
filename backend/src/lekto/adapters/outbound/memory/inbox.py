@@ -7,12 +7,13 @@ from collections.abc import Collection, Iterator
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from lekto.adapters.outbound.memory.database import DOCUMENTS, USERS
+from lekto.adapters.outbound.memory.database import DOCUMENTS, SPACES, USERS
 from lekto.adapters.outbound.memory.rows import _copy
 from lekto.core.domain.documents import Document
 from lekto.core.domain.errors import ConflictError
 from lekto.core.domain.ids import DocumentId, UserId
 from lekto.core.domain.inbox import Confirmation, InboxState, InboxTab, inbox_state, open_tab
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.validation import require_utc
 from lekto.core.ports.repository import InboxEntry, InboxPosition
 
@@ -30,7 +31,7 @@ class MemoryInboxRepository:
         self,
         viewer: UserId,
         *,
-        owner: UserId | None,
+        editor: UserId | None,
         tab: InboxTab | None,
         since: datetime,
         after: InboxPosition | None = None,
@@ -38,7 +39,7 @@ class MemoryInboxRepository:
     ) -> list[InboxEntry]:
         found = [
             (document, state, seen_at, confirmation)
-            for document, state, seen_at, confirmation in self._states(viewer, owner, since)
+            for document, state, seen_at, confirmation in self._states(viewer, editor, since)
             if (state.tab is not InboxTab.DONE if tab is None else state.tab is tab)
         ]
         if tab is InboxTab.DONE:  # by when they left, newest first, ties by id
@@ -61,10 +62,10 @@ class MemoryInboxRepository:
         )
 
     async def count(
-        self, viewer: UserId, *, owner: UserId | None, since: datetime
+        self, viewer: UserId, *, editor: UserId | None, since: datetime
     ) -> dict[InboxTab, int]:
         counts = dict.fromkeys(InboxTab, 0)
-        for _, state, _, _ in self._states(viewer, owner, since):
+        for _, state, _, _ in self._states(viewer, editor, since):
             counts[state.tab] += 1
         return counts
 
@@ -85,11 +86,11 @@ class MemoryInboxRepository:
             raise ConflictError(f"seen mark of a user that does not exist: {viewer}")
         self._uow._seen[(viewer, document)] = require_utc(at, "seen_at")
 
-    async def mark_all_seen(self, viewer: UserId, *, owner: UserId | None, at: datetime) -> int:
+    async def mark_all_seen(self, viewer: UserId, *, editor: UserId | None, at: datetime) -> int:
         marks = self._marks()
         new = [
             document.id
-            for document in self._documents(owner)
+            for document in self._documents(editor)
             if open_tab(document, marks.get((viewer, document.id))) is InboxTab.NEW
         ]
         for document in new:
@@ -126,11 +127,11 @@ class MemoryInboxRepository:
         return len(keys)
 
     def _states(
-        self, viewer: UserId, owner: UserId | None, since: datetime
+        self, viewer: UserId, editor: UserId | None, since: datetime
     ) -> Iterator[tuple[Document, InboxState, datetime | None, Confirmation | None]]:
-        """The documents of `owner` that stand in `viewer`'s inbox, newest first, with where."""
+        """The documents of `editor` that stand in `viewer`'s inbox, newest first, with where."""
         marks, confirmations = self._marks(), self._confirmations()
-        for document in sorted(self._documents(owner), key=lambda row: row.id, reverse=True):
+        for document in sorted(self._documents(editor), key=lambda row: row.id, reverse=True):
             seen_at = marks.get((viewer, document.id))
             confirmation = confirmations.get(document.id)
             state = inbox_state(
@@ -139,10 +140,16 @@ class MemoryInboxRepository:
             if state is not None:
                 yield document, state, seen_at, confirmation
 
-    def _documents(self, owner: UserId | None) -> list[Document]:
-        """The documents of `owner` (None: every one), as the unit sees them (not copied)."""
+    def _documents(self, editor: UserId | None) -> list[Document]:
+        """The documents in the spaces `editor` edits (None: every one), as the unit sees them
+        (not copied)."""
         rows = self._uow._rows(DOCUMENTS)
-        return [row for row in rows if owner is None or row.owner_id == owner]
+        if editor is None:
+            return rows
+        edited = {
+            space.id for space in self._uow._rows(SPACES) if space.role_of(editor) is SpaceRole.EDIT
+        }
+        return [row for row in rows if row.space_id in edited]
 
     def _exists(self, document: DocumentId) -> bool:
         return self._uow._row(DOCUMENTS, document) is not None

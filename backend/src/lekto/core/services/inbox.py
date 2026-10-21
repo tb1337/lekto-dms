@@ -1,5 +1,5 @@
 """The inbox: what stands in whose inbox, by tab (`domain.inbox`), and seen per user
-(`InboxService`); what is open in a yellow or red document, and how its owner's decision on the
+(`InboxService`); what is open in a yellow or red document, and how an editor's decision on the
 open fields turns into a metadata change.
 
 What the signals proposed and how each field was checked lies in the processing log (output
@@ -10,7 +10,7 @@ of the judge and the fields node). These functions read it from there; the rules
 import logging
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -50,7 +50,7 @@ from lekto.core.domain.inbox import (
     worst_lane,
 )
 from lekto.core.domain.json_value import JsonObject, JsonValue
-from lekto.core.domain.permissions import can_control_document, document_access
+from lekto.core.domain.permissions import can_edit_document, document_access
 from lekto.core.domain.pipeline import (
     ACCEPTED,
     CONFIRMED_BY,
@@ -66,7 +66,7 @@ from lekto.core.domain.pipeline import (
     Outcome,
     ProcessingHistory,
 )
-from lekto.core.domain.spaces import ShareLevel, Space
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.repository import PAGE_LIMIT, PAGE_SIZE, InboxPosition
 from lekto.core.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
@@ -83,7 +83,7 @@ MODEL_NODES = (Node.JUDGE, Node.FIELDS)
 
 @dataclass(frozen=True)
 class OpenNode:
-    """A node whose result is uncertain or failed: why, and the fields its owner has to decide
+    """A node whose result is uncertain or failed: why, and the fields an editor has to decide
     (uncertain fields of the judge or the fields node; none for other nodes)."""
 
     node: Node
@@ -111,7 +111,7 @@ class InboxItem:
     what is open in it."""
 
     document: Document
-    access: ShareLevel  # the caller's, as in `DocumentView`
+    access: SpaceRole  # the caller's, as in `DocumentView`
     open: tuple[OpenNode, ...]
     state: InboxState
 
@@ -133,15 +133,15 @@ class InboxSummary:
 @dataclass(frozen=True)
 class Review:
     document: Document
-    access: ShareLevel  # the caller's, as in `DocumentView`
+    access: SpaceRole  # the caller's, as in `DocumentView`
     open: tuple[OpenNode, ...]
     nodes: tuple[NodeReview, ...]
 
 
 @dataclass(frozen=True)
 class Decision:
-    """The owner's decision on the open fields: the change to apply, and which fields were
-    accepted as suggested, entered by the owner, or kept with the value the document has, by
+    """A person's decision on the open fields: the change to apply, and which fields were
+    accepted as suggested, entered by the person, or kept with the value the document has, by
     node."""
 
     changes: DocumentChanges
@@ -217,7 +217,7 @@ def decide(
     given: Collection[str] = (),
 ) -> Decision:
     """Every open field needs a decision: a value (or None) in `changes` (or named in `given`,
-    such as the space), a value the document has (its owner set it meanwhile; it is kept), or,
+    such as the space), a value the document has (a person set it meanwhile; it is kept), or,
     with `accept_suggestions`, a suggestion that can be taken as it is. Suggestions never
     replace a value. OpenFieldsError lists the fields without a decision. Fields whose definition
     no longer exists need none. The rules' space, title and review always have a value:
@@ -272,8 +272,8 @@ _LONGEST_ALIAS = 100  # characters; longer proposals are not learned
 def alias_to_learn(
     open: Sequence[OpenNode], decision: Decision, document: Document
 ) -> tuple[ContactId, str] | None:
-    """The contact the owner chose for an open contact field, and the name the model read for
-    it: the owner entered the contact or accepted the suggestion. None if the field was not
+    """The contact a person chose for an open contact field, and the name the model read for
+    it: the person entered the contact or accepted the suggestion. None if the field was not
     open, the model read no name, or the document has no contact."""
     for item in open:
         if item.node is not Node.JUDGE:
@@ -296,7 +296,7 @@ def alias_to_learn(
 def confirmation(
     node: Node, before: Outcome | None, decision: Decision, confirmed_by: UUID
 ) -> NodeResult:
-    """The log entry's result for a node the owner confirmed."""
+    """The log entry's result for a node a person confirmed."""
     output: JsonObject = {
         CONFIRMED_BY: str(confirmed_by),
         "outcome_before": None if before is None else before.value,
@@ -407,7 +407,7 @@ class InboxService:
             since = self._clock.now() - DONE_PERIOD
             entries = await uow.inbox.query(
                 actor,
-                owner=None if all_users else actor,
+                editor=None if all_users else actor,
                 tab=tab,
                 since=since,
                 after=await _position(uow, actor, tab, after),
@@ -433,7 +433,7 @@ class InboxService:
                 if document.space_id not in spaces:
                     spaces[document.space_id] = await uow.spaces.get(document.space_id)
                 access = document_access(user, document, spaces[document.space_id])
-                assert access is not None  # the owner's, or any to an admin
+                assert access is not None  # an editor's, or any to an admin
                 items.append(InboxItem(document, access, await _open(uow, document), state))
         return items
 
@@ -444,7 +444,7 @@ class InboxService:
             await load_lister(uow, actor, all_users, "see the inboxes of all users")
             counts = await uow.inbox.count(
                 actor,
-                owner=None if all_users else actor,
+                editor=None if all_users else actor,
                 since=self._clock.now() - DONE_PERIOD,
             )
         return InboxSummary(counts, worst_lane(counts))
@@ -455,11 +455,11 @@ class InboxService:
         it. Only a document that is new and unseen by the caller counts: one they saw since it
         became new keeps when they saw it (it left their inbox then), and nothing changes for
         one that is new for no one, or that cannot stand in the caller's inbox (a document in
-        reach through a share only)."""
+        reach through reading its space only)."""
         async with self._uow() as uow:
             user = await load_actor(uow, actor)
-            document, _ = await readable_document(uow, user, id)
-            if document.new_at is None or not can_control_document(user, document):
+            document, space = await readable_document(uow, user, id)
+            if document.new_at is None or not can_edit_document(user, document, space):
                 return
             seen = await uow.inbox.seen(actor, [id])
             if not is_unseen(document, seen.get(id)):
@@ -481,7 +481,7 @@ class InboxService:
         async with self._uow() as uow:
             await load_lister(uow, actor, all_users, "see the inboxes of all users")
             count = await uow.inbox.mark_all_seen(
-                actor, owner=None if all_users else actor, at=self._clock.now()
+                actor, editor=None if all_users else actor, at=self._clock.now()
             )
             await uow.commit()
         return count
@@ -493,10 +493,36 @@ async def in_inbox(
     """Those of `documents` that stand open in `viewer`'s inbox (with `all_users`, an admin's:
     of every user), for marking them in lists and search: one query for the viewer's seen marks
     of the new ones."""
-    theirs = [document for document in documents if all_users or document.owner_id == viewer]
+    edited: set[SpaceId] = set()
+    if not all_users:
+        edited = {
+            space.id
+            for space in await uow.spaces.list_accessible(viewer)
+            if space.role_of(viewer) is SpaceRole.EDIT
+        }
+    theirs = [document for document in documents if all_users or document.space_id in edited]
     new = [item.id for item in theirs if item.lane is Lane.GREEN and item.new_at is not None]
     seen = await uow.inbox.seen(viewer, new) if new else {}
     return {item.id for item in theirs if open_tab(item, seen.get(item.id)) is not None}
+
+
+async def arrived(
+    uow: UnitOfWork, document: Document, source: Space, now: datetime, by: UserId | None = None
+) -> None:
+    """`document` was moved out of `source` into the space it lies in now: while green, it is
+    new for the editors there who could not read it before. The members of `source` keep
+    their state (whoever had nothing new in it is marked as having seen it now, moving is no
+    seeing); `by`, who moved it from outside the space (an admin), has seen it."""
+    if document.lane is not Lane.GREEN:
+        return
+    unseen = {
+        user: is_unseen(document, (await uow.inbox.seen(user, [document.id])).get(document.id))
+        for user in source.members
+    }
+    document.mark_new(now)
+    outside = [] if by is None or by in source.members else [by]
+    for user in [*(user for user, new in unseen.items() if not new), *outside]:
+        await uow.inbox.mark_seen(user, document.id, now)
 
 
 async def _position(

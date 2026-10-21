@@ -10,7 +10,7 @@ from typing import Any
 from lekto_migration.directory import Directory
 from lekto_migration.expect import Expected, FieldInfo, targets_of
 from lekto_migration.lekto import ApiError, Lekto
-from lekto_migration.mapping import select_options
+from lekto_migration.mapping import EDIT, select_options
 from lekto_migration.paperless import Snapshot
 from lekto_migration.plan import SECTIONS, TAG_SCOPES, Plan, Target, norm
 
@@ -99,7 +99,7 @@ def _users(plan: Plan, directory: Directory, snapshot: Snapshot) -> list[Action]
             action.data = {"paperless": [], "id": found["id"] if found else None}
             actions[key] = action
             if found is not None and found.get("active") is False:
-                action.notes.append("inactive in Lekto: owns and gets nothing of the migration")
+                action.notes.append("inactive in Lekto: uploads and gets nothing of the migration")
         action.data["paperless"].append(entry.source)
         if norm(entry.source) in inactive:
             action.data["deactivate"] = plan.settings.deactivate_inactive_users
@@ -256,32 +256,52 @@ def _groups(taken: Sequence[Expected], directory: Directory) -> list[Action]:
 
 
 def _spaces(taken: Sequence[Expected], directory: Directory) -> list[Action]:
-    wanted: dict[tuple[str, str], Expected] = {}
+    """The shared spaces the documents go to. A space of a combination of members (its name
+    names them) gets these members, with edit winning, never fewer; a space the plan names
+    is used as it is, and created with the uploaders of its documents as editors."""
+    wanted: dict[str, Action] = {}
     for item in taken:
-        if item.space is not None:
-            owner = item.owner or directory.admin["username"]
-            wanted.setdefault((norm(owner), norm(item.space)), item)
-    actions = []
-    for item in wanted.values():
-        assert item.space is not None
-        owner = item.owner or directory.admin["username"]
-        user = directory.find("user", owner)
-        found = directory.space(user["id"], item.space) if user is not None else None
-        action = Action("space", item.space, EXISTS, f"owner {owner}")
-        action.data = {"owner": owner, "shares": list(item.shares)}
+        if item.space is None:
+            continue
+        action = wanted.get(norm(item.space))
+        if action is None:
+            source = item.sources.get("space", "")
+            action = Action("space", item.space, EXISTS, source)
+            action.data = {"members": {}, "uploaders": {}}
+            wanted[norm(item.space)] = action
+        for name, role in item.members:
+            _join(action.data["members"], name, role)
+        if not item.members:
+            _join(action.data["uploaders"], item.uploader or directory.admin["username"], EDIT)
+    for action in wanted.values():
+        members: dict[str, tuple[str, str]] = action.data["members"]
+        found = directory.space(action.name)
         if found is None:
             action.status = CREATE
+            for name, role in action.data["uploaders"].values():
+                _join(members, name, role)
         else:
             action.data["id"] = found["id"]
-            have = {s["user_id"]: s["level"] for s in found.get("shares") or []}
-            for name, level in item.shares:
-                target = directory.find("user", name)
-                if target is None or have.get(target["id"]) != level:
+            have = {m["user_id"]: m["role"] for m in found.get("members") or []}
+            for name, role in members.values():
+                user = directory.find("user", name)
+                if user is None or not _covers(have.get(user["id"]), role):
                     action.status = UPDATE
-        if item.shares:
-            action.detail = ", ".join(f"{name}: {level}" for name, level in item.shares)
-        actions.append(action)
-    return actions
+        action.data["members"] = sorted(members.values(), key=lambda item: norm(item[0]))
+        del action.data["uploaders"]
+        if action.data["members"]:
+            action.detail = ", ".join(f"{name}: {role}" for name, role in action.data["members"])
+    return list(wanted.values())
+
+
+def _join(members: dict[str, tuple[str, str]], name: str, role: str) -> None:
+    """Add a member; edit wins over read."""
+    if members.get(norm(name), ("", ""))[1] != EDIT:
+        members[norm(name)] = (name, role)
+
+
+def _covers(have: str | None, role: str) -> bool:
+    return have in (EDIT, role)
 
 
 # --- prepare ----------------------------------------------------------------------------------
@@ -364,24 +384,25 @@ async def _do(action: Action, lekto: Lekto, directory: Directory) -> str | None:
         directory.add(member_kind, found)
         return None
     if kind == "space":
-        owner = directory.find("user", action.data["owner"])
-        if owner is None:
-            raise ApiError(0, f"the owner {action.data['owner']} does not exist")
-        space = directory.space(owner["id"], name)
-        if space is None:
-            space = await lekto.create_space(name, owner["id"])
-            space.setdefault("shares", [])
-            directory.spaces.append(space)
-        have = {s["user_id"]: s["level"] for s in space.get("shares") or []}
-        for user_name, level in action.data["shares"]:
+        members: dict[str, str] = {}  # user id -> role
+        for user_name, role in action.data["members"]:
             user = directory.find("user", user_name)
             if user is None:
                 raise ApiError(0, f"the user {user_name} does not exist")
-            if have.get(user["id"]) != level:
-                await lekto.share(space["id"], user["id"], level)
-                space["shares"] = [
-                    *(s for s in space.get("shares") or [] if s["user_id"] != user["id"]),
-                    {"user_id": user["id"], "level": level},
+            members[str(user["id"])] = role
+        space = directory.space(name)
+        if space is None:
+            space = await _created(
+                lambda: lekto.create_space(name, members), lambda: _relist_space(lekto, name)
+            )
+            directory.spaces.append(space)
+        have = {m["user_id"]: m["role"] for m in space.get("members") or []}
+        for user_id, role in members.items():
+            if not _covers(have.get(user_id), role):
+                await lekto.set_member(space["id"], user_id, role)
+                space["members"] = [
+                    *(m for m in space.get("members") or [] if m["user_id"] != user_id),
+                    {"user_id": user_id, "role": role},
                 ]
         return str(space["id"])
     raise AssertionError(kind)
@@ -404,3 +425,15 @@ async def _relist(
     lekto: Lekto, path: str, key: str, name: str, params: dict[str, Any] | None = None
 ) -> dict[str, Any] | None:
     return next((i for i in await lekto.items(path, params) if norm(i[key]) == norm(name)), None)
+
+
+async def _relist_space(lekto: Lekto, name: str) -> dict[str, Any] | None:
+    """The shared space of this name (a personal space has a fixed name of its own)."""
+    return next(
+        (
+            s
+            for s in await lekto.items("/spaces")
+            if s.get("personal_of") is None and norm(s["name"]) == norm(name)
+        ),
+        None,
+    )

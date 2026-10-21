@@ -22,10 +22,12 @@ from sqlalchemy import (
 from lekto.adapters.outbound.sql import tables as t
 from lekto.adapters.outbound.sql.documents import SqlDocumentRepository
 from lekto.adapters.outbound.sql.repositories import KEYS_PER_QUERY
+from lekto.adapters.outbound.sql.spaces import member_space_ids
 from lekto.adapters.outbound.sql.transaction import Transaction
 from lekto.core.domain.ids import DocumentId, UserId
 from lekto.core.domain.inbox import OPEN_TABS, Confirmation, InboxTab
 from lekto.core.domain.pipeline import Lane
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.ports.repository import InboxEntry, InboxPosition
 
 _documents, _seen, _confirmations = t.documents, t.inbox_seen, t.inbox_confirmations
@@ -40,7 +42,7 @@ class SqlInboxRepository:
         self,
         viewer: UserId,
         *,
-        owner: UserId | None,
+        editor: UserId | None,
         tab: InboxTab | None,
         since: datetime,
         after: InboxPosition | None = None,
@@ -48,7 +50,7 @@ class SqlInboxRepository:
     ) -> list[InboxEntry]:
         conditions = _conditions(since)
         wanted = or_(*(conditions[item] for item in OPEN_TABS)) if tab is None else conditions[tab]
-        criteria = [wanted, *_whose(owner)]
+        criteria = [wanted, *_whose(editor)]
         id_ = _documents.c.id
         order = [id_.desc()]
         if tab is InboxTab.DONE:  # by when they left, newest first, ties by id
@@ -85,7 +87,7 @@ class SqlInboxRepository:
         ]
 
     async def count(
-        self, viewer: UserId, *, owner: UserId | None, since: datetime
+        self, viewer: UserId, *, editor: UserId | None, since: datetime
     ) -> dict[InboxTab, int]:
         conditions = _conditions(since)
         statement = (
@@ -96,7 +98,7 @@ class SqlInboxRepository:
                 )
             )
             .select_from(_joined(viewer))
-            .where(or_(*conditions.values()), *_whose(owner))
+            .where(or_(*conditions.values()), *_whose(editor))
         )
         row = (await self._tx.read(statement)).one()
         return {tab: int(row._mapping[tab.value]) for tab in conditions}
@@ -119,9 +121,9 @@ class SqlInboxRepository:
     async def mark_seen(self, viewer: UserId, document: DocumentId, at: datetime) -> None:
         await self._mark([document], viewer, at)
 
-    async def mark_all_seen(self, viewer: UserId, *, owner: UserId | None, at: datetime) -> int:
+    async def mark_all_seen(self, viewer: UserId, *, editor: UserId | None, at: datetime) -> int:
         statement = (
-            select(_documents.c.id).select_from(_joined(viewer)).where(_new(), *_whose(owner))
+            select(_documents.c.id).select_from(_joined(viewer)).where(_new(), *_whose(editor))
         )
         new = [DocumentId(row.id) for row in await self._tx.read(statement)]
         for start in range(0, len(new), KEYS_PER_QUERY):
@@ -190,8 +192,11 @@ def _joined(viewer: UserId) -> FromClause:
     ).outerjoin(_confirmations, _confirmations.c.document_id == _documents.c.id)
 
 
-def _whose(owner: UserId | None) -> list[ColumnElement[bool]]:
-    return [] if owner is None else [_documents.c.owner_id == owner]
+def _whose(editor: UserId | None) -> list[ColumnElement[bool]]:
+    """The documents in the spaces `editor` edits (None: every one)."""
+    if editor is None:
+        return []
+    return [_documents.c.space_id.in_(member_space_ids(editor, SpaceRole.EDIT))]
 
 
 def _entry_rows(viewer: UserId) -> Select[Any]:

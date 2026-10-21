@@ -368,7 +368,6 @@ class IndexingService:
         return IndexDocument(
             id=document.id,
             version=document.version,
-            owner_id=document.owner_id,
             space_id=document.space_id,
             lane=document.lane,
             title=document.title,

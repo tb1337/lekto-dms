@@ -112,7 +112,7 @@ AllInboxes = Annotated[
     ),
 ]
 AllRules = Annotated[
-    bool, Query(description="The rules of every user instead of the caller's (admins).")
+    bool, Query(description="The rules of every space instead of the caller's (admins).")
 ]
 DocumentCounts = Annotated[
     bool, Query(description="Count the documents of each (`document_count`).")

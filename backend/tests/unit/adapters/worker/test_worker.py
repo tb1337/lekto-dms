@@ -139,7 +139,7 @@ async def test_a_moved_tag_is_normalised_at_its_documents() -> None:
     insurance = await master.create_tag(admin.id, "Insurance")
     health = await master.create_tag(admin.id, "Health")
     async with container.unit_of_work() as uow:
-        space = await uow.spaces.get_default(user.id)
+        space = await uow.spaces.get_personal(user.id)
         document = builders.run_pipeline(builders.document(user, space))
         document.tag_ids = {insurance.id, health.id}
         await uow.documents.add(document)

@@ -2,7 +2,7 @@
 
 Deleting a contact, type, field or space is not blocked by rules that refer to it: the
 person deleting it would have to change rules they may not see or should not have to look after
-(a space owner does not see the rules of users who may file into the space). Instead the
+(the editors of a space do not see the rules of other spaces that file into it). Instead the
 affected rules are disabled, with the reason, in the same unit of work. Enabling such a rule
 checks its references again.
 
@@ -23,10 +23,10 @@ from lekto.core.ports.unit_of_work import UnitOfWork
 async def disable_rules(
     uow: UnitOfWork, now: datetime, reason: str, affected: Callable[[Rule], bool]
 ) -> int:
-    """Disable every enabled rule (global or of any user) for which `affected` holds; returns
+    """Disable every enabled rule (global or of any space) for which `affected` holds; returns
     how many."""
     count = 0
-    for rule in await uow.rules.list_for(owners=None, include_global=True):
+    for rule in await uow.rules.list_for(spaces=None, include_global=True):
         if rule.enabled and affected(rule):
             rule.disable(now, reason)
             await uow.rules.update(rule)

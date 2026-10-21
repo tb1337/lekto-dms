@@ -8,7 +8,7 @@ from tests.unit.services.support import World
 
 async def test_every_document_once_a_page_at_a_time(world: World) -> None:
     owner = await world.user()
-    space = await world.default_space(owner)
+    space = await world.personal_space(owner)
     documents = [builders.document(owner, space) for _ in range(5)]
     async with world.uow() as uow:
         for document in documents:
@@ -23,7 +23,7 @@ async def test_every_document_once_a_page_at_a_time(world: World) -> None:
 
 async def test_only_what_the_filter_matches(world: World) -> None:
     owner = await world.user()
-    space = await world.default_space(owner)
+    space = await world.personal_space(owner)
     async with world.uow() as uow:
         await uow.documents.add(builders.document(owner, space))
         await uow.commit()

@@ -21,15 +21,15 @@ from lekto.adapters.inbound.rest.schemas.users import (
     UserCreate,
     UserPatch,
 )
-from lekto.core.domain.ids import UserId
+from lekto.core.domain.ids import SpaceId, UserId
 from lekto.core.services.users import Account
 
 router = APIRouter(prefix="/users", tags=["users"], dependencies=PROTECTED)
 
 
-def _account(account: Account) -> AccountOut:
+def _account(account: Account, personal_space: SpaceId | None) -> AccountOut:
     return AccountOut(
-        **UserOut.of(account.user).model_dump(),
+        **UserOut.of(account.user, personal_space=personal_space).model_dump(),
         has_password=account.has_password,
         totp_enabled=account.totp_enabled,
         linked_accounts=[LinkOut.of(link) for link in account.external_identities],
@@ -40,7 +40,8 @@ def _account(account: Account) -> AccountOut:
     "",
     summary="List users",
     description=(
-        "Admins see all users with role and state; others see the active users' id and name."
+        "Admins see all users with role and state; others see the active users' id, name and "
+        "personal space (to hand documents over to them)."
     ),
     response_model=list[UserOut],
     response_model_exclude_none=True,
@@ -48,7 +49,9 @@ def _account(account: Account) -> AccountOut:
 )
 async def list_users(principal: Authenticated, context: Context) -> list[UserOut]:
     full = principal.user.is_admin
-    return [UserOut.of(user, full=full) for user in await context.users.list_users(principal.id)]
+    users = await context.users.list_users(principal.id)
+    personal = await context.users.personal_spaces(principal.id)
+    return [UserOut.of(user, full=full, personal_space=personal.get(user.id)) for user in users]
 
 
 @router.post(
@@ -56,7 +59,7 @@ async def list_users(principal: Authenticated, context: Context) -> list[UserOut
     status_code=201,
     summary="Create a user",
     description=(
-        ADMINS_ONLY + " Creates the user's private default space, too. A user with the role "
+        ADMINS_ONLY + " Creates the user's personal space, too. A user with the role "
         "`user` and no password can be created with an admin's API token (`read_write`), e.g. "
         "by a migration; a password or the role `admin` needs a session, as for `/auth/*`."
     ),
@@ -75,16 +78,19 @@ async def create_user(body: UserCreate, admin: Authenticated, context: Context) 
     "/{id}",
     summary="A user",
     description=(
-        "Admins see the account with its sign-in methods; others only active users' id and name."
+        "Admins see the account with its sign-in methods; others only active users' id, name and "
+        "personal space."
     ),
     response_model=AccountOut | UserOut,
     response_model_exclude_none=True,
     responses=problem_responses(401, 404, 422),
 )
 async def get_user(id: UUID, principal: Authenticated, context: Context) -> AccountOut | UserOut:
+    personal = (await context.users.personal_spaces(principal.id)).get(UserId(id))
     if principal.user.is_admin:
-        return _account(await context.users.account(principal.id, UserId(id)))
-    return UserOut.of(await context.users.get(principal.id, UserId(id)), full=False)
+        return _account(await context.users.account(principal.id, UserId(id)), personal)
+    found = await context.users.get(principal.id, UserId(id))
+    return UserOut.of(found, full=False, personal_space=personal)
 
 
 @router.patch(
@@ -152,8 +158,10 @@ async def unlink(id: UUID, admin: SessionPrincipal, context: Context) -> Removed
     status_code=204,
     summary="Delete a user",
     description=(
-        ADMINS_ONLY + " Only a user who owns no documents and whose spaces are empty (409); "
-        "removes their spaces, the shares to them and their sign-in data."
+        ADMINS_ONLY + " Only a user whose personal space is empty and who is not the last "
+        "editor of a space (409); removes their personal space with its rules, their "
+        "memberships and their sign-in data. The documents they uploaded stay, without "
+        "uploader."
     ),
     responses=problem_responses(401, 403, 404, 409, 422),
 )

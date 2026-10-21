@@ -11,7 +11,7 @@ from datetime import datetime
 
 from lekto.core.domain.errors import ConflictError, NotFoundError, PermissionDeniedError
 from lekto.core.domain.identity import Credential, ExternalIdentity, check_new_password
-from lekto.core.domain.ids import UserId
+from lekto.core.domain.ids import SpaceId, UserId
 from lekto.core.domain.sorting import sort_key
 from lekto.core.domain.spaces import Space
 from lekto.core.domain.users import Role, User
@@ -61,6 +61,13 @@ class UserService:
             raise NotFoundError("user", id)
         return found
 
+    async def personal_spaces(self, actor: UserId) -> dict[UserId, SpaceId]:
+        """The personal space of every user, by user: where a document is handed over to them
+        (`DocumentService.move`). Every signed-in user may know them."""
+        async with self._uow() as uow:
+            await load_actor(uow, actor)
+            return await uow.spaces.personal_ids()
+
     async def own_account(self, actor: UserId) -> Account:
         """The caller's own account."""
         async with self._uow() as uow:
@@ -83,7 +90,7 @@ class UserService:
         *,
         session: bool = True,
     ) -> User:
-        """Admins only. Creates the user together with their private default space and, if
+        """Admins only. Creates the user together with their personal space and, if
         given, a password (which must meet the policy).
 
         `session`: whether the caller is signed in with a session. With an API token (as a
@@ -209,37 +216,42 @@ class UserService:
         return removed
 
     async def delete_user(self, actor: UserId, id: UserId) -> None:
-        """Admins only, and only for a user who owns no documents and whose spaces are empty.
-        Removes their spaces, the shares to them, their rules and webhooks, all their sign-in
-        data and what they saw in the inbox. Other users' rules that file into the removed spaces
-        are disabled."""
+        """Admins only, and only for a user whose personal space is empty and who is not the
+        last editor of a shared space. Removes their personal space with its rules, their
+        memberships of other spaces, their webhooks, lenses and applications of rules, all their
+        sign-in data and what they saw in the inbox; the documents they uploaded keep no
+        uploader. Rules that file into their personal space are disabled."""
         async with self._uow() as uow:
             await require_admin(uow, actor, "manage users")
             user = await uow.users.get(id)
             if user.is_active_admin:
                 await _keep_an_admin(uow, user)
-            if await uow.documents.exists(owner=id):
-                raise ConflictError("the user owns documents; delete or move them first")
-            removed: list[Space] = []
+            personal: Space | None = None
             for space in await uow.spaces.list_accessible(id):
-                if space.owner_id == id:
+                if space.personal_of == id:
+                    personal = space
                     if await uow.documents.exists(space=space.id):
-                        raise ConflictError(f"the user's space '{space.name}' is not empty")
-                    await uow.spaces.remove(space.id)
-                    removed.append(space)
-                else:
-                    space.unshare(id)
+                        raise ConflictError(
+                            "the user's personal space is not empty; hand its documents over "
+                            "or delete them first"
+                        )
+                elif space.editors == {id}:
+                    raise ConflictError(f"the user is the last editor of space '{space.name}'")
+            for space in await uow.spaces.list_accessible(id):
+                if space.personal_of != id:
+                    space.remove_member(id)
                     await uow.spaces.update(space)
-            await uow.rules.remove_for_owner(id)
-            await uow.webhooks.remove_for_owner(id)
-            await uow.lenses.remove_for_owner(id)
-            for space in removed:
+            if personal is not None:
+                await uow.spaces.remove(personal.id)
                 await disable_rules(
                     uow,
                     self._clock.now(),
-                    f"space '{space.name}' was deleted",
-                    refers_to(lambda refs: refs.spaces, space.id),
+                    f"the personal space of '{user.username}' was deleted",
+                    refers_to(lambda refs: refs.spaces, personal.id),
                 )
+            await uow.rules.remove_applications_by(id)
+            await uow.webhooks.remove_for_owner(id)
+            await uow.lenses.remove_for_owner(id)
             await uow.sessions.remove_for_user(id)
             await uow.api_tokens.remove_for_user(id)
             await uow.external_identities.remove_for_user(id)
@@ -286,13 +298,13 @@ def _not_own(actor: UserId, id: UserId, what: str) -> None:
 
 
 async def add_user(uow: UnitOfWork, username: str, role: Role, now: datetime) -> User:
-    """Add a user with their default space; ConflictError if the name is taken (looked up for
+    """Add a user with their personal space; ConflictError if the name is taken (looked up for
     the message; the repository's rule catches two requests at once, `core.ports.repository`)."""
     user = User.create(username=username, role=role, now=now)
     if await uow.users.find_by_username(user.username) is not None:
         raise ConflictError(f"username '{user.username}' is taken")
     await uow.users.add(user)
-    await uow.spaces.add(Space.create_default(owner_id=user.id, now=user.created_at))
+    await uow.spaces.add(Space.create_personal(user=user.id, now=user.created_at))
     return user
 
 

@@ -3,7 +3,7 @@
 import itertools
 import tempfile
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
@@ -27,7 +27,7 @@ from lekto.core.domain.identity import Credential, check_new_password
 from lekto.core.domain.ids import DocumentId, SpaceId, UserId, new_id
 from lekto.core.domain.pipeline import Lane, Node, NodeResult, Outcome
 from lekto.core.domain.search import IndexDocument, Visibility
-from lekto.core.domain.spaces import Space
+from lekto.core.domain.spaces import Space, SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.ports.clock import Clock
 from lekto.core.ports.identity import PasswordHasher
@@ -136,18 +136,30 @@ def admin(name: str | None = None) -> User:
     return user(name, role=Role.ADMIN)
 
 
-def space(owner: User, name: str | None = None) -> Space:
-    return Space.create(owner_id=owner.id, name=name or _unique("space"), now=NOW)
+def space(
+    editor: User,
+    name: str | None = None,
+    *,
+    readers: Iterable[User] = (),
+    editors: Iterable[User] = (),
+) -> Space:
+    """A space `editor` edits (as its creator), shared with `readers` and further `editors`."""
+    members = {
+        **{reader.id: SpaceRole.READ for reader in readers},
+        **{other.id: SpaceRole.EDIT for other in editors},
+        editor.id: SpaceRole.EDIT,
+    }
+    return Space.create(name=name or _unique("space"), members=members, now=NOW)
 
 
 async def seed_user(
     uow: UnitOfWorkFactory, name: str | None = None, *, role: Role = Role.USER
 ) -> User:
-    """A user with their default space, stored directly."""
+    """A user with their personal space, stored directly."""
     seeded = user(name, role=role)
     async with uow() as unit:
         await unit.users.add(seeded)
-        await unit.spaces.add(default_space(seeded))
+        await unit.spaces.add(personal_space(seeded))
         await unit.commit()
     return seeded
 
@@ -160,7 +172,7 @@ async def seed_account(
     role: Role = Role.USER,
     password: str = PASSWORD,
 ) -> User:
-    """A user with their default space and `password`, stored directly."""
+    """A user with their personal space and `password`, stored directly."""
     seeded = await seed_user(uow, name, role=role)
     async with uow() as unit:
         await unit.credentials.add(
@@ -173,8 +185,8 @@ async def seed_account(
     return seeded
 
 
-def default_space(owner: User) -> Space:
-    return Space.create_default(owner_id=owner.id, now=NOW)
+def personal_space(user: User) -> Space:
+    return Space.create_personal(user=user.id, now=NOW)
 
 
 def sha256(content: str | None = None) -> Sha256:
@@ -182,15 +194,15 @@ def sha256(content: str | None = None) -> Sha256:
 
 
 def document(
-    owner: User | UserId,
+    uploader: User | UserId | None,
     in_space: Space | SpaceId,
     *,
     content: str | None = None,
     filename: str = "scan.pdf",
 ) -> Document:
-    """A freshly received document; OCR is due."""
+    """A freshly received document `uploader` uploaded; OCR is due."""
     document = Document.receive(
-        owner_id=owner.id if isinstance(owner, User) else owner,
+        uploaded_by=uploader.id if isinstance(uploader, User) else uploader,
         space_id=in_space.id if isinstance(in_space, Space) else in_space,
         sha256=sha256(content),
         original_filename=filename,
@@ -203,9 +215,9 @@ def document(
 
 
 def received() -> Document:
-    """A freshly received document of a new user, in their default space."""
-    owner = user()
-    return document(owner, default_space(owner))
+    """A freshly received document of a new user, in their personal space."""
+    uploader = user()
+    return document(uploader, personal_space(uploader))
 
 
 def run_pipeline(
@@ -230,7 +242,7 @@ def run_pipeline(
 
 
 def processed(
-    owner: User,
+    owner: User | None,
     in_space: Space,
     results: dict[Node, NodeResult] | None = None,
     *,
@@ -262,12 +274,11 @@ def skip_classification(pipeline: PipelineService) -> PipelineService:
 
 
 def index_document(**fields: Any) -> IndexDocument:
-    """A green document of a random owner in a random space, for the search index; `fields`
-    override any of its fields."""
+    """A green document in a random space, for the search index; `fields` override any of its
+    fields."""
     values: dict[str, Any] = {
         "id": DocumentId(new_id()),
         "version": 1,
-        "owner_id": UserId(new_id()),
         "space_id": SpaceId(new_id()),
         "lane": Lane.GREEN,
         "title": _unique("title"),

@@ -337,7 +337,7 @@
 		{/if}
 
 		<div class="flex flex-wrap gap-2 border-t pt-4">
-			{#if saved && canChangeRule(rule, session.user) && !rule.enabled}
+			{#if saved && canChangeRule(rule, session.user, lookup?.spaces ?? []) && !rule.enabled}
 				<Button disabled={busy} onclick={switchOnOnly}>{m.rule_switch_on_only()}</Button>
 				<Button variant="outline" disabled={busy || count === 0} onclick={() => apply(true)}>
 					{m.rule_switch_on_apply({ count })}

@@ -19,7 +19,7 @@ settings:
   currency: EUR
   fallback_owner: tobi
   take_over_added: true
-  space_name: "Geteilt: {shares}"
+  space_name: "Geteilt: {members}"
 
 documents:
   include:
@@ -149,6 +149,7 @@ def test_a_missing_section_is_empty_and_asn_is_dropped_by_default() -> None:
         (HEAD + "tags:\n  a: {to: tag, name: X, review: 12}\n", "review: true, or a reason"),
         (HEAD + "settings: {currency: euro}\n", "settings.currency"),
         (HEAD + "settings: {space_name: Shared}\n", "settings.space_name"),
+        (HEAD + "settings: {space_name: 'Geteilt: {shares}'}\n", "{shares} is now {members}"),
         (HEAD + "settings: {text_threshold: 2}\n", "settings.text_threshold"),
         (HEAD + "settings: {take_over_added: maybe}\n", "settings.take_over_added"),
         (HEAD + "settings: {colour: red}\n", "settings.colour"),

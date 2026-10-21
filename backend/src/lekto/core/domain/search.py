@@ -16,18 +16,17 @@ from lekto.core.domain.ids import (
     FieldId,
     SpaceId,
     TagId,
-    UserId,
 )
-from lekto.core.domain.permissions import within_reach
+from lekto.core.domain.permissions import Reach, within_reach
 from lekto.core.domain.pipeline import Lane
 
 PROCESSING = "processing"
 """The lane value of a document that has none yet."""
-LAYOUT = 5
+LAYOUT = 6
 """The shape of what the index holds of a document. An entry of an older layout is written
 anew by the reconciliation (2: the ids of the fields with a value, and the title's sort key;
 3: `space_id` instead of `drawer_id`; 4: tags with their ancestors, and the groups of the
-contact and the type; 5: the topic with its ancestors)."""
+contact and the type; 5: the topic with its ancestors; 6: no owner, rights by space only)."""
 FIRST_LAYOUT = 1
 """The layout of an entry that names none: written before layouts were counted."""
 
@@ -61,7 +60,6 @@ class IndexDocument:
 
     id: DocumentId
     version: int
-    owner_id: UserId
     space_id: SpaceId
     lane: Lane | None
     title: str
@@ -118,16 +116,20 @@ class IndexState:
 
 @dataclass(frozen=True)
 class Visibility:
-    """Who is searching and which spaces they can read from: the spaces they own and those
-    shared with them (`permissions.within_reach`). `everything`: every document, for an admin who
-    asks for all users' documents."""
+    """What the one searching may find: every document in the spaces they edit (`edits`), the
+    green ones in the spaces they only read (`reads`; `permissions.within_reach`).
+    `everything`: every document, for an admin who asks for all users' documents."""
 
-    user: UserId
-    spaces: frozenset[SpaceId]
+    edits: frozenset[SpaceId]
+    reads: frozenset[SpaceId] = frozenset()
     everything: bool = False
 
+    @classmethod
+    def of(cls, reach: Reach) -> "Visibility":
+        return cls(reach.edits, reach.reads)
+
     def allows(self, document: IndexDocument) -> bool:
-        return self.everything or within_reach(self.user, self.spaces, document)
+        return self.everything or within_reach(self.edits, self.reads, document)
 
 
 @dataclass(frozen=True)

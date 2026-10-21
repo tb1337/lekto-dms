@@ -30,9 +30,9 @@
 	import { inboxDocument, tabHref, type Neighbours } from '#lib/document-view.ts';
 	import { reportError } from '#lib/errors.ts';
 	import { formatDate } from '#lib/i18n.ts';
-	import { spaceLabel, type Lookup } from '#lib/masterdata.svelte.ts';
+	import { spaceLabel, spaceOptions, userName, type Lookup } from '#lib/masterdata.svelte.ts';
 	import { NODE_LABELS } from '#lib/node-labels.ts';
-	import { canManage, canMove, writableSpaces } from '#lib/permissions.ts';
+	import { canEdit } from '#lib/permissions.ts';
 	import { m } from '#lib/paraglide/messages.js';
 	import { progress, reprocessable, type GraphNode } from '#lib/pipeline.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -83,14 +83,28 @@
 
 	const base = $derived(`/api/v1/documents/${document.id}`);
 	const user = $derived(session.user);
-	const manageable = $derived(canManage(document, user));
-	const movable = $derived(canMove(document, user));
+	// Editors of the document's space (and admins) change, move and delete it.
+	const manageable = $derived(canEdit(document, user));
 	const status = $derived(document.processing.status);
-	const spaces = $derived(
-		writableSpaces(lookup?.spaces ?? [], user).filter((space) => space.id !== document.space_id)
+	const users = $derived(lookup?.users ?? []);
+	// Into a space the caller edits, or handed over into another user's personal space.
+	const targets = $derived(
+		spaceOptions(lookup?.spaces ?? [], users, user).filter(
+			(option) => option.value !== document.space_id
+		)
 	);
-	const spaceName = $derived(
-		lookup?.spaces.find((space) => space.id === document.space_id)?.name ?? null
+	const space = $derived(lookup?.spaces.find((space) => space.id === document.space_id) ?? null);
+	// Who sees the document besides the caller: the members of its space.
+	const visibleTo = $derived(
+		space?.members
+			.filter((member) => member.user_id !== user?.id)
+			.map((member) => userName(users, member.user_id))
+			.join(', ') ?? null
+	);
+	const uploader = $derived(
+		document.uploaded_by && document.uploaded_by !== user?.id
+			? userName(users, document.uploaded_by)
+			: null
 	);
 	const running = $derived(progress(document.processing));
 	// Nodes a reprocessing may start from: the graph decides (never past a failed node).
@@ -179,6 +193,32 @@
 
 	async function move() {
 		if (!target) return;
+		const into = lookup?.spaces.find((space) => space.id === target);
+		// Handed over, or into a space the caller only reads: the document leaves their hands,
+		// and the view goes back where it came from instead of showing it gone.
+		if (into && into.role !== 'edit') {
+			busy = true;
+			try {
+				await unwrap(
+					api.POST('/api/v1/documents/{id}/move', {
+						params: { path: { id: document.id } },
+						body: { space_id: target }
+					})
+				);
+				toast.success(
+					into.personal_of && into.personal_of !== user?.id
+						? m.move_handed_over({ name: userName(users, into.personal_of) })
+						: m.move_done()
+				);
+				moveOpen = false;
+				await goto(inbox ? `${BASE}/inbox` : `${BASE}/documents`);
+			} catch (error) {
+				reportError(error);
+			} finally {
+				busy = false;
+			}
+			return;
+		}
 		const done = await act(
 			() =>
 				unwrap(
@@ -245,7 +285,11 @@
 			</div>
 			<p class="text-sm text-muted-foreground">
 				{document.original_filename} · {m.doc_received({ date: formatDate(document.created_at) })}
-				{#if spaceName}· {spaceName}{/if}
+				{#if space}
+					· {spaceLabel(space, users, user?.id)} ·
+					{visibleTo ? m.visible_to({ names: visibleTo }) : m.visible_to_you()}
+				{/if}
+				{#if uploader}· {m.uploaded_by({ name: uploader })}{/if}
 				{#if document.page_count}· {m.doc_pages({ count: document.page_count })}{/if}
 			</p>
 			{#if status === 'processing'}
@@ -285,16 +329,16 @@
 					{/if}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
-			{#if movable}
+			{#if manageable}
 				<Button
 					variant="outline"
 					class="max-sm:px-3"
 					title={m.move_title()}
 					onclick={() => {
-						target = spaces[0]?.id ?? '';
+						target = targets[0]?.value ?? '';
 						moveOpen = true;
 					}}
-					disabled={spaces.length === 0}
+					disabled={targets.length === 0}
 				>
 					<FolderInput aria-hidden="true" />
 					<span class="max-sm:sr-only">{m.move_title()}</span>
@@ -359,14 +403,7 @@
 		</Dialog.Header>
 		<Field.Field>
 			<Field.Label for="move-space">{m.field_space()}</Field.Label>
-			<Select
-				id="move-space"
-				bind:value={target}
-				options={spaces.map((space) => ({
-					value: space.id,
-					label: spaceLabel(space, lookup?.users ?? [], user?.id)
-				}))}
-			/>
+			<Select id="move-space" bind:value={target} options={targets} />
 		</Field.Field>
 		<Dialog.Footer>
 			<Button variant="ghost" onclick={() => (moveOpen = false)}>{m.cancel()}</Button>

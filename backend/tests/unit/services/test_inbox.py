@@ -22,7 +22,7 @@ from lekto.core.domain.ids import ContactId, SpaceId, UserId
 from lekto.core.domain.inbox import Confirmation
 from lekto.core.domain.master_data import Assignment, Contact
 from lekto.core.domain.pipeline import PERSON, Lane, Node, NodeResult, Outcome, ProcessingStatus
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.domain.users import Role, User
 from lekto.core.services.inbox import OpenNode, decide, field_checks
 from lekto.core.services.pipeline import MetadataResult, PipelineService
@@ -233,7 +233,7 @@ async def test_a_confirmed_document_is_filed(world: World) -> None:
         accept_suggestions=True,
     )
     confirmed = view.document
-    assert view.access is ShareLevel.READ_WRITE
+    assert view.access is SpaceRole.EDIT
     assert confirmed.processing.status is ProcessingStatus.PROCESSING
     assert confirmed.processing.due() == (Node.APPLY_RULES,)
     assert confirmed.lane is None
@@ -439,10 +439,10 @@ async def test_the_inbox_is_the_owners(world: World) -> None:
     with pytest.raises(NotFoundError):
         await s.pipeline.confirm(stranger.id, s.document.id, DocumentChanges())
 
-    # A green document in a shared space: readable, but the review is the owner's.
+    # A green document in a shared space: readable, but the review is its editors'.
     reader = await world.user()
     space = await world.spaces.create(s.owner.id, "Shared")
-    await world.spaces.share(s.owner.id, space.id, reader.id, ShareLevel.READ_WRITE)
+    await world.spaces.set_member(s.owner.id, space.id, reader.id, SpaceRole.READ)
     pipeline = world.pipeline()
     green = await pipeline.receive(
         s.owner.id, incoming(b"%PDF-1.7 green\n"), filename="b.pdf", space=space.id
@@ -458,12 +458,12 @@ async def test_a_confirmed_document_becomes_visible_to_the_spaces_readers(world:
     s = await scene(world)
     reader = await world.user()
     space = await world.spaces.create(s.owner.id, "Shared")
-    await world.spaces.share(s.owner.id, space.id, reader.id, ShareLevel.READ)
+    await world.spaces.set_member(s.owner.id, space.id, reader.id, SpaceRole.READ)
     document = await s.pipeline.receive(
         s.owner.id, incoming(b"%PDF-1.7 shared\n"), filename="b.pdf", space=space.id
     )
     await world.drain(s.pipeline)
-    assert await world.documents.list_visible(reader.id) == []  # yellow: the owner's
+    assert await world.documents.list_visible(reader.id) == []  # yellow: the editors' only
     await s.pipeline.confirm(
         s.owner.id,
         document.id,

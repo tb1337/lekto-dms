@@ -6,7 +6,7 @@ from lekto.core.domain.documents import Document, DocumentChanges
 from lekto.core.domain.pipeline import PERSON_SPACE, RULES, Lane, NodeResult, Outcome
 from lekto.core.domain.rule_planner import Note, NoteKind
 from lekto.core.domain.rules import ForceReview, RemoveTags, SetSpace, Trigger
-from lekto.core.domain.spaces import ShareLevel
+from lekto.core.domain.spaces import SpaceRole
 from lekto.core.services.pipeline import MetadataResult
 from tests.unit.services.rules_support import (
     channel_api,
@@ -43,8 +43,8 @@ async def test_a_space_chosen_on_upload_stays(world: World) -> None:
     owner = await world.user()
     chosen = await world.spaces.create(owner.id, "Chosen")
     other = await world.spaces.create(owner.id, "Other")
-    await r.user_rule(
-        owner, definition("Other", channel_api(), SetSpace(other.id), triggers=INGEST)
+    await r.space_rule(
+        owner, chosen.id, definition("Other", channel_api(), SetSpace(other.id), triggers=INGEST)
     )
 
     document = await r.arrive(owner, space=chosen.id)
@@ -64,8 +64,10 @@ async def test_a_change_rule_leaves_the_space_the_owner_moved_the_document_into(
     acme = await r.contact("ACME")
     mine = await world.spaces.create(owner.id, "Mine")
     rules = await world.spaces.create(owner.id, "Rules")
-    await r.user_rule(
-        owner, definition("ACME", contact_is(acme.id), SetSpace(rules.id), triggers=CHANGE)
+    await r.space_rule(
+        owner,
+        mine.id,
+        definition("ACME", contact_is(acme.id), SetSpace(rules.id), triggers=CHANGE),
     )
     document = await r.arrive(owner)
     await r.documents.move(owner.id, document.id, mine.id)
@@ -86,7 +88,7 @@ async def test_a_change_rule_keeps_a_tag_the_person_added_earlier(world: World) 
     owner = await world.user()
     acme = await r.contact("ACME")
     keep = await r.tag("keep")
-    await r.user_rule(
+    await r.personal_rule(
         owner,
         definition("ACME", contact_is(acme.id), RemoveTags(frozenset({keep.id})), triggers=CHANGE),
     )
@@ -113,7 +115,7 @@ async def test_a_review_the_confirmation_sets_off_still_holds_the_document(
     r = await rule_world(world)
     owner = await world.user()
     acme = await r.contact("ACME")
-    await r.user_rule(owner, definition("ACME", contact_is(acme.id), ForceReview("check")))
+    await r.personal_rule(owner, definition("ACME", contact_is(acme.id), ForceReview("check")))
     pipeline = r.pipeline(UnsureOfTheContact())
     received = await pipeline.receive(owner.id, incoming_pdf(), filename="a.pdf")
     await world.drain(pipeline)
@@ -144,11 +146,11 @@ async def test_a_change_rule_into_a_space_no_longer_shared_is_only_reported(
     owner, colleague = await world.user(), await world.user()
     acme = await r.contact("ACME")
     office = await world.spaces.create(colleague.id, "Office")
-    await world.spaces.share(colleague.id, office.id, owner.id, ShareLevel.READ_WRITE)
-    await r.user_rule(
+    await world.spaces.set_member(colleague.id, office.id, owner.id, SpaceRole.EDIT)
+    await r.personal_rule(
         owner, definition("Office", contact_is(acme.id), SetSpace(office.id), triggers=CHANGE)
     )
-    await world.spaces.share(colleague.id, office.id, owner.id, ShareLevel.READ)
+    await world.spaces.set_member(colleague.id, office.id, owner.id, SpaceRole.READ)
     document = await r.arrive(owner)
 
     change = await r.documents.change_metadata(

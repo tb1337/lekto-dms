@@ -424,7 +424,7 @@ async def test_a_tag_is_deleted_only_without_tags_below_it_and_unused(world: Wor
     condition = Condition(field=ConditionField.TAGS, op=Operator.CONTAINS, value=str(ruled.id))
     rule = Rule.create(
         scope=RuleScope.GLOBAL,
-        owner_id=None,
+        space_id=None,
         definition=RuleDefinition(
             name="Tag it",
             conditions=Group(mode="all", items=(condition,)),
@@ -500,7 +500,7 @@ async def test_a_tag_move_announces_each_document_it_changes(world: World) -> No
     service = world.master_data
     insurance = await service.create_tag(admin.id, "Insurance")
     health = await service.create_tag(admin.id, "Health")
-    space = await world.default_space(owner)
+    space = await world.personal_space(owner)
     async with world.uow() as uow:
         for tags in ({insurance.id, health.id}, {insurance.id}, {health.id}):
             document = builders.run_pipeline(builders.document(owner, space))
@@ -543,7 +543,7 @@ async def test_each_step_of_the_normalising_sees_the_tree_as_it_is() -> None:
     service = world.master_data
     insurance = await service.create_tag(admin.id, "Insurance")
     health = await service.create_tag(admin.id, "Health")
-    space = await world.default_space(owner)
+    space = await world.personal_space(owner)
     documents = []
     async with world.uow() as uow:
         for number in range(4):

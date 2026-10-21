@@ -77,8 +77,7 @@ class ChangeRules:
         """The rules a change of `document` may set off."""
         if document.processing.status is not ProcessingStatus.COMPLETED:
             return []
-        owner = await uow.users.find(document.owner_id)
-        return await active_rules(uow, owner, Trigger.CHANGE)
+        return await active_rules(uow, document.space_id, Trigger.CHANGE)
 
     async def prepare(self, rules: Sequence[Rule], document: Document) -> Prepared:
         """Outside a transaction: the text and its patterns, if a rule needs them."""
@@ -129,7 +128,6 @@ class ChangeRules:
         output: dict[str, JsonValue] = {}
         reason: str | None = None
         if rules:
-            owner = await uow.users.get(document.owner_id)
             origin = provenance(await uow.processing_log.list_for(document.id), document)
             origin = replace(
                 origin,
@@ -153,7 +151,6 @@ class ChangeRules:
                 self._templates,
                 mode=Mode.CHANGE,
                 document=document,
-                owner=owner,
                 rules=rules,
                 prepared=prepared,
                 origin=origin,
@@ -163,7 +160,7 @@ class ChangeRules:
             )
             input["rules"] = checked_rules(rules)
             output = run.output()
-            reason = apply_plan(document, run.plan, definitions, now)
+            reason = await apply_plan(uow, document, run.plan, definitions, now)
             if reason is not None:
                 output["problem"] = reason
         if log:

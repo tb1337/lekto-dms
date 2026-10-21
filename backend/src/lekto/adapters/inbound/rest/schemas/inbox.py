@@ -465,7 +465,8 @@ class ConfirmRequest(BaseModel):
     space_id: UUID | None = Field(
         default=None,
         description=(
-            "Move the document into this space (one the owner may write to); decides the "
+            "Move the document into this space (one the caller edits, or another user's "
+            "personal space); decides the "
             "rules' open field `space`. Default: it stays where it is."
         ),
     )

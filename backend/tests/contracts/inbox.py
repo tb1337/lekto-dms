@@ -90,6 +90,32 @@ async def inbox(uow_factory: UnitOfWorkFactory) -> Inbox:
 
 
 class InboxRepositoryContract:
+    async def test_the_inbox_holds_the_spaces_a_user_edits(
+        self, uow_factory: UnitOfWorkFactory
+    ) -> None:
+        editor = await builders.seed_user(uow_factory)
+        reader = await builders.seed_user(uow_factory)
+        other = await builders.seed_user(uow_factory)
+        shared = builders.space(editor, readers=[reader], editors=[other])
+        async with uow_factory() as uow:
+            await uow.spaces.add(shared)
+            await uow.commit()
+        yellow = builders.processed(editor, shared, {Node.JUDGE: UNCERTAIN})
+        new = green(reader, shared)
+        await store(uow_factory, yellow, new)
+        async with uow_factory() as uow:
+            for user in (editor, other):
+                found = await uow.inbox.query(
+                    user.id, editor=user.id, tab=None, since=SINCE, limit=9
+                )
+                assert {entry.document.id for entry in found} == {yellow.id, new.id}
+            mine = await uow.inbox.query(
+                reader.id, editor=reader.id, tab=None, since=SINCE, limit=9
+            )
+            assert mine == []
+            counts = await uow.inbox.count(reader.id, editor=reader.id, since=SINCE)
+            assert sum(counts.values()) == 0
+
     async def test_seen_marks_are_per_user(self, uow_factory: UnitOfWorkFactory) -> None:
         owner, space = await owner_with_space(uow_factory)
         admin = await builders.seed_user(uow_factory)
@@ -129,7 +155,7 @@ class InboxRepositoryContract:
         async with uow_factory() as uow:
             assert await uow.inbox.seen(owner.id, [document.id]) == {}
             (entry,) = await uow.inbox.query(
-                owner.id, owner=owner.id, tab=InboxTab.NEW, since=SINCE, limit=5
+                owner.id, editor=owner.id, tab=InboxTab.NEW, since=SINCE, limit=5
             )
             assert entry.confirmation is None
 
@@ -145,13 +171,13 @@ class InboxRepositoryContract:
         }
         async with uow_factory() as uow:
             for tab, ids in expected.items():
-                entries = await uow.inbox.query(owner, owner=owner, tab=tab, since=SINCE, limit=50)
+                entries = await uow.inbox.query(owner, editor=owner, tab=tab, since=SINCE, limit=50)
                 assert [entry.document.id for entry in entries] == ids, tab
-            every = await uow.inbox.query(owner, owner=owner, tab=None, since=SINCE, limit=50)
+            every = await uow.inbox.query(owner, editor=owner, tab=None, since=SINCE, limit=50)
             assert [entry.document.id for entry in every] == scene.ids(
                 "processing", "yellow", "red", "new", "new_again"
             )
-            counts = await uow.inbox.count(owner, owner=owner, since=SINCE)
+            counts = await uow.inbox.count(owner, editor=owner, since=SINCE)
         assert counts == {tab: len(ids) for tab, ids in expected.items()}
 
     async def test_entries_carry_what_the_state_is_decided_by(
@@ -161,10 +187,10 @@ class InboxRepositoryContract:
         owner = scene.owner.id
         async with uow_factory() as uow:
             done = await uow.inbox.query(
-                owner, owner=owner, tab=InboxTab.DONE, since=SINCE, limit=9
+                owner, editor=owner, tab=InboxTab.DONE, since=SINCE, limit=9
             )
             again = await uow.inbox.query(
-                owner, owner=owner, tab=InboxTab.NEW, since=SINCE, limit=9
+                owner, editor=owner, tab=InboxTab.NEW, since=SINCE, limit=9
             )
         by_id = {entry.document.id: entry for entry in [*done, *again]}
         seen = by_id[scene.documents["seen"].id]
@@ -184,19 +210,19 @@ class InboxRepositoryContract:
         admin = await builders.seed_user(uow_factory)
         async with uow_factory() as uow:
             new = await uow.inbox.query(
-                admin.id, owner=None, tab=InboxTab.NEW, since=SINCE, limit=50
+                admin.id, editor=None, tab=InboxTab.NEW, since=SINCE, limit=50
             )
             assert [entry.document.id for entry in new] == scene.ids(
                 "new", "seen", "seen_long_ago", "new_again", "other"
             )
             done = await uow.inbox.query(
-                admin.id, owner=None, tab=InboxTab.DONE, since=SINCE, limit=50
+                admin.id, editor=None, tab=InboxTab.DONE, since=SINCE, limit=50
             )
             assert [entry.document.id for entry in done] == scene.ids("confirmed")
-            counts = await uow.inbox.count(admin.id, owner=None, since=SINCE)
+            counts = await uow.inbox.count(admin.id, editor=None, since=SINCE)
             assert counts[InboxTab.NEW] == 5
             # Another user's inbox is theirs: nothing of the owner's.
-            theirs = await uow.inbox.count(scene.other.id, owner=scene.other.id, since=SINCE)
+            theirs = await uow.inbox.count(scene.other.id, editor=scene.other.id, since=SINCE)
         assert theirs == {**dict.fromkeys(InboxTab, 0), InboxTab.NEW: 1}
 
     async def test_pages_newest_first(self, uow_factory: UnitOfWorkFactory) -> None:
@@ -208,7 +234,7 @@ class InboxRepositoryContract:
         async with uow_factory() as uow:
             while True:
                 page = await uow.inbox.query(
-                    owner, owner=owner, tab=None, since=SINCE, after=after, limit=2
+                    owner, editor=owner, tab=None, since=SINCE, after=after, limit=2
                 )
                 found += [entry.document.id for entry in page]
                 if len(page) < 2:
@@ -232,13 +258,13 @@ class InboxRepositoryContract:
         expected = [first.id, *sorted((third.id, fourth.id), reverse=True), confirmed.id]
         async with uow_factory() as uow:
             done = await uow.inbox.query(
-                owner.id, owner=owner.id, tab=InboxTab.DONE, since=SINCE, limit=9
+                owner.id, editor=owner.id, tab=InboxTab.DONE, since=SINCE, limit=9
             )
             assert [entry.document.id for entry in done] == expected
             found: list[DocumentId] = []
             after = None
             while page := await uow.inbox.query(
-                owner.id, owner=owner.id, tab=InboxTab.DONE, since=SINCE, after=after, limit=1
+                owner.id, editor=owner.id, tab=InboxTab.DONE, since=SINCE, after=after, limit=1
             ):
                 (entry,) = page
                 found.append(entry.document.id)
@@ -269,10 +295,10 @@ class InboxRepositoryContract:
         owner = scene.owner.id
         admin = await builders.seed_user(uow_factory)
         async with uow_factory() as uow:
-            assert await uow.inbox.mark_all_seen(owner, owner=owner, at=LAST) == 2
+            assert await uow.inbox.mark_all_seen(owner, editor=owner, at=LAST) == 2
             await uow.commit()
         async with uow_factory() as uow:
-            counts = await uow.inbox.count(owner, owner=owner, since=SINCE)
+            counts = await uow.inbox.count(owner, editor=owner, since=SINCE)
             assert counts[InboxTab.NEW] == 0
             assert counts[InboxTab.DONE] == 4  # with new and new again
             seen = await uow.inbox.seen(
@@ -281,13 +307,13 @@ class InboxRepositoryContract:
             assert seen[scene.documents["new_again"].id] == LAST
             assert seen[scene.documents["seen_long_ago"].id] == LONG_AGO  # not new: as it was
             assert scene.documents["other"].id not in seen
-            assert await uow.inbox.mark_all_seen(owner, owner=owner, at=LAST) == 0
+            assert await uow.inbox.mark_all_seen(owner, editor=owner, at=LAST) == 0
             # An admin's for every user marks for the admin only.
-            assert await uow.inbox.mark_all_seen(admin.id, owner=None, at=LAST) == 5
+            assert await uow.inbox.mark_all_seen(admin.id, editor=None, at=LAST) == 5
             await uow.commit()
         async with uow_factory() as uow:
             other = scene.other.id
-            assert (await uow.inbox.count(other, owner=other, since=SINCE))[InboxTab.NEW] == 1
+            assert (await uow.inbox.count(other, editor=other, since=SINCE))[InboxTab.NEW] == 1
 
     async def test_the_cleanup_removes_what_only_done_needs(
         self, uow_factory: UnitOfWorkFactory
@@ -305,7 +331,7 @@ class InboxRepositoryContract:
                 documents["seen_long_ago"].id: LONG_AGO,  # still tells it is not new
             }
             confirmed = await uow.inbox.query(
-                owner, owner=owner, tab=InboxTab.DONE, since=LONG_AGO, limit=9
+                owner, editor=owner, tab=InboxTab.DONE, since=LONG_AGO, limit=9
             )
             # By when they left: seen and confirmed at LATER (ties by id), then long ago.
             assert [entry.document.id for entry in confirmed] == [
@@ -325,7 +351,7 @@ class InboxRepositoryContract:
             await uow.commit()
         async with uow_factory() as uow:
             assert await uow.inbox.seen(owner, [documents["seen"].id]) == {}
-            assert (await uow.inbox.count(owner, owner=owner, since=SINCE))[InboxTab.DONE] == 0
+            assert (await uow.inbox.count(owner, editor=owner, since=SINCE))[InboxTab.DONE] == 0
             await uow.inbox.record_confirmation(
                 documents["filed"].id, Confirmation(scene.other.id, LATER)
             )
@@ -336,7 +362,7 @@ class InboxRepositoryContract:
             assert await uow.inbox.seen(owner, ids) == {}
             # A confirmation stays with its document, whoever it names.
             done = await uow.inbox.query(
-                owner, owner=owner, tab=InboxTab.DONE, since=SINCE, limit=9
+                owner, editor=owner, tab=InboxTab.DONE, since=SINCE, limit=9
             )
             assert [entry.document.id for entry in done] == scene.ids("filed")
 
@@ -363,9 +389,10 @@ class InboxRepositoryContract:
         owner, _ = await owner_with_space(uow_factory)
         async with uow_factory() as uow:
             assert (
-                await uow.inbox.query(owner.id, owner=owner.id, tab=tab, since=SINCE, limit=5) == []
+                await uow.inbox.query(owner.id, editor=owner.id, tab=tab, since=SINCE, limit=5)
+                == []
             )
-            assert await uow.inbox.count(owner.id, owner=owner.id, since=SINCE) == dict.fromkeys(
+            assert await uow.inbox.count(owner.id, editor=owner.id, since=SINCE) == dict.fromkeys(
                 InboxTab, 0
             )
-            assert await uow.inbox.mark_all_seen(owner.id, owner=owner.id, at=NOW) == 0
+            assert await uow.inbox.mark_all_seen(owner.id, editor=owner.id, at=NOW) == 0

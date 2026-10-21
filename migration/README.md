@@ -16,7 +16,7 @@ brings the classification, and Lekto's rules and everything else run as usual.
 | --- | --- |
 | `plan` | Reads Paperless and Lekto and writes the migration plan (`migration-plan.yaml`): what is taken over, and how. Run again, it adds what is new in Paperless and marks what is gone; what you wrote stays, and it asks before it writes. |
 | `check` | The cold run: writes nothing. Lists what `prepare` would create and, for every document, what it becomes (and where each value comes from), or, if it was migrated, whether Lekto differs and what the alignment would change. Compares the texts of migrated documents; `--download` checks the files. |
-| `prepare` | Creates in Lekto what the plan needs: users, contacts, document types, tags with their hierarchy, contact and type groups, fields with their options, spaces with their shares. Required before `run`; in between, set Lekto up (rules, fields of types) as you like. |
+| `prepare` | Creates in Lekto what the plan needs: users, contacts, document types, tags with their hierarchy, contact and type groups, fields with their options, shared spaces with their members. Required before `run`; in between, set Lekto up (rules, fields of types) as you like. |
 | `run` | Takes the documents over and aligns the migrated ones. Refuses while the plan lacks Paperless objects (`plan`) or Lekto lacks what it names (`prepare`). Ctrl-C stops cleanly; run again to continue. |
 
 `plan`, `prepare` and `run` show what they will do and ask; without a terminal they need `--yes`.
@@ -32,10 +32,10 @@ target: http://lekto:8000
 
 settings:
   currency: EUR                  # for amounts without a currency
-  fallback_owner:                # Lekto user for documents without an owner; empty: you
+  fallback_owner:                # Lekto user who uploads documents without an owner; empty: you
   deactivate_inactive_users: true
   take_over_added: true          # when it came in at Paperless becomes its receipt
-  space_name: "Geteilt: {shares}"
+  space_name: "Geteilt: {members}"   # {members}: every member of the space with their role
   text_threshold: 0.8            # check lists documents Lekto read fewer words of
 
 documents:                       # which documents
@@ -92,7 +92,10 @@ asn: {to: field, name: ASN}
   permissions need); a reinterpretation only fills what is empty, unless it has
   `override: true`; several competing on equal terms leave it as it would be without them.
   `check` shows each conflict.
-- A **space** target means a space of that name of the document's owner. A **group** puts the
+- A **space** target names a shared space (names are unique among them): an existing one is
+  used as it is (its members see the documents), a new one is created with the uploaders of
+  its documents as editors. Personal spaces are not named in the plan: a document without
+  further permissions and without a space goes to its uploader's. A **group** puts the
   document's contact (or type) in it. A **topic** is set after the pipeline (the upload carries
   none), and enabled at the contact. A field bound to document types only takes values of
   documents of those types.
@@ -113,7 +116,7 @@ asn: {to: field, name: ASN}
 | ASN | field `ASN` (number) |
 | Storage paths | dropped |
 | Document date, date added | document date; receipt (`created_at`), where the milestones of its file start |
-| Owner, permissions | owner (none, or a deleted one: the fallback owner or you); a space of the owner for every combination of readers and writers, named by `space_name` |
+| Owner, permissions | uploaded by the owner (none, or a deleted one: the fallback owner or you), in the uploader's personal space; with permissions, a shared space for every combination of members (the uploader and the writers edit, the readers read; groups resolved to their users), named by `space_name`, which must name the members (`{members}`; the `{shares}` of earlier versions is an error) |
 | File | the original (not Paperless' archive PDF) |
 
 Not taken over: notes (counted at each document; Lekto has no notes), Paperless' text (Lekto
@@ -155,7 +158,8 @@ Options (all commands): `--plan` (default `migration-plan.yaml`), `--state` (SQL
 default `migration-state.sqlite`), `--report-dir` (default `migration-reports`), `--limit N`
 (the first N selected documents), `--concurrency` (documents at a time, default 4); `--yes`
 (`plan`, `prepare`, `run`: write without asking); `check --download` (download the originals:
-checksum, type by content, duplicates); `run --pipeline-timeout`, `run --reupload`. API keys
+checksum, type by content, duplicates: the same file in the space a document goes to or in one
+its uploader is a member of, as Lekto counts them); `run --pipeline-timeout`, `run --reupload`. API keys
 come from the environment (or a file) only and are never written to the plan, the state or the
 reports.
 

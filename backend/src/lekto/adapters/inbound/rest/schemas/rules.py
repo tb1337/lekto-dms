@@ -111,7 +111,12 @@ class AnyGroup(BaseModel):
 class SetSpaceAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["set_space"]
-    space_id: UUID = Field(description="A space the rule's owner may write to (user rules).")
+    space_id: UUID = Field(
+        description=(
+            "A space whoever saves the rule may file into, or another user's personal space "
+            "(handing the document over)."
+        )
+    )
 
 
 class SetContactAction(BaseModel):
@@ -144,7 +149,7 @@ TEMPLATE_DESCRIPTION = (
     "`contact`, `document_type`, `topic` (its name), `document_date`, `added`, `tags` (a list, "
     "those set), "
     "`contact_groups` and `document_type_groups` (lists, the groups the contact and the type are "
-    "in), `space`, `owner`, "
+    "in), `space`, `uploaded_by` (who uploaded it), "
     "`channel`, `pages`, and `field.<key>` (`FieldOut.key`; an amount has `.amount` and "
     "`.currency`, a period `.start` and `.end` and writes itself in ISO 8601 as `2026-09`, "
     "`2026-W38`, `2026-Q3` and the like). Besides Liquid's filters: `datetime` (`format: 'MMMM "
@@ -261,20 +266,24 @@ class RuleDefinitionIn(BaseModel):
 
 class RuleCreate(RuleDefinitionIn):
     model_config = ConfigDict(
-        extra="forbid", json_schema_extra={"examples": [{"scope": "user", **_RULE_EXAMPLE}]}
+        extra="forbid", json_schema_extra={"examples": [{"scope": "space", **_RULE_EXAMPLE}]}
     )
 
     scope: RuleScope = Field(
-        default=RuleScope.USER,
+        default=RuleScope.SPACE,
         description=(
-            "`user`: the caller's rule, for their documents. `global` (admins): for every "
-            "document, but only tags, fields and reviews."
+            "`space`: a rule of the space `space_id` (one the caller edits; default: the "
+            "caller's personal space), for the documents in it. `global` (admins): for every "
+            "document."
         ),
+    )
+    space_id: UUID | None = Field(
+        default=None, description="The space a space rule belongs to; none for a global rule."
     )
 
     def to_json(self) -> JsonValue:
         data: JsonValue = self.model_dump(
-            mode="json", by_alias=True, exclude_defaults=True, exclude={"scope"}
+            mode="json", by_alias=True, exclude_defaults=True, exclude={"scope", "space_id"}
         )
         return data
 
@@ -315,7 +324,9 @@ class RuleVersionOut(_RuleDefinitionOut):
 class RuleOut(_RuleDefinitionOut):
     id: UUID
     scope: RuleScope
-    owner_id: UUID | None = Field(description="None for global rules.")
+    space_id: UUID | None = Field(
+        description="The space the rule belongs to and acts in; None for global rules."
+    )
     version: int = Field(description="The current version.")
     enabled: bool
     disabled_reason: str | None = Field(
@@ -335,7 +346,7 @@ class RuleOut(_RuleDefinitionOut):
                 **definition_to_json(rule.definition),
                 "id": rule.id,
                 "scope": rule.scope,
-                "owner_id": rule.owner_id,
+                "space_id": rule.space_id,
                 "version": rule.current.number,
                 "enabled": rule.enabled,
                 "disabled_reason": rule.disabled_reason,

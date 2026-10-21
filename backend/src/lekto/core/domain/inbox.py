@@ -1,8 +1,9 @@
 """The inbox: what stands in whose inbox, under which tab, and how it left it (Tobi,
 17./18.10.2026; `architektur.md`, Verarbeitung, "Posteingang").
 
-A document stands in its owner's inbox, and in the inbox of every user of an admin who includes
-all users (`all_users`); someone who reaches it through a shared space only never has it there.
+A document stands in the inbox of every editor of its space, and in the inbox of every user of
+an admin who includes all users (`all_users`); someone who only reads its space never has it
+there.
 It stands open while it is processed (no lane yet), yellow (to review), red (to intervene), or
 new (`Document.new_at`) and not seen by the viewer since it became new: seen is per viewer. It
 leaves when a person confirms it out of yellow or red, for everyone, or when the viewer sees

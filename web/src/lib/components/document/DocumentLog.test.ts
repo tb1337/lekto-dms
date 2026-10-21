@@ -150,6 +150,8 @@ describe('DocumentLog', () => {
 		expect(within(tooltip).getByText(m.tokens_input())).toBeTruthy();
 		expect(tooltip.textContent).toContain('2,318');
 		const proposal = container.querySelector('[data-node="signal_llm"]') as HTMLElement;
+		// The dot between run and model with a space on both sides.
+		expect(proposal.textContent).toMatch(/\d · qwen3:8b/);
 		await userEvent.click(within(proposal).getByRole('button', { name: m.prompt_open() }));
 		expect(await screen.findByText('You read one document.')).toBeTruthy();
 		await userEvent.click(screen.getByRole('button', { name: m.prompt_answer() }));
@@ -202,7 +204,7 @@ describe('DocumentLog', () => {
 		const tooltip = await openTip(
 			await within(ocr).findByRole('button', { name: m.tokens_details() })
 		);
-		expect(tooltip.textContent).toContain(m.prompt_calls({ count: 2 }));
+		expect(tooltip.textContent).toContain(`(read-1) · ${m.prompt_calls({ count: 2 })}`);
 		expect(tooltip.textContent).toContain('4,258');
 		await userEvent.click(within(ocr).getByRole('button', { name: m.prompt_open() }));
 		expect(await screen.findByText('You transcribe one page of a document.')).toBeTruthy();

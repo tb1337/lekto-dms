@@ -8,4 +8,4 @@ case "$role" in
     exec s6-svc -Od .
     ;;
 esac
-exec lekto-run python -m lekto.composition api
+exec lekto-run lekto api

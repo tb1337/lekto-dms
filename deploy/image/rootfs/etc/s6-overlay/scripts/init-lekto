@@ -70,4 +70,4 @@ fi
 echo "init-lekto: Lekto runs as $puid:$pgid, LEKTO_ROLE=${LEKTO_ROLE:-all}"
 # Fails with a readable message for any invalid or missing setting. Runs as the user of the
 # services, so that secret files must be readable by them.
-exec lekto-run python -m lekto.composition check
+exec lekto-run lekto check

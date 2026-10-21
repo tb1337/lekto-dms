@@ -17,7 +17,7 @@ marker=/run/lekto-worker-ready
 rm -f "$marker"
 child=
 trap '[ -z "$child" ] || kill "$child" 2>/dev/null; exit 143' TERM INT
-lekto-run python -m lekto.composition check-schema --wait 600 &
+lekto-run lekto check-schema --wait 600 &
 child=$!
 if ! wait "$child"; then
   child=
@@ -28,4 +28,4 @@ if ! wait "$child"; then
 fi
 child=
 touch "$marker"
-exec lekto-run python -m lekto.composition worker
+exec lekto-run lekto worker

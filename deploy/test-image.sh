@@ -118,19 +118,22 @@ ok "healthy"
 check "init-migrations migrated the schema" grep -q 'database migrated' <(logs all)
 check "the API answers /health with ok" \
   bash -c "curl -fsS $(url all)/health | grep -q '\"status\":\"ok\"'"
-check "API and worker run (two processes)" test "$(count all lekto.composition)" -eq 2
+check "API and worker run (two processes)" test "$(count all venv/bin/lekto)" -eq 2
 check "every Lekto process runs as $uid:$gid" \
-  test "$(processes all lekto.composition | grep -vc "^$uid:$gid " || true)" -eq 0
+  test "$(processes all venv/bin/lekto | grep -vc "^$uid:$gid " || true)" -eq 0
 check "no Lekto process runs as root" \
-  test "$(processes all lekto.composition | grep -c '^0:' || true)" -eq 0
+  test "$(processes all venv/bin/lekto | grep -c '^0:' || true)" -eq 0
 check "/data belongs to $uid:$gid" \
   docker exec "$prefix-all" sh -c "test \"\$(stat -c %u:%g /data /data/lekto.db /data/objects | sort -u)\" = $uid:$gid"
 check "the secret key does not show in the logs" \
   test "$(logs all | grep -cF -f "$work/secret_key")" -eq 0
 check "the admin password does not show in the logs" \
   test "$(logs all | grep -cF -f "$work/admin_password")" -eq 0
-check "\`lekto\` runs the commands of the composition root as the same user" \
-  docker exec "$prefix-all" lekto check-schema
+check "\`lekto-run lekto\` runs the commands of the composition root as the same user" \
+  docker exec "$prefix-all" lekto-run lekto check-schema
+# As root (`docker exec` without `lekto-run`), what lekto wrote would belong to root.
+root_stops() { ! out=$(docker exec "$prefix-all" lekto check-schema 2>&1) && grep -q 'lekto-run lekto' <<<"$out"; }
+check "\`lekto\` as root warns and stops" root_stops
 
 step "web UI below /ui"
 ui=$(origin all)/ui
@@ -189,8 +192,8 @@ check "the worker and Uvicorn logged their shutdown" \
 step "role api: no worker"
 start api LEKTO_ROLE=api
 wait_for 180 "healthy" healthy api || logs api
-check "the API runs" test "$(count api 'composition api')" -eq 1
-check "no worker process" test "$(count api 'composition worker')" -eq 0
+check "the API runs" test "$(count api 'bin/lekto api')" -eq 1
+check "no worker process" test "$(count api 'bin/lekto worker')" -eq 0
 check "svc-worker stays down" bash -c "docker exec $prefix-api s6-svstat /run/service/svc-worker | grep -q '^down'"
 
 step "role worker: waits for the schema, starts when the API container has migrated"
@@ -206,9 +209,9 @@ check "no migration by the worker" test "$(logs worker | grep -c 'database migra
 check "not healthy yet" bash -c "[ \"\$(docker inspect --format '{{.State.Health.Status}}' $prefix-worker)\" != healthy ]"
 VOLUME=$prefix-shared start migrator LEKTO_ROLE=api
 wait_for 180 "the worker container becomes healthy" healthy worker || logs worker
-check "the worker runs" test "$(count worker 'composition worker')" -eq 1
+check "the worker runs" test "$(count worker 'bin/lekto worker')" -eq 1
 check "the worker is ready for the healthcheck" docker exec "$prefix-worker" test -e /run/lekto-worker-ready
-check "no API process in the worker container" test "$(count worker 'composition api')" -eq 0
+check "no API process in the worker container" test "$(count worker 'bin/lekto api')" -eq 0
 
 step "invalid configuration stops the container with a reason"
 docker run -d --name "$prefix-nokey" -e PUID=$uid -e PGID=$gid "$image" >/dev/null
